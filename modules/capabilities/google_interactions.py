@@ -64,8 +64,6 @@ from modules.capabilities.base import (
     Output,
     PollResult,
     ProviderTask,
-    image_b64,
-    image_mime,
     is_url,
     json_body,
 )
@@ -79,7 +77,8 @@ RESULT_HOSTS = ("generativelanguage.googleapis.com",)
 BILLING_UNKNOWN = ("BILLING UNKNOWN: the Google pages read do not say whether a refused or failed request is billed; "
                    "check the Gemini API usage page, do not assume it was not")
 
-_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
+#: An interaction id goes into a URL path: no dot segment (``..``), no ``:`` (``a:cancel`` would be another endpoint), no ``/``.
+_ID = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}$")
 _POLICY_WORDS = ("safety", "blocked", "prohibited", "policy", "violat", "harm")
 _QUOTA_WORDS = ("billing", "paid tier", "free tier", "quota", "credit", "payment", "spending")
 _REGION_WORDS = ("location", "region", "country", "territory")
@@ -90,7 +89,32 @@ _KEY_WORDS = ("api key not valid", "api_key_invalid", "api key expired", "api ke
 _TERMINAL_FAILED = ("failed", "cancelled", "canceled")
 _RUNNING = ("in_progress", "queued", "pending", "running")
 _MAX_IMAGE_BYTES = 15 * 1024 * 1024
-_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
+
+
+_PICTURE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def _sniff_file(path: Path) -> Optional[str]:
+    """The picture type the first bytes of ``path`` say it is (PNG, JPEG, WebP), or None: the suffix is not trusted."""
+    try:
+        with open(path, "rb") as fh:
+            return sniff_image_mime(fh.read(16))
+    except OSError:
+        return None
+
+
+def _picture_part(ref: str) -> dict:
+    """An input picture as an inline part, labelled with the type its BYTES say. A ``.png`` that is a document, an archive or a secrets
+    file is refused here, before any request (``problems`` says the same earlier)."""
+    try:
+        data = Path(ref).read_bytes()
+    except OSError:
+        raise AdapterError(E_BAD_REQUEST, "the picture could not be read", not_accepted=True) from None
+    mime = sniff_image_mime(data[:16])
+    if mime is None:
+        raise AdapterError(E_BAD_REQUEST, "the file is not a PNG, JPEG or WebP picture (its bytes say otherwise); it was not sent",
+                           not_accepted=True)
+    return {"type": "image", "data": base64.b64encode(data).decode("ascii"), "mime_type": mime}
 
 
 def _refused(message: str, *, http_status=None, not_accepted: bool = False) -> AdapterError:
@@ -104,6 +128,9 @@ class _InteractionsBase(SafeResultMixin, HttpAdapter):
     base_url_env = "GEMINI_BASE_URL"
     default_base_url = "https://generativelanguage.googleapis.com/v1beta"
     result_hosts = RESULT_HOSTS
+    #: The key rides every call in a header, and requests strips only ``Authorization`` on a cross-host redirect: a 3xx (307/308 also
+    #: re-sends the body) is an error here, never followed.
+    follow_redirects = False
 
     def auth_headers(self) -> Dict[str, str]:
         # Google takes the key in its own header; never in the query string.
@@ -117,7 +144,11 @@ class _InteractionsBase(SafeResultMixin, HttpAdapter):
             api = urlsplit(self.base_url)
         except ValueError:
             return None
-        if parts.scheme == "https" and parts.hostname and parts.hostname == api.hostname:
+        try:
+            same = parts.port in self.result_ports      # (None, 443) unless a test names its loopback port
+        except ValueError:
+            return None
+        if parts.scheme == "https" and parts.hostname and parts.hostname == api.hostname and same and parts.netloc.lower() == api.netloc.lower():
             return self.auth_headers()
         return None
 
@@ -160,17 +191,21 @@ class _InteractionsBase(SafeResultMixin, HttpAdapter):
     @staticmethod
     def _contents(data: dict, kind: str) -> List[dict]:
         out: List[dict] = []
-        for step in data.get("steps") or []:
-            if isinstance(step, dict) and step.get("type") == "model_output":
-                out += [c for c in (step.get("content") or []) if isinstance(c, dict) and c.get("type") == kind]
+        steps = data.get("steps")
+        for step in steps if isinstance(steps, list) else []:
+            content = step.get("content") if isinstance(step, dict) else None
+            if isinstance(step, dict) and step.get("type") == "model_output" and isinstance(content, list):
+                out += [c for c in content if isinstance(c, dict) and c.get("type") == kind]
         return out
 
     @staticmethod
     def _text(data: dict) -> str:
         parts = []
-        for step in data.get("steps") or []:
-            if isinstance(step, dict) and step.get("type") == "model_output":
-                parts += [str(c.get("text")) for c in (step.get("content") or [])
+        steps = data.get("steps")
+        for step in steps if isinstance(steps, list) else []:
+            content = step.get("content") if isinstance(step, dict) else None
+            if isinstance(step, dict) and step.get("type") == "model_output" and isinstance(content, list):
+                parts += [str(c.get("text")) for c in content
                           if isinstance(c, dict) and c.get("type") == "text" and c.get("text")]
         return " ".join(parts)
 
@@ -235,10 +270,12 @@ class GeminiOmniAdapter(_InteractionsBase):
             path = Path(ref)
             if is_url(ref):
                 out.append("the picture must be a file from the library, not an https URL")
-            elif image_mime(ref) not in _IMAGE_TYPES or path.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+            elif path.suffix.lower() not in _PICTURE_SUFFIXES:
                 out.append("Gemini Omni reads PNG, JPEG or WebP pictures")
             elif path.is_file() and path.stat().st_size > _MAX_IMAGE_BYTES:
                 out.append("the picture is over 15 MB")
+            elif path.is_file() and _sniff_file(path) is None:
+                out.append("the file is not a PNG, JPEG or WebP picture (its bytes say otherwise); it was not sent")
         return out
 
     def problems(self, request: CapabilityRequest, entry) -> List[str]:
@@ -260,10 +297,7 @@ class GeminiOmniAdapter(_InteractionsBase):
         prompt = request.prompt.strip()
         if request.capability == I2V:
             ref = str(request.input_images[0])
-            try:
-                parts: list = [{"type": "image", "data": image_b64(ref), "mime_type": image_mime(ref)}]
-            except OSError:
-                raise AdapterError(E_BAD_REQUEST, "the picture could not be read", not_accepted=True) from None
+            parts: list = [_picture_part(ref)]
             if prompt:
                 parts.append({"type": "text", "text": prompt})
             payload: object = parts
@@ -300,15 +334,27 @@ class GeminiOmniAdapter(_InteractionsBase):
         raise AdapterError(E_BAD_RESPONSE, f"unknown interaction status {self.message(status)!r}")
 
     def _video(self, data: dict) -> PollResult:
+        try:
+            return self._video_of(data)
+        except AdapterError:
+            raise
+        except Exception:     # an odd shape nobody planned for: the vendor said completed, so it may have billed
+            raise after_completion(AdapterError(E_BAD_RESPONSE, "the completed interaction has a shape this adapter cannot read")) from None
+
+    def _video_of(self, data: dict) -> PollResult:
         clips = self._contents(data, "video")
         if not clips:
             # The vendor says it finished and sent no clip: it may have billed.
             raise after_completion(AdapterError(E_BAD_RESPONSE, "completed without a video in model_output"))
         clip = clips[0]
-        mime = str(clip.get("mime_type") or "video/mp4").lower()
+        # A media type may carry parameters ("video/mp4; codecs=avc1") and stray white space.
+        mime = str(clip.get("mime_type") or "video/mp4").split(";", 1)[0].strip().lower()
         if mime != "video/mp4":
             raise after_completion(AdapterError(E_BAD_RESPONSE, f"the clip is {self.message(mime)!r}, not video/mp4"))
         if isinstance(clip.get("data"), str) and clip["data"]:
+            if len(clip["data"]) * 3 // 4 > self.max_inline_bytes:
+                # Refused before decoding: the cap is on what base64 would allocate.
+                raise after_completion(AdapterError(E_BAD_RESPONSE, f"the inline clip is over the {self.max_inline_bytes} byte limit; not decoded"))
             try:
                 raw = base64.b64decode(clip["data"], validate=False)
             except (ValueError, TypeError):
@@ -366,11 +412,14 @@ class GeminiNanoBananaAdapter(_InteractionsBase):
             if is_url(ref):
                 out.append("pictures must be files from the library, not https URLs")
                 break
-            if image_mime(ref) not in _IMAGE_TYPES or path.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+            if path.suffix.lower() not in _PICTURE_SUFFIXES:
                 out.append("Nano Banana reads PNG, JPEG or WebP pictures")
                 break
             if path.is_file():
                 total += path.stat().st_size
+                if _sniff_file(path) is None:
+                    out.append("a file is not a PNG, JPEG or WebP picture (its bytes say otherwise); nothing was sent")
+                    break
         if total > self.MAX_TOTAL_IMAGE_BYTES:
             out.append("the pictures are over 14 MB together")
         return out
@@ -388,11 +437,8 @@ class GeminiNanoBananaAdapter(_InteractionsBase):
         if bad:
             raise AdapterError(E_BAD_REQUEST, "; ".join(bad), not_accepted=True)
         parts: list = [{"type": "text", "text": request.prompt.strip()}]
-        try:
-            for ref in request.input_images:
-                parts.append({"type": "image", "data": image_b64(str(ref)), "mime_type": image_mime(str(ref))})
-        except OSError:
-            raise AdapterError(E_BAD_REQUEST, "a picture could not be read", not_accepted=True) from None
+        for ref in request.input_images:
+            parts.append(_picture_part(str(ref)))
         fmt: dict = {"type": "image", "image_size": request.image_size}
         if request.aspect_ratio:
             fmt["aspect_ratio"] = request.aspect_ratio       # left out = the vendor's own (the input's shape, else 1:1)
@@ -402,6 +448,14 @@ class GeminiNanoBananaAdapter(_InteractionsBase):
         return ProviderTask(self.key, vendor_model, None, outputs=self._image(data).outputs)
 
     def _image(self, data: dict) -> PollResult:
+        try:
+            return self._image_of(data)
+        except AdapterError:
+            raise
+        except Exception:     # an odd shape nobody planned for: the call went through, so it may have billed
+            raise unconfirmed("the answer has a shape this adapter cannot read") from None
+
+    def _image_of(self, data: dict) -> PollResult:
         status = str(data.get("status") or "").lower()
         if status in _TERMINAL_FAILED:
             raise self._failure(data).error
@@ -413,6 +467,8 @@ class GeminiNanoBananaAdapter(_InteractionsBase):
                 raise unconfirmed(f"the answer is not a finished interaction (status {self.message(status) or 'missing'})")
             said = self.message(self._text(data))[:160]
             raise unconfirmed("the answer carries no image" + (f" (the model said: {said})" if said else ""))
+        if len(raw) * 3 // 4 > self.max_inline_bytes:
+            raise unconfirmed(f"the image is over the {self.max_inline_bytes} byte limit; not decoded")
         try:
             blob = base64.b64decode(raw, validate=False)
         except (ValueError, TypeError):

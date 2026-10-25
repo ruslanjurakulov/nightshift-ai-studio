@@ -126,7 +126,7 @@ describe("with the switch on", () => {
   it("reads NO database (no client, no rpc) and draws every vendor", async () => {
     const html = await page();
     expect(s.createClient).not.toHaveBeenCalled();
-    expect((html.match(/data-provider=/g) ?? []).length).toBe(14);
+    expect((html.match(/data-provider=/g) ?? []).length).toBe(16);
     expect(has(html, m.nothingStored)).toBe(true);
     expect(has(html, m.status.not_checked)).toBe(true);
     expect(html).not.toMatch(/Vault|Stored key|\u2022\u2022/);
@@ -175,6 +175,6 @@ describe("with the switch on", () => {
   });
 
   it("is the same page with no database configured at all: it never needed one", async () => {
-    expect((await page()).match(/data-provider=/g)?.length).toBe(14);
+    expect((await page()).match(/data-provider=/g)?.length).toBe(16);
   });
 });

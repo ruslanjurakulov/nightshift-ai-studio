@@ -25,6 +25,7 @@ import re
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from modules import model_registry as reg
@@ -755,6 +756,244 @@ class BananaAnswerTests(VendorCase):
         task = self.answer(image_done())
         res = self.banana().poll(task)
         self.assertEqual(res.state, SUCCEEDED)
+
+
+# ── review fixes: redirects, ids, odd shapes, pictures, sizes, media types ─────────────────────────────
+
+class RedirectTests(unittest.TestCase):
+    """The key rides every call in a header; requests strips only Authorization on a cross-host redirect, and a 307/308 re-sends the body."""
+
+    def setUp(self):
+        self.api, self.attacker = FakeVendor(), FakeVendor()
+        self.addCleanup(self.api.close)
+        self.addCleanup(self.attacker.close)
+        self.tmp = Path(tempfile.mkdtemp(prefix="gint_redir_"))
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+
+    def adapter(self, key, follow=None):
+        a = build_adapter(key, env={"GEMINI_API_KEY": KEY, "GEMINI_BASE_URL": self.api.base_url + "/v1beta"}, session=self.api.session())
+        if follow is not None:
+            a.follow_redirects = follow
+        return a
+
+    def redirect(self, method, prefix, status):
+        self.api.on(method, prefix, Resp(status, headers={"Location": f"{self.attacker.base_url}/steal"}))
+
+    def calls(self):
+        omni, banana = None, None
+        return [
+            ("omni create", lambda a: a.submit(t2v(), OMNI), "video.gemini_omni", "POST", POST),
+            ("omni poll", lambda a: a.poll(ProviderTask("video.gemini_omni", OMNI, TID)), "video.gemini_omni", "GET", GET),
+            ("banana create", lambda a: a.submit(t2i(), NB), "image.gemini_interactions", "POST", POST),
+        ]
+
+    def test_no_call_follows_a_redirect_or_hands_the_key_or_the_body_to_the_other_host(self):
+        for status in (302, 307, 308):
+            for label, call, key, method, prefix in self.calls():
+                with self.subTest(label=label, status=status):
+                    self.api._routes.clear()
+                    self.api.requests.clear()
+                    self.attacker.requests.clear()
+                    self.redirect(method, prefix, status)
+                    with self.assertRaises(AdapterError):
+                        call(self.adapter(key))
+                    self.assertEqual(self.attacker.requests, [], f"{label} {status} reached the other host")
+                    self.assertEqual(len(self.api.requests), 1, f"{label} {status}: the call was repeated")
+
+    def test_control_the_same_redirects_WOULD_carry_the_key_if_they_were_followed(self):
+        for label, call, key, method, prefix in self.calls():
+            with self.subTest(label=label):
+                self.api._routes.clear()
+                self.attacker.requests.clear()
+                self.redirect(method, prefix, 307)
+                try:
+                    call(self.adapter(key, follow=True))
+                except AdapterError:
+                    pass
+                self.assertIn(KEY, [r.headers.get("x-goog-api-key") for r in self.attacker.requests], label)
+
+    def test_both_adapters_say_so_and_the_shared_pin_lists_them(self):
+        self.assertFalse(GeminiOmniAdapter.follow_redirects)
+        self.assertFalse(GeminiNanoBananaAdapter.follow_redirects)
+
+
+class InteractionIdTests(VendorCase):
+    def test_an_id_that_could_steer_the_url_is_refused_at_poll_before_any_call(self):
+        for bad in ("..", ".", "...", ".hidden", "a:cancel", "a/b", "a b", "a?x=1", "a#b", "", None, "x" * 201):
+            with self.subTest(repr(bad)):
+                with self.assertRaises(AdapterError) as cm:
+                    self.omni().poll(ProviderTask("video.gemini_omni", OMNI, bad))
+                self.assertEqual(cm.exception.code, E_NOT_FOUND)
+        self.assertEqual(self.vendor.requests, [])
+
+    def test_an_id_like_that_in_a_create_answer_is_unconfirmed_spend_not_a_task(self):
+        for bad in ("..", ".", "a:cancel"):
+            with self.subTest(bad):
+                self.vendor._routes.clear()
+                self.vendor.on("POST", POST, Resp(200, {"id": bad, "status": "in_progress"}))
+                with self.assertRaises(AdapterError) as cm:
+                    self.omni().submit(t2v(), OMNI)
+                self.assertTrue(cm.exception.message.startswith(UNCONFIRMED))
+
+    def test_ids_google_actually_uses_pass(self):
+        for ok in (TID, "v1_AbC-123", "a.b", "0"):
+            self.vendor._routes.clear()
+            self.vendor.on("POST", POST, Resp(200, {"id": ok, "status": "in_progress"}))
+            self.assertEqual(self.omni().submit(t2v(), OMNI).task_id, ok)
+
+
+class OddShapeTests(VendorCase):
+    SHAPES = ({"steps": 5}, {"steps": "x"}, {"steps": [5, None, "x"]}, {"steps": [{"type": "model_output", "content": 5}]},
+              {"steps": [{"type": "model_output", "content": True}]}, {"steps": [{"type": "model_output", "content": [5, None, "x"]}]},
+              {"steps": [{"type": "model_output", "content": {"type": "video"}}]})
+
+    def test_an_omni_completed_answer_in_a_shape_nobody_planned_keeps_the_spend_note(self):
+        for shape in self.SHAPES:
+            with self.subTest(shape):
+                self.vendor._routes.clear()
+                self.vendor.on("GET", GET, Resp(200, {"id": TID, "status": "completed", **shape}))
+                with self.assertRaises(AdapterError) as cm:
+                    self.omni().poll(ProviderTask("video.gemini_omni", OMNI, TID))
+                self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
+                self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), cm.exception.message)
+
+    def test_a_banana_answer_in_a_shape_nobody_planned_is_unconfirmed_spend(self):
+        for shape in self.SHAPES:
+            with self.subTest(shape):
+                self.vendor._routes.clear()
+                self.vendor.on("POST", POST, Resp(200, {"id": TID, "status": "completed", **shape}))
+                with self.assertRaises(AdapterError) as cm:
+                    self.banana().submit(t2i(), NB)
+                self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
+                self.assertTrue(cm.exception.message.startswith(UNCONFIRMED), cm.exception.message)
+
+    def test_a_failed_answer_with_an_odd_error_is_still_a_failure_with_the_billing_note(self):
+        for err in (5, "x", [1], True):
+            self.vendor._routes.clear()
+            self.vendor.on("GET", GET, Resp(200, {"id": TID, "status": "failed", "error": err, "steps": 5}))
+            res = self.omni().poll(ProviderTask("video.gemini_omni", OMNI, TID))
+            self.assertEqual(res.state, FAILED)
+            self.assertTrue(res.error.message.startswith(BILLING_UNKNOWN))
+
+
+class PictureBytesTests(VendorCase):
+    def test_a_document_labelled_png_is_refused_before_any_request_by_both_adapters(self):
+        html = self.frame("page.png", b"<html><body>secrets</body></html>")
+        zipped = self.frame("a.jpg", b"PK\x03\x04" + b"\x00" * 100)
+        for ref in (html, zipped):
+            with self.assertRaises(AdapterError) as cm:
+                self.omni().submit(CapabilityRequest(I2V, "x", resolution="720p", input_images=(ref,)), OMNI)
+            self.assertEqual(cm.exception.code, E_BAD_REQUEST)
+            self.assertTrue(cm.exception.not_accepted)
+            self.assertIn("its bytes say otherwise", cm.exception.message)
+            with self.assertRaises(AdapterError) as cm:
+                self.banana().submit(CapabilityRequest(EDIT, "x", image_size="1K", input_images=(ref,)), NB)
+            self.assertIn("its bytes say otherwise", cm.exception.message)
+            self.assertTrue(cm.exception.not_accepted)
+        self.assertEqual(self.vendor.requests, [])
+
+    def test_problems_reports_it_too_so_the_worker_refuses_it_before_it_holds_credits(self):
+        html = self.frame("page.png", b"<html></html>")
+        bad = self.omni().problems(CapabilityRequest(I2V, "x", resolution="720p", input_images=(html,)), reg.get(OMNI))
+        self.assertTrue(any("bytes say otherwise" in p for p in bad), bad)
+        bad = self.banana().problems(CapabilityRequest(EDIT, "x", image_size="1K", input_images=(html,)), reg.get(NB))
+        self.assertTrue(any("bytes say otherwise" in p for p in bad), bad)
+
+    def test_the_mime_sent_is_the_one_the_bytes_say_not_the_suffix(self):
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.new("RGB", (8, 8)).save(buf, "JPEG")
+        jpeg_named_png = self.frame("really_a_jpeg.png", buf.getvalue())
+        self.vendor.on("POST", POST, Resp(200, interaction("in_progress")))
+        self.omni().submit(CapabilityRequest(I2V, "x", resolution="720p", input_images=(jpeg_named_png,)), OMNI)
+        self.assertEqual(self.sent().json()["input"][0]["mime_type"], "image/jpeg")
+        self.vendor._routes.clear()
+        self.vendor.requests.clear()
+        self.vendor.on("POST", POST, Resp(200, image_done()))
+        self.banana().submit(CapabilityRequest(EDIT, "x", image_size="1K", input_images=(jpeg_named_png, self.frame("ok.png"))), NB)
+        self.assertEqual([p["mime_type"] for p in self.sent().json()["input"][1:]], ["image/jpeg", "image/png"])
+
+
+class InlineSizeCapTests(VendorCase):
+    def test_an_omni_inline_clip_over_the_cap_is_refused_before_it_is_decoded(self):
+        a = self.omni()
+        a.max_inline_bytes = 1000
+        self.vendor.on("GET", GET, Resp(200, interaction(content=[{"type": "video", "mime_type": "video/mp4", "data": "A" * 4000}])))
+        with mock.patch("base64.b64decode", side_effect=AssertionError("decoded")):
+            with self.assertRaises(AdapterError) as cm:
+                a.poll(ProviderTask("video.gemini_omni", OMNI, TID))
+        self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION))
+        self.assertIn("not decoded", cm.exception.message)
+
+    def test_a_banana_inline_image_over_the_cap_is_refused_before_it_is_decoded(self):
+        a = self.banana()
+        a.max_inline_bytes = 1000
+        self.vendor.on("POST", POST, Resp(200, interaction(content=[{"type": "image", "mime_type": "image/png", "data": "A" * 4000}])))
+        with mock.patch("base64.b64decode", side_effect=AssertionError("decoded")):
+            with self.assertRaises(AdapterError) as cm:
+                a.submit(t2i(), NB)
+        self.assertTrue(cm.exception.message.startswith(UNCONFIRMED))
+        self.assertIn("not decoded", cm.exception.message)
+
+    def test_just_under_the_cap_passes(self):
+        a = self.omni()
+        a.max_inline_bytes = len(MP4) + 16
+        self.vendor.on("GET", GET, Resp(200, video_done()))
+        self.assertEqual(a.poll(ProviderTask("video.gemini_omni", OMNI, TID)).state, SUCCEEDED)
+
+
+class MediaTypeTests(VendorCase):
+    def test_a_media_type_with_parameters_or_spaces_is_still_an_mp4(self):
+        for mime in ("video/mp4; codecs=avc1", " video/mp4 ", "VIDEO/MP4", "video/mp4;codecs=\"avc1.42E01E, mp4a.40.2\""):
+            with self.subTest(mime):
+                self.vendor._routes.clear()
+                self.vendor.on("GET", GET, Resp(200, interaction(content=[{"type": "video", "mime_type": mime, "data": b64(MP4)}])))
+                res = self.omni().poll(ProviderTask("video.gemini_omni", OMNI, TID))
+                self.assertEqual((res.state, res.outputs[0].mime), (SUCCEEDED, "video/mp4"))
+
+    def test_another_type_is_still_refused(self):
+        for mime in ("video/webm", "video/mp4x", "application/mp4", "video/mp4,video/webm"):
+            with self.subTest(mime):
+                self.vendor._routes.clear()
+                self.vendor.on("GET", GET, Resp(200, interaction(content=[{"type": "video", "mime_type": mime, "data": b64(MP4)}])))
+                with self.assertRaises(AdapterError):
+                    self.omni().poll(ProviderTask("video.gemini_omni", OMNI, TID))
+
+
+class CatchAllTests(VendorCase):
+    def test_a_shape_that_slips_past_the_guards_still_keeps_the_spend_notes(self):
+        self.vendor.on("GET", GET, Resp(200, video_done()))
+        self.vendor.on("POST", POST, Resp(200, image_done()))
+        with mock.patch.object(GeminiOmniAdapter, "_contents", side_effect=TypeError("odd")):
+            with self.assertRaises(AdapterError) as cm:
+                self.omni().poll(ProviderTask("video.gemini_omni", OMNI, TID))
+        self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION))
+        with mock.patch.object(GeminiNanoBananaAdapter, "_contents", side_effect=TypeError("odd")):
+            with self.assertRaises(AdapterError) as cm:
+                self.banana().submit(t2i(), NB)
+        self.assertTrue(cm.exception.message.startswith(UNCONFIRMED))
+
+    def test_the_bytes_are_checked_again_where_they_are_sent_not_only_in_problems(self):
+        from modules.capabilities import google_interactions as gi
+
+        html = self.frame("page.png", b"<html></html>")
+        with mock.patch.object(gi, "_sniff_file", return_value="image/png"):        # the file changed after problems() looked
+            with self.assertRaises(AdapterError) as cm:
+                self.omni().submit(CapabilityRequest(I2V, "x", resolution="720p", input_images=(html,)), OMNI)
+        self.assertTrue(cm.exception.not_accepted)
+        self.assertEqual(self.vendor.requests, [])
+
+
+class DownloadHeaderHostTests(unittest.TestCase):
+    def test_the_key_goes_only_to_the_same_host_on_the_standard_port(self):
+        a = build_adapter("video.gemini_omni", env={"GEMINI_API_KEY": KEY})
+        base = "https://generativelanguage.googleapis.com"
+        self.assertEqual(a.download_headers(f"{base}/v1beta/files/f:download?alt=media"), {"x-goog-api-key": KEY})
+        for url in (f"{base}:443/v1beta/files/f", f"{base}:8443/v1beta/files/f",       # not the very same netloc as the API's
+                    f"{base}\\@evil.example/x", f"https://user@generativelanguage.googleapis.com/x",
+                    "https://generativelanguage.googleapis.com.evil.example/x", "https://evil.example/generativelanguage.googleapis.com"):
+            self.assertIsNone(a.download_headers(url), url)
 
 
 # ── probes: dark means never reached by --all ──────────────────────────────────────────

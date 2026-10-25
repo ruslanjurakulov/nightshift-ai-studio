@@ -45,3 +45,15 @@ Sources (`ai.google.dev/gemini-api/docs/...`, as `.md.txt`, read 2026-10-25): `o
 3. `python tools/probe_models.py --dry-run --model gemini-nano-banana-2.1`, then the real probe, by name (`--all` skips every gated model): about $0.034 for the image; Omni's 360p probe costs whatever Google bills for a 3-10 s clip, no more than about $1 at the 720p rate.
 4. The probe settles the unverified points: whether `background: true` is accepted for Omni, the exact failed-interaction body, and the length a prompt yields.
 5. Re-check the prices, set `confirmed: true`, add the `credit_prices` rows, clear `terms_gate` in a reviewed change.
+
+## Review fixes (second pass)
+
+- **No redirect is followed** on any call (`follow_redirects = False`): the key rides a header that `requests` does not strip on a cross-host redirect, and a 307/308 would re-send the body. Loopback tests cover Omni create, Omni poll and Nano Banana create, with a control that leaks the key when redirects are turned on.
+- An interaction id goes into a URL path: it must start with a letter, digit, `_` or `-` and may then also contain `.`; `..`, `.`, `a:cancel` and anything with `/` are refused.
+- A completed answer in a shape nobody planned for (`steps: 5`, `content: true`) keeps its spend note (`SPEND MAY HAVE OCCURRED` for Omni, `UNCONFIRMED SPEND` for Nano Banana) instead of a bare `TypeError`.
+- Input pictures are checked by their bytes (PNG, JPEG, WebP), the type sent is the type the bytes say, and a document named `.png` is refused before any request.
+- An inline result is refused before it is decoded when its base64 would decode past the byte cap. A media type with parameters (`video/mp4; codecs=avc1`) is accepted as an MP4.
+- The key rides a result download only to the very same host and netloc the API itself is on.
+- The two Google Cloud Terms notes (§20.d, §17.a) are the registry's pre-existing citations for Google models and were NOT re-read for the Gemini API; the Gemini API's own terms are the notes after them.
+- A poll that fails with an HTTP error does not mean the Omni clip stopped: it may still be running and billing at Google. Keep the task id and poll again; never submit again.
+
