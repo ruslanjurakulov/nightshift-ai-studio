@@ -25,6 +25,7 @@ import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
 import { reviewLinkEn, reviewPageEn } from "./review-link/en";
 import { regionEditEn } from "./region-edit/en";
+import { imageEditorEn } from "./image-editor/en";
 import { resultsDashboardEn } from "./results-dashboard/en";
 
 /**
@@ -54,6 +55,7 @@ export const en = {
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
   regionEdit: regionEditEn,
+  imageEditor: imageEditorEn,
   resultsDashboard: resultsDashboardEn,
   reviewPage: reviewPageEn,
   improveAi: improveEn,
