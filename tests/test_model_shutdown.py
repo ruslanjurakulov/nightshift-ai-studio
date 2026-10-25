@@ -417,36 +417,52 @@ class VeoAdapterAtSubmitTests(unittest.TestCase):
         session.request.assert_called_once()
 
     def test_only_the_probe_can_let_one_past_shutdown_id_through_and_only_that_id(self):
+        from modules.capabilities.base import AdapterError
         from tools import probe_models
 
-        a, session = self.adapter({"NIGHTSHIFT_PROBE_PAST_SHUTDOWN": "veo-3.1-generate-preview"})
+        a, session = self.adapter()
+        a.probing_past_shutdown = "veo-3.1-generate-preview"
         a.submit(self.request(), "veo-3.1-generate-preview")
         session.request.assert_called_once()
-        from modules.capabilities.base import AdapterError
-
-        a, session = self.adapter({"NIGHTSHIFT_PROBE_PAST_SHUTDOWN": "veo-3.1-generate-preview"})
+        a, session = self.adapter()
+        a.probing_past_shutdown = "veo-3.1-generate-preview"
         with self.assertRaises(AdapterError):
             a.submit(self.request(), "veo-3.1-fast-generate-preview")          # another id is not let through
         session.request.assert_not_called()
-        # the probe tool names exactly the vendor model it probes, and only for a past-shutdown entry
+
+    def test_no_environment_value_can_let_a_worker_through_so_no_deploy_path_is_needed(self):
+        from modules.capabilities.base import AdapterError
+
+        for name in ("NIGHTSHIFT_PROBE_PAST_SHUTDOWN", "VEO_ALLOW_PAST_SHUTDOWN"):
+            a, session = self.adapter({name: "veo-3.1-generate-preview"})
+            with self.assertRaises(AdapterError):
+                a.submit(self.request(), "veo-3.1-generate-preview")
+            session.request.assert_not_called()
+        for rel in ("modules", "tools"):
+            for path in (REPO / rel).rglob("*.py"):
+                self.assertNotIn("PROBE_PAST_SHUTDOWN", path.read_text(encoding="utf-8"), str(path))
+
+    def test_the_probe_tool_marks_exactly_the_entry_it_probes_and_only_when_past_its_date(self):
+        from tools import probe_models
+
         seen = {}
         real = probe_models.build_adapter
 
         def spy(key, env=None, session=None):
-            seen[key] = dict(env)
-            return real(key, env=env, session=session)
+            seen[key] = real(key, env=env, session=session)
+            return seen[key]
 
         for mid in ("veo-3.1-lite", "gemini-3-pro-image"):
             entry = reg.get(mid)
+            ok = mock.Mock(status_code=200)
+            ok.json.return_value = {"name": "models/veo-test-model/operations/op1"}
+            sess = mock.Mock()
+            sess.request.return_value = ok
+            sess.get.return_value = ok
             with mock.patch.object(probe_models, "build_adapter", spy), tempfile.TemporaryDirectory() as d:
-                ok = mock.Mock(status_code=200)
-                ok.json.return_value = {"name": "models/veo-test-model/operations/op1"}
-                sess = mock.Mock()
-                sess.request.return_value = ok
-                sess.get.return_value = ok
                 probe_models.run_probe(entry, env={"GEMINI_API_KEY": "k" * 24}, voice_id=None, workdir=Path(d), session=sess,
                                        timeout_s=1, poll_every_s=0, sleep=lambda s: None)
             if entry.shut_down():
-                self.assertEqual(seen[entry.adapter]["NIGHTSHIFT_PROBE_PAST_SHUTDOWN"], entry.vendor_model)
+                self.assertEqual(seen[entry.adapter].probing_past_shutdown, entry.vendor_model)
             else:
-                self.assertNotIn("NIGHTSHIFT_PROBE_PAST_SHUTDOWN", seen[entry.adapter])
+                self.assertEqual(getattr(seen[entry.adapter], "probing_past_shutdown", ""), "")

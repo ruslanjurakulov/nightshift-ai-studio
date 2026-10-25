@@ -103,9 +103,10 @@ class VeoAdapter(HttpAdapter):
     #: 3.1 Fast and 3.1 Lite (ai.google.dev/gemini-api/docs/veo, 2026-10-01).
     end_frame_capabilities = (I2V,)
     _OP = re.compile(r"^models/[A-Za-z0-9.-]+/operations/[A-Za-z0-9_-]+$")
-    #: Set by tools/probe_models.py (to the vendor model it is probing, never by a worker) so a probe BY NAME can learn whether a
-    #: past-shutdown id still answers; every other caller is refused at submit.
-    PAST_SHUTDOWN_PROBE_ENV = "NIGHTSHIFT_PROBE_PAST_SHUTDOWN"
+    #: Set by tools/probe_models.py on the adapter it builds (to the vendor model it is probing) so a probe BY NAME can learn
+    #: whether a past-shutdown id still answers; every other caller is refused at submit. Deliberately an attribute and not an
+    #: environment switch: a value that GitHub or a deploy could set would let every worker bypass the shutdown guard.
+    probing_past_shutdown: str = ""
 
     def auth_headers(self) -> Dict[str, str]:
         return {"x-goog-api-key": self.api_key()}
@@ -116,7 +117,7 @@ class VeoAdapter(HttpAdapter):
         EARLIEST possible one, so this is a stop, not a claim that the id is dead."""
         from modules import model_registry   # late: the registry imports the adapters
 
-        allowed = (self._env.get(self.PAST_SHUTDOWN_PROBE_ENV) or "").strip().lower()
+        allowed = (self.probing_past_shutdown or "").strip().lower()
         for entry in model_registry.entries_named_in(vendor_model):
             if entry.adapter == self.key and entry.shut_down() and allowed != entry.vendor_model.lower():
                 s = entry.raw["shutdown"]
