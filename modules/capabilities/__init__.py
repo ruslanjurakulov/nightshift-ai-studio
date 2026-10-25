@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Dict, Mapping, Optional, Type
 
-from modules.capabilities import audio, bfl, image, image_ops, minimax, recraft, transcribe, video, video_ops, xai
+from modules.capabilities import alibaba, audio, bfl, image, image_ops, minimax, recraft, transcribe, video, video_ops, xai
 from modules.capabilities.base import HttpAdapter
 from modules.capabilities import krea, ltx, luma
 
@@ -31,6 +31,7 @@ ADAPTERS: Dict[str, Type[HttpAdapter]] = {
         *audio.ADAPTERS,
         *transcribe.ADAPTERS,
         *xai.ADAPTERS,
+        *alibaba.ADAPTERS,
     )
 }
 
