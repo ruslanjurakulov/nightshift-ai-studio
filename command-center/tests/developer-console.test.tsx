@@ -145,8 +145,9 @@ describe("DeveloperConsole", () => {
     render(<DeveloperConsole orgId="o1" topup={TOPUP} />);
     await screen.findByText(d.historyTitle);
     expect(screen.getByRole("tab", { name: d.tabUsage }).getAttribute("aria-selected")).toBe("true");
+    // The ledger read is async; asserting it immediately raced under load, so wait for it first.
+    await waitFor(() => expect(h.read).toContain("api_ledger"));
     expect(h.read).not.toContain("api_keys");
-    expect(h.read).toContain("api_ledger");
   });
 
   it("shows the shared API balance (less what is on hold) with Add funds on every tab", async () => {

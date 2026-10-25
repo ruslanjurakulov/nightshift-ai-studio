@@ -657,6 +657,21 @@ project keeps exactly its document.
 | clip `stabilize` | toggle in "Steady picture and clean sound", with the cost, the limits and the project's use | C3 |
 | clip `speed_curve`, `interpolate` | "Speed curve" (point rows and a plot), "Smoother slow motion" with its budget | C2 |
 | `shapes` | "Add shape" beside Add overlay and Add text: a picker of seven tiles (radio group, 44 px) and an inspector per kind (`ShapePanel.tsx`) | E |
+| `width`, `height`, `fps` | "Export format" (`ExportPresetPicker`): five formats from a closed list, a native disclosure with a radio group, beside the Export button | P |
+
+Export formats (P): `schemas/export_presets.json` is the list (YouTube wide 1080p and 720p, vertical
+1080x1920 for Shorts / Reels / TikTok, square, 4:5), `modules/export_presets.py` loads it and refuses an
+entry outside the limits it must not exceed (even sides, nothing above 1440p, the fps list, a
+recommended length of at most the export's 1800 s, the library's decode budget), and
+`lib/editorExportPresets.ts` is the twin the picker reads (a test compares it to the JSON). A format is a
+frame size, a rate and a recommended length, nothing more: choosing one writes `width`, `height` and `fps`
+(the fields the frame picker already writes), so the document goes through `timeline.validate`, the same
+layout and the same ffmpeg commands and limits as any other. No new document field, route, migration or
+price. The recommended length is advice (a sentence under the picker), never a refusal: a vertical
+project over 3 minutes exported before formats existed and still does. The lengths are this project's
+conservative numbers, not any platform's rules. Exporting one project in several ratios at once is NOT
+built: an export renders the saved revision's document, one export per project at a time, so it needs
+either a frame override on the export request (a migration) or one copy of the project per ratio.
 
 Preview: look (curve tables as an SVG filter, pinned to
 `samples/clip_look_curves.json`), blur, vignette, turn, mirror, crop, free angle

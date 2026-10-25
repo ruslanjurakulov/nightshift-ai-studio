@@ -684,6 +684,24 @@ html[data-motion="paused"] .nx .ns-lamp[data-live="true"] { animation-play-state
 .nx-calc-rule { max-width: 60ch; font-size: 15px; line-height: 1.55; color: var(--ns-text-dim); }
 .nx-calc-src { display: block; color: var(--ns-text); font-weight: 500; }
 .nx-calc-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 28px; }
+/* The quote as a slip: a receipt-like strip with a torn edge, in the page's own surface tokens. It is not a button and carries no price of its own beyond the lines it lists. */
+.nx-calc[data-slip] { padding: 0; gap: 24px; border: 0; border-radius: 0; background: transparent; }
+.nx-slip { padding: 24px 24px 44px; border: 1px solid var(--ns-rule); border-bottom: 0; border-radius: 16px 16px 0 0; background: var(--ns-console); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), 96% 100%, 92% calc(100% - 14px), 88% 100%, 84% calc(100% - 14px), 80% 100%, 76% calc(100% - 14px), 72% 100%, 68% calc(100% - 14px), 64% 100%, 60% calc(100% - 14px), 56% 100%, 52% calc(100% - 14px), 48% 100%, 44% calc(100% - 14px), 40% 100%, 36% calc(100% - 14px), 32% 100%, 28% calc(100% - 14px), 24% 100%, 20% calc(100% - 14px), 16% 100%, 12% calc(100% - 14px), 8% 100%, 4% calc(100% - 14px), 0 100%); }
+.nx-slip-title { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.nx-slip dl { display: grid; gap: 14px; margin: 14px 0 0; }
+.nx-slip dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: baseline; }
+.nx-slip dt { font-size: 16px; font-weight: 600; }
+.nx-slip dt span { display: block; max-width: 30ch; font-size: 14px; font-weight: 400; line-height: 1.4; color: var(--ns-text-dim); }
+.nx-slip dd { margin: 0; font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; text-align: right; }
+.nx-slip dl > div:first-child dd { font-size: clamp(28px, 4.4vw, 36px); letter-spacing: -0.03em; }
+.nx-calc-notes { display: grid; gap: 2px; }
+@media (max-width: 859px) {
+  .nx-slip { padding: 20px 18px 40px; }
+  .nx-slip dd { font-size: 20px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nx-slip dl > div:first-child output { display: block; animation: nx-pop 260ms var(--ns-ease); }
+}
 @media (prefers-reduced-motion: no-preference) {
   .nx-calc-n { animation: nx-pop 260ms var(--ns-ease); }
 }
@@ -889,19 +907,20 @@ html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(28px, 7.2vw, 52p
 @media (min-width: 960px) { .nx-price-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 28px; align-items: start; } }
 .nx-section[data-tone="raised"] .nx-calc { background: var(--ns-ground); }
 .nx-section[data-tone="raised"] .nx-calc-out { background: var(--ns-console); }
-.nx-packs { padding: 22px; border-radius: 24px; border: 1px solid var(--ns-rule); background: var(--ns-ground); }
-.nx-section:not([data-tone="raised"]) .nx-packs { background: var(--ns-console); }
-.nx-packs-h { margin: 0; font-size: 15px; font-weight: 600; color: var(--ns-text-dim); }
-.nx-packs-list { display: grid; margin: 8px 0 0; padding: 0; list-style: none; }
-.nx-packs-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; row-gap: 2px; align-items: center; padding: 16px 0; border-top: 1px solid var(--ns-rule); }
-.nx-packs-list li:first-child { border-top: 0; }
-.nx-packs-name { font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.2; }
-.nx-packs-credits { grid-column: 1; font-size: 15px; font-variant-numeric: tabular-nums; color: var(--ns-text-dim); }
-.nx-packs-credits small { font-size: 15px; }
-.nx-packs-price { grid-column: 2; grid-row: 1 / span 2; font-family: var(--font-display); font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-.nx-packs-pending { grid-column: 2; grid-row: 1 / span 2; font-size: 15px; color: var(--ns-text-dim); }
-.nx-packs-note { margin: 8px 0 0; font-size: 15px; line-height: 1.5; color: var(--ns-text-dim); }
-.nx-packs-more { margin-top: 8px; }
+/* The plans (or packs) as large rows on the page itself: name and price at display size, the detail under them, hairlines between. */
+.nx-plans-h { margin: 0; font-size: 15px; font-weight: 600; color: var(--ns-text-dim); }
+.nx-plans-lead { margin: 6px 0 0; font-size: 15px; line-height: 1.5; color: var(--ns-text-dim); }
+.nx-plans-list { display: grid; margin: 8px 0 0; padding: 0; list-style: none; }
+.nx-plans-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; row-gap: 6px; align-items: baseline; padding: 20px 0; border-top: 1px solid var(--ns-rule); }
+.nx-plans-list li:first-child { border-top: 0; }
+.nx-rows-name { font-family: var(--font-display); font-size: clamp(24px, 3.4vw, 32px); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; }
+.nx-rows-fig { font-family: var(--font-display); font-size: clamp(24px, 3.4vw, 32px); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ns-amber-ink); white-space: nowrap; }
+.nx-rows-fig[data-free="true"] { color: var(--ns-text); }
+.nx-rows-fig small { margin-left: 8px; font-size: 15px; font-weight: 400; letter-spacing: 0; color: var(--ns-text-dim); }
+.nx-rows-pending { font-size: 15px; color: var(--ns-text-dim); }
+.nx-rows-detail { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 0; max-width: 60ch; font-size: 15px; line-height: 1.5; font-variant-numeric: tabular-nums; color: var(--ns-text-dim); }
+.nx-plans-note { margin: 8px 0 0; font-size: 15px; line-height: 1.5; color: var(--ns-text-dim); }
+.nx-plans-more { margin-top: 8px; }
 
 /* Try it, compact on a phone: the working titles for your topic, a few lines, one column (the other cards are on a desktop). */
 @media (max-width: 859px) {
@@ -1173,7 +1192,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 @media (max-width: 859px) {
   .nx-final .nx-sub { display: none; }
   .nx-try-picks { display: none; }
-  .nx-packs-list li { padding-block: 12px; }
+  .nx-plans-list li { padding-block: 16px; }
   .nx-calc { padding: 18px; gap: 20px; }
   .nx-hero-copy .nx-trust { margin-top: 10px; gap: 0 18px; }
   .nx-hero-copy .nx-trust li { min-height: 26px; }
@@ -1261,8 +1280,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   #try .nx-try { margin-top: 22px; }
   #pricing .nx-sub { display: none; }
   #pricing .nx-price-grid { margin-top: 20px; }
-  .nx-packs { padding: 18px; }
-  .nx-packs-h { margin-bottom: 0; }
+  .nx-plans-h { margin-bottom: 0; }
   .nx-show-pic { aspect-ratio: 4 / 3.3; }
 }
 @media (max-width: 859px) {
