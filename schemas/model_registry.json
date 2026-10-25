@@ -3509,6 +3509,651 @@
         "input_audio": "speech",
         "target_language": "ru"
       }
+    },
+    {
+      "id": "krea-3",
+      "display_name": "Krea 3",
+      "provider": "krea",
+      "adapter": "image.krea",
+      "vendor_model": "krea-3",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "1:1",
+        "4:5",
+        "3:4",
+        "2:3",
+        "9:16",
+        "5:4",
+        "4:3",
+        "3:2",
+        "16:9",
+        "21:9"
+      ],
+      "image_sizes": [
+        "1K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://www.krea.ai/docs/developers/krea-3/overview.md",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "Krea docs read in full 2026-10-25 (not search extracts): Krea 3 overview, job lifecycle, API keys and billing, text-to-image tutorial.",
+        "note": "thinking_mode is always sent fast (high +$0.02, ultra +$0.20 per image: not offered). resolution required. Bounding-box 'regions' are documented but UNVERIFIED here and never sent. Prompt cap 2000 is ours (docs state none). 2K is supported by the adapter but not offered."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.03,
+        "source_url": "https://www.krea.ai/docs/developers/krea-3/overview.md",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "image_size",
+          "prices": {
+            "1K": 0.03
+          }
+        },
+        "note": "ESTIMATE. 1K output, per image. 2K is $0.06 at Krea but is not offered (the job carries no image size and the quote prices the base unit only). An edit adds +$0.02 per 1K reference or +$0.07 per 2K one: NOT in this figure. Krea says failed jobs are not billed: a vendor claim, unverified."
+      },
+      "credit_unit": "model_krea_3_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Only Krea's consumer Terms of Use (krea.ai/terms) were read; the copy says 'Last updated: May 20, 2024' and may be stale. API or developer terms were NOT found at the URLs tried (/api-terms, /terms-of-service).",
+        "Licence to users: 'a worldwide, non-exclusive, non-sublicensable and non-transferable license to access, use ... content generated'; users may not 'participate in the transfer or sale of ... the Services themselves'. Nothing grants a right to resell generations.",
+        "Commercial use: Krea 'may allow you to commercialize certain Content generated from the Services', subject to its restrictions 'including pricing changes', and 'reserves the right to modify the terms of commercial use ... at any time'.",
+        "Prohibited content includes deepfakes of individuals without consent. Age: the legal age to contract, or a parent's permission (under 13 barred). Sign-up and payment from Uzbekistan were not verified.",
+        "Gate stays open until a person has read Krea's written terms and, if needed, agreed an Enterprise arrangement with Krea (sales@krea.ai). No credit price may be added before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "1K"
+      }
+    },
+    {
+      "id": "krea-3-regional",
+      "display_name": "Krea 3 regional edit",
+      "provider": "krea",
+      "adapter": "image.krea",
+      "vendor_model": "krea-3:regional",
+      "capabilities": [
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "1:1",
+        "4:5",
+        "3:4",
+        "2:3",
+        "9:16",
+        "5:4",
+        "4:3",
+        "3:2",
+        "16:9",
+        "21:9"
+      ],
+      "image_sizes": [
+        "1K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://www.krea.ai/docs/developers/krea-3/overview.md",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "Krea docs read in full 2026-10-25 (not search extracts): Krea 3 overview, job lifecycle, API keys and billing, text-to-image tutorial.",
+        "note": "Sends regional_edit:true (a local edit that keeps the rest of the image exact; needs a picture). ':regional' is our suffix, never sent. Bounding-box 'regions' UNVERIFIED and never sent. thinking_mode fixed to fast."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.03,
+        "source_url": "https://www.krea.ai/docs/developers/krea-3/overview.md",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "image_size",
+          "prices": {
+            "1K": 0.03
+          }
+        },
+        "note": "ESTIMATE. 1K output, per image. 2K is $0.06 at Krea but is not offered (the job carries no image size and the quote prices the base unit only). An edit adds +$0.02 per 1K reference or +$0.07 per 2K one: NOT in this figure. Krea says failed jobs are not billed: a vendor claim, unverified."
+      },
+      "credit_unit": "model_krea_3_regional_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Only Krea's consumer Terms of Use (krea.ai/terms) were read; the copy says 'Last updated: May 20, 2024' and may be stale. API or developer terms were NOT found at the URLs tried (/api-terms, /terms-of-service).",
+        "Licence to users: 'a worldwide, non-exclusive, non-sublicensable and non-transferable license to access, use ... content generated'; users may not 'participate in the transfer or sale of ... the Services themselves'. Nothing grants a right to resell generations.",
+        "Commercial use: Krea 'may allow you to commercialize certain Content generated from the Services', subject to its restrictions 'including pricing changes', and 'reserves the right to modify the terms of commercial use ... at any time'.",
+        "Prohibited content includes deepfakes of individuals without consent. Age: the legal age to contract, or a parent's permission (under 13 barred). Sign-up and payment from Uzbekistan were not verified.",
+        "Gate stays open until a person has read Krea's written terms and, if needed, agreed an Enterprise arrangement with Krea (sales@krea.ai). No credit price may be added before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "edit",
+        "prompt": "make the background light grey, keep everything else",
+        "image_size": "1K",
+        "input_image": "generated"
+      }
+    },
+    {
+      "id": "ltx-2.5-pro",
+      "display_name": "LTX-2.5 Pro",
+      "provider": "lightricks",
+      "adapter": "video.ltx",
+      "vendor_model": "ltx-2-5-pro",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "3:2",
+        "2:3"
+      ],
+      "resolutions": [
+        "720p",
+        "1080p",
+        "1440p",
+        "4k"
+      ],
+      "default_resolution": "720p",
+      "durations_s": [
+        6,
+        8,
+        10
+      ],
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.ltx.io/api-documentation/api-reference/async-video-generation/submit-text-to-video.md",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "docs.ltx.io pages read in full 2026-10-25 (not search extracts): async jobs, text-to-video and image-to-video references, job status, models, pricing, errors, rate limits, input formats.",
+        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host UNVERIFIED (docs show storage.googleapis.com). Audio-to-video, retake, extend, HDR not wired."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.12,
+        "source_url": "https://docs.ltx.io/pricing.md",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.12,
+            "1080p": 0.17,
+            "1440p": 0.25,
+            "4k": 0.39
+          }
+        },
+        "note": "ESTIMATE. List $ per output second by resolution tier; text and image input cost the same, every shape of a tier costs the same. The docs say nothing about the price of a failed or content-filtered job."
+      },
+      "credit_unit": "model_ltx_2_5_pro_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "LTX-2 API License Agreement (Last Updated 2026-05-12) 2.1(b): a non-transferable, non-sublicensable licence 'to utilize the LTX Model in Customer's Service to be used by End Users'; 1.19 counts a platform's downstream users as End Users.",
+        "2.2(d): the customer shall not 'make the LTX Model available to any third party through a service bureau, resale or similar models'. Whether a credits product is 'resale' is the open question (our reading: it may be).",
+        "3.2: before enabling End Users the customer needs enforceable agreements at least as protective of LTX (restrictions, Acceptable Use Policy, disclaimers) and must enforce them; 3.3: the customer answers for End Users' breaches.",
+        "4.2: Customer Data (Input and Output) stays the customer's and is not used to train the LTX Model; 2.2(i): Output may not train competing models. AUP (2026-03-30): commercially used Output must not replicate a real likeness, brand or location unless cleared.",
+        "Self-serve is prepaid credits; 'Pay As You Go is available only to Enterprise Customers via Order Form' (1.30). NOT read: the LTX-2 API Credit Terms and any order form. No age clause found. Sign-up and payment from Uzbekistan not verified.",
+        "Gate stays open until a person (and, if needed, Lightricks in writing) has settled whether a credits product is 'resale'. No credit price may be added before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "720p",
+        "duration_s": 6
+      }
+    },
+    {
+      "id": "ltx-2.5-fast",
+      "display_name": "LTX-2.5 Fast",
+      "provider": "lightricks",
+      "adapter": "video.ltx",
+      "vendor_model": "ltx-2-5-fast",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "3:2",
+        "2:3"
+      ],
+      "resolutions": [
+        "720p",
+        "1080p",
+        "1440p",
+        "4k"
+      ],
+      "default_resolution": "720p",
+      "durations_s": [
+        6,
+        8,
+        10,
+        12,
+        14,
+        16,
+        18,
+        20
+      ],
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.ltx.io/api-documentation/api-reference/async-video-generation/submit-text-to-video.md",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "docs.ltx.io pages read in full 2026-10-25 (not search extracts): async jobs, text-to-video and image-to-video references, job status, models, pricing, errors, rate limits, input formats.",
+        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host UNVERIFIED (docs show storage.googleapis.com). Audio-to-video, retake, extend, HDR not wired."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.09,
+        "source_url": "https://docs.ltx.io/pricing.md",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.09,
+            "1080p": 0.13,
+            "1440p": 0.19,
+            "4k": 0.3
+          }
+        },
+        "note": "ESTIMATE. List $ per output second by resolution tier; text and image input cost the same, every shape of a tier costs the same. The docs say nothing about the price of a failed or content-filtered job."
+      },
+      "credit_unit": "model_ltx_2_5_fast_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "LTX-2 API License Agreement (Last Updated 2026-05-12) 2.1(b): a non-transferable, non-sublicensable licence 'to utilize the LTX Model in Customer's Service to be used by End Users'; 1.19 counts a platform's downstream users as End Users.",
+        "2.2(d): the customer shall not 'make the LTX Model available to any third party through a service bureau, resale or similar models'. Whether a credits product is 'resale' is the open question (our reading: it may be).",
+        "3.2: before enabling End Users the customer needs enforceable agreements at least as protective of LTX (restrictions, Acceptable Use Policy, disclaimers) and must enforce them; 3.3: the customer answers for End Users' breaches.",
+        "4.2: Customer Data (Input and Output) stays the customer's and is not used to train the LTX Model; 2.2(i): Output may not train competing models. AUP (2026-03-30): commercially used Output must not replicate a real likeness, brand or location unless cleared.",
+        "Self-serve is prepaid credits; 'Pay As You Go is available only to Enterprise Customers via Order Form' (1.30). NOT read: the LTX-2 API Credit Terms and any order form. No age clause found. Sign-up and payment from Uzbekistan not verified.",
+        "Gate stays open until a person (and, if needed, Lightricks in writing) has settled whether a credits product is 'resale'. No credit price may be added before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 3,
+      "speed_tier": 5,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "720p",
+        "duration_s": 6
+      }
+    },
+    {
+      "id": "ltx-2.3-pro",
+      "display_name": "LTX-2.3 Pro",
+      "provider": "lightricks",
+      "adapter": "video.ltx",
+      "vendor_model": "ltx-2-3-pro",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16"
+      ],
+      "resolutions": [
+        "720p",
+        "1080p",
+        "1440p",
+        "4k"
+      ],
+      "default_resolution": "720p",
+      "durations_s": [
+        6,
+        8,
+        10
+      ],
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.ltx.io/api-documentation/api-reference/async-video-generation/submit-text-to-video.md",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "docs.ltx.io pages read in full 2026-10-25 (not search extracts): async jobs, text-to-video and image-to-video references, job status, models, pricing, errors, rate limits, input formats.",
+        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host UNVERIFIED (docs show storage.googleapis.com). Audio-to-video, retake, extend, HDR not wired."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.04,
+        "source_url": "https://docs.ltx.io/pricing.md",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.04,
+            "1080p": 0.08,
+            "1440p": 0.16,
+            "4k": 0.32
+          }
+        },
+        "note": "ESTIMATE. List $ per output second by resolution tier; text and image input cost the same, every shape of a tier costs the same. The docs say nothing about the price of a failed or content-filtered job."
+      },
+      "credit_unit": "model_ltx_2_3_pro_second",
+      "entitlement": "models_video:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "LTX-2 API License Agreement (Last Updated 2026-05-12) 2.1(b): a non-transferable, non-sublicensable licence 'to utilize the LTX Model in Customer's Service to be used by End Users'; 1.19 counts a platform's downstream users as End Users.",
+        "2.2(d): the customer shall not 'make the LTX Model available to any third party through a service bureau, resale or similar models'. Whether a credits product is 'resale' is the open question (our reading: it may be).",
+        "3.2: before enabling End Users the customer needs enforceable agreements at least as protective of LTX (restrictions, Acceptable Use Policy, disclaimers) and must enforce them; 3.3: the customer answers for End Users' breaches.",
+        "4.2: Customer Data (Input and Output) stays the customer's and is not used to train the LTX Model; 2.2(i): Output may not train competing models. AUP (2026-03-30): commercially used Output must not replicate a real likeness, brand or location unless cleared.",
+        "Self-serve is prepaid credits; 'Pay As You Go is available only to Enterprise Customers via Order Form' (1.30). NOT read: the LTX-2 API Credit Terms and any order form. No age clause found. Sign-up and payment from Uzbekistan not verified.",
+        "Gate stays open until a person (and, if needed, Lightricks in writing) has settled whether a credits product is 'resale'. No credit price may be added before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "720p",
+        "duration_s": 6
+      }
+    },
+    {
+      "id": "ltx-2.3-fast",
+      "display_name": "LTX-2.3 Fast",
+      "provider": "lightricks",
+      "adapter": "video.ltx",
+      "vendor_model": "ltx-2-3-fast",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16"
+      ],
+      "resolutions": [
+        "720p",
+        "1080p",
+        "1440p",
+        "4k"
+      ],
+      "default_resolution": "720p",
+      "durations_s": [
+        6,
+        8,
+        10,
+        12,
+        14,
+        16,
+        18,
+        20
+      ],
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.ltx.io/api-documentation/api-reference/async-video-generation/submit-text-to-video.md",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "docs.ltx.io pages read in full 2026-10-25 (not search extracts): async jobs, text-to-video and image-to-video references, job status, models, pricing, errors, rate limits, input formats.",
+        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host UNVERIFIED (docs show storage.googleapis.com). Audio-to-video, retake, extend, HDR not wired."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.03,
+        "source_url": "https://docs.ltx.io/pricing.md",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.03,
+            "1080p": 0.06,
+            "1440p": 0.12,
+            "4k": 0.24
+          }
+        },
+        "note": "ESTIMATE. List $ per output second by resolution tier; text and image input cost the same, every shape of a tier costs the same. The docs say nothing about the price of a failed or content-filtered job."
+      },
+      "credit_unit": "model_ltx_2_3_fast_second",
+      "entitlement": "models_video:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "LTX-2 API License Agreement (Last Updated 2026-05-12) 2.1(b): a non-transferable, non-sublicensable licence 'to utilize the LTX Model in Customer's Service to be used by End Users'; 1.19 counts a platform's downstream users as End Users.",
+        "2.2(d): the customer shall not 'make the LTX Model available to any third party through a service bureau, resale or similar models'. Whether a credits product is 'resale' is the open question (our reading: it may be).",
+        "3.2: before enabling End Users the customer needs enforceable agreements at least as protective of LTX (restrictions, Acceptable Use Policy, disclaimers) and must enforce them; 3.3: the customer answers for End Users' breaches.",
+        "4.2: Customer Data (Input and Output) stays the customer's and is not used to train the LTX Model; 2.2(i): Output may not train competing models. AUP (2026-03-30): commercially used Output must not replicate a real likeness, brand or location unless cleared.",
+        "Self-serve is prepaid credits; 'Pay As You Go is available only to Enterprise Customers via Order Form' (1.30). NOT read: the LTX-2 API Credit Terms and any order form. No age clause found. Sign-up and payment from Uzbekistan not verified.",
+        "Gate stays open until a person (and, if needed, Lightricks in writing) has settled whether a credits product is 'resale'. No credit price may be added before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 2,
+      "speed_tier": 5,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "720p",
+        "duration_s": 6
+      }
+    },
+    {
+      "id": "luma-uni-1",
+      "display_name": "Luma Uni-1",
+      "provider": "luma",
+      "adapter": "image.luma",
+      "vendor_model": "uni-1",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "3:1",
+        "2:1",
+        "16:9",
+        "3:2",
+        "1:1",
+        "2:3",
+        "9:16",
+        "1:2",
+        "1:3"
+      ],
+      "image_sizes": [
+        "2K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.agents.lumalabs.ai/guides/images/generation",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "Luma Agents docs read in full 2026-10-25 (not search extracts): image generation, models, pricing, error handling.",
+        "note": "Same POST /v1/generations envelope as Ray, type image; output_format png sent. Result host UNKNOWN (docs show a placeholder): downloads fail closed until it is allowed on purpose. Edit, image_ref, web_search not wired."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.0404,
+        "source_url": "https://docs.agents.lumalabs.ai/guides/pricing",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "note": "ESTIMATE. Pay-as-you-go text-to-image, one 2K image. Edit and image_ref requests cost more and are not wired. Luma says synchronous errors are never charged and lists refunded failures: its statements, unverified."
+      },
+      "credit_unit": "model_luma_uni_1_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": "written_consent_required",
+      "terms_notes": [
+        "Luma API terms (carried from the luma-ray-3.2 entry, NOT re-read here): no product that substantially replicates Luma, and no output as a standalone service, without Luma's prior written consent.",
+        "Luma Terms of Service (Last updated 2026-05-14, lumalabs.ai/legal/tos) 3.4(b) bar service-bureau use but do not prohibit API Customers 'from using the APIs ... to provide API Users with access to the Services'. They defer API customers to 'API Terms of Use', NOT found at any URL tried.",
+        "Same ToS: the customer owns Output (Luma assigns its rights, section 10); Output that identifies or resembles a person must be publicly identified as AI generated (section 4); the customer answers for its API Users.",
+        "Failed generations: Luma's pricing page lists which asynchronous failures are refunded; that is Luma's statement, unverified here. Sign-up and payment from Uzbekistan were not verified.",
+        "Gate stays open until a person has read Luma's API Terms of Use (or Luma agrees in writing). No credit price may be added before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 6000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
+      "id": "luma-uni-1-max",
+      "display_name": "Luma Uni-1 Max",
+      "provider": "luma",
+      "adapter": "image.luma",
+      "vendor_model": "uni-1-max",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "3:1",
+        "2:1",
+        "16:9",
+        "3:2",
+        "1:1",
+        "2:3",
+        "9:16",
+        "1:2",
+        "1:3"
+      ],
+      "image_sizes": [
+        "2K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.agents.lumalabs.ai/guides/images/generation",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "Luma Agents docs read in full 2026-10-25 (not search extracts): image generation, models, pricing, error handling.",
+        "note": "Same POST /v1/generations envelope as Ray, type image; output_format png sent. Result host UNKNOWN (docs show a placeholder): downloads fail closed until it is allowed on purpose. Edit, image_ref, web_search not wired."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.1,
+        "source_url": "https://docs.agents.lumalabs.ai/guides/pricing",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "note": "ESTIMATE. Pay-as-you-go text-to-image, one 2K image. Edit and image_ref requests cost more and are not wired. Luma says synchronous errors are never charged and lists refunded failures: its statements, unverified."
+      },
+      "credit_unit": "model_luma_uni_1_max_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": "written_consent_required",
+      "terms_notes": [
+        "Luma API terms (carried from the luma-ray-3.2 entry, NOT re-read here): no product that substantially replicates Luma, and no output as a standalone service, without Luma's prior written consent.",
+        "Luma Terms of Service (Last updated 2026-05-14, lumalabs.ai/legal/tos) 3.4(b) bar service-bureau use but do not prohibit API Customers 'from using the APIs ... to provide API Users with access to the Services'. They defer API customers to 'API Terms of Use', NOT found at any URL tried.",
+        "Same ToS: the customer owns Output (Luma assigns its rights, section 10); Output that identifies or resembles a person must be publicly identified as AI generated (section 4); the customer answers for its API Users.",
+        "Failed generations: Luma's pricing page lists which asynchronous failures are refunded; that is Luma's statement, unverified here. Sign-up and payment from Uzbekistan were not verified.",
+        "Gate stays open until a person has read Luma's API Terms of Use (or Luma agrees in writing). No credit price may be added before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 6000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1"
+      }
     }
   ]
 }

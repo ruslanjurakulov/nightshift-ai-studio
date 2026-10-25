@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Dict, Mapping, Optional, Type
 
-from modules.capabilities import audio, image, image_ops, transcribe, video, video_ops, xai
+from modules.capabilities import audio, image, image_ops, krea, ltx, luma, transcribe, video, video_ops, xai
 from modules.capabilities.base import HttpAdapter
 
 #: adapter key → class. The registry's "adapter" values must all resolve here
@@ -24,6 +24,9 @@ ADAPTERS: Dict[str, Type[HttpAdapter]] = {
         *audio.ADAPTERS,
         *transcribe.ADAPTERS,
         *xai.ADAPTERS,
+        *krea.ADAPTERS,
+        *ltx.ADAPTERS,
+        *luma.ADAPTERS,
     )
 }
 
