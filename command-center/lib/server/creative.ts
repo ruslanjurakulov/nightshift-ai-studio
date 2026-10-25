@@ -4,6 +4,8 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { JOB_COLUMNS, type CreativeDb, type CreativeResult } from "@/lib/creative/operations";
 import { coerceModels, withTiers, type StudioModel } from "@/lib/creative/studio";
+import { withoutSwitchedOff } from "@/lib/model-switch";
+import { readSwitchedOffIds } from "@/lib/server/model-switch";
 
 /**
  * The creative operations' database door for the web: the signed-in user's
@@ -69,7 +71,24 @@ export async function loadStudioModels(): Promise<StudioModel[]> {
     // signed-in users) returns its public half. Without it the models are
     // simply shown unmarked.
     const marks = await supabase.rpc("sellable_models", { p_capability: null, p_surface: "web" });
-    return marks.error ? models : withTiers(models, marks.data);
+    // The owner's switch (migration 0124): the policy already hides a switched-off model from a customer; a platform admin reads every
+    // row, so the ids are subtracted here too and the Studio never offers what the quote and the create would refuse.
+    const shown = withoutSwitchedOff(models, await readSwitchedOffIds(supabase));
+    return marks.error ? shown : withTiers(shown, marks.data);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The models the open organization's members are not offered right now because the owner switched them off (migration 0124): ids only,
+ * never a reason. The Studio uses it to say "temporarily unavailable" over a model a form came with (a retried job, a link from the
+ * catalog) instead of quietly picking another (CLAUDE.md #4). Without the migration: none.
+ */
+export async function loadSwitchedOffModels(): Promise<string[]> {
+  try {
+    const supabase = await createClient();
+    return supabase ? await readSwitchedOffIds(supabase) : [];
   } catch {
     return [];
   }
