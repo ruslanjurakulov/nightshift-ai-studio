@@ -15,7 +15,11 @@ imported:
   ASCII only, and the host urllib3 will connect to must be the host that was
   checked (a backslash is what makes two URL parsers disagree about it).
 * **No key, no redirect.** The download carries no header of ours, and a 3xx
-  is refused, not followed: a redirect would take the request anywhere.
+  is refused, not followed: a redirect would take the request anywhere. The one
+  exception is opt-in per adapter (``download_headers``): Google's file URI cannot
+  be fetched without its key, so that adapter returns the key header for the exact
+  host its API is on and nothing for any other; the refused redirect is what keeps
+  the key from travelling further.
 * **A byte cap** checked against ``Content-Length`` first and then while
   streaming, so a hostile or broken server cannot fill the disk.
 * **Atomic write.** Bytes go to ``<name>.part`` and ``os.replace`` publishes
@@ -149,6 +153,13 @@ class SafeResultMixin:
     max_result_bytes = 512 * 1024 * 1024
     max_inline_bytes = 64 * 1024 * 1024
 
+    def download_headers(self, url: str) -> Optional[dict]:
+        """The headers a result download carries. ``None`` (this default, and every adapter that does not
+        override it) = none at all: a first-party result link is a signed URL and the key is not its
+        credential. An adapter whose link needs the key returns it here only for the one host that is its
+        own API; ``url`` has already passed the allow-list, and no redirect is ever followed."""
+        return None
+
     # -- results -----------------------------------------------------------------
     def checked_outputs(self, result: PollResult) -> PollResult:
         """``result`` if every URL output passes the allow-list, else raises."""
@@ -202,14 +213,15 @@ class SafeResultMixin:
             part.unlink(missing_ok=True)
 
     def _download(self, url: str, dest: Path, headers=None, _hops: int = 0, *, mime: str = "") -> None:
-        """Stream ``url`` to ``dest`` (no key sent, no redirect followed, capped,
-        written atomically). ``headers`` is accepted for the base signature and
-        never sent: a first-party result link is a signed URL, the key is not
-        its credential."""
+        """Stream ``url`` to ``dest`` (no redirect followed, capped, written atomically; no key
+        sent unless the adapter's ``download_headers`` returns one for this very host). ``headers``
+        is accepted for the base signature and never sent: a first-party result link is a signed
+        URL, the key is not its credential."""
         part = dest.with_name(dest.name + ".part")
         try:
-            with self.session.get(url, stream=True, timeout=max(self.timeout, 120),
-                                  allow_redirects=False) as resp:
+            extra = self.download_headers(url)
+            with self.session.get(url, stream=True, timeout=max(self.timeout, 120), allow_redirects=False,
+                                  **({"headers": extra} if extra else {})) as resp:
                 status = getattr(resp, "status_code", 200)
                 if status in (301, 302, 303, 307, 308):
                     raise AdapterError(E_BAD_RESPONSE, "download: the host redirected; redirects are never followed")
