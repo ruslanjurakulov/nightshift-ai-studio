@@ -100,7 +100,7 @@ jobs:
             scope="one model"
           else
             args+=(--all)
-            scope="every model in the registry"
+            scope="every model whose vendor terms gate is clear (gated models are only probed when named)"
           fi
           out="$RUNNER_TEMP/probe.txt"
           set +e
@@ -110,6 +110,7 @@ jobs:
           ok=$(grep -c '^ok ' "$out" || true)
           failed=$(grep -c '^failed ' "$out" || true)
           skipped=$(grep -c '^skipped ' "$out" || true)
+          gated=$(grep -c '^gated ' "$out" || true)
           {
             echo "### Probe models: $scope"
             echo
@@ -117,10 +118,10 @@ jobs:
             echo "cheapest probe (one 1:1 image, a 4–6 s video at the lowest resolution, one short"
             echo "sentence of speech, a 1 s sound effect). Skipped = no key, nothing was called."
             echo
-            echo "ok: $ok · failed: $failed · skipped: $skipped"
+            echo "ok: $ok · failed: $failed · skipped: $skipped · gated (terms not cleared, not called): $gated"
             echo
             echo '```'
-            grep -E '^(ok|failed|skipped) |^synced [0-9]+ models' "$out" || true
+            grep -E '^(ok|failed|skipped|gated) |^synced [0-9]+ models' "$out" || true
             echo '```'
             echo
             echo "A passing model is verified, not on sale: set it to beta/ga and give its credit unit a price."

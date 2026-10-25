@@ -1170,6 +1170,216 @@
       }
     },
     {
+      "id": "seedream-5.0-pro",
+      "display_name": "Seedream 5.0 Pro",
+      "provider": "bytedance",
+      "adapter": "image.seedream",
+      "vendor_model": "dola-seedream-5-0-pro-260628",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "1:1",
+        "4:3",
+        "3:4",
+        "16:9",
+        "9:16",
+        "3:2",
+        "2:3",
+        "21:9"
+      ],
+      "image_sizes": [
+        "1K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://docs.byteplus.com/en/docs/ModelArk/image-generation-api",
+        "checked_at": "2026-10-24",
+        "source": "vendor_docs_search",
+        "evidence": "ModelArk image generation API, error codes, model list and pricing pages read in full 2026-10-24 (not search extracts)."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.045,
+        "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
+        "as_of": "2026-10-24",
+        "confirmed": false,
+        "note": "ESTIMATE: vendor list $0.045 per image up to 2.61 MP (1K and 1.5K cost the same); above that $0.09. Only 1K is sent. Vendor claim, unverified: failed images are not billed."
+      },
+      "credit_unit": "model_seedream_5_0_pro_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": "written_consent_required",
+      "terms_notes": [
+        "Customer Agreement (effective 2026-09-30) 6.2(1): unless BytePlus consents in writing in advance, you may not act as an OEM, SaaS, MaaS, service-bureau, reseller or distributor of the Services. Selling generations for credits very likely is one (our reading, not BytePlus's).",
+        "Service Specific Terms 4.2 (video platform customers) is video-only and does not name images; Customer Agreement 6.2(1) and the Acceptable Use Policy ('sell or resell ... any of the services') are not limited to video, so image resale needs BytePlus's written consent too.",
+        "Acceptable Use Policy: AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedream puts an 'AI-generated' watermark on by default (watermark=true); this adapter leaves that default.",
+        "Read 2026-10-24 at docs.byteplus.com/en/docs/legal (docs-service-specific-terms, docs-customer-agreement, docs-acceptable-use-policy, AI-Services-terms). NOT seen: any order form or negotiated terms. Gate stays open until BytePlus authorises Nightshift in writing.",
+        "General Terms for AI Services 2.1: as between you and BytePlus you own the Output to the extent the law allows; BytePlus claims none. 2.4: output may not be unique. Own-channel use is not what this gate blocks; selling it is.",
+        "BytePlus International Availability (updated 2026-04-21) lists Uzbekistan; the Model Services are not available in the United States. Availability is decided at the point of purchase."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "1K"
+      }
+    },
+    {
+      "id": "seedream-5.0-flash",
+      "display_name": "Seedream 5.0 Flash",
+      "provider": "bytedance",
+      "adapter": "image.seedream",
+      "vendor_model": "dola-seedream-5-0-flash-260915",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "1:1",
+        "4:3",
+        "3:4",
+        "16:9",
+        "9:16",
+        "3:2",
+        "2:3",
+        "21:9"
+      ],
+      "image_sizes": [
+        "1K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://docs.byteplus.com/en/docs/ModelArk/image-generation-api",
+        "checked_at": "2026-10-24",
+        "source": "vendor_docs_search",
+        "evidence": "ModelArk image generation API, error codes, model list and pricing pages read in full 2026-10-24 (not search extracts)."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.018,
+        "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
+        "as_of": "2026-10-24",
+        "confirmed": false,
+        "note": "ESTIMATE: vendor list $0.018 per image; the page states no size tiers for Flash. Only 1K is sent. Vendor claim, unverified: failed images are not billed."
+      },
+      "credit_unit": "model_seedream_5_0_flash_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": "written_consent_required",
+      "terms_notes": [
+        "Customer Agreement (effective 2026-09-30) 6.2(1): unless BytePlus consents in writing in advance, you may not act as an OEM, SaaS, MaaS, service-bureau, reseller or distributor of the Services. Selling generations for credits very likely is one (our reading, not BytePlus's).",
+        "Service Specific Terms 4.2 (video platform customers) is video-only and does not name images; Customer Agreement 6.2(1) and the Acceptable Use Policy ('sell or resell ... any of the services') are not limited to video, so image resale needs BytePlus's written consent too.",
+        "Acceptable Use Policy: AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedream puts an 'AI-generated' watermark on by default (watermark=true); this adapter leaves that default.",
+        "Read 2026-10-24 at docs.byteplus.com/en/docs/legal (docs-service-specific-terms, docs-customer-agreement, docs-acceptable-use-policy, AI-Services-terms). NOT seen: any order form or negotiated terms. Gate stays open until BytePlus authorises Nightshift in writing.",
+        "General Terms for AI Services 2.1: as between you and BytePlus you own the Output to the extent the law allows; BytePlus claims none. 2.4: output may not be unique. Own-channel use is not what this gate blocks; selling it is.",
+        "BytePlus International Availability (updated 2026-04-21) lists Uzbekistan; the Model Services are not available in the United States. Availability is decided at the point of purchase."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "1K"
+      }
+    },
+    {
+      "id": "seedream-4.5",
+      "display_name": "Seedream 4.5",
+      "provider": "bytedance",
+      "adapter": "image.seedream",
+      "vendor_model": "seedream-4-5-251128",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "1:1",
+        "4:3",
+        "3:4",
+        "16:9",
+        "9:16",
+        "3:2",
+        "2:3",
+        "21:9"
+      ],
+      "image_sizes": [
+        "2K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://docs.byteplus.com/en/docs/ModelArk/image-generation-api",
+        "checked_at": "2026-10-24",
+        "source": "vendor_docs_search",
+        "evidence": "ModelArk image generation API, error codes, model list and pricing pages read in full 2026-10-24 (not search extracts)."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.04,
+        "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
+        "as_of": "2026-10-24",
+        "confirmed": false,
+        "note": "ESTIMATE: vendor list $0.04 per image; the page states no size tiers for 4.5. Only 2K (the vendor default) is sent. Vendor claim, unverified: failed images are not billed."
+      },
+      "credit_unit": "model_seedream_4_5_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": "written_consent_required",
+      "terms_notes": [
+        "Customer Agreement (effective 2026-09-30) 6.2(1): unless BytePlus consents in writing in advance, you may not act as an OEM, SaaS, MaaS, service-bureau, reseller or distributor of the Services. Selling generations for credits very likely is one (our reading, not BytePlus's).",
+        "Service Specific Terms 4.2 (video platform customers) is video-only and does not name images; Customer Agreement 6.2(1) and the Acceptable Use Policy ('sell or resell ... any of the services') are not limited to video, so image resale needs BytePlus's written consent too.",
+        "Acceptable Use Policy: AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedream puts an 'AI-generated' watermark on by default (watermark=true); this adapter leaves that default.",
+        "Read 2026-10-24 at docs.byteplus.com/en/docs/legal (docs-service-specific-terms, docs-customer-agreement, docs-acceptable-use-policy, AI-Services-terms). NOT seen: any order form or negotiated terms. Gate stays open until BytePlus authorises Nightshift in writing.",
+        "General Terms for AI Services 2.1: as between you and BytePlus you own the Output to the extent the law allows; BytePlus claims none. 2.4: output may not be unique. Own-channel use is not what this gate blocks; selling it is.",
+        "BytePlus International Availability (updated 2026-04-21) lists Uzbekistan; the Model Services are not available in the United States. Availability is decided at the point of purchase."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "2K"
+      }
+    },
+    {
       "id": "veo-3.1",
       "display_name": "Veo 3.1",
       "provider": "google",
@@ -2211,6 +2421,188 @@
         "aspect_ratio": "16:9",
         "resolution": "480p",
         "duration_s": 5,
+        "input_image": "generated",
+        "end_frame": "generated"
+      }
+    },
+    {
+      "id": "seedance-2.0",
+      "display_name": "Seedance 2.0",
+      "provider": "bytedance",
+      "adapter": "video.seedance2",
+      "vendor_model": "dreamina-seedance-2-0-260128",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "durations_s": [
+        4,
+        5,
+        8,
+        10,
+        15
+      ],
+      "end_frame": true,
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.byteplus.com/en/docs/ModelArk/1520757",
+        "checked_at": "2026-10-24",
+        "source": "vendor_docs_search",
+        "evidence": "ModelArk pages read in full 2026-10-24 (not search extracts): create/retrieve task API, error codes, model list, pricing, Seedance tutorial.",
+        "note": "Same task API as the 1.x models; 2.x adds role-required frames, adaptive ratio rules and the model ids below."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.152,
+        "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
+        "as_of": "2026-10-24",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "480p": 0.07,
+            "720p": 0.152,
+            "1080p": 0.374
+          }
+        },
+        "note": "ESTIMATE from the vendor's worked example (16:9, 5 s, no video input) per second; token-billed, so other ratios differ slightly. 4K ($0.78/s) is not offered here. Vendor claim, unverified: failed generations are not billed."
+      },
+      "credit_unit": "model_seedance_2_0_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "written_consent_required",
+      "terms_notes": [
+        "Customer Agreement (effective 2026-09-30) 6.2(1): unless BytePlus consents in writing in advance, you may not act as an OEM, SaaS, MaaS, service-bureau, reseller or distributor of the Services. Selling generations for credits very likely is one (our reading, not BytePlus's).",
+        "Service Specific Terms, Model Services 4.2.3 (Platform Customers): no reselling or re-integrating the video APIs into UGC platforms or AI content creation tools; the 'without our written authorization' qualifier is on the next bullet (resale), so even (1) needs BytePlus to agree.",
+        "Same terms 4.2.2 / 4.2.4(b): a platform must verify end users' identity, keep an incident process, tiered takedowns and rights checks on uploads; unauthorized resale means account ban and liquidated damages of 20% of the minimum commitment.",
+        "Acceptable Use Policy: no reselling the services; AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedance 2.x itself rejects reference images or videos with real faces.",
+        "Read 2026-10-24 at docs.byteplus.com/en/docs/legal (docs-service-specific-terms, docs-customer-agreement, docs-acceptable-use-policy, AI-Services-terms). NOT seen: any order form or negotiated terms with BytePlus. Gate stays open until BytePlus authorises Nightshift in writing.",
+        "General Terms for AI Services 2.1: as between you and BytePlus you own the Output to the extent the law allows; BytePlus claims none. 2.4: output may not be unique. Own-channel use is not what this gate blocks; selling it is.",
+        "BytePlus International Availability (updated 2026-04-21) lists Uzbekistan; the Model Services are not available in the United States. Availability is decided at the point of purchase."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "aspect_ratio": "16:9",
+        "resolution": "480p",
+        "duration_s": 4,
+        "input_image": "generated",
+        "end_frame": "generated"
+      }
+    },
+    {
+      "id": "seedance-2.5",
+      "display_name": "Seedance 2.5",
+      "provider": "bytedance",
+      "adapter": "video.seedance2",
+      "vendor_model": "dreamina-seedance-2-5-260628",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "durations_s": [
+        4,
+        5,
+        8,
+        10,
+        15,
+        30
+      ],
+      "end_frame": true,
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.byteplus.com/en/docs/ModelArk/1520757",
+        "checked_at": "2026-10-24",
+        "source": "vendor_docs_search",
+        "evidence": "ModelArk pages read in full 2026-10-24 (not search extracts): create/retrieve task API, error codes, model list, pricing, Seedance tutorial.",
+        "note": "Same task API as the 1.x models; 2.x adds role-required frames, adaptive ratio rules and the model ids below."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.2312,
+        "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
+        "as_of": "2026-10-24",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "480p": 0.1028,
+            "720p": 0.2312,
+            "1080p": 0.5686
+          }
+        },
+        "note": "ESTIMATE from the vendor's worked example (16:9, 5 s, no video input) per second; token-billed, so other ratios differ slightly. Dreamina Seedance 2.5 is listed 'fully available' on the vendor's own API page. Vendor claim, unverified: failed generations are not billed."
+      },
+      "credit_unit": "model_seedance_2_5_second",
+      "entitlement": "models_video:ultra",
+      "terms_gate": "written_consent_required",
+      "terms_notes": [
+        "Customer Agreement (effective 2026-09-30) 6.2(1): unless BytePlus consents in writing in advance, you may not act as an OEM, SaaS, MaaS, service-bureau, reseller or distributor of the Services. Selling generations for credits very likely is one (our reading, not BytePlus's).",
+        "Service Specific Terms, Model Services 4.2.3 (Platform Customers): no reselling or re-integrating the video APIs into UGC platforms or AI content creation tools; the 'without our written authorization' qualifier is on the next bullet (resale), so even (1) needs BytePlus to agree.",
+        "Same terms 4.2.2 / 4.2.4(b): a platform must verify end users' identity, keep an incident process, tiered takedowns and rights checks on uploads; unauthorized resale means account ban and liquidated damages of 20% of the minimum commitment.",
+        "Acceptable Use Policy: no reselling the services; AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedance 2.x itself rejects reference images or videos with real faces.",
+        "Read 2026-10-24 at docs.byteplus.com/en/docs/legal (docs-service-specific-terms, docs-customer-agreement, docs-acceptable-use-policy, AI-Services-terms). NOT seen: any order form or negotiated terms with BytePlus. Gate stays open until BytePlus authorises Nightshift in writing.",
+        "General Terms for AI Services 2.1: as between you and BytePlus you own the Output to the extent the law allows; BytePlus claims none. 2.4: output may not be unique. Own-channel use is not what this gate blocks; selling it is.",
+        "BytePlus International Availability (updated 2026-04-21) lists Uzbekistan; the Model Services are not available in the United States. Availability is decided at the point of purchase."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "resolution": "480p",
+        "duration_s": 4,
         "input_image": "generated",
         "end_frame": "generated"
       }
