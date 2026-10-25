@@ -1,6 +1,6 @@
 import { effectiveQuality, type StudioModel } from "@/lib/creative/studio";
 import { regionsToRun } from "@/lib/regionEdit/request";
-import { DEFAULT_FEATHER, type WireRegion } from "@/lib/regionEdit/geometry";
+import { DEFAULT_FEATHER, MAX_PARAMS_BYTES, type WireRegion } from "@/lib/regionEdit/geometry";
 
 /**
  * The run step of the region editor (migration 0126, docs/REGION_EDITOR.md): what a region edit asks of the database, and how a
@@ -47,6 +47,7 @@ export const RUN_FAILURES = [
   "capability_not_supported",
   "library_unavailable",
   "source_unavailable",
+  "source_too_large",
   "result_not_stored",
   "output_lost",
   "region_quote_mismatch",
@@ -196,7 +197,27 @@ export function toRunView(job: unknown): RunView | null {
   };
 }
 
-/** The share of the price one region carries: the quote divided by the number of regions (the database charges this much per applied region). */
-export function regionShare(total: number, count: number): number {
-  return count > 0 && Number.isFinite(total) ? Math.ceil((total / count) * 100) / 100 : 0;
+/**
+ * The size of `params` as the database stores it: jsonb text, which is JSON with a space after every `:` and `,` outside a string,
+ * counted in bytes (UTF-8). The database refuses a job whose params are over 16 KB ("params are too large"); words in a script that
+ * takes 3 bytes a letter (Chinese, Japanese, Korean) reach that long within five regions of 1000 characters, so the page says so first and clearly.
+ */
+export function jsonbTextBytes(value: unknown): number {
+  const json = JSON.stringify(value);
+  let extra = 0;
+  let inString = false;
+  for (let i = 0; i < json.length; i += 1) {
+    const c = json[i];
+    if (inString) {
+      if (c === "\\") i += 1;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === ":" || c === ",") extra += 1;
+  }
+  return new TextEncoder().encode(json).length + extra;
+}
+
+/** Do these params fit in what the database stores? */
+export function paramsFit(params: unknown): boolean {
+  return jsonbTextBytes(params) <= MAX_PARAMS_BYTES;
 }

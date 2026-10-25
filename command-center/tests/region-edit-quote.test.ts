@@ -14,7 +14,7 @@ import type { StudioModel } from "@/lib/creative/studio";
 import { MAX_REGIONS } from "@/lib/regionEdit/geometry";
 import { parseRegionRequest, insidePicture, regionsToRun } from "@/lib/regionEdit/request";
 import { editModels, pickEditModel, quoteRegions } from "@/lib/regionEdit/quote";
-import { buildRunParams, regionShare } from "@/lib/regionEdit/run";
+import { buildRunParams } from "@/lib/regionEdit/run";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const SRC = "22222222-2222-4222-8222-222222222222";
@@ -130,7 +130,7 @@ describe("quoteRegions", () => {
     const { db, calls } = fakeDb(() => priced(9));
     const out = await quoteRegions(db, parsed(body({ regions: regions3 })), MODELS, SIZE);
     expect(out.status).toBe(200);
-    expect(out.body.quote).toMatchObject({ total: 9, count: 3, perRegion: 3, model: "gemini-3.1-flash-image", skipped: [] });
+    expect(out.body.quote).toMatchObject({ total: 9, count: 3, model: "gemini-3.1-flash-image", skipped: [] });
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ fn: "quote_creative_job", p_capability: "edit", p_model: "gemini-3.1-flash-image", p_org: ORG });
     const sent = calls[0].p_params as { source_asset_id: string; quality: string; region_feather: number; regions: { id: string; name: string; prompt: string; rect: unknown }[] };
@@ -154,7 +154,7 @@ describe("quoteRegions", () => {
     const out = await quoteRegions(db, req, MODELS, SIZE);
     expect(calls).toHaveLength(1);
     expect((calls[0].p_params as { regions: unknown[] }).regions).toHaveLength(2);
-    expect(out.body.quote).toMatchObject({ total: 6, count: 2, perRegion: 3, skipped: [1] });
+    expect(out.body.quote).toMatchObject({ total: 6, count: 2, skipped: [1] });
   });
 
   it("refuses when no region has words, before asking the database anything", async () => {
@@ -197,11 +197,20 @@ describe("quoteRegions", () => {
     }
   });
 
-  it("a region's share is the quote over the number of regions, rounded up to the cent like the database's charge", () => {
-    expect(regionShare(9, 3)).toBe(3);
-    expect(regionShare(0.1, 3)).toBe(0.04);
-    expect(regionShare(3, 0)).toBe(0);
-    expect(regionShare(Number.NaN, 2)).toBe(0);
+  it("shows no per-region number: the quote says only the total (the database's rounding is not re-derived here)", async () => {
+    const { db } = fakeDb(() => priced(9));
+    const out = await quoteRegions(db, parsed(body({ regions: regions3 })), MODELS, SIZE);
+    expect(out.body.quote).not.toHaveProperty("perRegion");
+    expect(out.body.quote).not.toHaveProperty("lines");
+  });
+
+  it("refuses words too long for the database's 16 KB of params, before asking it anything", async () => {
+    const { db, calls } = fakeDb(() => priced(9));
+    // 5 regions x 1000 CJK characters = 3 bytes each: 15 KB of words plus names and rectangles is over 16 KB
+    const long = "日".repeat(1000);
+    const out = await quoteRegions(db, parsed(body({ regions: Array.from({ length: 5 }, (_v, i) => region({ name: "日".repeat(60), prompt: long, x: 10 + i })) })), MODELS, SIZE);
+    expect(out).toMatchObject({ status: 422, body: { error: "params_too_large" } });
+    expect(calls).toEqual([]);
   });
 
   it("regionsToRun lists the positions that have words", () => {

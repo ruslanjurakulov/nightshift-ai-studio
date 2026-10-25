@@ -80,6 +80,11 @@ MAX_PROMPT_CHARS = 1000
 #: Decoded pixels of the source or of a model answer; a larger one is refused
 #: before it is decoded (a small file can hide a huge picture).
 MAX_PIXELS = 48_000_000
+#: A region EDIT (the run step) works on the whole picture several times over (the original, the composite, the lock's masks and the
+#: comparison): measured, about 100 MB of RAM per megapixel at 47.6 MP with five large regions (4.9 GB, about 95 s) and about 50 MB per
+#: megapixel at 16 MP (0.8 GB, about 23 s). A source of more pixels than this is refused before anything is asked of a model, and costs
+#: nothing; the worker and the Command Center's routes use the same number (command-center/lib/regionEdit/geometry.ts).
+REGION_MAX_SOURCE_PIXELS = 16_000_000
 #: Context around a region in the crop: a quarter of its longer side, at least this many pixels.
 CONTEXT_MIN_PX = 32
 CONTEXT_FRACTION = 0.25
@@ -280,6 +285,23 @@ def load_rgba(data: bytes) -> Tuple[np.ndarray, bool, Optional[bytes]]:
     except Exception:  # noqa: BLE001 — a truncated file, a bomb, a non-image: all "not a picture"
         raise RegionEditError("source_unreadable", "the picture could not be read") from None
     return arr, had_alpha, icc
+
+
+def inspect_source(data: bytes) -> Tuple[int, int]:
+    """The (width, height) of a source picture WITHOUT decoding its pixels, or the refusal: not a picture, a mode that cannot be edited
+    without changing values, more than ``MAX_PIXELS`` (never decoded) or more than ``REGION_MAX_SOURCE_PIXELS`` (the run step's own
+    ceiling, see there). The grid after EXIF orientation has the same pixel count."""
+    try:
+        im = Image.open(io.BytesIO(data))
+        w, h = im.size
+        mode = im.mode
+    except Exception:  # noqa: BLE001 — a truncated file, a bomb, a non-image: all "not a picture"
+        raise RegionEditError("source_unreadable", "the picture could not be read") from None
+    if w * h > MAX_PIXELS or w * h > REGION_MAX_SOURCE_PIXELS:
+        raise RegionEditError("source_too_large", f"the picture has more than {REGION_MAX_SOURCE_PIXELS // 1_000_000} megapixels")
+    if mode in ("I;16", "I;16L", "I;16B", "I", "F", "CMYK", "YCbCr", "LAB", "HSV"):
+        raise RegionEditError("source_unsupported", f"{mode} pictures are not edited here")
+    return w, h
 
 
 def _brush(region: Region) -> np.ndarray:
@@ -502,6 +524,7 @@ def run_job_regions(source: bytes, wire: Sequence[Mapping], edit_fn: EditFn, *, 
     nothing here clamps. Every region of ``wire`` gets exactly one outcome, in order, and no region is ever sent to a second model.
     Unlike :func:`run_region_edit` it does not raise when no region can run: it returns outcomes that say why."""
     feather = check_feather(feather)
+    inspect_source(source)           # the run step's pixel ceiling, before a single pixel is decoded
     arr, had_alpha, icc = load_rgba(source)
     height, width = arr.shape[:2]
     regions: List[Optional[Region]] = []

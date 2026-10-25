@@ -30,6 +30,8 @@ export const REGION_ERRORS = [
   "model_required",
   "model_not_sellable",
   "feather_invalid",
+  "source_too_large",
+  "params_too_large",
 ] as const;
 export type RegionError = (typeof REGION_ERRORS)[number];
 

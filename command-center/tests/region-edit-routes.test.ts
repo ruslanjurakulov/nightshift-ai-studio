@@ -65,8 +65,8 @@ describe("POST /api/region-edit/quote", () => {
     const { POST } = await import("@/app/api/region-edit/quote/route");
     const res = await POST(post({ ...goodBody, regions: [goodBody.regions[0], { ...goodBody.regions[0], name: "B", x: 200 }] }));
     expect(res.status).toBe(200);
-    const out = (await res.json()) as { quote: { total: number; count: number; perRegion: number } };
-    expect(out.quote).toMatchObject({ total: 6, count: 2, perRegion: 3 });
+    const out = (await res.json()) as { quote: { total: number; count: number } };
+    expect(out.quote).toMatchObject({ total: 6, count: 2 });
     expect(h.rpc).toHaveBeenCalledTimes(1);
   });
 
@@ -232,6 +232,30 @@ describe("POST /api/region-edit/run", () => {
     h.rpc.mockResolvedValue({ data: null, error: { code: "NS400", message: "invalid_params", details: "region 1: words are required" } });
     expect((await POST(run(runBody))).status).toBe(400);
     expect(h.audit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a picture over 16 megapixels and words over the params cap, before holding anything", async () => {
+    process.env.NIGHTSHIFT_REGION_EDITOR = "on";
+    const { POST } = await import("@/app/api/region-edit/run/route");
+    h.media = { data: { org_id: ORG, kind: "image", width: 4001, height: 4000 }, error: null };
+    const big = await POST(run(runBody));
+    expect(big.status).toBe(422);
+    expect(await big.json()).toEqual({ error: "source_too_large" });
+    h.media = { data: { org_id: ORG, kind: "image", width: 4000, height: 4000 }, error: null };
+    expect((await POST(run(runBody))).status).toBe(201);
+    h.rpc.mockClear();
+    const words = "日".repeat(1000);
+    const heavy = Array.from({ length: 5 }, (_v, i) => ({ name: "日".repeat(60), prompt: words, x: 10 + i * 20, y: 10, w: 100, h: 80 }));
+    const long = await POST(run({ ...runBody, regions: heavy }));
+    expect(long.status).toBe(422);
+    expect(await long.json()).toEqual({ error: "params_too_large" });
+    expect(h.rpc).not.toHaveBeenCalled();
+    const quoteRoute = await import("@/app/api/region-edit/quote/route");
+    const q = await quoteRoute.POST(post({ ...goodBody, regions: heavy }));
+    expect(q.status).toBe(422);
+    expect(await q.json()).toEqual({ error: "params_too_large" });
+    h.media = { data: { org_id: ORG, kind: "image", width: 4001, height: 4000 }, error: null };
+    expect((await quoteRoute.POST(post(goodBody))).status).toBe(422);
   });
 
   it("requires a signed-in member", async () => {

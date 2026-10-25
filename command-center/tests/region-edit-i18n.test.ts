@@ -74,6 +74,14 @@ describe("regionEdit parity", () => {
     expect(Object.keys(r.failures).sort()).toEqual([...RUN_FAILURES, "other"].sort());
   });
 
+  it("shows no per-region price: the share the database charges is not re-derived in the page", () => {
+    for (const loc of ["en", "ru", "uz"] as const) {
+      const text = dicts[loc].regionEdit.quotePerRegion;
+      expect(text, loc).not.toMatch(/\{/);
+      expect(text, loc).not.toMatch(/\d/);
+    }
+  });
+
   it("never tells a customer the state of the platform's vendor account (out of funds, a rejected key)", () => {
     for (const loc of ["en", "ru", "uz"] as const) {
       const r = dicts[loc].regionEdit as unknown as { reasons: Record<string, string> };

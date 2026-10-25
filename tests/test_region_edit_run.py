@@ -161,9 +161,9 @@ class Base(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_job(self, j=None, *, behave=None, sold=(GEMINI, OPENAI), model=GEMINI, region_editor=True, source=None, attach=True,
-                library=True, adapter=None, **kw):
+                library=True, adapter=None, entry=None, **kw):
         loop = adapter or Loopback(behave)
-        entry = reg.get(model)
+        entry = entry or reg.get(model)
         ra = ca.RegistryAdapter(entry, loop)
 
         def resolve(m):
@@ -327,6 +327,65 @@ class TheRun(Base):
         q, _ = self.run_job(region_job(params={"region_feather": 7}))
         self.assertEqual(q.finished["result"]["feather"], 7)
 
+    def test_an_unexpected_error_in_one_region_fails_that_region_and_keeps_the_others(self):
+        def behave(n, request):
+            if n == 1:
+                raise ZeroDivisionError("boom: key sk-secret in a path /srv/x")
+            return Loopback.noise(n, request)
+
+        q, loop = self.run_job(behave=behave)
+        self.assertEqual(self.report(q), [("r1", "applied", None), ("r2", "failed", "provider_error"), ("r3", "applied", None)])
+        self.assertEqual(len(loop.requests), 3, "the next region was still asked")
+        self.assertNotIn("boom", json.dumps(q.finished))
+        self.assertNotIn("sk-secret", json.dumps(q.finished))
+        self.assertTrue(q.finished["ok"] and self.store.rows, "the applied regions are stored and chargeable")
+
+    def test_the_cost_is_recorded_once_on_every_path_that_made_a_call(self):
+        # the result cannot be stored: the job fails and is released, but the vendor was paid for three calls
+        self.store.fail = True
+        q, _ = self.run_job()
+        self.assertFalse(q.finished["ok"])
+        self.assertEqual([(c.quantity, c.route) for c in q.costs], [(3.0, "exact")])
+        # a job lost between regions: one call was made, one is recorded, nothing is finished
+        self.setUp()
+        holder = {}
+
+        def behave(n, request):
+            holder["beat"].lost.set()
+            return Loopback.noise(n, request)
+
+        real = cw._Heartbeat.__init__
+
+        def spy(self_, *a, **k):
+            real(self_, *a, **k)
+            holder["beat"] = self_
+
+        with mock.patch.object(cw._Heartbeat, "__init__", spy):
+            q, _ = self.run_job(behave=behave)
+        self.assertIsNone(q.finished)
+        self.assertEqual([c.quantity for c in q.costs], [1.0])
+        # every region failed: still recorded; nothing called: nothing recorded
+        self.setUp()
+        q, _ = self.run_job(behave=lambda n, r: (_ for _ in ()).throw(AdapterError(E_BAD_REQUEST, "no")))
+        self.assertEqual([c.quantity for c in q.costs], [3.0])
+        self.setUp()
+        q, _ = self.run_job(region_editor=False)
+        self.assertEqual(q.costs, [])
+
+    def test_a_failure_to_record_the_cost_never_changes_the_outcome(self):
+        class NoCost(RegionQueue):
+            def record_cost(self, job_id, usage):
+                raise RuntimeError("record_creative_job_cost: HTTP 500")
+
+        entry = reg.get(GEMINI)
+        loop = Loopback()
+        q = NoCost(region_job(), ok_source(), sold=(GEMINI,))
+        w = cw.CreativeWorker(q, lambda m: ca.RegistryAdapter(entry, loop), worker_id="w1", out_dir=self.out, credits=FakeCredits(9.0),
+                              enforce=True, sleep=lambda s: None, heartbeat_seconds=0, media_root=self.media,
+                              library=cw.Library(self.store, self.media, None), region_editor=True)
+        w.run_once()
+        self.assertTrue(q.finished["ok"])
+
     def test_the_provider_cost_is_recorded_once_with_the_number_of_calls(self):
         q, _ = self.run_job()
         self.assertEqual(len(q.costs), 1)
@@ -364,8 +423,25 @@ class Rule4TheModelAskedForOrNothing(Base):
         self.failed_before_any_spend(q, loop, "model_not_available")
 
     def test_a_model_that_cannot_edit_or_is_gated_stops_the_job(self):
-        q, loop = self.run_job(region_job(requested_model="flux-2-pro"), model="flux-2-pro", sold=("flux-2-pro",))
+        import dataclasses
+        q, loop = self.run_job(entry=dataclasses.replace(reg.get(GEMINI), capabilities=("t2i",)))
         self.failed_before_any_spend(q, loop, "model_cannot_edit")
+        self.setUp()
+        q, loop = self.run_job(entry=dataclasses.replace(reg.get(GEMINI), terms_gate="terms_review_required"))
+        self.failed_before_any_spend(q, loop, "model_gated")
+
+    def test_only_the_two_synchronous_image_adapters_run_a_region_edit(self):
+        import dataclasses
+        self.assertEqual(cw.REGION_ADAPTERS, frozenset({"image.openai", "image.gemini"}))
+        for adapter_key in ("image.dashscope", "image.flux", "image.ideogram", "video.minimax", "image.openai ", "IMAGE.GEMINI", ""):
+            self.setUp()
+            q, loop = self.run_job(entry=dataclasses.replace(reg.get(GEMINI), adapter=adapter_key))
+            self.failed_before_any_spend(q, loop, "capability_not_supported")
+            self.assertEqual(q.sold_asked, [], "refused before the database was even asked what is on sale")
+        for model in (GEMINI, OPENAI):
+            self.setUp()
+            q, loop = self.run_job(region_job(requested_model=model, routed_model=model, params={"quality": "medium"} if model == OPENAI else {}), model=model)
+            self.assertTrue(q.finished["ok"], model)
 
     def test_routed_modes_are_refused_because_a_failover_would_be_another_model(self):
         q, loop = self.run_job(region_job(mode="cheap"))
@@ -509,6 +585,51 @@ class TheSource(Base):
         self.assertEqual(loop.requests, [])
         self.assertNotIn("submitting", self.steps(q))
         self.assertNotIn(str(self.media), q.finished["error"])
+
+
+class TheSourceCeiling(Base):
+    def big(self, w, h):
+        buf = io.BytesIO()
+        Image.new("RGB", (w, h), (10, 20, 30)).save(buf, format="PNG", compress_level=1)
+        put_asset(self.media, SRC, buf.getvalue())
+
+    def test_the_ceiling_is_sixteen_megapixels_in_python_and_in_the_web_table(self):
+        self.assertEqual(re_.REGION_MAX_SOURCE_PIXELS, 16_000_000)
+        geometry = (Path(__file__).resolve().parent.parent / "command-center" / "lib" / "regionEdit" / "geometry.ts").read_text(encoding="utf-8")
+        self.assertIn("export const MAX_SOURCE_PIXELS = 16_000_000;", geometry)
+
+    def test_a_picture_over_the_ceiling_is_refused_before_submitting_with_a_closed_code_and_costs_nothing(self):
+        self.big(4001, 4000)          # 16,004,000 px: just over
+        q, loop = self.run_job(region_job([region(1, 10, 10)]))
+        self.assertFalse(q.finished["ok"])
+        self.assertEqual(q.finished["error_code"], "source_too_large")
+        self.assertEqual(loop.requests, [])
+        self.assertNotIn("submitting", self.steps(q))
+        self.assertEqual(q.costs, [])
+        self.assertEqual(self.store.rows, [])
+
+    def test_a_picture_at_the_ceiling_is_edited(self):
+        self.big(4000, 4000)          # exactly 16,000,000 px
+        q, loop = self.run_job(region_job([region(1, 10, 10)]))
+        self.assertTrue(q.finished["ok"], q.finished)
+        self.assertEqual(len(loop.requests), 1)
+
+    def test_the_header_is_read_without_decoding_pixels(self):
+        self.assertEqual(re_.inspect_source(png(picture((64, 48)))), (64, 48))
+        for data, code in ((b"nope", "source_unreadable"), (png(picture((4001, 4000))), "source_too_large")):
+            with self.assertRaises(re_.RegionEditError) as cm:
+                re_.inspect_source(data)
+            self.assertEqual(cm.exception.code, code)
+        with mock.patch.object(re_, "load_rgba", side_effect=AssertionError("decoded")):
+            re_.inspect_source(png(picture((64, 48))))
+
+    def test_run_job_regions_refuses_a_big_picture_before_decoding_or_calling(self):
+        calls = []
+        with mock.patch.object(re_, "load_rgba", side_effect=AssertionError("decoded")):
+            with self.assertRaises(re_.RegionEditError) as cm:
+                re_.run_job_regions(png(picture((4001, 4000))), [{"x": 0, "y": 0, "w": 64, "h": 64, "name": "a", "prompt": "p"}],
+                                    lambda c: calls.append(c) or b"")
+        self.assertEqual((cm.exception.code, calls), ("source_too_large", []))
 
 
 class ThePixelLockIsVerifiedAfterTheComposite(Base):

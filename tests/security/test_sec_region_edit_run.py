@@ -578,6 +578,50 @@ def test_a_report_that_is_not_one_closed_outcome_per_region_in_order_is_refused_
     assert _try(db, p, make(p))[0] == "22023"
 
 
+def test_words_over_the_sixteen_kilobyte_params_cap_are_refused_with_the_databases_own_sentence(db):
+    # 5 regions of 1000 CJK characters (3 bytes each) pass every per-field rule and still exceed the 16 KB the database stores
+    p = P(db, 5)
+    for r in p["regions"]:
+        r["prompt"] = "日" * 1000
+        r["name"] = "日" * 60
+    assert problem(db, "edit", p) == "params are too large"
+    st, word, _ = err(lambda: create(db, UA, ORG_A, "rimg", p))
+    assert (st, word) == ("NS400", "invalid_params")
+
+
+def test_the_stored_result_is_built_from_an_allow_list_so_no_free_text_survives(db):
+    p = P(db, 2)
+    j, w, asset = run_to_processing(db, p)
+    sha = "ab" * 32
+    report = {**outcomes(p, ["applied", "failed"]), "feather": 6, "storage": "library", "asset_ids": [asset],
+              "files": [{"name": "output_0.png", "mime": "image/png", "bytes": 1234, "sha256": sha, "path": "/srv/secret/x.png", "note": "hi"}],
+              "note": "free text for every member to read", "error": "sk-live-SECRET", "style": {"a": ["b"]},
+              "regions_extra": 1}
+    report["regions"][1]["code"] = "policy"
+    out = finish(db, j, w, report)
+    assert sorted(out["result"]) == ["asset_ids", "feather", "files", "regions", "storage"], out["result"]
+    assert out["result"]["files"] == [{"name": "output_0.png", "mime": "image/png", "bytes": 1234, "sha256": sha}]
+    assert out["result"]["feather"] == 6 and out["result"]["asset_ids"] == [asset] and out["result"]["storage"] == "library"
+    stored = db.su("select result::text from public.creative_jobs where id=%s", [j["id"]])[0][0]
+    for leak in ("secret", "free text", "sk-live", "regions_extra", "/srv"):
+        assert leak not in stored, leak
+
+
+@pytest.mark.parametrize("extra", [
+    {"feather": 99}, {"feather": "4"}, {"feather": 1.5}, {"storage": "somewhere else"}, {"storage": 1},
+    {"asset_ids": "x"}, {"asset_ids": ["not an id"]}, {"asset_ids": [str(uuid.uuid4())] * 17},
+    {"files": "x"}, {"files": [{"name": "a b", "mime": "image/png", "bytes": 1, "sha256": "ab" * 32}]},
+    {"files": [{"name": "a.png", "mime": "image/png", "bytes": -1, "sha256": "ab" * 32}]},
+    {"files": [{"name": "a.png", "mime": "image/png", "bytes": 1, "sha256": "zz"}]},
+    {"files": [{"name": "a.png", "mime": "text with spaces", "bytes": 1, "sha256": "ab" * 32}]},
+    {"files": [{"name": "a.png", "mime": "image/png", "sha256": "ab" * 32}]},
+    {"files": ["x"]}, {"files": [{"name": "a.png", "mime": "image/png", "bytes": 1, "sha256": "ab" * 32}] * 17},
+])
+def test_a_report_with_a_malformed_allow_listed_key_is_refused_and_nothing_moves(db, extra):
+    p = P(db, 1)
+    assert _try(db, p, {**outcomes(p, ["applied"]), **extra})[0] == "22023"
+
+
 def test_every_closed_reason_is_accepted_and_nothing_else(db):
     p = P(db, 2)
     for code in CODES:

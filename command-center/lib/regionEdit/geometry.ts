@@ -15,6 +15,13 @@ export const FEATHER_MAX = 8;
 export const DEFAULT_FEATHER = 4;
 export const NAME_MAX = 60;
 export const PROMPT_MAX = 1000;
+/**
+ * modules/region_edit.py REGION_MAX_SOURCE_PIXELS: a region edit works on the whole picture several times over (about 50 MB of RAM
+ * per megapixel at this size, about 100 above it), so a picture of more pixels is refused before anything is held or asked of a model.
+ */
+export const MAX_SOURCE_PIXELS = 16_000_000;
+/** supabase/migrations 0036: the most bytes of a creative job's params as the database stores them (jsonb text). */
+export const MAX_PARAMS_BYTES = 16_384;
 
 export interface Size {
   width: number;

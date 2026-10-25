@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { StudioModel } from "@/lib/creative/studio";
-import { REGION_REASONS, RUN_FAILURES, buildRunParams, isFinalPhase, regionShare, toRunView } from "@/lib/regionEdit/run";
+import { REGION_REASONS, RUN_FAILURES, buildRunParams, isFinalPhase, jsonbTextBytes, paramsFit, toRunView } from "@/lib/regionEdit/run";
 
 const SRC = "22222222-2222-4222-8222-222222222222";
 const NEW = "33333333-3333-4333-8333-333333333333";
@@ -137,9 +137,17 @@ describe("the lists the database and the worker share", () => {
     expect(new Set(REGION_REASONS).size).toBe(15);
   });
 
-  it("a region's share rounds up to the cent like the database's charge", () => {
-    expect(regionShare(9, 3)).toBe(3);
-    expect(regionShare(0.1, 3)).toBe(0.04);
-    expect(regionShare(1, 3)).toBe(0.34);
+  it("the size of params is counted the way the database stores them: UTF-8 bytes of jsonb text (a space after : and ,)", () => {
+    expect(jsonbTextBytes({ a: 1, b: [1, 2] })).toBe('{"a": 1, "b": [1, 2]}'.length);
+    expect(jsonbTextBytes({ a: "x:y, z" })).toBe('{"a": "x:y, z"}'.length);          // a : or , inside a string is not a separator
+    expect(jsonbTextBytes({ a: 'q"u\\o:te,' })).toBe(JSON.stringify({ a: 'q"u\\o:te,' }).length + 1);
+    expect(jsonbTextBytes({ a: "ы" })).toBe('{"a": "ы"}'.length + 1);                // Cyrillic is 2 bytes
+    expect(jsonbTextBytes({ a: "日" })).toBe('{"a": "日"}'.length + 2);              // CJK is 3 bytes
+  });
+
+  it("five regions of 1000 ASCII letters fit; the same in CJK (3 bytes a letter) with long names do not", () => {
+    const mk = (word: string, name: string) => buildRunParams(model(), SRC, Array.from({ length: 5 }, (_v, i) => region({ name, prompt: word.repeat(1000), x: i })), 4);
+    expect(paramsFit(mk("a", "Sky"))).toBe(true);
+    expect(paramsFit(mk("日", "日".repeat(60)))).toBe(false);
   });
 });

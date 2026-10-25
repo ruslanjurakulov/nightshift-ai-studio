@@ -238,7 +238,7 @@ export function RegionEditor({
       return (
         <div className="flex flex-col gap-1" role="status">
           <p className="text-base font-semibold">{fmt(r.quoteTotal, { credits: formatCredits(q.total, locale) })}</p>
-          <p className="text-sm text-[var(--color-muted)]">{fmt(r.quotePerRegion, { credits: formatCredits(q.perRegion, locale) })}</p>
+          <p className="text-sm text-[var(--color-muted)]">{r.quotePerRegion}</p>
           {q.skipped.length > 0 ? <p className="text-xs text-[var(--color-muted)]">{fmt(r.quoteSkipped, { n: q.skipped.length })}</p> : null}
         </div>
       );

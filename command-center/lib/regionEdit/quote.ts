@@ -1,7 +1,7 @@
 import { quote, type CreativeDb, type CreativeResult } from "@/lib/creative/operations";
 import { modelsFor, type StudioModel } from "@/lib/creative/studio";
 import { insidePicture, regionsToRun, type RegionRequest } from "@/lib/regionEdit/request";
-import { buildRunParams, regionShare } from "@/lib/regionEdit/run";
+import { buildRunParams, paramsFit } from "@/lib/regionEdit/run";
 import type { Size } from "@/lib/regionEdit/geometry";
 
 /**
@@ -19,8 +19,6 @@ export interface RegionQuote {
   total: number;
   /** How many regions will run (those with words). */
   count: number;
-  /** The share of the price one region carries: only a region that is applied is charged its share. */
-  perRegion: number;
   /** Positions of regions with no words: not run, not priced, not charged. */
   skipped: number[];
 }
@@ -50,11 +48,14 @@ export async function quoteRegions(
   if (run.length === 0) return fail(422, "no_prompt");
   const picked = pickEditModel(models, req.model);
   if (!picked.ok) return fail(422, picked.error);
+  const params = buildRunParams(picked.model, req.sourceAssetId, req.regions, req.feather);
+  // The database refuses params over 16 KB; multibyte words get there sooner than their character count suggests.
+  if (!paramsFit(params)) return fail(422, "params_too_large");
   const answer = await quote(db, {
     orgId: req.orgId,
     capability: "edit",
     model: picked.model.id,
-    params: buildRunParams(picked.model, req.sourceAssetId, req.regions, req.feather) as unknown as Record<string, unknown>,
+    params: params as unknown as Record<string, unknown>,
     mode: "exact",
     idempotencyKey: null,
     maxCredits: null,
@@ -68,7 +69,6 @@ export async function quoteRegions(
     feather: req.feather,
     total: q.credits,
     count: run.length,
-    perRegion: regionShare(q.credits, run.length),
     skipped: req.regions.flatMap((r, i) => (r.prompt === "" ? [i] : [])),
   };
   return { status: 200, body: { quote: out } };

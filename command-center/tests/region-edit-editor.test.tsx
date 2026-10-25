@@ -52,7 +52,7 @@ beforeEach(() => {
       if (url.startsWith("/api/region-edit/versions"))
         return new Response(JSON.stringify({ chain: { items: [{ id: PIC, parentId: null, version: 1, createdAt: null, width: 800, height: 600 }], at: 0 } }), { status: 200 });
       if (url === "/api/region-edit/quote")
-        return new Response(JSON.stringify({ quote: { model: "m1", feather: 4, total: 7, count: 1, perRegion: 7, skipped: [] } }), { status: 200 });
+        return new Response(JSON.stringify({ quote: { model: "m1", feather: 4, total: 7, count: 1, skipped: [] } }), { status: 200 });
       return new Response("{}", { status: 404 });
     }),
   );
@@ -113,7 +113,7 @@ describe("RegionEditor", () => {
     expect(q.regions).toHaveLength(1);
     expect(q.regions[0]).toMatchObject({ name: "Region 1", prompt: "make it dusk" });
     expect(await screen.findByText("At most 7 credits, if every region is applied")).toBeTruthy();
-    expect(screen.getByText("About 7 credits per region. Only a region that is applied is charged.")).toBeTruthy();
+    expect(screen.getByText(en.regionEdit.quotePerRegion)).toBeTruthy();
   });
 
   it("does not preselect a model when there is a choice, and the run key stays off with an honest reason", async () => {

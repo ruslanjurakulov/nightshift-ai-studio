@@ -257,6 +257,10 @@ REGION_CODES = ("not_configured", "auth", "quota", "rate_limited", "bad_request"
                 "provider_error", "region_invalid", "region_too_small", "region_out_of_bounds", "crop_unavailable", "pixel_lock_failed")
 #: Of those, the ones that mean the region was not accepted for editing (judged here before a call, or refused on policy by the vendor).
 REGION_REFUSED_CODES = frozenset({"bad_request", "policy", "region_invalid", "region_too_small", "region_out_of_bounds", "crop_unavailable"})
+#: The only adapters a region edit runs through: the ones whose edit call is synchronous and takes the crop as its one input picture
+#: (``image.openai``, ``image.gemini``). An asynchronous adapter (a task to poll) would be asked once and never polled, so any other
+#: adapter ends the job before a vendor is called.
+REGION_ADAPTERS = frozenset({"image.openai", "image.gemini"})
 #: The most bytes of a source picture read for a region edit (the library's own upload limit is far below this).
 REGION_MAX_SOURCE_BYTES = 100 * 1024 * 1024
 
@@ -756,6 +760,8 @@ class CreativeWorker:
         entry, inner = getattr(adapter, "entry", None), getattr(adapter, "adapter", None)
         if entry is None or inner is None or not callable(getattr(inner, "problems", None)) or not callable(getattr(inner, "submit", None)):
             raise _Refused("capability_not_supported", f"{model} cannot take a region edit on this deployment; nothing was charged")
+        if str(getattr(entry, "adapter", "")) not in REGION_ADAPTERS:
+            raise _Refused("capability_not_supported", f"{model} is not run through an adapter that takes a region edit; nothing was charged")
         # Rule 4: the model the person picked, if the database still sells it for editing, or nothing. No default, no second choice.
         sold = self.queue.sellable_models("edit")
         try:
@@ -778,9 +784,11 @@ class CreativeWorker:
             if source_path.stat().st_size > REGION_MAX_SOURCE_BYTES:
                 raise _Refused("source_unavailable", "the source picture is too large for a region edit")
             data = source_path.read_bytes()
-            re_.load_rgba(data)  # unreadable / unsupported pictures stop here, before 'submitting'
+            # Unreadable, unsupported and too-large pictures stop here, before 'submitting' and without decoding a pixel: a source of
+            # more than REGION_MAX_SOURCE_PIXELS (16 MP) would need gigabytes of memory, and is refused at no cost.
+            re_.inspect_source(data)
         except re_.RegionEditError as e:
-            raise _Refused("source_unavailable", e.message) from None
+            raise _Refused("source_too_large" if e.code == "source_too_large" else "source_unavailable", e.message) from None
         except OSError as e:
             raise _Refused("source_unavailable", f"the source could not be read ({type(e).__name__})") from None
 
@@ -788,6 +796,31 @@ class CreativeWorker:
             logger.warning("job %s: not ours to submit any more; leaving it", job_id)
             return "left"
         calls = [0]
+        try:
+            return self._run_regions(request, wire, data, entry, inner, quality, feather, beat, calls)
+        finally:
+            # The vendor was paid for every call made, whatever happens next (a release path, a lost job, a store that failed): the
+            # telemetry is written once, in every case, when at least one call was made. Reporting only; it never changes the outcome.
+            if calls[0]:
+                unit = (entry.raw.get("pricing") or {}).get("unit")
+                # Through a name, not a literal: tests/test_gemini_quota.py greps every module for a call of model_for with a quoted stage to
+                # find the Gemini stage labels, and the registry's vendor-model lookup ends in the same letters but is not a stage.
+                capability = request.capability
+                try:
+                    self.queue.record_cost(request.job_id, ProviderUsage(
+                        provider=entry.provider, vendor_model=entry.vendor_model_for(capability), unit=unit,
+                        quantity=float(calls[0]) if unit == "image" else None, route="exact"))
+                except Exception as e:  # reporting only; the job is settled
+                    logger.warning("job %s: provider cost not recorded (%s)", request.job_id, type(e).__name__)
+
+    def _run_regions(self, request: GenerationRequest, wire: Sequence[Any], data: bytes, entry, inner, quality: Optional[str],
+                     feather: int, beat: _Heartbeat, calls: List[int]) -> str:
+        """The paid part of a region edit: one call per region, the composite, the result stored, the job finished. ``calls`` counts the
+        calls made, for the cost record the caller writes in every case."""
+        from modules import region_edit as re_  # noqa: PLC0415
+        from modules.capabilities.base import AdapterError  # noqa: PLC0415
+
+        job_id, model = request.job_id, request.model
         end_user = hashlib.sha256(f"nightshift-org:{request.org_id}".encode()).hexdigest()[:32]
         ask = re_.adapter_edit_fn(inner, entry, work_dir=self.out_dir / job_id / "regions", quality=quality, end_user=end_user)
 
@@ -795,7 +828,14 @@ class CreativeWorker:
             if beat.lost.is_set():
                 raise _JobLost()
             calls[0] += 1
-            return ask(call)
+            try:
+                return ask(call)
+            except (re_.RegionEditError, AdapterError):
+                raise
+            except Exception as e:  # noqa: BLE001 — one region's unexpected failure must not lose the regions already applied
+                # Only the type is logged (a message could carry a vendor's text or a path); the region is reported failed.
+                logger.warning("job %s: region %s failed unexpectedly (%s)", job_id, call.index, type(e).__name__)
+                raise re_.RegionEditError("provider_error", "the model call failed") from None
 
         try:
             ran = re_.run_job_regions(data, [_wire_region(r) for r in wire], edit, aspects=entry.aspects_for("edit"), feather=feather)
@@ -831,20 +871,10 @@ class CreativeWorker:
             out.update({"files": describe_files([self.out_dir / job_id / "output_0.png"]), "storage": "library", "asset_ids": asset_ids})
         done = self.queue.finish(job_id, self.worker_id, True, result=out)
         shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
-        if calls[0]:
-            unit = (entry.raw.get("pricing") or {}).get("unit")
-            # Through a name, not a literal: tests/test_gemini_quota.py greps every module for a call of model_for with a quoted stage to find
-            # the Gemini stage labels, and the registry's vendor-model lookup ends in the same letters but is not a stage.
-            capability = request.capability
-            try:
-                self.queue.record_cost(job_id, ProviderUsage(
-                    provider=entry.provider, vendor_model=entry.vendor_model_for(capability), unit=unit,
-                    quantity=float(calls[0]) if unit == "image" else None, route="exact"))
-            except Exception as e:  # reporting only; the job is settled
-                logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
         status = (done or {}).get("status") if isinstance(done, dict) else None
         applied = sum(1 for r in report if r["status"] == "applied")
         return f"completed:{applied}/{len(report)}" if status in (None, "completed") else str(status)
+
 
     def _store_region_result(self, request: GenerationRequest, ran, wire: Sequence[Any], entry, model: str, source: str) -> List[str]:
         """The finished picture as ONE new library asset (module doc): written to the job folder, registered ``source='generated'`` with the

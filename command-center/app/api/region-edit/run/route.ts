@@ -7,7 +7,7 @@ import { logAudit } from "@/lib/server/audit";
 import { regionEditorEnabled } from "@/lib/regionEdit/flag";
 import { insidePicture, parseRunRequest, regionsToRun, type RegionError } from "@/lib/regionEdit/request";
 import { pickEditModel } from "@/lib/regionEdit/quote";
-import { buildRunParams } from "@/lib/regionEdit/run";
+import { buildRunParams, paramsFit } from "@/lib/regionEdit/run";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
 
@@ -28,6 +28,8 @@ const STATUS: Record<RegionError | "confirm_price" | "invalid_idempotency_key", 
   model_required: 422,
   model_not_sellable: 422,
   feather_invalid: 422,
+  source_too_large: 422,
+  params_too_large: 422,
   confirm_price: 400,
   invalid_idempotency_key: 400,
 };
@@ -69,11 +71,13 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   if (regionsToRun(req.regions).length === 0) return NextResponse.json({ error: "no_prompt" }, { status: 422 });
   const picked = pickEditModel(await loadStudioModels(), req.model);
   if (!picked.ok) return NextResponse.json({ error: picked.error }, { status: 422 });
+  const params = buildRunParams(picked.model, req.sourceAssetId, req.regions, req.feather);
+  if (!paramsFit(params)) return NextResponse.json({ error: "params_too_large" }, { status: 422 });
   const out = await createGeneration(session.db, {
     orgId: req.orgId,
     capability: "edit",
     model: picked.model.id,
-    params: buildRunParams(picked.model, req.sourceAssetId, req.regions, req.feather) as unknown as Record<string, unknown>,
+    params: params as unknown as Record<string, unknown>,
     mode: "exact",
     idempotencyKey,
     maxCredits,
