@@ -6,10 +6,11 @@
 -- until model_availability_settings.enforced is set to true, by hand, in the SQL editor. Until then the replaced functions
 -- return exactly what they returned before, to the byte, and no switch can be recorded. It rewrites no row of any existing table.
 --
--- NUMBER. 0124: the highest on main is 0121; 0122 is the Series Factory template carrier (open PR #610, claude/series-template-carrier);
--- 0123 is left free for the owner model-API-keys migration, whose branch is not pushed yet (checked with gh api against all 610
--- remote branches and the open pull requests, 2026-10-25). 0113 and 0118 are unused on main already, so a gap is normal here
--- (tests/security/sec_db.py: "numbers need not be contiguous"). If 0123 is taken by the time this merges, the number is still free.
+-- NUMBER. 0124: the highest on main is 0122 (the Series Factory template carrier, merged as #610); 0123 belongs to the owner model-API-keys
+-- migration (branch claude/owner-model-api-keys, not merged when this was written), so 0124 cannot collide with it (checked with gh api
+-- against all 613 remote branches and the open pull requests, 2026-10-25). 0113 and 0118 are unused on main already, so a gap is normal
+-- here (tests/security/sec_db.py: "numbers need not be contiguous"). If 0123 merges after this file, the order does not matter: the two
+-- touch no common object.
 --
 -- APPLY AS ONE TRANSACTION: the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1. The lock_timeout
 -- below is `set local`; a half-applied file (the policy changed but the function it calls not yet created, or the reverse) is not a state
@@ -49,12 +50,21 @@
 --                                rate limit; and write the change, model_availability_log and security_events in ONE transaction,
 --                                so an audit that cannot be written stops the change.
 --   model_is_available(text)     authenticated, service_role. The RLS policy below needs it executable by the reader. It answers a
---                                boolean and names no reason.
+--                                boolean and names no reason. To a caller who is neither a platform admin nor the platform's own
+--                                (credits_trusted_caller) a model that is not on sale and proven, or not in the registry, always
+--                                answers TRUE: a customer cannot use it to learn that a hidden model exists.
 --   models_switched_off()        authenticated, service_role. The ids only: no reason, no note, no who. A user is told "temporarily
 --                                unavailable", never "out of funds" (the vendor account's state is the platform's, BR-L-021).
 --   model_switch_state()         service_role only (the queue worker's pre-spend gate, modules/model_switch.py).
 --   every other new function     nobody (called by the definer functions above).
 --   anon                         nothing at all.
+--   A refused call. owner_guard() (0107) runs first and takes one slot of the CALLER'S OWN rate limit (60 calls in 10 minutes for these
+--   writers) before the owner test: a platform admin who is not the owner is refused with 'owner_required' and has used one slot of
+--   that limit; the refusal writes no switch, no log row and no security event. A caller who is not a platform admin is refused before
+--   anything is counted.
+--   The audit log is append-only against DML only: the triggers refuse update, delete and truncate for every role including the table
+--   owner, but a superuser can still drop or alter the table or disable the triggers (the SQL editor is the owner's own door, as for
+--   every table of this schema). Row-level protection, not a tamper-proof ledger.
 --
 -- WHAT IS ENFORCED, AND WHERE (server side; the Command Center only draws it)
 --   1. sellable_models()                    omits a switched-off model: every picker that reads it (Models page, Studio parameters,
@@ -71,9 +81,13 @@
 --                                           instead of "not available through the API".
 --   5. advance_creative_job('submitting')   the LAST gate before the vendor is called: a job that was created before the switch and
 --                                           has not been sent is ended here, hold released.
---   6. owner_set_model_switch(OFF)          stops, in the same transaction, every job that has not been sent (below).
+--   6. owner_set_model_switch(OFF)          stops, in the same transaction, the jobs that have not been sent, in BATCHES of at most 200
+--                                           per call (below).
 --   Outside this file: modules/model_switch.py + tools/queue_worker.py stop a channel-pipeline run (daily/repair/series episode,
---   scene regeneration) BEFORE the worker spends, when the provider it would use is switched off.
+--   scene regeneration) BEFORE the worker spends, when the PROVIDER it would use is switched off. That gate is provider-level, video and
+--   image providers only, off by default (NIGHTSHIFT_MODEL_SWITCH), fails open when the state is unreadable, and does NOT cover:
+--   ElevenLabs (text to speech, sound effects, captions), AssemblyAI, Runway, Luma, xAI, stock footage, GitHub Actions runs of main.py,
+--   or a model-level switch. docs/MODEL_SWITCH.md lists them.
 --
 -- THE IN-FLIGHT RULE (exact; tests/security/test_sec_model_switch.py pins every line)
 --   A creative job is SENT once submit_started_at or provider_task_id is set (the first is written before the vendor call, the
@@ -85,6 +99,11 @@
 --   A job whose submit started a moment before the switch committed is SENT and continues.
 --   Workflow runs: each step is an ordinary job; a stopped step fails that step and the run, as any failed job does (0083 makes
 --   only NS429/NS402 wait). Steps already charged stay charged for the output they made.
+--   BATCHES. One call of owner_set_model_switch(OFF) stops at most 200 unsent jobs (an API call has an 8 s statement_timeout). The switch
+--   row is written whole on the first call, so the model is hidden and refused at once whatever remains; the answer says
+--   {jobs_stopped, remaining, complete} and the Command Center calls the same OFF again until remaining is 0 (or a call stops none,
+--   which means workers hold the rest). A job the sweep has not reached cannot be sent: advance_creative_job refuses it at the last
+--   gate. So the sweep is tidiness (credits returned at once), never the protection.
 --
 -- 5. THE OPTIONAL ALERT (model_availability_settings.auto_suggest, default FALSE; follow-up decision, see docs/MODEL_SWITCH.md)
 --   When on, an AFTER trigger on creative_jobs counts jobs that failed with the typed code 'quota' (the capability layer's word for a
@@ -145,6 +164,9 @@ declare
   m text;
   r text;
   q text;
+  wc_null boolean;
+  cmd "char";
+  perm boolean;
 begin
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into s from pg_proc x where x.oid = 'public.sellable_models(text, text)'::regprocedure;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into c from pg_proc x where x.oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
@@ -167,12 +189,15 @@ begin
     raise exception '0124 found an api_creative_refusal() that is neither 0075''s body nor 0124''s (md5 %): read the live body first', r;
   end if;
 
-  -- The policy 0035 made, as it reads (or this file's own, on a replay). A policy that says anything else was changed by hand.
-  select pg_get_expr(p.polqual, p.polrelid) into q
+  -- The policy 0035 made, as it reads (or this file's own, on a replay). A policy that says anything else was changed by hand. Compared
+  -- as the whole deparsed expression, white space, the ::text casts and the schema name dropped (so a Postgres version that prints them
+  -- differently does not matter), against the two texts it may have: 0035's and 0124's. The with-check is empty for both.
+  select regexp_replace(pg_get_expr(p.polqual, p.polrelid), '\s+|::text|public\.', '', 'gi'), p.polwithcheck is null, p.polcmd, p.polpermissive
+    into q, wc_null, cmd, perm
     from pg_policy p where p.polrelid = 'public.model_registry'::regclass and p.polname = 'model_registry_select';
   if q is null
-     or position('is_platform_admin()' in q) = 0 or position('verified_at IS NOT NULL' in q) = 0
-     or position('beta' in q) = 0 or position('ga' in q) = 0 then
+     or q <> all (array['(is_platform_admin()OR((availability=ANY(ARRAY[''beta'',''ga'']))AND(verified_atISNOTNULL)))', '(is_platform_admin()OR((availability=ANY(ARRAY[''beta'',''ga'']))AND(verified_atISNOTNULL)ANDmodel_is_available(id)))'])
+     or not wc_null or cmd <> 'r' or not perm then
     raise exception '0124 found a model_registry_select policy that is not 0035''s (or 0124''s): read the live policy first';
   end if;
 end $$;
@@ -181,12 +206,12 @@ end $$;
 do $$
 declare
   want constant text[][] := array[
-    ['public.model_is_available(text)',                  'a8747a8849a75c0343321627cbca87cd'],
+    ['public.model_is_available(text)',                  'ae7c34277c6ae5fe19328356aab9697e'],
     ['public.models_switched_off()',                     'e949f74917b2593b4b1112485b8b40b9'],
     ['public.model_switch_state()',                      'ad22387e72826e6a06e4e217c00b7ef2'],
     ['public.model_switch_job_model(public.creative_jobs)', 'd558cad9334c15f6623a568207fd0f23'],
     ['public.model_switch_target_models(text, text)',    '8d1fc0853715e19819525806d9bc8024'],
-    ['public.model_switch_stop_jobs(text[])',            'b8e6099e11cb7773b93fb5bc1653b541'],
+    ['public.model_switch_stop_jobs(text[])',            'a56ebd78d306de492c321451df405b1f'],
     ['public.model_switch_counts(text[])',               'c269b63c0e555cc92d72d2ab8e04e535'],
     ['public.model_availability_log_append_only()',      '15126c28f8d797ecb711b051f0cb54f3'],
     ['public.model_availability_settings_guard()',       '6612d9bc787db608fea08ad671779487'],
@@ -194,7 +219,7 @@ declare
     ['public.model_switch_note_quota()',                 '3aa43a78f5f080084af8befeadf6d42e'],
     ['public.owner_model_switches()',                    '36947a634cbc0d8956eb053a1c5a5d5a'],
     ['public.owner_model_switch_preview(text, text)',    '838c3927da48c5852df38574eb61b7d8'],
-    ['public.owner_set_model_switch(text, text, boolean, text, text, boolean)', 'ab31c977c467b0a08becfaf9d442f751'],
+    ['public.owner_set_model_switch(text, text, boolean, text, text, boolean)', '7954b93c8ba875c192b691c5c512dab3'],
     ['public.owner_model_alert_dismiss(bigint)',         '925aa435e837121d03ba1c062601119d']
   ];
   i integer;
@@ -415,16 +440,25 @@ create trigger model_availability_settings_trail
 -- THE definition of "available". TRUE for everything until the owner's switches are put in force (enforced), so that applying this
 -- file changes nothing. A model is off when its own row says so or its provider's does; a model row that says "on" does not
 -- override a provider that is off.
+-- NO EXISTENCE ORACLE. A signed-in customer may call this directly (the registry policy needs it executable by the reader). To such a
+-- caller a model that is not on sale and proven (hidden, unproven, disabled, or not in the registry at all) always reads TRUE, so a
+-- hidden id and a made-up id cannot be told apart by asking whether they are available. A platform admin and the platform's own
+-- callers (the workers; credits_trusted_caller) get the real answer for every id.
 create or replace function public.model_is_available(p_model text) returns boolean
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
   m    text := lower(btrim(coalesce(p_model, '')));
   prov text;
+  seen boolean;
 begin
   if m = '' or not coalesce((select s.enforced from public.model_availability_settings s), false) then
     return true;
   end if;
-  select r.provider into prov from public.model_registry r where r.id = m;
+  select r.provider, (r.availability in ('beta', 'ga') and r.verified_at is not null) into prov, seen
+    from public.model_registry r where r.id = m;
+  if not coalesce(seen, false) and not (public.is_platform_admin() or public.credits_trusted_caller()) then
+    return true;
+  end if;
   return not exists (
     select 1 from public.model_availability a
      where not a.enabled
@@ -505,9 +539,12 @@ create or replace function public.model_switch_counts(p_models text[]) returns j
      and public.model_switch_job_model(j) = any (p_models)
 $$;
 
--- THE IN-FLIGHT RULE, switch side: every job on these models that has not been sent to the vendor is ended, its hold released, in the
--- caller's transaction. Accounts are locked in one order (organization, then job, re-checked under the lock: the order every sweep
+-- THE IN-FLIGHT RULE, switch side: the jobs on these models that have not been sent to the vendor are ended, their holds released, in
+-- the caller's transaction. Accounts are locked in one order (organization, then job, re-checked under the lock: the order every sweep
 -- of 0036 takes); a job a worker holds a moment ago is skipped, and is stopped by advance_creative_job at its last gate instead.
+-- BOUNDED: at most 200 jobs per call, so one call stays far inside the API's statement_timeout (8 s) however long the queue is. The
+-- caller learns how many are left (owner_set_model_switch: remaining) and calls again. Nothing depends on the sweep being finished: a
+-- job it has not reached cannot be sent either, because advance_creative_job refuses it at the last gate.
 create or replace function public.model_switch_stop_jobs(p_models text[]) returns integer
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -519,6 +556,7 @@ begin
      where j.status in ('queued', 'running') and j.provider_task_id is null and j.submit_started_at is null
        and public.model_switch_job_model(j) = any (p_models)
      order by j.org_id, j.id
+     limit 200
   loop
     perform public.credit_account_lock(s.org_id);
     perform 1 from public.creative_jobs j
@@ -655,6 +693,10 @@ $$;
 -- Turn a model or a provider OFF or ON. OFF needs one of the four reasons and stops the jobs that were not sent (the in-flight rule);
 -- when there are such jobs it refuses until the caller confirms (the answer carries their number). Everything is written in this one
 -- transaction: the switch, the jobs' ends and releases, the log row and the security event.
+-- BOUNDED SWEEP: one call stops at most 200 jobs. The answer carries jobs_stopped and remaining (jobs on the target that were not sent and
+-- are still waiting) and complete = (remaining = 0); the switch row itself is written whole on the first call, so the model is already
+-- hidden and refused whatever remains, and the owner is told to run the same OFF again until remaining is 0. A job left over cannot be
+-- sent in the meantime (advance_creative_job stops it at its last gate).
 create or replace function public.owner_set_model_switch(
   p_scope text, p_target text, p_enabled boolean, p_reason text default null, p_note text default null,
   p_confirm boolean default false
@@ -737,12 +779,16 @@ begin
     (kind, scope, target, enabled, previous_enabled, reason, note, jobs_stopped, in_flight, actor_user_id, actor_email, detail)
   values ('switch', sc, tg, p_enabled, case when had then prev.enabled end, rs, nt, stopped,
           coalesce((cnt ->> 'in_flight')::integer, 0), auth.uid(), v_email,
-          jsonb_build_object('models', cardinality(ids), 'effective_available', v_eff));
+          jsonb_build_object('models', cardinality(ids), 'effective_available', v_eff,
+                             'remaining', coalesce((cnt ->> 'waiting')::integer, 0)));
   perform public.security_event_log('model.switch', case when p_enabled then 'notice' else 'warning' end, sc || ':' || tg,
-    jsonb_build_object('enabled', p_enabled, 'reason', rs, 'jobs_stopped', stopped, 'models', cardinality(ids)));
+    jsonb_build_object('enabled', p_enabled, 'reason', rs, 'jobs_stopped', stopped, 'models', cardinality(ids),
+                       'remaining', coalesce((cnt ->> 'waiting')::integer, 0)));
 
   return jsonb_build_object('ok', true, 'scope', sc, 'target', tg, 'enabled', p_enabled, 'effective_available', v_eff,
-                            'jobs_stopped', stopped, 'in_flight', coalesce((cnt ->> 'in_flight')::integer, 0));
+                            'jobs_stopped', stopped, 'in_flight', coalesce((cnt ->> 'in_flight')::integer, 0),
+                            'remaining', case when p_enabled then 0 else coalesce((cnt ->> 'waiting')::integer, 0) end,
+                            'complete', p_enabled or coalesce((cnt ->> 'waiting')::integer, 0) = 0);
 end
 $$;
 

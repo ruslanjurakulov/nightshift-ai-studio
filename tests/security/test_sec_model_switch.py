@@ -333,6 +333,41 @@ def test_a_reader_learns_ids_and_a_boolean_never_a_reason(db):
             assert err(lambda: db.act(role, uid, q))[0] == "42501", (role, q)
 
 
+def test_no_existence_oracle_a_customer_cannot_tell_a_hidden_model_from_one_that_does_not_exist(db):
+    """The reviewer's repro. model_is_available is executable by a signed-in customer (the registry policy calls it as the reader). With a
+    HIDDEN model whose provider is OFF, a customer must get the same answer for it as for an id that is not in the registry at all;
+    only a platform admin (and the platform's own callers) are told the truth about a model nobody is offered."""
+    enforce(db)
+    db.su("update public.model_registry set availability = 'hidden' where id = 'img-z2'")
+    db.su("update public.model_registry set availability = 'disabled' where id = 'img-z1'")
+    try:
+        off(db, "provider", "zeta")
+        ask = lambda who, mid: db.act("authenticated", who, "select public.model_is_available(%s)", [mid])[0][0]  # noqa: E731
+        for mid in ("img-z2", "img-z1", "img-no-such-model", "IMG-Z2", "  img-z2 "):
+            assert ask(UA, mid) is True, f"a customer is told {mid!r} is available, exactly as for an id that does not exist"
+        assert {ask(UA, m) for m in ("img-z2", "img-z1", "img-no-such-model")} == {True}
+        # the platform's own callers and a platform admin (not only the owner) get the real answer for every id
+        assert ask(ADMIN, "img-z2") is False and ask(OWNER, "img-z1") is False and ask(OWNER, "img-no-such-model") is True
+        assert svc(db, "select public.model_is_available('img-z2')")[0][0] is False
+        assert db.su("select public.model_is_available('img-z2')")[0][0] is False
+        # a stale row for an id that is not in the registry (only the SQL editor can write one) tells a customer nothing either
+        db.su("insert into public.model_availability (scope, target, enabled, reason) values ('model', 'img-gone', false, 'other')")
+        try:
+            assert ask(UA, "img-gone") is True and ask(OWNER, "img-gone") is False
+        finally:
+            db.su("delete from public.model_availability where target = 'img-gone'")
+        # a model a customer can be offered is still answered truthfully, the whole point of the function
+        db.su("update public.model_registry set availability = 'beta' where id = 'img-z2'")
+        assert ask(UA, "img-z2") is False and ask(UA, "img-a1") is True
+        # and the id-only list tells a customer nothing about the hidden one
+        db.su("update public.model_registry set availability = 'hidden' where id = 'img-z2'")
+        assert db.act("authenticated", UA, "select public.models_switched_off()")[0][0] == []
+        # the registry policy still hides it, whichever way
+        assert "img-z2" not in registry_visible(db, UA) and "img-z1" not in registry_visible(db, UA)
+    finally:
+        db.su("update public.model_registry set availability = 'beta' where id in ('img-z1', 'img-z2')")
+
+
 # ═══ WRITING A SWITCH ════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.parametrize("args,error", [
@@ -396,6 +431,24 @@ def test_the_switch_is_rate_limited_after_sixty_calls_in_ten_minutes(db):
         out = db.act("authenticated", OWNER, "select public.owner_set_model_switch('model','no-such-model',false,'other',null,false)")[0][0]
         seen.add(out["error"])
     assert "rate_limited" in seen and "unknown_target" in seen
+
+
+def test_a_refused_admin_who_is_not_the_owner_uses_one_slot_of_their_own_rate_limit_and_writes_nothing(db):
+    """owner_guard (0107) takes the caller's rate slot before the owner test: documented in the file's header, pinned here."""
+    enforce(db)
+    n_log, n_ev = len(log_rows(db)), db.su("select count(*) from public.security_events where kind = 'model.switch'")[0][0]
+    db.su("delete from public.web_rate_counters")
+    out = db.act("authenticated", ADMIN, "select public.owner_set_model_switch('model','img-a1',false,'other',null,true)")[0][0]
+    assert (out["ok"], out["error"]) == (False, "owner_required")
+    slots = db.su("select count(*) from public.web_rate_counters where bucket = 'owner:model_switch@600'")[0][0]
+    assert slots >= 1, "the refused admin call took a slot of the caller's own limit"
+    assert db.su("select count(*) from public.model_availability")[0][0] == 0
+    assert len(log_rows(db)) == n_log
+    assert db.su("select count(*) from public.security_events where kind = 'model.switch'")[0][0] == n_ev
+    # a customer is refused before anything is counted
+    db.su("delete from public.web_rate_counters")
+    assert err(lambda: db.act("authenticated", UA, "select public.owner_set_model_switch('model','img-a1',false,'other',null,true)"))[0] == "42501"
+    assert db.su("select count(*) from public.web_rate_counters where bucket = 'owner:model_switch@600'")[0][0] == 0
 
 
 # ═══ THE READ PATH ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -709,6 +762,43 @@ def test_inflight_only_the_targeted_models_and_only_their_unsent_jobs_are_touche
     assert out["jobs_stopped"] == 1 and job(db, a2)["status"] == "failed" and job(db, z1)["status"] == "queued"
 
 
+def test_inflight_a_long_queue_is_swept_in_bounded_batches_and_nothing_waits_on_the_sweep(db):
+    """One OFF stops at most 200 jobs (the API's statement_timeout is 8 s). The switch row is whole after the first call; the owner is told how
+    many remain and calls again; a job the sweep has not reached still cannot be sent (the last gate)."""
+    enforce(db)
+    db.su("select public.grant_credits(%s, 10000, 'test-batch')", [ORG_A])
+    ids = [queued_job(db, "img-z1", idem=f"sw-batch-{i}") for i in range(203)]
+    assert footprint(db)[2][1] >= 203 * 9
+    pre = db.act("authenticated", OWNER, "select public.owner_model_switch_preview('model','img-z1')")[0][0]
+    assert pre["waiting"] == 203
+    first = off(db, "model", "img-z1")
+    assert (first["ok"], first["jobs_stopped"], first["remaining"], first["complete"]) == (True, 200, 3, False)
+    assert db.su("select enabled from public.model_availability where scope='model' and target='img-z1'") == [(False,)], \
+        "the switch itself is whole after the first call: the model is hidden and refused whatever remains"
+    assert "img-z1" not in sellable(db, UA)
+    assert err(lambda: quote(db, "img-z1"))[1] == "model_temporarily_off"
+    left = [i for i in ids if job(db, i)["status"] == "queued"]
+    assert len(left) == 3
+    # a leftover job cannot be sent: the worker's last gate ends it and returns the hold
+    jid = left[0]
+    _id, ref, org = claim_next(db)
+    assert _id in left
+    svc(db, "select public.start_credit_reservation(%s,%s)", [ref, org])
+    assert svc(db, "select public.advance_creative_job(%s,'w-sw','submitting')", [_id])[0][0] is False
+    assert job(db, _id)["error_code"] == "model_temporarily_off" and reservation(db, ref) == "released"
+    # the same OFF again finishes the sweep
+    second = off(db, "model", "img-z1")
+    assert (second["ok"], second["jobs_stopped"], second["remaining"], second["complete"]) == (True, 2, 0, True)
+    assert db.su("select count(*) from public.creative_jobs where requested_model='img-z1' and status='queued'")[0][0] == 0
+    assert db.su("select reserved::float from public.credit_accounts where org_id=%s", [ORG_A])[0][0] == 0
+    # both calls are in the log, with what was left each time
+    rows = db.su("select jobs_stopped, detail->>'remaining' from public.model_availability_log where kind='switch' and target='img-z1' order by id")
+    assert rows[-2:] == [(200, "3"), (2, "0")]
+    # a switch ON reports nothing left
+    out = on(db, "model", "img-z1")
+    assert (out["remaining"], out["complete"]) == (0, True)
+
+
 def test_inflight_two_switches_at_once_over_the_same_organization_never_deadlock(db):
     enforce(db)
     for i in range(4):
@@ -951,6 +1041,42 @@ def test_the_drift_guard_refuses_a_replaced_function_whose_live_body_is_somebody
         # and nothing of the file stayed behind (one transaction)
         assert d.su("select to_regprocedure('public.model_is_available(text)') is null")[0][0] is True
         assert d.su("select to_regclass('public.model_availability') is null")[0][0] is True
+    finally:
+        sec_db.drop_database(admin, name)
+
+
+def test_the_policy_drift_guard_compares_the_whole_policy_not_a_few_words(db):
+    """The old check looked for four substrings, which a hand-edited policy can keep while widening who reads what. The guard now compares the
+    whole deparsed expression with the two texts it may have (0035's and 0124's)."""
+    admin = sec_db.admin_dsn()
+    name = f"ns_switch_pol_{uuid.uuid4().hex[:8]}"
+    base = sec_db.create_database(admin, name)
+    try:
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name != MIGRATION.name])
+        d = Db(base)
+        # 0035's own policy: the file applies (checked by the rollback test too); here, every edit that keeps the four words is refused
+        for widened in (
+            "public.is_platform_admin() or (availability in ('beta', 'ga') and verified_at is not null) or true",
+            "public.is_platform_admin() or (availability in ('beta', 'ga', 'hidden') and verified_at is not null)",
+            "(public.is_platform_admin() or availability in ('beta', 'ga')) and verified_at is not null",
+            "public.is_platform_admin() or (availability in ('beta', 'ga') and verified_at is null)",
+        ):
+            d.su("drop policy model_registry_select on public.model_registry")
+            d.su(f"create policy model_registry_select on public.model_registry for select to authenticated using ({widened})")
+            st, msg, _ = err(lambda: d.su(MIGRATION.read_text(encoding="utf-8")))
+            assert "model_registry_select policy that is not 0035's (or 0124's)" in msg, (widened, msg)
+            assert d.su("select to_regclass('public.model_availability') is null")[0][0] is True
+        # a policy for another command or with a with-check is refused too
+        d.su("drop policy model_registry_select on public.model_registry")
+        d.su("create policy model_registry_select on public.model_registry for all to authenticated "
+             "using (public.is_platform_admin() or (availability in ('beta', 'ga') and verified_at is not null))")
+        assert "model_registry_select policy" in err(lambda: d.su(MIGRATION.read_text(encoding="utf-8")))[1]
+        # restore 0035's text: the file applies, and applies again over its own policy (the replay)
+        d.su("drop policy model_registry_select on public.model_registry")
+        d.su("create policy model_registry_select on public.model_registry for select to authenticated "
+             "using (public.is_platform_admin() or (availability in ('beta', 'ga') and verified_at is not null))")
+        d.su(MIGRATION.read_text(encoding="utf-8"))
+        d.su(MIGRATION.read_text(encoding="utf-8"))
     finally:
         sec_db.drop_database(admin, name)
 

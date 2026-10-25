@@ -23,6 +23,8 @@ import { StatusLamp } from "@/components/ui/StatusLamp";
 import { StateBlock } from "@/components/states/StateBlock";
 
 const ENDPOINT = "/api/owner/model-switch";
+/** Each switch-off call stops at most 200 jobs (migration 0124); this many calls cover a queue of 100 000 and end a loop that cannot finish. */
+const MAX_SWEEP_CALLS = 500;
 
 /**
  * The owner's model switches (migration 0124, docs/MODEL_SWITCH.md): per provider and per model, ON or OFF, with the reason, who changed it
@@ -84,6 +86,7 @@ export function ModelSwitchBoard({ doc }: { doc: SwitchDoc }) {
     }
     let stopped = 0;
     let inFlight = counts.inFlight;
+    let remaining = 0;
     const ok = await confirm({
       title: fmt(s.confirmOff.title, { name }),
       message: s.confirmOff.body,
@@ -97,16 +100,27 @@ export function ModelSwitchBoard({ doc }: { doc: SwitchDoc }) {
         { label: s.confirmOff.inFlight, value: String(counts.inFlight) },
       ],
       run: async () => {
-        const out = await postOperator(ENDPOINT, { action: "set", scope, target, enabled: false, reason, ...(note ? { note } : {}), confirm: true });
-        if (!out.ok) return switchFailureText(t, out, true);
-        stopped = typeof out.data.jobs_stopped === "number" ? out.data.jobs_stopped : 0;
-        inFlight = typeof out.data.in_flight === "number" ? out.data.in_flight : inFlight;
+        // One call stops a bounded batch of jobs (the database says how many are left): the same OFF is sent again until nothing is
+        // left, a call stops none (workers hold the rest: the last gate stops those) or the safety cap is reached. The switch itself is
+        // whole after the first call, so a failure on a later one leaves the model OFF and says so.
+        for (let call = 0; call < MAX_SWEEP_CALLS; call++) {
+          const out = await postOperator(ENDPOINT, { action: "set", scope, target, enabled: false, reason, ...(note ? { note } : {}), confirm: true });
+          if (!out.ok) return call === 0 ? switchFailureText(t, out, true) : s.done.sweepInterrupted; // later: the switch is whole, so no "nothing was changed"
+          const batch = typeof out.data.jobs_stopped === "number" ? out.data.jobs_stopped : 0;
+          stopped += batch;
+          inFlight = typeof out.data.in_flight === "number" ? out.data.in_flight : inFlight;
+          remaining = typeof out.data.remaining === "number" ? out.data.remaining : 0;
+          if (remaining <= 0 || batch <= 0) break;
+        }
         return true;
       },
     });
     busy.current = false;
     refresh();
-    if (ok) setMsg({ ok: true, text: fmt(s.done.off, { stopped, inFlight }) });
+    if (ok) {
+      const done = fmt(s.done.off, { stopped, inFlight });
+      setMsg({ ok: true, text: remaining > 0 ? `${done} ${fmt(s.done.stillWaiting, { remaining })}` : done });
+    }
     return ok;
   }
 

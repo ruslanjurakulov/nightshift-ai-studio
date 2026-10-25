@@ -498,8 +498,8 @@ provider and does not touch credits, holds, publishing or privacy. Numbered 0122
 database (`sellable_models`, `creative_price`, `advance_creative_job`, `api_creative_model_ok`, `api_creative_refusal`) and one RLS policy
 (`model_registry_select`), each on the body the repo says is latest (md5 drift guard), and adds four tables and fifteen functions (eleven callable, four trigger functions).
 
-- **Number.** 0124: 0122 is the Series Factory template carrier (open PR #610); 0123 is left free for the owner model-API-keys migration (its
-  branch is not pushed yet). A gap is normal (0113 and 0118 are unused).
+- **Number.** 0124: 0122 is the Series Factory template carrier (merged, #610); 0123 belongs to the owner model-API-keys migration (branch
+  `claude/owner-model-api-keys`, not merged when this was written; no object in common). A gap is normal (0113 and 0118 are unused).
 - **Is it off?** `select enforced, auto_suggest from public.model_availability_settings;` must read `false, false`. While `enforced` is false
   `model_is_available()` answers true for every model, the replaced functions return what they returned, and `owner_set_model_switch`
   refuses (`not_enforced`). The seed is `on conflict do nothing`: a replay never undoes what the owner set.

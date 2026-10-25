@@ -34,7 +34,7 @@ export const modelSwitchUz: ModelSwitchDictionary = {
   saleNote: "Almashtirgich model sotuvdami-yoʻqmi, shuni hech qachon oʻzgartirmaydi (buni «Mavjudlik» koʻrinishi qiladi).",
   providerHint: "Provayderni oʻchirish uning barcha modellarini birdan yashiradi. Siz yoqqan model buni bekor qilmaydi.",
   pipelineNote:
-    "Kanal videosi ishga tushirishlari faqat provayder almashtirgichlariga amal qiladi: model almashtirgichi kanal ishga tushirishini toʻxtatmaydi. Vendorga allaqachon yuborilgan vazifalar har doim tugaydi.",
+    "Kanal ishga tushirishlari provayder almashtirgichlariga faqat video va tasvir provayderlari uchun va faqat serverdagi almashtirgich yoqilgan paytda amal qiladi. Model almashtirgichi kanal ishga tushirishini toʻxtatmaydi, va bu yerdagi hech narsa ovoz, ovoz effektlari va taglavhalar (ElevenLabs), nutqni matnga aylantirish (AssemblyAI), Runway, Luma, xAI, stok videolar va GitHub Actions orqali boshlangan ishga tushirishlarni qamrab olmaydi. Vendorga allaqachon yuborilgan vazifalar har doim tugaydi.",
   models: "Modellar: {n}",
   hiddenModels: "Yashirin: {n}",
   lastChanged: "Oxirgi oʻzgartirish: {who}, {when}",
@@ -78,6 +78,8 @@ export const modelSwitchUz: ModelSwitchDictionary = {
     off: "Oʻchirildi. Toʻxtatilgan vazifalar: {stopped}. Allaqachon vendorda: {inFlight}.",
     on: "Yoqildi.",
     onStillHidden: "Yoqildi, lekin provayderi hali oʻchirilgan, shuning uchun yashirin qoladi.",
+    stillWaiting: "Hali kutmoqda: {remaining}. Ularning birortasi yuborilmaydi: ishchi unga yetib kelishi bilan har biri toʻxtatiladi va kreditlar qaytariladi.",
+    sweepInterrupted: "Oʻchirildi, lekin kutayotgan vazifalarni toʻxtatish uzilib qoldi. Ularning birortasi yuborilmaydi: ishchi unga yetib kelishi bilan har biri toʻxtatiladi va kreditlar qaytariladi.",
   },
   alerts: {
     title: "Ogohlantirishlar",

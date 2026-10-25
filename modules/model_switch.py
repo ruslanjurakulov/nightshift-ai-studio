@@ -20,6 +20,9 @@ What it does and does not do
   failed before it started (the credit sweep, ``expire_credit_reservations``).
 * A provider with no registry entry (``higgsfield``, ``leonardo``, ``fal``) has nothing the switch can say about it: it is not gated.
   Stock footage (``pexels``) is not a model.
+* It is provider-level and covers VIDEO and IMAGE providers only. It does NOT cover ElevenLabs (text to speech, sound effects,
+  captions), AssemblyAI, Runway, Luma, xAI, series planning (a text call), voice cloning, or GitHub Actions runs of main.py (they do
+  not pass the queue worker). docs/MODEL_SWITCH.md and the owner's Switches view say so.
 * A run that has already started (main.py is running) is never touched: only the moment before the first spend is guarded, the same
   line the creative path draws between "not sent" and "sent".
 * If the switch state cannot be read (network, migration 0124 not applied) the run goes on and the worker says so in its log: the

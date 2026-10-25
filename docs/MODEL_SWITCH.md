@@ -54,8 +54,12 @@ flag off no switch can be recorded (`not_enforced`) and every model is available
 | The worker's last gate before the vendor is called | `advance_creative_job('submitting')` ends a job whose model is off and which was not sent: failed, hold released, the worker is told it is not its job to send |
 | Channel pipeline runs (daily, repair, series episodes, API videos, scene regeneration) | `modules/model_switch.py` + `tools/queue_worker.py`: before the hold is opened and before `main.py` starts, the worker asks `model_switch_state()` and stops a run whose **video or image provider** is switched off (coded `switched_off`, nothing run, nothing charged, hold released by the existing sweep) |
 
-Series *planning* is a Gemini text call (not a registry model) and is not gated. Voice cloning (0117) is not a model pick and is not
-gated. GitHub Actions runs of `main.py` (the owner's scheduled runs) do not pass the queue worker and are not gated.
+**What the pipeline gate does NOT cover** (stated plainly; the Switches view says so too). `modules/model_switch.py` is provider-level,
+**video and image providers only**, off unless `NIGHTSHIFT_MODEL_SWITCH=on`, **fails open** when the state cannot be read, and sees only
+what the queue worker starts. Not covered: ElevenLabs (text to speech, sound effects, captions), AssemblyAI (transcription), Runway, Luma,
+xAI, stock footage, series *planning* (a Gemini text call, not a registry model), voice cloning (0117, not a model pick), a model-level
+switch against a channel run, and GitHub Actions runs of `main.py` (the owner's scheduled runs do not pass the queue worker). For the
+Creative Studio, the API and MCP, none of these limits applies: they are enforced in the database.
 
 ## The in-flight rule (exact)
 
@@ -68,6 +72,14 @@ after it).
   the user notified like any failed job ("credits returned"). It happens at the moment of the switch (`model_switch_stop_jobs`, one
   organization's account at a time, `for update skip locked`), and again at the last gate if a job slipped through (a worker held the
   row, a job was re-queued, a job was created in the same instant).
+* **The sweep is bounded: at most 200 jobs per call** (the API has an 8 s `statement_timeout`; a long queue must not be able to push the
+  switch-off past it. Measured in the lab: about 6 ms per job, 500 jobs in 3 s while the whole security lab ran beside it, so 200 is about
+  1.2 s). `owner_set_model_switch` answers `{jobs_stopped, remaining, complete}`. The switch row itself is written whole on
+  the **first** call, so the model is already hidden and refused whatever remains; the Switches view sends the same OFF again until
+  `remaining` is 0, a call stops none (workers hold the rest) or a cap of 500 calls is reached, and then says how many are still waiting.
+  The leftovers cannot be sent: `advance_creative_job` stops each at the last gate, so the sweep is tidiness (credits returned at once),
+  not the protection. Every call is its own row in the log, with what was left. A direct caller (the SQL editor, a script) repeats the
+  call the same way.
 * **Never re-routed, never re-queued, never revived.** Switching ON again does not restart a stopped job; the person starts it again.
 * A job whose submit began a moment before the switch committed is sent and continues.
 * **Workflow runs:** each step is an ordinary job. A stopped step fails that step and the run (0083 makes only plan-limit and balance
@@ -115,6 +127,19 @@ refund. Not counted yet: the failover path (a quota refusal that moved a routed 
 * The audit goes to `model_availability_log` and `security_events`. It does **not** write `app_audit_log` (that would redefine
   `audit_action_allowed`, which has been replaced several times); the operator bot's `member.*` alert prefix does not cover
   `model.switch`.
+* **The audit log is append-only against DML only.** Its triggers refuse `update`, `delete` and `truncate` for every role, the table
+  owner included; a superuser (the SQL editor) can still drop or alter the table or disable the triggers, as for every table of this
+  schema. It is row-level protection, not a tamper-proof ledger.
+* **A refused call still takes a rate-limit slot.** `owner_guard()` (0107) runs before the owner test, so a platform admin who is not the
+  owner and calls an `owner_*` function is refused with `owner_required` after using one slot of their own limit (60 in 10 minutes). The
+  refusal writes no switch, no log row and no security event. A caller who is not a platform admin is refused before anything is counted.
+* **`model_is_available()` is no existence oracle.** A signed-in customer may call it (the registry policy needs it executable by the
+  reader). For a customer, a model that is not on sale and proven (hidden, unproven, disabled) or not in the registry answers `true`, so
+  a hidden id and a made-up id cannot be told apart. A platform admin and the platform's own callers (workers, SQL editor) get the real
+  answer.
+* **The RLS policy guard compares the whole policy.** The migration refuses to replace `model_registry_select` unless its deparsed
+  expression (white space, `::text` casts and the schema name dropped) is exactly 0035's or 0124's, it is `for select`, permissive, and has
+  no with-check. It does not compare the role list (`to authenticated`); that is part of the review.
 * `start_workflow_run` answers `unpriced` for a workflow with a switched-off step (its quote carries the honest per-step reason).
 * A request refused with `model_temporarily_off` is refused for the owner's own Studio too: there is no owner bypass.
 
@@ -134,9 +159,10 @@ refund. Not counted yet: the failover path (a quota refusal that moved a routed 
    `owner_*` function (`tests/security/test_sec_model_switch.py`), and a refused call writes nothing.
 5. **Lock order:** `advance_creative_job` runs its gate *before* it locks the job row (`creative_end_locked` takes the account first,
    then the job, as every function of 0036 does); `model_switch_stop_jobs` locks one account at a time in `(org_id, id)` order and
-   skips rows a worker holds. Check for a deadlock under concurrent create, claim, advance and switch-off.
+   skips rows a worker holds, and stops at most 200 jobs per call. Check for a deadlock under concurrent create, claim, advance and
+   switch-off, and that one call stays inside `statement_timeout` on a long queue.
 6. **The RLS policy** `model_registry_select` now calls `model_is_available(id)` as the reader, which therefore needs `EXECUTE` for
-   `authenticated`: confirm that is acceptable (it answers a boolean about a model the reader could already list).
+   `authenticated`: confirm that is acceptable (it answers a boolean, and `true` for every model the reader could not be offered).
 7. **The alert trigger** on `creative_jobs` (`after update of status ... when new.error_code = 'quota'`) cannot make a job's finish fail
    or slow it, and does nothing while `auto_suggest` is false.
 8. **Information:** no user-facing path (refusal text, API body, notification, `sellable_models()` rows, `models_switched_off()`)
@@ -147,7 +173,7 @@ log out first).
 
 ## Tests
 
-* `tests/security/test_sec_model_switch.py` (real PostgreSQL 16, 60 tests): dark, who may do what, every entry point, the in-flight rule,
+* `tests/security/test_sec_model_switch.py` (real PostgreSQL 16, 67 tests): dark, who may do what, every entry point, the in-flight rule,
   audit, disclosure, the alert, replay, drift guard, rollback.
 * `tests/test_model_switch_migration.py` (static): the replaced bodies are the earlier ones plus marked additions, the hashes, the grants.
 * `tests/test_model_switch.py`: the pipeline gate (provider mapping, fail-open, no hold, regeneration).

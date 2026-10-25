@@ -236,6 +236,59 @@ describe("switching off", () => {
     expect(h.refresh).toHaveBeenCalled();
   });
 
+  async function switchOffBytedance() {
+    show();
+    await open();
+    const form = card("bytedance").getByRole("form");
+    fireEvent.change(within(form).getByLabelText(s.reasonLabel), { target: { value: "out_of_funds" } });
+    await tap(within(form).getByRole("button", { name: s.form.review }));
+    await tap(within(sheet()).getByRole("button", { name: s.confirmOff.confirm }));
+  }
+  const sets = () => h.fetch.mock.calls.filter((c) => JSON.parse(String((c[1] as RequestInit).body)).action === "set").length;
+
+  it("a long queue is stopped in batches: the same switch-off is sent again until the database says nothing is left", async () => {
+    const answers = [
+      { ok: true, jobs_stopped: 200, in_flight: 1, remaining: 202, complete: false },
+      { ok: true, jobs_stopped: 200, in_flight: 1, remaining: 2, complete: false },
+      { ok: true, jobs_stopped: 2, in_flight: 1, remaining: 0, complete: true },
+    ];
+    h.fetch.mockReset().mockImplementation(async (_u: string, init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body ?? "{}"));
+      return jsonRes(b.action === "preview" ? PREVIEW : answers.shift() ?? { ok: true, jobs_stopped: 0, remaining: 0 });
+    });
+    await switchOffBytedance();
+    expect(sets()).toBe(3);
+    expect(screen.getByTestId("switch-message").textContent).toBe("Switched off. Jobs stopped: 402. Already with the vendor: 1.");
+  });
+
+  it("stops asking when a call stops nothing (workers hold the rest) and says what is still waiting and that none can be sent", async () => {
+    h.fetch.mockReset().mockImplementation(async (_u: string, init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body ?? "{}"));
+      return jsonRes(b.action === "preview" ? PREVIEW : { ok: true, jobs_stopped: 0, in_flight: 1, remaining: 4, complete: false });
+    });
+    await switchOffBytedance();
+    expect(sets()).toBe(1);
+    const text = screen.getByTestId("switch-message").textContent!;
+    expect(text).toContain("Jobs stopped: 0");
+    expect(text).toContain(s.done.stillWaiting.replace("{remaining}", "4"));
+    expect(text).toContain("None of them can be sent");
+  });
+
+  it("a later batch that fails says the model is already off and that the waiting jobs cannot be sent, never 'nothing was changed'", async () => {
+    let n = 0;
+    h.fetch.mockReset().mockImplementation(async (_u: string, init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body ?? "{}"));
+      if (b.action === "preview") return jsonRes(PREVIEW);
+      n += 1;
+      return n === 1 ? jsonRes({ ok: true, jobs_stopped: 200, in_flight: 1, remaining: 9, complete: false }) : jsonRes({ ok: false, error: "rpc_failed" }, 502);
+    });
+    await switchOffBytedance();
+    expect(sets()).toBe(2);
+    const dlg = within(sheet());
+    expect(dlg.getByText(new RegExp(s.done.sweepInterrupted.slice(0, 30)))).toBeTruthy();
+    expect(sheet().textContent).not.toContain("Nothing was changed");
+  });
+
   it("cancelling the confirmation sends no switch", async () => {
     show();
     await open();

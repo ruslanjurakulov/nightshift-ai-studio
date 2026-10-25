@@ -40,7 +40,7 @@ export const modelSwitchEn = {
   saleNote: "A switch never changes whether a model is on sale (the Availability view does that).",
   providerHint: "Switching a provider off hides all of its models at once. A model you switch on does not override it.",
   pipelineNote:
-    "Channel video runs honour provider switches only: a model switch does not stop a channel run. Jobs already sent to a vendor always finish.",
+    "Channel runs honour provider switches for video and image providers only, and only while the server switch is on. A model switch does not stop a channel run, and nothing here covers voice, sound effects and captions (ElevenLabs), transcription (AssemblyAI), Runway, Luma, xAI, stock footage or runs started from GitHub Actions. Jobs already sent to a vendor always finish.",
   models: "Models: {n}",
   hiddenModels: "Hidden: {n}",
   lastChanged: "Last changed by {who} on {when}",
@@ -84,6 +84,8 @@ export const modelSwitchEn = {
     off: "Switched off. Jobs stopped: {stopped}. Already with the vendor: {inFlight}.",
     on: "Switched on.",
     onStillHidden: "Switched on, but its provider is still off, so it stays hidden.",
+    stillWaiting: "Still waiting: {remaining}. None of them can be sent: each is stopped with its credits returned as soon as a worker reaches it.",
+    sweepInterrupted: "It is switched off, but stopping the waiting jobs was interrupted. None of them can be sent: each is stopped with its credits returned as soon as a worker reaches it.",
   },
   alerts: {
     title: "Alerts",

@@ -83,7 +83,47 @@ class Numbering(unittest.TestCase):
 
     def test_the_number_choice_names_the_open_work_it_avoids(self):
         self.assertIn("0122", TEXT)
-        self.assertIn("0123 is left free", TEXT)
+        self.assertIn("0123 belongs to", TEXT)
+        self.assertNotIn("open PR", TEXT, "0122 is merged: the header must not call it open")
+        self.assertIn("merged as #610", TEXT)
+
+    def test_the_header_states_the_owner_guard_counter_and_what_append_only_means(self):
+        self.assertIn("takes one slot of the CALLER'S OWN rate limit", TEXT)
+        self.assertIn("append-only against DML only", TEXT)
+
+    def test_the_header_lists_what_the_pipeline_gate_does_not_cover(self):
+        for word in ("ElevenLabs", "AssemblyAI", "Runway", "Luma", "xAI", "GitHub Actions"):
+            self.assertIn(word, TEXT.split("-- THE IN-FLIGHT RULE")[0], word)
+        for f in ("docs/MODEL_SWITCH.md", "modules/model_switch.py"):
+            t = (ROOT / f).read_text(encoding="utf-8")
+            for word in ("ElevenLabs", "AssemblyAI", "Runway", "Luma", "xAI", "GitHub Actions"):
+                self.assertIn(word, t, (f, word))
+
+
+class NoOracleAndBoundedSweep(unittest.TestCase):
+    def test_model_is_available_answers_true_to_a_caller_who_could_not_be_offered_the_model(self):
+        b = code(body(function(TEXT, "model_is_available")))
+        self.assertIn("r.availability in ('beta', 'ga') and r.verified_at is not null", b)
+        self.assertRegex(b, r"not coalesce\(seen, false\) and not \(public\.is_platform_admin\(\) or public\.credits_trusted_caller\(\)\)")
+        # the early answer is a plain TRUE, before anything about the model's switches is read
+        self.assertLess(b.index("return true;", b.index("seen, false")), b.index("model_availability a"))
+
+    def test_the_sweep_is_bounded_and_the_owner_function_says_what_is_left(self):
+        sweep = code(body(function(TEXT, "model_switch_stop_jobs")))
+        self.assertRegex(sweep, r"order by j\.org_id, j\.id\s+limit 200")
+        owner = code(body(function(TEXT, "owner_set_model_switch")))
+        for needle in ("'remaining'", "'complete'"):
+            self.assertIn(needle, owner)
+        # the switch row is written before the sweep, and whole: the sweep never decides whether the model is off
+        self.assertLess(owner.index("insert into public.model_availability "), owner.index("model_switch_stop_jobs(ids)"))
+
+    def test_the_policy_guard_compares_the_whole_expression_with_the_two_texts_it_may_have(self):
+        guard = TEXT.split("-- Every new name is absent")[0]
+        self.assertIn("q <> all (array[", guard)
+        self.assertIn("is_platform_admin()OR((availability=ANY(ARRAY[''beta'',''ga'']))AND(verified_atISNOTNULL)))", guard)
+        self.assertIn("ANDmodel_is_available(id)))", guard)
+        self.assertIn("not wc_null or cmd <> 'r' or not perm", guard)
+        self.assertNotIn("position('beta' in q)", guard, "the substring check is gone")
 
 
 class TheReplacedBodies(unittest.TestCase):
