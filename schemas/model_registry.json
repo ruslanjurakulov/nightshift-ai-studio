@@ -3571,7 +3571,7 @@
         "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
         "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
         "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
-        "Use only in an available region (Gemini API Additional Terms); EEA/CH/UK users need Paid Services. Uzbekistan is on Google's region list; billing from Uzbekistan was NOT verified. Output carries invisible SynthID; no customer watermark duty.",
+        "Use only in an available region (Gemini API Additional Terms); EEA/CH/UK users need Paid Services. Uzbekistan is on Google's region list; billing from Uzbekistan was NOT verified. Output carries invisible SynthID; no customer watermark duty found.",
         "Not read: whether a refused or failed request is billed (no Google page says); how long a stored interaction (store=true, needed to fetch the clip) is kept; the Prohibited Use Policy in detail. Uploaded-video edit/extend is not offered in the EEA, Switzerland or the UK (not wired here).",
         "Gate stays open until the owner's lawyer has read the Gemini API Additional Terms and the Google APIs Terms for a credits-based creative platform whose users may be under 18 or consumers. No credit price may be added before that."
       ],
@@ -3661,8 +3661,8 @@
         "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
         "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
         "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
-        "Use only in an available region (Gemini API Additional Terms); EEA/CH/UK users need Paid Services. Uzbekistan is on Google's region list; billing from Uzbekistan was NOT verified. Output carries invisible SynthID; no customer watermark duty.",
-        "Not read: whether a refused or failed request is billed (no Google page says). Requests are sent store=false (Google keeps no copy of the pictures); what Google retains for abuse review was not read.",
+        "Use only in an available region (Gemini API Additional Terms); EEA/CH/UK users need Paid Services. Uzbekistan is on Google's region list; billing from Uzbekistan was NOT verified. Output carries invisible SynthID; no customer watermark duty found.",
+        "Not read: whether a refused or failed request is billed (no Google page says). Requests are sent store=false (the interaction is not kept for later turns); what Google retains otherwise, e.g. for abuse review, was not read.",
         "Gate stays open until the owner's lawyer has read the Gemini API Additional Terms and the Google APIs Terms for a credits-based creative platform whose users may be under 18 or consumers. No credit price may be added before that."
       ],
       "attribution": null,

@@ -16,7 +16,8 @@ Sources, all on ai.google.dev and read 2026-10-25 (each page as ``.md.txt``):
   already ``completed`` still yields its id, and the first poll reads the clip. ``GET`` returns the video INLINE (base64) even when ``delivery: "uri"`` was
   asked for, so inline is what is read; a ``uri`` is accepted only on Google's own file host and is downloaded with the
   key in a header, no redirect (safe_fetch).
-* Nano Banana 2.1 is synchronous (``background: false``, ``store: false``: Google keeps no copy of the pictures).
+* Nano Banana 2.1 is synchronous (``background: false``, ``store: false``: the interaction is not kept for later turns;
+  what Google retains otherwise, for example for abuse review, was not read).
 * Billing claims are NOT assumed either way. The pages read do not say whether a refused or failed request is
   billed, so every refusal and failure carries ``BILLING_UNKNOWN`` and none is ever reported as "not billed".
 
