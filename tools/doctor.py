@@ -171,6 +171,7 @@ SHAPE_KEYS = (
     "SEEDANCE_API_KEY", "WAN_API_KEY", "HIGGSFIELD_API_KEY", "HIGGSFIELD_API_KEY_ID",
     "HIGGSFIELD_API_KEY_SECRET", "LEONARDO_API_KEY", "OPENAI_API_KEY", "BFL_API_KEY",
     "IDEOGRAM_API_KEY", "FAL_KEY", "RUNWAYML_API_SECRET", "LUMA_AGENTS_API_KEY", "XAI_API_KEY", "RECRAFT_API_TOKEN",
+    "KREA_API_KEY", "LTX_API_KEY",
     "VIDIQ_ACCESS_TOKEN", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET",
 )
 JSON_KEYS = ("YOUTUBE_CLIENT_SECRET_JSON", "YOUTUBE_TOKEN_JSON")
@@ -183,7 +184,8 @@ UNVERIFIED_PROVIDERS = (
     ("VEO_API_KEY", "veo"), ("SEEDANCE_API_KEY", "seedance"), ("WAN_API_KEY", "wan"),
     ("HIGGSFIELD_API_KEY", "higgsfield"), ("OPENAI_API_KEY", "openai"), ("BFL_API_KEY", "flux (bfl)"),
     ("IDEOGRAM_API_KEY", "ideogram"), ("FAL_KEY", "fal"), ("RUNWAYML_API_SECRET", "runway"),
-    ("LUMA_AGENTS_API_KEY", "luma"), ("XAI_API_KEY", "xai"), ("RECRAFT_API_TOKEN", "recraft"), ("VIDIQ_ACCESS_TOKEN", "vidiq"),
+    ("LUMA_AGENTS_API_KEY", "luma"), ("XAI_API_KEY", "xai"), ("RECRAFT_API_TOKEN", "recraft"), ("KREA_API_KEY", "krea"),
+    ("LTX_API_KEY", "ltx"), ("VIDIQ_ACCESS_TOKEN", "vidiq"),
 )
 
 #: (migration, table, columns that migration added or created)

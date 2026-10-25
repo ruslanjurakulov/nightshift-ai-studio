@@ -312,6 +312,8 @@ jobs:
           WORKERENV_LUMA_AGENTS_API_KEY: ${{ secrets.LUMA_AGENTS_API_KEY }}
           WORKERENV_XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           WORKERENV_RECRAFT_API_TOKEN: ${{ secrets.RECRAFT_API_TOKEN }}
+          WORKERENV_KREA_API_KEY: ${{ secrets.KREA_API_KEY }}
+          WORKERENV_LTX_API_KEY: ${{ secrets.LTX_API_KEY }}
           WORKERENV_ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
           WORKERENV_VIDEO_OPS_API_KEY: ${{ secrets.VIDEO_OPS_API_KEY }}
           WORKERENV_TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}

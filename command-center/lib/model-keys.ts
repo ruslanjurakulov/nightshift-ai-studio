@@ -30,6 +30,8 @@ export const MODEL_KEY_PROVIDER_IDS = [
   "google",
   "ideogram",
   "kling",
+  "krea",
+  "lightricks",
   "luma",
   "minimax",
   "openai",
@@ -286,6 +288,38 @@ export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
       expect: { kind: "object" },
       docUrl: "https://docs.agents.lumalabs.ai/api/resources/files/methods/list/",
     }),
+  },
+  {
+    id: "krea",
+    name: "Krea (Krea 3)",
+    keyUrl: "https://www.krea.ai/settings/api-tokens",
+    keyUrlSource: "https://www.krea.ai/docs/developers/api-keys-and-billing.md",
+    envSets: [["KREA_API_KEY"]],
+    scopedKeys: false,
+    strategy: json({
+      origin: "https://api.krea.ai",
+      // Lists the token's own jobs, one at most: a read that creates nothing and is not billed (Krea's OpenAPI document, which its docs link
+      // as the API reference). The document lists only 401 for a bad token (400 is a bad query, which this fixed query is not).
+      path: "/jobs",
+      query: "limit=1",
+      auth: { header: "Authorization", scheme: "bearer" },
+      rejectStatuses: [401],
+      expect: { kind: "field", name: "items", type: "array" },
+      docUrl: "https://api.krea.ai/openapi.json",
+    }),
+  },
+  {
+    id: "lightricks",
+    name: "Lightricks (LTX)",
+    // The authentication page says "Sign in to the Developer Console to create your API key" and names no address in the text read, so no
+    // link is offered.
+    keyUrl: null,
+    keyUrlSource: null,
+    envSets: [["LTX_API_KEY"]],
+    scopedKeys: false,
+    // LTX's own OpenAPI document (docs.ltx.io/openapi.json) has no read that needs no job id: every path is a POST that starts a billed
+    // generation, plus GET /v2/{endpoint}/{id} for one job. No free account, credits or models call exists, so the key is never sent anywhere.
+    strategy: { kind: "format_only", docUrl: "https://docs.ltx.io/openapi.json" },
   },
   {
     id: "alibaba",
