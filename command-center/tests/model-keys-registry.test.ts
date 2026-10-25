@@ -32,7 +32,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 describe("the closed set of vendors", () => {
   it("is exactly the ids the page lists, with no database list behind it", () => {
     expect(MODEL_KEY_PROVIDERS.map((p) => p.id).sort()).toEqual([...MODEL_KEY_PROVIDER_IDS].sort());
-    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(15);
+    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(16);
   });
 
   it("covers every provider of the model registry (but the placeholder), so no model has a vendor without a key page", () => {
@@ -63,6 +63,7 @@ describe("what a verify request is allowed to be", () => {
     elevenlabs: "GET https://api.elevenlabs.io/v1/models",
     assemblyai: "GET https://api.assemblyai.com/v2/transcript?limit=1",
     bfl: "GET https://api.bfl.ai/v1/credits",
+    recraft: "GET https://external.api.recraft.ai/v1/users/me",
     ideogram: "GET https://api.ideogram.ai/v2/account/api-keys",
     minimax: "GET https://api.minimax.io/v1/models",
     runway: "GET https://api.dev.runwayml.com/v1/organization",
@@ -91,6 +92,7 @@ describe("what a verify request is allowed to be", () => {
       elevenlabs: [401, 403],
       assemblyai: [401, 403],
       bfl: [401, 403],
+      recraft: [401, 403],
       ideogram: [401],
       minimax: [401, 403],
       runway: [401, 403],
@@ -114,6 +116,7 @@ describe("what a verify request is allowed to be", () => {
       elevenlabs: 'xi-api-key:raw|{}|{"kind":"array"}',
       assemblyai: 'Authorization:raw|{}|{"kind":"field","name":"page_details","type":"object"}',
       bfl: 'x-key:raw|{}|{"kind":"field","name":"credits","type":"number"}',
+      recraft: 'Authorization:bearer|{}|{"kind":"object"}',
       ideogram: 'Api-Key:raw|{}|{"kind":"field","name":"api_keys","type":"array"}',
       minimax: 'Authorization:bearer|{}|{"kind":"field","name":"data","type":"array"}',
       runway: 'Authorization:bearer|{"X-Runway-Version":"2024-11-06"}|{"kind":"field","name":"creditBalance","type":"number"}',
@@ -247,6 +250,7 @@ describe("key source: which key a run uses", () => {
     expect(by.google).toBe("GEMINI_API_KEY or VEO_API_KEY");
     expect(by.runway).toBe("RUNWAYML_API_SECRET");
     expect(by.xai).toBe("XAI_API_KEY");
+    expect(by.recraft).toBe("RECRAFT_API_TOKEN");
     expect(envNamesText(getModelKeyProvider("bytedance") as ModelKeyProvider)).toBe("SEEDANCE_API_KEY");
   });
 });

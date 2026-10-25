@@ -994,6 +994,319 @@
       }
     },
     {
+      "id": "flux-3-image",
+      "display_name": "FLUX 3 Image",
+      "provider": "bfl",
+      "adapter": "image.bfl3",
+      "vendor_model": "flux-3-image",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "21:9",
+        "2:1",
+        "16:9",
+        "3:2",
+        "7:5",
+        "4:3",
+        "5:4",
+        "1:1",
+        "4:5",
+        "3:4",
+        "5:7",
+        "2:3",
+        "9:16",
+        "1:2",
+        "9:21"
+      ],
+      "image_sizes": [
+        "1K",
+        "2K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "BFL FLUX 3 Image and Klein OpenAPI pages, the FLUX 3 text-to-image guide, integration guidelines, errors page, bfl.ai pricing list and both Terms read in full 2026-10-25 (not search extracts). No endpoint was called.",
+        "url": "https://docs.bfl.ml/api-reference/utility/generate-an-image-with-flux-3",
+        "note": "Quality 5 / speed 3 are our judgement; no benchmark was read. No prompt limit is documented: 4000 is our own cap."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.048,
+        "source_url": "https://bfl.ai/pricing",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "image_size",
+          "prices": {
+            "1K": 0.048,
+            "2K": 0.1
+          }
+        },
+        "note": "ESTIMATE from the structured price list on bfl.ai/pricing (credits at $0.01): 768sq $0.041, 1k $0.048, 1.5k $0.07, 2k $0.10, 4k $0.607 per image. Only 1k and 2k are offered (768sq and 1.5k have no name in the size list; 4k is dear). The submit answer carries the credits charged."
+      },
+      "credit_unit": "model_flux_3_image_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "BFL FLUX API Service Terms (revised 2026-08-04, bfl.ai/legal/flux-api-service-terms, read 2026-10-25) 2(a): licensed to run integrations 'whereby End Users of a Developer Application can interface with the FLUX AI Models from within' it; a hosted endpoint for third parties is barred, hence web_only.",
+        "Same terms 2(b): BFL gets a perpetual, irrevocable, sublicensable licence to every Input and Output 'to train and improve' its models. That reaches each end user's prompts and pictures: a privacy-notice decision for the owner, and why the gate is terms_review_required.",
+        "Developer Terms of Service (same date) 2(c): end users must be bound to an agreement, acceptable-use and privacy policy no less protective than BFL's; 6(k): no uploads relating to people under 18; 6(i): never strip Content Credentials; 6(c): no Output used to train other models.",
+        "Developer Terms 4(b): end users may use Output commercially; it may not be unique. Usage Policy (read): no election or campaign content, no misleading content, no C2PA tampering. NOT read: EU variants, Order Forms. Uzbekistan NOT verified. The flux-2 entries share these terms, with no gate."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "1K"
+      }
+    },
+    {
+      "id": "flux-3-image-klein",
+      "display_name": "FLUX 3 Image Klein",
+      "provider": "bfl",
+      "adapter": "image.bfl3",
+      "vendor_model": "flux-3-image-klein",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "21:9",
+        "2:1",
+        "16:9",
+        "3:2",
+        "7:5",
+        "4:3",
+        "5:4",
+        "1:1",
+        "4:5",
+        "3:4",
+        "5:7",
+        "2:3",
+        "9:16",
+        "1:2",
+        "9:21"
+      ],
+      "image_sizes": [
+        "1K",
+        "2K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "BFL FLUX 3 Image and Klein OpenAPI pages, the FLUX 3 text-to-image guide, integration guidelines, errors page, bfl.ai pricing list and both Terms read in full 2026-10-25 (not search extracts). No endpoint was called.",
+        "url": "https://docs.bfl.ml/api-reference/utility/generate-an-image-with-flux-3-klein",
+        "note": "Quality 3 / speed 5 are our judgement; no benchmark was read. Klein is the smaller, faster FLUX 3 model with open weights."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.009,
+        "source_url": "https://bfl.ai/pricing",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "image_size",
+          "prices": {
+            "1K": 0.009,
+            "2K": 0.014
+          }
+        },
+        "note": "ESTIMATE from the structured price list on bfl.ai/pricing (credits at $0.01): 768sq $0.008, 1k $0.009, 1.5k $0.011, 2k $0.014, 4k $0.036 per image. Only 1k and 2k are offered (768sq and 1.5k have no name in the size list; 4k is dear). The submit answer carries the credits charged."
+      },
+      "credit_unit": "model_flux_3_image_klein_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "BFL FLUX API Service Terms (revised 2026-08-04, bfl.ai/legal/flux-api-service-terms, read 2026-10-25) 2(a): licensed to run integrations 'whereby End Users of a Developer Application can interface with the FLUX AI Models from within' it; a hosted endpoint for third parties is barred, hence web_only.",
+        "Same terms 2(b): BFL gets a perpetual, irrevocable, sublicensable licence to every Input and Output 'to train and improve' its models. That reaches each end user's prompts and pictures: a privacy-notice decision for the owner, and why the gate is terms_review_required.",
+        "Developer Terms of Service (same date) 2(c): end users must be bound to an agreement, acceptable-use and privacy policy no less protective than BFL's; 6(k): no uploads relating to people under 18; 6(i): never strip Content Credentials; 6(c): no Output used to train other models.",
+        "Developer Terms 4(b): end users may use Output commercially; it may not be unique. Usage Policy (read): no election or campaign content, no misleading content, no C2PA tampering. NOT read: EU variants, Order Forms. Uzbekistan NOT verified. The flux-2 entries share these terms, with no gate."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 3,
+      "speed_tier": 5,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "1K"
+      }
+    },
+    {
+      "id": "recraft-v4.1",
+      "display_name": "Recraft V4.1",
+      "provider": "recraft",
+      "adapter": "image.recraft",
+      "vendor_model": "recraftv4_1",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "1:1",
+        "2:1",
+        "1:2",
+        "3:2",
+        "2:3",
+        "4:3",
+        "3:4",
+        "5:4",
+        "4:5",
+        "16:9",
+        "9:16"
+      ],
+      "image_sizes": [
+        "1K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "Recraft API pages (getting started, models, V4.1, V4.1 Flash, endpoints, image inputs and results, errors, pricing, limits) and the Developer Terms read in full 2026-10-25 as markdown (not search extracts). No endpoint was called.",
+        "url": "https://www.recraft.ai/docs/api-reference/models/recraft-v4-1"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.035,
+        "source_url": "https://www.recraft.ai/docs/api-reference/pricing",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "note": "ESTIMATE: list price of one raster 1K image on prepaid API units. Vector ($0.08 on V4.1) and Pro 2K ($0.21) are priced apart and not offered. The answer's 'credits' field is the units charged. Whether a failed or refused request is billed is not stated."
+      },
+      "credit_unit": "model_recraft_v4_1_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Recraft Developer Terms (effective 2026-10-20, recraft.ai/legal/developer-terms, read 2026-10-25) 3.1: a non-sublicensable licence to operate applications that integrate the API; 3.5: end users must be bound to an agreement and acceptable-use policy at least as protective as these terms.",
+        "3.7 No Substitution: a service where third parties submit prompts and 'receive Assets generated by earlier API calls in place of a new API call' is barred. Every Nightshift generation must be a fresh call: never serve a cached or shared Recraft output for another customer's prompt.",
+        "3.2(x) bars using the API or Assets to 'develop goods or services that compete with Recraft or the Services'; a general image-generation product may be read as that, hence terms_review_required. 1.4: a written reseller or platform agreement with Recraft prevails over these terms.",
+        "6.2: you own the Assets, but they 'may not be used to train any artificial intelligence model' (a breach ends the licence): pass that to users. 6.4: never remove Recraft's watermarks or metadata. 2.1: the developer must be 18+. No attribution duty found.",
+        "NOT verified: Uzbekistan billing; the consumer Terms of Service. The API has no per-end-user id, so abuse cannot be traced to one user. Limits: 100 images/min and 5 requests/s per user. API units ($1 = 1,000) are prepaid and non-refundable."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 10000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "1K"
+      }
+    },
+    {
+      "id": "recraft-v4.1-flash",
+      "display_name": "Recraft V4.1 Flash",
+      "provider": "recraft",
+      "adapter": "image.recraft",
+      "vendor_model": "recraftv4_1_flash",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "1:1",
+        "2:1",
+        "1:2",
+        "3:2",
+        "2:3",
+        "4:3",
+        "3:4",
+        "5:4",
+        "4:5",
+        "16:9",
+        "9:16"
+      ],
+      "image_sizes": [
+        "1K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "Recraft API pages (getting started, models, V4.1, V4.1 Flash, endpoints, image inputs and results, errors, pricing, limits) and the Developer Terms read in full 2026-10-25 as markdown (not search extracts). No endpoint was called.",
+        "url": "https://www.recraft.ai/docs/api-reference/models/recraft-v4-1-flash",
+        "note": "Flash takes no styles; about 1.3 s per image."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.007,
+        "source_url": "https://www.recraft.ai/docs/api-reference/pricing",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "note": "ESTIMATE: list price of one raster 1K image on prepaid API units. Vector ($0.08 on V4.1) and Pro 2K ($0.21) are priced apart and not offered. The answer's 'credits' field is the units charged. Whether a failed or refused request is billed is not stated."
+      },
+      "credit_unit": "model_recraft_v4_1_flash_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Recraft Developer Terms (effective 2026-10-20, recraft.ai/legal/developer-terms, read 2026-10-25) 3.1: a non-sublicensable licence to operate applications that integrate the API; 3.5: end users must be bound to an agreement and acceptable-use policy at least as protective as these terms.",
+        "3.7 No Substitution: a service where third parties submit prompts and 'receive Assets generated by earlier API calls in place of a new API call' is barred. Every Nightshift generation must be a fresh call: never serve a cached or shared Recraft output for another customer's prompt.",
+        "3.2(x) bars using the API or Assets to 'develop goods or services that compete with Recraft or the Services'; a general image-generation product may be read as that, hence terms_review_required. 1.4: a written reseller or platform agreement with Recraft prevails over these terms.",
+        "6.2: you own the Assets, but they 'may not be used to train any artificial intelligence model' (a breach ends the licence): pass that to users. 6.4: never remove Recraft's watermarks or metadata. 2.1: the developer must be 18+. No attribution duty found.",
+        "NOT verified: Uzbekistan billing; the consumer Terms of Service. The API has no per-end-user id, so abuse cannot be traced to one user. Limits: 100 images/min and 5 requests/s per user. API units ($1 = 1,000) are prepaid and non-refundable."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 10000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 3,
+      "speed_tier": 5,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "1K"
+      }
+    },
+    {
       "id": "ideogram-3",
       "display_name": "Ideogram 3",
       "provider": "ideogram",

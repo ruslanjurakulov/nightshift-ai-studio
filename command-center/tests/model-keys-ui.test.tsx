@@ -65,7 +65,7 @@ afterEach(() => {
 describe("every vendor has a card", () => {
   it("with its name, a 'Not checked' chip, a password field and a Verify button, and nothing that implies a stored key", () => {
     show();
-    expect(document.querySelectorAll("[data-provider]")).toHaveLength(15);
+    expect(document.querySelectorAll("[data-provider]")).toHaveLength(16);
     const c = card("openai");
     expect(within(c).getByText(m.status.not_checked)).toBeTruthy();
     expect(c.querySelector('input[type="password"]')).toBeTruthy();
@@ -128,7 +128,7 @@ describe("the key field", () => {
     expect(input.getAttribute("data-1p-ignore")).not.toBeNull();
     expect(input.getAttribute("data-lpignore")).toBe("true");
     expect(input.getAttribute("spellcheck")).toBe("false");
-    expect(screen.getAllByLabelText(m.card.keyLabel).length).toBe(15);
+    expect(screen.getAllByLabelText(m.card.keyLabel).length).toBe(16);
     expect((input.closest("form") as HTMLFormElement).getAttribute("method")?.toLowerCase()).toBe("post");
   });
 

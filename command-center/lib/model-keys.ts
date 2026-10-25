@@ -35,6 +35,7 @@ export const MODEL_KEY_PROVIDER_IDS = [
   "luma",
   "minimax",
   "openai",
+  "recraft",
   "runway",
   "xai",
 ] as const;
@@ -203,6 +204,23 @@ export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
       auth: { header: "x-key", scheme: "raw" },
       expect: { kind: "field", name: "credits", type: "number" },
       docUrl: "https://docs.bfl.ml/api-reference/get-the-users-credits",
+    }),
+  },
+  {
+    id: "recraft",
+    name: "Recraft",
+    keyUrl: "https://app.recraft.ai/profile/api",
+    keyUrlSource: "https://www.recraft.ai/docs/api-reference/models/recraft-v4-1",
+    envSets: [["RECRAFT_API_TOKEN"]],
+    scopedKeys: false,
+    strategy: json({
+      origin: "https://external.api.recraft.ai",
+      path: "/v1/users/me",
+      auth: { header: "Authorization", scheme: "bearer" },
+      // Recraft's own table: 401 = missing or invalid token (text/plain "request unauthorized"). The documented answer is "information of
+      // the current user including credits balance"; its fields are not listed, so only "a JSON object" counts as an answer.
+      expect: { kind: "object" },
+      docUrl: "https://www.recraft.ai/docs/api-reference/endpoints",
     }),
   },
   {
