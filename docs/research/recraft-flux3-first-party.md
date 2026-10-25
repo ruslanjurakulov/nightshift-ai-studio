@@ -57,6 +57,10 @@ Sources (`docs.bfl.ml/...` as markdown, read 2026-10-25): api-reference/utility/
 - Moderation: `Request Moderated` (before generating) and `Content Moderated` (the finished image withheld) are `policy`. BFL does not say whether either is billed, so every failure message ends with that caveat and none claims the task was free. A failure after BFL said `Ready` (bad link, bad file, download error) starts with `SPEND MAY HAVE OCCURRED`.
 - Not wired: editing and up to ten reference images, bounding-box layouts (they are just prompt text and would pass), FLUX 3 Video and Video Edit/Upscale, the FLUX.2 family, webhooks, regional endpoints (`api.eu.bfl.ai`, `api.us.bfl.ai`; the polling URL already names the region).
 
+### The owner's key checker (merged from main during this change)
+
+`command-center/lib/model-keys.ts` (docs/MODEL_API_KEYS.md) lists one entry per provider of the model registry, and its test fails for a provider with no entry, so Recraft got one: `GET https://external.api.recraft.ai/v1/users/me` with `Authorization: Bearer` (Recraft's "Get user information", "including credits balance": a free read that makes nothing), `RECRAFT_API_TOKEN`, key page `app.recraft.ai/profile/api`. The answer's fields are not documented, so only "a JSON object" counts as an answer. The card counts in three tests went from 13 to 14. Nothing was called with a key.
+
 ## Prices (all ESTIMATES, `confirmed: false`, as of 2026-10-25)
 
 - Recraft (`recraft.ai/docs/api-reference/pricing`, prepaid API units, never expire, non-refundable): V4.1 raster $0.035, V4.1 Flash $0.007. Whether a failed or refused request is billed is not stated.
