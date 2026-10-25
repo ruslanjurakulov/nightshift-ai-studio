@@ -491,3 +491,21 @@ provider and does not touch credits, holds, publishing or privacy. Numbered 0122
 - **Is it working?** The verify block at the bottom of the file (every column true).
 - **Review.** Needs the independent security review before merge, and a person reading the live hashes first: it replaces the payment guard every queued
   run passes through, and it drops and re-creates a function.
+
+## The owner's model switch (0124)
+
+0124 (`0124_model_switch.sql`, `docs/MODEL_SWITCH.md`) is **live on apply and dark**: it replaces five functions that exist on the live
+database (`sellable_models`, `creative_price`, `advance_creative_job`, `api_creative_model_ok`, `api_creative_refusal`) and one RLS policy
+(`model_registry_select`), each on the body the repo says is latest (md5 drift guard), and adds four tables and fifteen functions (eleven callable, four trigger functions).
+
+- **Number.** 0124: 0122 is the Series Factory template carrier (merged, #610); 0123 belongs to the owner model-API-keys migration (branch
+  `claude/owner-model-api-keys`, not merged when this was written; no object in common). A gap is normal (0113 and 0118 are unused).
+- **Is it off?** `select enforced, auto_suggest from public.model_availability_settings;` must read `false, false`. While `enforced` is false
+  `model_is_available()` answers true for every model, the replaced functions return what they returned, and `owner_set_model_switch`
+  refuses (`not_enforced`). The seed is `on conflict do nothing`: a replay never undoes what the owner set.
+- **Wired?** Not until the repository variable `NIGHTSHIFT_MODEL_SWITCH` is `on` (the Models page's Switches view, `POST /api/owner/model-switch`,
+  and the queue worker's pre-spend gate for channel runs). The two are separate on purpose.
+- **Undo.** `update public.model_availability_settings set enforced = false;` for behaviour; to remove the objects
+  `docs/sql/rollback_0124_model_switch.sql` (owner-applied; refuses a body it has not seen; copy the log out first, it drops it).
+- **Apply as ONE transaction.** The file refuses a half-applied state and takes `set local lock_timeout = '5s'`.
+- **Review.** Needs the independent security review before merge: `docs/MODEL_SWITCH.md`, "What the independent security review must verify".

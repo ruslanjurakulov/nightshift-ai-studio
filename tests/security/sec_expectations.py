@@ -603,3 +603,8 @@ sec_series_tables_0120.extend(TABLES, FUNCTIONS)
 import sec_voice_job_gates_0121  # noqa: E402
 
 sec_voice_job_gates_0121.extend(TABLES, FUNCTIONS)
+
+# Migration 0124 (the owner's per-model and per-provider ON/OFF switch): tests/security/sec_model_switch_0124.py
+import sec_model_switch_0124  # noqa: E402
+
+sec_model_switch_0124.extend(TABLES, FUNCTIONS)
