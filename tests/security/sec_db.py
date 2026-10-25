@@ -77,13 +77,37 @@ ROLLBACK_0122 = REPO / "docs" / "sql" / "rollback_0122_series_template_carrier.s
 def take_off_0122(session) -> None:
     """0122 replaces render_job_params_valid(), render_jobs_payment_guard(), series_plans_terms_frozen() and request_series_plan() on 0120's
     bodies, and 0120 (and its rollback) refuse any other body. A test that replays 0120 or applies its rollback on a database that has 0122
-    takes 0122 off first with its own rollback, and puts it back with put_back_0122 where the chain goes on."""
+    takes 0122 off first with its own rollback, and puts it back with put_back_0122 where the chain goes on. 0127 sits on 0122's
+    request_series_plan(), and 0122's rollback refuses any other body, so 0127 comes off first when it is there."""
+    if _has_0127(session):
+        take_off_0127(session)
     text = ROLLBACK_0122.read_text(encoding="utf-8")
     session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
 def put_back_0122(session) -> None:
     session.conn.execute(MIGRATION_0122.read_text(encoding="utf-8"))
+    put_back_0127(session)
+
+
+MIGRATION_0127 = MIGRATIONS / "0127_series_plan_caps.sql"
+ROLLBACK_0127 = REPO / "docs" / "sql" / "rollback_0127_series_plan_caps.sql"
+
+
+def _has_0127(session) -> bool:
+    return bool(session.conn.execute("select to_regclass('public.series_plan_cap_settings') is not null").fetchone()[0])
+
+
+def take_off_0127(session) -> None:
+    """0127 replaces request_series_plan() on 0122's body (and adds series_plan_cap_settings), and 0122 (and its rollback) refuse any other
+    body. A test that replays 0122 or applies its rollback on a database that has 0127 takes 0127 off first with its own rollback, and puts
+    it back with put_back_0127 where the chain goes on."""
+    text = ROLLBACK_0127.read_text(encoding="utf-8")
+    session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0127(session) -> None:
+    session.conn.execute(MIGRATION_0127.read_text(encoding="utf-8"))
 
 
 MIGRATION_0125 = MIGRATIONS / "0125_model_shutdown.sql"

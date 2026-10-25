@@ -32,7 +32,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 describe("the closed set of vendors", () => {
   it("is exactly the ids the page lists, with no database list behind it", () => {
     expect(MODEL_KEY_PROVIDERS.map((p) => p.id).sort()).toEqual([...MODEL_KEY_PROVIDER_IDS].sort());
-    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(16);
+    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(17);
   });
 
   it("covers every provider of the model registry (but the placeholder), so no model has a vendor without a key page", () => {
@@ -71,9 +71,9 @@ describe("what a verify request is allowed to be", () => {
     krea: "GET https://api.krea.ai/jobs?limit=1",
     alibaba: "GET https://dashscope-intl.aliyuncs.com/api/v1/models?page_size=1",
   };
-  const FORMAT_ONLY = ["bytedance", "kling", "lightricks"];
+  const FORMAT_ONLY = ["bytedance", "kling", "lightricks", "vidu"];
 
-  it("pins every http vendor to one exact free read and lists the three with no check", () => {
+  it("pins every http vendor to one exact free read and lists the four with no check", () => {
     const got: Record<string, string> = {};
     for (const p of MODEL_KEY_PROVIDERS) {
       if (p.strategy.kind === "http") got[p.id] = `GET ${p.strategy.origin}${p.strategy.path}${p.strategy.query ? `?${p.strategy.query}` : ""}`;
@@ -162,7 +162,7 @@ describe("what a verify request is allowed to be", () => {
 });
 
 describe("the key page link", () => {
-  it("is https, comes with the vendor documentation page it was read on, or is absent (Kling, Lightricks) and the card says so", () => {
+  it("is https, comes with the vendor documentation page it was read on, or is absent (Kling, Lightricks, Vidu) and the card says so", () => {
     for (const p of MODEL_KEY_PROVIDERS) {
       if (p.keyUrl === null) {
         expect(p.keyUrlSource, p.id).toBeNull();
@@ -171,7 +171,7 @@ describe("the key page link", () => {
       expect(new URL(p.keyUrl).protocol, p.id).toBe("https:");
       expect(p.keyUrlSource, p.id).toMatch(/^https:\/\//);
     }
-    expect(MODEL_KEY_PROVIDERS.filter((p) => p.keyUrl === null).map((p) => p.id).sort()).toEqual(["kling", "lightricks"]);
+    expect(MODEL_KEY_PROVIDERS.filter((p) => p.keyUrl === null).map((p) => p.id).sort()).toEqual(["kling", "lightricks", "vidu"]);
   });
 });
 
@@ -251,6 +251,7 @@ describe("key source: which key a run uses", () => {
     expect(by.runway).toBe("RUNWAYML_API_SECRET");
     expect(by.xai).toBe("XAI_API_KEY");
     expect(by.recraft).toBe("RECRAFT_API_TOKEN");
+    expect(by.vidu).toBe("VIDU_API_KEY");
     expect(envNamesText(getModelKeyProvider("bytedance") as ModelKeyProvider)).toBe("SEEDANCE_API_KEY");
   });
 });

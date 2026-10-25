@@ -52,6 +52,8 @@ export const seriesPlanEn = {
       plan_in_progress: "A plan for this channel is already being made. Wait for it to finish, then try again.",
       rate_limited: "You have reached today's limit of {n} plans. Try again tomorrow.",
       rate_limited_unknown: "You have reached today's limit of plans. Try again tomorrow.",
+      series_user_cap: "You have reached your daily limit of plans. Nothing was started and nothing was charged. Try again tomorrow.",
+      series_global_cap: "Planning has reached its daily limit for everyone. Nothing was started and nothing was charged. Try again tomorrow.",
       invalid_topic: "Write a topic of 1 to {n} characters, on one line.",
       invalid_count: "Choose 3 or 4 episodes.",
       invalid_duration: "Choose a length from the list.",
