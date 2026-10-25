@@ -282,7 +282,7 @@ class TheWebOnlyFeatureSwitchesCanBeSetFromGitHub(unittest.TestCase):
 
     def test_every_flag_file_names_a_switch(self):
         # A flag.ts whose constant is renamed would otherwise drop out of the scan silently and its switch would go unchecked.
-        self.assertGreaterEqual(len(self.FLAG_FILES), 2)
+        self.assertGreaterEqual(len(self.FLAG_FILES), 3)
         for path in self.FLAG_FILES:
             names = re.findall(r"_FLAG\s*=\s*\"((?:CHRONOS|NIGHTSHIFT)_[A-Z0-9_]+)\"", path.read_text(encoding="utf-8"))
             self.assertGreaterEqual(len(names), 1, f"{path.relative_to(ROOT).as_posix()}: no `..._FLAG = \"NIGHTSHIFT_X\"` found, the scan would skip it")
@@ -291,6 +291,7 @@ class TheWebOnlyFeatureSwitchesCanBeSetFromGitHub(unittest.TestCase):
         found = self.flags()
         self.assertIn("NIGHTSHIFT_REGION_EDITOR", found)
         self.assertIn("NIGHTSHIFT_IMAGE_EDITOR", found)
+        self.assertIn("NIGHTSHIFT_RESULTS_DASHBOARD", found)
 
     def test_every_feature_switch_has_a_web_example_key_and_a_workflow_mapping(self):
         web_keys = _example_keys(ROOT / "deploy" / ".env.web.example")
@@ -308,6 +309,30 @@ class TheWebOnlyFeatureSwitchesCanBeSetFromGitHub(unittest.TestCase):
         self.assertRegex(text, r"(?m)^NIGHTSHIFT_IMAGE_EDITOR=$")
         self.assertNotIn("NIGHTSHIFT_IMAGE_EDITOR", (ROOT / "deploy" / ".env.worker.example").read_text(encoding="utf-8"))
 
+
+class TheResultsDashboardSwitchIsWebOnlyAndDeployable(unittest.TestCase):
+    """NIGHTSHIFT_RESULTS_DASHBOARD (docs/RESULTS_DASHBOARD.md) is read by the Command Center only. The scan above covers
+    Python, so this pins the other half: the owner can set it from GitHub (web example + deploy_web.yml, empty = off), and it
+    stays off the worker, because a worker switch for a read-only page would be a switch that does nothing."""
+
+    NAME = "NIGHTSHIFT_RESULTS_DASHBOARD"
+
+    def test_it_is_a_web_key_with_no_value_and_a_workflow_mapping(self):
+        web = (ROOT / "deploy" / ".env.web.example").read_text(encoding="utf-8")
+        self.assertRegex(web, rf"(?m)^{self.NAME}=$", "empty must mean off")
+        flow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
+        self.assertIn(f"WEBENV_{self.NAME}: ${{{{ vars.{self.NAME} }}}}", flow)
+
+    def test_it_has_no_worker_side_and_no_python_reader(self):
+        self.assertNotIn(self.NAME, _example_keys(ROOT / "deploy" / ".env.worker.example"))
+        flow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
+        self.assertNotIn(f"WORKERENV_{self.NAME}", flow)
+        self.assertNotIn(self.NAME, names_read_by_the_code(), "the Python side must not read it: the page is read-only and web only")
+
+    def test_the_command_center_reads_exactly_that_name(self):
+        flag = (ROOT / "command-center" / "lib" / "resultsDashboard" / "flag.ts").read_text(encoding="utf-8")
+        self.assertIn(f'"{self.NAME}"', flag)
+        self.assertIn(f"process.env.{self.NAME}", flag)
 
 
 if __name__ == "__main__":

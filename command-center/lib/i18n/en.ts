@@ -26,6 +26,7 @@ import { editorExportEn } from "./editor-export/en";
 import { reviewLinkEn, reviewPageEn } from "./review-link/en";
 import { regionEditEn } from "./region-edit/en";
 import { imageEditorEn } from "./image-editor/en";
+import { resultsDashboardEn } from "./results-dashboard/en";
 
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
@@ -55,6 +56,7 @@ export const en = {
   reviewLink: reviewLinkEn,
   regionEdit: regionEditEn,
   imageEditor: imageEditorEn,
+  resultsDashboard: resultsDashboardEn,
   reviewPage: reviewPageEn,
   improveAi: improveEn,
   brand: {

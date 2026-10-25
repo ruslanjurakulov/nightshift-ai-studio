@@ -186,6 +186,9 @@ jobs:
           # Image editor (docs/IMAGE_EDITOR.md): off unless this repository variable is on (on, 1, true or yes). Empty = the page is a 404.
           # A web-only switch (no worker reads it). Setting nothing leaves it dark; this change does not set it.
           WEBENV_NIGHTSHIFT_IMAGE_EDITOR: ${{ vars.NIGHTSHIFT_IMAGE_EDITOR }}
+          # Results dashboard (docs/RESULTS_DASHBOARD.md): off unless this repository variable is on (on, 1, true or yes). Empty = the page and
+          # /api/results are a 404. Read-only, web only: there is no worker side. Setting nothing leaves it dark; this change does not set it.
+          WEBENV_NIGHTSHIFT_RESULTS_DASHBOARD: ${{ vars.NIGHTSHIFT_RESULTS_DASHBOARD }}
           WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
           WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
