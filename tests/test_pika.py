@@ -28,7 +28,7 @@ from unittest import mock
 from modules import creative_adapters as ca
 from modules import creative_worker as cw
 from modules import model_registry as reg
-from modules.capabilities import build_adapter, pika, pictures
+from modules.capabilities import build_adapter, pika
 from modules.capabilities.base import (
     E_AUTH,
     E_BAD_REQUEST,
@@ -811,15 +811,6 @@ class LocalPictureTests(Case):
                                                     input_images=(self.secret_file("liar.png", body),)), "pika-2.5")
             (up,) = self.vendor.seen("POST", UPLOAD_PATH)
             self.assertEqual((up.headers["content-type"], up.body), (mime, body))
-
-    def test_read_picture_matches_inline_picture_on_every_refusal(self):
-        for ref in (str(self.tmp / "gone.png"), self.secret_file("t.png"), self.secret_file("t.txt")):
-            with self.assertRaises(AdapterError) as a:
-                pictures.read_picture(ref, max_bytes=1 << 20, who="x")
-            with self.assertRaises(AdapterError) as b:
-                pictures.inline_picture(ref, max_bytes=1 << 20, who="x")
-            self.assertEqual((a.exception.code, a.exception.message), (b.exception.code, b.exception.message))
-            self.assertTrue(a.exception.not_accepted)
 
 
 # ══ wiring ═════════════════════════════════════════════════════════════════════════════

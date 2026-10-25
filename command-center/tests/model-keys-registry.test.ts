@@ -32,7 +32,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 describe("the closed set of vendors", () => {
   it("is exactly the ids the page lists, with no database list behind it", () => {
     expect(MODEL_KEY_PROVIDERS.map((p) => p.id).sort()).toEqual([...MODEL_KEY_PROVIDER_IDS].sort());
-    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(17);
+    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(18);
   });
 
   it("covers every provider of the model registry (but the placeholder), so no model has a vendor without a key page", () => {
@@ -69,6 +69,7 @@ describe("what a verify request is allowed to be", () => {
     runway: "GET https://api.dev.runwayml.com/v1/organization",
     luma: "GET https://agents.lumalabs.ai/v1/files?limit=1",
     krea: "GET https://api.krea.ai/jobs?limit=1",
+    pika: "GET https://api.dev.pika.art/billing/balance",
     alibaba: "GET https://dashscope-intl.aliyuncs.com/api/v1/models?page_size=1",
   };
   const FORMAT_ONLY = ["bytedance", "kling", "lightricks", "vidu"];
@@ -98,6 +99,7 @@ describe("what a verify request is allowed to be", () => {
       runway: [401, 403],
       luma: [401, 403],
       krea: [401],
+      pika: [401, 403],
       alibaba: [401, 403],
     });
   });
@@ -122,6 +124,7 @@ describe("what a verify request is allowed to be", () => {
       runway: 'Authorization:bearer|{"X-Runway-Version":"2024-11-06"}|{"kind":"field","name":"creditBalance","type":"number"}',
       luma: 'Authorization:bearer|{}|{"kind":"object"}',
       krea: 'Authorization:bearer|{}|{"kind":"field","name":"items","type":"array"}',
+      pika: 'X-API-Key:raw|{}|{"kind":"field","name":"balance_micro_usd","type":"number"}',
       alibaba: 'Authorization:bearer|{}|{"kind":"field","name":"output","type":"object"}',
     });
   });
@@ -252,6 +255,7 @@ describe("key source: which key a run uses", () => {
     expect(by.xai).toBe("XAI_API_KEY");
     expect(by.recraft).toBe("RECRAFT_API_TOKEN");
     expect(by.vidu).toBe("VIDU_API_KEY");
+    expect(by.pika).toBe("PIKA_API_KEY");
     expect(envNamesText(getModelKeyProvider("bytedance") as ModelKeyProvider)).toBe("SEEDANCE_API_KEY");
   });
 });

@@ -81,6 +81,7 @@ jobs:
           KREA_API_KEY: ${{ secrets.KREA_API_KEY }}
           LTX_API_KEY: ${{ secrets.LTX_API_KEY }}
           VIDU_API_KEY: ${{ secrets.VIDU_API_KEY }}
+          PIKA_API_KEY: ${{ secrets.PIKA_API_KEY }}
           SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
           WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
           WAN_WORKSPACE_ID: ${{ vars.WAN_WORKSPACE_ID }}

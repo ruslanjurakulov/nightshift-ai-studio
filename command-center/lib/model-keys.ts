@@ -35,6 +35,7 @@ export const MODEL_KEY_PROVIDER_IDS = [
   "luma",
   "minimax",
   "openai",
+  "pika",
   "recraft",
   "runway",
   "vidu",
@@ -321,6 +322,25 @@ export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
     // LTX's own OpenAPI document (docs.ltx.io/openapi.json) has no read that needs no job id: every path is a POST that starts a billed
     // generation, plus GET /v2/{endpoint}/{id} for one job. No free account, credits or models call exists, so the key is never sent anywhere.
     strategy: { kind: "format_only", docUrl: "https://docs.ltx.io/openapi.json" },
+  },
+  {
+    id: "pika",
+    name: "Pika (Pika 2.5)",
+    keyUrl: "https://dev.pika.art/keys",
+    keyUrlSource: "https://dev.pika.art/llms.txt",
+    envSets: [["PIKA_API_KEY"]],
+    scopedKeys: false,
+    strategy: json({
+      origin: "https://api.dev.pika.art",
+      // The org's balance: Pika's llms.txt says the balance read "takes the same API key as a generation and is never charged", and that a 200
+      // "proves the key is active". The answer's `balance_micro_usd` is a required integer in its OpenAPI document. The pages show the key in
+      // `X-API-Key` for every call; the OpenAPI document also lists a Bearer scheme whose /billing reads it describes as a console session JWT,
+      // so Bearer is not used. 401 is a missing or invalid key and an inactive key is a 403 (the failed-job 403 of a submit is not this read).
+      path: "/billing/balance",
+      auth: { header: "X-API-Key", scheme: "raw" },
+      expect: { kind: "field", name: "balance_micro_usd", type: "number" },
+      docUrl: "https://dev.pika.art/llms.txt",
+    }),
   },
   {
     id: "vidu",

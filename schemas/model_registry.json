@@ -5769,6 +5769,167 @@
         "duration_s": 3,
         "input_image": "generated"
       }
+    },
+    {
+      "id": "pika-2.5",
+      "display_name": "Pika 2.5",
+      "provider": "pika",
+      "adapter": "video.pika",
+      "vendor_model": "pika-2.5",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [],
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "durations_s": [
+        5
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://dev.pika.art/llms/pika/pika-2.5/text-to-video",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "Pika API pages read in full 2026-10-25 (not search extracts): llms.txt, openapi.json, the operation pages and public catalogue records, terms of service, acceptable use policy.",
+        "note": "Pika's own model only. POST /v1/media/pika/pika-2.5/{text,image}-to-video, poll GET /v1/media/jobs/{id}; X-API-Key. A local picture is uploaded first (raw POST /v1/media/uploads). 5 s only (i2v 10 s, Pikaffects, Pikaswaps, Pikadditions: not wired)."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.04,
+        "source_url": "https://api.dev.pika.art/catalog/apis/pika/pika-2.5/text-to-video",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.04,
+            "1080p": 0.09
+          }
+        },
+        "note": "ESTIMATE. Catalogue $ per output second: 720p 0.04, 1080p 0.09 at 5 s (the generic 1080p tier is 0.06, so a 5 s clip is exact, 10 s not offered). Pika's pages say only successful generations are charged: a vendor claim, unverified."
+      },
+      "credit_unit": "model_pika_2_5_second",
+      "entitlement": "models_video:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Pika ToS (08/04/2026) section 4: with API access you 'may permit your ... end users to access functionality powered by the Service, provided that (a) such access is through your own application or service, (b) you do not expose Pika's APIs directly to third parties'.",
+        "Section 5 'Prohibited Uses': you must not 'sell, resell, sublicense, or provide access to any part of the Service, its content, or API access to any third party, except as expressly permitted under your Plan'. Whether the Plan allows a credits product is open: no Plan terms were read.",
+        "Section 5, end users: bind them by your own agreement, moderate content, cooperate on takedowns, restrict the app 'to users who are at least 18 years old'. AUP (05/16/2025): no uploads of anyone under 18, of celebrity likenesses, or of real people without consent.",
+        "ATTRIBUTION, section 7 'Ownership of Trademarks': 'you must display appropriate attribution in a manner reasonably visible to end users, unless your Plan expressly permits white-labeling'; white-labeling Pika's first-party models is enterprise-only. The registry 'attribution' is that line.",
+        "TRAINING, section 7: Pika 'may use anonymized or aggregated Content, including Inputs, Outputs, and your interactions with the Service ... to train, improve, and develop its machine learning models', under a perpetual, irrevocable licence. Only an enterprise agreement changes that.",
+        "Section 11: operated from the US, no use from a US-sanctioned country; payments via Stripe. NOT read: the Privacy Policy and any Plan or API pricing terms. Sign-up and payment from Uzbekistan not verified. Pika also resells ~168 third-party models; none is registered here.",
+        "Gate stays open until a person has settled the Plan (resale) question, how attribution is shown, and the training exposure of every customer's prompts and pictures. No credit price may be added before that."
+      ],
+      "attribution": {
+        "text": "Powered by Pika",
+        "url": "https://pika.art"
+      },
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "resolution": "720p",
+        "duration_s": 5,
+        "input_image": "generated"
+      }
+    },
+    {
+      "id": "pika-pikaframes",
+      "display_name": "Pika 2.5 Pikaframes",
+      "provider": "pika",
+      "adapter": "video.pika",
+      "vendor_model": "pikaframes",
+      "capabilities": [
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [],
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "default_resolution": "720p",
+      "durations_s": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "audio_out": false,
+      "async": true,
+      "end_frame": true,
+      "api_documented": {
+        "url": "https://dev.pika.art/llms/pika/pikaframes/image-to-video",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "Pika API pages read in full 2026-10-25 (not search extracts): llms.txt, openapi.json, the operation pages and public catalogue records, terms of service, acceptable use policy.",
+        "note": "Pika's own Keyframe model: a first and a last picture, one transition of 1-5 s (the page says 1-10 but caps several transitions at 5). Loop, 3+ keyframes, per-transition prompts, Pikaffects, Pikaswaps, Pikadditions: not wired."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.04,
+        "source_url": "https://api.dev.pika.art/catalog/apis/pika/pikaframes/image-to-video",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.04,
+            "1080p": 0.06
+          }
+        },
+        "note": "ESTIMATE. Catalogue $ per output second: 720p 0.04, 1080p 0.06. Pika's pages say only successful generations are charged: a vendor claim, unverified."
+      },
+      "credit_unit": "model_pika_pikaframes_second",
+      "entitlement": "models_video:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Pika ToS (08/04/2026) section 4: with API access you 'may permit your ... end users to access functionality powered by the Service, provided that (a) such access is through your own application or service, (b) you do not expose Pika's APIs directly to third parties'.",
+        "Section 5 'Prohibited Uses': you must not 'sell, resell, sublicense, or provide access to any part of the Service, its content, or API access to any third party, except as expressly permitted under your Plan'. Whether the Plan allows a credits product is open: no Plan terms were read.",
+        "Section 5, end users: bind them by your own agreement, moderate content, cooperate on takedowns, restrict the app 'to users who are at least 18 years old'. AUP (05/16/2025): no uploads of anyone under 18, of celebrity likenesses, or of real people without consent.",
+        "ATTRIBUTION, section 7 'Ownership of Trademarks': 'you must display appropriate attribution in a manner reasonably visible to end users, unless your Plan expressly permits white-labeling'; white-labeling Pika's first-party models is enterprise-only. The registry 'attribution' is that line.",
+        "TRAINING, section 7: Pika 'may use anonymized or aggregated Content, including Inputs, Outputs, and your interactions with the Service ... to train, improve, and develop its machine learning models', under a perpetual, irrevocable licence. Only an enterprise agreement changes that.",
+        "Section 11: operated from the US, no use from a US-sanctioned country; payments via Stripe. NOT read: the Privacy Policy and any Plan or API pricing terms. Sign-up and payment from Uzbekistan not verified. Pika also resells ~168 third-party models; none is registered here.",
+        "Gate stays open until a person has settled the Plan (resale) question, how attribution is shown, and the training exposure of every customer's prompts and pictures. No credit price may be added before that."
+      ],
+      "attribution": {
+        "text": "Powered by Pika",
+        "url": "https://pika.art"
+      },
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "resolution": "720p",
+        "duration_s": 1,
+        "input_image": "generated",
+        "end_frame": "generated"
+      }
     }
   ]
 }
