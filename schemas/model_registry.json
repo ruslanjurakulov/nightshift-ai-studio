@@ -260,7 +260,8 @@
         "url": "https://ai.google.dev/gemini-api/docs/image-generation",
         "checked_at": "2026-09-30",
         "source": "vendor_sdk",
-        "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30; google-gemini/cookbook"
+        "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30; google-gemini/cookbook",
+        "note": "Google's deprecations page (read 2026-10-25) names gemini-nano-banana-2.1 as the recommended replacement and announces no shutdown date; verify with tools/probe_models.py"
       },
       "pricing": {
         "unit": "image",
@@ -284,10 +285,13 @@
       "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
-        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 4000,
         "max_concurrent_per_org": 2
@@ -357,10 +361,13 @@
       "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
-        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 4000,
         "max_concurrent_per_org": 2
@@ -435,10 +442,13 @@
       "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
-        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 4000,
         "max_concurrent_per_org": 2
@@ -490,7 +500,13 @@
         "checked_at": "2026-09-30",
         "source": "vendor_sdk",
         "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30: the same generateContent image call as edit",
-        "note": "UNVERIFIED: the picture op is an instruction on the edit call, not its own endpoint; the model re-renders the whole picture and an answer in the wrong shape is refused. No real call made"
+        "note": "UNVERIFIED: the picture op is an instruction on the edit call, not its own endpoint; the model re-renders the whole picture and an answer in the wrong shape is refused. No real call made. Shutdown 2027-03-15 at the earliest (Google deprecations page, 2026-10-25); verify with the probe"
+      },
+      "shutdown": {
+        "on": "2027-03-15",
+        "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
+        "as_of": "2026-10-25",
+        "replacement": "gemini-3.1-flash-lite-image"
       },
       "pricing": {
         "unit": "image",
@@ -506,7 +522,10 @@
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
-        "UNVERIFIED: no real call has been made for this picture op. Clear this gate only after the terms are read and tools/probe_models.py has succeeded with the owner's key"
+        "UNVERIFIED: no real call has been made for this picture op. Clear this gate only after the terms are read and tools/probe_models.py has succeeded with the owner's key",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -554,7 +573,13 @@
         "checked_at": "2026-09-30",
         "source": "vendor_sdk",
         "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30: the same generateContent image call as edit",
-        "note": "UNVERIFIED: the picture op is an instruction on the edit call, not its own endpoint; the model re-renders the whole picture and an answer in the wrong shape is refused. No real call made"
+        "note": "UNVERIFIED: the picture op is an instruction on the edit call, not its own endpoint; the model re-renders the whole picture and an answer in the wrong shape is refused. No real call made. Shutdown 2027-03-15 at the earliest (Google deprecations page, 2026-10-25); verify with the probe"
+      },
+      "shutdown": {
+        "on": "2027-03-15",
+        "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
+        "as_of": "2026-10-25",
+        "replacement": "gemini-3.1-flash-lite-image"
       },
       "pricing": {
         "unit": "image",
@@ -570,7 +595,10 @@
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
-        "UNVERIFIED: no real call has been made for this picture op. Clear this gate only after the terms are read and tools/probe_models.py has succeeded with the owner's key"
+        "UNVERIFIED: no real call has been made for this picture op. Clear this gate only after the terms are read and tools/probe_models.py has succeeded with the owner's key",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -610,7 +638,13 @@
         "checked_at": "2026-09-30",
         "source": "vendor_sdk",
         "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30: the same generateContent image call as edit",
-        "note": "UNVERIFIED: the picture op is an instruction on the edit call, not its own endpoint; the model re-renders the whole picture and an answer in the wrong shape is refused. No real call made"
+        "note": "UNVERIFIED: the picture op is an instruction on the edit call, not its own endpoint; the model re-renders the whole picture and an answer in the wrong shape is refused. No real call made. Shutdown 2027-03-15 at the earliest (Google deprecations page, 2026-10-25); verify with the probe"
+      },
+      "shutdown": {
+        "on": "2027-03-15",
+        "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
+        "as_of": "2026-10-25",
+        "replacement": "gemini-3.1-flash-lite-image"
       },
       "pricing": {
         "unit": "image",
@@ -626,7 +660,10 @@
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
-        "UNVERIFIED: no real call has been made for this picture op. Clear this gate only after the terms are read and tools/probe_models.py has succeeded with the owner's key"
+        "UNVERIFIED: no real call has been made for this picture op. Clear this gate only after the terms are read and tools/probe_models.py has succeeded with the owner's key",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -680,10 +717,13 @@
       "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
-        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 4000,
         "max_concurrent_per_org": 4
@@ -1414,7 +1454,14 @@
         "url": "https://ai.google.dev/gemini-api/docs/video",
         "checked_at": "2026-09-30",
         "source": "vendor_sdk",
-        "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30; generate_videos → :predictLongRunning"
+        "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30; generate_videos → :predictLongRunning",
+        "note": "Google's deprecations page (read 2026-10-25) lists this id with shutdown 2026-10-22, the EARLIEST possible date, replacement gemini-omni-1.1-flash. Not sold from that date; verify with tools/probe_models.py"
+      },
+      "shutdown": {
+        "on": "2026-10-22",
+        "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
+        "as_of": "2026-10-25",
+        "replacement": "gemini-omni-1.1-flash"
       },
       "pricing": {
         "unit": "second",
@@ -1437,10 +1484,13 @@
       "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
-        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1
@@ -1492,7 +1542,14 @@
         "url": "https://ai.google.dev/gemini-api/docs/video",
         "checked_at": "2026-09-30",
         "source": "vendor_docs_search",
-        "evidence": "google-gemini/cookbook model selector and google-genai test constants"
+        "evidence": "google-gemini/cookbook model selector and google-genai test constants",
+        "note": "Google's deprecations page (read 2026-10-25) lists this id with shutdown 2026-10-22, the EARLIEST possible date, replacement gemini-omni-1.1-flash. Not sold from that date; verify with tools/probe_models.py"
+      },
+      "shutdown": {
+        "on": "2026-10-22",
+        "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
+        "as_of": "2026-10-25",
+        "replacement": "gemini-omni-1.1-flash"
       },
       "pricing": {
         "unit": "second",
@@ -1515,10 +1572,13 @@
       "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
-        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1
@@ -1569,7 +1629,14 @@
         "url": "https://ai.google.dev/gemini-api/docs/video",
         "checked_at": "2026-09-30",
         "source": "vendor_docs_search",
-        "evidence": "google-gemini/cookbook model selector (Gemini API id; the -001 id is Vertex only)"
+        "evidence": "google-gemini/cookbook model selector (Gemini API id; the -001 id is Vertex only)",
+        "note": "Google's deprecations page (read 2026-10-25) lists this id with shutdown 2026-10-22, the EARLIEST possible date, replacement gemini-omni-1.1-flash. Not sold from that date; verify with tools/probe_models.py"
+      },
+      "shutdown": {
+        "on": "2026-10-22",
+        "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
+        "as_of": "2026-10-25",
+        "replacement": "gemini-omni-1.1-flash"
       },
       "pricing": {
         "unit": "second",
@@ -1591,10 +1658,13 @@
       "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
-        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1

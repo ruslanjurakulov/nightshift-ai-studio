@@ -519,10 +519,13 @@ class VeoTestCase(unittest.TestCase):
     `name` among the task-id keys, and a poll that ignored `done` and the
     generatedSamples URI — so every call silently became stock footage."""
 
-    OP = "models/veo-3.1-generate-preview/operations/abc123"
+    #: A made-up id: the real 3.1 previews have passed the shutdown date Google lists, which stops the
+    #: client before a request (tests/test_model_shutdown.py), and these tests are about the request.
+    MODEL = "veo-test-model"
+    OP = f"models/{MODEL}/operations/abc123"
 
     def _client(self, posts=(), gets=(), **cfg):
-        values = {"VEO_API_KEY": KEY, "VEO_MODEL": "veo-3.1-generate-preview",
+        values = {"VEO_API_KEY": KEY, "VEO_MODEL": self.MODEL,
                   "VEO_SUBMIT_PATH": "/v1beta/models/{model}:predictLongRunning",
                   "VEO_BASE_URL": "https://generativelanguage.googleapis.com"}
         values.update(cfg)
@@ -532,8 +535,10 @@ class VeoTestCase(unittest.TestCase):
         client.session = FakeSession(posts, gets)
         return client
 
-    def test_defaults_are_a_live_model(self):
-        self.assertEqual(config.VEO_MODEL, "veo-3.1-generate-preview")
+    def test_there_is_no_default_model_and_the_default_path_names_no_dead_one(self):
+        # The former default, veo-3.1-generate-preview, passed the earliest shutdown date Google lists
+        # (2026-10-22). A default is a choice nobody made, so the owner sets VEO_MODEL (config.py).
+        self.assertEqual(config.VEO_MODEL, "")
         self.assertNotIn("veo-3.0", config.VEO_SUBMIT_PATH)
 
     def test_request_is_instances_and_parameters_on_predict_long_running(self):
@@ -541,7 +546,7 @@ class VeoTestCase(unittest.TestCase):
         self.assertEqual(client.submit(_spec(8)), self.OP)
         call = client.session.calls[0]
         self.assertEqual(call["url"], "https://generativelanguage.googleapis.com/v1beta/models/"
-                                      "veo-3.1-generate-preview:predictLongRunning")
+                                      f"{self.MODEL}:predictLongRunning")
         self.assertEqual(call["json"]["instances"], [{"prompt": "a cinematic shot of Rome"}])
         params = call["json"]["parameters"]
         self.assertEqual(params["durationSeconds"], 8)
@@ -582,7 +587,7 @@ class VeoTestCase(unittest.TestCase):
                 with self.assertRaises(VideoModelUnavailable) as ctx:
                     client.submit(_spec())
                 self.assertEqual(client.session.calls, [])
-                self.assertIn("veo-3.1", ctx.exception.remedy)
+                self.assertIn("ai.google.dev/gemini-api/docs/deprecations", ctx.exception.remedy)
 
     def test_google_error_statuses_pick_the_remedy(self):
         cases = ((403, "PERMISSION_DENIED", "VEO_API_KEY"), (429, "RESOURCE_EXHAUSTED", "wait"),
@@ -892,7 +897,7 @@ class RequestedVersusUsableTestCase(unittest.TestCase):
         _assert_no_secret(self, ctx.exception)
 
     def test_a_usable_provider_passes(self):
-        with self._cfg(VIDEO_PROVIDER="veo", VIDEO_GEN_OPT_IN=True, VEO_API_KEY=KEY):
+        with self._cfg(VIDEO_PROVIDER="veo", VIDEO_GEN_OPT_IN=True, VEO_API_KEY=KEY, VEO_MODEL="veo-test-model"):
             vp.preflight()
         with self._cfg(MINIMAX_BROLL_FLAG=True, MINIMAX_BROLL_ENABLED=True, MINIMAX_API_KEY=KEY):
             vp.preflight()

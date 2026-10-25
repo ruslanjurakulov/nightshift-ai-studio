@@ -796,6 +796,36 @@ def _wan_config() -> VideoProviderConfig:
 #: Veo ids Google shut down on 2025-11-12 (Gemini API deprecations page).
 _VEO_SHUT_DOWN = ("veo-3.0-generate-preview", "veo-3.0-fast-generate-preview")
 
+_DEPRECATIONS = "https://ai.google.dev/gemini-api/docs/deprecations"
+
+
+def _veo_past_shutdown(model: str, submit_path: str) -> str:
+    """The problem text when ``model`` (or an id spelled into a custom submit
+    path) is a Veo id whose ANNOUNCED shutdown date has come, else "".
+
+    The dates are the registry's (``shutdown`` in schemas/model_registry.json),
+    one place for what the sale guard (migration 0123) and this client believe.
+    Google calls them the EARLIEST possible dates, so this is neither "the
+    model is dead" nor "the model works": it stops the run before it spends and
+    says so, and it never swaps in another model (CLAUDE.md #4). Re-opening an
+    id that a probe proves still answers means moving its ``shutdown.on`` in the
+    registry, which also re-opens its sale: one decision, one edit."""
+    from modules import model_registry   # late: the registry imports the adapters, which import this package
+
+    for entry in model_registry.registry().values():
+        if entry.adapter != "video.veo" or not entry.shut_down():
+            continue
+        if model == entry.vendor_model or entry.vendor_model in submit_path:
+            s = entry.raw["shutdown"]
+            return (f"Google's deprecations page ({_DEPRECATIONS}, read {s['as_of']}) lists {entry.vendor_model} with "
+                    f"shutdown {s['on']}, the EARLIEST possible date; that date has passed, so the id may already be "
+                    "off (not verified here: no request was made). Nightshift will not guess or switch models. Set "
+                    "VEO_MODEL to a Veo id this client can call and that Google still lists (Google's named replacement "
+                    f"{s.get('replacement', 'on that page')} is served by the Interactions API, which this client does "
+                    "not speak) or choose another CHRONOS_VIDEO_PROVIDER; tools/probe_models.py --model "
+                    f"{entry.id} shows whether the id still answers")
+    return ""
+
 
 def _veo_config() -> VideoProviderConfig:
     # Google Veo on the Gemini API: POST models/{model}:predictLongRunning with
@@ -803,13 +833,24 @@ def _veo_config() -> VideoProviderConfig:
     # /v1beta/{name} until done → response.generateVideoResponse
     # .generatedSamples[0].video.uri, downloaded with the same key header
     # (the file lives on the API host). The key rides x-goog-api-key.
-    model = getattr(config, "VEO_MODEL", "veo-3.1-generate-preview")
+    #
+    # No default model: the one it used to carry, veo-3.1-generate-preview, has
+    # passed the earliest shutdown date Google lists (2026-10-22), and a default
+    # is a choice the operator did not make (CLAUDE.md #4, #5).
+    model = getattr(config, "VEO_MODEL", "")
     submit_path = getattr(config, "VEO_SUBMIT_PATH", "/v1beta/models/{model}:predictLongRunning")
     problem = ""
     dead = next((m for m in _VEO_SHUT_DOWN if m == model or m in submit_path), "")
     if dead:
-        problem = (f"{dead} was shut down by Google on 2025-11-12; set VEO_MODEL to "
-                   "veo-3.1-generate-preview (or -fast- / -lite-) and leave VEO_SUBMIT_PATH unset")
+        problem = (f"{dead} was shut down by Google on 2025-11-12; set VEO_MODEL to a Veo id Google still lists "
+                   f"({_DEPRECATIONS}) and leave VEO_SUBMIT_PATH unset")
+    elif not model:
+        problem = ("VEO_MODEL is not set, and there is no default: the former default, veo-3.1-generate-preview, has "
+                   "passed the earliest shutdown date Google lists for it (2026-10-22, "
+                   f"{_DEPRECATIONS}). Set VEO_MODEL to a Veo id this client can call and Google still lists, or "
+                   "choose another CHRONOS_VIDEO_PROVIDER")
+    else:
+        problem = _veo_past_shutdown(model, submit_path)
     return VideoProviderConfig(
         name="Veo",
         api_key=getattr(config, "VEO_API_KEY", ""),

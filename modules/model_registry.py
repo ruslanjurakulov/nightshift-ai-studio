@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -263,6 +264,22 @@ class ModelEntry:
     def priced_by_audio(self) -> bool:
         """The soundtrack is priced apart (0070): the worker pins it off unless the job asks."""
         return self.variants_by in AUDIO_VARIANTS
+
+    @property
+    def shutdown_on(self) -> Optional[date]:
+        """The date the vendor announced it may shut the vendor model down
+        (``shutdown.on``), or None when none is announced. Not a measurement
+        that the model works before it nor that it is dead after it."""
+        s = self.raw.get("shutdown")
+        return date.fromisoformat(s["on"]) if s else None
+
+    def shut_down(self, on: Optional[date] = None) -> bool:
+        """True from the announced shutdown date on (UTC, like the database's
+        ``current_date``): the model is no longer offered or quoted
+        (migration 0123). An entry with no announced date is never shut down
+        here; that means "none announced", not "safe"."""
+        d = self.shutdown_on
+        return d is not None and d <= (on or datetime.now(timezone.utc).date())
 
     def vendor_model_for(self, capability: str) -> str:
         return self.vendor_model_by_capability.get(capability) or self.vendor_model
@@ -513,6 +530,13 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             elif cls is not None and not QUALITY_CAPABILITIES & set(caps) & set(cls.quality_capabilities):
                 # The adapter would drop it: the vendor would bill its own default under another tier's price.
                 errors.append(_err(mid, f"adapter {m['adapter']} does not send a quality"))
+        for key in ("on", "as_of"):
+            # The pattern only checks the shape; migration 0123 casts `on` to a date, and a
+            # 2026-13-45 there would be a date nobody can compare.
+            try:
+                date.fromisoformat((m.get("shutdown") or {}).get(key, "2000-01-01"))
+            except ValueError:
+                errors.append(_err(mid, f"shutdown.{key} is not a calendar date"))
         pricing = m["pricing"]
         variants = pricing.get("variants")
         # A variant table of nothing but nulls states no price (0060 lists the

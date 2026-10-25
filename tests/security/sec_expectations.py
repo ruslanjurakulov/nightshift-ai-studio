@@ -353,6 +353,8 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "media_uploads_sweep": SERVICE,
     # model registry (0035)
     "sellable_models": USER,
+    # a vendor-announced shutdown date that has come ends the sale (0123); read inside sellable_models and creative_price only
+    "model_past_shutdown": SERVICE,
     # the price list as charged, never the margin (0084)
     "credit_rates": USER,
     # what a video costs in credits, for the public price pages (0089)

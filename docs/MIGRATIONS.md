@@ -491,3 +491,23 @@ provider and does not touch credits, holds, publishing or privacy. Numbered 0122
 - **Is it working?** The verify block at the bottom of the file (every column true).
 - **Review.** Needs the independent security review before merge, and a person reading the live hashes first: it replaces the payment guard every queued
   run passes through, and it drops and re-creates a function.
+
+## A model past its vendor's announced shutdown date is not sold (0123)
+
+Google's deprecations page (ai.google.dev/gemini-api/docs/deprecations, read 2026-10-25) lists `veo-3.1-generate-preview`, `-fast-` and `-lite-` with shutdown
+2026-10-22 and `gemini-2.5-flash-image` with 2027-03-15. Google calls every date on that page "the earliest possible", so a date is neither "dead" nor "safe": it
+is the day Nightshift stops selling the model unless a probe says otherwise.
+
+- **The field.** `shutdown` in `schemas/model_registry.json` (`on`, `source_url`, `as_of`, optional `replacement`), copied into `model_registry.spec` by
+  `tools/probe_models.py --sync` like every other static fact. A model with no announced date has no `shutdown`; the validator rejects a date that is not a calendar day.
+- **The guard.** `public.model_past_shutdown(spec)` is true from `spec.shutdown.on` (UTC `current_date`) on, and **fails closed**: a `shutdown` that is not an object, or
+  a date that is not `YYYY-MM-DD`, reads as past. It is internal (revoked from every API role). `sellable_models` and `creative_price` are 0100's bodies plus one line
+  each (`tests/test_model_shutdown.py` removes the two lines and compares the rest byte for byte), so the list hides the model and a quote by name is refused with
+  `model_not_sellable`.
+- **Not changed.** No price, no availability, no `credit_prices` row, no gate. Nothing becomes sellable by applying it; a model that is on sale today and has a
+  past date (the three Veo 3.1 previews) stops being offered the moment the registry is synced, with no further step.
+- **Re-opening an id** that a probe shows still answers is one edit: move its `shutdown.on` in the registry and sync. The Veo client in `modules/video_providers.py`
+  reads the same date, so the sale and the legacy B-roll path never disagree.
+- **Apply** after 0100, as one transaction. It refuses on an older database. The security lab (`tests/security/test_sec_model_shutdown.py`) runs both functions on a
+  real PostgreSQL at the boundary day and with unreadable dates.
+- **Undo.** Re-run 0100's `sellable_models` and `creative_price`, then drop `model_past_shutdown(jsonb)`.
