@@ -265,5 +265,31 @@ class TheGuardFailsWhenASwitchHasNoDeployPath(unittest.TestCase):
         self.assertIn("NIGHTSHIFT_PIPELINE_PAUSED", counted)
         self.assertNotIn("NIGHTSHIFT_SECURITY_PG", counted)   # security.yml's job env: CI only
 
+
+class TheResultsDashboardSwitchIsWebOnlyAndDeployable(unittest.TestCase):
+    """NIGHTSHIFT_RESULTS_DASHBOARD (docs/RESULTS_DASHBOARD.md) is read by the Command Center only. The scan above covers
+    Python, so this pins the other half: the owner can set it from GitHub (web example + deploy_web.yml, empty = off), and it
+    stays off the worker, because a worker switch for a read-only page would be a switch that does nothing."""
+
+    NAME = "NIGHTSHIFT_RESULTS_DASHBOARD"
+
+    def test_it_is_a_web_key_with_no_value_and_a_workflow_mapping(self):
+        web = (ROOT / "deploy" / ".env.web.example").read_text(encoding="utf-8")
+        self.assertRegex(web, rf"(?m)^{self.NAME}=$", "empty must mean off")
+        flow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
+        self.assertIn(f"WEBENV_{self.NAME}: ${{{{ vars.{self.NAME} }}}}", flow)
+
+    def test_it_has_no_worker_side_and_no_python_reader(self):
+        self.assertNotIn(self.NAME, _example_keys(ROOT / "deploy" / ".env.worker.example"))
+        flow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
+        self.assertNotIn(f"WORKERENV_{self.NAME}", flow)
+        self.assertNotIn(self.NAME, names_read_by_the_code(), "the Python side must not read it: the page is read-only and web only")
+
+    def test_the_command_center_reads_exactly_that_name(self):
+        flag = (ROOT / "command-center" / "lib" / "resultsDashboard" / "flag.ts").read_text(encoding="utf-8")
+        self.assertIn(f'"{self.NAME}"', flag)
+        self.assertIn(f"process.env.{self.NAME}", flag)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,74 @@
+/* The results dashboard (components/results). Tokens only (app/globals.css): it follows the theme, dark included. */
+.rd { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.rd-content { display: flex; flex-direction: column; gap: 28px; min-width: 0; transition: opacity 0.15s ease; }
+.rd[aria-busy="true"] .rd-content { opacity: 0.55; }
+.rd-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.rd-small { margin: 0; font-size: 0.8125rem; line-height: 1.5; color: var(--color-muted); overflow-wrap: anywhere; }
+.rd-h { margin: 0 0 8px; font-size: 1rem; font-weight: 600; color: var(--color-fg); }
+.rd-label { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-muted); }
+.rd-unknown { color: var(--color-muted); font-weight: 400; }
+.rd-section { min-width: 0; border-top: 1px solid var(--color-border); padding-top: 16px; }
+.rd-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+
+.rd-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; }
+.rd-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rd-field .ns-field { min-height: 44px; max-width: 100%; }
+.rd-field-inline { flex-direction: row; align-items: center; gap: 10px; }
+.rd-hint { flex-basis: 100%; }
+
+.rd-fresh { display: flex; flex-direction: column; gap: 6px; }
+.rd-fresh-line { margin: 0; font-size: 0.9375rem; color: var(--color-fg); }
+
+.rd-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr)); gap: 16px; margin: 0; }
+.rd-kpi { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-top: 12px; border-top: 1px solid var(--color-border); min-width: 0; }
+.rd-kpi-label { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-muted); }
+.rd-kpi-value { margin: 0; font-size: 1.5rem; font-weight: 600; line-height: 1.2; color: var(--color-fg); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rd-kpi-value .rd-unknown { font-size: 1rem; }
+.rd-kpi-sub { margin: 0; font-size: 0.75rem; line-height: 1.4; color: var(--color-muted); }
+
+.rd-rank { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.rd-rank > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; }
+.rd-rank-title { color: var(--color-fg); font-size: 0.9375rem; overflow-wrap: anywhere; }
+.rd-rank-val { color: var(--color-fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.rd-rank-bar { grid-column: 1 / -1; display: block; height: 4px; border-radius: 2px; background: var(--ns-rule, var(--color-border)); overflow: hidden; }
+.rd-rank-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--ns-act, var(--color-primary)); }
+
+.rd-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.rd-table th, .rd-table td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--color-border); vertical-align: top; color: var(--color-fg); font-weight: 400; }
+.rd-table thead th { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-muted); font-weight: 500; }
+.rd-table .rd-num { text-align: right; font-variant-numeric: tabular-nums; }
+.rd-title { display: flex; flex-direction: column; gap: 4px; min-width: 12rem; font-weight: 500 !important; overflow-wrap: anywhere; }
+.rd-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-weight: 400; font-size: 0.8125rem; }
+.rd-links a, .rd-history a, .rd-card-link { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; color: var(--color-primary); text-decoration: underline; }
+.rd-badge, .rd-chip { display: inline-flex; width: fit-content; padding: 1px 8px; border: 1px solid var(--color-border); border-radius: 999px; font-size: 0.75rem; color: var(--color-muted); }
+.rd-chip[data-status="uploaded"] { color: var(--color-ok); border-color: var(--color-ok); }
+.rd-chip[data-status="failed"], .rd-chip[data-status="refused"] { color: var(--color-fail); border-color: var(--color-fail); }
+
+.rd-history { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; }
+.rd-history > li { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--color-border); }
+.rd-history-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rd-history-video { color: var(--color-fg); font-weight: 500; overflow-wrap: anywhere; }
+.rd-history-where { color: var(--color-muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.rd-history-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 0.8125rem; color: var(--color-muted); }
+
+.rd-cards { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: 12px; }
+.rd-card { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid var(--color-border); border-radius: var(--ns-r-panel, 8px); background: var(--color-panel-2); min-width: 0; }
+.rd-card[data-state="live"] { border-color: var(--color-primary); }
+.rd-card-name { margin: 0; font-size: 1rem; font-weight: 600; color: var(--color-fg); }
+.rd-card-state { margin: 0; font-size: 0.875rem; color: var(--color-muted); }
+
+.rd-skeleton { display: flex; flex-direction: column; gap: 16px; }
+.rd-skel { height: 56px; border-radius: 8px; background: var(--color-panel-2); animation: rd-pulse 1.4s ease-in-out infinite; }
+.rd-skel-tall { height: 160px; }
+@keyframes rd-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .rd-skel { animation: none; } .rd-content { transition: none; } }
+
+/* Narrow screens (320 px): the table becomes one card per video, each cell carrying its own label. */
+@media (max-width: 639px) {
+  .rd-table, .rd-table tbody, .rd-table tr, .rd-table th, .rd-table td { display: block; }
+  .rd-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .rd-table tr { padding: 12px 0; border-bottom: 1px solid var(--color-border); }
+  .rd-table th, .rd-table td { border: 0; padding: 4px 0; text-align: left !important; }
+  .rd-table td[data-label]::before { content: attr(data-label) ": "; color: var(--color-muted); }
+  .rd-title { min-width: 0; }
+}
