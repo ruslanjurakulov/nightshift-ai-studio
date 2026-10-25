@@ -13,6 +13,8 @@ Limits (official docs):
   https://developers.google.com/youtube/v3/docs/videos#properties
 * Instagram — caption ≤ 2200 characters, ≤ 30 hashtags, ≤ 20 @-mentions.
   https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media
+* X — a post's text, 280 weighted characters (our own conservative cap), no link, two hashtags.
+  https://docs.x.com/x-api/posts/create-post
 * TikTok — the post's ``title`` (its caption, hashtags included) ≤ 2200 UTF-16
   code units.
   https://developers.tiktok.com/doc/content-posting-api-reference-direct-post
@@ -37,6 +39,12 @@ IG_HASHTAGS_DEFAULT = 15
 TT_CAPTION_MAX_UTF16 = 2200
 TT_HASHTAGS_DEFAULT = 5
 TT_DESCRIPTION_MAX = 300
+
+#: X: a post's text is 280 "weighted" characters for an account without Premium (X's pages read for this change give no
+#: figure, so this is the long-standing documented one and OUR cap: a Premium account could post more, and we do not ask).
+#: Fewer hashtags suit X, and a link makes the post cost 13 times as much (pricing page), so links are removed.
+X_TEXT_MAX_WEIGHT = 280
+X_HASHTAGS_DEFAULT = 2
 
 HASHTAG_MAX_LEN = 50
 ELLIPSIS = "…"
@@ -269,6 +277,30 @@ def tiktok_caption(meta: SourceMeta, *, max_hashtags: int = TT_HASHTAGS_DEFAULT,
     return _compose(head, body, tags, TT_CAPTION_MAX_UTF16, utf16_len, _plain_line(disclosure))
 
 
+_URL = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
+
+
+def x_weight(text: str) -> int:
+    """The length X counts for a post: 1 per character in U+0000-U+10FF, U+2000-U+200D, U+2010-U+201F and U+2032-U+2037,
+    else 2 (CJK, emoji). Links are removed before this is used, so the 23-character link rule never applies."""
+    total = 0
+    for ch in text:
+        o = ord(ch)
+        total += 1 if (o <= 0x10FF or 0x2000 <= o <= 0x200D or 0x2010 <= o <= 0x201F or 0x2032 <= o <= 0x2037) else 2
+    return total
+
+
+def x_caption(meta: SourceMeta, *, max_hashtags: int = X_HASHTAGS_DEFAULT, disclosure: str = "") -> str:
+    """Title, a short description, a couple of hashtags; no link. ≤ 280 weighted characters (our own cap)."""
+    def plain(s: str) -> str:
+        return _WS.sub(" ", _URL.sub("", s)).strip()
+
+    head = plain(_strip_inline_hashtags(_clean(meta.title or meta.topic).replace("\n", " ")))
+    body = plain(_strip_inline_hashtags(_clean(meta.description)).split("\n\n", 1)[0])
+    tags = hashtags(_tag_sources(meta), max(0, max_hashtags))
+    return _compose(head, body, tags, X_TEXT_MAX_WEIGHT, x_weight, plain(_plain_line(disclosure)))
+
+
 def _plain_line(text: str) -> str:
     """The disclosure line as one clean line (no hashtags or @-mentions are
     added or counted by it)."""
@@ -280,4 +312,6 @@ def caption_for(platform: str, meta: SourceMeta, *, disclosure: str = "") -> str
         return instagram_caption(meta, disclosure=disclosure)
     if platform == "tiktok":
         return tiktok_caption(meta, disclosure=disclosure)
+    if platform == "x":
+        return x_caption(meta, disclosure=disclosure)
     raise ValueError("unknown platform")

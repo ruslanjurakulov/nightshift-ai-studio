@@ -33,7 +33,7 @@ Uploading costs the platforms nothing, so no credits are held or charged.
 
 The steps above are the same for every platform; what differs (connect, check,
 compose, publish) is a ``Publisher`` registered in ``modules/publishers.py``
-(``InstagramPublisher``, ``TiktokPublisher``, ``YoutubePublisher`` below). A
+(``InstagramPublisher``, ``TiktokPublisher``, ``YoutubePublisher``, and the dark ``XPublisher`` below). A
 platform that is not registered is refused as ``unknown_platform``.
 
 YouTube targets: the target must not be the video's own channel (the pipeline
@@ -103,6 +103,13 @@ IG_MAX_SECONDS = 15 * 60.0
 IG_MAX_BYTES = 300 * 1024 * 1024
 IG_MIN_ASPECT = 0.01
 IG_MAX_ASPECT = 10.0
+
+#: X video posts (media_category ``tweet_video``): the default account may post up to 20 minutes (Premium: 125). X's page
+#: gives 8 GB; X_MAX_BYTES is OUR hard cap (512 MB was X's long-standing documented figure), checked before the upload and
+#: again as the file is read. X_MIN_SECONDS is ours too (the older v1.1 page said 0.5 s).
+X_MIN_SECONDS = 1.0
+X_MAX_SECONDS = 20 * 60.0
+X_MAX_BYTES = 512 * 1024 * 1024
 
 TT_MIN_SECONDS = 3.0
 TT_DEFAULT_MAX_SECONDS = 600.0
@@ -344,10 +351,12 @@ def check_format(platform: str, info: VideoInfo, *, short_id: Optional[str] = No
     the panel shows. ``max_seconds`` is TikTok's per-creator limit."""
     hint = f"; publish its Short ({short_id}) there instead" if short_id else \
         "; a vertical Short cut of it can be posted instead"
-    name = "Instagram Reels" if platform == "instagram" else "TikTok"
-    lo = IG_MIN_SECONDS if platform == "instagram" else TT_MIN_SECONDS
-    hi = IG_MAX_SECONDS if platform == "instagram" else float(max_seconds or TT_DEFAULT_MAX_SECONDS)
-    cap = IG_MAX_BYTES if platform == "instagram" else TT_MAX_BYTES
+    if platform == "x":
+        name, lo, hi, cap = "X", X_MIN_SECONDS, X_MAX_SECONDS, X_MAX_BYTES
+    elif platform == "instagram":
+        name, lo, hi, cap = "Instagram Reels", IG_MIN_SECONDS, IG_MAX_SECONDS, IG_MAX_BYTES
+    else:
+        name, lo, hi, cap = "TikTok", TT_MIN_SECONDS, float(max_seconds or TT_DEFAULT_MAX_SECONDS), TT_MAX_BYTES
     if info.duration is None:
         raise refused("unknown_duration", "could not read the video's duration")
     if info.duration > hi:
@@ -851,6 +860,29 @@ class TiktokPublisher(_SocialAccountPublisher):
         return self.adapter.publish(self.tok, path, post.caption, self.creator, ai_generated=post.ai_generated)
 
 
+class XPublisher(_SocialAccountPublisher):
+    """A video post on X (API v2 chunked media upload, then ``POST /2/tweets``). DARK: registered here, but nothing can
+    reach it yet, because ``social_accounts`` / ``publish_requests`` (migrations 0028 / 0029) do not allow the word ``x``
+    and there is no connect flow or X developer app. The adapter is ``modules/social_x.py`` (imported when used, so that
+    module can import this one). X has no private or draft state: the post is public at once, like Instagram."""
+
+    platform = "x"
+    #: Test seam only (a loopback host). Production leaves it empty: the host is fixed in social_x.
+    adapter_kwargs: Mapping = {}
+
+    def publish(self, path: Path, post: publishers.PostSpec) -> Mapping:
+        from modules import social_x  # noqa: PLC0415 - social_x imports this module
+
+        ctx = self.ctx
+        # PostSpec.ai_generated -> the post's ``made_with_ai`` (sent only when true).
+        return social_x.XVideoAdapter(
+            ctx.http, sleep=ctx.sleep, heartbeat=ctx.heartbeat, **dict(self.adapter_kwargs)).publish(
+            self.tok, path, post.caption, ai_generated=post.ai_generated)
+
+    def describe(self) -> str:
+        return f"posted to x account {self.ctx.request.get('account_id') or ''}"
+
+
 class YoutubePublisher:
     """Another channel of the organization, uploaded PRIVATE with the pipeline's own uploader."""
 
@@ -899,6 +931,7 @@ class YoutubePublisher:
 publishers.register(InstagramPublisher.platform, InstagramPublisher)
 publishers.register(TiktokPublisher.platform, TiktokPublisher)
 publishers.register(YoutubePublisher.platform, YoutubePublisher)
+publishers.register(XPublisher.platform, XPublisher)
 
 
 def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.SocialTokenClient,
@@ -1020,5 +1053,5 @@ class SocialPublisher:
 __all__ = [
     "PublishStore", "SocialPublisher", "process_request", "check_format", "resolve_master",
     "load_source_meta", "tiktok_chunks", "InstagramAdapter", "TiktokAdapter", "YoutubeAdapter", "VideoInfo",
-    "InstagramPublisher", "TiktokPublisher", "YoutubePublisher",
+    "InstagramPublisher", "TiktokPublisher", "YoutubePublisher", "XPublisher",
 ]

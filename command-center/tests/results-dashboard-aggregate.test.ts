@@ -385,13 +385,13 @@ describe("platform registry", () => {
     expect(cards.x).toMatchObject({ state: "coming", connected: 0 });
   });
   it("a platform nobody can connect is 'coming' whatever count it is given, even an unknown one", () => {
-    const x = { id: "x", publish: "none", results: "planned" } as const;
+    const x = { id: "x", worker: "none", publish: "none", results: "planned" } as const;
     for (const n of [null, 0, 5, NaN]) expect(platformState(x, n)).toBe("coming");
   });
   it("a connected platform whose results are live is the only 'live' card", () => {
-    expect(platformState({ id: "youtube", publish: "available", results: "live" }, 0)).toBe("not_connected");
-    expect(platformState({ id: "youtube", publish: "available", results: "live" }, 1)).toBe("live");
-    expect(platformState({ id: "tiktok", publish: "available", results: "planned" }, 3)).toBe("connected_results_coming");
-    expect(platformState({ id: "tiktok", publish: "available", results: "planned" }, NaN)).toBe("not_connected");
+    expect(platformState({ id: "youtube", worker: "live", publish: "available", results: "live" }, 0)).toBe("not_connected");
+    expect(platformState({ id: "youtube", worker: "live", publish: "available", results: "live" }, 1)).toBe("live");
+    expect(platformState({ id: "tiktok", worker: "live", publish: "available", results: "planned" }, 3)).toBe("connected_results_coming");
+    expect(platformState({ id: "tiktok", worker: "live", publish: "available", results: "planned" }, NaN)).toBe("not_connected");
   });
 });

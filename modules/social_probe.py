@@ -22,6 +22,11 @@ What is checked, and where the rule comes from (official pages):
   FILE_UPLOAD is sent in chunks, so neither is refused for TikTok: a refusal TikTok
   would not make is a post lost for nothing.
 
+* X (https://docs.x.com/x-api/media/quickstart/media-upload-chunked; codec and rate from the older v1.1 best-practices page,
+  because the current one could not be read): H.264; at most 60 fps. Resolution, aspect and audio are NOT refused: no
+  figure for them could be read on a current page, and a refusal X would not make is a post lost for nothing.
+  Duration (1 s to 20 min) and size are checked by ``social_publish.check_format``.
+
 NOT checked (the pages list them; this reads none of them): edit lists, closed
 GOP, 4:2:0 chroma, bitrate (25 Mbps) and audio sample rate (48 kHz).
 
@@ -48,6 +53,8 @@ TT_MIN_SIDE = 360
 TT_MAX_SIDE = 4096
 
 IG_VIDEO_CODECS = ("h264", "hevc")
+#: X: "H.264 High Profile" (the media best-practices page; only its older v1.1 copy was readable, see social_x).
+X_VIDEO_CODECS = ("h264",)
 TT_VIDEO_CODECS = ("h264", "hevc", "vp8", "vp9")
 
 #: The closed words this module adds to ``publish_requests.reason`` (the panel has a sentence for each, in en / ru /
@@ -250,10 +257,10 @@ def _unreadable(what: str) -> ProbeRefusal:
 
 def check_media(platform: str, f: MediaFacts) -> None:
     """Raise ``ProbeRefusal`` when the platform would reject this file. Pure."""
-    name = "Instagram Reels" if platform == "instagram" else "TikTok"
+    name = {"instagram": "Instagram Reels", "x": "X"}.get(platform, "TikTok")
     if not f.video_codec or f.width is None or f.height is None:
         raise _unreadable("picture format")
-    allowed = IG_VIDEO_CODECS if platform == "instagram" else TT_VIDEO_CODECS
+    allowed = {"instagram": IG_VIDEO_CODECS, "x": X_VIDEO_CODECS}.get(platform, TT_VIDEO_CODECS)
     if f.video_codec not in allowed:
         raise ProbeRefusal(REASON_CODEC, f"the picture is {f.video_codec}; {name} needs "
                                           f"{' or '.join(c.upper() if c != 'hevc' else 'HEVC' for c in allowed)}")
@@ -273,7 +280,7 @@ def check_media(platform: str, f: MediaFacts) -> None:
         if not f.faststart:
             raise ProbeRefusal(REASON_FASTSTART, "the file's index (moov) is at the end; Instagram needs it at the "
                                                  "front. Re-save the video with the index first, then send again")
-    else:
+    elif platform == "tiktok":
         if min(f.width, f.height) < TT_MIN_SIDE or max(f.width, f.height) > TT_MAX_SIDE:
             raise ProbeRefusal(REASON_RESOLUTION, f"the video is {f.width}x{f.height}; TikTok needs both sides "
                                                   f"between {TT_MIN_SIDE} and {TT_MAX_SIDE} pixels")

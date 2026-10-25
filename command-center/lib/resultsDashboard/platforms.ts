@@ -5,13 +5,16 @@
  * facts only, (1) can a person connect this platform today and (2) does the dashboard have results for it today. Adding
  * a platform is one line here plus its words in lib/i18n/results-dashboard; nothing else in the page changes.
  *
- * `publish` mirrors the worker's publisher registry (modules/publishers.py: instagram, tiktok, youtube are registered;
- * X and Facebook are not). tests/results-dashboard-platforms.test.ts reads modules/social_publish.py and fails when the
- * two disagree, so a platform cannot become connectable on the worker while this page still says "coming".
+ * `worker` mirrors the worker's publisher registry (modules/publishers.py): `live` = registered and connectable
+ * (instagram, tiktok, youtube), `dark` = registered but nothing can reach it yet (no connect flow, no platform app: X),
+ * `none` = no publisher at all (Facebook). `publish` ("a person can connect it and cross-post today") is `available` only
+ * for `live`, so a dark publisher's card still says "coming". tests/results-dashboard-platforms.test.ts reads
+ * modules/social_publish.py and fails when the two disagree, so a platform cannot become connectable on the worker while
+ * this page still says "coming".
  *
  * `results` is `live` only where this repository already collects results (YouTube Analytics through the daily poll into
  * metrics_snapshots). Instagram insights need a scope the connect flow does not request, TikTok's video list needs one it
- * does not request, and X / Facebook have no adapter at all (docs/RESULTS_DASHBOARD.md, "What each platform allows"): all `planned`, and a
+ * does not request, and X / Facebook cannot be connected at all (docs/RESULTS_DASHBOARD.md, "What each platform allows"): all `planned`, and a
  * planned platform never shows a number, not even zero.
  */
 
@@ -20,6 +23,8 @@ export type PlatformId = (typeof PLATFORM_IDS)[number];
 
 export interface PlatformSpec {
   id: PlatformId;
+  /** Is a publisher registered on the worker, and can it be reached? `dark` = registered, not connectable. */
+  worker: "live" | "dark" | "none";
   /** Can an organization connect this platform and cross-post to it today (a registered worker publisher)? */
   publish: "available" | "none";
   /** Does the dashboard have results for it today? */
@@ -27,11 +32,11 @@ export interface PlatformSpec {
 }
 
 export const PLATFORMS: readonly PlatformSpec[] = [
-  { id: "youtube", publish: "available", results: "live" },
-  { id: "instagram", publish: "available", results: "planned" },
-  { id: "tiktok", publish: "available", results: "planned" },
-  { id: "x", publish: "none", results: "planned" },
-  { id: "facebook", publish: "none", results: "planned" },
+  { id: "youtube", worker: "live", publish: "available", results: "live" },
+  { id: "instagram", worker: "live", publish: "available", results: "planned" },
+  { id: "tiktok", worker: "live", publish: "available", results: "planned" },
+  { id: "x", worker: "dark", publish: "none", results: "planned" },
+  { id: "facebook", worker: "none", publish: "none", results: "planned" },
 ];
 
 /**

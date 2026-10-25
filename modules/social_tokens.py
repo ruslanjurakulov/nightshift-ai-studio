@@ -13,6 +13,11 @@ Refresh rules (official docs):
   not yet expired; the refreshed token is valid for another 60 days.
   ``GET https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token``
   https://developers.facebook.com/docs/instagram-platform/reference/refresh_access_token/
+* X (API v2, OAuth 2.0 with PKCE) — the access token lasts two hours; with the ``offline.access`` scope a refresh token is
+  issued. ``POST https://api.x.com/2/oauth2/token`` form-encoded ``grant_type=refresh_token``, ``refresh_token`` and, for a
+  public client, ``client_id`` (a confidential client sends ``Authorization: Basic`` instead). The page does NOT say whether
+  the refresh token rotates, so a new one is stored when X sends it and the old one kept when it does not.
+  https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
 * TikTok — the access token lasts 24 hours, the refresh token 365 days; a
   refresh may return a NEW refresh token, which then replaces the old one.
   ``POST https://open.tiktokapis.com/v2/oauth/token/`` (grant_type=refresh_token,
@@ -36,9 +41,12 @@ logger = logging.getLogger(__name__)
 
 IG_REFRESH_URL = "https://graph.instagram.com/refresh_access_token"
 TT_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
+X_TOKEN_URL = "https://api.x.com/2/oauth2/token"
 
 TIKTOK_CLIENT_KEY_ENV = "TIKTOK_CLIENT_KEY"
 TIKTOK_CLIENT_SECRET_ENV = "TIKTOK_CLIENT_SECRET"
+X_CLIENT_ID_ENV = "X_CLIENT_ID"
+X_CLIENT_SECRET_ENV = "X_CLIENT_SECRET"
 
 #: Refresh an Instagram token when it has less than this left.
 IG_REFRESH_WINDOW = timedelta(days=10)
@@ -46,6 +54,8 @@ IG_REFRESH_WINDOW = timedelta(days=10)
 IG_MIN_AGE = timedelta(hours=24)
 #: Refresh a TikTok access token when it has less than this left.
 TT_REFRESH_WINDOW = timedelta(minutes=10)
+#: Refresh an X access token (two hours) when it has less than this left.
+X_REFRESH_WINDOW = timedelta(minutes=10)
 
 
 class SocialTokenError(RuntimeError):
@@ -182,6 +192,48 @@ def _needs_tiktok_refresh(tok: SocialToken, now: datetime) -> bool:
     return tok.access_expires_at is None or tok.access_expires_at - now <= TT_REFRESH_WINDOW
 
 
+def _ensure_fresh_x(tok: SocialToken, client: SocialTokenClient, http, env: Mapping[str, str], now: datetime) -> SocialToken:
+    if tok.access_expires_at is not None and tok.access_expires_at - now > X_REFRESH_WINDOW:
+        return tok
+    if not tok.refresh_token:
+        client.set_status(tok.account_id, "expired")
+        raise SocialTokenError(f"x account {tok.account_id}: no refresh token; reconnect it")
+    cid = (env.get(X_CLIENT_ID_ENV) or "").strip()
+    secret = (env.get(X_CLIENT_SECRET_ENV) or "").strip()
+    if not cid:
+        raise SocialTokenError(f"set {X_CLIENT_ID_ENV} (and {X_CLIENT_SECRET_ENV} for a confidential app) on the worker to "
+                               "refresh X tokens")
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    data = {"grant_type": "refresh_token", "refresh_token": tok.refresh_token}
+    if secret:
+        import base64  # noqa: PLC0415
+
+        headers["Authorization"] = "Basic " + base64.b64encode(f"{cid}:{secret}".encode("utf-8")).decode("ascii")
+    else:
+        data["client_id"] = cid
+    try:
+        r = http.post(X_TOKEN_URL, data=data, headers=headers, timeout=20, allow_redirects=False)
+    except Exception as e:  # the type only: the message of a request error can carry the URL and the form
+        raise SocialTokenError(f"x account {tok.account_id}: refresh failed ({type(e).__name__})") from None
+    status = getattr(r, "status_code", 0)
+    try:
+        body = r.json() or {}
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    new = str(body.get("access_token") or "").strip()
+    if status >= 300 or not new:
+        if 400 <= status < 500 or (status < 300 and not new):
+            client.set_status(tok.account_id, "expired")
+        raise SocialTokenError(f"x account {tok.account_id}: refresh refused (HTTP {status}); reconnect it")
+    exp = body.get("expires_in")
+    fresh = replace(tok, access_token=new,
+                    refresh_token=str(body.get("refresh_token") or tok.refresh_token).strip(),
+                    access_expires_at=now + timedelta(seconds=int(exp)) if isinstance(exp, (int, float)) and not isinstance(exp, bool) else None)
+    client.rotate(fresh)
+    return fresh
+
+
 def ensure_fresh(tok: SocialToken, client: SocialTokenClient, *, http=None,
                  env: Optional[Mapping[str, str]] = None, now: Optional[datetime] = None) -> SocialToken:
     """Return a usable token for ``tok``'s account, refreshing (and storing the
@@ -262,5 +314,8 @@ def ensure_fresh(tok: SocialToken, client: SocialTokenClient, *, http=None,
         )
         client.rotate(fresh)
         return fresh
+
+    if tok.platform == "x":
+        return _ensure_fresh_x(tok, client, http, env, now)
 
     raise SocialTokenError(f"account {tok.account_id}: unknown platform")
