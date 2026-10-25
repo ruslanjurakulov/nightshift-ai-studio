@@ -876,6 +876,7 @@ class FacebookPublisher(_SocialAccountPublisher):
     module can import this one)."""
 
     platform = "facebook"
+
     def publish(self, path: Path, post: publishers.PostSpec) -> Mapping:
         from modules import social_facebook  # noqa: PLC0415 - social_facebook imports this module
 
