@@ -21,7 +21,7 @@ vi.mock("@/lib/server/run-backend", () => ({ isRunNowConfigured: false, runBacke
 vi.mock("@/lib/auth/org-roles", () => ({ isOperator: async () => false, resolveCurrentOrgRole: async () => "owner" }));
 vi.mock("@/lib/connectedAccounts", () => ({ readConnectedAccounts: async () => [] }));
 vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => ({ supported: true, current: org.current }) }));
-vi.mock("@/lib/server/creative", () => ({ loadStudioModels: async () => [] }));
+vi.mock("@/lib/server/creative", () => ({ loadStudioModels: async () => [], loadSwitchedOffModels: async () => [] }));
 vi.mock("@/lib/server/upsell", () => ({ loadUpsellCatalog: async () => null }));
 vi.mock("@/lib/server/channel-dna", () => ({ channelDnaForCreate: async () => ({ withStudio: (p: unknown) => p, run: null, studio: null }) }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => null, getUser: async () => null }));

@@ -50,9 +50,11 @@ TIMEOUT = "timeout"
 #: ``publish_gate.HELD_BEFORE_RENDER_EXIT``): no traceback, so it is named by the
 #: worker's own header, never guessed from the log.
 HELD = "held"
+#: The owner switched the provider the run would use OFF (migration 0124, modules/model_switch.py): stopped before anything was spent.
+SWITCHED_OFF = "switched_off"
 UNKNOWN = "unknown"
 
-CODES = (CREDITS, VOICE, PROVIDER_QUOTA, MEDIA, RENDER, TIMEOUT, HELD, UNKNOWN)
+CODES = (CREDITS, VOICE, PROVIDER_QUOTA, MEDIA, RENDER, TIMEOUT, HELD, SWITCHED_OFF, UNKNOWN)
 
 #: The marker ``lib/runBackend.ts`` parses. Keep the two in step.
 PREFIX_RE = re.compile(r"^\[code:([a-z_]+)\][ \t]?")

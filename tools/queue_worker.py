@@ -143,6 +143,7 @@ from modules import channel_credentials, channel_tokens  # noqa: E402
 from modules import comment_replies  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import log_redaction  # noqa: E402
+from modules import model_switch  # noqa: E402
 from modules.budget import BUDGET_STOP_EXIT  # noqa: E402
 from modules.gemini_stages import GEMINI_QUOTA_EXIT  # noqa: E402
 from modules.publish_gate import HELD_BEFORE_RENDER_EXIT  # noqa: E402
@@ -667,6 +668,7 @@ class Worker:
         comments=None,
         visibility=None,
         series_plans=None,
+        switches=None,
         cost_mirror: Optional[Callable[[str], object]] = None,
     ):
         self.client = client
@@ -716,6 +718,9 @@ class Worker:
         # Series planning (migration 0120, modules/series_plan_worker.py): a ``series_plan`` job is planned here, in this process,
         # and never reaches main.py. None = this worker does not know the kind (a worker built without it keeps the old refusal).
         self.series_plans = series_plans
+        # The owner's model switch (migration 0124, modules/model_switch.py): asked once before a run spends anything. None = off, the
+        # default (NIGHTSHIFT_MODEL_SWITCH), and the worker then behaves exactly as it did before the switch existed.
+        self.switches = switches
         # The service-key credits client and where a finished run's ledger is
         # read from. None = the worker cannot tell who pays for a job, so it
         # runs none (migration 0041: no unpaid fallback).
@@ -882,6 +887,13 @@ class Worker:
         if regen_id:
             return self._process_regeneration(job, channel_id, clean, channel_row, regen_id)
 
+        # The owner's model switch (0124): a provider switched off stops the run HERE, before the hold is opened and before main.py
+        # starts, so nothing has been spent. It is never replaced by another provider or by stock footage (CLAUDE.md #4); the job
+        # fails with a coded reason and its hold comes back like any run that failed before it started.
+        use = self._switched_off(job, run_env)
+        if use is not None:
+            return self._finish(job, "failed", model_switch.refusal_text(use), code=model_switch.CODE)
+
         topic = resume_target(job, clean, self.output_dir)
         if topic:
             clean = dict(clean, resume=True, topic=topic)
@@ -956,6 +968,16 @@ class Worker:
         # belongs to whoever took the job. A job failed on its last attempt by
         # the stale sweep is released by expire_credit_reservations.
         return outcome
+
+    def _switched_off(self, job: Mapping, run_env: Mapping[str, str]):
+        """The provider this run would call that the owner switched off, or None (also when the switch is not built, not in force, or its
+        state cannot be read: then the run goes on, and says so once per job)."""
+        use, warning = model_switch.check(self.switches, run_env)
+        if warning:
+            logger.warning("job %s: %s", job.get("id"), warning)
+        if use is not None:
+            logger.info("job %s: %s provider %s is switched off; the run is not started", job.get("id"), use.kind, use.pipeline)
+        return use
 
     def _process_series_plan(self, job: Mapping) -> str:
         """One series-planning job (modules/series_plan_worker.py): plan, answer the database, end the job. No credit hold is opened
@@ -1174,6 +1196,13 @@ class Worker:
         except run_request.InvalidRunRequest as e:
             self._settle_regeneration(job, regen_id, ok=False, code="invalid_job", error=str(e))
             return self._finish(job, "failed", f"scene regeneration refused (nothing was run): {e}")
+
+        # The owner's model switch (0124): the provider this scene would be made with is off. The hold the press placed is released in
+        # full with the regeneration (the previous take is untouched: nothing ran), and the person is told it was not started.
+        use = self._switched_off(job, run_env)
+        if use is not None:
+            self._settle_regeneration(job, regen_id, ok=False, code="model_switched_off", error=model_switch.refusal_text(use))
+            return self._finish(job, "failed", model_switch.refusal_text(use), code=model_switch.CODE)
 
         outcome = self._execute(job, argv, run_env, channel_row)
         if outcome in ("succeeded", "failed"):
@@ -1652,6 +1681,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     # so that a planning job is ended cleanly (and its plan with it) while the switch is off.
     series_plans = series_plan_worker.build(url, key, os.environ)
     logger.info("series planning: %s", "ON (NIGHTSHIFT_SERIES_PLANNER)" if series_plans.enabled else "off")
+    # OFF by default: the owner's model switch (migration 0124). Built only when NIGHTSHIFT_MODEL_SWITCH is on; the database then still
+    # answers "not in force" until the owner puts the switches in force.
+    switches = model_switch.SwitchRest(url, key) if model_switch.enabled(os.environ) else None
+    logger.info("model switch: %s", "ON (NIGHTSHIFT_MODEL_SWITCH)" if switches is not None else "off")
     worker = Worker(QueueClient(url, key), worker_id=args.worker_id,
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,
                     grace_seconds=args.grace_seconds, job_timeout_seconds=args.job_timeout_seconds,
@@ -1666,6 +1699,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     repurposer=repurpose.RepurposeService(url, key, output_dir=REPO_DIR / "output",
                                                           worker_id=args.worker_id),
                     series_plans=series_plans,
+                    switches=switches,
                     comments=comments,
                     visibility=visibility)
     worker.install_signal_handlers()
