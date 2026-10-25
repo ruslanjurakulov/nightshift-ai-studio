@@ -168,6 +168,9 @@ jobs:
           # The owner's model switch section (migration 0124, docs/MODEL_SWITCH.md): off unless exactly `on` (empty = the section shows an
           # "off" note and POST /api/owner/model-switch answers 404). The same variable the queue worker reads (WORKERENV_ below).
           WEBENV_NIGHTSHIFT_MODEL_SWITCH: ${{ vars.NIGHTSHIFT_MODEL_SWITCH }}
+          # The owner's vendor-key checker (docs/MODEL_API_KEYS.md): verifies a pasted key with the vendor and forgets it, nothing is stored.
+          # Off unless the repository variable is exactly `on` (empty = the page shows an "off" note and /api/owner/model-keys answers 404).
+          WEBENV_NIGHTSHIFT_MODEL_KEYS: ${{ vars.NIGHTSHIFT_MODEL_KEYS }}
           # The brand channel's owner page (docs/MARKETING_POSTS.md): the SAME repository variables the marketing worker
           # reads, so one switch controls both. Off unless NIGHTSHIFT_MARKETING_POSTS is exactly `on` (empty = the page
           # shows an "off" note and /api/marketing answers 404). MARKETING_TELEGRAM_CHAT is the channel's public @name,

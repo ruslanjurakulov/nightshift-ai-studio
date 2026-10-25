@@ -10,6 +10,7 @@ import { confirmSheetsEn } from "./confirm-sheets/en";
 import { ownerRpcEn } from "./owner-rpc/en";
 import { marketingEn } from "./marketing/en";
 import { modelSwitchEn } from "./model-switch/en";
+import { modelKeysEn } from "./model-keys/en";
 import { seriesPlanEn } from "./series-plan/en";
 import { ownerTruthEn } from "./owner-truth/en";
 import { connectPickerEn } from "./connect-picker/en";
@@ -44,6 +45,7 @@ export const en = {
   ownerRpc: ownerRpcEn,
   marketing: marketingEn,
   modelSwitch: modelSwitchEn,
+  modelKeys: modelKeysEn,
   seriesPlan: seriesPlanEn,
   ownerTruth: ownerTruthEn,
   connectPicker: connectPickerEn,
@@ -109,6 +111,7 @@ export const en = {
     onboarding: "Getting Started",
     approvals: "Approvals",
     marketing: "Marketing",
+    modelKeys: "Model API keys",
     alerts: "Alerts",
     audit: "Audit Trail",
     developers: "Developers",
