@@ -11,6 +11,7 @@ from typing import Dict, Mapping, Optional, Type
 
 from modules.capabilities import alibaba, audio, bfl, image, image_ops, minimax, recraft, transcribe, video, video_ops, xai
 from modules.capabilities.base import HttpAdapter
+from modules.capabilities import krea, ltx, luma
 
 #: adapter key → class. The registry's "adapter" values must all resolve here
 #: (tests/test_model_registry.py pins that).
@@ -19,6 +20,9 @@ ADAPTERS: Dict[str, Type[HttpAdapter]] = {
     for cls in (
         *image.ADAPTERS,
         *image_ops.ADAPTERS,
+        *krea.ADAPTERS,
+        *ltx.ADAPTERS,
+        *luma.ADAPTERS,
         *video.ADAPTERS,
         *video_ops.ADAPTERS,
         *minimax.ADAPTERS,
