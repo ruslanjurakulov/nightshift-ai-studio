@@ -46,7 +46,6 @@ its AI models "unless expressly authorised by us". The registry entries carry
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import urlsplit
 
@@ -73,22 +72,24 @@ from modules.capabilities.base import (
     PollResult,
     ProviderTask,
     dig,
-    image_data_uri,
-    is_url,
     json_body,
 )
+from modules.capabilities.pictures import inline_picture
 from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, unconfirmed
 
 #: Where a result may live: the maker's storage domain...
 RESULT_HOSTS = ("aliyuncs.com",)
 #: ...and, because that domain is shared with every Alibaba Cloud customer's bucket, only the
 #: ``dashscope-result*`` buckets the docs show (see RESULT LINKS above).
+#: Said after any task Alibaba reports as failed or cancelled. Its pricing page says failed requests are not billed; that is
+#: its claim, not something this adapter has seen, so the message tells a person to look rather than that it was free.
+SPEND_UNKNOWN = ("SPEND UNKNOWN: Alibaba's pricing page claims failed requests are not billed (a vendor claim, unverified "
+                 "here); check the Model Studio usage page before assuming nothing was spent")
 RESULT_HOST_RE = re.compile(r"dashscope-result[a-z0-9-]*\.oss-[a-z0-9-]+\.aliyuncs\.com")
 
-_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
+#: A task id is a UUID: letters, digits, "-" and "_" only, so no "." (a ".." would walk the URL path up) and no ":".
+_ID = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 _WORKSPACE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
-#: Pictures in a request: formats the docs list for both products (HappyHorse: JPEG, JPG, PNG, WEBP).
-_PICTURE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 
 
 class _DashScope(SafeResultMixin, HttpAdapter):
@@ -140,18 +141,9 @@ class _DashScope(SafeResultMixin, HttpAdapter):
 
     @staticmethod
     def _picture(ref: str, *, max_bytes: int) -> str:
-        """An https link as is, a local file as a data URI (both are accepted by these APIs)."""
-        if is_url(ref):
-            return ref
-        path = Path(ref)
-        if path.suffix.lower() not in _PICTURE_SUFFIXES:
-            raise AdapterError(E_BAD_REQUEST, "Model Studio takes JPEG, PNG or WEBP pictures", not_accepted=True)
-        try:
-            if path.stat().st_size > max_bytes:
-                raise AdapterError(E_BAD_REQUEST, f"the picture is over {max_bytes // (1 << 20)} MB", not_accepted=True)
-            return image_data_uri(ref)
-        except OSError:
-            raise AdapterError(E_BAD_REQUEST, "the picture could not be read", not_accepted=True) from None
+        """An https link as is, a local file as a data URI (both are accepted by these APIs), only if the file's first
+        bytes are a PNG, JPEG or WEBP picture (modules/capabilities/pictures.py)."""
+        return inline_picture(ref, max_bytes=max_bytes, who="Model Studio")
 
 
 class HappyHorseVideoAdapter(_DashScope):
@@ -257,8 +249,8 @@ class HappyHorseVideoAdapter(_DashScope):
             return self.checked_outputs(PollResult(SUCCEEDED, [Output("video/mp4", url=url)]))
         if status in ("FAILED", "CANCELED"):
             code = self._map(out.get("code")) or E_UNAVAILABLE
-            return PollResult(FAILED, error=AdapterError(
-                code, self.message(out.get("message") or out.get("code") or status.lower())))
+            text = self.message(out.get("message") or out.get("code") or status.lower())
+            return PollResult(FAILED, error=AdapterError(code, f"{text}. {SPEND_UNKNOWN}"))
         if status == "UNKNOWN":
             # "The task does not exist or its status is unknown" (ids are kept 24 h).
             return PollResult(FAILED, error=AdapterError(

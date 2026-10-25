@@ -29,7 +29,7 @@ from unittest import mock
 from modules import creative_adapters as ca
 from modules import creative_worker as cw
 from modules import model_registry as reg
-from modules.capabilities import alibaba, build_adapter
+from modules.capabilities import alibaba, build_adapter, pictures
 from modules.capabilities.base import (
     E_AUTH,
     E_BAD_REQUEST,
@@ -375,6 +375,31 @@ class HappyHorseSubmitTests(VendorCase):
             self.assertIn(fragment, cm.exception.message)
         self.assertEqual(self.vendor.requests, [])
 
+    def test_a_file_that_only_wears_a_picture_suffix_is_refused_and_nothing_is_sent(self):
+        bodies = {"text": b"DB_PASSWORD=hunter2\n" * 20, "html": b"<html><body>login</body></html>",
+                  "zip": b"PK\x03\x04" + b"\x00" * 64, "gif": b"GIF89a" + b"\x00" * 64, "empty": b""}
+        for kind, body in bodies.items():
+            f = self.tmp / f"{kind}.png"
+            f.write_bytes(body)
+            with self.assertRaises(AdapterError, msg=kind) as cm:
+                self.video().submit(CapabilityRequest(I2V, "x", resolution="480p", duration_s=3, input_images=(str(f),)), HH_I2V)
+            self.assertEqual(cm.exception.code, E_BAD_REQUEST, kind)
+            self.assertTrue(cm.exception.not_accepted, kind)
+            self.assertIn("not a PNG, JPEG or WEBP picture", cm.exception.message)
+            with self.assertRaises(AdapterError, msg=kind) as cm:
+                self.image().submit(CapabilityRequest(EDIT, "x", input_images=(str(f),)), QWEN_PRO)
+            self.assertIn("not a PNG, JPEG or WEBP picture", cm.exception.message)
+        self.assertEqual(self.vendor.requests, [])
+
+    def test_a_real_picture_is_labelled_with_the_type_its_bytes_say(self):
+        from PIL import Image
+
+        jpeg = io.BytesIO()
+        Image.new("RGB", (8, 8), (10, 20, 30)).save(jpeg, "JPEG")
+        f = self.tmp / "liar.png"                      # a .png suffix on a JPEG
+        f.write_bytes(jpeg.getvalue())
+        self.assertTrue(pictures.inline_picture(str(f), max_bytes=1 << 20, who="x").startswith("data:image/jpeg;base64,"))
+
     def test_a_picture_over_the_size_the_docs_allow_is_refused_before_any_call(self):
         with mock.patch.object(alibaba.HappyHorseVideoAdapter, "MAX_IMAGE_BYTES", 4):
             with self.assertRaises(AdapterError) as cm:
@@ -442,7 +467,8 @@ class HappyHorseLostAnswerTests(VendorCase):
 
     def test_a_2xx_without_a_usable_task_id_may_have_billed(self):
         for body in ({}, {"output": {}}, {"output": {"task_id": ""}}, {"output": {"task_id": 7}},
-                     {"output": {"task_id": "../../v1/files"}}, {"output": {"task_id": "x" * 300}}, [], None):
+                     {"output": {"task_id": "../../v1/files"}}, {"output": {"task_id": ".."}}, {"output": {"task_id": "a.b"}},
+                     {"output": {"task_id": "x" * 300}}, [], None):
             vendor = FakeVendor()
             self.addCleanup(vendor.close)
             vendor.on("POST", SUBMIT, Resp(200, body))
@@ -550,6 +576,12 @@ class HappyHorsePollTests(VendorCase):
             res = self.status({"output": {"task_status": "FAILED", "code": code, "message": message}})
             self.assertEqual((res.state, res.error.code), (FAILED, want), (code, message))
         self.assertEqual(self.status({"output": {"task_status": "FAILED"}}).error.code, E_UNAVAILABLE)
+        for body in ({"task_status": "FAILED", "code": "InvalidParameter", "message": "x"}, {"task_status": "FAILED"},
+                     {"task_status": "CANCELED"}):
+            err = self.status({"output": body}).error
+            self.assertTrue(err.message.endswith(alibaba.SPEND_UNKNOWN), err.message)
+            self.assertIn("usage page", err.message)
+            self.assertIn("vendor claim, unverified", err.message)       # "failed requests are not billed" is Alibaba's claim
         res = self.status({"output": {"task_status": "CANCELED"}})
         self.assertEqual((res.state, res.error.code), (FAILED, E_UNAVAILABLE))
 
@@ -588,6 +620,20 @@ class HappyHorsePollTests(VendorCase):
             self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), url)
             self.assertNotIn(KEY, cm.exception.message)
 
+    def test_a_link_the_two_url_parsers_disagree_about_is_refused(self):
+        # base.host_is reads the host with urlparse and is fooled by a backslash before "@host"; the strict check
+        # (safe_fetch.checked_result_url, the one the mixin uses) must not be. Nothing is requested for any of them.
+        for url in ("https://127.0.0.1:1\\@dashscope-result.oss-cn-beijing.aliyuncs.com/x.mp4",
+                    "https://127.0.0.1#@dashscope-result.oss-cn-beijing.aliyuncs.com/x.mp4",
+                    "https://127.0.0.1?@dashscope-result.oss-cn-beijing.aliyuncs.com/x.mp4",
+                    "https://dashscope-result.oss-cn-beijing.aliyuncs.com\\.attacker.example/x.mp4",
+                    "https://dashscope-result.oss-cn-beijing.aliyuncs.com /x.mp4"):
+            with self.assertRaises(AdapterError, msg=url) as cm:
+                self.status(done_video(url), widen=False)
+            self.assertEqual(cm.exception.code, E_BAD_RESPONSE, url)
+            self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), url)
+        self.assertEqual([r for r in self.vendor.requests if r.method != "GET"], [])      # the status GET is the only request
+
     def test_fetch_itself_refuses_a_link_that_was_never_vetted(self):
         # The download is the last gate: a result handed to fetch() directly is vetted again, whatever poll did.
         a = self.video(widen=False)
@@ -620,7 +666,7 @@ class HappyHorsePollTests(VendorCase):
         self.assertEqual(cm.exception.code, E_AUTH)
 
     def test_a_task_id_that_could_steer_the_request_is_refused(self):
-        for tid in ("../../v1/files", "a/b", "a?b=c", "", "x" * 300):
+        for tid in ("../../v1/files", "a/b", "a?b=c", "", "x" * 300, "..", ".", "a..b", "a.b", "a:b", "%2e%2e"):
             with self.assertRaises(AdapterError, msg=repr(tid)) as cm:
                 self.video().poll(ProviderTask("video.happyhorse", HH_T2V, tid))
             self.assertEqual(cm.exception.code, E_NOT_FOUND)
