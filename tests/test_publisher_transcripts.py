@@ -271,7 +271,7 @@ def scenarios():
         "yt_quota": dict(platform="youtube", yt_exc=HttpErr(403, "quotaExceeded")),
         "yt_ambiguous": dict(platform="youtube", yt_exc=HttpErr(503, "backendError")),
         # not a platform we publish to
-        "unknown_facebook": dict(platform="facebook"),
+        "unknown_snapchat": dict(platform="snapchat"),
         "unknown_empty": dict(platform="", request={"id": 7, "org_id": "org", "video_id": "vid1", "platform": ""}),
         "unknown_case": dict(platform="Instagram"),
     }

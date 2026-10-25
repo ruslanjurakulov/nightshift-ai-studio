@@ -22,8 +22,14 @@ What is checked, and where the rule comes from (official pages):
   FILE_UPLOAD is sent in chunks, so neither is refused for TikTok: a refusal TikTok
   would not make is a post lost for nothing.
 
+* Facebook Reels (https://developers.facebook.com/docs/video-api/guides/reels-publishing): H.264 / H.265
+  recommended, VP9 and AV1 also supported; 24 to 60 fps (checked here as 23 to 60 so 23.976 passes; Meta's error
+  1363129 is mapped if it still refuses); at least 540x960. Duration (3 to 90 s) and the 9:16 shape are checked by
+  ``social_publish.check_format``. The moov position is not refused: Facebook takes the bytes through its own
+  resumable upload, not from a URL.
+
 NOT checked (the pages list them; this reads none of them): edit lists, closed
-GOP, 4:2:0 chroma, bitrate (25 Mbps) and audio sample rate (48 kHz).
+GOP, 4:2:0 chroma, bitrate (25 Mbps) and audio sample rate (48 kHz); for Facebook also AAC-LC / 128 kbps.
 
 ``read_facts`` uses ``ffprobe`` when it is installed, else parses ``ffmpeg -i``
 (the render image has ffmpeg, and the existing duration probe already depends
@@ -47,7 +53,12 @@ FPS_MAX = 60.0
 TT_MIN_SIDE = 360
 TT_MAX_SIDE = 4096
 
+FB_MIN_WIDTH = 540
+FB_MIN_HEIGHT = 960
+
 IG_VIDEO_CODECS = ("h264", "hevc")
+#: Facebook Reels: "H.264 or H.265 recommended (VP9 and AV1 also supported)".
+FB_VIDEO_CODECS = ("h264", "hevc", "vp9", "av1")
 TT_VIDEO_CODECS = ("h264", "hevc", "vp8", "vp9")
 
 #: The closed words this module adds to ``publish_requests.reason`` (the panel has a sentence for each, in en / ru /
@@ -59,8 +70,9 @@ REASON_FPS = "bad_framerate"
 REASON_TOO_WIDE = "too_wide"
 REASON_RESOLUTION = "bad_resolution"
 REASON_FASTSTART = "not_faststart"
+REASON_TOO_SMALL = "too_small_picture"
 REASONS = (REASON_UNREADABLE, REASON_CODEC, REASON_AUDIO, REASON_FPS, REASON_TOO_WIDE, REASON_RESOLUTION,
-           REASON_FASTSTART)
+           REASON_FASTSTART, REASON_TOO_SMALL)
 
 
 class ProbeRefusal(Exception):
@@ -250,10 +262,10 @@ def _unreadable(what: str) -> ProbeRefusal:
 
 def check_media(platform: str, f: MediaFacts) -> None:
     """Raise ``ProbeRefusal`` when the platform would reject this file. Pure."""
-    name = "Instagram Reels" if platform == "instagram" else "TikTok"
+    name = {"instagram": "Instagram Reels", "facebook": "Facebook Reels"}.get(platform, "TikTok")
     if not f.video_codec or f.width is None or f.height is None:
         raise _unreadable("picture format")
-    allowed = IG_VIDEO_CODECS if platform == "instagram" else TT_VIDEO_CODECS
+    allowed = {"instagram": IG_VIDEO_CODECS, "facebook": FB_VIDEO_CODECS}.get(platform, TT_VIDEO_CODECS)
     if f.video_codec not in allowed:
         raise ProbeRefusal(REASON_CODEC, f"the picture is {f.video_codec}; {name} needs "
                                           f"{' or '.join(c.upper() if c != 'hevc' else 'HEVC' for c in allowed)}")
@@ -264,7 +276,13 @@ def check_media(platform: str, f: MediaFacts) -> None:
     if not FPS_MIN <= f.fps <= FPS_MAX:
         raise ProbeRefusal(REASON_FPS, f"the video runs at {f.fps:.1f} frames a second; {name} needs "
                                        f"{FPS_MIN:.0f} to {FPS_MAX:.0f}")
-    if platform == "instagram":
+    if platform == "facebook":
+        # Meta: "minimum 540x960". Audio is not refused here: the page asks for AAC-LC 48 kHz but names no error for
+        # it, and the render's audio is AAC already (see "NOT checked").
+        if f.width < FB_MIN_WIDTH or f.height < FB_MIN_HEIGHT:
+            raise ProbeRefusal(REASON_TOO_SMALL, f"the video is {f.width}x{f.height}; Facebook Reels need at least "
+                                                 f"{FB_MIN_WIDTH}x{FB_MIN_HEIGHT} (1080x1920 recommended)")
+    elif platform == "instagram":
         if f.width > IG_MAX_WIDTH:
             raise ProbeRefusal(REASON_TOO_WIDE, f"the video is {f.width} pixels wide; Instagram Reels accepts "
                                                 f"at most {IG_MAX_WIDTH}")
