@@ -26,6 +26,7 @@ const ERROR_CODES = [
   "max_credits_required",
   "idempotency_key_required",
   "model_not_sellable",
+  "model_temporarily_off",
   "entitlement_required",
   "unpriced",
   "capability_not_supported",

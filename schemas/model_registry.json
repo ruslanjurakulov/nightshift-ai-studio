@@ -1784,12 +1784,17 @@
       },
       "credit_unit": "model_minimax_hailuo_2_3_second",
       "entitlement": "models_video:premium",
-      "terms_gate": null,
+      "terms_gate": "terms_review_required",
       "terms_notes": [
-        "MiniMax API terms (resale clauses) could not be read; rate control applies to shared-key multi-user patterns"
+        "MiniMax Open Platform Terms of Service (Nanonoble Pte Ltd, effective 2026-03-30, read 2026-10-25), User Rights and Obligations 7(c): you may not 'independently sublicense, resell, or distribute any or all services outside of any integrated applications'.",
+        "Why the gate stays open: 7(c) allows use inside an integrated application, which a credits product arguably is. But General Provisions 3 says 'your own products or projects' and IP clause 7 bars selling access keys or 'system usage'. The ToS does not say which governs.",
+        "Operator duties: User Rights item 6 makes you responsible for every end user's use and their compliance; Service item 13 requires suspending a violating application within 24 hours of notice. The 'Service Rules' the ToS points to (usage rules, copyright policy) were NOT read.",
+        "Output: as between you and MiniMax you retain ownership of input and generated content (IP clause 3). MiniMax may use input and generated content to provide, maintain, develop and improve its Services: say so in the privacy notice before any sale. No watermark or attribution duty found.",
+        "Same account and same Terms as the H3 entries (an earlier note here called them unreadable). Read 2026-10-25. Hailuo 2.3 is no longer listed as current by MiniMax (legacy table). Rate control applies to shared-key multi-user patterns.",
+        "Under 18: the ToS asks a minor to read it with a guardian and get consent (it binds the account holder, not end users). Uzbekistan billing and sign-up NOT verified; the sanctions clause does not name it. Ask MiniMax (contact.nanonoble@minimax.io) in writing before customers use it."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1
@@ -1801,6 +1806,373 @@
         "prompt": "a paper boat drifting on a calm lake",
         "resolution": "768p",
         "duration_s": 6
+      }
+    },
+    {
+      "id": "minimax-h3",
+      "display_name": "MiniMax H3",
+      "provider": "minimax",
+      "adapter": "video.minimax_h3",
+      "vendor_model": "MiniMax-H3",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "resolutions": [
+        "768p",
+        "2k"
+      ],
+      "default_resolution": "768p",
+      "durations_s": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "end_frame": true,
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "MiniMax V2 create and query API pages, video guide, models intro, pricing and rate limits read in full 2026-10-25 as markdown (not search extracts); the Terms of Service read in part (the clauses cited in terms_notes). No endpoint was called."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.08,
+        "source_url": "https://platform.minimax.io/docs/pricing/overview",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "768p": 0.08,
+            "2k": 0.13
+          }
+        },
+        "note": "ESTIMATE: list price per second of OUTPUT (pay-as-you-go API). Input video and pictures past the free quota (5; Max 2) cost extra; at most first and last frame are sent. Whether a failed or moderated task is billed is not stated. '2K' is MiniMax's name with no pixel size: labelled 2k, not 1440p."
+      },
+      "credit_unit": "model_minimax_h3_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "MiniMax Open Platform Terms of Service (Nanonoble Pte Ltd, effective 2026-03-30, read 2026-10-25), User Rights and Obligations 7(c): you may not 'independently sublicense, resell, or distribute any or all services outside of any integrated applications'.",
+        "Why the gate stays open: 7(c) allows use inside an integrated application, which a credits product arguably is. But General Provisions 3 says 'your own products or projects' and IP clause 7 bars selling access keys or 'system usage'. The ToS does not say which governs.",
+        "Operator duties: User Rights item 6 makes you responsible for every end user's use and their compliance; Service item 13 requires suspending a violating application within 24 hours of notice. The 'Service Rules' the ToS points to (usage rules, copyright policy) were NOT read.",
+        "Output: as between you and MiniMax you retain ownership of input and generated content (IP clause 3). MiniMax may use input and generated content to provide, maintain, develop and improve its Services: say so in the privacy notice before any sale. No watermark or attribution duty found.",
+        "Under 18: the ToS asks a minor to read it with a guardian and get consent (it binds the account holder, not end users). Uzbekistan billing and sign-up NOT verified; the sanctions clause does not name it. Ask MiniMax (contact.nanonoble@minimax.io) in writing before customers use it."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 7000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "resolution": "768p",
+        "duration_s": 4,
+        "input_image": "generated",
+        "end_frame": "generated"
+      }
+    },
+    {
+      "id": "minimax-h3-highspeed",
+      "display_name": "MiniMax H3 Highspeed",
+      "provider": "minimax",
+      "adapter": "video.minimax_h3",
+      "vendor_model": "MiniMax-H3-Highspeed",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "resolutions": [
+        "768p"
+      ],
+      "default_resolution": "768p",
+      "durations_s": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "end_frame": true,
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "MiniMax V2 create and query API pages, video guide, models intro, pricing and rate limits read in full 2026-10-25 as markdown (not search extracts); the Terms of Service read in part (the clauses cited in terms_notes). No endpoint was called.",
+        "note": "Highspeed is in the create-API enum and on the pricing page but not in the video guide or the models intro."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.06,
+        "source_url": "https://platform.minimax.io/docs/pricing/overview",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "768p": 0.06
+          }
+        },
+        "note": "ESTIMATE: list price per second of OUTPUT (pay-as-you-go API). Input video and pictures past the free quota (5; Max 2) cost extra; at most first and last frame are sent. Whether a failed or moderated task is billed is not stated."
+      },
+      "credit_unit": "model_minimax_h3_highspeed_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "MiniMax Open Platform Terms of Service (Nanonoble Pte Ltd, effective 2026-03-30, read 2026-10-25), User Rights and Obligations 7(c): you may not 'independently sublicense, resell, or distribute any or all services outside of any integrated applications'.",
+        "Why the gate stays open: 7(c) allows use inside an integrated application, which a credits product arguably is. But General Provisions 3 says 'your own products or projects' and IP clause 7 bars selling access keys or 'system usage'. The ToS does not say which governs.",
+        "Operator duties: User Rights item 6 makes you responsible for every end user's use and their compliance; Service item 13 requires suspending a violating application within 24 hours of notice. The 'Service Rules' the ToS points to (usage rules, copyright policy) were NOT read.",
+        "Output: as between you and MiniMax you retain ownership of input and generated content (IP clause 3). MiniMax may use input and generated content to provide, maintain, develop and improve its Services: say so in the privacy notice before any sale. No watermark or attribution duty found.",
+        "Under 18: the ToS asks a minor to read it with a guardian and get consent (it binds the account holder, not end users). Uzbekistan billing and sign-up NOT verified; the sanctions clause does not name it. Ask MiniMax (contact.nanonoble@minimax.io) in writing before customers use it."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 7000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "resolution": "768p",
+        "duration_s": 4,
+        "input_image": "generated",
+        "end_frame": "generated"
+      }
+    },
+    {
+      "id": "minimax-h3-lite",
+      "display_name": "MiniMax H3 Lite",
+      "provider": "minimax",
+      "adapter": "video.minimax_h3",
+      "vendor_model": "MiniMax-H3-Lite",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "resolutions": [
+        "480p",
+        "768p"
+      ],
+      "default_resolution": "768p",
+      "durations_s": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "end_frame": true,
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "MiniMax V2 create and query API pages, video guide, models intro, pricing and rate limits read in full 2026-10-25 as markdown (not search extracts); the Terms of Service read in part (the clauses cited in terms_notes). No endpoint was called."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.04,
+        "source_url": "https://platform.minimax.io/docs/pricing/overview",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "480p": 0.025,
+            "768p": 0.04
+          }
+        },
+        "note": "ESTIMATE: list price per second of OUTPUT (pay-as-you-go API). Input video and pictures past the free quota (5; Max 2) cost extra; at most first and last frame are sent. Whether a failed or moderated task is billed is not stated."
+      },
+      "credit_unit": "model_minimax_h3_lite_second",
+      "entitlement": "models_video:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "MiniMax Open Platform Terms of Service (Nanonoble Pte Ltd, effective 2026-03-30, read 2026-10-25), User Rights and Obligations 7(c): you may not 'independently sublicense, resell, or distribute any or all services outside of any integrated applications'.",
+        "Why the gate stays open: 7(c) allows use inside an integrated application, which a credits product arguably is. But General Provisions 3 says 'your own products or projects' and IP clause 7 bars selling access keys or 'system usage'. The ToS does not say which governs.",
+        "Operator duties: User Rights item 6 makes you responsible for every end user's use and their compliance; Service item 13 requires suspending a violating application within 24 hours of notice. The 'Service Rules' the ToS points to (usage rules, copyright policy) were NOT read.",
+        "Output: as between you and MiniMax you retain ownership of input and generated content (IP clause 3). MiniMax may use input and generated content to provide, maintain, develop and improve its Services: say so in the privacy notice before any sale. No watermark or attribution duty found.",
+        "Under 18: the ToS asks a minor to read it with a guardian and get consent (it binds the account holder, not end users). Uzbekistan billing and sign-up NOT verified; the sanctions clause does not name it. Ask MiniMax (contact.nanonoble@minimax.io) in writing before customers use it."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 7000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "resolution": "480p",
+        "duration_s": 4,
+        "input_image": "generated",
+        "end_frame": "generated"
+      }
+    },
+    {
+      "id": "minimax-h3-max",
+      "display_name": "MiniMax H3 Max",
+      "provider": "minimax",
+      "adapter": "video.minimax_h3",
+      "vendor_model": "MiniMax-H3-Max",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "resolutions": [
+        "480p",
+        "768p"
+      ],
+      "default_resolution": "768p",
+      "durations_s": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "end_frame": true,
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",
+        "checked_at": "2026-10-25",
+        "source": "vendor_docs_search",
+        "evidence": "MiniMax V2 create and query API pages, video guide, models intro, pricing and rate limits read in full 2026-10-25 as markdown (not search extracts); the Terms of Service read in part (the clauses cited in terms_notes). No endpoint was called."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.08,
+        "source_url": "https://platform.minimax.io/docs/pricing/overview",
+        "as_of": "2026-10-25",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "480p": 0.05,
+            "768p": 0.08
+          }
+        },
+        "note": "ESTIMATE: list price per second of OUTPUT (pay-as-you-go API). Input video and pictures past the free quota (5; Max 2) cost extra; at most first and last frame are sent. Whether a failed or moderated task is billed is not stated."
+      },
+      "credit_unit": "model_minimax_h3_max_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "MiniMax Open Platform Terms of Service (Nanonoble Pte Ltd, effective 2026-03-30, read 2026-10-25), User Rights and Obligations 7(c): you may not 'independently sublicense, resell, or distribute any or all services outside of any integrated applications'.",
+        "Why the gate stays open: 7(c) allows use inside an integrated application, which a credits product arguably is. But General Provisions 3 says 'your own products or projects' and IP clause 7 bars selling access keys or 'system usage'. The ToS does not say which governs.",
+        "Operator duties: User Rights item 6 makes you responsible for every end user's use and their compliance; Service item 13 requires suspending a violating application within 24 hours of notice. The 'Service Rules' the ToS points to (usage rules, copyright policy) were NOT read.",
+        "Output: as between you and MiniMax you retain ownership of input and generated content (IP clause 3). MiniMax may use input and generated content to provide, maintain, develop and improve its Services: say so in the privacy notice before any sale. No watermark or attribution duty found.",
+        "Under 18: the ToS asks a minor to read it with a guardian and get consent (it binds the account holder, not end users). Uzbekistan billing and sign-up NOT verified; the sanctions clause does not name it. Ask MiniMax (contact.nanonoble@minimax.io) in writing before customers use it.",
+        "H3 Max: MiniMax's docs (guides/video-generation, guides/models-intro) call it 'jointly released by MiniMax and fal.ai' and 'post-trained by fal.ai on MiniMax H3'. It is served from MiniMax's own API, but whether a fal.ai post-train is acceptable is the owner's decision. Not sellable until decided."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 7000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "resolution": "480p",
+        "duration_s": 5,
+        "input_image": "generated",
+        "end_frame": "generated"
       }
     },
     {
