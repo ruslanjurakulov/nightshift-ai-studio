@@ -191,6 +191,8 @@ export const PUBLISH_REASONS = [
   "permission_missing",
   "publish_unconfirmed",
   "published_unexpectedly",
+  "duplicate_post",
+  "credits_exhausted",
 ] as const;
 export type PublishReason = (typeof PUBLISH_REASONS)[number];
 

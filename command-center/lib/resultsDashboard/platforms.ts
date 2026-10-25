@@ -6,10 +6,11 @@
  * a platform is one line here plus its words in lib/i18n/results-dashboard; nothing else in the page changes.
  *
  * `worker` mirrors the worker's publisher registry (modules/publishers.py): `live` = registered and connectable
- * (instagram, tiktok, youtube), `dark` = registered but nothing can reach it yet (no connect flow, no platform app: Facebook),
- * `none` = no publisher at all (X). `publish` ("a person can connect it and cross-post today") is `available` only for `live`,
- * so a dark publisher's card still says "coming". tests/results-dashboard-platforms.test.ts reads modules/social_publish.py
- * and fails when the two disagree, so a platform cannot become connectable on the worker while this page still says "coming".
+ * (instagram, tiktok, youtube), `dark` = registered but nothing can reach it yet (no connect flow, no platform app:
+ * Facebook, X), `none` = no publisher at all (nobody today). `publish` ("a person can connect it and cross-post today") is
+ * `available` only for `live`, so a dark publisher's card still says "coming". tests/results-dashboard-platforms.test.ts reads
+ * modules/social_publish.py and fails when the two disagree, so a platform cannot become connectable on the worker while this
+ * page still says "coming".
  *
  * `results` is `live` only where this repository already collects results (YouTube Analytics through the daily poll into
  * metrics_snapshots). Instagram insights need a scope the connect flow does not request, TikTok's video list needs one it
@@ -34,7 +35,7 @@ export const PLATFORMS: readonly PlatformSpec[] = [
   { id: "youtube", worker: "live", publish: "available", results: "live" },
   { id: "instagram", worker: "live", publish: "available", results: "planned" },
   { id: "tiktok", worker: "live", publish: "available", results: "planned" },
-  { id: "x", worker: "none", publish: "none", results: "planned" },
+  { id: "x", worker: "dark", publish: "none", results: "planned" },
   { id: "facebook", worker: "dark", publish: "none", results: "planned" },
 ];
 

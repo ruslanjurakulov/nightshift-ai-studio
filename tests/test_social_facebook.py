@@ -938,7 +938,7 @@ class FacebookCaption(unittest.TestCase):
     def test_other_platforms_still_dispatch_and_an_unknown_one_still_raises(self):
         self.assertTrue(cap.caption_for("instagram", self.META))
         with self.assertRaises(ValueError):
-            cap.caption_for("x", self.META)
+            cap.caption_for("myspace", self.META)
 
 
 class ControlCharactersAreRemoved(unittest.TestCase):

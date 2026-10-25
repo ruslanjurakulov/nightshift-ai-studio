@@ -2421,6 +2421,8 @@ export const uz: Dictionary = {
       permission_missing: "Xato: akkaunt joylashga ruxsat bermagan — uni qayta ulang va joylash ruxsatini bering.",
       publish_unconfirmed: "Xato: platforma postni tasdiqlamadi, shuning uchun u mavjud boʻlishi ham, boʻlmasligi ham mumkin. Qayta yuborishdan oldin akkauntni tekshiring; bu avtomatik takrorlanmaydi.",
       published_unexpectedly: "Xato: platforma post eʼlon qilinganini bildirmoqda, holbuki u faqat qoralama sifatida saqlanishi kerak edi. Akkauntni hoziroq tekshiring.",
+      duplicate_post: "Xato: X avval koʻrgan postni qabul qilmaydi. Qayta yuborishdan oldin matnni oʻzgartiring.",
+      credits_exhausted: "Xato: bu ulanish uchun platformaning foydalanish kreditlari tugagan. Keyinroq urinib koʻring.",
     },
     send: "Yuborish",
     sendN: "{n} ta akkauntga yuborish",

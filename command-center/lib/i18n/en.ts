@@ -2433,6 +2433,8 @@ export const en = {
       permission_missing: "Failed: the account has not allowed posting. Reconnect it and grant the posting permission.",
       publish_unconfirmed: "Failed: the platform did not confirm the post, so it may or may not exist. Check the account before sending again; this is never retried automatically.",
       published_unexpectedly: "Failed: the platform reports the post as live although it was only meant to be saved as a draft. Check the account now.",
+      duplicate_post: "Failed: X refuses a post it has already seen. Change the text before sending again.",
+      credits_exhausted: "Failed: the platform's usage credits for this connection are used up. Try again later.",
     },
     send: "Send",
     sendN: "Send to {n}",

@@ -16,6 +16,8 @@ Limits (official docs):
 * Facebook Reels — ``description`` (hashtags allowed); no limit is documented, so 2200 characters and 5 hashtags are
   our own conservative caps.
   https://developers.facebook.com/docs/video-api/guides/reels-publishing
+* X — a post's text, 280 weighted characters (our own conservative cap), no link, two hashtags.
+  https://docs.x.com/x-api/posts/create-post
 * TikTok — the post's ``title`` (its caption, hashtags included) ≤ 2200 UTF-16
   code units.
   https://developers.tiktok.com/doc/content-posting-api-reference-direct-post
@@ -45,6 +47,12 @@ TT_DESCRIPTION_MAX = 300
 #: hashtag list are OUR conservative choice (the Instagram figure), not a documented limit.
 FB_DESCRIPTION_MAX = 2200
 FB_HASHTAGS_DEFAULT = 5
+
+#: X: a post's text is 280 "weighted" characters for an account without Premium (X's pages read for this change give no
+#: figure, so this is the long-standing documented one and OUR cap: a Premium account could post more, and we do not ask).
+#: Fewer hashtags suit X, and a link makes the post cost 13 times as much (pricing page), so links are removed.
+X_TEXT_MAX_WEIGHT = 280
+X_HASHTAGS_DEFAULT = 2
 
 HASHTAG_MAX_LEN = 50
 ELLIPSIS = "…"
@@ -294,6 +302,34 @@ def facebook_caption(meta: SourceMeta, *, max_hashtags: int = FB_HASHTAGS_DEFAUL
     tags = hashtags(_tag_sources(meta), max(0, max_hashtags))
     return _compose(head, body, tags, FB_DESCRIPTION_MAX, len, _plain_line(disclosure))
 
+#: X turns a bare domain ("example.com/a") into a link too, and a link costs 13 times as much and counts 23 characters. Only
+#: names under a TLD X is known to link are removed, so ordinary text such as "falls.The" is left alone; a TLD missing from
+#: this list can still be linked (residual cost risk, documented in docs/SOCIAL_SETUP.md).
+_TLDS = ("com|org|net|edu|gov|info|biz|io|co|ai|app|dev|me|ly|tv|gg|xyz|site|online|store|tech|link|page|news|live|club|shop|"
+         "blog|cloud|top|vip|pro|ru|uz|ua|by|kz|de|uk|fr|es|it|nl|pl|us|ca|au|in|cn|jp|kr|br|tr|cc|ws|to|fm|sh|so|ink|art|fun")
+_URL = re.compile(r"(?:https?://|www\.)\S+|(?<![\w@#.])(?:[a-z0-9-]+\.)+(?:" + _TLDS + r")\b(?:/\S*)?", re.IGNORECASE)
+
+
+def x_weight(text: str) -> int:
+    """The length X counts for a post: 1 per character in U+0000-U+10FF, U+2000-U+200D, U+2010-U+201F and U+2032-U+2037,
+    else 2 (CJK, emoji). Links are removed before this is used, so the 23-character link rule never applies."""
+    total = 0
+    for ch in text:
+        o = ord(ch)
+        total += 1 if (o <= 0x10FF or 0x2000 <= o <= 0x200D or 0x2010 <= o <= 0x201F or 0x2032 <= o <= 0x2037) else 2
+    return total
+
+
+def x_caption(meta: SourceMeta, *, max_hashtags: int = X_HASHTAGS_DEFAULT, disclosure: str = "") -> str:
+    """Title, a short description, a couple of hashtags; no link. ≤ 280 weighted characters (our own cap)."""
+    def plain(s: str) -> str:
+        return _WS.sub(" ", _URL.sub("", s)).strip()
+
+    head = plain(_strip_inline_hashtags(_clean(meta.title or meta.topic).replace("\n", " ")))
+    body = plain(_strip_inline_hashtags(_clean(meta.description)).split("\n\n", 1)[0])
+    tags = hashtags(_tag_sources(meta), max(0, max_hashtags))
+    return _compose(head, body, tags, X_TEXT_MAX_WEIGHT, x_weight, plain(_plain_line(disclosure)))
+
 
 def _plain_line(text: str) -> str:
     """The disclosure line as one clean line (no hashtags or @-mentions are
@@ -308,4 +344,6 @@ def caption_for(platform: str, meta: SourceMeta, *, disclosure: str = "") -> str
         return tiktok_caption(meta, disclosure=disclosure)
     if platform == "facebook":
         return facebook_caption(meta, disclosure=disclosure)
+    if platform == "x":
+        return x_caption(meta, disclosure=disclosure)
     raise ValueError("unknown platform")

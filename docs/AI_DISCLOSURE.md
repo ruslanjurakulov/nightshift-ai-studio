@@ -35,6 +35,11 @@ Nothing here changes what is published or when (CLAUDE.md rules 2 and 3): every 
 * Facebook Reels (DARK, no connect flow yet), `POST /{page-id}/video_reels` with `upload_phase=finish` - https://developers.facebook.com/docs/video-api/guides/reels-publishing :
   `is_ai_generated` (boolean, default `false`): "Set `true` to disclose AI creation or editing." (read 2026-10-25, through a
   page summariser; re-read before relying on the wording). Only the finish call carries it.
+* X (DARK, no connect flow yet), `POST /2/tweets` - https://docs.x.com/x-api/posts/create-post :
+  `made_with_ai` (boolean): "Discloses that the post contains AI-generated media." (read 2026-10-25, through a page
+  summariser). **An earlier internal note said X has no such field**; the field is on the official
+  page, so it is used, only when true. The standard line is also in the post text (280 weighted characters; the line stays
+  and the creator's words give way).
 * TikTok, Content Posting API Direct Post - https://developers.tiktok.com/doc/content-posting-api-reference-direct-post :
   `post_info.is_aigc` (bool, optional): "Set to true if the video is AI generated content." When set, "the video will
   be labelled with Creator labeled as AI-generated tag in video's description."
@@ -91,6 +96,7 @@ request it always was (pinned by tests).
 | Instagram Reels | `is_ai_generated=true` on the media container; the line in the caption | field absent |
 | TikTok Direct Post | `post_info.is_aigc: true` (still `SELF_ONLY`); the line in the title/caption | field absent |
 | Facebook Reels (dark) | `is_ai_generated: true` on the `finish` call (still `video_state=DRAFT`); the line in the description | field absent |
+| X video post (dark) | `made_with_ai: true` on `POST /2/tweets`; the line in the text | field absent |
 
 For a cross-post, the decision is made once, in `social_publish._decide_disclosure` (from this module's rule), and
 handed to the platform as `PostSpec.ai_generated` (`modules/publishers.py`). Each platform's `Publisher.publish` maps

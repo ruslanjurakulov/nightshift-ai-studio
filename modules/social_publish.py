@@ -33,7 +33,7 @@ Uploading costs the platforms nothing, so no credits are held or charged.
 
 The steps above are the same for every platform; what differs (connect, check,
 compose, publish) is a ``Publisher`` registered in ``modules/publishers.py``
-(``InstagramPublisher``, ``TiktokPublisher``, ``YoutubePublisher``, and the dark ``FacebookPublisher`` below). A
+(``InstagramPublisher``, ``TiktokPublisher``, ``YoutubePublisher``, and the dark ``FacebookPublisher`` and ``XPublisher`` below). A
 platform that is not registered is refused as ``unknown_platform``.
 
 YouTube targets: the target must not be the video's own channel (the pipeline
@@ -113,6 +113,13 @@ FB_MAX_SECONDS = 90.0
 FB_MAX_BYTES = 512 * 1024 * 1024
 FB_MIN_ASPECT = 0.55
 FB_MAX_ASPECT = 0.60
+
+#: X video posts (media_category ``tweet_video``): the default account may post up to 20 minutes (Premium: 125). X's page
+#: gives 8 GB; X_MAX_BYTES is OUR hard cap (512 MB was X's long-standing documented figure), checked before the upload and
+#: again as the file is read. X_MIN_SECONDS is ours too (the older v1.1 page said 0.5 s).
+X_MIN_SECONDS = 1.0
+X_MAX_SECONDS = 20 * 60.0
+X_MAX_BYTES = 512 * 1024 * 1024
 
 TT_MIN_SECONDS = 3.0
 TT_DEFAULT_MAX_SECONDS = 600.0
@@ -356,6 +363,8 @@ def check_format(platform: str, info: VideoInfo, *, short_id: Optional[str] = No
         "; a vertical Short cut of it can be posted instead"
     if platform == "facebook":
         name, lo, hi, cap = "Facebook Reels", FB_MIN_SECONDS, FB_MAX_SECONDS, FB_MAX_BYTES
+    elif platform == "x":
+        name, lo, hi, cap = "X", X_MIN_SECONDS, X_MAX_SECONDS, X_MAX_BYTES
     elif platform == "instagram":
         name, lo, hi, cap = "Instagram Reels", IG_MIN_SECONDS, IG_MAX_SECONDS, IG_MAX_BYTES
     else:
@@ -890,6 +899,27 @@ class FacebookPublisher(_SocialAccountPublisher):
         return f"saved as a draft Reel on facebook account {self.ctx.request.get('account_id') or ''}"
 
 
+class XPublisher(_SocialAccountPublisher):
+    """A video post on X (API v2 chunked media upload, then ``POST /2/tweets``). DARK: registered here, but nothing can
+    reach it yet, because ``social_accounts`` / ``publish_requests`` (migrations 0028 / 0029) do not allow the word ``x``
+    and there is no connect flow or X developer app. The adapter is ``modules/social_x.py`` (imported when used, so that
+    module can import this one). X has no private or draft state: the post is public at once, like Instagram."""
+
+    platform = "x"
+
+    def publish(self, path: Path, post: publishers.PostSpec) -> Mapping:
+        from modules import social_x  # noqa: PLC0415 - social_x imports this module
+
+        ctx = self.ctx
+        # PostSpec.ai_generated -> the post's ``made_with_ai`` (sent only when true).
+        return social_x.XVideoAdapter(
+            ctx.http, sleep=ctx.sleep, heartbeat=ctx.heartbeat).publish(
+            self.tok, path, post.caption, ai_generated=post.ai_generated)
+
+    def describe(self) -> str:
+        return f"posted to x account {self.ctx.request.get('account_id') or ''}"
+
+
 class YoutubePublisher:
     """Another channel of the organization, uploaded PRIVATE with the pipeline's own uploader."""
 
@@ -939,6 +969,7 @@ publishers.register(InstagramPublisher.platform, InstagramPublisher)
 publishers.register(TiktokPublisher.platform, TiktokPublisher)
 publishers.register(YoutubePublisher.platform, YoutubePublisher)
 publishers.register(FacebookPublisher.platform, FacebookPublisher)
+publishers.register(XPublisher.platform, XPublisher)
 
 
 def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.SocialTokenClient,
@@ -998,12 +1029,29 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
 
         result = publisher.publish(path, post)
 
-        store.update(rid, worker_id, {
-            "status": "published", "reason": None, "error": None,
-            "result_id": result.get("result_id"), "result_url": result.get("result_url"),
-            "privacy": result.get("privacy"),
-            "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        })
+        try:
+            store.update(rid, worker_id, {
+                "status": "published", "reason": None, "error": None,
+                "result_id": result.get("result_id"), "result_url": result.get("result_url"),
+                "privacy": result.get("privacy"),
+                "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            })
+        except Exception as e:
+            # The post EXISTS and only the write that says so failed. Not a generic worker_error: say what is known
+            # (its id and address) so a person finds it, and never let the failure escape (this function never raises).
+            logger.warning("publish request %s: the post exists but recording it failed (%s)", rid, type(e).__name__)
+            try:
+                store.update(rid, worker_id, {
+                    "status": "failed", "reason": "publish_unconfirmed",
+                    "error": f"the post was made (id {result.get('result_id')}) but recording it failed "
+                             f"({type(e).__name__}); check the account before sending again",
+                    "result_id": result.get("result_id"), "result_url": result.get("result_url"),
+                    "privacy": result.get("privacy"),
+                    "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                })
+            except Exception:
+                pass
+            return "failed"
         logger.info("publish request %s: %s", rid, publisher.describe())
         return "published"
     except PublishStop as stop:
@@ -1060,5 +1108,5 @@ class SocialPublisher:
 __all__ = [
     "PublishStore", "SocialPublisher", "process_request", "check_format", "resolve_master",
     "load_source_meta", "tiktok_chunks", "InstagramAdapter", "TiktokAdapter", "YoutubeAdapter", "VideoInfo",
-    "InstagramPublisher", "TiktokPublisher", "YoutubePublisher", "FacebookPublisher",
+    "InstagramPublisher", "TiktokPublisher", "YoutubePublisher", "FacebookPublisher", "XPublisher",
 ]

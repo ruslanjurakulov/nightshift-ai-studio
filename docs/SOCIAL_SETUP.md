@@ -314,3 +314,72 @@ Graph versiyasi `v26.0` (hujjat misollari; ba'zi misollarda `v18.0`); `Authoriza
 imlosi); rupload'ning bo'lak-bo'lak (`offset`) davomi; DRAFT holatidagi Reel `publish_status` qiymati; Meta bu API'da
 DRAFT ni 30/kun limitga qo'shadimi; `is_ai_generated` DRAFT'da saqlanadimi; closed GOP / 4:2:0 / 48 kHz / 128 kbps
 tekshirilmaydi (faylni o'qiydigan asboblarda bu maydonlar yo'q).
+
+---
+
+## 7. X (Twitter) video — QORONG'I: kod yozilgan, lekin hozircha ulanmaydi
+
+Holat: `modules/social_x.py` (API v2: chunked media upload, so'ng `POST /2/tweets`) va `XPublisher` yozilgan va worker'ning
+publisher ro'yxatida turibdi, lekin **hech narsa unga yetib bormaydi**: `social_accounts` va `publish_requests` jadvallari
+(migratsiya 0028 / 0029) `x` so'zini qabul qilmaydi, "Ulash" tugmasi, OAuth route va X developer ilovasi yo'q. Panelda X
+kartochkasi "tez orada" holatida qoladi. Hech qanday kalit yoki deploy sozlamasi qo'shilmagan.
+
+Rasmiy hujjatlar (2026-10-25 da o'qilgan; ishlatishdan oldin qayta o'qing):
+- https://docs.x.com/x-api/media/quickstart/media-upload-chunked
+- https://docs.x.com/x-api/media/media-upload-status
+- https://docs.x.com/x-api/posts/create-post
+- https://docs.x.com/x-api/fundamentals/rate-limits
+- https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
+- https://docs.x.com/x-api/getting-started/pricing
+
+### Egasi (siz) qilishi kerak bo'lgan ishlar — faqat siz qila olasiz
+
+1. **X developer akkaunti va ilova** (https://developer.x.com): OAuth 2.0 (Authorization Code + PKCE) mijozi, callback manzili
+   (`https://nightshift-ai.studio/api/oauth/x/callback`, hali yo'q — keyingi PR).
+2. Ruxsatlar (scopes): `tweet.write`, `tweet.read`, `users.read`, `media.write`, `offline.access` (`offline.access`siz
+   refresh token berilmaydi, access token esa 2 soat yashaydi).
+3. **Pul**: X hozir faqat "pay-per-usage" ko'rsatadi (narx sahifasi 2026-10-24 da o'qilgan, sana yozilmagan): post yaratish
+   $0.015, **havolali post $0.200**, media metadata $0.005. To'lov **sizning ilovangizdan** har bir mijoz posti uchun
+   olinadi. Kod postga havola qo'ymaydi (matndan olib tashlanadi), shuning uchun arzon tarif qo'llanadi. Oldindan kredit
+   to'ldiring va xarajat chegarasi qo'ying; mijozlarga narx qo'yish yoki pass-through — sizning qaroringiz (kredit narxi
+   bu PR'da YO'Q).
+4. Worker uchun (refresh): `X_CLIENT_ID` (va maxfiy ilova bo'lsa `X_CLIENT_SECRET`) — hozircha hech qayerda ulanmagan;
+   ulash PR'ida `deploy/.env.worker.example` va `deploy_web.yml` ga qo'shiladi.
+5. Keyingi PR'lar uchun (hali QILINMAGAN): migratsiya (ikkala `check` va `store_social_account` ruxsat ro'yxati),
+   `app/api/oauth/x/{start,callback}`, `social-oauth.ts` sozlamasi va `isSocialConfigured`, i18n, huquqiy hujjatlar
+   jadvali, ilova uchun mijoz-boshiga xarajat chegarasi.
+6. X **ommaviy post** qiladi: bu API'da qoralama yoki shaxsiy holat yo'q (Instagram kabi). Yagona nazorat — tasdiqlash
+   darvozasi (`publish_request_refusal`), u yuborishdan oldin yana tekshiriladi.
+
+### Cheklovlar (kod shularni yuklashdan OLDIN tekshiradi)
+
+- Davomiylik 1 soniya – 20 daqiqa (oddiy akkaunt; Premium 125 daqiqa), H.264, ko'pi bilan 60 kadr/s. Hajm: X 8 GB
+  yozgan, bizning qattiq chegara 512 MB. X bo'yicha o'lcham va ovoz formatini rad etmaymiz (joriy sahifada raqam topilmadi).
+- Matn: 280 "og'irlikdagi" belgi (bizning konservativ chegara; Premium ko'proq mumkin), 2 ta hashtag, havolasiz: `http(s)://`, `www.` va X havolaga aylantiradigan ma'lum domenlar (`example.com/a`, `site.io` ...) matndan olib tashlanadi. **Qoldiq xavf**: ro'yxatda yo'q domen zonasi X tomonidan baribir havolaga aylanishi mumkin (post $0.200 bo'ladi, matn 23 belgiga ko'proq hisoblanadi); mijoz boshiga xarajat chegarasi shu uchun kerak.
+- Yuklash 4 MB bo'laklar bilan (X: tavsiya 5 MB, server chegarasi 8 MB). Xato bo'lgan bo'lak o'sha indeks bilan 3 martagacha
+  qayta yuboriladi; `finalize` javobi yo'qolsa `STATUS` o'qiladi (ikkinchi `finalize` yuborilmaydi).
+- `POST /2/tweets`: foydalanuvchi uchun 100 / 15 daqiqa, ilova uchun 10 000 / 24 soat (X sahifasi). 429 da `x-rate-limit-reset`
+  dan "taxminan N daqiqadan keyin" xabari yoziladi (`rate_limited`).
+- Akkaunt Premium bo'lmasa va video 20 daqiqadan uzun bo'lsa X `403` qaytaradi (`too_long`); takroriy matn `403` →
+  `duplicate_post`; `401` → `token_expired`; `402` (tekshirilmagan taxmin) → `credits_exhausted`.
+- AI belgisi: `made_with_ai=true` — **rasmiy sahifada bor** (avvalgi ichki eslatmada "X'da API maydoni yo'q"
+  deyilgan edi; rasmiy sahifada bor), faqat belgi kerak bo'lganda yuboriladi; izohga qator ham qo'shiladi.
+
+### Vaqt chegarasi
+
+Bitta joylash uchun umumiy 45 daqiqalik monoton chegara (yuklash + qayta ishlash + post); undan oshsa `timeout` (post hali yuborilmagan bo'lsa "nothing was posted"). Har bir so'rov qolgan vaqtdan ko'p kutmaydi, javob tanasi 30 soniyalik devor-soat chegarasi bilan o'qiladi, yuklash paytida (bo'laklar orasida va qayta urinishlar orasida) heartbeat yoziladi (navbat 30 daqiqadan eski heartbeat'li qatorni boshqa worker'ga beradi, 0029). `STATUS` javobida `processing_info` bo'lmasa u "tayyor" EMAS (faqat birinchi `finalize` javobida u "qayta ishlash kerak emas" degani): bunday javoblar o'qib bo'lmaydigan hisoblanadi va 3 tadan keyin joylash to'xtaydi.
+
+### Javob yo'qolsa (takror yuborish yo'q)
+
+`POST /2/tweets` javobi yo'qolsa (timeout, uzilgan ulanish, 5xx, post id'siz 2xx) so'rov `publish_unconfirmed` bilan "XATO"
+bo'ladi ("avval akkaunt lentasini tekshiring") va **hech qachon avtomatik qayta yuborilmaydi**: X'da idempotentlik kaliti yo'q.
+O'qib tekshirish (o'z postimizni lentadan qidirish) pulli o'qish va matn bo'yicha moslashtirish bo'lardi, shuning uchun
+qilinmagan. Worker `POST /2/tweets`dan keyin o'lsa, so'rov `interrupted` bo'ladi (0029) — qayta navbatga qo'yilmaydi. Post yuborilgan, lekin "published" deb yozuvchi so'nggi bazaga yozish xato bersa, qator `publish_unconfirmed` bo'ladi va postning id/manzili (`result_id`, `result_url`) saqlanadi.
+
+### Faqat jonli sinov tasdiqlay oladigan narsalar
+
+`media.write` ruxsati bilan `Authorization: Bearer` bilan `initialize/append/finalize`; `append` ning muvaffaqiyatli javob
+shakli (kod har qanday 2xx ni qabul qiladi); `finalize` dan keyin `processing_info.state` qiymatlari (`pending`,
+`in_progress`, `succeeded`, `failed` — sahifada enum yo'q); `STATUS` ning shu `media_id` uchun natijasi; refresh token
+aylanadimi; `402` kodining ma'nosi; video formati talablari (joriy "best practices" sahifasi o'qilmadi, H.264/60 fps eski
+v1.1 sahifasidan); akkaunt Premium holatini oldindan bilib bo'lmasligi.
