@@ -451,3 +451,43 @@ trigger, policy or table grant, grants nothing to anyone who had nothing, and do
 - **Is it working?** The verify block at the bottom of the file (every column true), and `select public.voice_overdue_report();`.
 - **Review.** Needs the independent security review before merge: it changes who may learn that a voice id exists, and it makes the queue
   function every worker calls end rows on its own.
+
+## Series Factory: the format-template carrier (0122)
+
+0122 (`0122_series_template_carrier.sql`, `docs/SERIES_FACTORY.md`, "Format templates") is **live on apply**: it adds one nullable column, **replaces
+three live functions on their latest bodies (0120's), verbatim plus marked lines**, and **replaces one callable** (the seven-argument
+`request_series_plan` is dropped, an eight-argument one is created). It **grants nothing to anyone**: `request_series_plan` is callable by nobody before
+and after, `tests/test_series_template_migration.py` and the lab fail if any migration grants either signature. It writes and rewrites no row, calls no
+provider and does not touch credits, holds, publishing or privacy. Numbered 0122 because 0121 merged last and no open pull request adds a migration
+(checked with `gh api` when the PR was opened: the open #602 and #606-#609 touch nothing under `supabase/`); 0118 is still unused.
+
+- **The carrier.** `series_plans.template_id text null`, `CHECK (template_id is null or template_id in ('myth_vs_fact', 'top5_countdown',
+  'one_question_one_answer'))`, frozen with the other terms by `series_plans_terms_frozen` (0120's body plus one line). The three words are also in the
+  request function and in the params validator; a fourth format is a new migration.
+- **Replaced, md5-pinned (white space collapsed), refusing any other live body:** `render_job_params_valid` (an optional `template` key: a string of the
+  closed list, on a `series_plan` job only; `is distinct from`, so a NULL kind cannot slip past), `render_jobs_payment_guard` (two lines in the series-plan
+  block: the job's `template` must equal the plan's `template_id`), `series_plans_terms_frozen`. The live values to read BEFORE applying are in
+  `docs/SERIES_FACTORY.md` and in the file's header, with the query.
+- **A new signature is a new function.** `request_series_plan(..., p_template text default null)` is 0120's body plus the validation (exactly one of the
+  three words, or NULL; not trimmed or defaulted; judged after the caller is known), the format in the idempotency hash (only when there is one: a request
+  without a format hashes exactly as under 0120, so a plan made before the migration still replays; a replay with another format is
+  `idempotency_conflict`), the column, and the job param. It is **revoked from public, anon, authenticated and service_role** right after it is created
+  and the old signature is dropped (no `cascade`). The file refuses to drop the old one unless it is 0120's body **and** executable by nobody (a NULL ACL
+  counts as executable: the default includes public), so a grant made by hand stops the apply instead of being dropped silently.
+- **The end state is asserted inside the transaction** (the last block): the three bodies and the new function hold this file's text, the old signature
+  is gone, the new one is executable by nobody, the column is nullable text and the check is validated. Any failure rolls the whole file back.
+- **Python and TypeScript move with it.** The worker reads `template_id` (and, if PostgREST says the column does not exist, reads again without it: no
+  format is then a fact); `plan_series(..., template=...)`; the form sends `p_template` only when a format is picked, so it works before and after the
+  migration. `run_request.ALLOWED_PARAMS` does **not** gain `template` (only a planning job carries it; `tests/test_series_template_migration.py` compares
+  the database's allowed list with it).
+- **Re-running 0120 afterwards** is refused by its own drift guard (its two bodies are now 0122's): take 0122 off first with its rollback, as the lab tests do
+  (`sec_db.take_off_0122`), then put it back.
+- **Apply as ONE transaction** (SQL editor, `apply_migration`, or `psql --single-transaction -v ON_ERROR_STOP=1`).
+- **Undo.** `docs/sql/rollback_0122_series_template_carrier.sql` (owner-applied): refuses if any of the four live bodies is not 0122's, if any plan asked for
+  a format (dropping the column would lose that record), or if any queue row carries a `template` param (the 0120 validator would refuse the row on its next
+  update: a CHECK is evaluated again on every update). Otherwise it puts 0120's three bodies back byte for byte, re-creates the seven-argument function
+  revoked from every API role, drops the eight-argument one, and drops the check and the column. The lab applies it, compares with a database that never had
+  0122, and applies 0122 again.
+- **Is it working?** The verify block at the bottom of the file (every column true).
+- **Review.** Needs the independent security review before merge, and a person reading the live hashes first: it replaces the payment guard every queued
+  run passes through, and it drops and re-creates a function.

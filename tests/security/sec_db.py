@@ -70,6 +70,22 @@ def put_back_0121(session) -> None:
     session.conn.execute(MIGRATION_0121.read_text(encoding="utf-8"))
 
 
+MIGRATION_0122 = MIGRATIONS / "0122_series_template_carrier.sql"
+ROLLBACK_0122 = REPO / "docs" / "sql" / "rollback_0122_series_template_carrier.sql"
+
+
+def take_off_0122(session) -> None:
+    """0122 replaces render_job_params_valid(), render_jobs_payment_guard(), series_plans_terms_frozen() and request_series_plan() on 0120's
+    bodies, and 0120 (and its rollback) refuse any other body. A test that replays 0120 or applies its rollback on a database that has 0122
+    takes 0122 off first with its own rollback, and puts it back with put_back_0122 where the chain goes on."""
+    text = ROLLBACK_0122.read_text(encoding="utf-8")
+    session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0122(session) -> None:
+    session.conn.execute(MIGRATION_0122.read_text(encoding="utf-8"))
+
+
 def migration_files() -> list[Path]:
     """Every migration, in sorted filename order — the order a fresh project
     applies them. Numbers need not be contiguous (migrations can merge out of

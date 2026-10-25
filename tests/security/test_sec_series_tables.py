@@ -232,7 +232,8 @@ def world(conn, sc):
 # ═══ 1. who may call what (the privileges) ═════════════════════════════════════════════════════════════════════════════════
 
 SIGS = {
-    "request_series_plan": "public.request_series_plan(text,text,integer,text,integer,text,text)",
+    # 0122 replaced the seven-argument function with an eight-argument one (p_template); the tests that take 0122 off use SIGS_0120.
+    "request_series_plan": "public.request_series_plan(text,text,integer,text,integer,text,text,text)",
     "finish_series_plan": "public.finish_series_plan(uuid,boolean,text,jsonb,jsonb,jsonb,text,text)",
     "quote_series_episode": "public.quote_series_episode(uuid)",
     "start_series_episode": "public.start_series_episode(uuid,numeric,text,boolean)",
@@ -244,6 +245,7 @@ SIGS = {
     "series_episodes_terms_frozen": "public.series_episodes_terms_frozen()",
     "series_rows_no_delete": "public.series_rows_no_delete()",
 }
+SIGS_0120 = {**SIGS, "request_series_plan": "public.request_series_plan(text,text,integer,text,integer,text,text)"}
 # (anon, authenticated, service_role, PUBLIC-by-way-of-anon-or-authenticated): the grant matrix the file promises.
 GRANTS = {
     "request_series_plan": (False, False, False),   # dormant until S3
@@ -1497,18 +1499,20 @@ def test_concurrent_requests_cannot_pass_the_daily_cap_together(conn, sc):
 
 def test_applying_the_migration_again_changes_nothing_and_keeps_every_row(conn, sc, world):
     s = world.su
+    # 0122 sits on 0120's bodies and 0120 refuses any other: take it off (its own rollback), then 0120 is the head of the chain again
+    sec_db.take_off_0122(s)
     plan, eps = ready_plan(s, world.ed, world.chan_a)
     started(s, world.adm, eps[0])
     become(s, None)
     counts = {t: s.value(f"select count(*) from public.{t}") for t in TABLES}
-    sigs = {n: (s.value("select pg_get_functiondef(%s::regprocedure)", [SIGS[n]]), s.value("select proacl::text from pg_proc where oid = %s::regprocedure", [SIGS[n]]))
-            for n in SIGS}
+    sigs = {n: (s.value("select pg_get_functiondef(%s::regprocedure)", [SIGS_0120[n]]), s.value("select proacl::text from pg_proc where oid = %s::regprocedure", [SIGS_0120[n]]))
+            for n in SIGS_0120}
     for _ in range(2):
         s.conn.execute(MIGRATION.read_text(encoding="utf-8"))
         become(s, None)
     assert {t: s.value(f"select count(*) from public.{t}") for t in TABLES} == counts
-    assert {n: (s.value("select pg_get_functiondef(%s::regprocedure)", [SIGS[n]]), s.value("select proacl::text from pg_proc where oid = %s::regprocedure", [SIGS[n]]))
-            for n in SIGS} == sigs, "a replay changes no body and no grant"
+    assert {n: (s.value("select pg_get_functiondef(%s::regprocedure)", [SIGS_0120[n]]), s.value("select proacl::text from pg_proc where oid = %s::regprocedure", [SIGS_0120[n]]))
+            for n in SIGS_0120} == sigs, "a replay changes no body and no grant"
     # the rules still hold after the replay
     assert denied(request(s, world.ed, world.chan_a, claims=False))
     assert refused(start(s, world.adm, eps[1]), "NS409", "earlier_episode_not_finished")
@@ -1522,7 +1526,7 @@ def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0120_applies
     base_dsn = sec_db.create_database(admin, base)
     sigs = ("public.render_job_params_valid(jsonb,text)", "public.render_jobs_payment_guard()")
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0120_")])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s_: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s_]).fetchone()[0],
                          b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s_]).fetchone()[0]) for s_ in sigs}
@@ -1536,6 +1540,7 @@ def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0120_applies
     body = "\n".join(ln for ln in rollback.splitlines() if ln.strip() not in ("begin;", "commit;"))
     kept = {"series_plans_terms_frozen()", "series_episodes_terms_frozen()", "series_rows_no_delete()"}
     with as_superuser(conn, commit=False) as su:
+        sec_db.take_off_0122(su)       # 0122 sits on 0120's bodies; 0120's rollback and replay refuse any other text
         def snapshot():
             return {s_: (su.value("select pg_get_functiondef(%s::regprocedure)", [s_]),
                          su.value("select proacl::text from pg_proc where oid = %s::regprocedure", [s_])) for s_ in sigs}
@@ -1560,6 +1565,7 @@ def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0120_applies
 
 def test_the_rollback_refuses_while_a_series_job_is_in_flight_and_changes_nothing(conn, world):
     s = world.su
+    sec_db.take_off_0122(s)
     requested(s, world.ed, world.chan_a)
     become(s, None)
     before = (s.value("select pg_get_functiondef('public.render_jobs_payment_guard()'::regprocedure)"),
@@ -1577,6 +1583,7 @@ def test_the_rollback_refuses_while_a_series_job_is_in_flight_and_changes_nothin
 def test_the_rollback_refuses_to_undo_a_later_change_to_either_function(conn, world, sig, word):
     s = world.su
     become(s, None)
+    sec_db.take_off_0122(s)
     ddl = s.value("select pg_get_functiondef(%s::regprocedure)", [sig])
     changed = ddl.replace("begin\n", "begin\n  -- a later change, by hand\n", 1)
     assert changed != ddl
@@ -1593,6 +1600,7 @@ def test_the_migration_refuses_to_replace_a_body_it_has_not_seen_and_replaces_no
     """The drift guard: a live body that is neither the repo's latest nor 0120's own (something applied by hand after it) is not overwritten."""
     s = world.su
     become(s, None)
+    sec_db.take_off_0122(s)
     ddl = s.value("select pg_get_functiondef(%s::regprocedure)", [sig])
     changed = ddl.replace("begin\n", "begin\n  -- applied by hand, after the repo's migrations\n", 1)
     assert changed != ddl
@@ -1607,6 +1615,7 @@ def test_the_migration_refuses_to_replace_a_body_it_has_not_seen_and_replaces_no
 
 def test_the_rollback_strips_the_series_key_from_finished_runs_so_the_old_validator_accepts_them(conn, world):
     s = world.su
+    sec_db.take_off_0122(s)
     sid = f"series-{world.sc.alice.key}"
     s.rows("update public.content_series set status = 'ACTIVE' where series_id = %s returning 1", [sid])
     plan, eps = ready_plan(s, world.ed, world.chan_a, series=sid)

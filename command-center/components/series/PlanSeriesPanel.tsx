@@ -21,6 +21,7 @@ import {
   requestError,
   type RequestError,
 } from "@/lib/seriesPlan";
+import { FORMAT_TEMPLATES, TEMPLATE_IDS, allowedOptions, isTemplateId, nearestAllowed, type TemplateId } from "@/lib/seriesTemplates";
 
 export interface PlanChannelOption {
   channel_id: string;
@@ -52,6 +53,11 @@ export type RecentPlansView =
  * (CLAUDE.md rule 3). The function is granted to nobody until the owner decides, and the database's refusal of the call is shown as
  * "not available yet". Planning costs the customer nothing, so no price is asked or shown here. The topic is data for the planner and
  * the channel's niche comes from the database, never from this form.
+ *
+ * The optional format (lib/seriesTemplates.ts, migration 0122) is one of three ids or nothing. Picking one narrows the lengths and the
+ * episode counts the lists offer to what the format fits, and moves a choice that no longer fits to the nearest one that does (the person
+ * sees the field change). It is sent as `p_template` only when one is picked, so a press without a format is exactly what it was before
+ * formats existed. The format is a request to the model: the page says so and does not claim the outline follows it.
  */
 export function PlanSeriesPanel({
   channels,
@@ -78,6 +84,7 @@ export function PlanSeriesPanel({
   const [length, setLength] = useState<number>(DEFAULT_EPISODE_LENGTH_S);
   const [language, setLanguage] = useState<string>(planLanguageFor(locale));
   const [seriesId, setSeriesId] = useState("");
+  const [template, setTemplate] = useState<TemplateId | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<RequestError | "topic" | null>(null);
   // One key per distinct press: a double tap or a retry of the SAME request replays the first plan instead of queueing a second;
@@ -85,6 +92,9 @@ export function PlanSeriesPanel({
   const key = useRef<{ sig: string; value: string } | null>(null);
 
   const channelSeries = series.filter((x) => x.channel_id === channel);
+  const chosen: TemplateId | null = isTemplateId(template) ? template : null;
+  const counts = allowedOptions(chosen, EPISODE_COUNTS, "episodes");
+  const lengths = allowedOptions(chosen, EPISODE_LENGTHS_S, "lengthS");
   const input = "ns-field w-full";
   const label = "flex min-w-0 flex-col gap-1.5";
 
@@ -124,6 +134,8 @@ export function PlanSeriesPanel({
         p_language: language,
         p_duration_s: length,
         p_series: seriesId || null,
+        // Only when one is picked: a press without a format sends exactly the arguments it sent before formats existed.
+        ...(chosen ? { p_template: chosen } : {}),
       };
       const sig = JSON.stringify(args);
       if (!key.current || key.current.sig !== sig) key.current = { sig, value: newPlanKey(randomId) };
@@ -143,6 +155,13 @@ export function PlanSeriesPanel({
     } finally {
       setBusy(false);
     }
+  }
+
+  function pickTemplate(value: string) {
+    const next: TemplateId | null = isTemplateId(value) ? value : null;
+    setTemplate(next ?? "");
+    setN(nearestAllowed(next, EPISODE_COUNTS, "episodes", n));
+    setLength(nearestAllowed(next, EPISODE_LENGTHS_S, "lengthS", length));
   }
 
   const problem = message();
@@ -206,7 +225,7 @@ export function PlanSeriesPanel({
           <label className={label}>
             <span className="g2-label">{s.entry.episodes}</span>
             <select className={input} value={n} disabled={disabled} onChange={(e) => setN(Number(e.target.value))}>
-              {EPISODE_COUNTS.map((c) => (
+              {counts.map((c) => (
                 <option key={c} value={c}>
                   {fmt(s.entry.episodesOpt, { n: c })}
                 </option>
@@ -216,7 +235,7 @@ export function PlanSeriesPanel({
           <label className={label}>
             <span className="g2-label">{s.entry.length}</span>
             <select className={input} value={length} disabled={disabled} onChange={(e) => setLength(Number(e.target.value))}>
-              {EPISODE_LENGTHS_S.map((sec) => (
+              {lengths.map((sec) => (
                 <option key={sec} value={sec}>
                   {fmt(s.entry.lengthOpt, { n: sec / 60 })}
                 </option>
@@ -246,6 +265,41 @@ export function PlanSeriesPanel({
             ))}
           </select>
         </label>
+        <div className={label}>
+          <label htmlFor="plan-template" className="g2-label">
+            {s.entry.template.label}
+          </label>
+          <select
+            id="plan-template"
+            className={input}
+            value={template}
+            disabled={disabled}
+            aria-describedby="plan-template-hint"
+            data-plan-template
+            onChange={(e) => pickTemplate(e.target.value)}
+          >
+            <option value="">{s.entry.template.none}</option>
+            {TEMPLATE_IDS.map((id) => (
+              <option key={id} value={id}>
+                {s.entry.template[id].name}
+              </option>
+            ))}
+          </select>
+          <span id="plan-template-hint" className="break-words text-xs text-[var(--color-muted)]">
+            {chosen ? (
+              <>
+                {s.entry.template[chosen].hint}{" "}
+                {fmt(s.entry.template.bounds, {
+                  from: FORMAT_TEMPLATES[chosen].episodes[0],
+                  to: FORMAT_TEMPLATES[chosen].episodes[1],
+                  min: FORMAT_TEMPLATES[chosen].lengthS[0] / 60,
+                  max: FORMAT_TEMPLATES[chosen].lengthS[1] / 60,
+                })}{" "}
+                {s.entry.template.notice}
+              </>
+            ) : null}
+          </span>
+        </div>
         <p className="m-0 break-words text-xs text-[var(--color-muted)]">{s.entry.notice}</p>
         {problem ? (
           <p role="alert" className="m-0 break-words text-sm font-medium text-[var(--color-fail)]" data-plan-error={error === "topic" ? "topic" : error?.key}>
