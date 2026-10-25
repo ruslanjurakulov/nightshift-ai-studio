@@ -17,6 +17,7 @@ from modules.capabilities import ADAPTERS
 from tools import probe_models
 
 GROK = ("grok-imagine-video-1.5", "grok-imagine-video-1.5-lite", "grok-imagine-image-2.0")
+GOOGLE_DARK = ("gemini-omni-1.1-flash", "gemini-nano-banana-2.1")
 
 #: Every adapter finds a key, so the only reason a model is not probed is its terms gate.
 ENV = {name: "k" * 24 for cls in ADAPTERS.values() for name in cls.key_env}
@@ -37,6 +38,9 @@ class SelectTests(unittest.TestCase):
             self.assertEqual(reg.get(mid).terms_gate, "terms_review_required", mid)   # xAI terms were not readable
             self.assertIn(mid, self.gated)
         self.assertIn("luma-ray-3.2", self.gated)
+        for mid in GOOGLE_DARK:
+            self.assertEqual(reg.get(mid).terms_gate, "terms_review_required", mid)   # the Gemini API 18+ / consumer clauses
+            self.assertIn(mid, self.gated)
 
     def test_all_never_spends_on_a_model_past_its_announced_shutdown_date_and_a_named_one_comes_back(self):
         self.assertTrue({"veo-3.1", "veo-3.1-fast", "veo-3.1-lite"} <= self.shut)
@@ -65,6 +69,15 @@ class SelectTests(unittest.TestCase):
         # by capability too: the xai video and image entries stay out of --all --capability runs
         for cap in ("t2v", "i2v", "t2i"):
             self.assertFalse({e.id for e in probe_models.select(self.entries, [], cap, True)} & set(GROK), cap)
+
+    def test_all_leaves_out_both_google_dark_entries_and_a_named_one_comes_back(self):
+        chosen = {e.id for e in probe_models.select(self.entries, [], None, True)}
+        self.assertFalse(chosen & set(GOOGLE_DARK))
+        for mid in GOOGLE_DARK:
+            named = {e.id for e in probe_models.select(self.entries, [mid], None, True)}
+            self.assertEqual(named, self.clear | {mid}, mid)
+        for cap in ("t2v", "i2v", "t2i", "edit"):
+            self.assertFalse({e.id for e in probe_models.select(self.entries, [], cap, True)} & set(GOOGLE_DARK), cap)
 
     def test_a_gated_model_is_probed_when_named_even_with_all(self):
         chosen = {e.id for e in probe_models.select(self.entries, ["seedance-2.0"], None, True)}
@@ -103,7 +116,7 @@ class MainTests(unittest.TestCase):
         gated = {e.id for e in reg.registry().values() if e.terms_gate}
         self.assertTrue(called)
         self.assertFalse(set(called) & gated, set(called) & gated)
-        for mid in ("seedance-2.0", "seedream-4.5", "luma-ray-3.2", *GROK):
+        for mid in ("seedance-2.0", "seedream-4.5", "luma-ray-3.2", *GROK, *GOOGLE_DARK):
             self.assertIn(f"gated {mid}", text)             # said in the log, nothing else about it
             self.assertNotIn(f"ok {mid}", text)
 
@@ -125,6 +138,11 @@ class MainTests(unittest.TestCase):
         self.assertIn("SKIP veo-3.1: past its announced shutdown date 2026-10-22; name it with --model to probe it", out.getvalue())
         self.assertNotRegex(out.getvalue(), r"(?m)^veo-3\.1 ")
 
+    def test_naming_a_google_dark_model_probes_it_and_only_it(self):
+        for mid in GOOGLE_DARK:
+            _, called, _ = self.run_main(["--model", mid])
+            self.assertEqual(called, [mid], mid)
+
     def test_naming_a_gated_model_probes_it(self):
         _, called, _ = self.run_main(["--model", "seedance-2.0"])
         self.assertEqual(called, ["seedance-2.0"])
@@ -136,8 +154,10 @@ class MainTests(unittest.TestCase):
         self.assertNotRegex(text, r"(?m)^seedance-2\.0 ")
         self.assertIn("SKIP seedance-2.0: terms gate written_consent_required is open", text)
         self.assertIn("SKIP grok-imagine-video-1.5: terms gate terms_review_required is open", text)
-        for mid in GROK:
+        for mid in (*GROK, *GOOGLE_DARK):
             self.assertNotRegex(text, rf"(?m)^{mid.replace('.', chr(92) + '.')} ")
+        for mid in GOOGLE_DARK:
+            self.assertIn(f"SKIP {mid}: terms gate terms_review_required is open", text)
 
 
 class WorkflowTests(unittest.TestCase):

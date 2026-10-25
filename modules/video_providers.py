@@ -474,15 +474,11 @@ class GenericAsyncVideoClient:
         body, extra = self._body(spec)
         try:
             submit_path = self.cfg.submit_path.replace("{model}", self.cfg.model)
-            # No redirect is followed: the session carries the key in a header of its own (x-goog-api-key for Veo), which requests
-            # does not strip on a cross-host redirect, so a 3xx would take the key wherever the answer points.
-            resp = self.session.post(f"{self.cfg.base_url}{submit_path}", json=body, allow_redirects=False,
+            resp = self.session.post(f"{self.cfg.base_url}{submit_path}", json=body, **self._redirect_kw(),
                                      headers={**self._auth_headers(), **extra}, timeout=self.timeout)
         except requests.RequestException as e:
             raise self._reject(message=type(e).__name__) from None
-        if 300 <= resp.status_code < 400:
-            raise self._reject(status=resp.status_code, category=INVALID, code="redirect",
-                               message="the host answered with a redirect; redirects are never followed because the key would travel with them")
+        self._refuse_redirect(resp.status_code)
         try:
             data = resp.json()
         except ValueError:
@@ -498,6 +494,22 @@ class GenericAsyncVideoClient:
                 self.cfg.name, self.cfg.model, "accepted the request but returned no task id",
                 f"the {self.cfg.name} response shape may have changed; check it against the provider's docs")
         return task_id
+
+    @property
+    def _no_redirects(self) -> bool:
+        """True for a provider whose key rides a header of its own (Veo: x-goog-api-key). requests drops only ``Authorization`` on a
+        cross-host redirect, so for such a provider a 3xx would carry the key wherever the answer points and is refused. A provider
+        authenticating with ``Authorization`` is unchanged: requests already strips that header across hosts, and a vendor that
+        legitimately answers with a 307/308 keeps working."""
+        return self.cfg.auth_header.lower() != "authorization"
+
+    def _redirect_kw(self) -> dict:
+        return {"allow_redirects": False} if self._no_redirects else {}
+
+    def _refuse_redirect(self, status: int) -> None:
+        if self._no_redirects and 300 <= status < 400:
+            raise self._reject(status=status, category=INVALID, code="redirect",
+                               message="the host answered with a redirect; redirects are never followed because the key would travel with them")
 
     def _query_url(self, task_id: str) -> tuple[str, dict]:
         if "{id}" in self.cfg.query_path:
@@ -563,12 +575,10 @@ class GenericAsyncVideoClient:
                 break
             retry_after = None
             try:
-                resp = self.session.get(url, params=params, headers=self._auth_headers(), allow_redirects=False,
+                resp = self.session.get(url, params=params, headers=self._auth_headers(), **self._redirect_kw(),
                                         timeout=self.timeout)
                 status = resp.status_code
-                if 300 <= status < 400:
-                    raise self._reject(status=status, category=INVALID, code="redirect",
-                                       message="the host answered with a redirect; redirects are never followed because the key would travel with them")
+                self._refuse_redirect(status)
                 retry_after = self._retry_after(resp)
                 try:
                     data = resp.json()

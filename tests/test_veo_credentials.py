@@ -122,6 +122,41 @@ class LegacyRedirectTests(unittest.TestCase):
         self.assertIs(c.session.calls[0]["allow_redirects"], False)
 
 
+class OtherProvidersKeepTheirRedirectBehaviourTests(unittest.TestCase):
+    """The refusal is for a provider whose key rides a header of its own. A provider authenticating with ``Authorization`` (requests strips
+    that across hosts) is exactly as before: the call is made as it always was and a 307 is not turned into a refusal by this change."""
+
+    def client(self, provider_cfg):
+        c = vp.GenericAsyncVideoClient(provider_cfg)
+        return c
+
+    def test_only_a_custom_key_header_means_no_redirects(self):
+        veo = vp.GenericAsyncVideoClient(veo_config(VEO_MODEL="veo-test-model"))
+        self.assertTrue(veo._no_redirects)
+        for build in (vp._kling_config, vp._seedance_config, vp._wan_config):
+            cfg = build()
+            if cfg.auth_header.lower() == "authorization":
+                c = vp.GenericAsyncVideoClient(cfg)
+                self.assertFalse(c._no_redirects, cfg.name)
+                self.assertEqual(c._redirect_kw(), {}, cfg.name)
+
+    def test_an_authorization_provider_is_called_without_the_new_argument_and_a_307_is_not_refused_as_a_redirect(self):
+        cfg = vp.VideoProviderConfig(name="Acme", api_key="k" * 20, base_url="https://api.acme.test", model="m", submit_path="/submit",
+                                     query_path="/q/{id}", dialect=vp.GENERIC)
+        c = vp.GenericAsyncVideoClient(cfg)
+        session = VFakeSession(posts=[VFakeResp({"id": "t1"}, status=200)])
+        c.session = session
+        self.assertEqual(c.submit(_spec_for_tests()), "t1")
+        self.assertIs(session.calls[0]["allow_redirects"], True)          # the fake's default: the argument was not passed
+        c._refuse_redirect(307)                                           # does not raise for an Authorization provider
+
+
+def _spec_for_tests():
+    from tests.test_video_provider_shapes import _spec
+
+    return _spec(4)
+
+
 class ResultLinkHostTests(unittest.TestCase):
     EVIL = f"https://evil.example\\@{GOOGLE}/v1beta/files/f1:download?alt=media"
 
