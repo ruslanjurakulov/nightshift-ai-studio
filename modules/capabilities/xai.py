@@ -19,10 +19,11 @@ Sources, all on docs.x.ai and read 2026-10-24 (each page as markdown, append
   ``b64_json`` when ``response_format`` is ``b64_json``. Base64 is requested so no
   temporary link is ever fetched.
 
-Billing facts the adapters are built around (docs.x.ai/developers/pricing):
-a request deemed to violate the usage guidelines is STILL CHARGED, so a
-moderation refusal is reported as ``policy`` with that warning and never as
-"nothing was bought"; image ``quality`` ``auto`` bills whatever tier the service
+Billing claims the adapters are built around (docs.x.ai/developers/pricing;
+vendor claims, unverified here): a request deemed to violate the usage
+guidelines is still charged, so EVERY moderation refusal (a filtered video, a
+failed job, a synchronous HTTP 400) is reported as ``policy`` with that warning
+and never as "nothing was bought"; image ``quality`` ``auto`` bills whatever tier the service
 picks (it "currently uses low for generation"), so the tier is always sent
 explicitly and a job without one is refused.
 
@@ -66,6 +67,16 @@ from modules.capabilities.safe_fetch import SafeResultMixin, sniff_image_mime, u
 
 #: Where a result may live. The docs show ``vidgen.x.ai``; any ``x.ai`` subdomain is the maker's.
 RESULT_HOSTS = ("x.ai",)
+#: In front of every policy / moderation refusal: xAI's pricing page says such a request is still
+#: charged (a vendor claim; nothing here has verified it), so it is never presented as free.
+CHARGED = ("xAI MAY STILL CHARGE for this refusal (its pricing page: a request deemed to violate the usage "
+           "guidelines is still charged)")
+
+
+def _refused(message: str, *, http_status=None, not_accepted: bool = False) -> AdapterError:
+    return AdapterError(E_POLICY, f"{CHARGED}. {message}", http_status=http_status, not_accepted=not_accepted)
+
+
 _ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
 #: xAI's ``user``: "a unique identifier representing your end-user" (abuse monitoring).
 _USER = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -85,6 +96,16 @@ class _GrokBase(SafeResultMixin, HttpAdapter):
     base_url_env = "XAI_BASE_URL"
     default_base_url = "https://api.x.ai/v1"
     result_hosts = RESULT_HOSTS
+
+    def _submit(self, url: str, body: dict, *, what: str = "submit") -> dict:
+        """``submit_json`` plus the rule that a synchronous moderation refusal (HTTP 400 with policy
+        words) carries the "may still be charged" warning like every other policy path."""
+        try:
+            return self.submit_json(url, body, what=what)
+        except AdapterError as e:
+            if e.code == E_POLICY and not e.message.startswith(CHARGED):
+                raise _refused(e.message, http_status=e.http_status, not_accepted=e.not_accepted) from None
+            raise
 
     def _user(self, request: CapabilityRequest) -> Optional[str]:
         return request.end_user if request.end_user and _USER.fullmatch(request.end_user) else None
@@ -167,7 +188,7 @@ class GrokVideoAdapter(_GrokBase):
         user = self._user(request)
         if user:
             body["user"] = user
-        data = self.submit_json(f"{self.base_url}/videos/generations", body)
+        data = self._submit(f"{self.base_url}/videos/generations", body)
         rid = data.get("request_id") if isinstance(data, dict) else None
         if not isinstance(rid, str) or not _ID.fullmatch(rid):
             # The vendor answered 2xx: a job probably exists, and it bills.
@@ -188,9 +209,7 @@ class GrokVideoAdapter(_GrokBase):
             if video.get("respect_moderation") is False:
                 # "the field will be false and the video url field will be empty" - and the pricing page
                 # says a generation deemed in violation of the usage guidelines is still charged.
-                return PollResult(FAILED, error=AdapterError(
-                    E_POLICY, "xAI's moderation filtered the video; per xAI's pricing page a generation deemed in "
-                              "violation of its usage guidelines is still charged"))
+                return PollResult(FAILED, error=_refused("xAI's moderation filtered the video (the link is empty)"))
             url = video.get("url")
             if not url:
                 raise AdapterError(E_BAD_RESPONSE, "done without video.url")
@@ -202,7 +221,7 @@ class GrokVideoAdapter(_GrokBase):
             text = self.message(err.get("message") or err.get("code") or "the vendor reported the job failed")
             code = _VIDEO_ERRORS.get(str(err.get("code") or ""), E_UNAVAILABLE)
             if code == E_BAD_REQUEST and any(w in text.lower() for w in _POLICY_WORDS):
-                code = E_POLICY        # invalid_argument also carries "content blocked by moderation"
+                return PollResult(FAILED, error=_refused(text))   # invalid_argument also carries "blocked by moderation"
             return PollResult(FAILED, error=AdapterError(code, text))
         return PollResult(PENDING)
 
@@ -258,7 +277,7 @@ class GrokImageAdapter(_GrokBase):
         user = self._user(request)
         if user:
             body["user"] = user
-        data = self.submit_json(f"{self.base_url}/images/generations", body, what="generate")
+        data = self._submit(f"{self.base_url}/images/generations", body, what="generate")
         raw = dig(data, "data", 0, "b64_json") if isinstance(data, dict) else None
         if not isinstance(raw, str) or not raw:
             raise unconfirmed("the answer carries no image")

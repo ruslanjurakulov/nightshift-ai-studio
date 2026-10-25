@@ -49,8 +49,8 @@ from modules.capabilities.base import (
     CapabilityRequest,
     ProviderTask,
 )
-from modules.capabilities.safe_fetch import UNCONFIRMED
-from modules.capabilities.xai import GrokImageAdapter, GrokVideoAdapter
+from modules.capabilities.safe_fetch import AFTER_COMPLETION, UNCONFIRMED
+from modules.capabilities.xai import CHARGED, GrokImageAdapter, GrokVideoAdapter
 from tests.loopback_vendor import FakeVendor, Resp, cleanup_certificate, closed_port_url
 from tests.test_creative_worker import JOB, ORG
 
@@ -342,6 +342,25 @@ class GrokVideoLostAnswerTests(VendorCase):
                 a.submit(t2v(), V15)
             self.assertUnconfirmed(cm, E_BAD_RESPONSE)
 
+    def test_a_synchronous_moderation_refusal_may_still_be_charged_and_says_so(self):
+        for path, make in ((GEN, lambda: self.video().submit(t2v(), V15)), (IMAGES, lambda: self.image().submit(t2i(), IMG))):
+            vendor_body = {"code": "Client specified an invalid argument", "error": "Generated content violates our usage guidelines (safety, moderation)"}
+            self.vendor._routes.clear()
+            self.vendor.on("POST", path, Resp(400, vendor_body))
+            with self.assertRaises(AdapterError, msg=path) as cm:
+                make()
+            self.assertEqual(cm.exception.code, E_POLICY, path)
+            self.assertTrue(cm.exception.message.startswith(CHARGED), cm.exception.message)
+            self.assertFalse(cm.exception.not_accepted)             # not proof that nothing was taken
+            self.assertEqual(cm.exception.message.count(CHARGED), 1)
+        # an ordinary 400 about the request is not dressed up as a charged refusal
+        self.vendor._routes.clear()
+        self.vendor.on("POST", GEN, Resp(400, {"error": "duration must be between 1 and 15"}))
+        with self.assertRaises(AdapterError) as cm:
+            self.video().submit(t2v(), V15)
+        self.assertEqual(cm.exception.code, E_BAD_REQUEST)
+        self.assertNotIn("CHARGE", cm.exception.message)
+
     def test_a_connection_that_never_opened_proves_nothing_was_bought(self):
         a = self.video({"XAI_API_KEY": KEY, "XAI_BASE_URL": closed_port_url() + "/v1"})
         with self.assertRaises(AdapterError) as cm:
@@ -417,7 +436,18 @@ class GrokVideoPollTests(VendorCase):
     def test_a_filtered_video_is_a_policy_failure_that_says_it_was_still_charged(self):
         res = self.status({"status": "done", "video": {"url": "", "duration": 5, "respect_moderation": False}})
         self.assertEqual((res.state, res.error.code), (FAILED, E_POLICY))
-        self.assertIn("still charged", res.error.message)
+        self.assertTrue(res.error.message.startswith(CHARGED), res.error.message)
+        self.assertFalse(res.error.not_accepted)
+
+    def test_every_policy_path_carries_the_may_still_be_charged_warning(self):
+        # 1. a failed job whose invalid_argument is a moderation block
+        res = self.status({"status": "failed", "error": {"code": "invalid_argument", "message": "content blocked by moderation"}})
+        self.assertEqual(res.error.code, E_POLICY)
+        self.assertTrue(res.error.message.startswith(CHARGED), res.error.message)
+        # 2. an invalid_argument that is NOT a policy block is an ordinary bad request, with no such warning
+        res = self.status({"status": "failed", "error": {"code": "invalid_argument", "message": "Prompt cannot be empty."}})
+        self.assertEqual(res.error.code, E_BAD_REQUEST)
+        self.assertNotIn("CHARGE", res.error.message)
 
     def test_done_without_a_link_or_with_a_foreign_one_is_an_error(self):
         with self.assertRaises(AdapterError) as cm:
@@ -428,6 +458,7 @@ class GrokVideoPollTests(VendorCase):
             with self.assertRaises(AdapterError, msg=url) as cm:
                 self.status({"status": "done", "video": {"url": url, "respect_moderation": True}})
             self.assertEqual(cm.exception.code, E_BAD_RESPONSE, url)
+            self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), url)    # xAI said done: it may be billed
 
     def test_failed_carries_the_vendors_code_and_the_right_remedy(self):
         cases = (("invalid_argument", "Prompt cannot be empty.", E_BAD_REQUEST),
@@ -498,6 +529,14 @@ class GrokVideoEndToEndTests(VendorCase):
         self.assertFalse(res.ok)
         self.assertEqual((res.code, res.task_id), ("timeout", "req-9"))  # it may still bill: the id is kept
         self.assertEqual(len(self.vendor.seen("POST", GEN)), 1)
+
+    def test_an_expired_clip_link_is_not_an_auth_error_and_says_the_spend_may_have_happened(self):
+        gone = Resp(200, {"status": "done", "video": {"url": f"{self.vendor.base_url}/expired.mp4", "respect_moderation": True}})
+        self.vendor.on("GET", "/expired.mp4", Resp(403, {"error": "signature expired"}))
+        res = self.run_probe([gone])
+        self.assertFalse(res.ok)
+        self.assertEqual(res.code, E_NOT_FOUND)
+        self.assertTrue(res.message.startswith(AFTER_COMPLETION), res.message)
 
     def test_a_link_xai_cannot_serve_is_a_failed_probe_not_a_hang(self):
         gone = Resp(200, {"status": "done", "video": {"url": f"{self.vendor.base_url}/missing.mp4", "respect_moderation": True}})

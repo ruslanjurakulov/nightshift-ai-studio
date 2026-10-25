@@ -40,10 +40,10 @@ import requests
 
 from modules.capabilities.base import (
     E_BAD_RESPONSE,
+    E_NOT_FOUND,
     E_UNAVAILABLE,
     AdapterError,
     PollResult,
-    classify_http,
 )
 
 #: Printable ASCII, no space, no backslash: the characters on which two URL
@@ -56,6 +56,19 @@ _EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "video
 #: Starts the message of a submit failure that does not prove the vendor took
 #: nothing (it comes FIRST: AdapterError keeps only the first 500 characters).
 UNCONFIRMED = "UNCONFIRMED SPEND: the vendor may have accepted this and be billing it; check its usage page before rerunning"
+
+
+#: Starts the message of any failure AFTER the vendor finished the work: the clip or image
+#: may exist and be billed even though we could not store it.
+AFTER_COMPLETION = "SPEND MAY HAVE OCCURRED: the generation may have completed and been billed; the result was not downloaded"
+
+
+def after_completion(e: AdapterError) -> AdapterError:
+    """``e`` with the post-completion spend note in front (code, status and retryability kept)."""
+    if e.message.startswith(AFTER_COMPLETION):
+        return e
+    return AdapterError(e.code, f"{AFTER_COMPLETION}. {e.message}", http_status=e.http_status,
+                        not_accepted=False)
 
 
 def _urllib3_host(url: str) -> Optional[str]:
@@ -91,6 +104,15 @@ def checked_result_url(url, hosts: Sequence[str], ports: Sequence[Optional[int]]
                            f"the result link is not an https address on the vendor's own hosts "
                            f"({(host or 'unparsable')!r}); it was not downloaded")
     return url
+
+
+def _download_code(status: int) -> str:
+    """The code for a refused DOWNLOAD. A result link is a signed URL: its 401/403/404/410 means the
+    link expired or is gone, never that our API key is wrong (the key is not sent to it), so it must
+    not read as ``auth``. Overload and server errors are worth another try with the same task."""
+    if status in (408, 425, 429) or status >= 500:
+        return E_UNAVAILABLE
+    return E_NOT_FOUND
 
 
 def _looks_like(mime: str, head: bytes) -> bool:
@@ -130,12 +152,24 @@ class SafeResultMixin:
     # -- results -----------------------------------------------------------------
     def checked_outputs(self, result: PollResult) -> PollResult:
         """``result`` if every URL output passes the allow-list, else raises."""
-        for item in result.outputs:
-            if item.url:
-                checked_result_url(item.url, self.result_hosts, self.result_ports)
+        try:
+            for item in result.outputs:
+                if item.url:
+                    checked_result_url(item.url, self.result_hosts, self.result_ports)
+        except AdapterError as e:
+            raise after_completion(e) from None
         return result
 
     def fetch(self, result: PollResult, out_dir, stem: str = "output") -> List[Path]:
+        """Store every output. Any failure here comes AFTER the vendor finished (and may have billed),
+        so it carries the ``AFTER_COMPLETION`` note; the task is still the vendor's, so the caller
+        may fetch again while the link lives."""
+        try:
+            return self._fetch(result, out_dir, stem)
+        except AdapterError as e:
+            raise after_completion(e) from None
+
+    def _fetch(self, result: PollResult, out_dir, stem: str) -> List[Path]:
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         paths: List[Path] = []
@@ -180,7 +214,7 @@ class SafeResultMixin:
                 if status in (301, 302, 303, 307, 308):
                     raise AdapterError(E_BAD_RESPONSE, "download: the host redirected; redirects are never followed")
                 if status >= 300:
-                    raise AdapterError(classify_http(status), f"download: HTTP {status}", http_status=status)
+                    raise AdapterError(_download_code(status), f"download: HTTP {status}", http_status=status)
                 try:
                     declared = int((getattr(resp, "headers", None) or {}).get("Content-Length") or 0)
                 except (TypeError, ValueError):

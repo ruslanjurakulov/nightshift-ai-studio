@@ -244,9 +244,13 @@ class PriceDefaultsFile(unittest.TestCase):
         self.assertIn("'scene_regenerate_clip_' ||", (MIGRATIONS / "0076_scene_regenerate.sql").read_text())
 
     def test_quality_tiers_match_what_the_registry_sells(self):
-        # A tier left unpriced on purpose (a gated model) is not one the registry SELLS.
+        # The gated, unpriced grok tiers are not ones the registry SELLS; every other tier must still be priced.
         tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)} \
-            - set(UNPRICED_ON_PURPOSE)
+            - {u for u in UNPRICED_ON_PURPOSE if u.startswith("model_grok_imagine_")}
+        all_tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)}
+        self.assertEqual(all_tiers - tiers, {"model_grok_imagine_image_2_0_image_low",
+                                             "model_grok_imagine_image_2_0_image_medium"},
+                         "only the gated grok tiers may be left out of the sold-tier check")
         self.assertEqual(len(tiers), 9)
         self.assertTrue(tiers <= {r["unit"] for r in self.rows})
 
