@@ -87,11 +87,23 @@ _CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u202a-\u202e\u2066
                        r"|(?<![" + _SPACELESS + r"])\u200b(?![" + _SPACELESS + r"])")
 
 
+#: Unicode "tag" characters U+E0001-U+E007F are invisible and carry text (a hidden payload next to a visible word). Their one
+#: legitimate use is the three subdivision flags (England, Scotland, Wales: a black flag, tag letters gbeng / gbsct / gbwls,
+#: a cancel tag), which are kept; every other tag character is removed.
+_FLAG_TAILS = "|".join("".join(chr(0xE0000 + ord(ch)) for ch in tail) for tail in ("gbeng", "gbsct", "gbwls"))
+_TAGS = re.compile("(\U0001F3F4(?:" + _FLAG_TAILS + ")\U000E007F)|[\U000E0001-\U000E007F]")
+
+
+def _strip_invisible(text: str) -> str:
+    """``text`` without control, bidi-override and invisible tag characters (see ``_CONTROLS`` and ``_TAGS``)."""
+    return _TAGS.sub(lambda m: m.group(1) or "", _CONTROLS.sub("", text or ""))
+
+
 def _clean(text: str) -> str:
     """Normalise whitespace; drop chapter/timestamp lines (they mean nothing
     outside YouTube); keep paragraphs. Control and bidi-override characters are removed."""
     lines = []
-    for line in _CONTROLS.sub("", text or "").replace("\r\n", "\n").split("\n"):
+    for line in _strip_invisible(text).replace("\r\n", "\n").split("\n"):
         if _TIMESTAMP_LINE.match(line):
             continue
         lines.append(_WS.sub(" ", line).strip())
@@ -298,7 +310,7 @@ def facebook_caption(meta: SourceMeta, *, max_hashtags: int = FB_HASHTAGS_DEFAUL
 def _plain_line(text: str) -> str:
     """The disclosure line as one clean line (no hashtags or @-mentions are
     added or counted by it)."""
-    return _WS.sub(" ", _CONTROLS.sub("", text or "").replace("\r", " ").replace("\n", " ")).strip()
+    return _WS.sub(" ", _strip_invisible(text).replace("\r", " ").replace("\n", " ")).strip()
 
 
 def caption_for(platform: str, meta: SourceMeta, *, disclosure: str = "") -> str:
