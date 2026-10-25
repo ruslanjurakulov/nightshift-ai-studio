@@ -33,7 +33,7 @@ Uploading costs the platforms nothing, so no credits are held or charged.
 
 The steps above are the same for every platform; what differs (connect, check,
 compose, publish) is a ``Publisher`` registered in ``modules/publishers.py``
-(``InstagramPublisher``, ``TiktokPublisher``, ``YoutubePublisher`` below). A
+(``InstagramPublisher``, ``TiktokPublisher``, ``YoutubePublisher``, and the dark ``FacebookPublisher`` below). A
 platform that is not registered is refused as ``unknown_platform``.
 
 YouTube targets: the target must not be the video's own channel (the pipeline
@@ -103,6 +103,16 @@ IG_MAX_SECONDS = 15 * 60.0
 IG_MAX_BYTES = 300 * 1024 * 1024
 IG_MIN_ASPECT = 0.01
 IG_MAX_ASPECT = 10.0
+
+#: Facebook Reels (Graph API, POST /{page-id}/video_reels): 3 to 90 seconds, vertical 9:16, 540x960 at least.
+#: Meta states no maximum file size; FB_MAX_BYTES is OUR hard cap (a 90 s Reel at 25 Mbit/s is under 300 MB), checked
+#: before the upload and again while the file is streamed. The 9:16 band is our conservative reading of "9:16"
+#: (1080x1920, 720x1280 and 540x960 are 0.5625); Meta's own error text says only "between 16:9 and 9:16".
+FB_MIN_SECONDS = 3.0
+FB_MAX_SECONDS = 90.0
+FB_MAX_BYTES = 512 * 1024 * 1024
+FB_MIN_ASPECT = 0.55
+FB_MAX_ASPECT = 0.60
 
 TT_MIN_SECONDS = 3.0
 TT_DEFAULT_MAX_SECONDS = 600.0
@@ -344,10 +354,12 @@ def check_format(platform: str, info: VideoInfo, *, short_id: Optional[str] = No
     the panel shows. ``max_seconds`` is TikTok's per-creator limit."""
     hint = f"; publish its Short ({short_id}) there instead" if short_id else \
         "; a vertical Short cut of it can be posted instead"
-    name = "Instagram Reels" if platform == "instagram" else "TikTok"
-    lo = IG_MIN_SECONDS if platform == "instagram" else TT_MIN_SECONDS
-    hi = IG_MAX_SECONDS if platform == "instagram" else float(max_seconds or TT_DEFAULT_MAX_SECONDS)
-    cap = IG_MAX_BYTES if platform == "instagram" else TT_MAX_BYTES
+    if platform == "facebook":
+        name, lo, hi, cap = "Facebook Reels", FB_MIN_SECONDS, FB_MAX_SECONDS, FB_MAX_BYTES
+    elif platform == "instagram":
+        name, lo, hi, cap = "Instagram Reels", IG_MIN_SECONDS, IG_MAX_SECONDS, IG_MAX_BYTES
+    else:
+        name, lo, hi, cap = "TikTok", TT_MIN_SECONDS, float(max_seconds or TT_DEFAULT_MAX_SECONDS), TT_MAX_BYTES
     if info.duration is None:
         raise refused("unknown_duration", "could not read the video's duration")
     if info.duration > hi:
@@ -361,6 +373,12 @@ def check_format(platform: str, info: VideoInfo, *, short_id: Optional[str] = No
         ratio = info.width / info.height
         if not IG_MIN_ASPECT <= ratio <= IG_MAX_ASPECT:
             raise refused("bad_aspect", f"aspect ratio {info.width}x{info.height} is outside what Reels accept")
+    if platform == "facebook":
+        if not (info.width and info.height):
+            raise refused("unreadable_video", "could not read the video's picture size; it is not posted on a guess")
+        if not FB_MIN_ASPECT <= info.width / info.height <= FB_MAX_ASPECT:
+            raise refused("bad_aspect", f"the video is {info.width}x{info.height}; Facebook Reels need a vertical "
+                                        f"9:16 picture{hint}")
 
 
 def load_source_meta(video: Mapping, channel: Optional[Mapping], output_dir: Path) -> social_captions.SourceMeta:
@@ -851,6 +869,29 @@ class TiktokPublisher(_SocialAccountPublisher):
         return self.adapter.publish(self.tok, path, post.caption, self.creator, ai_generated=post.ai_generated)
 
 
+class FacebookPublisher(_SocialAccountPublisher):
+    """Facebook Reels on a Page (Graph API), saved as a DRAFT. DARK: registered here, but nothing can reach it yet,
+    because ``social_accounts`` / ``publish_requests`` (migrations 0028 / 0029) do not allow the word ``facebook`` and
+    there is no connect flow or Meta app. The adapter is ``modules/social_facebook.py`` (imported when used, so that
+    module can import this one)."""
+
+    platform = "facebook"
+    #: Test seam only (loopback hosts). Production leaves it empty: the hosts are fixed in social_facebook.
+    adapter_kwargs: Mapping = {}
+
+    def publish(self, path: Path, post: publishers.PostSpec) -> Mapping:
+        from modules import social_facebook  # noqa: PLC0415 - social_facebook imports this module
+
+        ctx = self.ctx
+        # PostSpec.ai_generated -> the finish call's ``is_ai_generated`` (sent only when true).
+        return social_facebook.FacebookReelsAdapter(
+            ctx.http, sleep=ctx.sleep, heartbeat=ctx.heartbeat, **dict(self.adapter_kwargs)).publish(
+            self.tok, path, post.caption, ai_generated=post.ai_generated)
+
+    def describe(self) -> str:
+        return f"saved as a draft Reel on facebook account {self.ctx.request.get('account_id') or ''}"
+
+
 class YoutubePublisher:
     """Another channel of the organization, uploaded PRIVATE with the pipeline's own uploader."""
 
@@ -899,6 +940,7 @@ class YoutubePublisher:
 publishers.register(InstagramPublisher.platform, InstagramPublisher)
 publishers.register(TiktokPublisher.platform, TiktokPublisher)
 publishers.register(YoutubePublisher.platform, YoutubePublisher)
+publishers.register(FacebookPublisher.platform, FacebookPublisher)
 
 
 def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.SocialTokenClient,
@@ -1020,5 +1062,5 @@ class SocialPublisher:
 __all__ = [
     "PublishStore", "SocialPublisher", "process_request", "check_format", "resolve_master",
     "load_source_meta", "tiktok_chunks", "InstagramAdapter", "TiktokAdapter", "YoutubeAdapter", "VideoInfo",
-    "InstagramPublisher", "TiktokPublisher", "YoutubePublisher",
+    "InstagramPublisher", "TiktokPublisher", "YoutubePublisher", "FacebookPublisher",
 ]

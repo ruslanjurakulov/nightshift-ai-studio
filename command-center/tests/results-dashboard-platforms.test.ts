@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { PLATFORMS, PLATFORM_IDS } from "../lib/resultsDashboard/platforms";
+import { PLATFORMS, PLATFORM_IDS, platformState } from "../lib/resultsDashboard/platforms";
 
 const SOURCE = readFileSync(join(__dirname, "..", "..", "modules", "social_publish.py"), "utf8");
 
@@ -24,12 +24,20 @@ function registeredPublishers(): string[] {
 
 describe("platform registry vs the worker's publishers", () => {
   it("finds the worker's publishers (the scan is not vacuous)", () => {
-    expect(registeredPublishers()).toEqual(["instagram", "tiktok", "youtube"]);
+    expect(registeredPublishers()).toEqual(["facebook", "instagram", "tiktok", "youtube"]);
     expect(SOURCE).toMatch(/publishers\.register\(InstagramPublisher\.platform/);
   });
-  it("marks exactly the registered publishers as connectable", () => {
+  it("lists exactly the registered publishers as having a worker publisher (live or dark)", () => {
+    const withWorker = PLATFORMS.filter((p) => p.worker !== "none").map((p) => p.id).sort();
+    expect(withWorker).toEqual(registeredPublishers());
+  });
+  it("marks as connectable only the live publishers; a dark one (registered, unreachable) stays 'coming'", () => {
     const connectable = PLATFORMS.filter((p) => p.publish === "available").map((p) => p.id).sort();
-    expect(connectable).toEqual(registeredPublishers());
+    expect(connectable).toEqual(PLATFORMS.filter((p) => p.worker === "live").map((p) => p.id).sort());
+    for (const p of PLATFORMS.filter((q) => q.worker === "dark")) {
+      expect(platformState(p, 3)).toBe("coming");
+      expect(platformState(p, null)).toBe("coming");
+    }
   });
   it("has results live only for YouTube, the one platform whose analytics the daily poll collects", () => {
     expect(PLATFORMS.filter((p) => p.results === "live").map((p) => p.id)).toEqual(["youtube"]);

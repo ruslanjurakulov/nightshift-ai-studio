@@ -379,19 +379,21 @@ describe("platform registry", () => {
     expect(by.facebook).toMatchObject({ state: "coming", connected: 0 });
   });
   it("an unread platform is 'unknown', not 'not connected'; a platform nobody can connect stays 'coming' whatever was read", () => {
-    const cards = Object.fromEntries(platformCards({ youtube: 1, instagram: null, x: 5 }).map((c) => [c.id, c]));
+    const cards = Object.fromEntries(platformCards({ youtube: 1, instagram: null, x: 5, facebook: 5 }).map((c) => [c.id, c]));
     expect(cards.instagram.state).toBe("unknown");
     expect(cards.tiktok.state).toBe("unknown");
     expect(cards.x).toMatchObject({ state: "coming", connected: 0 });
+    // Registered on the worker but dark (nothing can connect it): still "coming", never a count.
+    expect(cards.facebook).toMatchObject({ state: "coming", connected: 0 });
   });
   it("a platform nobody can connect is 'coming' whatever count it is given, even an unknown one", () => {
-    const x = { id: "x", publish: "none", results: "planned" } as const;
+    const x = { id: "x", worker: "none", publish: "none", results: "planned" } as const;
     for (const n of [null, 0, 5, NaN]) expect(platformState(x, n)).toBe("coming");
   });
   it("a connected platform whose results are live is the only 'live' card", () => {
-    expect(platformState({ id: "youtube", publish: "available", results: "live" }, 0)).toBe("not_connected");
-    expect(platformState({ id: "youtube", publish: "available", results: "live" }, 1)).toBe("live");
-    expect(platformState({ id: "tiktok", publish: "available", results: "planned" }, 3)).toBe("connected_results_coming");
-    expect(platformState({ id: "tiktok", publish: "available", results: "planned" }, NaN)).toBe("not_connected");
+    expect(platformState({ id: "youtube", worker: "live", publish: "available", results: "live" }, 0)).toBe("not_connected");
+    expect(platformState({ id: "youtube", worker: "live", publish: "available", results: "live" }, 1)).toBe("live");
+    expect(platformState({ id: "tiktok", worker: "live", publish: "available", results: "planned" }, 3)).toBe("connected_results_coming");
+    expect(platformState({ id: "tiktok", worker: "live", publish: "available", results: "planned" }, NaN)).toBe("not_connected");
   });
 });

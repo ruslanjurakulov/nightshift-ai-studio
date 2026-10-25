@@ -255,3 +255,62 @@ xabarlarda ko'rinmaydi.
      beradi, keyin o'chiradi. Supabase'ning bepul tarifida bitta fayl 50 MB
      bilan cheklangan — kattaroq videolar uchun Supabase → Storage →
      Settings'da **upload size limit** ni oshiring (Pro tarif).
+
+---
+
+## 6. Facebook Reels (Facebook sahifasi) — QORONG'I: kod yozilgan, lekin hozircha ulanmaydi
+
+Holat: `modules/social_facebook.py` (Graph API, `POST /{page-id}/video_reels`) va `FacebookPublisher` yozilgan va
+worker'ning publisher ro'yxatida turibdi, lekin **hech narsa unga yetib bormaydi**: `social_accounts` va
+`publish_requests` jadvallari (migratsiya 0028 / 0029) `facebook` so'zini qabul qilmaydi, "Ulash" tugmasi, OAuth
+route va Meta ilovasi yo'q. Panelda Facebook kartochkasi "tez orada" holatida qoladi. Hech qanday kalit, env o'zgaruvchisi
+yoki sozlama qo'shilmagan.
+
+Rasmiy hujjat: https://developers.facebook.com/docs/video-api/guides/reels-publishing (2026-10-25 da o'qilgan; ishlatishdan
+oldin qayta o'qing).
+
+### Egasi (siz) qilishi kerak bo'lgan ishlar — faqat siz qila olasiz
+
+1. **Meta Business portfolio** va **Meta developer ilovasi** (https://developers.facebook.com/apps → Create app, tur:
+   **Business**). Ilovaga **Facebook Login** (yoki "Facebook Login for Business") use case'ini qo'shing. Instagram
+   ilovasi bilan bitta ilova bo'lishi mumkin (ruxsatlar alohida so'raladi) — bu taxmin, tekshirilmagan.
+2. Ruxsatlar (permissions), aynan shular: `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`.
+3. Foydalanuvchi — sahifada `CREATE_CONTENT` vazifasi bor odam bo'lishi kerak; tokenlar **Page access token** bo'ladi
+   (uzoq muddatli foydalanuvchi tokenidan `/{app-scoped-user-id}/accounts` orqali olinadi; Meta: bunday Page token'ning
+   "muddati yo'q", faqat bekor qilinganda yoki o'zgarganda tugaydi).
+4. **Business Verification** (kompaniya hujjatlari) va **App Review** — **Advanced Access** uchun (boshqa odamlarning
+   sahifalarini ulash uchun). Har bir ruxsat uchun ekran yozuvi (screencast) kerak. Muddat: rasmiy raqam topilmadi
+   (uchinchi tomon manbalari: kunlar–haftalar). Review'gacha faqat ilovada roli bor odamlar (Standard Access) ishlata oladi.
+5. **Qaror**: hozir Reel **DRAFT** (qoralama) sifatida saqlanadi — Page egasi uni Meta Business Suite'da o'zi e'lon qiladi
+   (YouTube `private`, TikTok `SELF_ONLY` bilan bir xil qoida, CLAUDE.md #2). Darhol ommaviy e'lon qilish
+   (`video_state=PUBLISHED`) — bu kodda bitta doimiy (`FB_VIDEO_STATE`), uni o'zgartirish sizning qaroringiz.
+6. Keyingi PR'lar uchun (hali QILINMAGAN): migratsiya (ikkala `check` va `store_social_account` ruxsat ro'yxati),
+   `app/api/oauth/facebook/{start,callback}`, `social-oauth.ts` sozlamasi va `isSocialConfigured`, env nomlari
+   (`deploy/.env.*.example`), i18n, huquqiy hujjatlardagi ruxsatlar jadvali, Meta'ning ma'lumotni o'chirish (data
+   deletion) manzili.
+
+### Cheklovlar (kod shularni yuklashdan OLDIN tekshiradi)
+
+- Davomiylik 3–90 soniya, vertikal 9:16 (bizda 0.55–0.60 oralig'i), kamida 540x960 (tavsiya 1080x1920), 23–60 kadr/s
+  (Meta: 24–60; 23.976 o'tishi uchun 23 qo'yilgan), H.264/H.265 (VP9, AV1 ham). Uzun 16:9 video Reel bo'la olmaydi —
+  uning Short'i joylanadi.
+- Meta fayl hajmi chegarasini yozmagan: bizning qattiq chegara 512 MB (yuklashdan oldin va yuklash paytida tekshiriladi).
+- Bir sahifaga 24 soatda 30 ta API orqali Reel (Meta o'zi cheklaydi; xato `rate_limited` bo'lib chiqadi, Meta aytgan
+  kutish vaqti bilan). Kredit yechilmaydi.
+- Izoh (description): Meta uzunlik chegarasini yozmagan; bizning konservativ chegara 2200 belgi va 5 ta hashtag.
+- AI belgisi: `is_ai_generated=true` faqat `finish` chaqiruvida va faqat belgi kerak bo'lganda; izohga qator ham qo'shiladi.
+
+### Javob yo'qolsa (takror yuborish yo'q)
+
+`finish` javobi yo'qolsa, kod videoni bir marta o'qiydi (`publishing_phase.publish_status`). `draft`/`scheduled`/`published`
+bo'lsa — bajarilgan deb yoziladi; boshqacha bo'lsa so'rov `publish_unconfirmed` bilan "XATO" bo'ladi ("avval sahifani
+tekshiring") va **hech qachon avtomatik qayta yuborilmaydi**. Worker `finish`dan keyin o'lsa, so'rov `interrupted` bo'ladi
+(0029) — qayta navbatga qo'yilmaydi.
+
+### Faqat jonli sinov tasdiqlay oladigan narsalar
+
+Graph versiyasi `v26.0` (hujjat misollari; ba'zi misollarda `v18.0`); `Authorization: OAuth <token>` sarlavhasi
+`graph.facebook.com` da ham ishlashi; yuklash va javob maydonlarining aniq shakli (`upload_url` yo'li, `bytes_transfered`
+imlosi); rupload'ning bo'lak-bo'lak (`offset`) davomi; DRAFT holatidagi Reel `publish_status` qiymati; Meta bu API'da
+DRAFT ni 30/kun limitga qo'shadimi; `is_ai_generated` DRAFT'da saqlanadimi; closed GOP / 4:2:0 / 48 kHz / 128 kbps
+tekshirilmaydi (faylni o'qiydigan asboblarda bu maydonlar yo'q).

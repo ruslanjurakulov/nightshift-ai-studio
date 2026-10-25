@@ -187,6 +187,9 @@ export const PUBLISH_REASONS = [
   "interrupted",
   "worker_error",
   "unknown_platform",
+  "too_small_picture",
+  "permission_missing",
+  "publish_unconfirmed",
 ] as const;
 export type PublishReason = (typeof PUBLISH_REASONS)[number];
 

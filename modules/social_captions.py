@@ -13,6 +13,9 @@ Limits (official docs):
   https://developers.google.com/youtube/v3/docs/videos#properties
 * Instagram — caption ≤ 2200 characters, ≤ 30 hashtags, ≤ 20 @-mentions.
   https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media
+* Facebook Reels — ``description`` (hashtags allowed); no limit is documented, so 2200 characters and 5 hashtags are
+  our own conservative caps.
+  https://developers.facebook.com/docs/video-api/guides/reels-publishing
 * TikTok — the post's ``title`` (its caption, hashtags included) ≤ 2200 UTF-16
   code units.
   https://developers.tiktok.com/doc/content-posting-api-reference-direct-post
@@ -37,6 +40,11 @@ IG_HASHTAGS_DEFAULT = 15
 TT_CAPTION_MAX_UTF16 = 2200
 TT_HASHTAGS_DEFAULT = 5
 TT_DESCRIPTION_MAX = 300
+
+#: Facebook Reels ``description`` "supports hashtags" and Meta's page states no length. 2200 characters and a short
+#: hashtag list are OUR conservative choice (the Instagram figure), not a documented limit.
+FB_DESCRIPTION_MAX = 2200
+FB_HASHTAGS_DEFAULT = 5
 
 HASHTAG_MAX_LEN = 50
 ELLIPSIS = "…"
@@ -269,6 +277,14 @@ def tiktok_caption(meta: SourceMeta, *, max_hashtags: int = TT_HASHTAGS_DEFAULT,
     return _compose(head, body, tags, TT_CAPTION_MAX_UTF16, utf16_len, _plain_line(disclosure))
 
 
+def facebook_caption(meta: SourceMeta, *, max_hashtags: int = FB_HASHTAGS_DEFAULT, disclosure: str = "") -> str:
+    """The Reel's ``description``: title, description, a few hashtags. ≤ 2200 characters (our own cap)."""
+    head = _strip_inline_hashtags(_clean(meta.title or meta.topic).replace("\n", " "))
+    body = _strip_inline_hashtags(_clean(meta.description))
+    tags = hashtags(_tag_sources(meta), max(0, max_hashtags))
+    return _compose(head, body, tags, FB_DESCRIPTION_MAX, len, _plain_line(disclosure))
+
+
 def _plain_line(text: str) -> str:
     """The disclosure line as one clean line (no hashtags or @-mentions are
     added or counted by it)."""
@@ -280,4 +296,6 @@ def caption_for(platform: str, meta: SourceMeta, *, disclosure: str = "") -> str
         return instagram_caption(meta, disclosure=disclosure)
     if platform == "tiktok":
         return tiktok_caption(meta, disclosure=disclosure)
+    if platform == "facebook":
+        return facebook_caption(meta, disclosure=disclosure)
     raise ValueError("unknown platform")
