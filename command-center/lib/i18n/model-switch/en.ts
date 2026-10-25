@@ -41,6 +41,8 @@ export const modelSwitchEn = {
   providerHint: "Switching a provider off hides all of its models at once. A model you switch on does not override it.",
   pipelineNote:
     "Channel runs honour provider switches for video and image providers only, and only while the server switch is on. A model switch does not stop a channel run, and nothing here covers voice, sound effects and captions (ElevenLabs), transcription (AssemblyAI), Runway, Luma, xAI, stock footage or runs started from GitHub Actions. Jobs already sent to a vendor always finish.",
+  sweepNote:
+    "Switching off stops the jobs not yet sent in batches of 200, one logged request per batch, up to 60 requests per 10 minutes. Each batch is a plain “off”: pressing “on” in another tab while it runs is overridden by the next batch. A long sweep can leave another change refused as “too many requests” for up to 10 minutes. Jobs left over are still stopped before they are sent.",
   models: "Models: {n}",
   hiddenModels: "Hidden: {n}",
   lastChanged: "Last changed by {who} on {when}",

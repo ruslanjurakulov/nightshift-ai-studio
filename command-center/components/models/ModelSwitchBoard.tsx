@@ -23,8 +23,12 @@ import { StatusLamp } from "@/components/ui/StatusLamp";
 import { StateBlock } from "@/components/states/StateBlock";
 
 const ENDPOINT = "/api/owner/model-switch";
-/** Each switch-off call stops at most 200 jobs (migration 0124); this many calls cover a queue of 100 000 and end a loop that cannot finish. */
-const MAX_SWEEP_CALLS = 500;
+/**
+ * Each switch-off call stops at most 200 jobs (migration 0124), and the database allows 60 of these calls in a fixed 10-minute window
+ * (owner_guard, take_web_rate('owner:model_switch', 60, 600)): at most 12 000 jobs per window. The loop never asks for more than that; a
+ * longer queue is finished by the last gate before the vendor, or by a later switch-off.
+ */
+const MAX_SWEEP_CALLS = 60;
 
 /**
  * The owner's model switches (migration 0124, docs/MODEL_SWITCH.md): per provider and per model, ON or OFF, with the reason, who changed it
@@ -87,6 +91,7 @@ export function ModelSwitchBoard({ doc }: { doc: SwitchDoc }) {
     let stopped = 0;
     let inFlight = counts.inFlight;
     let remaining = 0;
+    let written = false; // the first answer ok: the switch row is in the database, whatever a later call says
     const ok = await confirm({
       title: fmt(s.confirmOff.title, { name }),
       message: s.confirmOff.body,
@@ -105,7 +110,10 @@ export function ModelSwitchBoard({ doc }: { doc: SwitchDoc }) {
         // whole after the first call, so a failure on a later one leaves the model OFF and says so.
         for (let call = 0; call < MAX_SWEEP_CALLS; call++) {
           const out = await postOperator(ENDPOINT, { action: "set", scope, target, enabled: false, reason, ...(note ? { note } : {}), confirm: true });
-          if (!out.ok) return call === 0 ? switchFailureText(t, out, true) : s.done.sweepInterrupted; // later: the switch is whole, so no "nothing was changed"
+          // Once any call has been answered ok the model IS off, so a later failure (also call 0 of a retry: rate_limited, a lost
+          // connection) never says "nothing was changed".
+          if (!out.ok) return written ? s.done.sweepInterrupted : switchFailureText(t, out, true);
+          written = true;
           const batch = typeof out.data.jobs_stopped === "number" ? out.data.jobs_stopped : 0;
           stopped += batch;
           inFlight = typeof out.data.in_flight === "number" ? out.data.in_flight : inFlight;
@@ -120,6 +128,9 @@ export function ModelSwitchBoard({ doc }: { doc: SwitchDoc }) {
     if (ok) {
       const done = fmt(s.done.off, { stopped, inFlight });
       setMsg({ ok: true, text: remaining > 0 ? `${done} ${fmt(s.done.stillWaiting, { remaining })}` : done });
+    } else if (written) {
+      // The owner closed the confirmation after an interrupted sweep: the model is off, and the page must not look as if nothing happened.
+      setMsg({ ok: false, text: s.done.sweepInterrupted });
     }
     return ok;
   }
@@ -159,6 +170,7 @@ export function ModelSwitchBoard({ doc }: { doc: SwitchDoc }) {
         <li>{s.providerHint}</li>
         <li>{s.saleNote}</li>
         <li>{s.pipelineNote}</li>
+        <li>{s.sweepNote}</li>
       </ul>
 
       <p role="status" aria-live="polite" className="m-0 min-h-[1.25rem] text-sm" data-testid="switch-message">

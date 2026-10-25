@@ -35,6 +35,8 @@ export const modelSwitchUz: ModelSwitchDictionary = {
   providerHint: "Provayderni oʻchirish uning barcha modellarini birdan yashiradi. Siz yoqqan model buni bekor qilmaydi.",
   pipelineNote:
     "Kanal ishga tushirishlari provayder almashtirgichlariga faqat video va tasvir provayderlari uchun va faqat serverdagi almashtirgich yoqilgan paytda amal qiladi. Model almashtirgichi kanal ishga tushirishini toʻxtatmaydi, va bu yerdagi hech narsa ovoz, ovoz effektlari va taglavhalar (ElevenLabs), nutqni matnga aylantirish (AssemblyAI), Runway, Luma, xAI, stok videolar va GitHub Actions orqali boshlangan ishga tushirishlarni qamrab olmaydi. Vendorga allaqachon yuborilgan vazifalar har doim tugaydi.",
+  sweepNote:
+    "Oʻchirish hali yuborilmagan vazifalarni 200 tadan paketlarda toʻxtatadi: har paket uchun bitta yozib boriladigan soʻrov, 10 daqiqada 60 tagacha soʻrov. Har bir paket oddiy «oʻchirish»dir: u ishlayotganda boshqa varaqda «yoqish»ni bossangiz, keyingi paket uni bekor qiladi. Uzoq toʻxtatishdan keyin boshqa oʻzgartirish 10 daqiqagacha «juda koʻp soʻrov» sifatida rad etilishi mumkin. Qolgan vazifalar baribir yuborilishidan oldin toʻxtatiladi.",
   models: "Modellar: {n}",
   hiddenModels: "Yashirin: {n}",
   lastChanged: "Oxirgi oʻzgartirish: {who}, {when}",

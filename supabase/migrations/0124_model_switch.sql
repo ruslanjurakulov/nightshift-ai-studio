@@ -104,6 +104,12 @@
 --   {jobs_stopped, remaining, complete} and the Command Center calls the same OFF again until remaining is 0 (or a call stops none,
 --   which means workers hold the rest). A job the sweep has not reached cannot be sent: advance_creative_job refuses it at the last
 --   gate. So the sweep is tidiness (credits returned at once), never the protection.
+--   RATE CEILING, honestly. Every call goes through owner_guard() -> take_web_rate('owner:model_switch', 60, 600): a fixed 10-minute window
+--   of 60 calls for this owner, shared by every owner_set_model_switch call. So one window can stop at most 60 x 200 = 12,000 jobs, not
+--   more; a longer queue is finished by the last gate, or by calling again once the window rolls. A sweep may use up to all 60 slots, and
+--   then ANOTHER switch change in the same window is answered 'rate_limited' for up to 10 minutes. Each batch call is an unconditional
+--   OFF, plain and complete: if the owner presses ON from a second tab while a sweep is running, the next batch call turns it OFF again.
+--   Each call writes one model_availability_log row and one security_events row, so a long sweep is many rows (that is the audit).
 --
 -- 5. THE OPTIONAL ALERT (model_availability_settings.auto_suggest, default FALSE; follow-up decision, see docs/MODEL_SWITCH.md)
 --   When on, an AFTER trigger on creative_jobs counts jobs that failed with the typed code 'quota' (the capability layer's word for a
@@ -167,6 +173,7 @@ declare
   wc_null boolean;
   cmd "char";
   perm boolean;
+  roles_ok boolean;
 begin
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into s from pg_proc x where x.oid = 'public.sellable_models(text, text)'::regprocedure;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into c from pg_proc x where x.oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
@@ -191,13 +198,15 @@ begin
 
   -- The policy 0035 made, as it reads (or this file's own, on a replay). A policy that says anything else was changed by hand. Compared
   -- as the whole deparsed expression, white space, the ::text casts and the schema name dropped (so a Postgres version that prints them
-  -- differently does not matter), against the two texts it may have: 0035's and 0124's. The with-check is empty for both.
-  select regexp_replace(pg_get_expr(p.polqual, p.polrelid), '\s+|::text|public\.', '', 'gi'), p.polwithcheck is null, p.polcmd, p.polpermissive
-    into q, wc_null, cmd, perm
+  -- differently does not matter), against the two texts it may have: 0035's and 0124's. The with-check is empty for both, the command is
+  -- select, the policy is permissive, and it applies to exactly the role authenticated (not anon, not public, not one more role).
+  select regexp_replace(pg_get_expr(p.polqual, p.polrelid), '\s+|::text|public\.', '', 'gi'), p.polwithcheck is null, p.polcmd, p.polpermissive,
+         p.polroles = array[(select r.oid from pg_roles r where r.rolname = 'authenticated')]::oid[]
+    into q, wc_null, cmd, perm, roles_ok
     from pg_policy p where p.polrelid = 'public.model_registry'::regclass and p.polname = 'model_registry_select';
   if q is null
      or q <> all (array['(is_platform_admin()OR((availability=ANY(ARRAY[''beta'',''ga'']))AND(verified_atISNOTNULL)))', '(is_platform_admin()OR((availability=ANY(ARRAY[''beta'',''ga'']))AND(verified_atISNOTNULL)ANDmodel_is_available(id)))'])
-     or not wc_null or cmd <> 'r' or not perm then
+     or not wc_null or cmd <> 'r' or not perm or not coalesce(roles_ok, false) then
     raise exception '0124 found a model_registry_select policy that is not 0035''s (or 0124''s): read the live policy first';
   end if;
 end $$;
@@ -697,6 +706,10 @@ $$;
 -- are still waiting) and complete = (remaining = 0); the switch row itself is written whole on the first call, so the model is already
 -- hidden and refused whatever remains, and the owner is told to run the same OFF again until remaining is 0. A job left over cannot be
 -- sent in the meantime (advance_creative_job stops it at its last gate).
+-- Every call is an unconditional OFF, plain and complete (an ON pressed in another tab mid-sweep is overridden by the next call), and
+-- writes one log row and one security event. owner_guard allows 60 calls per fixed 10 minutes ('owner:model_switch', shared by every call
+-- of this function): at most 60 x 200 = 12,000 jobs per window, and a sweep may leave another switch change rate_limited for up to 10
+-- minutes. Leftovers are still stopped at the last gate.
 create or replace function public.owner_set_model_switch(
   p_scope text, p_target text, p_enabled boolean, p_reason text default null, p_note text default null,
   p_confirm boolean default false

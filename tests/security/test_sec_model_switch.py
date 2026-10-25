@@ -1066,6 +1066,15 @@ def test_the_policy_drift_guard_compares_the_whole_policy_not_a_few_words(db):
             st, msg, _ = err(lambda: d.su(MIGRATION.read_text(encoding="utf-8")))
             assert "model_registry_select policy that is not 0035's (or 0124's)" in msg, (widened, msg)
             assert d.su("select to_regclass('public.model_availability') is null")[0][0] is True
+        # the same expression for the wrong roles is refused too: the live policy is exactly "to authenticated" (no partial state either)
+        using = "public.is_platform_admin() or (availability in ('beta', 'ga') and verified_at is not null)"
+        for roles in ("anon", "public", "authenticated, anon", "authenticated, service_role", "anon, authenticated"):
+            d.su("drop policy model_registry_select on public.model_registry")
+            d.su(f"create policy model_registry_select on public.model_registry for select to {roles} using ({using})")
+            st, msg, _ = err(lambda: d.su(MIGRATION.read_text(encoding="utf-8")))
+            assert "model_registry_select policy that is not 0035's (or 0124's)" in msg, (roles, msg)
+            assert d.su("select to_regclass('public.model_availability') is null")[0][0] is True, roles
+            assert d.su("select to_regprocedure('public.model_is_available(text)') is null")[0][0] is True, roles
         # a policy for another command or with a with-check is refused too
         d.su("drop policy model_registry_select on public.model_registry")
         d.su("create policy model_registry_select on public.model_registry for all to authenticated "

@@ -289,6 +289,69 @@ describe("switching off", () => {
     expect(sheet().textContent).not.toContain("Nothing was changed");
   });
 
+  it("a retry whose first call fails still says the model is off: the switch row was already written by an earlier call", async () => {
+    let n = 0;
+    h.fetch.mockReset().mockImplementation(async (_u: string, init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body ?? "{}"));
+      if (b.action === "preview") return jsonRes(PREVIEW);
+      n += 1;
+      return n === 1 ? jsonRes({ ok: true, jobs_stopped: 200, in_flight: 1, remaining: 9, complete: false }) : jsonRes({ ok: false, error: "rate_limited" }, 429);
+    });
+    await switchOffBytedance();
+    expect(sheet().textContent).toContain(s.done.sweepInterrupted);
+    // the owner presses the confirmation again: call 0 of the retry is refused (rate limit), the earlier call had written the switch
+    await tap(within(sheet()).getByRole("button", { name: s.confirmOff.confirm }));
+    expect(sets()).toBe(3);
+    expect(sheet().textContent).toContain(s.done.sweepInterrupted);
+    expect(sheet().textContent).not.toContain("Nothing was changed");
+    expect(sheet().textContent).not.toContain("Too many changes just now");
+  });
+
+  it("closing the confirmation after an interrupted sweep leaves a message that the model is off", async () => {
+    let n = 0;
+    h.fetch.mockReset().mockImplementation(async (_u: string, init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body ?? "{}"));
+      if (b.action === "preview") return jsonRes(PREVIEW);
+      n += 1;
+      return n === 1 ? jsonRes({ ok: true, jobs_stopped: 200, in_flight: 1, remaining: 9, complete: false }) : jsonRes({ ok: false, error: "rate_limited" }, 429);
+    });
+    await switchOffBytedance();
+    await tap(within(sheet()).getByRole("button", { name: /cancel/i }));
+    expect(screen.getByTestId("switch-message").textContent).toBe(s.done.sweepInterrupted);
+    expect(h.refresh).toHaveBeenCalled();
+  });
+
+  it("a first call that is refused with nothing written shows the refusal, not the already-off wording", async () => {
+    h.fetch.mockReset().mockImplementation(async (_u: string, init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body ?? "{}"));
+      return b.action === "preview" ? jsonRes(PREVIEW) : jsonRes({ ok: false, error: "rate_limited" }, 429);
+    });
+    await switchOffBytedance();
+    expect(sets()).toBe(1);
+    expect(sheet().textContent).toContain("Too many changes just now");
+    expect(sheet().textContent).not.toContain(s.done.sweepInterrupted);
+  });
+
+  it("never asks for more than the 60 calls the database allows in a 10-minute window", async () => {
+    h.fetch.mockReset().mockImplementation(async (_u: string, init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body ?? "{}"));
+      return jsonRes(b.action === "preview" ? PREVIEW : { ok: true, jobs_stopped: 200, in_flight: 1, remaining: 100000, complete: false });
+    });
+    await switchOffBytedance();
+    expect(sets()).toBe(60);
+    expect(screen.getByTestId("switch-message").textContent).toContain(s.done.stillWaiting.replace("{remaining}", "100000"));
+  });
+
+  it("says in all three languages that a batch is a plain off, that every request is logged, and what the rate limit does", () => {
+    for (const d of [en, ru, uz]) expect(d.modelSwitch.sweepNote.length).toBeGreaterThan(60);
+    expect(s.sweepNote).toContain("200");
+    expect(s.sweepNote).toContain("60 requests per 10 minutes");
+    expect(s.sweepNote).toContain("plain “off”");
+    expect(s.sweepNote).toContain("logged");
+    show();
+    expect(screen.getByText(s.sweepNote)).toBeTruthy();
+  });
+
   it("cancelling the confirmation sends no switch", async () => {
     show();
     await open();

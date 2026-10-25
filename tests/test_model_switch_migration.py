@@ -101,6 +101,16 @@ class Numbering(unittest.TestCase):
 
 
 class NoOracleAndBoundedSweep(unittest.TestCase):
+    def test_the_rate_ceiling_and_the_unconditional_off_are_stated_honestly(self):
+        head = TEXT.split("-- 5. THE OPTIONAL ALERT")[0]
+        for needle in ("take_web_rate('owner:model_switch', 60, 600)", "60 x 200 = 12,000 jobs", "rate_limited' for up to 10 minutes",
+                       "unconditional\n--   OFF", "one model_availability_log row and one security_events row"):
+            self.assertIn(needle, head, needle)
+        doc = (ROOT / "docs" / "MODEL_SWITCH.md").read_text(encoding="utf-8")
+        for needle in ("12,000 jobs per window", "unconditional OFF", "one log row and one security\n  event", "not a call count of 500"):
+            self.assertIn(needle, doc, needle)
+        self.assertNotIn("500 calls", doc)
+
     def test_model_is_available_answers_true_to_a_caller_who_could_not_be_offered_the_model(self):
         b = code(body(function(TEXT, "model_is_available")))
         self.assertIn("r.availability in ('beta', 'ga') and r.verified_at is not null", b)
@@ -122,7 +132,8 @@ class NoOracleAndBoundedSweep(unittest.TestCase):
         self.assertIn("q <> all (array[", guard)
         self.assertIn("is_platform_admin()OR((availability=ANY(ARRAY[''beta'',''ga'']))AND(verified_atISNOTNULL)))", guard)
         self.assertIn("ANDmodel_is_available(id)))", guard)
-        self.assertIn("not wc_null or cmd <> 'r' or not perm", guard)
+        self.assertIn("not wc_null or cmd <> 'r' or not perm or not coalesce(roles_ok, false)", guard)
+        self.assertIn("p.polroles = array[(select r.oid from pg_roles r where r.rolname = 'authenticated')]::oid[]", guard)
         self.assertNotIn("position('beta' in q)", guard, "the substring check is gone")
 
 

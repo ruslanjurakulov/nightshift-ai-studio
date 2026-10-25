@@ -76,10 +76,16 @@ after it).
   switch-off past it. Measured in the lab: about 6 ms per job, 500 jobs in 3 s while the whole security lab ran beside it, so 200 is about
   1.2 s). `owner_set_model_switch` answers `{jobs_stopped, remaining, complete}`. The switch row itself is written whole on
   the **first** call, so the model is already hidden and refused whatever remains; the Switches view sends the same OFF again until
-  `remaining` is 0, a call stops none (workers hold the rest) or a cap of 500 calls is reached, and then says how many are still waiting.
-  The leftovers cannot be sent: `advance_creative_job` stops each at the last gate, so the sweep is tidiness (credits returned at once),
-  not the protection. Every call is its own row in the log, with what was left. A direct caller (the SQL editor, a script) repeats the
-  call the same way.
+  `remaining` is 0, a call stops none (workers hold the rest) or 60 calls are used, and then says how many are still waiting.
+  **The real ceiling is the rate limit, not a call count of 500:** `owner_guard` allows `take_web_rate('owner:model_switch', 60, 600)`, a
+  fixed 10-minute window of 60 calls shared by every `owner_set_model_switch` call, so at most 60 × 200 = **12,000 jobs per window**.
+  A sweep can use up to all 60 slots, and another switch change in the same window may then be answered `rate_limited` for up to
+  10 minutes (the Switches view says so). If the rate limit stops a sweep, the view says the model **is** switched off and the waiting
+  jobs cannot be sent. The leftovers cannot be sent: `advance_creative_job` stops each at the last gate, so the sweep is tidiness (credits returned at once),
+  not the protection. **Every batch call is an unconditional OFF** (plain, complete, with the same reason): pressing ON from a second tab in
+  the middle of a sweep is overridden by the next batch call, which turns it OFF again. **Every call writes one log row and one security
+  event** (a long sweep is many rows, each with what was stopped and what was left). A direct caller (the SQL editor, a script) repeats
+  the call the same way.
 * **Never re-routed, never re-queued, never revived.** Switching ON again does not restart a stopped job; the person starts it again.
 * A job whose submit began a moment before the switch committed is sent and continues.
 * **Workflow runs:** each step is an ordinary job. A stopped step fails that step and the run (0083 makes only plan-limit and balance
