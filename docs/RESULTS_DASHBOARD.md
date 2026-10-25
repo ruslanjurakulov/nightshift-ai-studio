@@ -41,7 +41,20 @@ a recently published video. It is not a lifetime total, and two daily readings o
 The poller (`modules/intelligence_poller.py`) stores **NULL** for every metric YouTube did not return: `video_performance` gives
 `{}` for a video it has no row for yet, and that is now a row of NULLs, not of zeros. A 0 that YouTube did send stays 0. (The
 `metrics_snapshots` columns were always nullable, so this needed no migration.) A second poll of the same day that returns
-nothing does not erase what the first one measured (`StateStore.record_metrics_snapshot` keeps the earlier value under a NULL).
+nothing does not erase what the first one measured: the **local database** (`chronos.db`) keeps the earlier value under a NULL
+(`StateStore.record_metrics_snapshot`), and the Supabase mirror copies local state. The mirror's own upsert would overwrite with
+NULL if `chronos.db` were lost and re-polled (the history lives in an Actions cache), so the guarantee is the local one.
+
+A video YouTube returned **nothing at all** for (no metric and no click-through) gets **no row** since this change: an all-NULL row
+dated today is the newest snapshot, and every Python reader takes the newest. `StateStore.latest_metrics` also skips any row whose
+figures are all NULL (rows the first version wrote), and `metrics_history` keeps them. The dashboard then shows such a video as
+"Not measured" without the "No data yet" note, which only a stored empty row can produce.
+
+**Who now treats NULL as unknown (a decision change, since the first version of this change):** `quota_allocator`,
+`publish_timing`, `sponsorship`, `repackage`, `niche_rpm`, `hook_ab`, `ab_testing` and `title_formulas` skip a NULL figure
+instead of counting a 0 (their helpers return None for a missing value), so a video the poll could not measure no longer
+drags a channel's weight or a variant's mean down. `feedback_engine` and `performance_analyzer` still read a NULL `views` as 0
+(`int(metrics.get("views") or 0)`); they are unchanged here and are a follow-up.
 
 Before that change the poller wrote `int(metrics.get("views", 0) or 0)`, a **full row of zeros**, and those rows are still in
 the table, so the dashboard keeps both rules (`lib/resultsDashboard/aggregate.ts`, `buildVideoResults`):
@@ -57,9 +70,102 @@ The all-zero rule cannot be retired while legacy rows exist: it also hides a gen
 from a legacy empty one. Retiring it would need a backfill (a migration of its own), not part of this change.
 
 **Known limit, not hidden:** the poll as scheduled (`poll_own_channel_metrics()` with its default `days=1`) reads a video only
-around the day it is published. So today most readings are early-life readings, not current ones. The dashboard says "day N
-after publishing" for every reading and the staleness line explains it. Widening the poll (re-reading videos for their first
-weeks) is a worker/schedule decision and is not part of this change.
+around the day it is published. So by default most readings are early-life readings, not current ones. The dashboard says "day N
+after publishing" for every reading and the staleness line explains it. The owner can widen the poll (next section); until then
+nothing changes.
+
+## Widening the poll: `NIGHTSHIFT_METRICS_POLL_DAYS` (repository variable, empty = off)
+
+Set the repository variable `NIGHTSHIFT_METRICS_POLL_DAYS` (Settings -> Secrets and variables -> Actions -> Variables) to a whole
+number of days, **1 to 90**, and the daily poll (`.github/workflows/intelligence_poll.yml`, 20:00 UTC) re-reads every video
+published in the last N days instead of only those published since yesterday. Each re-read is the same short window
+("yesterday through today") written as that day's snapshot, so a video keeps getting a fresh reading for N days after it goes out and
+the dashboard's "day N after publishing" becomes a current reading instead of a day-0 one.
+
+**What turning this on changes, in two steps.** Read this before setting either variable.
+
+1. `NIGHTSHIFT_METRICS_POLL_DAYS` makes the poll take more readings. **The Python decision engines do not change.** A snapshot is
+   YouTube's two-day window. `feedback_engine`, `performance_analyzer`, `quota_allocator` and `publish_timing` divide `views` by the
+   days since publishing as if it were a lifetime total, which is only right for a reading taken in a video's first days (the same
+   100 views read 100.0 a day for a 1-day-old video and 1.67 for a 60-day-old one). The default poll reads a video only at calendar
+   ages 0 and 1 (published since yesterday), and `EARLY_LIFE_DAYS` is derived from that window (`DEFAULT_POLL_DAYS`), so it cannot
+   drift. The widened poll files its readings of videos **older than that** in a separate local table, `metrics_snapshots_late`:
+   `StateStore.latest_metrics` and `metrics_history` (what every Python reader uses) never see it, and the retention curve is not
+   read for those videos (a late curve would replace the early one `hook_ab` judges, and is about 100 stored points a day).
+   `tests/test_widened_poll_day_by_day.py` runs one video through ages 0..40 under both polls on a fake clock and asserts the newest
+   snapshot, the analyzers' `views_per_day`, the retention dates and the history are identical every day;
+   `tests/test_widened_poll_decisions.py` does the same for five readers. Turning the variable off again leaves the late rows where
+   they are, still invisible to the Python readers. The late table is local to `chronos.db` (created on open, no migration).
+   **On its own this step changes nothing on screen:** the late readings stay in `chronos.db`.
+2. `NIGHTSHIFT_MIRROR_LATE_METRICS` (repository variable, empty = off) makes the Supabase mirror copy them
+   (`StateStore.newest_metrics`, both tables), which is what lets the results dashboard show current numbers. **Turning this on
+   changes what the Command Center analytics, publishing-window and measurement pages show**, because they take the latest
+   `metrics_snapshots` row per video and the late row is a two-day window of an older video:
+   - `analytics/page.tsx` (mirror of `feedback_engine._views_per_day`): views per day = views / days since publishing, so older
+     videos read far lower;
+   - `lib/autonomy.ts` `publishingWindow`: views per day by weekday and hour, which feeds the publishing-time recommendation;
+   - `measurement/page.tsx` via `lib/measurement.ts` `variantPerformance` / `hookPerformance`: the thumbnail A/B and hook verdicts use
+     the latest snapshot's CTR and retention, so the TS verdict can then disagree with `modules/experiments.py` (which promises it
+     cannot, and keeps that promise only while the late rows stay out);
+   - `videos/page.tsx`: the totals.
+   Keeping those pages right with late rows mirrored needs the mirror to mark them so the reducers skip them, which is a Supabase
+   column and therefore a migration: not done here. Until then the two variables are two deliberate steps, and the second is the
+   owner's decision.
+
+- **Empty or unset: the same poll window and calls as before this variable existed** (`poll_own_channel_metrics()` with no
+  arguments). It is *not* byte-for-byte what merged `main` did, because of two intended changes that also apply to the default
+  configuration and are decision changes for it: a video YouTube returned nothing for gets **no row** (and no retention call;
+  `written` no longer counts it), and `StateStore.latest_metrics` skips rows whose figures are all NULL, so readers see the last
+  real reading instead of an empty newer one.
+- **Anything that is not a whole number from 1 to 90** (`0`, `91`, `365`, `7.5`, `abc`) is **ignored with a warning in the poll log
+  that names the variable**. It is not clamped: a typo must not widen a quota-bound job.
+- Only the poll reads it (the queue worker never polls analytics), so it is mapped in `intelligence_poll.yml` only, like
+  `CHRONOS_ENABLE_REVENUE` and `CHRONOS_DAILY_UPLOAD_SLOTS`, and not in `deploy/.env.worker.example` / `WORKERENV_`.
+- Other channels follow the same value: `tools/run_intelligence_poll.py` passes it to every channel's poller.
+
+### Quota math
+
+Per video polled, the poll makes **3 YouTube Analytics `reports.query` calls**: core metrics (`video_performance`), click-through
+(`video_ctr`) and the retention curve (`video_retention`). So per channel, per run:
+
+    calls = 3 x V        V = videos published in the last N days (newest first)
+
+| Videos published per day | N = 1 (default) | N = 7 | N = 28 | N = 90 |
+| :-- | --: | --: | --: | --: |
+| 1 | 3 | 21 | 84 | 270 |
+| 2 | 6 | 42 | 168 | 540 |
+| 3 | 9 | 63 | 252 | **600** (capped at 200 videos; 810 uncapped) |
+
+- **Hard cap: 600 calls (200 videos) per channel per run**, applied whenever the variable is set. The poll stops before the video that
+  would exceed it, newest videos are polled first (the oldest are dropped), and it logs a `WARNING` naming the cap, how many videos
+  were polled and the variable to lower. 200 is also the number of videos the dashboard shows (`MAX_VIDEOS`). The cap is per channel
+  poller, so a run's worst case is channels x 600; the run is one scheduled run a day plus any manual dispatch.
+  The store is asked for at most cap/3 + 1 = 201 videos; if it returns that many, a `WARNING` says older videos in the window were
+  not read (this matters when quota errors make every video cost one call, so the call cap is never reached).
+- **Wall-clock budget: 10 minutes for the whole run** (`MAX_METRICS_POLL_SECONDS`; the default channel and every other channel draw
+  on one clock that starts at the first widened poll), then the loop stops with a `WARNING` naming the variable, the counts and
+  the first five skipped video ids (ids only). The job's timeout is 30 minutes, this pass runs first and the mirror runs after it.
+  A single call that hangs is **not** bounded: the Analytics client sets no per-call timeout, and the budget is checked between
+  videos. Adding one means changing how `AnalyticsClient` builds its HTTP client; not done here.
+- **Calls per video are up to 3:** a video older than the default poll's window (1 day) costs 2 (no retention call), and a video
+  YouTube has nothing for costs 2 and writes no row. The table above is the worst case.
+- Every widened run ends with one `INFO` line per channel: videos polled, snapshots written, **Analytics calls made** and the cap
+  (`last_analytics_calls` counts the real calls, including the retention call, and a video whose first call fails counts as 1).
+- The revenue pass (`CHRONOS_ENABLE_REVENUE`) already makes one call per video of the whole channel and is not affected.
+- **What a call costs against the quota is not verified here.** YouTube's Analytics quota page says only that "the API server
+  evaluates each query to determine its quota cost"; it is not a flat per-call figure and not the Data API's 10,000 units/day.
+  Read the real number in Google Cloud Console -> APIs & Services -> YouTube Analytics API -> Quotas before choosing a large N, and
+  start small (7 or 28) while watching the poll log's call count. A quota error costs one call per remaining video (the core call
+  fails first) and the run keeps going, as it always has.
+- Runtime was **not measured** (no live calls were made for this change); the job has a 30 minute timeout.
+- **Storage:** a widened poll writes one snapshot row per polled video per day (at most 200 a day per channel; into
+  `metrics_snapshots_late` for videos older than 1 day), instead of one or two per video in its lifetime. Retention is the
+  bigger table: `retention_points` takes about 100 points per polled video per day and is never pruned, and the mirror sends each
+  video's latest curve in one request with a 15 second timeout. That is why a widened poll reads the curve only in a video's
+  first 2 days (ages 0 and 1: at most about 2 x 100 points a video, exactly what the default poll gives). The dashboard reads snapshots in chunks and
+  splits a chunk that reaches the 1000-row response cap, so many readings per video cost more queries, not wrong numbers, and
+  the page reads at most 4 of those chunks at once (`SNAPSHOT_CONCURRENCY`; a page of 200 videos is 8 chunks and each split adds
+  two more, so without the bound one page view would open a burst of queries on the member's own session).
 
 ## What is not shown, and why
 

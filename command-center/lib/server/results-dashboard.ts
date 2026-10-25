@@ -73,7 +73,8 @@ export const SNAPSHOT_CONCURRENCY = 4;
  * waiting one (the count does not dip), so a task started in between cannot take a fifth place. A task that throws or rejects
  * still frees its slot.
  */
-export function createLimiter(max: number) {
+export function createLimiter(maxInFlight: number) {
+  const max = Math.max(1, maxInFlight); // 0 (or less) would make every call wait for ever
   let active = 0;
   const waiting: Array<() => void> = [];
   return async function run<T>(task: () => PromiseLike<T>): Promise<T> {

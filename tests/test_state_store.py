@@ -118,7 +118,7 @@ class StateStoreTestCase(unittest.TestCase):
                 video_id="v1", snapshot_date="2026-01-01", views=None, likes=None, comment_count=None,
                 watch_time_minutes=None, average_view_duration_seconds=None,
             )
-            row = store.latest_metrics("v1")
+            row = store.metrics_history("v1")[0]   # latest_metrics() skips an all-NULL row, the history keeps it
             for column in ("views", "likes", "comment_count", "watch_time_minutes", "average_view_duration_seconds"):
                 self.assertIsNone(row[column], column)
 
@@ -149,6 +149,76 @@ class StateStoreTestCase(unittest.TestCase):
             store.record_metrics_snapshot(video_id="v1", snapshot_date="2026-01-01", views=0, likes=0)
             row = store.latest_metrics("v1")
             self.assertEqual((row["views"], row["likes"]), (0, 0))
+
+    def _snap(self, store, video_id, date, **figures):
+        store.record_metrics_snapshot(video_id=video_id, snapshot_date=date, **figures)
+
+    def test_a_late_reading_is_invisible_to_latest_metrics_and_history_but_newest_metrics_sees_it(self):
+        # Late = a reading the wider poll takes of an older video. A decision reader divides a snapshot by the days since
+        # publishing, so it must never be handed one (a two-day window of an old video reads as a trickle).
+        with StateStore(self.db_path) as store:
+            store.record_video(video_id="v1", title="T", published_at="2026-01-10T15:00:00")
+            self._snap(store, "v1", "2026-01-11", views=100)
+            self._snap(store, "v1", "2026-03-01", views=2, late=True)
+            self.assertEqual(store.latest_metrics("v1")["snapshot_date"], "2026-01-11")
+            self.assertEqual([r["snapshot_date"] for r in store.metrics_history("v1")], ["2026-01-11"])
+            self.assertEqual(store.newest_metrics("v1")["snapshot_date"], "2026-03-01")
+            self.assertEqual(store.newest_metrics("v1")["views"], 2)
+
+    def test_newest_metrics_returns_the_early_reading_when_it_is_the_newest_and_has_no_helper_column(self):
+        with StateStore(self.db_path) as store:
+            store.record_video(video_id="v1", title="T", published_at="2026-01-10T15:00:00")
+            self._snap(store, "v1", "2026-01-11", views=100)
+            self._snap(store, "v1", "2026-01-05", views=7, late=True)
+            row = store.newest_metrics("v1")
+            self.assertEqual(row["views"], 100)
+            self.assertNotIn("src", row)
+            self.assertEqual(
+                sorted(row), sorted(["video_id", "snapshot_date", "views", "likes", "comment_count", "watch_time_minutes",
+                                     "average_view_duration_seconds", "impressions", "impression_ctr"]))
+
+    def test_a_video_with_only_late_readings_has_no_latest_metrics(self):
+        with StateStore(self.db_path) as store:
+            store.record_video(video_id="v1", title="T", published_at="2026-01-10T15:00:00")
+            self._snap(store, "v1", "2026-02-01", views=9, late=True)
+            self.assertIsNone(store.latest_metrics("v1"))
+            self.assertEqual(store.newest_metrics("v1")["views"], 9)
+
+    def test_a_late_row_keeps_an_earlier_value_under_a_null_like_an_early_one(self):
+        with StateStore(self.db_path) as store:
+            store.record_video(video_id="v1", title="T")
+            self._snap(store, "v1", "2026-02-01", views=9, likes=3, late=True)
+            self._snap(store, "v1", "2026-02-01", views=None, likes=None, late=True)
+            self.assertEqual(len(store.conn.execute("SELECT * FROM metrics_snapshots_late").fetchall()), 1)
+            self.assertEqual((store.newest_metrics("v1")["views"], store.newest_metrics("v1")["likes"]), (9, 3))
+
+    def test_a_row_with_every_figure_null_is_never_a_reading_for_either_method(self):
+        with StateStore(self.db_path) as store:
+            store.record_video(video_id="v1", title="T", published_at="2026-01-10T15:00:00")
+            self._snap(store, "v1", "2026-01-11", views=100)
+            for late in (False, True):
+                self._snap(store, "v1", "2026-01-12" if not late else "2026-01-13", views=None, likes=None,
+                           comment_count=None, watch_time_minutes=None, average_view_duration_seconds=None, late=late)
+            self.assertEqual(store.latest_metrics("v1")["snapshot_date"], "2026-01-11")
+            self.assertEqual(store.newest_metrics("v1")["snapshot_date"], "2026-01-11")
+            self.assertEqual(len(store.metrics_history("v1")), 2)   # the history itself is untouched
+
+    def test_a_row_with_only_a_click_through_figure_is_still_a_reading(self):
+        with StateStore(self.db_path) as store:
+            store.record_video(video_id="v1", title="T", published_at="2026-01-10T15:00:00")
+            self._snap(store, "v1", "2026-01-11", views=None, likes=None, comment_count=None, watch_time_minutes=None,
+                       average_view_duration_seconds=None, impression_ctr=0.04)
+            self.assertEqual(store.latest_metrics("v1")["impression_ctr"], 0.04)
+
+    def test_an_existing_database_gets_the_late_table_without_losing_a_row(self):
+        with StateStore(self.db_path) as store:
+            store.record_video(video_id="v1", title="T")
+            self._snap(store, "v1", "2026-01-11", views=100)
+            store.conn.execute("DROP TABLE metrics_snapshots_late")
+        with StateStore(self.db_path) as store:       # reopened: the schema script runs again
+            self.assertEqual(store.latest_metrics("v1")["views"], 100)
+            self._snap(store, "v1", "2026-02-01", views=1, late=True)
+            self.assertEqual(store.newest_metrics("v1")["views"], 1)
 
     def test_nonexistent_video_returns_none_or_empty(self):
         with StateStore(self.db_path) as store:
