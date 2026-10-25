@@ -69,12 +69,11 @@ describe("what a verify request is allowed to be", () => {
     runway: "GET https://api.dev.runwayml.com/v1/organization",
     luma: "GET https://agents.lumalabs.ai/v1/files?limit=1",
     krea: "GET https://api.krea.ai/jobs?limit=1",
-    pika: "GET https://api.dev.pika.art/billing/balance",
     alibaba: "GET https://dashscope-intl.aliyuncs.com/api/v1/models?page_size=1",
   };
-  const FORMAT_ONLY = ["bytedance", "kling", "lightricks", "vidu"];
+  const FORMAT_ONLY = ["bytedance", "kling", "lightricks", "pika", "vidu"];
 
-  it("pins every http vendor to one exact free read and lists the four with no check", () => {
+  it("pins every http vendor to one exact free read and lists the five with no check", () => {
     const got: Record<string, string> = {};
     for (const p of MODEL_KEY_PROVIDERS) {
       if (p.strategy.kind === "http") got[p.id] = `GET ${p.strategy.origin}${p.strategy.path}${p.strategy.query ? `?${p.strategy.query}` : ""}`;
@@ -99,7 +98,6 @@ describe("what a verify request is allowed to be", () => {
       runway: [401, 403],
       luma: [401, 403],
       krea: [401],
-      pika: [401, 403],
       alibaba: [401, 403],
     });
   });
@@ -124,7 +122,6 @@ describe("what a verify request is allowed to be", () => {
       runway: 'Authorization:bearer|{"X-Runway-Version":"2024-11-06"}|{"kind":"field","name":"creditBalance","type":"number"}',
       luma: 'Authorization:bearer|{}|{"kind":"object"}',
       krea: 'Authorization:bearer|{}|{"kind":"field","name":"items","type":"array"}',
-      pika: 'X-API-Key:raw|{}|{"kind":"field","name":"balance_micro_usd","type":"number"}',
       alibaba: 'Authorization:bearer|{}|{"kind":"field","name":"output","type":"object"}',
     });
   });

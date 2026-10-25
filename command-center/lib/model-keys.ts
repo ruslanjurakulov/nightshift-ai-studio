@@ -330,17 +330,11 @@ export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
     keyUrlSource: "https://dev.pika.art/llms.txt",
     envSets: [["PIKA_API_KEY"]],
     scopedKeys: false,
-    strategy: json({
-      origin: "https://api.dev.pika.art",
-      // The org's balance: Pika's llms.txt says the balance read "takes the same API key as a generation and is never charged", and that a 200
-      // "proves the key is active". The answer's `balance_micro_usd` is a required integer in its OpenAPI document. The pages show the key in
-      // `X-API-Key` for every call; the OpenAPI document also lists a Bearer scheme whose /billing reads it describes as a console session JWT,
-      // so Bearer is not used. 401 is a missing or invalid key and an inactive key is a 403 (the failed-job 403 of a submit is not this read).
-      path: "/billing/balance",
-      auth: { header: "X-API-Key", scheme: "raw" },
-      expect: { kind: "field", name: "balance_micro_usd", type: "number" },
-      docUrl: "https://dev.pika.art/llms.txt",
-    }),
+    // The one free read is the org balance (GET /billing/balance, "never charged"; llms.txt: the same API key reads it and a 200 "proves the
+    // key is active"). But Pika's OpenAPI document describes the /billing Bearer scheme as "a console session JWT" and lists the API-key header
+    // as the other accepted scheme, so which of the two the balance read takes was not settled by the pages, and a 401 or 403 from it would be
+    // read here as "the vendor rejected this key" about a key that is fine. Until a live probe confirms it, the key is never sent anywhere.
+    strategy: { kind: "format_only", docUrl: "https://dev.pika.art/llms.txt" },
   },
   {
     id: "vidu",

@@ -135,6 +135,26 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertIn("Gate stays open", notes, mid)
             self.assertIn("Uzbekistan", notes, mid)
 
+    def test_the_terms_that_were_missing_in_review_are_recorded(self):
+        for mid in IDS:
+            notes = " ".join(self.r[mid].raw["terms_notes"])
+            self.assertIn("'If your Plan includes API access or commercial use rights'", notes, mid)
+            self.assertIn("for any commercial purpose, including advertising, marketing, or selling products or services", notes, mid)
+            self.assertIn("may review or monitor Inputs and Outputs using automated or manual tools", notes, mid)
+            self.assertIn("name you as a customer", notes, mid)
+            self.assertIn("support@pika.art", notes, mid)
+            self.assertIn("Section 4 'Third-Party Payment Provider': Stripe", notes, mid)
+            self.assertIn("'Unless otherwise agreed in writing", notes, mid)
+            self.assertNotIn("Only an enterprise agreement", notes, mid)
+            self.assertIn("RETENTION", notes, mid)
+            self.assertIn("DELETE /v1/media/uploads", notes, mid)
+            self.assertIn("lib/marketing-banned.ts", notes, mid)             # the owner decision about attribution vs. the banned names
+            self.assertIn("Prompt cap 2000 is ours", self.r[mid].raw["api_documented"]["note"], mid)
+
+    def test_the_banned_names_the_notes_point_at_really_include_pika(self):
+        self.assertIn('"pika"', (ROOT / "command-center" / "lib" / "marketing-banned.ts").read_text())
+        self.assertIn('"pika"', (ROOT / "docs" / "news" / "banned-claims.json").read_text())
+
     def test_the_attribution_duty_is_recorded_as_a_clause_and_as_the_registry_attribution(self):
         for mid in IDS:
             e = self.r[mid]
@@ -273,11 +293,17 @@ class SubmitTests(Case):
         order = [r.path for r in self.vendor.requests]
         self.assertEqual(order, [UPLOAD_PATH, I2V_PATH])                  # upload strictly before the paid call
 
-    def test_an_https_link_goes_as_a_link_without_an_upload(self):
-        self.adapter().submit(CapabilityRequest(I2V, "go", resolution="720p", duration_s=5,
-                                                input_images=("https://example.invalid/a.png",)), "pika-2.5")
-        self.assertEqual(self.sent(I2V_PATH).json()["image"], "https://example.invalid/a.png")
-        self.assertEqual(self.vendor.seen("POST", UPLOAD_PATH), [])
+    def test_a_link_is_refused_because_the_worker_hands_over_local_files_only(self):
+        link = "https://example.invalid/a.png"
+        cases = (("pika-2.5", CapabilityRequest(I2V, "go", resolution="720p", duration_s=5, input_images=(link,))),
+                 ("pikaframes", CapabilityRequest(I2V, "go", resolution="720p", duration_s=3, input_images=(self.frame(),), end_image=link)),
+                 ("pikaframes", CapabilityRequest(I2V, "go", resolution="720p", duration_s=3, input_images=(link,), end_image=link)))
+        for model, request in cases:
+            with self.assertRaises(AdapterError, msg=request) as cm:
+                self.adapter().submit(request, model)
+            self.assertTrue(cm.exception.not_accepted)
+            self.assertIn("https URL", cm.exception.message)
+        self.assertEqual(self.vendor.requests, [])          # not even an upload of the good first frame
 
     def test_pikaframes_keeps_the_keyframes_in_order(self):
         from PIL import Image
@@ -346,6 +372,13 @@ class SubmitTests(Case):
             self.assertIn(fragment, cm.exception.message)
         self.assertEqual(self.vendor.requests, [])
 
+    def test_a_boolean_is_not_a_duration(self):
+        frames = CapabilityRequest(I2V, "x", resolution="720p", duration_s=True, end_image=self.frame("e.png"), input_images=(self.frame(),))
+        with self.assertRaises(AdapterError) as cm:
+            self.adapter().submit(frames, "pikaframes")                  # True == 1 would pass a membership test
+        self.assertIn("duration", cm.exception.message)
+        self.assertEqual(self.vendor.requests, [])
+
     def test_no_sound_flag_exists(self):
         entry = reg.get("pika-2.5")
         self.assertTrue(self.adapter().problems(req(audio=True), entry))
@@ -355,8 +388,7 @@ class SubmitTests(Case):
         a = self.adapter()
         for mid in IDS:
             entry = reg.get(mid)
-            probe = entry.probe_request(generated_image="https://probe.invalid/x.png",
-                                        generated_end_image="https://probe.invalid/end.png")
+            probe = entry.probe_request(generated_image=self.frame("p.png"), generated_end_image=self.frame("e.png"))
             self.assertEqual(a.problems(probe, entry), [], mid)
         self.assertTrue(a.problems(req(resolution=None), reg.get("pika-2.5")))
         self.assertTrue(a.problems(req(duration_s=None), reg.get("pika-2.5")))
@@ -407,7 +439,8 @@ class UploadTests(Case):
                 self.go()
             self.assertTrue(cm.exception.not_accepted)
             self.assertNotIn(UNCONFIRMED, cm.exception.message)
-            self.assertIn("no generation was started", cm.exception.message)
+            self.assertIn("the upload failed", cm.exception.message)
+            self.assertNotIn("no generation was started", cm.exception.message)     # the bridge, not this message, gives the verdict
             self.assertEqual(self.vendor.seen("POST", I2V_PATH), [])
 
     def test_the_upload_sends_the_key_only_to_the_api_and_follows_no_redirect(self):
@@ -429,6 +462,217 @@ class UploadTests(Case):
         self.assertIn("over 20 MB", cm.exception.message)
         self.assertTrue(cm.exception.not_accepted)
         self.assertEqual(self.vendor.requests, [])
+
+
+def other_png() -> bytes:
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), (30, 30, 200)).save(buf, "PNG")
+    return buf.getvalue()
+
+
+class RetentionTests(Case):
+    """A user's picture is uploaded to Pika's CDN, where Pika may train on Inputs. The adapter deletes what it uploaded."""
+
+    FIRST, LAST = "https://cdn.pika.art/v2/files/first.png", "https://cdn.pika.art/v2/files/last.png"
+
+    def setUp(self):
+        super().setUp()
+        self.first, self.last = self.frame("a.png"), self.tmp / "b.png"
+        self.last.write_bytes(other_png())
+        a_bytes = png()
+        self.vendor.on("POST", UPLOAD_PATH, lambda r: Resp(200, {"url": self.FIRST if r.body == a_bytes else self.LAST}))
+        self.vendor.on("DELETE", UPLOAD_PATH, Resp(204))
+
+    def deleted(self):
+        from urllib.parse import parse_qs, urlsplit
+
+        return [parse_qs(urlsplit(r.path).query)["url"][0] for r in self.vendor.seen("DELETE", UPLOAD_PATH)]
+
+    def frames(self, **kw):
+        return CapabilityRequest(I2V, "x", resolution="720p", duration_s=2, end_image=str(self.last), input_images=(self.first,), **kw)
+
+    def i2v(self):
+        return CapabilityRequest(I2V, "x", resolution="720p", duration_s=5, input_images=(self.first,))
+
+    def test_a_refused_paid_call_deletes_every_upload(self):
+        self.vendor.on("POST", FRAMES_PATH, Resp(403, {"id": "media_1", "status": "failed",
+                                                      "error": {"code": "insufficient_balance", "message": "no"}}))
+        with self.assertRaises(AdapterError) as cm:
+            self.adapter().submit(self.frames(), "pikaframes")
+        self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_QUOTA, True))
+        self.assertEqual(sorted(self.deleted()), sorted([self.FIRST, self.LAST]))
+        self.assertEqual(len(self.vendor.seen("POST", UPLOAD_PATH)), 2)
+
+    def test_a_lost_submit_answer_deletes_the_uploads_too_and_stays_unconfirmed(self):
+        self.vendor.on("POST", I2V_PATH, Resp(drop=True))
+        with self.assertRaises(AdapterError) as cm:
+            self.adapter().submit(self.i2v(), "pika-2.5")
+        self.assertTrue(cm.exception.message.startswith(UNCONFIRMED))
+        self.assertFalse(cm.exception.not_accepted)
+        self.assertEqual(self.deleted(), [self.FIRST])
+
+    def test_a_2xx_without_a_usable_id_and_a_failed_envelope_delete_too(self):
+        for body in ({"status": "queued"}, {"id": "../x"}, {"id": "m", "status": "failed", "error": {"code": "provider_error"}}):
+            self.vendor._routes[:] = [r for r in self.vendor._routes if r[1] != I2V_PATH]
+            self.vendor.requests.clear()
+            self.vendor.on("POST", I2V_PATH, Resp(200, body))
+            with self.assertRaises(AdapterError):
+                self.adapter().submit(self.i2v(), "pika-2.5")
+            self.assertEqual(self.deleted(), [self.FIRST], body)
+
+    def test_a_second_upload_that_fails_deletes_the_first_and_starts_nothing(self):
+        a_bytes = png()
+        self.vendor._routes[:] = [r for r in self.vendor._routes if r[1] != UPLOAD_PATH]
+        self.vendor.on("POST", UPLOAD_PATH, lambda r: Resp(200, {"url": self.FIRST}) if r.body == a_bytes else Resp(500, {"message": "x"}))
+        self.vendor.on("DELETE", UPLOAD_PATH, Resp(204))
+        with self.assertRaises(AdapterError) as cm:
+            self.adapter().submit(self.frames(), "pikaframes")
+        self.assertTrue(cm.exception.not_accepted)
+        self.assertIn("the upload failed", cm.exception.message)
+        self.assertEqual(self.deleted(), [self.FIRST])
+        self.assertEqual(self.vendor.seen("POST", FRAMES_PATH), [])
+
+    def test_a_last_frame_that_is_not_a_picture_is_found_before_the_first_upload(self):
+        bad = self.tmp / "evil.png"
+        bad.write_bytes(b"DB_PASSWORD=hunter2\n" * 20)
+        with self.assertRaises(AdapterError) as cm:
+            self.adapter().submit(CapabilityRequest(I2V, "x", resolution="720p", duration_s=2, end_image=str(bad),
+                                                    input_images=(self.first,)), "pikaframes")
+        self.assertTrue(cm.exception.not_accepted)
+        self.assertIn("not a PNG, JPEG or WEBP picture", cm.exception.message)
+        self.assertEqual(self.vendor.requests, [])             # nothing at all went out, not even the good first frame
+
+    def test_a_missing_or_oversized_last_frame_is_found_before_any_upload(self):
+        for ref in (str(self.tmp / "gone.png"), "/etc/hostname.txt"):
+            with self.assertRaises(AdapterError):
+                self.adapter().submit(CapabilityRequest(I2V, "x", resolution="720p", duration_s=2, end_image=ref,
+                                                        input_images=(self.first,)), "pikaframes")
+        self.assertEqual(self.vendor.requests, [])
+
+    def test_a_job_that_completes_deletes_the_uploads_once_and_before_the_clip_is_stored(self):
+        self.vendor.on("POST", FRAMES_PATH, Resp(200, {"id": "media_7", "status": "queued"}))
+        a = self.adapter()
+        task = a.submit(self.frames(), "pikaframes")
+        self.assertEqual(self.deleted(), [])                                          # the job may still need them
+        self.vendor.on("GET", f"{JOBS}media_7", Resp(200, {"id": "media_7", "status": "running"}))
+        self.assertEqual(a.poll(task).state, PENDING)
+        self.assertEqual(self.deleted(), [])
+        self.vendor._routes[:] = [r for r in self.vendor._routes if r[1] != f"{JOBS}media_7"]
+        self.vendor.on("GET", f"{JOBS}media_7", Resp(200, {"id": "media_7", "status": "completed",
+                                                          "output": {"video": {"url": f"{self.vendor.base_url}/clip.mp4"}}}))
+        self.assertEqual(a.poll(task).state, SUCCEEDED)
+        self.assertEqual(sorted(self.deleted()), sorted([self.FIRST, self.LAST]))
+        a.poll(task)
+        self.assertEqual(len(self.deleted()), 2)                                      # repeats do not delete again
+
+    def test_a_failed_job_deletes_the_uploads(self):
+        self.vendor.on("POST", I2V_PATH, Resp(200, {"id": "media_8", "status": "queued"}))
+        a = self.adapter()
+        task = a.submit(self.i2v(), "pika-2.5")
+        self.vendor.on("GET", f"{JOBS}media_8", Resp(200, {"status": "failed", "error": {"code": "content_moderation", "message": "x"}}))
+        self.assertEqual(a.poll(task).state, FAILED)
+        self.assertEqual(self.deleted(), [self.FIRST])
+
+    def test_a_completed_job_whose_link_is_refused_still_deletes_the_uploads(self):
+        self.vendor.on("POST", I2V_PATH, Resp(200, {"id": "media_9", "status": "queued"}))
+        a = self.adapter(hosts=None)
+        task = a.submit(self.i2v(), "pika-2.5")
+        self.vendor.on("GET", f"{JOBS}media_9", Resp(200, {"status": "completed", "output": {"video": {"url": "https://evil.example/v.mp4"}}}))
+        with self.assertRaises(AdapterError):
+            a.poll(task)
+        self.assertEqual(self.deleted(), [self.FIRST])
+
+    def test_a_poll_that_errors_does_not_delete_a_job_that_is_still_running(self):
+        self.vendor.on("POST", I2V_PATH, Resp(200, {"id": "media_5", "status": "queued"}))
+        a = self.adapter()
+        task = a.submit(self.i2v(), "pika-2.5")
+        self.vendor.on("GET", f"{JOBS}media_5", Resp(503, {"message": "down"}))
+        with self.assertRaises(AdapterError):
+            a.poll(task)
+        self.assertEqual(self.deleted(), [])
+
+    def test_a_text_to_video_job_uploads_and_deletes_nothing(self):
+        self.vendor.on("POST", T2V_PATH, Resp(200, {"id": "media_6", "status": "queued"}))
+        a = self.adapter()
+        task = a.submit(req(), "pika-2.5")
+        self.vendor.on("GET", f"{JOBS}media_6", Resp(200, {"status": "failed", "error": {"code": "internal", "message": "x"}}))
+        a.poll(task)
+        self.assertEqual([r.method for r in self.vendor.requests if r.path.startswith(UPLOAD_PATH)], [])
+
+    def test_a_delete_that_fails_never_raises_and_changes_no_verdict(self):
+        for resp in (Resp(500, {"message": "x"}), Resp(404, {"message": "no"}), Resp(503, {"message": "retry"}), Resp(drop=True),
+                     Resp(401, {"message": "Invalid API key"}), Resp(200, raw=b"<html>")):
+            self.vendor._routes[:] = [r for r in self.vendor._routes if not (r[0] == "DELETE" or r[1] == I2V_PATH)]
+            self.vendor.requests.clear()
+            self.vendor.on("DELETE", UPLOAD_PATH, resp)
+            self.vendor.on("POST", I2V_PATH, Resp(403, {"id": "m", "status": "failed", "error": {"code": "insufficient_balance"}}))
+            with mock.patch.object(pika.logger, "warning"), self.assertRaises(AdapterError) as cm:
+                self.adapter().submit(self.i2v(), "pika-2.5")
+            self.assertEqual(cm.exception.code, E_QUOTA)                     # the verdict of the paid call is untouched
+            self.assertTrue(cm.exception.not_accepted)
+            self.assertEqual(len(self.vendor.seen("DELETE", UPLOAD_PATH)), 1)    # it was tried
+        self.assertNotIn(KEY, cm.exception.message)
+
+    def test_the_delete_goes_to_the_api_host_with_the_key_and_follows_no_redirect(self):
+        attacker = FakeVendor()
+        self.addCleanup(attacker.close)
+        attacker.on("DELETE", "/", Resp(204))
+        self.vendor._routes[:] = [r for r in self.vendor._routes if r[0] != "DELETE"]
+        self.vendor.on("DELETE", UPLOAD_PATH, Resp(307, headers={"Location": f"{attacker.base_url}/steal"}))
+        self.vendor.on("POST", I2V_PATH, Resp(drop=True))
+        with self.assertLogs("modules.capabilities.pika", level="WARNING"), self.assertRaises(AdapterError):
+            self.adapter().submit(self.i2v(), "pika-2.5")
+        (d,) = self.vendor.seen("DELETE", UPLOAD_PATH)
+        self.assertEqual(d.headers["x-api-key"], KEY)
+        self.assertEqual(attacker.requests, [])
+
+    def test_only_a_link_on_pikas_hosts_is_ever_passed_to_the_delete(self):
+        self.vendor._routes[:] = [r for r in self.vendor._routes if r[1] != UPLOAD_PATH or r[0] == "DELETE"]
+        self.vendor.on("POST", UPLOAD_PATH, Resp(200, {"url": "https://attacker.example/x.png"}))
+        with self.assertRaises(AdapterError):
+            self.adapter(hosts=None).submit(self.i2v(), "pika-2.5")
+        self.assertEqual(self.deleted(), [])
+
+    def test_the_uploads_and_deletes_are_not_counted_as_calls_that_could_have_billed(self):
+        self.vendor.on("POST", I2V_PATH, Resp(403, {"id": "m", "status": "failed", "error": {"code": "insufficient_balance"}}))
+        a = self.adapter()
+        a.calls_sent = 0
+        with self.assertRaises(AdapterError):
+            a.submit(self.i2v(), "pika-2.5")
+        self.assertEqual(a.calls_sent, 1)                       # the paid call only (an upload and a delete also went out)
+        self.assertEqual(len(self.vendor.seen("POST", UPLOAD_PATH)) + len(self.vendor.seen("DELETE", UPLOAD_PATH)), 2)
+
+    def test_the_bridge_keeps_a_proven_refusal_of_the_paid_call_after_an_upload(self):
+        entry = reg.get("pika-2.5")
+        self.vendor.on("POST", I2V_PATH, Resp(403, {"id": "m", "status": "failed", "error": {"code": "insufficient_balance"}}))
+        ra = ca.RegistryAdapter(entry, build_adapter(entry.adapter, env={"PIKA_API_KEY": KEY, "PIKA_BASE_URL": self.vendor.base_url},
+                                                     session=self.vendor.session()), sync_store={})
+        request = cw.GenerationRequest(job_id=JOB, org_id=ORG, capability="i2v", model=entry.id,
+                                       params=dict(prompt="x", duration_s=5, resolution="720p"), input_files=(self.first,))
+        with self.assertRaises(AdapterError) as cm:
+            ra.submit(request)
+        self.assertEqual(cm.exception.code, E_QUOTA)
+        self.assertTrue(cm.exception.not_accepted)             # the upload did not make this unproven
+
+    def test_a_lost_answer_after_an_upload_stays_unproven_in_the_bridge(self):
+        entry = reg.get("pika-2.5")
+        self.vendor.on("POST", I2V_PATH, Resp(drop=True))
+        ra = ca.RegistryAdapter(entry, build_adapter(entry.adapter, env={"PIKA_API_KEY": KEY, "PIKA_BASE_URL": self.vendor.base_url},
+                                                     session=self.vendor.session()), sync_store={})
+        request = cw.GenerationRequest(job_id=JOB, org_id=ORG, capability="i2v", model=entry.id,
+                                       params=dict(prompt="x", duration_s=5, resolution="720p"), input_files=(self.first,))
+        with self.assertRaises(AdapterError) as cm:
+            ra.submit(request)
+        self.assertFalse(cm.exception.not_accepted)
+
+    def test_the_memory_of_a_running_jobs_uploads_is_bounded_and_the_evicted_ones_are_deleted(self):
+        a = self.adapter()
+        for i in range(pika._KEEP + 3):
+            a._remember(a._uploads, f"j{i}", [f"https://cdn.pika.art/v2/files/{i}.png"])
+        self.assertEqual(len(a._uploads), pika._KEEP)
+        self.assertEqual(len(self.deleted()), 3)
 
 
 class LostAnswerTests(Case):
@@ -544,7 +788,7 @@ class PollTests(Case):
         return self.adapter(hosts=hosts).poll(ProviderTask("video.pika", "pika-2.5", jid))
 
     def test_queued_and_running_are_pending_and_the_key_goes_only_to_the_api(self):
-        for st in ("queued", "running", "something_new"):
+        for st in ("queued", "running", "QUEUED", "Running"):
             self.assertEqual(self.status({"id": "media_1", "status": st}).state, PENDING, st)
         (r,) = self.vendor.seen("GET", f"{JOBS}media_1")
         self.assertEqual(r.headers["x-api-key"], KEY)
@@ -555,6 +799,22 @@ class PollTests(Case):
         res = self.status({"id": "media_1", "status": "completed", "billing": {"state": "settled", "charge_micro_usd": 200000},
                            "output": {"media_type": "video", "video": {"url": f"{base}/v1/files/video_1.mp4", "content_type": "video/mp4"}}})
         self.assertEqual((res.state, res.outputs[0].mime, res.outputs[0].url), (SUCCEEDED, "video/mp4", f"{base}/v1/files/video_1.mp4"))
+
+    def test_any_status_the_openapi_document_does_not_list_is_a_failure_not_a_job_still_running(self):
+        for raw in ("canceled", "cancelled", "expired", "deleted", "error", "starting", "", None, 5, True, ["running"], {"a": 1}):
+            body = {"id": "media_1", "status": raw} if raw is not None else {"id": "media_1"}
+            res = self.status(body)
+            self.assertEqual((res.state, res.error.code), (FAILED, E_UNAVAILABLE), repr(raw))
+            self.assertIn("does not know", res.error.message)
+            self.assertTrue(res.error.message.endswith(pika.SPEND_UNKNOWN), repr(raw))
+        a = self.adapter()
+        self.vendor._routes.clear()
+        self.vendor.on("GET", f"{JOBS}media_1", Resp(200, {"status": "x" * 300 + KEY}))
+        with self.assertLogs("modules.capabilities.pika", level="WARNING") as logs:
+            res = a.poll(ProviderTask("video.pika", "pika-2.5", "media_1"))
+        self.assertLessEqual(len(next(iter(a.unknown_statuses))), 40)
+        self.assertNotIn(KEY, res.error.message + " ".join(r.getMessage() for r in logs.records))
+        self.assertEqual(sum(a.unknown_statuses.values()), 1)
 
     def test_a_failed_job_carries_the_vendors_error_code_and_the_right_remedy(self):
         cases = (("content_moderation", E_POLICY), ("invalid_input", E_BAD_REQUEST), ("rate_limited", E_RATE_LIMITED),
@@ -606,6 +866,32 @@ class PollTests(Case):
         with self.assertRaises(AdapterError) as cm:
             self.status({"status": "completed", "output": {"video": {"url": "https://files.example.net/v.mp4"}}}, hosts=None)
         self.assertIn("'files.example.net'", cm.exception.message)
+
+    def test_a_subdomain_of_pikas_hosts_is_refused_the_two_hosts_are_exact(self):
+        for url in ("https://eu.cdn.pika.art/v.mp4", "https://x.api.dev.pika.art/v.mp4", "https://a.b.cdn.pika.art/v.mp4"):
+            with self.assertRaises(AdapterError, msg=url) as cm:
+                self.status({"status": "completed", "output": {"video": {"url": url}}}, hosts=None)
+            self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), url)
+        a = pika.PikaVideoAdapter
+        for url in ("https://eu.cdn.pika.art/p.png", "https://cdn.pika.art.evil.example/p.png"):
+            with self.assertRaises(AdapterError):
+                a._exact(url, a.upload_hosts, (None, 443))
+
+    def test_the_billing_figure_pika_reports_is_kept_and_printed_by_the_probe(self):
+        a = self.adapter()
+        self.vendor.on("GET", f"{JOBS}media_1", Resp(200, {"status": "completed", "billing": {"state": "settled", "charge_micro_usd": 200000},
+                                                         "output": {"video": {"url": f"{self.vendor.base_url}/c.mp4"}}}))
+        task = ProviderTask("video.pika", "pika-2.5", "media_1")
+        a.poll(task)
+        self.assertEqual(a.billing_reported, {"media_1": ("settled", 200000)})
+        self.assertIn("settled, charge 200000 micro-USD", a.probe_note(task))
+        self.vendor._routes.clear()
+        self.vendor.on("GET", f"{JOBS}media_1", Resp(200, {"status": "completed", "billing": {"state": "pending", "charge_micro_usd": 5},
+                                                         "output": {"video": {"url": f"{self.vendor.base_url}/c.mp4"}}}))
+        a.poll(task)
+        self.assertEqual(a.billing_reported["media_1"], ("pending", None))          # a charge is quoted only once settled
+        self.assertNotIn("charge", a.probe_note(task))
+        self.assertEqual(a.probe_note(ProviderTask("video.pika", "pika-2.5", "other")), "Pika reported no billing figure")
 
     def test_a_job_id_that_could_steer_the_request_is_refused(self):
         for jid in ("../../billing/balance", "a/b", "a?b", "a#b", "..", ".", "a.b", "a:b", "", " ", "x" * 300, "a\\b", "a%2fb", "a b",
@@ -839,15 +1125,14 @@ class WiringTests(unittest.TestCase):
         self.assertIn(f'"{name}"', doctor)
         self.assertIn(f'("{name}", "pika")', doctor)
 
-    def test_the_key_page_checks_the_key_with_the_one_free_read_pika_documents(self):
+    def test_the_key_page_never_sends_the_key_because_the_balance_read_is_not_settled(self):
         text = (ROOT / "command-center" / "lib" / "model-keys.ts").read_text()
         i = text.index('id: "pika"')
         card = text[i:text.index("\n  },\n", i)]
         self.assertIn('envSets: [["PIKA_API_KEY"]]', card)
-        self.assertIn('origin: "https://api.dev.pika.art"', card)
-        self.assertIn('path: "/billing/balance"', card)
-        self.assertIn('auth: { header: "X-API-Key", scheme: "raw" }', card)
-        self.assertIn('name: "balance_micro_usd"', card)
+        self.assertIn('kind: "format_only"', card)
+        self.assertIn("console session JWT", card)           # the reason is written where the next person reads it
+        self.assertNotIn("origin:", card)
 
     def test_all_probe_skips_every_pika_entry_and_a_named_one_comes_back(self):
         from tools import probe_models
