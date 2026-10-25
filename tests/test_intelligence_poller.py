@@ -5,13 +5,20 @@ write path) plus fake/mock AnalyticsClient, CompetitorMonitor, and
 TrendDetector so no live API calls are ever made.
 """
 
+import os
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from modules.intelligence_poller import IntelligencePoller
+from modules.intelligence_poller import (
+    ANALYTICS_CALLS_PER_VIDEO,
+    MAX_ANALYTICS_CALLS_PER_POLL,
+    METRICS_POLL_DAYS_ENV,
+    IntelligencePoller,
+    metrics_poll_options,
+)
 from modules.state_store import StateStore
 from modules.video_snapshot import VideoSnapshot
 
@@ -393,6 +400,162 @@ class IntelligencePollerTestCase(unittest.TestCase):
         client.keyword_research.assert_called_once_with("roman history")
         emit.assert_called_once()
         self.assertEqual(emit.call_args.kwargs["channel_id"], "chan-1")
+
+
+class MetricsPollWindowTestCase(unittest.TestCase):
+    """NIGHTSHIFT_METRICS_POLL_DAYS: the opt-in wider own-channel poll and its Analytics call cap."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.store = StateStore(Path(self._tmpdir.name) / "test_chronos.db")
+
+    def tearDown(self):
+        self.store.close()
+        self._tmpdir.cleanup()
+
+    def _make_poller(self, analytics_client):
+        return IntelligencePoller(
+            state_store=self.store,
+            analytics_client=analytics_client,
+            competitor_monitor=MagicMock(),
+            trend_detector=MagicMock(),
+        )
+
+    def _store_videos_published(self, *days_ago):
+        now = datetime.now()
+        ids = []
+        for n in days_ago:
+            vid = f"v{n}d"
+            ids.append(vid)
+            self.store.record_video(video_id=vid, title=vid, published_at=(now - timedelta(days=n)).isoformat())
+        return ids
+
+    def _analytics(self):
+        analytics = MagicMock()
+        analytics.video_performance.return_value = {"views": 10}
+        analytics.video_ctr.return_value = {}
+        analytics.video_retention.return_value = []
+        return analytics
+
+    def test_an_empty_variable_leaves_the_options_empty_so_the_call_is_the_old_one(self):
+        for env in ({}, {METRICS_POLL_DAYS_ENV: ""}, {METRICS_POLL_DAYS_ENV: "   "}):
+            self.assertEqual(metrics_poll_options(env), {}, env)
+
+    def test_a_valid_number_of_days_widens_the_poll_and_sets_the_cap(self):
+        for raw, days in (("1", 1), ("7", 7), (" 30 ", 30), ("90", 90)):
+            self.assertEqual(metrics_poll_options({METRICS_POLL_DAYS_ENV: raw}),
+                             {"days": days, "max_calls": MAX_ANALYTICS_CALLS_PER_POLL}, raw)
+
+    def test_a_bad_value_is_ignored_loudly_never_clamped(self):
+        # 365 clamped to 90 would still widen a quota-bound job on a typo; ignoring it keeps today's behaviour.
+        for raw in ("0", "91", "365", "-3", "abc", "7.5", "1e2", "7 days", "٣"):
+            with self.assertLogs("modules.intelligence_poller", level="WARNING") as logs:
+                self.assertEqual(metrics_poll_options({METRICS_POLL_DAYS_ENV: raw}), {}, raw)
+            self.assertIn(METRICS_POLL_DAYS_ENV, logs.output[0])
+            self.assertIn("1 to 90", logs.output[0])
+
+    def test_an_absurdly_long_number_is_a_bad_value_not_a_crash(self):
+        # int() raises ValueError past 4300 digits; the poll must still start.
+        with self.assertLogs("modules.intelligence_poller", level="WARNING"):
+            self.assertEqual(metrics_poll_options({METRICS_POLL_DAYS_ENV: "9" * 5000}), {})
+
+    def test_the_options_read_the_process_environment_by_default(self):
+        with patch.dict("os.environ", {METRICS_POLL_DAYS_ENV: "21"}):
+            self.assertEqual(metrics_poll_options()["days"], 21)
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop(METRICS_POLL_DAYS_ENV, None)
+            self.assertEqual(metrics_poll_options(), {})
+
+    def test_run_all_with_the_variable_empty_makes_the_unchanged_call(self):
+        # Byte-for-byte: no days, no cap, and list_videos gets no limit either.
+        self._store_videos_published(0)
+        poller = self._make_poller(analytics_client=self._analytics())
+        env = {k: v for k, v in os.environ.items() if k != METRICS_POLL_DAYS_ENV}
+        with patch.dict("os.environ", env, clear=True), \
+                patch.object(poller, "poll_own_channel_metrics", wraps=poller.poll_own_channel_metrics) as poll, \
+                patch.object(self.store, "list_videos", wraps=self.store.list_videos) as listing:
+            poller.run_all()
+        poll.assert_called_once_with()
+        listing.assert_any_call(
+            since=(datetime.now().date() - timedelta(days=1)).isoformat(), channel_id=None)
+
+    def test_run_all_with_the_variable_set_reads_that_many_days_under_the_cap(self):
+        self._store_videos_published(0)
+        poller = self._make_poller(analytics_client=self._analytics())
+        with patch.dict("os.environ", {METRICS_POLL_DAYS_ENV: "30"}), \
+                patch.object(poller, "poll_own_channel_metrics", wraps=poller.poll_own_channel_metrics) as poll, \
+                patch.object(self.store, "list_videos", wraps=self.store.list_videos) as listing:
+            poller.run_all()
+        poll.assert_called_once_with(days=30, max_calls=MAX_ANALYTICS_CALLS_PER_POLL)
+        listing.assert_any_call(
+            since=(datetime.now().date() - timedelta(days=30)).isoformat(), channel_id=None,
+            limit=MAX_ANALYTICS_CALLS_PER_POLL // ANALYTICS_CALLS_PER_VIDEO + 1)
+
+    def test_the_default_poll_reads_only_the_newest_videos_and_the_widened_one_reads_the_window(self):
+        ids = self._store_videos_published(0, 5, 20, 40)
+        analytics = self._analytics()
+        poller = self._make_poller(analytics_client=analytics)
+        self.assertEqual(poller.poll_own_channel_metrics(), 1)
+        self.assertEqual([c.args[0] for c in analytics.video_performance.call_args_list], [ids[0]])
+        analytics.reset_mock()
+        self.assertEqual(poller.poll_own_channel_metrics(days=30, max_calls=600), 3)
+        self.assertEqual(sorted(c.args[0] for c in analytics.video_performance.call_args_list), sorted(ids[:3]))
+
+    def test_calls_are_counted_three_per_video_and_reset_each_poll(self):
+        self._store_videos_published(0, 1, 2)
+        poller = self._make_poller(analytics_client=self._analytics())
+        poller.poll_own_channel_metrics(days=30, max_calls=600)
+        self.assertEqual(poller.last_analytics_calls, 3 * ANALYTICS_CALLS_PER_VIDEO)
+        poller.poll_own_channel_metrics(days=30, max_calls=600)
+        self.assertEqual(poller.last_analytics_calls, 3 * ANALYTICS_CALLS_PER_VIDEO)
+
+    def test_a_video_whose_first_call_fails_is_counted_as_the_one_call_that_was_made(self):
+        self._store_videos_published(0)
+        analytics = self._analytics()
+        analytics.video_performance.side_effect = RuntimeError("quota")
+        poller = self._make_poller(analytics_client=analytics)
+        self.assertEqual(poller.poll_own_channel_metrics(days=30, max_calls=600), 0)
+        self.assertEqual(poller.last_analytics_calls, 1)
+        analytics.video_ctr.assert_not_called()
+
+    def test_the_hard_cap_stops_before_a_video_that_would_exceed_it_newest_first_and_says_so(self):
+        ids = self._store_videos_published(0, 1, 2, 3, 4)
+        analytics = self._analytics()
+        poller = self._make_poller(analytics_client=analytics)
+        with self.assertLogs("modules.intelligence_poller", level="WARNING") as logs:
+            written = poller.poll_own_channel_metrics(days=30, max_calls=7)
+        self.assertEqual(written, 2)                     # 2 videos = 6 calls; a third would make 9 > 7
+        self.assertEqual(poller.last_analytics_calls, 6)
+        self.assertLessEqual(poller.last_analytics_calls, 7)
+        self.assertEqual([c.args[0] for c in analytics.video_performance.call_args_list], ids[:2])
+        self.assertEqual(len(logs.output), 1, "one warning when the cap is hit, not one per skipped video")
+        message = logs.output[0]
+        self.assertIn("cap reached", message)
+        self.assertIn(METRICS_POLL_DAYS_ENV, message)
+        self.assertIn("skipped at least", message)
+
+    def test_a_cap_that_is_exactly_enough_polls_everything_without_a_warning(self):
+        self._store_videos_published(0, 1)
+        poller = self._make_poller(analytics_client=self._analytics())
+        with self.assertLogs("modules.intelligence_poller", level="INFO") as logs:
+            self.assertEqual(poller.poll_own_channel_metrics(days=30, max_calls=6), 2)
+        self.assertFalse([l for l in logs.output if "WARNING" in l])
+        self.assertTrue([l for l in logs.output if "2 video(s) polled" in l and "6 Analytics call(s) (cap 6)" in l])
+
+    def test_the_cap_also_bounds_how_many_videos_are_read_from_the_store(self):
+        # list_videos defaults to 100 rows; a widened poll asks for one more than the cap allows so it can see the overflow.
+        self._store_videos_published(0, 1, 2, 3)
+        analytics = self._analytics()
+        poller = self._make_poller(analytics_client=analytics)
+        with self.assertLogs("modules.intelligence_poller", level="WARNING"):
+            poller.poll_own_channel_metrics(days=30, max_calls=6)      # limit 3 rows, room for 2 videos
+        self.assertEqual(analytics.video_performance.call_count, 2)
+
+    def test_the_default_poll_has_no_cap_and_logs_no_summary(self):
+        self._store_videos_published(0)
+        poller = self._make_poller(analytics_client=self._analytics())
+        with self.assertNoLogs("modules.intelligence_poller", level="INFO"):
+            poller.poll_own_channel_metrics()
 
 
 if __name__ == "__main__":

@@ -35,9 +35,45 @@ tests never make live API calls.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+#: Repository variable (intelligence_poll.yml) that widens the daily own-channel poll. Empty = the poll reads only videos
+#: published since yesterday (`poll_own_channel_metrics`' default `days=1`), exactly as before it existed.
+METRICS_POLL_DAYS_ENV = "NIGHTSHIFT_METRICS_POLL_DAYS"
+#: Bounds of the variable. 90 is the largest range the results dashboard offers.
+MIN_METRICS_POLL_DAYS = 1
+MAX_METRICS_POLL_DAYS = 90
+#: YouTube Analytics `reports.query` calls one polled video costs at most: core metrics, click-through, retention.
+ANALYTICS_CALLS_PER_VIDEO = 3
+#: Hard cap on those calls for one channel in one run, applied only when the poll is widened. 600 = 200 videos, the
+#: number of videos the results dashboard shows. Newest videos are polled first, so the cap drops the oldest.
+MAX_ANALYTICS_CALLS_PER_POLL = 600
+
+
+def metrics_poll_options(environ=None) -> dict:
+    """Keyword arguments for `poll_own_channel_metrics` from NIGHTSHIFT_METRICS_POLL_DAYS.
+
+    `{}` when the variable is empty, unset, not a whole number or outside 1..90, so the call is then literally
+    `poll_own_channel_metrics()` and the poll is what it was before this variable existed. A bad value is never
+    guessed at or clamped (a typo must not widen a quota-bound job): it is logged with the fix and ignored.
+    """
+    raw = (environ if environ is not None else os.environ).get(METRICS_POLL_DAYS_ENV, "")
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    # ASCII digits only: int() would also accept "+7", "7_0" and non-Latin digits, none of which is a typo worth honouring.
+    days = int(raw) if len(raw) <= 3 and raw.isascii() and raw.isdigit() else None
+    if days is None or not MIN_METRICS_POLL_DAYS <= days <= MAX_METRICS_POLL_DAYS:
+        logger.warning(
+            "Ignoring %s=%r: it must be a whole number of days from %d to %d. The poll keeps its default "
+            "(videos published since yesterday).",
+            METRICS_POLL_DAYS_ENV, raw, MIN_METRICS_POLL_DAYS, MAX_METRICS_POLL_DAYS,
+        )
+        return {}
+    return {"days": days, "max_calls": MAX_ANALYTICS_CALLS_PER_POLL}
 
 
 def _isoformat(value) -> str:
@@ -122,10 +158,12 @@ class IntelligencePoller:
 
         self._last_competitor_snapshots_written = 0
         self._last_trending_snapshots_written = 0
+        # Analytics reports.query calls made by the last poll_own_channel_metrics().
+        self.last_analytics_calls = 0
 
     # -- own-channel analytics -------------------------------------------
 
-    def poll_own_channel_metrics(self, days: int = 1) -> int:
+    def poll_own_channel_metrics(self, days: int = 1, max_calls: int | None = None) -> int:
         """For each video this bot has uploaded (per `StateStore.list_videos`)
         published within the last `days` days, pull a small recent analytics
         window (yesterday through today) via `AnalyticsClient.video_performance`
@@ -141,16 +179,25 @@ class IntelligencePoller:
         data yet, quota exceeded, ...) is logged as a warning and does not
         stop the remaining videos from being processed. Returns the number
         of snapshots successfully written.
+
+        Each polled video costs up to ANALYTICS_CALLS_PER_VIDEO Analytics
+        calls, counted in `last_analytics_calls`. `max_calls` (None = no cap,
+        the default) stops the loop before a video that would exceed it, newest
+        videos first, and says so; see docs/RESULTS_DASHBOARD.md for the math.
         """
+        self.last_analytics_calls = 0
         since = None
         if days is not None:
             since = (datetime.now().date() - timedelta(days=days)).isoformat()
 
+        # list_videos returns 100 rows unless told otherwise. Only a capped (widened) poll asks for more, one video past
+        # what the cap allows, so the loop below can see that it dropped some and say so; the default call is unchanged.
+        extra = {"limit": max_calls // ANALYTICS_CALLS_PER_VIDEO + 1} if max_calls is not None else {}
         try:
             videos = (
-                self.state_store.list_videos(since=since, channel_id=self.channel_id)
+                self.state_store.list_videos(since=since, channel_id=self.channel_id, **extra)
                 if since
-                else self.state_store.list_videos(channel_id=self.channel_id)
+                else self.state_store.list_videos(channel_id=self.channel_id, **extra)
             )
         except Exception:
             logger.exception("Failed to list videos from state store; polling zero own-channel metrics")
@@ -162,15 +209,27 @@ class IntelligencePoller:
         snapshot_date = end_date
 
         written = 0
-        for video in videos:
+        polled = 0
+        for index, video in enumerate(videos):
             video_id = video.get("video_id")
             if not video_id:
                 continue
+            if max_calls is not None and self.last_analytics_calls + ANALYTICS_CALLS_PER_VIDEO > max_calls:
+                logger.warning(
+                    "[channel: %s] Analytics call cap reached (%d calls, cap %d): polled the %d newest video(s) of "
+                    "the last %s day(s) and skipped at least %d older one(s). Lower %s to poll fewer videos.",
+                    self.channel_id or "default", self.last_analytics_calls, max_calls, polled,
+                    days, len(videos) - index, METRICS_POLL_DAYS_ENV,
+                )
+                break
+            polled += 1
             try:
+                self.last_analytics_calls += 1
                 metrics = self.analytics_client.video_performance(video_id, start_date, end_date)
                 # Click-through, asked for separately so an unsupported metric
                 # name degrades to "not measured" instead of losing the whole
                 # snapshot. {} here means unknown CTR, never zero CTR.
+                self.last_analytics_calls += 1
                 ctr = self.analytics_client.video_ctr(video_id, start_date, end_date)
                 self.state_store.record_metrics_snapshot(
                     video_id=video_id,
@@ -191,6 +250,12 @@ class IntelligencePoller:
                 )
                 continue
 
+        if max_calls is not None:
+            logger.info(
+                "[channel: %s] Own-channel poll over the last %s day(s): %d video(s) polled, %d snapshot(s) written, "
+                "%d Analytics call(s) (cap %d).",
+                self.channel_id or "default", days, polled, written, self.last_analytics_calls, max_calls,
+            )
         return written
 
     # -- competitors --------------------------------------------------------
@@ -294,6 +359,7 @@ class IntelligencePoller:
         newest and least-guaranteed report of the three, and a channel that
         cannot produce it must still get its views recorded.
         """
+        self.last_analytics_calls += 1
         try:
             curve = self.analytics_client.video_retention(video_id, start_date, end_date)
         except Exception:
@@ -526,7 +592,7 @@ class IntelligencePoller:
         the single function the scheduled job calls (tools/run_intelligence_poll.py,
         run by .github/workflows/intelligence_poll.yml).
         """
-        own_metrics_written = self.poll_own_channel_metrics()
+        own_metrics_written = self.poll_own_channel_metrics(**metrics_poll_options())
 
         channel_ids = competitor_channel_ids or []
         competitor_results = self.poll_competitors(channel_ids) if channel_ids else {}

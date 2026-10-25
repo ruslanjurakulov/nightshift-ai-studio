@@ -65,7 +65,7 @@ from modules import event_log as events
 from modules.content_planner import ContentPlanner
 from modules.channels import DEFAULT_CHANNEL_ID, ChannelRegistry
 from modules.feedback_engine import FeedbackEngine
-from modules.intelligence_poller import IntelligencePoller
+from modules.intelligence_poller import IntelligencePoller, metrics_poll_options
 from modules.state_store import StateStore
 from modules.supabase_sync import SupabaseSync
 from modules.topic_recommender import TopicRecommender
@@ -258,7 +258,7 @@ def poll_additional_channel_metrics() -> dict:
     for channel in channels:
         try:
             poller = IntelligencePoller(channel=channel)
-            metrics = poller.poll_own_channel_metrics()
+            metrics = poller.poll_own_channel_metrics(**metrics_poll_options())
             rivals = _competitor_channel_ids(channel)
             if rivals:
                 poller.poll_competitors(rivals)

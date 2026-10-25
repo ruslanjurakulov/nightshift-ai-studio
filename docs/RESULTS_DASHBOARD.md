@@ -52,9 +52,54 @@ video it stores a **full row of zeros**. A zero on this page would then read as 
 2 become unnecessary and a stored 0 is always a measured 0.
 
 **Known limit, not hidden:** the poll as scheduled (`poll_own_channel_metrics()` with its default `days=1`) reads a video only
-around the day it is published. So today most readings are early-life readings, not current ones. The dashboard says "day N
-after publishing" for every reading and the staleness line explains it. Widening the poll (re-reading videos for their first
-weeks) is a worker/schedule decision and is not part of this change.
+around the day it is published. So by default most readings are early-life readings, not current ones. The dashboard says "day N
+after publishing" for every reading and the staleness line explains it. The owner can widen the poll (next section); until then
+nothing changes.
+
+## Widening the poll: `NIGHTSHIFT_METRICS_POLL_DAYS` (repository variable, empty = off)
+
+Set the repository variable `NIGHTSHIFT_METRICS_POLL_DAYS` (Settings -> Secrets and variables -> Actions -> Variables) to a whole
+number of days, **1 to 90**, and the daily poll (`.github/workflows/intelligence_poll.yml`, 20:00 UTC) re-reads every video
+published in the last N days instead of only those published since yesterday. Each re-read is the same short window
+("yesterday through today") written as that day's snapshot, so a video keeps getting a fresh reading for N days after it goes out and
+the dashboard's "day N after publishing" becomes a current reading instead of a day-0 one.
+
+- **Empty or unset: exactly today's behaviour.** The poll calls `poll_own_channel_metrics()` with no arguments, as before.
+- **Anything that is not a whole number from 1 to 90** (`0`, `91`, `365`, `7.5`, `abc`) is **ignored with a warning in the poll log
+  that names the variable**. It is not clamped: a typo must not widen a quota-bound job.
+- Only the poll reads it (the queue worker never polls analytics), so it is mapped in `intelligence_poll.yml` only, like
+  `CHRONOS_ENABLE_REVENUE` and `CHRONOS_DAILY_UPLOAD_SLOTS`, and not in `deploy/.env.worker.example` / `WORKERENV_`.
+- Other channels follow the same value: `tools/run_intelligence_poll.py` passes it to every channel's poller.
+
+### Quota math
+
+Per video polled, the poll makes **3 YouTube Analytics `reports.query` calls**: core metrics (`video_performance`), click-through
+(`video_ctr`) and the retention curve (`video_retention`). So per channel, per run:
+
+    calls = 3 x V        V = videos published in the last N days (newest first)
+
+| Videos published per day | N = 1 (default) | N = 7 | N = 28 | N = 90 |
+| :-- | --: | --: | --: | --: |
+| 1 | 3 | 21 | 84 | 270 |
+| 2 | 6 | 42 | 168 | 540 |
+| 3 | 9 | 63 | 252 | **600** (capped at 200 videos; 810 uncapped) |
+
+- **Hard cap: 600 calls (200 videos) per channel per run**, applied whenever the variable is set. The poll stops before the video that
+  would exceed it, newest videos are polled first (the oldest are dropped), and it logs a `WARNING` naming the cap, how many videos
+  were polled and the variable to lower. 200 is also the number of videos the dashboard shows (`MAX_VIDEOS`). The cap is per channel
+  poller, so a run's worst case is channels x 600; the run is one scheduled run a day plus any manual dispatch.
+- Every widened run ends with one `INFO` line per channel: videos polled, snapshots written, **Analytics calls made** and the cap
+  (`last_analytics_calls` counts the real calls, including the retention call, and a video whose first call fails counts as 1).
+- The revenue pass (`CHRONOS_ENABLE_REVENUE`) already makes one call per video of the whole channel and is not affected.
+- **What a call costs against the quota is not verified here.** YouTube's Analytics quota page says only that "the API server
+  evaluates each query to determine its quota cost"; it is not a flat per-call figure and not the Data API's 10,000 units/day.
+  Read the real number in Google Cloud Console -> APIs & Services -> YouTube Analytics API -> Quotas before choosing a large N, and
+  start small (7 or 28) while watching the poll log's call count. A quota error costs one call per remaining video (the core call
+  fails first) and the run keeps going, as it always has.
+- Runtime was **not measured** (no live calls were made for this change); the job has a 30 minute timeout.
+- **Storage:** a widened poll writes one `metrics_snapshots` row per polled video per day (at most 200 a day per channel), instead of
+  one or two per video in its lifetime. The dashboard reads snapshots in chunks and splits a chunk that reaches the 1000-row
+  response cap, so many readings per video cost more queries, not wrong numbers.
 
 ## What is not shown, and why
 

@@ -134,6 +134,9 @@ jobs:
           # Revenue tracking (config.py): adds the monetary analytics scope, so it also needs the channel
           # re-consented (tools/connect_channel.py). Empty = off, the analytics poll keeps its narrower scopes.
           CHRONOS_ENABLE_REVENUE: ${{ vars.CHRONOS_ENABLE_REVENUE }}
+          # How many days of own videos the daily analytics poll re-reads (1..90; empty = only videos published since
+          # yesterday, as before). 3 Analytics calls per video per channel, capped at 600; see docs/RESULTS_DASHBOARD.md.
+          NIGHTSHIFT_METRICS_POLL_DAYS: ${{ vars.NIGHTSHIFT_METRICS_POLL_DAYS }}
           # The day's upload budget the quota allocator splits across channels (empty = one slot per channel).
           CHRONOS_DAILY_UPLOAD_SLOTS: ${{ vars.CHRONOS_DAILY_UPLOAD_SLOTS }}
           # Optional — when set, the poll mirrors state to Supabase for the

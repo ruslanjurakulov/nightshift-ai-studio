@@ -492,5 +492,31 @@ class MirrorToSupabaseCostPrivacyTestCase(unittest.TestCase):
         self.assertFalse(test("cust"))
 
 
+class ExtraChannelsHonourTheMetricsPollWindowTestCase(unittest.TestCase):
+    """poll_additional_channel_metrics must read NIGHTSHIFT_METRICS_POLL_DAYS the way run_all does."""
+
+    def _run(self, env):
+        channel = MagicMock(channel_id="ch2", is_default=False)
+        poller = MagicMock()
+        poller.poll_own_channel_metrics.return_value = 0
+        with patch.dict("os.environ", env, clear=False), \
+                patch.object(mod, "ChannelRegistry") as reg, \
+                patch.object(mod, "IntelligencePoller", return_value=poller), \
+                patch.object(mod, "_competitor_channel_ids", return_value=[]):
+            reg.return_value.active.return_value = [channel]
+            mod.poll_additional_channel_metrics()
+        return poller
+
+    def test_unset_or_empty_calls_the_poll_exactly_as_before(self):
+        for value in ("", "   "):
+            with self.subTest(value=value):
+                poller = self._run({"NIGHTSHIFT_METRICS_POLL_DAYS": value})
+                poller.poll_own_channel_metrics.assert_called_once_with()
+
+    def test_a_valid_window_is_passed_with_the_call_cap(self):
+        poller = self._run({"NIGHTSHIFT_METRICS_POLL_DAYS": "14"})
+        poller.poll_own_channel_metrics.assert_called_once_with(days=14, max_calls=600)
+
+
 if __name__ == "__main__":
     unittest.main()
