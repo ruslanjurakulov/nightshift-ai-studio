@@ -50,7 +50,7 @@ from modules.capabilities.base import (
 )
 from modules.capabilities.image import SeedreamAdapter
 from modules.capabilities.modelark import map_code
-from modules.capabilities.safe_fetch import UNCONFIRMED
+from modules.capabilities.safe_fetch import AFTER_COMPLETION, UNCONFIRMED
 from modules.capabilities.video import SeedanceV2Adapter
 from tests.loopback_vendor import FakeVendor, Resp, cleanup_certificate, closed_port_url
 from tests.test_creative_worker import JOB, ORG
@@ -178,6 +178,16 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertTrue(p["source_url"].startswith("https://docs.byteplus.com/"), mid)
             self.assertEqual(p["as_of"], "2026-10-24", mid)
             self.assertIn("ESTIMATE", p["note"], mid)
+
+    def test_a_vendor_billing_claim_is_never_stated_as_a_fact(self):
+        # "Failed generations are not billed" is BytePlus's claim; nothing here has verified it (CLAUDE.md #5).
+        for mid in (*VIDEO_IDS, *IMAGE_IDS):
+            note = self.r[mid].raw["pricing"]["note"]
+            self.assertIn("not billed", note, mid)
+            self.assertIn("Vendor claim, unverified", note, mid)
+        text = (ROOT / "docs" / "research" / "seedance-seedream-first-party.md").read_text()
+        self.assertNotRegex(text, r"(?<!unverified: )[Ff]ailed (generations|images) are not billed")
+        self.assertIn("builder's reading", text)
 
     def test_what_the_registry_offers_is_what_the_adapter_will_send(self):
         for mid, vendor in zip(VIDEO_IDS, (V20, V25)):
@@ -511,10 +521,14 @@ class SeedancePollTests(VendorCase):
         with self.assertRaises(AdapterError) as cm:
             self.status({"status": "succeeded", "content": {}})
         self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
+        # The vendor said the clip exists, so it may be billed: the error says so.
+        self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), cm.exception.message)
         for url in ("https://attacker.example/clip.mp4", "http://localhost/clip.mp4", "https://volces.com.evil.io/c.mp4"):
             with self.assertRaises(AdapterError, msg=url) as cm:
                 self.status({"status": "succeeded", "content": {"video_url": url}})
             self.assertEqual(cm.exception.code, E_BAD_RESPONSE, url)
+            self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), url)
+            self.assertFalse(cm.exception.not_accepted)
 
     def test_failed_expired_and_cancelled_are_failures_with_the_vendors_reason(self):
         res = self.status({"status": "failed", "error": {"code": "OutputVideoSensitiveContentDetected", "message": "blocked"}})
@@ -572,6 +586,14 @@ class SeedanceEndToEndTests(VendorCase):
         self.assertFalse(res.ok)
         self.assertEqual((res.code, res.task_id), ("timeout", "cgt-9"))   # the vendor task may still bill: the id is kept
         self.assertEqual(len(self.vendor.seen("POST", TASKS)), 1)
+
+    def test_an_expired_clip_link_is_not_an_auth_error_and_says_the_spend_may_have_happened(self):
+        gone = Resp(200, {"status": "succeeded", "content": {"video_url": f"{self.vendor.base_url}/expired.mp4"}})
+        self.vendor.on("GET", "/expired.mp4", Resp(403, {"error": "signature expired"}))
+        res = self.run_probe([gone])
+        self.assertFalse(res.ok)
+        self.assertEqual(res.code, E_NOT_FOUND)
+        self.assertTrue(res.message.startswith(AFTER_COMPLETION), res.message)
 
     def test_a_clip_link_the_vendor_cannot_serve_is_a_failed_probe_not_a_hang(self):
         gone = Resp(200, {"status": "succeeded", "content": {"video_url": f"{self.vendor.base_url}/missing.mp4"}})
@@ -665,6 +687,15 @@ class SeedreamTests(VendorCase):
             self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
             self.assertFalse(cm.exception.not_accepted)
             self.assertTrue(cm.exception.message.startswith(UNCONFIRMED))
+
+    def test_an_image_that_cannot_be_stored_says_the_generation_may_have_been_billed(self):
+        a = self.image()
+        a.max_inline_bytes = 10
+        task = a.submit(pro(), PRO)
+        with self.assertRaises(AdapterError) as cm:
+            a.fetch(a.poll(task), self.tmp)
+        self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), cm.exception.message)
+        self.assertEqual([p.name for p in self.tmp.iterdir()], [])
 
     def test_a_lost_answer_may_have_billed_and_a_refusal_did_not(self):
         self.vendor._routes.clear()

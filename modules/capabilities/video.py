@@ -61,7 +61,7 @@ from modules.capabilities.base import (
 )
 from modules.capabilities.modelark import RESULT_HOSTS as MODELARK_RESULT_HOSTS
 from modules.capabilities.modelark import map_code as modelark_code
-from modules.capabilities.safe_fetch import SafeResultMixin, unconfirmed
+from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, unconfirmed
 
 _ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
 _POLICY_HINTS = ("safety", "policy", "blocked", "moderation", "sensitive", "risk")
@@ -859,7 +859,20 @@ class SeedanceV2Adapter(SafeResultMixin, SeedanceAdapter):
         return ProviderTask(self.key, vendor_model, tid)
 
     def poll(self, task: ProviderTask) -> PollResult:
-        return self.checked_outputs(super().poll(task))
+        self.require_key()
+        data = self.get(f"{self.base_url}/api/v3/contents/generations/tasks/{_safe_id(task.task_id)}")
+        data = data if isinstance(data, dict) else {}
+        status = str(data.get("status") or "").lower()
+        if status == "succeeded":
+            url = dig(data, "content", "video_url")
+            if not isinstance(url, str) or not url:
+                # The vendor says the clip exists (and bills it): we just were not given the link.
+                raise after_completion(AdapterError(E_BAD_RESPONSE, "succeeded without content.video_url"))
+            return self.checked_outputs(PollResult(SUCCEEDED, [Output("video/mp4", url=url)]))
+        if status in ("failed", "cancelled", "expired"):
+            code = self._map(dig(data, "error", "code")) or E_UNAVAILABLE
+            return PollResult(FAILED, error=AdapterError(code, self.message(dig(data, "error", "message") or status)))
+        return PollResult(PENDING)
 
 
 # ── Alibaba Wan (Model Studio, international) ───────────────────────────────

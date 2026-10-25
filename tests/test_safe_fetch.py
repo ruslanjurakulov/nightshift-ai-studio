@@ -18,6 +18,7 @@ from pathlib import Path
 
 from modules.capabilities.base import (
     E_BAD_RESPONSE,
+    E_AUTH,
     E_NOT_FOUND,
     E_UNAVAILABLE,
     AdapterError,
@@ -27,6 +28,7 @@ from modules.capabilities.base import (
     SUCCEEDED,
 )
 from modules.capabilities.safe_fetch import (
+    AFTER_COMPLETION,
     UNCONFIRMED,
     SafeResultMixin,
     checked_result_url,
@@ -204,6 +206,61 @@ class DownloadTests(unittest.TestCase):
             adapter(self.vendor).fetch(result(f"{self.vendor.base_url}/gone.mp4"), self.tmp)
         self.assertEqual(cm.exception.code, E_NOT_FOUND)
         self.assertEqual(self.files(), [])
+
+    def test_a_refused_download_is_never_an_auth_error(self):
+        # The result link is a signed URL and our key is not sent to it: 401/403 means the link
+        # expired or is gone, and "replace the API key" would be the wrong remedy (CLAUDE.md #6).
+        for status, want in ((401, E_NOT_FOUND), (403, E_NOT_FOUND), (404, E_NOT_FOUND), (410, E_NOT_FOUND),
+                             (429, E_UNAVAILABLE), (500, E_UNAVAILABLE), (503, E_UNAVAILABLE)):
+            vendor = FakeVendor()
+            self.addCleanup(vendor.close)
+            vendor.on("GET", "/c.mp4", Resp(status, {"error": "Forbidden: the signature has expired"}))
+            with self.assertRaises(AdapterError, msg=status) as cm:
+                adapter(vendor).fetch(result(f"{vendor.base_url}/c.mp4"), self.tmp)
+            self.assertEqual(cm.exception.code, want, status)
+            self.assertNotEqual(cm.exception.code, E_AUTH)
+            self.assertEqual(self.files(), [])
+
+    def test_every_failure_after_the_vendor_finished_says_the_spend_may_have_happened(self):
+        cases = {
+            "off the allow-list": ("/a.mp4", None, dict(result_hosts=("volces.com",))),
+            "redirect": ("/r.mp4", Resp(302, headers={"Location": "https://x.example/y"}), {}),
+            "html page": ("/h.mp4", Resp(200, raw=b"<html>expired</html>"), {}),
+            "empty": ("/e.mp4", Resp(200, raw=b""), {}),
+            "cut stream": ("/c.mp4", Resp(200, raw=MP4[:50], declared_length=len(MP4)), {}),
+            "over the cap": ("/b.mp4", Resp(200, raw=MP4), dict(max_result_bytes=10)),
+            "gone": ("/g.mp4", Resp(403, {"error": "expired"}), {}),
+        }
+        for name, (path, resp, attrs) in cases.items():
+            vendor = FakeVendor()
+            self.addCleanup(vendor.close)
+            if resp is not None:
+                vendor.on("GET", path, resp)
+            with self.assertRaises(AdapterError, msg=name) as cm:
+                adapter(vendor, **attrs).fetch(result(f"{vendor.base_url}{path}"), self.tmp)
+            self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), (name, cm.exception.message))
+            self.assertFalse(cm.exception.not_accepted, name)
+            self.assertEqual(self.files(), [], name)
+
+    def test_the_note_is_added_once_and_keeps_the_code_so_a_cut_stream_stays_retryable(self):
+        vendor = FakeVendor()
+        self.addCleanup(vendor.close)
+        vendor.on("GET", "/c.mp4", Resp(200, raw=MP4[:50], declared_length=len(MP4)))
+        with self.assertRaises(AdapterError) as cm:
+            adapter(vendor).fetch(result(f"{vendor.base_url}/c.mp4"), self.tmp)
+        self.assertTrue(cm.exception.retryable)
+        self.assertEqual(cm.exception.message.count(AFTER_COMPLETION), 1)
+
+    def test_the_note_is_idempotent(self):
+        from modules.capabilities.safe_fetch import after_completion
+
+        e = AdapterError(E_UNAVAILABLE, "boom")
+        self.assertEqual(after_completion(after_completion(e)).message.count(AFTER_COMPLETION), 1)
+
+    def test_a_result_link_refused_by_the_allow_list_at_poll_time_carries_the_note_too(self):
+        with self.assertRaises(AdapterError) as cm:
+            adapter(self.vendor, result_hosts=("volces.com",)).checked_outputs(result(f"{self.vendor.base_url}/a.mp4"))
+        self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION))
 
     def test_a_vendor_that_cannot_be_reached_is_unavailable(self):
         a = adapter(self.vendor)

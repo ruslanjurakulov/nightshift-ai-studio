@@ -1211,7 +1211,7 @@
         "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
         "as_of": "2026-10-24",
         "confirmed": false,
-        "note": "ESTIMATE: vendor list $0.045 per image up to 2.61 MP (1K and 1.5K cost the same); above that $0.09. Only 1K is sent. Failed images are not billed."
+        "note": "ESTIMATE: vendor list $0.045 per image up to 2.61 MP (1K and 1.5K cost the same); above that $0.09. Only 1K is sent. Vendor claim, unverified: failed images are not billed."
       },
       "credit_unit": "model_seedream_5_0_pro_image",
       "entitlement": "models_image:premium",
@@ -1281,7 +1281,7 @@
         "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
         "as_of": "2026-10-24",
         "confirmed": false,
-        "note": "ESTIMATE: vendor list $0.018 per image; the page states no size tiers for Flash. Only 1K is sent. Failed images are not billed."
+        "note": "ESTIMATE: vendor list $0.018 per image; the page states no size tiers for Flash. Only 1K is sent. Vendor claim, unverified: failed images are not billed."
       },
       "credit_unit": "model_seedream_5_0_flash_image",
       "entitlement": "models_image:basic",
@@ -1351,7 +1351,7 @@
         "source_url": "https://docs.byteplus.com/en/docs/ModelArk/model-pricing",
         "as_of": "2026-10-24",
         "confirmed": false,
-        "note": "ESTIMATE: vendor list $0.04 per image; the page states no size tiers for 4.5. Only 2K (the vendor default) is sent. Failed images are not billed."
+        "note": "ESTIMATE: vendor list $0.04 per image; the page states no size tiers for 4.5. Only 2K (the vendor default) is sent. Vendor claim, unverified: failed images are not billed."
       },
       "credit_unit": "model_seedream_4_5_image",
       "entitlement": "models_image:premium",
@@ -2484,7 +2484,7 @@
             "1080p": 0.374
           }
         },
-        "note": "ESTIMATE from the vendor's worked example (16:9, 5 s, no video input) per second; token-billed, so other ratios differ slightly. 4K ($0.78/s) is not offered here. Failed generations are not billed."
+        "note": "ESTIMATE from the vendor's worked example (16:9, 5 s, no video input) per second; token-billed, so other ratios differ slightly. 4K ($0.78/s) is not offered here. Vendor claim, unverified: failed generations are not billed."
       },
       "credit_unit": "model_seedance_2_0_second",
       "entitlement": "models_video:premium",
@@ -2576,7 +2576,7 @@
             "1080p": 0.5686
           }
         },
-        "note": "ESTIMATE from the vendor's worked example (16:9, 5 s, no video input) per second; token-billed, so other ratios differ slightly. Dreamina Seedance 2.5 is listed 'fully available' on the vendor's own API page. Failed generations are not billed."
+        "note": "ESTIMATE from the vendor's worked example (16:9, 5 s, no video input) per second; token-billed, so other ratios differ slightly. Dreamina Seedance 2.5 is listed 'fully available' on the vendor's own API page. Vendor claim, unverified: failed generations are not billed."
       },
       "credit_unit": "model_seedance_2_5_second",
       "entitlement": "models_video:ultra",

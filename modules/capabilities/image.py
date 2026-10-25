@@ -498,7 +498,7 @@ class SeedreamAdapter(SafeResultMixin, HttpAdapter):
             raise unconfirmed("the answer is not a JSON object")
         err = data.get("error") or dig(data, "data", 0, "error")
         if isinstance(err, dict) and err:
-            # The vendor refused the content (moderation) or failed it; failed images are not billed.
+            # The vendor refused the content (moderation) or failed it. Its pricing page says failed images are not billed: a vendor claim, unverified here.
             raise AdapterError(modelark_code(err.get("code")) or E_UNAVAILABLE,
                                self.message(err.get("message") or err.get("code") or "Seedream error"))
         raw = dig(data, "data", 0, "b64_json")
