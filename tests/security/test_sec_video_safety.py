@@ -42,6 +42,8 @@ ROLLBACK = REPO / "docs" / "sql" / "rollback_0111_video_safety.sql"
 # Later migrations that REDEFINE a function 0111 defines (render_jobs_payment_guard: 0120 adds a block to 0111's body). Replaying 0111 puts
 # its own text back, so a replay in these tests is "0111, then the later ones", the order a database sees them in.
 LATER = REPO / "supabase" / "migrations" / "0120_series_tables.sql"
+# 0122 sits on 0120's bodies (render_jobs_payment_guard, render_job_params_valid) and 0120 refuses any other text, so a test that replays 0111 and then 0120
+# takes 0122 off first (sec_db.take_off_0122) and the chain it replays ends at 0120.
 
 CUSTOMER = Actor("customer", "authenticated", UA, "a@d3.io")
 OPERATOR = Actor("operator", "authenticated", UOP, "op@d3.io")
@@ -400,6 +402,7 @@ def test_a_signed_in_user_cannot_call_the_helper_or_read_a_job_error_around_it(c
 def test_replay_changes_no_definition_and_no_privilege(conn):
     text = MIGRATION.read_text(encoding="utf-8")
     with as_superuser(conn, commit=False) as su:
+        sec_db.take_off_0122(su)
         before = acls(su)
         defs = [su.value("select pg_get_functiondef(%s::regprocedure)", [s]) for s in (*CHANGED, HELPER)]
         for _ in range(2):
@@ -412,6 +415,7 @@ def test_replay_changes_no_definition_and_no_privilege(conn):
 def test_the_migration_touches_no_other_function_and_no_table_policy_or_trigger(conn):
     text = MIGRATION.read_text(encoding="utf-8")
     with as_superuser(conn, commit=False) as su:
+        sec_db.take_off_0122(su)
         def snapshot():
             return (su.rows("select p.oid::regprocedure::text, md5(pg_get_functiondef(p.oid)), p.proacl::text from pg_proc p "
                             "where p.pronamespace = 'public'::regnamespace and p.oid::regprocedure::text <> all(%s) order by 1",
@@ -433,7 +437,7 @@ def test_the_rollback_restores_the_three_functions_byte_for_byte_and_the_migrati
     base_dsn = sec_db.create_database(admin, base)
     try:
         # (0120 replaces 0111's guard and refuses to do so on a database that never had it: the base for "before 0111" stops short of it too)
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0120_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0120_", "0122_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s]).fetchone()[0]) for s in CHANGED}
@@ -443,6 +447,7 @@ def test_the_rollback_restores_the_three_functions_byte_for_byte_and_the_migrati
     rollback = ROLLBACK.read_text(encoding="utf-8")
     assert re.search(r"(?m)^begin;$", rollback) and re.search(r"(?m)^commit;$", rollback)
     with as_superuser(conn, commit=False) as su:
+        sec_db.take_off_0122(su)
         after_0111 = {s: su.value("select pg_get_functiondef(%s::regprocedure)", [s]) for s in (*CHANGED, HELPER)}
         assert after_0111[GUARD] != want[GUARD][0] and after_0111[API_JOB] != want[API_JOB][0]
         acl_before = su.rows("select p.oid::regprocedure::text, p.proacl::text from pg_proc p "

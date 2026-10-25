@@ -17,6 +17,10 @@ This is the admin-run tool that makes that call and records it:
     # per model, "ok <id>", "failed <id> <error code>" or "skipped <id>"
     python tools/probe_models.py --sync --all --brief
 
+``--all`` skips every model whose ``terms_gate`` is open (vendor terms not cleared):
+a gated model is probed only when it is named with ``--model``, so the workflow's
+empty "model" input never makes a paid call to one.
+
 Run it on the worker (the provider keys live in its env; docs/DEPLOY_AX42.md)
 with SUPABASE_URL and SUPABASE_SERVICE_KEY set. Each probe is the registry
 entry's ``probe`` request — the shortest, lowest-resolution call the model
@@ -284,8 +288,17 @@ def select(entries: Iterable, ids: Sequence[str], capability: Optional[str], eve
     unknown = [i for i in ids if i not in known]
     if unknown:
         raise SystemExit(f"unknown model id(s): {', '.join(unknown)}")
-    chosen = [e for e in entries if everything or e.id in ids]
+    # ``--all`` (and so the workflow's empty "model" input) never makes a paid call to a model whose
+    # vendor terms are not cleared: a gated model is probed only when it is NAMED.
+    chosen = [e for e in entries if e.id in ids or (everything and not e.terms_gate)]
     return [e for e in chosen if capability is None or capability in e.capabilities]
+
+
+def gated_left_out(entries: Iterable, ids: Sequence[str], capability: Optional[str], everything: bool) -> List:
+    """The entries ``--all`` skipped because their terms gate is open (so the log can say so)."""
+    if not everything:
+        return []
+    return [e for e in entries if e.terms_gate and e.id not in ids and (capability is None or capability in e.capabilities)]
 
 
 def describe(entry, env: Mapping[str, str], voice_id: Optional[str]) -> str:
@@ -318,7 +331,8 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
     env = dict(os.environ if env is None else env)
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--model", action="append", default=[], help="model id (repeatable)")
-    ap.add_argument("--all", action="store_true", help="every model in the registry")
+    ap.add_argument("--all", action="store_true",
+                    help="every model in the registry whose terms gate is clear (a gated model is probed only when named with --model)")
     ap.add_argument("--capability", help="only models with this capability")
     ap.add_argument("--dry-run", action="store_true", help="show what would be called; no network, no DB")
     ap.add_argument("--sync", action="store_true", help="copy the registry file into the database first")
@@ -336,6 +350,9 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
         logger.info("nothing selected: pass --model ID, --all, or --sync")
         return 2
     voice = (args.voice_id or env.get(VOICE_ENV) or "").strip() or None
+    for e in gated_left_out(model_registry.registry().values(), args.model, args.capability, args.all):
+        logger.info(f"gated {e.id}" if args.brief else
+                    f"SKIP {e.id}: terms gate {e.terms_gate} is open; name it with --model to probe it")
 
     if args.dry_run:
         for e in entries:

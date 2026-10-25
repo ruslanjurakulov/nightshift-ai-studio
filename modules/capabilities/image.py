@@ -1,5 +1,5 @@
 """Image adapters: OpenAI GPT Image, Gemini image, FLUX.2, Ideogram 3 and 4,
-Ideogram Upscale — and one that READS an image: the Gemini text model the
+Ideogram Upscale, Seedream (BytePlus ModelArk) — and one that READS an image: the Gemini text model the
 pipeline already uses for vision (modules/video_critic.py), asked to describe
 a library picture as a generation prompt (``describe``, migration 0055).
 
@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from modules.capabilities.base import (
     DESCRIBE,
@@ -52,7 +52,10 @@ from modules.capabilities.base import (
     image_b64,
     image_mime,
     is_url,
+    json_body,
 )
+from modules.capabilities.modelark import map_code as modelark_code
+from modules.capabilities.safe_fetch import SafeResultMixin, sniff_image_mime, unconfirmed
 from modules.describe_text import MAX_CHARS as DESCRIBE_MAX_CHARS
 from modules.describe_text import clean_description
 
@@ -417,7 +420,102 @@ class IdeogramUpscaleAdapter(IdeogramAdapter):
                             outputs=[Output("image/png", url=str(first["url"]))])
 
 
+#: Seedream: the pixel size each (vendor model, image size, aspect ratio) is sent as. The
+#: docs take either a resolution level (and let the MODEL pick the shape from the prompt) or
+#: an explicit ``<width>x<height>``; the explicit form is the only one that makes the shape
+#: what the person chose, so these are the vendor's own table values for it
+#: (docs.byteplus.com/en/docs/ModelArk/image-generation-api, read 2026-10-24).
+_SEEDREAM_5_1K = {"1:1": "1024x1024", "4:3": "1152x864", "3:4": "864x1152", "16:9": "1424x800",
+                  "9:16": "800x1424", "3:2": "1248x832", "2:3": "832x1248", "21:9": "1568x672"}
+_SEEDREAM_4_5_2K = {"1:1": "2048x2048", "4:3": "2304x1728", "3:4": "1728x2304", "16:9": "2848x1600",
+                    "9:16": "1600x2848", "3:2": "2496x1664", "2:3": "1664x2496", "21:9": "3136x1344"}
+
+
+class SeedreamAdapter(SafeResultMixin, HttpAdapter):
+    """ByteDance Seedream on BytePlus ModelArk (international): ``POST
+    /api/v3/images/generations`` with ``model``, ``prompt``, an explicit ``size``
+    and ``response_format: "b64_json"``, answered synchronously with
+    ``data[0].b64_json`` (docs.byteplus.com/en/docs/ModelArk/image-generation-api,
+    read 2026-10-24). Base64 rather than the 24-hour URL: nothing is fetched from
+    a link, so a lost or expired link cannot lose a paid image.
+
+    Only the sizes in ``SIZES`` are sent. The 5.0 pro price doubles above 2.61 M
+    pixels (1.5K and below cost the same), so 5.0 pro / flash are offered at 1K
+    only and 4.5 at 2K only (the one price the docs state for it); another size
+    is refused, never defaulted. ``watermark`` is left to the vendor's default,
+    which for Seedream is ON ("AI-generated", lower right).
+
+    TERMS: the Customer Agreement §6.2(1) bars OEM / SaaS / MaaS / reseller
+    arrangements without BytePlus's prior written consent; the registry entries
+    carry ``terms_gate: written_consent_required``."""
+
+    key = "image.seedream"
+    key_env = ("SEEDANCE_API_KEY", "ARK_API_KEY")
+    base_url_env = "SEEDREAM_BASE_URL"
+    default_base_url = "https://ark.ap-southeast.bytepluses.com"
+    capabilities = (T2I,)
+    timeout = 180
+    SIZES = {
+        "dola-seedream-5-0-pro-260628": {"1K": _SEEDREAM_5_1K},
+        "dola-seedream-5-0-flash-260915": {"1K": _SEEDREAM_5_1K},
+        "seedream-4-5-251128": {"2K": _SEEDREAM_4_5_2K},
+    }
+
+    def vendor_error_code(self, status: int, text: str) -> Optional[str]:
+        return modelark_code(dig(json_body(text), "error", "code"))
+
+    def _size(self, request: CapabilityRequest, vendor_model: str) -> Tuple[Optional[str], List[str]]:
+        sizes = self.SIZES.get(vendor_model)
+        if sizes is None:
+            return None, [f"{vendor_model!r} is not a Seedream model this adapter knows"]
+        image_size = request.image_size or next(iter(sizes))
+        if image_size not in sizes:
+            return None, [f"image size {image_size} is not offered by {vendor_model} "
+                          f"(only {', '.join(sizes)}): the price depends on it, so it is never defaulted"]
+        aspect = request.aspect_ratio or "1:1"
+        if aspect not in sizes[image_size]:
+            return None, [f"aspect ratio {aspect} is not offered by {vendor_model}"]
+        return sizes[image_size][aspect], []
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        out.extend(self._size(request, entry.vendor_model_for(request.capability))[1])
+        return out
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        size, bad = self._size(request, vendor_model)
+        if not bad and not request.prompt.strip():
+            bad = ["prompt is empty"]
+        if bad or request.capability != T2I or request.input_images:
+            # Nothing has been sent: a refusal, not a lost answer.
+            raise AdapterError(E_BAD_REQUEST, "; ".join(bad) or "Seedream here is text-to-image only",
+                               not_accepted=True)
+        body = {"model": vendor_model, "prompt": request.prompt.strip(), "size": size,
+                "response_format": "b64_json"}
+        data = self.submit_json(f"{self.base_url}/api/v3/images/generations", body, what="generate")
+        if not isinstance(data, dict):
+            raise unconfirmed("the answer is not a JSON object")
+        err = data.get("error") or dig(data, "data", 0, "error")
+        if isinstance(err, dict) and err:
+            # The vendor refused the content (moderation) or failed it. Its pricing page says failed images are not billed: a vendor claim, unverified here.
+            raise AdapterError(modelark_code(err.get("code")) or E_UNAVAILABLE,
+                               self.message(err.get("message") or err.get("code") or "Seedream error"))
+        raw = dig(data, "data", 0, "b64_json")
+        if not isinstance(raw, str) or not raw:
+            raise unconfirmed("the answer carries no image")
+        try:
+            out = b64_output(raw, "image/jpeg")
+        except AdapterError:
+            raise unconfirmed("the image is not valid base64") from None
+        mime = sniff_image_mime(out.data)
+        if mime is None:
+            raise unconfirmed("the image is not a PNG, JPEG or WebP file")
+        out.mime = mime
+        return ProviderTask(self.key, vendor_model, None, outputs=[out])
+
+
 ADAPTERS = (OpenAIImageAdapter, GeminiImageAdapter, GeminiDescribeAdapter, FluxAdapter, IdeogramAdapter,
-            IdeogramV4Adapter, IdeogramUpscaleAdapter)
+            IdeogramV4Adapter, IdeogramUpscaleAdapter, SeedreamAdapter)
 
 __all__ = [a.__name__ for a in ADAPTERS] + ["ADAPTERS"]
