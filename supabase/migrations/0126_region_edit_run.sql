@@ -88,7 +88,7 @@
 --     creative_quantity         02446e3ae600ea3504cdbea5a59829e8
 --     finish_creative_job       6af709d6345f32e8eef6e9dd64d04c44
 --     creative_regions_problem  5603be6af36c813d2799eb581bb971cd
---     creative_region_outcomes  d775324da2ae4a78cb5f1c9be74e2c05
+--     creative_region_outcomes  13c3e850f7f31bde51f09087f4a8c505
 --   If a live value is anything else, STOP: something was applied by hand after 0100 / 0099 / 0075, and replacing the body would silently undo it.
 --
 -- Additive and idempotent: create or replace, revoke, grant. A second run finds the 0126 bodies and changes nothing. An applied migration is
@@ -156,7 +156,7 @@ begin
   end if;
   if to_regprocedure('public.creative_region_outcomes(jsonb, jsonb)') is not null then
     select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into ro from pg_proc x where x.oid = 'public.creative_region_outcomes(jsonb, jsonb)'::regprocedure;
-    if ro <> 'd775324da2ae4a78cb5f1c9be74e2c05' then
+    if ro <> '13c3e850f7f31bde51f09087f4a8c505' then
       raise exception '0126 found a creative_region_outcomes() that is not 0126''s body (md5 %): read the live body first', ro;
     end if;
   end if;
@@ -245,7 +245,8 @@ end
 $$;
 
 -- Why the worker's report of a region edit cannot be taken, or the result to store: BUILT from an allow-list of keys (regions reduced to
--- {id, status, code}, feather, files, storage, asset_ids), each of a closed shape; any other key is dropped. Raises 22023.
+-- {id, status, code}, feather, files, storage, asset_ids), each of a closed shape; any other key is dropped, and a malformed optional
+-- key (or entry) is dropped too, never raised on. Only a malformed `regions` raises 22023.
 create or replace function public.creative_region_outcomes(p_params jsonb, p_result jsonb)
   returns jsonb
   language plpgsql immutable set search_path = public, pg_temp as $$
@@ -312,46 +313,41 @@ begin
   end loop;
   -- The stored result is BUILT from an allow-list of keys (regions, feather, files, storage, asset_ids), each of a closed shape, so that no
   -- free text a caller put anywhere else in the report survives into creative_jobs.result, which every member of the organization reads.
+  -- ONLY `regions` is strict (it decides the charge, and a report that does not match the job's regions is refused above). Every optional key
+  -- is DROPPED, or cleaned entry by entry, when it is malformed, never raised on: raising here would roll back finish_creative_job and leave
+  -- a paid, stored result sitting in `processing` with its hold until the stale sweep failed it.
   res := jsonb_build_object('regions', outs);
-  if p_result ? 'feather' then
-    if not public.creative_json_int(p_result -> 'feather', 2, 8) then
-      raise exception 'the edge blend is a whole number from 2 to 8' using errcode = '22023';
-    end if;
+  if p_result ? 'feather' and public.creative_json_int(p_result -> 'feather', 2, 8) then
     res := res || jsonb_build_object('feather', p_result -> 'feather');
   end if;
-  if p_result ? 'storage' then
-    if jsonb_typeof(p_result -> 'storage') is distinct from 'string' or (p_result ->> 'storage') not in ('library', 'worker') then
-      raise exception 'storage is library or worker' using errcode = '22023';
-    end if;
+  if p_result ? 'storage' and jsonb_typeof(p_result -> 'storage') = 'string' and (p_result ->> 'storage') in ('library', 'worker') then
     res := res || jsonb_build_object('storage', p_result -> 'storage');
   end if;
-  if p_result ? 'asset_ids' then
-    if jsonb_typeof(p_result -> 'asset_ids') is distinct from 'array' or jsonb_array_length(p_result -> 'asset_ids') > 16 then
-      raise exception 'asset_ids is a list of at most 16 ids' using errcode = '22023';
-    end if;
+  if jsonb_typeof(p_result -> 'asset_ids') = 'array' then
     for x in select jsonb_array_elements_text(p_result -> 'asset_ids') loop
-      if x !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' then
-        raise exception 'asset_ids holds ids only' using errcode = '22023';
+      if jsonb_array_length(aid) < 16
+         and x ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' then
+        aid := aid || jsonb_build_array(x);
       end if;
-      aid := aid || jsonb_build_array(x);
     end loop;
-    res := res || jsonb_build_object('asset_ids', aid);
-  end if;
-  if p_result ? 'files' then
-    if jsonb_typeof(p_result -> 'files') is distinct from 'array' or jsonb_array_length(p_result -> 'files') > 16 then
-      raise exception 'files is a list of at most 16 files' using errcode = '22023';
+    if jsonb_array_length(aid) > 0 then
+      res := res || jsonb_build_object('asset_ids', aid);
     end if;
+  end if;
+  if jsonb_typeof(p_result -> 'files') = 'array' then
     for f in select y.value from jsonb_array_elements(p_result -> 'files') y loop
-      if jsonb_typeof(f) is distinct from 'object'
-         or jsonb_typeof(f -> 'name') is distinct from 'string' or (f ->> 'name') !~ '^[A-Za-z0-9._-]{1,120}$'
-         or jsonb_typeof(f -> 'mime') is distinct from 'string' or (f ->> 'mime') !~ '^[a-z]{1,20}/[a-z0-9.+-]{1,60}$'
-         or jsonb_typeof(f -> 'sha256') is distinct from 'string' or (f ->> 'sha256') !~ '^[0-9a-f]{64}$'
-         or not public.creative_json_int(f -> 'bytes', 0, 1099511627776) then
-        raise exception 'a file is a name, a type, a size and a digest' using errcode = '22023';
+      if jsonb_array_length(fl) < 16
+         and jsonb_typeof(f) = 'object'
+         and jsonb_typeof(f -> 'name') = 'string' and (f ->> 'name') ~ '^[A-Za-z0-9._-]{1,120}$'
+         and jsonb_typeof(f -> 'mime') = 'string' and (f ->> 'mime') ~ '^[a-z]{1,20}/[a-z0-9.+-]{1,60}$'
+         and jsonb_typeof(f -> 'sha256') = 'string' and (f ->> 'sha256') ~ '^[0-9a-f]{64}$'
+         and public.creative_json_int(f -> 'bytes', 0, 1099511627776) then
+        fl := fl || jsonb_build_array(jsonb_build_object('name', f -> 'name', 'mime', f -> 'mime', 'bytes', f -> 'bytes', 'sha256', f -> 'sha256'));
       end if;
-      fl := fl || jsonb_build_array(jsonb_build_object('name', f -> 'name', 'mime', f -> 'mime', 'bytes', f -> 'bytes', 'sha256', f -> 'sha256'));
     end loop;
-    res := res || jsonb_build_object('files', fl);
+    if jsonb_array_length(fl) > 0 then
+      res := res || jsonb_build_object('files', fl);
+    end if;
   end if;
   return res;
 end
@@ -813,7 +809,7 @@ begin
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_quantity(text, jsonb)'::regprocedure) <> '02446e3ae600ea3504cdbea5a59829e8'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.finish_creative_job(uuid, text, boolean, numeric, jsonb, text, text)'::regprocedure) <> '6af709d6345f32e8eef6e9dd64d04c44'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_regions_problem(jsonb)'::regprocedure) <> '5603be6af36c813d2799eb581bb971cd'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_region_outcomes(jsonb, jsonb)'::regprocedure) <> 'd775324da2ae4a78cb5f1c9be74e2c05' then
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_region_outcomes(jsonb, jsonb)'::regprocedure) <> '13c3e850f7f31bde51f09087f4a8c505' then
     raise exception '0126 end state: a replaced or new function does not hold this file''s body';
   end if;
   if has_function_privilege('anon', 'public.creative_regions_problem(jsonb)', 'EXECUTE')

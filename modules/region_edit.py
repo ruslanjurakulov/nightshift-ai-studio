@@ -81,9 +81,10 @@ MAX_PROMPT_CHARS = 1000
 #: before it is decoded (a small file can hide a huge picture).
 MAX_PIXELS = 48_000_000
 #: A region EDIT (the run step) works on the whole picture several times over (the original, the composite, the lock's masks and the
-#: comparison): measured, about 100 MB of RAM per megapixel at 47.6 MP with five large regions (4.9 GB, about 95 s) and about 50 MB per
-#: megapixel at 16 MP (0.8 GB, about 23 s). A source of more pixels than this is refused before anything is asked of a model, and costs
-#: nothing; the worker and the Command Center's routes use the same number (command-center/lib/regionEdit/geometry.ts).
+#: comparison). Measured by the reviewer with five full-picture regions: 4.9 GB and about 95 s at 47.6 MP, and 1.68 GB and about 37 s at
+#: 16 MP (a 4000x4000 source). So a worker needs about 1.7 GB of RAM for EACH region job it runs at once (CREATIVE_WORKER_CONCURRENCY is
+#: 4 by default). A source of more pixels than this is refused before anything is asked of a model, and costs nothing; the worker and the
+#: Command Center's routes use the same number (command-center/lib/regionEdit/geometry.ts).
 REGION_MAX_SOURCE_PIXELS = 16_000_000
 #: Context around a region in the crop: a quarter of its longer side, at least this many pixels.
 CONTEXT_MIN_PX = 32

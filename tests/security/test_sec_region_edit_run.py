@@ -607,19 +607,48 @@ def test_the_stored_result_is_built_from_an_allow_list_so_no_free_text_survives(
         assert leak not in stored, leak
 
 
-@pytest.mark.parametrize("extra", [
-    {"feather": 99}, {"feather": "4"}, {"feather": 1.5}, {"storage": "somewhere else"}, {"storage": 1},
-    {"asset_ids": "x"}, {"asset_ids": ["not an id"]}, {"asset_ids": [str(uuid.uuid4())] * 17},
-    {"files": "x"}, {"files": [{"name": "a b", "mime": "image/png", "bytes": 1, "sha256": "ab" * 32}]},
-    {"files": [{"name": "a.png", "mime": "image/png", "bytes": -1, "sha256": "ab" * 32}]},
-    {"files": [{"name": "a.png", "mime": "image/png", "bytes": 1, "sha256": "zz"}]},
-    {"files": [{"name": "a.png", "mime": "text with spaces", "bytes": 1, "sha256": "ab" * 32}]},
-    {"files": [{"name": "a.png", "mime": "image/png", "sha256": "ab" * 32}]},
-    {"files": ["x"]}, {"files": [{"name": "a.png", "mime": "image/png", "bytes": 1, "sha256": "ab" * 32}] * 17},
+GOOD_FILE = {"name": "a.png", "mime": "image/png", "bytes": 1, "sha256": "ab" * 32}
+
+
+@pytest.mark.parametrize("extra,dropped", [
+    ({"feather": 99}, "feather"), ({"feather": "4"}, "feather"), ({"feather": 1.5}, "feather"), ({"feather": None}, "feather"),
+    ({"storage": "somewhere else"}, "storage"), ({"storage": 1}, "storage"), ({"storage": ["library"]}, "storage"),
+    ({"asset_ids": "x"}, "asset_ids"), ({"asset_ids": ["not an id"]}, "asset_ids"), ({"asset_ids": [7, None, {"a": 1}]}, "asset_ids"),
+    ({"asset_ids": {"a": 1}}, "asset_ids"), ({"asset_ids": []}, "asset_ids"),
+    ({"files": "x"}, "files"), ({"files": []}, "files"), ({"files": ["x", 1, None]}, "files"),
+    ({"files": [{**GOOD_FILE, "name": "a b"}]}, "files"), ({"files": [{**GOOD_FILE, "name": "../x.png"}]}, "files"),
+    ({"files": [{**GOOD_FILE, "bytes": -1}]}, "files"), ({"files": [{**GOOD_FILE, "bytes": 1.5}]}, "files"),
+    ({"files": [{**GOOD_FILE, "sha256": "zz"}]}, "files"), ({"files": [{**GOOD_FILE, "mime": "text with spaces"}]}, "files"),
+    ({"files": [{k: v for k, v in GOOD_FILE.items() if k != "bytes"}]}, "files"),
 ])
-def test_a_report_with_a_malformed_allow_listed_key_is_refused_and_nothing_moves(db, extra):
+def test_a_malformed_optional_key_is_dropped_and_never_stops_the_charge(db, extra, dropped):
+    # Raising here would roll finish_creative_job back and leave a paid, stored result in `processing` with its hold: only `regions`
+    # is strict. The result is still stored, the applied region is charged in full, and the bad key is simply not there.
     p = P(db, 1)
-    assert _try(db, p, {**outcomes(p, ["applied"]), **extra})[0] == "22023"
+    j, w, asset = run_to_processing(db, p)
+    ref = f"cj:{j['id']}"
+    out = finish(db, j, w, {**outcomes(p, ["applied"]), **extra})
+    assert out["status"] == "completed" and out["charged_credits"] == 3, out
+    assert dropped not in out["result"], out["result"]
+    assert [r["status"] for r in out["result"]["regions"]] == ["applied"]
+    assert [k for k, _a in ledger(db, ref)] == ["reserve", "capture"]
+
+
+def test_valid_entries_next_to_malformed_ones_are_kept_and_the_lists_are_capped(db):
+    p = P(db, 1)
+    j, w, asset = run_to_processing(db, p)
+    ids = [str(uuid.uuid4()) for _ in range(20)]
+    files = [{**GOOD_FILE, "name": "bad name"}, GOOD_FILE, "x", {**GOOD_FILE, "name": "b.png"}] + [{**GOOD_FILE, "name": f"f{i}.png"} for i in range(30)]
+    out = finish(db, j, w, {**outcomes(p, ["applied"]), "asset_ids": ["junk", *ids], "files": files, "feather": 3, "storage": "worker"})
+    assert out["status"] == "completed" and out["charged_credits"] == 3
+    assert out["result"]["asset_ids"] == ids[:16]
+    assert [f["name"] for f in out["result"]["files"]][:2] == ["a.png", "b.png"] and len(out["result"]["files"]) == 16
+    assert (out["result"]["feather"], out["result"]["storage"]) == (3, "worker")
+
+
+def test_a_malformed_regions_report_is_still_refused_whatever_the_optional_keys_say(db):
+    p = P(db, 1)
+    assert _try(db, p, {"regions": "applied", "feather": 4, "storage": "library"})[0] == "22023"
 
 
 def test_every_closed_reason_is_accepted_and_nothing_else(db):

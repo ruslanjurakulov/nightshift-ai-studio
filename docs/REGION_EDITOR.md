@@ -123,8 +123,9 @@ stored leaves a job that is failed (`output_lost`) and released, never polled or
 
 Limits (review): a source picture of more than 16 megapixels (`REGION_MAX_SOURCE_PIXELS`, `MAX_SOURCE_PIXELS`) is refused before
 anything is held or asked of a model, in the web routes (`source_too_large`) and in the worker (`source_too_large`, the header is
-read without decoding): measured, a region edit needs about 50 MB of RAM per megapixel at 16 MP (0.8 GB, about 23 s with five large
-regions) and about 100 MB per megapixel at 47.6 MP (4.9 GB, about 95 s). Words whose JSON passes the database's 16 KB of params
+read without decoding): measured with five full-picture regions, a region edit needs about 1.7 GB of RAM and about 37 s at 16 MP
+(a 4000x4000 source) and 4.9 GB and about 95 s at 47.6 MP, so the creative worker needs about 1.7 GB for each region job it runs at once
+(`CREATIVE_WORKER_CONCURRENCY`, 4 by default). Words whose JSON passes the database's 16 KB of params
 (five regions of 1000 characters in a 3-byte script) are refused by the routes (`params_too_large`) with a sentence. Only the
 `image.openai` and `image.gemini` adapters run a region edit (their edit call is synchronous); any other adapter ends the job
 before a vendor is called. An unexpected error in one region fails that region (`provider_error`) and the others stand; the cost of
