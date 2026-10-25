@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "presets": [
+    { "id": "youtube_1080p", "width": 1920, "height": 1080, "fps": 30, "max_duration_s": 1800 },
+    { "id": "youtube_720p", "width": 1280, "height": 720, "fps": 30, "max_duration_s": 1800 },
+    { "id": "vertical_1080p", "width": 1080, "height": 1920, "fps": 30, "max_duration_s": 180 },
+    { "id": "square_1080", "width": 1080, "height": 1080, "fps": 30, "max_duration_s": 600 },
+    { "id": "feed_4x5_1080", "width": 1080, "height": 1350, "fps": 30, "max_duration_s": 600 }
+  ]
+}

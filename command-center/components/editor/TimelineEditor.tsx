@@ -134,6 +134,8 @@ import {
   type Fit,
 } from "@/lib/editorFrame";
 import { FitPicker, FramePicker } from "./FrameFitControls";
+import { ExportPresetPicker } from "./ExportPresetPicker";
+import { applyExportPreset } from "@/lib/editorExportPresets";
 import {
   addOverlay,
   canAddOverlay,
@@ -1122,6 +1124,13 @@ export function TimelineEditor({
             {exportBlocked}
           </p>
         ) : null}
+        <ExportPresetPicker
+          width={model.width}
+          height={model.height}
+          fps={model.fps}
+          totalS={total}
+          onChange={(id) => apply(applyExportPreset(model, id))}
+        />
         <RenderBudgetNotice model={model} />
         <SettleNotice changes={settled} />
         <p className="m-0 hidden text-xs text-[var(--color-muted)] sm:block">

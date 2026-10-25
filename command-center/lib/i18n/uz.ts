@@ -17,6 +17,7 @@ import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
 import { overlayUz } from "./overlay/uz";
 import { shapesUz } from "./shapes/uz";
+import { exportPresetUz } from "./editor-presets/uz";
 import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
@@ -5090,6 +5091,8 @@ export const uz: Dictionary = {
     overlay: overlayUz,
     /** Shapes and stickers: ./shapes/uz.ts. */
     shapes: shapesUz,
+    /** Export format picker: ./editor-presets/uz.ts. */
+    exportPreset: exportPresetUz,
     /** Cross-fade styles and text looks: ./editor-looks/uz.ts. */
     looks: looksUz,
     fx: fxUz,

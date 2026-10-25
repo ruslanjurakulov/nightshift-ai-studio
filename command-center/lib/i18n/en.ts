@@ -16,6 +16,7 @@ import { presetsEn } from "./presets/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
 import { shapesEn } from "./shapes/en";
+import { exportPresetEn } from "./editor-presets/en";
 import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
@@ -5102,6 +5103,8 @@ export const en = {
     overlay: overlayEn,
     /** Shapes and stickers: ./shapes/en.ts. */
     shapes: shapesEn,
+    /** Export format picker: ./editor-presets/en.ts. */
+    exportPreset: exportPresetEn,
     /** Cross-fade styles and text looks: ./editor-looks/en.ts. */
     looks: looksEn,
     fx: fxEn,
