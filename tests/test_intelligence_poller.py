@@ -96,6 +96,56 @@ class IntelligencePollerTestCase(unittest.TestCase):
         self.assertEqual(written, 0)
         analytics.video_performance.assert_not_called()
 
+    def _poll_one(self, performance, ctr=None):
+        self.store.record_video(video_id="v1", title="First", published_at="2026-01-01T00:00:00")
+        analytics = MagicMock()
+        analytics.video_performance.return_value = performance
+        analytics.video_ctr.return_value = {} if ctr is None else ctr
+        analytics.video_retention.return_value = []
+        written = self._make_poller(analytics_client=analytics).poll_own_channel_metrics(days=None)
+        self.assertEqual(written, 1)
+        return self.store.latest_metrics("v1")
+
+    def test_a_video_youtube_has_no_row_for_yet_is_stored_as_null_not_zero(self):
+        # video_performance returns {} when YouTube has no row for the window. Zeros here were read downstream as
+        # "measured, nobody watched"; NULL says "not measured".
+        row = self._poll_one({})
+        for column in ("views", "likes", "comment_count", "watch_time_minutes", "average_view_duration_seconds",
+                       "impressions", "impression_ctr"):
+            self.assertIsNone(row[column], column)
+
+    def test_a_zero_youtube_did_return_stays_a_zero(self):
+        row = self._poll_one({"views": 0, "likes": 0, "comments": 0, "estimatedMinutesWatched": 0.0,
+                              "averageViewDuration": 0.0})
+        self.assertEqual((row["views"], row["likes"], row["comment_count"]), (0, 0, 0))
+        self.assertEqual((row["watch_time_minutes"], row["average_view_duration_seconds"]), (0.0, 0.0))
+
+    def test_only_the_metrics_missing_from_the_response_are_null(self):
+        row = self._poll_one({"views": 42, "likes": 5})
+        self.assertEqual((row["views"], row["likes"]), (42, 5))
+        self.assertIsNone(row["comment_count"])
+        self.assertIsNone(row["watch_time_minutes"])
+        self.assertIsNone(row["average_view_duration_seconds"])
+
+    def test_an_unparseable_metric_is_null_rather_than_losing_the_snapshot_or_becoming_zero(self):
+        row = self._poll_one({"views": "n/a", "likes": 3, "estimatedMinutesWatched": float("nan")})
+        self.assertIsNone(row["views"])
+        self.assertEqual(row["likes"], 3)
+        self.assertIsNone(row["watch_time_minutes"])
+
+    def test_infinity_is_not_a_measurement_in_any_column(self):
+        # int(float("inf")) raises OverflowError; a float inf would be stored and then break the mirror's JSON.
+        row = self._poll_one({"views": float("inf"), "likes": "1e999", "comments": float("-inf"),
+                              "estimatedMinutesWatched": float("inf"), "averageViewDuration": "inf"})
+        for column in ("views", "likes", "comment_count", "watch_time_minutes", "average_view_duration_seconds"):
+            self.assertIsNone(row[column], column)
+
+    def test_numeric_strings_and_floats_from_the_api_are_still_read(self):
+        row = self._poll_one({"views": "100", "likes": 10.0, "comments": 2, "estimatedMinutesWatched": "50.5",
+                              "averageViewDuration": 30})
+        self.assertEqual((row["views"], row["likes"], row["comment_count"]), (100, 10, 2))
+        self.assertEqual((row["watch_time_minutes"], row["average_view_duration_seconds"]), (50.5, 30.0))
+
     # -- poll_competitors -------------------------------------------------
 
     def test_poll_competitors_returns_mock_data_on_success(self):
