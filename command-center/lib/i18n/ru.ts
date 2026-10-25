@@ -22,6 +22,7 @@ import { fxRu } from "./editor-fx/ru";
 import { captionStylesRu } from "./caption-styles/ru";
 import { editorExportRu } from "./editor-export/ru";
 import { reviewLinkRu, reviewPageRu } from "./review-link/ru";
+import { regionEditRu } from "./region-edit/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) намеренно не переводятся. */
@@ -38,6 +39,7 @@ export const ru: Dictionary = {
   ownerTruth: ownerTruthRu,
   connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,
+  regionEdit: regionEditRu,
   reviewPage: reviewPageRu,
   improveAi: improveRu,
   brand: {

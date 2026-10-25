@@ -21,6 +21,7 @@ import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
 import { reviewLinkEn, reviewPageEn } from "./review-link/en";
+import { regionEditEn } from "./region-edit/en";
 
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
@@ -46,6 +47,7 @@ export const en = {
   ownerTruth: ownerTruthEn,
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
+  regionEdit: regionEditEn,
   reviewPage: reviewPageEn,
   improveAi: improveEn,
   brand: {
