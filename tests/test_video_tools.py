@@ -271,7 +271,8 @@ class EndFrames(Tmp):
     def test_only_models_documented_for_it_take_an_end_frame(self):
         takes = {m.id for m in reg.models("i2v") if m.end_frame}
         self.assertEqual(takes, {"veo-3.1", "veo-3.1-fast", "veo-3.1-lite", "kling-v3", "luma-ray-3.2",
-                                 "seedance-1.0-pro", "seedance-1.5-pro", "seedance-2.0", "seedance-2.5"})
+                                 "seedance-1.0-pro", "seedance-1.5-pro", "seedance-2.0", "seedance-2.5",
+                                 "minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max"})
         # Kling 2.6 takes one only in 1080p silent (pro) mode, which is never sent.
         entry = reg.get("kling-v2.6")
         self.assertTrue(adapter("video.kling").problems(self.i2v(duration_s=5), entry))

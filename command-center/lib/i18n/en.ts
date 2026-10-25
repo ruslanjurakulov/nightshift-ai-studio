@@ -9,6 +9,7 @@ import { ownerSafetyEn } from "./owner-safety/en";
 import { confirmSheetsEn } from "./confirm-sheets/en";
 import { ownerRpcEn } from "./owner-rpc/en";
 import { marketingEn } from "./marketing/en";
+import { modelSwitchEn } from "./model-switch/en";
 import { modelKeysEn } from "./model-keys/en";
 import { seriesPlanEn } from "./series-plan/en";
 import { ownerTruthEn } from "./owner-truth/en";
@@ -22,6 +23,7 @@ import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
 import { editorExportEn } from "./editor-export/en";
 import { reviewLinkEn, reviewPageEn } from "./review-link/en";
+import { regionEditEn } from "./region-edit/en";
 
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
@@ -43,11 +45,13 @@ export const en = {
   confirmSheets: confirmSheetsEn,
   ownerRpc: ownerRpcEn,
   marketing: marketingEn,
+  modelSwitch: modelSwitchEn,
   modelKeys: modelKeysEn,
   seriesPlan: seriesPlanEn,
   ownerTruth: ownerTruthEn,
   connectPicker: connectPickerEn,
   reviewLink: reviewLinkEn,
+  regionEdit: regionEditEn,
   reviewPage: reviewPageEn,
   improveAi: improveEn,
   brand: {
@@ -956,6 +960,7 @@ export const en = {
       render: "The video could not be put together.",
       timeout: "The video took too long to make and was stopped.",
       held: "The accuracy check held the script, so no video was made and nothing was charged. Try a different topic or different wording.",
+      switched_off: "A service that helps make the video is temporarily unavailable, so the video was not started. Nothing was charged. Try again later.",
       unknown: "Something went wrong and the video was not made.",
     },
     creditsReturned: "Your credits were returned.",
@@ -3515,6 +3520,7 @@ export const en = {
       price_changed: "The price changed. Check the new price and confirm again.",
       idempotency_conflict: "This request was already used for a different generation. Reload the page.",
       model_not_sellable: "This model is not available right now.",
+      model_temporarily_off: "This model is temporarily unavailable. Nothing was charged. Choose another model, or try again later.",
       entitlement_required: "This model is available after your organization's first credit purchase.",
       unpriced: "This model has no price yet, so it cannot be used.",
       capability_not_supported: "This kind of generation is not available yet.",

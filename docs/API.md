@@ -211,7 +211,10 @@ an API job equal a Studio job's.
   credits from top-up packs are not counted), `402 key_credit_limit_reached`,
   `409 price_changed`, `429 run_limit_reached` (the plan's parallel runs),
   `422 mode_not_supported | unpriced | source_unavailable | style_unavailable`,
-  `403 entitlement_required`, `503 registry_missing`. Anything the database
+  `403 entitlement_required`, `503 registry_missing`, `503 model_temporarily_off`
+  (the owner switched that model off for now; nothing is held or charged, no other
+  model is substituted, and no reason is given: choose another model or retry
+  later; migration 0124). Anything the database
   raises that is not one of these is a structured `500 internal_error`; its text
   never reaches the client, and the job, hold and idempotency record are rolled
   back.

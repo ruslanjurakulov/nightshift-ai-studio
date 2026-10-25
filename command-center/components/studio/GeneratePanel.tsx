@@ -119,6 +119,7 @@ export function GeneratePanel({
   plans,
   onCreated,
   desk = null,
+  unavailable = [],
 }: {
   /**
    * The workspace this composer sits on (lib/creative/desks): it offers only
@@ -148,6 +149,12 @@ export function GeneratePanel({
    */
   plans?: UpsellCatalog | null;
   onCreated?: () => void;
+  /**
+   * The model ids the owner switched off for now (migration 0124, models_switched_off()): ids only, never a reason. A model the form came
+   * with (a retried job, a link from the catalog) that is one of them is NOT swapped for another: the form says it is temporarily
+   * unavailable and the person picks another themselves (CLAUDE.md #4).
+   */
+  unavailable?: readonly string[];
 }) {
   const { t, fmt, locale } = useI18n();
   const path = useChannelPath();
@@ -204,8 +211,10 @@ export function GeneratePanel({
   // Auto is offered where there is a choice to make.
   const autoOffered = available.length > 1;
   const routed = auto && autoOffered;
+  // A model the form came with that the owner switched off: nothing is picked for the person (0124).
+  const pickedOff = model !== "" && unavailable.includes(model) && !available.some((m) => m.id === model);
   // The picked model if it can make this kind, else the first that can.
-  const effectiveModel = available.some((m) => m.id === model) ? model : (available[0]?.id ?? "");
+  const effectiveModel = pickedOff ? "" : available.some((m) => m.id === model) ? model : (available[0]?.id ?? "");
   const current = available.find((m) => m.id === effectiveModel) ?? null;
   // Model ids -> the names the picker shows, for Auto's pick.
   const modelNames = useMemo(() => new Map(models.map((m) => [m.id, m.displayName])), [models]);
@@ -438,7 +447,13 @@ export function GeneratePanel({
   const words = promptRule(capability);
   const blocked = blockedReason(form, !!effectiveModel);
   // An AI edit tool nobody sells yet (no proven, priced model): the plain truth, not a generic "no model".
-  const blockedText = blocked === "no_model" && isAiEdit(capability) ? t.gen.notAvailableYet : blocked ? t.gen.blocked[blocked] : null;
+  const blockedText = pickedOff
+    ? t.modelSwitch.studio.offBody
+    : blocked === "no_model" && isAiEdit(capability)
+      ? t.gen.notAvailableYet
+      : blocked
+        ? t.gen.blocked[blocked]
+        : null;
 
   const pick = (c: StudioCapability) => {
     // A picture, a recording and a video are never the same pick: switching
@@ -610,7 +625,26 @@ export function GeneratePanel({
   // Auto's quote, in words: "Auto picked X for N credits" and why.
   const autoLine = routed && quote.status === "ready" && quote.routed ? routedLine(t, quote.routed, quote.credits, locale) : null;
   // The model: what will make it, how fast, how good — and a way to change it.
-  const modelBlock = current ? (
+  const modelBlock = pickedOff ? (
+    <div className="studio-field flex items-center gap-3 p-3" data-testid="gen-model-off">
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="studio-label">{t.gen.modelLabel}</span>
+        <span className="text-sm font-semibold text-[var(--color-fg)]">{t.modelSwitch.studio.offTitle}</span>
+        <span className="text-xs text-[var(--color-muted)]">{t.modelSwitch.studio.offBody}</span>
+      </span>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={sheetOpen}
+        ref={changeRef}
+        disabled={available.length === 0}
+        onClick={() => setSheetOpen(true)}
+        className="tap press shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)] disabled:opacity-60"
+      >
+        {t.modelSwitch.studio.offChoose}
+      </button>
+    </div>
+  ) : current ? (
     <div className="studio-field flex items-center gap-3 p-3">
       <span
         aria-hidden
