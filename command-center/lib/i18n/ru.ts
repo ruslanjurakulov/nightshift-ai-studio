@@ -9,6 +9,7 @@ import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
 import { marketingRu } from "./marketing/ru";
+import { modelSwitchRu } from "./model-switch/ru";
 import { modelKeysRu } from "./model-keys/ru";
 import { seriesPlanRu } from "./series-plan/ru";
 import { ownerTruthRu } from "./owner-truth/ru";
@@ -36,6 +37,7 @@ export const ru: Dictionary = {
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,
   marketing: marketingRu,
+  modelSwitch: modelSwitchRu,
   modelKeys: modelKeysRu,
   seriesPlan: seriesPlanRu,
   ownerTruth: ownerTruthRu,
@@ -947,6 +949,7 @@ export const ru: Dictionary = {
       render: "Не удалось собрать видео.",
       timeout: "Видео создавалось слишком долго и было остановлено.",
       held: "Проверка точности остановила сценарий, поэтому видео не создано и ничего не списано. Попробуйте другую тему или другую формулировку.",
+      switched_off: "Один из сервисов, участвующих в создании видео, временно недоступен, поэтому создание видео не началось. Ничего не списано. Попробуйте позже.",
       unknown: "Что-то пошло не так, и видео не создано.",
     },
     creditsReturned: "Ваши кредиты возвращены.",
@@ -3505,6 +3508,7 @@ export const ru: Dictionary = {
       price_changed: "Цена изменилась. Проверьте новую цену и подтвердите ещё раз.",
       idempotency_conflict: "Этот запрос уже использован для другой генерации. Обновите страницу.",
       model_not_sellable: "Эта модель сейчас недоступна.",
+      model_temporarily_off: "Эта модель временно недоступна. Ничего не списано. Выберите другую модель или попробуйте позже.",
       entitlement_required: "Эта модель доступна после первой покупки кредитов вашей организацией.",
       unpriced: "У этой модели ещё нет цены, поэтому её нельзя использовать.",
       capability_not_supported: "Такой вид генерации пока недоступен.",

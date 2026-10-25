@@ -61,7 +61,7 @@ from modules.capabilities.base import (
 )
 from modules.capabilities.modelark import RESULT_HOSTS as MODELARK_RESULT_HOSTS
 from modules.capabilities.modelark import map_code as modelark_code
-from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, unconfirmed
+from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, checked_polling_url, unconfirmed
 
 _ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
 _POLICY_HINTS = ("safety", "policy", "blocked", "moderation", "sensitive", "risk")
@@ -975,6 +975,10 @@ class FluxVideoAdapter(HttpAdapter):
     capabilities = (T2V,)
     _RES = {"720p": "hd", "1080p": "fhd"}
     _FAILED = {"Error", "Failed", "Content Moderated", "Request Moderated", "Task not found"}
+    #: See FluxAdapter: the polling link carries ``x-key``, so it gets the strict check; a 3xx is never followed.
+    polling_domain = "bfl.ai"
+    polling_ports = (None, 443)
+    follow_redirects = False
 
     def auth_headers(self) -> Dict[str, str]:
         return {"x-key": self.api_key(), "accept": "application/json"}
@@ -987,16 +991,22 @@ class FluxVideoAdapter(HttpAdapter):
                 raise AdapterError(E_BAD_REQUEST, "resolution not offered by FLUX video")
             body["resolution"] = self._RES[request.resolution]
         data = self.post(f"{self.base_url}/{vendor_model}", body)
-        poll = data.get("polling_url")
-        if not poll or not host_is(poll, "bfl.ai"):
-            raise AdapterError(E_BAD_RESPONSE, "no bfl.ai polling_url in the response")
+        poll = data.get("polling_url") if isinstance(data, dict) else None
+        try:
+            checked_polling_url(poll, self.polling_domain, self.polling_ports)
+        except (AdapterError, TypeError):
+            # The vendor answered 2xx: a task probably exists, and it bills; the key was not sent to the link.
+            raise unconfirmed("the answer carries no polling_url on bfl.ai") from None
         return ProviderTask(self.key, vendor_model, str(poll))
 
     def poll(self, task: ProviderTask) -> PollResult:
         self.require_key()
         url = str(task.task_id or "")
-        if not host_is(url, "bfl.ai"):
-            raise AdapterError(E_NOT_FOUND, "task id is not a bfl.ai polling URL")
+        try:
+            checked_polling_url(url, self.polling_domain, self.polling_ports)
+        except AdapterError:
+            # Accepted once, so it may have run and been billed; the key was not sent to the link.
+            raise after_completion(AdapterError(E_NOT_FOUND, "task id is not a bfl.ai polling URL")) from None
         data = self.get(url)
         status = str(data.get("status") or "")
         if status == "Ready":

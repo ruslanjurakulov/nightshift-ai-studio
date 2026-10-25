@@ -10,7 +10,7 @@ import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { getOrgContext } from "@/lib/orgs-server";
-import { loadStudioModels } from "@/lib/server/creative";
+import { loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery } from "@/lib/creative/studio";
@@ -57,7 +57,9 @@ export default async function CreatePage({
   const genOrgId = org.supported && org.current ? org.current.id : null;
   // The plan dialog's catalog (0034) is read beside the models: a refused
   // generation then names the plans that unlock it without another round trip.
-  const [models, plans] = genOrgId ? await Promise.all([loadStudioModels(), loadUpsellCatalog(genOrgId)]) : [[], null];
+  const [models, plans, switchedOff] = genOrgId
+    ? await Promise.all([loadStudioModels(), loadUpsellCatalog(genOrgId), loadSwitchedOffModels()])
+    : [[], null, [] as string[]];
   // "Use in Studio" from the Library opens a picture tool with the picture
   // chosen, and a sidebar tool row opens that tool. Either only fills the
   // form: nothing is priced or spent until Generate is pressed.
@@ -157,6 +159,8 @@ export default async function CreatePage({
             desk={desk}
             orgId={genOrgId}
             models={models}
+            // The owner's switch (0124): a model the form came with that is off is named as such, never swapped for another.
+            unavailable={switchedOff}
             initial={initial}
             // The channel's look (0047) is the starting style; the panel uses it
             // only if it is one of the organization's kits as loaded.

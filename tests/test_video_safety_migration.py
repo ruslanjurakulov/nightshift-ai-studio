@@ -19,13 +19,14 @@ ROLLBACK = (REPO / "docs" / "sql" / "rollback_0111_video_safety.sql").read_text(
 REPLACED = {"render_jobs_payment_guard": "0076_scene_regenerate.sql", "api_get_job": "0042_web_api_hardening.sql",
             "oauth_get_job": "0093_mcp_oauth.sql"}
 NEW = {"render_job_public_error"}
-CODES = ["credits", "voice", "provider_quota", "media", "render", "timeout", "held", "unknown"]
+CODES = ["credits", "voice", "provider_quota", "media", "render", "timeout", "held", "switched_off", "unknown"]
 #: Codes the worker and the web app know that migration 0111's SQL helper does not yet list. `held` (the accuracy check
 #: held the script before any video was made) arrived with a PR that may add no migration, so the public API and MCP
 #: callers (api_get_job, oauth_get_job) read a `[code:held]` job as `unknown` until a follow-up migration adds it to
 #: render_job_public_error. The web app's own mapping (parseJobError, create.jobError) already has it. Remove the code
-#: from this tuple when that migration lands and the parity below must hold again.
-SQL_PENDING = ("held",)
+#: from this tuple when that migration lands and the parity below must hold again. `switched_off` (the owner switched the
+#: run's provider off, migration 0124 / modules/model_switch.py) is in the same position, for the same reason.
+SQL_PENDING = ("held", "switched_off")
 
 
 def code(text):

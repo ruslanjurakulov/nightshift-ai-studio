@@ -53,6 +53,11 @@ _HOSTNAME = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z
 
 _EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "video/mp4": ".mp4"}
 
+#: An ``Output`` mime for a picture whose format the vendor does not name (FLUX 3 Image has no output-format
+#: field and its docs do not say what the link serves): the file's own first bytes decide what it is, and the
+#: file is stored under the extension of that type. A file that is none of PNG / JPEG / WebP is refused.
+ANY_IMAGE = "image/*"
+
 #: Starts the message of a submit failure that does not prove the vendor took
 #: nothing (it comes FIRST: AdapterError keeps only the first 500 characters).
 UNCONFIRMED = "UNCONFIRMED SPEND: the vendor may have accepted this and be billing it; check its usage page before rerunning"
@@ -106,6 +111,21 @@ def checked_result_url(url, hosts: Sequence[str], ports: Sequence[Optional[int]]
     return url
 
 
+def checked_polling_url(url, domain: str, ports: Sequence[Optional[int]] = (None, 443)) -> str:
+    """``url`` when it is an https address on ``domain`` (or a subdomain), else ``bad_response``.
+
+    A POLLING link is followed WITH the vendor's key, so it gets the strict check of a result link
+    (``checked_result_url``: the host urllib3 will connect to must be the host that was read, no
+    credentials, no backslash, ``#`` or ``?`` tricks, standard port) and not ``base.host_is``, which
+    reads the host with ``urlparse`` and accepts ``https://127.0.0.1:PORT\\@api.bfl.ai/x`` while
+    ``requests`` connects to 127.0.0.1. Nothing is requested before this."""
+    try:
+        return checked_result_url(url, (domain,), ports)
+    except AdapterError:
+        raise AdapterError(E_BAD_RESPONSE, f"the polling link is not an https address on {domain}; "
+                                           f"the key was not sent to it") from None
+
+
 def _download_code(status: int) -> str:
     """The code for a refused DOWNLOAD. A result link is a signed URL: its 401/403/404/410 means the
     link expired or is gone, never that our API key is wrong (the key is not sent to it), so it must
@@ -117,6 +137,8 @@ def _download_code(status: int) -> str:
 
 def _looks_like(mime: str, head: bytes) -> bool:
     """The first bytes of a file agree with the type the vendor promised."""
+    if mime == ANY_IMAGE:
+        return sniff_image_mime(head) is not None
     if mime == "video/mp4":
         return b"ftyp" in head[:12]
     if mime == "image/png":
@@ -195,8 +217,22 @@ class SafeResultMixin:
                 self._download(self.checked_url(item.url), dest, mime=item.mime)
             else:
                 raise AdapterError(E_BAD_RESPONSE, "output has neither data nor url")
+            if item.mime == ANY_IMAGE:
+                dest = self._settle_image(dest)
             paths.append(dest)
         return paths
+
+    @staticmethod
+    def _settle_image(dest: Path) -> Path:
+        """Rename a file stored without a type to the extension of the picture type its bytes are."""
+        with open(dest, "rb") as fh:
+            mime = sniff_image_mime(fh.read(16))
+        if mime is None:                          # _download checked already; never keep a stranger if it did not
+            dest.unlink(missing_ok=True)
+            raise AdapterError(E_BAD_RESPONSE, "output is not a PNG, JPEG or WebP picture")
+        final = dest.with_suffix(_EXT[mime])
+        os.replace(dest, final)
+        return final
 
     @staticmethod
     def _publish(dest: Path, data: bytes) -> None:

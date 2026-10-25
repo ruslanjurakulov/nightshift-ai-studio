@@ -39,6 +39,7 @@ export function GenerateSection({
   plans = null,
   desk = null,
   project = null,
+  unavailable = [],
 }: {
   /**
    * The desk this section is (lib/creative/desks): its tools only, laid out
@@ -61,6 +62,8 @@ export function GenerateSection({
   plans?: UpsellCatalog | null;
   /** An editor project the person came from ("Improve with AI"): results can be added back to it, and there is a way back. */
   project?: string | null;
+  /** The model ids the owner switched off for now (0124): the composer says so over a model the form came with, and picks nothing instead. */
+  unavailable?: readonly string[];
 }) {
   const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill } | null>(
     initial ? { nonce: 0, value: initial } : null,
@@ -104,6 +107,7 @@ export function GenerateSection({
       sourceRequest={sourceRequest}
       plans={plans}
       desk={desk}
+      unavailable={unavailable}
       onCreated={() => setRefreshKey((k) => k + 1)}
     />
   );
