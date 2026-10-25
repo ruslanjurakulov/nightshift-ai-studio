@@ -244,6 +244,8 @@ export const CREATIVE_ERRORS = [
   "price_changed",
   "idempotency_conflict",
   "model_not_sellable",
+  // 0124: the owner switched this model (or its provider) off for now; nothing was held or charged.
+  "model_temporarily_off",
   "entitlement_required",
   "unpriced",
   "capability_not_supported",
@@ -304,6 +306,8 @@ export function isCreativeMissing(error: DbError | null | undefined): boolean {
 const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = {
   registry_missing: { status: 503, code: "registry_missing" },
   model_not_sellable: { status: 422, code: "model_not_sellable" },
+  // 0124: temporary, so 503 like the registry being unavailable; the sentence says to choose another model or wait.
+  model_temporarily_off: { status: 503, code: "model_temporarily_off" },
   entitlement_required: { status: 403, code: "entitlement_required" },
   unpriced: { status: 422, code: "unpriced" },
   capability_not_supported: { status: 422, code: "capability_not_supported" },

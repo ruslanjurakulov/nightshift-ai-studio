@@ -422,6 +422,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Series Factory S2 (0120): tests/security/sec_series_tables_0120.py — one ready plan of three episodes per tenant.
     import sec_series_tables_0120
     sec_series_tables_0120.seed(conn, sc)
+    # The owner's model switches (0124): tests/security/sec_model_switch_0124.py — one inert switch, one log row, one dismissed alert.
+    import sec_model_switch_0124
+    sec_model_switch_0124.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

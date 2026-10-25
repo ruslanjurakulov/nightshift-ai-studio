@@ -165,6 +165,9 @@ jobs:
           # Off unless the repository variable is exactly `on`: the owner pages use the server-side owner functions
           # of migration 0107 (docs/security/ADMIN_MFA.md). Empty = today's behaviour.
           WEBENV_NIGHTSHIFT_OWNER_RPC: ${{ vars.NIGHTSHIFT_OWNER_RPC }}
+          # The owner's model switch section (migration 0124, docs/MODEL_SWITCH.md): off unless exactly `on` (empty = the section shows an
+          # "off" note and POST /api/owner/model-switch answers 404). The same variable the queue worker reads (WORKERENV_ below).
+          WEBENV_NIGHTSHIFT_MODEL_SWITCH: ${{ vars.NIGHTSHIFT_MODEL_SWITCH }}
           # The brand channel's owner page (docs/MARKETING_POSTS.md): the SAME repository variables the marketing worker
           # reads, so one switch controls both. Off unless NIGHTSHIFT_MARKETING_POSTS is exactly `on` (empty = the page
           # shows an "off" note and /api/marketing answers 404). MARKETING_TELEGRAM_CHAT is the channel's public @name,
@@ -418,6 +421,9 @@ jobs:
           WORKERENV_NIGHTSHIFT_YT_QUOTA_PROJECT: ${{ vars.NIGHTSHIFT_YT_QUOTA_PROJECT }}
           WORKERENV_NIGHTSHIFT_VOICE_GATE_STRICT: ${{ vars.NIGHTSHIFT_VOICE_GATE_STRICT }}
           WORKERENV_NIGHTSHIFT_SERIES_PLANNER: ${{ vars.NIGHTSHIFT_SERIES_PLANNER }}
+          # The owner's model switch (migration 0124, docs/MODEL_SWITCH.md): the SAME repository variable the Command Center reads
+          # (WEBENV_ below), so one variable switches both. Empty = the worker does not ask the database; nothing changes.
+          WORKERENV_NIGHTSHIFT_MODEL_SWITCH: ${{ vars.NIGHTSHIFT_MODEL_SWITCH }}
           WORKERENV_NIGHTSHIFT_VOICE_CLONING: ${{ vars.NIGHTSHIFT_VOICE_CLONING }}
           WORKERENV_CHRONOS_THUMBNAIL_VARIANTS: ${{ vars.CHRONOS_THUMBNAIL_VARIANTS }}
           WORKERENV_CHRONOS_GEMINI_STRUCTURED_OUTPUT: ${{ vars.CHRONOS_GEMINI_STRUCTURED_OUTPUT }}

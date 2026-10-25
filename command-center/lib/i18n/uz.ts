@@ -9,6 +9,7 @@ import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
 import { marketingUz } from "./marketing/uz";
+import { modelSwitchUz } from "./model-switch/uz";
 import { seriesPlanUz } from "./series-plan/uz";
 import { ownerTruthUz } from "./owner-truth/uz";
 import { connectPickerUz } from "./connect-picker/uz";
@@ -34,6 +35,7 @@ export const uz: Dictionary = {
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,
   marketing: marketingUz,
+  modelSwitch: modelSwitchUz,
   seriesPlan: seriesPlanUz,
   ownerTruth: ownerTruthUz,
   connectPicker: connectPickerUz,
@@ -942,6 +944,7 @@ export const uz: Dictionary = {
       render: "Videoni yigʻib boʻlmadi.",
       timeout: "Video juda uzoq yaratildi va toʻxtatildi.",
       held: "Aniqlik tekshiruvi ssenariyni toʻxtatdi, shuning uchun video yaratilmadi va hech narsa yechilmadi. Boshqa mavzu yoki boshqa soʻzlar bilan urinib koʻring.",
+      switched_off: "Video yaratishda qatnashadigan xizmatlardan biri vaqtincha mavjud emas, shuning uchun video yaratish boshlanmadi. Hech narsa yechilmadi. Keyinroq urinib koʻring.",
       unknown: "Nimadir xato ketdi va video yaratilmadi.",
     },
     creditsReturned: "Kreditlaringiz qaytarildi.",
@@ -3500,6 +3503,7 @@ export const uz: Dictionary = {
       price_changed: "Narx oʻzgardi. Yangi narxni tekshirib, qayta tasdiqlang.",
       idempotency_conflict: "Bu soʻrov boshqa generatsiya uchun ishlatilgan. Sahifani yangilang.",
       model_not_sellable: "Bu model hozir mavjud emas.",
+      model_temporarily_off: "Bu model vaqtincha mavjud emas. Hech narsa yechilmadi. Boshqa modelni tanlang yoki keyinroq urinib koʻring.",
       entitlement_required: "Bu model tashkilotingiz birinchi marta kredit sotib olgandan keyin ochiladi.",
       unpriced: "Bu modelning hali narxi yoʻq, shuning uchun uni ishlatib boʻlmaydi.",
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",
