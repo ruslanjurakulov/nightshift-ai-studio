@@ -84,8 +84,9 @@ class FakeSession:
             raise r
         return r
 
-    def post(self, url, json=None, headers=None, timeout=None):
-        self.calls.append({"method": "POST", "url": url, "json": json, "headers": headers or {}})
+    def post(self, url, json=None, headers=None, timeout=None, allow_redirects=True):
+        self.calls.append({"method": "POST", "url": url, "json": json, "headers": headers or {},
+                           "allow_redirects": allow_redirects})
         return self._next(self.posts)
 
     def get(self, url, params=None, headers=None, stream=False, timeout=None, allow_redirects=True):

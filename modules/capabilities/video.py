@@ -103,6 +103,8 @@ class VeoAdapter(HttpAdapter):
     #: 3.1 Fast and 3.1 Lite (ai.google.dev/gemini-api/docs/veo, 2026-10-01).
     end_frame_capabilities = (I2V,)
     _OP = re.compile(r"^models/[A-Za-z0-9.-]+/operations/[A-Za-z0-9_-]+$")
+    #: The key rides every Veo call in a header requests would carry across a cross-host redirect: a 3xx is an error, never followed.
+    follow_redirects = False
     #: Set by tools/probe_models.py on the adapter it builds (to the vendor model it is probing) so a probe BY NAME can learn
     #: whether a past-shutdown id still answers; every other caller is refused at submit. Deliberately an attribute and not an
     #: environment switch: a value that GitHub or a deploy could set would let every worker bypass the shutdown guard.

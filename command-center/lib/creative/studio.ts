@@ -309,6 +309,21 @@ const tier = (v: unknown): number | null => (typeof v === "number" && Number.isI
  * rows do not describe offers no end frame and no size (the database would
  * refuse them anyway).
  */
+/**
+ * Only the models `sellable_models()` lists. The RLS policy on model_registry shows a member every verified row, and it cannot know a
+ * vendor-announced shutdown date (migration 0125: model_past_shutdown is revoked from signed-in users), so a model past its date would still be
+ * picked here and refused by the quote. When the function answered, a model it does not list is dropped; when it did not (a missing
+ * migration, an error), the list is left as it was.
+ */
+export function onlySellable(models: StudioModel[], sellable: unknown): StudioModel[] {
+  if (!Array.isArray(sellable)) return models;
+  const ids = new Set<string>();
+  for (const r of sellable) {
+    if (r && typeof r === "object" && typeof (r as Record<string, unknown>).id === "string") ids.add((r as { id: string }).id);
+  }
+  return models.filter((m) => ids.has(m.id));
+}
+
 export function withTiers(models: StudioModel[], sellable: unknown): StudioModel[] {
   if (!Array.isArray(sellable)) return models;
   type Marks = Pick<

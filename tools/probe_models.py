@@ -228,8 +228,8 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
               clock: Callable[[], float] = time.monotonic) -> ProbeResult:
     """Make the entry's probe call and fetch its output. Never raises for a
     vendor failure: it becomes a typed ProbeResult."""
-    # A model past its announced shutdown date is refused by its adapter at submit; a probe BY NAME is how the owner learns whether it
-    # still answers, so the probe (and only the probe) says which vendor model it is allowed to try.
+    # A model past its announced shutdown date is refused by its adapter at submit. select() lets one reach this point only when it was NAMED
+    # (never under --all, so the scheduled run cannot spend on it); the probe then says which vendor model its adapter may try.
     adapter = build_adapter(entry.adapter, env=env, session=session)
     if entry.shut_down():
         adapter.probing_past_shutdown = entry.vendor_model
@@ -294,7 +294,9 @@ def select(entries: Iterable, ids: Sequence[str], capability: Optional[str], eve
         raise SystemExit(f"unknown model id(s): {', '.join(unknown)}")
     # ``--all`` (and so the workflow's empty "model" input) never makes a paid call to a model whose
     # vendor terms are not cleared: a gated model is probed only when it is NAMED.
-    chosen = [e for e in entries if e.id in ids or (everything and not e.terms_gate)]
+    # Likewise a model past its announced shutdown date (registry ``shutdown``): ``--all`` does not spend on it, and only a probe BY NAME
+    # (which is how the owner learns whether the id still answers) is let through its adapter's refusal.
+    chosen = [e for e in entries if e.id in ids or (everything and not e.terms_gate and not e.shut_down())]
     return [e for e in chosen if capability is None or capability in e.capabilities]
 
 
@@ -303,6 +305,14 @@ def gated_left_out(entries: Iterable, ids: Sequence[str], capability: Optional[s
     if not everything:
         return []
     return [e for e in entries if e.terms_gate and e.id not in ids and (capability is None or capability in e.capabilities)]
+
+
+def shutdown_left_out(entries: Iterable, ids: Sequence[str], capability: Optional[str], everything: bool) -> List:
+    """The ungated entries ``--all`` skipped because their announced shutdown date has come (so the log can say so)."""
+    if not everything:
+        return []
+    return [e for e in entries if e.shut_down() and not e.terms_gate and e.id not in ids
+            and (capability is None or capability in e.capabilities)]
 
 
 def describe(entry, env: Mapping[str, str], voice_id: Optional[str]) -> str:
@@ -357,6 +367,10 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
     for e in gated_left_out(model_registry.registry().values(), args.model, args.capability, args.all):
         logger.info(f"gated {e.id}" if args.brief else
                     f"SKIP {e.id}: terms gate {e.terms_gate} is open; name it with --model to probe it")
+
+    for e in shutdown_left_out(model_registry.registry().values(), args.model, args.capability, args.all):
+        logger.info(f"shutdown {e.id}" if args.brief else
+                    f"SKIP {e.id}: past its announced shutdown date {e.raw['shutdown']['on']}; name it with --model to probe it")
 
     if args.dry_run:
         for e in entries:

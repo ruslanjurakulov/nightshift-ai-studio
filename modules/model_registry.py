@@ -23,11 +23,13 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from urllib.parse import unquote
 
 from modules.capabilities import ADAPTERS
 from modules.capabilities.base import (
@@ -631,13 +633,32 @@ def registry() -> Dict[str, ModelEntry]:
     return load()
 
 
+def normalise_text(text: str) -> str:
+    """``text`` as a vendor's server would read an id out of it: percent-decoded (repeatedly), NFKC-normalised, with zero-width and other
+    invisible format characters removed, lower-cased. A deprecated id must not dodge a guard by being %-encoded, written in full-width
+    letters or split by an invisible character."""
+    s = str(text or "")
+    for _ in range(3):
+        decoded = unquote(s)
+        if decoded == s:
+            break
+        s = decoded
+    s = unicodedata.normalize("NFKC", s)
+    return "".join(ch for ch in s if unicodedata.category(ch) != "Cf").lower()
+
+
+def names_id(text: str, vendor_model: str) -> bool:
+    """``vendor_model`` appears in ``text`` as a WHOLE id, however it is spelled around (other case, a ``models/`` prefix, a
+    ``:predictLongRunning`` or ``?x=1`` suffix, a path, a trailing dot or hyphen). A longer id that merely starts or ends with it
+    (``-001``) is a different id and does not match."""
+    vm = re.escape(vendor_model.lower())
+    return bool(re.search(r"(?<![a-z0-9])(?<![a-z0-9][.-])" + vm + r"(?![a-z0-9])(?![.-][a-z0-9])", normalise_text(text)))
+
+
 def entries_named_in(text: str) -> List[ModelEntry]:
-    """Every registry entry whose vendor model appears in ``text`` as a WHOLE id, however it is spelled around: other case,
-    a ``models/`` prefix, a ``:predictLongRunning`` or ``?x=1`` suffix, a path (``/../x``). A longer id that merely starts
-    with another (``-001``) is not a match. Used so a deprecated id cannot dodge a guard by how it is written."""
-    low = str(text or "").lower()
-    return [e for e in registry().values()
-            if re.search(r"(?<![a-z0-9.-])" + re.escape(e.vendor_model.lower()) + r"(?![a-z0-9.-])", low)]
+    """Every registry entry whose vendor model ``names_id`` finds in ``text``. Used so a deprecated id cannot dodge a guard by how it is
+    written."""
+    return [e for e in registry().values() if names_id(text, e.vendor_model)]
 
 
 def get(model_id: str) -> Optional[ModelEntry]:

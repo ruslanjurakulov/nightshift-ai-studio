@@ -141,7 +141,8 @@ WAN_QUERY_PATH = (os.getenv("WAN_QUERY_PATH") or "/api/v1/tasks/{id}")
 # passed the earliest shutdown date Google lists (2026-10-22, the Gemini API
 # deprecations page), so VEO_MODEL must be set by the owner, and the Veo path
 # stops with the reason when it is empty or a past-shutdown id.
-# "{model}" in the submit path is replaced by VEO_MODEL.
+# "{model}" in the submit path is replaced by VEO_MODEL; VEO_SUBMIT_PATH is accepted only as exactly
+# /v1beta/models/{model}:predictLongRunning (video_providers refuses any other spelling).
 VEO_API_KEY = os.getenv("VEO_API_KEY", "")
 VEO_BASE_URL = (os.getenv("VEO_BASE_URL") or "https://generativelanguage.googleapis.com").rstrip("/")
 VEO_MODEL = os.getenv("VEO_MODEL", "").strip()

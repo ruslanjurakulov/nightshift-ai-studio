@@ -474,10 +474,15 @@ class GenericAsyncVideoClient:
         body, extra = self._body(spec)
         try:
             submit_path = self.cfg.submit_path.replace("{model}", self.cfg.model)
-            resp = self.session.post(f"{self.cfg.base_url}{submit_path}", json=body,
+            # No redirect is followed: the session carries the key in a header of its own (x-goog-api-key for Veo), which requests
+            # does not strip on a cross-host redirect, so a 3xx would take the key wherever the answer points.
+            resp = self.session.post(f"{self.cfg.base_url}{submit_path}", json=body, allow_redirects=False,
                                      headers={**self._auth_headers(), **extra}, timeout=self.timeout)
         except requests.RequestException as e:
             raise self._reject(message=type(e).__name__) from None
+        if 300 <= resp.status_code < 400:
+            raise self._reject(status=resp.status_code, category=INVALID, code="redirect",
+                               message="the host answered with a redirect; redirects are never followed because the key would travel with them")
         try:
             data = resp.json()
         except ValueError:
@@ -558,9 +563,12 @@ class GenericAsyncVideoClient:
                 break
             retry_after = None
             try:
-                resp = self.session.get(url, params=params, headers=self._auth_headers(),
+                resp = self.session.get(url, params=params, headers=self._auth_headers(), allow_redirects=False,
                                         timeout=self.timeout)
                 status = resp.status_code
+                if 300 <= status < 400:
+                    raise self._reject(status=status, category=INVALID, code="redirect",
+                                       message="the host answered with a redirect; redirects are never followed because the key would travel with them")
                 retry_after = self._retry_after(resp)
                 try:
                     data = resp.json()
@@ -797,6 +805,7 @@ def _wan_config() -> VideoProviderConfig:
 _VEO_SHUT_DOWN = ("veo-3.0-generate-preview", "veo-3.0-fast-generate-preview")
 
 _DEPRECATIONS = "https://ai.google.dev/gemini-api/docs/deprecations"
+_VEO_SUBMIT_TEMPLATE = "/v1beta/models/{model}:predictLongRunning"
 
 
 def _veo_past_shutdown(model: str, submit_path: str) -> str:
@@ -840,8 +849,9 @@ def _veo_config() -> VideoProviderConfig:
     model = getattr(config, "VEO_MODEL", "")
     submit_path = getattr(config, "VEO_SUBMIT_PATH", "/v1beta/models/{model}:predictLongRunning")
     problem = ""
-    dead = next((m for m in _VEO_SHUT_DOWN if re.search(r"(?<![a-z0-9.-])" + re.escape(m) + r"(?![a-z0-9.-])",
-                                                         f"{model} {submit_path}".lower())), "")
+    from modules import model_registry   # late: the registry imports the adapters, which import this package
+
+    dead = next((m for m in _VEO_SHUT_DOWN if model_registry.names_id(f"{model} {submit_path}", m)), "")
     if dead:
         problem = (f"{dead} was shut down by Google on 2025-11-12; set VEO_MODEL to a Veo id Google still lists "
                    f"({_DEPRECATIONS}) and leave VEO_SUBMIT_PATH unset")
@@ -852,9 +862,12 @@ def _veo_config() -> VideoProviderConfig:
                    "choose another CHRONOS_VIDEO_PROVIDER")
     else:
         problem = _veo_past_shutdown(model, submit_path)
-        if not problem and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*", model):
-            problem = (f"VEO_MODEL must be a bare model id (letters, digits, dots and hyphens), not {model[:60]!r}: it is put into "
-                       "the request path as given, and a prefix, a suffix or a path would send the call somewhere nobody checked")
+        if not problem and not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?", model):
+            problem = (f"VEO_MODEL must be a bare model id (letters and digits, with dots and hyphens between them), not {model[:60]!r}: it is "
+                       "put into the request path as given, and a prefix, a suffix or a path would send the call somewhere nobody checked")
+    if not problem and submit_path != _VEO_SUBMIT_TEMPLATE:
+        problem = (f"VEO_SUBMIT_PATH must be exactly {_VEO_SUBMIT_TEMPLATE} (or unset): any other spelling, a %-encoded letter, a "
+                   "second segment, an id written into it, would send the call (and the key) to a path nobody checked")
     return VideoProviderConfig(
         name="Veo",
         api_key=getattr(config, "VEO_API_KEY", ""),

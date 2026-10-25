@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { JOB_COLUMNS, type CreativeDb, type CreativeResult } from "@/lib/creative/operations";
-import { coerceModels, withTiers, type StudioModel } from "@/lib/creative/studio";
+import { coerceModels, onlySellable, withTiers, type StudioModel } from "@/lib/creative/studio";
 import { withoutSwitchedOff } from "@/lib/model-switch";
 import { readSwitchedOffIds } from "@/lib/server/model-switch";
 
@@ -74,7 +74,9 @@ export async function loadStudioModels(): Promise<StudioModel[]> {
     // The owner's switch (migration 0124): the policy already hides a switched-off model from a customer; a platform admin reads every
     // row, so the ids are subtracted here too and the Studio never offers what the quote and the create would refuse.
     const shown = withoutSwitchedOff(models, await readSwitchedOffIds(supabase));
-    return marks.error ? shown : withTiers(shown, marks.data);
+    // sellable_models() also knows what the policy cannot: a vendor's announced shutdown date (migration 0125) ends a sale. When it answered,
+    // the picker offers only what it lists; no migration and no policy change, and a failed call leaves the list as it was.
+    return marks.error ? shown : withTiers(onlySellable(shown, marks.data), marks.data);
   } catch {
     return [];
   }
