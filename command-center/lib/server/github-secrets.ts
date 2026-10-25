@@ -140,6 +140,49 @@ export async function listConfiguredSecretNames(
   return Array.from(new Set(names));
 }
 
+/** What a complete-as-possible listing of the repository's secret names came to. */
+export interface SecretNameListing {
+  /** The names asked about that GitHub reported. */
+  names: string[];
+  /** false when GitHub says there are more secrets than were read (the page cap was hit): a name not in `names` may still exist. */
+  complete: boolean;
+}
+
+/** 10 pages of 100: past this the listing is reported incomplete rather than read for ever. */
+export const SECRET_LIST_MAX_PAGES = 10;
+
+/**
+ * Like listConfiguredSecretNames, but it pages through ALL the secrets (GitHub returns at most 100 a page) and says when it could not: the
+ * answer carries `complete`, so a caller that must not read "not in the list" as "not set" can tell. Names only; never a value. Throws as
+ * the other lister does; returns null when GitHub forwarding is not configured at all.
+ */
+export async function listSecretNamesComplete(allowNames: Iterable<string>): Promise<SecretNameListing | null> {
+  if (!isGithubConfigured) return null;
+  const allow = new Set<string>(allowNames);
+  const found = new Set<string>();
+  let seen = 0;
+  let total = Infinity;
+  for (let page = 1; page <= SECRET_LIST_MAX_PAGES && seen < total; page += 1) {
+    const res = await gh(`/actions/secrets?per_page=100&page=${page}`);
+    if (!res.ok) {
+      throw new Error(
+        res.status === 401 || res.status === 403
+          ? "github_unauthorized"
+          : res.status === 404
+            ? "github_repo_not_found"
+            : "github_unavailable",
+      );
+    }
+    const body = (await res.json()) as { total_count?: unknown; secrets?: { name?: unknown }[] };
+    const list = Array.isArray(body.secrets) ? body.secrets : [];
+    total = typeof body.total_count === "number" && Number.isFinite(body.total_count) ? body.total_count : list.length;
+    for (const s of list) if (typeof s?.name === "string" && allow.has(s.name)) found.add(s.name);
+    seen += list.length;
+    if (list.length === 0) break;
+  }
+  return { names: Array.from(found), complete: seen >= total };
+}
+
 /**
  * Trigger the daily-video workflow on demand for one channel.
  *

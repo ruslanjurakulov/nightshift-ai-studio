@@ -100,6 +100,8 @@ export const SECTIONS = [
   "approvals",
   // Posts for the public Telegram channel, approved by the owner (migration 0108, docs/MARKETING_POSTS.md).
   "marketing",
+  // The owner's vendor API keys (verify and forget, docs/MODEL_API_KEYS.md); off unless NIGHTSHIFT_MODEL_KEYS is on, and 404 for anyone but the owner.
+  "model-keys",
   "alerts",
   "audit",
   "time-machine",
