@@ -33,6 +33,9 @@ from test_sec_api_creative import Db
 
 MIGRATION = REPO / "supabase" / "migrations" / "0124_model_switch.sql"
 ROLLBACK = REPO / "docs" / "sql" / "rollback_0124_model_switch.sql"
+#: 0125 (a model past its shutdown date is not sold) sits on 0124's bodies and refuses to apply without 0124: "the sequence before 0124"
+#: leaves it out too, and a replay of 0124 on the full chain takes it off first (its own rollback) and puts it back.
+BEFORE_0124_EXCLUDES = (MIGRATION.name, sec_db.MIGRATION_0125.name)
 
 ORG_A = "aaaaaaaa-0000-0000-0000-000000000124"
 ORG_B = "bbbbbbbb-0000-0000-0000-000000000124"
@@ -1019,9 +1022,14 @@ REPLACED = {
 def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
     enforce(db)
     off(db, "model", "img-z2", "other", "kept")
-    before = {s: md5_of(db, s) for s in REPLACED}
-    db.su(MIGRATION.read_text(encoding="utf-8"))
-    assert {s: md5_of(db, s) for s in REPLACED} == before
+    # 0125 sits on 0124's bodies; 0124's drift guard refuses any other text, so take 0125 off for the replay and put it back.
+    db.su("\n".join(ln for ln in sec_db.ROLLBACK_0125.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;")))
+    try:
+        before = {s: md5_of(db, s) for s in REPLACED}
+        db.su(MIGRATION.read_text(encoding="utf-8"))
+        assert {s: md5_of(db, s) for s in REPLACED} == before
+    finally:
+        db.su(sec_db.MIGRATION_0125.read_text(encoding="utf-8"))
     assert db.su("select enforced from public.model_availability_settings") == [(True,)], "the seed row is on conflict do nothing"
     assert db.su("select enabled, reason, note from public.model_availability where target = 'img-z2'") == [(False, "other", "kept")]
 
@@ -1032,7 +1040,7 @@ def test_the_drift_guard_refuses_a_replaced_function_whose_live_body_is_somebody
     name = f"ns_switch_drift_{uuid.uuid4().hex[:8]}"
     base = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name != MIGRATION.name])
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name not in BEFORE_0124_EXCLUDES])
         d = Db(base)
         body = d.su("select pg_get_functiondef('public.creative_price(uuid,text,text,jsonb)'::regprocedure)")[0][0]
         d.su(body.replace("begin\n", "begin\n  -- edited by hand\n", 1))
@@ -1052,7 +1060,7 @@ def test_the_policy_drift_guard_compares_the_whole_policy_not_a_few_words(db):
     name = f"ns_switch_pol_{uuid.uuid4().hex[:8]}"
     base = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name != MIGRATION.name])
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name not in BEFORE_0124_EXCLUDES])
         d = Db(base)
         # 0035's own policy: the file applies (checked by the rollback test too); here, every edit that keeps the four words is refused
         for widened in (
@@ -1095,8 +1103,8 @@ def test_the_rollback_puts_the_five_bodies_and_the_policy_back_and_the_file_appl
     name = f"ns_switch_rb_{uuid.uuid4().hex[:8]}"
     base = sec_db.create_database(admin, name)
     try:
-        # the state before the file: everything up to 0123 (0124 is the last file of the sequence)
-        files = [f for f in sec_db.build_sequence() if f.name != MIGRATION.name]
+        # the state before the file: everything before 0124 (0125 sits on 0124's bodies, so it is left out too)
+        files = [f for f in sec_db.build_sequence() if f.name not in BEFORE_0124_EXCLUDES]
         sec_db.apply_files(base, files)
         d = Db(base)
         pre = {s: md5_of(d, s) for s in REPLACED}

@@ -136,12 +136,16 @@ WAN_RESOLUTION = (os.getenv("WAN_RESOLUTION") or "720P")
 WAN_SUBMIT_PATH = (os.getenv("WAN_SUBMIT_PATH") or "/api/v1/services/aigc/video-generation/video-synthesis")
 WAN_QUERY_PATH = (os.getenv("WAN_QUERY_PATH") or "/api/v1/tasks/{id}")
 # Google Veo (Gemini API) — key in the x-goog-api-key header (no Bearer prefix).
-# veo-3.0-generate-preview (the old default) was shut down on 2025-11-12;
-# the 3.1 family is current: veo-3.1-generate-preview, -fast-, -lite-.
-# "{model}" in the submit path is replaced by VEO_MODEL.
+# veo-3.0-generate-preview was shut down on 2025-11-12. There is NO default
+# model: the 3.1 previews (veo-3.1-generate-preview, -fast-, -lite-) have
+# passed the earliest shutdown date Google lists (2026-10-22, the Gemini API
+# deprecations page), so VEO_MODEL must be set by the owner, and the Veo path
+# stops with the reason when it is empty or a past-shutdown id.
+# "{model}" in the submit path is replaced by VEO_MODEL; VEO_SUBMIT_PATH is accepted only as exactly
+# /v1beta/models/{model}:predictLongRunning (video_providers refuses any other spelling).
 VEO_API_KEY = os.getenv("VEO_API_KEY", "")
 VEO_BASE_URL = (os.getenv("VEO_BASE_URL") or "https://generativelanguage.googleapis.com").rstrip("/")
-VEO_MODEL = os.getenv("VEO_MODEL", "").strip() or "veo-3.1-generate-preview"
+VEO_MODEL = os.getenv("VEO_MODEL", "").strip()
 VEO_RESOLUTION = os.getenv("VEO_RESOLUTION", "").strip()          # "720p" / "1080p"; empty = Google's default
 VEO_SUBMIT_PATH = os.getenv("VEO_SUBMIT_PATH", "").strip() or "/v1beta/models/{model}:predictLongRunning"
 VEO_QUERY_PATH = (os.getenv("VEO_QUERY_PATH") or "/v1beta/{id}")

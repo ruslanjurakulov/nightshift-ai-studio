@@ -101,6 +101,18 @@
             }
           }
         },
+        "shutdown": {
+          "description": "A shutdown the vendor has ANNOUNCED for the vendor model (never a guess). `on` is the date the vendor lists, which for Google is the EARLIEST possible one: from that day sellable_models (migration 0125) stops offering the model and creative_price stops quoting it. A model with no announced date has no `shutdown`; a replacement the vendor names without a date goes in api_documented.note.",
+          "type": "object",
+          "required": ["on", "source_url", "as_of"],
+          "additionalProperties": false,
+          "properties": {
+            "on": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+            "source_url": {"$ref": "#/$defs/https_url"},
+            "as_of": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+            "replacement": {"type": "string", "minLength": 1, "maxLength": 80}
+          }
+        },
         "credit_unit": {"type": "string", "pattern": "^model_[a-z0-9_]{1,40}_(image|second|character|request)$", "maxLength": 63},
         "entitlement": {
           "type": ["string", "null"],

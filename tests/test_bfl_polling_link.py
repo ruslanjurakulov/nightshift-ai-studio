@@ -174,7 +174,8 @@ class RedirectTests(Rig):
         from modules.capabilities import ADAPTERS as ALL
 
         self.assertEqual(sorted(k for k, c in ALL.items() if not c.follow_redirects),
-                         ["image.bfl", "image.bfl3", "image.gemini_interactions", "video.bfl", "video.gemini_omni"])
+                         ["image.bfl", "image.bfl3", "image.gemini_interactions", "video.bfl", "video.gemini_omni",
+                          "video.veo"])   # video.veo: its header key must not follow a 3xx
 
 
 if __name__ == "__main__":

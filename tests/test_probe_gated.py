@@ -27,7 +27,9 @@ class SelectTests(unittest.TestCase):
     def setUp(self):
         self.entries = list(reg.registry().values())
         self.gated = {e.id for e in self.entries if e.terms_gate}
-        self.clear = {e.id for e in self.entries if not e.terms_gate}
+        #: past an announced shutdown date (registry ``shutdown``): --all leaves them out too, a probe by name does not
+        self.shut = {e.id for e in self.entries if e.shut_down()}
+        self.clear = {e.id for e in self.entries if not e.terms_gate and not e.shut_down()}
 
     def test_the_registry_has_both_kinds(self):
         self.assertTrue(self.gated and self.clear)
@@ -39,6 +41,20 @@ class SelectTests(unittest.TestCase):
         for mid in GOOGLE_DARK:
             self.assertEqual(reg.get(mid).terms_gate, "terms_review_required", mid)   # the Gemini API 18+ / consumer clauses
             self.assertIn(mid, self.gated)
+
+    def test_all_never_spends_on_a_model_past_its_announced_shutdown_date_and_a_named_one_comes_back(self):
+        self.assertTrue({"veo-3.1", "veo-3.1-fast", "veo-3.1-lite"} <= self.shut)
+        chosen = {e.id for e in probe_models.select(self.entries, [], None, True)}
+        self.assertFalse(chosen & self.shut, chosen & self.shut)
+        for cap in ("t2v", "i2v"):
+            self.assertFalse({e.id for e in probe_models.select(self.entries, [], cap, True)} & self.shut, cap)
+        for mid in ("veo-3.1", "veo-3.1-fast", "veo-3.1-lite"):
+            named = {e.id for e in probe_models.select(self.entries, [mid], None, True)}
+            self.assertEqual(named, self.clear | {mid}, mid)
+            self.assertEqual([e.id for e in probe_models.select(self.entries, [mid], None, False)], [mid])
+        left = {e.id for e in probe_models.shutdown_left_out(self.entries, ["veo-3.1"], None, True)}
+        self.assertEqual(left, {i for i in self.shut if not reg.get(i).terms_gate} - {"veo-3.1"})
+        self.assertEqual(probe_models.shutdown_left_out(self.entries, [], None, False), [])
 
     def test_all_skips_every_gated_model_and_keeps_every_clear_one(self):
         chosen = {e.id for e in probe_models.select(self.entries, [], None, True)}
@@ -109,6 +125,19 @@ class MainTests(unittest.TestCase):
             _, called, _ = self.run_main(["--model", mid])
             self.assertEqual(called, [mid], mid)
 
+    def test_an_all_run_never_calls_a_past_shutdown_model_says_so_and_a_named_probe_marks_only_that_adapter(self):
+        _, called, text = self.run_main(["--all", "--brief"])
+        self.assertFalse(set(called) & {"veo-3.1", "veo-3.1-fast", "veo-3.1-lite"})
+        for mid in ("veo-3.1", "veo-3.1-fast", "veo-3.1-lite"):
+            self.assertIn(f"shutdown {mid}", text)
+            self.assertNotIn(f"ok {mid}", text)
+        _, called, _ = self.run_main(["--model", "veo-3.1-lite"])
+        self.assertEqual(called, ["veo-3.1-lite"])
+        out = io.StringIO()
+        probe_models.main(["--dry-run", "--all"], env={}, db=mock.Mock(), stream=out)
+        self.assertIn("SKIP veo-3.1: past its announced shutdown date 2026-10-22; name it with --model to probe it", out.getvalue())
+        self.assertNotRegex(out.getvalue(), r"(?m)^veo-3\.1 ")
+
     def test_naming_a_google_dark_model_probes_it_and_only_it(self):
         for mid in GOOGLE_DARK:
             _, called, _ = self.run_main(["--model", mid])
@@ -138,7 +167,7 @@ class WorkflowTests(unittest.TestCase):
         text = (Path(__file__).resolve().parent.parent / ".github" / "workflows" / "probe_models.yml").read_text()
         self.assertIn("args+=(--all)", text)                          # the empty input still means --all ...
         self.assertIn("gated (terms not cleared, not called)", text)   # ... which now leaves gated models out, loudly
-        self.assertIn("^(ok|failed|skipped|gated) ", text)
+        self.assertIn("^(ok|failed|skipped|gated|shutdown) ", text)
 
 
 if __name__ == "__main__":

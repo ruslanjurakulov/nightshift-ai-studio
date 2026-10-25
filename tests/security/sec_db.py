@@ -86,6 +86,22 @@ def put_back_0122(session) -> None:
     session.conn.execute(MIGRATION_0122.read_text(encoding="utf-8"))
 
 
+MIGRATION_0125 = MIGRATIONS / "0125_model_shutdown.sql"
+ROLLBACK_0125 = REPO / "docs" / "sql" / "rollback_0125_model_shutdown.sql"
+
+
+def take_off_0125(session) -> None:
+    """0125 replaces sellable_models() and creative_price() on 0124's bodies, and 0124 (and its rollback) refuse any other body. A test that
+    replays 0124 or applies its rollback on a database that has 0125 takes 0125 off first with its own rollback, and puts it back with
+    put_back_0125 where the chain goes on."""
+    text = ROLLBACK_0125.read_text(encoding="utf-8")
+    session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0125(session) -> None:
+    session.conn.execute(MIGRATION_0125.read_text(encoding="utf-8"))
+
+
 def migration_files() -> list[Path]:
     """Every migration, in sorted filename order — the order a fresh project
     applies them. Numbers need not be contiguous (migrations can merge out of

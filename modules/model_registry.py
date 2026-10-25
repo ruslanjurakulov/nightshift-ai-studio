@@ -23,10 +23,13 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from urllib.parse import unquote
 
 from modules.capabilities import ADAPTERS
 from modules.capabilities.base import (
@@ -263,6 +266,22 @@ class ModelEntry:
     def priced_by_audio(self) -> bool:
         """The soundtrack is priced apart (0070): the worker pins it off unless the job asks."""
         return self.variants_by in AUDIO_VARIANTS
+
+    @property
+    def shutdown_on(self) -> Optional[date]:
+        """The date the vendor announced it may shut the vendor model down
+        (``shutdown.on``), or None when none is announced. Not a measurement
+        that the model works before it nor that it is dead after it."""
+        s = self.raw.get("shutdown")
+        return date.fromisoformat(s["on"]) if s else None
+
+    def shut_down(self, on: Optional[date] = None) -> bool:
+        """True from the announced shutdown date on (UTC, like the database's
+        ``(now() at time zone 'utc')::date``, whatever the session's TimeZone): the model is no longer offered or quoted
+        (migration 0125). An entry with no announced date is never shut down
+        here; that means "none announced", not "safe"."""
+        d = self.shutdown_on
+        return d is not None and d <= (on or datetime.now(timezone.utc).date())
 
     def vendor_model_for(self, capability: str) -> str:
         return self.vendor_model_by_capability.get(capability) or self.vendor_model
@@ -513,6 +532,13 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             elif cls is not None and not QUALITY_CAPABILITIES & set(caps) & set(cls.quality_capabilities):
                 # The adapter would drop it: the vendor would bill its own default under another tier's price.
                 errors.append(_err(mid, f"adapter {m['adapter']} does not send a quality"))
+        for key in ("on", "as_of"):
+            # The pattern only checks the shape; migration 0125 casts `on` to a date, and a
+            # 2026-13-45 there would be a date nobody can compare.
+            try:
+                date.fromisoformat((m.get("shutdown") or {}).get(key, "2000-01-01"))
+            except ValueError:
+                errors.append(_err(mid, f"shutdown.{key} is not a calendar date"))
         pricing = m["pricing"]
         variants = pricing.get("variants")
         # A variant table of nothing but nulls states no price (0060 lists the
@@ -605,6 +631,34 @@ def load(path: Optional[Path] = None) -> Dict[str, ModelEntry]:
 @lru_cache(maxsize=1)
 def registry() -> Dict[str, ModelEntry]:
     return load()
+
+
+def normalise_text(text: str) -> str:
+    """``text`` as a vendor's server would read an id out of it: percent-decoded (repeatedly), NFKC-normalised, with zero-width and other
+    invisible format characters removed, lower-cased. A deprecated id must not dodge a guard by being %-encoded, written in full-width
+    letters or split by an invisible character."""
+    s = str(text or "")
+    for _ in range(3):
+        decoded = unquote(s)
+        if decoded == s:
+            break
+        s = decoded
+    s = unicodedata.normalize("NFKC", s)
+    return "".join(ch for ch in s if unicodedata.category(ch) != "Cf").lower()
+
+
+def names_id(text: str, vendor_model: str) -> bool:
+    """``vendor_model`` appears in ``text`` as a WHOLE id, however it is spelled around (other case, a ``models/`` prefix, a
+    ``:predictLongRunning`` or ``?x=1`` suffix, a path, a trailing dot or hyphen). A longer id that merely starts or ends with it
+    (``-001``) is a different id and does not match."""
+    vm = re.escape(vendor_model.lower())
+    return bool(re.search(r"(?<![a-z0-9])(?<![a-z0-9][.-])" + vm + r"(?![a-z0-9])(?![.-][a-z0-9])", normalise_text(text)))
+
+
+def entries_named_in(text: str) -> List[ModelEntry]:
+    """Every registry entry whose vendor model ``names_id`` finds in ``text``. Used so a deprecated id cannot dodge a guard by how it is
+    written."""
+    return [e for e in registry().values() if names_id(text, e.vendor_model)]
 
 
 def get(model_id: str) -> Optional[ModelEntry]:

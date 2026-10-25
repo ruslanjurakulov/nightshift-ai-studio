@@ -39,6 +39,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from urllib3 import exceptions as urllib3_exceptions
+from urllib3.util import parse_url as urllib3_parse_url
 
 # ── capabilities (the registry schema's enum mirrors this tuple) ────────────
 T2I = "t2i"          # text → image
@@ -361,11 +362,20 @@ def host_of(url: str) -> str:
 
 
 def host_is(url: str, domain: str) -> bool:
-    """``url`` is https and its host is ``domain`` or a subdomain of it. A
-    substring test would accept ``https://evil.example/x.bfl.ai/``."""
-    if not str(url).startswith("https://"):
+    """``url`` is https and the host a client will CONNECT to is ``domain`` or a subdomain of it. A substring test would accept
+    ``https://evil.example/x.bfl.ai/``; ``urlparse`` reads ``https://evil.example\\@api.host/x`` as host ``api.host`` while ``requests``
+    (urllib3) connects to ``evil.example``, so the host is read the way urllib3 reads it, and a URL with a backslash, an ``@``, white
+    space or control characters, credentials, or a port other than 443 is refused outright: a key must never be sent on its say-so."""
+    s = str(url)
+    if not s.startswith("https://") or any(c in s for c in "\\@") or any(c.isspace() or ord(c) < 0x21 or ord(c) > 0x7e for c in s):
         return False
-    host = host_of(url)
+    try:
+        parts = urllib3_parse_url(s)
+    except Exception:    # LocationParseError and friends: not a URL we can vouch for
+        return False
+    host = (parts.host or "").lower()
+    if parts.auth or parts.port not in (None, 443) or not host:
+        return False
     return host == domain or host.endswith("." + domain)
 
 

@@ -458,6 +458,7 @@ describe("loadStudioModels (the picker's list)", () => {
         },
         rpc: async (fn: string) => {
           if (fn === "models_switched_off") return { data: off, error: offError };
+          if (fn === "sellable_models") return { data: rows.map((r) => ({ id: r.id })), error: null };
           return { data: [], error: null };
         },
       }),

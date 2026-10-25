@@ -474,10 +474,11 @@ class GenericAsyncVideoClient:
         body, extra = self._body(spec)
         try:
             submit_path = self.cfg.submit_path.replace("{model}", self.cfg.model)
-            resp = self.session.post(f"{self.cfg.base_url}{submit_path}", json=body,
+            resp = self.session.post(f"{self.cfg.base_url}{submit_path}", json=body, **self._redirect_kw(),
                                      headers={**self._auth_headers(), **extra}, timeout=self.timeout)
         except requests.RequestException as e:
             raise self._reject(message=type(e).__name__) from None
+        self._refuse_redirect(resp.status_code)
         try:
             data = resp.json()
         except ValueError:
@@ -493,6 +494,22 @@ class GenericAsyncVideoClient:
                 self.cfg.name, self.cfg.model, "accepted the request but returned no task id",
                 f"the {self.cfg.name} response shape may have changed; check it against the provider's docs")
         return task_id
+
+    @property
+    def _no_redirects(self) -> bool:
+        """True for a provider whose key rides a header of its own (Veo: x-goog-api-key). requests drops only ``Authorization`` on a
+        cross-host redirect, so for such a provider a 3xx would carry the key wherever the answer points and is refused. A provider
+        authenticating with ``Authorization`` is unchanged: requests already strips that header across hosts, and a vendor that
+        legitimately answers with a 307/308 keeps working."""
+        return self.cfg.auth_header.lower() != "authorization"
+
+    def _redirect_kw(self) -> dict:
+        return {"allow_redirects": False} if self._no_redirects else {}
+
+    def _refuse_redirect(self, status: int) -> None:
+        if self._no_redirects and 300 <= status < 400:
+            raise self._reject(status=status, category=INVALID, code="redirect",
+                               message="the host answered with a redirect; redirects are never followed because the key would travel with them")
 
     def _query_url(self, task_id: str) -> tuple[str, dict]:
         if "{id}" in self.cfg.query_path:
@@ -558,9 +575,10 @@ class GenericAsyncVideoClient:
                 break
             retry_after = None
             try:
-                resp = self.session.get(url, params=params, headers=self._auth_headers(),
+                resp = self.session.get(url, params=params, headers=self._auth_headers(), **self._redirect_kw(),
                                         timeout=self.timeout)
                 status = resp.status_code
+                self._refuse_redirect(status)
                 retry_after = self._retry_after(resp)
                 try:
                     data = resp.json()
@@ -796,6 +814,37 @@ def _wan_config() -> VideoProviderConfig:
 #: Veo ids Google shut down on 2025-11-12 (Gemini API deprecations page).
 _VEO_SHUT_DOWN = ("veo-3.0-generate-preview", "veo-3.0-fast-generate-preview")
 
+_DEPRECATIONS = "https://ai.google.dev/gemini-api/docs/deprecations"
+_VEO_SUBMIT_TEMPLATE = "/v1beta/models/{model}:predictLongRunning"
+
+
+def _veo_past_shutdown(model: str, submit_path: str) -> str:
+    """The problem text when ``model`` (or an id spelled into a custom submit
+    path) is a Veo id whose ANNOUNCED shutdown date has come, else "".
+
+    The dates are the registry's (``shutdown`` in schemas/model_registry.json),
+    one place for what the sale guard (migration 0125) and this client believe.
+    Google calls them the EARLIEST possible dates, so this is neither "the
+    model is dead" nor "the model works": it stops the run before it spends and
+    says so, and it never swaps in another model (CLAUDE.md #4). Re-opening an
+    id that a probe proves still answers means moving its ``shutdown.on`` in the
+    registry, which also re-opens its sale: one decision, one edit."""
+    from modules import model_registry   # late: the registry imports the adapters, which import this package
+
+    # Whole-id match in any spelling (case, a models/ prefix, a :predictLongRunning or ?x=1 suffix, a path): a deprecated id
+    # must not dodge the guard by how it is written.
+    for entry in model_registry.entries_named_in(f"{model} {submit_path}"):
+        if entry.adapter == "video.veo" and entry.shut_down():
+            s = entry.raw["shutdown"]
+            return (f"Google's deprecations page ({_DEPRECATIONS}, read {s['as_of']}) lists {entry.vendor_model} with "
+                    f"shutdown {s['on']}, the EARLIEST possible date; that date has passed, so the id may already be "
+                    "off (not verified here: no request was made). Nightshift will not guess or switch models. Set "
+                    "VEO_MODEL to a Veo id this client can call and that Google still lists (Google's named replacement "
+                    f"{s.get('replacement', 'on that page')} is served by the Interactions API, which this client does "
+                    "not speak) or choose another CHRONOS_VIDEO_PROVIDER; tools/probe_models.py --model "
+                    f"{entry.id} shows whether the id still answers")
+    return ""
+
 
 def _veo_config() -> VideoProviderConfig:
     # Google Veo on the Gemini API: POST models/{model}:predictLongRunning with
@@ -803,13 +852,32 @@ def _veo_config() -> VideoProviderConfig:
     # /v1beta/{name} until done → response.generateVideoResponse
     # .generatedSamples[0].video.uri, downloaded with the same key header
     # (the file lives on the API host). The key rides x-goog-api-key.
-    model = getattr(config, "VEO_MODEL", "veo-3.1-generate-preview")
+    #
+    # No default model: the one it used to carry, veo-3.1-generate-preview, has
+    # passed the earliest shutdown date Google lists (2026-10-22), and a default
+    # is a choice the operator did not make (CLAUDE.md #4, #5).
+    model = getattr(config, "VEO_MODEL", "")
     submit_path = getattr(config, "VEO_SUBMIT_PATH", "/v1beta/models/{model}:predictLongRunning")
     problem = ""
-    dead = next((m for m in _VEO_SHUT_DOWN if m == model or m in submit_path), "")
+    from modules import model_registry   # late: the registry imports the adapters, which import this package
+
+    dead = next((m for m in _VEO_SHUT_DOWN if model_registry.names_id(f"{model} {submit_path}", m)), "")
     if dead:
-        problem = (f"{dead} was shut down by Google on 2025-11-12; set VEO_MODEL to "
-                   "veo-3.1-generate-preview (or -fast- / -lite-) and leave VEO_SUBMIT_PATH unset")
+        problem = (f"{dead} was shut down by Google on 2025-11-12; set VEO_MODEL to a Veo id Google still lists "
+                   f"({_DEPRECATIONS}) and leave VEO_SUBMIT_PATH unset")
+    elif not model:
+        problem = ("VEO_MODEL is not set, and there is no default: the former default, veo-3.1-generate-preview, has "
+                   "passed the earliest shutdown date Google lists for it (2026-10-22, "
+                   f"{_DEPRECATIONS}). Set VEO_MODEL to a Veo id this client can call and Google still lists, or "
+                   "choose another CHRONOS_VIDEO_PROVIDER")
+    else:
+        problem = _veo_past_shutdown(model, submit_path)
+        if not problem and not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?", model):
+            problem = (f"VEO_MODEL must be a bare model id (letters and digits, with dots and hyphens between them), not {model[:60]!r}: it is "
+                       "put into the request path as given, and a prefix, a suffix or a path would send the call somewhere nobody checked")
+    if not problem and submit_path != _VEO_SUBMIT_TEMPLATE:
+        problem = (f"VEO_SUBMIT_PATH must be exactly {_VEO_SUBMIT_TEMPLATE} (or unset): any other spelling, a %-encoded letter, a "
+                   "second segment, an id written into it, would send the call (and the key) to a path nobody checked")
     return VideoProviderConfig(
         name="Veo",
         api_key=getattr(config, "VEO_API_KEY", ""),

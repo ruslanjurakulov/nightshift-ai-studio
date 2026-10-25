@@ -103,12 +103,36 @@ class VeoAdapter(HttpAdapter):
     #: 3.1 Fast and 3.1 Lite (ai.google.dev/gemini-api/docs/veo, 2026-10-01).
     end_frame_capabilities = (I2V,)
     _OP = re.compile(r"^models/[A-Za-z0-9.-]+/operations/[A-Za-z0-9_-]+$")
+    #: The key rides every Veo call in a header requests would carry across a cross-host redirect: a 3xx is an error, never followed.
+    follow_redirects = False
+    #: Set by tools/probe_models.py on the adapter it builds (to the vendor model it is probing) so a probe BY NAME can learn
+    #: whether a past-shutdown id still answers; every other caller is refused at submit. Deliberately an attribute and not an
+    #: environment switch: a value that GitHub or a deploy could set would let every worker bypass the shutdown guard.
+    probing_past_shutdown: str = ""
 
     def auth_headers(self) -> Dict[str, str]:
         return {"x-goog-api-key": self.api_key()}
 
+    def _refuse_past_shutdown(self, vendor_model: str) -> None:
+        """A job priced before the model's announced shutdown date (schemas/model_registry.json ``shutdown``) and advanced after it
+        is refused HERE, before any request, with the reason; no other model is tried (CLAUDE.md #4). Google's date is the
+        EARLIEST possible one, so this is a stop, not a claim that the id is dead."""
+        from modules import model_registry   # late: the registry imports the adapters
+
+        allowed = (self.probing_past_shutdown or "").strip().lower()
+        for entry in model_registry.entries_named_in(vendor_model):
+            if entry.adapter == self.key and entry.shut_down() and allowed != entry.vendor_model.lower():
+                s = entry.raw["shutdown"]
+                raise AdapterError(
+                    E_NOT_FOUND,
+                    f"{entry.vendor_model} is past Google's announced shutdown date {s['on']} (the EARLIEST possible date, "
+                    f"{s['source_url']}, read {s['as_of']}): nothing was sent and no other model was tried. Re-open it only after "
+                    f"tools/probe_models.py --model {entry.id} shows it still answers (then move shutdown.on in the registry)",
+                    not_accepted=True)
+
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
+        self._refuse_past_shutdown(vendor_model)
         instance: dict = {"prompt": request.prompt.strip()}
         if request.capability == I2V and request.input_images:
             path = request.input_images[0]

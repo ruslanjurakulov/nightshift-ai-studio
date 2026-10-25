@@ -509,3 +509,27 @@ database (`sellable_models`, `creative_price`, `advance_creative_job`, `api_crea
   `docs/sql/rollback_0124_model_switch.sql` (owner-applied; refuses a body it has not seen; copy the log out first, it drops it).
 - **Apply as ONE transaction.** The file refuses a half-applied state and takes `set local lock_timeout = '5s'`.
 - **Review.** Needs the independent security review before merge: `docs/MODEL_SWITCH.md`, "What the independent security review must verify".
+## A model past its vendor's announced shutdown date is not sold (0125)
+
+Google's deprecations page (ai.google.dev/gemini-api/docs/deprecations, read 2026-10-25) lists `veo-3.1-generate-preview`, `-fast-` and `-lite-` with shutdown
+2026-10-22 and `gemini-2.5-flash-image` with 2027-03-15. Google calls every date on that page "the earliest possible", so a date is neither "dead" nor "safe": it
+is the day Nightshift stops selling the model unless a probe says otherwise.
+
+- **Live on apply, and not dark.** 0125 replaces two functions that exist on the live database (`sellable_models`, `creative_price`) on **0124's bodies plus one
+  line each**, and adds one internal function. A model with no `shutdown` in its spec behaves exactly as before; a model whose spec carries a date that has come
+  (the three Veo 3.1 previews, once `tools/probe_models.py --sync` has copied the registry's dates) stops being offered and quoted at once.
+- **Number and order.** It is written on 0124's bodies (0124 and 0125 both replace these two functions, and 0124 pins their md5), so it **refuses to apply
+  without 0124** and carries the same md5 drift guard (0124's body or its own, else it refuses). 0123 is not used by this file.
+- **The field.** `shutdown` in `schemas/model_registry.json` (`on`, `source_url`, `as_of`, optional `replacement`), copied into `model_registry.spec` by the sync like every
+  other static fact. A model with no announced date has no `shutdown`; the validator rejects a date that is not a calendar day.
+- **The guard.** `public.model_past_shutdown(spec)` is true from `spec.shutdown.on` (the UTC date, `(now() at time zone 'utc')::date`, whatever the session's `TimeZone`) on, and **fails closed**: a `shutdown` that is not an object, or
+  a date that is not `YYYY-MM-DD`, reads as past. It is internal (revoked from every API role). The list hides the model and a quote by name is refused
+  (`model_not_sellable`). `tests/test_model_shutdown.py` removes the two added lines and compares the rest of each body byte for byte.
+- **Not changed.** No price, no availability, no `credit_prices` row, no gate, no switch (0124's `model_is_available` is still asked first).
+- **Re-opening an id** that a probe shows still answers is one edit: move its `shutdown.on` in the registry and sync. The Veo client in `modules/video_providers.py`
+  reads the same date, so the sale and the legacy B-roll path never disagree.
+- **Undo.** `docs/sql/rollback_0125_model_shutdown.sql` (owner-applied; refuses a body that is neither 0125's nor 0124's; puts 0124's two bodies back byte for
+  byte, drops the helper). Run it **before** `rollback_0124_model_switch.sql`, which refuses a body that is not 0124's. The security lab takes 0125 off
+  (`sec_db.take_off_0125`) wherever it replays 0124.
+- **Apply** after 0124, as one transaction. `tests/security/test_sec_model_shutdown.py` runs both functions on a real PostgreSQL at the boundary day and with unreadable
+  dates, the drift guard, the rollback and the refusal without 0124.
