@@ -10,6 +10,7 @@ import { ru } from "../lib/i18n/ru";
 import { uz } from "../lib/i18n/uz";
 import { REGION_ERRORS } from "../lib/regionEdit/request";
 import { regionEditorEnabled } from "../lib/regionEdit/flag";
+import { REGION_REASONS, RUN_FAILURES } from "../lib/regionEdit/run";
 
 const dicts = { en, ru, uz } as const;
 const fillers = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
@@ -53,9 +54,42 @@ describe("regionEdit parity", () => {
     for (const [, text] of source) expect(text).not.toMatch(/\b(best|perfect|flawless|guarantee[sd]? quality|photorealistic)\b/i);
   });
 
-  it("does not claim the run is available", () => {
-    expect(en.regionEdit.runWhy).toMatch(/not connected/);
-    expect(en.regionEdit.previewNote).toMatch(/nothing here is held or charged/);
+  it("says what a run does with the money: the price is held and only applied regions are charged", () => {
+    expect(en.regionEdit.previewNote).toMatch(/price is held/);
+    expect(en.regionEdit.previewNote).toMatch(/only the regions that are applied are charged/);
+    expect(en.regionEdit.quoteUnit).toMatch(/not charged/);
+    expect(en.regionEdit.moneyHeld).toMatch(/never charged/);
+    expect(en.regionEdit.runWhy).not.toMatch(/not connected/);
+    for (const loc of ["ru", "uz"] as const) {
+      expect(dicts[loc].regionEdit.previewNote, loc).not.toBe(en.regionEdit.previewNote);
+      expect(dicts[loc].regionEdit.moneyNone, loc).not.toBe(en.regionEdit.moneyNone);
+    }
+  });
+
+  it.each(["en", "ru", "uz"] as const)("%s words every reason a region can end without being applied, and every way a job can end without a picture", (loc) => {
+    const r = dicts[loc].regionEdit as unknown as { reasons: Record<string, string>; failures: Record<string, string> };
+    for (const code of REGION_REASONS) expect(r.reasons[code], `${loc}.reasons.${code}`).toBeTruthy();
+    for (const code of [...RUN_FAILURES, "other"]) expect(r.failures[code], `${loc}.failures.${code}`).toBeTruthy();
+    expect(Object.keys(r.reasons).sort()).toEqual([...REGION_REASONS].sort());
+    expect(Object.keys(r.failures).sort()).toEqual([...RUN_FAILURES, "other"].sort());
+  });
+
+  it("shows no per-region price: the share the database charges is not re-derived in the page", () => {
+    for (const loc of ["en", "ru", "uz"] as const) {
+      const text = dicts[loc].regionEdit.quotePerRegion;
+      expect(text, loc).not.toMatch(/\{/);
+      expect(text, loc).not.toMatch(/\d/);
+    }
+  });
+
+  it("never tells a customer the state of the platform's vendor account (out of funds, a rejected key)", () => {
+    for (const loc of ["en", "ru", "uz"] as const) {
+      const r = dicts[loc].regionEdit as unknown as { reasons: Record<string, string> };
+      expect(r.reasons.quota, loc).toBe(r.reasons.unavailable);
+      expect(r.reasons.auth, loc).toBe(r.reasons.unavailable);
+      expect(r.reasons.not_configured, loc).toBe(r.reasons.unavailable);
+    }
+    for (const [, text] of source) expect(text).not.toMatch(/\b(api key|out of funds|balance ran out|quota)\b/i);
   });
 });
 

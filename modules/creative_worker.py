@@ -131,6 +131,25 @@ kit deleted since, an answer that is not the job's organization's, or a style
 the model could not use at all fails the job with ``style_unavailable`` and
 releases the hold.
 
+Region edits (migration 0126, docs/REGION_EDITOR.md)
+------------------------------------------------------
+An ``edit`` job whose params carry ``regions`` (1 to 5 rectangles, each with its own words) is run by ``modules/region_edit.py`` instead
+of one whole-picture call: ONE call per region through the ordinary image edit adapter of the model the person picked (``image.openai`` /
+``image.gemini``), each answer pasted back into the ORIGINAL through the pixel lock, and the finished picture verified again before it is
+stored. It is off unless ``NIGHTSHIFT_REGION_EDITOR`` is on in THIS process's environment (a job that arrives while it is off fails with
+``region_editor_off`` and its hold is released in full). Everything about it is stricter than an ordinary job:
+
+* EXACT mode only, and only a model ``sellable_models('edit')`` lists right now; a model that is not, is gated or cannot edit stops the job
+  before any call (rule 4: there is no second model, no fallback, no retry on another);
+* every region ends ``applied``, ``failed`` or ``refused`` with a code from a closed list (no vendor text, no prompt): a region that fails
+  or is refused is not charged (the database counts the applied ones, 0126's ``finish_creative_job``); a region whose edit would break the
+  pixel lock counts as failed;
+* ``advance 'submitting'`` comes before the first call, and the synthetic task id ``region:<job>`` is stored only after the LAST call: a worker
+  that dies in between leaves a job the database fails (``submit_interrupted``) with its hold released, and one that dies after it leaves a job
+  that is failed here on its next claim (``output_lost``) rather than polled, because the answers were in memory only;
+* the result is one new library picture: ``source='generated'``, ``parent_asset_id`` = the picture it was made from, provenance
+  ``ai_generated`` written HERE (never by the browser). A result that cannot be stored fails the job: nothing is charged for it.
+
 Outputs into the library
 ------------------------
 With a media volume configured, each output becomes a library asset of the
@@ -228,6 +247,49 @@ DESCRIBE_LANGUAGES = ("en", "ru", "uz")
 ASSET_NS = uuid.UUID("5b0c1d1e-0046-4c2e-9a7e-c4ea71e0a55e")
 
 _CODE_RE = re.compile(r"^[a-z0-9_]{1,64}$")
+
+#: The region editor's switch (docs/REGION_EDITOR.md), the same word the Command Center reads. Default OFF.
+REGION_FLAG = "NIGHTSHIFT_REGION_EDITOR"
+#: How a region can end. The database accepts these words and no others (migration 0126, creative_region_outcomes).
+REGION_STATUSES = ("applied", "failed", "refused")
+#: Why a region was not applied: closed, translated by the app, never a vendor's text or a person's words.
+REGION_CODES = ("not_configured", "auth", "quota", "rate_limited", "bad_request", "policy", "not_found", "unavailable", "bad_response",
+                "provider_error", "region_invalid", "region_too_small", "region_out_of_bounds", "crop_unavailable", "pixel_lock_failed")
+#: Of those, the ones that mean the region was not accepted for editing (judged here before a call, or refused on policy by the vendor).
+REGION_REFUSED_CODES = frozenset({"bad_request", "policy", "region_invalid", "region_too_small", "region_out_of_bounds", "crop_unavailable"})
+#: The only adapters a region edit runs through: the ones whose edit call is synchronous and takes the crop as its one input picture
+#: (``image.openai``, ``image.gemini``). An asynchronous adapter (a task to poll) would be asked once and never polled, so any other
+#: adapter ends the job before a vendor is called.
+REGION_ADAPTERS = frozenset({"image.openai", "image.gemini"})
+#: The most bytes of a source picture read for a region edit (the library's own upload limit is far below this).
+REGION_MAX_SOURCE_BYTES = 100 * 1024 * 1024
+
+
+def region_editor_enabled(env: Mapping[str, str]) -> bool:
+    """Is the region editor switched on in this process? ``on`` / ``1`` / ``true`` / ``yes``; anything else, or nothing, is off."""
+    return str(env.get(REGION_FLAG, "") or "").strip().lower() in ("on", "1", "true", "yes")
+
+
+def is_region_job(job: Mapping[str, Any]) -> bool:
+    """An edit that carries ``regions`` (0126). The database refuses the key on every other capability."""
+    params = job.get("params")
+    return job.get("capability") == "edit" and isinstance(params, Mapping) and "regions" in params
+
+
+def region_report_code(code: object) -> str:
+    """A reason as the closed list has it: anything else is a provider error, never a sentence."""
+    return code if isinstance(code, str) and code in REGION_CODES else "provider_error"
+
+
+def _wire_region(r: Any) -> dict:
+    """A stored region ``{id, name, rect: {x, y, w, h}, prompt}`` as the flat ``x y w h name prompt`` mapping modules/region_edit.py reads."""
+    if not isinstance(r, Mapping) or not isinstance(r.get("rect"), Mapping):
+        return {}
+    return {**r["rect"], "name": r.get("name"), "prompt": r.get("prompt")}
+
+
+class _JobLost(Exception):
+    """The job is no longer this worker's (re-queued after a stall, or cancelled): stop spending."""
 
 
 # ── the seam to the capability layer ────────────────────────────────────────
@@ -383,6 +445,14 @@ class CreativeRest:
             return None
         return out if isinstance(out, dict) else None
 
+    def sellable_models(self, capability: str) -> Optional[List[str]]:
+        """The ids of the models the database sells for ``capability`` on the web surface right now (probed, priced, no open gate and,
+        with 0124, not switched off), or None when the answer cannot be read: an unreadable answer is never "every model"."""
+        rows = self._rpc("sellable_models", {"p_capability": capability, "p_surface": "web"})
+        if not isinstance(rows, list):
+            return None
+        return [str(r["id"]) for r in rows if isinstance(r, dict) and isinstance(r.get("id"), str)]
+
     def job_source(self, job_id: str, worker_id: str) -> Optional[dict]:
         out = self._rpc("creative_job_source", {"p_job": job_id, "p_worker": worker_id})
         return out if isinstance(out, dict) else None
@@ -523,6 +593,7 @@ class CreativeWorker:
     def __init__(self, queue, resolve_adapter: AdapterResolver, *, worker_id: str,
                  out_dir: Path, credits=None, enforce: bool = False,
                  media_root: Optional[Path] = None, library: Optional[Library] = None,
+                 region_editor: bool = False,
                  scrub: Callable[[str], str] = lambda s: s,
                  poll_seconds: float = DEFAULT_POLL_SECONDS,
                  max_poll_seconds: float = DEFAULT_MAX_POLL_SECONDS,
@@ -536,6 +607,8 @@ class CreativeWorker:
         #: The media volume source pictures are read from (read-only is enough).
         self.media_root = Path(media_root) if media_root is not None else None
         self.library = library
+        #: NIGHTSHIFT_REGION_EDITOR in this process (default off): a region edit is refused while it is off.
+        self.region_editor = bool(region_editor)
         self.worker_id = worker_id
         self.out_dir = Path(out_dir)
         self.credits = credits
@@ -588,6 +661,8 @@ class CreativeWorker:
         if (job.get("payer") or "credits") != "credits":
             raise _Refused("payer_not_supported", "this worker settles credit-paid jobs only")
         self._check_hold(job)
+        if is_region_job(job):
+            return self._process_region(job, beat)
 
         # EXACT: the model the person picked. Routed: the model the database
         # routed the job to (the quoted pick, or a failover it recorded).
@@ -651,6 +726,181 @@ class CreativeWorker:
             logger.error("job %s: the task id could not be stored; leaving it", job_id)
             return "left"
         return self._poll(job, request, adapter, str(task_id), beat)
+
+    # -- a region edit (migration 0126) ----------------------------------------
+
+    def _process_region(self, job: Mapping[str, Any], beat: _Heartbeat) -> str:
+        """Run one claimed region edit (module doc). Every refusal before ``advance 'submitting'`` costs nobody anything."""
+        from modules import region_edit as re_  # noqa: PLC0415 — numpy / Pillow are only needed when a region job arrives
+
+        job_id = str(job["id"])
+        if not self.region_editor:
+            raise _Refused("region_editor_off", f"the region editor is not switched on for this worker ({REGION_FLAG}); nothing was charged")
+        if str(job.get("mode") or "exact") != "exact":
+            raise _Refused("mode_not_supported", "a region edit runs the model that was picked and never another")
+        if job.get("provider_task_id"):
+            # The answers of the regions were held in memory only: they cannot be polled again, and asking again would pay twice.
+            raise _Refused("output_lost", "the worker stopped after the regions were edited and before the result was stored; nothing was charged")
+        if self.library is None or self.media_root is None:
+            raise _Refused("library_unavailable", "this worker cannot store a result in the library, so it does not start a region edit")
+        model = str(job.get("requested_model") or "")
+        params = dict(job.get("params") or {})
+        wire = params.get("regions")
+        if not model or not isinstance(wire, list) or not 1 <= len(wire) <= re_.MAX_REGIONS:
+            raise _Refused("invalid_params", "the job carries no usable regions")
+        feather = params.get("region_feather", re_.DEFAULT_FEATHER)
+        try:
+            feather = re_.check_feather(feather)
+        except re_.RegionEditError as e:
+            raise _Refused(e.code, e.message) from None
+
+        adapter = self.resolve_adapter(model)
+        if adapter is None:
+            raise _Refused("adapter_missing", f"this worker has no adapter for {model}")
+        entry, inner = getattr(adapter, "entry", None), getattr(adapter, "adapter", None)
+        if entry is None or inner is None or not callable(getattr(inner, "problems", None)) or not callable(getattr(inner, "submit", None)):
+            raise _Refused("capability_not_supported", f"{model} cannot take a region edit on this deployment; nothing was charged")
+        if str(getattr(entry, "adapter", "")) not in REGION_ADAPTERS:
+            raise _Refused("capability_not_supported", f"{model} is not run through an adapter that takes a region edit; nothing was charged")
+        # Rule 4: the model the person picked, if the database still sells it for editing, or nothing. No default, no second choice.
+        sold = self.queue.sellable_models("edit")
+        try:
+            re_.resolve_edit_model(model, available=sold if isinstance(sold, list) else (), registry={str(getattr(entry, "id", "")): entry})
+        except re_.RegionEditError as e:
+            raise _Refused(e.code, e.message) from None
+        quality = params.get("quality")
+        quality = quality if isinstance(quality, str) else None
+        if entry.qualities and quality not in entry.qualities:
+            # What the quote priced is what is sent: no tier of this process's own is made up.
+            raise _Refused("bad_request", f"this job carries no usable quality tier for {entry.id}, so it cannot be billed as quoted; "
+                                          "nothing was charged")
+
+        request = GenerationRequest(job_id=job_id, org_id=str(job.get("org_id") or ""), capability="edit", model=model, params=params)
+        info = self._source_answer(request)
+        if info.get("kind") != "image":
+            raise _Refused("source_unavailable", "the source must be a picture")
+        source_path = self._source(request, info)
+        try:
+            if source_path.stat().st_size > REGION_MAX_SOURCE_BYTES:
+                raise _Refused("source_unavailable", "the source picture is too large for a region edit")
+            data = source_path.read_bytes()
+            # Unreadable, unsupported and too-large pictures stop here, before 'submitting' and without decoding a pixel: a source of
+            # more than REGION_MAX_SOURCE_PIXELS (16 MP) would need gigabytes of memory, and is refused at no cost.
+            re_.inspect_source(data)
+        except re_.RegionEditError as e:
+            raise _Refused("source_too_large" if e.code == "source_too_large" else "source_unavailable", e.message) from None
+        except OSError as e:
+            raise _Refused("source_unavailable", f"the source could not be read ({type(e).__name__})") from None
+
+        if not self.queue.advance(job_id, self.worker_id, "submitting"):
+            logger.warning("job %s: not ours to submit any more; leaving it", job_id)
+            return "left"
+        calls = [0]
+        try:
+            return self._run_regions(request, wire, data, entry, inner, quality, feather, beat, calls)
+        finally:
+            # The vendor was paid for every call made, whatever happens next (a release path, a lost job, a store that failed): the
+            # telemetry is written once, in every case, when at least one call was made. Reporting only; it never changes the outcome.
+            if calls[0]:
+                unit = (entry.raw.get("pricing") or {}).get("unit")
+                # Through a name, not a literal: tests/test_gemini_quota.py greps every module for a call of model_for with a quoted stage to
+                # find the Gemini stage labels, and the registry's vendor-model lookup ends in the same letters but is not a stage.
+                capability = request.capability
+                try:
+                    self.queue.record_cost(request.job_id, ProviderUsage(
+                        provider=entry.provider, vendor_model=entry.vendor_model_for(capability), unit=unit,
+                        quantity=float(calls[0]) if unit == "image" else None, route="exact"))
+                except Exception as e:  # reporting only; the job is settled
+                    logger.warning("job %s: provider cost not recorded (%s)", request.job_id, type(e).__name__)
+
+    def _run_regions(self, request: GenerationRequest, wire: Sequence[Any], data: bytes, entry, inner, quality: Optional[str],
+                     feather: int, beat: _Heartbeat, calls: List[int]) -> str:
+        """The paid part of a region edit: one call per region, the composite, the result stored, the job finished. ``calls`` counts the
+        calls made, for the cost record the caller writes in every case."""
+        from modules import region_edit as re_  # noqa: PLC0415
+        from modules.capabilities.base import AdapterError  # noqa: PLC0415
+
+        job_id, model = request.job_id, request.model
+        end_user = hashlib.sha256(f"nightshift-org:{request.org_id}".encode()).hexdigest()[:32]
+        ask = re_.adapter_edit_fn(inner, entry, work_dir=self.out_dir / job_id / "regions", quality=quality, end_user=end_user)
+
+        def edit(call):
+            if beat.lost.is_set():
+                raise _JobLost()
+            calls[0] += 1
+            try:
+                return ask(call)
+            except (re_.RegionEditError, AdapterError):
+                raise
+            except Exception as e:  # noqa: BLE001 — one region's unexpected failure must not lose the regions already applied
+                # Only the type is logged (a message could carry a vendor's text or a path); the region is reported failed.
+                logger.warning("job %s: region %s failed unexpectedly (%s)", job_id, call.index, type(e).__name__)
+                raise re_.RegionEditError("provider_error", "the model call failed") from None
+
+        try:
+            ran = re_.run_job_regions(data, [_wire_region(r) for r in wire], edit, aspects=entry.aspects_for("edit"), feather=feather)
+        except _JobLost:
+            logger.warning("job %s: no longer this worker's; stopped between regions", job_id)
+            return "left"
+        except re_.RegionEditError as e:
+            # The picture itself (decoded again) or the feather was refused before any call; nothing was asked of the model.
+            raise _Refused("source_unavailable" if e.code.startswith("source_") else e.code, e.message) from None
+
+        shutil.rmtree(self.out_dir / job_id / "regions", ignore_errors=True)  # the crops and the vendor's answers are scratch
+        report = []
+        for i, raw in enumerate(wire):
+            o = ran.outcomes[i]
+            rid = str(raw.get("id") if isinstance(raw, Mapping) else "")
+            if o.status == "applied":
+                report.append({"id": rid, "status": "applied"})
+                continue
+            code = region_report_code(o.code if o.status != "skipped" else "region_invalid")
+            status = "refused" if o.status in ("refused", "skipped") or code in REGION_REFUSED_CODES else "failed"
+            report.append({"id": rid, "status": status, "code": code})
+
+        if not self.queue.advance(job_id, self.worker_id, "submitted", f"region:{job_id}", {"model": model}):
+            logger.error("job %s: the regions ran but the job is no longer this worker's; leaving it", job_id)
+            return "left"
+        out: dict = {"regions": report, "feather": feather}
+        asset_ids: List[str] = []
+        if ran.png is not None:
+            if not self.queue.advance(job_id, self.worker_id, "processing"):
+                logger.warning("job %s: no longer this worker's; its result is not recorded here", job_id)
+                return "left"
+            asset_ids = self._store_region_result(request, ran, wire, entry, model, str(request.params.get("source_asset_id") or "").lower())
+            out.update({"files": describe_files([self.out_dir / job_id / "output_0.png"]), "storage": "library", "asset_ids": asset_ids})
+        done = self.queue.finish(job_id, self.worker_id, True, result=out)
+        shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
+        status = (done or {}).get("status") if isinstance(done, dict) else None
+        applied = sum(1 for r in report if r["status"] == "applied")
+        return f"completed:{applied}/{len(report)}" if status in (None, "completed") else str(status)
+
+
+    def _store_region_result(self, request: GenerationRequest, ran, wire: Sequence[Any], entry, model: str, source: str) -> List[str]:
+        """The finished picture as ONE new library asset (module doc): written to the job folder, registered ``source='generated'`` with the
+        picture it came from as its parent and the AI provenance set here, then attached to the job. Anything that goes wrong fails the job
+        (full release): the person is not charged for pixels they cannot open."""
+        from modules import region_edit as re_  # noqa: PLC0415
+
+        job_id = request.job_id
+        path = self.out_dir / job_id / "output_0.png"
+        regions = [re_.check_region(_wire_region(r), (ran.width, ran.height), i + 1) if o.status == "applied" else None
+                   for i, (r, o) in enumerate(zip(wire, ran.outcomes))]
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(ran.png)
+            provenance = {**re_.provenance(ran, regions, model_id=model, source_asset_id=source or None),
+                          "job_id": job_id, "provider": entry.provider}
+            aid = str(uuid.uuid5(ASSET_NS, f"{job_id}:0"))
+            ml.store_generated(path, asset_id=aid, org_id=request.org_id, store=self.library.store, media_root=self.library.media_root,
+                               tools=self.library.tools, provenance=provenance, expect_kind="image", parent_asset_id=source or None)
+            attached = self.queue.attach_assets(job_id, self.worker_id, [aid])
+        except Exception as e:
+            logger.warning("job %s: the region result was not stored (%s)", job_id, type(e).__name__)
+            raise _Refused("result_not_stored", "the finished picture could not be stored; nothing was charged") from None
+        if not attached:
+            raise _Refused("result_not_stored", "the finished picture could not be attached to the job; nothing was charged")
+        return [aid]
 
     def _failover(self, job_id: str, mode: str, refused: "_Refused", failovers: int) -> Optional[dict]:
         """A routed job whose submit failed with PROOF that no vendor task

@@ -1,4 +1,4 @@
-import { isUuid } from "@/lib/creative/operations";
+import { IDEMPOTENCY_KEY_RE, isUuid } from "@/lib/creative/operations";
 import {
   DEFAULT_FEATHER,
   MAX_REGIONS,
@@ -30,6 +30,8 @@ export const REGION_ERRORS = [
   "model_required",
   "model_not_sellable",
   "feather_invalid",
+  "source_too_large",
+  "params_too_large",
 ] as const;
 export type RegionError = (typeof REGION_ERRORS)[number];
 
@@ -89,4 +91,28 @@ export function insidePicture(regions: readonly WireRegion[], size: Size): boole
 /** The regions that will run: the ones with words. None is a refusal (nothing to price, nothing to charge). */
 export function regionsToRun(regions: readonly WireRegion[]): { index: number; region: WireRegion }[] {
   return regions.flatMap((region, index) => (region.prompt !== "" ? [{ index, region }] : []));
+}
+
+/** What the run adds to a quote request: the price the person confirmed, and one key per press (a retry must never pay twice). */
+export interface RunRequest {
+  request: RegionRequest;
+  maxCredits: number;
+  idempotencyKey: string;
+}
+
+export type ParsedRun = { ok: true; run: RunRequest } | { ok: false; error: RegionError | "confirm_price" | "invalid_idempotency_key"; detail?: string };
+
+/**
+ * The run body: exactly a quote body (see parseRegionRequest) plus `max_credits` (the price the person saw; the database refuses a
+ * higher one) and `idempotency_key` (required: a double press, a retry after a dropped answer and a second tab all name one job).
+ */
+export function parseRunRequest(body: unknown, defaultOrg: string | null): ParsedRun {
+  const b = obj(body);
+  if (!b) return { ok: false, error: "invalid_body" };
+  const { max_credits: maxCredits, idempotency_key: key, ...rest } = b;
+  const parsed = parseRegionRequest(rest, defaultOrg);
+  if (!parsed.ok) return parsed;
+  if (typeof maxCredits !== "number" || !Number.isFinite(maxCredits) || maxCredits < 0) return { ok: false, error: "confirm_price" };
+  if (typeof key !== "string" || !IDEMPOTENCY_KEY_RE.test(key)) return { ok: false, error: "invalid_idempotency_key" };
+  return { ok: true, run: { request: parsed.request, maxCredits, idempotencyKey: key } };
 }

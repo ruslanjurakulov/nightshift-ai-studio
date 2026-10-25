@@ -2,14 +2,14 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isCreativeMissing } from "@/lib/creative/operations";
 import { MAX_CHAIN, coerceVersionRows, type VersionRow } from "@/lib/regionEdit/versions";
-import type { Size } from "@/lib/regionEdit/geometry";
+import { MAX_SOURCE_PIXELS, type Size } from "@/lib/regionEdit/geometry";
 
 /**
  * The region editor's two reads, both under the signed-in member's own client (RLS: their organizations' live
  * library rows and nothing else). No service key, no provider, nothing written.
  */
 
-export type SourceRead = { ok: true; size: Size } | { ok: false; error: "source_unavailable" | "failed" };
+export type SourceRead = { ok: true; size: Size } | { ok: false; error: "source_unavailable" | "source_too_large" | "failed" };
 
 /**
  * The picture a region edit starts from: a live IMAGE of THIS organization, with the size the library recorded for it.
@@ -24,6 +24,8 @@ export async function readSourcePicture(supabase: SupabaseClient, orgId: string,
   const w = row.width;
   const h = row.height;
   if (typeof w !== "number" || typeof h !== "number" || w <= 0 || h <= 0) return { ok: false, error: "source_unavailable" };
+  // The worker refuses more pixels than this (memory); say so now, before anything is held.
+  if (w * h > MAX_SOURCE_PIXELS) return { ok: false, error: "source_too_large" };
   return { ok: true, size: { width: w, height: h } };
 }
 

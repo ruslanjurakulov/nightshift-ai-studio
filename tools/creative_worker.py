@@ -30,6 +30,9 @@ What each job does is ``modules/creative_worker.py``. This file wires it up:
   organization's library and attached to the job; read-only, they stay in the
   job folder. Unset: jobs that need a source fail with ``source_unavailable``
   and their credits are released;
+* ``NIGHTSHIFT_REGION_EDITOR`` (default off) lets this worker run region edits (migration 0126, docs/REGION_EDITOR.md): an ``edit`` whose
+  params carry ``regions``, run one call per region and pasted back through the pixel lock. Off, such a job fails at once with its credits
+  released;
 * stored error text is scrubbed of every secret in this process's
   environment (the pipeline worker's scrubber) and of token-shaped strings.
 
@@ -150,6 +153,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         tools = ml.find_tools()
 
+    # Region edits (docs/REGION_EDITOR.md) run only while NIGHTSHIFT_REGION_EDITOR is on in THIS process's environment (default off);
+    # a region job that arrives while it is off fails at once and its credits are released.
+    region_editor = cw.region_editor_enabled(os.environ)
+
     def run_thread(n: int) -> None:
         library = None
         if library_on:
@@ -160,13 +167,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             cw.CreativeRest(url, key), resolver,
             worker_id=f"{args.worker_id}-{n}", out_dir=out_dir,
             credits=credit_rules.CreditsRest(url, key), enforce=enforce, scrub=scrub, stop=stop,
-            media_root=media_root, library=library)
+            media_root=media_root, library=library, region_editor=region_editor)
         worker.run_forever(once=args.once)
 
     concurrency = 1 if args.once else args.concurrency
-    logger.info("creative worker %s started (%s at once, credits %s, media library %s)",
+    logger.info("creative worker %s started (%s at once, credits %s, media library %s, region editor %s)",
                 args.worker_id, concurrency, "enforced" if enforce else "not enforced",
-                "read/write" if library_on else ("read-only" if media_root else "not mounted"))
+                "read/write" if library_on else ("read-only" if media_root else "not mounted"),
+                "on" if region_editor else "off")
     threads = [threading.Thread(target=run_thread, args=(i,), name=f"creative-{i}")
                for i in range(concurrency)]
     for t in threads:

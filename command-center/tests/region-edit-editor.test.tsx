@@ -2,9 +2,12 @@
 /**
  * The region editor end to end in the browser layer, with the Konva canvas and the library picker replaced by
  * stand-ins (jsdom has no canvas) and fetch faked: pick a picture, add regions up to five, the sixth is refused,
- * the price is asked only once a region has words and a model is chosen, and the run key stays off.
+ * the price is asked only once a region has words and a model is chosen, the run key stays off until there is a
+ * price, a run asks for exactly the regions on screen at the price shown with one key per press, and the result says
+ * which regions were applied and which were not and what was charged.
  * What would break without these: a sixth region, a price asked for a model nobody chose, a quote body that is not
- * the regions on screen, or a run key that quietly works.
+ * the regions on screen, a run key that works without a price, a double press that pays twice, a retry with a new key,
+ * a failed region shown as applied, or a charge shown that the database did not record.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -49,7 +52,7 @@ beforeEach(() => {
       if (url.startsWith("/api/region-edit/versions"))
         return new Response(JSON.stringify({ chain: { items: [{ id: PIC, parentId: null, version: 1, createdAt: null, width: 800, height: 600 }], at: 0 } }), { status: 200 });
       if (url === "/api/region-edit/quote")
-        return new Response(JSON.stringify({ quote: { model: "m1", feather: 4, total: 7, lines: [{ index: 0, name: "Region 1", credits: 7 }], skipped: [] } }), { status: 200 });
+        return new Response(JSON.stringify({ quote: { model: "m1", feather: 4, total: 7, count: 1, skipped: [] } }), { status: 200 });
       return new Response("{}", { status: 404 });
     }),
   );
@@ -109,7 +112,8 @@ describe("RegionEditor", () => {
     expect(q).toMatchObject({ model: "m2", source_asset_id: PIC, feather: 4 });
     expect(q.regions).toHaveLength(1);
     expect(q.regions[0]).toMatchObject({ name: "Region 1", prompt: "make it dusk" });
-    expect(await screen.findByText("Total: 7 credits")).toBeTruthy();
+    expect(await screen.findByText("At most 7 credits, if every region is applied")).toBeTruthy();
+    expect(screen.getByText(en.regionEdit.quotePerRegion)).toBeTruthy();
   });
 
   it("does not preselect a model when there is a choice, and the run key stays off with an honest reason", async () => {

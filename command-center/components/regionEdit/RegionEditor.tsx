@@ -9,6 +9,7 @@ import { BeforeAfter } from "@/components/studio/BeforeAfter";
 import { RegionCanvas } from "@/components/regionEdit/RegionCanvas";
 import { RegionFields } from "@/components/regionEdit/RegionFields";
 import { VersionPanel, type VersionsState } from "@/components/regionEdit/VersionPanel";
+import { RunPanel } from "@/components/regionEdit/RunPanel";
 import { useRegionQuote } from "@/components/regionEdit/useRegionQuote";
 import {
   DEFAULT_FEATHER,
@@ -30,6 +31,8 @@ import {
   type Size,
 } from "@/lib/regionEdit/geometry";
 import { REGION_ERRORS } from "@/lib/regionEdit/request";
+import { toRunView } from "@/lib/regionEdit/run";
+import { isUuid } from "@/lib/creative/operations";
 import { buildChain } from "@/lib/regionEdit/versions";
 
 export interface EditModelOption {
@@ -68,11 +71,21 @@ const newId = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? c
 
 /**
  * The region editor (NIGHTSHIFT_REGION_EDITOR, default off): pick a library picture, draw 1 to 5 rectangular
- * regions, give each a name and its own words, see the price before anything runs, and move through the picture's
- * versions. Running the edits is NOT connected in this version (see docs/REGION_EDITOR.md): the button says so and
- * nothing is held or charged. The changed parts of a result are AI-generated and the screen says that.
+ * regions, give each a name and its own words, see the price before anything runs, run it, see which regions were
+ * applied and which were not (only the applied ones are charged), and move through the picture's versions
+ * (docs/REGION_EDITOR.md). The changed parts of a result are AI-generated and the screen says that.
  */
-export function RegionEditor({ orgId, models, libraryHref }: { orgId: string; models: EditModelOption[]; libraryHref: string }) {
+export function RegionEditor({
+  orgId,
+  models,
+  libraryHref,
+  creditsHref = "/credits",
+}: {
+  orgId: string;
+  models: EditModelOption[];
+  libraryHref: string;
+  creditsHref?: string;
+}) {
   const { t, fmt, locale } = useI18n();
   const r = t.regionEdit;
   const keysId = useId();
@@ -88,8 +101,49 @@ export function RegionEditor({ orgId, models, libraryHref }: { orgId: string; mo
   const [versions, setVersions] = useState<VersionsState>({ status: "idle" });
   const [original, setOriginal] = useState<{ id: string; url: string } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // The region edit being watched, if any. It is in the address (?job=) so a refresh mid-job finds it again.
+  const [jobId, setJobId] = useState<string | null>(null);
+  // Bumped to ask the price again (the database moved it between the quote and the press).
+  const [nonce, setNonce] = useState(0);
 
   const size = picture.status === "ready" ? picture.size : null;
+
+  const watch = (id: string | null) => {
+    setJobId(id);
+    try {
+      const url = new URL(window.location.href);
+      if (id) url.searchParams.set("job", id);
+      else url.searchParams.delete("job");
+      window.history.replaceState(null, "", url);
+    } catch {
+      /* the address is a convenience; the job is watched either way */
+    }
+  };
+
+  // A refresh mid-job: find the job named in the address and the picture it was started from.
+  useEffect(() => {
+    let id: string | null = null;
+    try {
+      id = new URLSearchParams(window.location.search).get("job");
+    } catch {
+      return;
+    }
+    if (!isUuid(id)) return;
+    const ctrl = new AbortController();
+    void (async () => {
+      try {
+        const res = await fetch(`/api/creative/jobs/${encodeURIComponent(id)}`, { cache: "no-store", signal: ctrl.signal });
+        if (!res.ok) return;
+        const view = toRunView(((await res.json()) as { job?: unknown }).job);
+        if (!view || ctrl.signal.aborted) return;
+        setJobId(view.id);
+        if (view.sourceAssetId) setSourceId((cur) => cur ?? view.sourceAssetId);
+      } catch {
+        /* no job to resume: the editor starts empty, as always */
+      }
+    })();
+    return () => ctrl.abort();
+  }, []);
 
   // Load the picture (and read its versions) when another one is chosen.
   useEffect(() => {
@@ -134,7 +188,7 @@ export function RegionEditor({ orgId, models, libraryHref }: { orgId: string; mo
     setDrawing(false);
   }, [sourceId]);
 
-  const quote = useRegionQuote({ orgId, sourceId: size ? sourceId : null, model, feather, regions });
+  const quote = useRegionQuote({ orgId, sourceId: size ? sourceId : null, model, feather, regions, nonce });
   const selected = regions.find((x) => x.id === selectedId) ?? null;
   const atLimit = regions.length >= MAX_REGIONS;
 
@@ -184,11 +238,7 @@ export function RegionEditor({ orgId, models, libraryHref }: { orgId: string; mo
       return (
         <div className="flex flex-col gap-1" role="status">
           <p className="text-base font-semibold">{fmt(r.quoteTotal, { credits: formatCredits(q.total, locale) })}</p>
-          <ul className="text-sm text-[var(--color-muted)]">
-            {q.lines.map((l) => (
-              <li key={l.index}>{fmt(r.quoteLine, { name: l.name, credits: formatCredits(l.credits, locale) })}</li>
-            ))}
-          </ul>
+          <p className="text-sm text-[var(--color-muted)]">{r.quotePerRegion}</p>
           {q.skipped.length > 0 ? <p className="text-xs text-[var(--color-muted)]">{fmt(r.quoteSkipped, { n: q.skipped.length })}</p> : null}
         </div>
       );
@@ -341,10 +391,21 @@ export function RegionEditor({ orgId, models, libraryHref }: { orgId: string; mo
         ) : (
           quoteView
         )}
-        <button type="button" className="btn-primary w-fit" disabled aria-disabled="true" aria-describedby="re-run-why">
-          {r.run}
-        </button>
-        <p id="re-run-why" className="text-xs text-[var(--color-muted)]">{r.runWhy}</p>
+        <RunPanel
+          orgId={orgId}
+          sourceId={sourceId}
+          ready={picture.status === "ready"}
+          model={model}
+          feather={feather}
+          regions={regions}
+          quote={quote}
+          jobId={jobId}
+          onJob={watch}
+          onRequote={() => setNonce((n) => n + 1)}
+          onFinished={() => setReloadKey((n) => n + 1)}
+          onOpenVersion={(id) => setSourceId(id)}
+          creditsHref={creditsHref}
+        />
       </section>
 
       <section aria-labelledby="re-lock" className="flex flex-col gap-2">

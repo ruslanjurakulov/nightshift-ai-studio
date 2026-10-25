@@ -25,6 +25,8 @@ const STATUS: Record<RegionError, number> = {
   model_required: 422,
   model_not_sellable: 422,
   feather_invalid: 422,
+  source_too_large: 422,
+  params_too_large: 422,
 };
 
 /**

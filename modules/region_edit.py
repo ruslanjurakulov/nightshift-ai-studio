@@ -80,6 +80,12 @@ MAX_PROMPT_CHARS = 1000
 #: Decoded pixels of the source or of a model answer; a larger one is refused
 #: before it is decoded (a small file can hide a huge picture).
 MAX_PIXELS = 48_000_000
+#: A region EDIT (the run step) works on the whole picture several times over (the original, the composite, the lock's masks and the
+#: comparison). Measured by the reviewer with five full-picture regions: 4.9 GB and about 95 s at 47.6 MP, and 1.68 GB and about 37 s at
+#: 16 MP (a 4000x4000 source). So a worker needs about 1.7 GB of RAM for EACH region job it runs at once (CREATIVE_WORKER_CONCURRENCY is
+#: 4 by default). A source of more pixels than this is refused before anything is asked of a model, and costs nothing; the worker and the
+#: Command Center's routes use the same number (command-center/lib/regionEdit/geometry.ts).
+REGION_MAX_SOURCE_PIXELS = 16_000_000
 #: Context around a region in the crop: a quarter of its longer side, at least this many pixels.
 CONTEXT_MIN_PX = 32
 CONTEXT_FRACTION = 0.25
@@ -130,6 +136,26 @@ def _whole(v: object, what: str) -> int:
     return int(v)
 
 
+def check_region(r: object, size: Tuple[int, int], position: int = 1) -> Region:
+    """One request region checked against the picture's size: the same strict rules as :func:`parse_regions`, for a caller that
+    must judge each region on its own (the run step: a refused region costs nothing and the others still run)."""
+    if not isinstance(r, Mapping):
+        raise RegionEditError("region_invalid", f"region {position} is not an object")
+    width, height = size
+    x, y = _whole(r.get("x"), "x"), _whole(r.get("y"), "y")
+    w, h = _whole(r.get("w"), "w"), _whole(r.get("h"), "h")
+    if w < MIN_REGION_PX or h < MIN_REGION_PX:
+        raise RegionEditError("region_too_small", f"region {position} is smaller than {MIN_REGION_PX} px")
+    if x < 0 or y < 0 or x + w > width or y + h > height:
+        raise RegionEditError("region_out_of_bounds", f"region {position} is not inside the picture")
+    mask = r.get("mask_png")
+    if mask is not None and not isinstance(mask, (bytes, bytearray)):
+        raise RegionEditError("mask_invalid", f"region {position}: the brush mask is not an image")
+    return Region(name=_clean_line(r.get("name"), MAX_NAME_CHARS) or f"Region {position}",
+                  prompt=_clean_line(r.get("prompt"), MAX_PROMPT_CHARS),
+                  x=x, y=y, w=w, h=h, mask_png=bytes(mask) if mask is not None else None)
+
+
 def parse_regions(raw: object, size: Tuple[int, int]) -> List[Region]:
     """The request's regions, checked against the picture's size. Strict: a
     rectangle outside the picture is REFUSED, never clamped (the browser clamps
@@ -138,24 +164,7 @@ def parse_regions(raw: object, size: Tuple[int, int]) -> List[Region]:
         raise RegionEditError("no_regions", "draw at least one region")
     if len(raw) > MAX_REGIONS:
         raise RegionEditError("too_many_regions", f"at most {MAX_REGIONS} regions")
-    width, height = size
-    out: List[Region] = []
-    for i, r in enumerate(raw, start=1):
-        if not isinstance(r, Mapping):
-            raise RegionEditError("region_invalid", f"region {i} is not an object")
-        x, y = _whole(r.get("x"), "x"), _whole(r.get("y"), "y")
-        w, h = _whole(r.get("w"), "w"), _whole(r.get("h"), "h")
-        if w < MIN_REGION_PX or h < MIN_REGION_PX:
-            raise RegionEditError("region_too_small", f"region {i} is smaller than {MIN_REGION_PX} px")
-        if x < 0 or y < 0 or x + w > width or y + h > height:
-            raise RegionEditError("region_out_of_bounds", f"region {i} is not inside the picture")
-        mask = r.get("mask_png")
-        if mask is not None and not isinstance(mask, (bytes, bytearray)):
-            raise RegionEditError("mask_invalid", f"region {i}: the brush mask is not an image")
-        out.append(Region(name=_clean_line(r.get("name"), MAX_NAME_CHARS) or f"Region {i}",
-                          prompt=_clean_line(r.get("prompt"), MAX_PROMPT_CHARS),
-                          x=x, y=y, w=w, h=h, mask_png=bytes(mask) if mask is not None else None))
-    return out
+    return [check_region(r, size, i) for i, r in enumerate(raw, start=1)]
 
 
 def active_regions(regions: Sequence[Region]) -> List[Tuple[int, Region]]:
@@ -277,6 +286,23 @@ def load_rgba(data: bytes) -> Tuple[np.ndarray, bool, Optional[bytes]]:
     except Exception:  # noqa: BLE001 — a truncated file, a bomb, a non-image: all "not a picture"
         raise RegionEditError("source_unreadable", "the picture could not be read") from None
     return arr, had_alpha, icc
+
+
+def inspect_source(data: bytes) -> Tuple[int, int]:
+    """The (width, height) of a source picture WITHOUT decoding its pixels, or the refusal: not a picture, a mode that cannot be edited
+    without changing values, more than ``MAX_PIXELS`` (never decoded) or more than ``REGION_MAX_SOURCE_PIXELS`` (the run step's own
+    ceiling, see there). The grid after EXIF orientation has the same pixel count."""
+    try:
+        im = Image.open(io.BytesIO(data))
+        w, h = im.size
+        mode = im.mode
+    except Exception:  # noqa: BLE001 — a truncated file, a bomb, a non-image: all "not a picture"
+        raise RegionEditError("source_unreadable", "the picture could not be read") from None
+    if w * h > MAX_PIXELS or w * h > REGION_MAX_SOURCE_PIXELS:
+        raise RegionEditError("source_too_large", f"the picture has more than {REGION_MAX_SOURCE_PIXELS // 1_000_000} megapixels")
+    if mode in ("I;16", "I;16L", "I;16B", "I", "F", "CMYK", "YCbCr", "LAB", "HSV"):
+        raise RegionEditError("source_unsupported", f"{mode} pictures are not edited here")
+    return w, h
 
 
 def _brush(region: Region) -> np.ndarray:
@@ -427,7 +453,7 @@ EditFn = Callable[[EditCall], bytes]
 class RegionOutcome:
     index: int
     name: str
-    #: "applied" | "failed" | "skipped" (no words: not run, not priced, not charged)
+    #: "applied" | "failed" | "refused" (judged invalid before any call, by ``run_job_regions``) | "skipped" (no words: not run, not priced, not charged)
     status: str
     code: Optional[str] = None
     message: Optional[str] = None
@@ -487,12 +513,46 @@ def run_region_edit(source: bytes, regions: Sequence[Region], edit_fn: EditFn, *
     arr, had_alpha, icc = load_rgba(source)
     height, width = arr.shape[:2]
     parse_regions([{"x": r.x, "y": r.y, "w": r.w, "h": r.h} for r in regions], (width, height))
-    todo = {i for i, _ in active_regions(regions)}
+    active_regions(regions)
+    return _run_loaded(arr, had_alpha, icc, list(regions), {}, edit_fn, aspects, feather)
+
+
+def run_job_regions(source: bytes, wire: Sequence[Mapping], edit_fn: EditFn, *, aspects: Sequence[str] = (),
+                    feather: int = DEFAULT_FEATHER) -> RegionEditResult:
+    """The run step's entry: the job's regions as stored (``x y w h name prompt``), each judged ON ITS OWN against the real picture.
+
+    A region that is out of the picture, too small or otherwise not valid is ``refused`` (no model is asked) and the others still run;
+    nothing here clamps. Every region of ``wire`` gets exactly one outcome, in order, and no region is ever sent to a second model.
+    Unlike :func:`run_region_edit` it does not raise when no region can run: it returns outcomes that say why."""
+    feather = check_feather(feather)
+    inspect_source(source)           # the run step's pixel ceiling, before a single pixel is decoded
+    arr, had_alpha, icc = load_rgba(source)
+    height, width = arr.shape[:2]
+    regions: List[Optional[Region]] = []
+    refused: dict = {}
+    for i, raw in enumerate(wire):
+        try:
+            regions.append(check_region(raw, (width, height), i + 1))
+        except RegionEditError as e:
+            regions.append(None)
+            refused[i] = e
+    return _run_loaded(arr, had_alpha, icc, regions, refused, edit_fn, aspects, feather)
+
+
+def _run_loaded(arr: np.ndarray, had_alpha: bool, icc: Optional[bytes], regions: Sequence[Optional[Region]],
+                refused: Mapping[int, RegionEditError], edit_fn: EditFn, aspects: Sequence[str],
+                feather: int) -> RegionEditResult:
+    height, width = arr.shape[:2]
     outcomes: List[RegionOutcome] = []
     edits: List[Tuple[Region, np.ndarray, Tuple[int, int, int, int]]] = []
     applied_regions: List[Region] = []
+    applied_index: List[int] = []
     for i, region in enumerate(regions):
-        if i not in todo:
+        if region is None:
+            err = refused[i]
+            outcomes.append(RegionOutcome(i, f"Region {i + 1}", "refused", err.code, err.message))
+            continue
+        if not region.prompt:
             outcomes.append(RegionOutcome(i, region.name, "skipped", "no_prompt", "no words for this region"))
             continue
         try:
@@ -510,11 +570,36 @@ def run_region_edit(source: bytes, regions: Sequence[Region], edit_fn: EditFn, *
             continue
         edits.append((region, edited, crop.box))
         applied_regions.append(region)
+        applied_index.append(len(outcomes))
         outcomes.append(RegionOutcome(i, region.name, "applied", crop_box=crop.box))
     if not edits:
         return RegionEditResult(None, outcomes, width, height, feather)
     result = composite_regions(arr, edits, feather)
-    verify_pixel_lock(arr, result, applied_regions, feather)
+    try:
+        verify_pixel_lock(arr, result, applied_regions, feather)
+    except RegionEditError:
+        # The finished picture broke the lock. Say WHICH region did, so that one alone is failed (not charged) and the others stand:
+        # each applied region is composited and verified on its own, and only the ones that pass are kept.
+        kept = []
+        for (region, edited, box), index in zip(edits, applied_index):
+            try:
+                verify_pixel_lock(arr, composite_regions(arr, [(region, edited, box)], feather), [region], feather)
+            except RegionEditError:
+                outcomes[index] = RegionOutcome(index, region.name, "failed", "pixel_lock_failed",
+                                                "a pixel outside the region would have changed")
+                continue
+            kept.append((region, edited, box))
+        if not kept:
+            return RegionEditResult(None, outcomes, width, height, feather)
+        result = composite_regions(arr, kept, feather)
+        try:
+            verify_pixel_lock(arr, result, [k[0] for k in kept], feather)
+        except RegionEditError:
+            # Each passes alone and the whole does not: nothing about this picture can be trusted.
+            for (region, _e, _b), index in zip(edits, applied_index):
+                outcomes[index] = RegionOutcome(index, region.name, "failed", "pixel_lock_failed",
+                                                "the finished picture did not keep the original outside the regions")
+            return RegionEditResult(None, outcomes, width, height, feather)
     return RegionEditResult(encode_png(result, had_alpha, icc), outcomes, width, height, feather)
 
 
