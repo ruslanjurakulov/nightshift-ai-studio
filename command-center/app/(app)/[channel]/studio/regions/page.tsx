@@ -21,7 +21,8 @@ export const revalidate = 0;
  * Region editor (NIGHTSHIFT_REGION_EDITOR, default off: this page is then a 404, exactly as if it did not exist).
  * Draw up to five rectangles on a library picture, give each its own words, see the price before anything runs. The
  * models offered are the ones the database lets this member buy that can edit pictures (migration 0035): none
- * is a default and none stands in for another. Running the edits is not connected yet (docs/REGION_EDITOR.md).
+ * is a default and none stands in for another. Running holds the price and charges only the regions that were applied
+ * (migration 0125, docs/REGION_EDITOR.md).
  */
 export default async function RegionEditorPage() {
   if (!regionEditorEnabled()) notFound();
@@ -36,7 +37,7 @@ export default async function RegionEditorPage() {
   return (
     <div className="rhythm ns-open stagger-enter">
       {header}
-      <RegionEditor orgId={org.current.id} models={models} libraryHref={channelPath(slug, "/library")} />
+      <RegionEditor orgId={org.current.id} models={models} libraryHref={channelPath(slug, "/library")} creditsHref={channelPath(slug, "/credits")} />
     </div>
   );
 }

@@ -124,8 +124,17 @@ describe("the editor's source (static)", () => {
   const editor = readFileSync(join(dir, "RegionEditor.tsx"), "utf8");
   const canvas = readFileSync(join(dir, "RegionCanvas.tsx"), "utf8");
 
-  it("the run key is disabled and explains why; it is the only way to run and it does nothing", () => {
-    expect(editor).toMatch(/className="btn-primary w-fit" disabled aria-disabled="true" aria-describedby="re-run-why"/);
+  it("the run key is off without a price and says why; it only writes one row (rule 3): the run route, nothing else", () => {
+    const panel = readFileSync(join(dir, "RunPanel.tsx"), "utf8");
+    expect(panel).toMatch(/disabled=\{!canRun\} aria-disabled=\{!canRun\} aria-describedby="re-run-why"/);
+    expect(panel).toMatch(/const canRun = ready && Boolean\(sourceId\) && Boolean\(model\) && priced && start.kind !== "starting" && !active;/);
+    // the price it asks the database to hold is the price on screen, and one key names one press
+    expect(panel).toContain("max_credits: quote.quote.total");
+    expect(panel).toContain("idempotency_key: attempt.current.key");
+    // the browser never talks to a provider, a worker or a service route; it reads the job it made through the member's own session
+    const urls = [...panel.matchAll(/fetch\(\s*[`"]([^`"$]*)/g)].map((m) => m[1]);
+    expect(urls.sort()).toEqual(["/api/creative/jobs/", "/api/region-edit/run"].sort());
+    expect(panel + editor).not.toMatch(/service_role|SUPABASE_SERVICE|api\.openai|googleapis|generativelanguage/);
     expect(editor).not.toMatch(/fetch\([^)]*region-edit\/run/);
   });
 

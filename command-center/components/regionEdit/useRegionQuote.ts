@@ -15,7 +15,8 @@ const DELAY_MS = 400;
 /**
  * The price of the regions as drawn, asked of /api/region-edit/quote (nothing held, nothing spent) a moment after the
  * person stops changing them. `idle` when there is nothing honest to ask: no picture, no model, no region with words.
- * A total is only ever a number the database priced region by region; a failure shows its reason, never a guessed sum.
+ * A total is only ever the number the database priced for exactly the params the run will send; a failure shows its
+ * reason, never a guessed sum.
  */
 export function useRegionQuote({
   orgId,
@@ -23,16 +24,19 @@ export function useRegionQuote({
   model,
   feather,
   regions,
+  nonce = 0,
 }: {
   orgId: string;
   sourceId: string | null;
   model: string;
   feather: number;
   regions: readonly EditorRegion[];
+  /** Changed to ask the price again with the same inputs. */
+  nonce?: number;
 }): RegionQuoteState {
   const [state, setState] = useState<RegionQuoteState>({ status: "idle" });
   const wire = toWire(regions);
-  const key = JSON.stringify({ orgId, sourceId, model, feather, wire });
+  const key = JSON.stringify({ orgId, sourceId, model, feather, wire, nonce });
   const askable = Boolean(sourceId && model && wire.some((r) => r.prompt !== ""));
 
   useEffect(() => {

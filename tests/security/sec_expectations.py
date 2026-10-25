@@ -380,6 +380,8 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "creative_platform_reserve": SERVICE,
     "creative_price": SERVICE,
     "creative_quantity": SERVICE,
+    "creative_region_outcomes": SERVICE,
+    "creative_regions_problem": SERVICE,
     "creative_refuse": SERVICE,
     # media inputs (0046): the source check is internal; the worker re-reads
     # the source of a job it holds and attaches the job's library outputs

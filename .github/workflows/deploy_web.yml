@@ -423,6 +423,9 @@ jobs:
           WORKERENV_NIGHTSHIFT_VISIBILITY_DAILY_UNITS: ${{ vars.NIGHTSHIFT_VISIBILITY_DAILY_UNITS }}
           WORKERENV_NIGHTSHIFT_VISIBILITY_ORG_PERCENT: ${{ vars.NIGHTSHIFT_VISIBILITY_ORG_PERCENT }}
           WORKERENV_NIGHTSHIFT_YT_QUOTA_PROJECT: ${{ vars.NIGHTSHIFT_YT_QUOTA_PROJECT }}
+          # Region editor, the worker's side (docs/REGION_EDITOR.md): the same repository variable as the web's. Empty = off, and a region
+          # edit that reaches the worker is failed at once with its credits released. This change does not set it.
+          WORKERENV_NIGHTSHIFT_REGION_EDITOR: ${{ vars.NIGHTSHIFT_REGION_EDITOR }}
           WORKERENV_NIGHTSHIFT_VOICE_GATE_STRICT: ${{ vars.NIGHTSHIFT_VOICE_GATE_STRICT }}
           WORKERENV_NIGHTSHIFT_SERIES_PLANNER: ${{ vars.NIGHTSHIFT_SERIES_PLANNER }}
           WORKERENV_NIGHTSHIFT_VOICE_CLONING: ${{ vars.NIGHTSHIFT_VOICE_CLONING }}

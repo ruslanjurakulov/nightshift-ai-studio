@@ -4,9 +4,10 @@ Draw 1 to 5 rectangles on a library picture, give each its own name and words, s
 step exists) have an existing edit model change only those rectangles. Provider-independent by construction: the
 **pixel lock** decides what may change, not the model.
 
-This page says exactly what is built, what is guaranteed and what is not, and what is still missing. Nothing here is
-switched on: the page is a 404 and the routes answer `not_found` until the owner sets `NIGHTSHIFT_REGION_EDITOR=on`
-on the Command Center's server. No migration is added.
+This page says exactly what is built, what is guaranteed and what is not. Nothing here is switched on: the page is a
+404 and the routes answer `not_found` until the owner sets `NIGHTSHIFT_REGION_EDITOR=on` on the Command Center's server,
+and the creative worker refuses a region job (`region_editor_off`, the whole hold released) unless the same variable is on
+in ITS environment. The run step added migration 0125 (see "The run step").
 
 ## What is built in this change
 
@@ -16,7 +17,7 @@ on the Command Center's server. No migration is added.
 | Editor UI (Konva canvas, region list, model pick, price, versions, before/after) | `command-center/components/regionEdit/*`, `app/(app)/[channel]/studio/regions/page.tsx` | built, behind the switch |
 | Price before running | `POST /api/region-edit/quote` | built: one ordinary `edit` quote per region with words, summed |
 | Version history | `GET /api/region-edit/versions` | built; reads `media_assets.parent_asset_id` (written by the worker, never by the browser) |
-| Running the edits (hold, call the model per region, composite, store a new version, charge or refund) | none | **not built, needs a migration. See "What is missing".** The Run button is disabled and says so. |
+| Running the edits (hold, call the model per region, composite, store a new version, charge or refund) | `supabase/migrations/0125_region_edit_run.sql`, `POST /api/region-edit/run`, `modules/creative_worker.py` (`_process_region`), `modules/region_edit.py` (`run_job_regions`), `components/regionEdit/RunPanel.tsx` | built, behind the same switch on the web and on the worker. See "The run step". |
 
 New dependency: `konva` (MIT). No canvas library was present in `command-center` (the video editor draws with the
 DOM and CSS). `react-konva` was not added; Konva is imported on the client after mount and never on the server.
@@ -80,11 +81,11 @@ Not guaranteed:
 
 ## Credits
 
-Per region that has words = one generation unit of the chosen model, regions summed. The quote is an ordinary `edit`
-quote asked of the database (`quote_creative_job`) per region; a region without words is skipped and costs nothing; if
-any single price cannot be worked out the whole quote is refused with that region's reason, never a guessed total.
-Nothing is held in this change. When the run step is built it must use one creative job per region (or equivalent) so a
-refused or failed region releases its own hold and charges nothing, exactly like the AI-edit desk.
+A region edit is ONE ordinary `edit` creative job whose params are the picture, the model's own tier and the regions. The
+price is asked of the database for those very params (`POST /api/region-edit/quote` is one `quote_creative_job` call, not a
+sum): n regions with words are n units of the model's `edit` price, rounded up once to the cent, never below the job
+minimum. A region without words is skipped and costs nothing. If the price cannot be worked out the quote is refused with
+the database's reason, never a guessed total. See "The run step" for the hold, the charge and the release.
 
 ## Honest labels
 
@@ -93,25 +94,35 @@ The screen says the changed parts are AI-generated and that the tool does not ju
 the feather and each applied region's rectangle (not the person's words). A result must be registered as
 `source='generated'` (never `upload`) so the existing AI-disclosure logic that reads generated stills still sees it.
 
-## What is missing (needs a migration, so it was not written)
+## The run step (migration 0125)
 
-The run step cannot be built without changing the database:
+`create_creative_job` accepts `params.regions` (1 to 5 of `{id, name, rect {x,y,w,h}, prompt}`) and `params.region_feather`
+(2 to 8) on `edit` jobs only, and refuses every other key next to them (no prompt of its own, no seed, no shape, no style
+kit). The closed shape is `creative_regions_problem`; the count prices the job (`creative_quantity`); the settlement is
+`finish_creative_job`. The three replaced functions and the two new ones are md5-pinned in the migration header.
 
-1. **Geometry cannot reach the worker.** `creative_params_problem` (0036/0046/0099) refuses any parameter key it does
-   not know, so an `edit` job cannot carry regions, a feather or a crop. The same allow-list exists in
-   `lib/creative/operations.ts` (`PARAM_KEYS`).
-2. **The composite cannot be registered from the web.** `register_asset` is service-role only. The only write path
-   from the browser is an upload ticket, which registers the file as `source='upload'` with no parent: that would
-   launder AI-generated pixels as an upload and lose the version link. The worker must store the composite with
-   `source='generated'`, `parent_asset_id` = the picture it came from, and the provenance above.
+Money, as implemented:
 
-Smallest honest change (a proposal for Scout/Lens, not code): allow `params.regions` (at most 5 rectangles) and
-`params.region_feather` on `edit`, price by the number of regions with words, and have `creative_worker._to_library`
-call `modules.region_edit.run_region_edit` instead of storing the model's whole picture. Partial results (some regions
-failed) need a settlement rule the owner must decide: charge only the regions that were applied.
+* Hold: the quote of n units, held by `create_creative_job` as for any job. A request refused before it holds nothing.
+* Each region's share of the hold is `quoted_credits / n`. The worker reports the outcome of every region (`applied`,
+  `failed`, `refused`, a failed or refused one with a code from a closed list); the database counts the applied ones and
+  charges `quoted * applied / n` rounded UP to the cent (never above the hold); `capture_credits` releases the rest in the
+  same transaction, once.
+* All applied: the whole hold. None applied: the job ends `failed` (`no_region_applied`), the per-region outcomes stay in
+  `result`, the whole hold is released, nothing is charged. Nothing is refused or charged for a request refused up front.
+* Nothing is charged for pixels that were not stored: a completed region edit must have exactly one attached result.
+* Finishing twice, an expiry or a cancel afterwards, and a retried call move no credit a second time.
 
-The simplest worker design chains versions: each applied region produces a version whose parent is the previous one,
-so every step is an immutable version and undo is moving to the parent (the version panel already reads that chain).
+The worker (`NIGHTSHIFT_REGION_EDITOR` on): exact mode only; the model must be in `sellable_models('edit')` at that moment
+(no default, no second choice, no retry on another model); one call per region through the model's own image adapter
+(`image.openai` / `image.gemini`); a region outside the real picture or too small is refused without a call; every answer is
+pasted back through the pixel lock and the finished picture is verified again, a region that would break the lock is failed
+(not charged) and the others stand; the result is one new library picture, `source='generated'`, `parent_asset_id` = the
+source, provenance `ai_generated` written by the worker. A worker that dies after the last call and before the result is
+stored leaves a job that is failed (`output_lost`) and released, never polled or paid twice.
+
+Not built: a brush bitmap per region (it needs the bitmap's ownership checked in `creative_source_problem` and
+`creative_job_source`, and the editor has no brush), and a per-region version chain (one run = one new version of the source).
 
 ## Doubts
 
@@ -121,3 +132,9 @@ so every step is an immutable version and undo is moving to the parent (the vers
   database was available to confirm the member policy returns it.
 * The prompt wrapper in `adapter_edit_fn` ("Change this picture as described...") is untested against a live model:
   no live or paid call was made.
+* Several regions are priced as one quote of n units, so n regions can cost a few cents less than n separate quotes would
+  (one rounding instead of n, and one job minimum instead of n). The owner should confirm that is the intended price.
+* The database does not read the picture's size into the shape check; a region outside the real picture is refused by the
+  web route before a hold and, for a direct call, by the worker without a charge.
+* A member can call `create_creative_job` with regions directly even while the switch is off. The job is priced and held like
+  any other and the worker (switch off) fails it with the whole hold released.
