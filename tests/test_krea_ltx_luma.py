@@ -28,7 +28,7 @@ from unittest import mock
 from modules import creative_adapters as ca
 from modules import creative_worker as cw
 from modules import model_registry as reg
-from modules.capabilities import build_adapter, krea, ltx, luma
+from modules.capabilities import build_adapter, krea, ltx, luma, pictures
 from modules.capabilities.base import (
     E_AUTH,
     E_BAD_REQUEST,
@@ -167,6 +167,12 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertEqual(p["as_of"], "2026-10-25", mid)
             self.assertIn("ESTIMATE", p["note"], mid)
             self.assertTrue(p["source_url"].startswith("https://"), mid)
+
+    def test_the_ltx_result_host_note_says_to_pin_the_bucket_after_the_first_probe(self):
+        for mid in LTX_IDS:
+            self.assertIn("pin the bucket after the first probe", self.r[mid].raw["api_documented"]["note"], mid)
+        self.assertIn("pin the bucket", (ROOT / "docs" / "research" / "krea-ltx-luma-first-party.md").read_text())
+        self.assertIn("PIN THE BUCKET", (ROOT / "modules" / "capabilities" / "ltx.py").read_text())
 
     def test_a_failed_job_is_never_stated_to_be_free(self):
         for mid in NEW_IDS:
@@ -375,7 +381,8 @@ class KreaLostAnswerTests(KreaCase):
             self.assertUnconfirmed(cm, E_UNAVAILABLE)
 
     def test_a_2xx_without_a_usable_job_id_may_have_billed(self):
-        for body in ({}, {"job_id": ""}, {"job_id": 7}, {"job_id": "../../jobs"}, {"job_id": "x" * 300}, [], None):
+        for body in ({}, {"job_id": ""}, {"job_id": 7}, {"job_id": "../../jobs"}, {"job_id": ".."}, {"job_id": "a.b"},
+                      {"job_id": "x" * 300}, [], None):
             self.vendor._routes.clear()
             self.vendor.on("POST", KREA_PATH, Resp(200, body))
             with self.assertRaises(AdapterError, msg=repr(body)) as cm:
@@ -467,6 +474,15 @@ class KreaPollTests(KreaCase):
         res = self.status({"status": "failed", "result": {"error": f"token {KEY} rejected"}})
         self.assertNotIn(KEY, res.error.message)
 
+    def test_every_failed_or_cancelled_job_says_the_spend_is_unknown_and_never_that_it_was_free(self):
+        for body in ({"status": "failed", "result": {"error": "x"}}, {"status": "failed"}, {"status": "cancelled"},
+                     {"status": "failed", "result": {"error": "blocked by moderation"}}):
+            res = self.status(body)
+            self.assertEqual(res.state, FAILED)
+            self.assertTrue(res.error.message.endswith(krea.SPEND_UNKNOWN), res.error.message)
+            self.assertIn("usage page", res.error.message)
+            self.assertIn("vendor claim, unverified", res.error.message)   # Krea's "not billed" is quoted as a claim
+
     def test_completed_without_a_link_may_have_billed_and_says_so(self):
         for result in ({}, {"urls": []}, {"urls": [""]}, {"urls": [5]}, None):
             with self.assertRaises(AdapterError, msg=repr(result)) as cm:
@@ -488,7 +504,7 @@ class KreaPollTests(KreaCase):
         self.assertIn("'cdn.somewhere-else.example'", cm.exception.message)
 
     def test_a_job_id_that_could_steer_the_request_is_refused(self):
-        for jid in ("../../assets", "a/b", "a?b=c", "", "x" * 300):
+        for jid in ("../../assets", "a/b", "a?b=c", "", "x" * 300, "..", ".", "a..b", "a.b", "a:b", "%2e%2e"):
             with self.assertRaises(AdapterError, msg=repr(jid)) as cm:
                 self.adapter().poll(ProviderTask("image.krea", "krea-3", jid))
             self.assertEqual(cm.exception.code, E_NOT_FOUND)
@@ -770,7 +786,11 @@ class LtxPollTests(LtxCase):
             res = self.status({"status": "failed", "error": {"type": etype, "message": f"it broke {KEY}"}})
             self.assertEqual((res.state, res.error.code), (FAILED, want), etype)
             self.assertNotIn(KEY, res.error.message)
-        self.assertEqual(self.status({"status": "failed"}).error.code, E_UNAVAILABLE)
+            self.assertTrue(res.error.message.endswith(ltx.SPEND_UNKNOWN), res.error.message)
+            self.assertIn("usage page", res.error.message)
+        res = self.status({"status": "failed"})
+        self.assertEqual(res.error.code, E_UNAVAILABLE)
+        self.assertTrue(res.error.message.endswith(ltx.SPEND_UNKNOWN))     # the docs are silent on a failed job's cost
 
     def test_completed_without_a_link_may_have_billed_and_says_so(self):
         for result in ({}, {"video_url": ""}, {"video_url": 5}, None):
@@ -796,7 +816,8 @@ class LtxPollTests(LtxCase):
 
     def test_a_task_id_that_could_steer_the_request_is_refused(self):
         for tid in ("../../v2/x", "text-to-video", "text-to-video:", "retake:abc", "text-to-video:a/b", "text-to-video:a?b",
-                    ":abc", "", "text-to-video:" + "x" * 300, "image-to-video:../x"):
+                    ":abc", "", "text-to-video:" + "x" * 300, "image-to-video:../x", "text-to-video:..", "text-to-video:.",
+                    "text-to-video:a.b", "image-to-video:a:b"):
             with self.assertRaises(AdapterError, msg=repr(tid)) as cm:
                 self.adapter().poll(ProviderTask("video.ltx", "ltx-2-5-pro", tid))
             self.assertEqual(cm.exception.code, E_NOT_FOUND)
@@ -963,7 +984,10 @@ class LumaTests(LumaCase):
             res = self.poll({"state": "failed", "failure_code": code, "failure_reason": f"why {KEY}"})
             self.assertEqual((res.state, res.error.code), (FAILED, want), code)
             self.assertNotIn(KEY, res.error.message)
-            self.assertNotIn("refund", res.error.message.lower())          # what Luma says about billing is not repeated as fact
+            self.assertTrue(res.error.message.endswith(luma.SPEND_UNKNOWN), res.error.message)
+            self.assertIn("usage page", res.error.message)
+            self.assertIn("unverified", res.error.message)                 # Luma's refund list is quoted as its statement, never as fact
+            self.assertNotIn("were refunded", res.error.message.lower())
 
     def test_completed_without_a_link_may_have_billed_and_says_so(self):
         for out in ([], [{}], [{"url": ""}], None, "x"):
@@ -986,7 +1010,7 @@ class LumaTests(LumaCase):
         self.assertIn("'storage.example.com'", cm.exception.message)
 
     def test_a_generation_id_that_could_steer_the_request_is_refused(self):
-        for gid in ("../../v1/files", "a/b", "a?b=c", "", "x" * 100):
+        for gid in ("../../v1/files", "a/b", "a?b=c", "", "x" * 100, "..", ".", "a.b", "a:b"):
             with self.assertRaises(AdapterError, msg=repr(gid)) as cm:
                 self.adapter().poll(ProviderTask("image.luma", "uni-1", gid))
             self.assertEqual(cm.exception.code, E_NOT_FOUND)
@@ -1017,6 +1041,81 @@ class LumaTests(LumaCase):
                         voice_id=None, workdir=self.tmp, session=self.vendor.session(), sleep=lambda s: None)
         self.assertEqual((res.ok, res.code), (False, E_BAD_RESPONSE))
         self.assertTrue(res.message.startswith(AFTER_COMPLETION), res.message)
+
+
+# ══ local pictures ════════════════════════════════════════════════════════════════
+
+class LocalPictureTests(VendorCase):
+    """A path comes from a job. Only a real picture may be read from it and sent to a vendor."""
+
+    def secret_file(self, name="notes.png", body=b"DB_PASSWORD=hunter2\n" * 20) -> str:
+        p = self.tmp / name
+        p.write_bytes(body)
+        return str(p)
+
+    def submitters(self):
+        k = KreaCase()
+        k.vendor = self.vendor
+        l = LtxCase()
+        l.vendor = self.vendor
+        self.vendor.on("POST", KREA_PATH, Resp(200, {"job_id": "j1"}))
+        self.vendor.on("POST", I2V_PATH, Resp(202, {"id": "i1"}))
+        yield ("krea", lambda ref: k.adapter().submit(CapabilityRequest(EDIT, "x", image_size="1K", input_images=(ref,)), "krea-3"))
+        yield ("krea-regional", lambda ref: k.adapter().submit(
+            CapabilityRequest(EDIT, "x", image_size="1K", input_images=(ref,)), "krea-3:regional"))
+        yield ("ltx", lambda ref: l.adapter().submit(
+            CapabilityRequest(I2V, "go", resolution="720p", duration_s=6, input_images=(ref,)), "ltx-2-5-pro"))
+
+    def test_a_file_that_only_wears_a_picture_suffix_is_refused_and_nothing_is_sent(self):
+        bodies = {"text": b"DB_PASSWORD=hunter2\n" * 20, "html": b"<html><body>login</body></html>", "zip": b"PK\x03\x04" + b"\x00" * 64,
+                  "gif": b"GIF89a" + b"\x00" * 64, "svg": b"<svg xmlns='http://www.w3.org/2000/svg'/>", "empty": b""}
+        for who, submit in self.submitters():
+            for kind, body in bodies.items():
+                with self.assertRaises(AdapterError, msg=(who, kind)) as cm:
+                    submit(self.secret_file(f"{kind}.png", body))
+                self.assertEqual(cm.exception.code, E_BAD_REQUEST, (who, kind))
+                self.assertTrue(cm.exception.not_accepted, (who, kind))
+                self.assertIn("not a PNG, JPEG or WEBP picture", cm.exception.message)
+        self.assertEqual(self.vendor.requests, [])
+
+    def test_a_suffix_that_is_not_a_picture_is_refused_before_the_file_is_opened(self):
+        for who, submit in self.submitters():
+            for name in ("notes.txt", "key.pem", "a.gif", "a.svg", "a", ".env", "a.png.exe"):
+                with self.assertRaises(AdapterError, msg=(who, name)) as cm:
+                    submit(self.secret_file(name))
+                self.assertIn("JPEG, PNG or WEBP", cm.exception.message)
+        self.assertEqual(self.vendor.requests, [])
+
+    def test_a_real_picture_is_labelled_with_the_type_its_bytes_say_not_its_suffix(self):
+        from PIL import Image
+
+        jpeg = io.BytesIO()
+        Image.new("RGB", (8, 8), (10, 20, 30)).save(jpeg, "JPEG")
+        webp = io.BytesIO()
+        Image.new("RGB", (8, 8), (10, 20, 30)).save(webp, "WEBP")
+        for body, mime in ((png(), "image/png"), (jpeg.getvalue(), "image/jpeg"), (webp.getvalue(), "image/webp")):
+            uri = pictures.inline_picture(self.secret_file("liar.png", body), max_bytes=1 << 20, who="x")   # a .png suffix on every one
+            self.assertTrue(uri.startswith(f"data:{mime};base64,"), (mime, uri[:30]))
+
+    def test_the_end_to_end_body_carries_the_labelled_picture(self):
+        for who, submit in self.submitters():
+            self.vendor.requests.clear()
+            submit(self.frame(f"{who}.png"))
+            (req,) = self.vendor.requests
+            blob = req.body.decode()
+            self.assertIn("data:image/png;base64,", blob, who)
+
+    def test_a_missing_or_oversized_picture_and_a_link_behave_as_before(self):
+        with self.assertRaises(AdapterError) as cm:
+            pictures.inline_picture(str(self.tmp / "gone.png"), max_bytes=1 << 20, who="x")
+        self.assertIn("could not be read", cm.exception.message)
+        with self.assertRaises(AdapterError) as cm:
+            pictures.inline_picture(self.frame(), max_bytes=4, who="x")
+        self.assertIn("over", cm.exception.message)
+        self.assertEqual(pictures.inline_picture("https://example.invalid/a.png", max_bytes=1, who="x"),
+                         "https://example.invalid/a.png")
+        with self.assertRaises(AdapterError):
+            pictures.inline_picture("http://example.invalid/a.png", max_bytes=1 << 20, who="x")    # not https: treated as a path
 
 
 # ══ wiring ════════════════════════════════════════════════════════════════════════

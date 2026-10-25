@@ -32,7 +32,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 describe("the closed set of vendors", () => {
   it("is exactly the ids the page lists, with no database list behind it", () => {
     expect(MODEL_KEY_PROVIDERS.map((p) => p.id).sort()).toEqual([...MODEL_KEY_PROVIDER_IDS].sort());
-    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(13);
+    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(15);
   });
 
   it("covers every provider of the model registry (but the placeholder), so no model has a vendor without a key page", () => {
@@ -67,11 +67,12 @@ describe("what a verify request is allowed to be", () => {
     minimax: "GET https://api.minimax.io/v1/models",
     runway: "GET https://api.dev.runwayml.com/v1/organization",
     luma: "GET https://agents.lumalabs.ai/v1/files?limit=1",
+    krea: "GET https://api.krea.ai/jobs?limit=1",
     alibaba: "GET https://dashscope-intl.aliyuncs.com/api/v1/models?page_size=1",
   };
-  const FORMAT_ONLY = ["bytedance", "kling"];
+  const FORMAT_ONLY = ["bytedance", "kling", "lightricks"];
 
-  it("pins every http vendor to one exact free read and lists the two with no check", () => {
+  it("pins every http vendor to one exact free read and lists the three with no check", () => {
     const got: Record<string, string> = {};
     for (const p of MODEL_KEY_PROVIDERS) {
       if (p.strategy.kind === "http") got[p.id] = `GET ${p.strategy.origin}${p.strategy.path}${p.strategy.query ? `?${p.strategy.query}` : ""}`;
@@ -94,6 +95,7 @@ describe("what a verify request is allowed to be", () => {
       minimax: [401, 403],
       runway: [401, 403],
       luma: [401, 403],
+      krea: [401],
       alibaba: [401, 403],
     });
   });
@@ -116,6 +118,7 @@ describe("what a verify request is allowed to be", () => {
       minimax: 'Authorization:bearer|{}|{"kind":"field","name":"data","type":"array"}',
       runway: 'Authorization:bearer|{"X-Runway-Version":"2024-11-06"}|{"kind":"field","name":"creditBalance","type":"number"}',
       luma: 'Authorization:bearer|{}|{"kind":"object"}',
+      krea: 'Authorization:bearer|{}|{"kind":"field","name":"items","type":"array"}',
       alibaba: 'Authorization:bearer|{}|{"kind":"field","name":"output","type":"object"}',
     });
   });
@@ -156,7 +159,7 @@ describe("what a verify request is allowed to be", () => {
 });
 
 describe("the key page link", () => {
-  it("is https, comes with the vendor documentation page it was read on, or is absent (Kling) and the card says so", () => {
+  it("is https, comes with the vendor documentation page it was read on, or is absent (Kling, Lightricks) and the card says so", () => {
     for (const p of MODEL_KEY_PROVIDERS) {
       if (p.keyUrl === null) {
         expect(p.keyUrlSource, p.id).toBeNull();
@@ -165,7 +168,7 @@ describe("the key page link", () => {
       expect(new URL(p.keyUrl).protocol, p.id).toBe("https:");
       expect(p.keyUrlSource, p.id).toMatch(/^https:\/\//);
     }
-    expect(MODEL_KEY_PROVIDERS.filter((p) => p.keyUrl === null).map((p) => p.id)).toEqual(["kling"]);
+    expect(MODEL_KEY_PROVIDERS.filter((p) => p.keyUrl === null).map((p) => p.id).sort()).toEqual(["kling", "lightricks"]);
   });
 });
 

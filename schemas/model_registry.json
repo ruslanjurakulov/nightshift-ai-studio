@@ -4079,7 +4079,7 @@
         "checked_at": "2026-10-25",
         "source": "vendor_docs_search",
         "evidence": "docs.ltx.io pages read in full 2026-10-25 (not search extracts): async jobs, text-to-video and image-to-video references, job status, models, pricing, errors, rate limits, input formats.",
-        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host UNVERIFIED (docs show storage.googleapis.com). Audio-to-video, retake, extend, HDR not wired."
+        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host storage.googleapis.com is shared by all GCS customers: pin the bucket after the first probe. Audio-to-video, retake, extend, HDR not wired."
       },
       "pricing": {
         "unit": "second",
@@ -4170,7 +4170,7 @@
         "checked_at": "2026-10-25",
         "source": "vendor_docs_search",
         "evidence": "docs.ltx.io pages read in full 2026-10-25 (not search extracts): async jobs, text-to-video and image-to-video references, job status, models, pricing, errors, rate limits, input formats.",
-        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host UNVERIFIED (docs show storage.googleapis.com). Audio-to-video, retake, extend, HDR not wired."
+        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host storage.googleapis.com is shared by all GCS customers: pin the bucket after the first probe. Audio-to-video, retake, extend, HDR not wired."
       },
       "pricing": {
         "unit": "second",
@@ -4253,7 +4253,7 @@
         "checked_at": "2026-10-25",
         "source": "vendor_docs_search",
         "evidence": "docs.ltx.io pages read in full 2026-10-25 (not search extracts): async jobs, text-to-video and image-to-video references, job status, models, pricing, errors, rate limits, input formats.",
-        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host UNVERIFIED (docs show storage.googleapis.com). Audio-to-video, retake, extend, HDR not wired."
+        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host storage.googleapis.com is shared by all GCS customers: pin the bucket after the first probe. Audio-to-video, retake, extend, HDR not wired."
       },
       "pricing": {
         "unit": "second",
@@ -4341,7 +4341,7 @@
         "checked_at": "2026-10-25",
         "source": "vendor_docs_search",
         "evidence": "docs.ltx.io pages read in full 2026-10-25 (not search extracts): async jobs, text-to-video and image-to-video references, job status, models, pricing, errors, rate limits, input formats.",
-        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host UNVERIFIED (docs show storage.googleapis.com). Audio-to-video, retake, extend, HDR not wired."
+        "note": "Always sends fps 24 and an explicit duration (never null = automatic). Fast takes 12-20 s only at 720p/1080p. Prompt cap 2000 is ours. Result host storage.googleapis.com is shared by all GCS customers: pin the bucket after the first probe. Audio-to-video, retake, extend, HDR not wired."
       },
       "pricing": {
         "unit": "second",

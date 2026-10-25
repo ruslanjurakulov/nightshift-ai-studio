@@ -24,6 +24,8 @@ motion, a last frame, multi-shot prompts.
 RESULT LINKS: the docs show a ``storage.googleapis.com`` link and nothing else. That is a domain shared by
 every Google Cloud customer; no narrower host is documented. Only it is accepted (fail closed: any other
 host is refused with a message naming the host it saw), and it stays an UNVERIFIED guess until a probe.
+AFTER THE FIRST REAL PROBE, PIN THE BUCKET: read the bucket name off the real link and narrow ``checked_url`` to it
+(see alibaba.py for the pattern), because a shared domain lets any Google Cloud customer's bucket pass.
 
 BILLING: the docs say what a request costs, not what a failed or filtered job costs; nothing here tells a
 person a failed job was free. On a prepaid account credits are held against the job and a request can
@@ -39,7 +41,6 @@ Lightricks) has settled whether a credits product is "resale".
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 from modules.capabilities.base import (
@@ -63,10 +64,9 @@ from modules.capabilities.base import (
     PollResult,
     ProviderTask,
     dig,
-    image_data_uri,
-    is_url,
     json_body,
 )
+from modules.capabilities.pictures import inline_picture
 from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, unconfirmed
 
 #: See RESULT LINKS above: the one host the docs show.
@@ -93,6 +93,9 @@ _SHORT = (6, 8, 10)
 _LONG = (6, 8, 10, 12, 14, 16, 18, 20)
 #: Local pictures go inline as base64; the docs cap an inline image at 7 MB encoded (about 5 MB of file).
 MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024
+#: Said after any job LTX reports as failed: its docs state what a request costs, not what a failed or filtered job costs.
+SPEND_UNKNOWN = ("SPEND UNKNOWN: LTX's docs do not say whether a failed or content-filtered job is billed; check its "
+                 "usage page before assuming nothing was spent")
 
 
 def _error_of(body) -> Tuple[Optional[str], str]:
@@ -161,18 +164,7 @@ class LtxVideoAdapter(SafeResultMixin, HttpAdapter):
 
     @staticmethod
     def _picture(ref: str) -> str:
-        if is_url(ref):
-            return ref
-        path = Path(ref)
-        if path.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
-            raise AdapterError(E_BAD_REQUEST, "LTX takes JPEG, PNG or WEBP pictures", not_accepted=True)
-        try:
-            if path.stat().st_size > MAX_INLINE_IMAGE_BYTES:
-                raise AdapterError(E_BAD_REQUEST, f"the picture is over {MAX_INLINE_IMAGE_BYTES // (1 << 20)} MB",
-                                   not_accepted=True)
-            return image_data_uri(ref)
-        except OSError:
-            raise AdapterError(E_BAD_REQUEST, "the picture could not be read", not_accepted=True) from None
+        return inline_picture(ref, max_bytes=MAX_INLINE_IMAGE_BYTES, who="LTX")
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
@@ -213,7 +205,8 @@ class LtxVideoAdapter(SafeResultMixin, HttpAdapter):
         if status == "failed":
             etype, message = _error_of(data)
             return PollResult(FAILED, error=AdapterError(
-                _ERROR_TYPES.get(etype or "", E_UNAVAILABLE), self.message(message or etype or "the job failed")))
+                _ERROR_TYPES.get(etype or "", E_UNAVAILABLE),
+                f"{self.message(message or etype or 'the job failed')}. {SPEND_UNKNOWN}"))
         return PollResult(PENDING)
 
 

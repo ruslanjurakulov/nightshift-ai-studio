@@ -63,6 +63,10 @@ from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, u
 RESULT_HOSTS: tuple = ()
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+#: Said after any generation Luma reports as failed. Luma's pricing page lists which failures it refunds; that is its
+#: statement, not something this adapter has seen, so the message tells a person to look.
+SPEND_UNKNOWN = ("SPEND UNKNOWN: Luma lists which failed generations it refunds (its statement, unverified here); "
+                 "check its usage page before assuming nothing was spent")
 _FAILURES = {"content_moderated": E_POLICY, "budget_exhausted": E_QUOTA, "rate_limited": E_RATE_LIMITED,
              "invalid_request": E_BAD_REQUEST, "image_too_large": E_BAD_REQUEST, "unsupported_format": E_BAD_REQUEST,
              "corrupt_input": E_BAD_REQUEST, "output_not_found": E_UNAVAILABLE, "generation_failed": E_UNAVAILABLE}
@@ -143,8 +147,8 @@ class LumaImageAdapter(SafeResultMixin, HttpAdapter):
             return self.checked_outputs(PollResult(SUCCEEDED, [Output("image/png", url=url)]))
         if state == "failed":
             code = _FAILURES.get(str(data.get("failure_code") or ""), E_UNAVAILABLE)
-            return PollResult(FAILED, error=AdapterError(
-                code, self.message(data.get("failure_reason") or data.get("failure_code") or "the generation failed")))
+            text = self.message(data.get("failure_reason") or data.get("failure_code") or "the generation failed")
+            return PollResult(FAILED, error=AdapterError(code, f"{text}. {SPEND_UNKNOWN}"))
         return PollResult(PENDING)
 
 

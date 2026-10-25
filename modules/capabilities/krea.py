@@ -66,9 +66,8 @@ from modules.capabilities.base import (
     PollResult,
     ProviderTask,
     dig,
-    image_data_uri,
-    is_url,
 )
+from modules.capabilities.pictures import inline_picture
 from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, unconfirmed
 
 #: Where a result may live. The docs show ``krea.ai/generations/...`` and ``gen.krea.ai``; any
@@ -76,11 +75,16 @@ from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, u
 #: is refused (fail closed) and the refusal names the host, so a person can read it off a probe.
 RESULT_HOSTS = ("krea.ai",)
 
-_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
+#: A job id is a UUID: letters, digits, "-" and "_" only, so no "." (a ".." would walk the URL path up) and no ":".
+_ID = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 _POLICY_WORDS = ("moderat", "nsfw", "policy", "safety", "blocked", "prohibited")
 _MIME_BY_SUFFIX = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 #: The docs name no size limit for a picture; this is OUR cap on a locally inlined one (base64 adds a third).
 MAX_INLINE_IMAGE_BYTES = 8 * 1024 * 1024
+#: Said after any job Krea reports as failed or cancelled. Krea's docs say such jobs are not billed; that is its claim,
+#: not something this adapter has seen, so the message tells a person to look rather than that it was free.
+SPEND_UNKNOWN = ("SPEND UNKNOWN: Krea's docs claim failed and cancelled jobs are not billed (a vendor claim, unverified "
+                 "here); check its usage page before assuming nothing was spent")
 
 
 class KreaImageAdapter(SafeResultMixin, HttpAdapter):
@@ -143,16 +147,7 @@ class KreaImageAdapter(SafeResultMixin, HttpAdapter):
 
     @staticmethod
     def _picture(ref: str) -> str:
-        if is_url(ref):
-            return ref
-        path = Path(ref)
-        try:
-            if path.stat().st_size > MAX_INLINE_IMAGE_BYTES:
-                raise AdapterError(E_BAD_REQUEST, f"the picture is over {MAX_INLINE_IMAGE_BYTES // (1 << 20)} MB",
-                                   not_accepted=True)
-            return image_data_uri(ref)
-        except OSError:
-            raise AdapterError(E_BAD_REQUEST, "the picture could not be read", not_accepted=True) from None
+        return inline_picture(ref, max_bytes=MAX_INLINE_IMAGE_BYTES, who="Krea")
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
@@ -207,7 +202,7 @@ class KreaImageAdapter(SafeResultMixin, HttpAdapter):
             code = E_POLICY if any(w in text.lower() for w in _POLICY_WORDS) else E_UNAVAILABLE
             if status == "cancelled":
                 text = f"the job was cancelled at Krea ({text})" if text != "the job failed" else "the job was cancelled at Krea"
-            return PollResult(FAILED, error=AdapterError(code, text))
+            return PollResult(FAILED, error=AdapterError(code, f"{text}. {SPEND_UNKNOWN}"))
         return PollResult(PENDING)
 
 
