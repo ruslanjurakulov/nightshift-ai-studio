@@ -37,6 +37,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import time
 from datetime import date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,15 @@ ANALYTICS_CALLS_PER_VIDEO = 3
 #: Hard cap on those calls for one channel in one run, applied only when the poll is widened. 600 = 200 videos, the
 #: number of videos the results dashboard shows. Newest videos are polled first, so the cap drops the oldest.
 MAX_ANALYTICS_CALLS_PER_POLL = 600
+#: Wall-clock budget of one widened own-channel poll (per channel). The job has a 30 minute timeout and this pass runs first.
+MAX_METRICS_POLL_SECONDS = 600
+#: Days after publishing during which a reading is "early life". The default poll only ever takes such readings, and every
+#: decision reader (views per day since publishing, retention of a new opening) is only right for them. In a widened poll a
+#: reading of an older video is filed apart (`late`, see StateStore.record_metrics_snapshot) and its retention curve is not read:
+#: a late curve would replace the early one retention_curve() hands to hook_ab, and is ~100 stored points a day for nothing.
+EARLY_LIFE_DAYS = 3
+#: int32, the range of the integer columns; YouTube never sends more.
+_INT32_MAX = 2**31 - 1
 
 
 def metrics_poll_options(environ=None) -> dict:
@@ -71,10 +81,10 @@ def metrics_poll_options(environ=None) -> dict:
         logger.warning(
             "Ignoring %s=%r: it must be a whole number of days from %d to %d. The poll keeps its default "
             "(videos published since yesterday).",
-            METRICS_POLL_DAYS_ENV, raw, MIN_METRICS_POLL_DAYS, MAX_METRICS_POLL_DAYS,
+            METRICS_POLL_DAYS_ENV, raw[:40], MIN_METRICS_POLL_DAYS, MAX_METRICS_POLL_DAYS,
         )
         return {}
-    return {"days": days, "max_calls": MAX_ANALYTICS_CALLS_PER_POLL}
+    return {"days": days, "max_calls": MAX_ANALYTICS_CALLS_PER_POLL, "max_seconds": MAX_METRICS_POLL_SECONDS}
 
 
 def _isoformat(value) -> str:
@@ -91,17 +101,21 @@ def _optional_int(value):
     None matters: a metric YouTube did not return is *unknown*, and coercing it
     to 0 would record "no impressions" for a video nobody measured.
     """
-    if value is None:
+    # True is 1 in Python; YouTube never sends a boolean, so one is a malformed response, not a count.
+    if value is None or isinstance(value, bool):
         return None
     try:
-        return int(float(value))
+        number = int(float(value))
     except (TypeError, ValueError, OverflowError):
         return None
+    # A count is never negative, and the columns are int32 (YouTube never sends more): anything else is a bad row, not a
+    # measurement.
+    return number if 0 <= number <= _INT32_MAX else None
 
 
 def _optional_float(value):
     """float(value), or None. Same reasoning as _optional_int."""
-    if value is None:
+    if value is None or isinstance(value, bool):
         return None
     try:
         number = float(value)
@@ -166,7 +180,9 @@ class IntelligencePoller:
 
     # -- own-channel analytics -------------------------------------------
 
-    def poll_own_channel_metrics(self, days: int = 1, max_calls: int | None = None) -> int:
+    def poll_own_channel_metrics(
+        self, days: int = 1, max_calls: int | None = None, max_seconds: float | None = None
+    ) -> int:
         """For each video this bot has uploaded (per `StateStore.list_videos`)
         published within the last `days` days, pull a small recent analytics
         window (yesterday through today) via `AnalyticsClient.video_performance`
@@ -187,8 +203,13 @@ class IntelligencePoller:
         calls, counted in `last_analytics_calls`. `max_calls` (None = no cap,
         the default) stops the loop before a video that would exceed it, newest
         videos first, and says so; see docs/RESULTS_DASHBOARD.md for the math.
+        `max_seconds` (None = no limit) stops the loop after that much wall-clock
+        time, with a warning. A video YouTube returned nothing at all for (no
+        metric, no click-through) gets no row: an all-NULL row dated today would
+        be the newest snapshot and hide the earlier real one from every reader.
         """
         self.last_analytics_calls = 0
+        started = time.monotonic()
         since = None
         if days is not None:
             since = (datetime.now().date() - timedelta(days=days)).isoformat()
@@ -213,10 +234,20 @@ class IntelligencePoller:
 
         written = 0
         polled = 0
+        stopped_early = False
         for index, video in enumerate(videos):
             video_id = video.get("video_id")
             if not video_id:
                 continue
+            if max_seconds is not None and time.monotonic() - started > max_seconds:
+                logger.warning(
+                    "[channel: %s] Own-channel poll stopped after %.0f s (budget %.0f s): polled the %d newest video(s) "
+                    "of the last %s day(s) and skipped %d older one(s). Lower %s to poll fewer videos.",
+                    self.channel_id or "default", time.monotonic() - started, max_seconds, polled,
+                    days, len(videos) - index, METRICS_POLL_DAYS_ENV,
+                )
+                stopped_early = True
+                break
             if max_calls is not None and self.last_analytics_calls + ANALYTICS_CALLS_PER_VIDEO > max_calls:
                 logger.warning(
                     "[channel: %s] Analytics call cap reached (%d calls, cap %d): polled the %d newest video(s) of "
@@ -224,6 +255,7 @@ class IntelligencePoller:
                     self.channel_id or "default", self.last_analytics_calls, max_calls, polled,
                     days, len(videos) - index, METRICS_POLL_DAYS_ENV,
                 )
+                stopped_early = True
                 break
             polled += 1
             try:
@@ -234,12 +266,10 @@ class IntelligencePoller:
                 # snapshot. {} here means unknown CTR, never zero CTR.
                 self.last_analytics_calls += 1
                 ctr = self.analytics_client.video_ctr(video_id, start_date, end_date)
-                self.state_store.record_metrics_snapshot(
-                    video_id=video_id,
-                    snapshot_date=snapshot_date,
-                    # NULL, not 0, for what YouTube did not return: video_performance
-                    # gives {} for a video it has no row for yet, and a stored 0 would
-                    # read as a measured "no views". A 0 YouTube did send stays 0.
+                # NULL, not 0, for what YouTube did not return: video_performance
+                # gives {} for a video it has no row for yet, and a stored 0 would
+                # read as a measured "no views". A 0 YouTube did send stays 0.
+                figures = dict(
                     views=_optional_int(metrics.get("views")),
                     likes=_optional_int(metrics.get("likes")),
                     comment_count=_optional_int(metrics.get("comments")),
@@ -248,7 +278,17 @@ class IntelligencePoller:
                     impressions=_optional_int(ctr.get("impressions")),
                     impression_ctr=_optional_float(ctr.get("impressionClickThroughRate")),
                 )
-                self._record_retention(video_id, start_date, end_date)
+                if all(value is None for value in figures.values()):
+                    logger.info("No analytics yet for video_id=%s; nothing recorded", video_id)
+                    continue
+                # Only a widened poll can reach an older video; the default call below is exactly the old one.
+                late = max_calls is not None and not self._is_early_life(video.get("published_at"), today)
+                extra_args = {"late": True} if late else {}
+                self.state_store.record_metrics_snapshot(
+                    video_id=video_id, snapshot_date=snapshot_date, **figures, **extra_args
+                )
+                if not late:
+                    self._record_retention(video_id, start_date, end_date)
                 written += 1
             except Exception:
                 logger.warning(
@@ -256,6 +296,14 @@ class IntelligencePoller:
                 )
                 continue
 
+        # The store list is cut at `limit`. The call cap alone cannot reveal that when quota errors make every video cost
+        # one call: the loop then never reaches the cap and the videos past the cut would be dropped without a word.
+        if extra and not stopped_early and len(videos) >= extra["limit"]:
+            logger.warning(
+                "[channel: %s] The last %s day(s) hold at least %d video(s), the most this poll reads; any older ones "
+                "were not polled. Lower %s to cover fewer days.",
+                self.channel_id or "default", days, len(videos), METRICS_POLL_DAYS_ENV,
+            )
         if max_calls is not None:
             logger.info(
                 "[channel: %s] Own-channel poll over the last %s day(s): %d video(s) polled, %d snapshot(s) written, "
@@ -263,6 +311,18 @@ class IntelligencePoller:
                 self.channel_id or "default", days, polled, written, self.last_analytics_calls, max_calls,
             )
         return written
+
+    @staticmethod
+    def _is_early_life(published_at, today) -> bool:
+        """True when the video is at most EARLY_LIFE_DAYS old, or its age cannot be told (then it is treated as the poll
+        always treated every video: early)."""
+        if not published_at:
+            return True
+        try:
+            published = datetime.fromisoformat(str(published_at).strip().replace("Z", "+00:00")).date()
+        except (ValueError, TypeError):
+            return True
+        return (today - published).days <= EARLY_LIFE_DAYS
 
     # -- competitors --------------------------------------------------------
 

@@ -15,6 +15,8 @@ from unittest.mock import MagicMock, patch
 from modules.intelligence_poller import (
     ANALYTICS_CALLS_PER_VIDEO,
     MAX_ANALYTICS_CALLS_PER_POLL,
+    MAX_METRICS_POLL_SECONDS,
+    EARLY_LIFE_DAYS,
     METRICS_POLL_DAYS_ENV,
     IntelligencePoller,
     metrics_poll_options,
@@ -62,7 +64,7 @@ class IntelligencePollerTestCase(unittest.TestCase):
         self.assertEqual(written, 2)
         self.assertEqual(analytics.video_performance.call_count, 2)
         for video_id in ("v1", "v2"):
-            latest = self.store.latest_metrics(video_id)
+            latest = self.store.newest_metrics(video_id)
             self.assertIsNotNone(latest)
             self.assertEqual(latest["views"], 100)
             self.assertEqual(latest["likes"], 10)
@@ -90,9 +92,9 @@ class IntelligencePollerTestCase(unittest.TestCase):
         # but did not abort the loop.
         self.assertEqual(written, 2)
         self.assertEqual(analytics.video_performance.call_count, 3)
-        self.assertIsNotNone(self.store.latest_metrics("good1"))
-        self.assertIsNotNone(self.store.latest_metrics("good2"))
-        self.assertIsNone(self.store.latest_metrics("bad"))
+        self.assertIsNotNone(self.store.newest_metrics("good1"))
+        self.assertIsNotNone(self.store.newest_metrics("good2"))
+        self.assertIsNone(self.store.newest_metrics("bad"))
 
     def test_poll_own_channel_metrics_empty_store_is_zero_without_error(self):
         analytics = MagicMock()
@@ -103,23 +105,26 @@ class IntelligencePollerTestCase(unittest.TestCase):
         self.assertEqual(written, 0)
         analytics.video_performance.assert_not_called()
 
-    def _poll_one(self, performance, ctr=None):
+    def _poll_one(self, performance, ctr=None, expect_written=1):
         self.store.record_video(video_id="v1", title="First", published_at="2026-01-01T00:00:00")
         analytics = MagicMock()
         analytics.video_performance.return_value = performance
         analytics.video_ctr.return_value = {} if ctr is None else ctr
         analytics.video_retention.return_value = []
         written = self._make_poller(analytics_client=analytics).poll_own_channel_metrics(days=None)
-        self.assertEqual(written, 1)
-        return self.store.latest_metrics("v1")
+        self.assertEqual(written, expect_written)
+        return self.store.newest_metrics("v1")
 
-    def test_a_video_youtube_has_no_row_for_yet_is_stored_as_null_not_zero(self):
-        # video_performance returns {} when YouTube has no row for the window. Zeros here were read downstream as
-        # "measured, nobody watched"; NULL says "not measured".
-        row = self._poll_one({})
-        for column in ("views", "likes", "comment_count", "watch_time_minutes", "average_view_duration_seconds",
-                       "impressions", "impression_ctr"):
-            self.assertIsNone(row[column], column)
+    def test_a_video_youtube_has_no_row_for_yet_gets_no_snapshot_at_all(self):
+        # video_performance returns {} (and the CTR report too) when YouTube has no row for the window. Zeros were read
+        # downstream as "measured, nobody watched"; an all-NULL row dated today would be the NEWEST snapshot and hide an
+        # earlier real one from latest_metrics() and every decision reader. So nothing is written.
+        self.assertIsNone(self._poll_one({}, expect_written=0))
+
+    def test_a_video_with_only_a_click_through_reading_still_gets_a_row(self):
+        row = self._poll_one({}, ctr={"impressions": 1000, "impressionClickThroughRate": 0.04})
+        self.assertEqual((row["impressions"], row["impression_ctr"]), (1000, 0.04))
+        self.assertIsNone(row["views"])
 
     def test_a_zero_youtube_did_return_stays_a_zero(self):
         row = self._poll_one({"views": 0, "likes": 0, "comments": 0, "estimatedMinutesWatched": 0.0,
@@ -143,9 +148,22 @@ class IntelligencePollerTestCase(unittest.TestCase):
     def test_infinity_is_not_a_measurement_in_any_column(self):
         # int(float("inf")) raises OverflowError; a float inf would be stored and then break the mirror's JSON.
         row = self._poll_one({"views": float("inf"), "likes": "1e999", "comments": float("-inf"),
-                              "estimatedMinutesWatched": float("inf"), "averageViewDuration": "inf"})
+                              "estimatedMinutesWatched": float("inf"), "averageViewDuration": "inf", "shares": 1},
+                             ctr={"impressions": 5})
         for column in ("views", "likes", "comment_count", "watch_time_minutes", "average_view_duration_seconds"):
             self.assertIsNone(row[column], column)
+
+    def test_a_boolean_or_an_out_of_range_number_is_not_a_count(self):
+        # True is 1 in Python and 2**70 would not fit the integer column; YouTube sends neither.
+        row = self._poll_one({"views": True, "likes": 2**70, "comments": -1, "estimatedMinutesWatched": False,
+                              "averageViewDuration": 12.5}, ctr={"impressions": 2**31})
+        for column in ("views", "likes", "comment_count", "watch_time_minutes", "impressions"):
+            self.assertIsNone(row[column], column)
+        self.assertEqual(row["average_view_duration_seconds"], 12.5)
+
+    def test_the_int32_edges_are_accepted(self):
+        row = self._poll_one({"views": 2**31 - 1, "likes": 0, "comments": 1})
+        self.assertEqual((row["views"], row["likes"]), (2**31 - 1, 0))
 
     def test_numeric_strings_and_floats_from_the_api_are_still_read(self):
         row = self._poll_one({"views": "100", "likes": 10.0, "comments": 2, "estimatedMinutesWatched": "50.5",
@@ -487,6 +505,28 @@ class MetricsPollWindowTestCase(unittest.TestCase):
         analytics.video_retention.return_value = []
         return analytics
 
+    def test_an_empty_poll_leaves_the_earlier_real_snapshot_as_the_one_readers_see(self):
+        self.store.record_video(video_id="v1", title="First", published_at=datetime.now().isoformat())
+        self.store.record_metrics_snapshot(video_id="v1", snapshot_date=datetime.now().date().isoformat(),
+                                           views=50, impression_ctr=0.05)
+        yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
+        self.store.record_metrics_snapshot(video_id="v1", snapshot_date=yesterday, views=20)
+        analytics = self._analytics()
+        analytics.video_performance.return_value = {}
+        analytics.video_ctr.return_value = {}
+        self.assertEqual(self._make_poller(analytics_client=analytics).poll_own_channel_metrics(days=30, max_calls=600), 0)
+        self.assertEqual(self.store.latest_metrics("v1")["views"], 50)
+        self.assertEqual(len(self.store.metrics_history("v1")), 2)
+
+    def test_an_empty_video_costs_two_calls_and_no_retention_call(self):
+        self.store.record_video(video_id="v1", title="First", published_at=datetime.now().isoformat())
+        analytics = self._analytics()
+        analytics.video_performance.return_value = {}
+        poller = self._make_poller(analytics_client=analytics)
+        poller.poll_own_channel_metrics(days=30, max_calls=600)
+        self.assertEqual(poller.last_analytics_calls, 2)
+        analytics.video_retention.assert_not_called()
+
     def test_an_empty_variable_leaves_the_options_empty_so_the_call_is_the_old_one(self):
         for env in ({}, {METRICS_POLL_DAYS_ENV: ""}, {METRICS_POLL_DAYS_ENV: "   "}):
             self.assertEqual(metrics_poll_options(env), {}, env)
@@ -494,7 +534,8 @@ class MetricsPollWindowTestCase(unittest.TestCase):
     def test_a_valid_number_of_days_widens_the_poll_and_sets_the_cap(self):
         for raw, days in (("1", 1), ("7", 7), (" 30 ", 30), ("90", 90)):
             self.assertEqual(metrics_poll_options({METRICS_POLL_DAYS_ENV: raw}),
-                             {"days": days, "max_calls": MAX_ANALYTICS_CALLS_PER_POLL}, raw)
+                             {"days": days, "max_calls": MAX_ANALYTICS_CALLS_PER_POLL,
+                              "max_seconds": MAX_METRICS_POLL_SECONDS}, raw)
 
     def test_a_bad_value_is_ignored_loudly_never_clamped(self):
         # 365 clamped to 90 would still widen a quota-bound job on a typo; ignoring it keeps today's behaviour.
@@ -503,6 +544,13 @@ class MetricsPollWindowTestCase(unittest.TestCase):
                 self.assertEqual(metrics_poll_options({METRICS_POLL_DAYS_ENV: raw}), {}, raw)
             self.assertIn(METRICS_POLL_DAYS_ENV, logs.output[0])
             self.assertIn("1 to 90", logs.output[0])
+
+    def test_a_huge_bad_value_is_logged_truncated(self):
+        with self.assertLogs("modules.intelligence_poller", level="WARNING") as logs:
+            metrics_poll_options({METRICS_POLL_DAYS_ENV: "x" * 5000})
+        self.assertLess(len(logs.output[0]), 400)
+        self.assertIn("x" * 40, logs.output[0])
+        self.assertNotIn("x" * 41, logs.output[0])
 
     def test_an_absurdly_long_number_is_a_bad_value_not_a_crash(self):
         # int() raises ValueError past 4300 digits; the poll must still start.
@@ -536,7 +584,8 @@ class MetricsPollWindowTestCase(unittest.TestCase):
                 patch.object(poller, "poll_own_channel_metrics", wraps=poller.poll_own_channel_metrics) as poll, \
                 patch.object(self.store, "list_videos", wraps=self.store.list_videos) as listing:
             poller.run_all()
-        poll.assert_called_once_with(days=30, max_calls=MAX_ANALYTICS_CALLS_PER_POLL)
+        poll.assert_called_once_with(days=30, max_calls=MAX_ANALYTICS_CALLS_PER_POLL,
+                                     max_seconds=MAX_METRICS_POLL_SECONDS)
         listing.assert_any_call(
             since=(datetime.now().date() - timedelta(days=30)).isoformat(), channel_id=None,
             limit=MAX_ANALYTICS_CALLS_PER_POLL // ANALYTICS_CALLS_PER_VIDEO + 1)
@@ -600,6 +649,99 @@ class MetricsPollWindowTestCase(unittest.TestCase):
         with self.assertLogs("modules.intelligence_poller", level="WARNING"):
             poller.poll_own_channel_metrics(days=30, max_calls=6)      # limit 3 rows, room for 2 videos
         self.assertEqual(analytics.video_performance.call_count, 2)
+
+    def test_a_widened_poll_reads_the_retention_curve_only_for_young_videos(self):
+        # A late curve would replace the early one retention_curve() hands to hook_ab, and is ~100 stored points a day.
+        ids = self._store_videos_published(0, EARLY_LIFE_DAYS, EARLY_LIFE_DAYS + 1, 40)
+        analytics = self._analytics()
+        poller = self._make_poller(analytics_client=analytics)
+        poller.poll_own_channel_metrics(days=60, max_calls=600)
+        self.assertEqual(sorted(c.args[0] for c in analytics.video_retention.call_args_list), sorted(ids[:2]))
+        self.assertEqual(analytics.video_performance.call_count, 4)
+        self.assertEqual(poller.last_analytics_calls, 2 * 3 + 2 * 2)
+
+    def test_a_widened_poll_files_an_older_videos_reading_apart_so_no_decision_reader_sees_it(self):
+        ids = self._store_videos_published(0, EARLY_LIFE_DAYS, EARLY_LIFE_DAYS + 1, 40)
+        analytics = self._analytics()
+        self._make_poller(analytics_client=analytics).poll_own_channel_metrics(days=60, max_calls=600)
+        young, boundary, older, old = ids
+        for vid in (young, boundary):
+            self.assertIsNotNone(self.store.latest_metrics(vid), vid)
+            self.assertEqual(len(self.store.metrics_history(vid)), 1, vid)
+        for vid in (older, old):
+            self.assertIsNone(self.store.latest_metrics(vid), vid)
+            self.assertEqual(self.store.metrics_history(vid), [], vid)
+            self.assertEqual(self.store.newest_metrics(vid)["views"], 10, vid)   # still there for the mirror
+
+    def test_the_default_poll_never_files_anything_as_late(self):
+        # An old video reached only by an explicit window with no cap (days=None) is still stored the way it always was.
+        ids = self._store_videos_published(40)
+        self._make_poller(analytics_client=self._analytics()).poll_own_channel_metrics(days=None)
+        self.assertIsNotNone(self.store.latest_metrics(ids[0]))
+
+    def test_early_life_is_three_days_after_publishing(self):
+        # Pinned: the docs, the retention rule and the late table all say 3.
+        self.assertEqual(EARLY_LIFE_DAYS, 3)
+        ids = self._store_videos_published(3, 4)
+        self._make_poller(analytics_client=self._analytics()).poll_own_channel_metrics(days=30, max_calls=600)
+        self.assertIsNotNone(self.store.latest_metrics(ids[0]))
+        self.assertIsNone(self.store.latest_metrics(ids[1]))
+
+    def test_the_default_poll_still_reads_every_curve(self):
+        self._store_videos_published(0)
+        analytics = self._analytics()
+        self._make_poller(analytics_client=analytics).poll_own_channel_metrics()
+        self.assertEqual(analytics.video_retention.call_count, 1)
+
+    def test_a_video_with_an_unreadable_publish_date_keeps_its_curve(self):
+        self.store.record_video(video_id="odd", title="odd", published_at="2026-13-45")
+        analytics = self._analytics()
+        self._make_poller(analytics_client=analytics).poll_own_channel_metrics(days=None, max_calls=600)
+        self.assertEqual(analytics.video_retention.call_count, 1)
+
+    def test_the_time_budget_stops_the_poll_with_a_warning_that_names_the_variable(self):
+        ids = self._store_videos_published(0, 1, 2, 3)
+        analytics = self._analytics()
+        poller = self._make_poller(analytics_client=analytics)
+        clock = iter([0.0, 1.0, 2.0, 700.0, 701.0, 702.0, 703.0, 704.0, 705.0, 706.0])
+        with patch("modules.intelligence_poller.time.monotonic", lambda: next(clock)), \
+                self.assertLogs("modules.intelligence_poller", level="WARNING") as logs:
+            written = poller.poll_own_channel_metrics(days=30, max_calls=600, max_seconds=600)
+        self.assertEqual(written, 2)
+        self.assertEqual([c.args[0] for c in analytics.video_performance.call_args_list], ids[:2])
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("budget 600 s", logs.output[0])
+        self.assertIn(METRICS_POLL_DAYS_ENV, logs.output[0])
+
+    def test_no_time_budget_means_no_clock_stop(self):
+        self._store_videos_published(0, 1)
+        with patch("modules.intelligence_poller.time.monotonic", lambda: 10**9):
+            self.assertEqual(self._make_poller(analytics_client=self._analytics()).poll_own_channel_metrics(days=30), 2)
+
+    def test_the_budget_default_is_ten_minutes_and_travels_with_the_options(self):
+        self.assertEqual(MAX_METRICS_POLL_SECONDS, 600)
+        self.assertEqual(metrics_poll_options({METRICS_POLL_DAYS_ENV: "7"})["max_seconds"], 600)
+
+    def test_a_store_list_cut_at_its_limit_is_reported_even_when_quota_errors_keep_the_call_cap_unreached(self):
+        # Every video fails on its first call, so each costs 1 call and the cap (6 calls) is never reached; the store
+        # returns cap/3 + 1 = 3 rows. Without a check the videos past those 3 would be dropped without a word.
+        self._store_videos_published(0, 1, 2, 3, 4)
+        analytics = self._analytics()
+        analytics.video_performance.side_effect = RuntimeError("quota")
+        poller = self._make_poller(analytics_client=analytics)
+        with self.assertLogs("modules.intelligence_poller", level="WARNING") as logs:
+            poller.poll_own_channel_metrics(days=30, max_calls=6)
+        cut = [line for line in logs.output if "hold at least 3 video(s)" in line]
+        self.assertEqual(len(cut), 1)
+        self.assertIn(METRICS_POLL_DAYS_ENV, cut[0])
+        self.assertEqual(poller.last_analytics_calls, 3)
+
+    def test_a_list_that_is_not_cut_gets_no_such_warning(self):
+        self._store_videos_published(0, 1)
+        poller = self._make_poller(analytics_client=self._analytics())
+        with self.assertLogs("modules.intelligence_poller", level="INFO") as logs:
+            poller.poll_own_channel_metrics(days=30, max_calls=600)
+        self.assertFalse([line for line in logs.output if "at least" in line])
 
     def test_the_default_poll_has_no_cap_and_logs_no_summary(self):
         self._store_videos_published(0)

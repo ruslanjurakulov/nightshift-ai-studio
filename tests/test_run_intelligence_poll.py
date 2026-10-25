@@ -515,7 +515,7 @@ class ExtraChannelsHonourTheMetricsPollWindowTestCase(unittest.TestCase):
 
     def test_a_valid_window_is_passed_with_the_call_cap(self):
         poller = self._run({"NIGHTSHIFT_METRICS_POLL_DAYS": "14"})
-        poller.poll_own_channel_metrics.assert_called_once_with(days=14, max_calls=600)
+        poller.poll_own_channel_metrics.assert_called_once_with(days=14, max_calls=600, max_seconds=600)
 
 
 if __name__ == "__main__":

@@ -135,7 +135,9 @@ jobs:
           # re-consented (tools/connect_channel.py). Empty = off, the analytics poll keeps its narrower scopes.
           CHRONOS_ENABLE_REVENUE: ${{ vars.CHRONOS_ENABLE_REVENUE }}
           # How many days of own videos the daily analytics poll re-reads (1..90; empty = only videos published since
-          # yesterday, as before). 3 Analytics calls per video per channel, capped at 600; see docs/RESULTS_DASHBOARD.md.
+          # yesterday, as before). Up to 3 Analytics calls per video per channel, capped at 600 calls and 10 minutes;
+          # see docs/RESULTS_DASHBOARD.md. Older videos' readings are filed apart and the decision engines (feedback,
+          # topic scores, quota split, publish timing) do not read them; the dashboard does.
           NIGHTSHIFT_METRICS_POLL_DAYS: ${{ vars.NIGHTSHIFT_METRICS_POLL_DAYS }}
           # The day's upload budget the quota allocator splits across channels (empty = one slot per channel).
           CHRONOS_DAILY_UPLOAD_SLOTS: ${{ vars.CHRONOS_DAILY_UPLOAD_SLOTS }}

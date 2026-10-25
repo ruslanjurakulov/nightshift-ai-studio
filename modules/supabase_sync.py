@@ -778,7 +778,7 @@ class SupabaseSync:
             vid = video.get("video_id")
             if not vid:
                 continue
-            metrics = store.latest_metrics(vid)
+            metrics = store.newest_metrics(vid)
             if metrics:
                 rows.append(self._strip_local_id(metrics))
         return rows
