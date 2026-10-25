@@ -57,17 +57,18 @@ from modules.capabilities.base import (
     PollResult,
     ProviderTask,
     dig,
-    host_is,
 )
 from modules.capabilities.image import FluxAdapter
-from modules.capabilities.safe_fetch import ANY_IMAGE, SafeResultMixin, after_completion, unconfirmed
+from modules.capabilities.safe_fetch import ANY_IMAGE, SafeResultMixin, after_completion, checked_polling_url, unconfirmed
 
 _USER = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 #: Said after any task BFL reports as failed or moderated: its pages are silent on whether that is billed.
 BILLING_UNKNOWN = ("BFL does not say whether a failed or moderated task is billed; check its dashboard credits "
                    "before assuming nothing was spent")
 _PENDING = ("Pending", "Reasoning", "Generating")
-_FAILED_STATUSES = ("Request Moderated", "Content Moderated", "Error", "Task not found")
+#: What a 503 body may say and still be read as the task's own verdict. "Task not found" is deliberately not here:
+#: it counts as a verdict only with HTTP 200 or 404 (BFL's errors page); a 503 saying so is a gateway's word.
+_FAILED_503 = ("Request Moderated", "Content Moderated", "Error")
 _KNOWN = (*_PENDING, "Ready", "Request Moderated", "Content Moderated", "Error", "Task not found")
 
 
@@ -87,6 +88,7 @@ class Flux3ImageAdapter(SafeResultMixin, FluxAdapter):
     result_hosts = ("bfl.ai",)
     #: Where the polling link (the task id) must live: the key is sent to it. Tests point it at a loopback server.
     polling_domain = "bfl.ai"
+    polling_ports = (None, 443)
     RATIOS = ("21:9", "2:1", "16:9", "3:2", "7:5", "4:3", "5:4", "1:1", "4:5", "3:4", "5:7", "2:3", "9:16", "1:2", "9:21")
     MAX_PROMPT_UNITS = 4000
     SPECS = {
@@ -132,27 +134,38 @@ class Flux3ImageAdapter(SafeResultMixin, FluxAdapter):
             body["user"] = request.end_user
         data = self.submit_json(f"{self.base_url}/{vendor_model}", body, what="generate")
         poll = data.get("polling_url") if isinstance(data, dict) else None
-        if not isinstance(poll, str) or not host_is(poll, self.polling_domain):
-            # The vendor answered 2xx: a task probably exists, and it bills.
-            raise unconfirmed("the answer carries no polling_url on bfl.ai")
+        try:
+            checked_polling_url(poll, self.polling_domain, self.polling_ports)
+        except (AdapterError, TypeError):
+            # The vendor answered 2xx: a task probably exists, and it bills; the key was not sent to the link.
+            raise unconfirmed("the answer carries no polling_url on bfl.ai") from None
         # The polling URL is the task id: it names the regional cluster that holds the job.
         return ProviderTask(self.key, vendor_model, poll)
 
     def poll(self, task: ProviderTask) -> PollResult:
         self.require_key()
         url = str(task.task_id or "")
-        if not host_is(url, self.polling_domain):
+        try:
+            checked_polling_url(url, self.polling_domain, self.polling_ports)
+        except AdapterError:
             # The task id comes back from a job row; the key must never follow it to a host that is not BFL's.
-            raise AdapterError(E_NOT_FOUND, "task id is not a bfl.ai polling URL")
-        resp = self.get(url, raw=True, ok_statuses=(503,))
+            # The task was accepted once, so it may have run and been billed.
+            raise after_completion(AdapterError(E_NOT_FOUND, "task id is not a bfl.ai polling URL")) from None
+        resp = self.get(url, raw=True, ok_statuses=(404, 503))
         try:
             data = resp.json()
         except ValueError:
             data = None
         status = str(data.get("status") or "") if isinstance(data, dict) else ""
-        if getattr(resp, "status_code", 200) == 503 and status not in _FAILED_STATUSES:
-            # Only a FAILED task may come back as 503 with a body; a 503 that says "Ready" or "Pending" is an outage.
-            raise AdapterError(E_UNAVAILABLE, "poll: HTTP 503", http_status=503)       # poll again
+        code = getattr(resp, "status_code", 200)
+        if code == 503 and status not in _FAILED_503:
+            # Only a FAILED task may come back as 503 with a body; a 503 that says "Ready", "Pending" or "Task not
+            # found" is an outage (a gateway can say anything), so the same task is polled again.
+            raise AdapterError(E_UNAVAILABLE, "poll: HTTP 503", http_status=503)
+        if code == 404 and status != "Task not found":
+            raise AdapterError(E_NOT_FOUND, "poll: HTTP 404", http_status=404)
+        if status == "Task not found" and code not in (200, 404):
+            raise AdapterError(E_BAD_RESPONSE, f"poll: HTTP {code} with Task not found")
         if not isinstance(data, dict) or status not in _KNOWN:
             raise AdapterError(E_BAD_RESPONSE, f"the status answer has a status this adapter does not know "
                                                f"({self.message(status)!r})")

@@ -111,6 +111,21 @@ def checked_result_url(url, hosts: Sequence[str], ports: Sequence[Optional[int]]
     return url
 
 
+def checked_polling_url(url, domain: str, ports: Sequence[Optional[int]] = (None, 443)) -> str:
+    """``url`` when it is an https address on ``domain`` (or a subdomain), else ``bad_response``.
+
+    A POLLING link is followed WITH the vendor's key, so it gets the strict check of a result link
+    (``checked_result_url``: the host urllib3 will connect to must be the host that was read, no
+    credentials, no backslash, ``#`` or ``?`` tricks, standard port) and not ``base.host_is``, which
+    reads the host with ``urlparse`` and accepts ``https://127.0.0.1:PORT\\@api.bfl.ai/x`` while
+    ``requests`` connects to 127.0.0.1. Nothing is requested before this."""
+    try:
+        return checked_result_url(url, (domain,), ports)
+    except AdapterError:
+        raise AdapterError(E_BAD_RESPONSE, f"the polling link is not an https address on {domain}; "
+                                           f"the key was not sent to it") from None
+
+
 def _download_code(status: int) -> str:
     """The code for a refused DOWNLOAD. A result link is a signed URL: its 401/403/404/410 means the
     link expired or is gone, never that our API key is wrong (the key is not sent to it), so it must

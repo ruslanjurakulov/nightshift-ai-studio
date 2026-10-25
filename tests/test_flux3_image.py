@@ -86,6 +86,7 @@ class VendorCase(unittest.TestCase):
         v = vendor or self.vendor
         a = build_adapter("image.bfl3", env=env or self.env, session=v.session())
         a.polling_domain = "localhost"
+        a.polling_ports = (None, 443, v.port)
         a.result_hosts = ("localhost",)
         a.result_ports = (None, 443, v.port)
         return a
@@ -413,6 +414,32 @@ class PollTests(VendorCase):
     def test_task_not_found_is_not_found(self):
         res = self.status({"status": "Task not found"})
         self.assertEqual((res.state, res.error.code), (FAILED, E_NOT_FOUND))
+        res = self.status({"status": "Task not found"}, code=404)           # BFL's errors page: 200 or 404
+        self.assertEqual((res.state, res.error.code), (FAILED, E_NOT_FOUND))
+
+    def test_task_not_found_is_a_verdict_only_with_http_200_or_404_never_with_a_503_or_anything_else(self):
+        # A gateway can answer 503 with any body; "the task does not exist" must not end a task that is still running.
+        with self.assertRaises(AdapterError) as cm:
+            self.status({"status": "Task not found"}, code=503)
+        self.assertEqual(cm.exception.code, E_UNAVAILABLE)                   # poll again
+        for code in (202, 206):
+            with self.assertRaises(AdapterError, msg=code) as cm:
+                self.status({"status": "Task not found"}, code=code)
+            self.assertEqual(cm.exception.code, E_BAD_RESPONSE, code)
+        with self.assertRaises(AdapterError) as cm:
+            self.status({"status": "Task not found"}, code=500)
+        self.assertEqual(cm.exception.code, E_UNAVAILABLE)
+        # the other failure statuses keep their documented 503 mapping
+        for st, want in (("Error", E_UNAVAILABLE), ("Request Moderated", E_POLICY), ("Content Moderated", E_POLICY)):
+            res = self.status({"status": st}, code=503)
+            self.assertEqual((res.state, res.error.code), (FAILED, want), st)
+
+    def test_a_404_that_is_not_the_vendors_task_not_found_is_a_plain_not_found_error(self):
+        for body, raw in ((None, b"404 page not found"), ({"detail": "Not Found"}, None), ({"status": "Ready"}, None),
+                          ({"status": "Pending"}, None)):
+            with self.assertRaises(AdapterError, msg=repr((body, raw))) as cm:
+                self.status(body, code=404, raw=raw)
+            self.assertEqual(cm.exception.code, E_NOT_FOUND)
 
     def test_a_status_we_do_not_know_or_a_body_that_is_not_a_task_is_an_error_not_an_endless_wait(self):
         for body in ({"status": "Reticulating"}, {"status": None}, {}, [], "x"):
@@ -474,6 +501,7 @@ class EndToEndTests(VendorCase):
         self.vendor.on("GET", "/v1/get_result/abc", polls)
         clock = {"t": 0.0}
         with mock.patch.object(Flux3ImageAdapter, "polling_domain", "localhost"), \
+                mock.patch.object(Flux3ImageAdapter, "polling_ports", (None, 443, self.vendor.port)), \
                 mock.patch.object(Flux3ImageAdapter, "result_hosts", ("localhost",)), \
                 mock.patch.object(Flux3ImageAdapter, "result_ports", (None, 443, self.vendor.port)):
             return run_probe(reg.get(entry_id), env=self.env, voice_id=None, workdir=self.tmp, timeout_s=600,
