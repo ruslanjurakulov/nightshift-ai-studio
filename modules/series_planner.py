@@ -170,6 +170,106 @@ def _count(n) -> int:
     return n
 
 
+# ── format templates (the carrier: migration 0122) ────────────────────────────
+
+#: The closed list of format ids. The same three words are in a CHECK on the plans table, in the request function and in the
+#: queue's params validator (migration 0122), and in ``command-center/lib/seriesTemplates.ts``; ``samples/series_templates.json``
+#: is the table both languages are checked against. An id that is not here is ``SeriesPlanError("bad_template")``: it is never
+#: replaced by a default and never passed on as free text.
+TEMPLATE_IDS = ("myth_vs_fact", "top5_countdown", "one_question_one_answer")
+
+
+@dataclass(frozen=True)
+class FormatTemplate:
+    """What a format asks of the plan. ``episodes``, ``length_s`` and ``scenes`` are inclusive ``(low, high)`` pairs; ``hook`` is the
+    shape of an episode's opening sentence, said once in English (the model answers in ``language`` whatever this is written in).
+    These numbers are OUR starting points for what such a format usually needs, not measurements of anything (docs/MEASUREMENT.md,
+    "Series format templates"), and they are requests to the model: nothing here checks the answer against them."""
+
+    id: str
+    episodes: tuple
+    length_s: tuple
+    scenes: tuple
+    hook: str
+
+
+TEMPLATES = {
+    "myth_vs_fact": FormatTemplate(
+        "myth_vs_fact", episodes=(3, 4), length_s=(60, 480), scenes=(4, 10),
+        hook="state one widely believed claim plainly, as the myth, and promise the documented fact; the hook names the myth and "
+             "does not give the answer away"),
+    "top5_countdown": FormatTemplate(
+        "top5_countdown", episodes=(3, 4), length_s=(180, 600), scenes=(6, 12),
+        hook="say that the episode counts down five items and name the theme that connects them; do not reveal the number one "
+             "item in the hook"),
+    "one_question_one_answer": FormatTemplate(
+        "one_question_one_answer", episodes=(3, 4), length_s=(60, 300), scenes=(3, 8),
+        hook="ask one specific question in a single sentence; the episode answers that question and no other"),
+}
+
+
+def template_for(value) -> Optional[FormatTemplate]:
+    """The template for ``value``: ``None`` for ``None`` (no format asked for), the template for one of ``TEMPLATE_IDS``, and
+    ``SeriesPlanError("bad_template")`` for anything else (an empty string, another case, a number, a list). The error never
+    repeats the value, which may be hostile."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in TEMPLATES:
+        raise SeriesPlanError("bad_template", "the format is not one of the known formats", field="template")
+    return TEMPLATES[value]
+
+
+def check_template(value, *, n_episodes=None, duration_s=None) -> Optional[FormatTemplate]:
+    """``template_for(value)``, and when a template is given, the request must sit inside its bounds: the number of episodes and the
+    length of each. Out of bounds is ``bad_template``, never a quiet change to the request: the price of an episode is the
+    database's, computed from the length that was asked for, so a length changed here would be a different price from the one
+    the person saw (see ``clamp_durations`` for the only place a length is brought inside the bounds: a preview)."""
+    template = template_for(value)
+    if template is None:
+        return None
+    if n_episodes is not None and not template.episodes[0] <= n_episodes <= template.episodes[1]:
+        raise SeriesPlanError("bad_template", "this format does not fit that number of episodes", field="n_episodes")
+    if duration_s is not None:
+        ok = (not isinstance(duration_s, bool) and isinstance(duration_s, (int, float))
+              and template.length_s[0] <= duration_s <= template.length_s[1])
+        if not ok:
+            raise SeriesPlanError("bad_template", "this format does not fit that episode length", field="duration_s")
+    return template
+
+
+def clamp_durations(value, durations_s) -> tuple:
+    """``(durations, clamped)``: each known duration brought inside the template's length bounds, and the (1-based) numbers of the
+    episodes that were moved. For the INPUT of a price preview (``quote_series`` is unchanged and prices what it is given, as today).
+    No template, or a duration that is not a positive finite number (unknown stays unknown), changes nothing. Never used on the
+    length a plan is requested or charged with: that one is refused when it is out of bounds (``check_template``)."""
+    template = template_for(value)
+    out, moved = [], []
+    for i, d in enumerate(durations_s):
+        known = _duration(d)
+        if template is None or known is None:
+            out.append(d)
+            continue
+        clamped = min(max(known, template.length_s[0]), template.length_s[1])
+        if clamped != known:
+            moved.append(i + 1)
+        out.append(d if clamped == known else clamped)
+    return out, tuple(moved)
+
+
+def _template_block(template: Optional[FormatTemplate]) -> str:
+    """The constraints of a format as prompt text, or ``""`` for no format (so the prompt is byte for byte what it was before formats
+    existed). Ends with a blank line so that it can sit between two paragraphs. Fixed text from the table above: no caller input."""
+    if template is None:
+        return ""
+    return (
+        f"This series uses a fixed format, \"{template.id}\". These constraints apply to every episode. "
+        f"Episode count: the format fits a series of {template.episodes[0]} to {template.episodes[1]} episodes (the exact number is in the data block). "
+        f"Length: each episode is planned to run {template.length_s[0]} to {template.length_s[1]} seconds when spoken. "
+        f"Hook: {template.hook}. "
+        f"Scenes: plan each episode as {template.scenes[0]} to {template.scenes[1]} scenes.\n\n"
+    )
+
+
 # ── the prompt ────────────────────────────────────────────────────────────────
 
 PLAN_SYSTEM = (
@@ -184,9 +284,13 @@ def _escape(body: str) -> str:
     return body.replace("<", "\\u003c").replace(">", "\\u003e")
 
 
-def build_prompt(topic: str, n_episodes: int, *, niche: str = "", channel_name: str = "", language: str = "English") -> str:
+def build_prompt(topic: str, n_episodes: int, *, niche: str = "", channel_name: str = "", language: str = "English",
+                 template: Optional[str] = None) -> str:
     """The one planning prompt. Everything that is not ours (the topic, the niche, the channel name) travels as
-    JSON inside ``<data>``."""
+    JSON inside ``<data>``. ``template`` is a format id (``TEMPLATE_IDS``) or ``None``: with ``None`` the prompt is byte for byte the
+    one that existed before formats (``tests/fixtures/series_plan_prompt_*.txt`` pins it); with one, the format's constraints are
+    added as one more paragraph before the data block. An id that is not in the table is ``bad_template``."""
+    block = _template_block(template_for(template))
     payload = {"series_topic": topic, "episodes": n_episodes, "language": language,
                "channel": {"name": channel_name, "niche": niche}}
     body = _escape(json.dumps(payload, ensure_ascii=False, indent=1))
@@ -206,6 +310,7 @@ def build_prompt(topic: str, n_episodes: int, *, niche: str = "", channel_name: 
         "no figures, dates or quotes. The hook sentence, hook variants and call-to-action variants are "
         "packaging text and follow the rule above. Plain text only: no markup, no links, no square-bracket "
         "tags, no line breaks inside a field.\n\n"
+        f"{block}"
         f"The series topic, the language and the channel are in the data block below (JSON).\n\n"
         f"<data>\n{body}\n</data>\n\n"
         "Return ONLY a JSON object with exactly these keys: \"series_title\" (string) and \"episodes\" (a list "
@@ -515,7 +620,7 @@ class SeriesPlan:
 
 def plan_series(topic, n_episodes, *, generate: Callable, vet, niche="", channel_name="", language="English",
                 find_repeat: Optional[Callable] = None, held_topics_checked: Optional[bool] = None,
-                stage: str = STAGE) -> SeriesPlan:
+                stage: str = STAGE, template: Optional[str] = None) -> SeriesPlan:
     """Outline ``n_episodes`` (3 or 4) for ``topic`` with ONE call, and vet every episode.
 
     ``generate(prompt, stage=...)`` returns the model's text; it is called exactly once. ``vet`` is a
@@ -523,12 +628,15 @@ def plan_series(topic, n_episodes, *, generate: Callable, vet, niche="", channel
     ``vet(topic, niche, source=...)`` with the same verdict shape. ``find_repeat(topic)`` returns the past topic a
     topic repeats, or None; it defaults to ``vet.find_repeat``. ``held_topics_checked`` is the caller's word on
     whether the held topics were loaded into that check (True / False / None = not known), recorded as given.
-    ``stage`` is passed to ``generate`` so a later per-stage model choice needs no change here.
+    ``stage`` is passed to ``generate`` so a later per-stage model choice needs no change here. ``template`` is a format id or
+    ``None`` (see ``TEMPLATES``): an id that is not in the closed list, or a number of episodes outside the format's range, is
+    ``bad_template`` before any call is spent; with ``None`` nothing about the call changes.
 
     Only ``SeriesPlanError`` leaves this function, with one exception on purpose: ``GeminiDailyQuotaError`` is
     re-raised unchanged (a spent daily quota is an outage the owner has to act on, not a bad plan)."""
     topic = _input_text(topic, "topic", MAX_TOPIC_INPUT, required=True)
     n_episodes = _count(n_episodes)
+    check_template(template, n_episodes=n_episodes)
     niche = _input_text(niche, "niche", MAX_NICHE_INPUT, required=False)
     if not niche:
         # Without a niche the gate has no profile and does no off-niche screening at all, so every episode would
@@ -547,7 +655,7 @@ def plan_series(topic, n_episodes, *, generate: Callable, vet, niche="", channel
     if held_topics_checked is not None and not isinstance(held_topics_checked, bool):
         raise SeriesPlanError("bad_input", "held_topics_checked must be True, False or None", field="held_topics_checked")
 
-    prompt = build_prompt(topic, n_episodes, niche=niche, channel_name=channel_name, language=language)
+    prompt = build_prompt(topic, n_episodes, niche=niche, channel_name=channel_name, language=language, template=template)
     try:
         raw = generate(prompt, stage=stage)
     except GeminiDailyQuotaError:

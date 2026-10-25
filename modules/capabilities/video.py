@@ -1,4 +1,4 @@
-"""Video adapters: Veo, Kling, MiniMax Hailuo, Runway (+ its video upscaler), Luma, Seedance, Wan.
+"""Video adapters: Veo, Kling, MiniMax Hailuo, Runway (+ its video upscaler), Luma, Seedance (1.x and 2.x), Wan.
 
 All of these are asynchronous: ``submit`` starts a billable job and returns its
 task id, ``poll`` asks about that id and never re-submits, ``fetch`` downloads
@@ -59,9 +59,14 @@ from modules.capabilities.base import (
     is_url,
     json_body,
 )
+from modules.capabilities.modelark import RESULT_HOSTS as MODELARK_RESULT_HOSTS
+from modules.capabilities.modelark import map_code as modelark_code
+from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, unconfirmed
 
 _ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
 _POLICY_HINTS = ("safety", "policy", "blocked", "moderation", "sensitive", "risk")
+#: ModelArk's ``safety_identifier``: an English string of at most 64 characters.
+_SAFETY_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def _safe_id(task_id: Optional[str], pattern: re.Pattern = _ID) -> str:
@@ -728,6 +733,148 @@ class SeedanceAdapter(HttpAdapter):
         return PollResult(PENDING)
 
 
+# ── ByteDance Seedance 2.x (BytePlus ModelArk, international) ───────────────
+class SeedanceV2Adapter(SafeResultMixin, SeedanceAdapter):
+    """Dreamina Seedance 2.0 and 2.5 on the same ModelArk task API as the 1.x
+    models (``POST /api/v3/contents/generations/tasks``, ``GET …/{id}``;
+    docs.byteplus.com/en/docs/ModelArk/1520757 and …/seedance-2-5, read
+    2026-10-24), with what the 2.x pages add or change:
+
+    * the settings are always explicit: the resolution and the duration are
+      required and sent as given (``-1`` — "the model picks the length" — is
+      never sent, because the price is per second), and a model or a value
+      this table does not list is refused before any call;
+    * 2.5 first-frame / first-and-last-frame video "defaults to and only
+      supports ``adaptive``": the clip keeps the picture's own shape, so a job
+      that names an aspect ratio for it is refused rather than ignored;
+    * ``role`` is always sent on the pictures (``first_frame`` /
+      ``last_frame``): 2.5 reads the task type from it;
+    * ``execution_expires_after`` is the API's minimum (3600 s): a task still
+      queued when the worker stops polling (45 min) is ended by the vendor
+      within the hour instead of running — and billing — up to its 48 h default;
+    * ``safety_identifier`` carries the opaque per-organization id the vendors
+      ask for, so abuse is traced to one user and not to our account;
+    * reference images or videos with real faces are refused by the vendor
+      (``InputImageSensitiveContentDetected.PrivacyInformation``): a ``policy``
+      error, no fallback;
+    * the clip is fetched with ``SafeResultMixin`` (https, vendor hosts,
+      no redirect, byte cap, atomic write).
+
+    Watermark: left to the vendor's default (off for Seedance).
+
+    TERMS: BytePlus's Service Specific Terms (Model Services §4.2.3) forbid
+    integrating the video APIs into UGC platforms or AI content creation
+    tools, or reselling them, without written authorization. The registry
+    entries carry ``terms_gate: written_consent_required`` (migration 0035),
+    so none of this is sellable until BytePlus agrees in writing."""
+
+    key = "video.seedance2"
+    result_hosts = MODELARK_RESULT_HOSTS
+    EXPIRES_AFTER_S = 3600
+    #: The aspect ratios the API takes ("adaptive" is handled apart: it is what i2v sends).
+    RATIOS = ("16:9", "4:3", "1:1", "3:4", "9:16", "21:9")
+    #: A picture goes inline as base64: the API takes < 30 MB per picture and 64 MB per request.
+    MAX_IMAGE_BYTES = 20 * 1024 * 1024
+    #: vendor model -> what it takes. 4K exists for 2.0 but is not offered (its price and its
+    #: rate limit differ, and nothing here is priced for it).
+    SPECS = {
+        "dreamina-seedance-2-0-260128": {"resolutions": ("480p", "720p", "1080p"),
+                                         "durations": tuple(range(4, 16)), "adaptive_first_frame": False},
+        "dreamina-seedance-2-5-260628": {"resolutions": ("480p", "720p", "1080p"),
+                                         "durations": tuple(range(4, 31)), "adaptive_first_frame": True},
+    }
+
+    def _map(self, code) -> Optional[str]:
+        return modelark_code(code)
+
+    def _spec_problems(self, request: CapabilityRequest, vendor_model: str) -> List[str]:
+        spec = self.SPECS.get(vendor_model)
+        if spec is None:
+            return [f"{vendor_model!r} is not a Seedance 2.x model this adapter knows"]
+        out: List[str] = []
+        if request.resolution not in spec["resolutions"]:
+            out.append(f"resolution {request.resolution or '(none)'} is not offered by {vendor_model}: the price "
+                       f"depends on it, so it is never defaulted")
+        if request.duration_s not in spec["durations"]:
+            out.append(f"duration {request.duration_s if request.duration_s is not None else '(none)'} s is not "
+                       f"offered by {vendor_model}: the price is per second, so it is never defaulted")
+        if request.aspect_ratio is not None and request.aspect_ratio not in self.RATIOS:
+            out.append(f"aspect ratio {request.aspect_ratio} is not offered by {vendor_model}")
+        if request.capability == I2V:
+            if not request.input_images:
+                out.append("i2v needs a first-frame picture")
+            elif not is_url(str(request.input_images[0])):
+                path = Path(str(request.input_images[0]))
+                if path.is_file() and path.stat().st_size > self.MAX_IMAGE_BYTES:
+                    out.append("Seedance takes pictures of at most 20 MB")
+            if spec["adaptive_first_frame"] and request.aspect_ratio:
+                out.append(f"{vendor_model} keeps the first frame's own shape: an aspect ratio does not apply to i2v")
+        elif request.input_images or request.end_image:
+            out.append("a picture does not apply to text-to-video")
+        return out
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        out.extend(self._spec_problems(request, entry.vendor_model_for(request.capability)))
+        return out
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        bad = self._spec_problems(request, vendor_model)
+        if bad:
+            # Nothing has been sent: this is a refusal, not a lost answer.
+            raise AdapterError(E_BAD_REQUEST, "; ".join(bad), not_accepted=True)
+        spec = self.SPECS[vendor_model]
+        content: list = []
+        if request.prompt.strip():
+            content.append({"type": "text", "text": request.prompt.strip()})
+        try:
+            if request.capability == I2V:
+                content.append({"type": "image_url", "image_url": {"url": _image_ref(str(request.input_images[0]))},
+                                "role": "first_frame"})
+                if request.end_image:
+                    content.append({"type": "image_url", "image_url": {"url": _image_ref(str(request.end_image))},
+                                    "role": "last_frame"})
+        except OSError:
+            raise AdapterError(E_BAD_REQUEST, "the picture could not be read", not_accepted=True) from None
+        if not content:
+            raise AdapterError(E_BAD_REQUEST, "there is nothing to generate from: no prompt and no picture",
+                               not_accepted=True)
+        if request.capability == I2V and spec["adaptive_first_frame"]:
+            ratio = "adaptive"
+        else:
+            ratio = request.aspect_ratio or ("adaptive" if request.capability == I2V else "16:9")
+        body: dict = {"model": vendor_model, "content": content, "resolution": request.resolution,
+                      "ratio": ratio, "duration": int(request.duration_s),
+                      "execution_expires_after": self.EXPIRES_AFTER_S}
+        if request.audio is not None:
+            body["generate_audio"] = bool(request.audio)
+        if request.end_user and _SAFETY_ID.fullmatch(request.end_user):
+            body["safety_identifier"] = request.end_user
+        data = self.submit_json(f"{self.base_url}/api/v3/contents/generations/tasks", body)
+        tid = data.get("id") if isinstance(data, dict) else None
+        if not isinstance(tid, str) or not _ID.fullmatch(tid):
+            # The vendor answered 2xx: a task probably exists, and it bills.
+            raise unconfirmed("the answer carries no usable task id")
+        return ProviderTask(self.key, vendor_model, tid)
+
+    def poll(self, task: ProviderTask) -> PollResult:
+        self.require_key()
+        data = self.get(f"{self.base_url}/api/v3/contents/generations/tasks/{_safe_id(task.task_id)}")
+        data = data if isinstance(data, dict) else {}
+        status = str(data.get("status") or "").lower()
+        if status == "succeeded":
+            url = dig(data, "content", "video_url")
+            if not isinstance(url, str) or not url:
+                # The vendor says the clip exists (and bills it): we just were not given the link.
+                raise after_completion(AdapterError(E_BAD_RESPONSE, "succeeded without content.video_url"))
+            return self.checked_outputs(PollResult(SUCCEEDED, [Output("video/mp4", url=url)]))
+        if status in ("failed", "cancelled", "expired"):
+            code = self._map(dig(data, "error", "code")) or E_UNAVAILABLE
+            return PollResult(FAILED, error=AdapterError(code, self.message(dig(data, "error", "message") or status)))
+        return PollResult(PENDING)
+
+
 # ── Alibaba Wan (Model Studio, international) ───────────────────────────────
 _WORKSPACE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 
@@ -865,4 +1012,4 @@ class FluxVideoAdapter(HttpAdapter):
 
 
 ADAPTERS = (VeoAdapter, KlingAdapter, MiniMaxVideoAdapter, RunwayAdapter, RunwayVideoUpscaleAdapter,
-            LumaAdapter, SeedanceAdapter, WanAdapter, FluxVideoAdapter)
+            LumaAdapter, SeedanceAdapter, SeedanceV2Adapter, WanAdapter, FluxVideoAdapter)

@@ -334,9 +334,10 @@ class ArgsBuilder(unittest.TestCase):
         self.assertIn("0120_series_tables.sql", source)
         migrations = sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
         latest = [m.name for m in migrations if "create or replace function public.render_job_params_valid" in m.read_text()][-1]
-        self.assertEqual(latest, "0120_series_tables.sql")
+        # 0120 added the key; 0122 (the format-template carrier) redefines the validator on 0120's body and adds `template`, for a planning job only
+        self.assertEqual(latest, "0122_series_template_carrier.sql")
         sql = (ROOT / "supabase" / "migrations" / latest).read_text()
-        self.assertIn("'publish_hint','series'];", sql)
+        self.assertIn("'publish_hint','series','template'];", sql)
         self.assertIn("!~ '^[a-z0-9][a-z0-9._-]{0,63}$'", sql)  # the slug modules/series.py accepts
 
     def test_a_series_id_the_validator_accepts_is_one_the_builder_accepts(self):

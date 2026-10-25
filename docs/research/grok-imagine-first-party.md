@@ -45,5 +45,5 @@ Sources (all `docs.x.ai`, as markdown): `/developers/model-capabilities/video/{g
 
 1. Read the xAI Enterprise Terms and decide whether a credits-based creative platform is allowed; if needed, ask xAI sales (`sales@x.ai`, named in the docs FAQ) in writing.
 2. Create a team API key in the xAI console, set the `XAI_API_KEY` repository secret (never in chat), set a spend cap.
-3. `python tools/probe_models.py --dry-run --model grok-imagine-video-1.5-lite`, then the real probe (a gated model is probed only when named; `--all` skips it once the probe-gating change in the Seedance PR is on main) (about $0.04 for Lite, $0.16 for 1.5, $0.04 for the image).
+3. `python tools/probe_models.py --dry-run --model grok-imagine-video-1.5-lite`, then the real probe (`--all`, and the probe workflow with an empty model input, skips every gated model including these three: name it with `--model` to probe it) (about $0.04 for Lite, $0.16 for 1.5, $0.04 for the image).
 4. Re-check the prices on the vendor's pages, set `confirmed: true`, add the `credit_prices` rows, clear `terms_gate` in a reviewed change. The video entries pin `default_resolution` 480p (the vendor default and the price base); the database only prices a video by resolution when that is set, and the adapter refuses a job that names none.
