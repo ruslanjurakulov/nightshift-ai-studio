@@ -34,6 +34,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
+import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Mapping, Optional
@@ -197,17 +199,83 @@ def _needs_tiktok_refresh(tok: SocialToken, now: datetime) -> bool:
 MAX_TOKEN_ANSWER = 64 * 1024
 
 
-def _bounded_json(r) -> dict:
-    """The JSON object of a token-endpoint answer, read through ``MAX_TOKEN_ANSWER`` bytes; ``{}`` when it is not one."""
+#: A token-endpoint answer must arrive within this, once its headers are in.
+TOKEN_READ_SECONDS = 20.0
+#: ... and its headers within this (a wall-clock watchdog, see ``guarded_call``).
+TOKEN_HEADER_SECONDS = 30.0
+
+
+class CallTimedOut(Exception):
+    """``guarded_call`` gave up waiting for a response."""
+
+
+def guarded_call(fn, seconds: float):
+    """``fn()`` with a WALL-CLOCK limit on getting its response. ``requests`` timeouts are per socket operation, so a server
+    that sends its headers one byte at a time keeps a call alive for ever; this waits at most ``seconds`` and raises
+    ``CallTimedOut`` (the call keeps running on a daemon thread until its own timeouts end it, and a response that arrives
+    after the wait is closed, never used). Exceptions of ``fn`` are re-raised."""
+    box: dict = {}
+    done, abandoned = threading.Event(), threading.Event()
+
+    def close(resp) -> None:
+        try:
+            resp.close()
+        except Exception:
+            pass
+
+    def run() -> None:
+        try:
+            box["r"] = fn()
+        except BaseException as e:  # noqa: BLE001 - handed to the caller
+            box["e"] = e
+        finally:
+            done.set()
+            if abandoned.is_set() and "r" in box:
+                close(box["r"])
+
+    threading.Thread(target=run, daemon=True).start()
+    if not done.wait(max(float(seconds), 0.0)):
+        abandoned.set()
+        if done.is_set() and "r" in box:      # it finished while we were deciding
+            close(box["r"])
+        raise CallTimedOut()
+    if "e" in box:
+        raise box["e"]
+    return box["r"]
+
+
+def _content_encoding(r) -> str:
+    """The answer's ``Content-Encoding`` word when it is anything but identity ("unknown" for an odd value), else ""."""
+    coding = str((getattr(r, "headers", None) or {}).get("Content-Encoding") or "").strip().lower()
+    if not coding or coding == "identity":
+        return ""
+    return coding if len(coding) <= 20 and all(c.isalnum() or c == "-" for c in coding) else "unknown"
+
+
+def _bounded_json(r, *, clock=time.monotonic, seconds: float = TOKEN_READ_SECONDS) -> dict:
+    """The JSON object of a token-endpoint answer, read through ``MAX_TOKEN_ANSWER`` bytes and a wall-clock limit (what has
+    ARRIVED is read, so a body that drips one byte at a time is cut at the limit); ``{}`` when it is not one."""
+    deadline = clock() + seconds
     try:
         stream = getattr(r, "iter_content", None)
-        if stream is None:
+        read1 = getattr(getattr(r, "raw", None), "read1", None)
+        if callable(read1):
+            buf = bytearray()
+            while True:
+                chunk = read1(8192)
+                if not chunk:
+                    break
+                buf += chunk
+                if len(buf) > MAX_TOKEN_ANSWER or clock() > deadline:
+                    return {}
+            body = json.loads(bytes(buf).decode("utf-8")) if buf else {}
+        elif stream is None:
             body = r.json()
         else:
             buf = bytearray()
-            for chunk in stream(chunk_size=8192):
+            for chunk in stream(chunk_size=512):
                 buf += chunk
-                if len(buf) > MAX_TOKEN_ANSWER:
+                if len(buf) > MAX_TOKEN_ANSWER or clock() > deadline:
                     return {}
             body = json.loads(bytes(buf).decode("utf-8")) if buf else {}
     except Exception:
@@ -242,7 +310,8 @@ def _ensure_fresh_x(tok: SocialToken, client: SocialTokenClient, http, env: Mapp
     if not cid:
         raise SocialTokenError(f"set {X_CLIENT_ID_ENV} (and {X_CLIENT_SECRET_ENV} for a confidential app) on the worker to "
                                "refresh X tokens")
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    # identity: the answer is read as sent (read1, no decoder), so a compressed one is not what we asked for.
+    headers = {"Content-Type": "application/x-www-form-urlencoded", "Accept-Encoding": "identity"}
     data = {"grant_type": "refresh_token", "refresh_token": tok.refresh_token}
     if secret:
         import base64  # noqa: PLC0415
@@ -251,16 +320,32 @@ def _ensure_fresh_x(tok: SocialToken, client: SocialTokenClient, http, env: Mapp
     else:
         data["client_id"] = cid
     try:
-        r = http.post(X_TOKEN_URL, data=data, headers=headers, timeout=20, allow_redirects=False, stream=True)
+        r = guarded_call(lambda: http.post(X_TOKEN_URL, data=data, headers=headers, timeout=20, allow_redirects=False,
+                                           stream=True), TOKEN_HEADER_SECONDS)
+    except CallTimedOut:
+        raise SocialTokenError(f"x account {tok.account_id}: refresh got no answer within {int(TOKEN_HEADER_SECONDS)}s") from None
     except Exception as e:  # the type only: the message of a request error can carry the URL and the form
         raise SocialTokenError(f"x account {tok.account_id}: refresh failed ({type(e).__name__})") from None
     status = getattr(r, "status_code", 0)
+    coding = _content_encoding(r)
+    if coding:
+        # Fail closed, as the publishers do: not decoded, not read -- and NOT "expired": nothing says the token is bad.
+        try:
+            r.close()
+        except Exception:
+            pass
+        raise SocialTokenError(f"x account {tok.account_id}: the refresh answer (HTTP {status}) has Content-Encoding {coding} "
+                               "and is not decoded; try again")
     body = _bounded_json(r)
     new = str(body.get("access_token") or "").strip()
     if status >= 300 or not new:
-        if 400 <= status < 500 or (status < 300 and not new):
+        # Only the token endpoint's own refusal of the credentials marks the account expired. An unreadable 2xx, a 5xx and a
+        # 429 say nothing about the token: it stays usable and the next attempt tries again.
+        if status in (400, 401, 403):
             client.set_status(tok.account_id, "expired")
-        raise SocialTokenError(f"x account {tok.account_id}: refresh refused (HTTP {status}); reconnect it")
+            raise SocialTokenError(f"x account {tok.account_id}: refresh refused (HTTP {status}); reconnect it")
+        raise SocialTokenError(f"x account {tok.account_id}: the refresh did not give a usable answer (HTTP {status}); "
+                               "try again")
     seconds = _lifetime_seconds(body.get("expires_in"))
     # Whatever X sent for the lifetime, the rotated pair is stored: a refresh token X has just replaced is lost if this raises.
     fresh = replace(tok, access_token=new,

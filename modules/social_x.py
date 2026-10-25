@@ -62,6 +62,10 @@ MIN_CHECK_AFTER, MAX_CHECK_AFTER = 1, 30
 #: One wall-clock limit for the WHOLE publish (monotonic): upload, processing and post. The queue gives a row whose heartbeat
 #: is older than 30 minutes to another worker (0029), so a publish that cannot finish in this time ends instead of running on.
 PUBLISH_DEADLINE_SECONDS = 45 * 60.0
+#: The post call is given at least this long even when little of the publish's time is left: the decision to post is made, and
+#: an answer cut off by a nearly spent clock would be reported as "unconfirmed" although X had answered. It may overrun the
+#: deadline by up to twice this (header wait plus body read), about 60 s, once.
+POST_FLOOR_SECONDS = 30.0
 #: A wall-clock limit for reading ONE answer (a server that drips a small body forever must not hold the worker).
 READ_SECONDS = 30.0
 ACCEPT_IDENTITY = {"Accept-Encoding": "identity"}   # no compressed answers: a decompression bomb cannot arise
@@ -80,6 +84,15 @@ REASONS = (REASON_UNCONFIRMED, REASON_PERMISSION, REASON_DUPLICATE, REASON_CREDI
 _ID = re.compile(r"[0-9]{1,19}")
 _TYPE_WORD = re.compile(r"[A-Za-z0-9:/._-]{1,80}")
 _REDIRECTS = (301, 302, 303, 307, 308)
+
+
+class _Encoded(Exception):
+    """The answer carries a ``Content-Encoding`` other than identity. Every request says ``Accept-Encoding: identity``, so a
+    compressed answer is not what was asked for: it is not decoded (a decompression bomb needs a decoder) and not read."""
+
+    def __init__(self, word: str):
+        super().__init__(word)
+        self.word = word
 
 
 class _Lost(Exception):
@@ -101,6 +114,10 @@ def _read_doc(r, *, clock: Callable[[], float] = time.monotonic, seconds: float 
     """The JSON object of an answer, read through a size cap and a wall-clock limit; None when it is not one (an empty body
     included)."""
     deadline = clock() + max(seconds, 0.0)
+    coding = str((getattr(r, "headers", None) or {}).get("Content-Encoding") or "").strip().lower()
+    if coding and coding != "identity":
+        _close(r)
+        raise _Encoded(coding if re.fullmatch(r"[a-z0-9-]{1,20}", coding) else "unknown")
     try:
         declared = int((getattr(r, "headers", None) or {}).get("Content-Length") or 0)
     except (TypeError, ValueError):
@@ -193,9 +210,11 @@ class XVideoAdapter:
                  heartbeat: Callable[[], None] = lambda: None, poll_seconds: float = sp.POLL_SECONDS,
                  max_wait: float = sp.MAX_WAIT_SECONDS, api: str = API, max_bytes: int = sp.X_MAX_BYTES,
                  segment_bytes: int = SEGMENT_BYTES, clock: Callable[[], float] = time.monotonic,
-                 deadline_seconds: float = PUBLISH_DEADLINE_SECONDS, read_seconds: float = READ_SECONDS):
+                 deadline_seconds: float = PUBLISH_DEADLINE_SECONDS, read_seconds: float = READ_SECONDS,
+                 header_seconds: Optional[float] = None):
         self.http, self.sleep, self._heartbeat = http, sleep, heartbeat
         self.clock, self.deadline_seconds, self.read_seconds = clock, deadline_seconds, read_seconds
+        self.header_seconds = header_seconds        # None: a call's own timeout is also its wall-clock limit for headers
         self._deadline = clock() + deadline_seconds
         self.poll_seconds, self.max_wait = poll_seconds, max_wait
         self.api, self.max_bytes, self.segment_bytes = api.rstrip("/"), max_bytes, segment_bytes
@@ -220,11 +239,17 @@ class XVideoAdapter:
     def _auth(tok) -> dict:
         return {"Authorization": f"Bearer {tok.access_token}", **ACCEPT_IDENTITY}
 
-    def _send(self, method: str, url: str, what: str, **kw):
-        if "timeout" in kw:      # no single call may outlive the publish's own deadline
-            kw["timeout"] = max(1.0, min(float(kw["timeout"]), self._remaining()))
+    def _send(self, method: str, url: str, what: str, floor: Optional[float] = None, **kw):
+        if "timeout" in kw:      # no single call may outlive the publish's own deadline (the post call has a floor)
+            kw["timeout"] = max(1.0 if floor is None else floor, min(float(kw["timeout"]), self._remaining()))
+        limit = self.header_seconds if self.header_seconds is not None else kw.get("timeout", 60.0)
         try:
-            r = getattr(self.http, method)(url, allow_redirects=False, stream=True, **kw)
+            # ``requests`` timeouts are per socket operation: headers sent one byte at a time would hold a call for ever, so the
+            # wait for the response is also limited on the wall clock.
+            r = social_tokens.guarded_call(
+                lambda: getattr(self.http, method)(url, allow_redirects=False, stream=True, **kw), limit)
+        except social_tokens.CallTimedOut:
+            raise _Lost(f"x {what}: no answer within {limit:g}s") from None
         except Exception as e:  # network, TLS, timeout: the type only, never the message
             raise _Lost(f"x {what}: {type(e).__name__}") from None
         status = getattr(r, "status_code", 0)
@@ -233,11 +258,14 @@ class XVideoAdapter:
             raise sp.failed("platform_error", f"x {what}: HTTP {status} - a redirect is never followed")
         return r
 
-    def _call(self, method: str, url: str, what: str, *, empty_ok: bool = False, **kw) -> dict:
+    def _call(self, method: str, url: str, what: str, *, empty_ok: bool = False, floor: Optional[float] = None, **kw) -> dict:
         """A call whose success is a 2xx. A lost answer is ``_Lost``; a refusal is a ``PublishStop``."""
-        r = self._send(method, url, what, **kw)
+        r = self._send(method, url, what, floor=floor, **kw)
         status = getattr(r, "status_code", 0)
-        doc = _read_doc(r, clock=self.clock, seconds=min(self.read_seconds, max(self._remaining(), 0.0)))
+        try:
+            doc = _read_doc(r, clock=self.clock, seconds=min(self.read_seconds, max(self._remaining(), floor or 0.0)))
+        except _Encoded as e:     # fail closed: an answer we will not decode is a lost answer (a post is then "unconfirmed")
+            raise _Lost(f"x {what}: HTTP {status}, the answer has Content-Encoding {e.word} and is not decoded") from None
         if status >= 500:
             raise _Lost(f"x {what}: HTTP {status}")  # the work may have been done: not a refusal
         if status >= 300:
@@ -354,7 +382,8 @@ class XVideoAdapter:
             # absent field is the unlabelled post every post has always been.
             body["made_with_ai"] = True
         try:
-            doc = self._call("post", f"{self.api}/tweets", "post", headers=self._auth(tok), json=body, timeout=60)
+            doc = self._call("post", f"{self.api}/tweets", "post", headers=self._auth(tok), json=body, timeout=60,
+                             floor=POST_FLOOR_SECONDS)
         except _Lost as e:
             raise self._unconfirmed(e.detail) from None
         data = doc.get("data")

@@ -896,6 +896,32 @@ class UnicodeTagCharactersAreRemoved(unittest.TestCase):
                      "\U0001F44D\U0001F3FD", "\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35\u200b\u0e04\u0e23\u0e31\u0e1a"):
             self.assertEqual(cap._clean(text), text, repr(text))
 
+    def test_a_trim_through_a_flag_leaves_no_dangling_tag_characters(self):
+        flag = self.flag("gbsct")                         # black flag + 5 tag letters + cancel tag
+        text = "ab " + "x" * 30 + flag + " tail"          # no late space to fall back on: the limit falls inside the flag
+        seen_cut_inside = False
+        for limit in range(30, 30 + len(flag) + 8):
+            out = cap.trim(text, limit)
+            self.assertLessEqual(len(out), limit)
+            tags = [c for c in out if 0xE0000 <= ord(c) <= 0xE007F]
+            self.assertTrue(not tags or flag in out, (limit, out))      # all of the flag, or none of its tags
+            seen_cut_inside = seen_cut_inside or ("\U0001F3F4" in out and not tags)
+        self.assertTrue(seen_cut_inside)                  # the loop really did cut through a flag at least once
+
+    def test_a_whole_flag_survives_a_trim_that_does_not_reach_it(self):
+        flag = self.flag("gbwls")
+        out = cap.trim("Wales " + flag + " " + "x " * 40, 30)
+        self.assertIn(flag, out)
+
+    def test_youtube_tags_are_stripped_of_invisible_and_hidden_text(self):
+        hidden = self.TAG("secret payload")
+        tags = cap.youtube_tags([f"history{hidden}", "a\u202eb", "plain\x00one", f"{self.flag('gbeng')}football"])
+        self.assertEqual(tags[0], "history")
+        self.assertEqual(tags[1], "ab")
+        self.assertEqual(tags[2], "plainone")
+        self.assertFalse([c for t in tags[:3] for c in t if 0xE0000 <= ord(c) <= 0xE007F or ord(c) < 32 or c == "\u202e"])
+        self.assertEqual(cap.youtube_tags(["fine", "also fine"]), ["fine", "also fine"])
+
     def test_the_ai_line_is_untouched(self):
         line = "This video contains realistic AI-generated or AI-altered content."
         self.assertIn(line, cap.caption_for("facebook", cap.SourceMeta(title="Rome"), disclosure=line))
