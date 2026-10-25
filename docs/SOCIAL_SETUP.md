@@ -355,7 +355,7 @@ Rasmiy hujjatlar (2026-10-25 da o'qilgan; ishlatishdan oldin qayta o'qing):
 
 - Davomiylik 1 soniya – 20 daqiqa (oddiy akkaunt; Premium 125 daqiqa), H.264, ko'pi bilan 60 kadr/s. Hajm: X 8 GB
   yozgan, bizning qattiq chegara 512 MB. X bo'yicha o'lcham va ovoz formatini rad etmaymiz (joriy sahifada raqam topilmadi).
-- Matn: 280 "og'irlikdagi" belgi (bizning konservativ chegara; Premium ko'proq mumkin), 2 ta hashtag, havolasiz: `http(s)://`, `www.` va X havolaga aylantiradigan ma'lum domenlar (`example.com/a`, `site.io` ...) matndan olib tashlanadi. **Qoldiq xavf**: ro'yxatda yo'q domen zonasi X tomonidan baribir havolaga aylanishi mumkin (post $0.200 bo'ladi, matn 23 belgiga ko'proq hisoblanadi); mijoz boshiga xarajat chegarasi shu uchun kerak.
+- Matn: 280 "og'irlikdagi" belgi (bizning konservativ chegara; Premium ko'proq mumkin), 2 ta hashtag, havolasiz: `http(s)://`, `www.` va X havolaga aylantiradigan ma'lum domenlar (`example.com/a`, `site.io` ...) matndan olib tashlanadi. Faqat kichik harfli (yoki to'liq bosh harfli, `EXAMPLE.COM`) domen zonalari olinadi; `it`, `in`, `so`, `to`, `me`, `us`, `by` kabi oddiy so'zga o'xshash zonalar faqat `/`, bo'sh joy yoki matn oxiri kelganda va butun nom kichik harfli bo'lganda olinadi, shuning uchun probel unutilgan gaplar (`story.It`, `Rome.In 476`) buzilmaydi; `.studio` (jumladan `nightshift-ai.studio`) olinadi. **Qoldiq xavf**: ro'yxatda yo'q domen zonasi X tomonidan baribir havolaga aylanishi mumkin (post $0.200 bo'ladi, matn 23 belgiga ko'proq hisoblanadi); mijoz boshiga xarajat chegarasi shu uchun kerak.
 - Yuklash 4 MB bo'laklar bilan (X: tavsiya 5 MB, server chegarasi 8 MB). Xato bo'lgan bo'lak o'sha indeks bilan 3 martagacha
   qayta yuboriladi; `finalize` javobi yo'qolsa `STATUS` o'qiladi (ikkinchi `finalize` yuborilmaydi).
 - `POST /2/tweets`: foydalanuvchi uchun 100 / 15 daqiqa, ilova uchun 10 000 / 24 soat (X sahifasi). 429 da `x-rate-limit-reset`
@@ -366,6 +366,8 @@ Rasmiy hujjatlar (2026-10-25 da o'qilgan; ishlatishdan oldin qayta o'qing):
   deyilgan edi; rasmiy sahifada bor), faqat belgi kerak bo'lganda yuboriladi; izohga qator ham qo'shiladi.
 
 ### Vaqt chegarasi
+
+`POST /2/tweets` chaqiruvi qolgan vaqt oz bo'lsa ham kamida 30 soniya oladi (post qilishga qaror qilingan; kech kelgan javob "tasdiqlanmagan" deb yozilmasin). Javob sarlavhalari uchun devor-soat qo'riqchisi bor (sarlavhani bayt-bayt yuboradigan server chaqiruvni cheksiz ushlab turolmaydi); token yangilash javobi ham shunday o'qiladi. Siqilgan (`Content-Encoding`) javob dekodlanmaydi: u yo'qolgan javob hisoblanadi (post uchun `publish_unconfirmed`, bitta POST).
 
 Bitta joylash uchun umumiy 45 daqiqalik monoton chegara (yuklash + qayta ishlash + post); undan oshsa `timeout` (post hali yuborilmagan bo'lsa "nothing was posted"). Har bir so'rov qolgan vaqtdan ko'p kutmaydi, javob tanasi 30 soniyalik devor-soat chegarasi bilan o'qiladi, yuklash paytida (bo'laklar orasida va qayta urinishlar orasida) heartbeat yoziladi (navbat 30 daqiqadan eski heartbeat'li qatorni boshqa worker'ga beradi, 0029). `STATUS` javobida `processing_info` bo'lmasa u "tayyor" EMAS (faqat birinchi `finalize` javobida u "qayta ishlash kerak emas" degani): bunday javoblar o'qib bo'lmaydigan hisoblanadi va 3 tadan keyin joylash to'xtaydi.
 

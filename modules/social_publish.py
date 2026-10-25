@@ -241,7 +241,8 @@ class PublishStore:
         row = self._select_one("videos", "video_id", parent_video_id=video_id, video_format="short")
         return str(row["video_id"]) if row else None
 
-    def update(self, request_id, worker_id: str, values: dict) -> None:
+    def update(self, request_id, worker_id: str, values: dict) -> bool:
+        """True when the database took the write; False when it refused it (HTTP >= 300, also logged)."""
         body = dict(values)
         body["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         r = self.http().patch(f"{self.url}/rest/v1/publish_requests",
@@ -251,6 +252,8 @@ class PublishStore:
                               timeout=self._timeout)
         if r.status_code >= 300:
             logger.warning("publish request %s: status update failed (HTTP %s)", request_id, r.status_code)
+            return False
+        return True
 
     # staging for Instagram's video_url
     def stage(self, path: Path, name: str) -> None:
@@ -972,6 +975,62 @@ publishers.register(FacebookPublisher.platform, FacebookPublisher)
 publishers.register(XPublisher.platform, XPublisher)
 
 
+def _result_fields(result) -> dict:
+    """What a publisher reported, cut down to what ``publish_requests`` can hold (0029: result_id <= 200 characters, an https
+    result_url <= 2048, privacy <= 40). Anything else is dropped, so a field the table would refuse cannot lose the row's
+    "published"; a result that is not a mapping at all yields no fields."""
+    if not isinstance(result, Mapping):
+        return {"result_id": None, "result_url": None, "privacy": None}
+    rid, url, privacy = result.get("result_id"), result.get("result_url"), result.get("privacy")
+    return {
+        "result_id": rid if isinstance(rid, str) and 0 < len(rid) <= 200 else None,
+        "result_url": url if isinstance(url, str) and url.startswith("https://") and len(url) <= 2048 else None,
+        "privacy": privacy if isinstance(privacy, str) and 0 < len(privacy) <= 40 else None,
+    }
+
+
+def _write(store, rid, worker_id: str, values: dict) -> bool:
+    """One row write: False when it raised or the store said the database refused it."""
+    try:
+        return store.update(rid, worker_id, values) is not False
+    except Exception as e:
+        logger.warning("publish request %s: the row write failed (%s)", rid, type(e).__name__)
+        return False
+
+
+def _record_result(store, rid, worker_id: str, result) -> str:
+    """Record that the publisher returned. The post EXISTS, so the row must say so in the best way the database will take,
+    never as a generic worker_error unless nothing else could be written. In order, the first accepted write wins:
+
+    1. published, with the result fields;
+    2. published, without them (the table refused a field);
+    3. failed / publish_unconfirmed with the id and address in the row (the write of "published" itself keeps failing);
+    4. the same without the result fields (the id stays in the error text);
+    5. failed / worker_error, the old generic word.
+
+    Returns "published" or "failed". Never raises."""
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    fields = _result_fields(result)
+    base = {"status": "published", "reason": None, "error": None, "finished_at": now}
+    text = (f"the post was made (id {fields['result_id']}) but recording it failed; check the account before sending again"
+            if fields["result_id"] else "the post was made but recording it failed; check the account before sending again")
+    unconfirmed = {"status": "failed", "reason": "publish_unconfirmed", "error": text, "finished_at": now}
+    chain = [({**base, **fields}, "published")]
+    if any(v is not None for v in fields.values()):
+        chain.append((base, "published"))
+        chain.append(({**unconfirmed, **fields}, "failed"))
+    chain.append((unconfirmed, "failed"))
+    chain.append(({"status": "failed", "reason": "worker_error", "error": "worker error (recording the result failed)",
+                   "finished_at": now}, "failed"))
+    for n, (values, outcome) in enumerate(chain):
+        if _write(store, rid, worker_id, values):
+            if n:
+                logger.warning("publish request %s: the result was recorded in a reduced form (step %s of %s)", rid, n + 1,
+                               len(chain))
+            return outcome
+    return "failed"
+
+
 def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.SocialTokenClient,
                     worker_id: str, output_dir: Path, http=None, env: Optional[Mapping[str, str]] = None,
                     sleep: Callable[[float], None] = time.sleep,
@@ -1029,29 +1088,9 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
 
         result = publisher.publish(path, post)
 
-        try:
-            store.update(rid, worker_id, {
-                "status": "published", "reason": None, "error": None,
-                "result_id": result.get("result_id"), "result_url": result.get("result_url"),
-                "privacy": result.get("privacy"),
-                "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            })
-        except Exception as e:
-            # The post EXISTS and only the write that says so failed. Not a generic worker_error: say what is known
-            # (its id and address) so a person finds it, and never let the failure escape (this function never raises).
-            logger.warning("publish request %s: the post exists but recording it failed (%s)", rid, type(e).__name__)
-            try:
-                store.update(rid, worker_id, {
-                    "status": "failed", "reason": "publish_unconfirmed",
-                    "error": f"the post was made (id {result.get('result_id')}) but recording it failed "
-                             f"({type(e).__name__}); check the account before sending again",
-                    "result_id": result.get("result_id"), "result_url": result.get("result_url"),
-                    "privacy": result.get("privacy"),
-                    "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                })
-            except Exception:
-                pass
-            return "failed"
+        outcome = _record_result(store, rid, worker_id, result)
+        if outcome != "published":
+            return outcome
         logger.info("publish request %s: %s", rid, publisher.describe())
         return "published"
     except PublishStop as stop:

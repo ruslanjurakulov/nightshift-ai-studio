@@ -34,6 +34,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
+import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Mapping, Optional
@@ -197,17 +199,75 @@ def _needs_tiktok_refresh(tok: SocialToken, now: datetime) -> bool:
 MAX_TOKEN_ANSWER = 64 * 1024
 
 
-def _bounded_json(r) -> dict:
-    """The JSON object of a token-endpoint answer, read through ``MAX_TOKEN_ANSWER`` bytes; ``{}`` when it is not one."""
+#: A token-endpoint answer must arrive within this, once its headers are in.
+TOKEN_READ_SECONDS = 20.0
+#: ... and its headers within this (a wall-clock watchdog, see ``guarded_call``).
+TOKEN_HEADER_SECONDS = 30.0
+
+
+class CallTimedOut(Exception):
+    """``guarded_call`` gave up waiting for a response."""
+
+
+def guarded_call(fn, seconds: float):
+    """``fn()`` with a WALL-CLOCK limit on getting its response. ``requests`` timeouts are per socket operation, so a server
+    that sends its headers one byte at a time keeps a call alive for ever; this waits at most ``seconds`` and raises
+    ``CallTimedOut`` (the call keeps running on a daemon thread until its own timeouts end it, and a response that arrives
+    after the wait is closed, never used). Exceptions of ``fn`` are re-raised."""
+    box: dict = {}
+    done, abandoned = threading.Event(), threading.Event()
+
+    def close(resp) -> None:
+        try:
+            resp.close()
+        except Exception:
+            pass
+
+    def run() -> None:
+        try:
+            box["r"] = fn()
+        except BaseException as e:  # noqa: BLE001 - handed to the caller
+            box["e"] = e
+        finally:
+            done.set()
+            if abandoned.is_set() and "r" in box:
+                close(box["r"])
+
+    threading.Thread(target=run, daemon=True).start()
+    if not done.wait(max(float(seconds), 0.0)):
+        abandoned.set()
+        if done.is_set() and "r" in box:      # it finished while we were deciding
+            close(box["r"])
+        raise CallTimedOut()
+    if "e" in box:
+        raise box["e"]
+    return box["r"]
+
+
+def _bounded_json(r, *, clock=time.monotonic, seconds: float = TOKEN_READ_SECONDS) -> dict:
+    """The JSON object of a token-endpoint answer, read through ``MAX_TOKEN_ANSWER`` bytes and a wall-clock limit (what has
+    ARRIVED is read, so a body that drips one byte at a time is cut at the limit); ``{}`` when it is not one."""
+    deadline = clock() + seconds
     try:
         stream = getattr(r, "iter_content", None)
-        if stream is None:
+        read1 = getattr(getattr(r, "raw", None), "read1", None)
+        if callable(read1):
+            buf = bytearray()
+            while True:
+                chunk = read1(8192)
+                if not chunk:
+                    break
+                buf += chunk
+                if len(buf) > MAX_TOKEN_ANSWER or clock() > deadline:
+                    return {}
+            body = json.loads(bytes(buf).decode("utf-8")) if buf else {}
+        elif stream is None:
             body = r.json()
         else:
             buf = bytearray()
-            for chunk in stream(chunk_size=8192):
+            for chunk in stream(chunk_size=512):
                 buf += chunk
-                if len(buf) > MAX_TOKEN_ANSWER:
+                if len(buf) > MAX_TOKEN_ANSWER or clock() > deadline:
                     return {}
             body = json.loads(bytes(buf).decode("utf-8")) if buf else {}
     except Exception:
@@ -251,7 +311,10 @@ def _ensure_fresh_x(tok: SocialToken, client: SocialTokenClient, http, env: Mapp
     else:
         data["client_id"] = cid
     try:
-        r = http.post(X_TOKEN_URL, data=data, headers=headers, timeout=20, allow_redirects=False, stream=True)
+        r = guarded_call(lambda: http.post(X_TOKEN_URL, data=data, headers=headers, timeout=20, allow_redirects=False,
+                                           stream=True), TOKEN_HEADER_SECONDS)
+    except CallTimedOut:
+        raise SocialTokenError(f"x account {tok.account_id}: refresh got no answer within {int(TOKEN_HEADER_SECONDS)}s") from None
     except Exception as e:  # the type only: the message of a request error can carry the URL and the form
         raise SocialTokenError(f"x account {tok.account_id}: refresh failed ({type(e).__name__})") from None
     status = getattr(r, "status_code", 0)

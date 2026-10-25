@@ -137,6 +137,9 @@ def trim(text: str, limit: int, measure=len) -> str:
     if space > len(cut) // 2:
         cut = cut[:space]
     cut = cut.rstrip(" \n,.;:-–—")
+    # A cut through the middle of a subdivision-flag sequence would leave its invisible tag characters without the flag's
+    # end: they are removed again after the trim.
+    cut = _TAGS.sub(lambda m: m.group(1) or "", cut)
     return (cut + ELLIPSIS) if cut else ""
 
 
@@ -242,7 +245,7 @@ def youtube_tags(tags: Iterable[str], budget: int = YT_TAGS_MAX_CHARS) -> List[s
     total = 0
     seen = set()
     for t in tags:
-        t = _WS.sub(" ", _no_angles(str(t or "")).replace(",", " ").replace("\n", " ")).strip()
+        t = _WS.sub(" ", _no_angles(_strip_invisible(str(t or ""))).replace(",", " ").replace("\n", " ")).strip()
         if not t or t.lower() in seen:
             continue
         cost = len(t) + (2 if " " in t else 0) + 1
@@ -315,11 +318,28 @@ def facebook_caption(meta: SourceMeta, *, max_hashtags: int = FB_HASHTAGS_DEFAUL
     return _compose(head, body, tags, FB_DESCRIPTION_MAX, len, _plain_line(disclosure))
 
 #: X turns a bare domain ("example.com/a") into a link too, and a link costs 13 times as much and counts 23 characters. Only
-#: names under a TLD X is known to link are removed, so ordinary text such as "falls.The" is left alone; a TLD missing from
-#: this list can still be linked (residual cost risk, documented in docs/SOCIAL_SETUP.md).
-_TLDS = ("com|org|net|edu|gov|info|biz|io|co|ai|app|dev|me|ly|tv|gg|xyz|site|online|store|tech|link|page|news|live|club|shop|"
-         "blog|cloud|top|vip|pro|ru|uz|ua|by|kz|de|uk|fr|es|it|nl|pl|us|ca|au|in|cn|jp|kr|br|tr|cc|ws|to|fm|sh|so|ink|art|fun")
-_URL = re.compile(r"(?:https?://|www\.)\S+|(?<![\w@#.])(?:[a-z0-9-]+\.)+(?:" + _TLDS + r")\b(?:/\S*)?", re.IGNORECASE)
+#: names under a TLD X is known to link are removed, so ordinary text is left alone; a TLD missing from these lists can still
+#: be linked (residual cost risk, documented in docs/SOCIAL_SETUP.md). Three rules keep words safe after a missing space
+#: ("story.It", "Hello.So", "Rome.In 476"):
+#:   * the TLD must be written in lower case (or, for the unambiguous ones, all capitals: "EXAMPLE.COM"), and for an
+#:     ambiguous one the whole name must be lower case;
+#:   * a TLD that is also an everyday word or a short English word (it, in, so, to, me, us, by ...) counts only when what
+#:     follows is "/", white space, the end of the text, or sentence punctuation then white space / the end;
+#:   * a name is never started inside another word, an @-handle, a #tag or after a dot.
+_TLDS = ("com|org|net|edu|gov|info|biz|io|ai|app|dev|ly|tv|gg|xyz|site|online|store|tech|link|page|news|live|club|shop|"
+         "blog|cloud|top|vip|pro|ru|uz|ua|kz|uk|fr|nl|pl|au|cn|jp|kr|br|cc|ws|fm|sh|ink|art|fun|"
+         "studio|media|video|today|world|space|website|social|digital|email")
+_AMBIGUOUS_TLDS = "it|in|so|to|me|us|by|de|es|ca|co|as|at|be|do|id|is|no|my|am|tr"
+_URL = re.compile(
+    r"(?:https?://|www\.)\S+"
+    r"|(?<![\w@#.])(?:[A-Za-z0-9-]+\.)+(?:"
+    r"(?:" + _TLDS + r")(?![A-Za-z0-9])(?:/\S*)?"
+    r"|(?:" + _TLDS.upper() + r")(?![A-Za-z0-9])(?:/\S*)?"
+    r")"
+    # an ambiguous TLD: the whole name must be lower case too ("Hello.so" is a sentence, "hello.so" may be a site)
+    r"|(?<![\w@#.])(?:[a-z0-9-]+\.)+(?:" + _AMBIGUOUS_TLDS + r")(?=\s|$|[.,;:!?)](?:\s|$))"
+    # ... but a "/" right after it makes it an address in any case: "Example.it/x"
+    r"|(?<![\w@#.])(?:[A-Za-z0-9-]+\.)+(?:" + _AMBIGUOUS_TLDS + r")/\S*")
 
 
 def x_weight(text: str) -> int:
