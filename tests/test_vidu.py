@@ -438,6 +438,21 @@ class LostAnswerTests(Case):
         self.assertNotIn(UNCONFIRMED, cm.exception.message)
         self.assertNotIn(KEY, cm.exception.message)
 
+    def test_a_200_error_shape_that_reads_as_an_outage_does_not_prove_nothing_was_started(self):
+        for reason in ("InternalServiceFailure", "ModelUnavailable", "OperationInProcess", "BrandNewReason"):
+            self.vendor._routes.clear()
+            self.vendor.on("POST", T2V_PATH, Resp(200, {"code": 500, "reason": reason, "message": "x"}))
+            with self.assertRaises(AdapterError, msg=reason) as cm:
+                self.adapter().submit(req(), "viduq3-pro")
+            self.assertUnconfirmed(cm, E_UNAVAILABLE)
+        # while polling, the same shape is an ordinary typed error (nothing is being started)
+        self.vendor._routes.clear()
+        self.vendor.on("GET", "/ent/v2/tasks/t1000/creations", Resp(200, {"code": 500, "reason": "InternalServiceFailure"}))
+        with self.assertRaises(AdapterError) as cm:
+            self.adapter().poll(ProviderTask("video.vidu", "viduq3-pro", "t1000"))
+        self.assertEqual(cm.exception.code, E_UNAVAILABLE)
+        self.assertNotIn(UNCONFIRMED, cm.exception.message)
+
     def test_a_connection_that_never_opened_proves_nothing_was_bought(self):
         a = self.adapter(env={"VIDU_API_KEY": KEY, "VIDU_BASE_URL": closed_port_url()})
         with self.assertRaises(AdapterError) as cm:

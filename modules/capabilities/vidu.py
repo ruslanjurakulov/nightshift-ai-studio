@@ -84,7 +84,7 @@ from modules.capabilities.base import (
     json_body,
 )
 from modules.capabilities.pictures import inline_picture
-from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, unconfirmed
+from modules.capabilities.safe_fetch import UNCONFIRMED, SafeResultMixin, after_completion, unconfirmed
 
 #: See RESULT LINKS above: nothing is known, so nothing is allowed.
 RESULT_HOSTS: tuple = ()
@@ -162,13 +162,18 @@ class ViduVideoAdapter(SafeResultMixin, HttpAdapter):
             return None
         return _ERRORS.get(str(json_body(text).get("reason") or ""))
 
-    def _error_body(self, data) -> Optional[AdapterError]:
+    def _error_body(self, data, *, at_submit: bool = False) -> Optional[AdapterError]:
         """A 200 whose body is Vidu's error shape (``code`` + ``reason`` + ``message``, the shape the cancel page
-        shows with a 200 status) and holds no task: the vendor's refusal, not a lost answer."""
+        shows with a 200 status) and holds no task: the vendor's refusal, not a lost answer. At submit, a refusal that
+        reads as an outage (``InternalServiceFailure``, ``ModelUnavailable``, a word we do not know) proves nothing about
+        whether a task was started, so it says so like any other lost answer."""
         if isinstance(data, dict) and data.get("reason") and "task_id" not in data and "state" not in data:
             reason = str(data.get("reason"))
-            return AdapterError(_ERRORS.get(reason, E_UNAVAILABLE),
-                                self.message(f"{reason}: {data.get('message') or ''}".strip(": ")))
+            code = _ERRORS.get(reason, E_UNAVAILABLE)
+            text = self.message(f"{reason}: {data.get('message') or ''}".strip(": "))
+            if at_submit and code == E_UNAVAILABLE:
+                text = f"{UNCONFIRMED}. {text}"
+            return AdapterError(code, text)
         return None
 
     @staticmethod
@@ -245,7 +250,7 @@ class ViduVideoAdapter(SafeResultMixin, HttpAdapter):
         if request.audio is not None:
             body["audio"] = bool(request.audio)
         data = self.submit_json(f"{self.base_url}/ent/v2/{_ENDPOINTS[mode]}", body)
-        err = self._error_body(data)
+        err = self._error_body(data, at_submit=True)
         if err:
             raise err
         tid = data.get("task_id") if isinstance(data, dict) else None
