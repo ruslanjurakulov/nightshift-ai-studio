@@ -456,24 +456,51 @@ class HostileAnswers(Loop):
         FakeX(self.vendor, init=Resp(200, chunks=iter([b'{"a":"' + b"x" * 65536] + [b"y" * 65536] * 40)))
         self.assertEqual(self.stops().reason, "upload_failed")
 
-    def test_odd_processing_states_end_in_a_bounded_wait_and_never_pass_as_ready(self):
-        for doc in ({"data": {"processing_info": {"state": ["succeeded"]}}}, {"data": {"processing_info": {"state": 7}}},
-                    {"data": {"processing_info": {"state": "SUCCEEDED"}}}, {"data": {"processing_info": {"state": "done"}}},
-                    {"data": {"processing_info": {}}}, {"data": {"processing_info": "succeeded"}}):
+    #: answers that carry no usable state at all
+    ODD = ({"data": {"processing_info": {"state": ["succeeded"]}}}, {"data": {"processing_info": {"state": 7}}},
+           {"data": {"processing_info": {}}}, {"data": {"processing_info": "succeeded"}}, {"data": {"processing_info": None}},
+           {"data": {"processing_info": []}}, {"data": None}, {"data": {}}, {}, {"errors": [{"message": "x"}]},
+           {"data": {"id": MEDIA}}, [], {"data": []})
+
+    def test_a_poll_answer_without_a_usable_state_is_never_ready_and_nothing_is_posted(self):
+        """In the poll path a missing processing_info is NOT X's "nothing to process" shape (that is only the first FINALIZE
+        answer): it counts as unreadable, three of them end the publish, and no post is made."""
+        for doc in self.ODD:
             self.setUp()
             fx = FakeX(self.vendor, finalize=Resp(200, {"data": {"processing_info": {"state": "pending"}}}),
                        statuses=[Resp(200, doc)])
-            try:
-                self.go()
-                ready = True
-            except sp.PublishStop as e:
-                ready = False
-                self.assert_clean(e)
-            if doc["data"]["processing_info"] == "succeeded":
-                self.assertTrue(ready)       # no processing_info object: X's own "ready" shape
-            else:
-                self.assertFalse(ready, doc)
-                self.assertEqual(fx.posts(), [], doc)
+            e = self.stops(max_wait=1000.0)
+            self.assertIn(e.reason, ("platform_error", "upload_failed"), doc)
+            self.assertEqual(fx.posts(), [], doc)
+            self.vendor.close(), self.evil.close()
+
+    def test_a_state_word_that_is_not_succeeded_is_not_ready_either(self):
+        for state in ("SUCCEEDED", "done", "succeeded ", "ready", ""):
+            self.setUp()
+            fx = FakeX(self.vendor, finalize=Resp(200, {"data": {"processing_info": {"state": "pending"}}}),
+                       statuses=[Resp(200, {"data": {"processing_info": {"state": state}}})])
+            e = self.stops(max_wait=4.0)
+            self.assertIn(e.reason, ("timeout", "platform_error"), state)
+            self.assertEqual(fx.posts(), [], state)
+            self.vendor.close(), self.evil.close()
+
+    def test_after_a_lost_finalize_only_an_explicit_succeeded_is_ready(self):
+        for doc in self.ODD:
+            self.setUp()
+            fx = FakeX(self.vendor, finalize=Resp(drop=True), statuses=[Resp(200, doc)])
+            e = self.stops(max_wait=1000.0)
+            self.assertIn(e.reason, ("platform_error", "upload_failed"), doc)
+            self.assertEqual(fx.posts(), [], doc)
+            self.assertEqual(len(self.vendor.seen("POST", f"{A}/media/upload/{MEDIA}/finalize")), 1, doc)
+            self.vendor.close(), self.evil.close()
+
+    def test_an_unreadable_first_finalize_answer_is_polled_not_assumed_ready(self):
+        for fin in (Resp(200, {"data": None}), Resp(200, {"data": {"processing_info": None}}),
+                    Resp(200, {"data": {"processing_info": []}}), Resp(200, {"data": []})):
+            self.setUp()
+            fx = FakeX(self.vendor, finalize=fin, statuses=[ok_status("succeeded")])
+            self.assertEqual(self.go()["result_id"], POST)
+            self.assertGreaterEqual(len(self.vendor.seen("GET", f"{A}/media/upload")), 1)   # it asked, then posted
             self.vendor.close(), self.evil.close()
 
     def test_a_state_that_is_not_a_word_ends_after_three_unreadable_answers_not_at_the_timeout(self):
@@ -519,6 +546,219 @@ class HostileAnswers(Loop):
         self.assert_clean(e.exception)
         self.assertIn("ConnectionError", e.exception.detail)
         self.assertIn("nothing was posted", e.exception.detail)
+
+
+class StepClock:
+    def __init__(self, step):
+        self.now, self.step = 0.0, step
+
+    def __call__(self):
+        self.now += self.step
+        return self.now
+
+
+class WholePublishDeadline(Loop):
+    """One monotonic deadline for upload + processing + post: the queue hands a row whose heartbeat is 30 minutes old to
+    another worker, which would upload and post the same video again."""
+
+    def test_the_default_deadline_is_45_minutes_and_read_is_30_seconds(self):
+        self.assertEqual(xx.PUBLISH_DEADLINE_SECONDS, 45 * 60.0)
+        self.assertEqual(xx.READ_SECONDS, 30.0)
+
+    def test_a_publish_that_runs_out_of_time_in_the_upload_posts_nothing(self):
+        fx = FakeX(self.vendor)
+        e = self.stops(clock=StepClock(1000.0), deadline_seconds=2500.0, read_seconds=10 ** 9)
+        self.assertIn(e.reason, ("timeout", "upload_failed"))       # cut by the deadline while reading, or at the next check
+        self.assertEqual(fx.posts(), [])
+        self.assertLess(len(fx.appends()), 3)
+
+    def test_the_deadline_between_two_segments_ends_with_timeout_and_nothing_posted(self):
+        fx = FakeX(self.vendor)
+        a = self.adapter()
+        orig = a._append_one
+
+        def then_late(tok_, media_id, index, chunk):
+            orig(tok_, media_id, index, chunk)
+            a._deadline = a.clock() - 1
+        a._append_one = then_late
+        with self.assertRaises(sp.PublishStop) as e:
+            a.publish(tok(), self.path, "t")
+        self.assertEqual(e.exception.reason, "timeout")
+        self.assertIn("nothing was posted", e.exception.detail)
+        self.assertEqual((len(fx.appends()), fx.posts()), (1, []))
+
+    def test_running_out_of_time_just_before_the_post_posts_nothing(self):
+        fx = FakeX(self.vendor)
+        a = self.adapter(deadline_seconds=100.0)
+        orig = a._post
+
+        def late(tok_, media_id, text, ai):
+            a._deadline = a.clock() - 1      # the clock ran out during processing
+            return orig(tok_, media_id, text, ai)
+        a._post = late
+        with self.assertRaises(sp.PublishStop) as e:
+            a.publish(tok(), self.path, "t")
+        self.assertEqual(e.exception.reason, "timeout")
+        self.assertEqual(fx.posts(), [])
+
+    def test_a_calm_clock_lets_the_whole_publish_through(self):
+        fx = FakeX(self.vendor)
+        self.assertEqual(self.go(clock=StepClock(0.001))["result_id"], POST)
+
+    def test_each_call_is_given_no_more_time_than_the_publish_has_left(self):
+        seen = []
+
+        class Http(FakeHTTP):
+            def _go(self, method, url, **kw):
+                seen.append(kw.get("timeout"))
+                return super()._go(method, url, **kw)
+        base = xx.API
+        http = Http({
+            ("POST", f"{base}/media/upload/initialize"): [FakeResp(200, {"data": {"id": MEDIA}})],
+            ("POST", f"{base}/media/upload/{MEDIA}/append"): [FakeResp(204)],
+            ("POST", f"{base}/media/upload/{MEDIA}/finalize"): [FakeResp(200, {"data": {"id": MEDIA}})],
+            ("POST", f"{base}/tweets"): [FakeResp(201, {"data": {"id": POST}})],
+        })
+        xx.XVideoAdapter(http, sleep=lambda s: None, clock=StepClock(1.0), deadline_seconds=1000.0).publish(tok(), self.path, "t")
+        self.assertTrue(seen and all(t is not None and t <= 300 for t in seen))
+        seen.clear()
+        a = xx.XVideoAdapter(http, sleep=lambda s: None, clock=lambda: 0.0, deadline_seconds=5.0)
+        http.routes = {k: v for k, v in http.routes.items()}
+        a._deadline = 5.0
+        try:
+            a.publish(tok(), self.path, "t")
+        except Exception:
+            pass
+        self.assertTrue(all(t <= 5.0 for t in seen), seen)       # capped at the 5 s that were left
+
+    def test_an_answer_that_drips_is_cut_by_the_wall_clock(self):
+        slow = Resp(200, chunks=iter([b'{"data": {"id": "', b"1" * 10, b'"}}']))
+        fx = FakeX(self.vendor, init=slow)
+        e = self.stops(clock=StepClock(50.0), read_seconds=30.0, deadline_seconds=10 ** 9)
+        self.assertEqual(e.reason, "upload_failed")
+        self.assertEqual(fx.appends(), [])
+
+    def test_the_wait_is_measured_by_the_clock_not_only_by_the_pauses(self):
+        """Time inside the 30 s STATUS calls counted for nothing before: sleep is a no-op here, the clock moves 600 s a read."""
+        fx = FakeX(self.vendor, finalize=Resp(200, {"data": {"processing_info": {"state": "pending"}}}),
+                   statuses=[ok_status("in_progress")])
+        e = self.stops(clock=StepClock(600.0), max_wait=1000.0, deadline_seconds=10 ** 9, read_seconds=10 ** 9)
+        self.assertEqual(e.reason, "timeout")
+        self.assertLessEqual(len(self.vendor.seen("GET", f"{A}/media/upload")), 3)   # the pause counter alone allows 1000
+        self.assertEqual(fx.posts(), [])
+
+
+class NoCompressedAnswers(Loop):
+    def test_every_request_asks_for_an_uncompressed_answer(self):
+        FakeX(self.vendor, finalize=Resp(200, {"data": {"processing_info": {"state": "pending"}}}),
+              statuses=[ok_status("succeeded")])
+        self.go()
+        for r in self.vendor.requests:
+            self.assertEqual(r.headers.get("accept-encoding"), "identity", r.path)
+
+
+class TheClockIsCheckedBeforeEveryPoll(Loop):
+    def test_a_deadline_that_passes_during_a_pause_ends_with_timeout_before_the_next_poll(self):
+        fx = FakeX(self.vendor, finalize=Resp(200, {"data": {"processing_info": {"state": "pending"}}}),
+                   statuses=[ok_status("in_progress"), ok_status("succeeded")])
+        a = self.adapter(max_wait=1000.0)
+        a.sleep = lambda s: setattr(a, "_deadline", a.clock() - 1)
+        with self.assertRaises(sp.PublishStop) as e:
+            a.publish(tok(), self.path, "t")
+        self.assertEqual(e.exception.reason, "timeout")
+        self.assertEqual(self.vendor.seen("GET", f"{A}/media/upload"), [])      # not even one poll was sent
+        self.assertEqual(fx.posts(), [])
+
+
+class Heartbeats(Loop):
+    def test_the_heartbeat_beats_between_append_retries(self):
+        beats = []
+        FakeX(self.vendor, appends=[Resp(drop=True), Resp(drop=True), Resp(204)])
+        self.go(heartbeat=lambda: beats.append(1))
+        self.assertGreaterEqual(len(beats), 2 + 3)      # two retries of segment 0, then one per segment
+
+    def test_a_failing_heartbeat_never_stops_the_upload_or_the_wait(self):
+        def boom():
+            raise RuntimeError("store down")
+        FakeX(self.vendor, finalize=Resp(200, {"data": {"processing_info": {"state": "pending"}}}),
+              statuses=[ok_status("in_progress"), ok_status("succeeded")])
+        self.assertEqual(self.go(heartbeat=boom)["result_id"], POST)
+
+
+class TypeWordsAreAllowListed(unittest.TestCase):
+    class R:
+        def __init__(self, status):
+            self.status_code, self.headers = status, {}
+
+    def test_only_known_problem_types_reach_the_detail(self):
+        token_shaped = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA%2FAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        for typ in (token_shaped, "https://evil.test/x", "invalid-requestx", "Bearer abc", "https://api.x.com/2/problems/made-up"):
+            stop = xx.x_error("post", self.R(400), {"type": typ})
+            self.assertEqual(stop.detail, "x post: HTTP 400", typ)
+        for typ in sorted(xx.PROBLEM_TYPES):
+            stop = xx.x_error("post", self.R(400), {"type": f"https://api.x.com/2/problems/{typ}"})
+            self.assertEqual(stop.detail, f"x post: HTTP 400, {typ}")
+
+
+class BareDomainsAreRemoved(unittest.TestCase):
+    def text(self, title="Rome", description="Words."):
+        return cap.caption_for("x", cap.SourceMeta(title=title, description=description, tags=("history",)))
+
+    def test_links_and_bare_domains_are_gone(self):
+        for bad in ("example.com/a?b=1", "news.bbc.co.uk", "my-site.io", "sub.domain.org/path", "x.ai", "EXAMPLE.COM"):
+            t = self.text(description=f"Read more at {bad} today.")
+            self.assertNotIn(bad.lower(), t.lower(), bad)
+            self.assertNotIn("/", t, bad)          # no path or query is left behind either
+            self.assertNotIn("?", t, bad)
+            self.assertIn("Read more at", t)
+
+    def test_a_longer_word_that_merely_starts_like_a_domain_name_is_not_cut(self):
+        t = self.text(description="Join my.community and see page.compare or site.commercial now.")
+        for keep in ("my.community", "page.compare", "site.commercial"):
+            self.assertIn(keep, t)
+
+    def test_ordinary_text_is_left_alone(self):
+        t = self.text(description="It fell.The empire ended in 476, e.g. U.S. scholars agree; mail me@site.com.")
+        for keep in ("fell.The", "e.g.", "U.S."):
+            self.assertIn(keep, t)
+
+    def test_a_domain_in_the_ai_line_is_removed_too_and_hashtags_with_dots_are_not_touched(self):
+        t = cap.caption_for("x", cap.SourceMeta(title="Rome", description="d", tags=("history",)), disclosure="See ai.example.com for more.")
+        self.assertNotIn("example.com", t)
+
+
+class ThePostExistsButTheRowWriteFailed(Base):
+    """A post that was made whose final database write failed must not read as a generic worker_error."""
+
+    def test_the_row_says_publish_unconfirmed_with_the_post_id_and_address(self):
+        http = x_http()
+
+        class Store(FakeStore):
+            def update(self, rid, worker_id, values):
+                if values.get("status") == "published":
+                    raise ConnectionError("db down https://secret.example/?k=EAAB")
+                super().update(rid, worker_id, values)
+        store = Store(video=self.video, http=http)
+        with self.assertLogs("modules.social_publish", level="WARNING") as logs:
+            out = self.run_req(store, FakeTokens("x"), platform="x", http=http)
+        self.assertEqual(out, "failed")
+        final = store.final
+        self.assertEqual((final["status"], final["reason"]), ("failed", "publish_unconfirmed"))
+        self.assertEqual((final["result_id"], final["result_url"]), (POST, f"https://x.com/i/status/{POST}"))
+        self.assertIn(POST, final["error"])
+        self.assertNotIn("secret.example", final["error"] + "\n".join(logs.output))
+        self.assertEqual(len([c for c in http.calls if c[1].endswith("/tweets")]), 1)
+
+    def test_when_even_that_write_fails_nothing_escapes(self):
+        http = x_http()
+
+        class Store(FakeStore):
+            def update(self, rid, worker_id, values):
+                if values.get("status") in ("published", "failed"):
+                    raise ConnectionError("db down")
+                super().update(rid, worker_id, values)
+        out = self.run_req(Store(video=self.video, http=http), FakeTokens("x"), platform="x", http=http)
+        self.assertEqual(out, "failed")
 
 
 class XErrorWords(unittest.TestCase):
@@ -725,6 +965,41 @@ class XTokens(unittest.TestCase):
             st.ensure_fresh(tok(access_expires_at=self.NOW, refresh_token="r" * 20), c, http=http, env={}, now=self.NOW)
         self.assertIn("X_CLIENT_ID", str(e.exception))
         self.assertEqual(http.calls, [])
+
+    def test_a_lifetime_that_is_not_a_number_never_loses_the_rotated_pair(self):
+        for bad in (float("nan"), float("inf"), 1e30, -5, 0, True, "7200", None, 10 ** 12):
+            c = self.Client()
+            http = self.Http(self.r(200, {"access_token": "new-access-0123456789", "refresh_token": "new-refresh-0123456789",
+                                          "expires_in": bad}))
+            t = tok(access_expires_at=self.NOW, refresh_token="old-refresh-0123456789")
+            out = st.ensure_fresh(t, c, http=http, env={"X_CLIENT_ID": "cid"}, now=self.NOW - timedelta(seconds=1))
+            self.assertEqual(out.refresh_token, "new-refresh-0123456789", bad)
+            self.assertEqual(c.rotated, [out], bad)
+            self.assertIsNone(out.access_expires_at, bad)
+
+    def test_a_good_lifetime_is_kept(self):
+        self.assertEqual(st._lifetime_seconds(7200), 7200)
+        self.assertEqual(st._lifetime_seconds(7200.9), 7200)
+        self.assertIsNone(st._lifetime_seconds(10 * 365 * 86400 + 1))
+
+    def test_a_huge_refresh_answer_is_not_read_to_the_end(self):
+        class Big:
+            status_code = 200
+
+            def iter_content(self, chunk_size=0):
+                for _ in range(10000):
+                    yield b"x" * 8192
+                    self.sent = getattr(self, "sent", 0) + 1
+
+            def json(self):
+                raise AssertionError("read in full")
+        big = Big()
+        c = self.Client()
+        t = tok(access_expires_at=self.NOW, refresh_token="old-refresh-0123456789")
+        with self.assertRaises(st.SocialTokenError):
+            st.ensure_fresh(t, c, http=self.Http(big), env={"X_CLIENT_ID": "cid"}, now=self.NOW)
+        self.assertLess(getattr(big, "sent", 0), 20)       # stopped near 64 KiB, not 80 MB
+        self.assertIn(("acc1", "expired"), c.statuses)
 
     def test_a_dropped_connection_is_a_plain_error_without_the_message(self):
         class Boom:

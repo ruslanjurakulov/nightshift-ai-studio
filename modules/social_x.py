@@ -59,6 +59,16 @@ APPEND_TRIES = 3
 MAX_API_BODY = 1024 * 1024
 MAX_UNREADABLE_POLLS = 3
 MIN_CHECK_AFTER, MAX_CHECK_AFTER = 1, 30
+#: One wall-clock limit for the WHOLE publish (monotonic): upload, processing and post. The queue gives a row whose heartbeat
+#: is older than 30 minutes to another worker (0029), so a publish that cannot finish in this time ends instead of running on.
+PUBLISH_DEADLINE_SECONDS = 45 * 60.0
+#: A wall-clock limit for reading ONE answer (a server that drips a small body forever must not hold the worker).
+READ_SECONDS = 30.0
+ACCEPT_IDENTITY = {"Accept-Encoding": "identity"}   # no compressed answers: a decompression bomb cannot arise
+#: The ``Problem`` types the create-post and upload pages list; anything else is not copied into a detail.
+PROBLEM_TYPES = frozenset({"invalid-request", "not-authorized-for-resource", "not-authorized-for-field",
+                           "field-unauthorized", "field-hydration-failure", "resource-not-found", "resource-unavailable",
+                           "disallowed-resource", "internal-error", "recipient-not-messageable"})
 
 #: The closed words this module uses beyond the common ones (sentences in en / ru / uz: command-center/lib/publish.ts).
 REASON_UNCONFIRMED = "publish_unconfirmed"
@@ -87,8 +97,10 @@ def _close(r) -> None:
         pass
 
 
-def _read_doc(r) -> Optional[dict]:
-    """The JSON object of an answer, read through a size cap; None when it is not one (an empty body included)."""
+def _read_doc(r, *, clock: Callable[[], float] = time.monotonic, seconds: float = READ_SECONDS) -> Optional[dict]:
+    """The JSON object of an answer, read through a size cap and a wall-clock limit; None when it is not one (an empty body
+    included)."""
+    deadline = clock() + max(seconds, 0.0)
     try:
         declared = int((getattr(r, "headers", None) or {}).get("Content-Length") or 0)
     except (TypeError, ValueError):
@@ -104,7 +116,7 @@ def _read_doc(r) -> Optional[dict]:
             buf = bytearray()
             for chunk in stream(chunk_size=65536):
                 buf += chunk
-                if len(buf) > MAX_API_BODY:
+                if len(buf) > MAX_API_BODY or clock() > deadline:
                     return None
             body = json.loads(bytes(buf).decode("utf-8")) if buf else None
     except Exception:
@@ -137,8 +149,9 @@ def x_error(what: str, r, doc: Optional[dict]) -> sp.PublishStop:
     status = getattr(r, "status_code", 0)
     problem = doc.get("type") if isinstance(doc, dict) else None
     parts = [f"HTTP {status}"]
-    if isinstance(problem, str) and _TYPE_WORD.fullmatch(problem) and problem != "about:blank":
-        parts.append(problem.rsplit("/", 1)[-1])
+    word = problem.rsplit("/", 1)[-1] if isinstance(problem, str) and _TYPE_WORD.fullmatch(problem) else None
+    if word in PROBLEM_TYPES:     # an allow-list: a token-shaped or attacker-chosen string is never copied
+        parts.append(word)
     detail = f"x {what}: {', '.join(parts)}"
     text = json.dumps(doc)[:4096].lower() if isinstance(doc, dict) else ""
     if status == 401:
@@ -165,17 +178,37 @@ class XVideoAdapter:
     def __init__(self, http, *, sleep: Callable[[float], None] = time.sleep,
                  heartbeat: Callable[[], None] = lambda: None, poll_seconds: float = sp.POLL_SECONDS,
                  max_wait: float = sp.MAX_WAIT_SECONDS, api: str = API, max_bytes: int = sp.X_MAX_BYTES,
-                 segment_bytes: int = SEGMENT_BYTES):
-        self.http, self.sleep, self.heartbeat = http, sleep, heartbeat
+                 segment_bytes: int = SEGMENT_BYTES, clock: Callable[[], float] = time.monotonic,
+                 deadline_seconds: float = PUBLISH_DEADLINE_SECONDS, read_seconds: float = READ_SECONDS):
+        self.http, self.sleep, self._heartbeat = http, sleep, heartbeat
+        self.clock, self.deadline_seconds, self.read_seconds = clock, deadline_seconds, read_seconds
+        self._deadline = clock() + deadline_seconds
         self.poll_seconds, self.max_wait = poll_seconds, max_wait
         self.api, self.max_bytes, self.segment_bytes = api.rstrip("/"), max_bytes, segment_bytes
 
     # -- one HTTP call ------------------------------------------------------------
+    def heartbeat(self) -> None:
+        """Beat the request's heartbeat; a failing one never stops an upload (the YouTube adapter's beat() does the same)."""
+        try:
+            self._heartbeat()
+        except Exception:
+            pass
+
+    def _remaining(self) -> float:
+        return self._deadline - self.clock()
+
+    def _check_time(self, what: str, sent: bool = False) -> None:
+        if self._remaining() <= 0:
+            raise sp.failed("timeout", f"x {what}: the {int(self.deadline_seconds // 60)}-minute limit for one publish is "
+                                       "used up" + ("" if sent else "; nothing was posted"))
+
     @staticmethod
     def _auth(tok) -> dict:
-        return {"Authorization": f"Bearer {tok.access_token}"}
+        return {"Authorization": f"Bearer {tok.access_token}", **ACCEPT_IDENTITY}
 
     def _send(self, method: str, url: str, what: str, **kw):
+        if "timeout" in kw:      # no single call may outlive the publish's own deadline
+            kw["timeout"] = max(1.0, min(float(kw["timeout"]), self._remaining()))
         try:
             r = getattr(self.http, method)(url, allow_redirects=False, stream=True, **kw)
         except Exception as e:  # network, TLS, timeout: the type only, never the message
@@ -190,7 +223,7 @@ class XVideoAdapter:
         """A call whose success is a 2xx. A lost answer is ``_Lost``; a refusal is a ``PublishStop``."""
         r = self._send(method, url, what, **kw)
         status = getattr(r, "status_code", 0)
-        doc = _read_doc(r)
+        doc = _read_doc(r, clock=self.clock, seconds=min(self.read_seconds, max(self._remaining(), 0.0)))
         if status >= 500:
             raise _Lost(f"x {what}: HTTP {status}")  # the work may have been done: not a refusal
         if status >= 300:
@@ -203,6 +236,7 @@ class XVideoAdapter:
 
     # -- the steps ------------------------------------------------------------------
     def _init(self, tok, size: int) -> str:
+        self._check_time("initialize")
         try:
             doc = self._call("post", f"{self.api}/media/upload/initialize", "initialize", headers=self._auth(tok),
                              json={"media_type": MEDIA_TYPE, "total_bytes": size, "media_category": MEDIA_CATEGORY},
@@ -230,7 +264,10 @@ class XVideoAdapter:
 
     def _append_one(self, tok, media_id: str, index: int, chunk: bytes) -> None:
         last = ""
-        for _ in range(APPEND_TRIES):
+        for attempt in range(APPEND_TRIES):
+            self._check_time(f"append {index}")
+            if attempt:
+                self.heartbeat()     # a retry after a lost answer can be slow: keep the row alive between tries
             try:
                 self._call("post", f"{self.api}/media/upload/{media_id}/append", f"append {index}",
                            headers=self._auth(tok), data={"segment_index": str(index)},
@@ -242,30 +279,40 @@ class XVideoAdapter:
         raise sp.failed("upload_failed", f"{last}; segment {index} did not go through after {APPEND_TRIES} tries")
 
     def _finalize(self, tok, media_id: str) -> Optional[dict]:
-        """The ``processing_info`` X returned, or None when it said the media is ready (or, after a lost answer, the
-        STATUS read decides)."""
+        """``None`` only when X's own FINALIZE answer says the media needs no processing (no ``processing_info``: the page's
+        "ready" shape). After a lost answer the STATUS read decides, and only an explicit ``succeeded`` there is ready."""
+        self._check_time("finalize")
         try:
             doc = self._call("post", f"{self.api}/media/upload/{media_id}/finalize", "finalize",
                              headers=self._auth(tok), timeout=120)
         except _Lost:
-            return self._status(tok, media_id, "finalize read-back", lost_means="upload_failed")
+            return self._status(tok, media_id, "finalize read-back")
         data = doc.get("data")
-        info = data.get("processing_info") if isinstance(data, dict) else None
-        return info if isinstance(info, dict) else None
+        if not isinstance(data, dict):
+            return {}                           # no usable answer: poll, never assume ready
+        if "processing_info" not in data:
+            return None                         # X's own shape for "nothing to process"
+        info = data.get("processing_info")
+        return info if isinstance(info, dict) else {}
 
-    def _status(self, tok, media_id: str, what: str, lost_means: str = "upload_failed") -> Optional[dict]:
+    def _status(self, tok, media_id: str, what: str) -> dict:
+        """The ``processing_info`` of a STATUS read, or ``{}`` when the answer has none that can be used. ``{}`` is never
+        "ready": the poll counts it as unreadable."""
+        self._check_time(what)
         try:
             doc = self._call("get", f"{self.api}/media/upload", what, headers=self._auth(tok), timeout=30,
                              params={"command": "STATUS", "media_id": media_id})
         except _Lost as e:
-            raise sp.failed(lost_means, e.detail) from None
+            raise sp.failed("upload_failed", e.detail) from None
         data = doc.get("data")
         info = data.get("processing_info") if isinstance(data, dict) else None
-        return info if isinstance(info, dict) else None
+        return info if isinstance(info, dict) else {}
 
     def _wait_processed(self, tok, media_id: str, info: Optional[dict]) -> None:
-        waited, unreadable = 0.0, 0
-        while info is not None:
+        if info is None:
+            return          # FINALIZE said: nothing to process
+        waited, unreadable, started = 0.0, 0, self.clock()
+        while True:
             state = info.get("state")
             if state == "succeeded":
                 return
@@ -275,8 +322,9 @@ class XVideoAdapter:
                 unreadable += 1
                 if unreadable >= MAX_UNREADABLE_POLLS:
                     raise sp.failed("platform_error", "x status: no usable processing state in the answers")
-            if waited >= self.max_wait:
-                raise sp.failed("timeout", f"x still processing after {int(waited)}s")
+            elapsed = max(waited, self.clock() - started)     # the pauses AND the time the answers themselves took
+            if elapsed >= self.max_wait:
+                raise sp.failed("timeout", f"x still processing after {int(elapsed)}s")
             after = _int(info.get("check_after_secs"))
             pause = float(min(max(after, MIN_CHECK_AFTER), MAX_CHECK_AFTER)) if after is not None else self.poll_seconds
             self.heartbeat()
@@ -285,6 +333,7 @@ class XVideoAdapter:
             info = self._status(tok, media_id, "status")
 
     def _post(self, tok, media_id: str, text: str, ai_generated: bool) -> dict:
+        self._check_time("post")        # nothing has been sent yet: running out of time here posts nothing
         body: dict = {"text": text, "media": {"media_ids": [media_id]}}
         if ai_generated:
             # X's self-disclosure of AI media (create-post page, ``made_with_ai``). Sent only when the label is true: an

@@ -277,7 +277,12 @@ def tiktok_caption(meta: SourceMeta, *, max_hashtags: int = TT_HASHTAGS_DEFAULT,
     return _compose(head, body, tags, TT_CAPTION_MAX_UTF16, utf16_len, _plain_line(disclosure))
 
 
-_URL = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
+#: X turns a bare domain ("example.com/a") into a link too, and a link costs 13 times as much and counts 23 characters. Only
+#: names under a TLD X is known to link are removed, so ordinary text such as "falls.The" is left alone; a TLD missing from
+#: this list can still be linked (residual cost risk, documented in docs/SOCIAL_SETUP.md).
+_TLDS = ("com|org|net|edu|gov|info|biz|io|co|ai|app|dev|me|ly|tv|gg|xyz|site|online|store|tech|link|page|news|live|club|shop|"
+         "blog|cloud|top|vip|pro|ru|uz|ua|by|kz|de|uk|fr|es|it|nl|pl|us|ca|au|in|cn|jp|kr|br|tr|cc|ws|to|fm|sh|so|ink|art|fun")
+_URL = re.compile(r"(?:https?://|www\.)\S+|(?<![\w@#.])(?:[a-z0-9-]+\.)+(?:" + _TLDS + r")\b(?:/\S*)?", re.IGNORECASE)
 
 
 def x_weight(text: str) -> int:

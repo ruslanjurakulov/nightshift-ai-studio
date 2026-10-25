@@ -31,6 +31,7 @@ an account id, an HTTP status and an exception type name.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass, field, replace
@@ -192,6 +193,44 @@ def _needs_tiktok_refresh(tok: SocialToken, now: datetime) -> bool:
     return tok.access_expires_at is None or tok.access_expires_at - now <= TT_REFRESH_WINDOW
 
 
+#: The most a token-endpoint answer is read for (it holds two tokens and a few words).
+MAX_TOKEN_ANSWER = 64 * 1024
+
+
+def _bounded_json(r) -> dict:
+    """The JSON object of a token-endpoint answer, read through ``MAX_TOKEN_ANSWER`` bytes; ``{}`` when it is not one."""
+    try:
+        stream = getattr(r, "iter_content", None)
+        if stream is None:
+            body = r.json()
+        else:
+            buf = bytearray()
+            for chunk in stream(chunk_size=8192):
+                buf += chunk
+                if len(buf) > MAX_TOKEN_ANSWER:
+                    return {}
+            body = json.loads(bytes(buf).decode("utf-8")) if buf else {}
+    except Exception:
+        return {}
+    finally:
+        try:
+            r.close()
+        except Exception:
+            pass
+    return body if isinstance(body, dict) else {}
+
+
+def _lifetime_seconds(v) -> Optional[int]:
+    """A token lifetime in whole seconds when it is a finite positive number of at most ten years, else None (NaN, infinity,
+    1e30 and booleans are not lifetimes)."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    try:
+        return int(v) if 0 < v <= 10 * 365 * 86400 else None      # NaN fails both comparisons
+    except (OverflowError, ValueError):
+        return None
+
+
 def _ensure_fresh_x(tok: SocialToken, client: SocialTokenClient, http, env: Mapping[str, str], now: datetime) -> SocialToken:
     if tok.access_expires_at is not None and tok.access_expires_at - now > X_REFRESH_WINDOW:
         return tok
@@ -212,24 +251,21 @@ def _ensure_fresh_x(tok: SocialToken, client: SocialTokenClient, http, env: Mapp
     else:
         data["client_id"] = cid
     try:
-        r = http.post(X_TOKEN_URL, data=data, headers=headers, timeout=20, allow_redirects=False)
+        r = http.post(X_TOKEN_URL, data=data, headers=headers, timeout=20, allow_redirects=False, stream=True)
     except Exception as e:  # the type only: the message of a request error can carry the URL and the form
         raise SocialTokenError(f"x account {tok.account_id}: refresh failed ({type(e).__name__})") from None
     status = getattr(r, "status_code", 0)
-    try:
-        body = r.json() or {}
-    except Exception:
-        body = {}
-    body = body if isinstance(body, dict) else {}
+    body = _bounded_json(r)
     new = str(body.get("access_token") or "").strip()
     if status >= 300 or not new:
         if 400 <= status < 500 or (status < 300 and not new):
             client.set_status(tok.account_id, "expired")
         raise SocialTokenError(f"x account {tok.account_id}: refresh refused (HTTP {status}); reconnect it")
-    exp = body.get("expires_in")
+    seconds = _lifetime_seconds(body.get("expires_in"))
+    # Whatever X sent for the lifetime, the rotated pair is stored: a refresh token X has just replaced is lost if this raises.
     fresh = replace(tok, access_token=new,
                     refresh_token=str(body.get("refresh_token") or tok.refresh_token).strip(),
-                    access_expires_at=now + timedelta(seconds=int(exp)) if isinstance(exp, (int, float)) and not isinstance(exp, bool) else None)
+                    access_expires_at=now + timedelta(seconds=seconds) if seconds is not None else None)
     client.rotate(fresh)
     return fresh
 
