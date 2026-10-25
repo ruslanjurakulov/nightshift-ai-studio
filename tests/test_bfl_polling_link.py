@@ -175,7 +175,7 @@ class RedirectTests(Rig):
 
         self.assertEqual(sorted(k for k, c in ALL.items() if not c.follow_redirects),
                          ["image.bfl", "image.bfl3", "image.gemini_interactions", "video.bfl", "video.gemini_omni",
-                          "video.veo", "video.vidu"])   # video.veo / video.vidu: their header key must not follow a 3xx
+                          "video.pika", "video.veo", "video.vidu"])   # video.veo / pika / vidu: their header key must not follow a 3xx
 
 
 if __name__ == "__main__":

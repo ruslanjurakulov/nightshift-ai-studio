@@ -32,7 +32,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 describe("the closed set of vendors", () => {
   it("is exactly the ids the page lists, with no database list behind it", () => {
     expect(MODEL_KEY_PROVIDERS.map((p) => p.id).sort()).toEqual([...MODEL_KEY_PROVIDER_IDS].sort());
-    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(17);
+    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(18);
   });
 
   it("covers every provider of the model registry (but the placeholder), so no model has a vendor without a key page", () => {
@@ -71,9 +71,9 @@ describe("what a verify request is allowed to be", () => {
     krea: "GET https://api.krea.ai/jobs?limit=1",
     alibaba: "GET https://dashscope-intl.aliyuncs.com/api/v1/models?page_size=1",
   };
-  const FORMAT_ONLY = ["bytedance", "kling", "lightricks", "vidu"];
+  const FORMAT_ONLY = ["bytedance", "kling", "lightricks", "pika", "vidu"];
 
-  it("pins every http vendor to one exact free read and lists the four with no check", () => {
+  it("pins every http vendor to one exact free read and lists the five with no check", () => {
     const got: Record<string, string> = {};
     for (const p of MODEL_KEY_PROVIDERS) {
       if (p.strategy.kind === "http") got[p.id] = `GET ${p.strategy.origin}${p.strategy.path}${p.strategy.query ? `?${p.strategy.query}` : ""}`;
@@ -252,6 +252,7 @@ describe("key source: which key a run uses", () => {
     expect(by.xai).toBe("XAI_API_KEY");
     expect(by.recraft).toBe("RECRAFT_API_TOKEN");
     expect(by.vidu).toBe("VIDU_API_KEY");
+    expect(by.pika).toBe("PIKA_API_KEY");
     expect(envNamesText(getModelKeyProvider("bytedance") as ModelKeyProvider)).toBe("SEEDANCE_API_KEY");
   });
 });

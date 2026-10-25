@@ -474,13 +474,16 @@ class HttpAdapter:
     # -- HTTP -------------------------------------------------------------------
     def _call(self, method: str, url: str, *, what: str, json_body=None, params=None,
               headers=None, files=None, data=None, timeout: Optional[int] = None,
-              raw: bool = False, ok_statuses: Sequence[int] = ()):
+              raw: bool = False, ok_statuses: Sequence[int] = (), billable: bool = True):
         h = dict(self.auth_headers())
         if headers:
             h.update(headers)
         # Every call that may reach the vendor is counted (``calls_sent``): the
         # creative bridge trusts a failure's proof only for a submit's first call.
-        self.calls_sent = getattr(self, "calls_sent", 0) + 1
+        # ``billable=False`` is an adapter's statement that THIS call cannot start anything that bills (Pika's picture upload and
+        # its delete, both documented as never charged): it is not counted, so the paid call that follows is still a first call.
+        if billable:
+            self.calls_sent = getattr(self, "calls_sent", 0) + 1
         extra = {} if self.follow_redirects else {"allow_redirects": False}
         try:
             resp = self.session.request(method, url, json=json_body, params=params, headers=h,

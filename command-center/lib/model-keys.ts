@@ -35,6 +35,7 @@ export const MODEL_KEY_PROVIDER_IDS = [
   "luma",
   "minimax",
   "openai",
+  "pika",
   "recraft",
   "runway",
   "vidu",
@@ -321,6 +322,19 @@ export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
     // LTX's own OpenAPI document (docs.ltx.io/openapi.json) has no read that needs no job id: every path is a POST that starts a billed
     // generation, plus GET /v2/{endpoint}/{id} for one job. No free account, credits or models call exists, so the key is never sent anywhere.
     strategy: { kind: "format_only", docUrl: "https://docs.ltx.io/openapi.json" },
+  },
+  {
+    id: "pika",
+    name: "Pika (Pika 2.5)",
+    keyUrl: "https://dev.pika.art/keys",
+    keyUrlSource: "https://dev.pika.art/llms.txt",
+    envSets: [["PIKA_API_KEY"]],
+    scopedKeys: false,
+    // The one free read is the org balance (GET /billing/balance, "never charged"; llms.txt: the same API key reads it and a 200 "proves the
+    // key is active"). But Pika's OpenAPI document describes the /billing Bearer scheme as "a console session JWT" and lists the API-key header
+    // as the other accepted scheme, so which of the two the balance read takes was not settled by the pages, and a 401 or 403 from it would be
+    // read here as "the vendor rejected this key" about a key that is fine. Until a live probe confirms it, the key is never sent anywhere.
+    strategy: { kind: "format_only", docUrl: "https://dev.pika.art/llms.txt" },
   },
   {
     id: "vidu",
