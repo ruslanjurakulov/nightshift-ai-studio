@@ -377,6 +377,8 @@ DORMANT_FOR_THE_POLL = (
     ("CHRONOS_ENABLE_REVENUE", "vars"), ("CHRONOS_DAILY_UPLOAD_SLOTS", "vars"),
     # How many days of own videos the daily analytics poll re-reads. Poll only, like the two above: the worker never polls.
     ("NIGHTSHIFT_METRICS_POLL_DAYS", "vars"),
+    # Whether the mirror (run only by the poll) also copies the wider poll's late readings to Supabase. Off when empty.
+    ("NIGHTSHIFT_MIRROR_LATE_METRICS", "vars"),
 )
 DAILY = ROOT / ".github" / "workflows" / "daily_video.yml"
 POLL = ROOT / ".github" / "workflows" / "intelligence_poll.yml"

@@ -181,8 +181,8 @@ CREATE INDEX IF NOT EXISTS idx_retention_video
 
 -- Readings the opt-in wider poll (NIGHTSHIFT_METRICS_POLL_DAYS) takes of a video that is no longer in its first days. Same
 -- columns as metrics_snapshots, kept apart on purpose: a snapshot is YouTube's two-day window, and every decision reader
--- (latest_metrics) divides it by the days since publishing as if it were a lifetime total. Only the dashboard mirror and the
--- backup read this table (newest_metrics).
+-- (latest_metrics) divides it by the days since publishing as if it were a lifetime total. Only the Supabase mirror reads this
+-- table (newest_metrics), and only when NIGHTSHIFT_MIRROR_LATE_METRICS is set; the durability backup reads latest_metrics.
 CREATE TABLE IF NOT EXISTS metrics_snapshots_late (
     id                             INTEGER PRIMARY KEY AUTOINCREMENT,
     video_id                       TEXT NOT NULL,

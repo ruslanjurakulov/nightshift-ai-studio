@@ -12,7 +12,10 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from unittest.mock import patch
+
 from modules import publish_timing, quota_allocator, sponsorship
+from modules.intelligence_poller import EARLY_LIFE_DAYS
 from modules.feedback_engine import FeedbackEngine
 from modules.performance_analyzer import PerformanceAnalyzer
 from modules.state_store import StateStore
@@ -48,7 +51,7 @@ class WidenedReadingsDoNotMoveDecisions(unittest.TestCase):
         """What the widened poll adds for videos past their first days: a fresh two-day-window reading on each of the last
         five days, filed as `late`. Plus an all-NULL row for a quiet video dated today, in the main table (what the
         previous release wrote, and so what an existing database may already hold)."""
-        for age in (a for a in AGES if a > 5):   # a video younger than that is polled by the default poll too
+        for age in (a for a in AGES if a > EARLY_LIFE_DAYS):   # a video up to that age is polled by the default poll too
             for back in range(0, 5):
                 self.store.record_metrics_snapshot(
                     video_id=f"v{age}", snapshot_date=_day(back), views=7 + back, likes=1, comment_count=0,
@@ -109,18 +112,30 @@ class WidenedReadingsDoNotMoveDecisions(unittest.TestCase):
             self.assertEqual(newest[age]["snapshot_date"], _day(0))
             self.assertEqual(early[age]["snapshot_date"], _day(age - 1))
 
-    def test_the_mirror_still_copies_the_newest_reading_late_ones_included(self):
-        # The dashboard reads Supabase, so the mirror must carry the late readings the decision readers never see.
+    def _mirrored(self, env):
         from modules.supabase_sync import SupabaseSync
 
-        self.widen()
         sync = SupabaseSync.__new__(SupabaseSync)
-        rows = {r["video_id"]: r for r in sync._gather_metrics(self.store)}
-        for age in (10, 60, 90):
-            self.assertEqual(rows[f"v{age}"]["snapshot_date"], _day(0), age)
-        self.assertNotIn("id", {k for r in rows.values() for k in r})
-        self.assertEqual(rows["v10"]["views"], 7)       # v10's all-NULL row of the same day is nobody's reading
-        self.assertEqual(rows["v1"]["snapshot_date"], _day(0))   # a young video: its own early row, as before
+        with patch.dict("os.environ", env, clear=False):
+            return {r["video_id"]: r for r in sync._gather_metrics(self.store)}
+
+    def test_by_default_the_mirror_copies_only_what_it_always_copied_so_the_command_center_is_unchanged(self):
+        # The Command Center takes the latest row per video and divides it by the video's age; a late two-day window would
+        # change its analytics, publishing-window and measurement pages. Off unless NIGHTSHIFT_MIRROR_LATE_METRICS is set.
+        before = self._mirrored({"NIGHTSHIFT_MIRROR_LATE_METRICS": ""})
+        self.widen()
+        for value in ("", "0", "no", "off", "false", "  "):
+            self.assertEqual(self._mirrored({"NIGHTSHIFT_MIRROR_LATE_METRICS": value}), before, repr(value))
+
+    def test_with_the_mirror_switch_on_the_late_readings_reach_supabase(self):
+        self.widen()
+        for value in ("1", "true", "YES", "on", " On "):
+            rows = self._mirrored({"NIGHTSHIFT_MIRROR_LATE_METRICS": value})
+            for age in (10, 60, 90):
+                self.assertEqual(rows[f"v{age}"]["snapshot_date"], _day(0), (value, age))
+            self.assertNotIn("id", {k for r in rows.values() for k in r})
+            self.assertEqual(rows["v10"]["views"], 7)        # v10's all-NULL row of the same day is nobody's reading
+            self.assertEqual(rows["v1"]["snapshot_date"], _day(0))   # a young video: its own early row, as before
 
 
 if __name__ == "__main__":

@@ -135,10 +135,16 @@ jobs:
           # re-consented (tools/connect_channel.py). Empty = off, the analytics poll keeps its narrower scopes.
           CHRONOS_ENABLE_REVENUE: ${{ vars.CHRONOS_ENABLE_REVENUE }}
           # How many days of own videos the daily analytics poll re-reads (1..90; empty = only videos published since
-          # yesterday, as before). Up to 3 Analytics calls per video per channel, capped at 600 calls and 10 minutes;
-          # see docs/RESULTS_DASHBOARD.md. Older videos' readings are filed apart and the decision engines (feedback,
-          # topic scores, quota split, publish timing) do not read them; the dashboard does.
+          # yesterday, as before). Up to 3 Analytics calls per video per channel, capped at 600 calls and 10 minutes
+          # per run; see docs/RESULTS_DASHBOARD.md. The Python decision engines (feedback, topic scores, quota split,
+          # publish timing, experiments) do not read the extra readings. They are kept locally and are NOT copied to
+          # the Command Center unless NIGHTSHIFT_MIRROR_LATE_METRICS is also set (next variable).
           NIGHTSHIFT_METRICS_POLL_DAYS: ${{ vars.NIGHTSHIFT_METRICS_POLL_DAYS }}
+          # Empty = off. Set to 1 to also copy those extra readings to Supabase so the results dashboard shows current
+          # numbers. WARNING: turning this on changes what the Command Center analytics, publishing-window and
+          # measurement pages show (they take the latest row per video, divide it by the video's age, or read its CTR
+          # and retention as the A/B verdict), and the TS verdict can then disagree with the Python experiments.
+          NIGHTSHIFT_MIRROR_LATE_METRICS: ${{ vars.NIGHTSHIFT_MIRROR_LATE_METRICS }}
           # The day's upload budget the quota allocator splits across channels (empty = one slot per channel).
           CHRONOS_DAILY_UPLOAD_SLOTS: ${{ vars.CHRONOS_DAILY_UPLOAD_SLOTS }}
           # Optional — when set, the poll mirrors state to Supabase for the

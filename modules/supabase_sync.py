@@ -40,6 +40,16 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+#: Off unless set (intelligence_poll.yml). Whether the mirror also copies the late readings of the opt-in wider poll
+#: (NIGHTSHIFT_METRICS_POLL_DAYS) to Supabase, where the Command Center reads them. See `_gather_metrics`.
+MIRROR_LATE_METRICS_ENV = "NIGHTSHIFT_MIRROR_LATE_METRICS"
+
+
+def mirror_late_metrics(environ=None) -> bool:
+    """True only for 1/true/yes/on; empty, unset and anything else is off."""
+    raw = (environ if environ is not None else os.environ).get(MIRROR_LATE_METRICS_ENV, "")
+    return (raw or "").strip().lower() in ("1", "true", "yes", "on")
+
 _TIMEOUT = 15  # seconds — a slow Supabase must not hang a scheduled job for long.
 
 # Each mirrored table and the column(s) PostgREST upserts on. These conflict
@@ -772,13 +782,20 @@ class SupabaseSync:
         """Collect every video's latest metrics snapshot. StateStore exposes
         latest_metrics(video_id) rather than a bulk lister, so walk the videos.
         (Command Center charts read the full history from Supabase; this v1
-        mirrors the latest snapshot per video, which is what the tiles need.)"""
+        mirrors the latest snapshot per video, which is what the tiles need.)
+
+        Only the early-life snapshots (`latest_metrics`) unless NIGHTSHIFT_MIRROR_LATE_METRICS is set. The late readings the
+        opt-in wider poll takes are two-day windows of older videos, and several Command Center pages (analytics, the
+        publishing window, measurement, videos) take the latest row per video and divide it by the video's age or read its
+        CTR/retention as the verdict, so mirroring them changes what those pages show.
+        """
+        read = store.newest_metrics if mirror_late_metrics() else store.latest_metrics
         rows: list[dict] = []
         for video in store.list_videos(limit=100000):
             vid = video.get("video_id")
             if not vid:
                 continue
-            metrics = store.newest_metrics(vid)
+            metrics = read(vid)
             if metrics:
                 rows.append(self._strip_local_id(metrics))
         return rows

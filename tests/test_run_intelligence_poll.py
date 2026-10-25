@@ -514,7 +514,12 @@ class ExtraChannelsHonourTheMetricsPollWindowTestCase(unittest.TestCase):
                 poller.poll_own_channel_metrics.assert_called_once_with()
 
     def test_a_valid_window_is_passed_with_the_call_cap(self):
-        poller = self._run({"NIGHTSHIFT_METRICS_POLL_DAYS": "14"})
+        from modules import intelligence_poller
+
+        intelligence_poller.reset_run_clock()
+        self.addCleanup(intelligence_poller.reset_run_clock)
+        with patch("modules.intelligence_poller.time.monotonic", lambda: 1000.0):
+            poller = self._run({"NIGHTSHIFT_METRICS_POLL_DAYS": "14"})
         poller.poll_own_channel_metrics.assert_called_once_with(days=14, max_calls=600, max_seconds=600)
 
 
