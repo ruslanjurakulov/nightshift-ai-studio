@@ -603,3 +603,8 @@ sec_series_tables_0120.extend(TABLES, FUNCTIONS)
 import sec_voice_job_gates_0121  # noqa: E402
 
 sec_voice_job_gates_0121.extend(TABLES, FUNCTIONS)
+
+# Migration 0123 (the owner's vendor API keys in Vault: model_api_key_status, model_api_key_refs): tests/security/sec_model_api_keys_0123.py
+import sec_model_api_keys_0123  # noqa: E402
+
+sec_model_api_keys_0123.extend(TABLES, FUNCTIONS)
