@@ -144,7 +144,7 @@ def x_error(what: str, r, doc: Optional[dict]) -> sp.PublishStop:
     if status == 401:
         return sp.failed("token_expired", detail + " - reconnect the account")
     if status == 402:
-        return sp.failed(REASON_CREDITS, detail + " - the developer app's usage credits may be used up (owner: check billing)")
+        return sp.failed(REASON_CREDITS, detail + " - the platform reports no usage credits left (unverified meaning of 402)")
     if status == 429:
         wait = _reset_minutes(r)
         return sp.failed("rate_limited", detail + (f" - X says to retry in about {wait} min" if wait else ""))
