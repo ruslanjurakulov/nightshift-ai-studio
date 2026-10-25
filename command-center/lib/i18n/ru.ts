@@ -9,6 +9,7 @@ import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
 import { marketingRu } from "./marketing/ru";
+import { modelKeysRu } from "./model-keys/ru";
 import { seriesPlanRu } from "./series-plan/ru";
 import { ownerTruthRu } from "./owner-truth/ru";
 import { connectPickerRu } from "./connect-picker/ru";
@@ -34,6 +35,7 @@ export const ru: Dictionary = {
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,
   marketing: marketingRu,
+  modelKeys: modelKeysRu,
   seriesPlan: seriesPlanRu,
   ownerTruth: ownerTruthRu,
   connectPicker: connectPickerRu,
@@ -99,6 +101,7 @@ export const ru: Dictionary = {
     onboarding: "С чего начать",
     approvals: "Согласования",
     marketing: "Маркетинг",
+    modelKeys: "API-ключи моделей",
     alerts: "Оповещения",
     audit: "Журнал аудита",
     developers: "Разработчикам",
