@@ -321,6 +321,10 @@ describe("what a refusal of request_series_plan means", () => {
     expect(r("NS409", "plan_in_progress").key).toBe("plan_in_progress");
     expect(r("NS429", "rate_limited", "limit=5 per 24 hours")).toEqual({ key: "rate_limited", limit: 5 });
     expect(r("NS429", "rate_limited")).toEqual({ key: "rate_limited", limit: null });
+    // migration 0127: a person's cap and the platform's, two closed words (NS429); the platform's carries no number and neither is read for one
+    expect(r("NS429", "series_user_cap", "limit=3 per 24 hours")).toEqual({ key: "series_user_cap" });
+    expect(r("NS429", "series_global_cap")).toEqual({ key: "series_global_cap" });
+    expect(r("NS429", "series_global_cap", "limit=30 per 24 hours")).toEqual({ key: "series_global_cap" });
     expect(r("22023", "invalid_topic").key).toBe("invalid_topic");
     expect(r("22023", "invalid_episode_count").key).toBe("invalid_count");
     expect(r("22023", "invalid_duration").key).toBe("invalid_duration");

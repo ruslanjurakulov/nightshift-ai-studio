@@ -565,6 +565,8 @@ export type RequestErrorKey =
   | "voice"
   | "plan_in_progress"
   | "rate_limited"
+  | "series_user_cap" // migration 0127: this person's plans in the last 24 hours
+  | "series_global_cap" // migration 0127: every organization's plans in the last 24 hours
   | "invalid_topic"
   | "invalid_count"
   | "invalid_duration"
@@ -583,6 +585,8 @@ export interface RequestError {
 const REQUEST_WORDS: Record<string, RequestErrorKey> = {
   plan_in_progress: "plan_in_progress",
   rate_limited: "rate_limited",
+  series_user_cap: "series_user_cap",
+  series_global_cap: "series_global_cap",
   invalid_topic: "invalid_topic",
   invalid_episode_count: "invalid_count",
   invalid_duration: "invalid_duration",

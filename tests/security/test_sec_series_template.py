@@ -454,6 +454,7 @@ def test_a_customers_ordinary_run_is_unchanged(conn, world):
 
 def test_applying_the_migration_again_changes_nothing_and_keeps_every_row(conn, world):
     s = world.su
+    sec_db.take_off_0127(s)   # 0127 sits on 0122's request_series_plan(); 0122's file and rollback refuse any other body
     ready_plan(s, world.ed, world.chan_a, topic="Replay one")
     plan = made(s, world.ed, world.chan_a2, "myth_vs_fact")
     become(s, None)
@@ -573,7 +574,7 @@ def test_the_rollback_restores_0120_byte_for_byte_and_0122_applies_again(conn, s
     base_dsn = sec_db.create_database(admin, base)
     sigs = [*FOUR[:3], OLD]
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0122_")])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0122_", "0127_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {x: (b.execute("select pg_get_functiondef(%s::regprocedure)", [x]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [x]).fetchone()[0]) for x in sigs}
@@ -585,6 +586,7 @@ def test_the_rollback_restores_0120_byte_for_byte_and_0122_applies_again(conn, s
     rollback = ROLLBACK.read_text(encoding="utf-8")
     assert re.search(r"(?m)^begin;$", rollback) and re.search(r"(?m)^commit;$", rollback)
     with as_superuser(conn, commit=False) as su:
+        sec_db.take_off_0127(su)   # 0127 sits on 0122's request_series_plan(); 0122's file and rollback refuse any other body
         def snapshot():
             return {x: (su.value("select pg_get_functiondef(%s::regprocedure)", [x]), su.value("select proacl::text from pg_proc where oid = %s::regprocedure", [x]))
                     for x in (*FOUR[:3], NEW)}
@@ -608,6 +610,7 @@ def test_the_rollback_restores_0120_byte_for_byte_and_0122_applies_again(conn, s
 
 def test_the_rollback_refuses_while_a_plan_has_asked_for_a_format_and_changes_nothing(conn, world):
     s = world.su
+    sec_db.take_off_0127(s)   # 0127 sits on 0122's request_series_plan(); 0122's file and rollback refuse any other body
     made(s, world.ed, world.chan_a, "myth_vs_fact")
     before = state(s)
     out = s.run(rollback_body())
@@ -619,6 +622,7 @@ def test_the_rollback_refuses_while_a_plan_has_asked_for_a_format_and_changes_no
 def test_the_rollback_refuses_while_a_queue_row_carries_a_format(conn, world):
     """No plan has a format, but a job does (put there by hand): the 0120 validator would refuse the row on its next update."""
     s = world.su
+    sec_db.take_off_0127(s)   # 0127 sits on 0122's request_series_plan(); 0122's file and rollback refuse any other body
     plan = made(s, world.ed, world.chan_a)
     become(s, None)
     s.conn.execute("set local session_replication_role = replica")
@@ -632,6 +636,7 @@ def test_the_rollback_refuses_while_a_queue_row_carries_a_format(conn, world):
 
 def test_the_rollback_with_no_format_anywhere_succeeds_and_the_plain_plans_stay(conn, world):
     s = world.su
+    sec_db.take_off_0127(s)   # 0127 sits on 0122's request_series_plan(); 0122's file and rollback refuse any other body
     ready, _eps = ready_plan(s, world.ed, world.chan_a, topic="Kept")
     plain = made(s, world.ed, world.chan_a2)
     become(s, None)
@@ -678,7 +683,7 @@ def test_a_plan_made_before_the_migration_still_replays_and_its_job_is_still_val
     name = f"ns_series_tpl_legacy_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0122_")])
+        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0122_", "0127_"))])
         with psycopg.connect(dsn, autocommit=True) as c:
             who = sec_db.user("legacy-editor", "legacy@a.test")
             with as_superuser(c, commit=True) as su:

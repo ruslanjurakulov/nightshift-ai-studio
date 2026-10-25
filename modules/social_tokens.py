@@ -263,4 +263,13 @@ def ensure_fresh(tok: SocialToken, client: SocialTokenClient, *, http=None,
         client.rotate(fresh)
         return fresh
 
+    if tok.platform == "facebook":
+        # A Page access token made from a long-lived user token "does not have an expiration date" (Meta, "Long-lived
+        # access tokens"): there is nothing to refresh. It can still be invalidated (password change, role removed),
+        # which the publish call reports as error 190. A stored expiry that has passed is believed.
+        if tok.access_expires_at is not None and tok.access_expires_at <= now:
+            client.set_status(tok.account_id, "expired")
+            raise SocialTokenError(f"facebook account {tok.account_id}: token expired; reconnect it")
+        return tok
+
     raise SocialTokenError(f"account {tok.account_id}: unknown platform")

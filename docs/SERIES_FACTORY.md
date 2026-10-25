@@ -5,7 +5,8 @@ This page describes **slice S1** (a pure planner and a pure price preview), **sl
 that spend, and the queue kind; section "Slice S2" below) and **slice S3** (the worker's planning job and the plan page; section "Slice S3"
 below). A fourth piece, the **format template** carrier (migration 0122, section "Format templates"), lets a plan ask for one of three formats.
 All of it is dark: the worker is off unless `NIGHTSHIFT_SERIES_PLANNER` is on, the page is off unless `SERIES_FACTORY_ENABLED` is
-on, and `request_series_plan` is still granted to nobody, so no customer can start a plan.
+on, and `request_series_plan` is still granted to nobody, so no customer can start a plan. Migration 0127 adds the per-person and platform-wide
+daily caps (section "Plan caps"), also dark.
 
 ## What S1 is
 
@@ -245,7 +246,8 @@ channel or series outside the caller's scope: one answer, no oracle), `forbidden
 `invalid_idempotency_key`, `no_niche`), `idempotency_conflict`, `plan_in_progress`, `earlier_episode_not_finished`, `episode_not_usable`, `plan_not_ready`,
 `already_started`, `series_not_runnable`, `price_changed` (all NS409; the current price is in the error detail, `credits=15.00`),
 `unpriced` and `confirmation_required` (NS400), `price_required` (22023), `insufficient credits` (NS402, as every hold), `rate_limited`
-(NS429, `limit=5 per 24 hours`), and `parallel run limit reached` (NS429, the plan's concurrency limit, from the existing hold trigger).
+(NS429, `limit=5 per 24 hours`), and, since migration 0127, `series_user_cap` (NS429, `limit=3 per 24 hours`) and `series_global_cap` (NS429, no detail)
+for a plan request, and `parallel run limit reached` (NS429, the plan's concurrency limit, from the existing hold trigger).
 
 ### The money
 
@@ -278,8 +280,10 @@ channel or series outside the caller's scope: one answer, no oracle), `forbidden
 
 - `series_plan_daily_limit()` is 5 plans per organization per rolling 24 hours, a **placeholder for owner decision 3** (one function to
   change). One plan in flight per channel; a plan never finished frees its channel after 2 hours and its queue row is cancelled if no
-  worker took it. The cap counts failed plans (a model call was spent) and is checked after the idempotency replay, under an advisory lock
+  worker took it. The cap counts failed plans (a model call may have been spent; see "What counts" under "Plan caps") and is checked after the idempotency replay, under an advisory lock
   per organization, so concurrent requests cannot both pass it.
+- **Since migration 0127 there are two more caps, in the same function, counted from the plan rows** (see "Plan caps (migration 0127)" below):
+  3 plans per person per rolling 24 hours (in any organization) and 30 per rolling 24 hours for all organizations together.
 - **`request_series_plan` is granted to nobody**, as 0117 did with `request_voice_clone`: it writes a plan and one queue row, and the live
   queue worker has no handler for the kind (`run_request.KINDS` is `daily` and `repair`; it would fail the job as "invalid job (nothing was
   run)"). The grant ships in S3, with the worker and the UI. `start_series_episode` and `quote_series_episode` are granted, but an episode
@@ -293,9 +297,11 @@ The review found migration 0120 safe to apply as it stands. These findings are t
 meet **before** `grant execute on function public.request_series_plan(...) to authenticated`. They are conditions, not suggestions; none is
 met by 0120, which is why the function is granted to nobody.
 
-- **F4: the cap is per organization, and one account can have many organizations.** `create_organization` allows 10 organizations per
-  account, so one person can make 10 x 5 = 50 planning requests a day (each one a model call on the platform's shared Gemini key). Add a
-  per-user cap and/or a global daily cap, in the database, before the grant.
+- **F4: the cap is per organization, and one account can have many organizations. MET by migration 0127** (merged as #630; the caps are in the database, dark,
+  because the function is still granted to nobody; read "Plan caps" below for what it does, what is still the owner's, and the HARD CONDITION on abuse
+  that applies before ANY grant). `create_organization` allows 10
+  organizations per account, so one person could make 10 x 5 = 50 planning requests a day (each one a model call on the platform's shared
+  Gemini key). 0127 adds a per-user cap (default 3 a day) and a platform-wide cap (default 30 a day), in the database, before the grant.
 - **F5: what happens when the function is called before its worker exists, and what is not yet handled.**
   - Until a handler exists, the queue worker fails a `series_plan` job as "invalid job (nothing was run)" (`run_request.KINDS` is `daily` and
     `repair`) and the plan stays `requested`, blocking its channel, until the 2 hour expiry. S3 ships the handler with the grant, never the
@@ -348,8 +354,9 @@ at most (1 + 2) x 5 = 15 requests, in a bad hour, and 1 to 3 in a good one. The 
 **once a `generate` has been started, a lost delivery of the ending or a shutdown ends the plan as failed (`worker_error`) instead of
 releasing the job**, so a job cannot make up to 3 `generate`s through re-queues (the choice made: no stored answer to resume from, because
 that needs a place to keep model text; the customer plans again, which counts against the daily cap). The one remaining way to a second
-`generate` for the same job is a worker that DIES (the stale sweep re-queues it, up to 3 attempts). **There is no per-user and no global
-cap on plans yet** (F4, below); the only cap is the per-organization one of 5 a day in migration 0120. **No credit hold**: planning is a platform cost, the customer is charged nothing on every
+`generate` for the same job is a worker that DIES (the stale sweep re-queues it, up to 3 attempts). **Since migration 0127 a person is
+capped at 3 plans a day and the platform at 30 (F4, "Plan caps" below), on top of the per-organization 5 a day of migration 0120; before 0127 is applied
+the only cap is the per-organization one.** **No credit hold**: planning is a platform cost, the customer is charged nothing on every
 path (the job has no `credit_ref`, and a test fails if a planning job touches the credits client). The quote stored with a plan carries the
 Gemini-call budget and the episode length and **no credits**: the price of an episode is `quote_series_episode`'s, computed when it is read.
 
@@ -411,9 +418,9 @@ series page is exactly as before** (no form, no read of `series_plans`). A path 
 
 ### Conditions before the grant that S3 does NOT meet
 
-- **F4 (not met, needs a migration):** the cap is per organization and one account can have 10 organizations (50 plans a day on the shared key).
-  A per-user cap and/or a global daily cap in the database is required before the grant. S3 can only slow this down on the worker side (the
-  quota cooldown), not cap it.
+- **F4 (met by migration 0127, once it is merged and applied):** the cap was per organization and one account can have 10 organizations (50 plans a
+  day on the shared key). 0127 adds the per-user and the platform-wide cap in the database; S3 can only slow this down on the worker side (the quota
+  cooldown), not cap it. See "Plan caps (migration 0127)".
 - **F5, met in code:** the handler now exists (a `series_plan` job is no longer failed as "invalid job"); the language sent is the English name;
   `render_jobs_voice_guard` firing on the planning job's insert is surfaced as its own sentence ("this channel's configured voice isn't
   available"). Not decided: whether planning should be exempt from that guard (it uses no voice); that needs a migration.
@@ -424,6 +431,69 @@ series page is exactly as before** (no form, no read of `series_plans`). A path 
   episode), so such an episode shows as "not confirmed" instead of ending the plan.
 - Planning's Gemini calls are not in the cost ledger (a gap, not a zero); nothing was run against Gemini, Supabase or a browser: see
   "Unmeasured and unverified".
+
+## Plan caps (migration 0127, dark: no grant, no switch)
+
+Finding F4 of the review of #590: each plan costs ONE `generate` on the shared `GEMINI_API_KEY` plus up to `CHRONOS_TOPIC_GATE_MODEL_CALLS` niche
+questions, each up to `GEMINI_MAX_RETRIES` HTTP attempts, at no charge to the customer, and the only cap was 5 plans per organization per 24 hours
+while one account can own ten organizations. Migration 0127 (`supabase/migrations/0127_series_plan_caps.sql`) adds two caps **inside
+`request_series_plan`**, counted in the database from `series_plans` (never from the client), after the organization cap:
+
+| Cap | Counts | Default | Refusal (NS429) |
+| :-- | :-- | :-- | :-- |
+| per person | the plans one person (`requested_by`) requested in the last 24 hours, in any organization | **3** | message `series_user_cap`, detail `limit=3 per 24 hours` |
+| platform-wide | the plans all organizations requested in the last 24 hours (the operator's own included) | **30** | message `series_global_cap`, no detail |
+
+* **Order of the checks:** replay of an accepted press (never refused by a cap) -> channel busy (`plan_in_progress`) -> organization cap (`rate_limited`, 5) ->
+  person (`series_user_cap`) -> platform (`series_global_cap`). A refusal raises, so the whole call rolls back: no plan row, no queue row.
+* **What counts:** every plan row in the window, whatever its status, exactly as the organization cap does. That includes a failed plan and an expired one. An
+  expired plan whose queue row the sweep cancelled never reached a worker and spent no model call, and it still counts. So **worker outages and Gemini quota
+  exhaustion burn the caps**: while the planner is off, down or out of quota, every request that was accepted ends `failed` or `expired` and uses up the person's
+  3 and the platform's 30 for the day with no plan to show for it. (The cap is a ceiling on accepted requests, not a count of successful plans.)
+* **The cap bounds accepted requests, not provider calls.** One accepted plan is one `generate` plus up to `CHRONOS_TOPIC_GATE_MODEL_CALLS` niche questions, each
+  up to `GEMINI_MAX_RETRIES` HTTP attempts: (1 + 2) x 5 = 15 attempts in a bad hour. A worker that DIES mid-plan is re-queued by the stale sweep, up to 3
+  attempts. So the ceiling on HTTP attempts a day at the defaults is 30 plans x 3 attempts x 15 = **1350**, not 30 x 15 = 450, and it is only a ceiling
+  on requests the planner is asked to make: Google's own quota is still the real limit.
+* **Races:** the organization lock of 0120 does not serialise one person's presses in two organizations, nor two people, so the function takes one more lock, a
+  platform-wide one, always after the organization's, and reads both counts under it. The lab pins this with real threads.
+* **The owner's numbers** live in `public.series_plan_cap_settings` (one row: `user_daily_cap`, `global_daily_cap`), changed in the SQL editor with no deploy:
+  `update public.series_plan_cap_settings set user_daily_cap = 5, global_daily_cap = 50;` (0 refuses every request: a pause; **pause with `global_daily_cap = 0`, not `user_daily_cap = 0`**: a person cap of 0 shows "You have reached your daily limit of
+  plans" to someone who made none, while the platform cap says planning is at its limit for everyone). The numbers are whole numbers: `user_daily_cap = 2.5`
+  is accepted without a warning and rounds to 3 (the column is `integer`). The table is closed to every API role
+  (row level security on, no policy, no privilege), the row cannot be deleted, a change leaves a `security_events` row (`series.plan.caps`), a missing row reads as the
+  defaults 3 and 30 (never as "no cap"), and a replay of the migration never undoes what the owner set.
+* **The words reach the user.** The plan form maps `series_user_cap` and `series_global_cap` to their own sentences (en/ru/uz; "nothing was started and nothing was
+  charged"); the platform's sentence names no number.
+* **Grants nothing.** `request_series_plan` is executable by nobody before and after 0127, and the file refuses to run (and its end state refuses to commit) if it is
+  executable by public or an API role. It replaces only that one function, on 0122's body plus lines marked `-- 0127`, md5-pinned (BEFORE `e38342a6c8511d5eadb1f99ab38fb6aa`,
+  AFTER in the file's header). The drift guard compares the md5 of the whitespace-collapsed body (`prosrc` with every run of white space read as one space), so a
+  live body that differs from 0127's (or 0122's) only in white space is ACCEPTED; do not read the guard as a byte-equality check. The rollback's "byte for byte" is
+  a different claim and holds: it re-creates 0122's text exactly (the lab compares it with a database that never had 0127). Undo: `docs/sql/rollback_0127_series_plan_caps.sql`, before `rollback_0122_series_template_carrier.sql`.
+* **Not done by 0127:** the grant; a credit price for planning; a cap per organization that the owner can change without a migration (it is still
+  `series_plan_daily_limit()`, 5); an owner screen for the numbers (the SQL editor is the way, as for `model_availability_settings`); a per-IP or per-channel cap;
+  alerts when a cap is hit. The caps are a ceiling on Gemini spend, not a billing meter: the quota is still the model provider's.
+
+### What the owner must do before granting `request_series_plan`
+
+(The header of `0127_series_plan_caps.sql` points to "What the owner must do, in order" in the slice S3 section. That section is the S3 sequence for switching the
+worker and the page on; the steps for granting are the ones below. The pointer is in the SQL file, which an applied migration must not edit, so it is corrected here.)
+
+1. Merge 0127 and read the file's header: the live BEFORE hash of `request_series_plan` must be `e38342a6c8511d5eadb1f99ab38fb6aa` (the file checks it and refuses otherwise).
+2. Read the numbers (`select * from public.series_plan_cap_settings;` expects `3, 30`) and decide them: they are the free-quota budget of the shared Gemini key, so
+   `global_daily_cap x (1 + CHRONOS_TOPIC_GATE_MODEL_CALLS)` requests is the planned spend on a good day, up to 15 per plan in a bad hour (retries), and up to
+   `global_daily_cap x 3 x 15` (1350 at the defaults) if workers die and the stale sweep re-queues. Pause planning with `global_daily_cap = 0`, never with
+   `user_daily_cap = 0`.
+3. **HARD CONDITION before ANY grant (availability of planning).** Ten free sign-ups can use the whole platform cap for a day, and renew it every day. Each
+   account may make up to 3 plans; any signed-in user can create up to 10 organizations, and a channel in each; and `request_series_plan` checks no plan, no
+   entitlement and no payment. So ten throwaway accounts exhaust the 30 and the operator's own organization, which is counted in the same 30 with **no reserve**,
+   is refused with `series_global_cap` as well, as is every paying customer. The caps stop spend; they do not keep planning available to the people it is for.
+   Before ANY grant do at least one of these (all three is better): (a) require a paid entitlement or a verified account in `request_series_plan`; (b) reserve part
+   of the platform cap for the operator's organization or for paying organizations; (c) add an alert on the first `series_global_cap` refusal, so the owner learns
+   the day the platform cap was reached, not from a customer. None of them is in 0127.
+4. Decide the remaining conditions of "Hard conditions" above (F5 restart path and the rest), then grant in its own migration and PR. A person who hits a cap is
+   told to try again tomorrow.
+5. After the grant, watch `select requested_by, count(*) from public.series_plans where created_at > now() - interval '24 hours' group by 1 order by 2 desc;` and the
+   `series.plan.caps` rows in `security_events`.
 
 ## Format templates (migration 0122, dark: no grant, no switch)
 
@@ -552,7 +622,8 @@ see `docs/GEMINI_QUOTA.md`. A spent per-day quota raises `GeminiDailyQuotaError`
 2. Series money: per-episode approval and hold (recommended, fits the 3 hour hold expiry), or one upfront series hold (changes
    reservation expiry, which is security-critical)?
 3. Is series planning free to the customer (the platform pays Gemini, with a per-org daily cap) or credit-priced? What are the cap numbers?
-   (Migration 0120 builds the free-with-a-cap answer with a placeholder of 5 per organization per 24 hours; it is dormant until S3.)
+   (Migration 0120 builds the free-with-a-cap answer with a placeholder of 5 per organization per 24 hours; migration 0127 adds 3 per person and
+   30 for the platform, owner-editable in `series_plan_cap_settings`; all dormant until the grant.)
 4. Rule 3 (CLAUDE.md): confirm that a per-run storyboard-review override is acceptable (the browser writes a row and stops; the worker spends).
 5. Whether `series` should stay a lenient vet source (this slice's decision) once real plans have been seen.
 
