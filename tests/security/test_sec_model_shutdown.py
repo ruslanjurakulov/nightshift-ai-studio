@@ -1,4 +1,4 @@
-"""A model past its vendor's announced shutdown date is not sold (migration 0123).
+"""A model past its vendor's announced shutdown date is not sold (migration 0125).
 
 Google's deprecations page lists the Veo 3.1 previews with a shutdown date and
 calls it the earliest possible one. Nothing in the database knew a model had a
@@ -99,3 +99,77 @@ def test_the_helper_is_internal_only(conn, sc):
     with as_superuser(conn, commit=False) as s:
         assert s.value("select public.model_past_shutdown(null)") is False
         assert s.value("select public.model_past_shutdown('{\"shutdown\": null}'::jsonb)") is True
+
+
+# ── the file itself: order, drift guard, rollback ──────────────────────────────────────
+
+import uuid
+
+import sec_db
+from test_sec_api_creative import Db
+
+MIGRATION = sec_db.MIGRATION_0125
+ROLLBACK = sec_db.ROLLBACK_0125
+M0124 = MIGRATION.with_name("0124_model_switch.sql")
+FUNCS = {"sellable_models": "public.sellable_models(text,text)",
+         "creative_price": "public.creative_price(uuid,text,text,jsonb)"}
+
+
+def _md5(d, fn):
+    return d.su(f"select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc where oid = '{FUNCS[fn]}'::regprocedure")[0][0]
+
+
+def _scratch(files):
+    admin = sec_db.admin_dsn()
+    name = f"ns_shutdown_{uuid.uuid4().hex[:8]}"
+    base = sec_db.create_database(admin, name)
+    sec_db.apply_files(base, files)
+    return admin, name, Db(base)
+
+
+def test_it_refuses_to_apply_before_0124_and_leaves_nothing_behind():
+    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name not in (M0124.name, MIGRATION.name)])
+    try:
+        with pytest.raises(Exception) as cm:
+            d.su(MIGRATION.read_text(encoding="utf-8"))
+        assert "0125 needs 0124_model_switch.sql" in str(cm.value)
+        assert d.su("select to_regprocedure('public.model_past_shutdown(jsonb)') is null")[0][0] is True
+    finally:
+        sec_db.drop_database(admin, name)
+
+
+def test_the_drift_guard_refuses_a_body_edited_by_hand_and_a_replay_changes_nothing():
+    admin, name, d = _scratch(sec_db.build_sequence())
+    try:
+        before = {f: _md5(d, f) for f in FUNCS}
+        d.su(MIGRATION.read_text(encoding="utf-8"))                       # the replay
+        assert {f: _md5(d, f) for f in FUNCS} == before
+        fn, sig = "sellable_models", FUNCS["sellable_models"]
+        body = d.su(f"select pg_get_functiondef('{sig}'::regprocedure)")[0][0]
+        d.su(body.replace("begin\n", "begin\n  -- edited by hand\n", 1))
+        with pytest.raises(Exception) as cm:
+            d.su(MIGRATION.read_text(encoding="utf-8"))
+        assert f"0125 found a {fn}() that is neither 0124's body nor 0125's" in str(cm.value), str(cm.value)
+    finally:
+        sec_db.drop_database(admin, name)
+
+
+def test_the_rollback_puts_0124s_two_bodies_back_byte_for_byte_and_the_file_applies_again():
+    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name != MIGRATION.name])
+    try:
+        pre = {f: _md5(d, f) for f in FUNCS}
+        d.su(MIGRATION.read_text(encoding="utf-8"))
+        assert {f: _md5(d, f) for f in FUNCS} != pre
+        d.su(ROLLBACK.read_text(encoding="utf-8"))
+        assert {f: _md5(d, f) for f in FUNCS} == pre, "byte for byte"
+        assert d.su("select to_regprocedure('public.model_past_shutdown(jsonb)') is null")[0][0] is True
+        d.su(MIGRATION.read_text(encoding="utf-8"))                       # and again on the rolled-back database
+        assert {f: _md5(d, f) for f in FUNCS} != pre
+        # the rollback refuses a body that is neither 0125's nor 0124's
+        body = d.su(f"select pg_get_functiondef('{FUNCS['creative_price']}'::regprocedure)")[0][0]
+        d.su(body.replace("begin\n", "begin\n  -- edited by hand\n", 1))
+        with pytest.raises(Exception) as cm:
+            d.su(ROLLBACK.read_text(encoding="utf-8"))
+        assert "rollback 0125 found a creative_price() that is neither 0125's body nor 0124's" in str(cm.value)
+    finally:
+        sec_db.drop_database(admin, name)

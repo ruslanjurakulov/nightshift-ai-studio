@@ -1,53 +1,73 @@
--- 0123: a model whose announced shutdown date has come is no longer sold.
+-- 0125: a model whose announced shutdown date has come is no longer sold.
 --
--- WHY. Google's deprecations page (ai.google.dev/gemini-api/docs/deprecations, read 2026-10-25) lists
--- veo-3.1-generate-preview, -fast- and -lite- with shutdown 2026-10-22, "the earliest possible dates on
--- which a model might be retired", and gemini-2.5-flash-image with 2027-03-15. Nothing in the database
--- knew a model had a date: a model stays 'ga' until someone demotes it, so a person could still be
--- offered, quoted and charged for a model its vendor has scheduled off. The registry file now carries the
--- date (schemas/model_registry.json, `shutdown`: on, source_url, as_of, replacement) and tools/probe_models.py
--- --sync copies it into model_registry.spec like every other static fact.
+-- *** LIVE ON APPLY. *** Merging this file applies it to the live database. It replaces TWO functions that exist there (sellable_models,
+-- creative_price) on 0124's bodies plus ONE added line each, and adds one internal function. Nothing is dark about the line it adds: a model
+-- with a shutdown date in spec that has come stops being offered and quoted the moment this is applied and the registry is synced. A model
+-- with no `shutdown` in spec (every model until `tools/probe_models.py --sync` copies the dates from the registry) behaves exactly as under 0124.
 --
--- WHAT. One new function and one new condition in each of two replaced functions:
---   model_past_shutdown(spec)  true from spec.shutdown.on (UTC, current_date) on. FAILS CLOSED: a
---                              `shutdown` that is not an object, or a date that is not YYYY-MM-DD, reads as
---                              past, because a date nobody can read is not a licence to sell. No `shutdown`
---                              = false: "none announced" is not "safe", it is the pre-0123 behaviour.
---   sellable_models            0100's body plus `and not public.model_past_shutdown(m.spec)`.
---   creative_price             0100's body plus `and not public.model_past_shutdown(r.spec)` in the lookup that
---                              raises model_not_sellable, so a model named directly (the API, a stale tab)
---                              is refused too, not only hidden from the list.
--- Every other line of both functions is 0100's (tests/test_model_shutdown.py removes the two added
--- lines and compares the rest byte for byte).
+-- WHY. Google's deprecations page (ai.google.dev/gemini-api/docs/deprecations, read 2026-10-25) lists veo-3.1-generate-preview, -fast- and
+-- -lite- with shutdown 2026-10-22, "the earliest possible dates on which a model might be retired", and gemini-2.5-flash-image with
+-- 2027-03-15. Nothing in the database knew a model had a date: a model stays 'ga' until someone demotes it, so a person could still be offered,
+-- quoted and charged for a model its vendor has scheduled off. The registry file now carries the date (schemas/model_registry.json, `shutdown`:
+-- on, source_url, as_of, replacement) and the sync copies it into model_registry.spec like every other static fact.
 --
--- NOT CHANGED. No price, no availability, no credit_prices row, no terms gate, no margin. A model with
--- no `shutdown` is exactly as before. A model that is already sold keeps its rows; it simply stops
--- being offered on its date. Moving the date later (after a probe shows the id still answers) is a
--- registry edit plus `tools/probe_models.py --sync`, no migration.
+-- WHAT.
+--   model_past_shutdown(spec)  true from spec.shutdown.on (UTC, current_date) on. FAILS CLOSED: a `shutdown` that is not an object, or a date
+--                              that is not YYYY-MM-DD, reads as past, because a date nobody can read is not a licence to sell. No
+--                              `shutdown` = false: "none announced" is not "safe", it is the behaviour before this file.
+--   sellable_models            0124's body plus `and not public.model_past_shutdown(m.spec)`.
+--   creative_price             0124's body plus `and not public.model_past_shutdown(r.spec)` in the lookup that raises model_not_sellable,
+--                              so a model named directly (the API, a stale tab) is refused too, not only hidden from the list.
+-- Every other line of both functions is 0124's (tests/test_model_shutdown.py removes the two added lines and compares the rest byte for byte).
 --
--- ORDER. Needs 0100 (the bodies below are written on it; on an older database this file would take the
--- video ops away). Any later migration that replaces sellable_models or creative_price must carry the
--- model_past_shutdown line (tests/test_model_shutdown.py fails when one does not).
+-- NOT CHANGED. No price, no availability, no credit_prices row, no terms gate, no margin, no switch (0124's model_is_available is untouched and
+-- still asked first). A model that is on sale keeps its rows; it stops being offered on its date. Moving the date later (after a probe shows
+-- the id still answers) is a registry edit plus `tools/probe_models.py --sync`, no migration.
 --
--- WHO MAY DO WHAT: unchanged. model_past_shutdown is internal: revoked from public, anon, authenticated
--- and service_role; both callers are security definer and run it as their owner.
+-- NUMBER AND ORDER. 0125: 0124 (the owner's model switch) replaces the same two functions and pins their md5, so this file is written on
+-- 0124's bodies and REFUSES to apply without 0124. 0123 is not used by this file. Any later migration that replaces sellable_models or
+-- creative_price must carry the model_past_shutdown line (tests/test_model_shutdown.py fails when one does not).
 --
--- UNDO. Re-run 0100's `sellable_models` and `creative_price` (create or replace), then
--- `drop function public.model_past_shutdown(jsonb)`. Nothing else depends on it.
+-- DRIFT GUARD. As 0124's: if the live body is neither 0124's nor this file's (something applied by hand since: the 0064/0103 lesson), replacing
+-- it would silently undo that change, so the file refuses. Compared as md5 of the body (prosrc) with every run of white space read as one space;
+-- tests/test_model_shutdown.py recomputes every hash from the migration files.
 --
--- Additive and idempotent: create-or-replace functions, revoke.
+-- WHO MAY DO WHAT: unchanged. model_past_shutdown is internal: revoked from public, anon, authenticated and service_role; both callers are
+-- security definer and run it as their owner.
+--
+-- Rollback: docs/sql/rollback_0125_model_shutdown.sql (owner-applied; puts 0124's two bodies back byte for byte, drops the helper). Run it BEFORE
+-- docs/sql/rollback_0124_model_switch.sql, which refuses a body that is not 0124's.
+-- Apply as ONE transaction (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1). Additive and idempotent.
+
+set local lock_timeout = '5s';
 
 do $$
 begin
   if to_regprocedure('public.creative_price(uuid, text, text, jsonb)') is null
-     or to_regprocedure('public.sellable_models(text, text)') is null then
-    raise exception '0123 needs 0100_video_ai_ops.sql: apply it first';
+     or to_regprocedure('public.sellable_models(text, text)') is null
+     or to_regprocedure('public.model_is_available(text)') is null then
+    raise exception '0125 needs 0124_model_switch.sql (and 0100): apply them first';
   end if;
-  -- 0100 is the body 0123 is written on: on an older one this file would take the video ops
-  -- (and 0099's picture ops, 0084's private margin, 0072's captions) away.
-  if position('video_edit' in pg_get_functiondef('public.sellable_models(text, text)'::regprocedure)) = 0
-     or position('video_edit' in pg_get_functiondef('public.creative_price(uuid, text, text, jsonb)'::regprocedure)) = 0 then
-    raise exception '0123 needs 0100_video_ai_ops.sql: apply it first';
+end $$;
+
+do $$
+declare
+  s text;
+  c text;
+  h text;
+begin
+  select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into s from pg_proc x where x.oid = 'public.sellable_models(text, text)'::regprocedure;
+  select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into c from pg_proc x where x.oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
+  if s is null or s <> all (array['70f1639c6ce5cbf175b2673d8d543d44', 'ea8add748052456a6ef8898b4c87d610']) then
+    raise exception '0125 found a sellable_models() that is neither 0124''s body nor 0125''s (md5 %): read the live body first', s;
+  end if;
+  if c is null or c <> all (array['dc2bdbd68e43c4b85d9dbfd6b5ee83ee', 'e0c4a7806642086398558cf322c95a0d']) then
+    raise exception '0125 found a creative_price() that is neither 0124''s body nor 0125''s (md5 %): read the live body first', c;
+  end if;
+  -- The new name: if it already exists it must be this file's.
+  select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = to_regprocedure('public.model_past_shutdown(jsonb)');
+  if h is not null and h <> 'fe3ee04693816e82b6b19ce240df6d56' then
+    raise exception '0125 found a model_past_shutdown() that is not 0125''s (md5 %): read the live body first', h;
   end if;
 end $$;
 
@@ -69,7 +89,7 @@ exception when others then
 end
 $$;
 
--- 0100's list of what may be sold, with a model past its announced shutdown left out.
+-- 0124's list of what may be sold, with a model past its announced shutdown left out.
 create or replace function public.sellable_models(p_capability text default null, p_surface text default 'web')
   returns table (
     id text, display_name text, provider text, capabilities text[], availability text,
@@ -124,9 +144,11 @@ begin
        and m.verified_at is not null
        and m.verified_probe_id is not null
        and coalesce(m.spec ->> 'terms_gate', '') = ''
-       -- 0123: a shutdown date the vendor announced (spec.shutdown.on) that has come ends the sale.
-       and not public.model_past_shutdown(m.spec)
        and cp.credits_per_unit > 0
+       -- 0124: the owner's switch (model_is_available is TRUE for every model until it is put in force).
+       and public.model_is_available(m.id)
+       -- 0125: a shutdown date the vendor announced (spec.shutdown.on) that has come ends the sale.
+       and not public.model_past_shutdown(m.spec)
        -- A model sold by quality is shown only when at least one of its tiers
        -- has a price: a tier without a row is unpriced, never free.
        and (m.spec -> 'pricing' -> 'variants' ->> 'by' is distinct from 'quality'
@@ -151,7 +173,7 @@ begin
 end
 $$;
 
--- 0100's quote, with the same date refused in the lookup that decides whether a model is sold at all.
+-- 0124's quote, with the same date refused in the lookup that decides whether a model is sold at all.
 create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
@@ -213,12 +235,19 @@ begin
    where r.id = mdl
      and r.availability in ('beta', 'ga')
      and r.verified_at is not null
-     -- 0123: the same date, so a model named directly is not quoted either.
+     -- 0125: the same date, so a model named directly is not quoted either.
      and not public.model_past_shutdown(r.spec)
      and cap = any (r.capabilities);
   if not coalesce(m_found, false) then
     perform public.creative_refuse('model_not_sellable',
       format('%s is not available for %s', mdl, cap));
+  end if;
+  -- 0124: the owner temporarily switched this model (or its provider) off. Refused before anything is priced, held or charged,
+  -- and never answered with another model: the person chooses. model_is_available is TRUE for every model until the switches
+  -- are put in force.
+  if not public.model_is_available(mdl) then
+    perform public.creative_refuse('model_temporarily_off',
+      format('%s is temporarily unavailable', mdl));
   end if;
   if coalesce(m_ent, 'any') not in ('any', 'paid') then
     perform public.creative_refuse('entitlement_required',
@@ -449,7 +478,8 @@ revoke all on function public.creative_price(uuid, text, text, jsonb) from publi
 --     and public.model_past_shutdown('{"shutdown": "2999-12-31"}'::jsonb) as unreadable_reads_as_past,
 --   position('model_past_shutdown' in pg_get_functiondef('public.sellable_models(text, text)'::regprocedure)) > 0
 --     and position('model_past_shutdown' in pg_get_functiondef('public.creative_price(uuid, text, text, jsonb)'::regprocedure)) > 0
---     as both_read_it,
+--     and position('model_is_available' in pg_get_functiondef('public.sellable_models(text, text)'::regprocedure)) > 0
+--     as both_read_it_and_0124_kept,
 --   not has_function_privilege('authenticated', 'public.model_past_shutdown(jsonb)', 'EXECUTE')
 --     and not has_function_privilege('anon', 'public.model_past_shutdown(jsonb)', 'EXECUTE')
 --     and not has_function_privilege('service_role', 'public.model_past_shutdown(jsonb)', 'EXECUTE')

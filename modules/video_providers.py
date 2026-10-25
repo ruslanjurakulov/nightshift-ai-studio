@@ -804,7 +804,7 @@ def _veo_past_shutdown(model: str, submit_path: str) -> str:
     path) is a Veo id whose ANNOUNCED shutdown date has come, else "".
 
     The dates are the registry's (``shutdown`` in schemas/model_registry.json),
-    one place for what the sale guard (migration 0123) and this client believe.
+    one place for what the sale guard (migration 0125) and this client believe.
     Google calls them the EARLIEST possible dates, so this is neither "the
     model is dead" nor "the model works": it stops the run before it spends and
     says so, and it never swaps in another model (CLAUDE.md #4). Re-opening an

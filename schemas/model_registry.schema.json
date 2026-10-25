@@ -102,7 +102,7 @@
           }
         },
         "shutdown": {
-          "description": "A shutdown the vendor has ANNOUNCED for the vendor model (never a guess). `on` is the date the vendor lists, which for Google is the EARLIEST possible one: from that day sellable_models (migration 0123) stops offering the model and creative_price stops quoting it. A model with no announced date has no `shutdown`; a replacement the vendor names without a date goes in api_documented.note.",
+          "description": "A shutdown the vendor has ANNOUNCED for the vendor model (never a guess). `on` is the date the vendor lists, which for Google is the EARLIEST possible one: from that day sellable_models (migration 0125) stops offering the model and creative_price stops quoting it. A model with no announced date has no `shutdown`; a replacement the vendor names without a date goes in api_documented.note.",
           "type": "object",
           "required": ["on", "source_url", "as_of"],
           "additionalProperties": false,

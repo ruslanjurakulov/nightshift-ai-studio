@@ -353,7 +353,7 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "media_uploads_sweep": SERVICE,
     # model registry (0035)
     "sellable_models": USER,
-    # a vendor-announced shutdown date that has come ends the sale (0123); read inside sellable_models and creative_price only
+    # a vendor-announced shutdown date that has come ends the sale (0125); read inside sellable_models and creative_price only
     "model_past_shutdown": SERVICE,
     # the price list as charged, never the margin (0084)
     "credit_rates": USER,
@@ -605,3 +605,8 @@ sec_series_tables_0120.extend(TABLES, FUNCTIONS)
 import sec_voice_job_gates_0121  # noqa: E402
 
 sec_voice_job_gates_0121.extend(TABLES, FUNCTIONS)
+
+# Migration 0124 (the owner's per-model and per-provider ON/OFF switch): tests/security/sec_model_switch_0124.py
+import sec_model_switch_0124  # noqa: E402
+
+sec_model_switch_0124.extend(TABLES, FUNCTIONS)

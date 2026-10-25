@@ -6,7 +6,7 @@ calls every date there "the earliest possible". These tests pin what Nightshift
 does with that, and what it refuses to do:
 
 * the date is a registry field with its source, and it ends the sale (migration
-  0123) on that day; a date nobody can read does not read as "safe";
+  0125) on that day; a date nobody can read does not read as "safe";
 * the Veo client in modules/video_providers.py stops BEFORE any request when
   the model is past that date or unset, says why, and never switches model
   (CLAUDE.md #4);
@@ -19,6 +19,7 @@ Nothing here makes a request to anyone.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import re
 import unittest
@@ -34,8 +35,9 @@ from tests.test_model_registry import doc, entry_by_id
 
 REPO = Path(__file__).resolve().parent.parent
 MIGRATIONS = REPO / "supabase" / "migrations"
-NEW_PATH = MIGRATIONS / "0123_model_shutdown.sql"
-OLD_PATH = MIGRATIONS / "0100_video_ai_ops.sql"
+NEW_PATH = MIGRATIONS / "0125_model_shutdown.sql"
+OLD_PATH = MIGRATIONS / "0124_model_switch.sql"
+ROLLBACK_PATH = REPO / "docs" / "sql" / "rollback_0125_model_shutdown.sql"
 
 VEO_IDS = ("veo-3.1", "veo-3.1-fast", "veo-3.1-lite")
 OPS_IDS = ("gemini-2.5-flash-image-expand", "gemini-2.5-flash-image-relight", "gemini-2.5-flash-image-erase")
@@ -144,17 +146,27 @@ class GoogleTermsTests(unittest.TestCase):
 
 
 def bodies(text):
-    return {m.group(1): m.group(0) for m in re.finditer(r"create or replace function public\.(\w+)\(.*?\n\$\$;\n", text, re.S)}
+    return {m.group(1): m.group(0) for m in re.finditer(r"(?m)^create or replace function public\.(\w+)\(.*?^\$\$;\n", text, re.S)}
 
 
-NEW = bodies(NEW_PATH.read_text())
-OLD = bodies(OLD_PATH.read_text())
-CODE = "\n".join(line.split("--", 1)[0] for line in NEW_PATH.read_text().splitlines())
+def body(fn):
+    return fn[fn.index("$$") + 2: fn.rindex("$$")]
+
+
+def md5_of(fn):
+    return hashlib.md5(re.sub(r"\s+", " ", body(fn)).encode()).hexdigest()
+
+
+NEW_TEXT = NEW_PATH.read_text(encoding="utf-8")
+ROLLBACK_TEXT = ROLLBACK_PATH.read_text(encoding="utf-8")
+NEW = bodies(NEW_TEXT)
+OLD = bodies(OLD_PATH.read_text(encoding="utf-8"))          # 0124's: the latest before this file
+CODE = "\n".join(line.split("--", 1)[0] for line in NEW_TEXT.splitlines())
 
 ADDED = {
-    "sellable_models": "       -- 0123: a shutdown date the vendor announced (spec.shutdown.on) that has come ends the sale.\n"
+    "sellable_models": "       -- 0125: a shutdown date the vendor announced (spec.shutdown.on) that has come ends the sale.\n"
                        "       and not public.model_past_shutdown(m.spec)\n",
-    "creative_price": "     -- 0123: the same date, so a model named directly is not quoted either.\n"
+    "creative_price": "     -- 0125: the same date, so a model named directly is not quoted either.\n"
                       "     and not public.model_past_shutdown(r.spec)\n",
 }
 
@@ -163,10 +175,31 @@ class MigrationTests(unittest.TestCase):
     def test_it_replaces_exactly_the_helper_and_the_two_functions(self):
         self.assertEqual(set(NEW), {"model_past_shutdown", "sellable_models", "creative_price"})
 
-    def test_each_replaced_function_is_0100s_body_plus_exactly_the_added_lines(self):
+    def test_each_replaced_function_is_0124s_body_plus_exactly_the_added_lines(self):
         for name, added in ADDED.items():
             self.assertEqual(NEW[name].count(added), 1, name)
-            self.assertEqual(NEW[name].replace(added, ""), OLD[name], f"{name} differs from 0100 beyond the guard")
+            self.assertEqual(NEW[name].replace(added, ""), OLD[name], f"{name} differs from 0124 beyond the guard")
+            self.assertIn("model_is_available", NEW[name], f"{name} lost 0124's switch")
+
+    def test_the_drift_guard_carries_the_hashes_of_the_repos_bodies(self):
+        # 0124's md5 and this file's md5 of each replaced function, and this file's own helper: recomputed from the files.
+        for name in ("sellable_models", "creative_price"):
+            self.assertIn(md5_of(OLD[name]), NEW_TEXT, name)
+            self.assertIn(md5_of(NEW[name]), NEW_TEXT, name)
+            self.assertIn(md5_of(OLD[name]), ROLLBACK_TEXT, name)
+            self.assertIn(md5_of(NEW[name]), ROLLBACK_TEXT, name)
+        self.assertIn(md5_of(NEW["model_past_shutdown"]), NEW_TEXT)
+        self.assertIn("0125 found a sellable_models() that is neither 0124''s body nor 0125''s", NEW_TEXT)
+        self.assertIn("0125 found a creative_price() that is neither 0124''s body nor 0125''s", NEW_TEXT)
+
+    def test_the_rollback_restores_0124s_text_byte_for_byte_and_drops_the_helper(self):
+        rb = bodies(ROLLBACK_TEXT)
+        for name in ("sellable_models", "creative_price"):
+            self.assertEqual(rb[name], OLD[name], name)
+        self.assertIn("drop function if exists public.model_past_shutdown(jsonb);", ROLLBACK_TEXT)
+        self.assertIn("rollback 0125 found a sellable_models() that is neither 0125''s body nor 0124''s", ROLLBACK_TEXT)
+        self.assertEqual(ROLLBACK_TEXT.count("begin;"), 1)
+        self.assertEqual(ROLLBACK_TEXT.count("commit;"), 1)
 
     def test_the_helper_fails_closed_and_reads_the_date_in_the_database_not_the_clock_of_the_caller(self):
         h = NEW["model_past_shutdown"]
@@ -177,12 +210,13 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("!~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'", h)
         self.assertRegex(h, r"if p_spec is null or not \(p_spec \? 'shutdown'\) then\s+return false;")
 
-    def test_it_refuses_to_apply_without_0100_before_changing_anything(self):
-        text = NEW_PATH.read_text()
-        self.assertEqual(text.count("0123 needs 0100_video_ai_ops.sql: apply it first"), 2)
-        self.assertLess(text.index("0123 needs 0100_video_ai_ops.sql"), text.index("create or replace function"))
+    def test_it_refuses_to_apply_without_0124_before_changing_anything(self):
+        self.assertIn("0125 needs 0124_model_switch.sql (and 0100): apply them first", NEW_TEXT)
+        self.assertIn("to_regprocedure('public.model_is_available(text)') is null", NEW_TEXT)
+        self.assertLess(NEW_TEXT.index("0125 needs 0124_model_switch.sql"), NEW_TEXT.index("create or replace function"))
+        self.assertLess(NEW_TEXT.index("0125 found a sellable_models()"), NEW_TEXT.index("create or replace function"))
 
-    def test_the_helper_is_internal_and_the_two_functions_keep_0100s_grants(self):
+    def test_the_helper_is_internal_and_the_two_functions_keep_their_grants(self):
         self.assertIn("revoke all on function public.model_past_shutdown(jsonb) from public, anon, authenticated, service_role;", CODE)
         self.assertNotIn("grant execute on function public.model_past_shutdown", CODE)
         self.assertIn("revoke all on function public.sellable_models(text, text) from public, anon;\n"
@@ -195,22 +229,25 @@ class MigrationTests(unittest.TestCase):
         for word in ("drop table", "drop column", "drop function", "delete from", "truncate", "alter table"):
             self.assertNotIn(word, low)
         self.assertNotRegex(low, r"\b(insert\s+into|update\s+public\.|upsert)")
-        text = NEW_PATH.read_text()
-        self.assertIn("-- Verify", text)
-        for col in ("date_compared", "unreadable_reads_as_past", "both_read_it", "functions_scoped"):
-            self.assertIn(col, text[text.index("-- Verify"):])
+        self.assertIn("-- Verify", NEW_TEXT)
+        for col in ("date_compared", "unreadable_reads_as_past", "both_read_it_and_0124_kept", "functions_scoped"):
+            self.assertIn(col, NEW_TEXT[NEW_TEXT.index("-- Verify"):])
 
     def test_a_later_migration_that_replaces_either_function_must_keep_the_guard(self):
         for path in sorted(MIGRATIONS.glob("*.sql")):
-            if int(path.name[:4]) <= 123:
+            if int(path.name[:4]) <= 125:
                 continue
-            for name, body in bodies(path.read_text()).items():
+            for name, fn in bodies(path.read_text(encoding="utf-8")).items():
                 if name in ("sellable_models", "creative_price"):
-                    self.assertIn("model_past_shutdown", body, f"{path.name} replaces {name} without the shutdown guard")
+                    self.assertIn("model_past_shutdown", fn, f"{path.name} replaces {name} without the shutdown guard")
+                    self.assertIn("model_is_available", fn, f"{path.name} replaces {name} without 0124's switch")
 
-    def test_the_security_lab_declares_the_helper_as_service_only(self):
+    def test_the_security_lab_declares_the_helper_as_service_only_and_can_take_0125_off(self):
         text = (REPO / "tests" / "security" / "sec_expectations.py").read_text()
         self.assertIn('"model_past_shutdown": SERVICE,', text)
+        lab = (REPO / "tests" / "security" / "sec_db.py").read_text()
+        self.assertIn("def take_off_0125(", lab)
+        self.assertIn("def put_back_0125(", lab)
 
 
 def veo_config(**values):

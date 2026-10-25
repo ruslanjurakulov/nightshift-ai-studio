@@ -276,7 +276,7 @@ class ModelEntry:
     def shut_down(self, on: Optional[date] = None) -> bool:
         """True from the announced shutdown date on (UTC, like the database's
         ``current_date``): the model is no longer offered or quoted
-        (migration 0123). An entry with no announced date is never shut down
+        (migration 0125). An entry with no announced date is never shut down
         here; that means "none announced", not "safe"."""
         d = self.shutdown_on
         return d is not None and d <= (on or datetime.now(timezone.utc).date())
@@ -531,7 +531,7 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                 # The adapter would drop it: the vendor would bill its own default under another tier's price.
                 errors.append(_err(mid, f"adapter {m['adapter']} does not send a quality"))
         for key in ("on", "as_of"):
-            # The pattern only checks the shape; migration 0123 casts `on` to a date, and a
+            # The pattern only checks the shape; migration 0125 casts `on` to a date, and a
             # 2026-13-45 there would be a date nobody can compare.
             try:
                 date.fromisoformat((m.get("shutdown") or {}).get(key, "2000-01-01"))
