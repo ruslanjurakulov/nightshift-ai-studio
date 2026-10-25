@@ -381,7 +381,7 @@ class AdapterSeam(unittest.TestCase):
         gemini = reg.get("gemini-3.1-flash-image")
         self.assertEqual(self.support("gemini-3.1-flash-image", "t2i").reference_slots, gemini.image_refs_max)
         # The edit's own source takes one of the model's image slots.
-        self.assertEqual(self.support("gemini-2.5-flash-image", "edit", [self.src]).reference_slots, 2)
+        self.assertEqual(self.support("gemini-3.1-flash-lite-image", "edit", [self.src]).reference_slots, 2)
         self.assertEqual(self.support("openai-gpt-image-2", "edit", [self.src]).reference_slots, 15)
         # Off by default: text-to-image there takes no images; video reads an image as its first frame.
         self.assertEqual(self.support("openai-gpt-image-2", "t2i").reference_slots, 0)
@@ -409,7 +409,7 @@ class AdapterSeam(unittest.TestCase):
         self.assertEqual(calls, [])
 
     def test_more_references_than_the_model_takes_are_refused_before_the_call(self):
-        entry = reg.get("gemini-2.5-flash-image")  # 3 images in all
+        entry = reg.get("gemini-3.1-flash-lite-image")  # 3 images in all
         sess = FakeSession([])
         ra = ca.RegistryAdapter(entry, build_adapter(entry.adapter, env={"GEMINI_API_KEY": "g" * 30}, session=sess),
                                 sync_store={})

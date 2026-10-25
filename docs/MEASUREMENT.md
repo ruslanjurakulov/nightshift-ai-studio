@@ -339,6 +339,83 @@ counts and those words only, never the title or the overlay text.
   `basis: heuristic`, `calibrated: false`. Use it to see how many past titles are cut before changing a
   prompt, not as a verdict. Acronyms of 3+ letters (NASA) count as capitals.
 
+## 8. Editor export cost (measurement only)
+
+`tools/editor_export_cost.py` · no switch, no migration · changes no default, limit or code path
+
+Editor exports are free and bounded (30 minutes each, one at a time per project, 3 at once and 20 a
+day per organisation, migration 0054). Whether that is affordable, and whether the 30-minute and
+render-time limits are right, depends on what one output minute costs, and nothing in the repository
+measured it. This is the evidence step (CLAUDE.md rule 8); it proposes no change.
+
+```bash
+python tools/editor_export_cost.py --plan                       # list and validate the cases, render nothing
+python tools/editor_export_cost.py --length 30 --repeat 3 --out-json cost.json --out-md cost.md
+```
+
+* **What runs.** For each aspect (9:16, 16:9, 1:1: `timeline.PRESETS`) and each effect set, one timeline of
+  about `--length` seconds goes through the real export path, `editor_export.run_export`: the document is
+  validated by `modules/timeline.py`, laid out by `timeline_render` and rendered by `render_backend` under
+  `ffmpeg_limits` (address-space limit, thread caps, pixel caps, `-protocol_whitelist file`, the wall-clock
+  budget). Only the database is replaced by a fake store, and `store_generated` (the library's ingest of the
+  finished file) by a stub that records the file size, so the numbers are the render's.
+* **Effect sets.** `plain` = 4 hard-cut 1080p clips with their own sound plus a music bed. `captions`,
+  `transitions` (cross-fades, three styles in turn) and `speed_curve` (1x, 2x, 0.5x ramp, sound following)
+  are `plain` plus that one thing, so a difference is that thing's.
+* **Media is synthetic**: ffmpeg `lavfi` sources (`testsrc2` + a sine), no external file. A test pattern decodes
+  faster than camera footage, so the decode share is understated: treat the numbers as floors.
+* **Units.** Wall seconds and CPU seconds (this process and every ffmpeg it waited for) per output minute, scaled
+  from the timeline's validated length; peak memory is the largest single process (the final-pass ffmpeg) and is
+  NOT scaled, it does not grow with the length of the video. One case = one fresh Python process, so one case's
+  peak cannot leak into the next. `--repeat` reports the median and keeps every run in the JSON.
+* **Null is not zero.** A failed export contributes no timing (its reason is listed); a value that could not be
+  read is `n/a`. Without ffmpeg the tool prints `SKIPPED`, writes a report that says so (no rows), and exits 0.
+* **Not covered**: fit `blur` (the "resize for all ratios" path), overlays and shapes, chroma key, stabilise,
+  interpolated slow motion, 4K frames, long inputs from real cameras. Linearity in length is assumed: run two
+  `--length` values to check it.
+
+### First run (a sandbox, not the production worker)
+
+ffmpeg 7.0.2 static build, 4 vCPUs shared with other jobs (1-minute load average 8 to 11 on 4 cores during the
+run, so wall time is noise), 20 s timelines, 3 runs per case, median:
+
+| Aspect | Effect set | CPU s / output min | Wall s / output min | Peak RSS MB | Output MB / min |
+| :-- | :-- | --: | --: | --: | --: |
+| 9:16 | plain | 121.8 | 67.8 | 568 | 15.9 |
+| 9:16 | captions | 115.9 | 119.3 | 611 | 16.3 |
+| 9:16 | transitions | 141.6 | 155.5 | 572 | 16.1 |
+| 9:16 | speed_curve | 118.2 | 118.6 | 583 | 16.1 |
+| 16:9 | plain | 135.3 | 161.2 | 567 | 37.0 |
+| 16:9 | captions | 127.3 | 143.0 | 609 | 37.2 |
+| 16:9 | transitions | 142.6 | 150.8 | 571 | 36.6 |
+| 16:9 | speed_curve | 130.9 | 111.4 | 582 | 36.4 |
+| 1:1 | plain | 85.4 | 62.1 | 360 | 25.1 |
+| 1:1 | captions | 87.5 | 60.3 | 387 | 25.4 |
+| 1:1 | transitions | 102.5 | 47.3 | 365 | 24.9 |
+| 1:1 | speed_curve | 87.9 | 35.1 | 375 | 24.6 |
+
+(9:16 plain: 2 of 3 runs finished, the third is the time-out described below; the row is the median of the two.)
+
+What the numbers support, and what they do not:
+
+* **CPU time is the usable number.** Within a case the three CPU figures agree to a few percent; the wall figures
+  for the same case differ by up to 2x because the host was busy. Do not read the wall column as a speed.
+* **Cost follows pixels, not the label of the ratio.** 1080x1080 (1.17 MP) costs about two thirds of the CPU of the two
+  2.07 MP shapes, which cost about the same as each other. Peak memory follows the same split: about 570-610 MB
+  for 1080x1920 and 1920x1080, about 360-390 MB for the square, against the 2048 MB address-space limit.
+* **Cross-fades are the dearest of the four sets** (roughly +5% to +20% CPU over `plain` here); captions and a
+  speed curve are within a few percent of `plain`. One 20 s sample per cell: it is a ranking to confirm on the
+  worker, not a price list.
+* **A render ran to the time limit three times in about 50 runs** (twice in a first pass, once in the table's
+  run): the export was killed at its budget (3 x 20 s + 120 s = 180 s) with `timed_out`, and in the one run
+  recorded in full its CPU time was 180 s against about 40 s for the other runs of the same case, i.e. a render
+  spinning on one core, not one starved of CPU. It happened only while the host load was above 8; 12 consecutive
+  runs of the same case on a quieter host finished in 15 to 20 s each and did not reproduce it. Not diagnosed: it
+  needs the worker's own logs and a reproduction before anyone changes the budget or the command. The tool
+  reports it as `timed_out` and leaves its timing out.
+* **Not measured here**: the production worker's CPU, the decode cost of real footage, anything above 1080p.
+  D3 (price exports or keep them free) should wait for a run of this tool on the worker.
+
 ---
 
 # Shorts
@@ -369,10 +446,13 @@ usable produces no Short rather than a guessed one.
 
 ## Cost, and why it is off by default
 
-**A Short is a second `videos.insert`: about 1,600 more quota units out of the
-10,000 a day.** Publishing one every day roughly halves how many long videos the
-same Google Cloud project can carry. So Shorts are opt-in per channel, and only
-an explicit `true` turns them on:
+**A Short is a second `videos.insert`, and every `videos.insert` spends YouTube
+API quota.** The old figure written here (about 1,600 units out of 10,000 a
+day) is outdated per YouTube's API revision history (entries dated 2025-12-04
+and 2026-06-01); the current cost is UNVERIFIED and must be confirmed in Google
+Cloud Console → Quotas. Until then, assume a daily Short is not free for the
+same Google Cloud project. So Shorts are opt-in per channel, and only an
+explicit `true` turns them on:
 
 ```json
 { "shorts": { "enabled": true, "max_seconds": 45 } }
