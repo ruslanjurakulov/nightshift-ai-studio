@@ -3,12 +3,12 @@ import { MODEL_KEY_PROVIDERS } from "../lib/model-keys";
 import { json, startLoopback, type Loopback } from "./helpers/loopbackVendor";
 
 /**
- * POST /api/owner/model-keys: the owner pastes a vendor key; it is checked with the vendor and stored only if the vendor accepted it.
+ * POST /api/owner/model-keys: the owner pastes a vendor key; the server checks it with the vendor and FORGETS it.
  *
  * What would break without these: the route answering while the switch is off, a non-owner (an administrator, a customer, a stranger)
- * reaching the vendor or the database, an unknown vendor name reaching either, a vendor with no free check being called, a rejected or
- * unreachable check storing the key, a "verified" stored for a key the vendor did not accept, and the key (or the last four characters) coming
- * back in a response, a header, a log line or an error. The vendor here is a loopback server: no network, no real key, no paid call.
+ * reaching the vendor, an unknown vendor name reaching it, a vendor with no free check being called, "verified" for a key the vendor did not
+ * accept, anything being PERSISTED (a database client created, an rpc, a cookie, a second request), and the key (or any fragment of it)
+ * coming back in a response, a header, a log line or an error. The vendor here is a loopback server: no network, no real key, no paid call.
  */
 
 vi.mock("server-only", () => ({}));
@@ -19,13 +19,15 @@ const h = vi.hoisted(() => ({
   roleAsked: [] as string[],
   guard: null as Response | null,
   recent: null as Response | null,
-  rpc: vi.fn(),
-  client: true,
+  /** Any database client the route could have asked for. It must never be. */
+  createClient: vi.fn(async () => {
+    throw new Error("the route must not create a database client");
+  }),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => h.user,
-  createClient: async () => (h.client ? { rpc: h.rpc } : null),
+  createClient: h.createClient,
 }));
 vi.mock("@/lib/auth/roles", () => ({
   requireRole: async (min: string) => {
@@ -70,8 +72,7 @@ beforeEach(() => {
   h.roleAsked = [];
   h.guard = null;
   h.recent = null;
-  h.client = true;
-  h.rpc.mockReset().mockResolvedValue({ data: { ok: true, provider: "openai", status: "verified", replaced: false }, error: null });
+  h.createClient.mockClear();
   vendor.seen.length = 0;
   vendor.asked.length = 0;
   vendor.answer(json(200, { data: [{ id: "m" }] }));
@@ -85,7 +86,7 @@ const post = (body: unknown, headers: Record<string, string> = { origin: ORIGIN 
     headers: { "content-type": "application/json", ...headers },
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
-const save = (over: Record<string, unknown> = {}) => ({ action: "save", provider: "openai", key: KEY, ...over });
+const verify = (over: Record<string, unknown> = {}) => ({ action: "verify", provider: "openai", key: KEY, ...over });
 
 /** Everything the caller could see or a log could hold, as one string. */
 async function everything(res: Response): Promise<string> {
@@ -94,18 +95,17 @@ async function everything(res: Response): Promise<string> {
   return [text, heads, ...captured].join("\n");
 }
 function expectNoKey(blob: string) {
-  for (const needle of [KEY, "wxyz", "sk-test", "AbCdEf", "AKaaaa", "SKbbbb"]) expect(blob, needle).not.toContain(needle);
+  for (const needle of [KEY, "wxyz", "sk-test", "AbCdEf", "AKaaaa", "SKbbbb", "0123456789"]) expect(blob, needle).not.toContain(needle);
 }
 
 describe("the switch", () => {
-  it("is off by default: 404, and neither the vendor nor the database is touched", async () => {
+  it("is off by default: 404, and the vendor is not touched", async () => {
     for (const v of [undefined, "", "off", "0", "true", "1", "yes"]) {
       vi.stubEnv("NIGHTSHIFT_MODEL_KEYS", v ?? "");
-      const res = await POST(post(save()));
+      const res = await POST(post(verify()));
       expect(res.status, JSON.stringify(v)).toBe(404);
       expect(await res.json()).toEqual({ error: "not_found" });
     }
-    expect(h.rpc).not.toHaveBeenCalled();
     expect(vendor.seen).toHaveLength(0);
   });
 
@@ -117,66 +117,65 @@ describe("the switch", () => {
 describe("who may call it", () => {
   it("refuses a request that did not come from our own page, before anything else", async () => {
     for (const headers of [{ origin: "https://evil.example" }, {}, { origin: "null" }]) {
-      const res = await POST(post(save(), headers as Record<string, string>));
-      expect(res.status).toBe(403);
+      expect((await POST(post(verify(), headers as Record<string, string>))).status).toBe(403);
     }
-    expect(h.rpc).not.toHaveBeenCalled();
     expect(vendor.seen).toHaveLength(0);
     expect(h.roleAsked).toEqual([]);
   });
 
   it("answers 401 to a signed-out caller", async () => {
     h.user = null;
-    const res = await POST(post(save()));
-    expect(res.status).toBe(401);
-    expect(h.rpc).not.toHaveBeenCalled();
+    expect((await POST(post(verify()))).status).toBe(401);
     expect(vendor.seen).toHaveLength(0);
   });
 
   it("answers 403 to anyone who is not the platform OWNER (an administrator, a customer, a stranger), and asks for the owner role", async () => {
     h.role = null;
-    for (const body of [save(), { action: "remove", provider: "openai" }]) {
-      const res = await POST(post(body));
-      expect(res.status).toBe(403);
-      expect(await res.json()).toEqual({ error: "forbidden" });
-    }
-    expect(h.roleAsked).toEqual(["owner", "owner"]);
-    expect(h.rpc).not.toHaveBeenCalled();
+    const res = await POST(post(verify()));
+    expect(res.status).toBe(403);
+    expect(await res.clone().json()).toEqual({ error: "forbidden" });
+    expect(h.roleAsked).toEqual(["owner"]);
     expect(vendor.seen).toHaveLength(0);
-    expectNoKey(captured.join("\n"));
+    expectNoKey(await everything(res));
   });
 
   it("passes the second-factor refusals through, before the body is read", async () => {
     h.guard = new Response(JSON.stringify({ error: "mfa_required" }), { status: 401 });
-    expect((await POST(post(save()))).status).toBe(401);
+    expect((await POST(post(verify()))).status).toBe(401);
     h.guard = null;
     h.recent = new Response(JSON.stringify({ error: "mfa_recent_required" }), { status: 401 });
-    expect((await POST(post(save()))).status).toBe(401);
-    expect(h.rpc).not.toHaveBeenCalled();
+    expect((await POST(post(verify()))).status).toBe(401);
     expect(vendor.seen).toHaveLength(0);
   });
 
-  it("is rate limited per person, and a limited request reaches neither the vendor nor the database", async () => {
+  it("is rate limited per person, and a limited request never reaches the vendor", async () => {
     const codes: number[] = [];
-    for (let i = 0; i < 25; i += 1) codes.push((await POST(post(save()))).status);
+    for (let i = 0; i < 25; i += 1) codes.push((await POST(post(verify()))).status);
     expect(codes.slice(0, 20).every((c) => c === 200)).toBe(true);
     expect(codes.slice(20)).toEqual([429, 429, 429, 429, 429]);
     expect(vendor.seen).toHaveLength(20);
-    expect(h.rpc).toHaveBeenCalledTimes(20);
     // another person is not limited by this one
     h.user = { id: "someone-else-0001", email: "o2@a.uz" };
-    expect((await POST(post(save()))).status).toBe(200);
+    expect((await POST(post(verify()))).status).toBe(200);
   });
 });
 
 describe("what it refuses before it calls anyone", () => {
   it("an unknown vendor name, in any spelling", async () => {
     for (const provider of ["nonesuch", "OpenAI", "openai ", "../openai", "unassigned-video-vendor", "__proto__", "", null, 7, {}]) {
-      const res = await POST(post(save({ provider })));
+      const res = await POST(post(verify({ provider })));
       expect(res.status, String(provider)).toBe(400);
       expect((await res.json()).error).toBe("unknown_provider");
     }
-    expect(h.rpc).not.toHaveBeenCalled();
+    expect(vendor.seen).toHaveLength(0);
+  });
+
+  it("an action other than verify (there is no save, no store and no remove)", async () => {
+    for (const action of ["save", "remove", "store", "delete", "", undefined]) {
+      const res = await POST(post({ ...verify(), action }));
+      expect(res.status, String(action)).toBe(400);
+      expect((await res.json()).error).toBe("bad_request");
+    }
     expect(vendor.seen).toHaveLength(0);
   });
 
@@ -184,12 +183,11 @@ describe("what it refuses before it calls anyone", () => {
     const cases: [unknown, string][] = [
       ["not json at all {", "bad_request"],
       [[], "bad_request"],
-      [{ action: "drop_tables", provider: "openai" }, "bad_request"],
-      [save({ key: "short" }), "bad_key"],
-      [save({ key: "has spaces inside the key 0123456789" }), "bad_key"],
-      [save({ key: "sk-quote'inside-0123456789abcd" }), "bad_key"],
-      [save({ key: "x".repeat(600) }), "bad_key"],
-      [save({ key: undefined }), "bad_key"],
+      [verify({ key: "short" }), "bad_key"],
+      [verify({ key: "has spaces inside the key 0123456789" }), "bad_key"],
+      [verify({ key: "sk-quote'inside-0123456789abcd" }), "bad_key"],
+      [verify({ key: "x".repeat(600) }), "bad_key"],
+      [verify({ key: undefined }), "bad_key"],
     ];
     for (const [body, code] of cases) {
       const res = await POST(post(body));
@@ -202,41 +200,40 @@ describe("what it refuses before it calls anyone", () => {
       expect(text).not.toContain("quote'inside");
       expect(text).not.toContain("has spaces");
     }
-    expect(h.rpc).not.toHaveBeenCalled();
     expect(vendor.seen).toHaveLength(0);
   });
 
   it("a body over the size cap", async () => {
-    const res = await POST(post(save({ key: KEY, pad: "p".repeat(40_000) })));
+    const res = await POST(post(verify({ pad: "p".repeat(40_000) })));
     expect(res.status).toBe(400);
     expect(vendor.seen).toHaveLength(0);
   });
 });
 
 describe("a vendor with a free check", () => {
-  it("verified: one GET to the vendor's own host, then the key is stored as `verified`; the answer is a state word", async () => {
-    const res = await POST(post(save()));
+  it("verified: one GET to the vendor's own host, and an answer that is a state word and a time", async () => {
+    const res = await POST(post(verify()));
     expect(res.status).toBe(200);
-    expect(await res.clone().json()).toEqual({ ok: true, state: "verified", stored: true });
+    const body = await res.clone().json();
+    expect(Object.keys(body).sort()).toEqual(["at", "ok", "state"]);
+    expect(body).toMatchObject({ ok: true, state: "verified" });
+    expect(new Date(body.at).toISOString()).toBe(body.at);
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(vendor.asked).toEqual(["https://api.openai.com/v1/models"]);
-    expect(h.rpc).toHaveBeenCalledTimes(1);
-    expect(h.rpc).toHaveBeenCalledWith("owner_model_key_store", { p_provider: "openai", p_secret: KEY, p_status: "verified" });
     expectNoKey(await everything(res));
   });
 
-  it("rejected (401/403): the vendor refused it, so nothing is stored and the stored key is not touched", async () => {
+  it("rejected (401/403): the vendor refused it", async () => {
     for (const status of [401, 403]) {
       vendor.answer(json(status, { error: `Incorrect API key provided: ${KEY}` }, { "x-echo": KEY }));
-      const res = await POST(post(save()));
+      const res = await POST(post(verify()));
       expect(res.status).toBe(200);
-      expect(await res.clone().json()).toEqual({ ok: true, state: "rejected", stored: false });
+      expect(await res.clone().json()).toMatchObject({ ok: true, state: "rejected" });
       expectNoKey(await everything(res));
     }
-    expect(h.rpc).not.toHaveBeenCalled();
   });
 
-  it("could not reach (5xx, 429, a dropped connection, a timeout, a page that is not the documented answer): nothing is stored", async () => {
+  it("could not reach (5xx, 429, a dropped connection, a timeout, a page that is not the documented answer)", async () => {
     const cases: [() => void, string][] = [
       [() => vendor.answer(json(500, {})), "vendor_error"],
       [() => vendor.answer(json(503, {})), "vendor_error"],
@@ -246,14 +243,22 @@ describe("a vendor with a free check", () => {
     ];
     for (const [arrange, reason] of cases) {
       arrange();
-      const res = await POST(post(save()));
-      expect(await res.clone().json()).toEqual({ ok: true, state: "unreachable", reason, stored: false });
+      const res = await POST(post(verify()));
+      expect(await res.clone().json()).toMatchObject({ ok: true, state: "could_not_reach", reason });
       expectNoKey(await everything(res));
     }
     vi.stubGlobal("fetch", (() => Promise.reject(new DOMException("The operation timed out", "TimeoutError"))) as unknown as typeof fetch);
-    const res = await POST(post(save()));
-    expect(await res.json()).toEqual({ ok: true, state: "unreachable", reason: "timeout", stored: false });
-    expect(h.rpc).not.toHaveBeenCalled();
+    const res = await POST(post(verify()));
+    expect(await res.json()).toMatchObject({ ok: true, state: "could_not_reach", reason: "timeout" });
+  });
+
+  it("an error thrown by the transport that quotes the key is turned into a code: the key is in no answer and no log line", async () => {
+    vi.stubGlobal("fetch", (() => {
+      throw new Error(`connect failed while sending Authorization: Bearer ${KEY}`);
+    }) as unknown as typeof fetch);
+    const res = await POST(post(verify()));
+    expect(await res.clone().json()).toMatchObject({ ok: true, state: "could_not_reach", reason: "network" });
+    expectNoKey(await everything(res));
   });
 
   it("checks the right vendor's host for each vendor, and only that one", async () => {
@@ -261,8 +266,9 @@ describe("a vendor with a free check", () => {
     for (const p of MODEL_KEY_PROVIDERS) {
       if (p.strategy.kind !== "http") continue;
       vendor.asked.length = 0;
-      vendor.answer(json(200, p.strategy.expect.kind === "array" ? [] : p.strategy.expect.kind === "field" ? { [p.strategy.expect.name]: p.strategy.expect.type === "array" ? [] : p.strategy.expect.type === "number" ? 1 : {} } : {}));
-      const res = await POST(post(save({ provider: p.id })));
+      const e = p.strategy.expect;
+      vendor.answer(json(200, e.kind === "array" ? [] : e.kind === "field" ? { [e.name]: e.type === "array" ? [] : e.type === "number" ? 1 : {} } : {}));
+      const res = await POST(post(verify({ provider: p.id })));
       expect((await res.json()).state, p.id).toBe("verified");
       expect(vendor.asked, p.id).toHaveLength(1);
       seenHosts.push(new URL(vendor.asked[0]).host);
@@ -273,94 +279,57 @@ describe("a vendor with a free check", () => {
 });
 
 describe("a vendor with no free check", () => {
-  it("needs the owner's explicit confirmation, and without it nothing is sent or stored", async () => {
-    const res = await POST(post({ action: "save", provider: "kling", key: PAIR }));
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("confirm_required");
-    expect(h.rpc).not.toHaveBeenCalled();
-    expect(vendor.asked).toEqual([]);
-  });
-
-  it("with the confirmation it stores `format_only` and never calls out", async () => {
-    h.rpc.mockResolvedValue({ data: { ok: true, provider: "kling", status: "format_only", replaced: false }, error: null });
+  it("is not called at all: only the shape is checked, and the answer says format_only", async () => {
     const spy = vi.fn(() => {
       throw new Error("a request was made");
     });
     vi.stubGlobal("fetch", spy);
     for (const [provider, key] of [["kling", PAIR], ["bytedance", "ark-0123456789abcdef-ghijkl"]] as const) {
-      const res = await POST(post({ action: "save", provider, key, confirm_format_only: true }));
-      expect(await res.clone().json()).toEqual({ ok: true, state: "format_only", stored: true });
-      expect(h.rpc).toHaveBeenLastCalledWith("owner_model_key_store", { p_provider: provider, p_secret: key, p_status: "format_only" });
-      expectNoKey(await everything(res));
+      const res = await POST(post({ action: "verify", provider, key }));
+      expect(res.status).toBe(200);
+      expect(await res.clone().json()).toMatchObject({ ok: true, state: "format_only" });
+      const blob = await everything(res);
+      expect(blob).not.toContain(key);
+      expect(blob).not.toContain(key.split(":").pop() as string);
     }
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("a confirmation sent for a vendor that HAS a check does not skip the check", async () => {
-    vendor.answer(json(401, {}));
-    const res = await POST(post(save({ confirm_format_only: true })));
-    expect((await res.json()).state).toBe("rejected");
+  it("a key of the wrong shape is refused for these too", async () => {
+    const res = await POST(post({ action: "verify", provider: "kling", key: "AKaaaaaaaaaaaaaaaa:" }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).reason).toBe("bad_pair");
+  });
+});
+
+describe("nothing is persisted", () => {
+  it("no database client is created, no cookie is set, and the vendor's GET is the only request made", async () => {
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", ((url: string, init?: RequestInit) => {
+      requests.push(`${init?.method ?? "GET"} ${url}`);
+      return vendor.fetch(url, init);
+    }) as typeof fetch);
+    const res = await POST(post(verify()));
+    expect(res.status).toBe(200);
+    expect(requests).toEqual(["GET https://api.openai.com/v1/models"]);
+    expect(h.createClient).not.toHaveBeenCalled();
+    expect(res.headers.get("set-cookie")).toBeNull();
     expect(vendor.seen).toHaveLength(1);
-    expect(h.rpc).not.toHaveBeenCalled();
-  });
-});
-
-describe("the database half", () => {
-  it("a refusal from the owner function reaches the caller as a code, with the database's own words dropped", async () => {
-    h.rpc.mockResolvedValue({ data: { ok: false, error: "owner_required", message: `Only the owner. ${KEY}` }, error: null });
-    const res = await POST(post(save()));
-    expect(res.status).toBe(403);
-    expect(await res.clone().json()).toEqual({ ok: false, error: "forbidden" });
-    expectNoKey(await everything(res));
+    expect(vendor.seen[0].body).toBe("");
   });
 
-  it("an error from the database is a code: its message is never forwarded, even when it quotes the key", async () => {
-    h.rpc.mockResolvedValue({ data: null, error: { code: "XX000", message: `could not store ${KEY}` } });
-    const res = await POST(post(save()));
-    expect(res.status).toBe(502);
-    expect(await res.clone().json()).toEqual({ ok: false, error: "rpc_failed" });
-    expectNoKey(await everything(res));
-  });
-
-  it("an rpc that throws is a code, and the log line has the key taken out", async () => {
-    h.rpc.mockRejectedValue(new Error(`socket closed while sending ${KEY}`));
-    const res = await POST(post(save()));
-    expect(res.status).toBe(502);
-    expectNoKey(await everything(res));
-  });
-
-  it("migration 0123 not applied reads as 503 migration_missing", async () => {
-    h.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202", message: "x" } });
-    const res = await POST(post(save()));
-    expect(res.status).toBe(503);
-    expect((await res.json()).error).toBe("migration_missing");
-  });
-
-  it("no database configured is 503, and the vendor was still the only thing asked (nothing is stored)", async () => {
-    h.client = false;
-    const res = await POST(post(save()));
-    expect(res.status).toBe(503);
-    expect(vendor.seen).toHaveLength(0);
-  });
-
-  it("remove calls the owner function with the vendor only", async () => {
-    h.rpc.mockResolvedValue({ data: { ok: true, provider: "openai", removed: true }, error: null });
-    const res = await POST(post({ action: "remove", provider: "openai" }));
-    expect(await res.json()).toEqual({ ok: true, state: "not_set" });
-    expect(h.rpc).toHaveBeenCalledWith("owner_model_key_remove", { p_provider: "openai" });
-    expect(vendor.seen).toHaveLength(0);
-  });
-});
-
-describe("what is written to the log", () => {
-  it("one line per attempt with a user-id prefix, the vendor and the outcome, and nothing about the key", async () => {
-    await POST(post(save()));
+  it("the only thing logged is one line: who (an id prefix), the vendor and the verdict", async () => {
+    await POST(post(verify()));
     vendor.answer(json(401, {}));
-    await POST(post(save()));
+    await POST(post(verify()));
+    vendor.answer(json(500, {}));
+    await POST(post(verify()));
     const lines = captured.filter((l) => l.startsWith("[model-key]"));
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(3);
     expect(lines[0]).toMatch(/^\[model-key\] user=u\d{7} provider=openai outcome=verified$/);
     expect(lines[1]).toMatch(/outcome=rejected$/);
+    expect(lines[2]).toMatch(/outcome=could_not_reach:vendor_error$/);
+    expect(captured).toHaveLength(3);
     expectNoKey(captured.join("\n"));
   });
 });

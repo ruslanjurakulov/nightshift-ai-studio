@@ -76,7 +76,7 @@ describe.each(HTTP.map((p) => [p.id, p] as const))("%s", (_id, p) => {
       const out = await verify(p);
       // `[]` and `{}` are the documented shape for an array / bare-object vendor, which is a vendor with nothing listed: still a 200 answer.
       const shapeOk = (s.expect.kind === "array" && body === "[]") || (s.expect.kind === "object" && (body === "{}" || body === '{"unrelated": true}'));
-      expect(out.outcome, `${p.id} ${body}`).toBe(shapeOk ? "verified" : "unreachable");
+      expect(out.outcome, `${p.id} ${body}`).toBe(shapeOk ? "verified" : "could_not_reach");
     }
   });
 
@@ -90,7 +90,7 @@ describe.each(HTTP.map((p) => [p.id, p] as const))("%s", (_id, p) => {
   ])("a %i is 'could not reach' (%s), never a verdict on the key", async (status, reason) => {
     if (s.rejectStatuses.includes(status)) return;
     vendor.answer(json(status, { error: "x" }));
-    expect(await verify(p)).toEqual({ outcome: "unreachable", reason });
+    expect(await verify(p)).toEqual({ outcome: "could_not_reach", reason });
   });
 });
 
@@ -103,18 +103,18 @@ describe("the other ways a check can end", () => {
     });
     const t0 = Date.now();
     const out = await verify(openai, KEY, { timeoutMs: 150 });
-    expect(out).toEqual({ outcome: "unreachable", reason: "timeout" });
+    expect(out).toEqual({ outcome: "could_not_reach", reason: "timeout" });
     expect(Date.now() - t0).toBeLessThan(3000);
   });
 
   it("a vendor that drops the connection is 'could not reach' (network)", async () => {
     vendor.answer((_req, res) => res.socket?.destroy());
-    expect(await verify(openai)).toEqual({ outcome: "unreachable", reason: "network" });
+    expect(await verify(openai)).toEqual({ outcome: "could_not_reach", reason: "network" });
   });
 
   it("a vendor that cannot be connected to is 'could not reach' (network), not a rejection", async () => {
     const dead = (() => Promise.reject(new TypeError("fetch failed"))) as unknown as typeof fetch;
-    expect(await verifyKeyWithVendor(openai, KEY, { fetchImpl: dead })).toEqual({ outcome: "unreachable", reason: "network" });
+    expect(await verifyKeyWithVendor(openai, KEY, { fetchImpl: dead })).toEqual({ outcome: "could_not_reach", reason: "network" });
   });
 
   it("a redirect is never followed: the target is not contacted and the key does not go there", async () => {
@@ -123,7 +123,7 @@ describe("the other ways a check can end", () => {
       res.end();
     });
     const out = await verify(openai);
-    expect(out).toEqual({ outcome: "unreachable", reason: "redirect" });
+    expect(out).toEqual({ outcome: "could_not_reach", reason: "redirect" });
     expect(vendor.asked).toEqual(["https://api.openai.com/v1/models"]);
     expect(vendor.seen).toHaveLength(1);
   });
@@ -136,7 +136,7 @@ describe("the other ways a check can end", () => {
       for (let i = 0; i < 40; i += 1) res.write(chunk);
       res.end("{}]}");
     });
-    expect(await verify(openai)).toEqual({ outcome: "unreachable", reason: "unexpected_response" });
+    expect(await verify(openai)).toEqual({ outcome: "could_not_reach", reason: "unexpected_response" });
   });
 
   it("an answer that breaks half way is 'could not reach'", async () => {
@@ -146,7 +146,7 @@ describe("the other ways a check can end", () => {
       setTimeout(() => res.socket?.destroy(), 20);
     });
     const out = await verify(openai);
-    expect(out.outcome).toBe("unreachable");
+    expect(out.outcome).toBe("could_not_reach");
   });
 
   it("whatever the vendor echoes of the key never comes back out", async () => {
@@ -183,7 +183,7 @@ describe("the host is the registry's", () => {
     } as ModelKeyProvider;
     const spy = vi.fn() as unknown as typeof fetch;
     const out = await verifyKeyWithVendor(evil, KEY, { fetchImpl: spy });
-    expect(out.outcome).toBe("unreachable");
+    expect(out.outcome).toBe("could_not_reach");
     expect(spy).not.toHaveBeenCalled();
   });
 });

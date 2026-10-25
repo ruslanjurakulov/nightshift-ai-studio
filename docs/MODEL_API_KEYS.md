@@ -1,58 +1,54 @@
-# Model API keys: the owner's key per vendor, checked with the vendor, kept in Vault
+# Model API keys: the owner pastes a vendor key, the server checks it with the vendor, and FORGETS it
 
 The owner opens a vendor's own key page from a link, creates a key there, pastes it into the Command Center, and, if the vendor accepts it,
-the card says **API verified**. The key is then kept encrypted in Supabase Vault. This page is DARK: it does nothing until the server
-switch `NIGHTSHIFT_MODEL_KEYS` is exactly `on`, and it is for the platform **owner** only (an administrator is refused like a stranger).
+the card says **API verified at <time>. The key was not saved.** This page is DARK: it does nothing until the server switch
+`NIGHTSHIFT_MODEL_KEYS` is exactly `on`, and it is for the platform **owner** only (an administrator is refused like a stranger).
 
-Migration `0123_model_api_keys.sql` (rollback: `docs/sql/rollback_0123_model_api_keys.sql`). The code: `command-center/lib/model-keys.ts`
-(the vendor list, pure), `command-center/lib/server/model-keys.ts` (the vendor check and the database calls),
-`command-center/app/api/owner/model-keys/route.ts`, `command-center/app/(app)/[channel]/model-keys/page.tsx`,
-`command-center/components/model-keys/ModelKeysBoard.tsx`.
+**Design: verify and forget (the owner's decision, 2026-10-25).** The key is **never stored anywhere**: no database, no Vault, no table, no
+migration, no audit row, no log line, no cookie, no browser storage, not even its last four characters. It lives in the memory of one request.
+CLAUDE.md rule 1 is untouched and fully respected. The verdict lives in the page's state for this visit only; a reload shows "Not checked".
 
-## What this does NOT change
+The code: `command-center/lib/model-keys.ts` (the vendor list and the pure rules), `command-center/lib/server/model-keys.ts` (the one vendor
+request), `command-center/app/api/owner/model-keys/route.ts`, `command-center/app/(app)/[channel]/model-keys/page.tsx`,
+`command-center/components/model-keys/ModelKeysBoard.tsx`. There is **no migration** and no SQL.
 
-**Workers keep reading their keys from the environment (GitHub secrets), exactly as before.** A key stored here is not used by any run.
-The page says so on every card ("Key used by runs"). Nothing in `modules/`, `tools/`, a workflow or a worker reads Vault for a model key,
-and there is deliberately **no function that returns a stored key to anyone**, not the owner and not the service role (see "Follow-up").
+## What this does NOT do
 
-## CLAUDE.md rule 1, stated plainly
-
-Rule 1 says keys typed into the Command Center are sealed to the repository's public key, PUT to GitHub Actions secrets and dropped, and
-"never touch Supabase". This feature is the owner's explicit request to do otherwise for vendor model keys: the key passes through the
-Next.js server once and is stored in Vault (the same place Instagram, TikTok and customer YouTube tokens already live: migrations 0022
-and 0028). It asks for one more fragment than rule 1 allows: **the last four characters** are stored beside the status and shown to the
-owner as a mask (`•••• wxyz`), because the owner asked for it. Neither is hidden here, and rule 1's sentence should be amended (or this
-feature refused) by the owner, not by this change. Everything else in rule 1 holds: the key is never logged, never in a URL, never in an
-error text or an audit row, never returned to the browser.
+* It does not save the key. To use a verified key a run needs it in **GitHub Actions secrets and the worker environment** under the name the
+  card shows ("Nothing is stored. To use a verified key, add it to GitHub Actions secrets and the worker environment as `OPENAI_API_KEY`").
+  Workers read their keys from the environment exactly as before.
+* It does not change which key a run uses. Each card shows which key a run uses today, from the **names** of the GitHub secrets only (never
+  their values): `env` (the secret is set), `none`, or `unknown` (GitHub is not configured or did not answer; never shown as "none").
+* It writes no audit row. The only existing audit action that could carry it, `secret.write`, would say "a secret was written" when nothing
+  was; a new action would need `audit_action_allowed` replaced in a migration, which this design deliberately avoids. The server logs one
+  line per check (`[model-key] user=<id prefix> provider=<vendor> outcome=<verdict>`), nothing about the key. If an audit trail of checks is
+  wanted later, it is a separate decision and a migration.
 
 ## The flow
 
 1. The card's **Get a key** link opens the vendor's own page (`target=_blank`, `rel="noopener noreferrer"`). Only a link read in the
    vendor's own documentation is offered; Kling's is not (its documentation site is JavaScript-only), so its card says "link unverified".
 2. The owner pastes the key into a password field (no `name`, so it can never be part of a native form submission or a URL) and presses
-   **Verify and save**. The field is emptied the moment the key is sent.
-3. `POST /api/owner/model-keys` `{action: "save", provider, key}`. In order: same origin (403) → switch (404) → signed in (401) →
-   **platform owner** (403) → second factor (`guardAdminPost`, `requireRecentMfa`) → rate limit per person (20 per 10 minutes, 429) →
-   body ≤ 16 KB → vendor in the closed list (400) → key is one printable token of 16–512 characters (400) → for a vendor with no free check,
-   the owner's explicit confirmation (400 `confirm_required`).
+   **Verify**. The field is emptied the moment the key is sent.
+3. `POST /api/owner/model-keys` `{action: "verify", provider, key}`. In order: same origin (403) -> switch (404) -> signed in (401) ->
+   **platform owner** (403) -> second factor (`guardAdminPost`, `requireRecentMfa`) -> rate limit per person (20 per 10 minutes, in
+   process, 429) -> body <= 16 KB -> vendor in the closed list (400) -> key is one printable token of 16-512 characters (400).
 4. **One free GET to the vendor's fixed host**, with the key in the vendor's documented auth header, an 8 second timeout and
-   `redirect: "manual"`. No part of the URL is typed by anyone. A vendor with no free check is **not called at all**.
-5. Only a key the vendor accepted is stored: `owner_model_key_store(provider, secret, 'verified')`, as the signed-in owner (anon key and
-   session; never a service key). A rejected check stores nothing and leaves a stored key as it was. An unreachable vendor stores nothing and
-   says "Could not reach vendor — retry".
-6. The answer is a state word (`verified`, `rejected`, `unreachable`, `format_only`), never the key. The page is refreshed and reads the
-   stored status back.
+   `redirect: "manual"`. No part of the URL is typed by anyone. A vendor with no free check is **not called at all**: only the key's shape is
+   checked and the verdict is `format_only`.
+5. The answer is `{ok: true, state, at}` (and `reason` for "could not reach"): `state` is `verified`, `rejected`, `could_not_reach` or
+   `format_only`. Never the key. Then the key is out of scope and garbage collected.
 
 ## What each verdict means
 
 | Chip | Meaning |
 | --- | --- |
-| Not set | Nothing is stored for this vendor. |
-| Checking… | A request is in flight. |
-| API verified | The vendor answered the free request with success **and** a body of the documented shape, on the date shown. It is not a promise the key has credit or a given permission. |
-| Rejected by vendor | The vendor answered with a status it uses for a bad key (401/403; 400 only for Google, where the documentation says so). Nothing was saved. For vendors that can limit a key to some endpoints the card adds that a limited key can also be refused here; for Alibaba it adds that the check uses the Singapore endpoint. |
-| Format only | The vendor has no free check we could rely on. The key's shape was checked, the key was **not** sent to the vendor, and the owner ticked a box saying so. "Key format looks right; cannot be verified without a paid call." |
-| Could not reach vendor — retry | Timeout, no connection, a redirect (never followed), 429, 5xx, or a 200 that is not the documented shape. The key is not judged; nothing was saved. |
+| Not checked | Nothing was checked in this visit. |
+| Checking... | A request is in flight. |
+| API verified | The vendor answered the free request with success **and** a body of the documented shape, at the time shown. It is not a promise the key has credit or a given permission. The key was not saved. |
+| Rejected by vendor | The vendor answered with a status it uses for a bad key (401/403; 400 only for Google, where the documentation says so). For vendors that can limit a key to some endpoints the card adds that a limited key can also be refused here; for Alibaba it adds that the check uses the Singapore endpoint. |
+| Format only | The vendor has no free check we could rely on. The key's shape was checked, the key was **not** sent to the vendor. "Key format looks right; cannot be verified without a paid call." |
+| Could not reach vendor - retry | Timeout, no connection, a redirect (never followed), 429, 5xx, or a 200 that is not the documented shape. The key is not judged. |
 
 ## Vendors and how each key is checked
 
@@ -85,82 +81,52 @@ Vendor-specific honesty:
 * **OpenAI and ElevenLabs** can limit a key to some endpoints; a key that may not read the model list is refused here although it is valid.
 * **Alibaba**: the Singapore endpoint of the documentation; the repository notes that the shared host is in maintenance mode and keys are
   region/workspace specific, so a valid key can be refused (or the host unreachable) here.
-* **MiniMax and Luma, Alibaba, AssemblyAI**: the response *shape* is checked from the documentation's description (`data` array,
+* **MiniMax, Luma, Alibaba, AssemblyAI**: the response *shape* is checked from the documentation's description (`data` array,
   `page_details`, `output`, any object for Luma). A vendor answering 200 in another shape reads "could not reach", never "API verified".
 * Unconfirmed everywhere: how each vendor words its error body (the body is never read for meaning), and rate limits of these endpoints.
 
-## Storage (migration 0123)
+## Security notes for the reviewer
 
-* `model_api_key_status` (provider, status `verified`/`format_only`, last4, verified_at, checked_by, checked_by_email): RLS on, **one**
-  select policy (`platform_role() = 'owner'`), `select` granted to `authenticated` only, no write privilege for any API role.
-* `model_api_key_refs` (provider → Vault secret id): RLS on, **no policy, every privilege revoked** from every API role, the service role
-  included (the 0022 pattern).
-* `owner_model_key_store`, `owner_model_key_remove`, `owner_model_key_status`: `security definer`, `search_path = ''`, `authenticated`
-  only, each refuses everyone but the platform **owner** (an admin gets `owner_required`), store and remove also run `owner_guard` (second
-  factor gate and a per-person rate limit of 20 per 10 minutes) and write an audit row. They replace **no** existing function:
-  `audit_action_allowed` is untouched (the existing action `secret.write` is reused with `detail.store = 'vault'`), so there is no drift
-  guard to compare. The audit detail names the vendor, the operation and the status; never the key, never the last four.
-* A validation refusal is **returned** as a document, never raised, so an expected failure does not put the statement and its parameters
-  (the key) in the Postgres error log.
+There is no database object to review. What to check in the code:
 
-## What the reviewer must verify before this is applied live
+1. **Owner only, in the application layer.** The route asks `requireRole("owner")` (the platform roster's owner, not an admin), then the second
+   factor and the recent-code rule. There is no second, database-side check any more (the earlier design had one); the route is the gate.
+   Confirm in production who the roster calls owner (`select email, role from app_members where role = 'owner'`).
+2. **The key's path.** Browser -> HTTPS -> the Next.js route (request body) -> HTTPS header to the vendor. Check that the reverse proxy
+   (Caddy) access log does not record request bodies or the vendor request, and that no error reporter captures request bodies.
+3. **No persistence.** `tests/model-keys-registry.test.ts` ("nothing is persisted") fails if the feature's files mention a database client,
+   an rpc, Vault, an audit write, browser storage, a cookie or a file write, if the route imports anything but the sign-in/role/gate helpers,
+   or if any migration or SQL file mentions the old design's names.
+4. **SSRF.** The host of every request is the registry's fixed origin; a registry path that tried to change it is refused before any call
+   (tested); redirects are never followed.
+5. **Output.** The key is in no response, header, log line or thrown error (`redactKey`, `safeErrorText`; tested against a vendor that echoes
+   the key back).
 
-1. **Who is `owner`.** `platform_role()` returns `owner` for the roster row of role owner, and (0043) for the default-organization roster
-   members while `app_members` is empty. Confirm in production `select email, role from app_members where role = 'owner'` is exactly who
-   should be able to store keys.
-2. **Logs.** The key is an argument of `owner_model_key_store`, carried by PostgREST from the Next.js server. Check that the project's
-   Postgres logging does not record statement parameters on error or on slow statements (`log_parameter_max_length`,
-   `log_min_duration_statement`, `pg_stat_statements`, auto_explain), and that PostgREST/API-gateway logs do not keep request bodies. The
-   same exposure exists for 0022/0028 today. The Caddy access log must not log bodies.
-3. **Vault reach.** Run the `Verify` block at the end of the migration. Also check `has_schema_privilege` of `anon`, `authenticated` and
-   `service_role` on schema `vault` and on `vault.decrypted_secrets`: if the service role can read decrypted secrets, any holder of the
-   service key (the operator bot, the queue worker) can read these keys directly, bypassing "no read function".
-4. **The grants** (`Verify` block): no `anon`/`service_role` privilege on either table or any of the five functions; the helper functions
-   are executable by no API role; the status table has exactly one policy.
-5. **Client**: `rel="noopener noreferrer"` on the vendor links, the password field has no `name`, the field is emptied on send, the answer
-   has no key.
-6. **Server**: nothing in `lib/server/model-keys.ts` returns or logs a key, a vendor body, or an exception message unredacted (`redactKey`,
-   `safeErrorText`); `redirect: "manual"`; the host is the registry's.
-7. **The deviation from CLAUDE.md rule 1** above is accepted by the owner.
-8. After applying: with the switch still off, `curl -X POST .../api/owner/model-keys` (same origin) must answer 404.
+## Why Vault is not used (the owner's decision)
+
+An earlier draft of this change stored the verified key in Supabase Vault so workers could one day read it. The owner rejected that for
+security reasons: the Supabase service role can read `vault.decrypted_secrets`, so every holder of the service key (the operator bot, the
+queue worker) would be able to read these keys, and the real exposure of a key is whoever can write to GitHub Actions secrets and the worker
+environment, which is where the key has to be for a run anyway. So: no Vault, no read function, no "workers read Vault" follow-up. If a
+different design is wanted later, it is a new decision with its own review.
 
 ## Enabling it (the owner, later; not part of this change)
 
-Apply 0123 after the review above; set the repository variable `NIGHTSHIFT_MODEL_KEYS=on`; Deploy web. Sign in as the owner (second
-factor), open **Model API keys**. To switch it off again set the variable empty: the page and the route go dark, stored keys stay in Vault
-until removed on the page (or by the rollback file).
-
-## Follow-up: letting workers read Vault (design only, not built)
-
-Not part of this change, and each point is a decision for the owner and a reviewed migration:
-
-* **No implicit fallback (CLAUDE.md rule 4).** The key a run uses is a *choice*, per vendor, not "env, else Vault". Add a column
-  `use_for_runs boolean not null default false` to `model_api_key_status`, set only by an owner function with its own audit row and
-  confirm step. Env stays the default; with it false nothing changes for any run.
-* **One service-only read.** `read_model_api_key(p_provider)`: `service_role` only (the 0022 `read_channel_token` pattern), returns the key
-  only when `use_for_runs` is true, audits each read (provider and worker, not the key), and is rate limited. This is the first and only
-  decrypting function; it needs its own review (item 3 above becomes critical).
-* **Worker side.** A small `modules/model_keys.py`: at worker start, for each vendor with `use_for_runs`, read the key once and put it into
-  the adapter's `env` mapping in memory (the adapters already take an `env` mapping: `build_adapter(key, env=...)`), never into
-  `os.environ`, a file, a log or an exception (the `secrets()` redaction list of the adapter base class covers it). If the read fails the
-  run **stops** with the remedy; it does not fall back to the environment key.
-* **Reporting.** `tools/doctor.py` gets a "key source per vendor" line (env / vault / none), the Python twin of the page's line.
-* **Vendor says no.** A worker that gets an auth refusal for a Vault key calls a service-only `mark_model_api_key_rejected(provider)` so the
-  card stops saying "API verified" for a key that has been revoked at the vendor.
-* **Deploy.** Nothing in `deploy_web.yml` changes; the worker already has the service key.
+Set the repository variable `NIGHTSHIFT_MODEL_KEYS=on`; Deploy web. Sign in as the owner (second factor), open **Model API keys**. To
+switch it off set the variable empty: the page and the route go dark. Nothing needs cleaning up, because nothing is stored.
 
 ## Tests
 
-* `command-center/tests/model-keys-registry.test.ts`: the vendor list equals the database's, every registry provider has an entry, every
-  request is pinned (no generation endpoint), https origins only, env names are mapped by the deploy, key shape rules, the request body.
-* `command-center/tests/model-keys-verify.test.ts`: against a fake vendor on 127.0.0.1 (no network): per vendor the exact request, 401/403 →
-  rejected, 5xx/429/timeout/drop/redirect/oversize/bad shape → could not reach, a format-only vendor is never called, the key never comes
-  back.
+* `command-center/tests/model-keys-registry.test.ts`: every registry provider has an entry, every request is pinned (no generation endpoint),
+  https origins only, which statuses reject, the header/shape per vendor, env names are mapped by the deploy, key shape rules, the request
+  body (only `verify`), the exact variable names shown, and **nothing is persisted** (code scan, route imports, no migration).
+* `command-center/tests/model-keys-verify.test.ts`: against a fake vendor on 127.0.0.1 (no network): per vendor the exact request, 401/403 ->
+  rejected, 5xx/429/timeout/drop/redirect/oversize/bad shape -> could not reach, a format-only vendor is never called, the key never comes
+  back, a registry path that tries to change the host is refused.
 * `command-center/tests/model-keys-route.test.ts`: switch, same-origin, owner-only (403 for an administrator), second factor, rate limit,
-  unknown vendor, the format-only confirmation, nothing stored unless verified, and the captured responses, headers and log lines are
-  searched for the key and its last four.
+  unknown vendor, no `save`/`remove` action, format-only never calls out, **no database client is created, no cookie is set, the vendor's
+  GET is the only request, one log line**, and every response, header and captured log line (also for a transport error that quotes the key)
+  is searched for the key and fragments of it.
 * `command-center/tests/model-keys-ui.test.tsx`, `model-keys-page.test.tsx`: states, links, the password field, the field emptied on send,
-  the source line, en/ru/uz.
-* `tests/security/test_sec_model_api_keys.py` (needs the lab Postgres): owner stores into Vault, replace in place, remove destroys the secret,
-  the audit row carries neither key nor last four, an administrator / member / stranger / anon / service key are all refused, RLS on the
-  status table, the refs table closed to everyone, the rollback restores the schema and a replay applies again.
+  the verdict text with the time and "not saved", the variable name on every card, nothing written to browser storage, the page reads no
+  database, en/ru/uz.

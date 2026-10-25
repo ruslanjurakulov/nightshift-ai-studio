@@ -423,10 +423,6 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     import sec_series_tables_0120
     sec_series_tables_0120.seed(conn, sc)
 
-    # The owner's vendor API keys (0123): tests/security/sec_model_api_keys_0123.py — one stored key (xai), not a tenant's.
-    import sec_model_api_keys_0123
-    sec_model_api_keys_0123.seed(conn, sc)
-
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
     with as_superuser(conn, commit=False) as s:

@@ -1,37 +1,30 @@
 /**
- * The "Model API keys" page (/{channel}/model-keys, migration 0123): the owner pastes a vendor's API key, the server checks it with the
- * vendor, and a key the vendor accepted is kept in Vault. English is the source of truth; ru.ts and uz.ts are typed against it.
- * `{name}` fillers are filled with fmt().
+ * The "Model API keys" page (/{channel}/model-keys): the owner pastes a vendor's API key, the server checks it with the vendor and FORGETS it.
+ * English is the source of truth; ru.ts and uz.ts are typed against it. `{name}` fillers are filled with fmt().
  *
- * Words to keep: "API verified" is said only when the vendor itself accepted the key on a free request. "Format only" is a weaker claim and is
- * always said as one. A key stored here is NOT what a run uses: runs read their keys from the environment (GitHub secrets).
+ * Words to keep: "API verified" is said only when the vendor itself accepted the key on a free request, and always with "the key was not
+ * saved". "Format only" is a weaker claim and is always said as one. Nothing is stored anywhere: a verified key reaches a run only when the
+ * owner adds it to GitHub Actions secrets and the worker environment under the name the card shows.
  */
 export const modelKeysEn = {
   title: "Model API keys",
-  subtitle: "Paste a vendor's API key. The server checks it with the vendor and keeps it in Vault only if the vendor accepts it.",
-  vaultNote:
-    "Keys are stored encrypted in Vault. Runs still read their keys from the environment (GitHub secrets): a key stored here does not change which key a run uses.",
+  subtitle: "Paste a vendor's API key to see whether the vendor accepts it. The key is checked and then forgotten: nothing is stored.",
+  nothingStored: "Nothing is stored. The key is checked with the vendor and dropped; it is not saved, logged or shown again.",
   off: {
     title: "Model API keys are switched off",
-    body: "The server switch NIGHTSHIFT_MODEL_KEYS is not “on”, so this page reads nothing and no key can be saved. Nothing was changed.",
+    body: "The server switch NIGHTSHIFT_MODEL_KEYS is not “on”, so this page reads nothing and no key can be checked. Nothing was changed.",
   },
-  unsupported: "The database part of this page is not installed yet (migration 0123). Nothing was changed.",
-  failed: "The stored keys could not be read, so nothing is shown rather than a guess. Try again.",
-  retry: "Try again",
 
   status: {
-    not_set: "Not set",
+    not_checked: "Not checked",
     checking: "Checking…",
     verified: "API verified",
     rejected: "Rejected by vendor",
     format_only: "Format only",
-    unreachable: "Could not reach vendor — retry",
+    could_not_reach: "Could not reach vendor — retry",
   },
 
   card: {
-    storedKey: "Stored key",
-    verifiedOn: "Checked with the vendor on {date}.",
-    formatOnlyOn: "Saved on {date} without a check by the vendor.",
     getKey: "Get a key",
     getKeyHint: "Opens the vendor's own page in a new tab.",
     linkUnverified: "Key page link unverified — find it in the vendor's own console.",
@@ -39,37 +32,21 @@ export const modelKeysEn = {
     howHttp: "Checked with one free request that creates nothing: GET {path} on {host}.",
     howFormat: "No free check is known for this vendor. The key is never sent to the vendor from here; only its shape is checked.",
     formatOnlyNote: "Key format looks right; cannot be verified without a paid call.",
-    formatOnlyConfirm: "I understand: this key is saved without the vendor having accepted it.",
     pairedHint: "This vendor signs requests with two parts. Paste them as access_key:secret_key.",
     keyLabel: "API key",
-    verifyAndSave: "Verify and save",
-    saveUnverified: "Save without verifying",
-    remove: "Remove",
-    removeAsk: "Remove the stored key from Vault?",
-    removeYes: "Yes, remove",
-    cancel: "Cancel",
-    busy: "Working…",
+    verify: "Verify",
+    useIt: "Nothing is stored. To use a verified key, add it to GitHub Actions secrets and the worker environment as {names}.",
   },
 
-  source: {
-    label: "Key used by runs",
-    env: "Environment: the GitHub secret {names} is set. Runs use that key.",
-    envAlsoVault: "A key is also stored here; runs use the environment key, not this one.",
-    vault: "Stored here only. Runs do not read Vault yet, so no run uses this key.",
-    none: "No key anywhere. Runs that need this vendor stop before they spend anything.",
-    unknown: "Could not read the environment (GitHub is not configured or did not answer), so this page does not say.",
-  },
-
-  result: {
-    verified: "API verified and saved.",
-    format_only: "Saved. Format only: the vendor did not check this key.",
-    rejected: "The vendor did not accept this key. Nothing was saved and the stored key, if any, is unchanged.",
+  verdict: {
+    verified: "API verified at {time}. The key was not saved.",
+    format_only: "Format only, at {time}. The vendor did not check this key, and it was not saved.",
+    rejected: "The vendor did not accept this key (at {time}). The key was not saved.",
     rejectedScoped: "A key limited to some endpoints can also be refused by this check.",
     rejectedRegion: "This check uses the vendor's Singapore endpoint; a valid key of another region is refused there.",
-    unreachable: "The vendor could not be checked. Nothing was saved. Try again in a moment.",
-    removed: "Removed. The key is deleted from Vault.",
+    couldNotReach: "The vendor could not be checked (at {time}). The key was not saved. Try again in a moment.",
   },
-  unreachableReason: {
+  reason: {
     timeout: "The vendor did not answer in time.",
     network: "The connection to the vendor failed.",
     rate_limited: "The vendor says there were too many requests.",
@@ -78,9 +55,16 @@ export const modelKeysEn = {
     unexpected_response: "The vendor's answer was not what its documentation describes, so it was not judged.",
   },
 
+  source: {
+    label: "Key used by runs",
+    env: "The GitHub secret {names} is set. Runs use that key.",
+    none: "The GitHub secret {names} is not set. Runs that need this vendor stop before they spend anything.",
+    unknown: "Could not read the GitHub secret names (GitHub is not configured or did not answer), so this page does not say.",
+  },
+
   err: {
     unauthorized: "Your session ended. Sign in again.",
-    forbidden: "Only the platform owner can store or remove a vendor key.",
+    forbidden: "Only the platform owner can check a vendor key here.",
     mfa_required: "Confirm your authenticator code again (sign in and type the code), then retry.",
     mfa_recent_required: "Type your authenticator code again (sign out and in), then retry.",
     mfa_enrol_required: "Add an authenticator on the Security page first.",
@@ -88,13 +72,8 @@ export const modelKeysEn = {
     not_found: "This feature is switched off on the server.",
     bad_request: "That request was not understood.",
     unknown_provider: "That vendor is not in the list.",
-    bad_key: "That is not a key shape this page stores.",
-    confirm_required: "Tick the box to confirm that this key is saved without being verified.",
-    migration_missing: "The database part is not installed yet (migration 0123).",
-    store_failed: "The vendor accepted the key but it could not be saved. Try again.",
-    verify_failed: "The check could not be run. Nothing was saved.",
-    rpc_failed: "The key could not be saved. Try again.",
-    not_configured: "The server has no database configured.",
+    bad_key: "That is not a key shape this page checks.",
+    verify_failed: "The check could not be run. The key was not saved.",
     network: "No answer from the server. Check your connection.",
     server: "The server could not do that. Try again.",
     session: "Your session ended. Sign in again.",

@@ -1,6 +1,10 @@
 /**
- * The owner's API key per model vendor (docs/MODEL_API_KEYS.md): the closed list of vendors, how each key is checked, and the small pure
- * rules around it. Pure and client-safe: no request, no network, no secret. The server half is lib/server/model-keys.ts.
+ * The owner's API key per model vendor, VERIFIED AND FORGOTTEN (docs/MODEL_API_KEYS.md): the closed list of vendors, how each key is checked,
+ * and the small pure rules around it. Pure and client-safe: no request, no network, no secret. The server half is lib/server/model-keys.ts.
+ *
+ * NOTHING IS STORED. A key pasted here is sent once to the server, checked with the vendor, and dropped: not in a database, not in Vault, not
+ * in a log, not in an audit row, not even its last four characters. The page shows the verdict for this visit only. To use a verified key a run
+ * needs it in GitHub Actions secrets and the worker environment under the name this page shows (CLAUDE.md rule 1 is untouched).
  *
  * WHAT A VENDOR ENTRY CLAIMS, AND ONLY THAT
  *   keyUrl      the page where the vendor says to create a key, copied from the vendor's OWN documentation (keyUrlSource names the page it
@@ -8,7 +12,7 @@
  *   strategy    `http`: ONE free request to a FIXED vendor host that creates nothing (a list of models, an account or credits read, a list of
  *               the account's own files). A key is "API verified" only when the vendor answers that request with success and the answer has the
  *               documented shape. `format_only`: the vendor documents no such request we could rely on, so the key is NEVER sent anywhere;
- *               the page says so, and the owner confirms the weaker claim before the key is stored.
+ *               only its shape is checked, and the page says so.
  *   A generation endpoint is never a strategy: a check must not cost money or make anything (CLAUDE.md rule 6 asks to fail early; it does not
  *   ask to spend to find out).
  *
@@ -18,7 +22,6 @@
 
 import { validateSecretValue } from "@/lib/server/secret-validators";
 
-/** The SAME list is `model_key_provider_ok` in supabase/migrations/0123_model_api_keys.sql (a test compares the two files). */
 export const MODEL_KEY_PROVIDER_IDS = [
   "alibaba",
   "assemblyai",
@@ -347,44 +350,31 @@ export function checkModelKeyShape(provider: ModelKeyProvider, raw: unknown): Ke
   return { ok: true, key: token.value };
 }
 
-/** The last four characters, which is all of the key anyone is ever shown. */
-export function keyTail(key: string): string {
-  return key.slice(-4);
-}
-
 // ── what the owner sees ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The six states of a card. Only `verified` and `format_only` survive a reload (they are what is stored); the rest describe the last attempt. */
-export type KeyState = "not_set" | "checking" | "verified" | "rejected" | "format_only" | "unreachable";
+/**
+ * The verdict of one check, for this visit only. `not_checked` is the state of a card nobody has used yet; `checking` is a request in flight.
+ * Nothing here survives a reload: the key was not saved, so there is nothing to remember.
+ */
+export type KeyState = "not_checked" | "checking" | "verified" | "rejected" | "format_only" | "could_not_reach";
 
 export type VerifyOutcome =
   | { outcome: "verified" }
   | { outcome: "rejected" }
-  | { outcome: "unreachable"; reason: UnreachableReason };
-export type UnreachableReason = "timeout" | "network" | "rate_limited" | "vendor_error" | "redirect" | "unexpected_response";
-
-/** A stored key, as the owner function reports it. */
-export interface StoredKey {
-  provider: ModelKeyProviderId;
-  status: "verified" | "format_only";
-  last4: string;
-  verifiedAt: string | null;
-  checkedByEmail: string | null;
-}
+  | { outcome: "could_not_reach"; reason: CouldNotReachReason };
+export type CouldNotReachReason = "timeout" | "network" | "rate_limited" | "vendor_error" | "redirect" | "unexpected_response";
 
 /**
- * Which key the pipeline uses today. Workers read the environment only (this change does not alter that), so:
+ * Which key a run uses today. Workers read the environment only, and this page only ever sees the NAMES of the GitHub secrets:
  *   env      a GitHub secret the deploy maps into the worker is set; this is the key a run uses.
- *   vault    a key is stored here, and NO env key is set: stored, but not used by any run yet.
- *   none     neither.
- *   unknown  the environment could not be read (GitHub not configured, or the read failed). Never shown as "none".
+ *   none     it is not set; a run that needs this vendor stops before it spends anything.
+ *   unknown  the secret names could not be read (GitHub not configured, or the read failed). Never shown as "none".
  */
-export type KeySource = "env" | "vault" | "none" | "unknown";
+export type KeySource = "env" | "none" | "unknown";
 
-export function keySource(input: { envSet: boolean | null; vaultStored: boolean }): KeySource {
-  if (input.envSet === true) return "env";
-  if (input.envSet === null) return "unknown";
-  return input.vaultStored ? "vault" : "none";
+export function keySource(envSet: boolean | null): KeySource {
+  if (envSet === null) return "unknown";
+  return envSet ? "env" : "none";
 }
 
 /** Does `configured` (the GitHub secret names) hold every name of any one of the vendor's sets? `null` configured = unknown. */
@@ -394,14 +384,9 @@ export function envKeySet(p: ModelKeyProvider, configured: readonly string[] | n
   return p.envSets.some((names) => names.length > 0 && names.every((n) => have.has(n)));
 }
 
-/** The state a card starts in, from what is stored. */
-export function storedState(stored: StoredKey | null | undefined): KeyState {
-  return stored ? stored.status : "not_set";
-}
-
-/** `•••• wxyz`: the owner's mask. Never derived from anything but the stored last four. */
-export function maskedTail(last4: string): string {
-  return `•••• ${last4}`;
+/** The exact name(s) to set, as one line: `A`, `A or B + C` (a set joined with +, alternatives with "or"). */
+export function envNamesText(p: ModelKeyProvider): string {
+  return p.envSets.map((names) => names.join(" + ")).join(" or ");
 }
 
 // ── the switch ────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -413,32 +398,30 @@ export function parseModelKeysFlag(value: string | undefined | null): boolean {
 
 // ── the route's body ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-export type ModelKeyRequest =
-  | { action: "save"; provider: ModelKeyProvider; key: string; confirmFormatOnly: boolean }
-  | { action: "remove"; provider: ModelKeyProvider };
+export interface ModelKeyRequest {
+  provider: ModelKeyProvider;
+  key: string;
+}
 
 export type ParsedRequest =
   | { ok: true; request: ModelKeyRequest }
-  | { ok: false; error: "bad_request" | "unknown_provider" | "bad_key" | "confirm_required"; reason?: string };
+  | { ok: false; error: "bad_request" | "unknown_provider" | "bad_key"; reason?: string };
 
 /** The refusal never carries the key, nor anything derived from it but a reason word. */
 export function parseModelKeyRequest(body: unknown): ParsedRequest {
   if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: false, error: "bad_request" };
   const b = body as Record<string, unknown>;
-  if (b.action !== "save" && b.action !== "remove") return { ok: false, error: "bad_request" };
+  if (b.action !== "verify") return { ok: false, error: "bad_request" };
   const provider = typeof b.provider === "string" ? getModelKeyProvider(b.provider) : null;
   if (!provider) return { ok: false, error: "unknown_provider" };
-  if (b.action === "remove") return { ok: true, request: { action: "remove", provider } };
   const shape = checkModelKeyShape(provider, b.key);
   if (!shape.ok) return { ok: false, error: "bad_key", reason: shape.reason };
-  const confirm = b.confirm_format_only === true;
-  if (provider.strategy.kind === "format_only" && !confirm) return { ok: false, error: "confirm_required" };
-  return { ok: true, request: { action: "save", provider, key: shape.key, confirmFormatOnly: confirm } };
+  return { ok: true, request: { provider, key: shape.key } };
 }
 
 // ── what the page is built from ────────────────────────────────────────────────────────────────────────────────────────────
 
-/** One card, as plain data the client component draws. Holds no secret; `last4` is the one fragment of a key it ever carries. */
+/** One card, as plain data the client component draws. Holds no secret and nothing about a key. */
 export interface CardView {
   id: ModelKeyProviderId;
   name: string;
@@ -451,17 +434,14 @@ export interface CardView {
   scopedKeys: boolean;
   regionBound: boolean;
   pairedKey: boolean;
-  stored: { status: "verified" | "format_only"; last4: string; verifiedAt: string | null } | null;
   source: KeySource;
-  /** The GitHub secret name(s) the owner sets for this vendor, for the "key used by runs" line. */
+  /** The exact name(s) to set in GitHub Actions secrets and the worker environment. */
   envNames: string;
 }
 
 /** `configured` = the GitHub secret names (null when they could not be read). */
-export function buildCards(stored: readonly StoredKey[], configured: readonly string[] | null): CardView[] {
-  const byId = new Map(stored.map((s) => [s.provider, s] as const));
+export function buildCards(configured: readonly string[] | null): CardView[] {
   return MODEL_KEY_PROVIDERS.map((p) => {
-    const s = byId.get(p.id) ?? null;
     const http = p.strategy.kind === "http" ? p.strategy : null;
     return {
       id: p.id,
@@ -474,9 +454,8 @@ export function buildCards(stored: readonly StoredKey[], configured: readonly st
       scopedKeys: p.scopedKeys,
       regionBound: p.regionBound === true,
       pairedKey: p.pairedKey === true,
-      stored: s ? { status: s.status, last4: s.last4, verifiedAt: s.verifiedAt } : null,
-      source: keySource({ envSet: envKeySet(p, configured), vaultStored: s !== null }),
-      envNames: primaryEnvNames(p).join(" + "),
+      source: keySource(envKeySet(p, configured)),
+      envNames: envNamesText(p),
     };
   });
 }

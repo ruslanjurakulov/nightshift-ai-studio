@@ -1,32 +1,25 @@
 import type { ModelKeysDictionary } from "./en";
 
-/** «Model API kalitlari» sahifasi (/{channel}/model-keys, 0123-migratsiya): egasi yetkazib beruvchining API kalitini qoʻyadi, server uni yetkazib beruvchida tekshiradi, qabul qilingan kalit Vault’da saqlanadi. Manba — ./en.ts. */
+/** «Model API kalitlari» sahifasi (/{channel}/model-keys): egasi yetkazib beruvchining API kalitini qoʻyadi, server uni yetkazib beruvchida tekshiradi va UNUTADI. Manba — ./en.ts. */
 export const modelKeysUz: ModelKeysDictionary = {
   title: "Model API kalitlari",
-  subtitle: "Yetkazib beruvchining API kalitini qoʻying. Server uni yetkazib beruvchida tekshiradi va faqat qabul qilinsa Vault’da saqlaydi.",
-  vaultNote:
-    "Kalitlar Vault’da shifrlangan holda saqlanadi. Ishga tushirishlar kalitlarni hamon muhitdan (GitHub sirlari) oladi: bu yerda saqlangan kalit ishga tushirish qaysi kalitdan foydalanishini oʻzgartirmaydi.",
+  subtitle: "Yetkazib beruvchi kalitni qabul qilishini koʻrish uchun uning API kalitini qoʻying. Kalit tekshiriladi va darhol unutiladi: hech narsa saqlanmaydi.",
+  nothingStored: "Hech narsa saqlanmaydi. Kalit yetkazib beruvchida tekshiriladi va tashlab yuboriladi: u saqlanmaydi, jurnalga yozilmaydi va qayta koʻrsatilmaydi.",
   off: {
     title: "Model API kalitlari oʻchirilgan",
-    body: "NIGHTSHIFT_MODEL_KEYS server kaliti “on” emas, shuning uchun bu sahifa hech narsa oʻqimaydi va kalitni saqlab boʻlmaydi. Hech narsa oʻzgarmadi.",
+    body: "NIGHTSHIFT_MODEL_KEYS server kaliti “on” emas, shuning uchun bu sahifa hech narsa oʻqimaydi va kalitni tekshirib boʻlmaydi. Hech narsa oʻzgarmadi.",
   },
-  unsupported: "Bu sahifaning maʼlumotlar bazasi qismi hali oʻrnatilmagan (0123-migratsiya). Hech narsa oʻzgarmadi.",
-  failed: "Saqlangan kalitlarni oʻqib boʻlmadi, shuning uchun taxmin emas, hech narsa koʻrsatilmaydi. Qayta urinib koʻring.",
-  retry: "Qayta urinish",
 
   status: {
-    not_set: "Kiritilmagan",
+    not_checked: "Tekshirilmagan",
     checking: "Tekshirilmoqda…",
     verified: "API tasdiqlandi",
     rejected: "Yetkazib beruvchi rad etdi",
     format_only: "Faqat format",
-    unreachable: "Yetkazib beruvchiga ulanib boʻlmadi — qayta urining",
+    could_not_reach: "Yetkazib beruvchiga ulanib boʻlmadi — qayta urining",
   },
 
   card: {
-    storedKey: "Saqlangan kalit",
-    verifiedOn: "{date} kuni yetkazib beruvchida tekshirilgan.",
-    formatOnlyOn: "{date} kuni yetkazib beruvchi tekshirmasdan saqlangan.",
     getKey: "Kalit olish",
     getKeyHint: "Yetkazib beruvchining oʻz sahifasini yangi oynada ochadi.",
     linkUnverified: "Kalit sahifasi havolasi tasdiqlanmagan — uni yetkazib beruvchining oʻz konsolidan toping.",
@@ -34,37 +27,21 @@ export const modelKeysUz: ModelKeysDictionary = {
     howHttp: "Hech narsa yaratmaydigan bitta bepul soʻrov bilan tekshiriladi: {host} manzilida GET {path}.",
     howFormat: "Bu yetkazib beruvchi uchun bepul tekshiruv maʼlum emas. Kalit bu yerdan yetkazib beruvchiga yuborilmaydi; faqat uning koʻrinishi tekshiriladi.",
     formatOnlyNote: "Kalit formati toʻgʻri koʻrinadi; pullik chaqiruvsiz tekshirib boʻlmaydi.",
-    formatOnlyConfirm: "Tushundim: kalit yetkazib beruvchi qabul qilmagan holda saqlanadi.",
     pairedHint: "Bu yetkazib beruvchi soʻrovlarni ikki qism bilan imzolaydi. Ularni access_key:secret_key koʻrinishida qoʻying.",
     keyLabel: "API kalit",
-    verifyAndSave: "Tekshirish va saqlash",
-    saveUnverified: "Tekshirmasdan saqlash",
-    remove: "Oʻchirish",
-    removeAsk: "Saqlangan kalit Vault’dan oʻchirilsinmi?",
-    removeYes: "Ha, oʻchirilsin",
-    cancel: "Bekor qilish",
-    busy: "Bajarilmoqda…",
+    verify: "Tekshirish",
+    useIt: "Hech narsa saqlanmaydi. Tekshirilgan kalitdan foydalanish uchun uni GitHub Actions sirlariga va ishchi muhitiga {names} nomi bilan qoʻshing.",
   },
 
-  source: {
-    label: "Ishga tushirishlar oladigan kalit",
-    env: "Muhit: {names} GitHub siri oʻrnatilgan. Ishga tushirishlar shu kalitdan foydalanadi.",
-    envAlsoVault: "Kalit bu yerda ham saqlangan; ishga tushirishlar muhitdagi kalitdan foydalanadi, bundan emas.",
-    vault: "Faqat shu yerda saqlangan. Ishga tushirishlar hali Vault’ni oʻqimaydi, shuning uchun hech bir ishga tushirish bu kalitdan foydalanmaydi.",
-    none: "Hech qayerda kalit yoʻq. Bu yetkazib beruvchi kerak boʻlgan ishga tushirishlar hech narsa sarflamasdan toʻxtaydi.",
-    unknown: "Muhitni oʻqib boʻlmadi (GitHub sozlanmagan yoki javob bermadi), shuning uchun sahifa hech narsa daʼvo qilmaydi.",
-  },
-
-  result: {
-    verified: "API tasdiqlandi va saqlandi.",
-    format_only: "Saqlandi. Faqat format: yetkazib beruvchi bu kalitni tekshirmadi.",
-    rejected: "Yetkazib beruvchi bu kalitni qabul qilmadi. Hech narsa saqlanmadi, mavjud saqlangan kalit (agar boʻlsa) oʻzgarmadi.",
+  verdict: {
+    verified: "API soat {time} da tasdiqlandi. Kalit saqlanmadi.",
+    format_only: "Faqat format, soat {time} da. Yetkazib beruvchi bu kalitni tekshirmadi va u saqlanmadi.",
+    rejected: "Yetkazib beruvchi bu kalitni qabul qilmadi (soat {time} da). Kalit saqlanmadi.",
     rejectedScoped: "Faqat baʼzi usullarga cheklangan kalitni bu tekshiruv ham rad etishi mumkin.",
     rejectedRegion: "Tekshiruv yetkazib beruvchining Singapur manzilida oʻtadi; boshqa mintaqaning haqiqiy kaliti u yerda rad etiladi.",
-    unreachable: "Yetkazib beruvchini tekshirib boʻlmadi. Hech narsa saqlanmadi. Bir ozdan keyin qayta urinib koʻring.",
-    removed: "Oʻchirildi. Kalit Vault’dan oʻchirib tashlandi.",
+    couldNotReach: "Yetkazib beruvchini tekshirib boʻlmadi (soat {time} da). Kalit saqlanmadi. Bir ozdan keyin qayta urinib koʻring.",
   },
-  unreachableReason: {
+  reason: {
     timeout: "Yetkazib beruvchi oʻz vaqtida javob bermadi.",
     network: "Yetkazib beruvchi bilan aloqa oʻrnatilmadi.",
     rate_limited: "Yetkazib beruvchi soʻrovlar juda koʻpligini aytmoqda.",
@@ -73,9 +50,16 @@ export const modelKeysUz: ModelKeysDictionary = {
     unexpected_response: "Yetkazib beruvchining javobi hujjatida taʼriflanganidek emas, shuning uchun xulosa qilinmadi.",
   },
 
+  source: {
+    label: "Ishga tushirishlar oladigan kalit",
+    env: "{names} GitHub siri oʻrnatilgan. Ishga tushirishlar shu kalitdan foydalanadi.",
+    none: "{names} GitHub siri oʻrnatilmagan. Bu yetkazib beruvchi kerak boʻlgan ishga tushirishlar hech narsa sarflamasdan toʻxtaydi.",
+    unknown: "GitHub sirlari nomlarini oʻqib boʻlmadi (GitHub sozlanmagan yoki javob bermadi), shuning uchun sahifa hech narsa daʼvo qilmaydi.",
+  },
+
   err: {
     unauthorized: "Seans tugadi. Qaytadan kiring.",
-    forbidden: "Yetkazib beruvchi kalitini faqat platforma egasi saqlay yoki oʻchira oladi.",
+    forbidden: "Bu yerda yetkazib beruvchi kalitini faqat platforma egasi tekshira oladi.",
     mfa_required: "Autentifikator kodini yana tasdiqlang (kiring va kodni kiriting), soʻng qayta urining.",
     mfa_recent_required: "Autentifikator kodini yana kiriting (chiqib, qayta kiring), soʻng qayta urining.",
     mfa_enrol_required: "Avval Xavfsizlik sahifasida autentifikator qoʻshing.",
@@ -83,13 +67,8 @@ export const modelKeysUz: ModelKeysDictionary = {
     not_found: "Bu funksiya serverda oʻchirilgan.",
     bad_request: "Soʻrov tushunilmadi.",
     unknown_provider: "Bunday yetkazib beruvchi roʻyxatda yoʻq.",
-    bad_key: "Bu sahifa bunday koʻrinishdagi kalitni saqlamaydi.",
-    confirm_required: "Belgini qoʻying: kalit tekshirilmasdan saqlanadi.",
-    migration_missing: "Maʼlumotlar bazasi qismi hali oʻrnatilmagan (0123-migratsiya).",
-    store_failed: "Yetkazib beruvchi kalitni qabul qildi, lekin uni saqlab boʻlmadi. Qayta urinib koʻring.",
-    verify_failed: "Tekshiruvni bajarib boʻlmadi. Hech narsa saqlanmadi.",
-    rpc_failed: "Kalitni saqlab boʻlmadi. Qayta urinib koʻring.",
-    not_configured: "Serverda maʼlumotlar bazasi sozlanmagan.",
+    bad_key: "Bu sahifa bunday koʻrinishdagi kalitni tekshirmaydi.",
+    verify_failed: "Tekshiruvni bajarib boʻlmadi. Kalit saqlanmadi.",
     network: "Server javob bermayapti. Ulanishni tekshiring.",
     server: "Server buni bajara olmadi. Qayta urinib koʻring.",
     session: "Seans tugadi. Qaytadan kiring.",

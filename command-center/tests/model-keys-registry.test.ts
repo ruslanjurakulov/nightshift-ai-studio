@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -9,8 +9,7 @@ import {
   envKeySet,
   getModelKeyProvider,
   keySource,
-  keyTail,
-  maskedTail,
+  envNamesText,
   parseModelKeyRequest,
   parseModelKeysFlag,
   type ModelKeyProvider,
@@ -30,12 +29,9 @@ const ROOT = join(__dirname, "..", "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 describe("the closed set of vendors", () => {
-  it("is the same list in the page and in the database function", () => {
-    const sql = read("supabase/migrations/0123_model_api_keys.sql");
-    const body = /model_key_provider_ok\(p text\)[\s\S]*?array\[([\s\S]*?)\]::text\[\]/.exec(sql)?.[1] ?? "";
-    const inSql = [...body.matchAll(/'([a-z0-9-]+)'/g)].map((m) => m[1]).sort();
-    expect(inSql).toEqual([...MODEL_KEY_PROVIDER_IDS].sort());
+  it("is exactly the ids the page lists, with no database list behind it", () => {
     expect(MODEL_KEY_PROVIDERS.map((p) => p.id).sort()).toEqual([...MODEL_KEY_PROVIDER_IDS].sort());
+    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(13);
   });
 
   it("covers every provider of the model registry (but the placeholder), so no model has a vendor without a key page", () => {
@@ -200,32 +196,37 @@ describe("the environment names", () => {
 });
 
 describe("key source: which key a run uses", () => {
-  it("is env when the environment has it (even when Vault has one too), vault only when nothing else, none, and unknown", () => {
-    expect(keySource({ envSet: true, vaultStored: true })).toBe("env");
-    expect(keySource({ envSet: true, vaultStored: false })).toBe("env");
-    expect(keySource({ envSet: false, vaultStored: true })).toBe("vault");
-    expect(keySource({ envSet: false, vaultStored: false })).toBe("none");
-    // Not readable is not "none": a key may well be set.
-    expect(keySource({ envSet: null, vaultStored: false })).toBe("unknown");
-    expect(keySource({ envSet: null, vaultStored: true })).toBe("unknown");
+  it("is env when the GitHub secret is set, none when it is not, and unknown when the names could not be read (never none for that)", () => {
+    expect(keySource(true)).toBe("env");
+    expect(keySource(false)).toBe("none");
+    expect(keySource(null)).toBe("unknown");
   });
 
-  it("is built per card from what is stored and which secrets exist", () => {
-    const cards = buildCards(
-      [{ provider: "openai", status: "verified", last4: "wxyz", verifiedAt: "2026-10-25T10:00:00Z", checkedByEmail: "o@a.uz" }],
-      ["OPENAI_API_KEY", "ELEVENLABS_API_KEY"],
-    );
+  it("is built per card from the GitHub secret names only", () => {
+    const cards = buildCards(["OPENAI_API_KEY", "ELEVENLABS_API_KEY", "SOMETHING_ELSE"]);
     const by = Object.fromEntries(cards.map((c) => [c.id, c]));
     expect(by.openai.source).toBe("env");
-    expect(by.openai.stored?.last4).toBe("wxyz");
     expect(by.elevenlabs.source).toBe("env");
     expect(by.bfl.source).toBe("none");
     expect(by.kling.mode).toBe("format_only");
     expect(by.kling.host).toBeNull();
     expect(by.openai.host).toBe("api.openai.com");
-    expect(buildCards([{ provider: "bfl", status: "format_only", last4: "abcd", verifiedAt: null, checkedByEmail: null }], null).find((c) => c.id === "bfl")?.source).toBe("unknown");
-    expect(buildCards([{ provider: "bfl", status: "verified", last4: "abcd", verifiedAt: null, checkedByEmail: null }], []).find((c) => c.id === "bfl")?.source).toBe("vault");
+    expect(buildCards(null).every((c) => c.source === "unknown")).toBe(true);
     expect(cards).toHaveLength(MODEL_KEY_PROVIDERS.length);
+    // a card carries nothing about any key
+    expect(Object.keys(cards[0]).sort()).toEqual(
+      ["docUrl", "envNames", "host", "id", "keyUrl", "mode", "name", "pairedKey", "path", "regionBound", "scopedKeys", "source"],
+    );
+  });
+
+  it("names the exact variable(s) to set: alternatives joined with 'or', a pair with '+'", () => {
+    const by = Object.fromEntries(buildCards([]).map((c) => [c.id, c.envNames]));
+    expect(by.openai).toBe("OPENAI_API_KEY");
+    expect(by.kling).toBe("KLING_API_KEY or KLING_ACCESS_KEY + KLING_SECRET_KEY");
+    expect(by.google).toBe("GEMINI_API_KEY or VEO_API_KEY");
+    expect(by.runway).toBe("RUNWAYML_API_SECRET");
+    expect(by.xai).toBe("XAI_API_KEY");
+    expect(envNamesText(getModelKeyProvider("bytedance") as ModelKeyProvider)).toBe("SEEDANCE_API_KEY");
   });
 });
 
@@ -260,12 +261,6 @@ describe("the typed key", () => {
     // a console key without a colon is the other documented mode and stays acceptable
     expect(checkModelKeyShape(kling, "consolekey0123456789abcdef")).toMatchObject({ ok: true });
   });
-
-  it("shows only the last four characters", () => {
-    expect(keyTail(GOOD)).toBe("wxyz");
-    expect(maskedTail("wxyz")).toBe("•••• wxyz");
-    expect(maskedTail("wxyz")).not.toContain("sk-");
-  });
 });
 
 describe("the switch", () => {
@@ -277,41 +272,82 @@ describe("the switch", () => {
 
 describe("the request body", () => {
   const GOOD = "sk-test-AbCdEf0123456789-wxyz";
-  it("accepts a save for a listed vendor and a remove", () => {
-    const save = parseModelKeyRequest({ action: "save", provider: "openai", key: GOOD });
-    expect(save.ok && save.request.action === "save" && save.request.provider.id).toBe("openai");
-    const rm = parseModelKeyRequest({ action: "remove", provider: "bfl" });
-    expect(rm.ok && rm.request.action).toBe("remove");
+  it("accepts a verify for a listed vendor and nothing else", () => {
+    const ok = parseModelKeyRequest({ action: "verify", provider: "openai", key: GOOD });
+    expect(ok.ok && ok.request.provider.id).toBe("openai");
+    expect(ok.ok && ok.request.key).toBe(GOOD);
+    for (const action of ["save", "remove", "store", "delete", "", undefined]) {
+      expect(parseModelKeyRequest({ action, provider: "openai", key: GOOD }), String(action)).toEqual({ ok: false, error: "bad_request" });
+    }
   });
 
   it.each([
     [null, "bad_request"],
     [[], "bad_request"],
-    ["save", "bad_request"],
-    [{ action: "verify", provider: "openai" }, "bad_request"],
-    [{ action: "save" }, "unknown_provider"],
-    [{ action: "save", provider: "nonesuch", key: "sk-test-AbCdEf0123456789-wxyz" }, "unknown_provider"],
-    [{ action: "remove", provider: 7 }, "unknown_provider"],
-    [{ action: "save", provider: "openai" }, "bad_key"],
-    [{ action: "save", provider: "openai", key: "short" }, "bad_key"],
-    [{ action: "save", provider: "openai", key: { toString: (): string => GOOD } }, "bad_key"],
+    ["verify", "bad_request"],
+    [{ action: "verify" }, "unknown_provider"],
+    [{ action: "verify", provider: "nonesuch", key: "sk-test-AbCdEf0123456789-wxyz" }, "unknown_provider"],
+    [{ action: "verify", provider: 7 }, "unknown_provider"],
+    [{ action: "verify", provider: "openai" }, "bad_key"],
+    [{ action: "verify", provider: "openai", key: "short" }, "bad_key"],
+    [{ action: "verify", provider: "openai", key: { toString: (): string => GOOD } }, "bad_key"],
   ])("refuses %j as %s", (body, code) => {
     const out = parseModelKeyRequest(body);
     expect(out.ok).toBe(false);
     expect(!out.ok && out.error).toBe(code);
   });
 
-  it("asks for the explicit confirmation of a vendor with no free check, and ignores it for a vendor that has one", () => {
-    const k = { action: "save", provider: "kling", key: "AKaaaaaaaaaaaa:SKbbbbbbbbbbbbbb" };
-    expect(parseModelKeyRequest(k)).toEqual({ ok: false, error: "confirm_required" });
-    expect(parseModelKeyRequest({ ...k, confirm_format_only: "yes" })).toEqual({ ok: false, error: "confirm_required" });
-    expect(parseModelKeyRequest({ ...k, confirm_format_only: true }).ok).toBe(true);
-    const o = parseModelKeyRequest({ action: "save", provider: "openai", key: GOOD, confirm_format_only: true });
-    expect(o.ok && o.request.action === "save" && o.request.provider.strategy.kind).toBe("http");
+  it("asks for no confirmation: nothing is stored, so a format-only vendor is simply checked for shape", () => {
+    const k = parseModelKeyRequest({ action: "verify", provider: "kling", key: "AKaaaaaaaaaaaa:SKbbbbbbbbbbbbbb" });
+    expect(k.ok).toBe(true);
   });
 
   it("never carries the key in a refusal", () => {
-    const out = parseModelKeyRequest({ action: "save", provider: "openai", key: "sk bad key with spaces 12345" });
+    const out = parseModelKeyRequest({ action: "verify", provider: "openai", key: "sk bad key with spaces 12345" });
     expect(JSON.stringify(out)).not.toContain("sk bad");
+  });
+});
+
+describe("nothing is persisted", () => {
+  const PERSIST = /\.rpc\(|\.from\(|supabase\/server|createClient|vault|logAudit|localStorage|sessionStorage|indexedDB|document\.cookie|cookies\(|writeFile|appendFile|createWriteStream|\.insert\(|\.upsert\(|\.update\(/i;
+  const FILES = [
+    "command-center/lib/model-keys.ts",
+    "command-center/lib/server/model-keys.ts",
+    "command-center/components/model-keys/ModelKeysBoard.tsx",
+    "command-center/app/(app)/[channel]/model-keys/page.tsx",
+  ];
+
+  it("the feature's code has no database, Vault, audit, browser-storage, cookie or file write", () => {
+    for (const f of FILES) {
+      const code = read(f).split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+      expect(code, f).not.toMatch(PERSIST);
+    }
+  });
+
+  it("the route imports only the sign-in, role and gate helpers, and no database client", () => {
+    const route = read("command-center/app/api/owner/model-keys/route.ts");
+    const imports = [...route.matchAll(/from "([^"]+)"/g)].map((m) => m[1]).sort();
+    expect(imports).toEqual([
+      "@/lib/auth/roles",
+      "@/lib/model-keys",
+      "@/lib/security/admin-mfa-server",
+      "@/lib/server/admin-post-guard",
+      "@/lib/server/json-body",
+      "@/lib/server/model-keys",
+      "@/lib/server/same-origin",
+      "@/lib/server/secret-write",
+      "@/lib/supabase/server",
+      "next/server",
+    ]);
+    expect(route).toMatch(/import \{ getUser \} from "@\/lib\/supabase\/server"/);
+    expect(route).not.toMatch(/createClient|\.rpc\(/);
+  });
+
+  it("there is no migration, no rollback and no SQL function for the keys", () => {
+    const migrations = readdirSync(join(ROOT, "supabase/migrations"));
+    const files = [...migrations, ...readdirSync(join(ROOT, "docs/sql"))];
+    expect(files.filter((f) => /0123|model_api_key|model-api-key|model_key/i.test(f))).toEqual([]);
+    const sql = migrations.filter((f) => f.endsWith(".sql")).map((f) => read(`supabase/migrations/${f}`)).join("\n");
+    expect(sql).not.toMatch(/model_api_key|owner_model_key|model_key_provider_ok/);
   });
 });

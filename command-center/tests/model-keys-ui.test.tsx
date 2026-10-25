@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 /**
- * The owner's "Model API keys" board: what a tap does and what it never does.
+ * The owner's "Model API keys" board: VERIFY AND FORGET.
  *
- * What would break without these: a key left in the page after it was sent, a key in a URL or in what the page shows, "API verified" shown
- * for a key the vendor refused, a "Format only" vendor presented as verifiable, a link that opens without rel=noopener, a link nobody verified
- * shown as if it were, a stored key described as if runs used it, and a card with no way to remove or retry.
+ * What would break without these: a key left in the page after it was sent, a key in a URL or in what the page shows, "API verified" for a
+ * key the vendor refused, a verdict that does not say the key was not saved, a "Format only" vendor presented as verifiable, a link that opens
+ * without rel=noopener, a link nobody verified shown as if it were, a Remove or masked tail that implies something is stored, anything written
+ * to browser storage, and a card that hides which variable to set.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -12,9 +13,9 @@ import { jsonRes } from "./helpers/response";
 import { en } from "../lib/i18n/en";
 import { ru } from "../lib/i18n/ru";
 import { uz } from "../lib/i18n/uz";
-import { buildCards, type StoredKey } from "../lib/model-keys";
+import { buildCards } from "../lib/model-keys";
 
-const h = vi.hoisted(() => ({ fetch: vi.fn(), refresh: vi.fn(), locale: "en" as "en" | "ru" | "uz" }));
+const h = vi.hoisted(() => ({ fetch: vi.fn(), locale: "en" as "en" | "ru" | "uz" }));
 
 vi.mock("@/lib/i18n/context", async () => {
   const dicts = { en: (await import("../lib/i18n/en")).en, ru: (await import("../lib/i18n/ru")).ru, uz: (await import("../lib/i18n/uz")).uz };
@@ -26,24 +27,16 @@ vi.mock("@/lib/i18n/public-context", async () => {
   const { fmt } = await import("../lib/i18n");
   return { usePublicI18n: () => ({ t: en, locale: "en", fmt, setLocale: () => {} }) };
 });
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: h.refresh }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => { throw new Error("nothing to refresh: nothing is stored"); } }) }));
 
 import { ModelKeysBoard } from "../components/model-keys/ModelKeysBoard";
 
 const m = en.modelKeys;
 const KEY = "sk-test-AbCdEf0123456789-wxyz";
+const AT = "2026-10-25T09:30:12.000Z";
 
-const STORED: StoredKey[] = [
-  { provider: "openai", status: "verified", last4: "wxyz", verifiedAt: "2026-10-25T09:30:00.000Z", checkedByEmail: "o@a.uz" },
-  { provider: "kling", status: "format_only", last4: "bbbb", verifiedAt: "2026-10-24T09:30:00.000Z", checkedByEmail: "o@a.uz" },
-];
-const show = (stored: StoredKey[] = [], configured: string[] | null = []) => render(<ModelKeysBoard cards={buildCards(stored, configured)} />);
+const show = (configured: string[] | null = []) => render(<ModelKeysBoard cards={buildCards(configured)} />);
 const card = (id: string) => document.querySelector(`[data-provider="${id}"]`) as HTMLElement;
-const tap = async (el: HTMLElement) => {
-  await act(async () => {
-    fireEvent.click(el);
-  });
-};
 const submit = async (c: HTMLElement) => {
   await act(async () => {
     fireEvent.submit(c.querySelector("form") as HTMLFormElement);
@@ -51,39 +44,45 @@ const submit = async (c: HTMLElement) => {
 };
 const type = (c: HTMLElement, value: string) => fireEvent.change(c.querySelector('input[type="password"]') as HTMLInputElement, { target: { value } });
 const bodyOf = (n = 0) => JSON.parse((h.fetch.mock.calls[n][1] as RequestInit).body as string);
+const verdict = (state: string, extra: Record<string, unknown> = {}) => jsonRes({ ok: true, state, at: AT, ...extra });
 
+let storageWrites: string[] = [];
 beforeEach(() => {
   h.locale = "en";
-  h.fetch.mockReset().mockResolvedValue(jsonRes({ ok: true, state: "verified", stored: true }));
-  h.refresh.mockReset();
+  h.fetch.mockReset().mockResolvedValue(verdict("verified"));
   vi.stubGlobal("fetch", h.fetch);
+  storageWrites = [];
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation((k: string) => {
+    storageWrites.push(k);
+  });
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("every vendor has a card", () => {
-  it("with its name, a status chip that says Not set, a password field, 'Verify and save', and no Remove while nothing is stored", () => {
+  it("with its name, a 'Not checked' chip, a password field and a Verify button, and nothing that implies a stored key", () => {
     show();
-    const cards = [...document.querySelectorAll("[data-provider]")];
-    expect(cards).toHaveLength(13);
+    expect(document.querySelectorAll("[data-provider]")).toHaveLength(13);
     const c = card("openai");
-    expect(within(c).getByText(m.status.not_set)).toBeTruthy();
+    expect(within(c).getByText(m.status.not_checked)).toBeTruthy();
     expect(c.querySelector('input[type="password"]')).toBeTruthy();
-    expect(within(c).getByRole("button", { name: m.card.verifyAndSave })).toBeTruthy();
-    expect(within(c).queryByRole("button", { name: m.card.remove })).toBeNull();
-    expect(c.textContent).not.toContain(m.card.storedKey);
+    expect(within(c).getByRole("button", { name: m.card.verify })).toBeTruthy();
+    expect(within(c).queryByRole("button", { name: /remove|delete|save/i })).toBeNull();
+    expect(document.body.textContent).not.toMatch(/••|Vault|Stored key/i);
+    expect(screen.getByText(m.nothingStored)).toBeTruthy();
   });
 
-  it("shows the masked last four and the date for a stored key, and Remove", () => {
-    show(STORED);
-    const c = card("openai");
-    expect(within(c).getByText(m.status.verified)).toBeTruthy();
-    expect(c.querySelector("[data-stored]")?.textContent).toContain("•••• wxyz");
-    expect(c.querySelector("[data-stored]")?.textContent).toContain("2026-10-25");
-    expect(within(c).getByRole("button", { name: m.card.remove })).toBeTruthy();
-    expect(card("kling").textContent).toContain(m.status.format_only);
+  it("says on every card the exact variable to set and that nothing is stored", () => {
+    show();
+    expect(card("openai").querySelector("[data-use-it]")?.textContent).toBe(
+      "Nothing is stored. To use a verified key, add it to GitHub Actions secrets and the worker environment as OPENAI_API_KEY.",
+    );
+    expect(card("kling").querySelector("[data-use-it]")?.textContent).toContain("KLING_API_KEY or KLING_ACCESS_KEY + KLING_SECRET_KEY");
+    expect(card("google").querySelector("[data-use-it]")?.textContent).toContain("GEMINI_API_KEY or VEO_API_KEY");
+    expect(card("runway").querySelector("[data-use-it]")?.textContent).toContain("RUNWAYML_API_SECRET");
   });
 });
 
@@ -114,23 +113,7 @@ describe("how the key is checked is said, per vendor", () => {
     expect(k.textContent).toContain(m.card.howFormat);
     expect(k.textContent).toContain(m.card.formatOnlyNote);
     expect(card("openai").textContent).not.toContain(m.card.formatOnlyNote);
-  });
-
-  it("a vendor with no free check needs a tick first, and its button does not say 'verify'", async () => {
-    show();
-    const c = card("bytedance");
-    const button = within(c).getByRole("button", { name: m.card.saveUnverified }) as HTMLButtonElement;
-    type(c, KEY);
-    expect(button.disabled).toBe(true);
-    await tap(within(c).getByRole("checkbox"));
-    expect(button.disabled).toBe(false);
-    await submit(c);
-    expect(bodyOf()).toEqual({ action: "save", provider: "bytedance", key: KEY, confirm_format_only: true });
-  });
-
-  it("says where Kling's two parts go", () => {
-    show();
-    expect(card("kling").textContent).toContain(m.card.pairedHint);
+    expect(k.textContent).toContain(m.card.pairedHint);
   });
 });
 
@@ -142,13 +125,12 @@ describe("the key field", () => {
     expect(input.getAttribute("autocomplete")).toBe("off");
     expect(input.getAttribute("spellcheck")).toBe("false");
     expect(screen.getAllByLabelText(m.card.keyLabel).length).toBe(13);
-    const form = input.closest("form") as HTMLFormElement;
-    expect(form.getAttribute("method")?.toLowerCase()).toBe("post");
+    expect((input.closest("form") as HTMLFormElement).getAttribute("method")?.toLowerCase()).toBe("post");
   });
 
   it("is emptied the moment the key is sent, and the key is in the request body only", async () => {
     let release!: () => void;
-    h.fetch.mockImplementation(() => new Promise((ok) => (release = () => ok(jsonRes({ ok: true, state: "verified", stored: true })))));
+    h.fetch.mockImplementation(() => new Promise((ok) => (release = () => ok(verdict("verified")))));
     show();
     const c = card("openai");
     type(c, KEY);
@@ -159,7 +141,7 @@ describe("the key field", () => {
     expect(url).toBe("/api/owner/model-keys");
     expect(url).not.toContain(KEY);
     expect(init.method).toBe("POST");
-    expect(bodyOf()).toEqual({ action: "save", provider: "openai", key: KEY });
+    expect(bodyOf()).toEqual({ action: "verify", provider: "openai", key: KEY });
     expect(document.body.innerHTML).not.toContain(KEY);
     expect(within(c).getByText(m.status.checking)).toBeTruthy();
     await act(async () => release());
@@ -169,7 +151,7 @@ describe("the key field", () => {
 
   it("does nothing for an empty field and sends one request for a double submit", async () => {
     let release!: () => void;
-    h.fetch.mockImplementation(() => new Promise((ok) => (release = () => ok(jsonRes({ ok: true, state: "rejected", stored: false })))));
+    h.fetch.mockImplementation(() => new Promise((ok) => (release = () => ok(verdict("rejected")))));
     show();
     const c = card("openai");
     await submit(c);
@@ -181,9 +163,19 @@ describe("the key field", () => {
     expect(h.fetch).toHaveBeenCalledTimes(1);
     await act(async () => release());
   });
+
+  it("a vendor with no free check needs no tick: nothing is saved, so there is nothing to confirm", async () => {
+    h.fetch.mockResolvedValue(verdict("format_only"));
+    show();
+    const c = card("bytedance");
+    expect(within(c).queryByRole("checkbox")).toBeNull();
+    type(c, "ark-0123456789abcdef-ghijkl");
+    await submit(c);
+    expect(bodyOf()).toEqual({ action: "verify", provider: "bytedance", key: "ark-0123456789abcdef-ghijkl" });
+  });
 });
 
-describe("what a card says after an attempt", () => {
+describe("the verdict, for this visit only", () => {
   const attempt = async (id: string, res: Response, key = KEY) => {
     h.fetch.mockResolvedValue(res);
     show();
@@ -193,42 +185,39 @@ describe("what a card says after an attempt", () => {
     return c;
   };
 
-  it("verified: 'API verified and saved', and the page is refreshed so the stored state is read back", async () => {
-    const c = await attempt("openai", jsonRes({ ok: true, state: "verified", stored: true }));
-    expect(c.querySelector("[data-attempt=saved]")?.textContent).toBe(m.result.verified);
-    expect(h.refresh).toHaveBeenCalled();
+  it("verified: 'API verified at 09:30 UTC. The key was not saved.'", async () => {
+    const c = await attempt("openai", verdict("verified"));
+    expect(within(c).getByText(m.status.verified)).toBeTruthy();
+    expect(c.querySelector("[data-attempt=verified]")?.textContent).toBe("API verified at 09:30 UTC. The key was not saved.");
   });
 
-  it("rejected: the chip says so, nothing is claimed saved, and a limited-scope vendor adds its caveat", async () => {
-    const c = await attempt("openai", jsonRes({ ok: true, state: "rejected", stored: false }));
+  it("format only: said as the weaker claim, with the time, and 'not saved'", async () => {
+    const c = await attempt("kling", verdict("format_only"));
+    expect(within(c).getByText(m.status.format_only)).toBeTruthy();
+    expect(c.querySelector("[data-attempt=format_only]")?.textContent).toBe("Format only, at 09:30 UTC. The vendor did not check this key, and it was not saved.");
+  });
+
+  it("rejected: the chip says so, the key is not saved, and a limited-scope vendor adds its caveat", async () => {
+    const c = await attempt("openai", verdict("rejected"));
     expect(within(c).getByText(m.status.rejected)).toBeTruthy();
-    expect(c.querySelector("[data-attempt=rejected]")?.textContent).toContain(m.result.rejected);
-    expect(c.querySelector("[data-attempt=rejected]")?.textContent).toContain(m.result.rejectedScoped);
-    expect(h.refresh).not.toHaveBeenCalled();
+    const t = c.querySelector("[data-attempt=rejected]")?.textContent ?? "";
+    expect(t).toContain("The key was not saved.");
+    expect(t).toContain(m.verdict.rejectedScoped);
   });
 
   it("rejected for the region-bound vendor says which region the check uses", async () => {
-    const c = await attempt("alibaba", jsonRes({ ok: true, state: "rejected", stored: false }));
-    expect(c.querySelector("[data-attempt=rejected]")?.textContent).toContain(m.result.rejectedRegion);
+    const c = await attempt("alibaba", verdict("rejected"));
+    expect(c.querySelector("[data-attempt=rejected]")?.textContent).toContain(m.verdict.rejectedRegion);
   });
 
-  it("unreachable: 'Could not reach vendor — retry' with the reason, and the key can be tried again", async () => {
-    const c = await attempt("openai", jsonRes({ ok: true, state: "unreachable", reason: "timeout", stored: false }));
-    expect(within(c).getByText(m.status.unreachable)).toBeTruthy();
-    expect(c.querySelector("[data-attempt=unreachable]")?.textContent).toContain(m.unreachableReason.timeout);
+  it("could not reach: 'Could not reach vendor — retry' with the reason, and the card can be used again", async () => {
+    const c = await attempt("openai", verdict("could_not_reach", { reason: "timeout" }));
+    expect(within(c).getByText(m.status.could_not_reach)).toBeTruthy();
+    const t = c.querySelector("[data-attempt=could_not_reach]")?.textContent ?? "";
+    expect(t).toContain("The key was not saved.");
+    expect(t).toContain(m.reason.timeout);
     type(c, KEY);
-    expect((within(c).getByRole("button", { name: m.card.verifyAndSave }) as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("a new attempt the vendor refuses is shown as the attempt, and the stored key is said to be unchanged", async () => {
-    h.fetch.mockResolvedValue(jsonRes({ ok: true, state: "rejected", stored: false }));
-    show(STORED);
-    const c = card("openai");
-    type(c, KEY);
-    await submit(c);
-    expect(within(c).getByText(m.status.rejected)).toBeTruthy();
-    expect(c.querySelector("[data-stored]")?.textContent).toContain("wxyz");
-    expect(c.querySelector("[data-attempt=rejected]")?.textContent).toContain("unchanged");
+    expect((within(c).getByRole("button", { name: m.card.verify }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it.each([
@@ -237,10 +226,12 @@ describe("what a card says after an attempt", () => {
     [{ status: 401, body: { error: "mfa_recent_required" } }, m.err.mfa_recent_required],
     [{ status: 429, body: { error: "rate_limited" } }, m.err.rate_limited],
     [{ status: 404, body: { error: "not_found" } }, m.err.not_found],
-    [{ status: 502, body: { ok: false, error: "store_failed" } }, m.err.store_failed],
+    [{ status: 502, body: { ok: false, error: "verify_failed" } }, m.err.verify_failed],
     [{ status: 400, body: { ok: false, error: "bad_key", reason: "too_short" } }, m.keyReason.too_short],
     [{ status: 500, body: "boom" }, m.err.server],
-  ])("a refusal %j is worded, never a bare 'failed'", async ({ status, body }, text) => {
+    [{ status: 200, body: { ok: true, state: "stored", at: AT } }, m.err.server],
+    [{ status: 200, body: { ok: true, state: "verified" } }, m.err.server],
+  ])("a refusal or an odd answer %j is worded, never a bare 'failed'", async ({ status, body }, text) => {
     const c = await attempt("openai", jsonRes(body, status));
     expect(c.querySelector("[data-attempt=error]")?.textContent).toBe(text);
   });
@@ -258,68 +249,58 @@ describe("what a card says after an attempt", () => {
     const c = await attempt("openai", jsonRes({ ok: false, error: "weird", message: KEY }, 500));
     expect(c.textContent).not.toContain(KEY);
   });
-});
 
-describe("remove", () => {
-  it("asks first, then sends only the vendor, then refreshes", async () => {
-    h.fetch.mockResolvedValue(jsonRes({ ok: true, state: "not_set" }));
-    show(STORED);
-    const c = card("openai");
-    await tap(within(c).getByRole("button", { name: m.card.remove }));
-    expect(h.fetch).not.toHaveBeenCalled();
-    expect(c.textContent).toContain(m.card.removeAsk);
-    await tap(within(c).getByRole("button", { name: m.card.cancel }));
-    expect(h.fetch).not.toHaveBeenCalled();
-    await tap(within(c).getByRole("button", { name: m.card.remove }));
-    await tap(within(c).getByRole("button", { name: m.card.removeYes }));
-    expect(bodyOf()).toEqual({ action: "remove", provider: "openai" });
-    expect(c.querySelector("[data-attempt=removed]")?.textContent).toBe(m.result.removed);
-    expect(h.refresh).toHaveBeenCalled();
-  });
-});
-
-describe("which key a run uses (the active source)", () => {
-  it("env: names the GitHub secret and says the stored key is not the one used", () => {
-    show([STORED[0]], ["OPENAI_API_KEY"]);
-    const t = card("openai").textContent ?? "";
-    expect(t).toContain("OPENAI_API_KEY");
-    expect(t).toContain(m.source.envAlsoVault);
-  });
-
-  it("vault only: stored, and honestly NOT used by any run yet", () => {
-    show([STORED[0]], []);
-    expect(card("openai").textContent).toContain(m.source.vault);
-  });
-
-  it("none, and unknown when the environment could not be read (never 'none' for that)", () => {
-    show([], []);
-    expect(card("bfl").textContent).toContain(m.source.none);
+  it("a verdict is not remembered: a fresh render shows 'Not checked' and nothing was written to browser storage or sent again", async () => {
+    await attempt("openai", verdict("verified"));
+    expect(storageWrites).toEqual([]);
     cleanup();
-    show([], null);
-    expect(card("bfl").textContent).toContain(m.source.unknown);
-    expect(card("bfl").textContent).not.toContain(m.source.none);
+    show();
+    expect(card("openai").getAttribute("data-state")).toBe("not_checked");
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    expect(document.cookie).toBe("");
   });
 });
 
-describe("the page note and the three languages", () => {
-  it("says that runs still read the environment", () => {
-    show();
-    expect(screen.getByText(m.vaultNote)).toBeTruthy();
+describe("which key a run uses", () => {
+  it("env: names the GitHub secret and says runs use it", () => {
+    show(["OPENAI_API_KEY"]);
+    expect(card("openai").querySelector("[data-source]")?.getAttribute("data-source")).toBe("env");
+    expect(card("openai").textContent).toContain("The GitHub secret OPENAI_API_KEY is set. Runs use that key.");
   });
 
-  it.each([["ru", ru.modelKeys], ["uz", uz.modelKeys]] as const)("%s has every string and keeps the placeholders", (locale, d) => {
+  it("none, and unknown when the names could not be read (never 'none' for that)", () => {
+    show([]);
+    expect(card("bfl").textContent).toContain("The GitHub secret BFL_API_KEY is not set.");
+    cleanup();
+    show(null);
+    expect(card("bfl").textContent).toContain(m.source.unknown);
+    expect(card("bfl").textContent).not.toContain("is not set");
+  });
+});
+
+describe("the three languages", () => {
+  it.each([["ru", ru.modelKeys], ["uz", uz.modelKeys]] as const)("%s has every string, keeps the placeholders and shows the variable name", (locale, d) => {
     h.locale = locale;
-    show(STORED, ["OPENAI_API_KEY"]);
+    show(["OPENAI_API_KEY"]);
     const c = card("openai");
-    expect(within(c).getByRole("button", { name: d.card.remove })).toBeTruthy();
     expect(c.textContent).toContain("OPENAI_API_KEY");
     expect(c.textContent).not.toMatch(/\{\w+\}/);
+    expect(within(c).getByRole("button", { name: d.card.verify })).toBeTruthy();
     const shape = (o: unknown, p = ""): string[] =>
       typeof o === "string" ? [p] : Object.entries(o as Record<string, unknown>).flatMap(([k, v]) => shape(v, `${p}.${k}`));
     expect(shape(d)).toEqual(shape(m));
-    for (const key of ["howHttp", "verifiedOn", "formatOnlyOn"] as const) {
-      expect([...d.card[key].matchAll(/\{(\w+)\}/g)].map((x) => x[1]).sort()).toEqual([...m.card[key].matchAll(/\{(\w+)\}/g)].map((x) => x[1]).sort());
+    const holes = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((x) => x[1]).sort();
+    for (const [a, b] of [
+      [d.card.howHttp, m.card.howHttp],
+      [d.card.useIt, m.card.useIt],
+      [d.source.env, m.source.env],
+      [d.source.none, m.source.none],
+      [d.verdict.verified, m.verdict.verified],
+      [d.verdict.format_only, m.verdict.format_only],
+      [d.verdict.rejected, m.verdict.rejected],
+      [d.verdict.couldNotReach, m.verdict.couldNotReach],
+    ]) {
+      expect(holes(a)).toEqual(holes(b));
     }
-    expect([...d.source.env.matchAll(/\{(\w+)\}/g)].map((x) => x[1])).toEqual(["names"]);
   });
 });

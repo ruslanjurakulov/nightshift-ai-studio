@@ -1,34 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { postOperator, type OperatorFailureKind, type OperatorResult } from "@/lib/operator-post";
-import { maskedTail, type CardView, type KeyState, type UnreachableReason } from "@/lib/model-keys";
+import type { CardView, CouldNotReachReason, KeyState } from "@/lib/model-keys";
 import type { ModelKeysDictionary } from "@/lib/i18n/model-keys/en";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 
 const ENDPOINT = "/api/owner/model-keys";
 
 const TONE: Record<KeyState, LampTone> = {
-  not_set: "idle",
+  not_checked: "idle",
   checking: "run",
   verified: "ok",
   rejected: "fail",
   format_only: "warn",
-  unreachable: "warn",
+  could_not_reach: "warn",
 };
 
-/** What the last attempt on a card came to. Only words and codes: the key is never part of it. */
-type Attempt =
-  | { kind: "rejected" }
-  | { kind: "unreachable"; reason: UnreachableReason | null }
-  | { kind: "saved"; state: "verified" | "format_only" }
-  | { kind: "removed" }
+/** What the last check on a card came to. Words and a time only: the key is never part of it, and it is not kept past this visit. */
+type Result =
+  | { kind: "verdict"; state: "verified" | "rejected" | "format_only" | "could_not_reach"; at: string; reason: CouldNotReachReason | null }
   | { kind: "error"; code: string };
 
-const REASONS: readonly UnreachableReason[] = ["timeout", "network", "rate_limited", "vendor_error", "redirect", "unexpected_response"];
+const REASONS: readonly CouldNotReachReason[] = ["timeout", "network", "rate_limited", "vendor_error", "redirect", "unexpected_response"];
 
 const FAILURE_CODE: Record<OperatorFailureKind, string> = {
   session: "session",
@@ -57,24 +53,30 @@ function errorText(m: ModelKeysDictionary, code: string): string {
   return (m.err as Record<string, string>)[code] ?? m.err.server;
 }
 
+/** `2026-10-25T09:30:12.000Z` -> `09:30 UTC`. The time the server gave the verdict. */
+const clock = (iso: string) => `${iso.slice(11, 16)} UTC`;
+
 /**
- * The owner's "Model API keys" page (NIGHTSHIFT_MODEL_KEYS on; migration 0123, docs/MODEL_API_KEYS.md).
+ * The owner's "Model API keys" page (NIGHTSHIFT_MODEL_KEYS on; docs/MODEL_API_KEYS.md): VERIFY AND FORGET.
  *
- * What it does and does not do:
  *  - One card per vendor. The key is typed into a password field, sent ONCE in the body of a POST to /api/owner/model-keys, and the field is
  *    emptied the moment it is sent. It is not kept in state after that, not put in a URL, a log line, a title or an error text, and the
- *    answer to the POST is a state word, never the key.
- *  - "API verified" is shown only for a key the vendor accepted. A vendor with no free check says so ("Format only") and asks for a tick
- *    before it saves; its key is never sent to the vendor from here.
- *  - A rejected or unreachable check saves nothing and leaves the stored key as it was.
- *  - A stored key is NOT what a run uses: runs read the environment. The "Key used by runs" line says which key is active.
+ *    answer to the POST is a state word and a time, never the key.
+ *  - NOTHING IS STORED, here or on the server. The verdict lives in this component's state for this visit only; a reload shows
+ *    "Not checked" again. There is no Remove and no masked tail because there is nothing to remove or mask. Nothing is written to
+ *    localStorage, sessionStorage, a cookie or the URL.
+ *  - "API verified" is shown only for a key the vendor accepted, and always with "the key was not saved". A vendor with no free check says
+ *    "Format only": its key is never sent to the vendor from here.
+ *  - Every card shows the exact name to set in GitHub Actions secrets and the worker environment, and which key a run uses today.
  */
 export function ModelKeysBoard({ cards }: { cards: CardView[] }) {
   const { t } = useI18n();
   const m = t.modelKeys;
   return (
     <div className="flex flex-col gap-4">
-      <p className="g5-note">{m.vaultNote}</p>
+      <p className="g5-note font-medium" data-nothing-stored="">
+        {m.nothingStored}
+      </p>
       <ul className="m-0 flex list-none flex-col gap-4 p-0">
         {cards.map((card) => (
           <li key={card.id}>
@@ -87,13 +89,9 @@ export function ModelKeysBoard({ cards }: { cards: CardView[] }) {
 }
 
 function KeyCard({ card, m }: { card: CardView; m: ModelKeysDictionary }) {
-  const router = useRouter();
-  const [, startRefresh] = useTransition();
   const [key, setKey] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const [attempt, setAttempt] = useState<Attempt | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -103,71 +101,40 @@ function KeyCard({ card, m }: { card: CardView; m: ModelKeysDictionary }) {
   }, []);
 
   const formatOnly = card.mode === "format_only";
-  const state: KeyState = busy
-    ? "checking"
-    : attempt?.kind === "rejected"
-      ? "rejected"
-      : attempt?.kind === "unreachable"
-        ? "unreachable"
-        : card.stored
-          ? card.stored.status
-          : "not_set";
+  const state: KeyState = busy ? "checking" : result?.kind === "verdict" ? result.state : "not_checked";
   const idBase = `mk-${card.id}`;
 
-  async function save(event: React.FormEvent) {
+  async function verify(event: React.FormEvent) {
     event.preventDefault();
-    if (busy || !key.trim() || (formatOnly && !confirmed)) return;
+    if (busy || !key.trim()) return;
     // The key leaves this component's state the moment it is sent; only the request body holds it.
-    const body = { action: "save", provider: card.id, key, ...(formatOnly ? { confirm_format_only: true } : {}) };
+    const body = { action: "verify", provider: card.id, key };
     setKey("");
     setBusy(true);
-    setAttempt(null);
+    setResult(null);
     const res = await postOperator(ENDPOINT, body);
     if (!alive.current) return;
     setBusy(false);
     if (!res.ok) {
-      setAttempt({ kind: "error", code: errorCode(res) });
+      setResult({ kind: "error", code: errorCode(res) });
       return;
     }
-    const answer = typeof res.data.state === "string" ? res.data.state : "";
-    if (answer === "verified" || answer === "format_only") {
-      setConfirmed(false);
-      setAttempt({ kind: "saved", state: answer });
-      startRefresh(() => router.refresh());
-    } else if (answer === "rejected") {
-      setAttempt({ kind: "rejected" });
-    } else if (answer === "unreachable") {
+    const s = res.data.state;
+    const at = typeof res.data.at === "string" ? res.data.at : "";
+    if ((s === "verified" || s === "rejected" || s === "format_only" || s === "could_not_reach") && at) {
       const reason = REASONS.find((r) => r === res.data.reason) ?? null;
-      setAttempt({ kind: "unreachable", reason });
+      setResult({ kind: "verdict", state: s, at, reason });
     } else {
-      setAttempt({ kind: "error", code: "server" });
+      setResult({ kind: "error", code: "server" });
     }
-  }
-
-  async function remove() {
-    if (busy) return;
-    setAsking(false);
-    setBusy(true);
-    setAttempt(null);
-    const res = await postOperator(ENDPOINT, { action: "remove", provider: card.id });
-    if (!alive.current) return;
-    setBusy(false);
-    if (!res.ok) {
-      setAttempt({ kind: "error", code: errorCode(res) });
-      return;
-    }
-    setAttempt({ kind: "removed" });
-    startRefresh(() => router.refresh());
   }
 
   const sourceText =
     card.source === "env"
-      ? [fmt(m.source.env, { names: card.envNames }), card.stored ? m.source.envAlsoVault : ""].filter(Boolean).join(" ")
-      : card.source === "vault"
-        ? m.source.vault
-        : card.source === "none"
-          ? m.source.none
-          : m.source.unknown;
+      ? fmt(m.source.env, { names: card.envNames })
+      : card.source === "none"
+        ? fmt(m.source.none, { names: card.envNames })
+        : m.source.unknown;
 
   return (
     <section className="panel flex flex-col gap-3 p-4 sm:p-5" aria-labelledby={`${idBase}-name`} data-provider={card.id} data-state={state}>
@@ -178,16 +145,9 @@ function KeyCard({ card, m }: { card: CardView; m: ModelKeysDictionary }) {
         <StatusLamp tone={TONE[state]} label={m.status[state]} live={state === "checking"} />
       </div>
 
-      {card.stored ? (
-        <p className="g5-note" data-stored="">
-          {m.card.storedKey}: <span className="tnum font-medium text-[var(--color-fg)]">{maskedTail(card.stored.last4)}</span>
-          {card.stored.verifiedAt
-            ? ` · ${fmt(card.stored.status === "verified" ? m.card.verifiedOn : m.card.formatOnlyOn, { date: card.stored.verifiedAt.slice(0, 10) })}`
-            : ""}
-        </p>
-      ) : null}
-
-      <p className="g5-note">{sourceText}</p>
+      <p className="g5-note" data-source={card.source}>
+        <span className="font-medium">{m.source.label}:</span> {sourceText}
+      </p>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
         {card.keyUrl ? (
@@ -206,16 +166,14 @@ function KeyCard({ card, m }: { card: CardView; m: ModelKeysDictionary }) {
         ) : null}
       </div>
 
-      <p className="g5-note">
-        {formatOnly ? m.card.howFormat : fmt(m.card.howHttp, { path: card.path ?? "", host: card.host ?? "" })}
-      </p>
+      <p className="g5-note">{formatOnly ? m.card.howFormat : fmt(m.card.howHttp, { path: card.path ?? "", host: card.host ?? "" })}</p>
       {formatOnly ? (
         <p className="g5-note font-medium" data-format-only-note="">
           {m.card.formatOnlyNote}
         </p>
       ) : null}
 
-      <form onSubmit={save} method="post" autoComplete="off" className="flex flex-col gap-3">
+      <form onSubmit={verify} method="post" autoComplete="off" className="flex flex-col gap-3">
         <div className="g5-field">
           <label htmlFor={`${idBase}-key`} className="g5-k">
             {m.card.keyLabel}
@@ -242,57 +200,53 @@ function KeyCard({ card, m }: { card: CardView; m: ModelKeysDictionary }) {
             </p>
           ) : null}
         </div>
-        {formatOnly ? (
-          <label className="g5-check">
-            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} disabled={busy} />
-            <span>{m.card.formatOnlyConfirm}</span>
-          </label>
-        ) : null}
         <div className="g5-actions">
-          <button type="submit" className="btn-primary min-h-11 px-4 text-sm disabled:opacity-55" disabled={busy || !key.trim() || (formatOnly && !confirmed)}>
-            {busy ? m.card.busy : formatOnly ? m.card.saveUnverified : m.card.verifyAndSave}
+          <button type="submit" className="btn-primary min-h-11 px-4 text-sm disabled:opacity-55" disabled={busy || !key.trim()}>
+            {m.card.verify}
           </button>
-          {card.stored && !asking ? (
-            <button type="button" className="btn-quiet min-h-11 px-4 text-sm" onClick={() => setAsking(true)} disabled={busy}>
-              {m.card.remove}
-            </button>
-          ) : null}
-          {asking ? (
-            <span className="flex flex-wrap items-center gap-2" role="group" aria-label={m.card.removeAsk}>
-              <span className="text-sm">{m.card.removeAsk}</span>
-              <button type="button" className="btn-danger min-h-11 px-4 text-sm" onClick={() => void remove()} disabled={busy}>
-                {m.card.removeYes}
-              </button>
-              <button type="button" className="btn-quiet min-h-11 px-4 text-sm" onClick={() => setAsking(false)}>
-                {m.card.cancel}
-              </button>
-            </span>
-          ) : null}
         </div>
       </form>
 
       <div aria-live="polite" className="min-h-4">
-        {attempt ? <AttemptNote attempt={attempt} card={card} m={m} /> : null}
+        {result ? <ResultNote result={result} card={card} m={m} /> : null}
       </div>
+
+      <p className="g5-note" data-use-it="">
+        {fmt(m.card.useIt, { names: card.envNames })}
+      </p>
     </section>
   );
 }
 
-function AttemptNote({ attempt, card, m }: { attempt: Attempt; card: CardView; m: ModelKeysDictionary }) {
-  const tone = attempt.kind === "saved" || attempt.kind === "removed" ? "var(--color-ok)" : "var(--color-fail)";
+function ResultNote({ result, card, m }: { result: Result; card: CardView; m: ModelKeysDictionary }) {
   const lines: string[] = [];
-  if (attempt.kind === "saved") lines.push(m.result[attempt.state]);
-  else if (attempt.kind === "removed") lines.push(m.result.removed);
-  else if (attempt.kind === "rejected") {
-    lines.push(m.result.rejected);
-    if (card.scopedKeys) lines.push(m.result.rejectedScoped);
-    if (card.regionBound) lines.push(m.result.rejectedRegion);
-  } else if (attempt.kind === "unreachable") {
-    lines.push(m.result.unreachable);
-    if (attempt.reason) lines.push(m.unreachableReason[attempt.reason]);
-  } else lines.push(errorText(m, attempt.code));
+  let tone = "var(--color-fail)";
+  if (result.kind === "error") lines.push(errorText(m, result.code));
+  else {
+    const time = clock(result.at);
+    if (result.state === "verified") {
+      tone = "var(--color-ok)";
+      lines.push(fmt(m.verdict.verified, { time }));
+    } else if (result.state === "format_only") {
+      tone = "var(--color-warn)";
+      lines.push(fmt(m.verdict.format_only, { time }));
+    } else if (result.state === "rejected") {
+      lines.push(fmt(m.verdict.rejected, { time }));
+      if (card.scopedKeys) lines.push(m.verdict.rejectedScoped);
+      if (card.regionBound) lines.push(m.verdict.rejectedRegion);
+    } else {
+      tone = "var(--color-warn)";
+      lines.push(fmt(m.verdict.couldNotReach, { time }));
+      if (result.reason) lines.push(m.reason[result.reason]);
+    }
+  }
   return (
-    <p className="break-words text-sm" style={{ color: tone }} data-attempt={attempt.kind} role={attempt.kind === "saved" || attempt.kind === "removed" ? "status" : "alert"}>
+    <p
+      className="break-words text-sm"
+      style={{ color: tone }}
+      data-attempt={result.kind === "error" ? "error" : result.state}
+      role={result.kind === "verdict" && result.state === "verified" ? "status" : "alert"}
+    >
       {lines.join(" ")}
     </p>
   );
