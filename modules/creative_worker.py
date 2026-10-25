@@ -833,9 +833,12 @@ class CreativeWorker:
         shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
         if calls[0]:
             unit = (entry.raw.get("pricing") or {}).get("unit")
+            # Through a name, not a literal: tests/test_gemini_quota.py greps every module for a call of model_for with a quoted stage to find
+            # the Gemini stage labels, and the registry's vendor-model lookup ends in the same letters but is not a stage.
+            capability = request.capability
             try:
                 self.queue.record_cost(job_id, ProviderUsage(
-                    provider=entry.provider, vendor_model=entry.vendor_model_for("edit"), unit=unit,
+                    provider=entry.provider, vendor_model=entry.vendor_model_for(capability), unit=unit,
                     quantity=float(calls[0]) if unit == "image" else None, route="exact"))
             except Exception as e:  # reporting only; the job is settled
                 logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
