@@ -37,6 +37,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 import time
 from datetime import date, datetime, timedelta
 
@@ -69,6 +70,20 @@ EARLY_LIFE_DAYS = DEFAULT_POLL_DAYS
 _SKIPPED_IDS_SHOWN = 5
 #: int32, the range of the integer columns; YouTube never sends more.
 _INT32_MAX = 2**31 - 1
+#: What a YouTube video id looks like: exactly 11 characters of A-Z a-z 0-9 _ -. The ids come from the local store, which
+#: any earlier writer filled, so an id that is anything else is never copied into a log line (it could carry a newline that
+#: forges a log entry, or an arbitrary amount of text).
+_YOUTUBE_VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+#: Put in the log in place of an id that does not match.
+_INVALID_ID_PLACEHOLDER = "<invalid id>"
+
+
+def _loggable_video_id(value) -> str:
+    """`value` if it is a well-formed YouTube video id, else a fixed placeholder. For log lines about a skipped video only:
+    the video is still skipped or polled exactly as before, only its name in the log changes."""
+    if isinstance(value, str) and _YOUTUBE_VIDEO_ID.fullmatch(value):
+        return value
+    return _INVALID_ID_PLACEHOLDER
 
 
 _run_clock_started = None
@@ -306,7 +321,7 @@ class IntelligencePoller:
                     impression_ctr=_optional_float(ctr.get("impressionClickThroughRate")),
                 )
                 if all(value is None for value in figures.values()):
-                    logger.info("No analytics yet for video_id=%s; nothing recorded", video_id)
+                    logger.info("No analytics yet for video_id=%s; nothing recorded", _loggable_video_id(video_id))
                     continue
                 # Only a widened poll can reach an older video; the default call below is exactly the old one.
                 late = max_calls is not None and not self._is_early_life(video.get("published_at"), today)
@@ -319,7 +334,7 @@ class IntelligencePoller:
                 written += 1
             except Exception:
                 logger.warning(
-                    "Failed to poll/record analytics for video_id=%s; skipping", video_id, exc_info=True
+                    "Failed to poll/record analytics for video_id=%s; skipping", _loggable_video_id(video_id), exc_info=True
                 )
                 continue
 
@@ -341,9 +356,10 @@ class IntelligencePoller:
 
     @staticmethod
     def _skipped_ids(videos, index) -> str:
-        """The first few video ids a stopped poll did not reach (ids only), so the operator can see which ones."""
+        """The first few video ids a stopped poll did not reach (ids only, each checked by _loggable_video_id), so
+        the operator can see which ones."""
         ids = [v.get("video_id") for v in videos[index:] if v.get("video_id")]
-        shown = ", ".join(str(i) for i in ids[:_SKIPPED_IDS_SHOWN])
+        shown = ", ".join(_loggable_video_id(i) for i in ids[:_SKIPPED_IDS_SHOWN])
         return shown + (", ..." if len(ids) > _SKIPPED_IDS_SHOWN else "")
 
     @staticmethod
