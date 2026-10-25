@@ -319,27 +319,33 @@ def facebook_caption(meta: SourceMeta, *, max_hashtags: int = FB_HASHTAGS_DEFAUL
 
 #: X turns a bare domain ("example.com/a") into a link too, and a link costs 13 times as much and counts 23 characters. Only
 #: names under a TLD X is known to link are removed, so ordinary text is left alone; a TLD missing from these lists can still
-#: be linked (residual cost risk, documented in docs/SOCIAL_SETUP.md). Three rules keep words safe after a missing space
-#: ("story.It", "Hello.So", "Rome.In 476"):
-#:   * the TLD must be written in lower case (or, for the unambiguous ones, all capitals: "EXAMPLE.COM"), and for an
-#:     ambiguous one the whole name must be lower case;
-#:   * a TLD that is also an everyday word or a short English word (it, in, so, to, me, us, by ...) counts only when what
-#:     follows is "/", white space, the end of the text, or sentence punctuation then white space / the end;
-#:   * a name is never started inside another word, an @-handle, a #tag or after a dot.
+#: be linked (residual cost risk, documented in docs/SOCIAL_SETUP.md). The rules, which keep words safe after a missing space
+#: ("story.It", "Hello.So", "Rome.In 476") and still catch links however they are cased:
+#:   * ``http(s)://...`` and ``www....`` in any case, to the next white space;
+#:   * an unambiguous TLD: in any case when a "/" follows ("Example.Com/x", "Bit.Ly/x"); otherwise lower case or ALL CAPITALS
+#:     ("example.com", "EXAMPLE.COM"), never title case ("Rome.Com is a word");
+#:   * an ambiguous TLD (also an everyday word: it, in, so, to, me, us, by ...): in any case when a "/" follows; otherwise only
+#:     when the whole name is lower case AND what follows is white space, the end, a closing mark (] " ' » … ) # ? : -) or
+#:     sentence punctuation then white space / the end;
+#:   * labels are 1-63 letters, digits, "-" or other word characters (so Cyrillic names count), at most 10 of them, and a name
+#:     never starts inside another word, an @-handle, a #tag or after a dot (this also keeps the search linear in the text).
 _TLDS = ("com|org|net|edu|gov|info|biz|io|ai|app|dev|ly|tv|gg|xyz|site|online|store|tech|link|page|news|live|club|shop|"
          "blog|cloud|top|vip|pro|ru|uz|ua|kz|uk|fr|nl|pl|au|cn|jp|kr|br|cc|ws|fm|sh|ink|art|fun|"
-         "studio|media|video|today|world|space|website|social|digital|email")
+         "studio|media|video|today|world|space|website|social|digital|email|"
+         "eu|ch|se|gl|tk|nz|lol|cool|network|company|agency|london|moscow|tj|kg|az|ge|md|рф")
 _AMBIGUOUS_TLDS = "it|in|so|to|me|us|by|de|es|ca|co|as|at|be|do|id|is|no|my|am|tr"
+_LABELS = r"(?:[\w-]{1,63}\.){1,10}"
+_LOWER_LABELS = r"(?:[a-z0-9-]{1,63}\.){1,10}"
 _URL = re.compile(
-    r"(?:https?://|www\.)\S+"
-    r"|(?<![\w@#.])(?:[A-Za-z0-9-]+\.)+(?:"
-    r"(?:" + _TLDS + r")(?![A-Za-z0-9])(?:/\S*)?"
-    r"|(?:" + _TLDS.upper() + r")(?![A-Za-z0-9])(?:/\S*)?"
+    r"(?i:https?://|www\.)\S+"
+    r"|(?<![\w@#.])" + _LABELS + r"(?:"
+    r"(?i:" + _TLDS + r")(?=/)/\S*"
+    r"|(?:" + _TLDS + r"|" + _TLDS.upper() + r")(?![\w])(?:/\S*)?"
     r")"
     # an ambiguous TLD: the whole name must be lower case too ("Hello.so" is a sentence, "hello.so" may be a site)
-    r"|(?<![\w@#.])(?:[a-z0-9-]+\.)+(?:" + _AMBIGUOUS_TLDS + r")(?=\s|$|[.,;:!?)](?:\s|$))"
+    r"|(?<![\w@#.])" + _LOWER_LABELS + r"(?:" + _AMBIGUOUS_TLDS + r")(?=\s|$|[\]\"'»…#?:\-]|[.,;:!)](?:\s|$))"
     # ... but a "/" right after it makes it an address in any case: "Example.it/x"
-    r"|(?<![\w@#.])(?:[A-Za-z0-9-]+\.)+(?:" + _AMBIGUOUS_TLDS + r")/\S*")
+    r"|(?<![\w@#.])" + _LABELS + r"(?i:" + _AMBIGUOUS_TLDS + r")/\S*")
 
 
 def x_weight(text: str) -> int:

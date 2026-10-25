@@ -244,6 +244,14 @@ def guarded_call(fn, seconds: float):
     return box["r"]
 
 
+def _content_encoding(r) -> str:
+    """The answer's ``Content-Encoding`` word when it is anything but identity ("unknown" for an odd value), else ""."""
+    coding = str((getattr(r, "headers", None) or {}).get("Content-Encoding") or "").strip().lower()
+    if not coding or coding == "identity":
+        return ""
+    return coding if len(coding) <= 20 and all(c.isalnum() or c == "-" for c in coding) else "unknown"
+
+
 def _bounded_json(r, *, clock=time.monotonic, seconds: float = TOKEN_READ_SECONDS) -> dict:
     """The JSON object of a token-endpoint answer, read through ``MAX_TOKEN_ANSWER`` bytes and a wall-clock limit (what has
     ARRIVED is read, so a body that drips one byte at a time is cut at the limit); ``{}`` when it is not one."""
@@ -302,7 +310,8 @@ def _ensure_fresh_x(tok: SocialToken, client: SocialTokenClient, http, env: Mapp
     if not cid:
         raise SocialTokenError(f"set {X_CLIENT_ID_ENV} (and {X_CLIENT_SECRET_ENV} for a confidential app) on the worker to "
                                "refresh X tokens")
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    # identity: the answer is read as sent (read1, no decoder), so a compressed one is not what we asked for.
+    headers = {"Content-Type": "application/x-www-form-urlencoded", "Accept-Encoding": "identity"}
     data = {"grant_type": "refresh_token", "refresh_token": tok.refresh_token}
     if secret:
         import base64  # noqa: PLC0415
@@ -318,12 +327,25 @@ def _ensure_fresh_x(tok: SocialToken, client: SocialTokenClient, http, env: Mapp
     except Exception as e:  # the type only: the message of a request error can carry the URL and the form
         raise SocialTokenError(f"x account {tok.account_id}: refresh failed ({type(e).__name__})") from None
     status = getattr(r, "status_code", 0)
+    coding = _content_encoding(r)
+    if coding:
+        # Fail closed, as the publishers do: not decoded, not read -- and NOT "expired": nothing says the token is bad.
+        try:
+            r.close()
+        except Exception:
+            pass
+        raise SocialTokenError(f"x account {tok.account_id}: the refresh answer (HTTP {status}) has Content-Encoding {coding} "
+                               "and is not decoded; try again")
     body = _bounded_json(r)
     new = str(body.get("access_token") or "").strip()
     if status >= 300 or not new:
-        if 400 <= status < 500 or (status < 300 and not new):
+        # Only the token endpoint's own refusal of the credentials marks the account expired. An unreadable 2xx, a 5xx and a
+        # 429 say nothing about the token: it stays usable and the next attempt tries again.
+        if status in (400, 401, 403):
             client.set_status(tok.account_id, "expired")
-        raise SocialTokenError(f"x account {tok.account_id}: refresh refused (HTTP {status}); reconnect it")
+            raise SocialTokenError(f"x account {tok.account_id}: refresh refused (HTTP {status}); reconnect it")
+        raise SocialTokenError(f"x account {tok.account_id}: the refresh did not give a usable answer (HTTP {status}); "
+                               "try again")
     seconds = _lifetime_seconds(body.get("expires_in"))
     # Whatever X sent for the lifetime, the rotated pair is stored: a refresh token X has just replaced is lost if this raises.
     fresh = replace(tok, access_token=new,

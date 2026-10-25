@@ -250,6 +250,7 @@ class PublishStore:
                               json=body, headers=self._h({"Content-Type": "application/json",
                                                           "Prefer": "return=minimal"}),
                               timeout=self._timeout)
+        self.last_status = r.status_code        # lets the caller tell a refusal (4xx) from a failure worth one more try (5xx)
         if r.status_code >= 300:
             logger.warning("publish request %s: status update failed (HTTP %s)", request_id, r.status_code)
             return False
@@ -989,22 +990,27 @@ def _result_fields(result) -> dict:
     }
 
 
-def _write(store, rid, worker_id: str, values: dict) -> bool:
-    """One row write: False when it raised or the store said the database refused it."""
+def _write(store, rid, worker_id: str, values: dict) -> str:
+    """One row write. "ok"; "refused" (the database said no: a 4xx, or a store that says False without a status); "error" (it
+    raised, or answered 5xx: the same write may well work a moment later)."""
     try:
-        return store.update(rid, worker_id, values) is not False
+        taken = store.update(rid, worker_id, values)
     except Exception as e:
         logger.warning("publish request %s: the row write failed (%s)", rid, type(e).__name__)
-        return False
+        return "error"
+    if taken is False:
+        status = getattr(store, "last_status", None)
+        return "error" if isinstance(status, int) and status >= 500 else "refused"
+    return "ok"
 
 
 def _record_result(store, rid, worker_id: str, result) -> str:
     """Record that the publisher returned. The post EXISTS, so the row must say so in the best way the database will take,
     never as a generic worker_error unless nothing else could be written. In order, the first accepted write wins:
 
-    1. published, with the result fields;
+    1. published, with the result fields (tried twice when the first failure was not a refusal: a 5xx or an exception);
     2. published, without them (the table refused a field);
-    3. failed / publish_unconfirmed with the id and address in the row (the write of "published" itself keeps failing);
+    3. failed / publish_unconfirmed with the id and address (the write of "published" itself keeps failing);
     4. the same without the result fields (the id stays in the error text);
     5. failed / worker_error, the old generic word.
 
@@ -1023,10 +1029,13 @@ def _record_result(store, rid, worker_id: str, result) -> str:
     chain.append(({"status": "failed", "reason": "worker_error", "error": "worker error (recording the result failed)",
                    "finished_at": now}, "failed"))
     for n, (values, outcome) in enumerate(chain):
-        if _write(store, rid, worker_id, values):
+        state = _write(store, rid, worker_id, values)
+        if state == "error" and n == 0:
+            state = _write(store, rid, worker_id, values)       # once more: a hiccup must not cost the result fields
+        if state == "ok":
             if n:
-                logger.warning("publish request %s: the result was recorded in a reduced form (step %s of %s)", rid, n + 1,
-                               len(chain))
+                logger.warning("publish request %s: the result (id %s) was recorded in a reduced form (step %s of %s)", rid,
+                               fields["result_id"], n + 1, len(chain))
             return outcome
     return "failed"
 
@@ -1094,14 +1103,14 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
         logger.info("publish request %s: %s", rid, publisher.describe())
         return "published"
     except PublishStop as stop:
-        store.update(rid, worker_id, {
+        _write(store, rid, worker_id, {
             "status": stop.status, "reason": stop.reason, "error": stop.detail or None,
             "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         })
         logger.info("publish request %s: %s (%s)", rid, stop.status, stop.reason)
         return stop.status
     except Exception as e:  # anything unforeseen: the type only
-        store.update(rid, worker_id, {
+        _write(store, rid, worker_id, {
             "status": "failed", "reason": "worker_error", "error": f"worker error ({type(e).__name__})",
             "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         })

@@ -993,6 +993,215 @@ class TheRowWriteChain(Base):
         for code, want in ((204, True), (200, True), (400, False), (409, False), (500, False)):
             store = sp.PublishStore("https://x.supabase.co", "svc", session=S(code))
             self.assertIs(store.update(1, "w", {"status": "published"}), want, code)
+            self.assertEqual(store.last_status, code)           # so a caller can tell a refusal (4xx) from a failure (5xx)
+
+
+class _TokenClient(st.SocialTokenClient):
+    def __init__(self):
+        super().__init__("https://x.supabase.co", "svc")
+        self.statuses, self.rotated = [], []
+
+    def set_status(self, account_id, status):
+        self.statuses.append((account_id, status))
+
+    def rotate(self, t):
+        self.rotated.append(t)
+
+
+class TheRefreshAskedForIdentityAndOnlyARefusalExpiresTheAccount(unittest.TestCase):
+    NOW = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
+
+    def setUp(self):
+        self.vendor = FakeVendor()
+        self.addCleanup(self.vendor.close)
+        from unittest import mock
+        p = mock.patch.object(st, "X_TOKEN_URL", self.vendor.base_url + "/2/oauth2/token")
+        p.start()
+        self.addCleanup(p.stop)
+        self.client = _TokenClient()
+
+    def go(self, resp):
+        self.vendor.on("POST", "/2/oauth2/token", resp)
+        t = tok(access_expires_at=self.NOW, refresh_token="old-refresh-0123456789")
+        return st.ensure_fresh(t, self.client, http=self.vendor.session(), env={"X_CLIENT_ID": "cid"}, now=self.NOW - timedelta(seconds=1))
+
+    GOOD = {"access_token": "new-access-0123456789", "refresh_token": "new-refresh-0123456789", "expires_in": 7200}
+
+    def test_the_request_asks_for_an_uncompressed_answer_and_a_normal_one_works(self):
+        out = self.go(Resp(200, self.GOOD))
+        self.assertEqual(out.access_token, "new-access-0123456789")
+        req = self.vendor.seen("POST", "/2/oauth2/token")[0]
+        self.assertEqual(req.headers.get("accept-encoding"), "identity")
+        self.assertNotIn("old-refresh-0123456789", req.path)
+
+    def test_a_compressed_answer_is_not_decoded_and_does_not_expire_the_account(self):
+        import gzip
+        resp = Resp(200, raw=gzip.compress(json.dumps(self.GOOD).encode()), headers={"Content-Encoding": "gzip"})
+        with self.assertRaises(st.SocialTokenError) as e:
+            self.go(resp)
+        self.assertIn("Content-Encoding gzip", str(e.exception))
+        self.assertIn("not decoded", str(e.exception))
+        self.assertNotIn("new-access", str(e.exception))
+        self.assertEqual((self.client.statuses, self.client.rotated), ([], []))
+
+    def test_odd_encoding_values_are_named_unknown(self):
+        self.assertEqual(st._content_encoding(type("R", (), {"headers": {"Content-Encoding": "gzip, br"}})()), "unknown")
+        self.assertEqual(st._content_encoding(type("R", (), {"headers": {"Content-Encoding": " GZIP "}})()), "gzip")
+        self.assertEqual(st._content_encoding(type("R", (), {"headers": {"Content-Encoding": "identity"}})()), "")
+        self.assertEqual(st._content_encoding(type("R", (), {"headers": {}})()), "")
+
+    def test_a_2xx_that_cannot_be_used_does_not_expire_the_account(self):
+        for resp in (Resp(200, {}), Resp(200, raw=b"not json"), Resp(200, {"access_token": ""}), Resp(204)):
+            self.setUp()
+            with self.assertRaises(st.SocialTokenError) as e:
+                self.go(resp)
+            self.assertIn("did not give a usable answer", str(e.exception))
+            self.assertEqual(self.client.statuses, [], resp.raw)
+            self.vendor.close()
+
+    def test_a_5xx_and_a_429_do_not_expire_the_account_either(self):
+        for code in (500, 502, 503, 429):
+            self.setUp()
+            with self.assertRaises(st.SocialTokenError):
+                self.go(Resp(code, {"error": "x"}))
+            self.assertEqual(self.client.statuses, [], code)
+            self.vendor.close()
+
+    def test_only_the_token_endpoints_own_refusal_expires_it(self):
+        for code in (400, 401, 403):
+            self.setUp()
+            with self.assertRaises(st.SocialTokenError) as e:
+                self.go(Resp(code, {"error": "invalid_grant", "error_description": "old-refresh-0123456789 is bad"}))
+            self.assertIn(f"HTTP {code}", str(e.exception))
+            self.assertNotIn("old-refresh", str(e.exception))
+            self.assertEqual(self.client.statuses, [("acc1", "expired")], code)
+            self.vendor.close()
+
+
+class LinksInAnyCase(unittest.TestCase):
+    @staticmethod
+    def stripped(text):
+        return cap._WS.sub(" ", cap._URL.sub("", text)).strip()
+
+    def test_explicit_links_go_whatever_their_case(self):
+        for link in ("Https://Example.Com/x", "HTTPS://EXAMPLE.IT/x", "Www.Example.Com/p", "Example.Com/x", "Https://Bit.Ly/x",
+                     "HTTP://example.com/x", "hTtP://a.b/c", "WWW.EXAMPLE.COM", "Bit.Ly/abc", "Example.It/x", "EXAMPLE.IT/x",
+                     "Sub.Domain.Org/path?q=1#f"):
+            self.assertEqual(self.stripped(f"see {link} now"), "see now", link)
+            self.assertEqual(self.stripped(link), "", link)
+
+    def test_nothing_of_an_explicit_link_is_left_behind(self):
+        for link in ("HTTP://example.com/x", "Https://Example.Com/x", "HTTPS://EXAMPLE.IT/x"):
+            out = self.stripped(f"go {link}")
+            self.assertNotRegex(out.lower(), r"https?:|//|example", link)
+
+    def test_the_protected_words_after_a_missing_space_survive(self):
+        for sentence in ("story.It was", "Hello.So what", "Rome.In 476", "Hello.so what", "Rome.in 476", "Rome.Com is a word",
+                         "It ended.To be fair", "Wait.Me too", "The end.Us and them", "fell.The end", "U.S. e.g. fine",
+                         "Fell.NO way", "Hi.IT is"):
+            self.assertEqual(self.stripped(sentence), sentence, sentence)
+
+    def test_the_new_zones_and_the_cyrillic_one(self):
+        for name in ("site.eu", "shop.ch", "a.se", "b.gl", "c.tk", "d.nz", "fun.lol", "x.cool", "y.network", "z.company", "q.agency",
+                     "r.london", "s.moscow", "t.tj", "u.kg", "v.az", "w.ge", "m.md", "привет.рф", "Привет.РФ", "пример.com"):
+            self.assertEqual(self.stripped(f"see {name} now"), "see now", name)
+            self.assertEqual(self.stripped(f"{name}/path"), "", name)
+
+    def test_closing_marks_after_an_ambiguous_zone(self):
+        for tail in ("?", ":8080", "#frag", "\"", "'", "»", "…", "]", "-x", ")", ".", ",", "!", ";"):
+            out = self.stripped(f"see foo.it{tail} ok")
+            self.assertNotIn("foo.it", out, tail)
+            self.assertTrue(out.startswith("see"), tail)
+        for kept in ("foo.itself", "foo.into", "bar.users", "a.tomorrow", "x.mexico", "foo.it_x", "foo.it9", "foo.it.bar", "a.me;b",
+                     "x.in,y", "see foo.it.x"):
+            self.assertEqual(self.stripped(kept), kept, kept)
+
+    def test_addresses_and_handles_are_not_cut_in_the_middle(self):
+        for kept in ("mail me@site.com", "me@site.com", "#tag.com", "@user.com", "a@b.studio", "x#y.com"):
+            self.assertEqual(self.stripped(kept), kept, kept)
+
+    def test_it_is_still_linear(self):
+        import time as _t
+        nasty = ["x.-" * 7000, "a" * 20000, "a." * 10000, "a-." * 7000, "a.b" * 7000, "-." * 10000, "w.it" * 5000,
+                 "a" * 63 + "." + "b" * 63 + "." + "c" * 63 + "." + "-" * 20000, "." * 20000, "x." * 9999 + "x", ("a" * 70 + ".") * 300,
+                 "http" + "s" * 19000, "www" + "." * 19000]
+        for text in nasty:
+            t0 = _t.monotonic()
+            cap._URL.sub("", text)
+            self.assertLess(_t.monotonic() - t0, 1.0, text[:20])
+
+
+class TheRowWriteSurvivesHiccups(Base):
+    def run_x(self, store):
+        return self.run_req(store, FakeTokens("x"), platform="x", http=x_http())
+
+    def make(self, behaviours):
+        """``behaviours``: for each call to update that carries a finished_at, 'ok' | 'raise' | '4xx' | '5xx' (then 'ok')."""
+        calls = []
+
+        class S(FakeStore):
+            last_status = None
+
+            def update(self, rid, worker_id, values):
+                if "finished_at" not in values:
+                    return super().update(rid, worker_id, values)
+                mode = behaviours[len(calls)] if len(calls) < len(behaviours) else "ok"
+                calls.append((mode, dict(values)))
+                if mode == "raise":
+                    raise ConnectionError("db down")
+                if mode in ("4xx", "5xx"):
+                    self.last_status = 400 if mode == "4xx" else 503
+                    return False
+                super().update(rid, worker_id, values)
+                self.last_status = 204
+                return True
+        st_ = S(video=self.video, http=x_http())
+        st_.calls = calls
+        return st_
+
+    def test_a_hiccup_on_the_first_write_is_tried_once_more_with_the_fields(self):
+        for mode in ("raise", "5xx"):
+            st_ = self.make([mode])
+            self.assertEqual(self.run_x(st_), "published", mode)
+            self.assertEqual([m for m, _ in st_.calls], [mode, "ok"], mode)
+            self.assertEqual(st_.final["result_id"], POST, mode)              # the fields were NOT dropped
+
+    def test_a_refusal_is_not_retried_the_fields_are_dropped_at_once(self):
+        st_ = self.make(["4xx"])
+        self.assertEqual(self.run_x(st_), "published")
+        self.assertEqual([m for m, _ in st_.calls], ["4xx", "ok"])
+        self.assertNotIn("result_id", st_.final)
+
+    def test_only_the_first_write_gets_a_second_try(self):
+        st_ = self.make(["raise", "raise", "raise", "raise", "raise", "raise", "raise"])
+        self.assertEqual(self.run_x(st_), "failed")
+        modes = [m for m, _ in st_.calls]
+        self.assertEqual(modes[:2], ["raise", "raise"])             # write 1 twice
+        self.assertEqual(len(modes), 2 + 4)                           # then writes 2, 3, 4, 5 once each ... (the last one raises too)
+
+    def test_the_reduced_form_line_carries_the_result_id(self):
+        st_ = self.make(["4xx"])
+        with self.assertLogs("modules.social_publish", level="WARNING") as logs:
+            self.run_x(st_)
+        self.assertTrue(any(f"id {POST}" in line and "reduced form" in line for line in logs.output), logs.output)
+
+    def test_a_store_that_raises_cannot_escape_process_request_on_a_refusal_or_an_unforeseen_error(self):
+        from unittest import mock
+
+        class Boom(FakeStore):
+            def update(self, rid, worker_id, values):
+                if "finished_at" in values:
+                    raise ConnectionError("db down")
+                return super().update(rid, worker_id, values)
+        http = x_http()
+        # a refusal (PublishStop): too long for X
+        out = self.run_req(Boom(video=self.video, http=http), FakeTokens("x"), platform="x", http=http,
+                           info=sp.VideoInfo(5000.0, 1080, 1920, 2048))
+        self.assertEqual(out, "refused")
+        # an unforeseen error inside the publisher
+        with mock.patch.object(sp.XPublisher, "publish", side_effect=RuntimeError("boom")):
+            out = self.run_req(Boom(video=self.video, http=http), FakeTokens("x"), platform="x", http=http)
+        self.assertEqual(out, "failed")
 
 
 class NoCompressedAnswers(Loop):
@@ -1371,7 +1580,7 @@ class XTokens(unittest.TestCase):
         with self.assertRaises(st.SocialTokenError):
             st.ensure_fresh(t, c, http=self.Http(big), env={"X_CLIENT_ID": "cid"}, now=self.NOW)
         self.assertLess(getattr(big, "sent", 0), 20)       # stopped near 64 KiB, not 80 MB
-        self.assertIn(("acc1", "expired"), c.statuses)
+        self.assertEqual(c.statuses, [])                   # an unreadable 2xx says nothing about the token
 
     def test_a_dropped_connection_is_a_plain_error_without_the_message(self):
         class Boom:

@@ -64,7 +64,7 @@ MIN_CHECK_AFTER, MAX_CHECK_AFTER = 1, 30
 PUBLISH_DEADLINE_SECONDS = 45 * 60.0
 #: The post call is given at least this long even when little of the publish's time is left: the decision to post is made, and
 #: an answer cut off by a nearly spent clock would be reported as "unconfirmed" although X had answered. It may overrun the
-#: deadline by this much, once.
+#: deadline by up to twice this (header wait plus body read), about 60 s, once.
 POST_FLOOR_SECONDS = 30.0
 #: A wall-clock limit for reading ONE answer (a server that drips a small body forever must not hold the worker).
 READ_SECONDS = 30.0
