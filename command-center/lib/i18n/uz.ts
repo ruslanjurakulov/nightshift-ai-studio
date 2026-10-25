@@ -2420,6 +2420,7 @@ export const uz: Dictionary = {
       too_small_picture: "Rad etildi: videoning tasviri Facebook Reels qabul qiladigan oʻlchamdan kichik (kamida 540 x 960 piksel).",
       permission_missing: "Xato: akkaunt joylashga ruxsat bermagan — uni qayta ulang va joylash ruxsatini bering.",
       publish_unconfirmed: "Xato: platforma postni tasdiqlamadi, shuning uchun u mavjud boʻlishi ham, boʻlmasligi ham mumkin. Qayta yuborishdan oldin akkauntni tekshiring; bu avtomatik takrorlanmaydi.",
+      published_unexpectedly: "Xato: platforma post eʼlon qilinganini bildirmoqda, holbuki u faqat qoralama sifatida saqlanishi kerak edi. Akkauntni hoziroq tekshiring.",
     },
     send: "Yuborish",
     sendN: "{n} ta akkauntga yuborish",

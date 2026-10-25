@@ -2432,6 +2432,7 @@ export const en = {
       too_small_picture: "Refused: the video's picture is smaller than Facebook Reels accepts (at least 540 by 960 pixels).",
       permission_missing: "Failed: the account has not allowed posting. Reconnect it and grant the posting permission.",
       publish_unconfirmed: "Failed: the platform did not confirm the post, so it may or may not exist. Check the account before sending again; this is never retried automatically.",
+      published_unexpectedly: "Failed: the platform reports the post as live although it was only meant to be saved as a draft. Check the account now.",
     },
     send: "Send",
     sendN: "Send to {n}",

@@ -75,11 +75,18 @@ MAX_RESUMES = 3
 MAX_API_BODY = 1024 * 1024
 UPLOAD_BLOCK = 1024 * 1024
 MAX_UNREADABLE_POLLS = 3
+#: The queue fails a row whose heartbeat is older than 30 minutes (0029 claim_publish_request) and lets another worker claim
+#: it, so a long upload must beat. Once a minute is far inside that.
+BEAT_EVERY_SECONDS = 60.0
+#: A wall-clock limit for reading ONE answer (a server that drips a small body forever must not hold the worker).
+READ_SECONDS = 30.0
+ACCEPT_IDENTITY = {"Accept-Encoding": "identity"}   # no compressed answers: a decompression bomb cannot arise
 
 #: The closed words this module adds to ``publish_requests.reason`` (sentences in en / ru / uz: command-center/lib/publish.ts).
 REASON_UNCONFIRMED = "publish_unconfirmed"
 REASON_PERMISSION = "permission_missing"
-REASONS = (REASON_UNCONFIRMED, REASON_PERMISSION, social_probe.REASON_TOO_SMALL)
+REASON_LIVE = "published_unexpectedly"
+REASONS = (REASON_UNCONFIRMED, REASON_PERMISSION, REASON_LIVE, social_probe.REASON_TOO_SMALL)
 
 _ID = re.compile(r"[0-9]{1,30}")
 _WORD = re.compile(r"[A-Za-z0-9_]{1,64}")
@@ -107,15 +114,30 @@ class _Slice:
     stops at ``end`` even when the file has grown since it was measured, so the cap holds for what is really sent. A file
     that shrank yields fewer bytes (the platform sees a short body and its status says so)."""
 
-    def __init__(self, path: Path, offset: int, end: int):
+    def __init__(self, path: Path, offset: int, end: int, *, beat: Callable[[], None] = lambda: None,
+                 clock: Callable[[], float] = time.monotonic, every: float = BEAT_EVERY_SECONDS):
         self.path, self.offset, self.end = path, offset, end
         self._fh = None
         self._left = end - offset
+        self._beat, self._clock, self._every = beat, clock, every
+        self._last = clock()
 
     def __len__(self) -> int:
         return self.end - self.offset
 
+    def _pulse(self) -> None:
+        """A long upload keeps the request's heartbeat fresh (at most once per ``every`` seconds): the queue gives a row
+        with a heartbeat older than 30 minutes to another worker. A failing heartbeat never stops the upload."""
+        now = self._clock()
+        if now - self._last >= self._every:
+            self._last = now
+            try:
+                self._beat()
+            except Exception:
+                pass
+
     def read(self, n: int = -1) -> bytes:
+        self._pulse()
         if self._left <= 0:
             self.close()
             return b""
@@ -146,8 +168,9 @@ class _Slice:
                 self._fh = None
 
 
-def _read_doc(r) -> Optional[dict]:
-    """The JSON object of an answer, read through a size cap; None when it is not one."""
+def _read_doc(r, *, clock: Callable[[], float] = time.monotonic, seconds: float = READ_SECONDS) -> Optional[dict]:
+    """The JSON object of an answer, read through a size cap and a wall-clock limit; None when it is not one."""
+    deadline = clock() + seconds
     declared = 0
     try:
         declared = int((getattr(r, "headers", None) or {}).get("Content-Length") or 0)
@@ -164,7 +187,7 @@ def _read_doc(r) -> Optional[dict]:
             buf = bytearray()
             for chunk in stream(chunk_size=65536):
                 buf += chunk
-                if len(buf) > MAX_API_BODY:
+                if len(buf) > MAX_API_BODY or clock() > deadline:
                     return None
             body = json.loads(bytes(buf).decode("utf-8")) if buf else None
     except Exception:
@@ -242,15 +265,18 @@ class FacebookReelsAdapter:
     def __init__(self, http, *, sleep: Callable[[float], None] = time.sleep,
                  heartbeat: Callable[[], None] = lambda: None, poll_seconds: float = sp.POLL_SECONDS,
                  max_wait: float = sp.MAX_WAIT_SECONDS, graph: str = GRAPH, rupload_host: str = RUPLOAD_HOST,
-                 ports: Sequence[Optional[int]] = PORTS, max_bytes: int = sp.FB_MAX_BYTES):
+                 ports: Sequence[Optional[int]] = PORTS, max_bytes: int = sp.FB_MAX_BYTES,
+                 clock: Callable[[], float] = time.monotonic, read_seconds: float = READ_SECONDS,
+                 beat_every: float = BEAT_EVERY_SECONDS):
         self.http, self.sleep, self.heartbeat = http, sleep, heartbeat
+        self.clock, self.read_seconds, self.beat_every = clock, read_seconds, beat_every
         self.poll_seconds, self.max_wait = poll_seconds, max_wait
         self.graph, self.rupload_host, self.ports, self.max_bytes = graph.rstrip("/"), rupload_host, tuple(ports), max_bytes
 
     # -- one HTTP call ------------------------------------------------------------
     @staticmethod
     def _auth(tok) -> dict:
-        return {"Authorization": f"OAuth {tok.access_token}"}
+        return {"Authorization": f"OAuth {tok.access_token}", **ACCEPT_IDENTITY}
 
     def _send(self, method: str, url: str, what: str, **kw):
         """The response, or ``_Lost`` when it did not come. No redirect is followed; a 3xx is a failure."""
@@ -268,7 +294,7 @@ class FacebookReelsAdapter:
         """A call whose success is a 2xx JSON object. A lost answer is ``_Lost``."""
         r = self._send(method, url, what, **kw)
         status = getattr(r, "status_code", 0)
-        doc = _read_doc(r)
+        doc = _read_doc(r, clock=self.clock, seconds=self.read_seconds)
         if status >= 500:
             raise _Lost(f"facebook {what}: HTTP {status}")  # the work may have been done: not a refusal
         if status >= 300:
@@ -293,10 +319,13 @@ class FacebookReelsAdapter:
         except AdapterError:
             raise sp.failed("platform_error", f"facebook start: the upload address is not on {self.rupload_host}; "
                                               "the token was not sent to it") from None
-        path = urlsplit(url).path
-        if not (path.startswith("/video-upload/") and path.rstrip("/").endswith("/" + video_id)):
-            raise sp.failed("platform_error", "facebook start: the upload address does not name the video; "
-                                              "the token was not sent to it")
+        parts = urlsplit(url)
+        # checked_polling_url accepts a subdomain of the host and an empty "user@"; the token goes to exactly this host,
+        # to exactly this video's upload path, with no query or fragment (the page shows none).
+        if (parts.hostname != self.rupload_host.lower() or "@" in parts.netloc or parts.query or parts.fragment
+                or not re.fullmatch(r"/video-upload/(?:v[0-9.]+/)?" + video_id + r"/?", parts.path)):
+            raise sp.failed("platform_error", "facebook start: the upload address does not name this video on "
+                                              f"{self.rupload_host}; the token was not sent to it")
         return video_id, url
 
     def _status(self, tok, video_id: str, what: str) -> Optional[dict]:
@@ -311,11 +340,12 @@ class FacebookReelsAdapter:
         headers = {**self._auth(tok), "offset": str(offset), "file_size": str(size),
                    "Content-Type": "application/octet-stream"}
         try:
-            r = self._send("post", url, "upload", headers=headers, data=_Slice(path, offset, size), timeout=600)
+            r = self._send("post", url, "upload", headers=headers, data=_Slice(path, offset, size, beat=self.heartbeat, clock=self.clock,
+                                                                           every=self.beat_every), timeout=600)
         except _Lost:
             return False
         status = getattr(r, "status_code", 0)
-        doc = _read_doc(r)
+        doc = _read_doc(r, clock=self.clock, seconds=self.read_seconds)
         if 400 <= status < 500:
             dbg = doc.get("debug_info") if isinstance(doc, dict) else None
             kind = dbg.get("type") if isinstance(dbg, dict) else None
@@ -346,6 +376,7 @@ class FacebookReelsAdapter:
 
     def _wait_ready(self, tok, video_id: str) -> None:
         waited, unreadable = 0.0, 0
+        started = self.clock()
         while True:
             try:
                 st = self._status(tok, video_id, "status")
@@ -363,8 +394,9 @@ class FacebookReelsAdapter:
                 unreadable += 1
                 if unreadable >= MAX_UNREADABLE_POLLS:
                     raise sp.failed("platform_error", "facebook status: no usable status in the answers")
-            if waited >= self.max_wait:
-                raise sp.failed("timeout", f"facebook still processing after {int(waited)}s")
+            if waited >= self.max_wait or self.clock() - started >= self.max_wait:
+                # ``waited`` counts the pauses; the clock also counts the time the answers themselves took.
+                raise sp.failed("timeout", f"facebook still processing after {int(max(waited, self.clock() - started))}s")
             self.heartbeat()
             self.sleep(self.poll_seconds)
             waited += max(self.poll_seconds, 1.0)   # a zero poll interval must still end at max_wait
@@ -390,15 +422,21 @@ class FacebookReelsAdapter:
             st = None
         phase = st.get("publishing_phase") if isinstance(st, dict) else None
         published = phase.get("publish_status") if isinstance(phase, dict) else None
-        if published in ("draft", "scheduled", "published"):
-            return {"result_id": video_id, "result_url": None, "privacy": published.upper()}
+        want = FB_VIDEO_STATE.lower()
+        if published == want:
+            return {"result_id": video_id, "result_url": None, "privacy": want.upper()}
+        if want == "draft" and published in ("published", "scheduled"):
+            # We asked for a draft and Meta says the Reel is (or will be) live. Not a success and not a plain failure:
+            # a person has to look at the Page now, and nothing here sends or retries anything.
+            raise sp.failed(REASON_LIVE, f"Meta reports video {video_id} as {published.upper()} although a DRAFT was "
+                                         "requested - it may be live on the Page; check it now")
         if published == "error" or (isinstance(phase, dict) and phase.get("status") == "error"):
             raise sp.failed("platform_error", "facebook publish: Meta reports the publishing step as an error")
-        if not lost:
-            # Meta said success and the read-back could not confirm the state: recorded as it is, privacy unknown.
-            return {"result_id": video_id, "result_url": None, "privacy": None}
-        raise sp.failed(REASON_UNCONFIRMED, f"{lost}; it is not known whether video {video_id} was saved on the Page "
-                                            "- check the Page's drafts before sending again")
+        # A clean "success" whose state cannot be read back is not a success we can record: DRAFT is a claim about
+        # privacy, and an unread state is an unknown (CLAUDE.md #5).
+        raise sp.failed(REASON_UNCONFIRMED, f"{lost or 'facebook publish: Meta said success but the state could not be read'}"
+                                            f"; it is not known whether video {video_id} was saved on the Page as a "
+                                            "draft - check the Page's drafts before sending again")
 
     # -- the whole thing ----------------------------------------------------------------
     def publish(self, tok: social_tokens.SocialToken, path: Path, caption: str, ai_generated: bool = False) -> dict:

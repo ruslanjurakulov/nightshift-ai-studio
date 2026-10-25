@@ -876,16 +876,13 @@ class FacebookPublisher(_SocialAccountPublisher):
     module can import this one)."""
 
     platform = "facebook"
-    #: Test seam only (loopback hosts). Production leaves it empty: the hosts are fixed in social_facebook.
-    adapter_kwargs: Mapping = {}
-
     def publish(self, path: Path, post: publishers.PostSpec) -> Mapping:
         from modules import social_facebook  # noqa: PLC0415 - social_facebook imports this module
 
         ctx = self.ctx
         # PostSpec.ai_generated -> the finish call's ``is_ai_generated`` (sent only when true).
         return social_facebook.FacebookReelsAdapter(
-            ctx.http, sleep=ctx.sleep, heartbeat=ctx.heartbeat, **dict(self.adapter_kwargs)).publish(
+            ctx.http, sleep=ctx.sleep, heartbeat=ctx.heartbeat).publish(
             self.tok, path, post.caption, ai_generated=post.ai_generated)
 
     def describe(self) -> str:

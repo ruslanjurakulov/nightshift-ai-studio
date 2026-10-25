@@ -195,10 +195,33 @@ class HappyPath(Loop):
     def test_the_state_is_the_constant_draft_and_never_published(self):
         self.assertEqual(fbk.FB_VIDEO_STATE, "DRAFT")
 
-    def test_a_clean_2xx_whose_read_back_is_unreadable_records_privacy_unknown_not_a_guess(self):
-        meta = FakeMeta(self.vendor, readback=[Resp(200, {"status": "odd"})])
-        out = self.go(meta)
-        self.assertEqual((out["result_id"], out["privacy"]), (VID, None))
+    def test_a_clean_2xx_whose_read_back_cannot_confirm_the_draft_is_unconfirmed_not_published(self):
+        for readback in ([Resp(200, {"status": "odd"})], [status("ready")], [Resp(500, {})], [Resp(200, raw=b"x")],
+                         [status("ready", publish="odd")], [status("ready", phase="not_started", publish="published ")]):
+            self.setUp()
+            meta = FakeMeta(self.vendor, readback=readback)
+            e = self.stops(meta)
+            self.assertEqual((e.status, e.reason), ("failed", fbk.REASON_UNCONFIRMED), readback[0].raw)
+            self.assertIn("Meta said success", e.detail)
+            self.assertEqual(len(meta.finishes()), 1)
+            self.vendor.close(), self.evil.close()
+
+    def test_a_read_back_that_says_live_when_a_draft_was_asked_for_is_loud_and_distinct(self):
+        for state in ("published", "scheduled"):
+            for finish in (Resp(200, {"success": True}), Resp(drop=True)):
+                self.setUp()
+                meta = FakeMeta(self.vendor, finish=finish, readback=[status("ready", publish=state)])
+                e = self.stops(meta)
+                self.assertEqual((e.status, e.reason), ("failed", fbk.REASON_LIVE), state)
+                self.assertIn(state.upper(), e.detail)
+                self.assertIn(VID, e.detail)
+                self.assertIn("check it now", e.detail)
+                self.assertEqual(len(meta.finishes()), 1)
+                self.vendor.close(), self.evil.close()
+
+    def test_draft_read_back_is_the_only_success(self):
+        out = self.go(FakeMeta(self.vendor, readback=[status("ready", publish="draft")]))
+        self.assertEqual(out["privacy"], "DRAFT")
 
     def test_the_wait_for_ready_polls_through_uploading_and_processing(self):
         meta = FakeMeta(self.vendor, statuses=[status("uploading"), status("upload_complete"), status("processing"),
@@ -241,9 +264,9 @@ class LostAnswerAfterFinish(Loop):
         for resp in (Resp(200, {"success": False}), Resp(200, ["success"]), Resp(200, raw=b"<html>"),
                      Resp(200, {})):
             self.setUp()
-            out, err, _ = self.case(resp, [status("ready", publish="published")])
+            out, err, _ = self.case(resp, [status("ready", publish="draft")])
             self.assertIsNone(err, resp.raw)
-            self.assertEqual(out["privacy"], "PUBLISHED")
+            self.assertEqual(out["privacy"], "DRAFT")
             self.vendor.close(), self.evil.close()
 
     def test_read_back_that_shows_nothing_published_is_unconfirmed_and_never_retried(self):
@@ -398,6 +421,12 @@ class TokenOnlyToTheFixedHosts(Loop):
             f"{self.vendor.base_url}/other/{vid}",                                # the right host, not an upload path
             f"{self.vendor.base_url}/video-upload/99999",                         # an upload for another video
             f"{self.vendor.base_url}/video-upload/{vid}x",
+            f"https://@localhost:{self.vendor.port}/video-upload/{vid}",          # an empty userinfo
+            f"{self.vendor.base_url}/video-upload/{vid}?x=1",                    # a query
+            f"{self.vendor.base_url}/video-upload/{vid}#frag",
+            f"https://up.localhost:{self.vendor.port}/video-upload/{vid}",        # a subdomain of the host
+            f"{self.vendor.base_url}/video-upload/v26.0/{vid}/x",
+            f"{self.vendor.base_url}/video-upload//{vid}",
             "", None, 5, ["https://x"], {"u": 1},
         ]
 
@@ -416,12 +445,15 @@ class TokenOnlyToTheFixedHosts(Loop):
             self.assertEqual(len(self.vendor.requests), 1, repr(url))
             self.vendor.close(), self.evil.close()
 
-    def test_the_vendors_own_good_address_does_pass_the_same_check(self):
-        """The negative cases above are only worth something if the positive one works on the same servers."""
-        meta = FakeMeta(self.vendor, start=Resp(200, {"video_id": VID,
-                                                     "upload_url": f"https://localhost:{self.vendor.port}/video-upload/{VID}"}))
-        self.assertEqual(self.go(meta)["result_id"], VID)
-        self.assertEqual(len(meta.uploads()), 1)
+    def test_the_vendors_own_good_addresses_do_pass_the_same_check(self):
+        """The negative cases above are only worth something if the positive ones work on the same servers."""
+        for tail in (f"/video-upload/{VID}", f"/video-upload/{VID}/", f"/video-upload/v26.0/{VID}"):
+            self.setUp()
+            meta = FakeMeta(self.vendor, start=Resp(200, {"video_id": VID,
+                                                         "upload_url": f"https://localhost:{self.vendor.port}{tail}"}))
+            self.assertEqual(self.go(meta)["result_id"], VID, tail)
+            self.assertEqual(len(meta.uploads()), 1, tail)
+            self.vendor.close(), self.evil.close()
 
     def test_the_production_hosts_are_the_official_ones_and_a_lookalike_is_refused(self):
         http = FakeHTTP({("POST", fbk.GRAPH): [FakeResp(200, {"video_id": VID,
@@ -556,6 +588,87 @@ class HostileAnswers(Loop):
         self.assert_clean(e.exception)
         self.assertIn("nothing was posted", e.exception.detail)
         self.assertIn("ConnectionError", e.exception.detail)
+
+
+class StepClock:
+    """A clock that moves ``step`` seconds every time it is read."""
+
+    def __init__(self, step):
+        self.now, self.step = 0.0, step
+
+    def __call__(self):
+        self.now += self.step
+        return self.now
+
+
+class LongUploadsKeepTheRowAlive(Loop):
+    """The queue gives a row whose heartbeat is older than 30 minutes (0029) to another worker, which would upload and
+    post the same video again while this one went on. A slow upload must beat while the bytes are sent."""
+
+    def test_the_slice_beats_at_most_once_per_interval_while_it_is_read(self):
+        beats, clock = [], StepClock(30.0)
+        sl = fbk._Slice(self.path, 0, len(self.data), beat=lambda: beats.append(1), clock=clock, every=60.0)
+        got = b"".join(iter(lambda: sl.read(256), b""))
+        self.assertEqual(got, self.data)
+        reads = len(self.data) // 256 + 1
+        self.assertGreaterEqual(len(beats), reads // 2 - 1)
+        self.assertLessEqual(len(beats), reads // 2 + 1)        # every second read at 30 s a read, never every read
+
+    def test_a_fast_upload_does_not_beat_at_all(self):
+        beats = []
+        sl = fbk._Slice(self.path, 0, len(self.data), beat=lambda: beats.append(1), clock=StepClock(0.001), every=60.0)
+        b"".join(iter(lambda: sl.read(256), b""))
+        self.assertEqual(beats, [])
+
+    def test_a_failing_heartbeat_never_stops_the_upload(self):
+        def boom():
+            raise RuntimeError("store down")
+        sl = fbk._Slice(self.path, 0, len(self.data), beat=boom, clock=StepClock(100.0), every=60.0)
+        self.assertEqual(b"".join(iter(lambda: sl.read(256), b"")), self.data)
+
+    def test_the_real_upload_beats_while_the_bytes_go_not_only_after_a_failure(self):
+        beats = []
+        meta = FakeMeta(self.vendor)
+        a = self.adapter(clock=StepClock(61.0), heartbeat=lambda: beats.append(len(self.vendor.requests)),
+                         max_wait=10 ** 9, read_seconds=10 ** 9)
+        a.publish(tok(), self.path, "c")
+        # the upload request is logged by the fake only after its whole body arrived: a beat made while only the START
+        # request is logged was made during the upload
+        self.assertIn(1, beats)
+        self.assertEqual(len(meta.finishes()), 1)
+
+    def test_the_default_interval_is_a_minute_far_inside_the_30_minute_limit(self):
+        self.assertEqual(fbk.BEAT_EVERY_SECONDS, 60.0)
+        self.assertEqual(fbk.FacebookReelsAdapter(None).beat_every, 60.0)
+
+
+class WallClockLimits(Loop):
+    def test_an_answer_that_drips_forever_is_cut_by_the_wall_clock_not_only_by_size(self):
+        slow = Resp(200, chunks=iter([b'{"video_id": "', b"1" * 10, b'"}']))
+        meta = FakeMeta(self.vendor, start=slow)
+        e = self.stops(meta, clock=StepClock(50.0), read_seconds=30.0)
+        self.assertEqual(e.reason, "upload_failed")
+        self.assertEqual(meta.uploads(), [])
+
+    def test_the_same_answer_is_read_when_the_clock_is_calm(self):
+        meta = FakeMeta(self.vendor, start=Resp(200, chunks=iter([b'{"video_id": "', VID.encode(), b'", "upload_url": "',
+                                                                  f"{self.vendor.base_url}/video-upload/{VID}".encode(), b'"}'])))
+        self.assertEqual(self.go(meta)["result_id"], VID)
+
+    def test_the_wait_for_ready_has_a_total_wall_clock_deadline_too(self):
+        meta = FakeMeta(self.vendor, statuses=[status("processing")])
+        e = self.stops(meta, clock=StepClock(600.0), max_wait=1000.0, poll_seconds=0.0, read_seconds=10 ** 9)
+        self.assertEqual(e.reason, "timeout")
+        self.assertLessEqual(len(self.vendor.seen("GET", f"{V}/{VID}")), 3)   # the pause counter alone would allow 1000
+        self.assertEqual(meta.finishes(), [])
+
+
+class NoCompressedAnswers(Loop):
+    def test_every_request_asks_for_an_uncompressed_answer(self):
+        meta = FakeMeta(self.vendor)
+        self.go(meta)
+        for r in self.vendor.requests:
+            self.assertEqual(r.headers.get("accept-encoding"), "identity", r.path)
 
 
 class ErrorWords(unittest.TestCase):
@@ -732,6 +845,39 @@ class FacebookCaption(unittest.TestCase):
         self.assertTrue(cap.caption_for("instagram", self.META))
         with self.assertRaises(ValueError):
             cap.caption_for("x", self.META)
+
+
+class ControlCharactersAreRemoved(unittest.TestCase):
+    """A NUL / ESC / BEL, a bidirectional override or a zero-width space in a title or description (or in the AI line)
+    must not reach any platform: they can reverse the text around them or break a request. Newlines, tabs-as-spaces and the
+    joiners real scripts need stay."""
+
+    BAD = "\x00\x07\x1b\x7f\x85\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\u200b"
+
+    def meta(self):
+        return cap.SourceMeta(title=f"Rome{self.BAD} falls", description=f"First{self.BAD}.\n\nSecond\u200c line{self.BAD}",
+                              tags=("history",))
+
+    def test_every_platforms_caption_is_free_of_them(self):
+        for platform in ("facebook", "instagram", "tiktok"):
+            text = cap.caption_for(platform, self.meta(), disclosure=f"AI{self.BAD} line.")
+            for ch in self.BAD:
+                self.assertNotIn(ch, text, (platform, hex(ord(ch))))
+            self.assertIn("Rome falls", text)
+            self.assertIn("AI line.", text)
+        yt = cap.youtube_metadata(self.meta(), disclosure=f"AI{self.BAD} line.")
+        for ch in self.BAD:
+            self.assertNotIn(ch, yt.title + yt.description)
+
+    def test_what_real_text_needs_is_kept(self):
+        text = cap.caption_for("facebook", self.meta())
+        self.assertIn("Second\u200c line", text)      # a zero-width non-joiner is part of some scripts
+        self.assertIn("\n\n", text)                   # paragraphs
+        self.assertEqual(cap._clean("a\tb\r\nc"), "a b\nc")
+
+    def test_clean_text_is_unchanged(self):
+        meta = cap.SourceMeta(title="Plain title", description="Plain words.", tags=("history",))
+        self.assertEqual(cap.caption_for("facebook", meta), "Plain title\n\nPlain words.\n\n#history")
 
 
 class FacebookTokens(unittest.TestCase):

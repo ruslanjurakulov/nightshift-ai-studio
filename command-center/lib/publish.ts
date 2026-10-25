@@ -190,6 +190,7 @@ export const PUBLISH_REASONS = [
   "too_small_picture",
   "permission_missing",
   "publish_unconfirmed",
+  "published_unexpectedly",
 ] as const;
 export type PublishReason = (typeof PUBLISH_REASONS)[number];
 

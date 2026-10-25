@@ -77,11 +77,16 @@ def utf16_len(text: str) -> int:
     return len(text.encode("utf-16-le")) // 2
 
 
+#: Characters that never belong in a post: C0 controls other than newline / tab (NUL, BEL, ESC ...), DEL, C1 controls, the
+#: bidirectional embedding / override / isolate controls (they can reverse the text around them) and the zero-width space.
+_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069\u200b]")
+
+
 def _clean(text: str) -> str:
     """Normalise whitespace; drop chapter/timestamp lines (they mean nothing
-    outside YouTube); keep paragraphs."""
+    outside YouTube); keep paragraphs. Control and bidi-override characters are removed."""
     lines = []
-    for line in (text or "").replace("\r\n", "\n").split("\n"):
+    for line in _CONTROLS.sub("", text or "").replace("\r\n", "\n").split("\n"):
         if _TIMESTAMP_LINE.match(line):
             continue
         lines.append(_WS.sub(" ", line).strip())
@@ -288,7 +293,7 @@ def facebook_caption(meta: SourceMeta, *, max_hashtags: int = FB_HASHTAGS_DEFAUL
 def _plain_line(text: str) -> str:
     """The disclosure line as one clean line (no hashtags or @-mentions are
     added or counted by it)."""
-    return _WS.sub(" ", (text or "").replace("\r", " ").replace("\n", " ")).strip()
+    return _WS.sub(" ", _CONTROLS.sub("", text or "").replace("\r", " ").replace("\n", " ")).strip()
 
 
 def caption_for(platform: str, meta: SourceMeta, *, disclosure: str = "") -> str:
