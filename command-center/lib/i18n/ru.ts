@@ -19,6 +19,7 @@ import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
 import { overlayRu } from "./overlay/ru";
 import { shapesRu } from "./shapes/ru";
+import { exportPresetRu } from "./editor-presets/ru";
 import { looksRu } from "./editor-looks/ru";
 import { fxRu } from "./editor-fx/ru";
 import { captionStylesRu } from "./caption-styles/ru";
@@ -5099,6 +5100,8 @@ export const ru: Dictionary = {
     overlay: overlayRu,
     /** Shapes and stickers: ./shapes/ru.ts. */
     shapes: shapesRu,
+    /** Export format picker: ./editor-presets/ru.ts. */
+    exportPreset: exportPresetRu,
     /** Cross-fade styles and text looks: ./editor-looks/ru.ts. */
     looks: looksRu,
     fx: fxRu,

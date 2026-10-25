@@ -130,6 +130,50 @@ describe("the landing page's reasons to stay", () => {
     expect(section.textContent).toContain(`Your ${WELCOME_CREDITS} free credits cover about 1 min`);
   });
 
+  it("itemises the quote on a slip whose every line follows the slider: hold is the quote, charge at most the quote, the rest returns", () => {
+    const { container } = landing(PRICED);
+    const section = container.querySelector("#pricing") as HTMLElement;
+    const slider = within(section).getByRole("slider");
+    const ledger = dictionaries.en.site.pricingTeaser.ledger;
+    const slip = () => [...section.querySelectorAll(".nx-slip dl > div")].map((d) => [d.querySelector("dt")?.firstChild?.textContent, d.querySelector("dd")?.textContent, d.querySelector("dt span")?.textContent ?? null]);
+    // 5 min at 60 a minute: the length times the rate is the quote, and the hold is the same number.
+    expect(slip()).toEqual([
+      [ledger[0].word, "300 credits", "5 min × 60 credits a minute"],
+      [ledger[1].word, "300 credits", ledger[1].body],
+      [ledger[2].word, "At most 300 credits", ledger[2].body],
+      [ledger[3].word, dictionaries.en.site.calc.rest, ledger[3].body],
+    ]);
+    fireEvent.change(slider, { target: { value: "20" } });
+    expect(slip().map((l) => l[1])).toEqual(["1,200 credits", "1,200 credits", "At most 1,200 credits", dictionaries.en.site.calc.rest]);
+    // Below the smallest quote the line says the minimum rule, not a product that is not the figure.
+    const floored = landing({ ...PRICED, site: { perMinute: 60, minimum: 100, usd: null } });
+    const f = floored.container.querySelector("#pricing") as HTMLElement;
+    expect(f.querySelector(".nx-slip dl > div dt span")?.textContent).toBe("5 min × 60 credits a minute");
+    fireEvent.change(within(f).getByRole("slider"), { target: { value: "1" } });
+    expect(f.querySelector(".nx-slip output")?.textContent).toBe("100 credits");
+    expect(f.querySelector(".nx-slip dl > div dt span")?.textContent).toBe("No run is quoted below 100 credits.");
+  });
+
+  it("lists the plans as rows: the welcome grant first from its constant, minutes only from a published rate, an unpriced plan says so", () => {
+    const t = dictionaries.en;
+    const teaser = { kind: "plans" as const, plans: [{ id: "a", name: "Plus", credits: 2000, price: "$19" }, { id: "b", name: "Pro", credits: 6000, price: null }] };
+    const render1 = (anchor: MoneyAnchor) => render(<Landing t={t} locale="en" pricing={teaser} anchor={anchor} showcase={[]} />);
+    const priced = render1(PRICED);
+    const rows = [...priced.container.querySelectorAll("#pricing .nx-plans-list li")];
+    expect(rows.map((r) => r.querySelector(".nx-rows-name")?.textContent)).toEqual([t.site.anchor.freeLabel, "Plus", "Pro"]);
+    expect(rows[0].textContent).toContain(`${WELCOME_CREDITS} credits, once. No card.`);
+    expect(rows[1].querySelector(".nx-rows-fig")?.textContent).toContain("$19");
+    // 2,000 credits at 60 a minute: 33 whole minutes, said with the page's own "at the current per-minute rate" caveat.
+    expect(rows[1].textContent).toContain("≈ 33 min of finished video a month");
+    expect(rows[2].querySelector(".nx-rows-pending")?.textContent).toBe(t.site.pricingTeaser.atCheckout);
+    expect(priced.container.textContent).toContain(t.pricing.noYearly);
+    priced.unmount();
+    // No published rate: no slip, no minutes.
+    const bare = render1(NO_MONEY);
+    expect(bare.container.querySelector(".nx-slip")).toBeNull();
+    expect(bare.container.querySelector("#pricing")?.textContent).not.toContain("min of finished video a month");
+  });
+
   it("opens already filled with the first sample topic's plan (never an empty placeholder), then plays your own topic out, labelled as an example", () => {
     vi.useFakeTimers();
     const t = dictionaries.en.site.try;
