@@ -174,7 +174,7 @@ class RedirectTests(Rig):
         from modules.capabilities import ADAPTERS as ALL
 
         self.assertEqual(sorted(k for k, c in ALL.items() if not c.follow_redirects),
-                         ["image.bfl", "image.bfl3", "video.bfl"])
+                         ["image.bfl", "image.bfl3", "image.gemini_interactions", "video.bfl", "video.gemini_omni"])
 
 
 if __name__ == "__main__":
