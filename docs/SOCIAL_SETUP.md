@@ -216,7 +216,10 @@ xabarlarda ko'rinmaydi.
      metama'lumotidan). Kanal ACTIVE va ulangan bo'lishi kerak; token render
      paytidagidek olinadi (Vault ulanishi yoki `CHRONOS_YT_TOKEN_<REF>`,
      standart kanal uchun `YOUTUBE_TOKEN_JSON`). YouTube API kvotasi
-     tugasa — `quota_exceeded` (har yuklash ~1600 birlik, kuniga 10 000).
+     tugasa — `quota_exceeded`. Eski «har yuklash ~1600 birlik, kuniga
+     10 000» raqami eskirgan (YouTube API o'zgarishlar tarixi, 2025-12-04 va
+     2026-06-01 yozuvlari); joriy qiymat **TEKSHIRILMAGAN** — Google Cloud
+     Console → Quotas sahifasida tasdiqlang.
    - TikTok'ga har doim **SELF_ONLY (shaxsiy)** joylanadi. Audit'dan o'tmagan
      ilova uchun TikTok postni faqat **shaxsiy (private) TikTok akkauntdan**
      qabul qiladi; akkaunt ochiq bo'lsa, so'rov `tiktok_unaudited` sababi
@@ -232,10 +235,12 @@ xabarlarda ko'rinmaydi.
      kadr chastotasi, o'lcham, indeks boshida ekani) va platforma rad
      etadigan faylni darhol "RAD ETILDI" qiladi (`bad_codec`, `bad_audio`,
      `bad_framerate`, `too_wide`, `bad_resolution`, `not_faststart`,
-     `unreadable_video`). Fayl qayta kodlanmaydi. Diqqat: render fayli hozircha
-     `moov` indeksini oxirida yozadi, shuning uchun Instagram'ga barcha
-     postlar `not_faststart` bilan rad etiladi, to'g'rilanmaguncha
-     (`docs/AI_DISCLOSURE.md`, "Known consequence").
+     `unreadable_video`). Fayl qayta kodlanmaydi. Diqqat: `moov` indeksi
+     boshida bo'lmagan master Instagram'ga `not_faststart` bilan rad etiladi.
+     Yangi masterlar indeksni boshida yozadi; faqat #555 dan oldin render
+     qilingan videolar (va shu o'zgarishgacha ffmpeg/sahna backend'i)
+     rad etiladi, ular joyida o'zgartirilmaydi (`docs/AI_DISCLOSURE.md`,
+     "Which masters have `moov` first").
    - Kredit yechilmaydi (platformalarga yuklash bepul).
 5. Cheklovlar:
    - Worker to'liq sifatli (master) faylni o'z diskida (`output/`) topishi

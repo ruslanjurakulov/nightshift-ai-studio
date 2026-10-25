@@ -221,7 +221,8 @@ def _render_ffmpeg(spec: RenderSpec) -> Path:
     """Run the ffmpeg backend and insist on a real file at the end."""
     from modules import render_backend
 
-    out = Path(render_backend.render(spec))
+    # faststart: this IS the pipeline's master, and Instagram refuses a master whose index is at the end.
+    out = Path(render_backend.render(spec, faststart=True))
     if not out.exists() or out.stat().st_size <= 0:
         raise render_backend.RenderBackendError(f"ffmpeg backend produced no output at {out}")
     return out

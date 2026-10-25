@@ -369,10 +369,13 @@ usable produces no Short rather than a guessed one.
 
 ## Cost, and why it is off by default
 
-**A Short is a second `videos.insert`: about 1,600 more quota units out of the
-10,000 a day.** Publishing one every day roughly halves how many long videos the
-same Google Cloud project can carry. So Shorts are opt-in per channel, and only
-an explicit `true` turns them on:
+**A Short is a second `videos.insert`, and every `videos.insert` spends YouTube
+API quota.** The old figure written here (about 1,600 units out of 10,000 a
+day) is outdated per YouTube's API revision history (entries dated 2025-12-04
+and 2026-06-01); the current cost is UNVERIFIED and must be confirmed in Google
+Cloud Console → Quotas. Until then, assume a daily Short is not free for the
+same Google Cloud project. So Shorts are opt-in per channel, and only an
+explicit `true` turns them on:
 
 ```json
 { "shorts": { "enabled": true, "max_seconds": 45 } }

@@ -1,0 +1,4002 @@
+{
+ "ig_account_missing": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "account_not_connected",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "account_not_connected",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "ig_account_platform_changed": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "the account's platform changed",
+      "finished_at": "<ts>",
+      "reason": "account_not_connected",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": "the account's platform changed",
+    "finished_at": "<ts>",
+    "reason": "account_not_connected",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "ig_container_rejected_token": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.stage",
+    [
+     "final.mp4",
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.sign",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.unstage",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "instagram create container: HTTP 400, code 190",
+      "finished_at": "<ts>",
+      "reason": "token_expired",
+      "status": "failed"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://graph.instagram.com/v23.0/17841400000/media",
+    {
+     "data": {
+      "access_token": "<access-token>",
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "is_ai_generated": "true",
+      "media_type": "REELS",
+      "share_to_feed": "true",
+      "video_url": "https://x.supabase.co/storage/v1/object/sign/publish-staging/org/7.mp4?token=signed"
+     },
+     "timeout": 60
+    }
+   ]
+  ],
+  "outcome": "failed",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "error": "instagram create container: HTTP 400, code 190",
+    "finished_at": "<ts>",
+    "reason": "token_expired",
+    "status": "failed"
+   }
+  ],
+  "staged": [
+   "org/7.mp4"
+  ],
+  "unstaged": [
+   "org/7.mp4"
+  ]
+ },
+ "ig_gate_refusal": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "not_approved",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "not_approved",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "ig_in_progress_then_finished": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.stage",
+    [
+     "final.mp4",
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.sign",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "heartbeat_at": "<ts>"
+     }
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    10.0
+   ],
+   [
+    "store.unstage",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "privacy": null,
+      "reason": null,
+      "result_id": "M2",
+      "result_url": null,
+      "status": "published"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://graph.instagram.com/v23.0/17841400000/media",
+    {
+     "data": {
+      "access_token": "<access-token>",
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "is_ai_generated": "true",
+      "media_type": "REELS",
+      "share_to_feed": "true",
+      "video_url": "https://x.supabase.co/storage/v1/object/sign/publish-staging/org/7.mp4?token=signed"
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "GET",
+    "https://graph.instagram.com/v23.0/C2",
+    {
+     "params": {
+      "access_token": "<access-token>",
+      "fields": "status_code"
+     },
+     "timeout": 30
+    }
+   ],
+   [
+    "GET",
+    "https://graph.instagram.com/v23.0/C2",
+    {
+     "params": {
+      "access_token": "<access-token>",
+      "fields": "status_code"
+     },
+     "timeout": 30
+    }
+   ],
+   [
+    "POST",
+    "https://graph.instagram.com/v23.0/17841400000/media_publish",
+    {
+     "data": {
+      "access_token": "<access-token>",
+      "creation_id": "C2"
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "GET",
+    "https://graph.instagram.com/v23.0/M2",
+    {
+     "params": {
+      "access_token": "<access-token>",
+      "fields": "permalink"
+     },
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "published",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "heartbeat_at": "<ts>"
+   },
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "privacy": null,
+    "reason": null,
+    "result_id": "M2",
+    "result_url": null,
+    "status": "published"
+   }
+  ],
+  "staged": [
+   "org/7.mp4"
+  ],
+  "unstaged": [
+   "org/7.mp4"
+  ]
+ },
+ "ig_master_missing": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "the full-quality render is not on this worker (only the 480p review copy is kept); re-run the video on the queue worker to post it",
+      "finished_at": "<ts>",
+      "reason": "master_not_available",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": "the full-quality render is not on this worker (only the 480p review copy is kept); re-run the video on the queue worker to post it",
+    "finished_at": "<ts>",
+    "reason": "master_not_available",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "ig_not_faststart": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "the file's index (moov) is at the end; Instagram needs it at the front. Re-save the video with the index first, then send again",
+      "finished_at": "<ts>",
+      "reason": "not_faststart",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": "the file's index (moov) is at the end; Instagram needs it at the front. Re-save the video with the index first, then send again",
+    "finished_at": "<ts>",
+    "reason": "not_faststart",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "ig_processing_error": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.stage",
+    [
+     "final.mp4",
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.sign",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.unstage",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "instagram processing ended with ERROR",
+      "finished_at": "<ts>",
+      "reason": "processing_failed",
+      "status": "failed"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://graph.instagram.com/v23.0/17841400000/media",
+    {
+     "data": {
+      "access_token": "<access-token>",
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "is_ai_generated": "true",
+      "media_type": "REELS",
+      "share_to_feed": "true",
+      "video_url": "https://x.supabase.co/storage/v1/object/sign/publish-staging/org/7.mp4?token=signed"
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "GET",
+    "https://graph.instagram.com/v23.0/C3",
+    {
+     "params": {
+      "access_token": "<access-token>",
+      "fields": "status_code"
+     },
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "failed",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "error": "instagram processing ended with ERROR",
+    "finished_at": "<ts>",
+    "reason": "processing_failed",
+    "status": "failed"
+   }
+  ],
+  "staged": [
+   "org/7.mp4"
+  ],
+  "unstaged": [
+   "org/7.mp4"
+  ]
+ },
+ "ig_published_clean": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.stage",
+    [
+     "final.mp4",
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.sign",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.unstage",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "privacy": null,
+      "reason": null,
+      "result_id": "MEDIA1",
+      "result_url": "https://www.instagram.com/reel/abc/",
+      "status": "published"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://graph.instagram.com/v23.0/17841400000/media",
+    {
+     "data": {
+      "access_token": "<access-token>",
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\n#AncientRome #history",
+      "media_type": "REELS",
+      "share_to_feed": "true",
+      "video_url": "https://x.supabase.co/storage/v1/object/sign/publish-staging/org/7.mp4?token=signed"
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "GET",
+    "https://graph.instagram.com/v23.0/CONT1",
+    {
+     "params": {
+      "access_token": "<access-token>",
+      "fields": "status_code"
+     },
+     "timeout": 30
+    }
+   ],
+   [
+    "POST",
+    "https://graph.instagram.com/v23.0/17841400000/media_publish",
+    {
+     "data": {
+      "access_token": "<access-token>",
+      "creation_id": "CONT1"
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "GET",
+    "https://graph.instagram.com/v23.0/MEDIA1",
+    {
+     "params": {
+      "access_token": "<access-token>",
+      "fields": "permalink"
+     },
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "published",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "privacy": null,
+    "reason": null,
+    "result_id": "MEDIA1",
+    "result_url": "https://www.instagram.com/reel/abc/",
+    "status": "published"
+   }
+  ],
+  "staged": [
+   "org/7.mp4"
+  ],
+  "unstaged": [
+   "org/7.mp4"
+  ]
+ },
+ "ig_published_labelled": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.stage",
+    [
+     "final.mp4",
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.sign",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.unstage",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "privacy": null,
+      "reason": null,
+      "result_id": "MEDIA1",
+      "result_url": "https://www.instagram.com/reel/abc/",
+      "status": "published"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://graph.instagram.com/v23.0/17841400000/media",
+    {
+     "data": {
+      "access_token": "<access-token>",
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "is_ai_generated": "true",
+      "media_type": "REELS",
+      "share_to_feed": "true",
+      "video_url": "https://x.supabase.co/storage/v1/object/sign/publish-staging/org/7.mp4?token=signed"
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "GET",
+    "https://graph.instagram.com/v23.0/CONT1",
+    {
+     "params": {
+      "access_token": "<access-token>",
+      "fields": "status_code"
+     },
+     "timeout": 30
+    }
+   ],
+   [
+    "POST",
+    "https://graph.instagram.com/v23.0/17841400000/media_publish",
+    {
+     "data": {
+      "access_token": "<access-token>",
+      "creation_id": "CONT1"
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "GET",
+    "https://graph.instagram.com/v23.0/MEDIA1",
+    {
+     "params": {
+      "access_token": "<access-token>",
+      "fields": "permalink"
+     },
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "published",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "privacy": null,
+    "reason": null,
+    "result_id": "MEDIA1",
+    "result_url": "https://www.instagram.com/reel/abc/",
+    "status": "published"
+   }
+  ],
+  "staged": [
+   "org/7.mp4"
+  ],
+  "unstaged": [
+   "org/7.mp4"
+  ]
+ },
+ "ig_published_never_label": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.stage",
+    [
+     "final.mp4",
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.sign",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.unstage",
+    [
+     "org/7.mp4"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "privacy": null,
+      "reason": null,
+      "result_id": "MEDIA1",
+      "result_url": "https://www.instagram.com/reel/abc/",
+      "status": "published"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://graph.instagram.com/v23.0/17841400000/media",
+    {
+     "data": {
+      "access_token": "<access-token>",
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\n#AncientRome #history",
+      "media_type": "REELS",
+      "share_to_feed": "true",
+      "video_url": "https://x.supabase.co/storage/v1/object/sign/publish-staging/org/7.mp4?token=signed"
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "GET",
+    "https://graph.instagram.com/v23.0/CONT1",
+    {
+     "params": {
+      "access_token": "<access-token>",
+      "fields": "status_code"
+     },
+     "timeout": 30
+    }
+   ],
+   [
+    "POST",
+    "https://graph.instagram.com/v23.0/17841400000/media_publish",
+    {
+     "data": {
+      "access_token": "<access-token>",
+      "creation_id": "CONT1"
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "GET",
+    "https://graph.instagram.com/v23.0/MEDIA1",
+    {
+     "params": {
+      "access_token": "<access-token>",
+      "fields": "permalink"
+     },
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "published",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "privacy": null,
+    "reason": null,
+    "result_id": "MEDIA1",
+    "result_url": "https://www.instagram.com/reel/abc/",
+    "status": "published"
+   }
+  ],
+  "staged": [
+   "org/7.mp4"
+  ],
+  "unstaged": [
+   "org/7.mp4"
+  ]
+ },
+ "ig_token_expired": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "tokens.set_status",
+    "acc1",
+    "expired"
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "instagram account acc1: token expired; reconnect it",
+      "finished_at": "<ts>",
+      "reason": "token_expired",
+      "status": "failed"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "failed",
+  "rows": [
+   {
+    "error": "instagram account acc1: token expired; reconnect it",
+    "finished_at": "<ts>",
+    "reason": "token_expired",
+    "status": "failed"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "ig_too_long_names_the_short": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "the video is 20:00; Instagram Reels allows at most 15:00; publish its Short (short123) there instead",
+      "finished_at": "<ts>",
+      "reason": "too_long",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": "the video is 20:00; Instagram Reels allows at most 15:00; publish its Short (short123) there instead",
+    "finished_at": "<ts>",
+    "reason": "too_long",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "ig_video_missing": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "video_not_found",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "video_not_found",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_account_missing": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "account_not_connected",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "account_not_connected",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_bad_media": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "the picture is mpeg2video; TikTok needs H264 or HEVC or VP8 or VP9",
+      "finished_at": "<ts>",
+      "reason": "bad_codec",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {},
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": "the picture is mpeg2video; TikTok needs H264 or HEVC or VP8 or VP9",
+    "finished_at": "<ts>",
+    "reason": "bad_codec",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_creator_info_error": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "tiktok creator info: HTTP 401, access_token_invalid",
+      "finished_at": "<ts>",
+      "reason": "token_expired",
+      "status": "failed"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {},
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "failed",
+  "rows": [
+   {
+    "error": "tiktok creator info: HTTP 401, access_token_invalid",
+    "finished_at": "<ts>",
+    "reason": "token_expired",
+    "status": "failed"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_creator_limit_too_long": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "the video is 1:00; TikTok allows at most 0:30; a vertical Short cut of it can be posted instead",
+      "finished_at": "<ts>",
+      "reason": "too_long",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {},
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": "the video is 1:00; TikTok allows at most 0:30; a vertical Short cut of it can be posted instead",
+    "finished_at": "<ts>",
+    "reason": "too_long",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_gate_refusal": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "gate_blocked",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "gate_blocked",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_master_missing": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "the full-quality render is not on this worker (only the 480p review copy is kept); re-run the video on the queue worker to post it",
+      "finished_at": "<ts>",
+      "reason": "master_not_available",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": "the full-quality render is not on this worker (only the 480p review copy is kept); re-run the video on the queue worker to post it",
+    "finished_at": "<ts>",
+    "reason": "master_not_available",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_privacy_unavailable": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "this TikTok account does not offer private (SELF_ONLY) posts",
+      "finished_at": "<ts>",
+      "reason": "privacy_unavailable",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {},
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "refused",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "error": "this TikTok account does not offer private (SELF_ONLY) posts",
+    "finished_at": "<ts>",
+    "reason": "privacy_unavailable",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_processing_failed": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "heartbeat_at": "<ts>"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "tiktok processing failed: file_format_check_failed",
+      "finished_at": "<ts>",
+      "reason": "processing_failed",
+      "status": "failed"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {},
+     "timeout": 30
+    }
+   ],
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/video/init/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {
+      "post_info": {
+       "disable_comment": false,
+       "disable_duet": false,
+       "disable_stitch": false,
+       "is_aigc": true,
+       "privacy_level": "SELF_ONLY",
+       "title": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history"
+      },
+      "source_info": {
+       "chunk_size": 2048,
+       "source": "FILE_UPLOAD",
+       "total_chunk_count": 1,
+       "video_size": 2048
+      }
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "PUT",
+    "https://open-upload.tiktokapis.com/x",
+    {
+     "data": {
+      "bytes": 2048,
+      "sha256": "e5a00aa9991ac8a5"
+     },
+     "headers": {
+      "Content-Length": "2048",
+      "Content-Range": "bytes 0-2047/2048",
+      "Content-Type": "video/mp4"
+     },
+     "timeout": 600
+    }
+   ],
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {
+      "publish_id": "p1"
+     },
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "failed",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "heartbeat_at": "<ts>"
+   },
+   {
+    "error": "tiktok processing failed: file_format_check_failed",
+    "finished_at": "<ts>",
+    "reason": "processing_failed",
+    "status": "failed"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_published_clean": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "heartbeat_at": "<ts>"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "heartbeat_at": "<ts>"
+     }
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    10.0
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "privacy": "SELF_ONLY",
+      "reason": null,
+      "result_id": "42",
+      "result_url": null,
+      "status": "published"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {},
+     "timeout": 30
+    }
+   ],
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/video/init/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {
+      "post_info": {
+       "disable_comment": false,
+       "disable_duet": false,
+       "disable_stitch": false,
+       "privacy_level": "SELF_ONLY",
+       "title": "The Fall of Rome\n\nWhy it fell.\n\n#AncientRome #history"
+      },
+      "source_info": {
+       "chunk_size": 2048,
+       "source": "FILE_UPLOAD",
+       "total_chunk_count": 1,
+       "video_size": 2048
+      }
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "PUT",
+    "https://open-upload.tiktokapis.com/x",
+    {
+     "data": {
+      "bytes": 2048,
+      "sha256": "e5a00aa9991ac8a5"
+     },
+     "headers": {
+      "Content-Length": "2048",
+      "Content-Range": "bytes 0-2047/2048",
+      "Content-Type": "video/mp4"
+     },
+     "timeout": 600
+    }
+   ],
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {
+      "publish_id": "p1"
+     },
+     "timeout": 30
+    }
+   ],
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {
+      "publish_id": "p1"
+     },
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "published",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "heartbeat_at": "<ts>"
+   },
+   {
+    "heartbeat_at": "<ts>"
+   },
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "privacy": "SELF_ONLY",
+    "reason": null,
+    "result_id": "42",
+    "result_url": null,
+    "status": "published"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_published_labelled": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "heartbeat_at": "<ts>"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "heartbeat_at": "<ts>"
+     }
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    10.0
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "privacy": "SELF_ONLY",
+      "reason": null,
+      "result_id": "42",
+      "result_url": null,
+      "status": "published"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {},
+     "timeout": 30
+    }
+   ],
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/video/init/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {
+      "post_info": {
+       "disable_comment": false,
+       "disable_duet": false,
+       "disable_stitch": false,
+       "is_aigc": true,
+       "privacy_level": "SELF_ONLY",
+       "title": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history"
+      },
+      "source_info": {
+       "chunk_size": 2048,
+       "source": "FILE_UPLOAD",
+       "total_chunk_count": 1,
+       "video_size": 2048
+      }
+     },
+     "timeout": 60
+    }
+   ],
+   [
+    "PUT",
+    "https://open-upload.tiktokapis.com/x",
+    {
+     "data": {
+      "bytes": 2048,
+      "sha256": "e5a00aa9991ac8a5"
+     },
+     "headers": {
+      "Content-Length": "2048",
+      "Content-Range": "bytes 0-2047/2048",
+      "Content-Type": "video/mp4"
+     },
+     "timeout": 600
+    }
+   ],
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {
+      "publish_id": "p1"
+     },
+     "timeout": 30
+    }
+   ],
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {
+      "publish_id": "p1"
+     },
+     "timeout": 30
+    }
+   ]
+  ],
+  "outcome": "published",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "heartbeat_at": "<ts>"
+   },
+   {
+    "heartbeat_at": "<ts>"
+   },
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "privacy": "SELF_ONLY",
+    "reason": null,
+    "result_id": "42",
+    "result_url": null,
+    "status": "published"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_token_expired_cannot_refresh": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET on the worker (the same values the Command Center uses) to refresh TikTok tokens",
+      "finished_at": "<ts>",
+      "reason": "token_expired",
+      "status": "failed"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "failed",
+  "rows": [
+   {
+    "error": "set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET on the worker (the same values the Command Center uses) to refresh TikTok tokens",
+    "finished_at": "<ts>",
+    "reason": "token_expired",
+    "status": "failed"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "tt_unaudited": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "tokens.read",
+    "acc1"
+   ],
+   [
+    "probe_fn",
+    "final.mp4"
+   ],
+   [
+    "store.short_of",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "media_fn",
+    "final.mp4"
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": "tiktok init: HTTP 403, unaudited_client_can_only_post_to_private_accounts - make the TikTok account private until the app is audited",
+      "finished_at": "<ts>",
+      "reason": "tiktok_unaudited",
+      "status": "failed"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {},
+     "timeout": 30
+    }
+   ],
+   [
+    "POST",
+    "https://open.tiktokapis.com/v2/post/publish/video/init/",
+    {
+     "headers": {
+      "Authorization": "Bearer <access-token>",
+      "Content-Type": "application/json; charset=UTF-8"
+     },
+     "json": {
+      "post_info": {
+       "disable_comment": false,
+       "disable_duet": false,
+       "disable_stitch": false,
+       "is_aigc": true,
+       "privacy_level": "SELF_ONLY",
+       "title": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history"
+      },
+      "source_info": {
+       "chunk_size": 2048,
+       "source": "FILE_UPLOAD",
+       "total_chunk_count": 1,
+       "video_size": 2048
+      }
+     },
+     "timeout": 60
+    }
+   ]
+  ],
+  "outcome": "failed",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\n#AncientRome #history",
+    "status": "processing"
+   },
+   {
+    "error": "tiktok init: HTTP 403, unaudited_client_can_only_post_to_private_accounts - make the TikTok account private until the app is audited",
+    "finished_at": "<ts>",
+    "reason": "tiktok_unaudited",
+    "status": "failed"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "unknown_case": {
+  "calls": [
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "unknown_platform",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "unknown_platform",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "unknown_empty": {
+  "calls": [
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "unknown_platform",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "unknown_platform",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "unknown_facebook": {
+  "calls": [
+   [
+    "store.update",
+    [
+     7,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "unknown_platform",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "unknown_platform",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_ambiguous": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+      "privacy": "private",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "youtube.credentials",
+    "finance"
+   ],
+   [
+    "youtube.factory",
+    {
+     "channel": "finance"
+    }
+   ],
+   [
+    "uploader.upload",
+    "final.mp4",
+    {
+     "description": "Why it fell.\n\nThis video contains realistic AI-generated or AI-altered content.",
+     "sections": null,
+     "tags": [
+      "ancient rome",
+      "history"
+     ],
+     "title": "The Fall of Rome"
+    },
+    "private",
+    [
+     "ai_disclosure"
+    ],
+    [
+     true,
+     "This video contains realistic AI-generated or AI-altered content.",
+     [
+      "generated_video"
+     ]
+    ]
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": "youtube upload: HTTP 503, backendError \u2014 the outcome is unknown; check the channel before sending again",
+      "finished_at": "<ts>",
+      "reason": "upload_failed",
+      "status": "failed"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "failed",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+    "privacy": "private",
+    "status": "processing"
+   },
+   {
+    "error": "youtube upload: HTTP 503, backendError \u2014 the outcome is unknown; check the channel before sending again",
+    "finished_at": "<ts>",
+    "reason": "upload_failed",
+    "status": "failed"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_gate_refusal": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "not_approved",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "not_approved",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_master_missing": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": "the full-quality render is not on this worker (only the 480p review copy is kept); re-run the video on the queue worker to post it",
+      "finished_at": "<ts>",
+      "reason": "master_not_available",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": "the full-quality render is not on this worker (only the 480p review copy is kept); re-run the video on the queue worker to post it",
+    "finished_at": "<ts>",
+    "reason": "master_not_available",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_no_target": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": "the request names no YouTube channel",
+      "finished_at": "<ts>",
+      "reason": "account_not_connected",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": "the request names no YouTube channel",
+    "finished_at": "<ts>",
+    "reason": "account_not_connected",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_no_token": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+      "privacy": "private",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "youtube.credentials",
+    "finance"
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": "this worker has no YouTube token for the channel",
+      "finished_at": "<ts>",
+      "reason": "account_not_connected",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+    "privacy": "private",
+    "status": "processing"
+   },
+   {
+    "error": "this worker has no YouTube token for the channel",
+    "finished_at": "<ts>",
+    "reason": "account_not_connected",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_not_connected": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "account_not_connected",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "account_not_connected",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_own_channel": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "reason": "already_on_channel",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "reason": "already_on_channel",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_paused": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": "the channel is paused",
+      "finished_at": "<ts>",
+      "reason": "account_not_connected",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "error": "the channel is paused",
+    "finished_at": "<ts>",
+    "reason": "account_not_connected",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_published_clean": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nTags: ancient rome, history",
+      "privacy": "private",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "youtube.credentials",
+    "finance"
+   ],
+   [
+    "youtube.factory",
+    {
+     "channel": "finance"
+    }
+   ],
+   [
+    "uploader.upload",
+    "final.mp4",
+    {
+     "description": "Why it fell.",
+     "sections": null,
+     "tags": [
+      "ancient rome",
+      "history"
+     ],
+     "title": "The Fall of Rome"
+    },
+    "private",
+    [],
+    null
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "privacy": "private",
+      "reason": null,
+      "result_id": "dQw4w9WgXcQ",
+      "result_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "status": "published"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "published",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nTags: ancient rome, history",
+    "privacy": "private",
+    "status": "processing"
+   },
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "privacy": "private",
+    "reason": null,
+    "result_id": "dQw4w9WgXcQ",
+    "result_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "status": "published"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_published_labelled": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+      "privacy": "private",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "youtube.credentials",
+    "finance"
+   ],
+   [
+    "youtube.factory",
+    {
+     "channel": "finance"
+    }
+   ],
+   [
+    "uploader.upload",
+    "final.mp4",
+    {
+     "description": "Why it fell.\n\nThis video contains realistic AI-generated or AI-altered content.",
+     "sections": null,
+     "tags": [
+      "ancient rome",
+      "history"
+     ],
+     "title": "The Fall of Rome"
+    },
+    "private",
+    [
+     "ai_disclosure"
+    ],
+    [
+     true,
+     "This video contains realistic AI-generated or AI-altered content.",
+     [
+      "generated_video"
+     ]
+    ]
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "privacy": "private",
+      "reason": null,
+      "result_id": "dQw4w9WgXcQ",
+      "result_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "status": "published"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "published",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+    "privacy": "private",
+    "status": "processing"
+   },
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "privacy": "private",
+    "reason": null,
+    "result_id": "dQw4w9WgXcQ",
+    "result_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "status": "published"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_published_never_label": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nTags: ancient rome, history",
+      "privacy": "private",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "youtube.credentials",
+    "finance"
+   ],
+   [
+    "youtube.factory",
+    {
+     "channel": "finance"
+    }
+   ],
+   [
+    "uploader.upload",
+    "final.mp4",
+    {
+     "description": "Why it fell.",
+     "sections": null,
+     "tags": [
+      "ancient rome",
+      "history"
+     ],
+     "title": "The Fall of Rome"
+    },
+    "private",
+    [],
+    null
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": null,
+      "finished_at": "<ts>",
+      "privacy": "private",
+      "reason": null,
+      "result_id": "dQw4w9WgXcQ",
+      "result_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "status": "published"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "published",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nTags: ancient rome, history",
+    "privacy": "private",
+    "status": "processing"
+   },
+   {
+    "error": null,
+    "finished_at": "<ts>",
+    "privacy": "private",
+    "reason": null,
+    "result_id": "dQw4w9WgXcQ",
+    "result_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "status": "published"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_quota": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+      "privacy": "private",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "youtube.credentials",
+    "finance"
+   ],
+   [
+    "youtube.factory",
+    {
+     "channel": "finance"
+    }
+   ],
+   [
+    "uploader.upload",
+    "final.mp4",
+    {
+     "description": "Why it fell.\n\nThis video contains realistic AI-generated or AI-altered content.",
+     "sections": null,
+     "tags": [
+      "ancient rome",
+      "history"
+     ],
+     "title": "The Fall of Rome"
+    },
+    "private",
+    [
+     "ai_disclosure"
+    ],
+    [
+     true,
+     "This video contains realistic AI-generated or AI-altered content.",
+     [
+      "generated_video"
+     ]
+    ]
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": "youtube upload: HTTP 403, quotaExceeded \u2014 the YouTube upload quota is used up; send again tomorrow",
+      "finished_at": "<ts>",
+      "reason": "quota_exceeded",
+      "status": "failed"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "failed",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+    "privacy": "private",
+    "status": "processing"
+   },
+   {
+    "error": "youtube upload: HTTP 403, quotaExceeded \u2014 the YouTube upload quota is used up; send again tomorrow",
+    "finished_at": "<ts>",
+    "reason": "quota_exceeded",
+    "status": "failed"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_unreachable_channel": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+      "privacy": "private",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "youtube.credentials",
+    "finance"
+   ],
+   [
+    "youtube.factory",
+    {
+     "channel": "finance"
+    }
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": "the channel's token cannot reach its YouTube channel \u2014 reconnect it",
+      "finished_at": "<ts>",
+      "reason": "account_not_connected",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+    "privacy": "private",
+    "status": "processing"
+   },
+   {
+    "error": "the channel's token cannot reach its YouTube channel \u2014 reconnect it",
+    "finished_at": "<ts>",
+    "reason": "account_not_connected",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_unverified_channel": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "news"
+    ],
+    {}
+   ],
+   [
+    "store.disclosure_events",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+      "privacy": "private",
+      "status": "processing"
+     }
+    ],
+    {}
+   ],
+   [
+    "youtube.credentials",
+    "finance"
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": "the channel is unknown or has not been confirmed against YouTube",
+      "finished_at": "<ts>",
+      "reason": "account_not_connected",
+      "status": "refused"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "refused",
+  "rows": [
+   {
+    "caption": "The Fall of Rome\n\nWhy it fell.\n\nThis video contains realistic AI-generated or AI-altered content.\n\nTags: ancient rome, history",
+    "privacy": "private",
+    "status": "processing"
+   },
+   {
+    "error": "the channel is unknown or has not been confirmed against YouTube",
+    "finished_at": "<ts>",
+    "reason": "account_not_connected",
+    "status": "refused"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ },
+ "yt_worker_without_youtube": {
+  "calls": [
+   [
+    "store.refusal",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.video",
+    [
+     "vid1"
+    ],
+    {}
+   ],
+   [
+    "store.channel",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.channel_connected",
+    [
+     "finance"
+    ],
+    {}
+   ],
+   [
+    "store.update",
+    [
+     9,
+     "w1",
+     {
+      "error": "this worker is not set up to upload to YouTube",
+      "finished_at": "<ts>",
+      "reason": "platform_error",
+      "status": "failed"
+     }
+    ],
+    {}
+   ]
+  ],
+  "http": [],
+  "outcome": "failed",
+  "rows": [
+   {
+    "error": "this worker is not set up to upload to YouTube",
+    "finished_at": "<ts>",
+    "reason": "platform_error",
+    "status": "failed"
+   }
+  ],
+  "staged": [],
+  "unstaged": []
+ }
+}
