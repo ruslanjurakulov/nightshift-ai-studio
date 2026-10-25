@@ -65,6 +65,30 @@ export function isMissingTable(error: Failure): boolean {
   return error.code === "42P01" || error.code === "PGRST205" || /does not exist|schema cache/i.test(error.message ?? "");
 }
 
+/** How many metrics_snapshots reads may be in flight at once for one page. */
+export const SNAPSHOT_CONCURRENCY = 4;
+
+/**
+ * Runs tasks at most `max` at a time, in the order they were asked for. A finishing task hands its slot straight to the next
+ * waiting one (the count does not dip), so a task started in between cannot take a fifth place. A task that throws or rejects
+ * still frees its slot.
+ */
+export function createLimiter(max: number) {
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  return async function run<T>(task: () => PromiseLike<T>): Promise<T> {
+    if (active < max) active++;
+    else await new Promise<void>((resolve) => waiting.push(resolve));
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else active--;
+    }
+  };
+}
+
 function chunks<T>(items: readonly T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
@@ -83,19 +107,29 @@ interface SnapshotSink {
  * video that alone fills the cap is kept as read and flagged `partial`, so the page can say readings may be missing instead of
  * showing "Not measured" for a video that was measured. Returns false when a read fails.
  */
-async function readSnapshots(supabase: SupabaseClient, ids: readonly string[], startDay: string, cap: number, sink: SnapshotSink): Promise<boolean> {
-  const res = await supabase
-    .from("metrics_snapshots")
-    .select(SNAPSHOT_COLUMNS)
-    .in("video_id", [...ids])
-    .gte("snapshot_date", startDay)
-    .order("snapshot_date", { ascending: false })
-    .limit(cap);
+async function readSnapshots(
+  supabase: SupabaseClient,
+  ids: readonly string[],
+  startDay: string,
+  cap: number,
+  sink: SnapshotSink,
+  limit: ReturnType<typeof createLimiter>,
+): Promise<boolean> {
+  // Only the query holds a place; the halves below are asked for after it has let go, so a split can never wait on itself.
+  const res = await limit(() =>
+    supabase
+      .from("metrics_snapshots")
+      .select(SNAPSHOT_COLUMNS)
+      .in("video_id", [...ids])
+      .gte("snapshot_date", startDay)
+      .order("snapshot_date", { ascending: false })
+      .limit(cap),
+  );
   if (res.error) return false;
   const rows = Array.isArray(res.data) ? res.data : [];
   if (rows.length >= cap && ids.length > 1) {
     const mid = Math.ceil(ids.length / 2);
-    const [a, b] = await Promise.all([readSnapshots(supabase, ids.slice(0, mid), startDay, cap, sink), readSnapshots(supabase, ids.slice(mid), startDay, cap, sink)]);
+    const [a, b] = await Promise.all([readSnapshots(supabase, ids.slice(0, mid), startDay, cap, sink, limit), readSnapshots(supabase, ids.slice(mid), startDay, cap, sink, limit)]);
     return a && b;
   }
   if (rows.length >= cap) sink.partial = true;
@@ -144,7 +178,10 @@ export async function loadResults(input: LoadInput): Promise<LoadResult> {
     const sink: SnapshotSink = { rows: [], partial: false };
     const cap = input.snapshotCap ?? SNAPSHOT_CAP;
     const ids = videoRows.map((v) => v.videoId);
-    const done = await Promise.all(chunks(ids, SNAPSHOT_CHUNK).map((part) => readSnapshots(supabase, part, startDay, cap, sink)));
+    // 200 videos are 8 chunks, and every chunk that reaches the cap splits into two more: without a bound one page view
+    // opens a burst of queries on the member's own session.
+    const limit = createLimiter(SNAPSHOT_CONCURRENCY);
+    const done = await Promise.all(chunks(ids, SNAPSHOT_CHUNK).map((part) => readSnapshots(supabase, part, startDay, cap, sink, limit)));
     if (done.some((ok) => !ok)) return { ok: false, error: "failed" };
     // buildVideoResults joins readings to the videos above by id, so a row of another video is never used.
     snapshots = coerceSnapshots(sink.rows);
