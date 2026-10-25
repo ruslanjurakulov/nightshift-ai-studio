@@ -19,8 +19,8 @@ export interface ResultsPayload {
   /** ISO time the server built this answer: every number below is as of the readings, this is when it was assembled. */
   generatedAt: string;
   rangeDays: RangeDays;
-  /** "all" or one of `channels[].id`. */
-  selected: string;
+  /** null for all channels, else one of `channels[].id`. A channel whose id is literally "all" is an ordinary channel: the two cannot collide. */
+  selected: string | null;
   channels: ChannelSummary[];
   platforms: PlatformCard[];
   kpis: Kpis;
@@ -29,7 +29,12 @@ export interface ResultsPayload {
   freshness: Freshness;
   /** Subscribers gained / lost are not stored by the daily poll, so there is nothing to show. Always "not_collected" in this phase. */
   subscribers: "not_collected";
-  truncated: { videos: boolean; history: boolean };
+  /**
+   * videos: more than MAX_VIDEOS in the period, only the newest are used (the figures cover those only).
+   * history: more entries than shown.
+   * snapshots: a reading query came back at its row cap even for one video, so some readings may be missing.
+   */
+  truncated: { videos: boolean; history: boolean; snapshots: boolean };
   sources: { requests: SourceState; accounts: SourceState };
 }
 

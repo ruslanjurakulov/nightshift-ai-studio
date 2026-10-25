@@ -31,6 +31,7 @@ export function Freshness({ payload }: { payload: ResultsPayload }) {
       </p>
       <p className="rd-small">{r.source}</p>
       <p className="rd-small">{r.readingNote}</p>
+      <p className="rd-small">{r.readingRules}</p>
       {f.stale && f.asOf && f.ageDays !== null && (
         <StateBlock tone="warn" role="status" compact title={fmt(r.staleTitle, { n: f.ageDays })}>
           {fmt(r.staleBody, { date: f.asOf })}
@@ -50,14 +51,16 @@ function Figure({ label, children, sub }: { label: string; children: React.React
   );
 }
 
-export function KpiRow({ kpis }: { kpis: Kpis }) {
+export function KpiRow({ kpis, truncatedMax }: { kpis: Kpis; truncatedMax: number | null }) {
   const { t, locale, fmt } = useI18n();
   const r = t.resultsDashboard;
   const covers = (known: number, of: number) => fmt(r.measuredOf, { known, of });
   const duration = kpis.avgViewSeconds.value === null ? null : formatDuration(kpis.avgViewSeconds.value);
+  const cut = truncatedMax === null ? undefined : fmt(r.kpiTruncated, { max: truncatedMax });
   return (
+    <>
     <dl className="rd-kpis" aria-label={r.kpisLabel}>
-      <Figure label={r.kpi.videos}>{formatCount(kpis.videos, locale)}</Figure>
+      <Figure label={r.kpi.videos} sub={cut}>{formatCount(kpis.videos, locale)}</Figure>
       <Figure label={r.kpi.views} sub={covers(kpis.views.known, kpis.views.of)}>
         {kpis.views.value === null ? <span className="rd-unknown">{r.notMeasured}</span> : formatCount(kpis.views.value, locale)}
       </Figure>
@@ -71,6 +74,9 @@ export function KpiRow({ kpis }: { kpis: Kpis }) {
         <span className="rd-unknown">{r.notCollected}</span>
       </Figure>
     </dl>
+    {cut && <p className="rd-small" role="status">{cut}</p>}
+    {kpis.noData > 0 && <p className="rd-small" role="status">{fmt(r.noDataNote, { n: kpis.noData })}</p>}
+    </>
   );
 }
 
@@ -136,6 +142,7 @@ export function VideoTable({ videos, sort, onSort, videosHref }: { videos: reado
           </select>
         </label>
       </div>
+      <div className="rd-scroll">
       <table className="rd-table">
         <caption className="rd-sr">{r.tableCaption}</caption>
         <thead>
@@ -156,7 +163,8 @@ export function VideoTable({ videos, sort, onSort, videosHref }: { videos: reado
             const dur = rd && rd.avgViewSeconds !== null ? formatDuration(rd.avgViewSeconds) : null;
             return (
               <tr key={v.videoId}>
-                <th scope="row" data-label={r.col.video} className="rd-title">
+                <th scope="row" data-label={r.col.video}>
+                  <span className="rd-title">
                   <span>{title}</span>
                   {v.format === "short" && <span className="rd-badge">{r.shortBadge}</span>}
                   <span className="rd-links">
@@ -168,6 +176,7 @@ export function VideoTable({ videos, sort, onSort, videosHref }: { videos: reado
                         YouTube <ExternalLink size={12} aria-hidden />
                       </a>
                     )}
+                  </span>
                   </span>
                 </th>
                 <td data-label={r.col.published}>{dayOf(v.publishedAt)}</td>
@@ -182,9 +191,7 @@ export function VideoTable({ videos, sort, onSort, videosHref }: { videos: reado
                 </td>
                 <td data-label={r.col.reading}>
                   {rd === null ? (
-                    <span className="rd-unknown">{r.videoNotMeasured}</span>
-                  ) : rd.daysAfterPublish === null ? (
-                    fmt(r.readingDate, { date: rd.date })
+                    <span className="rd-unknown">{v.noData ? r.videoNoData : r.videoNotMeasured}</span>
                   ) : rd.daysAfterPublish === 0 ? (
                     fmt(r.readingSameDay, { date: rd.date })
                   ) : (
@@ -196,6 +203,7 @@ export function VideoTable({ videos, sort, onSort, videosHref }: { videos: reado
           })}
         </tbody>
       </table>
+      </div>
     </section>
   );
 }

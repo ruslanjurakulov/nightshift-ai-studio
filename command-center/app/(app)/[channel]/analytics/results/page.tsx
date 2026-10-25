@@ -33,7 +33,7 @@ export default async function ResultsPage() {
     <div className="rhythm ns-open stagger-enter">
       {header}
       <ResultsDashboard
-        initialChannel={selection === ALL_CHANNELS ? "all" : selection}
+        initialChannel={selection === ALL_CHANNELS ? null : selection}
         videosHref={channelPath(slug, "/videos")}
         channelsHref={channelPath(slug, "/channels")}
       />

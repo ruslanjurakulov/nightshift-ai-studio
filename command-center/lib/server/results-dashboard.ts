@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   MAX_HISTORY,
   MAX_VIDEOS,
+  SNAPSHOT_CAP,
+  SNAPSHOT_CHUNK,
   buildHistory,
   buildVideoResults,
   coerceSnapshots,
@@ -42,16 +44,18 @@ export interface LoadInput {
   supabase: SupabaseClient;
   orgId: string;
   channels: readonly OwnChannel[];
-  /** "all", or one channel id. */
-  selected: string;
+  /** null for all channels, or one channel id. */
+  selected: string | null;
   days: RangeDays;
   nowMs: number;
+  /** Rows at which a metrics_snapshots response is taken as cut. PostgREST's default max is 1000; tests lower it. */
+  snapshotCap?: number;
 }
 
 const CHUNK = 100;
 const VIDEO_COLUMNS = "video_id, channel_id, title, topic, published_at, privacy, video_format";
 const SNAPSHOT_COLUMNS = "video_id, snapshot_date, views, likes, comment_count, watch_time_minutes, average_view_duration_seconds, impressions";
-const REQUEST_COLUMNS = "id, org_id, channel_id, video_id, account_id, target_channel_id, platform, status, reason, privacy, result_url, created_at, finished_at";
+const REQUEST_COLUMNS = "id, org_id, channel_id, video_id, account_id, target_channel_id, platform, status, reason, privacy, result_url, created_at";
 
 type Failure = { code?: string; message?: string } | null;
 
@@ -67,6 +71,38 @@ function chunks<T>(items: readonly T[], size: number): T[][] {
   return out;
 }
 
+interface SnapshotSink {
+  rows: unknown[];
+  /** A response for ONE video still came back at the cap: some of its readings may be missing. */
+  partial: boolean;
+}
+
+/**
+ * Reads the readings of some videos, newest first. PostgREST silently cuts a response at its max rows (1000 by default), so a
+ * response at the cap is never trusted: the ids are split in halves and read again until each answer is under the cap. A single
+ * video that alone fills the cap is kept as read and flagged `partial`, so the page can say readings may be missing instead of
+ * showing "Not measured" for a video that was measured. Returns false when a read fails.
+ */
+async function readSnapshots(supabase: SupabaseClient, ids: readonly string[], startDay: string, cap: number, sink: SnapshotSink): Promise<boolean> {
+  const res = await supabase
+    .from("metrics_snapshots")
+    .select(SNAPSHOT_COLUMNS)
+    .in("video_id", [...ids])
+    .gte("snapshot_date", startDay)
+    .order("snapshot_date", { ascending: false })
+    .limit(cap);
+  if (res.error) return false;
+  const rows = Array.isArray(res.data) ? res.data : [];
+  if (rows.length >= cap && ids.length > 1) {
+    const mid = Math.ceil(ids.length / 2);
+    const [a, b] = await Promise.all([readSnapshots(supabase, ids.slice(0, mid), startDay, cap, sink), readSnapshots(supabase, ids.slice(mid), startDay, cap, sink)]);
+    return a && b;
+  }
+  if (rows.length >= cap) sink.partial = true;
+  sink.rows.push(...rows);
+  return true;
+}
+
 export type LoadResult = { ok: true; payload: ResultsPayload } | { ok: false; error: Extract<ResultsError, "not_found" | "failed"> };
 
 export async function loadResults(input: LoadInput): Promise<LoadResult> {
@@ -74,8 +110,8 @@ export async function loadResults(input: LoadInput): Promise<LoadResult> {
   // Lock two: only channels that name THIS organization as their owner.
   const own = input.channels.filter((c) => c.orgId === orgId);
   const ownIds = new Set(own.map((c) => c.id));
-  if (input.selected !== "all" && !ownIds.has(input.selected)) return { ok: false, error: "not_found" };
-  const scope = input.selected === "all" ? own : own.filter((c) => c.id === input.selected);
+  if (input.selected !== null && !ownIds.has(input.selected)) return { ok: false, error: "not_found" };
+  const scope = input.selected === null ? own : own.filter((c) => c.id === input.selected);
   const scopeIds = scope.map((c) => c.id);
   const summaries: ChannelSummary[] = own.map((c) => ({ id: c.id, name: c.name, connected: c.connected }));
   const names = new Map(own.map((c) => [c.id, c.name]));
@@ -103,20 +139,16 @@ export async function loadResults(input: LoadInput): Promise<LoadResult> {
   }
 
   let snapshots: ReturnType<typeof coerceSnapshots> = [];
+  let snapshotsPartial = false;
   if (videoRows.length > 0) {
-    const parts = await Promise.all(
-      chunks(
-        videoRows.map((v) => v.videoId),
-        CHUNK,
-      ).map((ids) => supabase.from("metrics_snapshots").select(SNAPSHOT_COLUMNS).in("video_id", ids).gte("snapshot_date", startDay)),
-    );
-    for (const part of parts) {
-      if (part.error) return { ok: false, error: "failed" };
-      snapshots.push(...coerceSnapshots(part.data));
-    }
-    // A snapshot of a video that is not in the set above would be another tenant's row slipping through a broad policy.
-    const wanted = new Set(videoRows.map((v) => v.videoId));
-    snapshots = snapshots.filter((s) => wanted.has(s.videoId));
+    const sink: SnapshotSink = { rows: [], partial: false };
+    const cap = input.snapshotCap ?? SNAPSHOT_CAP;
+    const ids = videoRows.map((v) => v.videoId);
+    const done = await Promise.all(chunks(ids, SNAPSHOT_CHUNK).map((part) => readSnapshots(supabase, part, startDay, cap, sink)));
+    if (done.some((ok) => !ok)) return { ok: false, error: "failed" };
+    // buildVideoResults joins readings to the videos above by id, so a row of another video is never used.
+    snapshots = coerceSnapshots(sink.rows);
+    snapshotsPartial = sink.partial;
   }
 
   const results = buildVideoResults(videoRows, snapshots, nowMs, days);
@@ -191,7 +223,6 @@ export async function loadResults(input: LoadInput): Promise<LoadResult> {
           privacy: str(r.privacy),
           resultUrl: url && url.startsWith("https://") ? url : null,
           createdAt: str(r.created_at),
-          finishedAt: str(r.finished_at),
           target,
         });
       }
@@ -230,9 +261,9 @@ export async function loadResults(input: LoadInput): Promise<LoadResult> {
     kpis,
     videos: results,
     history,
-    freshness: freshness(snapshots.map((s) => s.snapshotDate), nowMs),
+    freshness: freshness(results.map((r) => r.reading?.date), nowMs),
     subscribers: "not_collected",
-    truncated: { videos: truncatedVideos, history: historyTruncated },
+    truncated: { videos: truncatedVideos, history: historyTruncated, snapshots: snapshotsPartial },
     sources: { requests: requestsState, accounts: accountsState },
   };
   return { ok: true, payload };

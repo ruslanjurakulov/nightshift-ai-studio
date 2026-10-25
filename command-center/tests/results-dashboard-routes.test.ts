@@ -6,6 +6,7 @@
  * differently from one that does not exist, a failed read drawn as an empty dashboard, and a page render that calls a platform.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { loadResults } from "@/lib/server/results-dashboard";
 
 vi.mock("server-only", () => ({}));
 
@@ -32,28 +33,43 @@ const h = vi.hoisted(() => ({
   /** When set, only rows this predicate allows are visible: RLS. */
   rls: null as null | ((table: string, row: Row) => boolean),
   calls: [] as string[],
+  /** The server's own row cap (PostgREST max rows): applied after the order, whatever limit the query asked for. */
+  cap: Infinity,
+  queries: [] as Array<{ table: string; ids: number }>,
+  /** Fail the Nth (1-based) read of a table. */
+  failNth: null as null | { table: string; n: number },
+  seen: {} as Record<string, number>,
   getUser: vi.fn(),
 }));
 
 function builder(table: string) {
   const filters: Array<(r: Row) => boolean> = [];
   let max = Infinity;
+  let sort: { col: string; asc: boolean } | null = null;
+  let idCount = 0;
   const q: Record<string, unknown> = {};
   const chain = () => q;
   q.select = chain;
   q.eq = (col: string, val: unknown) => (filters.push((r) => r[col] === val), q);
-  q.in = (col: string, vals: unknown[]) => (filters.push((r) => vals.includes(r[col])), q);
+  q.in = (col: string, vals: unknown[]) => ((idCount = vals.length), filters.push((r) => vals.includes(r[col])), q);
   q.not = (col: string, _op: string, val: unknown) => (filters.push((r) => r[col] !== val), q);
   q.gte = (col: string, val: string) => (filters.push((r) => String(r[col] ?? "") >= val), q);
-  q.order = chain;
+  q.order = (col: string, opts?: { ascending?: boolean }) => ((sort = { col, asc: opts?.ascending !== false }), q);
   q.limit = (n: number) => ((max = n), q);
   q.then = (resolve: (v: unknown) => unknown) => {
     h.calls.push(table);
+    h.seen[table] = (h.seen[table] ?? 0) + 1;
+    if (h.failNth && h.failNth.table === table && h.failNth.n === h.seen[table]) return resolve({ data: null, error: { message: "boom" } });
     const err = h.errors[table];
     if (err) return resolve({ data: null, error: err });
     let rows = (h.db[table] ?? []).filter((r) => (h.rls ? h.rls(table, r) : true));
     if (!h.leaky.has(table)) rows = rows.filter((r) => filters.every((f) => f(r)));
-    return resolve({ data: rows.slice(0, max).map((r) => ({ ...r })), error: null });
+    if (sort) {
+      const { col, asc } = sort;
+      rows = [...rows].sort((a, b) => (String(a[col] ?? "") < String(b[col] ?? "") ? -1 : String(a[col] ?? "") > String(b[col] ?? "") ? 1 : 0) * (asc ? 1 : -1));
+    }
+    h.queries.push({ table, ids: idCount });
+    return resolve({ data: rows.slice(0, Math.min(max, h.cap)).map((r) => ({ ...r })), error: null });
   };
   return q;
 }
@@ -116,6 +132,10 @@ function seed() {
   h.leaky = new Set();
   h.rls = null;
   h.calls = [];
+  h.cap = Infinity;
+  h.queries = [];
+  h.failNth = null;
+  h.seen = {};
   h.getUser.mockReset();
 }
 
@@ -189,7 +209,7 @@ describe("what a member of organization A gets", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = await json(res);
     expect(body.rangeDays).toBe(28);
-    expect(body.selected).toBe("all");
+    expect(body.selected).toBeNull();
     expect(body.channels).toEqual([
       { id: "chanA1", name: "Alpha", connected: true },
       { id: "chanA2", name: "Alpha two", connected: false },
@@ -341,7 +361,7 @@ describe("a read that fails is never an empty dashboard", () => {
   });
 
   it("says when the history is cut: one more than the limit is 'truncated', exactly the limit is not", async () => {
-    const many = (n: number) => Array.from({ length: n }, (_, i) => request(100 + i, ORG_A, "chanA1", "vidA000001", { finished_at: iso(NOW - 3600_000 - i * 1000), created_at: iso(NOW - 7200_000 - i * 1000) }));
+    const many = (n: number) => Array.from({ length: n }, (_, i) => request(100 + i, ORG_A, "chanA1", "vidA000001", { created_at: iso(NOW - 3600_000 - i * 1000) }));
     h.db.publish_requests = many(100);
     // 100 requests + 2 uploads = 102 entries: cut
     const cut = await json(await get());
@@ -362,6 +382,132 @@ describe("a read that fails is never an empty dashboard", () => {
     expect(body.videos).toEqual([]);
     expect(body.kpis.views.value).toBeNull();
     expect(h.calls).not.toContain("videos");
+  });
+});
+
+describe("readings are never silently cut", () => {
+  beforeEach(() => {
+    process.env.NIGHTSHIFT_RESULTS_DASHBOARD = "on";
+  });
+
+  const fleet = (videos: number, readings: number) => {
+    h.channels = [channel("chanA1", ORG_A, "Alpha")];
+    h.db.videos = Array.from({ length: videos }, (_, i) => vid(`vidF${String(i).padStart(7, "0")}`, "chanA1", `Fleet ${i}`, 20));
+    h.db.metrics_snapshots = h.db.videos.flatMap((v, i) =>
+      Array.from({ length: readings }, (_, d) => snapshot(String(v.video_id), 1000 + i, `2026-10-${String(13 + d).padStart(2, "0")}`)),
+    );
+    h.db.publish_requests = [];
+  };
+
+  it("100 videos x 12 readings against a 1000-row server cap: every video is measured, and nothing is flagged", async () => {
+    fleet(100, 12);
+    h.cap = 1000;
+    const body = await json(await get("?range=28"));
+    expect(body.kpis.videos).toBe(100);
+    expect(body.kpis.measured).toBe(100);
+    expect(body.truncated.snapshots).toBe(false);
+    expect(body.videos.every((v: Row) => v.reading !== null)).toBe(true);
+    // the old single query of 100 ids would have returned 1000 of 1200 rows: the reads are small ones now
+    expect(Math.max(...h.queries.filter((q) => q.table === "metrics_snapshots").map((q) => q.ids))).toBeLessThanOrEqual(25);
+  });
+
+  it("a chunk whose rows exceed the server's cap (25 videos x 60 readings) is split until every answer is whole", async () => {
+    h.channels = [channel("chanA1", ORG_A, "Alpha")];
+    h.db.videos = Array.from({ length: 30 }, (_, i) => vid(`vidG${String(i).padStart(7, "0")}`, "chanA1", `Fleet ${i}`, 80));
+    const day = (d: number) => new Date(Date.UTC(2026, 7, 6) + d * DAY).toISOString().slice(0, 10); // 2026-08-06 .. 2026-10-04
+    h.db.metrics_snapshots = h.db.videos.flatMap((v, i) => Array.from({ length: 60 }, (_, d) => snapshot(String(v.video_id), 500 + i + d, day(d))));
+    h.db.publish_requests = [];
+    h.cap = 1000;
+    const body = await json(await get("?range=90"));
+    expect(body.kpis.measured).toBe(30);
+    expect(body.truncated.snapshots).toBe(false);
+    // newest reading of each video, not a random surviving one
+    expect(body.videos.every((v: Row) => (v.reading as Row).date === day(59))).toBe(true);
+    expect(h.queries.filter((q) => q.table === "metrics_snapshots").length).toBeGreaterThan(2);
+  });
+
+  it("when even one video alone fills the cap, the loader says readings may be missing (cap passed in)", async () => {
+    fleet(3, 12);
+    h.cap = 10;
+    const out = await loadResults({ supabase: { from: (t: string) => builder(t) } as never, orgId: ORG_A, channels: [{ id: "chanA1", name: "Alpha", connected: true, orgId: ORG_A }], selected: null, days: 28, nowMs: NOW, snapshotCap: 10 });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.payload.truncated.snapshots).toBe(true);
+      // newest first, so what was kept is the newest part: 2026-10-13 .. 2026-10-24 are the 12 readings, the last is the newest
+      expect(out.payload.videos.every((v) => v.reading?.date === "2026-10-24")).toBe(true);
+    }
+  });
+
+  it("an answer of exactly the cap is never taken as complete: it is split and read again", async () => {
+    fleet(2, 1);
+    h.cap = 2;
+    const out = await loadResults({ supabase: { from: (t: string) => builder(t) } as never, orgId: ORG_A, channels: [{ id: "chanA1", name: "Alpha", connected: true, orgId: ORG_A }], selected: null, days: 28, nowMs: NOW, snapshotCap: 2 });
+    expect(out.ok && out.payload.kpis.measured).toBe(2);
+    expect(out.ok && out.payload.truncated.snapshots).toBe(false);
+    expect(h.queries.filter((q) => q.table === "metrics_snapshots").length).toBe(3);
+  });
+
+  it("a failure in the second half of a split read is an error too", async () => {
+    fleet(2, 1);
+    h.cap = 2;
+    h.failNth = { table: "metrics_snapshots", n: 3 }; // the whole-chunk read hits the cap, the first half is fine, the second half fails
+    const out = await loadResults({ supabase: { from: (t: string) => builder(t) } as never, orgId: ORG_A, channels: [{ id: "chanA1", name: "Alpha", connected: true, orgId: ORG_A }], selected: null, days: 28, nowMs: NOW, snapshotCap: 2 });
+    expect(out).toEqual({ ok: false, error: "failed" });
+  });
+
+  it("a failed readings query is an error, not a dashboard of 'Not measured'", async () => {
+    fleet(30, 2);
+    h.errors = { metrics_snapshots: { message: "boom" } };
+    expect((await get()).status).toBe(502);
+  });
+});
+
+describe("empty readings and the date of a request", () => {
+  beforeEach(() => {
+    process.env.NIGHTSHIFT_RESULTS_DASHBOARD = "on";
+  });
+
+  it("a stored row of zeros is 'no data', not '0 views measured'", async () => {
+    h.db.metrics_snapshots = [{ ...snapshot("vidA000001", 0), likes: 0, comment_count: 0, watch_time_minutes: 0, average_view_duration_seconds: 0 }, snapshot("vidA000002", 40)];
+    const body = await json(await get());
+    const a1 = body.videos.find((v: Row) => v.videoId === "vidA000001");
+    expect(a1).toMatchObject({ reading: null, noData: true });
+    expect(body.kpis).toMatchObject({ measured: 1, noData: 1 });
+    expect(body.kpis.views).toEqual({ value: 40, known: 1, of: 2 });
+    expect(body.freshness.asOf).toBe("2026-10-24");
+  });
+
+  it("dates and windows a request by created_at alone", async () => {
+    h.db.publish_requests = [
+      request(10, ORG_A, "chanA1", "vidA000001", { created_at: iso(NOW - 40 * DAY), finished_at: iso(NOW - DAY) }),
+      request(11, ORG_A, "chanA1", "vidA000001", { created_at: iso(NOW - 2 * DAY), finished_at: iso(NOW - 40 * DAY) }),
+    ];
+    const body = await json(await get("?range=28"));
+    const rq = body.history.filter((e: Row) => e.kind === "request");
+    expect(rq.map((e: Row) => e.key)).toEqual(["rq:11"]);
+    expect(rq[0].at).toBe(iso(NOW - 2 * DAY));
+  });
+});
+
+describe("a channel called 'all'", () => {
+  beforeEach(() => {
+    process.env.NIGHTSHIFT_RESULTS_DASHBOARD = "on";
+  });
+
+  it("is a channel, not the whole workspace: no channel param is all channels", async () => {
+    h.channels = [...h.channels, channel("all", ORG_A, "Literally all")];
+    h.db.videos.push(vid("vidAll00001", "all", "On the channel called all"));
+    h.db.metrics_snapshots.push(snapshot("vidAll00001", 3));
+    const one = await json(await get("?channel=all"));
+    expect(one.selected).toBe("all");
+    expect(one.videos.map((v: Row) => v.videoId)).toEqual(["vidAll00001"]);
+    const every = await json(await get(""));
+    expect(every.selected).toBeNull();
+    expect(every.videos.length).toBe(3);
+  });
+
+  it("is a 404 when no such channel exists in this workspace", async () => {
+    expect((await get("?channel=all")).status).toBe(404);
   });
 });
 

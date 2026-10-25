@@ -31,9 +31,25 @@ a recently published video. It is not a lifetime total, and two daily readings o
 - the dashboard **never adds readings of one video together**. Per video it takes the **latest** reading and prints its date and
   how many days after publishing it was taken;
 - a KPI adds those latest readings across videos and prints **how many videos it covers** ("1 of 2 videos measured");
+- every figure tile is labelled "(latest readings)", and when the list is cut to the newest 200 videos the tiles say so;
 - a video with no reading is **"Not measured"**, never `0`; an average is taken over the videos that have both of its parts and is
   weighted by views; a sum over no known value is `null`;
 - "as of" is the date of the newest reading, with its age; older than 3 days it says so and says that later views are not included.
+
+### What does not count as a reading
+
+`modules/intelligence_poller.py` stores `int(metrics.get("views", 0) or 0)` and the like, so when YouTube has no row yet for a
+video it stores a **full row of zeros**. A zero on this page would then read as a measurement. The rules, applied in
+`lib/resultsDashboard/aggregate.ts` (`buildVideoResults`):
+
+1. A snapshot whose views, likes, comments, watch minutes and average duration are **all exactly 0** is treated as "no data came
+   back". It is skipped; the video falls back to its newest non-empty reading, or is "Not measured" (row text "No data yet",
+   counted in the note under the figures) when it has none. A snapshot with any non-zero figure, or any null one, is a reading.
+2. An average duration of exactly 0 next to views > 0 is **unknown** (null), so it cannot pull the views-weighted average down.
+3. A snapshot dated **before the video's publish day** cannot be a reading of that video and is excluded (not shown, not counted).
+
+**Follow-up (worker/database, not in this PR):** the poller should store NULL for metrics YouTube did not return. Then rules 1 and
+2 become unnecessary and a stored 0 is always a measured 0.
 
 **Known limit, not hidden:** the poll as scheduled (`poll_own_channel_metrics()` with its default `days=1`) reads a video only
 around the day it is published. So today most readings are early-life readings, not current ones. The dashboard says "day N
@@ -65,10 +81,16 @@ This is the main security property, and it is two locks, not one:
    and is not used), every query filters by those channel ids / `org_id`, and every returned row is checked against that set again.
    A platform operator can read every tenant through RLS; this is what keeps the dashboard to the organization being viewed.
 
-A channel id of another organization answers **exactly like a channel that does not exist** (404 `not_found`, no database read),
+The route takes `?channel=<id>`; **no `channel` means all channels**, so a channel whose id is literally `all` is an ordinary
+channel and cannot collide with it. A channel id of another organization answers **exactly like a channel that does not exist** (404 `not_found`, no database read),
 so the route teaches nothing about another tenant. `tests/results-dashboard-routes.test.ts` covers: A cannot read B's channel,
 videos, readings, publish requests or connected accounts, with RLS working, with RLS absent, and with every table ignoring its
 filters; B sees only B; a channel of another organization equals a missing one.
+
+Reading rows are fetched 25 videos at a time, newest first. PostgREST cuts a response silently at its max rows (default 1000), so
+a response at the cap is never trusted: the ids are split and read again until each answer is under it. If even a single video
+alone fills the cap, `truncated.snapshots` is set and the page shows a warning that some readings may be missing. (The cap the
+loader assumes is `SNAPSHOT_CAP = 1000`; a server configured with a lower max-rows would not be detected.)
 
 A read that fails is an error (`502`), never an empty dashboard. A secondary source that is missing (cross-posts: 0029 not
 applied) or fails is named on the page and the rest still shows.
@@ -79,6 +101,7 @@ One list, newest first, inside the chosen period: the pipeline's own upload of e
 request (`publish_requests`), with platform, target, time, status and the **privacy the record states**. A record that states no
 privacy reads "Visibility not recorded"; the page never calls a video public that the record does not say is public.
 `publish_requests.status = published` is shown as "Uploaded" (the upload finished), consistent with CLAUDE.md #3.
+A cross-post is dated, and filtered into the period, by **`created_at`** (when it was requested), the same date for both.
 Failure and refusal reasons reuse the Publish panel's sentences (`t.publish.reasons`).
 
 ## Files

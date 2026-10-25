@@ -13,6 +13,13 @@
  *   it could be measured for.
  * - A figure that is null stays null (CLAUDE.md #5): a video without a reading is "not measured", never 0 views; an
  *   average is taken over the videos that have both of its parts; a sum over zero known values is null, not 0.
+ * - What does NOT count as a reading (the poller stores `int(metrics.get("views", 0) or 0)`, so when YouTube has no row yet it
+ *   stores a full row of zeros, and a zero here is then "no data came back", not "measured zero"):
+ *     1. a snapshot whose views, likes, comments, watch minutes and average duration are ALL exactly 0 is skipped as empty;
+ *        the video falls back to its newest non-empty reading, or is "not measured" (flagged `noData`) when it has none;
+ *     2. a duration of exactly 0 next to views > 0 is an unknown duration (null), so it cannot pull the weighted average down;
+ *     3. a snapshot dated before the video's publish day cannot be a reading of that video and is skipped.
+ *   The proper fix (the poller storing NULL for empty metrics) is a worker/database change and is not part of this page.
  * - Subscribers gained / lost exist in YouTube's response but are not stored by the poll, so there is no source to show.
  *   The dashboard says "not collected", it does not derive a delta from anything else.
  */
@@ -29,6 +36,9 @@ export const STALE_AFTER_DAYS = 3;
 /** How many rows each list returns at most, so a huge account cannot make a page of unbounded size. */
 export const MAX_VIDEOS = 200;
 export const MAX_HISTORY = 100;
+/** Video ids per metrics_snapshots query, and the row count at which a response is assumed cut (PostgREST's default max is 1000). */
+export const SNAPSHOT_CHUNK = 25;
+export const SNAPSHOT_CAP = 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -122,8 +132,8 @@ export function coerceSnapshots(data: unknown): SnapshotInput[] {
 export interface Reading {
   /** The day the poll took it (YYYY-MM-DD). */
   date: string;
-  /** UTC calendar days between publishing and the reading (0 = the day it was published); null when the reading is dated before the upload. */
-  daysAfterPublish: number | null;
+  /** UTC calendar days between publishing and the reading (0 = the day it was published). Never negative: an earlier-dated snapshot is not a reading. */
+  daysAfterPublish: number;
   views: number | null;
   likes: number | null;
   comments: number | null;
@@ -139,8 +149,15 @@ export interface VideoResult {
   publishedAt: string;
   privacy: string | null;
   format: "long" | "short" | null;
-  /** The newest reading, or null when no reading exists: "not measured", never zero. */
+  /** The newest usable reading, or null when there is none: "not measured", never zero. */
   reading: Reading | null;
+  /** True when snapshots exist but every one of them was empty (all zeros: nothing came back), so there is no reading. */
+  noData: boolean;
+}
+
+/** A snapshot with every figure exactly 0: the poller's row for "YouTube returned nothing yet", not a measurement of zero. */
+export function isEmptyReading(s: SnapshotInput): boolean {
+  return s.views === 0 && s.likes === 0 && s.comments === 0 && s.watchMinutes === 0 && s.avgViewSeconds === 0;
 }
 
 /** The first moment of the window, in ms: now minus `days` whole days. */
@@ -149,11 +166,12 @@ export function windowStart(nowMs: number, days: RangeDays): number {
 }
 
 /**
- * The videos published inside the window, each with its newest reading.
+ * The videos published inside the window, each with its newest usable reading.
  *
  * Only a video that has a publish time is a published video (a held run has none, lib/heldVideos.ts). A publish time in
- * the future is not "published yet" and is left out. Newest reading wins by date; for equal dates the later row wins,
- * because the poll overwrites a day's row when it re-reads it.
+ * the future is not "published yet" and is left out. A snapshot is skipped when it is empty (all zeros), or dated before the
+ * video's publish day (see the header). Newest reading wins by date; for equal dates the later row wins, because the poll
+ * overwrites a day's row when it re-reads it.
  */
 export function buildVideoResults(
   videos: readonly VideoInput[],
@@ -162,31 +180,43 @@ export function buildVideoResults(
   days: RangeDays,
 ): VideoResult[] {
   const start = windowStart(nowMs, days);
-  const latest = new Map<string, { snap: SnapshotInput; ms: number }>();
+  const byVideo = new Map<string, { snap: SnapshotInput; ms: number }[]>();
   for (const snap of snapshots) {
     const ms = timeMs(snap.snapshotDate);
     if (ms === null) continue;
-    const prev = latest.get(snap.videoId);
-    if (!prev || ms >= prev.ms) latest.set(snap.videoId, { snap, ms });
+    const list = byVideo.get(snap.videoId);
+    if (list) list.push({ snap, ms });
+    else byVideo.set(snap.videoId, [{ snap, ms }]);
   }
   const out: VideoResult[] = [];
   for (const v of videos) {
     const pub = timeMs(v.publishedAt);
     if (pub === null || pub < start || pub > nowMs || !v.publishedAt) continue;
-    const hit = latest.get(v.videoId);
+    // Calendar days (UTC), the way a reading is dated: a reading dated the day of the upload is day 0, whatever the hour.
+    const pubDay = Math.floor(pub / DAY_MS);
+    let best: { snap: SnapshotInput; ms: number } | null = null;
+    let sawEmpty = false;
+    for (const cand of byVideo.get(v.videoId) ?? []) {
+      if (Math.floor(cand.ms / DAY_MS) < pubDay) continue;
+      if (isEmptyReading(cand.snap)) {
+        sawEmpty = true;
+        continue;
+      }
+      if (!best || cand.ms >= best.ms) best = cand;
+    }
     let reading: Reading | null = null;
-    if (hit) {
-      // Calendar days (UTC), the way a reading is dated: a reading dated the day of the upload is day 0, whatever the hour.
-      const age = Math.floor(hit.ms / DAY_MS) - Math.floor(pub / DAY_MS);
+    if (best) {
+      const sn = best.snap;
       reading = {
-        date: hit.snap.snapshotDate,
-        daysAfterPublish: age >= 0 ? age : null,
-        views: hit.snap.views,
-        likes: hit.snap.likes,
-        comments: hit.snap.comments,
-        watchMinutes: hit.snap.watchMinutes,
-        avgViewSeconds: hit.snap.avgViewSeconds,
-        impressions: hit.snap.impressions,
+        date: sn.snapshotDate,
+        daysAfterPublish: Math.floor(best.ms / DAY_MS) - pubDay,
+        views: sn.views,
+        likes: sn.likes,
+        comments: sn.comments,
+        watchMinutes: sn.watchMinutes,
+        // A duration of exactly 0 with views is the poller's default for "no duration returned": unknown, not 0 seconds.
+        avgViewSeconds: sn.avgViewSeconds === 0 && sn.views !== null && sn.views > 0 ? null : sn.avgViewSeconds,
+        impressions: sn.impressions,
       };
     }
     out.push({
@@ -197,6 +227,7 @@ export function buildVideoResults(
       privacy: v.privacy,
       format: v.format,
       reading,
+      noData: reading === null && sawEmpty,
     });
   }
   // Newest first; a stable, total order so two renders of the same rows agree.
@@ -218,6 +249,8 @@ export interface Figure {
 export interface Kpis {
   videos: number;
   measured: number;
+  /** Videos whose stored readings were all empty (all zeros): counted as not measured, said so on the page. */
+  noData: number;
   views: Figure;
   watchHours: Figure;
   likes: Figure;
@@ -260,6 +293,7 @@ export function computeKpis(rows: readonly VideoResult[]): Kpis {
   return {
     videos: rows.length,
     measured: rows.filter((r) => r.reading !== null).length,
+    noData: rows.filter((r) => r.noData).length,
     views: sumFigure(rows, (r) => r.views),
     watchHours: sumFigure(rows, (r) => r.watchMinutes, 60),
     likes: sumFigure(rows, (r) => r.likes),
@@ -313,7 +347,7 @@ export interface HistoryEntry {
   target: string | null;
   videoId: string;
   videoTitle: string | null;
-  /** ISO time the entry is dated by: the upload time, or the request's finish time (else its creation time). */
+  /** ISO time the entry is dated by: the upload time, or the time the request was made (publish_requests.created_at, the same date the window filters by). */
   at: string;
   status: HistoryStatus;
   /** The privacy the record states ("private", "unlisted", "public", "SELF_ONLY"...), or null when it states none. */
@@ -334,7 +368,6 @@ export interface RequestInput {
   privacy: string | null;
   resultUrl: string | null;
   createdAt: string | null;
-  finishedAt: string | null;
   /** The name of the target, resolved by the caller from rows it read in the SAME organization; null if unknown. */
   target: string | null;
 }
@@ -380,7 +413,7 @@ export function buildHistory(
     });
   }
   for (const r of requests) {
-    const at = r.finishedAt ?? r.createdAt;
+    const at = r.createdAt;
     const ms = timeMs(at);
     if (ms === null || ms < start || ms > nowMs || !at) continue;
     out.push({

@@ -15,6 +15,7 @@ import {
   computeKpis,
   freshness,
   historyStatus,
+  isEmptyReading,
   parseRange,
   topByViews,
   windowStart,
@@ -123,13 +124,13 @@ describe("buildVideoResults: which videos, which reading", () => {
     const rows = buildVideoResults([video()], [snap({ videoId: "someone-else" })], NOW, 28);
     expect(rows[0].reading).toBeNull();
   });
-  it("counts UTC calendar days between publishing and the reading, 0 for the same day, null when the reading is dated before the upload", () => {
+  it("counts UTC calendar days between publishing and the reading, 0 for the same day; a reading dated before the upload is skipped", () => {
     const pub = Date.UTC(2026, 9, 20, 15, 0, 0);
     const mk = (date: string) => buildVideoResults([video({ publishedAt: iso(pub) })], [snap({ snapshotDate: date })], NOW, 28)[0].reading?.daysAfterPublish;
     expect(mk("2026-10-20")).toBe(0); // dated the day of the upload, though 00:00 is before 15:00
     expect(mk("2026-10-21")).toBe(1);
     expect(mk("2026-10-22")).toBe(2);
-    expect(mk("2026-10-19")).toBeNull();
+    expect(mk("2026-10-19")).toBeUndefined(); // dated before the upload: not a reading of this video at all
   });
   it("lists newest first with a stable tie-break", () => {
     const t = iso(NOW - DAY);
@@ -138,13 +139,73 @@ describe("buildVideoResults: which videos, which reading", () => {
   });
 });
 
-const result = (id: string, reading: Partial<NonNullable<VideoResult["reading"]>> | null): VideoResult => ({
+describe("what is not a reading", () => {
+  const empty = (over: Partial<SnapshotInput> = {}) => snap({ views: 0, likes: 0, comments: 0, watchMinutes: 0, avgViewSeconds: 0, ...over });
+  it("a snapshot whose five figures are all exactly 0 is empty; one non-zero or null figure makes it a reading", () => {
+    expect(isEmptyReading(empty())).toBe(true);
+    for (const k of ["views", "likes", "comments", "watchMinutes", "avgViewSeconds"] as const) {
+      expect(isEmptyReading(empty({ [k]: 1 })), k).toBe(false);
+      expect(isEmptyReading(empty({ [k]: null })), `${k} null`).toBe(false);
+    }
+  });
+  it("an all-zero snapshot is 'no data', not '0 views': no reading, flagged noData", () => {
+    const [row] = buildVideoResults([video()], [empty()], NOW, 28);
+    expect(row.reading).toBeNull();
+    expect(row.noData).toBe(true);
+    const k = computeKpis([row]);
+    expect(k).toMatchObject({ videos: 1, measured: 0, noData: 1 });
+    expect(k.views).toEqual({ value: null, known: 0, of: 1 });
+  });
+  it("an empty newest snapshot does not hide an older real one; the older reading is used", () => {
+    const [row] = buildVideoResults([video()], [snap({ snapshotDate: "2026-10-23", views: 40 }), empty({ snapshotDate: "2026-10-24" })], NOW, 28);
+    expect(row.reading?.views).toBe(40);
+    expect(row.reading?.date).toBe("2026-10-23");
+    expect(row.noData).toBe(false);
+  });
+  it("a video with no snapshot at all is not measured but is NOT 'noData'", () => {
+    const [row] = buildVideoResults([video()], [], NOW, 28);
+    expect(row).toMatchObject({ reading: null, noData: false });
+  });
+  it("a real zero (views 0 but a like) stays a measured 0", () => {
+    const [row] = buildVideoResults([video()], [empty({ likes: 1 })], NOW, 28);
+    expect(row.reading?.views).toBe(0);
+    expect(row.noData).toBe(false);
+  });
+  it("a zero duration next to views is unknown, so it cannot drag the weighted average down", () => {
+    const rows = buildVideoResults(
+      [video({ videoId: "a" }), video({ videoId: "b" })],
+      [snap({ videoId: "a", views: 1000, avgViewSeconds: 0 }), snap({ videoId: "b", views: 10, avgViewSeconds: 100 })],
+      NOW,
+      28,
+    );
+    expect(rows.find((r) => r.videoId === "a")?.reading?.avgViewSeconds).toBeNull();
+    expect(rows.find((r) => r.videoId === "a")?.reading?.views).toBe(1000);
+    const k = computeKpis(rows);
+    expect(k.avgViewSeconds).toEqual({ value: 100, known: 1, of: 2 });
+  });
+  it("a zero duration with zero views is left as read (there are no views to weigh it by)", () => {
+    const [row] = buildVideoResults([video()], [snap({ views: 0, likes: 1, avgViewSeconds: 0 })], NOW, 28);
+    expect(row.reading?.avgViewSeconds).toBe(0);
+  });
+  it("a snapshot dated before the video's publish day is skipped, one dated the same day is kept", () => {
+    const pub = Date.UTC(2026, 9, 20, 15, 0, 0);
+    const v = video({ publishedAt: iso(pub) });
+    const [early] = buildVideoResults([v], [snap({ snapshotDate: "2026-10-19", views: 999 })], NOW, 28);
+    expect(early.reading).toBeNull();
+    expect(early.noData).toBe(false);
+    const [mixed] = buildVideoResults([v], [snap({ snapshotDate: "2026-10-19", views: 999 }), snap({ snapshotDate: "2026-10-20", views: 7 })], NOW, 28);
+    expect(mixed.reading?.views).toBe(7);
+  });
+});
+
+const result = (id: string, reading: Partial<NonNullable<VideoResult["reading"]>> | null, noData = false): VideoResult => ({
   videoId: id,
   channelId: "c1",
   title: id,
   publishedAt: iso(NOW - DAY),
   privacy: null,
   format: null,
+  noData,
   reading: reading === null ? null : { date: "2026-10-24", daysAfterPublish: 1, views: null, likes: null, comments: null, watchMinutes: null, avgViewSeconds: null, impressions: null, ...reading },
 });
 
@@ -230,7 +291,6 @@ const req = (over: Partial<RequestInput> = {}): RequestInput => ({
   privacy: null,
   resultUrl: "https://example.com/p/1",
   createdAt: iso(NOW - 3 * DAY),
-  finishedAt: iso(NOW - 3 * DAY + 60_000),
   target: "@me",
   ...over,
 });
@@ -251,20 +311,12 @@ describe("buildHistory", () => {
     expect(historyStatus("refused")).toBe("refused");
     expect(historyStatus("mystery")).toBe("failed");
   });
-  it("dates a request by when it finished, else by when it was asked, and keeps only the window", () => {
-    const inside = req({ id: 2, finishedAt: null, createdAt: iso(NOW - DAY) });
-    const outside = req({ id: 3, finishedAt: null, createdAt: iso(windowStart(NOW, 7) - 1) });
+  it("dates a request by when it was made (created_at, the same date the window filters by) and keeps only the window", () => {
+    const inside = req({ id: 2, createdAt: iso(NOW - DAY) });
+    const outside = req({ id: 3, createdAt: iso(windowStart(NOW, 7) - 1) });
     const out = buildHistory([], [inside, outside], titles, NOW, 7);
     expect(out.map((e) => e.key)).toEqual(["rq:2"]);
     expect(out[0].at).toBe(inside.createdAt);
-  });
-  it("dates a request by its finish time even when it was asked before the window began", () => {
-    const old = req({ id: 7, createdAt: iso(windowStart(NOW, 7) - 2 * DAY), finishedAt: iso(NOW - DAY) });
-    const out = buildHistory([], [old], titles, NOW, 7);
-    expect(out.map((e) => e.key)).toEqual(["rq:7"]);
-    expect(out[0].at).toBe(old.finishedAt);
-    // and the other way round: finished before the window, asked inside it, is out
-    expect(buildHistory([], [req({ id: 8, createdAt: iso(NOW - DAY), finishedAt: iso(windowStart(NOW, 7) - DAY) })], titles, NOW, 7)).toEqual([]);
   });
   it("shows a result link only when it is https", () => {
     const out = buildHistory([], [req({ id: 4, resultUrl: "http://x.test" }), req({ id: 5, resultUrl: "javascript:alert(1)" }), req({ id: 6 })], titles, NOW, 28);
@@ -273,7 +325,7 @@ describe("buildHistory", () => {
     expect(out.find((e) => e.key === "rq:6")?.url).toBe("https://example.com/p/1");
   });
   it("cuts the list at the limit after sorting, so the oldest entries are the ones that go", () => {
-    const many = Array.from({ length: 5 }, (_, i) => req({ id: i + 10, finishedAt: iso(NOW - (i + 1) * 3600_000) }));
+    const many = Array.from({ length: 5 }, (_, i) => req({ id: i + 10, createdAt: iso(NOW - (i + 1) * 3600_000) }));
     const out = buildHistory([], many, titles, NOW, 7, 3);
     expect(out.map((e) => e.key)).toEqual(["rq:10", "rq:11", "rq:12"]);
     expect(MAX_HISTORY).toBeGreaterThan(3);

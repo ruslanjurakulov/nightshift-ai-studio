@@ -37,6 +37,7 @@
 .rd-table th, .rd-table td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--color-border); vertical-align: top; color: var(--color-fg); font-weight: 400; }
 .rd-table thead th { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-muted); font-weight: 500; }
 .rd-table .rd-num { text-align: right; font-variant-numeric: tabular-nums; }
+.rd-scroll { overflow-x: auto; max-width: 100%; }
 .rd-title { display: flex; flex-direction: column; gap: 4px; min-width: 12rem; font-weight: 500 !important; overflow-wrap: anywhere; }
 .rd-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-weight: 400; font-size: 0.8125rem; }
 .rd-links a, .rd-history a, .rd-card-link { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; color: var(--color-primary); text-decoration: underline; }

@@ -19,7 +19,7 @@ const fail = (error: ResultsError, status: number) => NextResponse.json({ error 
 /**
  * The results dashboard's one read (NIGHTSHIFT_RESULTS_DASHBOARD, default off: 404 before anything else is asked).
  *
- * GET `?channel=<channel id | all>&range=<7 | 28 | 90>`. Read-only and free: it never publishes, never spends credits and
+ * GET `?channel=<channel id>&range=<7 | 28 | 90>`; no `channel` means all channels (a channel whose id is literally "all" is just a channel). Read-only and free: it never publishes, never spends credits and
  * never calls a platform; it reads what the daily analytics poll and the publish worker already stored, under the
  * signed-in member's own session (RLS), and only inside the organization being viewed. A channel that belongs to another
  * organization answers exactly like one that does not exist (404 `not_found`), so the route teaches nobody anything about
@@ -31,10 +31,10 @@ export async function GET(request: Request) {
   if (!user) return fail("unauthorized", 401);
 
   const params = new URL(request.url).searchParams;
-  const channelParam = params.get("channel") ?? "all";
+  const channelParam = params.get("channel");
   const rangeParam = params.get("range");
   const days = rangeParam === null ? DEFAULT_RANGE : parseRange(rangeParam);
-  if (days === null || (channelParam !== "all" && !CHANNEL_ID_RE.test(channelParam))) return fail("invalid_params", 400);
+  if (days === null || (channelParam !== null && !CHANNEL_ID_RE.test(channelParam))) return fail("invalid_params", 400);
 
   const supabase = await createClient();
   if (!supabase) return fail("not_configured", 503);

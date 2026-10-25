@@ -64,12 +64,12 @@ describe("results page", () => {
     expect(dash.props).toMatchObject({ initialChannel: "chanA1", videosHref: "/alpha/videos", channelsHref: "/alpha/channels" });
   });
 
-  it("opens on all channels when the URL is the every-channel one", async () => {
+  it("opens on all channels (null) when the URL is the every-channel one", async () => {
     vi.stubEnv("NIGHTSHIFT_RESULTS_DASHBOARD", "on");
     h.channelCtx.mockResolvedValue({ slug: "all-channels", selection: "__all__" });
     const { default: Page } = await import("../app/(app)/[channel]/analytics/results/page");
     const dash = flatten(await Page()).find((e) => (e.props as { initialChannel?: string }).initialChannel !== undefined)!;
-    expect((dash.props as { initialChannel: string }).initialChannel).toBe("all");
+    expect((dash.props as { initialChannel: string | null }).initialChannel).toBeNull();
   });
 
   it("shows no dashboard to someone without an organization, or where organizations are not set up", async () => {

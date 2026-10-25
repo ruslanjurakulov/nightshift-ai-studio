@@ -23,6 +23,7 @@ const r = en.resultsDashboard;
 const fig = (value: number | null, known: number, of: number) => ({ value, known, of });
 const reading = (over = {}) => ({ date: "2026-10-24", daysAfterPublish: 2, views: 1200, likes: 10, comments: 2, watchMinutes: 150, avgViewSeconds: 125, impressions: null, ...over });
 const videoRow = (id: string, over = {}) => ({
+  noData: false,
   videoId: id,
   channelId: "chanA1",
   title: `Title ${id}`,
@@ -37,7 +38,7 @@ function payload(over: Partial<ResultsPayload> = {}): ResultsPayload {
   return {
     generatedAt: "2026-10-25T12:00:00.000Z",
     rangeDays: 28,
-    selected: "all",
+    selected: null,
     channels: [
       { id: "chanA1", name: "Alpha", connected: true },
       { id: "chanA2", name: "Alpha two", connected: false },
@@ -49,7 +50,7 @@ function payload(over: Partial<ResultsPayload> = {}): ResultsPayload {
       { id: "x", state: "coming", connected: 0 },
       { id: "facebook", state: "coming", connected: 0 },
     ],
-    kpis: { videos: 2, measured: 1, views: fig(1200, 1, 2), watchHours: fig(2.5, 1, 2), likes: fig(10, 1, 2), comments: fig(2, 1, 2), avgViewSeconds: fig(125, 1, 2) },
+    kpis: { videos: 2, measured: 1, noData: 0, views: fig(1200, 1, 2), watchHours: fig(2.5, 1, 2), likes: fig(10, 1, 2), comments: fig(2, 1, 2), avgViewSeconds: fig(125, 1, 2) },
     // newest first, as the server sends them
     videos: [videoRow("vidA0000002", { reading: null, publishedAt: "2026-10-24T10:00:00.000Z" }), videoRow("vidA0000001")] as ResultsPayload["videos"],
     history: [
@@ -58,7 +59,7 @@ function payload(over: Partial<ResultsPayload> = {}): ResultsPayload {
     ],
     freshness: { asOf: "2026-10-24", ageDays: 1, stale: false },
     subscribers: "not_collected",
-    truncated: { videos: false, history: false },
+    truncated: { videos: false, history: false, snapshots: false },
     sources: { requests: "ok", accounts: "ok" },
     ...over,
   };
@@ -66,7 +67,7 @@ function payload(over: Partial<ResultsPayload> = {}): ResultsPayload {
 
 const fetchMock = vi.fn();
 const ok = (body: unknown, status = 200) => Promise.resolve({ ok: status < 400, status, json: async () => body });
-const mountDashboard = (initial = "all") => render(<ResultsDashboard initialChannel={initial} videosHref="/alpha/videos" channelsHref="/alpha/channels" />);
+const mountDashboard = (initial: string | null = null) => render(<ResultsDashboard initialChannel={initial} videosHref="/alpha/videos" channelsHref="/alpha/channels" />);
 const urls = () => fetchMock.mock.calls.map((c) => String(c[0]));
 
 beforeEach(() => {
@@ -118,7 +119,7 @@ describe("loading, error, empty", () => {
 
   it("nothing published in the period is an honest empty state, and the platforms and history still show", async () => {
     fetchMock.mockImplementation(() =>
-      ok(payload({ kpis: { videos: 0, measured: 0, views: fig(null, 0, 0), watchHours: fig(null, 0, 0), likes: fig(null, 0, 0), comments: fig(null, 0, 0), avgViewSeconds: fig(null, 0, 0) }, videos: [], history: [], freshness: { asOf: null, ageDays: null, stale: false } })),
+      ok(payload({ kpis: { videos: 0, measured: 0, noData: 0, views: fig(null, 0, 0), watchHours: fig(null, 0, 0), likes: fig(null, 0, 0), comments: fig(null, 0, 0), avgViewSeconds: fig(null, 0, 0) }, videos: [], history: [], freshness: { asOf: null, ageDays: null, stale: false } })),
     );
     mountDashboard();
     expect(await screen.findByText(r.emptyTitle)).toBeTruthy();
@@ -153,7 +154,7 @@ describe("the figures", () => {
 
   it("a figure nobody has says 'Not measured', not 0", async () => {
     fetchMock.mockImplementation(() =>
-      ok(payload({ kpis: { videos: 1, measured: 0, views: fig(null, 0, 1), watchHours: fig(null, 0, 1), likes: fig(null, 0, 1), comments: fig(null, 0, 1), avgViewSeconds: fig(null, 0, 1) }, videos: [videoRow("vidA0000001", { reading: null })] as ResultsPayload["videos"] })),
+      ok(payload({ kpis: { videos: 1, measured: 0, noData: 0, views: fig(null, 0, 1), watchHours: fig(null, 0, 1), likes: fig(null, 0, 1), comments: fig(null, 0, 1), avgViewSeconds: fig(null, 0, 1) }, videos: [videoRow("vidA0000001", { reading: null })] as ResultsPayload["videos"] })),
     );
     mountDashboard();
     const kpis = await screen.findByLabelText(r.kpisLabel);
@@ -243,7 +244,7 @@ describe("stale and partial", () => {
   });
 
   it("says when the list is cut", async () => {
-    fetchMock.mockImplementation(() => ok(payload({ truncated: { videos: true, history: true } })));
+    fetchMock.mockImplementation(() => ok(payload({ truncated: { videos: true, history: true, snapshots: false } })));
     mountDashboard();
     await screen.findByLabelText(r.kpisLabel);
     expect(screen.getByText(/Showing the newest 200 videos/)).toBeTruthy();
@@ -333,7 +334,25 @@ describe("controls", () => {
     await waitFor(() => expect(urls().some((u) => u.includes("channel=chanA1"))).toBe(true));
     fireEvent.click(screen.getByRole("radio", { name: r.range.d7 }));
     await waitFor(() => expect(urls().some((u) => u.includes("channel=chanA1") && u.includes("range=7"))).toBe(true));
-    for (const u of urls()) expect(u).toMatch(/^\/api\/results\?channel=[A-Za-z0-9._-]+&range=(7|28|90)$/);
+    for (const u of urls()) expect(u).toMatch(/^\/api\/results\?(channel=[A-Za-z0-9._-]+&)?range=(7|28|90)$/);
+  });
+
+  it("starts on all channels with no channel in the request, and the select says so", async () => {
+    fetchMock.mockImplementation(() => ok(payload()));
+    mountDashboard();
+    await screen.findByLabelText(r.kpisLabel);
+    expect(urls()[0]).toBe("/api/results?range=28");
+    expect((screen.getByLabelText(r.channelLabel) as HTMLSelectElement).value).toBe("");
+  });
+
+  it("a channel whose id is literally 'all' is asked for by id, and is not the all-channels choice", async () => {
+    fetchMock.mockImplementation(() => ok(payload({ selected: "all", channels: [{ id: "all", name: "Literally all", connected: true }] })));
+    mountDashboard("all");
+    await screen.findByLabelText(r.kpisLabel);
+    expect(urls()[0]).toBe("/api/results?channel=all&range=28");
+    const select = screen.getByLabelText(r.channelLabel) as HTMLSelectElement;
+    expect(select.value).toBe("all");
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "all"]);
   });
 
   it("starts on the channel the page was opened on", async () => {
@@ -349,7 +368,7 @@ describe("controls", () => {
     mountDashboard("chanZ");
     await screen.findByLabelText(r.kpisLabel);
     expect(urls()[0]).toContain("channel=chanZ");
-    expect(urls()[1]).toContain("channel=all");
+    expect(urls()[1]).toBe("/api/results?range=28");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -401,5 +420,148 @@ describe("controls", () => {
     const buttonNames = screen.queryAllByRole("button").map((b) => b.textContent);
     expect(buttonNames).toEqual([]);
     for (const call of fetchMock.mock.calls) expect(call[1]?.method ?? "GET").toBe("GET");
+  });
+});
+
+describe("data honesty on the page", () => {
+  it("every figure tile says it is about the latest readings", async () => {
+    fetchMock.mockImplementation(() => ok(payload()));
+    mountDashboard();
+    const kpis = await screen.findByLabelText(r.kpisLabel);
+    for (const label of [r.kpi.views, r.kpi.watch, r.kpi.duration]) {
+      expect(label).toMatch(/latest readings/);
+      expect(within(kpis).getByText(label)).toBeTruthy();
+    }
+  });
+
+  it("states the rule for readings that do not count, next to the freshness", async () => {
+    fetchMock.mockImplementation(() => ok(payload()));
+    mountDashboard();
+    await screen.findByLabelText(r.kpisLabel);
+    expect(screen.getByText(r.readingRules)).toBeTruthy();
+    expect(r.readingRules).toMatch(/all exactly zero/);
+    expect(r.readingRules).toMatch(/before the video was published/);
+  });
+
+  it("a video whose stored reading was empty says 'no data yet', and the count is explained; it is not a zero", async () => {
+    const p = payload({
+      kpis: { videos: 1, measured: 0, noData: 1, views: fig(null, 0, 1), watchHours: fig(null, 0, 1), likes: fig(null, 0, 1), comments: fig(null, 0, 1), avgViewSeconds: fig(null, 0, 1) },
+      videos: [videoRow("vidA0000001", { reading: null, noData: true })] as ResultsPayload["videos"],
+    });
+    fetchMock.mockImplementation(() => ok(p));
+    mountDashboard();
+    await screen.findByLabelText(r.kpisLabel);
+    expect(screen.getByText(r.videoNoData)).toBeTruthy();
+    expect(screen.getByText("1 videos have a stored reading with no data in it (every figure was zero). That counts as not measured, not as zero views.")).toBeTruthy();
+    expect(within(screen.getByLabelText(r.kpisLabel)).queryByText("0")).toBeNull();
+  });
+
+  it("marks the figures as covering only the newest videos when the list was cut", async () => {
+    fetchMock.mockImplementation(() => ok(payload({ truncated: { videos: true, history: false, snapshots: false } })));
+    mountDashboard();
+    await screen.findByLabelText(r.kpisLabel);
+    // once on the video-count tile and once as its own status line under the figures
+    expect(screen.getAllByText("These figures cover the newest 200 videos only.")).toHaveLength(2);
+  });
+
+  it("warns, visibly, when some readings could not be read", async () => {
+    fetchMock.mockImplementation(() => ok(payload({ truncated: { videos: false, history: false, snapshots: true } })));
+    mountDashboard();
+    const warn = await screen.findByText(r.snapshotsTruncated);
+    expect(warn.closest("[role=status]")).toBeTruthy();
+  });
+
+  it("does not warn when nothing was cut", async () => {
+    fetchMock.mockImplementation(() => ok(payload()));
+    mountDashboard();
+    await screen.findByLabelText(r.kpisLabel);
+    expect(screen.queryByText(r.snapshotsTruncated)).toBeNull();
+  });
+});
+
+describe("reading age and channel choice", () => {
+  it("says 'the day it was published' for day 0 and 'N days after' otherwise", async () => {
+    const p = payload();
+    p.videos = [videoRow("vidA0000001", { reading: reading({ daysAfterPublish: 0 }) }), videoRow("vidA0000002", { reading: reading({ daysAfterPublish: 1 }) })] as ResultsPayload["videos"];
+    fetchMock.mockImplementation(() => ok(p));
+    mountDashboard();
+    await screen.findByLabelText(r.kpisLabel);
+    expect(screen.getByText("2026-10-24, the day it was published")).toBeTruthy();
+    expect(screen.getByText("2026-10-24, 1 days after publishing")).toBeTruthy();
+  });
+
+  it("choosing 'All channels' again drops the channel from the request", async () => {
+    fetchMock.mockImplementation(() => ok(payload()));
+    mountDashboard();
+    await screen.findByLabelText(r.kpisLabel);
+    fireEvent.change(screen.getByLabelText(r.channelLabel), { target: { value: "chanA1" } });
+    await waitFor(() => expect(urls().some((u) => u.includes("channel=chanA1"))).toBe(true));
+    fireEvent.change(screen.getByLabelText(r.channelLabel), { target: { value: "" } });
+    await waitFor(() => expect(urls().length).toBeGreaterThanOrEqual(3));
+    expect(urls()[urls().length - 1]).toBe("/api/results?range=28");
+  });
+
+  it("before the first answer the select already shows the channel the page opened on", () => {
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    mountDashboard("chanA1");
+    const select = screen.getByLabelText(r.channelLabel) as HTMLSelectElement;
+    expect(select.value).toBe("chanA1");
+  });
+});
+
+describe("table layout and focus", () => {
+  it("the table scrolls sideways inside its own wrapper, and the row header is a plain cell (no flex on a th)", async () => {
+    fetchMock.mockImplementation(() => ok(payload()));
+    mountDashboard();
+    await screen.findByLabelText(r.kpisLabel);
+    const table = screen.getByRole("table");
+    expect(table.parentElement?.className).toContain("rd-scroll");
+    for (const th of within(table).getAllByRole("rowheader")) {
+      expect(th.className).not.toContain("rd-title");
+      expect(th.querySelector(".rd-title")).toBeTruthy();
+    }
+    const css = (await import("node:fs")).readFileSync((await import("node:path")).join(process.cwd(), "components/results/results.css"), "utf8");
+    expect(css).toMatch(/\.rd-scroll\s*\{[^}]*overflow-x:\s*auto/);
+    expect(css).not.toMatch(/\.rd-table th[^{]*\{[^}]*display:\s*flex/);
+  });
+
+  it("after Retry, focus moves to the status line instead of being lost", async () => {
+    fetchMock.mockImplementationOnce(() => ok({ error: "failed" }, 502)).mockImplementation(() => new Promise(() => {}));
+    mountDashboard();
+    const alert = await screen.findByRole("alert");
+    const retry = within(alert).getByRole("button", { name: r.retry });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText(new RegExp(`^${r.rangeHint.replace("{days}", "28")}$`))));
+    expect(document.activeElement?.getAttribute("role")).toBe("status");
+  });
+
+  it("another channel's numbers are not kept under a new channel after an error and a retry", async () => {
+    fetchMock
+      .mockImplementationOnce(() => ok(payload({ selected: "chanA1" })))
+      .mockImplementationOnce(() => ok({ error: "failed" }, 502))
+      .mockImplementation(() => new Promise(() => {}));
+    mountDashboard("chanA1");
+    await screen.findByLabelText(r.kpisLabel);
+    fireEvent.change(screen.getByLabelText(r.channelLabel), { target: { value: "chanA2" } });
+    const alert = await screen.findByRole("alert");
+    expect(screen.queryByLabelText(r.kpisLabel)).toBeNull();
+    fireEvent.click(within(alert).getByRole("button", { name: r.retry }));
+    await waitFor(() => expect(urls().length).toBe(3));
+    expect(urls()[2]).toContain("channel=chanA2");
+    expect(screen.queryByLabelText(r.kpisLabel)).toBeNull();
+    expect(screen.getByRole("status", { name: r.loading })).toBeTruthy();
+  });
+
+  it("switching channel clears the previous channel's numbers while the new one loads; a new period of the same channel keeps them", async () => {
+    fetchMock.mockImplementationOnce(() => ok(payload({ selected: "chanA1" }))).mockImplementation(() => new Promise(() => {}));
+    mountDashboard("chanA1");
+    await screen.findByLabelText(r.kpisLabel);
+    fireEvent.click(screen.getByRole("radio", { name: r.range.d90 }));
+    await waitFor(() => expect(urls().length).toBe(2));
+    expect(screen.getByLabelText(r.kpisLabel)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(r.channelLabel), { target: { value: "chanA2" } });
+    await waitFor(() => expect(urls().length).toBe(3));
+    expect(screen.queryByLabelText(r.kpisLabel)).toBeNull();
   });
 });
