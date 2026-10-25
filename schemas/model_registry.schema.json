@@ -18,7 +18,7 @@
     "upscale_target": {"enum": ["720p", "1k", "2k", "4k"]},
     "language": {"type": "string", "pattern": "^[a-z]{2,3}$"},
     "aspect": {"type": "string", "pattern": "^[0-9]{1,2}:[0-9]{1,2}$"},
-    "resolution": {"type": "string", "pattern": "^([0-9]{3,4}p|4k)$"},
+    "resolution": {"type": "string", "pattern": "^([0-9]{3,4}p|[24]k)$"},
     "image_size": {"enum": ["512", "1K", "2K", "4K"]},
     "image_quality": {"enum": ["low", "medium", "high"]},
     "usd": {"type": ["number", "null"], "minimum": 0},
