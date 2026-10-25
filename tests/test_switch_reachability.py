@@ -265,5 +265,43 @@ class TheGuardFailsWhenASwitchHasNoDeployPath(unittest.TestCase):
         self.assertIn("NIGHTSHIFT_PIPELINE_PAUSED", counted)
         self.assertNotIn("NIGHTSHIFT_SECURITY_PG", counted)   # security.yml's job env: CI only
 
+
+class TheWebOnlyFeatureSwitchesCanBeSetFromGitHub(unittest.TestCase):
+    """The scan above reads Python only, so a Command Center switch that lives in ``lib/<feature>/flag.ts`` would pass it
+    whether or not anybody can set it. Each such file names its switch once (``export const ..._FLAG = "NIGHTSHIFT_X"``); the
+    name must be a key of deploy/.env.web.example AND be mapped as WEBENV_<name> in deploy_web.yml, or the page stays a 404 for ever."""
+
+    FLAG_FILES = sorted((ROOT / "command-center" / "lib").glob("*/flag.ts"))
+
+    def flags(self) -> dict:
+        found = {}
+        for path in self.FLAG_FILES:
+            for name in re.findall(r"_FLAG\s*=\s*\"((?:CHRONOS|NIGHTSHIFT)_[A-Z0-9_]+)\"", path.read_text(encoding="utf-8")):
+                found[name] = path.relative_to(ROOT).as_posix()
+        return found
+
+    def test_the_scan_finds_the_known_feature_switches(self):
+        found = self.flags()
+        self.assertIn("NIGHTSHIFT_REGION_EDITOR", found)
+        self.assertIn("NIGHTSHIFT_IMAGE_EDITOR", found)
+
+    def test_every_feature_switch_has_a_web_example_key_and_a_workflow_mapping(self):
+        web_keys = _example_keys(ROOT / "deploy" / ".env.web.example")
+        workflow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
+        for name, where in self.flags().items():
+            self.assertIn(name, web_keys, f"{name} ({where}): add `{name}=` to deploy/.env.web.example")
+            self.assertRegex(
+                workflow, r"(?m)^\s+WEBENV_%s: \$\{\{ vars\.%s \}\}\s*$" % (name, name),
+                f"{name} ({where}): map it in deploy_web.yml as WEBENV_{name}: ${{{{ vars.{name} }}}}")
+
+    def test_the_image_editor_switch_is_web_only_and_stays_off_by_default(self):
+        # Nothing in Python reads it (no worker runs an image edit), so it needs no worker variable; and the example ships it EMPTY.
+        self.assertNotIn("NIGHTSHIFT_IMAGE_EDITOR", names_read_by_the_code())
+        text = (ROOT / "deploy" / ".env.web.example").read_text(encoding="utf-8")
+        self.assertRegex(text, r"(?m)^NIGHTSHIFT_IMAGE_EDITOR=$")
+        self.assertNotIn("NIGHTSHIFT_IMAGE_EDITOR", (ROOT / "deploy" / ".env.worker.example").read_text(encoding="utf-8"))
+
+
+
 if __name__ == "__main__":
     unittest.main()
