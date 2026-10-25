@@ -101,6 +101,7 @@ _ERROR_TEXT = {
     "bad_input": "The request could not be used as written (the topic is too long or has hidden characters). Change it and plan again. Nothing was charged.",
     "bad_language": "The language could not be used. Choose another and plan again. Nothing was charged.",
     "bad_count": "A series has 3 or 4 episodes. Choose one of them and plan again. Nothing was charged.",
+    "bad_template": "The format could not be used with this number of episodes or this length. Choose another format or length and plan again. Nothing was charged.",
     "no_niche": "This channel has no niche, so a series cannot be planned. Set the niche first. Nothing was charged.",
 }
 _GENERIC_PLANNER_TEXT = "The planning model's answer could not be used. Nothing was charged. Try again."
@@ -135,7 +136,9 @@ class SeriesPlanStore:
     """``series_plans`` over PostgREST with the service key: one read (service_role has SELECT, migration 0120) and one function
     (``finish_series_plan``, service_role only). It writes nothing else; the service key has no table write on these tables."""
 
-    COLUMNS = "id,status,channel_id,series_id,topic,niche,language,n_episodes,duration_s"
+    COLUMNS = "id,status,channel_id,series_id,topic,niche,language,n_episodes,duration_s,template_id"
+    #: What the table had before migration 0122 added ``template_id``. Used only when PostgREST says the column does not exist.
+    LEGACY_COLUMNS = "id,status,channel_id,series_id,topic,niche,language,n_episodes,duration_s"
 
     def __init__(self, url: str, service_key: str, *, session=None, timeout: float = 20.0):
         self.url = (url or "").rstrip("/")
@@ -153,13 +156,26 @@ class SeriesPlanStore:
     def _headers(self) -> dict:
         return {"apikey": self._key, "Authorization": f"Bearer {self._key}", "Content-Type": "application/json"}
 
+    def _get(self, plan_id: str, columns: str):
+        return self._session().get(f"{self.url}/rest/v1/series_plans", params={"id": f"eq.{plan_id}", "select": columns},
+                                   headers=self._headers(), timeout=self._timeout)
+
     def load(self, plan_id: str) -> Optional[dict]:
-        r = self._session().get(f"{self.url}/rest/v1/series_plans", params={"id": f"eq.{plan_id}", "select": self.COLUMNS},
-                                headers=self._headers(), timeout=self._timeout)
+        r = self._get(plan_id, self.COLUMNS)
+        legacy = False
+        if r.status_code == 400 and _undefined_column(r):
+            # Migration 0122 is not applied yet, so no plan can have asked for a format: the carrier column does not exist, and
+            # neither does the function that could have stored one. That is "no format", a fact, and not a default for a missing
+            # value. Any other 400 (and every other status) is still an unreadable plan.
+            r = self._get(plan_id, self.LEGACY_COLUMNS)
+            legacy = True
         if r.status_code >= 300:
             raise StoreError(f"series_plans: HTTP {r.status_code}")   # the status only, never the body
         rows = r.json()
-        return rows[0] if isinstance(rows, list) and rows and isinstance(rows[0], dict) else None
+        row = rows[0] if isinstance(rows, list) and rows and isinstance(rows[0], dict) else None
+        if row is not None and legacy:
+            row["template_id"] = None
+        return row
 
     def finish(self, plan_id: str, *, ok: bool, title=None, report=None, quote=None, episodes=None,
                error_code: Optional[str] = None, error: Optional[str] = None) -> str:
@@ -184,6 +200,15 @@ class SeriesPlanStore:
             return DONE
         logger.warning("series plan %s: finish_series_plan answered HTTP %s", plan_id, r.status_code)   # status only
         return REFUSED if 400 <= r.status_code < 500 else UNREACHABLE
+
+
+def _undefined_column(response) -> bool:
+    """PostgREST's answer to a select of a column that does not exist: HTTP 400 with the Postgres code 42703."""
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    return isinstance(body, dict) and body.get("code") == "42703"
 
 
 # ── the outcome the queue worker acts on ─────────────────────────────────────
@@ -360,6 +385,9 @@ class SeriesPlanService:
         n = plan.get("n_episodes")
         try:
             budget = series_planner.series_call_budget(n)      # 3 or 4 below, 1..4 here: the planner refuses the rest
+            # The format (migration 0122): a word that is not in the closed list, or a request outside the format's bounds, ends the plan
+            # before a call is spent. It is never replaced by "no format": the person asked for one.
+            series_planner.check_template(plan.get("template_id"), n_episodes=n, duration_s=plan.get("duration_s"))
         except series_planner.SeriesPlanError as exc:
             return self._end_failed(plan_id, exc.code, last_attempt=last_attempt)
 
@@ -408,7 +436,7 @@ class SeriesPlanService:
                 result.plan = series_planner.plan_series(
                     plan.get("topic"), plan.get("n_episodes"), generate=budgeted, vet=vet, niche=plan.get("niche") or "",
                     channel_name=str(row.get("name") or ""), language=plan.get("language") or "English",
-                    held_topics_checked=held_checked)
+                    held_topics_checked=held_checked, template=plan.get("template_id"))
             finally:
                 try:
                     result.gate_calls = int(gate_calls())

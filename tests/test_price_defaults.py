@@ -67,6 +67,17 @@ UNPRICED_ON_PURPOSE = {
     "model_seedance_1_5_pro_second_480p_silent": "registry: no price read, not sold",
     "model_seedance_1_5_pro_second_480p_audio": "registry: no price read, not sold",
     "model_seedance_1_5_pro_second_1080p_silent": "registry: no price read, not sold",
+    "model_seedance_2_0_second": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    "model_seedance_2_0_second_480p": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    "model_seedance_2_0_second_720p": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    "model_seedance_2_0_second_1080p": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    "model_seedance_2_5_second": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    "model_seedance_2_5_second_480p": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    "model_seedance_2_5_second_720p": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    "model_seedance_2_5_second_1080p": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    "model_seedream_5_0_pro_image": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    "model_seedream_5_0_flash_image": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
+    "model_seedream_4_5_image": "registry: ByteDance first-party, terms-gated (written_consent_required) and unpriced; the owner prices it only after BytePlus authorises resale in writing",
     "model_gemini_2_5_flash_image_expand_image": "registry: picture op (0099), unverified and gated; the owner sets a price when a probe has proven it",
     "model_gemini_2_5_flash_image_relight_image": "registry: picture op (0099), unverified and gated; the owner sets a price when a probe has proven it",
     "model_gemini_2_5_flash_image_erase_image": "registry: picture op (0099), unverified and gated; the owner sets a price when a probe has proven it",
@@ -74,6 +85,17 @@ UNPRICED_ON_PURPOSE = {
     "model_generic_video_reframe_second": "registry: video op (0100), unverified and gated; the owner sets a price when a probe has proven it",
     "model_generic_video_remove_bg_second": "registry: video op (0100), unverified and gated; the owner sets a price when a probe has proven it",
     "model_assemblyai_universal_2_second": "registry: no price read, not sold (terms not reviewed)",
+    "model_grok_imagine_video_1_5_second": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_second_480p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_second_720p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_second_1080p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_lite_second": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_lite_second_480p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_lite_second_720p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_video_1_5_lite_second_1080p": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_image_2_0_image": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_image_2_0_image_low": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
+    "model_grok_imagine_image_2_0_image_medium": "registry: xAI first-party, terms-gated (terms_review_required: the xAI terms were not readable) and unpriced; the owner prices it only after a person has read them",
     "usd": "pricing a ledger unit changes run settlement (metered vs hold): owner policy",
     "gemini_input_tokens": "ledger unit: owner policy",
     "gemini_output_tokens": "ledger unit: owner policy",
@@ -233,7 +255,13 @@ class PriceDefaultsFile(unittest.TestCase):
         self.assertIn("'scene_regenerate_clip_' ||", (MIGRATIONS / "0076_scene_regenerate.sql").read_text())
 
     def test_quality_tiers_match_what_the_registry_sells(self):
-        tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)}
+        # The gated, unpriced grok tiers are not ones the registry SELLS; every other tier must still be priced.
+        tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)} \
+            - {u for u in UNPRICED_ON_PURPOSE if u.startswith("model_grok_imagine_")}
+        all_tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)}
+        self.assertEqual(all_tiers - tiers, {"model_grok_imagine_image_2_0_image_low",
+                                             "model_grok_imagine_image_2_0_image_medium"},
+                         "only the gated grok tiers may be left out of the sold-tier check")
         self.assertEqual(len(tiers), 9)
         self.assertTrue(tiers <= {r["unit"] for r in self.rows})
 

@@ -77,6 +77,7 @@ export const PLANNER_ERROR_CODES = [
   "bad_count",
   "bad_input",
   "bad_language",
+  "bad_template",
   "no_niche",
   "generate_failed",
   "empty_response",
@@ -100,6 +101,7 @@ export type PlanErrorKey =
   | "generate_failed"
   | "expired"
   | "bad_input"
+  | "bad_template"
   | "unusable_answer"
   | "unknown";
 
@@ -108,6 +110,8 @@ export function planErrorKey(code: unknown): PlanErrorKey {
   if (typeof code !== "string") return "unknown";
   if ((WORKER_ERROR_CODES as readonly string[]).includes(code)) return code as PlanErrorKey;
   if (code === "no_niche" || code === "generate_failed" || code === "expired") return code;
+  // The format the person picked does not fit the count or the length they chose (migration 0122): they change one and plan again.
+  if (code === "bad_template") return code;
   // The request itself could not be used (topic too long or hidden characters, language, count): the person changes it. Not "the answer".
   if (code === "bad_input" || code === "bad_language" || code === "bad_count") return "bad_input";
   if ((PLANNER_ERROR_CODES as readonly string[]).includes(code)) return "unusable_answer";
@@ -565,6 +569,7 @@ export type RequestErrorKey =
   | "invalid_count"
   | "invalid_duration"
   | "invalid_language"
+  | "invalid_template"
   | "no_niche"
   | "not_found"
   | "idempotency_conflict"
@@ -582,6 +587,7 @@ const REQUEST_WORDS: Record<string, RequestErrorKey> = {
   invalid_episode_count: "invalid_count",
   invalid_duration: "invalid_duration",
   invalid_language: "invalid_language",
+  invalid_template: "invalid_template",
   no_niche: "no_niche",
   idempotency_conflict: "idempotency_conflict",
   invalid_idempotency_key: "failed",

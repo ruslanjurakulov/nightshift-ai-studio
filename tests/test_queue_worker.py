@@ -174,8 +174,11 @@ class WorkflowParity(unittest.TestCase):
         self.assertIsNotNone(m)
         # The whitelist is the pipeline's inputs plus the hints the Command
         # Center may record on a job (never passed to the pipeline).
+        # `template` (migration 0122) is the format of a PLANNING job only: render_job_params_valid refuses it on every other kind, so it is in
+        # the SQL list and in no run's input (tests/test_series_template_migration.py pins both halves).
         self.assertEqual(set(re.findall(r"'([a-z_]+)'", m.group(1))),
-                         set(run_request.ALLOWED_PARAMS) | set(run_request.HINT_PARAMS))
+                         set(run_request.ALLOWED_PARAMS) | set(run_request.HINT_PARAMS) | {"template"})
+        self.assertNotIn("template", run_request.ALLOWED_PARAMS)
 
 
 # ── scrubbing ──────────────────────────────────────────────────────────────
