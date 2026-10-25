@@ -23,6 +23,7 @@ import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
 import { editorExportUz } from "./editor-export/uz";
 import { reviewLinkUz, reviewPageUz } from "./review-link/uz";
+import { regionEditUz } from "./region-edit/uz";
 
 /** Oʻzbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) atayin tarjima qilinmaydi. */
@@ -40,6 +41,7 @@ export const uz: Dictionary = {
   ownerTruth: ownerTruthUz,
   connectPicker: connectPickerUz,
   reviewLink: reviewLinkUz,
+  regionEdit: regionEditUz,
   reviewPage: reviewPageUz,
   improveAi: improveUz,
   brand: {
