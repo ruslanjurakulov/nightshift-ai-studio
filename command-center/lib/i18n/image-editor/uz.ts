@@ -6,6 +6,8 @@ export const imageEditorUz: ImageEditorDictionary = {
   subtitle: "Qirqish, burish, ranglarni sozlash, matn va shakllar qoʻshish. Saqlaganingizda Kutubxonada yangi fayl paydo boʻladi; asl nusxa oʻzgarmaydi.",
   previewNote: "Oldindan koʻrish. Vosita faqat sinov uchun yoqilgan. «Saqlash» tugmasini bosguningizcha hamma narsa brauzeringizda boʻladi.",
   libraryLink: "Kutubxonani ochish",
+  libraryEdit: "Tahrirlash",
+  libraryEditLabel: "«{name}» rasmini rasm muharririda tahrirlash",
   loading: "Rasm ochilmoqda…",
   retry: "Qayta urinish",
   imageFailed: "Bu rasmni ochib boʻlmadi.",

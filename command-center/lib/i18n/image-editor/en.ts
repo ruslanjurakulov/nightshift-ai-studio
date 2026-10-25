@@ -8,6 +8,8 @@ export const imageEditorEn = {
   subtitle: "Crop, turn, adjust colours, add text and shapes. Saving makes a new file in your Library; the original is never changed.",
   previewNote: "Preview. This tool is switched on for testing only. Everything happens in your browser until you press Save.",
   libraryLink: "Open Library",
+  libraryEdit: "Edit",
+  libraryEditLabel: "Edit “{name}” in the image editor",
   loading: "Opening the picture…",
   retry: "Try again",
   imageFailed: "This picture could not be opened.",

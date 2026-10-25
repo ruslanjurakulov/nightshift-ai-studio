@@ -9,6 +9,7 @@ import { loadMediaLibrary } from "@/lib/server/media";
 import { atLeast } from "@/lib/auth/roles-shared";
 import { parseView } from "@/components/media/libraryView";
 import { loadAiToolAvailability } from "@/lib/server/ai-tools";
+import { imageEditorEnabled } from "@/lib/imageEditor/flag";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -62,6 +63,7 @@ export default async function LibraryPage({
         canEditFolders={atLeast(org.current.role, "editor")}
         initialView={parseView((await searchParams) ?? {})}
         aiTools={aiTools}
+        imageEditor={imageEditorEnabled()}
       />
     </div>
   );
