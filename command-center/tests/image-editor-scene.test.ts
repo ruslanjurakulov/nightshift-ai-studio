@@ -74,7 +74,13 @@ class Stage extends Node {
   }
 }
 class Layer2 extends Node {
-  draw() {}
+  ratios: number[] = [];
+  getCanvas() {
+    return { setPixelRatio: (r: number) => this.ratios.push(r) };
+  }
+  getHitCanvas() {
+    return { setPixelRatio: (r: number) => this.ratios.push(r) };
+  }
 }
 const kinds = ["Text", "Line", "Ellipse", "Rect", "Image", "Group"] as const;
 const fake = { Stage, Layer: Layer2, ...Object.fromEntries(kinds.map((k) => [k, class extends Node { kind = k; }])) } as unknown as import("../components/imageEditor/scene").KonvaNS;
@@ -153,6 +159,8 @@ describe("exportPicture", () => {
     expect(layer.children[0].cfg).toMatchObject({ x: 0, y: 0, width: 200, height: 120, image: rendered.result });
     expect(layer.children[1].cfg).toMatchObject({ x: 50, y: 30 });
     expect(stage.destroyed).toBe(true);
+    // the layer is told pixel ratio 1 (scene and hit canvas) BEFORE the stage sizes it
+    expect((layer as unknown as Layer2).ratios).toEqual([1, 1]);
   });
 
   it("gives the picture pass the crop window, scale 1 and the colours, and draws it with the turn the state has", async () => {

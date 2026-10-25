@@ -18,10 +18,15 @@ export const JPEG_QUALITY = 0.92;
 
 /** `holiday.photo.JPG` -> `holiday.photo-edited.png`. Only the file's last path segment is used; the server cleans it again. */
 export function editedName(original: unknown, format: SaveFormat): string {
-  const base = cleanUploadName(original).replace(/\.[A-Za-z0-9]{1,5}$/, "").replace(/-edited$/, "");
-  const stem = (base || "picture").slice(0, 120);
+  // Only a picture extension is taken off (`v1.2` and `report.final` keep theirs), and BEFORE the name is cleaned: cleaning drops a leading
+  // dot, so `.png` would otherwise become the stem "png". Cut by code points: a UTF-16 cut can halve an emoji, and a lone surrogate is a
+  // body Postgres refuses.
+  const last = String(original ?? "").split(/[\\/]/).pop() ?? "";
+  const base = cleanUploadName(last.replace(PICTURE_EXT, "")).replace(/-edited$/, "");
+  const stem = Array.from(base || "picture").slice(0, 120).join("");
   return `${stem}-edited.${EXT[format]}`;
 }
+const PICTURE_EXT = /\.(?:jpe?g|png|webp|gif|heic|heif|jfif|bmp|tiff?)$/i;
 
 export const SAVE_ERRORS = [
   "unauthorized",
@@ -70,7 +75,8 @@ export async function uploadEdited(input: SaveInput): Promise<SaveResult> {
     });
     const ticket = (await res.json().catch(() => ({}))) as { upload_url?: unknown; ticket?: unknown; error?: unknown; max_bytes?: unknown; name?: unknown };
     const id = parseMediaId(ticket.ticket);
-    if (!res.ok || !id || typeof ticket.upload_url !== "string" || !ticket.upload_url.startsWith("/api/media/uploads/")) {
+    // The route builds this address from the ticket id; anything else (another path, a query, a host) is not ours to PUT to.
+    if (!res.ok || !id || ticket.upload_url !== `/api/media/uploads/${id}`) {
       return { ok: false, error: saveErrorCode(res.ok ? "failed" : ticket.error), maxBytes: typeof ticket.max_bytes === "number" ? ticket.max_bytes : null };
     }
     const put = await doFetch(ticket.upload_url, { method: "PUT", headers: { "content-type": input.mime }, body: input.blob });

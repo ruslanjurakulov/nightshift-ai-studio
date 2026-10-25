@@ -61,7 +61,7 @@ const baseProps = (over: Partial<EditorCanvasProps> = {}): EditorCanvasProps => 
   onMove: () => {},
   onBox: () => {},
   onCrop: () => {},
-  onKey: () => {},
+  onKey: () => true,
   onKeyEnd: () => {},
   ...over,
 });
@@ -171,7 +171,7 @@ describe("EditorCanvas on real Konva", () => {
 
   it("answers the keyboard with the same actions the panels use", async () => {
     const keys: unknown[] = [];
-    const r = await mount(baseProps({ onKey: (a) => keys.push(a) }));
+    const r = await mount(baseProps({ onKey: (a) => (keys.push(a), true) }));
     const host = r.container.firstElementChild as HTMLElement;
     const press = (key: string, extra: KeyboardEventInit = {}) => host.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...extra }));
     press("ArrowRight");
@@ -188,6 +188,24 @@ describe("EditorCanvas on real Konva", () => {
       { type: "cycle", dir: -1 },
       { type: "remove" },
     ]);
+  });
+});
+
+describe("what the canvas does with a key the editor did not use", () => {
+  it("leaves it to the browser (an arrow key still scrolls the page), and takes it only when the editor says it was used", async () => {
+    for (const handled of [false, true]) {
+      const r = await mount(baseProps({ onKey: () => handled }));
+      const host = r.container.firstElementChild as HTMLElement;
+      for (const key of ["ArrowDown", "ArrowLeft", "PageDown", "Delete", "Backspace"]) {
+        const ev = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+        host.dispatchEvent(ev);
+        expect(ev.defaultPrevented, `${key} handled=${handled}`).toBe(handled);
+      }
+      const other = new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true });
+      host.dispatchEvent(other);
+      expect(other.defaultPrevented).toBe(false);
+      r.unmount();
+    }
   });
 });
 

@@ -2,7 +2,7 @@
 
 Crop, turn, flip, colours, text and shapes on one library picture, in the browser. Saving flattens the result with a canvas
 and uploads it as a NEW library file through the upload path that already exists. Nothing here is switched on: the page is a
-404 until the owner sets `NIGHTSHIFT_IMAGE_EDITOR=on` on the Command Center's server (`deploy/.env.web.example`, repository
+404 (answered before the page reads any picture or organization; the shared `(app)` layout still checks the session first, as for every page) until the owner sets `NIGHTSHIFT_IMAGE_EDITOR=on` on the Command Center's server (`deploy/.env.web.example`, repository
 variable `NIGHTSHIFT_IMAGE_EDITOR`, mapped as `WEBENV_NIGHTSHIFT_IMAGE_EDITOR` in `deploy_web.yml`). It is a web-only switch:
 no worker reads it, because no worker runs an image edit.
 
@@ -42,13 +42,26 @@ input. The original is never touched.
   and the ingest registration: a migration, not done here.
 * A picture of more than 16 megapixels is refused (`MAX_EDIT_PIXELS`), by the page from the library's recorded size, by the editor again
   from the size the browser really decoded. 16 MP is also what browsers can hold in a single canvas (iOS Safari: 16,777,216 pixels).
+* The new file lands in **All files** (no folder): the ticket is asked for without a `folder_id`, wherever the original lives.
+* After a save the Save key stays off while the picture is exactly the saved one (also after an undo back to it), so a second press cannot
+  upload a duplicate; any further change turns it on again and makes another new file.
+* A JPEG has no transparency, so it is saved on white and the preview shows white too while JPEG is chosen. A PNG keeps transparency.
+* The file name is cleaned by `cleanUploadName` (control characters dropped; bidi override characters such as U+202E are NOT stripped, as for any upload).
 * HEIC, GIF, SVG, video and audio are not opened (`unsupported`): a canvas flatten of an animation or a vector would silently lose it.
 
 ## AI operations
 
-The "AI tools" tab has five links into Studio for this very picture (`/create?tool=upscale|remove_bg|expand|relight|erase&source=<id>`),
-the same links the Library viewer uses. They start from the SAVED library file, not from unsaved edits, and the screen says so. Studio
-shows the price and holds the credits as for any job; this page adds no pricing path and calls none.
+The "AI tools" tab has five links into Studio (`/create?tool=upscale|remove_bg|expand|relight|erase&source=<id>`), the same links the
+Library viewer uses. They carry the ORIGINAL picture's id, never an edit and never the new file (the new file has no id until the media
+worker has checked it), and the screen says so: to use your edits, save, wait for the file to appear, and choose it in Studio's picture
+chooser. Studio shows the price and holds the credits as for any job; this page adds no pricing path and calls none.
+
+## Unsaved edits
+
+While the picture has edits that are not saved: the browser asks on a tab close or reload (`beforeunload`), and a click on an in-app link (the
+Library link, the main navigation) asks with a confirm (`lib/imageEditor/leave.ts`, a capture-phase listener that runs before Next's Link). The
+browser's **Back button is not covered**: the App Router offers no way to cancel it. A new tab (Ctrl/Cmd+click), a download and a same-page anchor
+never ask.
 
 ## Doubts
 

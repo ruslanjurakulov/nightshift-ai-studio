@@ -5,6 +5,7 @@
  * requests for one press.
  */
 import { describe, expect, it, vi } from "vitest";
+import { cleanUploadName } from "../lib/media";
 import { JPEG_QUALITY, SAVE_ERRORS, editedName, saveErrorCode, uploadEdited } from "../lib/imageEditor/save";
 
 const TICKET = "55555555-5555-4555-8555-555555555555";
@@ -26,6 +27,37 @@ describe("editedName", () => {
     expect(editedName("", "png")).toBe("upload-edited.png");
     expect(editedName(undefined, "jpeg")).toBe("upload-edited.jpg");
     expect(editedName("n".repeat(500) + ".png", "png").length).toBeLessThanOrEqual(140);
+  });
+
+  it("takes off a picture extension only: version numbers and dotted names keep what they have", () => {
+    expect(editedName("v1.2", "png")).toBe("v1.2-edited.png");
+    expect(editedName("report.final", "png")).toBe("report.final-edited.png");
+    expect(editedName("archive.tar.gz", "png")).toBe("archive.tar.gz-edited.png");
+    expect(editedName("photo.v2.JPEG", "png")).toBe("photo.v2-edited.png");
+    expect(editedName("a.webp", "png")).toBe("a-edited.png");
+    expect(editedName("scan.TIFF", "jpeg")).toBe("scan-edited.jpg");
+  });
+
+  it("a name that is only an extension, or nothing, is 'upload', not 'png'", () => {
+    expect(editedName(".png", "png")).toBe("upload-edited.png");
+    expect(editedName(".jpg", "jpeg")).toBe("upload-edited.jpg");
+    expect(editedName("...", "png")).toBe("upload-edited.png");
+    expect(editedName("   ", "png")).toBe("upload-edited.png");
+  });
+
+  it("cuts a long name by characters, never through the middle of an emoji (a lone surrogate is a body Postgres refuses)", () => {
+    const lone = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+    for (const pad of [118, 119, 120, 121]) {
+      const name = `${"a".repeat(pad)}😀😀😀.png`;
+      const out = editedName(name, "png");
+      expect(lone.test(out), `pad ${pad}`).toBe(false);
+      expect(Array.from(out.replace(/-edited\.png$/, "")).length).toBeLessThanOrEqual(120);
+    }
+    expect(editedName(`${"a".repeat(119)}😀😀.png`, "png")).toBe(`${"a".repeat(119)}😀-edited.png`);
+    // the shared upload-name cleaner too (the original cut at 200 UTF-16 units)
+    for (const pad of [198, 199, 200]) expect(lone.test(cleanUploadName(`${"b".repeat(pad)}😀😀`)), `clean ${pad}`).toBe(false);
+    expect(Array.from(cleanUploadName("c".repeat(300))).length).toBe(200);
+    expect(cleanUploadName(`${"d".repeat(199)}😀😀`)).toBe(`${"d".repeat(199)}😀`);
   });
 
   it("keeps the jpeg quality below lossless but high", () => {
@@ -72,6 +104,10 @@ describe("uploadEdited", () => {
     for (const body of [
       { ticket: TICKET, upload_url: "https://evil.example/put" },
       { ticket: TICKET, upload_url: "//evil.example/put" },
+      { ticket: TICKET, upload_url: "/api/media/uploads/" },
+      { ticket: TICKET, upload_url: `/api/media/uploads/${TICKET}?x=1` },
+      { ticket: TICKET, upload_url: `/api/media/uploads/${TICKET}/dismiss` },
+      { ticket: TICKET, upload_url: "/api/media/uploads/66666666-6666-4666-8666-666666666666" },
       { ticket: "not-a-uuid", upload_url: `/api/media/uploads/${TICKET}` },
       {},
     ]) {

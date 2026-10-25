@@ -7,6 +7,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { formatMediaBytes } from "@/lib/media";
 import { EditorCanvas, type CanvasKey, type Tool } from "@/components/imageEditor/EditorCanvas";
 import { AdjustPanel, AiPanel, CropPanel, LayerPanel, useLayerName } from "@/components/imageEditor/panels";
+import { useLeaveGuard } from "@/components/imageEditor/useLeaveGuard";
 import { previewScale, renderBase } from "@/components/imageEditor/render";
 import { NEUTRAL_ADJUST, clampAdjust, type AdjustKey } from "@/lib/imageEditor/adjust";
 import { aspectRatio, clampCrop, fitAspect, fullRect, resizeCrop, type AspectId } from "@/lib/imageEditor/crop";
@@ -130,7 +131,9 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
   const [save, setSave] = useState<SaveView>({ status: "idle" });
   const [live, setLive] = useState("");
   const saving = useRef(false);
-  const savedState = useRef<EditState | null>(null);
+  // The exact state that was last uploaded: Save stays off while the picture is that state, so a second press cannot add a duplicate.
+  const [savedState, setSavedState] = useState<EditState | null>(null);
+  const [savedName, setSavedName] = useState("");
 
   useEffect(() => {
     let dead = false;
@@ -156,7 +159,13 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
     histRef.current = seal(histRef.current);
     setHist(histRef.current);
   }, []);
-  const announce = (text: string) => setLive(text);
+  // The same sentence twice in a row ("Undone." "Undone.") would not change the live region, so a screen reader would stay silent
+  // the second time: alternate a trailing no-break space.
+  const flip = useRef(false);
+  const announce = (text: string) => {
+    flip.current = !flip.current;
+    setLive(flip.current ? text : `${text}\u00a0`);
+  };
 
   const canvas = src ? canvasSize(src, state.rotation) : { width: 1, height: 1 };
   const cropNow = state.crop ?? fullRect(canvas);
@@ -165,25 +174,21 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
   const out = src ? outputSize(src, state) : { width: 0, height: 0 };
 
   // The coloured picture for the preview, rebuilt only when the picture itself changes (not for text, shapes or crop).
+  // A JPEG has no transparency and is saved on white, so the preview shows white too.
   const base = useMemo(() => {
-    if (loaded.status !== "ready") return null;
+    if (loaded.status !== "ready") return { canvas: null, failed: false };
     try {
-      return renderBase(loaded.img, loaded.src, state, fullRect(canvasSize(loaded.src, state.rotation)), previewScale(canvasSize(loaded.src, state.rotation)));
+      const c = canvasSize(loaded.src, state.rotation);
+      const canvas = renderBase(loaded.img, loaded.src, state, fullRect(c), previewScale(c), format === "jpeg");
+      return { canvas, failed: canvas === null };
     } catch {
-      return null;
+      return { canvas: null, failed: true };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, state.rotation, state.mirrored, state.adjust]);
+  }, [loaded, state.rotation, state.mirrored, state.adjust, format]);
 
-  const dirty = isEdited(state) && savedState.current !== state;
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (ev: BeforeUnloadEvent) => {
-      ev.preventDefault();
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  const dirty = isEdited(state) && savedState !== state;
+  useLeaveGuard(dirty, e.unsavedConfirm);
 
   // ── geometry ────────────────────────────────────────────────────────────────
   const turned = (next: EditState) => {
@@ -252,31 +257,38 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
     setSelectedId((cur) => (cur === id ? null : cur));
   };
 
-  const onKey = (a: CanvasKey) => {
-    if (!src) return;
+  /** True when the key did something: only then does the canvas swallow it (an arrow key must still scroll the page in Adjust or AI tools). */
+  const onKey = (a: CanvasKey): boolean => {
+    if (!src) return false;
     const s = histRef.current.present;
     if (tool === "crop") {
       if (a.type === "move") setCrop(moveRect(cropNow, a.dx, a.dy, canvas), "kb-crop");
       else if (a.type === "resize") setCrop(resizeCrop(cropNow, { w: cropNow.w + a.dx, h: cropNow.h + a.dy }, ratio, canvas), "kb-crop");
-      return;
+      else return false;
+      return true;
     }
-    if (tool !== "text" && tool !== "shapes") return;
+    if (tool !== "text" && tool !== "shapes") return false;
     const pool = s.layers.filter((l) => (tool === "text" ? l.kind === "text" : l.kind !== "text"));
     if (a.type === "cycle") {
-      if (pool.length === 0) return;
+      if (pool.length === 0) return false;
       const i = pool.findIndex((l) => l.id === selectedId);
       const next = pool[(i + a.dir + pool.length) % pool.length];
       setSelectedId(next.id);
       announce(fmt(e.announceSelected, { name: layerName(s.layers, next) }));
-      return;
+      return true;
     }
     const picked = pool.find((l) => l.id === selectedId);
-    if (!picked) return;
-    if (a.type === "remove") return removeOne(picked.id);
+    if (!picked) return false;
+    if (a.type === "remove") {
+      removeOne(picked.id);
+      return true;
+    }
     if (a.type === "move") {
       patchLayer(picked.id, { cx: picked.cx + a.dx, cy: picked.cy + a.dy }, "kb-layer");
       announce(fmt(e.announceMoved, { name: layerName(s.layers, picked), x: picked.cx + a.dx, y: picked.cy + a.dy }));
+      return true;
     }
+    return false;
   };
 
   // ── undo / redo ─────────────────────────────────────────────────────────────
@@ -291,8 +303,8 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
     announce(e.announceRedo);
   };
   const onShortcut = (ev: React.KeyboardEvent) => {
-    const el = ev.target as HTMLElement;
-    if (el.closest("input, textarea, select")) return;
+    // Also while a field is focused: every field here commits into this history (a typed word is one coalesced step), and the browser's
+    // own undo does nothing for a range, a select or a checkbox and fights the controlled text boxes.
     if (!(ev.ctrlKey || ev.metaKey)) return;
     const k = ev.key.toLowerCase();
     if (k === "z") {
@@ -309,7 +321,7 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
 
   // ── save ────────────────────────────────────────────────────────────────────
   const doSave = async () => {
-    if (!src || loaded.status !== "ready" || saving.current || !isEdited(state)) return;
+    if (!src || loaded.status !== "ready" || saving.current || !isEdited(state) || savedState === state) return;
     saving.current = true;
     const snapshot = state;
     try {
@@ -326,7 +338,8 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
       setSave({ status: "saving" });
       const res = await uploadEdited({ orgId, blob, filename: editedName(name, format), mime: SAVE_MIME[format] });
       if (res.ok) {
-        savedState.current = snapshot;
+        setSavedState(snapshot);
+        setSavedName(res.name);
         setSave({ status: "saved", name: res.name });
       } else {
         setSave({ status: "error", code: saveErrorCode(res.error), maxBytes: res.maxBytes ?? null });
@@ -338,6 +351,17 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
 
   // ── render ──────────────────────────────────────────────────────────────────
   if (loaded.status === "loading") return <p className="text-sm text-[var(--color-muted)]" role="status">{e.loading}</p>;
+  if (loaded.status === "ready" && base.failed) {
+    return (
+      <div className="flex flex-col gap-3" role="alert">
+        <p className="text-sm text-[var(--color-fail)]">{e.previewFailed}</p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn-quiet" onClick={() => setReloadKey((n) => n + 1)}>{e.retry}</button>
+          <Link href={libraryHref} className="btn-quiet">{e.libraryLink}</Link>
+        </div>
+      </div>
+    );
+  }
   if (loaded.status !== "ready" || !src) {
     const text =
       loaded.status === "unsupported" ? e.unsupported
@@ -356,6 +380,8 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
   }
 
   const busy = save.status === "preparing" || save.status === "saving";
+  // The picture on screen IS the file already uploaded (also after an undo back to it): nothing new to save, and no duplicate.
+  const alreadySaved = savedState === state;
   const edited = isEdited(state);
   const errorText =
     save.status === "error" ? fmt((e.errors as Record<string, string>)[save.code] ?? e.errors.failed, { max: formatMediaBytes(save.maxBytes) || "—" }) : "";
@@ -371,7 +397,7 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
       </div>
 
       <EditorCanvas
-        base={base}
+        base={base.canvas}
         canvas={canvas}
         view={view}
         layers={state.layers}
@@ -476,15 +502,15 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
           <p className="text-xs text-[var(--color-muted)]">{e.formatHint}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" className="btn-primary" disabled={!edited || busy} aria-disabled={!edited || busy} onClick={() => void doSave()}>
+          <button type="button" className="btn-primary" disabled={!edited || busy || alreadySaved} aria-disabled={!edited || busy || alreadySaved} onClick={() => void doSave()}>
             {save.status === "preparing" ? e.preparing : save.status === "saving" ? e.saving : e.save}
           </button>
           {dirty && !busy ? <span className="text-xs text-[var(--color-muted)]">{e.unsaved}</span> : null}
         </div>
         {!edited ? <p className="text-sm text-[var(--color-muted)]">{e.nothingToSave}</p> : null}
-        {save.status === "saved" ? (
+        {alreadySaved && savedName ? (
           <div className="flex flex-wrap items-center gap-3" role="status">
-            <p className="text-sm">{fmt(e.saved, { name: save.name })}</p>
+            <p className="text-sm">{fmt(e.saved, { name: savedName })}</p>
             <Link href={libraryHref} className="btn-quiet">{e.savedLink}</Link>
           </div>
         ) : null}

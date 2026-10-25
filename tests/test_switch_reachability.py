@@ -280,6 +280,13 @@ class TheWebOnlyFeatureSwitchesCanBeSetFromGitHub(unittest.TestCase):
                 found[name] = path.relative_to(ROOT).as_posix()
         return found
 
+    def test_every_flag_file_names_a_switch(self):
+        # A flag.ts whose constant is renamed would otherwise drop out of the scan silently and its switch would go unchecked.
+        self.assertGreaterEqual(len(self.FLAG_FILES), 2)
+        for path in self.FLAG_FILES:
+            names = re.findall(r"_FLAG\s*=\s*\"((?:CHRONOS|NIGHTSHIFT)_[A-Z0-9_]+)\"", path.read_text(encoding="utf-8"))
+            self.assertGreaterEqual(len(names), 1, f"{path.relative_to(ROOT).as_posix()}: no `..._FLAG = \"NIGHTSHIFT_X\"` found, the scan would skip it")
+
     def test_the_scan_finds_the_known_feature_switches(self):
         found = self.flags()
         self.assertIn("NIGHTSHIFT_REGION_EDITOR", found)

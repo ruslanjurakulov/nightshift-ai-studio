@@ -27,6 +27,8 @@ export async function readEditableAsset(supabase: SupabaseClient, orgId: string,
     .from("media_assets")
     .select("org_id, kind, mime, width, height, original_name")
     .eq("id", assetId)
+    // RLS already hides a deleted file; this keeps it hidden if that policy ever changes.
+    .is("deleted_at", null)
     .maybeSingle();
   if (error) return { ok: false, error: "failed" };
   const row = data as { org_id?: unknown; kind?: unknown; mime?: unknown; width?: unknown; height?: unknown; original_name?: unknown } | null;

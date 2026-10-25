@@ -64,11 +64,14 @@ describe("imageEditor parity", () => {
     }
   });
 
-  it("tells the person the original is never changed and that the AI tools start from the SAVED file", () => {
+  it("tells the person the original is never changed and that the AI tools open the ORIGINAL, not the edits", () => {
     expect(en.imageEditor.subtitle).toMatch(/original is never changed/);
     expect(en.imageEditor.formatHint).toMatch(/original stays/);
-    expect(en.imageEditor.aiNote).toMatch(/saved library file/);
+    expect(en.imageEditor.aiNote).toMatch(/ORIGINAL library picture/);
+    expect(en.imageEditor.aiNote).toMatch(/not your edits/);
     expect(en.imageEditor.aiNote).toMatch(/price/);
+    expect(en.imageEditor.aiSaveFirst).toMatch(/save first, then choose the new file in Studio/);
+    for (const loc of ["ru", "uz"] as const) expect(dicts[loc].imageEditor.aiNote, loc).not.toBe(en.imageEditor.aiNote);
   });
 });
 

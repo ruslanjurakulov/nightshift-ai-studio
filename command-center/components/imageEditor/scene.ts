@@ -115,10 +115,14 @@ export async function exportPicture(
   const stage = new Konva.Stage({ container: holder, width: out.width, height: out.height });
   try {
     const layer = new Konva.Layer({ listening: false });
+    // A Konva layer sizes its canvas by window.devicePixelRatio (3 on a phone): a 4000 x 3000 file would need a 12000 x 9000
+    // canvas, which iOS Safari (16.7 MP) refuses and a desktop at 2 wastes hundreds of MB on. The file is made at exactly its own
+    // size, so the ratio is fixed to 1 BEFORE the stage sizes the layer. toBlob re-renders from the nodes, so no draw() here.
+    layer.getCanvas().setPixelRatio(1);
+    layer.getHitCanvas().setPixelRatio(1);
     stage.add(layer);
     layer.add(new Konva.Image({ image: base, x: 0, y: 0, width: out.width, height: out.height }));
     addLayerNodes(Konva, layer, state.layers, { scale: 1, ox: -area.x, oy: -area.y });
-    layer.draw();
     const blob = await stage.toBlob({ mimeType: SAVE_MIME[format], quality: format === "jpeg" ? JPEG_QUALITY : undefined, pixelRatio: 1 });
     if (!blob || blob.size <= 0) throw new Error("empty");
     return blob;

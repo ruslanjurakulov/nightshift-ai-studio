@@ -9,6 +9,8 @@ export const imageEditorUz: ImageEditorDictionary = {
   loading: "Rasm ochilmoqda…",
   retry: "Qayta urinish",
   imageFailed: "Bu rasmni ochib boʻlmadi.",
+  previewFailed:
+    "Brauzer bu rasmni chiza olmadi, shuning uchun uni bu yerda tahrirlab boʻlmaydi. Boshqa brauzerni sinab koʻring.",
   unsupported: "Bu turdagi rasmni bu yerda tahrirlab boʻlmaydi. Muharrir JPEG, PNG va WebP rasmlarni ochadi.",
   noSize: "Kutubxonada bu rasmning oʻlchami yozilmagan, shuning uchun uni bu yerda ochib boʻlmaydi.",
   tooLarge: "Bu rasm {mp} megapiksel. Muharrir {max} megapikselgacha boʻlgan rasmlarni ochadi.",
@@ -82,8 +84,9 @@ export const imageEditorUz: ImageEditorDictionary = {
   announceMoved: "{name}: {x}, {y}.",
   aiTitle: "AI vositalari",
   aiNote:
-    "Bu tugmalar Studiyani Kutubxonadan tanlangan rasm bilan ochadi. Ular saqlangan faylda ishlaydi, hali saqlamagan oʻzgarishlaringizda emas. Studiya ishga tushirishdan oldin narxni koʻrsatadi.",
-  aiSaveFirst: "AI vositasi oʻzgarishlaringizdan boshlashi kerak boʻlsa, avval ularni saqlang.",
+    "Bu tugmalar Studiyani Kutubxonadagi ASL rasm bilan ochadi, oʻzgarishlaringiz bilan emas. Studiya ishga tushirishdan oldin narxni koʻrsatadi.",
+  aiSaveFirst:
+    "Oʻzgarishlaringizdan foydalanish uchun avval saqlang, keyin Studiyadagi rasm tanlagichdan yangi faylni tanlang.",
   saveTitle: "Saqlash",
   formatLabel: "Fayl turi",
   formatPng: "PNG (sifat yoʻqotilmaydi, kattaroq)",
@@ -97,6 +100,7 @@ export const imageEditorUz: ImageEditorDictionary = {
   nothingToSave: "Avval biror narsani oʻzgartiring, keyin saqlang.",
   outputSize: "Yangi fayl {w} × {h} px boʻladi.",
   unsaved: "Hali saqlanmagan",
+  unsavedConfirm: "Saqlanmagan oʻzgarishlar bor. Saqlamasdan chiqasizmi?",
   errors: {
     unauthorized: "Seans tugadi. Qayta kiring.",
     forbidden: "Bu ish maydoniga kirish huquqingiz yoʻq.",

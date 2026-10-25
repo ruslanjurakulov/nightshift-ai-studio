@@ -16,6 +16,7 @@ const { readEditableAsset } = await import("../lib/server/image-editor");
 
 function client(row: unknown, error: unknown = null) {
   const calls: { table: string; select: string; id: string }[] = [];
+  const filters: [string, unknown][] = [];
   const supabase = {
     from(table: string) {
       return {
@@ -23,22 +24,29 @@ function client(row: unknown, error: unknown = null) {
           return {
             eq(_col: string, id: string) {
               calls.push({ table, select: cols, id });
-              return { maybeSingle: async () => ({ data: row, error }) };
+              return {
+                is(col: string, value: unknown) {
+                  filters.push([col, value]);
+                  return { maybeSingle: async () => ({ data: row, error }) };
+                },
+              };
             },
           };
         },
       };
     },
   };
-  return { supabase: supabase as never, calls };
+  return { supabase: supabase as never, calls, filters };
 }
 const row = (over: Record<string, unknown> = {}) => ({ org_id: ORG, kind: "image", mime: "image/jpeg", width: 1200, height: 800, original_name: "cat.jpg", ...over });
 
 describe("readEditableAsset", () => {
   it("reads one media_assets row by id under the caller's own client and returns the library's size and name", async () => {
-    const { supabase, calls } = client(row());
+    const { supabase, calls, filters } = client(row());
     expect(await readEditableAsset(supabase, ORG, PIC)).toEqual({ ok: true, asset: { width: 1200, height: 800, mime: "image/jpeg", name: "cat.jpg" } });
     expect(calls).toEqual([{ table: "media_assets", select: "org_id, kind, mime, width, height, original_name", id: PIC }]);
+    // a deleted file is filtered out in the query itself too, not only by RLS
+    expect(filters).toEqual([["deleted_at", null]]);
   });
 
   it("another organization's picture, a missing row and a non-image all read exactly like not_found", async () => {
@@ -83,7 +91,7 @@ vi.mock("@/lib/i18n/server", async () => {
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => page.user,
   createClient: async () => ({
-    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => { page.reads += 1; return { data: page.row, error: null }; } }) }) }),
+    from: () => ({ select: () => ({ eq: () => ({ is: () => ({ maybeSingle: async () => { page.reads += 1; return { data: page.row, error: null }; } }) }) }) }),
   }),
 }));
 vi.mock("@/components/imageEditor/ImageEditor", () => ({ ImageEditor: (p: Record<string, unknown>) => ({ type: "ImageEditor", props: p }) }));

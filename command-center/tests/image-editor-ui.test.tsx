@@ -19,12 +19,28 @@ vi.mock("@/lib/i18n/context", async () => {
 });
 vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
 vi.mock("konva", () => ({ default: {} }));
-vi.mock("@/components/imageEditor/render", () => ({ renderBase: () => null, previewScale: () => 1 }));
+const preview = vi.hoisted(() => ({ ok: true, opaque: [] as unknown[] }));
+vi.mock("@/components/imageEditor/render", () => ({
+  renderBase: (...a: unknown[]) => {
+    preview.opaque.push(a[5]);
+    return preview.ok ? document.createElement("canvas") : null;
+  },
+  previewScale: () => 1,
+}));
 const exporter = vi.hoisted(() => ({ fn: vi.fn() }));
 vi.mock("@/components/imageEditor/scene", () => ({ exportPicture: (...a: unknown[]) => exporter.fn(...a), addLayerNodes: () => new Map() }));
+const keyed = vi.hoisted(() => ({ results: [] as unknown[] }));
 vi.mock("@/components/imageEditor/EditorCanvas", () => ({
-  EditorCanvas: (p: { tool: string; label: string; view: { w: number; h: number }; layers: unknown[]; ratio: number | null }) => (
-    <div data-testid="canvas" data-tool={p.tool} data-layers={p.layers.length} data-view={`${p.view.w}x${p.view.h}`} data-ratio={String(p.ratio)} aria-label={p.label} />
+  EditorCanvas: (p: {
+    tool: string; label: string; view: { w: number; h: number }; layers: unknown[]; ratio: number | null;
+    onKey: (a: { type: string; dx?: number; dy?: number; dir?: number }) => boolean;
+  }) => (
+    <div data-testid="canvas" data-tool={p.tool} data-layers={p.layers.length} data-view={`${p.view.w}x${p.view.h}`} data-ratio={String(p.ratio)} aria-label={p.label}>
+      <button onClick={() => keyed.results.push(p.onKey({ type: "move", dx: 1, dy: 0 }))}>key-move</button>
+      <button onClick={() => keyed.results.push(p.onKey({ type: "resize", dx: 1, dy: 0 }))}>key-resize</button>
+      <button onClick={() => keyed.results.push(p.onKey({ type: "cycle", dir: 1 }))}>key-cycle</button>
+      <button onClick={() => keyed.results.push(p.onKey({ type: "remove" }))}>key-remove</button>
+    </div>
   ),
 }));
 
@@ -54,6 +70,9 @@ beforeEach(() => {
   calls.length = 0;
   Object.assign(media, { mime: "image/png", width: 400, height: 300, kind: "image", status: 200, served: true });
   Object.assign(natural, { width: 400, height: 300, fail: false });
+  preview.ok = true;
+  preview.opaque.length = 0;
+  keyed.results.length = 0;
   exporter.fn.mockReset();
   exporter.fn.mockResolvedValue(new Blob([new Uint8Array(500)], { type: "image/png" }));
   uploadPlan = { ticket: json(200, { ok: true, ticket: TICKET, upload_url: `/api/media/uploads/${TICKET}`, name: "cat-edited.png" }), put: json(200, { ok: true }) };
@@ -167,7 +186,7 @@ describe("editing", () => {
     expect(screen.getByText("The new file will be 300 × 400 px.")).toBeTruthy();
   });
 
-  it("Ctrl+Z undoes and Ctrl+Shift+Z redoes, but not while typing in a field", async () => {
+  it("Ctrl+Z undoes and Ctrl+Shift+Z redoes, also while a field, a slider or a select has focus", async () => {
     await open();
     fireEvent.click(screen.getByRole("button", { name: e.rotateLeft }));
     const canvas = screen.getByTestId("canvas");
@@ -176,7 +195,60 @@ describe("editing", () => {
     fireEvent.keyDown(canvas, { key: "z", ctrlKey: true, shiftKey: true });
     expect(screen.getByText("The new file will be 300 × 400 px.")).toBeTruthy();
     fireEvent.keyDown(screen.getByLabelText(e.cropW), { key: "z", ctrlKey: true });
+    expect(screen.getByText("The new file will be 400 × 300 px.")).toBeTruthy();
+    fireEvent.keyDown(screen.getByLabelText(e.cropW), { key: "Z", metaKey: true, shiftKey: true });
     expect(screen.getByText("The new file will be 300 × 400 px.")).toBeTruthy();
+    tool(e.tools.adjust);
+    fireEvent.change(screen.getByLabelText(e.brightness), { target: { value: "30" } });
+    fireEvent.keyDown(screen.getByLabelText(e.brightness), { key: "z", ctrlKey: true });
+    expect((screen.getByLabelText(e.brightness) as HTMLInputElement).value).toBe("0");
+    fireEvent.keyDown(screen.getByLabelText(e.brightness), { key: "y", ctrlKey: true });
+    expect((screen.getByLabelText(e.brightness) as HTMLInputElement).value).toBe("30");
+    tool(e.tools.text);
+    fireEvent.click(screen.getByRole("button", { name: e.addText }));
+    fireEvent.keyDown(screen.getByLabelText(e.font), { key: "z", ctrlKey: true });
+    expect(screen.getByTestId("canvas").getAttribute("data-layers")).toBe("0");
+  });
+
+  it("announces 'Undone.' every time, even twice in a row (the live region text must change)", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: e.rotateRight }));
+    fireEvent.click(screen.getByRole("button", { name: e.rotateRight }));
+    const region = () => document.querySelector("p.sr-only[aria-live]")!.textContent!;
+    fireEvent.click(screen.getByRole("button", { name: e.undo }));
+    const first = region();
+    fireEvent.click(screen.getByRole("button", { name: e.undo }));
+    const second = region();
+    expect(first.trim()).toBe(e.announceUndo);
+    expect(second.trim()).toBe(e.announceUndo);
+    expect(second).not.toBe(first);
+  });
+
+  it("the canvas swallows a key only when it did something: not in Adjust or AI, not with no layer picked", async () => {
+    await open();
+    fireEvent.click(screen.getByText("key-move"));
+    fireEvent.click(screen.getByText("key-resize"));
+    fireEvent.click(screen.getByText("key-cycle"));
+    fireEvent.click(screen.getByText("key-remove"));
+    expect(keyed.results).toEqual([true, true, false, false]); // crop: move and resize yes; cycle / delete mean nothing there
+    keyed.results.length = 0;
+    for (const name of [e.tools.adjust, e.tools.ai]) {
+      tool(name);
+      for (const k of ["key-move", "key-resize", "key-cycle", "key-remove"]) fireEvent.click(screen.getByText(k));
+    }
+    expect(keyed.results).toEqual(Array(8).fill(false));
+    keyed.results.length = 0;
+    tool(e.tools.text);
+    for (const k of ["key-move", "key-cycle", "key-remove"]) fireEvent.click(screen.getByText(k));
+    expect(keyed.results).toEqual([false, false, false]); // no text yet
+    keyed.results.length = 0;
+    fireEvent.click(screen.getByRole("button", { name: e.addText }));
+    fireEvent.click(screen.getByText("key-move"));
+    fireEvent.click(screen.getByText("key-cycle"));
+    expect(keyed.results).toEqual([true, true]);
+    fireEvent.click(screen.getByText("key-remove"));
+    expect(keyed.results.at(-1)).toBe(true);
+    expect(screen.getByTestId("canvas").getAttribute("data-layers")).toBe("0");
   });
 
   it("a crop shape gives the largest centred crop of that shape; free keeps what there is; Remove crop clears it", async () => {
@@ -403,11 +475,134 @@ describe("saving", () => {
     expect(screen.queryByText(/is being checked/)).toBeNull();
   });
 
+  it("after Saved the key is off: a second press cannot upload a duplicate; a change turns it on; undoing back to the saved picture turns it off again", async () => {
+    await edited();
+    fireEvent.click(saveButton());
+    await screen.findByText(/is being checked/);
+    expect(saveButton().disabled).toBe(true);
+    fireEvent.click(saveButton());
+    await act(async () => {});
+    expect(calls.filter((c) => c.url === "/api/media/uploads")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: e.flipH }));
+    expect(saveButton().disabled).toBe(false);
+    expect(screen.queryByText(/is being checked/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: e.undo }));
+    expect(saveButton().disabled).toBe(true);
+    expect(screen.getByText(/is being checked/)).toBeTruthy();
+    expect(screen.queryByText(e.unsaved)).toBeNull();
+  });
+
+  it("a refusal is cleared by the next change: the old alert does not stay over a picture that is different now", async () => {
+    await edited();
+    uploadPlan.ticket = json(507, { error: "quota_exceeded" });
+    fireEvent.click(saveButton());
+    expect((await screen.findByRole("alert")).textContent).toContain(e.errors.quota_exceeded);
+    fireEvent.click(screen.getByRole("button", { name: e.flipH }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("will not save an unedited picture even if the key is forced", async () => {
     await open();
     fireEvent.click(saveButton());
     await act(async () => {});
     expect(exporter.fn).not.toHaveBeenCalled();
     expect(calls.some((c) => c.url === "/api/media/uploads")).toBe(false);
+  });
+});
+
+describe("leaving with unsaved edits", () => {
+  const link = () => {
+    const a = document.createElement("a");
+    a.href = "/chronos/library";
+    a.textContent = "elsewhere";
+    document.body.appendChild(a);
+    return a;
+  };
+  // jsdom cannot navigate: let the click finish, note whether the guard had cancelled it, then cancel it ourselves.
+  const seen: boolean[] = [];
+  const note = (ev: Event) => {
+    seen.push(ev.defaultPrevented);
+    ev.preventDefault();
+  };
+  beforeEach(() => {
+    seen.length = 0;
+    window.addEventListener("click", note);
+  });
+  afterEach(() => {
+    window.removeEventListener("click", note);
+    vi.restoreAllMocks();
+  });
+
+  it("asks before an in-app link is followed; Cancel keeps the page, OK lets it go", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: e.rotateRight }));
+    const a = link();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    seen.length = 0;
+    const stay = new MouseEvent("click", { bubbles: true, cancelable: true });
+    a.dispatchEvent(stay);
+    expect(confirm).toHaveBeenCalledWith(e.unsavedConfirm);
+    // cancelled before anything downstream (Next's Link, the browser) saw it: the bubble listener never ran
+    expect(stay.defaultPrevented).toBe(true);
+    expect(seen).toEqual([]);
+    confirm.mockReturnValue(true);
+    a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(seen).toEqual([false]);
+    a.remove();
+  });
+
+  it("does not ask when nothing is unsaved, after a save, for a new tab, or for a same-page anchor", async () => {
+    await open();
+    const a = link();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(confirm).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: e.rotateRight }));
+    a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true }));
+    const same = document.createElement("a");
+    same.href = "#top";
+    document.body.appendChild(same);
+    same.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(confirm).not.toHaveBeenCalled();
+    fireEvent.click(saveButton());
+    await screen.findByText(/is being checked/);
+    a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(confirm).not.toHaveBeenCalled();
+    a.remove();
+    same.remove();
+  });
+
+  it("stops asking once the editor is closed", async () => {
+    const r = render(<ImageEditor assetId={PIC} orgId={ORG} name="cat.png" libraryHref="/l" />);
+    await screen.findByTestId("canvas");
+    fireEvent.click(screen.getByRole("button", { name: e.rotateRight }));
+    r.unmount();
+    const a = link();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(confirm).not.toHaveBeenCalled();
+    a.remove();
+  });
+});
+
+describe("the picture pass", () => {
+  it("a browser that cannot draw the picture gets an error with Try again, not a blank preview", async () => {
+    preview.ok = false;
+    render(<ImageEditor assetId={PIC} orgId={ORG} name="cat.png" libraryHref="/chronos/library" />);
+    expect(await screen.findByText(e.previewFailed)).toBeTruthy();
+    expect(screen.queryByTestId("canvas")).toBeNull();
+    expect(screen.getByRole("link", { name: e.libraryLink })).toBeTruthy();
+    preview.ok = true;
+    fireEvent.click(screen.getByRole("button", { name: e.retry }));
+    expect(await screen.findByTestId("canvas")).toBeTruthy();
+  });
+
+  it("shows white behind transparency exactly when JPEG is the chosen file type", async () => {
+    await open();
+    expect(preview.opaque.at(-1)).toBe(false);
+    fireEvent.change(screen.getByLabelText(e.formatLabel), { target: { value: "jpeg" } });
+    expect(preview.opaque.at(-1)).toBe(true);
+    fireEvent.change(screen.getByLabelText(e.formatLabel), { target: { value: "png" } });
+    expect(preview.opaque.at(-1)).toBe(false);
   });
 });

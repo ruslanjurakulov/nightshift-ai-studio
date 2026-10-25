@@ -39,7 +39,8 @@ export interface EditorCanvasProps {
   onMove: (id: string, cx: number, cy: number) => void;
   onBox: (id: string, w: number, h: number) => void;
   onCrop: (rect: Rect) => void;
-  onKey: (action: CanvasKey) => void;
+  /** Returns true when the key did something; only then is its browser default (scrolling, going back) suppressed. */
+  onKey: (action: CanvasKey) => boolean;
   onKeyEnd: () => void;
 }
 
@@ -222,16 +223,11 @@ export function EditorCanvas(props: EditorCanvasProps) {
     const step = e.shiftKey ? 10 : 1;
     const dir: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
     const d = dir[e.key];
-    if (d) {
-      e.preventDefault();
-      props.onKey({ type: e.altKey ? "resize" : "move", dx: d[0], dy: d[1] });
-    } else if (e.key === "PageDown" || e.key === "PageUp") {
-      e.preventDefault();
-      props.onKey({ type: "cycle", dir: e.key === "PageDown" ? 1 : -1 });
-    } else if (e.key === "Delete" || e.key === "Backspace") {
-      e.preventDefault();
-      props.onKey({ type: "remove" });
-    }
+    let handled = false;
+    if (d) handled = props.onKey({ type: e.altKey ? "resize" : "move", dx: d[0], dy: d[1] });
+    else if (e.key === "PageDown" || e.key === "PageUp") handled = props.onKey({ type: "cycle", dir: e.key === "PageDown" ? 1 : -1 });
+    else if (e.key === "Delete" || e.key === "Backspace") handled = props.onKey({ type: "remove" });
+    if (handled) e.preventDefault();
   };
 
   return (

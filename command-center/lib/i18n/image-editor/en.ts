@@ -11,6 +11,8 @@ export const imageEditorEn = {
   loading: "Opening the picture…",
   retry: "Try again",
   imageFailed: "This picture could not be opened.",
+  previewFailed:
+    "Your browser could not draw this picture, so it cannot be edited here. Try another browser.",
   unsupported: "This picture type cannot be edited here. The editor opens JPEG, PNG and WebP pictures.",
   noSize: "The library has no size recorded for this picture, so it cannot be opened here.",
   tooLarge: "This picture is {mp} megapixels. The editor opens pictures up to {max} megapixels.",
@@ -84,8 +86,8 @@ export const imageEditorEn = {
   announceMoved: "{name} at {x}, {y}.",
   aiTitle: "AI tools",
   aiNote:
-    "These open Studio with this library picture chosen. They work on the saved library file, not on the changes you have not saved yet. Studio shows the price before anything runs.",
-  aiSaveFirst: "Save your changes first if the AI tool should start from them.",
+    "These open Studio with the ORIGINAL library picture chosen, not your edits. Studio shows the price before anything runs.",
+  aiSaveFirst: "To use your edits, save first, then choose the new file in Studio's picture chooser.",
   saveTitle: "Save",
   formatLabel: "File type",
   formatPng: "PNG (lossless, larger)",
@@ -99,6 +101,7 @@ export const imageEditorEn = {
   nothingToSave: "Make a change first, then save.",
   outputSize: "The new file will be {w} × {h} px.",
   unsaved: "Not saved yet",
+  unsavedConfirm: "You have changes that are not saved. Leave without saving?",
   errors: {
     unauthorized: "Your session has ended. Sign in again.",
     forbidden: "You do not have access to this workspace.",
