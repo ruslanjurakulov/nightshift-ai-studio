@@ -280,7 +280,7 @@ for a plan request, and `parallel run limit reached` (NS429, the plan's concurre
 
 - `series_plan_daily_limit()` is 5 plans per organization per rolling 24 hours, a **placeholder for owner decision 3** (one function to
   change). One plan in flight per channel; a plan never finished frees its channel after 2 hours and its queue row is cancelled if no
-  worker took it. The cap counts failed plans (a model call was spent) and is checked after the idempotency replay, under an advisory lock
+  worker took it. The cap counts failed plans (a model call may have been spent; see "What counts" under "Plan caps") and is checked after the idempotency replay, under an advisory lock
   per organization, so concurrent requests cannot both pass it.
 - **Since migration 0127 there are two more caps, in the same function, counted from the plan rows** (see "Plan caps (migration 0127)" below):
   3 plans per person per rolling 24 hours (in any organization) and 30 per rolling 24 hours for all organizations together.
@@ -297,8 +297,9 @@ The review found migration 0120 safe to apply as it stands. These findings are t
 meet **before** `grant execute on function public.request_series_plan(...) to authenticated`. They are conditions, not suggestions; none is
 met by 0120, which is why the function is granted to nobody.
 
-- **F4: the cap is per organization, and one account can have many organizations. MET by migration 0127** (written, not yet merged or
-  applied when this line was written; read "Plan caps" below for what it does and what is still the owner's). `create_organization` allows 10
+- **F4: the cap is per organization, and one account can have many organizations. MET by migration 0127** (merged as #630; the caps are in the database, dark,
+  because the function is still granted to nobody; read "Plan caps" below for what it does, what is still the owner's, and the HARD CONDITION on abuse
+  that applies before ANY grant). `create_organization` allows 10
   organizations per account, so one person could make 10 x 5 = 50 planning requests a day (each one a model call on the platform's shared
   Gemini key). 0127 adds a per-user cap (default 3 a day) and a platform-wide cap (default 30 a day), in the database, before the grant.
 - **F5: what happens when the function is called before its worker exists, and what is not yet handled.**
@@ -445,30 +446,53 @@ while one account can own ten organizations. Migration 0127 (`supabase/migration
 
 * **Order of the checks:** replay of an accepted press (never refused by a cap) -> channel busy (`plan_in_progress`) -> organization cap (`rate_limited`, 5) ->
   person (`series_user_cap`) -> platform (`series_global_cap`). A refusal raises, so the whole call rolls back: no plan row, no queue row.
-* **What counts:** every plan row in the window, including failed and expired ones (a model call was spent), exactly as the organization cap does.
+* **What counts:** every plan row in the window, whatever its status, exactly as the organization cap does. That includes a failed plan and an expired one. An
+  expired plan whose queue row the sweep cancelled never reached a worker and spent no model call, and it still counts. So **worker outages and Gemini quota
+  exhaustion burn the caps**: while the planner is off, down or out of quota, every request that was accepted ends `failed` or `expired` and uses up the person's
+  3 and the platform's 30 for the day with no plan to show for it. (The cap is a ceiling on accepted requests, not a count of successful plans.)
+* **The cap bounds accepted requests, not provider calls.** One accepted plan is one `generate` plus up to `CHRONOS_TOPIC_GATE_MODEL_CALLS` niche questions, each
+  up to `GEMINI_MAX_RETRIES` HTTP attempts: (1 + 2) x 5 = 15 attempts in a bad hour. A worker that DIES mid-plan is re-queued by the stale sweep, up to 3
+  attempts. So the ceiling on HTTP attempts a day at the defaults is 30 plans x 3 attempts x 15 = **1350**, not 30 x 15 = 450, and it is only a ceiling
+  on requests the planner is asked to make: Google's own quota is still the real limit.
 * **Races:** the organization lock of 0120 does not serialise one person's presses in two organizations, nor two people, so the function takes one more lock, a
   platform-wide one, always after the organization's, and reads both counts under it. The lab pins this with real threads.
 * **The owner's numbers** live in `public.series_plan_cap_settings` (one row: `user_daily_cap`, `global_daily_cap`), changed in the SQL editor with no deploy:
-  `update public.series_plan_cap_settings set user_daily_cap = 5, global_daily_cap = 50;` (0 refuses every request: a pause). The table is closed to every API role
+  `update public.series_plan_cap_settings set user_daily_cap = 5, global_daily_cap = 50;` (0 refuses every request: a pause; **pause with `global_daily_cap = 0`, not `user_daily_cap = 0`**: a person cap of 0 shows "You have reached your daily limit of
+  plans" to someone who made none, while the platform cap says planning is at its limit for everyone). The numbers are whole numbers: `user_daily_cap = 2.5`
+  is accepted without a warning and rounds to 3 (the column is `integer`). The table is closed to every API role
   (row level security on, no policy, no privilege), the row cannot be deleted, a change leaves a `security_events` row (`series.plan.caps`), a missing row reads as the
   defaults 3 and 30 (never as "no cap"), and a replay of the migration never undoes what the owner set.
 * **The words reach the user.** The plan form maps `series_user_cap` and `series_global_cap` to their own sentences (en/ru/uz; "nothing was started and nothing was
   charged"); the platform's sentence names no number.
 * **Grants nothing.** `request_series_plan` is executable by nobody before and after 0127, and the file refuses to run (and its end state refuses to commit) if it is
   executable by public or an API role. It replaces only that one function, on 0122's body plus lines marked `-- 0127`, md5-pinned (BEFORE `e38342a6c8511d5eadb1f99ab38fb6aa`,
-  AFTER in the file's header). Undo: `docs/sql/rollback_0127_series_plan_caps.sql`, before `rollback_0122_series_template_carrier.sql`.
+  AFTER in the file's header). The drift guard compares the md5 of the whitespace-collapsed body (`prosrc` with every run of white space read as one space), so a
+  live body that differs from 0127's (or 0122's) only in white space is ACCEPTED; do not read the guard as a byte-equality check. The rollback's "byte for byte" is
+  a different claim and holds: it re-creates 0122's text exactly (the lab compares it with a database that never had 0127). Undo: `docs/sql/rollback_0127_series_plan_caps.sql`, before `rollback_0122_series_template_carrier.sql`.
 * **Not done by 0127:** the grant; a credit price for planning; a cap per organization that the owner can change without a migration (it is still
   `series_plan_daily_limit()`, 5); an owner screen for the numbers (the SQL editor is the way, as for `model_availability_settings`); a per-IP or per-channel cap;
   alerts when a cap is hit. The caps are a ceiling on Gemini spend, not a billing meter: the quota is still the model provider's.
 
 ### What the owner must do before granting `request_series_plan`
 
+(The header of `0127_series_plan_caps.sql` points to "What the owner must do, in order" in the slice S3 section. That section is the S3 sequence for switching the
+worker and the page on; the steps for granting are the ones below. The pointer is in the SQL file, which an applied migration must not edit, so it is corrected here.)
+
 1. Merge 0127 and read the file's header: the live BEFORE hash of `request_series_plan` must be `e38342a6c8511d5eadb1f99ab38fb6aa` (the file checks it and refuses otherwise).
 2. Read the numbers (`select * from public.series_plan_cap_settings;` expects `3, 30`) and decide them: they are the free-quota budget of the shared Gemini key, so
-   `global_daily_cap x (1 + CHRONOS_TOPIC_GATE_MODEL_CALLS)` requests is the planned spend on a good day, and up to 15 per plan in a bad hour (retries).
-3. Decide the remaining conditions of "Hard conditions" above (F5 restart path and the rest), then grant in its own migration and PR. A person who hits a cap is told
-   to try again tomorrow; the platform cap means a few heavy users can use up the day for everyone, which is the point of a ceiling and also its cost.
-4. After the grant, watch `select requested_by, count(*) from public.series_plans where created_at > now() - interval '24 hours' group by 1 order by 2 desc;` and the
+   `global_daily_cap x (1 + CHRONOS_TOPIC_GATE_MODEL_CALLS)` requests is the planned spend on a good day, up to 15 per plan in a bad hour (retries), and up to
+   `global_daily_cap x 3 x 15` (1350 at the defaults) if workers die and the stale sweep re-queues. Pause planning with `global_daily_cap = 0`, never with
+   `user_daily_cap = 0`.
+3. **HARD CONDITION before ANY grant (availability of planning).** Ten free sign-ups can use the whole platform cap for a day, and renew it every day. Each
+   account may make up to 3 plans; any signed-in user can create up to 10 organizations, and a channel in each; and `request_series_plan` checks no plan, no
+   entitlement and no payment. So ten throwaway accounts exhaust the 30 and the operator's own organization, which is counted in the same 30 with **no reserve**,
+   is refused with `series_global_cap` as well, as is every paying customer. The caps stop spend; they do not keep planning available to the people it is for.
+   Before ANY grant do at least one of these (all three is better): (a) require a paid entitlement or a verified account in `request_series_plan`; (b) reserve part
+   of the platform cap for the operator's organization or for paying organizations; (c) add an alert on the first `series_global_cap` refusal, so the owner learns
+   the day the platform cap was reached, not from a customer. None of them is in 0127.
+4. Decide the remaining conditions of "Hard conditions" above (F5 restart path and the rest), then grant in its own migration and PR. A person who hits a cap is
+   told to try again tomorrow.
+5. After the grant, watch `select requested_by, count(*) from public.series_plans where created_at > now() - interval '24 hours' group by 1 order by 2 desc;` and the
    `series.plan.caps` rows in `security_events`.
 
 ## Format templates (migration 0122, dark: no grant, no switch)

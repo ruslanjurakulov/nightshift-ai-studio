@@ -502,10 +502,10 @@ calls no provider and touches no credit, hold, publishing or privacy rule. Numbe
 when the PR was opened: the open #624-#629 touch nothing under `supabase/`); 0123 is unused and left to the migration that reserved it.
 
 - **What it enforces (finding F4).** 3 plans per person (any organization) and 30 for all organizations per rolling 24 hours, after the organization's 5 (0120),
-  counted from `series_plans`; failed and expired plans count; a replay of an accepted press is never refused. A refusal raises NS429 with the closed message
+  counted from `series_plans`; failed and expired plans count (even an expired one whose queue row was cancelled and spent no model call, so a worker outage or a spent Gemini quota burns the caps); a replay of an accepted press is never refused. A refusal raises NS429 with the closed message
   `series_user_cap` (detail `limit=3 per 24 hours`) or `series_global_cap` (no detail) and rolls everything back. Both are counted under one platform-wide advisory lock, always taken
   after the organization's (0120).
-- **The owner's numbers.** `select * from public.series_plan_cap_settings;` (expects `3, 30`); change them in the SQL editor, no deploy; 0 pauses planning. A missing row
+- **The owner's numbers.** `select * from public.series_plan_cap_settings;` (expects `3, 30`); change them in the SQL editor, no deploy; pause planning with `global_daily_cap = 0`, not `user_daily_cap = 0` (a person cap of 0 tells someone who made no plan that they reached their limit); a fractional value such as 2.5 is accepted and rounds to 3. A missing row
   reads as the defaults. A replay never undoes the owner's edit (`on conflict do nothing`).
 - **Order with 0124 / 0125 / 0126:** none replaces an object the others touch; the lab applies the four in four orders and compares the end states.
 - **Re-running 0122 afterwards** is refused by its own drift guard (its `request_series_plan` body is now 0127's): take 0127 off first with its rollback, as the lab
