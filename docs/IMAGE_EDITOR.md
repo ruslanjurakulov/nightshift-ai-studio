@@ -69,6 +69,8 @@ never ask.
 * Text drawn in a preview at a reduced scale and in the file at full scale can differ by a pixel or two of line breaking, because font
   metrics are not perfectly linear. Layers are centre-anchored, so the difference is symmetric.
 * PNG of a 16 MP photograph can exceed the upload cap; the person then gets the cap in the sentence and the JPEG choice.
-* The entry point (an "Edit" button in the Library viewer) is NOT added: it would need the server flag passed down to a client
-  component. Until then the page is reached by its address.
+* The entry point is an "Edit" link in the Library viewer (`components/media/MediaViewer.tsx`), shown only when the server flag is on
+  (the Library page reads `imageEditorEnabled()` at request time and passes a boolean down; no client code reads the env) and only for
+  JPEG, PNG and WebP pictures. It is a plain link to `/{channel}/editor/image/{assetId}`. Studio's job feed and the Home strip do not
+  use the viewer and have no Edit link.
 * ru and uz wording is the author's and needs a native read.
