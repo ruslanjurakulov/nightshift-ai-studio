@@ -13,13 +13,14 @@
  *   it could be measured for.
  * - A figure that is null stays null (CLAUDE.md #5): a video without a reading is "not measured", never 0 views; an
  *   average is taken over the videos that have both of its parts; a sum over zero known values is null, not 0.
- * - What does NOT count as a reading (the poller stores `int(metrics.get("views", 0) or 0)`, so when YouTube has no row yet it
- *   stores a full row of zeros, and a zero here is then "no data came back", not "measured zero"):
- *     1. a snapshot whose views, likes, comments, watch minutes and average duration are ALL exactly 0 is skipped as empty;
+ * - What does NOT count as a reading (the poller now stores NULL for what YouTube did not return; before that it stored
+ *   `int(metrics.get("views", 0) or 0)`, a full row of zeros, and those rows are still in the table, so a zero here can be
+ *   "no data came back" as well as "measured zero"):
+ *     1. a snapshot whose views, likes, comments, watch minutes and average duration are ALL NULL, or ALL exactly 0, is skipped as empty;
  *        the video falls back to its newest non-empty reading, or is "not measured" (flagged `noData`) when it has none;
  *     2. a duration of exactly 0 next to views > 0 is an unknown duration (null), so it cannot pull the weighted average down;
  *     3. a snapshot dated before the video's publish day cannot be a reading of that video and is skipped.
- *   The proper fix (the poller storing NULL for empty metrics) is a worker/database change and is not part of this page.
+ *   The all-zero rule stays for as long as old rows exist; it cannot tell a measured all-zero row from a legacy empty one.
  * - Subscribers gained / lost exist in YouTube's response but are not stored by the poll, so there is no source to show.
  *   The dashboard says "not collected", it does not derive a delta from anything else.
  */
@@ -151,13 +152,20 @@ export interface VideoResult {
   format: "long" | "short" | null;
   /** The newest usable reading, or null when there is none: "not measured", never zero. */
   reading: Reading | null;
-  /** True when snapshots exist but every one of them was empty (all zeros: nothing came back), so there is no reading. */
+  /** True when snapshots exist but every one of them was empty (all NULL or all zeros: nothing came back), so there is no reading. */
   noData: boolean;
 }
 
-/** A snapshot with every figure exactly 0: the poller's row for "YouTube returned nothing yet", not a measurement of zero. */
+/**
+ * A snapshot that carries no measurement: "YouTube returned nothing for this video yet", not a measured zero.
+ * Two stored forms mean that, and both must keep working:
+ *  - all five figures NULL: what the poller writes now (modules/intelligence_poller.py, `_optional_int`);
+ *  - all five exactly 0: what it wrote before, from `int(metrics.get("views", 0) or 0)`. Those rows are still in the table.
+ * A mix (some 0, some NULL) is neither form and stays a reading, as does any row with a non-zero figure.
+ */
 export function isEmptyReading(s: SnapshotInput): boolean {
-  return s.views === 0 && s.likes === 0 && s.comments === 0 && s.watchMinutes === 0 && s.avgViewSeconds === 0;
+  const figures = [s.views, s.likes, s.comments, s.watchMinutes, s.avgViewSeconds];
+  return figures.every((n) => n === null) || figures.every((n) => n === 0);
 }
 
 /** The first moment of the window, in ms: now minus `days` whole days. */

@@ -35,6 +35,7 @@ tests never make live API calls.
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ def _optional_int(value):
         return None
     try:
         return int(float(value))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -67,9 +68,11 @@ def _optional_float(value):
     if value is None:
         return None
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return None
+    # NaN and infinity are not measurements, and JSON (the Supabase mirror) cannot carry them.
+    return number if math.isfinite(number) else None
 
 
 class IntelligencePoller:
@@ -175,11 +178,14 @@ class IntelligencePoller:
                 self.state_store.record_metrics_snapshot(
                     video_id=video_id,
                     snapshot_date=snapshot_date,
-                    views=int(metrics.get("views", 0) or 0),
-                    likes=int(metrics.get("likes", 0) or 0),
-                    comment_count=int(metrics.get("comments", 0) or 0),
-                    watch_time_minutes=float(metrics.get("estimatedMinutesWatched", 0.0) or 0.0),
-                    average_view_duration_seconds=float(metrics.get("averageViewDuration", 0.0) or 0.0),
+                    # NULL, not 0, for what YouTube did not return: video_performance
+                    # gives {} for a video it has no row for yet, and a stored 0 would
+                    # read as a measured "no views". A 0 YouTube did send stays 0.
+                    views=_optional_int(metrics.get("views")),
+                    likes=_optional_int(metrics.get("likes")),
+                    comment_count=_optional_int(metrics.get("comments")),
+                    watch_time_minutes=_optional_float(metrics.get("estimatedMinutesWatched")),
+                    average_view_duration_seconds=_optional_float(metrics.get("averageViewDuration")),
                     impressions=_optional_int(ctr.get("impressions")),
                     impression_ctr=_optional_float(ctr.get("impressionClickThroughRate")),
                 )
