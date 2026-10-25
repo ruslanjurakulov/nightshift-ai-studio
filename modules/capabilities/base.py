@@ -461,7 +461,7 @@ class HttpAdapter:
     # -- HTTP -------------------------------------------------------------------
     def _call(self, method: str, url: str, *, what: str, json_body=None, params=None,
               headers=None, files=None, data=None, timeout: Optional[int] = None,
-              raw: bool = False):
+              raw: bool = False, ok_statuses: Sequence[int] = ()):
         h = dict(self.auth_headers())
         if headers:
             h.update(headers)
@@ -475,7 +475,9 @@ class HttpAdapter:
             # Only the exception's class: its text can carry the request.
             raise AdapterError(E_UNAVAILABLE, f"{what}: {type(e).__name__}", not_accepted=never_sent(e)) from None
         status = getattr(resp, "status_code", 200)
-        if status >= 300:
+        # ``ok_statuses``: statuses the CALLER reads itself (BFL answers a failed task as HTTP 503 with a
+        # normal JSON body). The caller must then look at the body and raise for a real outage itself.
+        if status >= 300 and status not in ok_statuses:
             text = scrub(getattr(resp, "text", "") or "", self.secrets())
             code = self.vendor_error_code(status, text) or classify_http(status, text)
             raise AdapterError(code, f"{what}: HTTP {status} {text[:300]}", http_status=status,
