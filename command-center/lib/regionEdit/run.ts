@@ -3,7 +3,7 @@ import { regionsToRun } from "@/lib/regionEdit/request";
 import { DEFAULT_FEATHER, type WireRegion } from "@/lib/regionEdit/geometry";
 
 /**
- * The run step of the region editor (migration 0125, docs/REGION_EDITOR.md): what a region edit asks of the database, and how a
+ * The run step of the region editor (migration 0126, docs/REGION_EDITOR.md): what a region edit asks of the database, and how a
  * finished job is read back. Pure, so it is tested without a database.
  *
  * A region edit is an ordinary `edit` creative job whose params carry the regions. The database prices it (n regions = n edits by

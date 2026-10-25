@@ -1,22 +1,22 @@
--- rollback_0125_region_edit_run.sql — takes migration 0125 out again. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
+-- rollback_0126_region_edit_run.sql — takes migration 0126 out again. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
 -- WHEN YOU NEED IT. If the region-edit run step must be withdrawn. Switch NIGHTSHIFT_REGION_EDITOR off on the Command Center AND the creative
 -- worker first, so nothing new is queued.
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if any of the three replaced live bodies is not 0125's (a later change would be undone), or if a region edit is
+--   0. REFUSES (changes nothing) if any of the three replaced live bodies is not 0126's (a later change would be undone), or if a region edit is
 --      still in flight (a creative_jobs row with params.regions whose status is not final): the original finish_creative_job would settle it as
 --      an ordinary edit, charging the whole hold whatever the regions did. Let those jobs end (they do on their own, in minutes) or cancel
 --      them, then run this.
 --   1. Puts creative_params_problem(), creative_quantity() and finish_creative_job() back to 0100's / 0099's / 0075's bodies, byte for byte,
---      and drops the two functions 0125 added. Finished region edits stay as rows (their params are history; no constraint re-reads them).
+--      and drops the two functions 0126 added. Finished region edits stay as rows (their params are history; no constraint re-reads them).
 --
 -- WHAT IT KEEPS: everything else. Credits already captured stay captured.
 --
--- CHECK BEFORE YOU RUN IT: compare the three live bodies by hand with 0125's (pg_get_functiondef); the only differences from the pre-0125 text
--- should be the lines marked 0125. The script compares md5s itself and refuses on any other text.
+-- CHECK BEFORE YOU RUN IT: compare the three live bodies by hand with 0126's (pg_get_functiondef); the only differences from the pre-0126 text
+-- should be the lines marked 0126. The script compares md5s itself and refuses on any other text.
 --
--- tests/security/test_sec_region_edit_run.py applies this file to a copy of the lab database and re-applies 0125.
+-- tests/security/test_sec_region_edit_run.py applies this file to a copy of the lab database and re-applies 0126.
 
 begin;
 set local lock_timeout = '5s';
@@ -31,19 +31,19 @@ begin
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into q from pg_proc x where x.oid = 'public.creative_quantity(text, jsonb)'::regprocedure;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into f
     from pg_proc x where x.oid = 'public.finish_creative_job(uuid, text, boolean, numeric, jsonb, text, text)'::regprocedure;
-  if p is distinct from 'd47b0535653761a744e82cbcd916303c' then
-    raise exception 'rollback 0125: creative_params_problem() is not 0125''s body (md5 %): a later change would be undone; read the live body first', p;
+  if p is distinct from '6e815ae544cbb23d7f03845465f8ce6a' then
+    raise exception 'rollback 0126: creative_params_problem() is not 0126''s body (md5 %): a later change would be undone; read the live body first', p;
   end if;
-  if q is distinct from 'bdaa700af7544ed73ba1da940a6e59df' then
-    raise exception 'rollback 0125: creative_quantity() is not 0125''s body (md5 %): a later change would be undone; read the live body first', q;
+  if q is distinct from '02446e3ae600ea3504cdbea5a59829e8' then
+    raise exception 'rollback 0126: creative_quantity() is not 0126''s body (md5 %): a later change would be undone; read the live body first', q;
   end if;
-  if f is distinct from '5c045d8d7cbf426405f71730f8028c36' then
-    raise exception 'rollback 0125: finish_creative_job() is not 0125''s body (md5 %): a later change would be undone; read the live body first', f;
+  if f is distinct from '6af709d6345f32e8eef6e9dd64d04c44' then
+    raise exception 'rollback 0126: finish_creative_job() is not 0126''s body (md5 %): a later change would be undone; read the live body first', f;
   end if;
   if exists (select 1 from public.creative_jobs
               where capability = 'edit' and jsonb_typeof(params -> 'regions') = 'array'
                 and status not in ('completed', 'failed', 'cancelled', 'expired')) then
-    raise exception 'rollback 0125: a region edit is still in flight; let it end or cancel it first';
+    raise exception 'rollback 0126: a region edit is still in flight; let it end or cancel it first';
   end if;
 end $$;
 
@@ -430,7 +430,7 @@ begin
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.finish_creative_job(uuid, text, boolean, numeric, jsonb, text, text)'::regprocedure) <> '37e306c9def112dd53d83d9eba0a1c49'
      or to_regprocedure('public.creative_regions_problem(jsonb)') is not null
      or to_regprocedure('public.creative_region_outcomes(jsonb, jsonb)') is not null then
-    raise exception 'rollback 0125 end state: a body is not the pre-0125 one, or a 0125 function is still there';
+    raise exception 'rollback 0126 end state: a body is not the pre-0126 one, or a 0126 function is still there';
   end if;
 end $$;
 

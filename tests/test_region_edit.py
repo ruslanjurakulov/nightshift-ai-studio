@@ -321,13 +321,25 @@ class ModelChoiceTests(unittest.TestCase):
             resolve_edit_model("g", available={"g"}, registry={"g": Gated()})
         self.assertEqual(cm.exception.code, "model_gated")
 
-    def test_the_models_that_can_edit_today_are_exactly_these(self):
-        editors = sorted(m.id for m in reg.models("edit"))
-        self.assertEqual(editors, ["gemini-3-pro-image", "gemini-3.1-flash-image", "gemini-3.1-flash-lite-image",
-                                   "openai-gpt-image-2", "openai-gpt-image-2.5-flare", "openai-gpt-image-2.5-sunburst"])
-        for m in reg.models("edit"):
-            self.assertIsNone(m.terms_gate)
-            self.assertNotIn("mask", m.raw.get("inputs", {}))      # no wired model takes a mask: the crop does the work
+    def test_every_editing_model_is_either_cleared_or_refused_as_gated_whatever_models_are_added(self):
+        # Not a pinned list: other pull requests add editing models that are dark (a terms gate), and each of them must be refused
+        # here with model_gated while the cleared ones resolve. A new editor is therefore never usable by accident.
+        editors = list(reg.models("edit"))
+        self.assertTrue(editors, "the registry has no editing model at all")
+        available = {m.id for m in reg.models()}
+        cleared = [m for m in editors if not m.terms_gate]
+        self.assertTrue(cleared, "no cleared editing model: the region editor would have nothing to run")
+        for m in editors:
+            with self.subTest(model=m.id, gated=bool(m.terms_gate)):
+                if m.terms_gate:
+                    with self.assertRaises(RegionEditError) as cm:
+                        resolve_edit_model(m.id, available=available, registry=self.registry)
+                    self.assertEqual(cm.exception.code, "model_gated")
+                else:
+                    self.assertEqual(resolve_edit_model(m.id, available=available, registry=self.registry).id, m.id)
+        for m in cleared:
+            # a cleared editor takes the crop only: no wired adapter sends a mask, and the lock does not depend on one
+            self.assertNotIn("mask", m.raw.get("inputs", {}), m.id)
 
     def test_a_failed_region_is_not_retried_on_another_model_and_the_others_still_apply(self):
         seen = []

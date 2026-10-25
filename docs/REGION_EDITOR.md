@@ -7,7 +7,7 @@ step exists) have an existing edit model change only those rectangles. Provider-
 This page says exactly what is built, what is guaranteed and what is not. Nothing here is switched on: the page is a
 404 and the routes answer `not_found` until the owner sets `NIGHTSHIFT_REGION_EDITOR=on` on the Command Center's server,
 and the creative worker refuses a region job (`region_editor_off`, the whole hold released) unless the same variable is on
-in ITS environment. The run step added migration 0125 (see "The run step").
+in ITS environment. The run step added migration 0126 (see "The run step").
 
 ## What is built in this change
 
@@ -17,7 +17,7 @@ in ITS environment. The run step added migration 0125 (see "The run step").
 | Editor UI (Konva canvas, region list, model pick, price, versions, before/after) | `command-center/components/regionEdit/*`, `app/(app)/[channel]/studio/regions/page.tsx` | built, behind the switch |
 | Price before running | `POST /api/region-edit/quote` | built: one ordinary `edit` quote per region with words, summed |
 | Version history | `GET /api/region-edit/versions` | built; reads `media_assets.parent_asset_id` (written by the worker, never by the browser) |
-| Running the edits (hold, call the model per region, composite, store a new version, charge or refund) | `supabase/migrations/0125_region_edit_run.sql`, `POST /api/region-edit/run`, `modules/creative_worker.py` (`_process_region`), `modules/region_edit.py` (`run_job_regions`), `components/regionEdit/RunPanel.tsx` | built, behind the same switch on the web and on the worker. See "The run step". |
+| Running the edits (hold, call the model per region, composite, store a new version, charge or refund) | `supabase/migrations/0126_region_edit_run.sql`, `POST /api/region-edit/run`, `modules/creative_worker.py` (`_process_region`), `modules/region_edit.py` (`run_job_regions`), `components/regionEdit/RunPanel.tsx` | built, behind the same switch on the web and on the worker. See "The run step". |
 
 New dependency: `konva` (MIT). No canvas library was present in `command-center` (the video editor draws with the
 DOM and CSS). `react-konva` was not added; Konva is imported on the client after mount and never on the server.
@@ -94,7 +94,7 @@ The screen says the changed parts are AI-generated and that the tool does not ju
 the feather and each applied region's rectangle (not the person's words). A result must be registered as
 `source='generated'` (never `upload`) so the existing AI-disclosure logic that reads generated stills still sees it.
 
-## The run step (migration 0125)
+## The run step (migration 0126)
 
 `create_creative_job` accepts `params.regions` (1 to 5 of `{id, name, rect {x,y,w,h}, prompt}`) and `params.region_feather`
 (2 to 8) on `edit` jobs only, and refuses every other key next to them (no prompt of its own, no seed, no shape, no style

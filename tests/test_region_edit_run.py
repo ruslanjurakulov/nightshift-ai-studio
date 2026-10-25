@@ -1,4 +1,4 @@
-"""The region editor's run step in the creative worker (migration 0125, modules/creative_worker.py + modules/region_edit.py).
+"""The region editor's run step in the creative worker (migration 0126, modules/creative_worker.py + modules/region_edit.py).
 
 The model here is a LOOPBACK fake that returns garbage (noise, the wrong shape, not a picture, a vendor refusal) and the tests still require:
 
@@ -123,7 +123,7 @@ class Loopback:
 
 
 class RegionQueue(SourceQueue):
-    """SourceQueue plus 0125's sellable_models, and a record of what the database was told."""
+    """SourceQueue plus 0126's sellable_models, and a record of what the database was told."""
 
     def __init__(self, j, source, sold=(GEMINI, OPENAI), attach=True):
         super().__init__(j, source=source, attach=attach)
@@ -236,6 +236,7 @@ class TheRun(Base):
         prov = row["provenance"]
         self.assertTrue(prov["ai_generated"])
         self.assertEqual((prov["job_id"], prov["model"], prov["capability"], prov["source_asset_id"]), (JOB, GEMINI, "edit", SRC))
+        self.assertEqual(prov["provider"], reg.get(GEMINI).provider)
         self.assertEqual(prov["region_edit"]["pixel_lock"], "outside_mask_identical")
         self.assertEqual(len(prov["region_edit"]["regions"]), 3)
         self.assertNotIn("change part", json.dumps(prov), "the person's words are not kept in the provenance")
@@ -289,6 +290,25 @@ class TheRun(Base):
         self.assertEqual(self.report(q), [("r1", "applied", None), ("r2", "refused", "region_out_of_bounds"),
                                           ("r3", "applied", None), ("r4", "refused", "region_too_small")])
         self.assertEqual(len(loop.requests), 2, "no model was asked about a region that was refused")
+
+    def test_a_reason_outside_the_closed_list_is_reported_as_a_provider_error_not_as_it_came(self):
+        def behave(n, request):
+            if n == 0:
+                raise re_.RegionEditError("mask_invalid", "the brush mask said: sk-leak")
+            return Loopback.noise(n, request)
+
+        q, _ = self.run_job(behave=behave)
+        self.assertEqual(self.report(q)[0], ("r1", "failed", "provider_error"))
+        self.assertNotIn("mask_invalid", json.dumps(q.finished))
+        self.assertNotIn("sk-leak", json.dumps(q.finished))
+
+    def test_a_region_that_touches_the_picture_edge_is_valid_and_applied(self):
+        regions = [region(1, W - 60, H - 50, 60, 50), region(2, 0, 0, 60, 50)]
+        q, loop = self.run_job(region_job(regions))
+        self.assertEqual([s for _i, s, _c in self.report(q)], ["applied", "applied"])
+        after, _ = self.stored_result()
+        before = np.array(self.original.convert("RGBA"))
+        self.assertTrue(np.array_equal(before[outside(before.shape[:2], regions)], after[outside(before.shape[:2], regions)]))
 
     def test_the_report_names_every_region_in_order_with_the_jobs_own_ids(self):
         regions = [region(7, 10, 10), region(3, 120, 20), region(5, 220, 150)]

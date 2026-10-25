@@ -1,4 +1,4 @@
--- 0125_region_edit_run.sql — Region editor, the run step: a region edit is an ordinary `edit` creative job that carries `params.regions`, priced
+-- 0126_region_edit_run.sql — Region editor, the run step: a region edit is an ordinary `edit` creative job that carries `params.regions`, priced
 -- per region and settled per region. docs/REGION_EDITOR.md ("What is missing"), PR claude/region-editor-run.
 --
 -- *** LIVE ON APPLY. *** Merging this file applies it to the live database. It replaces THREE functions that exist there
@@ -15,13 +15,15 @@
 -- A signed-in member can call create_creative_job directly with the keys, as for any creative job: the job is priced and held like any other
 -- and, with the worker switch off, ends failed with the whole hold released.
 --
--- NUMBER. 0125. The highest on main is 0122. Open pull requests hold two more: #616 (0123_model_shutdown.sql) and #612
--- (0124_model_switch.sql); no other open pull request adds a migration (checked with gh api against the open pull requests and their files,
--- 2026-10-25). OVERLAP WITH 0123 / 0124, checked line by line: NONE. Both replace creative_price and sellable_models (and 0124 also
--- advance_creative_job, api_creative_model_ok and api_creative_refusal); this file replaces none of those. creative_price, create_creative_job
--- and the API functions only CALL creative_params_problem and creative_quantity, which is why this file needs neither of them changed: the
--- quote of a region edit is the ordinary quote of n units, whoever asks for it. So the three files may apply in any order, and none of them
--- replaces a body another one pins. If 0123 or 0124 merges first, this file still applies unchanged.
+-- NUMBER. 0126. The highest on main is 0124 (the owner model switch, merged as #612). One open pull request holds a migration: #616
+-- (0125_model_shutdown.sql, renumbered from 0123 when 0124 merged); no other open pull request adds one (checked with gh api against the open
+-- pull requests and their files, 2026-10-25). 0123 is unused on main. OVERLAP, checked line by line: NONE with 0124 (merged) or 0125 (#616).
+-- 0124 replaced sellable_models, creative_price, advance_creative_job, api_creative_model_ok and api_creative_refusal, and #616 replaces
+-- creative_price and sellable_models; this file replaces NONE of those, so it pins no stale body of theirs. creative_price,
+-- create_creative_job and the API functions only CALL creative_params_problem and creative_quantity, which is why this file needs none of them
+-- changed: the quote of a region edit is the ordinary quote of n units, whoever asks for it. The three bodies this file replaces are the same
+-- on main after 0124 as before it (0124 does not touch them), and none of the files replaces a body another one pins, so they apply in any
+-- order. If #616 merges first, this file still applies unchanged.
 --
 -- APPLY AS ONE TRANSACTION: the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1. `set local lock_timeout`
 -- and the drift guards assume it, and the last block of this file asserts the end state, so a half-applied file cannot be left behind.
@@ -57,7 +59,7 @@
 --   * Job-level endings are 0036's, untouched: a worker that gives up, a cancelled or expired job, a lost worker and a submit that was
 --     interrupted all release the whole hold through creative_end_locked.
 --
--- WHAT IT REPLACES (each is its latest body, character for character, plus the lines marked `-- 0125`):
+-- WHAT IT REPLACES (each is its latest body, character for character, plus the lines marked `-- 0126`):
 --   creative_params_problem(text, jsonb)   0100's body: the keys regions and region_feather are known, refused outside an edit, checked by the
 --                                          new creative_regions_problem when present, and an edit with regions needs no prompt of its own.
 --   creative_quantity(text, jsonb)         0099's body: an edit with regions is priced by the number of its regions.
@@ -74,7 +76,7 @@
 --       from pg_proc where oid = 'public.creative_quantity(text, jsonb)'::regprocedure
 --     union all select 'finish_creative_job', md5(regexp_replace(prosrc, '\s+', ' ', 'g'))
 --       from pg_proc where oid = 'public.finish_creative_job(uuid, text, boolean, numeric, jsonb, text, text)'::regprocedure;
---   expected BEFORE (0100 / 0099 / 0075 are the latest bodies; 0125 is not applied):
+--   expected BEFORE (0100 / 0099 / 0075 are the latest bodies; 0126 is not applied):
 --     creative_params_problem   8f5525f8a44442ab477c412c3d013fee
 --     creative_quantity         e6e1d85bcd4a4cde42f94546a697e352
 --     finish_creative_job       37e306c9def112dd53d83d9eba0a1c49
@@ -82,15 +84,15 @@
 --     select proname from pg_proc where oid in (to_regprocedure('public.creative_regions_problem(jsonb)'),
 --                                               to_regprocedure('public.creative_region_outcomes(jsonb, jsonb)'));
 --   expected AFTER (the last block of this file asserts the same, inside the transaction):
---     creative_params_problem   d47b0535653761a744e82cbcd916303c
---     creative_quantity         bdaa700af7544ed73ba1da940a6e59df
---     finish_creative_job       5c045d8d7cbf426405f71730f8028c36
+--     creative_params_problem   6e815ae544cbb23d7f03845465f8ce6a
+--     creative_quantity         02446e3ae600ea3504cdbea5a59829e8
+--     finish_creative_job       6af709d6345f32e8eef6e9dd64d04c44
 --     creative_regions_problem  5603be6af36c813d2799eb581bb971cd
 --     creative_region_outcomes  193f0ef7a0aa427fd113fdceac9ea954
 --   If a live value is anything else, STOP: something was applied by hand after 0100 / 0099 / 0075, and replacing the body would silently undo it.
 --
--- Additive and idempotent: create or replace, revoke, grant. A second run finds the 0125 bodies and changes nothing. An applied migration is
--- never edited. Rollback: docs/sql/rollback_0125_region_edit_run.sql (refuses while a region edit is still in flight).
+-- Additive and idempotent: create or replace, revoke, grant. A second run finds the 0126 bodies and changes nothing. An applied migration is
+-- never edited. Rollback: docs/sql/rollback_0126_region_edit_run.sql (refuses while a region edit is still in flight).
 -- REQUIRES 0100 (creative_params_problem), 0099 (creative_quantity), 0075 (finish_creative_job, routed_credits), 0046 (result_asset_ids) and 0020.
 
 set local lock_timeout = '5s';
@@ -106,17 +108,17 @@ begin
      or to_regprocedure('public.creative_job_json(public.creative_jobs)') is null
      or to_regprocedure('public.credits_round_up(numeric)') is null
      or to_regprocedure('public.capture_credits(text, numeric, boolean)') is null then
-    raise exception '0125 needs the creative jobs (0036 and later) and the credits (0020): apply them first';
+    raise exception '0126 needs the creative jobs (0036 and later) and the credits (0020): apply them first';
   end if;
   if not exists (select 1 from pg_attribute
                   where attrelid = 'public.creative_jobs'::regclass and attname = 'routed_credits' and not attisdropped)
      or not exists (select 1 from pg_attribute
                      where attrelid = 'public.creative_jobs'::regclass and attname = 'result_asset_ids' and not attisdropped) then
-    raise exception '0125 needs creative_jobs.routed_credits (0075) and result_asset_ids (0046): apply them first';
+    raise exception '0126 needs creative_jobs.routed_credits (0075) and result_asset_ids (0046): apply them first';
   end if;
   -- 0100 is the body creative_params_problem is replaced from: on an older one this file would take the video ops away.
   if position('video_remove_bg' in pg_get_functiondef('public.creative_params_problem(text, jsonb)'::regprocedure)) = 0 then
-    raise exception '0125 needs 0100_video_ai_ops.sql (its creative_params_problem): apply it first';
+    raise exception '0126 needs 0100_video_ai_ops.sql (its creative_params_problem): apply it first';
   end if;
 end $$;
 
@@ -137,25 +139,25 @@ begin
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into q from pg_proc x where x.oid = 'public.creative_quantity(text, jsonb)'::regprocedure;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into f
     from pg_proc x where x.oid = 'public.finish_creative_job(uuid, text, boolean, numeric, jsonb, text, text)'::regprocedure;
-  if p is null or p <> all (array['8f5525f8a44442ab477c412c3d013fee', 'd47b0535653761a744e82cbcd916303c']) then
-    raise exception '0125 found a creative_params_problem() that is neither 0100''s body nor 0125''s (md5 %): read the live body first', p;
+  if p is null or p <> all (array['8f5525f8a44442ab477c412c3d013fee', '6e815ae544cbb23d7f03845465f8ce6a']) then
+    raise exception '0126 found a creative_params_problem() that is neither 0100''s body nor 0126''s (md5 %): read the live body first', p;
   end if;
-  if q is null or q <> all (array['e6e1d85bcd4a4cde42f94546a697e352', 'bdaa700af7544ed73ba1da940a6e59df']) then
-    raise exception '0125 found a creative_quantity() that is neither 0099''s body nor 0125''s (md5 %): read the live body first', q;
+  if q is null or q <> all (array['e6e1d85bcd4a4cde42f94546a697e352', '02446e3ae600ea3504cdbea5a59829e8']) then
+    raise exception '0126 found a creative_quantity() that is neither 0099''s body nor 0126''s (md5 %): read the live body first', q;
   end if;
-  if f is null or f <> all (array['37e306c9def112dd53d83d9eba0a1c49', '5c045d8d7cbf426405f71730f8028c36']) then
-    raise exception '0125 found a finish_creative_job() that is neither 0075''s body nor 0125''s (md5 %): read the live body first', f;
+  if f is null or f <> all (array['37e306c9def112dd53d83d9eba0a1c49', '6af709d6345f32e8eef6e9dd64d04c44']) then
+    raise exception '0126 found a finish_creative_job() that is neither 0075''s body nor 0126''s (md5 %): read the live body first', f;
   end if;
   if to_regprocedure('public.creative_regions_problem(jsonb)') is not null then
     select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into rp from pg_proc x where x.oid = 'public.creative_regions_problem(jsonb)'::regprocedure;
     if rp <> '5603be6af36c813d2799eb581bb971cd' then
-      raise exception '0125 found a creative_regions_problem() that is not 0125''s body (md5 %): read the live body first', rp;
+      raise exception '0126 found a creative_regions_problem() that is not 0126''s body (md5 %): read the live body first', rp;
     end if;
   end if;
   if to_regprocedure('public.creative_region_outcomes(jsonb, jsonb)') is not null then
     select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into ro from pg_proc x where x.oid = 'public.creative_region_outcomes(jsonb, jsonb)'::regprocedure;
     if ro <> '193f0ef7a0aa427fd113fdceac9ea954' then
-      raise exception '0125 found a creative_region_outcomes() that is not 0125''s body (md5 %): read the live body first', ro;
+      raise exception '0126 found a creative_region_outcomes() that is not 0126''s body (md5 %): read the live body first', ro;
     end if;
   end if;
 end $$;
@@ -307,7 +309,7 @@ end
 $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 2. The replaced functions (their latest bodies plus the lines marked 0125)
+-- 2. The replaced functions (their latest bodies plus the lines marked 0126)
 -- ───────────────────────────────────────────────────────────────────────────
 
 -- 0100's creative_params_problem, plus the region keys (header).
@@ -344,7 +346,7 @@ declare
   -- The capabilities a look can steer.
   styled   boolean := p_capability in ('t2i', 't2v', 'edit', 'i2v');
   uuid_re  constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
-  -- 0125: an edit that carries `regions` is a region edit (docs/REGION_EDITOR.md): its words are the regions' own.
+  -- 0126: an edit that carries `regions` is a region edit (docs/REGION_EDITOR.md): its words are the regions' own.
   regioned boolean := coalesce(p_capability = 'edit' and p_params ? 'regions', false);
   problem  text;
 begin
@@ -358,12 +360,12 @@ begin
     if k not in ('prompt', 'negative_prompt', 'aspect_ratio', 'resolution', 'duration_s',
                  'voice_id', 'seed', 'source_asset_id', 'factor', 'style_kit_id', 'target_language',
                  'target_resolution', 'end_asset_id', 'language', 'quality', 'audio', 'look',
-                 -- 0125
+                 -- 0126
                  'regions', 'region_feather') then
       return format('unknown parameter %s', k);
     end if;
   end loop;
-  -- 0125: regions and region_feather belong to an edit and to nothing else. The closed rules (1 to 5 regions, each with an id, a
+  -- 0126: regions and region_feather belong to an edit and to nothing else. The closed rules (1 to 5 regions, each with an id, a
   -- name, a rectangle and words; every other parameter refused) are creative_regions_problem's.
   if p_params ? 'regions' and p_capability <> 'edit' then
     return format('regions does not apply to %s', p_capability);
@@ -380,7 +382,7 @@ begin
   if (p_capability = 'remove_bg' or voiced or filmed or told or unworded) and p_params ? 'prompt' then
     return format('prompt does not apply to %s', p_capability);
   end if;
-  -- 0125: a region edit has no prompt of its own (creative_regions_problem refuses the key): each region carries its words.
+  -- 0126: a region edit has no prompt of its own (creative_regions_problem refuses the key): each region carries its words.
   if (prompted and not regioned) or p_params ? 'prompt' then
     if jsonb_typeof(p_params -> 'prompt') is distinct from 'string'
        or char_length(btrim(p_params ->> 'prompt')) = 0 then
@@ -618,7 +620,7 @@ $$;
 create or replace function public.creative_quantity(p_capability text, p_params jsonb) returns numeric
   language sql immutable set search_path = public, pg_temp as $$
   select case
-    -- 0125: a region edit is one edit by the model per region (1 to 5: creative_regions_problem), priced like any other quantity.
+    -- 0126: a region edit is one edit by the model per region (1 to 5: creative_regions_problem), priced like any other quantity.
     when p_capability = 'edit' and jsonb_typeof(p_params -> 'regions') = 'array' then jsonb_array_length(p_params -> 'regions')::numeric
     when p_capability in ('t2i', 'edit', 'remove_bg') then 1::numeric
     when p_capability in ('t2v', 'sfx', 'music', 'i2v') then (p_params ->> 'duration_s')::numeric
@@ -643,7 +645,7 @@ declare
   charge  numeric;
   charged numeric := 0;
   code    text;
-  -- 0125: a region edit is settled per region (below).
+  -- 0126: a region edit is settled per region (below).
   n_regions integer;
   n_applied integer;
 begin
@@ -677,7 +679,7 @@ begin
   if p_result is not null and (jsonb_typeof(p_result) <> 'object' or octet_length(p_result::text) > 16384) then
     raise exception 'result must be a JSON object of at most 16 KB' using errcode = '22023';
   end if;
-  -- 0125: a region edit (an edit with params.regions) is charged by its regions. The hold is the price of n regions (creative_quantity = n,
+  -- 0126: a region edit (an edit with params.regions) is charged by its regions. The hold is the price of n regions (creative_quantity = n,
   -- held at create); each region's share is quoted_credits / n. The worker reports the outcome of EVERY region (applied, failed or refused,
   -- with a closed code: creative_region_outcomes); the database counts the applied ones and charges their shares, rounded up to the cent
   -- like every amount, never above the hold. A region that failed or was refused is not charged: its share is released by capture_credits
@@ -758,12 +760,12 @@ do $$
 declare
   src constant text := '00000000-0000-4000-8000-000000000000';
 begin
-  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_params_problem(text, jsonb)'::regprocedure) <> 'd47b0535653761a744e82cbcd916303c'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_quantity(text, jsonb)'::regprocedure) <> 'bdaa700af7544ed73ba1da940a6e59df'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.finish_creative_job(uuid, text, boolean, numeric, jsonb, text, text)'::regprocedure) <> '5c045d8d7cbf426405f71730f8028c36'
+  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_params_problem(text, jsonb)'::regprocedure) <> '6e815ae544cbb23d7f03845465f8ce6a'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_quantity(text, jsonb)'::regprocedure) <> '02446e3ae600ea3504cdbea5a59829e8'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.finish_creative_job(uuid, text, boolean, numeric, jsonb, text, text)'::regprocedure) <> '6af709d6345f32e8eef6e9dd64d04c44'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_regions_problem(jsonb)'::regprocedure) <> '5603be6af36c813d2799eb581bb971cd'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.creative_region_outcomes(jsonb, jsonb)'::regprocedure) <> '193f0ef7a0aa427fd113fdceac9ea954' then
-    raise exception '0125 end state: a replaced or new function does not hold this file''s body';
+    raise exception '0126 end state: a replaced or new function does not hold this file''s body';
   end if;
   if has_function_privilege('anon', 'public.creative_regions_problem(jsonb)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.creative_regions_problem(jsonb)', 'EXECUTE')
@@ -778,7 +780,7 @@ begin
      or has_function_privilege('authenticated', 'public.creative_params_problem(text, jsonb)', 'EXECUTE')
      or has_function_privilege('anon', 'public.creative_quantity(text, jsonb)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.creative_quantity(text, jsonb)', 'EXECUTE') then
-    raise exception '0125 end state: a function is executable by a role it must not be';
+    raise exception '0126 end state: a function is executable by a role it must not be';
   end if;
   if public.creative_params_problem('edit', jsonb_build_object('source_asset_id', src, 'regions', jsonb_build_array(
        jsonb_build_object('id', 'r1', 'name', 'Sky', 'prompt', 'make it dusk', 'rect', jsonb_build_object('x', 0, 'y', 0, 'w', 64, 'h', 64))))) is not null
@@ -787,11 +789,11 @@ begin
      or public.creative_params_problem('edit', jsonb_build_object('source_asset_id', src, 'regions', '[]'::jsonb)) is null
      or public.creative_params_problem('edit', jsonb_build_object('source_asset_id', src, 'prompt', 'x', 'regions', jsonb_build_array(
        jsonb_build_object('id', 'r1', 'name', 'Sky', 'prompt', 'make it dusk', 'rect', jsonb_build_object('x', 0, 'y', 0, 'w', 64, 'h', 64))))) is null then
-    raise exception '0125 end state: creative_params_problem does not judge a region edit as designed';
+    raise exception '0126 end state: creative_params_problem does not judge a region edit as designed';
   end if;
   if public.creative_quantity('edit', jsonb_build_object('regions', jsonb_build_array('{}'::jsonb, '{}'::jsonb, '{}'::jsonb))) <> 3
      or public.creative_quantity('edit', jsonb_build_object('prompt', 'x')) <> 1 then
-    raise exception '0125 end state: creative_quantity does not count the regions of a region edit';
+    raise exception '0126 end state: creative_quantity does not count the regions of a region edit';
   end if;
 end $$;
 

@@ -5,7 +5,7 @@ import { buildRunParams, regionShare } from "@/lib/regionEdit/run";
 import type { Size } from "@/lib/regionEdit/geometry";
 
 /**
- * The price of a region edit, BEFORE anything runs (migration 0125): ONE ordinary `edit` quote asked of the database for the
+ * The price of a region edit, BEFORE anything runs (migration 0126): ONE ordinary `edit` quote asked of the database for the
  * very params the run will send — the picture, the model's tier and every region that has words — so the number shown is the
  * number that will be held, by construction (the database prices n regions as n edits by the model). A region without words is
  * skipped and costs nothing. If the price cannot be worked out the whole quote is refused with the database's reason, never a

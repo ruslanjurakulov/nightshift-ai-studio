@@ -131,7 +131,7 @@ kit deleted since, an answer that is not the job's organization's, or a style
 the model could not use at all fails the job with ``style_unavailable`` and
 releases the hold.
 
-Region edits (migration 0125, docs/REGION_EDITOR.md)
+Region edits (migration 0126, docs/REGION_EDITOR.md)
 ------------------------------------------------------
 An ``edit`` job whose params carry ``regions`` (1 to 5 rectangles, each with its own words) is run by ``modules/region_edit.py`` instead
 of one whole-picture call: ONE call per region through the ordinary image edit adapter of the model the person picked (``image.openai`` /
@@ -142,7 +142,7 @@ stored. It is off unless ``NIGHTSHIFT_REGION_EDITOR`` is on in THIS process's en
 * EXACT mode only, and only a model ``sellable_models('edit')`` lists right now; a model that is not, is gated or cannot edit stops the job
   before any call (rule 4: there is no second model, no fallback, no retry on another);
 * every region ends ``applied``, ``failed`` or ``refused`` with a code from a closed list (no vendor text, no prompt): a region that fails
-  or is refused is not charged (the database counts the applied ones, 0125's ``finish_creative_job``); a region whose edit would break the
+  or is refused is not charged (the database counts the applied ones, 0126's ``finish_creative_job``); a region whose edit would break the
   pixel lock counts as failed;
 * ``advance 'submitting'`` comes before the first call, and the synthetic task id ``region:<job>`` is stored only after the LAST call: a worker
   that dies in between leaves a job the database fails (``submit_interrupted``) with its hold released, and one that dies after it leaves a job
@@ -250,7 +250,7 @@ _CODE_RE = re.compile(r"^[a-z0-9_]{1,64}$")
 
 #: The region editor's switch (docs/REGION_EDITOR.md), the same word the Command Center reads. Default OFF.
 REGION_FLAG = "NIGHTSHIFT_REGION_EDITOR"
-#: How a region can end. The database accepts these words and no others (migration 0125, creative_region_outcomes).
+#: How a region can end. The database accepts these words and no others (migration 0126, creative_region_outcomes).
 REGION_STATUSES = ("applied", "failed", "refused")
 #: Why a region was not applied: closed, translated by the app, never a vendor's text or a person's words.
 REGION_CODES = ("not_configured", "auth", "quota", "rate_limited", "bad_request", "policy", "not_found", "unavailable", "bad_response",
@@ -267,7 +267,7 @@ def region_editor_enabled(env: Mapping[str, str]) -> bool:
 
 
 def is_region_job(job: Mapping[str, Any]) -> bool:
-    """An edit that carries ``regions`` (0125). The database refuses the key on every other capability."""
+    """An edit that carries ``regions`` (0126). The database refuses the key on every other capability."""
     params = job.get("params")
     return job.get("capability") == "edit" and isinstance(params, Mapping) and "regions" in params
 
@@ -723,7 +723,7 @@ class CreativeWorker:
             return "left"
         return self._poll(job, request, adapter, str(task_id), beat)
 
-    # -- a region edit (migration 0125) ----------------------------------------
+    # -- a region edit (migration 0126) ----------------------------------------
 
     def _process_region(self, job: Mapping[str, Any], beat: _Heartbeat) -> str:
         """Run one claimed region edit (module doc). Every refusal before ``advance 'submitting'`` costs nobody anything."""

@@ -1,11 +1,11 @@
-"""The region editor's run step (0125), attacked in a real database.
+"""The region editor's run step (0126), attacked in a real database.
 
 A region edit is an ordinary `edit` creative job whose params carry 1 to 5 regions. The browser may ask for one; the DATABASE alone decides
 whether the shape is allowed, what it costs, and what is charged. What must hold:
 
 * the shape is closed: 1 to 5 regions, each {id, name, rect, prompt}; every other key, every other capability and every other parameter
-  next to the regions is refused, and a request WITHOUT the two new keys is judged and priced exactly as before 0125 (compared against the
-  pre-0125 bodies on a corpus);
+  next to the regions is refused, and a request WITHOUT the two new keys is judged and priced exactly as before 0126 (compared against the
+  pre-0126 bodies on a corpus);
 * the price is the ordinary quote of n units, the hold equals it, and a refused request holds and charges nothing;
 * settlement is per region: applied regions are charged their share of the hold, rounded up to the cent and never above the hold; a failed
   or refused region is not charged; none applied ends the job failed with the whole hold released; the rest is released exactly once;
@@ -34,8 +34,8 @@ ORG_B = "bbbbbbbb-0000-0000-0000-0000000000f5"
 UA = str(uuid.UUID(int=0xF5A))   # owner of A
 UB = str(uuid.UUID(int=0xF5B))   # owner of B
 
-MIGRATION = Path(sec_db.MIGRATIONS) / "0125_region_edit_run.sql"
-ROLLBACK = Path(sec_db.REPO) / "docs" / "sql" / "rollback_0125_region_edit_run.sql"
+MIGRATION = Path(sec_db.MIGRATIONS) / "0126_region_edit_run.sql"
+ROLLBACK = Path(sec_db.REPO) / "docs" / "sql" / "rollback_0126_region_edit_run.sql"
 M0100 = Path(sec_db.MIGRATIONS) / "0100_video_ai_ops.sql"
 M0099 = Path(sec_db.MIGRATIONS) / "0099_image_ai_ops.sql"
 
@@ -320,7 +320,7 @@ def _old_bodies(db):
     db.su(body(M0099, "creative_quantity"))
 
 
-def test_a_request_without_the_new_keys_is_judged_and_priced_as_before_0125(db):
+def test_a_request_without_the_new_keys_is_judged_and_priced_as_before_0126(db):
     _old_bodies(db)
     caps = ["t2i", "t2v", "i2v", "tts", "sfx", "music", "edit", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe",
             "captions", "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg", "bogus", ""]
@@ -701,7 +701,7 @@ def test_a_replay_changes_nothing_and_a_foreign_body_is_refused(db):
     name, d = _fresh(admin, "guard")
     try:
         text = MIGRATION.read_text(encoding="utf-8")
-        mine = _md5s(d)  # the lab applied 0125 already
+        mine = _md5s(d)  # the lab applied 0126 already
         d.su(text)
         assert _md5s(d) == mine
         # Something applied by hand after 0100: the file must refuse, naming the function, and change nothing.
@@ -709,13 +709,13 @@ def test_a_replay_changes_nothing_and_a_foreign_body_is_refused(db):
              "language sql immutable as $$ select 1::numeric $$")
         with pytest.raises(psycopg.Error) as e:
             d.su(text)
-        assert "creative_quantity() that is neither 0099's body nor 0125's" in str(e.value)
+        assert "creative_quantity() that is neither 0099's body nor 0126's" in str(e.value)
         assert _md5s(d)["creative_params_problem"] == mine["creative_params_problem"]
     finally:
         sec_db.drop_database(admin, name)
 
 
-def test_the_rollback_restores_the_three_bodies_refuses_while_a_region_edit_is_in_flight_and_0125_applies_again(db):
+def test_the_rollback_restores_the_three_bodies_refuses_while_a_region_edit_is_in_flight_and_0126_applies_again(db):
     admin = db.admin
     name, d = _fresh(admin, "roll")
     try:
@@ -745,7 +745,7 @@ def test_the_rollback_restores_the_three_bodies_refuses_while_a_region_edit_is_i
                   "finish_creative_job": "37e306c9def112dd53d83d9eba0a1c49"}
         assert _md5s(d) == before
         assert d.su("select to_regprocedure('public.creative_regions_problem(jsonb)') is null")[0][0]
-        # The rolled-back database refuses regions again, and 0125 applies on it once more.
+        # The rolled-back database refuses regions again, and 0126 applies on it once more.
         assert d.su("select public.creative_params_problem('edit', %s::jsonb)", [json.dumps(params(1, source=src))])[0][0] == "unknown parameter regions"
         d.su(text)
         assert _md5s(d) == mine

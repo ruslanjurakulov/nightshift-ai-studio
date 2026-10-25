@@ -22,7 +22,7 @@ export const revalidate = 0;
  * Draw up to five rectangles on a library picture, give each its own words, see the price before anything runs. The
  * models offered are the ones the database lets this member buy that can edit pictures (migration 0035): none
  * is a default and none stands in for another. Running holds the price and charges only the regions that were applied
- * (migration 0125, docs/REGION_EDITOR.md).
+ * (migration 0126, docs/REGION_EDITOR.md).
  */
 export default async function RegionEditorPage() {
   if (!regionEditorEnabled()) notFound();

@@ -37,7 +37,7 @@ const STATUS: Record<RegionError | "confirm_price" | "invalid_idempotency_key", 
  *
  * POST `{ org_id?, source_asset_id, model, feather?, regions: [{ name, prompt, x, y, w, h }], max_credits, idempotency_key }`
  * — a quote body plus the price the person confirmed and one key per press. This route writes ONE row and stops (CLAUDE.md
- * rule 3): `create_creative_job` (migration 0036, with 0125's regions) checks membership, that the model is sellable, prices
+ * rule 3): `create_creative_job` (migration 0036, with 0126's regions) checks membership, that the model is sellable, prices
  * n regions as n edits, refuses a price above `max_credits`, holds that price and queues the job. The worker runs it, one
  * call per region on the ONE model named, and the database charges only the regions that were applied. Nothing is called
  * from here and nothing is charged here; the credits are held, not spent.

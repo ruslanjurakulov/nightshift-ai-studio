@@ -30,7 +30,7 @@ What each job does is ``modules/creative_worker.py``. This file wires it up:
   organization's library and attached to the job; read-only, they stay in the
   job folder. Unset: jobs that need a source fail with ``source_unavailable``
   and their credits are released;
-* ``NIGHTSHIFT_REGION_EDITOR`` (default off) lets this worker run region edits (migration 0125, docs/REGION_EDITOR.md): an ``edit`` whose
+* ``NIGHTSHIFT_REGION_EDITOR`` (default off) lets this worker run region edits (migration 0126, docs/REGION_EDITOR.md): an ``edit`` whose
   params carry ``regions``, run one call per region and pasted back through the pixel lock. Off, such a job fails at once with its credits
   released;
 * stored error text is scrubbed of every secret in this process's

@@ -1,4 +1,4 @@
-"""Migration 0125 (the region editor's run step), pinned from the file: what the security lab cannot see by running it.
+"""Migration 0126 (the region editor's run step), pinned from the file: what the security lab cannot see by running it.
 
 * the three replaced functions are the latest bodies (0100 / 0099 / 0075) with only the marked additions, and the drift guard in the file
   carries exactly the md5 of the old and the new bodies (the header names the same hashes, so the person who applies it reads what the file checks);
@@ -6,7 +6,7 @@
   statement grants anon anything;
 * the closed numbers and words (1 to 5 regions, 2 to 8 feather, 16 px, 60 / 1000 characters, the outcome codes) are the same in the file, in
   modules/region_edit.py, in modules/creative_worker.py and in the TypeScript table;
-* a migration numbered above 0125 that replaces one of these functions must carry the region lines too;
+* a migration numbered above 0126 that replaces one of these functions must carry the region lines too;
 * the rollback restores the latest bodies byte for byte and refuses while a region edit is in flight.
 """
 
@@ -20,9 +20,9 @@ from modules import creative_worker, region_edit
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-FILE = MIG / "0125_region_edit_run.sql"
+FILE = MIG / "0126_region_edit_run.sql"
 TEXT = FILE.read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0125_region_edit_run.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0126_region_edit_run.sql").read_text(encoding="utf-8")
 
 PP = "create or replace function public.creative_params_problem("
 QQ = "create or replace function public.creative_quantity("
@@ -76,13 +76,13 @@ def latest_before(name: str, number: str):
     return found
 
 
-OLD = {n: latest_before(n, "0125") for n in ("creative_params_problem", "creative_quantity", "finish_creative_job")}
+OLD = {n: latest_before(n, "0126") for n in ("creative_params_problem", "creative_quantity", "finish_creative_job")}
 
 
 class Numbering(unittest.TestCase):
     def test_the_number_is_unique(self):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
-        self.assertEqual(numbers.count("0125"), 1)
+        self.assertEqual(numbers.count("0126"), 1)
         self.assertIn("0122", numbers)
 
     def test_the_bodies_it_replaces_are_the_latest_ones(self):
@@ -137,7 +137,7 @@ class ReplacedBodies(unittest.TestCase):
     def test_creative_quantity_gains_exactly_one_branch(self):
         added = added_lines(body(OLD["creative_quantity"][1], QQ), body(TEXT, QQ))
         self.assertEqual(len(added), 2)
-        self.assertTrue(added[0].lstrip().startswith("-- 0125:"))
+        self.assertTrue(added[0].lstrip().startswith("-- 0126:"))
         self.assertEqual(added[1].strip(),
                          "when p_capability = 'edit' and jsonb_typeof(p_params -> 'regions') = 'array' then jsonb_array_length(p_params -> 'regions')::numeric")
         # …before the generic edit = 1, so the count wins.
@@ -158,7 +158,7 @@ class ReplacedBodies(unittest.TestCase):
                        "problem := public.creative_regions_problem(p_params);",
                        "if (prompted and not regioned) or p_params ? 'prompt' then"):
             self.assertIn(needle, added)
-        self.assertGreaterEqual(added.count("-- 0125"), 4)
+        self.assertGreaterEqual(added.count("-- 0126"), 4)
         # Every string literal of the old body is still there: nothing was loosened.
         lit = lambda s: set(re.findall(r"'(?:[^']|'')*'", code(s)))
         self.assertTrue(lit(old) <= lit(new), lit(old) - lit(new))
@@ -273,15 +273,15 @@ class Scope(unittest.TestCase):
 
     def test_no_later_migration_may_replace_these_functions_without_the_region_lines(self):
         for path in sorted(MIG.glob("*.sql")):
-            if path.name[:4] <= "0125":
+            if path.name[:4] <= "0126":
                 continue
             for name, key in (("creative_params_problem", "creative_regions_problem"), ("creative_quantity", "'regions'"),
                               ("finish_creative_job", "creative_region_outcomes")):
                 for m in re.finditer(r"create or replace function public\.%s\(.*?\n\$\$;\n" % name, path.read_text(encoding="utf-8"), re.S):
-                    self.assertIn(key, m.group(0), f"{path.name} replaces {name} without the 0125 region lines")
+                    self.assertIn(key, m.group(0), f"{path.name} replaces {name} without the 0126 region lines")
 
     def test_the_header_states_the_overlap_check_with_the_open_migrations(self):
-        self.assertIn("OVERLAP WITH 0123 / 0124, checked line by line: NONE", TEXT)
+        self.assertIn("OVERLAP, checked line by line: NONE with 0124 (merged) or 0125 (#616)", TEXT)
         self.assertIn("#616", TEXT)
         self.assertIn("#612", TEXT)
 
