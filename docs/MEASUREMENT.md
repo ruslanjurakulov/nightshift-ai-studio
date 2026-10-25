@@ -416,6 +416,44 @@ What the numbers support, and what they do not:
 * **Not measured here**: the production worker's CPU, the decode cost of real footage, anything above 1080p.
   D3 (price exports or keep them free) should wait for a run of this tool on the worker.
 
+## 9. Series format templates: the prompt wording (a plan; nothing here is measured)
+
+`modules/series_planner.py` (`TEMPLATES`, `_template_block`) · `docs/SERIES_FACTORY.md`, "Format templates" · migration 0122 carries the id
+
+A plan can ask for one of three formats (`myth_vs_fact`, `top5_countdown`, `one_question_one_answer`). With a format, the planning
+prompt gains **one paragraph** before the data block that states four constraints taken from a table: how many episodes the format fits,
+how long an episode runs, the shape of the hook, and how many scenes an episode is planned as. **Without a format the prompt is byte for
+byte what it was** (`tests/test_series_template.py` compares it with three files made from the code before formats existed), so no existing
+plan changes.
+
+**What is claimed:** nothing about quality. The paragraph is our wording of what each format usually asks for; the numbers (3 to 4 episodes,
+60 to 600 seconds, 3 to 12 scenes) are starting points chosen by hand, not read off any channel's history. Nobody has measured that a model
+follows the paragraph, that the hooks it gets are better, or that the videos made from such outlines keep more viewers. The outline is not
+checked against the format either: it is parsed under the same schema as ever, and the plan page says "a request to the model".
+
+**Measurement plan** (a separate PR; CLAUDE.md rule 8 asks for the evidence before the change is relied on):
+
+1. *Design.* K topics (start with 12, spread over the niches the channels use), each planned twice with the same niche, language and episode
+   count: once with a format, once without. One planning call per arm, plus the gate's niche questions (up to two per plan); order of arms
+   randomised per topic; the same model and `GEMINI_MODEL_TOPIC`. The only measured limit we have is 20 requests a day on a free-tier model
+   (docs/GEMINI_QUOTA.md), so 24 plans need several days or a paid key. Record the model name and the date.
+2. *Counted, no judgement:* the share of answers the strict schema accepts (`SeriesPlanError` code, if any) per arm; the share of episodes
+   `usable`, `unconfirmed` and refused per arm; the number of episodes per answer. A format that raises the refusal rate is a cost, and is
+   reported as one.
+3. *Counted, per format, with a stated blind spot:* `one_question_one_answer`: how many hook sentences are phrased as a question (by the
+   question mark of the script's language; a hook can be a question without one); `top5_countdown`: how many outlines mention five items
+   (a number word or numeral in the hook or the angle, in any of en, ru, uz); `myth_vs_fact`: how many hooks name a belief rather than an
+   answer (this one cannot be counted by rule and is left to step 4). Each counter says what it cannot see.
+4. *Read by a person, blind:* pairs of outlines (format / none, order hidden) rated for "does this episode fit the format" and "would you
+   make it". A small number of readers, written down. This is judgement, not a measurement of an audience.
+5. *Not in scope here:* click-through and retention of videos made from such outlines. That needs published videos and is measured the way
+   sections 2 and 3 measure any video; it cannot be inferred from the counts above.
+6. *Decision rule, fixed before running:* keep the paragraph only if the schema acceptance and the refusal rate are no worse and the counted
+   adherence is higher in at least two formats; otherwise remove the paragraph (the id and the table stay, they carry no wording). The
+   thresholds are chosen when the run is designed, not after it.
+
+Any change to the wording re-pins `tests/test_series_template.py` and restarts this plan.
+
 ---
 
 # Shorts
