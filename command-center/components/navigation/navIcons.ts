@@ -57,6 +57,7 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   security: Lock,
   approvals: UserCheck,
   marketing: Megaphone,
+  modelKeys: KeyRound,
   alerts: BellRing,
   audit: ClipboardList,
   timeMachine: History,
