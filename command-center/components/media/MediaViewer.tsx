@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject, type TouchEvent } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ExternalLink, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Pencil, Trash2, X } from "lucide-react";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { useI18n } from "@/lib/i18n/context";
 import { useDayTime } from "@/components/usage/useDay";
@@ -15,6 +15,7 @@ import { KIND_ICON } from "./kindIcon";
 import { SendToEditor, isSendKind } from "@/components/editor/SendToEditor";
 import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
 import { isImproveKind } from "@/lib/creative/improve";
+import { isEditableMime } from "@/lib/imageEditor/state";
 
 /** Keys inside these keep their own meaning (a video's arrows seek, a field's arrows move the caret). */
 function ownsArrows(target: EventTarget | null): boolean {
@@ -51,6 +52,7 @@ export function MediaViewer({
   folderName,
   orgId,
   aiTools = null,
+  imageEditor = false,
 }: {
   items: readonly LibraryAsset[];
   index: number;
@@ -65,6 +67,8 @@ export function MediaViewer({
   orgId?: string;
   /** The AI tools sold here (lib/server/ai-tools); null = not known. Drives "Improve with AI". */
   aiTools?: readonly string[] | null;
+  /** NIGHTSHIFT_IMAGE_EDITOR, read on the server by the page (never a NEXT_PUBLIC value). Off: no "Edit" link at all. */
+  imageEditor?: boolean;
 }) {
   const { t } = useI18n();
   const dayTime = useDayTime();
@@ -145,6 +149,8 @@ export function MediaViewer({
     [tv.added, asset.createdAt ? dayTime(asset.createdAt) : ""],
     [tv.folder, folderName ? (folderName(asset.folderId) ?? "") : ""],
   ];
+  // The editor opens JPEG, PNG and WebP only; for any other picture a link would just lead to its "cannot be edited" page.
+  const canEdit = imageEditor && asset.kind === "image" && isEditableMime(asset.mime);
   const picture = asset.kind === "image" ? (asset.viewUrl ?? asset.thumbUrl) : null;
 
   return (
@@ -289,6 +295,17 @@ export function MediaViewer({
               )}
               {orgId && isSendKind(asset.kind) && (
                 <SendToEditor key={asset.id} orgId={orgId} assetId={asset.id} kind={asset.kind} name={asset.name} onOpenChange={setSending} />
+              )}
+              {canEdit && (
+                <Link
+                  href={path(`/editor/image/${encodeURIComponent(asset.id)}`)}
+                  aria-label={fmt(t.imageEditor.libraryEditLabel, { name })}
+                  className="btn-quiet text-sm"
+                  data-edit-image
+                >
+                  <Pencil size={14} aria-hidden />
+                  {t.imageEditor.libraryEdit}
+                </Link>
               )}
               {asset.viewUrl && (
                 <a

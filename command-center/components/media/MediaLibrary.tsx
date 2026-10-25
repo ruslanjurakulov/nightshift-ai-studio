@@ -123,10 +123,13 @@ export function MediaLibrary({
   canEditFolders = true,
   initialView,
   aiTools = null,
+  imageEditor = false,
 }: {
   orgId: string;
   /** The AI tools sold here (lib/server/ai-tools); null = not known. Drives the tiles' "Improve with AI". */
   aiTools?: readonly string[] | null;
+  /** NIGHTSHIFT_IMAGE_EDITOR as the server read it; passed on to the viewer's "Edit" link. Default off. */
+  imageEditor?: boolean;
   initial?: MediaLibraryData | null;
   /** The view named by the address (?kind=&q=&sort=), read on the server so the first paint already has it. */
   initialView?: LibraryView;
@@ -1277,6 +1280,7 @@ export function MediaLibrary({
           folderName={foldersOn ? folderName : undefined}
           orgId={orgId}
           aiTools={aiTools}
+          imageEditor={imageEditor}
         />
       )}
 
