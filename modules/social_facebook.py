@@ -112,6 +112,15 @@ class _Lost(Exception):
         self.detail = detail
 
 
+class _Encoded(Exception):
+    """The answer carries a ``Content-Encoding`` other than identity. Every request says ``Accept-Encoding: identity``, so a
+    compressed answer is not what was asked for: it is not decoded (a decompression bomb needs a decoder) and not read."""
+
+    def __init__(self, word: str):
+        super().__init__(word)
+        self.word = word
+
+
 class _UploadTooSlow(Exception):
     """The upload POST ran past its limit; raised from the body so the request is abandoned and a resume can take over."""
 
@@ -185,6 +194,10 @@ class _Slice:
 def _read_doc(r, *, clock: Callable[[], float] = time.monotonic, seconds: float = READ_SECONDS) -> Optional[dict]:
     """The JSON object of an answer, read through a size cap and a wall-clock limit; None when it is not one."""
     deadline = clock() + seconds
+    coding = str((getattr(r, "headers", None) or {}).get("Content-Encoding") or "").strip().lower()
+    if coding and coding != "identity":
+        _close(r)
+        raise _Encoded(coding if re.fullmatch(r"[a-z0-9-]{1,20}", coding) else "unknown")
     declared = 0
     try:
         declared = int((getattr(r, "headers", None) or {}).get("Content-Length") or 0)
@@ -324,7 +337,10 @@ class FacebookReelsAdapter:
         """A call whose success is a 2xx JSON object. A lost answer is ``_Lost``."""
         r = self._send(method, url, what, **kw)
         status = getattr(r, "status_code", 0)
-        doc = _read_doc(r, clock=self.clock, seconds=self.read_seconds)
+        try:
+            doc = _read_doc(r, clock=self.clock, seconds=self.read_seconds)
+        except _Encoded as e:     # fail closed: an answer we will not decode is a lost answer (a finish is then read back)
+            raise _Lost(f"facebook {what}: HTTP {status}, the answer has Content-Encoding {e.word} and is not decoded") from None
         if status >= 500:
             raise _Lost(f"facebook {what}: HTTP {status}")  # the work may have been done: not a refusal
         if status >= 300:
@@ -365,19 +381,24 @@ class FacebookReelsAdapter:
         st = doc.get("status")
         return st if isinstance(st, dict) else None
 
-    def _post_bytes(self, tok, url: str, path: Path, offset: int, size: int) -> bool:
-        """One upload request from ``offset``; True when Meta answered ``success``. A lost answer is False."""
+    def _post_bytes(self, tok, url: str, path: Path, offset: int, size: int, budget: Optional[float] = None) -> bool:
+        """One upload request from ``offset``; True when Meta answered ``success``. A lost answer is False. ``budget`` is
+        the most seconds this POST may take (default: ``upload_post_seconds``)."""
+        budget = self.upload_post_seconds if budget is None else min(budget, self.upload_post_seconds)
         headers = {**self._auth(tok), "offset": str(offset), "file_size": str(size),
                    "Content-Type": "application/octet-stream"}
         try:
             r = self._send("post", url, "upload", headers=headers, data=_Slice(path, offset, size, beat=self.heartbeat, clock=self.clock,
                                                                            every=self.beat_every,
-                                                                           deadline=self.clock() + self.upload_post_seconds),
+                                                                           deadline=self.clock() + max(budget, 0.0)),
                            timeout=600)
         except _Lost:
             return False
         status = getattr(r, "status_code", 0)
-        doc = _read_doc(r, clock=self.clock, seconds=self.read_seconds)
+        try:
+            doc = _read_doc(r, clock=self.clock, seconds=self.read_seconds)
+        except _Encoded:
+            return False         # an answer we will not decode says nothing: the status poll decides where the upload is
         if 400 <= status < 500:
             dbg = doc.get("debug_info") if isinstance(doc, dict) else None
             kind = dbg.get("type") if isinstance(dbg, dict) else None
@@ -392,7 +413,10 @@ class FacebookReelsAdapter:
             if self.clock() - started > self.upload_total_seconds:
                 raise sp.failed("upload_failed", f"facebook upload: not finished after {int(self.upload_total_seconds // 60)} "
                                                  "minutes; it is not continued")
-            if self._post_bytes(tok, url, path, offset, size):
+            # The POST gets what is left of the whole upload's time if that is less than a POST's own limit, so the total
+            # cannot be overshot by a full POST.
+            left = self.upload_total_seconds - (self.clock() - started)
+            if self._post_bytes(tok, url, path, offset, size, budget=left):
                 return
             self.heartbeat()
             try:
