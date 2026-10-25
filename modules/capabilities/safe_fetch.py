@@ -183,12 +183,19 @@ class SafeResultMixin:
         return None
 
     # -- results -----------------------------------------------------------------
+    def checked_url(self, url) -> str:
+        """The one place a result link is vetted. The default is the domain allow-list; an adapter
+        whose maker serves results from a domain it shares with other customers (an object-storage
+        domain) overrides this to narrow it further, and both ``checked_outputs`` and the download
+        go through it."""
+        return checked_result_url(url, self.result_hosts, self.result_ports)
+
     def checked_outputs(self, result: PollResult) -> PollResult:
         """``result`` if every URL output passes the allow-list, else raises."""
         try:
             for item in result.outputs:
                 if item.url:
-                    checked_result_url(item.url, self.result_hosts, self.result_ports)
+                    self.checked_url(item.url)
         except AdapterError as e:
             raise after_completion(e) from None
         return result
@@ -218,8 +225,7 @@ class SafeResultMixin:
                     raise AdapterError(E_BAD_RESPONSE, f"output is not a {item.mime} file")
                 self._publish(dest, item.data)
             elif item.url:
-                self._download(checked_result_url(item.url, self.result_hosts, self.result_ports), dest,
-                               mime=item.mime)
+                self._download(self.checked_url(item.url), dest, mime=item.mime)
             else:
                 raise AdapterError(E_BAD_RESPONSE, "output has neither data nor url")
             if item.mime == ANY_IMAGE:
@@ -293,7 +299,7 @@ class SafeResultMixin:
             part.unlink(missing_ok=True)
 
     # -- submit --------------------------------------------------------------------
-    def submit_json(self, url: str, body: dict, *, what: str = "submit") -> dict:
+    def submit_json(self, url: str, body: dict, *, what: str = "submit", **kw) -> dict:
         """POST ``body``. A failure that does not PROVE the vendor refused it
         (a read timeout, a dropped connection, any 5xx, an unreadable 2xx) is
         re-raised with ``UNCONFIRMED`` in front and ``not_accepted`` False: the
@@ -301,7 +307,8 @@ class SafeResultMixin:
         it. A proven refusal (no key, no connection, 401/402/403/404/429) and
         the vendor's own 4xx about the request pass through unchanged."""
         try:
-            return self.post(url, body, what=what)
+            # ``kw`` is for a vendor that needs a header on the submit (DashScope's X-DashScope-Async).
+            return self.post(url, body, what=what, **kw)
         except AdapterError as e:
             if e.not_accepted or e.code not in (E_UNAVAILABLE, E_BAD_RESPONSE):
                 raise
