@@ -722,6 +722,8 @@ describe("Plan a series", () => {
     ["forbidden", { code: "42501", message: "forbidden" }, s.entry.errors.forbidden],
     ["plan_in_progress", { code: "NS409", message: "plan_in_progress" }, s.entry.errors.plan_in_progress],
     ["rate_limited", { code: "NS429", message: "rate_limited", details: "limit=5 per 24 hours" }, "You have reached today's limit of 5 plans. Try again tomorrow."],
+    ["series_user_cap", { code: "NS429", message: "series_user_cap", details: "limit=3 per 24 hours" }, s.entry.errors.series_user_cap],
+    ["series_global_cap", { code: "NS429", message: "series_global_cap" }, s.entry.errors.series_global_cap],
     ["no_niche", { code: "22023", message: "no_niche" }, s.entry.errors.no_niche],
     ["voice", { code: "42501", message: "voice_not_allowed: this voice belongs to someone else" }, s.entry.errors.voice],
     ["not_found", { code: "P0002", message: "not_found" }, s.entry.errors.not_found],

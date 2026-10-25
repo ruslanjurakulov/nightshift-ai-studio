@@ -1182,15 +1182,23 @@ class WiredByTheFiles(unittest.TestCase):
         self.assertIn("WORKERENV_NIGHTSHIFT_SERIES_PLANNER: ${{ vars.NIGHTSHIFT_SERIES_PLANNER }}",
                       self.read(".github/workflows/deploy_web.yml"))
 
-    def test_the_docs_and_the_env_comment_say_what_the_requests_are_and_that_no_per_user_cap_exists(self):
+    def test_the_docs_and_the_env_comment_say_what_the_requests_are_and_what_the_caps_are(self):
         example = self.read("deploy/.env.worker.example")
         block = example[example.index("# [var] Series planning"):example.index("NIGHTSHIFT_SERIES_PLANNER=")]
-        self.assertIn("NO per-user or global daily cap", block)
+        flat = re.sub(r"\s*#\s*|\s+", " ", block)
+        # migration 0127 (F4) built the per-person and the platform-wide cap: the comment says so, with the defaults and the owner's way to change them
+        self.assertNotIn("NO per-user or global daily cap", block)
+        self.assertIn("3 per PERSON and 30 for ALL organizations", flat)
+        self.assertIn("series_plan_cap_settings", flat)
+        self.assertIn("series_user_cap / series_global_cap", flat)
         self.assertIn("up to 15 requests", block)
         self.assertNotRegex(block, r"with a per-user and a global daily cap")
         doc = self.read("docs/SERIES_FACTORY.md")
+        flat_doc = re.sub(r"\s+", " ", doc)
         self.assertIn("at most (1 + 2) x 5 = 15 requests", doc)
-        self.assertIn("There is no per-user and no global\ncap on plans yet", doc)
+        self.assertNotIn("There is no per-user and no global\ncap on plans yet", doc)
+        self.assertIn("a person is capped at 3 plans a day and the platform at 30", flat_doc)
+        self.assertIn("What the owner must do before granting `request_series_plan`", doc)
         self.assertIn("instead of\nreleasing the job", doc)
         self.assertNotIn("ONE call through `series_planner.plan_series`", doc)
 

@@ -612,3 +612,8 @@ sec_voice_job_gates_0121.extend(TABLES, FUNCTIONS)
 import sec_model_switch_0124  # noqa: E402
 
 sec_model_switch_0124.extend(TABLES, FUNCTIONS)
+
+# Migration 0127 (the per-person and platform-wide plan caps on request_series_plan): tests/security/sec_series_plan_caps_0127.py
+import sec_series_plan_caps_0127  # noqa: E402
+
+sec_series_plan_caps_0127.extend(TABLES, FUNCTIONS)
