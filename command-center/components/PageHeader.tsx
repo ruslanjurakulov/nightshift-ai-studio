@@ -22,7 +22,7 @@ export type PageIcon =
   | "decisions" | "learning" | "memory" | "autonomy" | "feedback"
   | "advisory" | "intelligence" | "timeMachine" | "integrations" | "errors" | "logs"
   | "members" | "organization" | "security" | "onboarding" | "approvals" | "alerts" | "audit" | "billing" | "credits" | "usage"
-  | "developers" | "library" | "editor" | "models" | "margin" | "styles" | "workflows" | "inbox" | "marketing";
+  | "developers" | "library" | "editor" | "models" | "margin" | "styles" | "workflows" | "inbox" | "marketing" | "modelKeys";
 
 const ICONS: Record<PageIcon, LucideIcon> = {
   videos: Film,
@@ -63,6 +63,7 @@ const ICONS: Record<PageIcon, LucideIcon> = {
   onboarding: Rocket,
   approvals: UserCheck,
   marketing: Megaphone,
+  modelKeys: KeyRound,
   alerts: BellRing,
   audit: ClipboardList,
   billing: Wallet,

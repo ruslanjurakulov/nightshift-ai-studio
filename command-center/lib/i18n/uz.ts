@@ -9,6 +9,7 @@ import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
 import { marketingUz } from "./marketing/uz";
+import { modelKeysUz } from "./model-keys/uz";
 import { seriesPlanUz } from "./series-plan/uz";
 import { ownerTruthUz } from "./owner-truth/uz";
 import { connectPickerUz } from "./connect-picker/uz";
@@ -34,6 +35,7 @@ export const uz: Dictionary = {
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,
   marketing: marketingUz,
+  modelKeys: modelKeysUz,
   seriesPlan: seriesPlanUz,
   ownerTruth: ownerTruthUz,
   connectPicker: connectPickerUz,
@@ -99,6 +101,7 @@ export const uz: Dictionary = {
     onboarding: "Ishni boshlash",
     approvals: "Tasdiqlashlar",
     marketing: "Marketing",
+    modelKeys: "Model API kalitlari",
     alerts: "Ogohlantirishlar",
     audit: "Audit jurnali",
     developers: "Dasturchilar",
