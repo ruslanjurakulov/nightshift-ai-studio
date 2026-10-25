@@ -2,7 +2,7 @@
 is tests/test_publisher_transcripts.py; the adapters' own flows are tests/test_social_publish.py.)
 
 * an unknown platform is refused before anything is read, and there is no default;
-* the four platforms are registered (X is DARK: registered, but nothing can reach it), each with the Protocol's shape;
+* the five platforms are registered (Facebook and X are DARK: registered, but nothing can reach them), each with the Protocol's shape;
 * each adapter maps ``PostSpec.ai_generated`` to its platform's field, and sends it only when true, while the
   decision itself still comes from modules/ai_disclosure.py.
 
@@ -31,8 +31,8 @@ class RegistryTests(Scenario):
         base.update(over)
         return publishers.PublishContext(**base)
 
-    def test_the_four_platforms_are_registered_and_nothing_else(self):
-        self.assertEqual(publishers.platforms(), ("instagram", "tiktok", "x", "youtube"))
+    def test_the_five_platforms_are_registered_and_nothing_else(self):
+        self.assertEqual(publishers.platforms(), ("facebook", "instagram", "tiktok", "x", "youtube"))
 
     def test_every_registered_publisher_has_the_protocols_shape_and_its_own_name(self):
         for platform in publishers.platforms():
@@ -42,7 +42,7 @@ class RegistryTests(Scenario):
 
     def test_an_unknown_platform_is_refused_before_anything_is_read(self):
         """CLAUDE.md #4: no silent fallback to another platform, and no database read for a word we do not know."""
-        for platform in ("facebook", "snapchat", "", "Instagram", "X", "tiktok ", "YOUTUBE", None):
+        for platform in ("snapchat", "myspace", "", "Instagram", "Facebook", "X", "tiktok ", "YOUTUBE", None):
             http = FakeHTTP({})
             store = DStore(video=self.video, http=http)
             log = []
@@ -77,18 +77,18 @@ class RegistryTests(Scenario):
         finally:
             publishers._FACTORIES.pop("probe")
         self.assertEqual((out, seen, store.final["error"]), ("refused", ["probe"], "probe publisher reached"))
-        self.assertEqual(publishers.platforms(), ("instagram", "tiktok", "x", "youtube"))
+        self.assertEqual(publishers.platforms(), ("facebook", "instagram", "tiktok", "x", "youtube"))
 
     def test_the_registry_has_no_default_and_refuses_a_second_claim(self):
-        self.assertIsNone(publishers.factory_for("facebook"))
+        self.assertIsNone(publishers.factory_for("snapchat"))
         self.assertIsNone(publishers.factory_for(""))
         self.assertIsNone(publishers.factory_for(None))
         with self.assertRaises(ValueError):
             publishers.register("instagram", lambda ctx: None)  # replacing a publisher silently is a bug
-        for bad in ("", "Facebook", " x", "X", None):
+        for bad in ("", "Snapchat", " x", "X", "Facebook", None):
             with self.assertRaises(ValueError, msg=repr(bad)):
                 publishers.register(bad, lambda ctx: None)
-        self.assertEqual(publishers.platforms(), ("instagram", "tiktok", "x", "youtube"))
+        self.assertEqual(publishers.platforms(), ("facebook", "instagram", "tiktok", "x", "youtube"))
 
     def test_the_context_never_prints_the_environment_a_store_a_token_or_a_client(self):
         """A log line or traceback that prints the context must show no secret: ``env`` is the worker's whole

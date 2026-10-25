@@ -24,7 +24,7 @@ function registeredPublishers(): string[] {
 
 describe("platform registry vs the worker's publishers", () => {
   it("finds the worker's publishers (the scan is not vacuous)", () => {
-    expect(registeredPublishers()).toEqual(["instagram", "tiktok", "x", "youtube"]);
+    expect(registeredPublishers()).toEqual(["facebook", "instagram", "tiktok", "x", "youtube"]);
     expect(SOURCE).toMatch(/publishers\.register\(InstagramPublisher\.platform/);
   });
   it("lists exactly the registered publishers as having a worker publisher (live or dark)", () => {

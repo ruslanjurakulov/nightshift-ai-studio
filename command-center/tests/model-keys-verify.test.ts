@@ -158,7 +158,7 @@ describe("the other ways a check can end", () => {
 });
 
 describe("a vendor with no free check", () => {
-  for (const id of ["kling", "bytedance", "lightricks"]) {
+  for (const id of ["kling", "bytedance", "lightricks", "vidu"]) {
     it(`${id}: the key is never sent anywhere`, async () => {
       const p = MODEL_KEY_PROVIDERS.find((x) => x.id === id) as ModelKeyProvider;
       const boom = vi.fn(() => {

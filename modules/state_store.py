@@ -367,11 +367,11 @@ class StateStore:
         self,
         video_id: str,
         snapshot_date: str,
-        views: int = 0,
-        likes: int = 0,
-        comment_count: int = 0,
-        watch_time_minutes: float = 0.0,
-        average_view_duration_seconds: float = 0.0,
+        views: int | None = 0,
+        likes: int | None = 0,
+        comment_count: int | None = 0,
+        watch_time_minutes: float | None = 0.0,
+        average_view_duration_seconds: float | None = 0.0,
         impressions: int | None = None,
         impression_ctr: float | None = None,
     ):
@@ -379,6 +379,11 @@ class StateStore:
 
         One row per (video_id, snapshot_date) — a re-poll for the same date
         overwrites the earlier snapshot rather than accumulating duplicates.
+
+        None means "YouTube did not return this metric" and is stored as NULL
+        (the columns are nullable); the defaults stay 0 for callers that really
+        mean zero. A None never overwrites a value an earlier poll of the same
+        day measured: a second, emptier poll must not erase the first.
         """
         with self.conn:
             self.conn.execute(
@@ -389,14 +394,15 @@ class StateStore:
                      impressions, impression_ctr)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(video_id, snapshot_date) DO UPDATE SET
-                    views=excluded.views,
-                    likes=excluded.likes,
-                    comment_count=excluded.comment_count,
-                    watch_time_minutes=excluded.watch_time_minutes,
-                    average_view_duration_seconds=excluded.average_view_duration_seconds,
-                    -- Keep a previously measured CTR when this poll did not
+                    -- Keep a previously measured value when this poll did not
                     -- return one: null here means "not measured this time",
-                    -- not "no clicks".
+                    -- not "no views" / "no clicks".
+                    views=COALESCE(excluded.views, metrics_snapshots.views),
+                    likes=COALESCE(excluded.likes, metrics_snapshots.likes),
+                    comment_count=COALESCE(excluded.comment_count, metrics_snapshots.comment_count),
+                    watch_time_minutes=COALESCE(excluded.watch_time_minutes, metrics_snapshots.watch_time_minutes),
+                    average_view_duration_seconds=COALESCE(
+                        excluded.average_view_duration_seconds, metrics_snapshots.average_view_duration_seconds),
                     impressions=COALESCE(excluded.impressions, metrics_snapshots.impressions),
                     impression_ctr=COALESCE(excluded.impression_ctr, metrics_snapshots.impression_ctr)
                 """,

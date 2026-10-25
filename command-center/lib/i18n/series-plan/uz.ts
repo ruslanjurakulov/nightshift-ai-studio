@@ -47,6 +47,8 @@ export const seriesPlanUz: SeriesPlanDictionary = {
       plan_in_progress: "Bu kanal uchun reja allaqachon tuzilmoqda. Tugashini kuting va qayta urinib koʻring.",
       rate_limited: "Bugungi {n} ta reja limitiga yetdingiz. Ertaga qayta urinib koʻring.",
       rate_limited_unknown: "Bugungi reja limitiga yetdingiz. Ertaga qayta urinib koʻring.",
+      series_user_cap: "Kunlik reja limitingizga yetdingiz. Hech narsa boshlanmadi va hech narsa yechilmadi. Ertaga qayta urinib koʻring.",
+      series_global_cap: "Rejalashtirish hamma uchun kunlik limitga yetdi. Hech narsa boshlanmadi va hech narsa yechilmadi. Ertaga qayta urinib koʻring.",
       invalid_topic: "Mavzuni 1 dan {n} belgigacha, bir qatorda yozing.",
       invalid_count: "3 yoki 4 ta epizodni tanlang.",
       invalid_duration: "Roʻyxatdan uzunlikni tanlang.",

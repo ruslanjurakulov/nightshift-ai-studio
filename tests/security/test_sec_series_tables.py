@@ -220,6 +220,11 @@ def world(conn, sc):
                     [ch, ch, w.org_a])
         w.chan_a2, w.chan_a3 = "chan-a2", "chan-a3"
         set_prices(su)
+        # 0127 adds a per-person (3) and a platform-wide (30) daily cap beside the organization's (5). The 0120 / 0122 tests here are about the
+        # ORGANIZATION's cap and the rest of the function, and one editor makes five plans in several of them, so the owner's numbers are raised
+        # out of the way for these rolled-back worlds (tests/security/test_sec_series_plan_caps.py owns the new caps and leaves them as shipped).
+        if su.value("select to_regclass('public.series_plan_cap_settings') is not null"):
+            su.rows("update public.series_plan_cap_settings set user_daily_cap = 1000, global_daily_cap = 10000 returning 1")
         # Alice is on the Creator plan (two parallel runs) and the scenario holds two for her: free them, so what these tests hold is
         # counted by the plan's limit alone.
         become(su, SERVICE)
@@ -1526,7 +1531,7 @@ def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0120_applies
     base_dsn = sec_db.create_database(admin, base)
     sigs = ("public.render_job_params_valid(jsonb,text)", "public.render_jobs_payment_guard()")
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_", "0127_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s_: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s_]).fetchone()[0],
                          b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s_]).fetchone()[0]) for s_ in sigs}

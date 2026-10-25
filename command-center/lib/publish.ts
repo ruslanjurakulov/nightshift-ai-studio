@@ -187,8 +187,10 @@ export const PUBLISH_REASONS = [
   "interrupted",
   "worker_error",
   "unknown_platform",
+  "too_small_picture",
   "permission_missing",
   "publish_unconfirmed",
+  "published_unexpectedly",
   "duplicate_post",
   "credits_exhausted",
 ] as const;

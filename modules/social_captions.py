@@ -13,6 +13,9 @@ Limits (official docs):
   https://developers.google.com/youtube/v3/docs/videos#properties
 * Instagram — caption ≤ 2200 characters, ≤ 30 hashtags, ≤ 20 @-mentions.
   https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media
+* Facebook Reels — ``description`` (hashtags allowed); no limit is documented, so 2200 characters and 5 hashtags are
+  our own conservative caps.
+  https://developers.facebook.com/docs/video-api/guides/reels-publishing
 * X — a post's text, 280 weighted characters (our own conservative cap), no link, two hashtags.
   https://docs.x.com/x-api/posts/create-post
 * TikTok — the post's ``title`` (its caption, hashtags included) ≤ 2200 UTF-16
@@ -39,6 +42,11 @@ IG_HASHTAGS_DEFAULT = 15
 TT_CAPTION_MAX_UTF16 = 2200
 TT_HASHTAGS_DEFAULT = 5
 TT_DESCRIPTION_MAX = 300
+
+#: Facebook Reels ``description`` "supports hashtags" and Meta's page states no length. 2200 characters and a short
+#: hashtag list are OUR conservative choice (the Instagram figure), not a documented limit.
+FB_DESCRIPTION_MAX = 2200
+FB_HASHTAGS_DEFAULT = 5
 
 #: X: a post's text is 280 "weighted" characters for an account without Premium (X's pages read for this change give no
 #: figure, so this is the long-standing documented one and OUR cap: a Premium account could post more, and we do not ask).
@@ -77,11 +85,16 @@ def utf16_len(text: str) -> int:
     return len(text.encode("utf-16-le")) // 2
 
 
+#: Characters that never belong in a post: C0 controls other than newline / tab (NUL, BEL, ESC ...), DEL, C1 controls, the
+#: bidirectional embedding / override / isolate controls (they can reverse the text around them) and the zero-width space.
+_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069\u200b]")
+
+
 def _clean(text: str) -> str:
     """Normalise whitespace; drop chapter/timestamp lines (they mean nothing
-    outside YouTube); keep paragraphs."""
+    outside YouTube); keep paragraphs. Control and bidi-override characters are removed."""
     lines = []
-    for line in (text or "").replace("\r\n", "\n").split("\n"):
+    for line in _CONTROLS.sub("", text or "").replace("\r\n", "\n").split("\n"):
         if _TIMESTAMP_LINE.match(line):
             continue
         lines.append(_WS.sub(" ", line).strip())
@@ -277,6 +290,13 @@ def tiktok_caption(meta: SourceMeta, *, max_hashtags: int = TT_HASHTAGS_DEFAULT,
     return _compose(head, body, tags, TT_CAPTION_MAX_UTF16, utf16_len, _plain_line(disclosure))
 
 
+def facebook_caption(meta: SourceMeta, *, max_hashtags: int = FB_HASHTAGS_DEFAULT, disclosure: str = "") -> str:
+    """The Reel's ``description``: title, description, a few hashtags. ≤ 2200 characters (our own cap)."""
+    head = _strip_inline_hashtags(_clean(meta.title or meta.topic).replace("\n", " "))
+    body = _strip_inline_hashtags(_clean(meta.description))
+    tags = hashtags(_tag_sources(meta), max(0, max_hashtags))
+    return _compose(head, body, tags, FB_DESCRIPTION_MAX, len, _plain_line(disclosure))
+
 #: X turns a bare domain ("example.com/a") into a link too, and a link costs 13 times as much and counts 23 characters. Only
 #: names under a TLD X is known to link are removed, so ordinary text such as "falls.The" is left alone; a TLD missing from
 #: this list can still be linked (residual cost risk, documented in docs/SOCIAL_SETUP.md).
@@ -309,7 +329,7 @@ def x_caption(meta: SourceMeta, *, max_hashtags: int = X_HASHTAGS_DEFAULT, discl
 def _plain_line(text: str) -> str:
     """The disclosure line as one clean line (no hashtags or @-mentions are
     added or counted by it)."""
-    return _WS.sub(" ", (text or "").replace("\r", " ").replace("\n", " ")).strip()
+    return _WS.sub(" ", _CONTROLS.sub("", text or "").replace("\r", " ").replace("\n", " ")).strip()
 
 
 def caption_for(platform: str, meta: SourceMeta, *, disclosure: str = "") -> str:
@@ -317,6 +337,8 @@ def caption_for(platform: str, meta: SourceMeta, *, disclosure: str = "") -> str
         return instagram_caption(meta, disclosure=disclosure)
     if platform == "tiktok":
         return tiktok_caption(meta, disclosure=disclosure)
+    if platform == "facebook":
+        return facebook_caption(meta, disclosure=disclosure)
     if platform == "x":
         return x_caption(meta, disclosure=disclosure)
     raise ValueError("unknown platform")

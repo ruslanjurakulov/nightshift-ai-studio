@@ -37,6 +37,7 @@ export const MODEL_KEY_PROVIDER_IDS = [
   "openai",
   "recraft",
   "runway",
+  "vidu",
   "xai",
 ] as const;
 export type ModelKeyProviderId = (typeof MODEL_KEY_PROVIDER_IDS)[number];
@@ -320,6 +321,21 @@ export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
     // LTX's own OpenAPI document (docs.ltx.io/openapi.json) has no read that needs no job id: every path is a POST that starts a billed
     // generation, plus GET /v2/{endpoint}/{id} for one job. No free account, credits or models call exists, so the key is never sent anywhere.
     strategy: { kind: "format_only", docUrl: "https://docs.ltx.io/openapi.json" },
+  },
+  {
+    id: "vidu",
+    name: "Vidu (Q3, Q4 preview)",
+    // The FAQ says only "create a new API key under the 'API Key Management' menu of the platform" and no page read names its address, so
+    // no link is offered.
+    keyUrl: null,
+    keyUrlSource: null,
+    envSets: [["VIDU_API_KEY"]],
+    scopedKeys: false,
+    // The one read that creates nothing is Account Balance (GET /ent/v2/credits, docs: api-reference/task-management/account-balance), but its
+    // page lists a REQUIRED `show_detail` parameter in the body of a GET, and its example answer names a field (`remains`) its own table calls
+    // `remaining_credits`. A check built on that would be a guess, so the key is never sent anywhere. docUrl is the FAQ page that says where
+    // keys are made.
+    strategy: { kind: "format_only", docUrl: "https://platform.vidu.com/docs/overview/faq" },
   },
   {
     id: "alibaba",

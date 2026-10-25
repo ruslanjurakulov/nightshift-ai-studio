@@ -32,6 +32,9 @@ Nothing here changes what is published or when (CLAUDE.md rules 2 and 3): every 
 * Instagram, `POST /{ig-user-id}/media` - https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media :
   `is_ai_generated` (true / false): "An optional parameter to provide a self-disclosure of AI usage in the post. Not
   available for carousel children."
+* Facebook Reels (DARK, no connect flow yet), `POST /{page-id}/video_reels` with `upload_phase=finish` - https://developers.facebook.com/docs/video-api/guides/reels-publishing :
+  `is_ai_generated` (boolean, default `false`): "Set `true` to disclose AI creation or editing." (read 2026-10-25, through a
+  page summariser; re-read before relying on the wording). Only the finish call carries it.
 * X (DARK, no connect flow yet), `POST /2/tweets` - https://docs.x.com/x-api/posts/create-post :
   `made_with_ai` (boolean): "Discloses that the post contains AI-generated media." (read 2026-10-25, through a page
   summariser). **An earlier internal note said X has no such field**; the field is on the official
@@ -92,6 +95,7 @@ request it always was (pinned by tests).
 | YouTube cross-post to another channel | the same flag via the same uploader; the line is in the recorded description | unchanged |
 | Instagram Reels | `is_ai_generated=true` on the media container; the line in the caption | field absent |
 | TikTok Direct Post | `post_info.is_aigc: true` (still `SELF_ONLY`); the line in the title/caption | field absent |
+| Facebook Reels (dark) | `is_ai_generated: true` on the `finish` call (still `video_state=DRAFT`); the line in the description | field absent |
 | X video post (dark) | `made_with_ai: true` on `POST /2/tweets`; the line in the text | field absent |
 
 For a cross-post, the decision is made once, in `social_publish._decide_disclosure` (from this module's rule), and

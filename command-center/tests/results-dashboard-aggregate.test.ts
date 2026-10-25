@@ -141,12 +141,38 @@ describe("buildVideoResults: which videos, which reading", () => {
 
 describe("what is not a reading", () => {
   const empty = (over: Partial<SnapshotInput> = {}) => snap({ views: 0, likes: 0, comments: 0, watchMinutes: 0, avgViewSeconds: 0, ...over });
+  const nulls = (over: Partial<SnapshotInput> = {}) => snap({ views: null, likes: null, comments: null, watchMinutes: null, avgViewSeconds: null, ...over });
   it("a snapshot whose five figures are all exactly 0 is empty; one non-zero or null figure makes it a reading", () => {
     expect(isEmptyReading(empty())).toBe(true);
     for (const k of ["views", "likes", "comments", "watchMinutes", "avgViewSeconds"] as const) {
       expect(isEmptyReading(empty({ [k]: 1 })), k).toBe(false);
       expect(isEmptyReading(empty({ [k]: null })), `${k} null`).toBe(false);
     }
+  });
+  it("a snapshot whose five figures are all NULL (what the poller stores now) is empty; one figure of any kind makes it a reading", () => {
+    expect(isEmptyReading(nulls())).toBe(true);
+    for (const k of ["views", "likes", "comments", "watchMinutes", "avgViewSeconds"] as const) {
+      expect(isEmptyReading(nulls({ [k]: 1 })), k).toBe(false);
+      expect(isEmptyReading(nulls({ [k]: 0 })), `${k} measured zero`).toBe(false);
+    }
+  });
+  it("an all-NULL snapshot is 'no data', not a reading: flagged noData, counted, never shown as a figure", () => {
+    const [row] = buildVideoResults([video()], [nulls()], NOW, 28);
+    expect(row.reading).toBeNull();
+    expect(row.noData).toBe(true);
+    const k = computeKpis([row]);
+    expect(k).toMatchObject({ videos: 1, measured: 0, noData: 1 });
+    expect(k.views).toEqual({ value: null, known: 0, of: 1 });
+  });
+  it("a newer all-NULL snapshot does not hide an older real one", () => {
+    const [row] = buildVideoResults([video()], [snap({ snapshotDate: "2026-10-23", views: 40 }), nulls({ snapshotDate: "2026-10-24" })], NOW, 28);
+    expect(row.reading?.views).toBe(40);
+    expect(row.reading?.date).toBe("2026-10-23");
+    expect(row.noData).toBe(false);
+  });
+  it("a partly measured NULL row is a reading, and its NULL figures stay null (not 0)", () => {
+    const [row] = buildVideoResults([video()], [nulls({ views: 12 })], NOW, 28);
+    expect(row.reading).toMatchObject({ views: 12, likes: null, comments: null, watchMinutes: null, avgViewSeconds: null });
   });
   it("an all-zero snapshot is 'no data', not '0 views': no reading, flagged noData", () => {
     const [row] = buildVideoResults([video()], [empty()], NOW, 28);
@@ -379,10 +405,12 @@ describe("platform registry", () => {
     expect(by.facebook).toMatchObject({ state: "coming", connected: 0 });
   });
   it("an unread platform is 'unknown', not 'not connected'; a platform nobody can connect stays 'coming' whatever was read", () => {
-    const cards = Object.fromEntries(platformCards({ youtube: 1, instagram: null, x: 5 }).map((c) => [c.id, c]));
+    const cards = Object.fromEntries(platformCards({ youtube: 1, instagram: null, x: 5, facebook: 5 }).map((c) => [c.id, c]));
     expect(cards.instagram.state).toBe("unknown");
     expect(cards.tiktok.state).toBe("unknown");
     expect(cards.x).toMatchObject({ state: "coming", connected: 0 });
+    // Registered on the worker but dark (nothing can connect it): still "coming", never a count.
+    expect(cards.facebook).toMatchObject({ state: "coming", connected: 0 });
   });
   it("a platform nobody can connect is 'coming' whatever count it is given, even an unknown one", () => {
     const x = { id: "x", worker: "none", publish: "none", results: "planned" } as const;
