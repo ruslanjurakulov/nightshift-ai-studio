@@ -404,6 +404,9 @@ class HttpAdapter:
     #: request's, else the one the registry pins (``default_resolution``, 0070).
     resolution_capabilities: Sequence[str] = ()
     timeout = 60
+    #: False = a 3xx from the API host is an error, never followed: the request carries the key in a header,
+    #: and a redirect would send it to wherever the answer points (requests drops only ``Authorization``).
+    follow_redirects = True
 
     def __init__(self, *, env: Optional[Mapping[str, str]] = None, session=None):
         self._env = env if env is not None else os.environ
@@ -461,21 +464,24 @@ class HttpAdapter:
     # -- HTTP -------------------------------------------------------------------
     def _call(self, method: str, url: str, *, what: str, json_body=None, params=None,
               headers=None, files=None, data=None, timeout: Optional[int] = None,
-              raw: bool = False):
+              raw: bool = False, ok_statuses: Sequence[int] = ()):
         h = dict(self.auth_headers())
         if headers:
             h.update(headers)
         # Every call that may reach the vendor is counted (``calls_sent``): the
         # creative bridge trusts a failure's proof only for a submit's first call.
         self.calls_sent = getattr(self, "calls_sent", 0) + 1
+        extra = {} if self.follow_redirects else {"allow_redirects": False}
         try:
             resp = self.session.request(method, url, json=json_body, params=params, headers=h,
-                                        files=files, data=data, timeout=timeout or self.timeout)
+                                        files=files, data=data, timeout=timeout or self.timeout, **extra)
         except requests.RequestException as e:
             # Only the exception's class: its text can carry the request.
             raise AdapterError(E_UNAVAILABLE, f"{what}: {type(e).__name__}", not_accepted=never_sent(e)) from None
         status = getattr(resp, "status_code", 200)
-        if status >= 300:
+        # ``ok_statuses``: statuses the CALLER reads itself (BFL answers a failed task as HTTP 503 with a
+        # normal JSON body). The caller must then look at the body and raise for a real outage itself.
+        if status >= 300 and status not in ok_statuses:
             text = scrub(getattr(resp, "text", "") or "", self.secrets())
             code = self.vendor_error_code(status, text) or classify_http(status, text)
             raise AdapterError(code, f"{what}: HTTP {status} {text[:300]}", http_status=status,
