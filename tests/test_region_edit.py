@@ -322,12 +322,18 @@ class ModelChoiceTests(unittest.TestCase):
         self.assertEqual(cm.exception.code, "model_gated")
 
     def test_the_models_that_can_edit_today_are_exactly_these(self):
-        editors = sorted(m.id for m in reg.models("edit"))
+        # A gated editing model (terms_gate set: dark, unsellable) is in the registry but refused by
+        # resolve_edit_model, so the pin is on the UNGATED ones; a gated one joining them is a decision.
+        editors = sorted(m.id for m in reg.models("edit") if not m.terms_gate)
         self.assertEqual(editors, ["gemini-3-pro-image", "gemini-3.1-flash-image", "gemini-3.1-flash-lite-image",
                                    "openai-gpt-image-2", "openai-gpt-image-2.5-flare", "openai-gpt-image-2.5-sunburst"])
         for m in reg.models("edit"):
-            self.assertIsNone(m.terms_gate)
-            self.assertNotIn("mask", m.raw.get("inputs", {}))      # no wired model takes a mask: the crop does the work
+            if m.terms_gate:
+                with self.assertRaises(RegionEditError) as cm:
+                    resolve_edit_model(m.id, available={m.id}, registry=self.registry)
+                self.assertEqual(cm.exception.code, "model_gated", m.id)
+            else:
+                self.assertNotIn("mask", m.raw.get("inputs", {}))  # no wired model takes a mask: the crop does the work
 
     def test_a_failed_region_is_not_retried_on_another_model_and_the_others_still_apply(self):
         seen = []
