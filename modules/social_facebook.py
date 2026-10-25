@@ -78,6 +78,11 @@ MAX_UNREADABLE_POLLS = 3
 #: The queue fails a row whose heartbeat is older than 30 minutes (0029 claim_publish_request) and lets another worker claim
 #: it, so a long upload must beat. Once a minute is far inside that.
 BEAT_EVERY_SECONDS = 60.0
+#: One upload POST may take an hour at most, and the upload as a whole (its resumes included) two: a receiver that takes
+#: bytes slowly but never stops would otherwise keep a request alive for ever, because the heartbeat above keeps its row
+#: fresh. The heartbeat does not extend these: they are measured on the monotonic clock from the start of the POST / upload.
+UPLOAD_POST_SECONDS = 3600.0
+UPLOAD_TOTAL_SECONDS = 2 * 3600.0
 #: A wall-clock limit for reading ONE answer (a server that drips a small body forever must not hold the worker).
 READ_SECONDS = 30.0
 ACCEPT_IDENTITY = {"Accept-Encoding": "identity"}   # no compressed answers: a decompression bomb cannot arise
@@ -107,6 +112,10 @@ class _Lost(Exception):
         self.detail = detail
 
 
+class _UploadTooSlow(Exception):
+    """The upload POST ran past its limit; raised from the body so the request is abandoned and a resume can take over."""
+
+
 class _Slice:
     """The file from ``offset`` to ``end`` as a request body of known length, never longer than that.
 
@@ -115,8 +124,10 @@ class _Slice:
     that shrank yields fewer bytes (the platform sees a short body and its status says so)."""
 
     def __init__(self, path: Path, offset: int, end: int, *, beat: Callable[[], None] = lambda: None,
-                 clock: Callable[[], float] = time.monotonic, every: float = BEAT_EVERY_SECONDS):
+                 clock: Callable[[], float] = time.monotonic, every: float = BEAT_EVERY_SECONDS,
+                 deadline: Optional[float] = None):
         self.path, self.offset, self.end = path, offset, end
+        self._deadline = deadline
         self._fh = None
         self._left = end - offset
         self._beat, self._clock, self._every = beat, clock, every
@@ -137,6 +148,9 @@ class _Slice:
                 pass
 
     def read(self, n: int = -1) -> bytes:
+        if self._deadline is not None and self._clock() > self._deadline:
+            self.close()
+            raise _UploadTooSlow("the upload POST ran past its time limit")   # checked BEFORE the heartbeat: it cannot extend it
         self._pulse()
         if self._left <= 0:
             self.close()
@@ -180,12 +194,26 @@ def _read_doc(r, *, clock: Callable[[], float] = time.monotonic, seconds: float 
         _close(r)
         return None
     stream = getattr(r, "iter_content", None)
+    read1 = getattr(getattr(r, "raw", None), "read1", None)
     try:
-        if stream is None:
+        if read1 is not None and callable(read1):
+            # ``read1`` returns whatever has ARRIVED (at least one byte), so the clock is looked at after every little read:
+            # an answer that drips one byte every few seconds is cut at the limit, not after the whole chunk finally fills
+            # (``iter_content(65536)`` waits for 64 KiB). It also hands back the bytes as sent, never decompressed.
+            buf = bytearray()
+            while True:
+                chunk = read1(16384)
+                if not chunk:
+                    break
+                buf += chunk
+                if len(buf) > MAX_API_BODY or clock() > deadline:
+                    return None
+            body = json.loads(bytes(buf).decode("utf-8")) if buf else None
+        elif stream is None:
             body = r.json()
         else:
             buf = bytearray()
-            for chunk in stream(chunk_size=65536):
+            for chunk in stream(chunk_size=1024):
                 buf += chunk
                 if len(buf) > MAX_API_BODY or clock() > deadline:
                     return None
@@ -267,9 +295,11 @@ class FacebookReelsAdapter:
                  max_wait: float = sp.MAX_WAIT_SECONDS, graph: str = GRAPH, rupload_host: str = RUPLOAD_HOST,
                  ports: Sequence[Optional[int]] = PORTS, max_bytes: int = sp.FB_MAX_BYTES,
                  clock: Callable[[], float] = time.monotonic, read_seconds: float = READ_SECONDS,
-                 beat_every: float = BEAT_EVERY_SECONDS):
+                 beat_every: float = BEAT_EVERY_SECONDS, upload_post_seconds: float = UPLOAD_POST_SECONDS,
+                 upload_total_seconds: float = UPLOAD_TOTAL_SECONDS):
         self.http, self.sleep, self.heartbeat = http, sleep, heartbeat
         self.clock, self.read_seconds, self.beat_every = clock, read_seconds, beat_every
+        self.upload_post_seconds, self.upload_total_seconds = upload_post_seconds, upload_total_seconds
         self.poll_seconds, self.max_wait = poll_seconds, max_wait
         self.graph, self.rupload_host, self.ports, self.max_bytes = graph.rstrip("/"), rupload_host, tuple(ports), max_bytes
 
@@ -341,7 +371,9 @@ class FacebookReelsAdapter:
                    "Content-Type": "application/octet-stream"}
         try:
             r = self._send("post", url, "upload", headers=headers, data=_Slice(path, offset, size, beat=self.heartbeat, clock=self.clock,
-                                                                           every=self.beat_every), timeout=600)
+                                                                           every=self.beat_every,
+                                                                           deadline=self.clock() + self.upload_post_seconds),
+                           timeout=600)
         except _Lost:
             return False
         status = getattr(r, "status_code", 0)
@@ -355,8 +387,11 @@ class FacebookReelsAdapter:
         return status < 300 and isinstance(doc, dict) and doc.get("success") is True
 
     def _upload(self, tok, url: str, video_id: str, path: Path, size: int) -> None:
-        offset = 0
+        offset, started = 0, self.clock()
         for _ in range(1 + MAX_RESUMES):
+            if self.clock() - started > self.upload_total_seconds:
+                raise sp.failed("upload_failed", f"facebook upload: not finished after {int(self.upload_total_seconds // 60)} "
+                                                 "minutes; it is not continued")
             if self._post_bytes(tok, url, path, offset, size):
                 return
             self.heartbeat()

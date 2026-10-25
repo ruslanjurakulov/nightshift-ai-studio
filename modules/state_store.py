@@ -178,6 +178,25 @@ CREATE TABLE IF NOT EXISTS retention_points (
 
 CREATE INDEX IF NOT EXISTS idx_retention_video
     ON retention_points (video_id, elapsed_ratio);
+
+-- Readings the opt-in wider poll (NIGHTSHIFT_METRICS_POLL_DAYS) takes of a video that is no longer in its first days. Same
+-- columns as metrics_snapshots, kept apart on purpose: a snapshot is YouTube's two-day window, and every decision reader
+-- (latest_metrics) divides it by the days since publishing as if it were a lifetime total. Only the Supabase mirror reads this
+-- table (newest_metrics), and only when NIGHTSHIFT_MIRROR_LATE_METRICS is set; the durability backup reads latest_metrics.
+CREATE TABLE IF NOT EXISTS metrics_snapshots_late (
+    id                             INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id                       TEXT NOT NULL,
+    snapshot_date                  TEXT NOT NULL,
+    views                          INTEGER,
+    likes                          INTEGER,
+    comment_count                  INTEGER,
+    watch_time_minutes             REAL,
+    average_view_duration_seconds  REAL,
+    impressions                    INTEGER,
+    impression_ctr                 REAL,
+    FOREIGN KEY (video_id) REFERENCES videos (video_id),
+    UNIQUE (video_id, snapshot_date)
+);
 """
 
 # Additive column migrations for databases created before Phase 5. Each entry is
@@ -374,8 +393,11 @@ class StateStore:
         average_view_duration_seconds: float | None = 0.0,
         impressions: int | None = None,
         impression_ctr: float | None = None,
+        late: bool = False,
     ):
         """Insert or replace a metrics snapshot for a video on a given date.
+
+        `late=True` files it in `metrics_snapshots_late`, which no decision reader sees (see `newest_metrics`).
 
         One row per (video_id, snapshot_date) — a re-poll for the same date
         overwrites the earlier snapshot rather than accumulating duplicates.
@@ -385,10 +407,11 @@ class StateStore:
         mean zero. A None never overwrites a value an earlier poll of the same
         day measured: a second, emptier poll must not erase the first.
         """
+        table = "metrics_snapshots_late" if late else "metrics_snapshots"   # a fixed pair, never caller text
         with self.conn:
             self.conn.execute(
-                """
-                INSERT INTO metrics_snapshots
+                f"""
+                INSERT INTO {table}
                     (video_id, snapshot_date, views, likes, comment_count,
                      watch_time_minutes, average_view_duration_seconds,
                      impressions, impression_ctr)
@@ -397,14 +420,14 @@ class StateStore:
                     -- Keep a previously measured value when this poll did not
                     -- return one: null here means "not measured this time",
                     -- not "no views" / "no clicks".
-                    views=COALESCE(excluded.views, metrics_snapshots.views),
-                    likes=COALESCE(excluded.likes, metrics_snapshots.likes),
-                    comment_count=COALESCE(excluded.comment_count, metrics_snapshots.comment_count),
-                    watch_time_minutes=COALESCE(excluded.watch_time_minutes, metrics_snapshots.watch_time_minutes),
+                    views=COALESCE(excluded.views, {table}.views),
+                    likes=COALESCE(excluded.likes, {table}.likes),
+                    comment_count=COALESCE(excluded.comment_count, {table}.comment_count),
+                    watch_time_minutes=COALESCE(excluded.watch_time_minutes, {table}.watch_time_minutes),
                     average_view_duration_seconds=COALESCE(
-                        excluded.average_view_duration_seconds, metrics_snapshots.average_view_duration_seconds),
-                    impressions=COALESCE(excluded.impressions, metrics_snapshots.impressions),
-                    impression_ctr=COALESCE(excluded.impression_ctr, metrics_snapshots.impression_ctr)
+                        excluded.average_view_duration_seconds, {table}.average_view_duration_seconds),
+                    impressions=COALESCE(excluded.impressions, {table}.impressions),
+                    impression_ctr=COALESCE(excluded.impression_ctr, {table}.impression_ctr)
                 """,
                 (
                     video_id,
@@ -420,18 +443,55 @@ class StateStore:
             )
         logger.info("Recorded metrics snapshot: %s @ %s", video_id, snapshot_date)
 
+    #: A row in which YouTube gave nothing at all. Never a reading: it must not hide an earlier real one.
+    _NOT_ALL_NULL = (
+        "NOT (views IS NULL AND likes IS NULL AND comment_count IS NULL AND watch_time_minutes IS NULL"
+        " AND average_view_duration_seconds IS NULL AND impressions IS NULL AND impression_ctr IS NULL)"
+    )
+
     def latest_metrics(self, video_id: str) -> dict | None:
-        """Return the most recent metrics snapshot for a video, or None."""
+        """Return the most recent metrics snapshot for a video, or None.
+
+        This is what the decision readers use (feedback_engine, performance_analyzer, quota_allocator, publish_timing ...),
+        and they turn it into a rate per day since publishing. It never returns a row in which every figure is NULL (a
+        newer empty row must not hide an earlier real one), and never a `late` reading (see `record_metrics_snapshot`), so
+        widening the poll cannot change a decision. `newest_metrics` is for copying state.
+        """
         row = self.conn.execute(
-            """
+            f"""
             SELECT * FROM metrics_snapshots
-            WHERE video_id = ?
+            WHERE video_id = ? AND {self._NOT_ALL_NULL}
             ORDER BY snapshot_date DESC
             LIMIT 1
             """,
             (video_id,),
         ).fetchone()
         return dict(row) if row else None
+
+    def newest_metrics(self, video_id: str) -> dict | None:
+        """The newest non-empty snapshot of any age, early or `late`, or None. For copying state (the Supabase mirror, the
+        durability backup), not for deciding anything: a late snapshot is a two-day window, not a lifetime total."""
+        columns = (
+            "video_id, snapshot_date, views, likes, comment_count, watch_time_minutes, "
+            "average_view_duration_seconds, impressions, impression_ctr"
+        )
+        row = self.conn.execute(
+            f"""
+            SELECT * FROM (
+                SELECT {columns}, 0 AS src FROM metrics_snapshots WHERE video_id = ? AND {self._NOT_ALL_NULL}
+                UNION ALL
+                SELECT {columns}, 1 AS src FROM metrics_snapshots_late WHERE video_id = ? AND {self._NOT_ALL_NULL}
+            )
+            ORDER BY snapshot_date DESC, src ASC
+            LIMIT 1
+            """,
+            (video_id, video_id),
+        ).fetchone()
+        if not row:
+            return None
+        out = dict(row)
+        out.pop("src", None)
+        return out
 
     def metrics_history(self, video_id: str) -> list[dict]:
         """Return all metrics snapshots for a video, ordered oldest to newest."""

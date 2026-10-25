@@ -86,8 +86,13 @@ def utf16_len(text: str) -> int:
 
 
 #: Characters that never belong in a post: C0 controls other than newline / tab (NUL, BEL, ESC ...), DEL, C1 controls, the
-#: bidirectional embedding / override / isolate controls (they can reverse the text around them) and the zero-width space.
-_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069\u200b]")
+#: bidirectional embedding / override / isolate controls (they can reverse the text around them), the byte-order mark /
+#: zero-width no-break space (U+FEFF) and the word joiner (U+2060), and the zero-width space (U+200B) -- EXCEPT next to
+#: Thai, Lao, Myanmar or Khmer letters, which are written without spaces and use U+200B to mark where a line may break.
+#: (ZWNJ / ZWJ, U+200C / U+200D, are never touched: scripts such as Persian and Indic need them.)
+_SPACELESS = "\u0e00-\u0eff\u1000-\u109f\u1780-\u17ff"
+_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069\ufeff\u2060]"
+                       r"|(?<![" + _SPACELESS + r"])\u200b(?![" + _SPACELESS + r"])")
 
 
 def _clean(text: str) -> str:

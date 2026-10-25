@@ -663,6 +663,100 @@ class WallClockLimits(Loop):
         self.assertEqual(meta.finishes(), [])
 
 
+class AnAnswerThatDrips(Loop):
+    """A short answer sent one byte at a time must be cut at the wall-clock limit, not after the whole buffer finally fills:
+    ``iter_content(65536)`` waited for 64 KiB, so a 60-byte answer dripping 0.3 s a byte was read for 18 s against 2 s."""
+
+    def drip(self, delay):
+        raw = b'{"video_id": "' + VID.encode() + b'", "upload_url": "' + f"{self.vendor.base_url}/video-upload/{VID}".encode() + b'"}'
+        return Resp(200, raw=raw, drip_s=delay)
+
+    def test_it_is_cut_near_the_limit_not_after_the_whole_body(self):
+        import time as _t
+        meta = FakeMeta(self.vendor, start=self.drip(0.05))
+        a = self.adapter(read_seconds=1.0)
+        t0 = _t.monotonic()
+        with self.assertRaises(sp.PublishStop) as e:
+            a.publish(tok(), self.path, "c")
+        took = _t.monotonic() - t0
+        self.assertEqual(e.exception.reason, "upload_failed")
+        self.assertLess(took, 3.0)                    # the body alone would take about 100 x 0.05 = 5 s
+        self.assertEqual(meta.uploads(), [])
+
+    def test_the_same_answer_arriving_fast_enough_is_read(self):
+        meta = FakeMeta(self.vendor, start=self.drip(0.001))
+        self.assertEqual(self.go(meta, read_seconds=5.0)["result_id"], VID)
+
+
+class SlowUploadsAreCapped(Loop):
+    """The heartbeat keeps a row alive; it must not keep a crawling upload alive for ever."""
+
+    def setUp(self):
+        super().setUp()
+        self.big = bytes(range(256)) * 12288          # 3 MiB
+        self.path.write_bytes(self.big)
+
+    def test_the_defaults_are_one_hour_a_post_and_two_hours_in_all(self):
+        self.assertEqual((fbk.UPLOAD_POST_SECONDS, fbk.UPLOAD_TOTAL_SECONDS), (3600.0, 7200.0))
+
+    def test_a_post_past_its_limit_is_abandoned_and_the_resume_takes_over(self):
+        beats = []
+        meta = FakeMeta(self.vendor, uploads=[Resp(200, {"success": True})],
+                        statuses=[status("uploading", got=3_000_000, size=len(self.big)), status("ready")])
+        a = self.adapter(clock=StepClock(10.0), upload_post_seconds=400.0, upload_total_seconds=10 ** 9, read_seconds=10 ** 9,
+                         max_wait=10 ** 9, beat_every=60.0, heartbeat=lambda: beats.append(1))
+        a.publish(tok(), self.path, "c")
+        ups = meta.uploads()
+        self.assertGreaterEqual(len(ups), 2)
+        self.assertEqual(ups[0].headers["offset"], "0")
+        self.assertEqual(ups[1].headers["offset"], "3000000")        # where Meta said it got to
+        self.assertEqual(len(meta.finishes()), 1)
+        self.assertTrue(beats)                                        # it did beat, and the post was still cut
+
+    def test_the_whole_upload_is_capped_across_resumes(self):
+        meta = FakeMeta(self.vendor, uploads=[Resp(200, {"success": True})],
+                        statuses=[status("uploading", got=1000, size=len(self.big))])
+        a = self.adapter(clock=StepClock(10.0), upload_post_seconds=300.0, upload_total_seconds=700.0, read_seconds=10 ** 9,
+                         max_wait=10 ** 9, heartbeat=lambda: None)
+        with self.assertRaises(sp.PublishStop) as e:
+            a.publish(tok(), self.path, "c")
+        self.assert_clean(e.exception)
+        self.assertEqual(e.exception.reason, "upload_failed")
+        self.assertLess(len(meta.uploads()), 4)                      # stopped by the total limit, not by the resume count
+        self.assertEqual(meta.finishes(), [])
+
+    def test_a_calm_clock_lets_a_normal_upload_through(self):
+        meta = FakeMeta(self.vendor)
+        self.assertEqual(self.go(meta, clock=StepClock(0.0001), read_seconds=10 ** 9)["result_id"], VID)
+        self.assertEqual(len(meta.uploads()), 1)
+
+    def test_the_slice_raises_past_its_deadline_even_while_it_beats(self):
+        beats = []
+        sl = fbk._Slice(self.path, 0, len(self.big), beat=lambda: beats.append(1), clock=StepClock(100.0), every=60.0,
+                        deadline=500.0)
+        with self.assertRaises(fbk._UploadTooSlow):
+            while sl.read(16384):
+                pass
+        self.assertTrue(beats)
+
+
+class SpacelessScriptsAndInvisibleMarks(unittest.TestCase):
+    def test_bom_and_word_joiner_are_removed(self):
+        self.assertEqual(cap._clean("a\ufeffb\u2060c"), "abc")
+
+    def test_a_zero_width_space_is_removed_except_inside_thai_lao_myanmar_and_khmer(self):
+        for ch in ("\u0e01", "\u0e81", "\u1000", "\u17a0"):
+            kept = f"{ch}\u200b{ch}"
+            self.assertEqual(cap._clean(kept), kept, hex(ord(ch)))
+            self.assertEqual(cap._clean(f"x{ch}\u200b"), f"x{ch}\u200b")        # next to one letter of the script is enough
+            self.assertEqual(cap._clean(f"x\u200b{ch}"), f"x\u200b{ch}")        # on either side
+        self.assertEqual(cap._clean("a\u200bb \u200b c\u200b"), "ab c")       # Latin, Cyrillic: removed
+        self.assertEqual(cap._clean("при\u200bвет"), "привет")
+
+    def test_zwnj_and_zwj_are_never_touched(self):
+        self.assertEqual(cap._clean("a\u200cb\u200dc"), "a\u200cb\u200dc")
+
+
 class NoCompressedAnswers(Loop):
     def test_every_request_asks_for_an_uncompressed_answer(self):
         meta = FakeMeta(self.vendor)

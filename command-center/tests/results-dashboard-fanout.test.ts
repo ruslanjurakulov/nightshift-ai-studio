@@ -37,6 +37,27 @@ describe("createLimiter", () => {
     expect(out).toEqual(Array.from({ length: 20 }, (_, i) => i * 2));
   });
 
+  it("a bound below one still runs everything, one at a time, instead of waiting for ever", async () => {
+    for (const bad of [0, -3]) {
+      const run = createLimiter(bad);
+      let active = 0;
+      let peak = 0;
+      const out = await Promise.all(
+        [1, 2, 3].map((n) =>
+          run(async () => {
+            active++;
+            peak = Math.max(peak, active);
+            await ticks(2);
+            active--;
+            return n;
+          }),
+        ),
+      );
+      expect(out, String(bad)).toEqual([1, 2, 3]);
+      expect(peak, String(bad)).toBe(1);
+    }
+  });
+
   it("starts waiting tasks in the order they were asked for", async () => {
     const run = createLimiter(1);
     const started: number[] = [];

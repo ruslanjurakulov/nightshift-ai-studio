@@ -375,6 +375,10 @@ DORMANT_FOR_THE_DAILY_RUN = (
 DORMANT_FOR_THE_POLL = (
     ("VIDIQ_ACCESS_TOKEN", "secrets"), ("CHRONOS_ENABLE_VIDIQ", "vars"),
     ("CHRONOS_ENABLE_REVENUE", "vars"), ("CHRONOS_DAILY_UPLOAD_SLOTS", "vars"),
+    # How many days of own videos the daily analytics poll re-reads. Poll only, like the two above: the worker never polls.
+    ("NIGHTSHIFT_METRICS_POLL_DAYS", "vars"),
+    # Whether the mirror (run only by the poll) also copies the wider poll's late readings to Supabase. Off when empty.
+    ("NIGHTSHIFT_MIRROR_LATE_METRICS", "vars"),
 )
 DAILY = ROOT / ".github" / "workflows" / "daily_video.yml"
 POLL = ROOT / ".github" / "workflows" / "intelligence_poll.yml"
@@ -495,6 +499,11 @@ class AnEmptyDormantSwitchLeavesTheFeatureOff(unittest.TestCase):
         cfg = avatar.resolve_avatar_config()
         self.assertFalse(cfg.enabled)
         self.assertEqual((cfg.character_prompt, cfg.character_ref), ("", ""))
+
+    def test_the_metrics_poll_window_is_the_default_when_its_variable_is_empty(self):
+        from modules.intelligence_poller import metrics_poll_options
+
+        self.assertEqual(metrics_poll_options(), {})   # empty means poll_own_channel_metrics() with no arguments
 
     def test_the_poll_switches_are_off_and_the_slot_budget_is_one_per_channel(self):
         from unittest.mock import MagicMock, patch
