@@ -26,6 +26,7 @@ import { captionStylesRu } from "./caption-styles/ru";
 import { editorExportRu } from "./editor-export/ru";
 import { reviewLinkRu, reviewPageRu } from "./review-link/ru";
 import { regionEditRu } from "./region-edit/ru";
+import { imageEditorRu } from "./image-editor/ru";
 import { resultsDashboardRu } from "./results-dashboard/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
@@ -46,6 +47,7 @@ export const ru: Dictionary = {
   connectPicker: connectPickerRu,
   reviewLink: reviewLinkRu,
   regionEdit: regionEditRu,
+  imageEditor: imageEditorRu,
   resultsDashboard: resultsDashboardRu,
   reviewPage: reviewPageRu,
   improveAi: improveRu,

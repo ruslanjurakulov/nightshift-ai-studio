@@ -80,7 +80,8 @@ export function variantContentType(variant: MediaVariant, mime: string): string 
 export function cleanUploadName(raw: unknown): string {
   const s = typeof raw === "string" ? raw : "";
   const last = s.split(/[\\/]/).pop() ?? "";
-  const clean = last.replace(/[\u0000-\u001f\u007f]/g, "").replace(/^[.\s]+/, "").trim().slice(0, 200);
+  // By code points: a UTF-16 cut can halve an emoji, and a lone surrogate is a body Postgres refuses.
+  const clean = Array.from(last.replace(/[\u0000-\u001f\u007f]/g, "").replace(/^[.\s]+/, "").trim()).slice(0, 200).join("").trim();
   return clean || "upload";
 }
 

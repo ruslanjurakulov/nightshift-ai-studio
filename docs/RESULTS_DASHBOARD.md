@@ -38,18 +38,23 @@ a recently published video. It is not a lifetime total, and two daily readings o
 
 ### What does not count as a reading
 
-`modules/intelligence_poller.py` stores `int(metrics.get("views", 0) or 0)` and the like, so when YouTube has no row yet for a
-video it stores a **full row of zeros**. A zero on this page would then read as a measurement. The rules, applied in
-`lib/resultsDashboard/aggregate.ts` (`buildVideoResults`):
+The poller (`modules/intelligence_poller.py`) stores **NULL** for every metric YouTube did not return: `video_performance` gives
+`{}` for a video it has no row for yet, and that is now a row of NULLs, not of zeros. A 0 that YouTube did send stays 0. (The
+`metrics_snapshots` columns were always nullable, so this needed no migration.) A second poll of the same day that returns
+nothing does not erase what the first one measured (`StateStore.record_metrics_snapshot` keeps the earlier value under a NULL).
 
-1. A snapshot whose views, likes, comments, watch minutes and average duration are **all exactly 0** is treated as "no data came
-   back". It is skipped; the video falls back to its newest non-empty reading, or is "Not measured" (row text "No data yet",
-   counted in the note under the figures) when it has none. A snapshot with any non-zero figure, or any null one, is a reading.
+Before that change the poller wrote `int(metrics.get("views", 0) or 0)`, a **full row of zeros**, and those rows are still in
+the table, so the dashboard keeps both rules (`lib/resultsDashboard/aggregate.ts`, `buildVideoResults`):
+
+1. A snapshot whose views, likes, comments, watch minutes and average duration are **all NULL or all exactly 0** is treated as
+   "no data came back". It is skipped; the video falls back to its newest non-empty reading, or is "Not measured" (row text "No
+   data yet", counted in the note under the figures) when it has none. A snapshot with any other figure is a reading; its NULL
+   figures stay "not measured".
 2. An average duration of exactly 0 next to views > 0 is **unknown** (null), so it cannot pull the views-weighted average down.
 3. A snapshot dated **before the video's publish day** cannot be a reading of that video and is excluded (not shown, not counted).
 
-**Follow-up (worker/database, not in this PR):** the poller should store NULL for metrics YouTube did not return. Then rules 1 and
-2 become unnecessary and a stored 0 is always a measured 0.
+The all-zero rule cannot be retired while legacy rows exist: it also hides a genuinely measured all-zero row, which cannot be told
+from a legacy empty one. Retiring it would need a backfill (a migration of its own), not part of this change.
 
 **Known limit, not hidden:** the poll as scheduled (`poll_own_channel_metrics()` with its default `days=1`) reads a video only
 around the day it is published. So by default most readings are early-life readings, not current ones. The dashboard says "day N

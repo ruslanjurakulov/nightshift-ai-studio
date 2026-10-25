@@ -111,6 +111,45 @@ class StateStoreTestCase(unittest.TestCase):
             self.assertEqual(len(history), 1)
             self.assertEqual(history[0]["views"], 150)
 
+    def test_metrics_snapshot_stores_none_as_null_not_zero(self):
+        with StateStore(self.db_path) as store:
+            store.record_video(video_id="v1", title="Test Video")
+            store.record_metrics_snapshot(
+                video_id="v1", snapshot_date="2026-01-01", views=None, likes=None, comment_count=None,
+                watch_time_minutes=None, average_view_duration_seconds=None,
+            )
+            row = store.latest_metrics("v1")
+            for column in ("views", "likes", "comment_count", "watch_time_minutes", "average_view_duration_seconds"):
+                self.assertIsNone(row[column], column)
+
+    def test_an_unmeasured_repoll_of_the_same_day_keeps_the_earlier_measurement(self):
+        # A second poll on a day when YouTube returned nothing must not wipe what the first one measured.
+        with StateStore(self.db_path) as store:
+            store.record_video(video_id="v1", title="Test Video")
+            store.record_metrics_snapshot(
+                video_id="v1", snapshot_date="2026-01-01", views=100, likes=7, comment_count=3,
+                watch_time_minutes=50.0, average_view_duration_seconds=30.0,
+            )
+            store.record_metrics_snapshot(
+                video_id="v1", snapshot_date="2026-01-01", views=None, likes=None, comment_count=None,
+                watch_time_minutes=None, average_view_duration_seconds=None,
+            )
+            row = store.latest_metrics("v1")
+            self.assertEqual(
+                (row["views"], row["likes"], row["comment_count"], row["watch_time_minutes"],
+                 row["average_view_duration_seconds"]),
+                (100, 7, 3, 50.0, 30.0),
+            )
+
+    def test_a_measured_zero_does_overwrite_an_earlier_value(self):
+        # Only None means "not measured"; 0 is a reading and wins.
+        with StateStore(self.db_path) as store:
+            store.record_video(video_id="v1", title="Test Video")
+            store.record_metrics_snapshot(video_id="v1", snapshot_date="2026-01-01", views=100, likes=7)
+            store.record_metrics_snapshot(video_id="v1", snapshot_date="2026-01-01", views=0, likes=0)
+            row = store.latest_metrics("v1")
+            self.assertEqual((row["views"], row["likes"]), (0, 0))
+
     def test_nonexistent_video_returns_none_or_empty(self):
         with StateStore(self.db_path) as store:
             self.assertIsNone(store.get_video("does-not-exist"))
