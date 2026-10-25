@@ -648,6 +648,44 @@ class WholePublishDeadline(Loop):
         self.assertEqual(fx.posts(), [])
 
 
+class AnAnswerThatDrips(Loop):
+    """A server that sends a short answer one byte at a time must be cut at the wall-clock limit, not after the whole
+    buffer finally fills: ``iter_content(65536)`` waited for 64 KiB, so a 60-byte answer dripping 0.3 s a byte was read for
+    18 s against a 2 s limit."""
+
+    def drip(self, delay):
+        raw = b'{"data": {"id": "' + MEDIA.encode() + b'"}}'
+        return Resp(200, raw=raw, drip_s=delay)
+
+    def test_it_is_cut_near_the_limit_not_after_the_whole_body(self):
+        import time as _t
+        FakeX(self.vendor, init=self.drip(0.15))
+        a = self.adapter(read_seconds=1.0)
+        t0 = _t.monotonic()
+        with self.assertRaises(sp.PublishStop) as e:
+            a.publish(tok(), self.path, "t")
+        took = _t.monotonic() - t0
+        self.assertEqual(e.exception.reason, "upload_failed")
+        self.assertLess(took, 3.0)                  # the body alone would take 40 x 0.15 = 6 s
+        self.assertEqual(self.vendor.seen("POST", f"{A}/media/upload/{MEDIA}/append"), [])
+
+    def test_the_same_answer_arriving_fast_enough_is_read(self):
+        fx = FakeX(self.vendor, init=self.drip(0.005))
+        self.assertEqual(self.go(read_seconds=5.0)["result_id"], POST)
+
+
+class TheHeartbeatDoesNotExtendTheDeadline(Loop):
+    def test_a_beating_heartbeat_still_ends_at_the_whole_publish_deadline(self):
+        beats = []
+        fx = FakeX(self.vendor, finalize=Resp(200, {"data": {"processing_info": {"state": "pending"}}}),
+                   statuses=[ok_status("in_progress")])
+        e = self.stops(clock=StepClock(400.0), deadline_seconds=3000.0, max_wait=10 ** 9, read_seconds=10 ** 9,
+                       heartbeat=lambda: beats.append(1))
+        self.assertIn(e.reason, ("timeout", "upload_failed"))
+        self.assertEqual(fx.posts(), [])
+        self.assertTrue(beats)                       # it did beat, and it still ended
+
+
 class NoCompressedAnswers(Loop):
     def test_every_request_asks_for_an_uncompressed_answer(self):
         FakeX(self.vendor, finalize=Resp(200, {"data": {"processing_info": {"state": "pending"}}}),

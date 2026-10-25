@@ -109,12 +109,26 @@ def _read_doc(r, *, clock: Callable[[], float] = time.monotonic, seconds: float 
         _close(r)
         return None
     stream = getattr(r, "iter_content", None)
+    read1 = getattr(getattr(r, "raw", None), "read1", None)
     try:
-        if stream is None:
+        if read1 is not None and callable(read1):
+            # ``read1`` returns whatever has ARRIVED (at least one byte), so the clock is looked at after every little read:
+            # an answer that drips one byte every few seconds is cut at the limit, not after the whole chunk finally fills
+            # (``iter_content(65536)`` waits for 64 KiB). It also hands back the bytes as sent, never decompressed.
+            buf = bytearray()
+            while True:
+                chunk = read1(16384)
+                if not chunk:
+                    break
+                buf += chunk
+                if len(buf) > MAX_API_BODY or clock() > deadline:
+                    return None
+            body = json.loads(bytes(buf).decode("utf-8")) if buf else None
+        elif stream is None:
             body = r.json()
         else:
             buf = bytearray()
-            for chunk in stream(chunk_size=65536):
+            for chunk in stream(chunk_size=1024):
                 buf += chunk
                 if len(buf) > MAX_API_BODY or clock() > deadline:
                     return None
