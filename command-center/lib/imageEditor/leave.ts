@@ -36,3 +36,23 @@ export function leavesThePage(link: LeaveLink, click: LeaveClick, here: string):
   if (to.origin !== from.origin) return false;
   return to.pathname !== from.pathname || to.search !== from.search;
 }
+
+/** A confirm that answers "no" faster than a person can read it was not shown (the browser blocks dialogs it dislikes). */
+export const INSTANT_DIALOG_MS = 50;
+
+export interface DialogGuard {
+  /** How many "no" answers in a row came back instantly. */
+  instant: number;
+}
+
+/**
+ * What to do with the answer of the leave confirm. A real "no" keeps the person on the page. But a browser that suppresses
+ * dialogs answers "no" at once, every time, which would make every link dead: the second instant "no" in a row is let through.
+ * A "yes", or a "no" that took time (a person decided), starts the count again.
+ */
+export function afterConfirm(guard: DialogGuard, answeredYes: boolean, elapsedMs: number): { stay: boolean; guard: DialogGuard } {
+  if (answeredYes) return { stay: false, guard: { instant: 0 } };
+  if (elapsedMs >= INSTANT_DIALOG_MS) return { stay: true, guard: { instant: 0 } };
+  const instant = guard.instant + 1;
+  return instant >= 2 ? { stay: false, guard: { instant: 0 } } : { stay: true, guard: { instant } };
+}

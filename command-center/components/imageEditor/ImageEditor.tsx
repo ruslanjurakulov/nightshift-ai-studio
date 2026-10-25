@@ -7,6 +7,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { formatMediaBytes } from "@/lib/media";
 import { EditorCanvas, type CanvasKey, type Tool } from "@/components/imageEditor/EditorCanvas";
 import { AdjustPanel, AiPanel, CropPanel, LayerPanel, useLayerName } from "@/components/imageEditor/panels";
+import { isTextEntry } from "@/lib/imageEditor/focus";
 import { useLeaveGuard } from "@/components/imageEditor/useLeaveGuard";
 import { previewScale, renderBase } from "@/components/imageEditor/render";
 import { NEUTRAL_ADJUST, clampAdjust, type AdjustKey } from "@/lib/imageEditor/adjust";
@@ -303,9 +304,10 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
     announce(e.announceRedo);
   };
   const onShortcut = (ev: React.KeyboardEvent) => {
-    // Also while a field is focused: every field here commits into this history (a typed word is one coalesced step), and the browser's
-    // own undo does nothing for a range, a select or a checkbox and fights the controlled text boxes.
     if (!(ev.ctrlKey || ev.metaKey)) return;
+    // A text box keeps the browser's own undo of what was typed in it. Everything else that can have focus (a range, a select, a
+    // checkbox, a colour, a button, the canvas) has no undo of its own, so the editor's history answers.
+    if (isTextEntry(ev.target)) return;
     const k = ev.key.toLowerCase();
     if (k === "z") {
       ev.preventDefault();

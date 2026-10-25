@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { leavesThePage } from "@/lib/imageEditor/leave";
+import { afterConfirm, leavesThePage } from "@/lib/imageEditor/leave";
 
 /**
  * While `dirty`: the browser's own prompt on a tab close or reload, and `message` as a confirm before an in-app link is
@@ -14,11 +14,16 @@ export function useLeaveGuard(dirty: boolean, message: string): void {
     const warn = (ev: BeforeUnloadEvent) => {
       ev.preventDefault();
     };
+    let guard = { instant: 0 };
     const click = (ev: MouseEvent) => {
       const a = (ev.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
       if (!a) return;
       if (!leavesThePage({ href: a.getAttribute("href") ?? "", target: a.target, download: a.hasAttribute("download") }, ev, window.location.href)) return;
-      if (!window.confirm(message)) {
+      const t0 = performance.now();
+      const yes = window.confirm(message);
+      const verdict = afterConfirm(guard, yes, performance.now() - t0);
+      guard = verdict.guard;
+      if (verdict.stay) {
         ev.preventDefault();
         ev.stopPropagation();
       }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * A whole-number field that commits while the person types (a number that is valid right now) but lets the box be empty
@@ -26,6 +26,16 @@ export function NumField({
 }) {
   const [text, setText] = useState<string | null>(null);
   const focused = useRef(false);
+  // The value this box itself last asked for (after its own clamp). A change of `value` to anything ELSE came from outside (an undo, a
+  // keyboard nudge on the canvas): the half-typed text no longer describes the number, so it is dropped and the box shows the number.
+  const asked = useRef<number | null>(null);
+  useEffect(() => {
+    if (value === asked.current) {
+      asked.current = null;
+      return;
+    }
+    setText(null);
+  }, [value]);
   const shown = text !== null && focused.current ? text : String(value);
   return (
     <div className="flex min-w-0 flex-col gap-1">
@@ -46,11 +56,14 @@ export function NumField({
             setText(raw);
             if (/^-?\d{1,6}$/.test(raw)) {
               const n = Number(raw);
-              onCommit(Math.max(min, Math.min(max, n)));
+              const clamped = Math.max(min, Math.min(max, n));
+              asked.current = clamped;
+              onCommit(clamped);
             }
           }}
           onBlur={() => {
             focused.current = false;
+            asked.current = null;
             setText(null);
             onEnd?.();
           }}

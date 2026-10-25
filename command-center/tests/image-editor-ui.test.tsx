@@ -186,7 +186,7 @@ describe("editing", () => {
     expect(screen.getByText("The new file will be 300 × 400 px.")).toBeTruthy();
   });
 
-  it("Ctrl+Z undoes and Ctrl+Shift+Z redoes, also while a field, a slider or a select has focus", async () => {
+  it("Ctrl+Z undoes and Ctrl+Shift+Z redoes, also while a slider, a select, a checkbox or the canvas has focus", async () => {
     await open();
     fireEvent.click(screen.getByRole("button", { name: e.rotateLeft }));
     const canvas = screen.getByTestId("canvas");
@@ -194,9 +194,9 @@ describe("editing", () => {
     expect(screen.getByText("The new file will be 400 × 300 px.")).toBeTruthy();
     fireEvent.keyDown(canvas, { key: "z", ctrlKey: true, shiftKey: true });
     expect(screen.getByText("The new file will be 300 × 400 px.")).toBeTruthy();
-    fireEvent.keyDown(screen.getByLabelText(e.cropW), { key: "z", ctrlKey: true });
+    fireEvent.keyDown(screen.getByRole("button", { name: e.rotateRight }), { key: "z", ctrlKey: true });
     expect(screen.getByText("The new file will be 400 × 300 px.")).toBeTruthy();
-    fireEvent.keyDown(screen.getByLabelText(e.cropW), { key: "Z", metaKey: true, shiftKey: true });
+    fireEvent.keyDown(screen.getByRole("button", { name: e.rotateRight }), { key: "Z", metaKey: true, shiftKey: true });
     expect(screen.getByText("The new file will be 300 × 400 px.")).toBeTruthy();
     tool(e.tools.adjust);
     fireEvent.change(screen.getByLabelText(e.brightness), { target: { value: "30" } });
@@ -207,6 +207,23 @@ describe("editing", () => {
     tool(e.tools.text);
     fireEvent.click(screen.getByRole("button", { name: e.addText }));
     fireEvent.keyDown(screen.getByLabelText(e.font), { key: "z", ctrlKey: true });
+    expect(screen.getByTestId("canvas").getAttribute("data-layers")).toBe("0");
+  });
+
+  it("in a text box the browser keeps its own undo: the editor's history does not answer Ctrl+Z there", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: e.rotateRight }));
+    const field = screen.getByLabelText(e.cropW);
+    const typed = fireEvent.keyDown(field, { key: "z", ctrlKey: true });
+    expect(typed).toBe(true); // not cancelled: the browser undoes the typing
+    expect(screen.getByText("The new file will be 300 × 400 px.")).toBeTruthy();
+    tool(e.tools.text);
+    fireEvent.click(screen.getByRole("button", { name: e.addText }));
+    const words = screen.getByLabelText(e.textLabel);
+    expect(fireEvent.keyDown(words, { key: "z", ctrlKey: true })).toBe(true);
+    expect(screen.getByTestId("canvas").getAttribute("data-layers")).toBe("1");
+    // and a select / checkbox / range has none, so the history answers
+    expect(fireEvent.keyDown(screen.getByLabelText(e.font), { key: "z", ctrlKey: true })).toBe(false);
     expect(screen.getByTestId("canvas").getAttribute("data-layers")).toBe("0");
   });
 
@@ -548,6 +565,22 @@ describe("leaving with unsaved edits", () => {
     confirm.mockReturnValue(true);
     a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(seen).toEqual([false]);
+    a.remove();
+  });
+
+  it("a browser that blocks dialogs (an instant 'no' twice in a row) does not leave every link dead", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: e.rotateRight }));
+    const a = link();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    seen.length = 0;
+    const first = new MouseEvent("click", { bubbles: true, cancelable: true });
+    a.dispatchEvent(first);
+    expect(first.defaultPrevented).toBe(true);
+    const second = new MouseEvent("click", { bubbles: true, cancelable: true });
+    a.dispatchEvent(second);
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(seen).toEqual([false]); // the second click went through
     a.remove();
   });
 
