@@ -240,12 +240,14 @@ class Registry(unittest.TestCase):
             self.assertAlmostEqual(float(credits), want[unit], places=6, msg=unit)
 
     def test_no_other_model_is_priced_by_sound_or_pins_a_resolution(self):
-        # seedance-2.0 / 2.5, the grok-imagine-video, minimax-h3 and happyhorse-1.1 entries pin a resolution too (their
-        # price depends on it) but are gated (terms_gate) and seeded with no credit_prices row: 0070 prices only the three below.
+        # seedance-2.0 / 2.5, the grok-imagine-video, minimax-h3, happyhorse-1.1 and ltx entries pin a resolution too
+        # (their price depends on it) but are gated (terms_gate) and seeded with no credit_prices row: 0070 prices only
+        # the three below.
         self.assertEqual(sorted(m.id for m in reg.load().values() if m.default_resolution),
-                         ["grok-imagine-video-1.5", "grok-imagine-video-1.5-lite", "happyhorse-1.1", "minimax-h3",
-                          "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max", "seedance-1.5-pro", "seedance-2.0",
-                          "seedance-2.5", "wan-2.7"])
+                         ["grok-imagine-video-1.5", "grok-imagine-video-1.5-lite", "happyhorse-1.1", "ltx-2.3-fast",
+                          "ltx-2.3-pro", "ltx-2.5-fast", "ltx-2.5-pro", "minimax-h3", "minimax-h3-highspeed",
+                          "minimax-h3-lite", "minimax-h3-max", "seedance-1.5-pro", "seedance-2.0", "seedance-2.5",
+                          "wan-2.7"])
         self.assertEqual(sorted(m.id for m in reg.load().values() if m.priced_by_audio),
                          ["kling-v3", "seedance-1.5-pro"])
 

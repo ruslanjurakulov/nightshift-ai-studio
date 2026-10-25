@@ -30,7 +30,7 @@ request), `command-center/app/api/owner/model-keys/route.ts`, `command-center/ap
 ## The flow
 
 1. The card's **Get a key** link opens the vendor's own page (`target=_blank`, `rel="noopener noreferrer"`). Only a link read in the
-   vendor's own documentation is offered; Kling's is not (its documentation site is JavaScript-only), so its card says "link unverified".
+   vendor's own documentation is offered; Kling's is not (its documentation site is JavaScript-only) and neither is Lightricks's (its page names no address), so those cards say "link unverified".
 2. The owner pastes the key into a password field (no `name`, so it can never be part of a native form submission or a URL) and presses
    **Verify**. The field is emptied the moment the key is sent.
 3. `POST /api/owner/model-keys` `{action: "verify", provider, key}`. In order: same origin (403) -> switch (404) -> signed in (401) ->
@@ -71,7 +71,9 @@ Every request below is a GET that is free and creates nothing. The page was writ
 | MiniMax | `MINIMAX_API_KEY` | `api.minimax.io` `/v1/models` | `Authorization: Bearer` | https://platform.minimax.io/docs/api-reference/models/openai/list-models | https://platform.minimax.io/user-center/basic-information/interface-key (https://platform.minimax.io/docs/guides/quickstart-preparation) |
 | Runway | `RUNWAYML_API_SECRET` | `api.dev.runwayml.com` `/v1/organization` | `Authorization: Bearer` + `X-Runway-Version: 2024-11-06` | https://docs.dev.runwayml.com/api.md | https://dev.runway.com (https://docs.dev.runwayml.com/ai-context.md) |
 | Luma | `LUMA_AGENTS_API_KEY` | `agents.lumalabs.ai` `/v1/files?limit=1` | `Authorization: Bearer` | https://docs.agents.lumalabs.ai/api/resources/files/methods/list/ | https://platform.lumalabs.ai/ (https://docs.lumalabs.ai/reference/getcredits.md) |
+| Krea | `KREA_API_KEY` | `api.krea.ai` `/jobs?limit=1` | `Authorization: Bearer` | https://api.krea.ai/openapi.json (the OpenAPI document the Krea docs link; `GET /jobs` lists the token's own jobs, 401 for a bad token) | https://www.krea.ai/settings/api-tokens (https://www.krea.ai/docs/developers/api-keys-and-billing.md) |
 | Alibaba Cloud (Wan) | `WAN_API_KEY` | `dashscope-intl.aliyuncs.com` `/api/v1/models?page_size=1` | `Authorization: Bearer` | https://www.alibabacloud.com/help/en/model-studio/list-models | https://modelstudio.console.alibabacloud.com/ap-southeast-1/settings/api-key (https://www.alibabacloud.com/help/en/model-studio/get-api-key) |
+| **Lightricks (LTX)** | `LTX_API_KEY` | **format only**: LTX's own OpenAPI document (https://docs.ltx.io/openapi.json) has no read without a job id; every other path is a POST that starts a billed generation, so no free account, credits or models call exists | – | https://docs.ltx.io/openapi.json | **link unverified** (the authentication page says "Sign in to the Developer Console" and names no address in the text read) |
 | **Kling** | `KLING_API_KEY` or `KLING_ACCESS_KEY` + `KLING_SECRET_KEY` | **format only**: no free account endpoint could be confirmed (the official API reference is a JavaScript-only site) | – | – | **link unverified** |
 | **BytePlus ModelArk (Seedance)** | `SEEDANCE_API_KEY` | **format only**: the model list in the documentation is a control-plane call of the BytePlus account, not a call made with a ModelArk API key; no free call for the key itself is documented | – | https://docs.byteplus.com/en/docs/modelark/manage-api-keys | https://console.byteplus.com/ark/region:ark+ap-southeast-1/apiKey (same page) |
 
@@ -87,6 +89,8 @@ Vendor-specific honesty:
   region/workspace specific, so a valid key can be refused (or the host unreachable) here.
 * **MiniMax, Luma, Alibaba, AssemblyAI**: the response *shape* is checked from the documentation's description (`data` array,
   `page_details`, `output`, any object for Luma). A vendor answering 200 in another shape reads "could not reach", never "API verified".
+* **Krea**: the check is `GET /jobs?limit=1` (the token's own jobs; the answer must hold an `items` array). Krea's OpenAPI document lists only 401 for a bad
+  token. Nothing was called while building this. **Lightricks** has no free read at all, so its key is never sent anywhere.
 * Unconfirmed everywhere: how each vendor words its error body (the body is never read for meaning), and rate limits of these endpoints.
 
 ## Security notes for the reviewer
