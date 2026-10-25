@@ -155,7 +155,8 @@ class Registry(unittest.TestCase):
             self.assertIsNone(e.raw["pricing"]["provider_usd_per_unit"])
 
     def test_no_other_model_claims_tiers(self):
-        self.assertEqual([m.id for m in reg.load().values() if m.qualities], list(OPENAI))
+        # grok-imagine-image-2.0 bills by quality too (xAI: 'auto' bills whichever tier it picks); gated and unpriced.
+        self.assertEqual([m.id for m in reg.load().values() if m.qualities], [*OPENAI, "grok-imagine-image-2.0"])
 
     def test_credit_units_follow_the_naming_rule(self):
         self.assertEqual(reg.credit_unit_for("openai-gpt-image-2", "image", "medium"),

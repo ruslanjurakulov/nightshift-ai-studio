@@ -16,6 +16,8 @@ from modules import model_registry as reg
 from modules.capabilities import ADAPTERS
 from tools import probe_models
 
+GROK = ("grok-imagine-video-1.5", "grok-imagine-video-1.5-lite", "grok-imagine-image-2.0")
+
 #: Every adapter finds a key, so the only reason a model is not probed is its terms gate.
 ENV = {name: "k" * 24 for cls in ADAPTERS.values() for name in cls.key_env}
 
@@ -29,11 +31,24 @@ class SelectTests(unittest.TestCase):
     def test_the_registry_has_both_kinds(self):
         self.assertTrue(self.gated and self.clear)
         self.assertIn("seedance-2.0", self.gated)
+        for mid in GROK:
+            self.assertEqual(reg.get(mid).terms_gate, "terms_review_required", mid)   # xAI terms were not readable
+            self.assertIn(mid, self.gated)
         self.assertIn("luma-ray-3.2", self.gated)
 
     def test_all_skips_every_gated_model_and_keeps_every_clear_one(self):
         chosen = {e.id for e in probe_models.select(self.entries, [], None, True)}
         self.assertEqual(chosen, self.clear)
+
+    def test_all_leaves_out_every_grok_entry_and_a_named_one_comes_back(self):
+        chosen = {e.id for e in probe_models.select(self.entries, [], None, True)}
+        self.assertFalse(chosen & set(GROK), chosen & set(GROK))
+        for mid in GROK:
+            named = {e.id for e in probe_models.select(self.entries, [mid], None, True)}
+            self.assertEqual(named, self.clear | {mid}, mid)
+        # by capability too: the xai video and image entries stay out of --all --capability runs
+        for cap in ("t2v", "i2v", "t2i"):
+            self.assertFalse({e.id for e in probe_models.select(self.entries, [], cap, True)} & set(GROK), cap)
 
     def test_a_gated_model_is_probed_when_named_even_with_all(self):
         chosen = {e.id for e in probe_models.select(self.entries, ["seedance-2.0"], None, True)}
@@ -72,9 +87,14 @@ class MainTests(unittest.TestCase):
         gated = {e.id for e in reg.registry().values() if e.terms_gate}
         self.assertTrue(called)
         self.assertFalse(set(called) & gated, set(called) & gated)
-        for mid in ("seedance-2.0", "seedream-4.5", "luma-ray-3.2"):
+        for mid in ("seedance-2.0", "seedream-4.5", "luma-ray-3.2", *GROK):
             self.assertIn(f"gated {mid}", text)             # said in the log, nothing else about it
             self.assertNotIn(f"ok {mid}", text)
+
+    def test_naming_a_grok_model_probes_it_and_only_it(self):
+        for mid in GROK:
+            _, called, _ = self.run_main(["--model", mid])
+            self.assertEqual(called, [mid], mid)
 
     def test_naming_a_gated_model_probes_it(self):
         _, called, _ = self.run_main(["--model", "seedance-2.0"])
@@ -86,6 +106,9 @@ class MainTests(unittest.TestCase):
         text = out.getvalue()
         self.assertNotRegex(text, r"(?m)^seedance-2\.0 ")
         self.assertIn("SKIP seedance-2.0: terms gate written_consent_required is open", text)
+        self.assertIn("SKIP grok-imagine-video-1.5: terms gate terms_review_required is open", text)
+        for mid in GROK:
+            self.assertNotRegex(text, rf"(?m)^{mid.replace('.', chr(92) + '.')} ")
 
 
 class WorkflowTests(unittest.TestCase):
