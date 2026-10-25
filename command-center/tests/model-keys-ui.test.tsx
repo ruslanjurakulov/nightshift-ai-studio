@@ -111,6 +111,7 @@ describe("how the key is checked is said, per vendor", () => {
     expect(card("bfl").textContent).toContain("GET /v1/credits on api.bfl.ai");
     const k = card("kling");
     expect(k.textContent).toContain(m.card.howFormat);
+    expect(m.card.howFormat).toMatch(/sent to our server for a shape check only.*never sent to the vendor and never stored/);
     expect(k.textContent).toContain(m.card.formatOnlyNote);
     expect(card("openai").textContent).not.toContain(m.card.formatOnlyNote);
     expect(k.textContent).toContain(m.card.pairedHint);
@@ -122,7 +123,10 @@ describe("the key field", () => {
     show();
     const input = card("openai").querySelector('input[type="password"]') as HTMLInputElement;
     expect(input.getAttribute("name")).toBeNull();
-    expect(input.getAttribute("autocomplete")).toBe("off");
+    // Chrome and Firefox ignore autocomplete=off on a password field; new-password keeps them from offering to save the vendor key.
+    expect(input.getAttribute("autocomplete")).toBe("new-password");
+    expect(input.getAttribute("data-1p-ignore")).not.toBeNull();
+    expect(input.getAttribute("data-lpignore")).toBe("true");
     expect(input.getAttribute("spellcheck")).toBe("false");
     expect(screen.getAllByLabelText(m.card.keyLabel).length).toBe(13);
     expect((input.closest("form") as HTMLFormElement).getAttribute("method")?.toLowerCase()).toBe("post");

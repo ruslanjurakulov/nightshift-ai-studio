@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
+  ALL_ENV_NAMES,
   MODEL_KEY_PROVIDERS,
   MODEL_KEY_PROVIDER_IDS,
   buildCards,
@@ -39,7 +40,7 @@ describe("the closed set of vendors", () => {
     const models = Array.isArray(registry) ? registry : registry.models;
     const providers = new Set(models.map((m) => m.provider));
     // The registry names Google "google", ByteDance "bytedance", Alibaba "alibaba": the same ids as here, on purpose.
-    // `unassigned-video-vendor` is a placeholder for the generic video ops, not a vendor. xAI is here ahead of its registry entries (#607).
+    // `unassigned-video-vendor` is a placeholder for the generic video ops, not a vendor.
     providers.delete("unassigned-video-vendor");
     const missing = [...providers].filter((p) => !(MODEL_KEY_PROVIDER_IDS as readonly string[]).includes(p));
     expect(missing, `registry providers with no entry in lib/model-keys.ts: ${missing}`).toEqual([]);
@@ -169,11 +170,10 @@ describe("the key page link", () => {
 });
 
 describe("the environment names", () => {
-  it("are names the worker deploy maps (deploy/.env.worker.example and deploy_web.yml), except xAI whose adapters are still in review", () => {
+  it("are names the worker deploy maps (deploy/.env.worker.example and deploy_web.yml)", () => {
     const example = read("deploy/.env.worker.example");
     const deploy = read(".github/workflows/deploy_web.yml");
     for (const p of MODEL_KEY_PROVIDERS) {
-      if (p.id === "xai") continue;
       for (const set of p.envSets) {
         for (const name of set) {
           expect(example, `${p.id} ${name} in deploy/.env.worker.example`).toMatch(new RegExp(`^${name}=`, "m"));
@@ -192,6 +192,19 @@ describe("the environment names", () => {
     expect(envKeySet(kling, null)).toBeNull();
     const google = getModelKeyProvider("google") as ModelKeyProvider;
     expect(envKeySet(google, ["VEO_API_KEY"])).toBe(true);
+    // a listing that may be cut short: a name seen is set, a name not seen is UNKNOWN (never "not set")
+    expect(envKeySet(google, ["VEO_API_KEY"], false)).toBe(true);
+    expect(envKeySet(google, ["OTHER"], false)).toBeNull();
+    expect(envKeySet(google, ["OTHER"], true)).toBe(false);
+    expect(envKeySet(google, null, true)).toBeNull();
+  });
+
+  it("asks GitHub about every name any vendor's sets mention (the Providers board's allowlist leaves out six of them)", () => {
+    for (const name of ["XAI_API_KEY", "ASSEMBLYAI_API_KEY", "RUNWAYML_API_SECRET", "LUMA_AGENTS_API_KEY", "KLING_ACCESS_KEY", "KLING_SECRET_KEY", "KLING_API_KEY", "SEEDANCE_API_KEY"]) {
+      expect(ALL_ENV_NAMES, name).toContain(name);
+    }
+    expect(new Set(ALL_ENV_NAMES).size).toBe(ALL_ENV_NAMES.length);
+    for (const p of MODEL_KEY_PROVIDERS) for (const set of p.envSets) for (const n of set) expect(ALL_ENV_NAMES).toContain(n);
   });
 });
 
@@ -212,6 +225,11 @@ describe("key source: which key a run uses", () => {
     expect(by.kling.host).toBeNull();
     expect(by.openai.host).toBe("api.openai.com");
     expect(buildCards(null).every((c) => c.source === "unknown")).toBe(true);
+    // a listing that may be cut short: seen -> env, not seen -> unknown (never none)
+    const cut = Object.fromEntries(buildCards(["OPENAI_API_KEY"], false).map((c) => [c.id, c.source]));
+    expect(cut.openai).toBe("env");
+    expect(cut.bfl).toBe("unknown");
+    expect(Object.values(cut).includes("none")).toBe(false);
     expect(cards).toHaveLength(MODEL_KEY_PROVIDERS.length);
     // a card carries nothing about any key
     expect(Object.keys(cards[0]).sort()).toEqual(
@@ -309,7 +327,7 @@ describe("the request body", () => {
 });
 
 describe("nothing is persisted", () => {
-  const PERSIST = /\.rpc\(|\.from\(|supabase\/server|createClient|vault|logAudit|localStorage|sessionStorage|indexedDB|document\.cookie|cookies\(|writeFile|appendFile|createWriteStream|\.insert\(|\.upsert\(|\.update\(/i;
+  const PERSIST = /\.rpc\(|\.from\(\s*["'`]|supabase\/server|createClient|vault|logAudit|localStorage|sessionStorage|indexedDB|document\.cookie|cookies\(|writeFile|appendFile|createWriteStream|\.insert\(|\.upsert\(|\.update\(/i;
   const FILES = [
     "command-center/lib/model-keys.ts",
     "command-center/lib/server/model-keys.ts",

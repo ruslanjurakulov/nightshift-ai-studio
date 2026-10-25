@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
  *
  * Behind NIGHTSHIFT_MODEL_KEYS (a same-origin POST gets 404 while it is not exactly `on`). The checks, in order, as the other operator POSTs:
  * our own page sent it (403, the requireSameOrigin wrapper below) -> the switch (404) -> signed in (401) -> the platform OWNER, not merely an
- * admin (403) -> the second factor (401/403) and its recent-code rule -> a per-person rate limit (429) -> a small JSON body -> the vendor must
+ * admin (403) -> the second factor (401/403) and its recent-code rule -> a per-person rate limit (429) -> Content-Type application/json (415) -> a small JSON body -> the vendor must
  * be in the closed list (400) and the key one printable token (400) -> ONE free GET to the vendor's fixed host with a short timeout (a vendor
  * with no free check is not called at all: only the key's shape was checked, and the answer says `format_only`).
  */
@@ -42,6 +42,9 @@ async function handle(request: Request): Promise<Response> {
   if (stale) return stale;
   const limited = rateLimitRefusal(user.id, MODEL_KEY_RATE);
   if (limited) return limited;
+
+  // Only a JSON body is read (a form post or text/plain is never parsed as one).
+  if (!/^application\/json\s*(;|$)/i.test(request.headers.get("content-type") ?? "")) return reply(415, { ok: false, error: "unsupported_media_type" });
 
   let body: unknown;
   try {

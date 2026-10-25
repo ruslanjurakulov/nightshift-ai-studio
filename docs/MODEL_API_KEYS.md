@@ -18,7 +18,10 @@ request), `command-center/app/api/owner/model-keys/route.ts`, `command-center/ap
   card shows ("Nothing is stored. To use a verified key, add it to GitHub Actions secrets and the worker environment as `OPENAI_API_KEY`").
   Workers read their keys from the environment exactly as before.
 * It does not change which key a run uses. Each card shows which key a run uses today, from the **names** of the GitHub secrets only (never
-  their values): `env` (the secret is set), `none`, or `unknown` (GitHub is not configured or did not answer; never shown as "none").
+  their values): `env` (the secret is set), `none`, or `unknown` (GitHub is not configured, did not answer, or reported more secrets than were
+  read; never shown as "none"). The page asks about **every** name the vendors' sets mention (`ALL_ENV_NAMES`), not the Providers board's
+  shorter allowlist, and pages through all of the listing (100 a page, at most 10 pages); a name that was not seen in a listing that may be cut
+  short is `unknown`.
 * It writes no audit row. The only existing audit action that could carry it, `secret.write`, would say "a secret was written" when nothing
   was; a new action would need `audit_action_allowed` replaced in a migration, which this design deliberately avoids. The server logs one
   line per check (`[model-key] user=<id prefix> provider=<vendor> outcome=<verdict>`), nothing about the key. If an audit trail of checks is
@@ -32,7 +35,7 @@ request), `command-center/app/api/owner/model-keys/route.ts`, `command-center/ap
    **Verify**. The field is emptied the moment the key is sent.
 3. `POST /api/owner/model-keys` `{action: "verify", provider, key}`. In order: same origin (403) -> switch (404) -> signed in (401) ->
    **platform owner** (403) -> second factor (`guardAdminPost`, `requireRecentMfa`) -> rate limit per person (20 per 10 minutes, in
-   process, 429) -> body <= 16 KB -> vendor in the closed list (400) -> key is one printable token of 16-512 characters (400).
+   process, 429) -> `Content-Type: application/json` (else 415) -> body <= 16 KB -> vendor in the closed list (400) -> key is one printable token of 16-512 characters (400).
 4. **One free GET to the vendor's fixed host**, with the key in the vendor's documented auth header, an 8 second timeout and
    `redirect: "manual"`. No part of the URL is typed by anyone. A vendor with no free check is **not called at all**: only the key's shape is
    checked and the verdict is `format_only`.
@@ -59,7 +62,7 @@ Every request below is a GET that is free and creates nothing. The page was writ
 | --- | --- | --- | --- | --- | --- |
 | OpenAI | `OPENAI_API_KEY` | `api.openai.com` `/v1/models` | `Authorization: Bearer` | https://developers.openai.com/api/reference/resources/models/methods/list | https://platform.openai.com/api-keys (https://developers.openai.com/api/docs/quickstart) |
 | Google (Gemini, Veo) | `GEMINI_API_KEY`, `VEO_API_KEY` | `generativelanguage.googleapis.com` `/v1beta/models` | `x-goog-api-key` | https://ai.google.dev/api/models | https://aistudio.google.com/apikey (https://ai.google.dev/gemini-api/docs/api-key) |
-| xAI | `XAI_API_KEY` (#607, not mapped yet) | `api.x.ai` `/v1/models` | `Authorization: Bearer` | https://docs.x.ai/developers/rest-api-reference/inference/models | https://console.x.ai/team/default/api-keys (https://docs.x.ai/developers/quickstart) |
+| xAI | `XAI_API_KEY` | `api.x.ai` `/v1/models` | `Authorization: Bearer` | https://docs.x.ai/developers/rest-api-reference/inference/models | https://console.x.ai/team/default/api-keys (https://docs.x.ai/developers/quickstart) |
 | ElevenLabs | `ELEVENLABS_API_KEY` | `api.elevenlabs.io` `/v1/models` | `xi-api-key` | https://elevenlabs.io/docs/api-reference/models/list | https://elevenlabs.io/app/settings/api-keys (https://elevenlabs.io/docs/overview/administration/workspaces/api-keys) |
 | AssemblyAI | `ASSEMBLYAI_API_KEY` | `api.assemblyai.com` `/v2/transcript?limit=1` | `Authorization` (key as is) | https://www.assemblyai.com/docs/pre-recorded-audio/api-reference/transcripts/list | https://www.assemblyai.com/dashboard/home (https://www.assemblyai.com/docs/getting-started/transcribe-an-audio-file) |
 | Black Forest Labs | `BFL_API_KEY` | `api.bfl.ai` `/v1/credits` | `x-key` | https://docs.bfl.ml/api-reference/get-the-users-credits | https://dashboard.bfl.ai (https://docs.bfl.ml/quick_start/get_started) |
@@ -91,9 +94,8 @@ There is no database object to review. What to check in the code:
 
 1. **Owner only, in the application layer.** The route asks `requireRole("owner")` (the platform roster's owner, not an admin), then the second
    factor and the recent-code rule. There is no second, database-side check any more (the earlier design had one); the route is the gate.
-   Confirm in production who the roster calls owner (`select email, role from app_members where role = 'owner'`).
-2. **The key's path.** Browser -> HTTPS -> the Next.js route (request body) -> HTTPS header to the vendor. Check that the reverse proxy
-   (Caddy) access log does not record request bodies or the vendor request, and that no error reporter captures request bodies.
+2. **The key's path.** Browser -> HTTPS -> the Next.js route (request body) -> HTTPS header to the vendor. For a format-only vendor the key goes
+   to our server for a shape check only and nowhere else.
 3. **No persistence.** `tests/model-keys-registry.test.ts` ("nothing is persisted") fails if the feature's files mention a database client,
    an rpc, Vault, an audit write, browser storage, a cookie or a file write, if the route imports anything but the sign-in/role/gate helpers,
    or if any migration or SQL file mentions the old design's names.
@@ -101,6 +103,24 @@ There is no database object to review. What to check in the code:
    (tested); redirects are never followed.
 5. **Output.** The key is in no response, header, log line or thrown error (`redactKey`, `safeErrorText`; tested against a vendor that echoes
    the key back).
+6. **Only JSON is read.** Any other `Content-Type` is a 415 before the body is touched.
+
+## Production checks before the switch is turned on (the owner / the reviewer)
+
+Code cannot prove these; each is a setting on the server or in GitHub.
+
+* **Nothing records the POST body of `/api/owner/model-keys`.** Caddy (access log with a body field, `log` directives, `request_body` in a
+  debug config), any WAF or CDN in front, and any APM or error reporter (Sentry-style breadcrumbs, session replay, request capture) must not
+  keep request bodies for that path. The key is in that body once.
+* **`NIGHTSHIFT_ADMIN_MFA=enforce`** (docs/security/ADMIN_MFA.md). The route's second-factor checks only bite in `enforce`; in any other mode
+  a password-only owner session can verify keys.
+* **`APP_ORIGIN` is the real site origin.** The same-origin check (`requireSameOrigin`) compares the request's `Origin` with the public
+  origin (`APP_ORIGIN`, which compose derives from `DOMAIN`). Confirm it is set and is the address the owner uses.
+* **`GITHUB_SECRETS_TOKEN` scope.** This page needs only *Secrets: read* on the bot repository (it lists secret **names**). The token the
+  site already holds can also write secrets (the Providers board and `/api/setup/secrets`) and dispatch workflows. That is the real exposure
+  of any key, and it is not changed by this page: consider a second, read-only token for this page if the repository is ever shared.
+* **The owner roster.** `select email, role from app_members where role = 'owner'` must list exactly the people who may check keys here
+  (migration 0043 also returns `owner` for the default-organization roster while `app_members` is empty).
 
 ## Why Vault is not used (the owner's decision)
 

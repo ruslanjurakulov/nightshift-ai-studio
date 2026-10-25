@@ -16,8 +16,7 @@
  *   A generation endpoint is never a strategy: a check must not cost money or make anything (CLAUDE.md rule 6 asks to fail early; it does not
  *   ask to spend to find out).
  *
- * The vendors are the providers of schemas/model_registry.json (tests/model-keys-registry.test.ts compares them) plus xAI, whose adapters are
- * in review (#607). `unassigned-video-vendor` is a placeholder in the registry, not a vendor, and has no entry.
+ * The vendors are the providers of schemas/model_registry.json (tests/model-keys-registry.test.ts compares them). `unassigned-video-vendor` is a placeholder in the registry, not a vendor, and has no entry.
  */
 
 import { validateSecretValue } from "@/lib/server/secret-validators";
@@ -146,7 +145,6 @@ export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
     name: "xAI (Grok)",
     keyUrl: "https://console.x.ai/team/default/api-keys",
     keyUrlSource: "https://docs.x.ai/developers/quickstart",
-    // The adapters that read XAI_API_KEY are in review (#607); until they merge no deploy file maps it, so this reads "not set in the env".
     envSets: [["XAI_API_KEY"]],
     scopedKeys: false,
     strategy: json({
@@ -377,12 +375,20 @@ export function keySource(envSet: boolean | null): KeySource {
   return envSet ? "env" : "none";
 }
 
-/** Does `configured` (the GitHub secret names) hold every name of any one of the vendor's sets? `null` configured = unknown. */
-export function envKeySet(p: ModelKeyProvider, configured: readonly string[] | null): boolean | null {
+/**
+ * Does `configured` (the GitHub secret names) hold every name of any one of the vendor's sets?
+ * `true` when a whole set was seen. Otherwise `false` only when the listing is known to be COMPLETE; a listing that is missing (`null`) or
+ * may be cut short (`complete: false`) says "unknown", never "not set" (CLAUDE.md rule 5).
+ */
+export function envKeySet(p: ModelKeyProvider, configured: readonly string[] | null, complete = true): boolean | null {
   if (configured === null) return null;
   const have = new Set(configured);
-  return p.envSets.some((names) => names.length > 0 && names.every((n) => have.has(n)));
+  if (p.envSets.some((names) => names.length > 0 && names.every((n) => have.has(n)))) return true;
+  return complete ? false : null;
 }
+
+/** Every secret name any vendor's sets mention: what the page asks GitHub about (the Providers board's allowlist does not know them all). */
+export const ALL_ENV_NAMES: readonly string[] = Array.from(new Set(MODEL_KEY_PROVIDERS.flatMap((p) => p.envSets.flat())));
 
 /** The exact name(s) to set, as one line: `A`, `A or B + C` (a set joined with +, alternatives with "or"). */
 export function envNamesText(p: ModelKeyProvider): string {
@@ -439,8 +445,8 @@ export interface CardView {
   envNames: string;
 }
 
-/** `configured` = the GitHub secret names (null when they could not be read). */
-export function buildCards(configured: readonly string[] | null): CardView[] {
+/** `configured` = the GitHub secret names (null when they could not be read); `complete` = false when the listing may be cut short. */
+export function buildCards(configured: readonly string[] | null, complete = true): CardView[] {
   return MODEL_KEY_PROVIDERS.map((p) => {
     const http = p.strategy.kind === "http" ? p.strategy : null;
     return {
@@ -454,7 +460,7 @@ export function buildCards(configured: readonly string[] | null): CardView[] {
       scopedKeys: p.scopedKeys,
       regionBound: p.regionBound === true,
       pairedKey: p.pairedKey === true,
-      source: keySource(envKeySet(p, configured)),
+      source: keySource(envKeySet(p, configured, complete)),
       envNames: envNamesText(p),
     };
   });

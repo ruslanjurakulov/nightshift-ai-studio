@@ -25,7 +25,7 @@ export const modelKeysUz: ModelKeysDictionary = {
     linkUnverified: "Kalit sahifasi havolasi tasdiqlanmagan — uni yetkazib beruvchining oʻz konsolidan toping.",
     docs: "Yetkazib beruvchi hujjatlari",
     howHttp: "Hech narsa yaratmaydigan bitta bepul soʻrov bilan tekshiriladi: {host} manzilida GET {path}.",
-    howFormat: "Bu yetkazib beruvchi uchun bepul tekshiruv maʼlum emas. Kalit bu yerdan yetkazib beruvchiga yuborilmaydi; faqat uning koʻrinishi tekshiriladi.",
+    howFormat: "Bu yetkazib beruvchi uchun bepul tekshiruv maʼlum emas. Kalit faqat koʻrinishini tekshirish uchun bizning serverga yuboriladi; yetkazib beruvchiga yuborilmaydi va hech qayerda saqlanmaydi.",
     formatOnlyNote: "Kalit formati toʻgʻri koʻrinadi; pullik chaqiruvsiz tekshirib boʻlmaydi.",
     pairedHint: "Bu yetkazib beruvchi soʻrovlarni ikki qism bilan imzolaydi. Ularni access_key:secret_key koʻrinishida qoʻying.",
     keyLabel: "API kalit",

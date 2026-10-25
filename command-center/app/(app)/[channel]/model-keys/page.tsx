@@ -5,9 +5,9 @@ import { StateBlock } from "@/components/states/StateBlock";
 import { getDictionary } from "@/lib/i18n/server";
 import { guardOperatorPage } from "@/lib/auth/org-roles";
 import { requireRole } from "@/lib/auth/roles";
-import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
+import { isGithubConfigured, listSecretNamesComplete } from "@/lib/server/github-secrets";
 import { modelKeysOn } from "@/lib/server/model-keys";
-import { buildCards } from "@/lib/model-keys";
+import { ALL_ENV_NAMES, buildCards } from "@/lib/model-keys";
 import "../../app-pages-g5.css";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export const revalidate = 0;
  * the platform OWNER check right after it: an administrator who is not the owner gets 404, as a stranger does.
  *
  * On, the page reads exactly one thing: the NAMES of the GitHub secrets that are set (never their values), to say which key a run uses. An
- * unreadable environment is "unknown", never "none". It reads no database and shows nothing about any key: no key is ever stored.
+ * unreadable or possibly truncated listing is "unknown", never "none". It reads no database and shows nothing about any key: no key is ever stored.
  */
 export default async function ModelKeysPage() {
   const mayReadGithub = await guardOperatorPage();
@@ -41,10 +41,15 @@ export default async function ModelKeysPage() {
     );
   }
 
+  // Ask about EVERY name the vendors' sets mention (the Providers board's allowlist leaves out xAI, AssemblyAI, Runway, Luma and Kling's pair, which
+  // would read "not set" for a key that is). A listing GitHub says is longer than what was read is "unknown", never "not set".
   let configured: string[] | null = null;
+  let complete = true;
   if (isGithubConfigured && mayReadGithub) {
     try {
-      configured = await listConfiguredSecretNames();
+      const listing = await listSecretNamesComplete(ALL_ENV_NAMES);
+      configured = listing ? listing.names : null;
+      complete = listing ? listing.complete : true;
     } catch {
       configured = null;
     }
@@ -53,7 +58,7 @@ export default async function ModelKeysPage() {
   return (
     <div className="rhythm ns-open g5-page">
       {head}
-      <ModelKeysBoard cards={buildCards(configured)} />
+      <ModelKeysBoard cards={buildCards(configured, complete)} />
     </div>
   );
 }

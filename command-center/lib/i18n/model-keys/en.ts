@@ -30,7 +30,7 @@ export const modelKeysEn = {
     linkUnverified: "Key page link unverified — find it in the vendor's own console.",
     docs: "Vendor docs",
     howHttp: "Checked with one free request that creates nothing: GET {path} on {host}.",
-    howFormat: "No free check is known for this vendor. The key is never sent to the vendor from here; only its shape is checked.",
+    howFormat: "No free check is known for this vendor. The key is sent to our server for a shape check only; it is never sent to the vendor and never stored.",
     formatOnlyNote: "Key format looks right; cannot be verified without a paid call.",
     pairedHint: "This vendor signs requests with two parts. Paste them as access_key:secret_key.",
     keyLabel: "API key",

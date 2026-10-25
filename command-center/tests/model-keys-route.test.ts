@@ -203,6 +203,22 @@ describe("what it refuses before it calls anyone", () => {
     expect(vendor.seen).toHaveLength(0);
   });
 
+  it("a body that is not declared JSON (415): a form post or text/plain is never parsed, and nothing is sent to the vendor", async () => {
+    const raw = JSON.stringify(verify());
+    for (const ct of ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data", "application/jsonx", "text/json", ""]) {
+      const req = new Request(`${ORIGIN}/api/owner/model-keys`, { method: "POST", headers: ct ? { origin: ORIGIN, "content-type": ct } : { origin: ORIGIN }, body: raw });
+      const res = await POST(req);
+      expect(res.status, JSON.stringify(ct)).toBe(415);
+      expect(await res.clone().json()).toEqual({ ok: false, error: "unsupported_media_type" });
+      expectNoKey(await everything(res));
+    }
+    for (const ct of ["application/json", "application/json; charset=utf-8", "Application/JSON;charset=UTF-8"]) {
+      const res = await POST(new Request(`${ORIGIN}/api/owner/model-keys`, { method: "POST", headers: { origin: ORIGIN, "content-type": ct }, body: raw }));
+      expect(res.status, ct).toBe(200);
+    }
+    expect(vendor.seen).toHaveLength(3);
+  });
+
   it("a body over the size cap", async () => {
     const res = await POST(post(verify({ pad: "p".repeat(40_000) })));
     expect(res.status).toBe(400);

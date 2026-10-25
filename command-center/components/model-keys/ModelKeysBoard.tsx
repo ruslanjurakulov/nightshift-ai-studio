@@ -178,14 +178,16 @@ function KeyCard({ card, m }: { card: CardView; m: ModelKeysDictionary }) {
           <label htmlFor={`${idBase}-key`} className="g5-k">
             {m.card.keyLabel}
           </label>
-          {/* No `name`: the value can never be part of a native form submission, which would put it in a URL. */}
+          {/* No `name`: the value can never be part of a native form submission, which would put it in a URL. `new-password` because Chrome and
+              Firefox ignore `off` on a password field and would offer to save the vendor key as a site password; the 1Password and LastPass
+              opt-outs stay. */}
           <input
             id={`${idBase}-key`}
             type="password"
             className="ns-field min-h-11 min-w-0"
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            autoComplete="off"
+            autoComplete="new-password"
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}

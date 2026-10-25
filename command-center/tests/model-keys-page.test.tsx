@@ -19,7 +19,7 @@ const s = vi.hoisted(() => ({
   guard: "ok" as "ok" | "throw",
   mayRead: true,
   role: "owner" as string | null,
-  github: { configured: true, names: ["OPENAI_API_KEY"] as string[] | "throw", calls: 0 },
+  github: { configured: true, names: ["OPENAI_API_KEY"] as string[] | "throw", complete: true, asked: [] as string[], calls: 0 },
 }));
 
 vi.mock("@/lib/i18n/server", async () => {
@@ -55,10 +55,11 @@ vi.mock("@/lib/server/github-secrets", () => ({
   get isGithubConfigured() {
     return s.github.configured;
   },
-  listConfiguredSecretNames: async () => {
+  listSecretNamesComplete: async (allow: Iterable<string>) => {
     s.github.calls += 1;
+    s.github.asked = [...allow];
     if (s.github.names === "throw") throw new Error("github down");
-    return s.github.names;
+    return { names: s.github.names, complete: s.github.complete };
   },
 }));
 
@@ -72,7 +73,7 @@ beforeEach(() => {
   s.mayRead = true;
   s.role = "owner";
   s.createClient.mockClear();
-  s.github = { configured: true, names: ["OPENAI_API_KEY"], calls: 0 };
+  s.github = { configured: true, names: ["OPENAI_API_KEY"], complete: true, asked: [], calls: 0 };
   vi.resetModules();
 });
 afterEach(() => {
@@ -138,6 +139,19 @@ describe("with the switch on", () => {
     expect(has(html, "The GitHub secret BFL_API_KEY is not set.")).toBe(true);
     expect(has(html, "add it to GitHub Actions secrets and the worker environment as KLING_API_KEY or KLING_ACCESS_KEY + KLING_SECRET_KEY")).toBe(true);
     expect(s.github.calls).toBe(1);
+  });
+
+  it("asks GitHub about the names of ALL vendors, not the Providers board's shorter list", async () => {
+    await page();
+    for (const n of ["XAI_API_KEY", "ASSEMBLYAI_API_KEY", "RUNWAYML_API_SECRET", "LUMA_AGENTS_API_KEY", "KLING_ACCESS_KEY", "KLING_SECRET_KEY"]) expect(s.github.asked).toContain(n);
+  });
+
+  it("a listing GitHub says is longer than what was read is 'unknown' for a name not seen, and still 'env' for one that was", async () => {
+    s.github.complete = false;
+    const html = await page();
+    expect(has(html, "The GitHub secret OPENAI_API_KEY is set. Runs use that key.")).toBe(true);
+    expect(html).not.toContain("is not set");
+    expect(has(html, m.source.unknown)).toBe(true);
   });
 
   it("an environment that cannot be read is 'unknown', not 'none'", async () => {
