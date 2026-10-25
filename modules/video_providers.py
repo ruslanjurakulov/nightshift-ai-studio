@@ -812,10 +812,10 @@ def _veo_past_shutdown(model: str, submit_path: str) -> str:
     registry, which also re-opens its sale: one decision, one edit."""
     from modules import model_registry   # late: the registry imports the adapters, which import this package
 
-    for entry in model_registry.registry().values():
-        if entry.adapter != "video.veo" or not entry.shut_down():
-            continue
-        if model == entry.vendor_model or entry.vendor_model in submit_path:
+    # Whole-id match in any spelling (case, a models/ prefix, a :predictLongRunning or ?x=1 suffix, a path): a deprecated id
+    # must not dodge the guard by how it is written.
+    for entry in model_registry.entries_named_in(f"{model} {submit_path}"):
+        if entry.adapter == "video.veo" and entry.shut_down():
             s = entry.raw["shutdown"]
             return (f"Google's deprecations page ({_DEPRECATIONS}, read {s['as_of']}) lists {entry.vendor_model} with "
                     f"shutdown {s['on']}, the EARLIEST possible date; that date has passed, so the id may already be "
@@ -840,7 +840,8 @@ def _veo_config() -> VideoProviderConfig:
     model = getattr(config, "VEO_MODEL", "")
     submit_path = getattr(config, "VEO_SUBMIT_PATH", "/v1beta/models/{model}:predictLongRunning")
     problem = ""
-    dead = next((m for m in _VEO_SHUT_DOWN if m == model or m in submit_path), "")
+    dead = next((m for m in _VEO_SHUT_DOWN if re.search(r"(?<![a-z0-9.-])" + re.escape(m) + r"(?![a-z0-9.-])",
+                                                         f"{model} {submit_path}".lower())), "")
     if dead:
         problem = (f"{dead} was shut down by Google on 2025-11-12; set VEO_MODEL to a Veo id Google still lists "
                    f"({_DEPRECATIONS}) and leave VEO_SUBMIT_PATH unset")
@@ -851,6 +852,9 @@ def _veo_config() -> VideoProviderConfig:
                    "choose another CHRONOS_VIDEO_PROVIDER")
     else:
         problem = _veo_past_shutdown(model, submit_path)
+        if not problem and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*", model):
+            problem = (f"VEO_MODEL must be a bare model id (letters, digits, dots and hyphens), not {model[:60]!r}: it is put into "
+                       "the request path as given, and a prefix, a suffix or a path would send the call somewhere nobody checked")
     return VideoProviderConfig(
         name="Veo",
         api_key=getattr(config, "VEO_API_KEY", ""),

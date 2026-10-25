@@ -22,6 +22,7 @@ import copy
 import hashlib
 import json
 import re
+import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
@@ -203,7 +204,8 @@ class MigrationTests(unittest.TestCase):
 
     def test_the_helper_fails_closed_and_reads_the_date_in_the_database_not_the_clock_of_the_caller(self):
         h = NEW["model_past_shutdown"]
-        self.assertIn("<= current_date", h)
+        self.assertIn("<= (now() at time zone 'utc')::date", h)
+        self.assertNotIn("current_date", h)
         self.assertRegex(h, r"exception when others then\s+return true;")
         self.assertIn("is distinct from 'object'", h)
         self.assertIn("is distinct from 'string'", h)
@@ -321,6 +323,39 @@ class VeoClientTests(unittest.TestCase):
             fast = veo_config(VEO_MODEL="veo-3.1-fast-generate-preview")
             self.assertIn("2026-10-22", fast.config_problem)
 
+    def test_a_deprecated_id_cannot_dodge_the_guard_by_how_it_is_written(self):
+        spellings = ("VEO-3.1-GENERATE-PREVIEW", "models/veo-3.1-generate-preview", "veo-3.1-generate-preview:predictLongRunning",
+                     "veo-3.1-generate-preview?x=1", "x/../veo-3.1-generate-preview", "Models/Veo-3.1-Fast-Generate-Preview",
+                     "veo-3.1-lite-generate-preview/")
+        for spelling in spellings:
+            with self.subTest(spelling):
+                cfg = veo_config(VEO_MODEL=spelling)
+                self.assertEqual(cfg.model, spelling)                          # kept as configured, never rewritten
+                self.assertStops(cfg, "2026-10-22", "will not guess or switch models")
+
+    def test_the_old_hard_shutdown_ids_are_matched_in_any_spelling_too(self):
+        for spelling in ("VEO-3.0-GENERATE-PREVIEW", "models/veo-3.0-fast-generate-preview", "veo-3.0-generate-preview:x"):
+            with self.subTest(spelling):
+                self.assertStops(veo_config(VEO_MODEL=spelling), "shut down by Google on 2025-11-12")
+
+    def test_a_model_that_is_not_a_bare_id_is_refused_rather_than_put_into_the_path(self):
+        for bad in ("models/veo-test", "veo-test:predictLongRunning", "veo-test?x=1", "veo-test/../x", "veo test", "-veo"):
+            with self.subTest(bad):
+                self.assertStops(veo_config(VEO_MODEL=bad), "must be a bare model id")
+
+    def test_a_longer_id_that_merely_starts_with_a_listed_one_is_a_different_id(self):
+        cfg = veo_config(VEO_MODEL="veo-3.1-generate-preview-001")
+        self.assertEqual(cfg.config_problem, "")
+
+    def test_the_workflows_forward_veo_model_next_to_the_key_and_the_docs_say_it_is_required(self):
+        for rel in (".github/workflows/daily_video.yml", ".github/workflows/doctor_scheduled.yml"):
+            text = (REPO / rel).read_text()
+            self.assertIn("          VEO_API_KEY: ${{ secrets.VEO_API_KEY }}\n", text, rel)
+            self.assertIn("          VEO_MODEL: ${{ vars.VEO_MODEL }}\n", text, rel)
+        self.assertIn("WORKERENV_VEO_MODEL: ${{ vars.VEO_MODEL }}", (REPO / ".github/workflows/deploy_web.yml").read_text())
+        guide = (REPO / "docs" / "VIDEO_GO_LIVE.md").read_text()
+        self.assertRegex(guide, r"`veo` \| `VEO_API_KEY` and \*\*`VEO_MODEL`\*\*[^|]*REQUIRED")
+
     def test_the_worker_env_example_says_there_is_no_default(self):
         text = (REPO / "deploy" / ".env.worker.example").read_text()
         self.assertIn("VEO_MODEL has NO default", text)
@@ -334,3 +369,84 @@ class VeoClientTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VeoAdapterAtSubmitTests(unittest.TestCase):
+    """The Creative OS adapter: a job priced before the date and advanced after it is refused before any request."""
+
+    def adapter(self, env=None):
+        from modules.capabilities import build_adapter
+
+        session = mock.Mock()
+        resp = mock.Mock(status_code=200)
+        resp.json.return_value = {"name": "models/veo-test-model/operations/op1"}
+        session.request.return_value = resp
+        return build_adapter("video.veo", env={"VEO_API_KEY": "k" * 24, **(env or {})}, session=session), session
+
+    def request(self):
+        from modules.capabilities.base import T2V, CapabilityRequest
+
+        return CapabilityRequest(T2V, "a boat", duration_s=4, resolution="720p")
+
+    def test_each_past_shutdown_veo_id_is_refused_in_any_spelling_before_any_request_and_no_model_is_tried(self):
+        from modules.capabilities.base import E_NOT_FOUND, AdapterError
+
+        for vendor in ("veo-3.1-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview",
+                       "models/VEO-3.1-GENERATE-PREVIEW", "veo-3.1-generate-preview:predictLongRunning"):
+            with self.subTest(vendor):
+                a, session = self.adapter()
+                with self.assertRaises(AdapterError) as cm:
+                    a.submit(self.request(), vendor)
+                e = cm.exception
+                self.assertEqual(e.code, E_NOT_FOUND)
+                self.assertTrue(e.not_accepted)                      # nothing was sent
+                for needle in ("2026-10-22", "EARLIEST", "nothing was sent", "no other model was tried", "tools/probe_models.py"):
+                    self.assertIn(needle, e.message)
+                session.request.assert_not_called()
+
+    def test_an_id_with_no_announced_date_is_not_refused(self):
+        a, session = self.adapter()
+        task = a.submit(self.request(), "veo-test-model")
+        self.assertEqual(task.vendor_model, "veo-test-model")
+        session.request.assert_called_once()
+
+    def test_before_the_date_the_same_id_is_sent(self):
+        a, session = self.adapter()
+        with mock.patch.object(reg.ModelEntry, "shut_down", return_value=False):
+            a.submit(self.request(), "veo-3.1-generate-preview")
+        session.request.assert_called_once()
+
+    def test_only_the_probe_can_let_one_past_shutdown_id_through_and_only_that_id(self):
+        from tools import probe_models
+
+        a, session = self.adapter({"NIGHTSHIFT_PROBE_PAST_SHUTDOWN": "veo-3.1-generate-preview"})
+        a.submit(self.request(), "veo-3.1-generate-preview")
+        session.request.assert_called_once()
+        from modules.capabilities.base import AdapterError
+
+        a, session = self.adapter({"NIGHTSHIFT_PROBE_PAST_SHUTDOWN": "veo-3.1-generate-preview"})
+        with self.assertRaises(AdapterError):
+            a.submit(self.request(), "veo-3.1-fast-generate-preview")          # another id is not let through
+        session.request.assert_not_called()
+        # the probe tool names exactly the vendor model it probes, and only for a past-shutdown entry
+        seen = {}
+        real = probe_models.build_adapter
+
+        def spy(key, env=None, session=None):
+            seen[key] = dict(env)
+            return real(key, env=env, session=session)
+
+        for mid in ("veo-3.1-lite", "gemini-3-pro-image"):
+            entry = reg.get(mid)
+            with mock.patch.object(probe_models, "build_adapter", spy), tempfile.TemporaryDirectory() as d:
+                ok = mock.Mock(status_code=200)
+                ok.json.return_value = {"name": "models/veo-test-model/operations/op1"}
+                sess = mock.Mock()
+                sess.request.return_value = ok
+                sess.get.return_value = ok
+                probe_models.run_probe(entry, env={"GEMINI_API_KEY": "k" * 24}, voice_id=None, workdir=Path(d), session=sess,
+                                       timeout_s=1, poll_every_s=0, sleep=lambda s: None)
+            if entry.shut_down():
+                self.assertEqual(seen[entry.adapter]["NIGHTSHIFT_PROBE_PAST_SHUTDOWN"], entry.vendor_model)
+            else:
+                self.assertNotIn("NIGHTSHIFT_PROBE_PAST_SHUTDOWN", seen[entry.adapter])

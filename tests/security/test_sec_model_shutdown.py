@@ -42,7 +42,7 @@ def _make_models(conn, cases):
 
 
 def _cases(conn):
-    today = conn.execute("select current_date").fetchone()[0]
+    today = conn.execute("select (now() at time zone 'utc')::date").fetchone()[0]
     day = lambda n: (today.fromordinal(today.toordinal() + n)).isoformat()
     return {
         "lab-sd-past": _spec_shutdown(day(-3)),
@@ -173,3 +173,16 @@ def test_the_rollback_puts_0124s_two_bodies_back_byte_for_byte_and_the_file_appl
         assert "rollback 0125 found a creative_price() that is neither 0125's body nor 0124's" in str(cm.value)
     finally:
         sec_db.drop_database(admin, name)
+
+
+@pytest.mark.parametrize("zone", ["UTC", "Etc/GMT+12", "Pacific/Kiritimati"])
+def test_the_shutdown_day_is_the_utc_day_whatever_the_sessions_time_zone(conn, zone):
+    """Etc/GMT+12 is UTC-12 (its date can be the UTC date minus one) and Pacific/Kiritimati is UTC+14 (plus one): with current_date the
+    boundary day moved with the session; the guard reads the UTC date."""
+    with as_superuser(conn, commit=False) as s:
+        s.conn.execute("select set_config('TimeZone', %s, true)", [zone])
+        utc_today = s.value("select (now() at time zone 'utc')::date")
+        for delta, past in ((-1, True), (0, True), (1, False), (2, False)):
+            on = s.value("select (%s::date + %s)::text", [utc_today, delta])
+            got = s.value("select public.model_past_shutdown(jsonb_build_object('shutdown', jsonb_build_object('on', %s::text)))", [on])
+            assert got is past, (zone, delta, on, got)

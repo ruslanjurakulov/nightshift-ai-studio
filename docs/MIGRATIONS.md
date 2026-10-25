@@ -522,7 +522,7 @@ is the day Nightshift stops selling the model unless a probe says otherwise.
   without 0124** and carries the same md5 drift guard (0124's body or its own, else it refuses). 0123 is not used by this file.
 - **The field.** `shutdown` in `schemas/model_registry.json` (`on`, `source_url`, `as_of`, optional `replacement`), copied into `model_registry.spec` by the sync like every
   other static fact. A model with no announced date has no `shutdown`; the validator rejects a date that is not a calendar day.
-- **The guard.** `public.model_past_shutdown(spec)` is true from `spec.shutdown.on` (UTC `current_date`) on, and **fails closed**: a `shutdown` that is not an object, or
+- **The guard.** `public.model_past_shutdown(spec)` is true from `spec.shutdown.on` (the UTC date, `(now() at time zone 'utc')::date`, whatever the session's `TimeZone`) on, and **fails closed**: a `shutdown` that is not an object, or
   a date that is not `YYYY-MM-DD`, reads as past. It is internal (revoked from every API role). The list hides the model and a quote by name is refused
   (`model_not_sellable`). `tests/test_model_shutdown.py` removes the two added lines and compares the rest of each body byte for byte.
 - **Not changed.** No price, no availability, no `credit_prices` row, no gate, no switch (0124's `model_is_available` is still asked first).

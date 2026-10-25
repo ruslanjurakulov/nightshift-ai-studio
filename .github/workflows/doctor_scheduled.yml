@@ -141,6 +141,8 @@ jobs:
           KLING_ACCESS_KEY: ${{ secrets.KLING_ACCESS_KEY }}
           KLING_SECRET_KEY: ${{ secrets.KLING_SECRET_KEY }}
           VEO_API_KEY: ${{ secrets.VEO_API_KEY }}
+          # REQUIRED for CHRONOS_VIDEO_PROVIDER=veo: no default model since 2026-10-25 (the former default is past Google's shutdown date).
+          VEO_MODEL: ${{ vars.VEO_MODEL }}
           SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
           WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
           WAN_WORKSPACE_ID: ${{ vars.WAN_WORKSPACE_ID }}

@@ -275,7 +275,7 @@ class ModelEntry:
 
     def shut_down(self, on: Optional[date] = None) -> bool:
         """True from the announced shutdown date on (UTC, like the database's
-        ``current_date``): the model is no longer offered or quoted
+        ``(now() at time zone 'utc')::date``, whatever the session's TimeZone): the model is no longer offered or quoted
         (migration 0125). An entry with no announced date is never shut down
         here; that means "none announced", not "safe"."""
         d = self.shutdown_on
@@ -629,6 +629,15 @@ def load(path: Optional[Path] = None) -> Dict[str, ModelEntry]:
 @lru_cache(maxsize=1)
 def registry() -> Dict[str, ModelEntry]:
     return load()
+
+
+def entries_named_in(text: str) -> List[ModelEntry]:
+    """Every registry entry whose vendor model appears in ``text`` as a WHOLE id, however it is spelled around: other case,
+    a ``models/`` prefix, a ``:predictLongRunning`` or ``?x=1`` suffix, a path (``/../x``). A longer id that merely starts
+    with another (``-001``) is not a match. Used so a deprecated id cannot dodge a guard by how it is written."""
+    low = str(text or "").lower()
+    return [e for e in registry().values()
+            if re.search(r"(?<![a-z0-9.-])" + re.escape(e.vendor_model.lower()) + r"(?![a-z0-9.-])", low)]
 
 
 def get(model_id: str) -> Optional[ModelEntry]:

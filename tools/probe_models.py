@@ -228,7 +228,10 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
               clock: Callable[[], float] = time.monotonic) -> ProbeResult:
     """Make the entry's probe call and fetch its output. Never raises for a
     vendor failure: it becomes a typed ProbeResult."""
-    adapter = build_adapter(entry.adapter, env=env, session=session)
+    # A model past its announced shutdown date is refused by its adapter at submit; a probe BY NAME is how the owner learns whether it
+    # still answers, so the probe (and only the probe) says which vendor model it is allowed to try.
+    adapter_env = {**env, "NIGHTSHIFT_PROBE_PAST_SHUTDOWN": entry.vendor_model} if entry.shut_down() else env
+    adapter = build_adapter(entry.adapter, env=adapter_env, session=session)
     image = end_image = video = None
     if entry.raw["probe"].get("input_image") == "generated":
         image = str(probe_image(workdir / "probe_frame.png"))

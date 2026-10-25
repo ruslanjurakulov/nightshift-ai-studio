@@ -221,15 +221,16 @@ class EndFrames(Tmp):
 
     def test_veo_sends_the_last_frame_beside_the_first(self):
         a = adapter("video.veo", [("POST", ":predictLongRunning",
-                                   FakeResp(200, {"name": "models/veo-3.1-generate-preview/operations/op1"}))])
-        a.submit(self.i2v(duration_s=8), "veo-3.1-generate-preview")
+                                   FakeResp(200, {"name": "models/veo-test-model/operations/op1"}))])
+        # a made-up id: the real 3.1 previews are past Google's shutdown date and the adapter refuses them (tests/test_model_shutdown.py)
+        a.submit(self.i2v(duration_s=8), "veo-test-model")
         inst = a.session.calls[0][2]["json"]["instances"][0]
         self.assertEqual(inst["image"]["mimeType"], "image/png")
         self.assertEqual(inst["lastFrame"]["mimeType"], "image/jpeg")
         self.assertTrue(inst["lastFrame"]["bytesBase64Encoded"])
         a = adapter("video.veo", [("POST", ":predictLongRunning",
-                                   FakeResp(200, {"name": "models/veo-3.1-generate-preview/operations/op1"}))])
-        a.submit(self.i2v(end=False), "veo-3.1-generate-preview")
+                                   FakeResp(200, {"name": "models/veo-test-model/operations/op1"}))])
+        a.submit(self.i2v(end=False), "veo-test-model")
         self.assertNotIn("lastFrame", a.session.calls[0][2]["json"]["instances"][0])
 
     def test_kling_sends_image_tail_as_raw_base64(self):
@@ -466,7 +467,8 @@ class Worker(Tmp):
         routes = [("POST", ":predictLongRunning", FakeResp(200, {"name": "models/veo-3.1-generate-preview/operations/o"})),
                   ("GET", "/operations/o", FakeResp(200, {"done": True, "response": {"generateVideoResponse": {
                       "generatedSamples": [{"video": {"encodedVideo": base64.b64encode(MP4).decode()}}]}}}))]
-        q, session = self.run_job(framed_job(), picture_source(), routes, store=store)
+        with mock.patch.object(reg.ModelEntry, "shut_down", return_value=False):   # the end-frame path, as it runs before Google's date
+            q, session = self.run_job(framed_job(), picture_source(), routes, store=store)
         self.assertTrue(q.finished["ok"], q.finished)
         inst = session.calls[0][2]["json"]["instances"][0]
         self.assertEqual(inst["lastFrame"], {"bytesBase64Encoded": base64.b64encode(JPG).decode(),

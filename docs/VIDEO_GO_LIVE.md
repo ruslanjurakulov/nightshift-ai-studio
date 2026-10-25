@@ -89,7 +89,7 @@ then the provider's key:
 | `CHRONOS_VIDEO_PROVIDER` | Secret(s) | Also |
 |---|---|---|
 | `kling` | `KLING_ACCESS_KEY` + `KLING_SECRET_KEY` (or `KLING_API_KEY`) | fund the international (Singapore) Kling API |
-| `veo` | `VEO_API_KEY` | a Gemini key on a paid tier with Veo access |
+| `veo` | `VEO_API_KEY` and **`VEO_MODEL`** (repository variable, REQUIRED: there is no default) | a Gemini key on a paid tier with Veo access. The former default, `veo-3.1-generate-preview`, is past the earliest shutdown date Google lists (2026-10-22); the run stops before it spends, with the reason, when `VEO_MODEL` is empty or names such an id |
 | `seedance` | `SEEDANCE_API_KEY` | activate the model in the BytePlus ModelArk console |
 | `wan` | `WAN_API_KEY` | Variable `WAN_WORKSPACE_ID`; use an international key |
 | `minimax` | `MINIMAX_API_KEY` | Variables `CHRONOS_ENABLE_MINIMAX_BROLL=true` **and** `MINIMAX_H3_MODEL=MiniMax-Hailuo-2.3` (the default H3 model needs a path nobody has confirmed) |

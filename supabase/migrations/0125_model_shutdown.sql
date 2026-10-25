@@ -12,7 +12,7 @@
 -- on, source_url, as_of, replacement) and the sync copies it into model_registry.spec like every other static fact.
 --
 -- WHAT.
---   model_past_shutdown(spec)  true from spec.shutdown.on (UTC, current_date) on. FAILS CLOSED: a `shutdown` that is not an object, or a date
+--   model_past_shutdown(spec)  true from spec.shutdown.on (the UTC date, whatever the session's TimeZone) on. FAILS CLOSED: a `shutdown` that is not an object, or a date
 --                              that is not YYYY-MM-DD, reads as past, because a date nobody can read is not a licence to sell. No
 --                              `shutdown` = false: "none announced" is not "safe", it is the behaviour before this file.
 --   sellable_models            0124's body plus `and not public.model_past_shutdown(m.spec)`.
@@ -66,7 +66,7 @@ begin
   end if;
   -- The new name: if it already exists it must be this file's.
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = to_regprocedure('public.model_past_shutdown(jsonb)');
-  if h is not null and h <> 'fe3ee04693816e82b6b19ce240df6d56' then
+  if h is not null and h <> '7de5cc36b66713cd92c17c132fce876c' then
     raise exception '0125 found a model_past_shutdown() that is not 0125''s (md5 %): read the live body first', h;
   end if;
 end $$;
@@ -83,7 +83,7 @@ begin
      or (p_spec -> 'shutdown' ->> 'on') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then
     return true;
   end if;
-  return (p_spec -> 'shutdown' ->> 'on')::date <= current_date;
+  return (p_spec -> 'shutdown' ->> 'on')::date <= (now() at time zone 'utc')::date;
 exception when others then
   return true;
 end
