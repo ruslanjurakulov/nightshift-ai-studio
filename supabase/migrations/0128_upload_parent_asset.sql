@@ -13,14 +13,16 @@
 --                                   in-flight, quota, folder), then it stamps the parent on the ticket it just made. One transaction:
 --                                   any refusal rolls the ticket back. The five- and six-argument functions are NOT touched.
 --   register_asset                  0051's function, same signature. For an upload it now takes the parent from the TICKET (never from
---                                   the caller) and RE-CHECKS it: still this organization's, not deleted, still an image. Gone = no
+--                                   the caller) and RE-CHECKS it: still this organization's, not deleted, still an image, and the new
+--                                   file itself is an image (what the worker found in it). Gone = no
 --                                   link, never a failed upload (as 0051 does for a folder). The rest of the body is 0051's, byte for
 --                                   byte: every added line carries the marker "0128" (tests/test_upload_parent_migration.py takes them
 --                                   out and compares what is left with 0051's body).
 --
 -- THE PARENT CHECK at request time
---   The parent must be a LIVE IMAGE of p_org, the organization the caller is a member of. Another organization's picture, a deleted
---   one, a file of another kind and a made-up id get the SAME refusal (P0002, detail reason=parent_not_found): the id confirms nothing
+--   The parent must be a LIVE IMAGE of p_org, the organization the caller is a member of, and the upload itself must be an image (kind
+--   derived as request_upload derives it: jpeg, png, webp, gif, heic, heif; a video, sound or caption naming a parent is refused the
+--   same way). Another organization's picture, a deleted one, a file of another kind and a made-up id get the SAME refusal (P0002, detail reason=parent_not_found): the id confirms nothing
 --   across organizations. The check runs only after membership, so a stranger and the anon key get 0038's refusal and learn nothing.
 --   Any member may link (the same people who may upload and who can already read the parent); filing into a folder stays editors-only.
 --   No client id is trusted: the database reads the parent itself, under the caller's identity (auth.uid()).
@@ -54,7 +56,7 @@ begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
     from pg_proc p
    where p.oid = 'public.register_asset(uuid, uuid, text, text, bigint, text, text, integer, integer, numeric, jsonb, bigint, text[], uuid, uuid, uuid, text, uuid)'::regprocedure;
-  if h not in ('233cdbb722c76a434f08d929bafa4e27', 'aca85f011f502c58d9ebc1c04e28a43f') then
+  if h not in ('233cdbb722c76a434f08d929bafa4e27', 'b00d6820a4bc02e37e79222f78ca1e0e') then
     raise exception '0128 found a register_asset() that is neither 0051''s body nor 0128''s (md5 %): read the live body first', h;
   end if;
 end $$;
@@ -105,7 +107,11 @@ begin
     -- Another organization's picture, a deleted one, a video and a made-up id read exactly alike.
     select a.id into parent_ from public.media_assets a
      where a.id = p_parent_asset_id and a.org_id = p_org and a.deleted_at is null and a.kind = 'image';
-    if parent_ is null then
+    -- Only a picture can be an edit of a picture: a video, audio or caption ticket naming a parent gets the same refusal (the Command
+    -- Center then saves it unlinked). The kind is the one request_upload itself derives from the declared type and the name (0044:
+    -- jpeg, png, webp, gif, heic and heif are images).
+    if parent_ is null
+       or public.media_mime_kind(public.media_normalize_mime(p_mime, public.media_clean_name(p_filename))) is distinct from 'image' then
       raise exception 'no such picture in this organization'
         using errcode = 'P0002', detail = 'reason=parent_not_found';
     end if;
@@ -207,8 +213,9 @@ begin
     -- 0128 still live, still a picture. Anything else (deleted meanwhile, purged) means no link, never a failed upload. FOR KEY
     -- 0128 SHARE: a purge of the parent waits for this insert, and its SET NULL then takes the link off the new file too. Only
     -- 0128 when the worker named no parent itself (it never does for an upload); the same-organization check and version = parent's
-    -- 0128 + 1 further down then run on it exactly as for any parent.
-    if p_parent_asset_id is null and t.parent_asset_id is not null then   -- 0128
+    -- 0128 + 1 further down then run on it exactly as for any parent. Only an IMAGE can be an edit of a picture (p_kind is what the
+    -- 0128 worker found in the file, not what was declared): a video or sound registered from a ticket that names a parent has no link.
+    if p_parent_asset_id is null and t.parent_asset_id is not null and p_kind = 'image' then   -- 0128
       select pa.id into p_parent_asset_id from public.media_assets pa   -- 0128
        where pa.id = t.parent_asset_id and pa.org_id = t.org_id and pa.deleted_at is null and pa.kind = 'image'   -- 0128
        for key share;   -- 0128
@@ -285,8 +292,8 @@ begin
   if req7 is null then
     raise exception '0128 end state: the seven-argument request_upload() is missing';
   end if;
-  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = reg) <> 'aca85f011f502c58d9ebc1c04e28a43f'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req7) <> '4fabb35c2ea6a4bfe5a389432a22d4a8' then
+  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = reg) <> 'b00d6820a4bc02e37e79222f78ca1e0e'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req7) <> '026ca0dd20027163049ff0fea7f0e170' then
     raise exception '0128 end state: a function does not hold this file''s body';
   end if;
   if (select count(*) from pg_proc where proname = 'request_upload' and pronamespace = 'public'::regnamespace) <> 3 then

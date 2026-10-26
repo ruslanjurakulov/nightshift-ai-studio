@@ -187,6 +187,52 @@ def test_a_deleted_picture_and_a_video_are_not_parents(conn, sc):
     assert refused(deleted, "P0002") and refused(not_image, "P0002"), (deleted, not_image)
 
 
+@pytest.mark.parametrize("filename, mime", [
+    ("clip.mp4", "video/mp4"), ("clip.webm", "video/webm"), ("song.mp3", "audio/mpeg"), ("subs.vtt", "text/vtt"),
+])
+def test_only_an_image_can_be_an_edit_of_a_picture(conn, sc, filename, mime):
+    # Found in review: a video ticket naming an image parent used to register as a "child version" of it.
+    with as_superuser(conn, commit=False) as s:
+        parent = make_asset(s, sc.alice.org)
+        before = tickets_of(s, sc.alice.org)
+        become(s, sc.alice.actor)
+        out = s.run("select public.request_upload(%s, %s, %s, 50, null, null, %s)", [sc.alice.org, filename, mime, parent])
+        made_up = s.run("select public.request_upload(%s, %s, 'image/png', 50, null, null, %s)", [sc.alice.org, "x.png", str(uuid.uuid4())])
+        # Without a parent the same ticket is fine, so the refusal is about the link and nothing else.
+        plain = s.run("select public.request_upload(%s, %s, %s, 50, null, null, null)", [sc.alice.org, filename, mime])
+        after = tickets_of(s, sc.alice.org)
+    assert refused(out, "P0002"), out
+    assert (out.sqlstate, out.error) == (made_up.sqlstate, made_up.error), (out, made_up)
+    assert plain.ok, plain
+    assert after == before + 1  # only the plain one
+
+
+@pytest.mark.parametrize("filename, mime", [("a.png", "image/png"), ("a.jpg", "image/jpeg"), ("a.webp", "image/webp"), ("a.gif", "image/gif"), ("a.heic", "image/heic")])
+def test_every_image_kind_can_be_linked(conn, sc, filename, mime):
+    # The rule is the existing classification (media_mime_kind = 'image'), not "png or jpeg": the editor writes png / jpeg only.
+    with as_superuser(conn, commit=False) as s:
+        parent = make_asset(s, sc.alice.org)
+        become(s, sc.alice.actor)
+        out = s.run("select public.request_upload(%s, %s, %s, 50, null, null, %s)", [sc.alice.org, filename, mime, parent])
+    assert out.ok and out.rows[0][0]["parent_asset_id"] == parent, out
+
+
+def test_a_video_registered_from_a_ticket_that_names_a_parent_gets_no_link(conn, sc):
+    # The other half: no API path writes this ticket (the owner does, here), and a sound or video found in a file declared as a
+    # picture must not become a version of one either.
+    with as_superuser(conn, commit=False) as s:
+        parent = make_asset(s, sc.alice.org)
+        t = ticket_for(s, sc.alice.actor, sc.alice.org, parent)
+        back_to_owner(s)
+        s.rows("update public.media_uploads set status = 'expired' where status = 'uploaded' and id <> %s returning 1", [t])
+        become(s, SERVICE)
+        assert s.rows("select id::text from public.claim_media_upload('w-parent')")[0][0] == t
+        out = s.value("select public.register_asset(gen_random_uuid(), null, 'video', 'video/mp4', 50, repeat('e', 64), 'upload', "
+                      "p_duration_s => 2, p_upload_id => %s)", [t])
+        assert asset_row(s, out["id"]) == (None, 1)
+        assert s.value("select status from public.media_uploads where id = %s", [t]) == "ingested"
+
+
 def test_a_viewer_may_link_what_they_can_read_but_still_not_file_into_a_folder(conn, sc):
     with as_superuser(conn, commit=False) as s:
         org = str(s.value("select public.default_org_id()::text"))

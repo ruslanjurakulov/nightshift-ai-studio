@@ -28,12 +28,12 @@ begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into r
     from pg_proc p
    where p.oid = to_regprocedure('public.register_asset(uuid, uuid, text, text, bigint, text, text, integer, integer, numeric, jsonb, bigint, text[], uuid, uuid, uuid, text, uuid)');
-  if r is distinct from 'aca85f011f502c58d9ebc1c04e28a43f' then
+  if r is distinct from 'b00d6820a4bc02e37e79222f78ca1e0e' then
     raise exception 'rollback 0128: register_asset() is not 0128''s body (md5 %): a later change would be undone; read the live body first', r;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into q
     from pg_proc p where p.oid = to_regprocedure('public.request_upload(uuid, text, text, bigint, uuid, uuid, uuid)');
-  if q is distinct from '4fabb35c2ea6a4bfe5a389432a22d4a8' then
+  if q is distinct from '026ca0dd20027163049ff0fea7f0e170' then
     raise exception 'rollback 0128: the seven-argument request_upload() is missing or is not 0128''s body (md5 %)', q;
   end if;
   if exists (select 1 from public.media_uploads where parent_asset_id is not null and status in ('requested', 'receiving', 'uploaded', 'ingesting')) then

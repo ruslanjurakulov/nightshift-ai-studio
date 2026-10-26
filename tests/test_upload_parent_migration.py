@@ -42,12 +42,12 @@ class Migration0128(unittest.TestCase):
         kept = "\n".join(ln for ln in mine.splitlines() if "0128" not in ln)
         self.assertEqual(kept, func(SQL51, REG))
         added = [ln.strip() for ln in mine.splitlines() if "0128" in ln]
-        self.assertIn("if p_parent_asset_id is null and t.parent_asset_id is not null then   -- 0128", added)
-        self.assertEqual(len(added), 10)
+        self.assertIn("if p_parent_asset_id is null and t.parent_asset_id is not null and p_kind = 'image' then   -- 0128", added)
+        self.assertEqual(len(added), 11)
 
     def test_the_parent_comes_from_the_ticket_and_is_rechecked(self):
         reg = " ".join(func(CODE, REG).split())
-        self.assertIn("if p_parent_asset_id is null and t.parent_asset_id is not null then "
+        self.assertIn("if p_parent_asset_id is null and t.parent_asset_id is not null and p_kind = 'image' then "
                       "select pa.id into p_parent_asset_id from public.media_assets pa "
                       "where pa.id = t.parent_asset_id and pa.org_id = t.org_id and pa.deleted_at is null and pa.kind = 'image' for key share; end if;", reg)
         # Inside the upload branch only: generated and rendered files take no parent from any ticket.
@@ -73,6 +73,9 @@ class Migration0128(unittest.TestCase):
         self.assertLess(fn.index("public.is_org_member(p_org)"), fn.index("p_parent_asset_id is not null"))
         self.assertIn("where a.id = p_parent_asset_id and a.org_id = p_org and a.deleted_at is null and a.kind = 'image'", fn)
         self.assertIn("detail = 'reason=parent_not_found'", fn)
+        # The upload itself must be an image, by the kind request_upload derives (declared type + name), refused with the same word.
+        self.assertIn("public.media_mime_kind(public.media_normalize_mime(p_mime, public.media_clean_name(p_filename))) is distinct from 'image'", fn)
+        self.assertLess(fn.index("is distinct from 'image'"), fn.index("detail = 'reason=parent_not_found'"))
         self.assertIn("security definer set search_path = public, pg_temp", fn)
         # Every other gate is the six-argument function's, reached through it.
         self.assertIn("public.request_upload(p_org, p_filename, p_mime, p_bytes, p_project_id, p_folder_id)", fn)

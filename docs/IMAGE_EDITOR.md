@@ -51,7 +51,7 @@ input. The original is never touched.
 
 The ticket request carries `parent_asset_id` = the id of the picture the editor was opened on. It is a REQUEST, never a fact: `POST /api/media/uploads`
 validates it as an id, ignores it while `NIGHTSHIFT_IMAGE_EDITOR` is off, and passes it to the seven-argument `request_upload`, which reads the picture
-itself (a live image of the organization the caller uploads to, the caller being a member) and stamps it on the ticket. `register_asset` re-checks it
+itself (a live image of the organization the caller uploads to, the caller being a member, and the upload itself an image: a video, sound or caption naming a parent is refused like a missing one and saved unlinked) and stamps it on the ticket. `register_asset` re-checks it
 when the worker registers the file and then writes `media_assets.parent_asset_id` (0038's column, the one AI edits already use) and `version` = parent's + 1.
 
 * A picture that is not the caller's to link (another organization's, deleted, not an image, made up) and a database without 0128 both save the file
