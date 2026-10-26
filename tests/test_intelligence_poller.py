@@ -8,6 +8,7 @@ TrendDetector so no live API calls are ever made.
 import os
 import tempfile
 import unittest
+import unittest.mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -22,6 +23,7 @@ from modules.intelligence_poller import (
     METRICS_POLL_DAYS_ENV,
     IntelligencePoller,
     metrics_poll_options,
+    _loggable_video_id,
 )
 from modules.state_store import StateStore
 from modules.video_snapshot import VideoSnapshot
@@ -507,7 +509,7 @@ class MetricsPollWindowTestCase(unittest.TestCase):
         now = datetime.now()
         ids = []
         for n in days_ago:
-            vid = f"v{n}d"
+            vid = f"video{n:02d}_ago"             # 11 characters, like a real YouTube id
             ids.append(vid)
             self.store.record_video(video_id=vid, title=vid, published_at=(now - timedelta(days=n)).isoformat())
         return ids
@@ -775,7 +777,7 @@ class MetricsPollWindowTestCase(unittest.TestCase):
             self.assertEqual(metrics_poll_options({METRICS_POLL_DAYS_ENV: "7"})["max_seconds"], 600)
 
     def test_the_budget_warning_names_the_first_skipped_video_ids_and_nothing_else(self):
-        ids = self._store_videos_published(*range(0, 12))          # v0d (newest) .. v11d
+        ids = self._store_videos_published(*range(0, 12))          # video00_ago (newest) .. video11_ago
         poller = self._make_poller(analytics_client=self._analytics())
         clock = iter([0.0, 1.0] + [700.0] * 200)                   # one video polled, then over budget
         with patch("modules.intelligence_poller.time.monotonic", lambda: next(clock)), \
@@ -791,6 +793,64 @@ class MetricsPollWindowTestCase(unittest.TestCase):
         with self.assertLogs("modules.intelligence_poller", level="WARNING") as logs:
             poller.poll_own_channel_metrics(days=30, max_calls=4)       # one video fits (3 calls), the second would not
         self.assertIn("first " + ids[1], logs.output[0])
+
+    # -- video ids that reach a log line ------------------------------------------------------------------------------
+
+    def test_only_a_well_formed_youtube_id_is_loggable(self):
+        for good in ("dQw4w9WgXcQ", "abcDEF_-012", "-----------", "___________"):
+            self.assertEqual(_loggable_video_id(good), good)
+        for bad in ("", "short", "toolong12345", "dQw4w9WgXc ", "dQw4w9WgXc\n", "dQw4w9WgX\nQ", "dQw4w9WgXc!", "dQw4w9WgXcé",
+                    "dQw4w9WgXcQ\nWARNING forged line", "x" * 5000, None, 12345678901, b"dQw4w9WgXcQ", ["dQw4w9WgXcQ"]):
+            self.assertEqual(_loggable_video_id(bad), "<invalid id>", repr(bad))
+
+    def _store_odd_ids_published_newest_first(self, *ids):
+        now = datetime.now()
+        for n, vid in enumerate(ids):
+            self.store.record_video(video_id=vid, title="t", published_at=(now - timedelta(hours=n)).isoformat())
+
+    def test_the_stopped_early_warnings_never_print_an_id_that_is_not_a_youtube_id(self):
+        forged = "x\nERROR forged log line"
+        self._store_odd_ids_published_newest_first("good0000001", forged, "y" * 300, "good0000002")
+        for kwargs in ({"max_calls": 3}, {"max_calls": 600, "max_seconds": 0.0}):
+            with self.subTest(kwargs=kwargs):
+                poller = self._make_poller(analytics_client=self._analytics())
+                with self.assertLogs("modules.intelligence_poller", level="WARNING") as logs:
+                    poller.poll_own_channel_metrics(days=30, **kwargs)
+                message = "\n".join(logs.output)
+                self.assertNotIn("forged", message)
+                self.assertNotIn("yyyy", message)
+                self.assertEqual(len(logs.output), 1)
+                if kwargs["max_calls"] == 3:      # the store is asked for 2 videos: one polled, the forged one skipped
+                    self.assertIn("first <invalid id>.", message)
+                else:                             # nothing polled, all four skipped
+                    self.assertIn("first good0000001, <invalid id>, <invalid id>, good0000002", message)
+
+    def test_a_skipped_valid_id_is_still_named_and_the_poll_itself_is_unchanged(self):
+        ids = self._store_videos_published(0, 1, 2)
+        analytics = self._analytics()
+        poller = self._make_poller(analytics_client=analytics)
+        with self.assertLogs("modules.intelligence_poller", level="WARNING") as logs:
+            written = poller.poll_own_channel_metrics(days=30, max_calls=4)
+        self.assertEqual(written, 1)
+        self.assertIn("first " + ids[1] + ".", logs.output[0])
+        self.assertEqual([c.args[0] for c in analytics.video_performance.call_args_list], ids[:1])
+
+    def test_the_per_video_skip_messages_use_the_placeholder_too_and_the_video_is_still_handled_as_before(self):
+        forged = "x\nERROR forged log line"
+        self._store_odd_ids_published_newest_first(forged)
+        analytics = self._analytics()
+        analytics.video_performance.return_value = {}          # nothing yet: skipped
+        poller = self._make_poller(analytics_client=analytics)
+        with self.assertLogs("modules.intelligence_poller", level="INFO") as logs:
+            self.assertEqual(poller.poll_own_channel_metrics(days=30), 0)
+        self.assertTrue(any("No analytics yet for video_id=<invalid id>;" in line for line in logs.output))
+        self.assertFalse(any("forged" in line for line in logs.output))
+        analytics.video_performance.side_effect = RuntimeError("quota")    # failed: skipped
+        with self.assertLogs("modules.intelligence_poller", level="WARNING") as logs:
+            self.assertEqual(poller.poll_own_channel_metrics(days=30), 0)
+        self.assertIn("video_id=<invalid id>; skipping", logs.output[0])
+        self.assertNotIn("forged", logs.output[0].split("Traceback")[0])
+        analytics.video_performance.assert_called_with(forged, unittest.mock.ANY, unittest.mock.ANY)   # still asked for as stored
 
     def test_a_store_list_cut_at_its_limit_is_reported_even_when_quota_errors_keep_the_call_cap_unreached(self):
         # Every video fails on its first call, so each costs 1 call and the cap (6 calls) is never reached; the store

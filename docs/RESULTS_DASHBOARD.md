@@ -99,15 +99,31 @@ the dashboard's "day N after publishing" becomes a current reading instead of a 
    **On its own this step changes nothing on screen:** the late readings stay in `chronos.db`.
 2. `NIGHTSHIFT_MIRROR_LATE_METRICS` (repository variable, empty = off) makes the Supabase mirror copy them
    (`StateStore.newest_metrics`, both tables), which is what lets the results dashboard show current numbers. **Turning this on
-   changes what the Command Center analytics, publishing-window and measurement pages show**, because they take the latest
-   `metrics_snapshots` row per video and the late row is a two-day window of an older video:
-   - `analytics/page.tsx` (mirror of `feedback_engine._views_per_day`): views per day = views / days since publishing, so older
-     videos read far lower;
-   - `lib/autonomy.ts` `publishingWindow`: views per day by weekday and hour, which feeds the publishing-time recommendation;
-   - `measurement/page.tsx` via `lib/measurement.ts` `variantPerformance` / `hookPerformance`: the thumbnail A/B and hook verdicts use
-     the latest snapshot's CTR and retention, so the TS verdict can then disagree with `modules/experiments.py` (which promises it
-     cannot, and keeps that promise only while the late rows stay out);
-   - `videos/page.tsx`: the totals.
+   changes what several Command Center pages show**, because every one of them reads `metrics_snapshots` from Supabase and takes
+   the latest row per video (or counts or plots the rows), and the late row is a two-day window of an older video. The mirror
+   sends each video's newest row, dated the day it was read, and never deletes, so with the variable on a video that is re-read
+   every day gains one row a day.
+   This list was made by reading every `.from("metrics_snapshots")` in `command-center/` (`grep -rn metrics_snapshots app lib`);
+   all of them are under `app/(app)/[channel]/`, except the dashboard loader:
+
+   | Reader | What it does with the rows | What changes with late rows |
+   | :-- | :-- | :-- |
+   | `analytics/page.tsx` (`select("*").limit(5000)`, no order) | latest row per video; views per day = views / days since publishing (mirror of `feedback_engine._views_per_day`); engagement, retention, totals | older videos read far lower per day; views, engagement and retention become two-day figures |
+   | `autonomy/page.tsx` -> `lib/autonomy.ts` `publishingWindow` (limit 2000, newest first) | latest row per video, views per day by weekday and hour | feeds the publishing-time recommendation with the same distortion |
+   | `measurement/page.tsx` -> `lib/measurement.ts` `variantPerformance`, `hookPerformance` (`limit(5000)`, no order) | latest row's CTR and average view duration per video decide the thumbnail A/B and hook verdicts | the TS verdict can disagree with `modules/experiments.py`, which promises it cannot and keeps that promise only while late rows stay out |
+   | `videos/page.tsx` | latest row per video; the "total views" tile and each row's views | totals become a mix of lifetime-ish early readings and two-day windows |
+   | `videos/[id]/page.tsx` | newest row's views, likes, comments, watch time, average view duration as the stat cards; **row count** ("snapshots"); views-over-time sparkline from all rows | the cards show a two-day window; the count and the sparkline grow by a row a day |
+   | `channels/page.tsx` -> `lib/channels.ts` `channelStats` (limit 500, newest first) | latest row per video summed into the channel's `views` and `avgViews` | channel views and average views drop; with up to 200 rows a day, 500 rows reach back only about 2.5 days, so a video whose newest row is older than that can drop out of the sum |
+   | `command-center/page.tsx` (home) -> `lib/intelligence.ts` `dailyMission` (limit 200, newest first) | `analyticsToday` = rows dated today | the "analysed today" count counts every video re-read today (up to the 200 rows read), not only the new ones |
+   | `lib/server/results-dashboard.ts` -> `lib/resultsDashboard/aggregate.ts` (analytics/results page) | latest reading per video in the range, with its date and days after publishing | **this is the page the variable is for**: it already treats a row as a two-day window, never adds two readings of one video, and states the age of each |
+
+   The other `metrics_snapshots` mentions in the app do not read the table: `lib/decisions.ts` and `lib/memory.ts` print it as the
+   *source* of numbers they take from `topic_performance` (a Python output, unchanged), and `lib/channels-server.ts`
+   `fetchScopedVideoIds` only filters rows by video. No Python reader sees a late row (`latest_metrics`, `metrics_history`).
+   Row limits: the `limit(5000)` reads in `analytics` and `measurement` have no ordering, so once the table passes 5000 rows
+   (a widened, mirrored poll adds up to 200 a day) PostgREST may cut away the newest row of a video and the page shows an older
+   one; nothing in the page says so. Not changed here.
+
    Keeping those pages right with late rows mirrored needs the mirror to mark them so the reducers skip them, which is a Supabase
    column and therefore a migration: not done here. Until then the two variables are two deliberate steps, and the second is the
    owner's decision.
