@@ -17,7 +17,7 @@ no worker reads it, because no worker runs an image edit.
 | Panels and the editor | `components/imageEditor/panels.tsx`, `NumField.tsx`, `ImageEditor.tsx` |
 | Strings (`imageEditor.*`) | `lib/i18n/image-editor/{en,ru,uz}.ts` |
 
-There is no API route, no migration, no worker and no new dependency (Konva was already there for the region editor).
+There is no API route of its own, no worker and no new dependency (Konva was already there for the region editor). The only database change is migration 0128 (see "The link to the original" below), and the editor works without it.
 
 ## How the pieces fit
 
@@ -37,9 +37,7 @@ There is no API route, no migration, no worker and no new dependency (Konva was 
 JPEG) bytes. The media worker re-checks, re-encodes and strips it like any other upload, so the browser's output is treated as untrusted
 input. The original is never touched.
 
-* The ticket route has no parent argument (`request_upload` takes none; `parent_asset_id` is written only by the worker), so the new file is
-  linked to the original by NAME only (`<name>-edited.png`). A real `parent_asset_id` link would need a new argument on `request_upload`
-  and the ingest registration: a migration, not done here.
+* The new file is also tied to the original by NAME (`<name>-edited.png`); the real link is in the next section.
 * A picture of more than 16 megapixels is refused (`MAX_EDIT_PIXELS`), by the page from the library's recorded size, by the editor again
   from the size the browser really decoded. 16 MP is also what browsers can hold in a single canvas (iOS Safari: 16,777,216 pixels).
 * The new file lands in **All files** (no folder): the ticket is asked for without a `folder_id`, wherever the original lives.
@@ -48,6 +46,23 @@ input. The original is never touched.
 * A JPEG has no transparency, so it is saved on white and the preview shows white too while JPEG is chosen. A PNG keeps transparency.
 * The file name is cleaned by `cleanUploadName` (control characters dropped; bidi override characters such as U+202E are NOT stripped, as for any upload).
 * HEIC, GIF, SVG, video and audio are not opened (`unsupported`): a canvas flatten of an animation or a vector would silently lose it.
+
+## The link to the original (migration 0128)
+
+The ticket request carries `parent_asset_id` = the id of the picture the editor was opened on. It is a REQUEST, never a fact: `POST /api/media/uploads`
+validates it as an id, ignores it while `NIGHTSHIFT_IMAGE_EDITOR` is off, and passes it to the seven-argument `request_upload`, which reads the picture
+itself (a live image of the organization the caller uploads to, the caller being a member, and the upload itself an image: a video, sound or caption naming a parent is refused like a missing one and saved unlinked) and stamps it on the ticket. `register_asset` re-checks it
+when the worker registers the file and then writes `media_assets.parent_asset_id` (0038's column, the one AI edits already use) and `version` = parent's + 1.
+
+* A picture that is not the caller's to link (another organization's, deleted, not an image, made up) and a database without 0128 both save the file
+  WITHOUT a link: the edit is never lost, and the answer says `parent_applied: false` (the same word for all of those, so it confirms nothing across
+  organizations). Any other refusal (quota, type, folder) is final.
+* Deleting (purging) the original sets the link to null (`ON DELETE SET NULL`); the edited file stays.
+* Nothing reads the link yet: no "edited from" label and no version group in the Library. The existing region-edit version list
+  (`/api/region-edit/versions`, children of a picture by `parent_asset_id`) will list editor saves too, as they are the same kind of row: that is the intent, but
+  decide it before building the Library view.
+* Roll-out order does not matter. Before 0128 the Command Center's save works as before (no link); an older worker ignores the new ticket column.
+* Undo: `docs/sql/rollback_0128_upload_parent_asset.sql`. Files already linked keep their link.
 
 ## AI operations
 

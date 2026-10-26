@@ -5,6 +5,7 @@ import { mediaDir, mediaStagingDir } from "@/lib/server/media";
 import { cleanUploadName, mapMediaError, parseMaxDetail, parseMediaId, parseQuotaDetail } from "@/lib/media";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
+import { imageEditorEnabled } from "@/lib/imageEditor/flag";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,13 @@ export const dynamic = "force-dynamic";
  * `folder_applied: false` so the page can say where the file really went —
  * never a silent All files.
  *
+ * `parent_asset_id` (migration 0128) is the picture the file is an EDIT of (the image editor sends it, and only while its flag is on: with the
+ * flag off it is ignored, not forwarded). The browser's id is never trusted: the database reads that picture itself (a live image of
+ * `org_id`, the caller being a member) and stamps it on the ticket; the worker re-checks it when it registers the file. A parent that is not
+ * the caller's to link (another organization's, deleted meanwhile, a made-up id) and a database without 0128 both save the file WITHOUT a link
+ * (never losing the edit) and the answer says `parent_applied: false`; the same word for all of them, so it confirms nothing across
+ * organizations. Every other refusal (quota, type, folder) is final, as without a parent.
+ *
  * On a host without the media volumes (Vercel) no ticket is handed out: the
  * body could never be received or served here.
  */
@@ -42,7 +50,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!mediaStagingDir() || !mediaDir()) return NextResponse.json({ error: "media_unavailable" }, { status: 503 });
 
-  let body: { org_id?: unknown; filename?: unknown; mime?: unknown; bytes?: unknown; project_id?: unknown; folder_id?: unknown };
+  let body: { org_id?: unknown; filename?: unknown; mime?: unknown; bytes?: unknown; project_id?: unknown; folder_id?: unknown; parent_asset_id?: unknown };
   try {
     body = await parseJsonCapped(request);
   } catch {
@@ -59,18 +67,36 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   const folderId = body.folder_id === undefined || body.folder_id === null ? null : parseMediaId(body.folder_id);
   if (body.folder_id !== undefined && body.folder_id !== null && !folderId)
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  const parentId = body.parent_asset_id === undefined || body.parent_asset_id === null ? null : parseMediaId(body.parent_asset_id);
+  if (body.parent_asset_id !== undefined && body.parent_asset_id !== null && !parentId)
+    return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const filename = cleanUploadName(body.filename);
 
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ error: "not_configured" }, { status: 503 });
   const args = { p_org: org, p_filename: filename, p_mime: mime, p_bytes: bytes, p_project_id: projectId };
-  // No folder: exactly the five arguments every version of the database takes.
-  let { data, error } = await supabase.rpc("request_upload", folderId ? { ...args, p_folder_id: folderId } : args);
+  let data: unknown = null;
+  let error: { code?: string; message?: string; details?: string } | null = null;
+  let parentApplied = false;
+  let settled = false;
+  if (parentId && imageEditorEnabled()) {
+    // 0128: all seven arguments (none is defaulted). The database checks the parent; nothing here vouches for it.
+    ({ data, error } = await supabase.rpc("request_upload", { ...args, p_folder_id: folderId, p_parent_asset_id: parentId }));
+    const why = error ? mapMediaError(error).error : null;
+    const unlinkable = why === "not_available" || why === "parent_not_found";
+    // Save without the link when the link is not possible; any other answer (a ticket, or a real refusal) is final.
+    settled = !unlinkable;
+    parentApplied = !error;
+  }
   let folderApplied = folderId !== null;
-  if (error && folderId && mapMediaError(error).error === "not_available") {
-    // 0051 not applied: upload to All files, and say so.
-    ({ data, error } = await supabase.rpc("request_upload", args));
-    folderApplied = false;
+  if (!settled) {
+    // No folder: exactly the five arguments every version of the database takes.
+    ({ data, error } = await supabase.rpc("request_upload", folderId ? { ...args, p_folder_id: folderId } : args));
+    if (error && folderId && mapMediaError(error).error === "not_available") {
+      // 0051 not applied: upload to All files, and say so.
+      ({ data, error } = await supabase.rpc("request_upload", args));
+      folderApplied = false;
+    }
   }
   if (error) {
     const mapped = mapMediaError(error);
@@ -90,13 +116,14 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     max_bytes?: number;
     expires_at?: string;
     folder_id?: string | null;
+    parent_asset_id?: string | null;
   };
   const ticket = parseMediaId(out.ticket);
   if (!ticket) return NextResponse.json({ error: "failed" }, { status: 502 });
   await logAudit({
     action: "media.upload_request",
     target: ticket,
-    detail: { org, kind: out.kind ?? null, bytes, folder: folderApplied ? folderId : null },
+    detail: { org, kind: out.kind ?? null, bytes, folder: folderApplied ? folderId : null, parent: parentApplied ? parentId : null },
   });
   return NextResponse.json({
     ok: true,
@@ -110,5 +137,8 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     // What the ticket holds — the database's answer, not what was asked.
     folder_id: folderApplied ? (parseMediaId(out.folder_id) ?? null) : null,
     folder_applied: folderId === null ? null : folderApplied,
+    // The database's answer, not what was asked; null = no parent was asked for.
+    parent_asset_id: parentApplied ? (parseMediaId(out.parent_asset_id) ?? null) : null,
+    parent_applied: parentId === null ? null : parentApplied,
   });
 });

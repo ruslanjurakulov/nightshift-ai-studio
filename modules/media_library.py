@@ -33,7 +33,9 @@ run by ``tools/media_worker.py``, then for each ticket:
    with a reason word (``reject_media_upload``), then deletes the staged file.
    The folder a file lands in (migration 0051) is NOT the worker's to say:
    register_asset reads it from the ticket and re-checks it there (a folder
-   deleted meanwhile means All files), so nothing here passes one on.
+   deleted meanwhile means All files), so nothing here passes one on. The same goes for the parent of an edited picture (migration 0128):
+   register_asset reads it from the ticket and re-checks it there (same organization, live, an image, and the new file an image), so
+   the worker passes no parent for an upload either.
 
 Deleted assets: ``soft_delete_asset`` (a member) hides the row; the worker
 removes ``media/<aa>/<uuid>/`` and ``mark_asset_purged`` gives the bytes back

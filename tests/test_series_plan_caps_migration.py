@@ -63,7 +63,15 @@ class Numbering(unittest.TestCase):
         self.assertEqual(numbers.count("0127"), 1)
         for earlier in ("0122", "0124", "0125", "0126"):
             self.assertIn(earlier, numbers)
-        self.assertEqual([n for n in numbers if n > "0127"], [], "0127 is the highest: a later number needs its own review of this file's pins")
+        # 0128 (an edited picture remembers its original: media_uploads.parent_asset_id, request_upload's seven-argument overload,
+        # register_asset) was reviewed against these pins: it mentions none of request_series_plan, series_plans or series_plan_cap_settings,
+        # so nothing 0127's hashes guard moves. Any other later number needs its own review of this file's pins.
+        reviewed = ("0128",)
+        self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
+        for n in reviewed:
+            text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")
+            for word in ("request_series_plan", "series_plans", "series_plan_cap_settings"):
+                self.assertNotIn(word, text, f"{n} touches {word}: review it against this file's pins")
 
     def test_the_rollback_exists_and_is_one_transaction(self):
         self.assertRegex(ROLLBACK, r"(?m)^begin;$")

@@ -293,6 +293,7 @@ export type MediaError =
   | "not_available"
   | "folder_not_found"
   | "folder_forbidden"
+  | "parent_not_found"
   | "not_dismissable"
   | "failed";
 
@@ -319,6 +320,8 @@ export function mapMediaError(error: { code?: string; message?: string; details?
     case "42501":
       return /folder_forbidden/.test(error.details ?? "") ? { error: "folder_forbidden", status: 403 } : { error: "forbidden", status: 403 };
     case "P0002":
+      // 0128: the picture an edit was made from (another organization's, deleted, not an image and made up read alike).
+      if (/parent_not_found/.test(error.details ?? "")) return { error: "parent_not_found", status: 404 };
       return /folder_not_found/.test(error.details ?? "") ? { error: "folder_not_found", status: 404 } : { error: "not_found", status: 404 };
     case "22023":
       return { error: "bad_request", status: 400 };
