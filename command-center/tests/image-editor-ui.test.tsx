@@ -401,7 +401,8 @@ describe("saving", () => {
     expect(await screen.findByText("Saved. cat-edited.png is being checked and will appear in your Library in a moment.")).toBeTruthy();
     const post = calls.find((c) => c.url === "/api/media/uploads")!;
     expect(post.method).toBe("POST");
-    expect(post.body).toEqual({ org_id: ORG, filename: "cat-edited.png", mime: "image/png", bytes: 500 });
+    // the ORIGINAL's id rides along as the parent request (migration 0128): the server and the database decide whether it links
+    expect(post.body).toEqual({ org_id: ORG, filename: "cat-edited.png", mime: "image/png", bytes: 500, parent_asset_id: PIC });
     const put = calls.find((c) => c.url === `/api/media/uploads/${TICKET}`)!;
     expect(put.method).toBe("PUT");
     // the state exported is the state on screen: turned right, no crop, png

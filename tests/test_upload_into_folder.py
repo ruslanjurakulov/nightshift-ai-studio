@@ -154,7 +154,9 @@ class UploadIntoFolderMigration(unittest.TestCase):
         self.assertIn("-- Verify (run after applying; every column should read true)", SQL)
 
     def test_no_later_migration_redefines_these_functions(self):
-        later = [p for p in sorted(MIG.glob("*.sql")) if p.name[:4] > "0051"]
+        # 0128 (the parent link of an edited picture) is the one that does, on purpose: tests/test_upload_parent_migration.py pins it
+        # against this file's bodies line by line.
+        later = [p for p in sorted(MIG.glob("*.sql")) if p.name[:4] > "0051" and not p.name.startswith("0128_")]
         for p in later:
             text = p.read_text()
             self.assertNotIn("function public.request_upload(", text, p.name)

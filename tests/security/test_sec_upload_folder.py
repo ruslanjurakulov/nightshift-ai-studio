@@ -152,7 +152,7 @@ def test_the_other_gates_still_apply_with_a_folder(conn, sc):
     assert refused(huge, "NS413"), huge
 
 
-def test_the_api_roles_reach_both_overloads_as_before(conn, sc):
+def test_the_api_roles_reach_all_overloads_as_before(conn, sc):
     with as_superuser(conn, commit=False) as s:
         rows = s.rows(
             "select pg_get_function_identity_arguments(p.oid), "
@@ -160,8 +160,9 @@ def test_the_api_roles_reach_both_overloads_as_before(conn, sc):
             "has_function_privilege('anon', p.oid, 'EXECUTE'), "
             "has_function_privilege('service_role', p.oid, 'EXECUTE') "
             "from pg_proc p where p.proname = 'request_upload' and p.pronamespace = 'public'::regnamespace order by 1")
-    assert [r[1:] for r in rows] == [(True, False, False)] * 2, rows
-    assert len(rows) == 2
+    assert [r[1:] for r in rows] == [(True, False, False)] * 3, rows
+    # 0051's two and 0128's seven-argument one (tests/security/test_sec_upload_parent.py).
+    assert len(rows) == 3
 
 
 # ── registering the file ────────────────────────────────────────────────────

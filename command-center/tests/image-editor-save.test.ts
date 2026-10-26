@@ -93,6 +93,28 @@ describe("uploadEdited", () => {
     expect(calls[1].init?.body).toBe(b);
   });
 
+  it("names the picture the edit was made from, as a request, and only when it is an id", async () => {
+    const PARENT = "0d000000-0000-4000-8000-00000000000d";
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/media/uploads") {
+        bodies.push(JSON.parse(String(init?.body)));
+        return json(200, { ok: true, ticket: TICKET, upload_url: `/api/media/uploads/${TICKET}`, name: "cat-edited.png", parent_applied: true });
+      }
+      return json(200, { ok: true });
+    });
+    const run = (parentId?: string) =>
+      uploadEdited({ orgId: ORG, blob: blob(10), filename: "cat-edited.png", mime: "image/png", parentId, fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(await run(PARENT)).toEqual({ ok: true, ticket: TICKET, name: "cat-edited.png" });
+    expect(bodies[0]).toEqual({ org_id: ORG, filename: "cat-edited.png", mime: "image/png", bytes: 10, parent_asset_id: PARENT });
+    // Not an id (or nothing): the key is not sent at all, and the save still works.
+    for (const junk of ["../x", "not-a-uuid", "", `${PARENT}/../x`, undefined]) {
+      bodies.length = 0;
+      expect((await run(junk as string | undefined)).ok).toBe(true);
+      expect("parent_asset_id" in bodies[0]).toBe(false);
+    }
+  });
+
   it("never sends the body when the ticket is refused, and says why (with the limit when there is one)", async () => {
     const fetchImpl = vi.fn(async () => json(413, { error: "too_large", max_bytes: 1000 }));
     const res = await uploadEdited({ orgId: ORG, blob: blob(5000), filename: "a.png", mime: "image/png", fetchImpl: fetchImpl as unknown as typeof fetch });

@@ -6,8 +6,10 @@ import { cleanUploadName, parseMediaId } from "@/lib/media";
  * media worker re-checks, re-encodes and strips it like any other upload. The browser's output is untrusted input to
  * that worker. The original is never touched: a save is always a NEW library file.
  *
- * That path has no parent argument (request_upload takes none; parent_asset_id is written only by the worker), so the
- * new file is linked to the original by its NAME (`<name>-edited.png`) and nothing else.
+ * The ticket request also names the picture this is an edit of (`parent_asset_id`, migration 0128). That id is only a request: the route
+ * ignores it while the editor flag is off, the database checks that it is a live image of the same organization and the worker re-checks
+ * it when it registers the file. Without 0128 (or if the original was deleted meanwhile) the file is saved WITHOUT a link, never lost, and
+ * is still tied to the original by its NAME (`<name>-edited.png`).
  */
 export const SAVE_FORMATS = ["png", "jpeg"] as const;
 export type SaveFormat = (typeof SAVE_FORMATS)[number];
@@ -60,6 +62,8 @@ export interface SaveInput {
   blob: Blob;
   filename: string;
   mime: string;
+  /** The library picture this edit was made from. Sent as a request only; an id that is not a uuid is not sent at all. */
+  parentId?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -67,11 +71,18 @@ export interface SaveInput {
 export async function uploadEdited(input: SaveInput): Promise<SaveResult> {
   const doFetch = input.fetchImpl ?? fetch;
   if (input.blob.size <= 0) return { ok: false, error: "empty" };
+  const parent = parseMediaId(input.parentId);
   try {
     const res = await doFetch("/api/media/uploads", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ org_id: input.orgId, filename: input.filename, mime: input.mime, bytes: input.blob.size }),
+      body: JSON.stringify({
+        org_id: input.orgId,
+        filename: input.filename,
+        mime: input.mime,
+        bytes: input.blob.size,
+        ...(parent ? { parent_asset_id: parent } : {}),
+      }),
     });
     const ticket = (await res.json().catch(() => ({}))) as { upload_url?: unknown; ticket?: unknown; error?: unknown; max_bytes?: unknown; name?: unknown };
     const id = parseMediaId(ticket.ticket);

@@ -515,6 +515,24 @@ when the PR was opened: the open #624-#629 touch nothing under `supabase/`); 012
   body back byte for byte; drops the table (copy the numbers out first). Run it BEFORE `rollback_0122_series_template_carrier.sql`.
 - **Review.** Needs the independent security review before merge, and a person reading the live hash first.
 
+## Edited pictures remember their original (0128)
+
+0128 (`0128_upload_parent_asset.sql`, `docs/IMAGE_EDITOR.md`, "The link to the original") is **live on apply and dark**: it adds one nullable column
+(`media_uploads.parent_asset_id`, `ON DELETE SET NULL`, a partial index), **adds one function overload** (the seven-argument `request_upload`, a thin wrapper
+over 0051's six-argument one) and **replaces one function** (`register_asset`, on 0051's body plus ten lines marked `-- 0128`, md5-pinned: BEFORE
+`233cdbb722c76a434f08d929bafa4e27`). It adds no table, no policy and no grant on any table; the new overload is granted to `authenticated` only (as 0051's two),
+revoked from public, anon and service_role. Nothing happens until the image editor is switched on (`NIGHTSHIFT_IMAGE_EDITOR`): the only caller that names a parent.
+
+- **What it enforces.** The parent of an upload must be a live image of the organization uploaded to, checked after sign-in and membership; every refusal
+  (another organization's, deleted, a video, made up) is the same P0002 `reason=parent_not_found`. `register_asset` takes the parent from the ticket
+  only, re-checks it (a parent gone = no link, never a failed upload) and the worker's own same-organization check (0038) still runs.
+- **Roll-out.** Either order with the Command Center and the worker (the Command Center feature-detects the overload and saves without a link otherwise).
+- **Drift guard.** Refuses (changes nothing) if the live `register_asset` is neither 0051's body nor its own; the last block asserts the end state.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`.
+- **Undo.** `docs/sql/rollback_0128_upload_parent_asset.sql` (owner-applied): refuses a body that is not 0128's and refuses while a ticket in flight carries a
+  parent; puts 0051's body back byte for byte; drops the overload, index, constraint and column. Links already written on `media_assets` stay.
+- **Review.** Needs the independent security review before merge, and a person reading the live `register_asset` hash first.
+
 ## The owner's model switch (0124)
 
 0124 (`0124_model_switch.sql`, `docs/MODEL_SWITCH.md`) is **live on apply and dark**: it replaces five functions that exist on the live

@@ -338,7 +338,7 @@ export function ImageEditor({ assetId, orgId, name, libraryHref }: { assetId: st
         return;
       }
       setSave({ status: "saving" });
-      const res = await uploadEdited({ orgId, blob, filename: editedName(name, format), mime: SAVE_MIME[format] });
+      const res = await uploadEdited({ orgId, blob, filename: editedName(name, format), mime: SAVE_MIME[format], parentId: assetId });
       if (res.ok) {
         setSavedState(snapshot);
         setSavedName(res.name);
