@@ -1,0 +1,126 @@
+name: Phase 2B.1F local Supabase harness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase2b1f-supabase-harness
+  cancel-in-progress: true
+
+jobs:
+  disposable-supabase:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Deliberately has no environment, secrets, service containers, or
+    # production variables. This job may only reach the runner's local stack.
+    env:
+      NIGHTSHIFT_TEST_PROJECT: nightshift-phase2b1f
+      SUPABASE_AUTOSTOP: "true"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resource and safety preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner=$(uname -a)" >> "$GITHUB_STEP_SUMMARY"
+          echo "memory=$(free -h | awk '/Mem:/ {print $2}')" >> "$GITHUB_STEP_SUMMARY"
+          echo "disk=$(df -h / | awk 'NR==2 {print $4 " free"}')" >> "$GITHUB_STEP_SUMMARY"
+          free_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+          mem_kb=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
+          if (( free_kb < 8388608 )); then
+            echo 'BLOCKED: less than 8 GiB free disk for the disposable stack' >&2
+            exit 1
+          fi
+          if (( mem_kb < 6291456 )); then
+            echo 'BLOCKED: less than 6 GiB available memory for the disposable stack' >&2
+            exit 1
+          fi
+          test -S /var/run/docker.sock
+          docker info --format 'docker={{.ServerVersion}} storage={{.Driver}}'
+          if compgen -v | grep -E '^(SUPABASE_(URL|SERVICE_KEY)|DATABASE_URL)$' >/dev/null; then
+            echo 'remote database variables are forbidden' >&2
+            exit 1
+          fi
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.67.1
+
+      - name: Validate local project bootstrap
+        id: bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f supabase/config.toml ]] && ! cmp -s supabase/config.toml tests/postgres/config.toml; then
+            echo 'refusing non-test supabase/config.toml' >&2
+            exit 1
+          fi
+          if [[ ! -f supabase/config.toml ]]; then
+            tests/postgres/prepare_supabase.sh
+          fi
+          # schema.sql is the repository's base schema. Supabase CLI applies
+          # migrations before seed.sql, so make it an ephemeral 0000 migration
+          # rather than assuming the CLI loads schema.sql automatically.
+          test -f supabase/migrations/0000_base_schema.sql
+          echo blocked=false >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned Python database test dependency
+        if: steps.bootstrap.outputs.blocked != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --no-cache-dir \
+            'psycopg[binary]==3.2.3'
+          python3 -c 'import psycopg; print("psycopg=" + psycopg.__version__)'
+
+      - name: Start disposable local Supabase
+        if: steps.bootstrap.outputs.blocked != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! supabase start >supabase-start.log 2>&1; then
+            echo 'BLOCKED: local Supabase failed to start; see sanitized evidence artifact' >&2
+            exit 1
+          fi
+          tests/postgres/preflight_supabase.sh
+
+      - name: Load and validate local migrations
+        if: steps.bootstrap.outputs.blocked != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NIGHTSHIFT_TEST_DSN='host=127.0.0.1 port=55322 dbname=postgres user=postgres'
+          tests/postgres/load_supabase.sh >migration-reset.log 2>&1
+          python3 tests/postgres/run_sql_tests.py >sql-smoke.log 2>&1
+
+      - name: Sanitize evidence
+        if: always()
+        shell: bash
+        run: tests/postgres/sanitize_evidence.sh sanitized-evidence
+
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2b1f-evidence-${{ github.run_id }}
+          path: sanitized-evidence
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop disposable local Supabase
+        if: always() && steps.bootstrap.outputs.blocked != 'true'
+        shell: bash
+        run: supabase stop
+
+      - name: Remove ephemeral test configuration
+        if: always() && steps.bootstrap.outputs.blocked != 'true'
+        shell: bash
+        run: tests/postgres/cleanup_supabase.sh
+
+
