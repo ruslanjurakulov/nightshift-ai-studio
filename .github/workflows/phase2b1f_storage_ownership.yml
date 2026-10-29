@@ -48,6 +48,8 @@ jobs:
           cp ownership-evidence/*.log . 2>/dev/null || true
           tests/postgres/sanitize_evidence.sh sanitized-evidence
           if [[ -f sanitized-evidence/ownership.log ]]; then
+            echo '--- sanitized ownership evidence ---'
+            cat sanitized-evidence/ownership.log
             cat sanitized-evidence/ownership.log >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'DIAGNOSTIC_EVIDENCE_UNAVAILABLE=true' >> "$GITHUB_STEP_SUMMARY"
