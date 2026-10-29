@@ -1,0 +1,51 @@
+name: Nightshift Orchestrator — Codex / Deployment Handoff
+
+# Manual gated planning only. No Codex API invocation and no remote deployment.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Prepare handoff for Codex or deployment"
+        required: true
+        type: choice
+        options:
+          - codex_task
+          - deploy
+      target:
+        description: "Deployment target (no deploy actually occurs)"
+        required: true
+        type: choice
+        options: [staging, production]
+      pr_number:
+        description: "PR to evaluate"
+        required: true
+        type: string
+        default: "647"
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: read
+  actions: read
+
+jobs:
+  handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      NIGHTSHIFT_MONITOR_PR: ${{ inputs.pr_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Read target PR and CI status
+        run: python3 tools/nightshift_orchestrator_monitor.py
+      - name: Verify gates without external actions
+        env:
+          REQUESTED_ACTION: ${{ inputs.action }}
+          REQUESTED_TARGET: ${{ inputs.target }}
+        shell: bash
+        run: |
+          python3 tools/nightshift_orchestrator_gate.py --action "$REQUESTED_ACTION" --target "$REQUESTED_TARGET"
