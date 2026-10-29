@@ -1,0 +1,46 @@
+name: Nightshift Orchestrator (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to monitor"
+        required: false
+        default: "647"
+        type: string
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: nightshift-orchestrator-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      NIGHTSHIFT_MONITOR_PR: ${{ inputs.pr_number || '647' }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -p test_nightshift_orchestrator_monitor.py
+      - name: Read-only PR and CI monitor
+        run: python3 tools/nightshift_orchestrator_monitor.py
+      - name: Upload limited non-secret status report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightshift-orchestrator-${{ github.run_id }}
+          path: nightshift-orchestrator-report.json
+          if-no-files-found: ignore
+          retention-days: 7
