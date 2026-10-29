@@ -3,7 +3,7 @@ set -euo pipefail
 
 out_dir="${1:?output directory required}"
 mkdir -p "$out_dir"
-for input in migration-reset.log sql-smoke.log supabase-start.log; do
+for input in migration-reset.log sql-smoke.log supabase-start.log ownership.log supabase-stop.log; do
   [[ -f "$input" ]] || continue
   sed -E \
     -e 's#(postgres(ql)?://)[^[:space:]]+#\1[REDACTED-DSN]#g' \
