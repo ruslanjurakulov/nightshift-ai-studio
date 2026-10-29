@@ -85,7 +85,14 @@ jobs:
         run: |
           set -euo pipefail
           if ! supabase start >supabase-start.log 2>&1; then
-            echo 'BLOCKED: local Supabase failed to start; see sanitized evidence artifact' >&2
+            tests/postgres/sanitize_evidence.sh sanitized-start-failure
+            {
+              echo '## Phase 2B.1F result: BLOCKED'
+              echo
+              echo 'Supabase start failed. Sanitized diagnostics:'
+              sed -n '1,160p' sanitized-start-failure/supabase-start.log
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo 'BLOCKED: local Supabase failed to start; sanitized diagnostics were added to the summary' >&2
             exit 1
           fi
           tests/postgres/preflight_supabase.sh
