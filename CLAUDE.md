@@ -207,3 +207,16 @@ English.
 Analyse, build, verify, *then* say it is ready — never before the push. When a
 diagnosis turns out to be wrong, say so plainly and move on. Open a **draft**
 PR and let the owner merge; several small reviewable PRs beat one large one.
+
+## Nightshift Product Constitution (standing strategic brief)
+
+Read `AGENTS.md` for the complete product strategy and agent checklist. Its mission is to build **Nightshift AI Content Operating System**, a unified independent commercial studio with the loop **Create → Edit → Automate → Publish → Analyze → Improve**.
+
+Core commitments:
+- Treat Higgsfield, Krea, BigMotion, Ssemble, and Buzzy as competitors/benchmarks, not default API providers; verify original model developers and prefer official direct APIs when appropriate.
+- Build original Nightshift workflows for AI image/video/voice creation and professional in-site image, video, and audio editing (CapCut/InShot-like scope without copying their products).
+- Design strategy-aware YouTube, Instagram, and TikTok repurposing, scheduling, and publishing using authorized official integrations, channel-topic alignment, Topic Guard, and analytics feedback.
+- Preserve every non-negotiable above, especially default-off publishing, human approvals, secret protection, financial safety, and no unsupported feature claims.
+- Treat roadmap capabilities as planned until implemented and tested; do not present them as shipped.
+
+The owner expects this vision to be considered in every Nightshift architecture review, implementation plan, Codex/Claude task, and feature proposal. `AGENTS.md` and this brief do not authorize commits, pushes, merges, deployments, production changes, or paid API usage.
