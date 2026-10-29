@@ -1,0 +1,25 @@
+# Test-only Supabase CLI configuration. CI copies this file to supabase/config.toml
+# on the ephemeral runner and removes it during cleanup. It is never a production
+# project configuration and contains no credentials.
+project_id = "nightshift-phase2b1f"
+
+[api]
+enabled = true
+port = 55321
+
+[db]
+port = 55322
+shadow_port = 55320
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[storage]
+enabled = true
+
+[auth]
+enabled = true
+
