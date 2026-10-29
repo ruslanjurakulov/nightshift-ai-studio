@@ -79,3 +79,31 @@ The CI workflow redirects Supabase and migration output to files. Raw output is
 never written to the Actions console. Artifact creation fails if sanitization
 fails or known credential/DSN patterns remain.
 
+
+### X6 ownership evidence (diagnostic only)
+
+Run the existing `phase2b1f_storage_ownership.yml` manually on `main`. It uses
+CLI 2.67.1 and a 900-second startup deadline (plus 30-second termination grace).
+Postgres, gotrue/Auth, storage-api, Kong/PostgREST and image support remain.
+Studio, postgres-meta, logflare, vector, realtime, edge-runtime, mailpit and
+supavisor are excluded. Realtime/analytics/edge configuration is disabled too:
+CLI service initialization jobs otherwise still run despite `--exclude`.
+Names verified against official v2.67.1 `cmd/start.go`,
+`internal/start/start.go:ExcludableContainers`, and
+`pkg/config/templates/Dockerfile`; the runner also validates `start --help`.
+
+Only the disposable 0003 copy receives a read-only DO/NOTICE probe. This captures
+**actual migration-session** current_user/session_user, relowner, inherited
+owner-role USAGE, MEMBER, superuser and memberships before startup can destroy
+containers. It neither creates a persistent probe nor modifies grants/owners.
+The original complete directory is restored by EXIT trap, with byte comparison.
+Runner destruction bounds forced-cancellation cleanup; no subsequent full-chain
+validation uses the subset. Production SQL is unchanged.
+
+Only `ownership-evidence/report.json` is printed/uploaded. It is built from
+validated identity fields, numeric resource readings and fixed failure categories.
+Raw start/help logs, Docker environment and health-check output are never exported.
+Container status may be unavailable because CLI removes containers after failure.
+Exit 137 alone is not proof of OOM; absent evidence remains unknown. A report with
+`ownership_sql=UNRUN` is not a pass. The full chain is always UNRUN on this path.
+Production executor equivalence remains unverified without owner-supplied evidence.
