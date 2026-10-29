@@ -19,6 +19,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          [[ $(df -Pk . | awk 'NR==2 {print $4}') -ge 8388608 ]] || { echo 'BLOCKED: insufficient disk'; exit 2; }
+          [[ $(awk '/MemAvailable:/ {print $2}' /proc/meminfo) -ge 6291456 ]] || { echo 'BLOCKED: insufficient memory'; exit 2; }
           test -S /var/run/docker.sock
           docker info --format 'docker={{.ServerVersion}} storage={{.Driver}}' >/dev/null
           if compgen -v | grep -E '^(SUPABASE_(URL|SERVICE_KEY)|DATABASE_URL)$' >/dev/null; then
@@ -43,26 +45,10 @@ jobs:
           tests/postgres/diagnose_storage_ownership.sh ownership-evidence
           rc=$?
           set -e
-          # The sanitizer intentionally accepts only named files in the
-          # workspace root; copy diagnostic logs there without printing them.
-          cp ownership-evidence/*.log . 2>/dev/null || true
-          tests/postgres/sanitize_evidence.sh sanitized-evidence
-          if [[ -f sanitized-evidence/ownership.log ]]; then
-            echo '--- sanitized ownership evidence ---'
-            cat sanitized-evidence/ownership.log
-            cat sanitized-evidence/ownership.log >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'DIAGNOSTIC_EVIDENCE_UNAVAILABLE=true' >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [[ -f sanitized-evidence/supabase-start.log ]]; then
-            echo '--- sanitized Supabase startup diagnostics ---'
-            sed -n '1,160p' sanitized-evidence/supabase-start.log
-            {
-              echo
-              echo '## Startup diagnostics'
-              tail -80 sanitized-evidence/supabase-start.log
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          # Only the validated report is publishable. Raw files stay private
+          # on this disposable VM and are never artifact inputs.
+          test -s ownership-evidence/report.json
+          cat ownership-evidence/report.json | tee -a "$GITHUB_STEP_SUMMARY"
           exit "$rc"
 
       - name: Upload sanitized ownership evidence
@@ -70,14 +56,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: phase2b1f-storage-ownership-${{ github.run_id }}
-          path: sanitized-evidence
+          path: ownership-evidence/report.json
           if-no-files-found: ignore
           retention-days: 7
 
       - name: Stop local stack
         if: always()
         shell: bash
-        run: supabase stop >/dev/null 2>&1 || true
+        run: timeout 120s supabase stop --no-backup >/dev/null 2>&1
 
       - name: Restore ephemeral test files
         if: always()
