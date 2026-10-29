@@ -1,5 +1,8 @@
 name: Nightshift Orchestrator (read-only)
 
+# Event-driven GitHub monitoring; NOT a Codex Cloud session controller.
+# PR events can be influenced by untrusted contributors. Do not execute
+# their code, download their artifacts, or expose write-scoped credentials.
 on:
   workflow_dispatch:
     inputs:
@@ -8,6 +11,12 @@ on:
         required: false
         default: "647"
         type: string
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, closed]
+    branches: [main]
+  workflow_run:
+    workflows: ["Tests", "Frontend", "Phase 2B.1F storage ownership evidence", "Phase 2B.1F local Supabase harness"]
+    types: [completed]
   schedule:
     - cron: '17 * * * *'
 
@@ -18,7 +27,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: nightshift-orchestrator-monitor
+  group: nightshift-orchestrator-monitor-${{ github.event.pull_request.number || github.event.workflow_run.id || inputs.pr_number || 'hourly' }}
   cancel-in-progress: false
 
 jobs:
@@ -26,11 +35,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      NIGHTSHIFT_MONITOR_PR: ${{ inputs.pr_number || '647' }}
+      # For workflow_run without linked PR use the original tracked diagnostic.
+      # No event payload field is interpolated into shell commands.
+      NIGHTSHIFT_MONITOR_PR: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || inputs.pr_number || '647' }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout trusted main only
+        uses: actions/checkout@v4
         with:
+          ref: main
           persist-credentials: false
       - name: Unit tests
         run: python3 -m unittest discover -s tests -p test_nightshift_orchestrator_monitor.py
