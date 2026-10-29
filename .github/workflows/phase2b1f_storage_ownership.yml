@@ -60,7 +60,7 @@ jobs:
             {
               echo
               echo '## Startup diagnostics'
-              sed -n '1,160p' sanitized-evidence/supabase-start.log
+              tail -80 sanitized-evidence/supabase-start.log
             } >> "$GITHUB_STEP_SUMMARY"
           fi
           exit "$rc"
