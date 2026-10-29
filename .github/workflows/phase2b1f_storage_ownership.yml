@@ -43,8 +43,15 @@ jobs:
           tests/postgres/diagnose_storage_ownership.sh ownership-evidence
           rc=$?
           set -e
+          # The sanitizer intentionally accepts only named files in the
+          # workspace root; copy diagnostic logs there without printing them.
+          cp ownership-evidence/*.log . 2>/dev/null || true
           tests/postgres/sanitize_evidence.sh sanitized-evidence
-          cat sanitized-evidence/ownership.log >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f sanitized-evidence/ownership.log ]]; then
+            cat sanitized-evidence/ownership.log >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'DIAGNOSTIC_EVIDENCE_UNAVAILABLE=true' >> "$GITHUB_STEP_SUMMARY"
+          fi
           exit "$rc"
 
       - name: Upload sanitized ownership evidence
