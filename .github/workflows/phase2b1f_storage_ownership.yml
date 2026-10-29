@@ -1,0 +1,67 @@
+name: Phase 2B.1F storage ownership evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ownership-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NIGHTSHIFT_TEST_PROJECT: nightshift-phase2b1f
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resource and remote-target preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -S /var/run/docker.sock
+          docker info --format 'docker={{.ServerVersion}} storage={{.Driver}}' >/dev/null
+          if compgen -v | grep -E '^(SUPABASE_(URL|SERVICE_KEY)|DATABASE_URL)$' >/dev/null; then
+            echo 'remote database variables are forbidden' >&2
+            exit 1
+          fi
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.67.1
+
+      - name: Prepare isolated test project
+        shell: bash
+        run: tests/postgres/prepare_supabase.sh
+
+      - name: Collect storage ownership evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ownership-evidence
+          set +e
+          tests/postgres/diagnose_storage_ownership.sh ownership-evidence
+          rc=$?
+          set -e
+          tests/postgres/sanitize_evidence.sh sanitized-evidence
+          cat sanitized-evidence/ownership.log >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: Upload sanitized ownership evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2b1f-storage-ownership-${{ github.run_id }}
+          path: sanitized-evidence
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop local stack
+        if: always()
+        shell: bash
+        run: supabase stop >/dev/null 2>&1 || true
+
+      - name: Restore ephemeral test files
+        if: always()
+        shell: bash
+        run: tests/postgres/cleanup_supabase.sh
