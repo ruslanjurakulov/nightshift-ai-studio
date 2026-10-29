@@ -4,7 +4,7 @@
 
 ## Activation
 
-This monitoring-only workflow is proposed through a **draft PR**. Scheduled GitHub Actions run from the default branch, so automatic hourly checks remain inactive until reviewed and merged. After activation, cron `17 * * * *` checks the designated PR hourly. GitHub may delay schedules.
+This monitoring-only workflow is proposed through a **draft PR**. Scheduled and workflow_run GitHub Actions use the default branch, so those checks remain inactive until reviewed and merged. PR events are configured for event-driven status updates after activation. After activation, PR opened/synchronize/review-state events trigger immediate checks, and completion of named CI workflows (Tests, Frontend, and Phase 2B.1F harness jobs) triggers follow-up checks. Cron `17 * * * *` remains a fallback. GitHub may delay schedules and event delivery. GitHub may delay schedules.
 
 ## Behaviour
 
@@ -16,9 +16,9 @@ This monitoring-only workflow is proposed through a **draft PR**. Scheduled GitH
 
 ## Limitations
 
-- This version tracks PR #647 on its schedule; manual runs can specify a different PR.
+- The schedule tracks PR #647; PR events select the actual PR. CI workflow_run events select the linked PR if GitHub supplies one, otherwise fallback to #647. Manual runs can specify another PR.
 - GitHub CI status is not a Codex task-completion signal until task results have been published on GitHub.
-- It does not read or message the user's existing mobile Codex Cloud session.
+- It does not read or message the user's existing mobile Codex Cloud session. Event-driven means immediate-on-GitHub-event (subject to GitHub queue delays), NOT continuous Codex session observation.
 - Automated Codex execution requires a supported authenticated integration and explicit billing/usage approval. Agents API has separate usage costs; **do not enable it under a $0 budget**.
 - No automatic GitHub writes, merge, approvals or deployment.
 - Scheduled runs may be delayed/skipped under GitHub load.
