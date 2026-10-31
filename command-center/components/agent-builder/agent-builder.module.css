@@ -17,3 +17,5 @@
 
 .planInput{display:block;width:100%;margin-top:8px;resize:vertical;min-height:74px;padding:11px;background:#1c2027;color:#f7f3ed;border:1px solid #343b46;border-radius:8px;font:inherit;font-size:13px;line-height:1.5;}
 .planInput:focus-visible{outline:2px solid #d9ad73;}
+
+.providerPreview{background:#181d25;border:1px solid #3c464f;padding:14px;border-radius:10px;margin-bottom:12px;font-size:11px;line-height:1.5;color:#c4c9cc}.providerPreview strong{color:#d8ad73;letter-spacing:.09em}.providerPreview ul{padding-left:18px;margin:10px 0 0}.providerPreview li{margin-bottom:6px}
