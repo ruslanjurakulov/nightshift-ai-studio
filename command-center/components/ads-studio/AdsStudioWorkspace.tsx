@@ -37,7 +37,7 @@ export function AdsStudioWorkspace() {
   };
   const addProduct = () => {
     if (products.length >= 20) return;
-    setProducts(p => [...p, { id: `product-${p.length + 1}`, name: "", price: "", sellingPoint: "" }]);
+    setProducts(p => [...p, { id: `product-${crypto.randomUUID()}`, name: "", price: "", sellingPoint: "" }]);
   };
   return <main className={styles.page}>
     <header className={styles.topbar}>
