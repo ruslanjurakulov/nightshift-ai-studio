@@ -84,3 +84,10 @@ The database RPC now also checks allowed node types, non-empty labels, empty nod
 
 ### CI blockers found in prior run
 Frontend check passed. Security lab found PostgreSQL `42725 operator is not unique: unknown - unknown` in the new SQL function; explicit JSONB subtraction operands/casts were added. Python tests also found two unrelated unpinned Phase 2B.1F harness workflows and the 0129 migration review pin; workflow action pins, credential persistence, and the explicit reviewed 0129 migration list were updated. All changes require fresh CI evidence; do not claim green until checks finish.
+
+## Phase 2D — CI catalog and workflow supply-chain repairs
+After the previous PR run, Frontend passed, but the Security lab catalog test failed because migration 0129's person-owned tables and RPC were not declared. We now declare a `Person(owner_id)` isolation kind separately from organization-owned data; tests assert owner-only reads and no direct inserts. `save_agent_workflow_draft` is registered as an authenticated-only function in the closed function catalog.
+
+The Python suite found the disabled-by-default `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` flag absent from `deploy/.env.web.example`; it is now listed explicitly as `false`. It also flagged unpinned GitHub Actions in the read-only monitor and two disposable local Supabase workflows. Those actions are now locked to reviewed 40-character commit hashes, and checkout credentials remain nonpersistent. For `supabase/setup-cli`, v1.7.1's upstream immutable commit is `ab058987d8d6c725971f6cf9d0b5c98467e30bd1`.
+
+These are PR-only changes. Fresh CI is required. No production Supabase migration, cloud flag enablement, merge or real model execution occurred.
