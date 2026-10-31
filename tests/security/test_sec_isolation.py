@@ -46,6 +46,8 @@ def T(table: str) -> sql.Composed:
 def owner_of(sc, kind: Kind, row: dict):
     """The organization a row belongs to, as the expectations define it;
     'platform' for the operator's channel-less rows."""
+    if kind.kind == "person":
+        return row.get(kind.col)
     if kind.kind == "org":
         return row.get(kind.col)
     if kind.kind == "channel":
@@ -112,6 +114,9 @@ def test_tenant_reads_only_its_own_rows(conn, sc, table):
         return
     if kind.kind == "public":
         assert out.ok, f"{table} is declared public but a signed-in user cannot read it: {out!r}"
+        return
+    if kind.kind == "person":
+        assert all(r.get(kind.col) == sc.bob.actor.uid for r in rows), f"{table}: leaked other person's private data"
         return
     owners = {owner_of(sc, kind, r) for r in rows}
     leaked = [r for r in rows if owner_of(sc, kind, r) != sc.bob.org]
@@ -354,6 +359,11 @@ def _insert(s, table: str, row: dict):
 @pytest.mark.parametrize("table", ALL)
 def test_tenant_inserts_into_its_own_scope_only_where_declared(conn, sc, table):
     kind = TABLES[table]
+    if kind.kind == "person":
+        with acting(conn, sc.bob.actor) as s:
+            out = s.run(sql.SQL("insert into {} default values").format(T(table)))
+        assert refused(out), f"{table}: unauthorized personal table insert"
+        return
     if kind.kind not in ("org", "channel", "video"):
         row = _clone(conn, sc, table, sc.bob, "authenticated")
         with acting(conn, sc.bob.actor) as s:
