@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { createCampaignWorkflow, inspectWorkflow, NODE_TYPES, type AgentWorkflow, type NodeType } from "@/lib/agent-graph";
-import { addNode, checkConnection, removeNode } from "@/lib/agent-graph-editor";
+import { addNode, checkConnection, removeNode, PORTS, clampPosition, type NodePosition } from "@/lib/agent-graph-editor";
 import styles from "./agent-builder.module.css";
 
 export function AgentBuilder() {
@@ -12,6 +12,9 @@ export function AgentBuilder() {
   const [target, setTarget] = useState("prompt");
   const [newType, setNewType] = useState<NodeType>("video.generate");
   const [notice, setNotice] = useState("");
+  const [positions, setPositions] = useState<Record<string, NodePosition>>({});
+  const defaultPosition = (index: number) => ({ x: 20 + (index % 3) * 250, y: 20 + Math.floor(index / 3) * 190 });
+  const moveNode = (id: string, position: NodePosition) => setPositions(prev => ({ ...prev, [id]: clampPosition(position.x, position.y) }));
   const report = useMemo(() => inspectWorkflow(graph), [graph]);
   const nodeMap = useMemo(() => new Map(graph.nodes.map(n => [n.id, n])), [graph]);
   const addConnection = () => {
@@ -22,6 +25,7 @@ export function AgentBuilder() {
   };
   const remove = (id: string) => {
     setGraph(prev => removeNode(prev, id));
+    setPositions(prev => { const next = { ...prev }; delete next[id]; return next; });
     if (source === id) setSource("");
     if (target === id) setTarget("");
   };
@@ -59,7 +63,7 @@ export function AgentBuilder() {
         <label>To<select value={target} onChange={e => setTarget(e.target.value)}><option value="">Choose target</option>{graph.nodes.map(n => <option key={n.id} value={n.id}>{n.label} [{n.id}]</option>)}</select></label>
         <button type="button" onClick={addConnection}>Connect selected nodes</button>
         <div className={styles.sectionTitle}>04 / Plan</div>
-        <button type="button" className={styles.secondary} onClick={() => {setGraph(createCampaignWorkflow());setNotice("Example restored.");}}>Restore example</button>
+        <button type="button" className={styles.secondary} onClick={() => {setGraph(createCampaignWorkflow());setPositions({});setNotice("Example restored.");}}>Restore example</button>
         <button type="button" className={styles.download} disabled={!report.ok} onClick={exportPlan}>Download validated draft ↓</button>
         <p className={styles.disclaimer}>No model APIs, credentials, billing, background jobs, automated publishing, or server storage are connected.</p>
         <p role="status" className={styles.notice}>{notice}</p>
@@ -70,12 +74,17 @@ export function AgentBuilder() {
           <span className={report.ok ? styles.passed : styles.failed}>{report.ok ? "VALID GRAPH" : "NEEDS REVIEW"}</span>
         </div>
         <div className={styles.legend}>NODES {graph.nodes.length} <span>CONNECTIONS {graph.edges.length}</span> <span>EXECUTION DISABLED</span></div>
-        <div className={styles.nodeGrid}>
-          {graph.nodes.map((n, index) => <article key={n.id} className={styles.node}>
+        <p className={styles.disclaimer}>Drag node cards to reposition them. On touch or keyboard, use arrow buttons. Connections remain accessible in the list below.</p>
+        <div className={styles.nodeGrid} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (!graph.nodes.some(n => n.id === id)) return; const rect = e.currentTarget.getBoundingClientRect(); moveNode(id, clampPosition(e.clientX - rect.left - 100, e.clientY - rect.top - 35)); }}>
+          {graph.nodes.map((n, index) => <article key={n.id} className={styles.node} draggable onDragStart={e => e.dataTransfer.setData("text/plain", n.id)} style={{ position: "absolute", left: (positions[n.id] || defaultPosition(index)).x, top: (positions[n.id] || defaultPosition(index)).y, width: 220 }}>
             <div className={styles.nodeTop}><span>NODE {String(index+1).padStart(2,"0")}</span><button type="button" onClick={() => remove(n.id)} aria-label={`Remove ${n.label}`}>Remove</button></div>
             <div className={styles.nodeType}>{n.type}</div>
             <input aria-label={`Rename ${n.id}`} maxLength={80} value={n.label} onChange={e => setGraph(prev => ({...prev,nodes:prev.nodes.map(x => x.id === n.id ? {...x,label:e.target.value}:x)}))}/>
             <div className={styles.nodeId}>{n.id}</div>
+            <div className={styles.nodePorts}>IN: {PORTS[n.type].input.join(", ") || "—"} · OUT: {PORTS[n.type].output.join(", ") || "—"}</div>
+            <div className={styles.nudge}>
+              {([["←",-20,0],["↑",0,-20],["↓",0,20],["→",20,0]] as const).map(([symbol, dx, dy]) => <button type="button" key={symbol} aria-label={"Move "+n.label+" "+symbol} onClick={() => { const at = positions[n.id] || defaultPosition(index); moveNode(n.id,{x:at.x+dx,y:at.y+dy}); }}>{symbol}</button>)}
+            </div>
           </article>)}
         </div>
         <div className={styles.sectionTitle}>CONNECTION MAP</div>
