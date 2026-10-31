@@ -52,6 +52,19 @@ begin
   exception when serialization_failure then null;
   end;
 
+  begin
+    perform public.save_agent_workflow_draft(v_id, 2,
+      jsonb_set(v_doc, '{workflow,nodes,2,config}', '{"apiKey":"forbidden"}'::jsonb));
+    raise exception 'TEST FAIL: direct RPC accepted provider config';
+  exception when invalid_parameter_value then null;
+  end;
+  begin
+    perform public.save_agent_workflow_draft(v_id, 2,
+      jsonb_set(v_doc, '{workflow,nodes,2,type}', '"shell.execute"'::jsonb));
+    raise exception 'TEST FAIL: direct RPC accepted unknown node type';
+  exception when invalid_parameter_value then null;
+  end;
+
   perform set_config('request.jwt.claim.sub', 'b2000000-0000-4000-8000-000000000002', true);
   select count(*) into v_count from public.agent_workflow_drafts where id = v_id;
   if v_count <> 0 then raise exception 'TEST FAIL: another owner can SELECT the draft'; end if;
