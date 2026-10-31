@@ -91,3 +91,12 @@ After the previous PR run, Frontend passed, but the Security lab catalog test fa
 The Python suite found the disabled-by-default `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` flag absent from `deploy/.env.web.example`; it is now listed explicitly as `false`. It also flagged unpinned GitHub Actions in the read-only monitor and two disposable local Supabase workflows. Those actions are now locked to reviewed 40-character commit hashes, and checkout credentials remain nonpersistent. For `supabase/setup-cli`, v1.7.1's upstream immutable commit is `ab058987d8d6c725971f6cf9d0b5c98467e30bd1`.
 
 These are PR-only changes. Fresh CI is required. No production Supabase migration, cloud flag enablement, merge or real model execution occurred.
+
+## Phase 3A — server-side original provider adapter boundary
+- `command-center/lib/server/agent-provider-adapters.ts` creates a server-only preparation boundary for Ideogram vector and BytePlus video requests. Provider model IDs must be present in a separately approved allowlist; arbitrary client endpoint URLs and API keys are rejected.
+- Every request has a UUID request ID and owner ID, bounded prompt and asset list. This is **schema checking, not a substitute for actual authenticated user and asset ownership checks**.
+- License/redistribution verification is a blocking condition. `inspectAdapterRequest` returns an inert plan; `executeAdapterRequest` always throws `nightshift_agent_provider_execution_disabled`.
+- `agent-provider-adapters.test.ts` checks rejection of unapproved models, leaked extra fields, unsupported capability, missing terms approval and any execution attempt.
+- No API endpoints, credentials, worker jobs, credit reservations or paid model calls were added. This cannot be toggled on with a flag. Actual direct API integration requires a separate reviewed implementation and explicit release approval.
+
+CI status from the preceding commit is not assumed to carry over to these changes. Keep this PR draft until fresh frontend, Python and disposable security lab tests pass.
