@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createCampaignWorkflow, inspectWorkflow, NODE_TYPES, type AgentWorkflow, type NodeType } from "@/lib/agent-graph";
 import { addNode, checkConnection, removeNode, PORTS, clampPosition, type NodePosition } from "@/lib/agent-graph-editor";
 import { canvasEdges, defaultNodePosition, exportWorkflowDraft, importWorkflowDraft } from "@/lib/agent-draft";
+import { planCreativeRequest, type CreativeIntent } from "@/lib/agent-planner";
 import styles from "./agent-builder.module.css";
 
 export function AgentBuilder() {
@@ -12,6 +13,8 @@ export function AgentBuilder() {
   const [source, setSource] = useState("brand");
   const [target, setTarget] = useState("prompt");
   const [newType, setNewType] = useState<NodeType>("video.generate");
+  const [requestText, setRequestText] = useState("");
+  const [planType, setPlanType] = useState<CreativeIntent>("image");
   const [notice, setNotice] = useState("");
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
   const importInput = useRef<HTMLInputElement>(null);
@@ -25,6 +28,17 @@ export function AgentBuilder() {
   const report = useMemo(() => inspectWorkflow(graph), [graph]);
   const nodeMap = useMemo(() => new Map(graph.nodes.map(n => [n.id, n])), [graph]);
   const paths = useMemo(() => canvasEdges(graph, positions), [graph, positions]);
+  const generatePlan = () => {
+    const planned = planCreativeRequest(requestText, planType);
+    if (!planned.ok) { setNotice("Planner refused request: " + planned.error); return; }
+    setGraph(planned.workflow);
+    setPositions({});
+    setSavedId(null);
+    setSavedVersion(null);
+    setSource("");
+    setTarget("");
+    setNotice("Offline draft prepared: " + planned.intent + ". No AI APIs, execution or spending.");
+  };
   const addConnection = () => {
     const outcome = checkConnection(graph, source, target);
     if (!outcome.ok) { setNotice(outcome.reason); return; }
@@ -122,6 +136,11 @@ export function AgentBuilder() {
     </section>
     <div className={styles.workspace}>
       <aside className={styles.controls}>
+        <div className={styles.sectionTitle}>00 / Agent Planner (offline preview)</div>
+        <label>Creative request<textarea className={styles.planInput} maxLength={500} rows={3} placeholder="Create a brand ad image using my approved product details" value={requestText} onChange={e => setRequestText(e.target.value)}/></label>
+        <label>Output type<select value={planType} onChange={e => setPlanType(e.target.value as CreativeIntent)}><option value="image">Image</option><option value="video">Video</option><option value="vector">Vector / SVG</option></select></label>
+        <button type="button" onClick={generatePlan} disabled={!requestText.trim()}>Build safe workflow draft</button>
+        <p className={styles.disclaimer}>Rule-based planner, not an LLM. It generates an editable template and does not execute the request or choose an API provider.</p>
         <div className={styles.sectionTitle}>01 / Workflow</div>
         <label>Workflow name<input maxLength={120} value={graph.name} onChange={e => setGraph(prev => ({...prev, name:e.target.value}))}/></label>
         <div className={styles.sectionTitle}>02 / Add a node</div>
