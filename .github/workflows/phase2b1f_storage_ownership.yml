@@ -13,9 +13,12 @@ jobs:
     env:
       NIGHTSHIFT_TEST_PROJECT: nightshift-phase2b1f
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Resource and remote-target preflight
+      with:
+
+        persist-credentials: false
+- name: Resource and remote-target preflight
         shell: bash
         run: |
           set -euo pipefail
@@ -67,7 +70,7 @@ jobs:
 
       - name: Upload sanitized ownership evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: phase2b1f-storage-ownership-${{ github.run_id }}
           path: sanitized-evidence
