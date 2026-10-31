@@ -14,3 +14,6 @@
 .canvasLines{position:absolute;left:0;top:0;width:2470px;height:1850px;pointer-events:none;z-index:0;}
 .nodeGrid .node{z-index:1;}
 .hiddenInput{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;}
+
+.planInput{display:block;width:100%;margin-top:8px;resize:vertical;min-height:74px;padding:11px;background:#1c2027;color:#f7f3ed;border:1px solid #343b46;border-radius:8px;font:inherit;font-size:13px;line-height:1.5;}
+.planInput:focus-visible{outline:2px solid #d9ad73;}
