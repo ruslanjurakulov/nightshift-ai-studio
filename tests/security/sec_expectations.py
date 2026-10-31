@@ -67,6 +67,11 @@ def Video(col="video_id", **kw) -> Kind:
     return Kind("video", col, **kw)
 
 
+def Person(col="owner_id", **kw) -> Kind:
+    """Rows visible only to the authenticated person, not every org member."""
+    return Kind("person", col, own_read=False, operator_reads=False, **kw)
+
+
 def Platform(**kw) -> Kind:
     return Kind("platform", own_read=False, **kw)
 
@@ -82,6 +87,8 @@ def Service(**kw) -> Kind:
 TABLES: Dict[str, Kind] = {
     # tenancy
     "organizations": Org("id"),
+    "agent_workflow_drafts": Person(),  # 0129: only creator reads; direct writes forbidden
+    "agent_workflow_draft_versions": Person(),  # immutable owner-only revisions
     # No direct write for any API role since 0091: a workspace has one person (create_organization() adds it).
     "org_members": Org(mutate=("email",)),
     "app_members": Platform(),
@@ -205,6 +212,7 @@ PRICE_LIST = (True, True)
 
 FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # tenancy and roles (0007, 0018)
+    "save_agent_workflow_draft": USER,  # 0129: owner-bound RPC, no direct table writes
     "accessible_channel_ids": HELPER,
     "accessible_org_ids": HELPER,
     "accessible_video_ids": HELPER,

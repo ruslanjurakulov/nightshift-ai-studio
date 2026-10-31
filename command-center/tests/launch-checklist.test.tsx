@@ -197,7 +197,7 @@ describe("12 sitemap.xml", () => {
 
   it("misses no public page: every page route in app/ is in the sitemap, on the short list of form pages or of public-but-unindexed pages", () => {
     // app/(app), app/(concepts) and the non-page route groups are private, flag-gated or machine endpoints.
-    const SKIP = ["(app)", "(concepts)", "api", "auth", "oauth", "welcome", "i", "reset-password", "login/verify", "invite", "docs/cli", "docs/skills"];
+    const SKIP = ["(app)", "(concepts)", "api", "auth", "oauth", "welcome", "i", "reset-password", "login/verify", "invite", "docs/cli", "docs/skills", "agent-builder"];
     const unindexed = new Set(NOINDEX_PUBLIC.map((p) => p.route));
     const found = walk(join(ROOT, "app"))
       .filter((f) => /\/page\.tsx$/.test(f))
