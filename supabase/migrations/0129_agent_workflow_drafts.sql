@@ -90,8 +90,8 @@ begin
 
   -- Direct RPC callers cannot bypass basic schema and node registry rules.
   -- Runtime execution is not enabled, and config is deliberately empty.
-  if p_document - 'format' - 'layoutVersion' - 'workflow' - 'positions' <> '{}'::jsonb
-     or p_document->'workflow' - 'version' - 'name' - 'nodes' - 'edges' <> '{}'::jsonb
+  if p_document - 'format'::text - 'layoutVersion'::text - 'workflow'::text - 'positions'::text <> '{}'::jsonb
+     or (p_document->'workflow') - 'version'::text - 'name'::text - 'nodes'::text - 'edges'::text <> '{}'::jsonb
      or jsonb_array_length(p_document->'workflow'->'nodes') > 64 then
     raise exception 'invalid_agent_draft' using errcode = '22023';
   end if;
@@ -99,7 +99,7 @@ begin
     v_id := v_node->>'id';
     v_type := v_node->>'type';
     if jsonb_typeof(v_node) <> 'object'
-       or v_node - 'id' - 'type' - 'label' - 'config' <> '{}'::jsonb
+       or v_node - 'id'::text - 'type'::text - 'label'::text - 'config'::text <> '{}'::jsonb
        or v_id is null or v_id !~ '^[A-Za-z][A-Za-z0-9_-]{0,63}$'
        or v_id = any(v_ids)
        or v_type is null or v_type not in (
@@ -121,7 +121,7 @@ begin
     v_from_type := v_types->>v_source;
     v_to_type := v_types->>v_target;
     if jsonb_typeof(v_edge) <> 'object'
-       or v_edge - 'source' - 'target' <> '{}'::jsonb
+       or v_edge - 'source'::text - 'target'::text <> '{}'::jsonb
        or v_from_type is null or v_to_type is null
        or v_source = v_target
        or (v_source || '>' || v_target) = any(v_edges)
@@ -138,7 +138,7 @@ begin
     v_xy := v_position.value;
     if not (v_position.key = any(v_ids))
        or jsonb_typeof(v_xy) <> 'object'
-       or v_xy - 'x' - 'y' <> '{}'::jsonb
+       or v_xy - 'x'::text - 'y'::text <> '{}'::jsonb
        or jsonb_typeof(v_xy->'x') <> 'number'
        or jsonb_typeof(v_xy->'y') <> 'number'
     then raise exception 'invalid_agent_position' using errcode = '22023'; end if;
