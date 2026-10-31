@@ -44,3 +44,22 @@ Added a client-side draggable, bounded node-card workspace with accessible direc
 - Import/export operates only in the browser. No data is uploaded to Supabase or backend. Import **never** automatically executes an AI model.
 - Connection creation and removal remain accessible via selects and the connection list; port-to-port drag wiring, undo/redo and persisted/authenticated version history are still future milestones.
 - GitHub CI must be reviewed before merging. A review node in saved JSON is never equivalent to a user's live approval.
+
+## Phase 2A — private draft persistence (implementation in this draft PR)
+- New migration `0129_agent_workflow_drafts.sql`: distinct from existing billing-backed `workflows` in migration 0073.
+- Tables `agent_workflow_drafts` and `agent_workflow_draft_versions` with owner-bound foreign keys, RLS enforced for read, immutable version snapshots, and no direct authenticated write grants.
+- Atomic `save_agent_workflow_draft(draft_id, expected_version, document)` uses current `auth.uid()`, row locks, version compare-and-swap, a 50-draft limit per person and 30 saved revisions per draft.
+- `GET/POST /api/agent-builder/drafts` and `GET /api/agent-builder/drafts/[id]?version=N`; all use the cookie-bound logged-in user's anon Supabase client. POST uses same-origin CSRF checks and a hard streaming body limit.
+- The editor has optional cloud Save, List and Load buttons. Imported local JSON starts a new cloud document instead of overwriting an older one.
+- Feature flag `NIGHTSHIFT_AGENT_DRAFTS_ENABLED=true` is REQUIRED to expose the endpoints; it defaults OFF. Do not enable on production before disposable SQL and route tests pass.
+- `tests/sql/agent_workflow_drafts_rls.sql` is a **disposable database test only**: two synthetic auth users, cross-user SELECT and save refusal, append-only versions and stale-version conflict. Rollback at end. This test has not been executed in this PR.
+
+### Required deployment/release sequence (NOT performed)
+1. Inspect migration numbering and apply only to a disposable Supabase instance; ensure 0129 is not reserved on another branch.
+2. Run isolated RLS SQL tests and enforce that an authenticated API client cannot bypass the application-level graph validator via direct RPC calls.
+3. Run command-center typecheck, unit tests, lint, route CSRF and cross-tenant tests; add version concurrency/race tests.
+4. Deploy authenticated UI in a safe staging environment and explicitly toggle feature flag THERE, not in production.
+5. After security review, obtain explicit production release approval. No automated migrations or production feature enablement.
+
+### Remaining security caveat
+The database RPC checks envelope shape and bounded size, but its current schema checks are narrower than the TypeScript graph parser. A caller with a valid authenticated session can invoke RPC directly. Before enabling this feature in production, enforce server-equivalent graph validation in the database or use a narrower protected server API mechanism that cannot be bypassed. **This PR is deliberately NO-GO for production until resolved.**
