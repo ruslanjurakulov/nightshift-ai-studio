@@ -148,11 +148,12 @@ comment on function public.save_agent_workflow_draft(uuid, integer, jsonb) is
 commit;
 
        or v_id = any(v_ids)
-       or v_type not in (
+       or v_type is null or v_type not in (
          'brand.input', 'product.catalog', 'prompt.compose',
          'image.generate', 'vector.generate', 'video.generate',
          'review.approval', 'asset.export'
        )
+       or v_node->>'label' is null
        or jsonb_typeof(v_node->'label') <> 'string'
        or char_length(btrim(v_node->>'label')) not between 1 and 80
        or (v_node ? 'config' and v_node->'config' <> '{}'::jsonb)
