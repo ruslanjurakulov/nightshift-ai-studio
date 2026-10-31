@@ -46,10 +46,11 @@ export async function POST(req: NextRequest) {
       (typeof request.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(request.id)))
     return response({ error: "invalid_draft_id" }, 400);
   if (request.expectedVersion !== null && request.expectedVersion !== undefined &&
-      (!Number.isInteger(request.expectedVersion) || (request.expectedVersion as number) < 0 || (request.expectedVersion as number) > 30))
+      (typeof request.expectedVersion !== "number" || !Number.isInteger(request.expectedVersion) || request.expectedVersion < 0 || request.expectedVersion > 30))
     return response({ error: "invalid_expected_version" }, 400);
   let document;
   try {
+    if (request.document === undefined) return response({ error: "invalid_agent_draft" }, 400);
     document = importWorkflowDraft(JSON.stringify(request.document));
   } catch {
     return response({ error: "invalid_agent_draft" }, 400);
