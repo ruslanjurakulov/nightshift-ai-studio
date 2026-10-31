@@ -100,53 +100,7 @@ begin
     v_type := v_node->>'type';
     if jsonb_typeof(v_node) <> 'object'
        or v_node - 'id' - 'type' - 'label' - 'config' <> '{}'::jsonb
-       or v_id is null or v_id !~ '^[A-Za-z][A-Za-z0-9_-]{0,63}
-  if v_name is null or char_length(v_name) not between 1 and 120 then
-    raise exception 'invalid_agent_draft_name' using errcode = '22023';
-  end if;
-
-  if p_draft_id is null then
-    if p_expected_version is not null and p_expected_version <> 0 then
-      raise exception 'version_conflict' using errcode = '40001';
-    end if;
-    perform pg_advisory_xact_lock(hashtextextended('agent-drafts:' || v_user::text, 0));
-    if (select count(*) from public.agent_workflow_drafts where owner_id = v_user) >= 50 then
-      raise exception 'agent_draft_limit' using errcode = '22023';
-    end if;
-    insert into public.agent_workflow_drafts(owner_id, name)
-    values (v_user, v_name) returning * into v_draft;
-    v_version := 1;
-  else
-    select * into v_draft from public.agent_workflow_drafts
-    where id = p_draft_id and owner_id = v_user for update;
-    if not found then raise exception 'draft_not_found' using errcode = 'P0002'; end if;
-    if p_expected_version is distinct from v_draft.current_version then
-      raise exception 'version_conflict' using errcode = '40001';
-    end if;
-    if v_draft.current_version >= 30 then
-      raise exception 'draft_version_limit' using errcode = '22023';
-    end if;
-    v_version := v_draft.current_version + 1;
-    update public.agent_workflow_drafts
-    set name = v_name, current_version = v_version, updated_at = now()
-    where id = v_draft.id;
-  end if;
-
-  insert into public.agent_workflow_draft_versions(draft_id, version, owner_id, document)
-  values (v_draft.id, v_version, v_user, p_document);
-  return query select v_draft.id, v_version;
-end;
-$$;
-
-revoke all on function public.save_agent_workflow_draft(uuid, integer, jsonb) from public, anon;
-grant execute on function public.save_agent_workflow_draft(uuid, integer, jsonb) to authenticated;
-
-comment on table public.agent_workflow_drafts is 'Agent Builder plans only; no execution, API provider calls, credits or publish.';
-comment on function public.save_agent_workflow_draft(uuid, integer, jsonb) is
-  'User-owned atomic draft save with optimistic version check. Does not execute plans.';
-
-commit;
-
+       or v_id is null or v_id !~ '^[A-Za-z][A-Za-z0-9_-]{0,63}$'
        or v_id = any(v_ids)
        or v_type is null or v_type not in (
          'brand.input', 'product.catalog', 'prompt.compose',
