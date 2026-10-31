@@ -14,11 +14,10 @@ jobs:
       NIGHTSHIFT_TEST_PROJECT: nightshift-phase2b1f
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      with:
-
-        persist-credentials: false
-- name: Resource and remote-target preflight
+      - name: Resource and remote-target preflight
         shell: bash
         run: |
           set -euo pipefail
