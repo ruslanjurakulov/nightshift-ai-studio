@@ -74,3 +74,13 @@ The database RPC now also checks allowed node types, non-empty labels, empty nod
 - Security lab run 41168917077 reported a syntax error in migration 0129; a mistakenly duplicated SQL suffix was removed and the validation block repaired.
 - Frontend run 41168917085 reported a launch-checklist failure because `/agent-builder` is an authenticated/private route not listed in the public sitemap. The existing private-route test skip list now classifies it explicitly as private.
 - These are code changes pending repeat CI. Do not treat authored unit tests as executed test results.
+
+## Phase 2C — provider selection and quote planning
+- Added `agent-providers.ts` allowlisted direct-developer source catalog: Ideogram vector and BytePlus video. It is not an operational model registry; model versions and commercial licensing are unverified.
+- `planProviderSelection` refuses mismatched capabilities and returns `canExecute: false`, `estimate: null`, explicit blockers and a mandatory review marker.
+- `validateProviderCostQuote` accepts only structured provider-origin prices with a model ID and bounded amounts/valid timestamps; it does not call a provider or authorize billing.
+- The Agent Builder displays the candidate source and unquoted cost explicitly. No third-party API calls are made, and no Krea/Higgsfield reseller integration is present.
+- Any real provider adapter will require contractual redistribution rights, authenticated server-only credentials, per-user credit reserve/settle, idempotency, model version retirement safeguards, provider error mapping, and E2E tests. These are not implemented yet.
+
+### CI blockers found in prior run
+Frontend check passed. Security lab found PostgreSQL `42725 operator is not unique: unknown - unknown` in the new SQL function; explicit JSONB subtraction operands/casts were added. Python tests also found two unrelated unpinned Phase 2B.1F harness workflows and the 0129 migration review pin; workflow action pins, credential persistence, and the explicit reviewed 0129 migration list were updated. All changes require fresh CI evidence; do not claim green until checks finish.
