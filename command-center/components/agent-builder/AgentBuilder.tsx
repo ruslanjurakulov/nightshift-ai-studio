@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { createCampaignWorkflow, inspectWorkflow, NODE_TYPES, type AgentWorkflow, type NodeType } from "@/lib/agent-graph";
 import { addNode, checkConnection, removeNode, PORTS, clampPosition, type NodePosition } from "@/lib/agent-graph-editor";
+import { canvasEdges, defaultNodePosition, exportWorkflowDraft, importWorkflowDraft } from "@/lib/agent-draft";
 import styles from "./agent-builder.module.css";
 
 export function AgentBuilder() {
@@ -13,10 +14,12 @@ export function AgentBuilder() {
   const [newType, setNewType] = useState<NodeType>("video.generate");
   const [notice, setNotice] = useState("");
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
-  const defaultPosition = (index: number) => ({ x: 20 + (index % 3) * 250, y: 20 + Math.floor(index / 3) * 190 });
+  const importInput = useRef<HTMLInputElement>(null);
+  const defaultPosition = defaultNodePosition;
   const moveNode = (id: string, position: NodePosition) => setPositions(prev => ({ ...prev, [id]: clampPosition(position.x, position.y) }));
   const report = useMemo(() => inspectWorkflow(graph), [graph]);
   const nodeMap = useMemo(() => new Map(graph.nodes.map(n => [n.id, n])), [graph]);
+  const paths = useMemo(() => canvasEdges(graph, positions), [graph, positions]);
   const addConnection = () => {
     const outcome = checkConnection(graph, source, target);
     if (!outcome.ok) { setNotice(outcome.reason); return; }
@@ -31,15 +34,31 @@ export function AgentBuilder() {
   };
   const exportPlan = () => {
     if (!report.ok) { setNotice("Fix graph validation errors before exporting."); return; }
-    const content = JSON.stringify(graph, null, 2);
+    const content = exportWorkflowDraft(graph, positions);
     const file = new Blob([content], { type: "application/json" });
     const url = URL.createObjectURL(file);
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = "nightshift-workflow-draft.json";
     anchor.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setNotice("Draft plan downloaded. Nothing was executed or published.");
+  };
+  const importPlan = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > 150_000) { setNotice("File too large (150 KB maximum)."); return; }
+    try {
+      const draft = importWorkflowDraft(await file.text());
+      setGraph(draft.workflow);
+      setPositions(draft.positions);
+      setSource("");
+      setTarget("");
+      setNotice("Validated workflow draft imported. No execution or server upload.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Invalid workflow draft");
+    }
   };
   return <main className={styles.page}>
     <header className={styles.top}>
@@ -65,6 +84,8 @@ export function AgentBuilder() {
         <div className={styles.sectionTitle}>04 / Plan</div>
         <button type="button" className={styles.secondary} onClick={() => {setGraph(createCampaignWorkflow());setPositions({});setNotice("Example restored.");}}>Restore example</button>
         <button type="button" className={styles.download} disabled={!report.ok} onClick={exportPlan}>Download validated draft ↓</button>
+        <button type="button" className={styles.secondary} onClick={() => importInput.current?.click()}>Import workflow draft ↑</button>
+        <input ref={importInput} type="file" accept=".json,application/json" onChange={importPlan} className={styles.hiddenInput} aria-label="Import Nightshift workflow JSON draft"/>
         <p className={styles.disclaimer}>No model APIs, credentials, billing, background jobs, automated publishing, or server storage are connected.</p>
         <p role="status" className={styles.notice}>{notice}</p>
       </aside>
@@ -76,6 +97,7 @@ export function AgentBuilder() {
         <div className={styles.legend}>NODES {graph.nodes.length} <span>CONNECTIONS {graph.edges.length}</span> <span>EXECUTION DISABLED</span></div>
         <p className={styles.disclaimer}>Drag node cards to reposition them. On touch or keyboard, use arrow buttons. Connections remain accessible in the list below.</p>
         <div className={styles.nodeGrid} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (!graph.nodes.some(n => n.id === id)) return; const rect = e.currentTarget.getBoundingClientRect(); moveNode(id, clampPosition(e.clientX - rect.left - 100, e.clientY - rect.top - 35)); }}>
+          <svg className={styles.canvasLines} viewBox="0 0 2470 1850" aria-label="Workflow connection lines" role="img" preserveAspectRatio="xMinYMin meet">{paths.map(edge => <path key={edge.source+"->"+edge.target} d={edge.path} fill="none" stroke="#d7ac78" strokeWidth="3" strokeOpacity=".75" markerEnd="url(#arrow)"/>)}<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="#d7ac78" strokeWidth="1.4"/></marker></defs></svg>
           {graph.nodes.map((n, index) => <article key={n.id} className={styles.node} draggable onDragStart={e => e.dataTransfer.setData("text/plain", n.id)} style={{ position: "absolute", left: (positions[n.id] || defaultPosition(index)).x, top: (positions[n.id] || defaultPosition(index)).y, width: 220 }}>
             <div className={styles.nodeTop}><span>NODE {String(index+1).padStart(2,"0")}</span><button type="button" onClick={() => remove(n.id)} aria-label={`Remove ${n.label}`}>Remove</button></div>
             <div className={styles.nodeType}>{n.type}</div>
