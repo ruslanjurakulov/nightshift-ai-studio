@@ -13,11 +13,32 @@ export const CONNECTIONS: Readonly<Record<NodeType, readonly NodeType[]>> = {
   "asset.export": [],
 };
 
+export type PortKind = "brand" | "catalog" | "prompt" | "image" | "vector" | "video" | "approval" | "asset";
+export type NodePorts = { input: readonly PortKind[]; output: readonly PortKind[] };
+export const PORTS: Readonly<Record<NodeType, NodePorts>> = {
+  "brand.input": { input: [], output: ["brand"] },
+  "product.catalog": { input: [], output: ["catalog"] },
+  "prompt.compose": { input: ["brand", "catalog"], output: ["prompt"] },
+  "image.generate": { input: ["prompt"], output: ["image"] },
+  "vector.generate": { input: ["prompt"], output: ["vector"] },
+  "video.generate": { input: ["prompt"], output: ["video"] },
+  "review.approval": { input: ["image", "vector", "video"], output: ["approval"] },
+  "asset.export": { input: ["approval"], output: ["asset"] },
+};
+export function portsCompatible(source: NodeType, target: NodeType): boolean {
+  return PORTS[source].output.some(port => PORTS[target].input.includes(port));
+}
+export type NodePosition = { x: number; y: number };
+export function clampPosition(x: number, y: number): NodePosition {
+  return { x: Math.max(0, Math.min(2200, Math.round(Number.isFinite(x) ? x : 0))),
+           y: Math.max(0, Math.min(1600, Math.round(Number.isFinite(y) ? y : 0))) };
+}
+
 export function checkConnection(workflow: AgentWorkflow, source: string, target: string): { ok: boolean; reason: string } {
   const src = workflow.nodes.find(n => n.id === source);
   const dst = workflow.nodes.find(n => n.id === target);
   if (!src || !dst) return { ok: false, reason: "Choose two existing nodes." };
-  if (!CONNECTIONS[src.type].includes(dst.type)) return { ok: false, reason: "These node types cannot be connected." };
+  if (!CONNECTIONS[src.type].includes(dst.type) || !portsCompatible(src.type, dst.type)) return { ok: false, reason: "These node types cannot be connected." };
   if (workflow.edges.some(e => e.source === source && e.target === target)) return { ok: false, reason: "Connection already exists." };
   const candidate = { ...workflow, edges: [...workflow.edges, { source, target }] };
   const status = inspectWorkflow(candidate);
