@@ -15,6 +15,11 @@ export function AgentBuilder() {
   const [notice, setNotice] = useState("");
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
   const importInput = useRef<HTMLInputElement>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [savedVersion, setSavedVersion] = useState<number | null>(null);
+  const [remoteDrafts, setRemoteDrafts] = useState<Array<{id:string;name:string;current_version:number}>>([]);
+  const [chosenDraft, setChosenDraft] = useState("");
+  const [cloudBusy, setCloudBusy] = useState(false);
   const defaultPosition = defaultNodePosition;
   const moveNode = (id: string, position: NodePosition) => setPositions(prev => ({ ...prev, [id]: clampPosition(position.x, position.y) }));
   const report = useMemo(() => inspectWorkflow(graph), [graph]);
@@ -44,6 +49,49 @@ export function AgentBuilder() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setNotice("Draft plan downloaded. Nothing was executed or published.");
   };
+  const saveCloudDraft = async () => {
+    if (!report.ok) { setNotice("Fix workflow validation before saving."); return; }
+    setCloudBusy(true);
+    try {
+      const body = JSON.stringify({ id: savedId, expectedVersion: savedVersion, document: JSON.parse(exportWorkflowDraft(graph, positions)) });
+      const res = await fetch("/api/agent-builder/drafts", { method:"POST", headers:{ "Content-Type":"application/json" }, credentials:"same-origin", body });
+      const out: { id?:string;version?:number;error?:string } = await res.json();
+      if (!res.ok || !out.id || !out.version) { setNotice("Cloud save unavailable: " + (out.error || String(res.status))); return; }
+      setSavedId(out.id);
+      setSavedVersion(out.version);
+      setNotice("Private draft saved as version " + out.version + ". No workflow was executed.");
+    } catch { setNotice("Cloud save failed. Your local draft is unchanged."); }
+    finally { setCloudBusy(false); }
+  };
+  const listCloudDrafts = async () => {
+    setCloudBusy(true);
+    try {
+      const res = await fetch("/api/agent-builder/drafts", { credentials:"same-origin", cache:"no-store" });
+      const out: { drafts?: Array<{id:string;name:string;current_version:number}>; error?:string } = await res.json();
+      if (!res.ok || !Array.isArray(out.drafts)) { setNotice("Saved drafts unavailable: " + (out.error || String(res.status))); return; }
+      setRemoteDrafts(out.drafts);
+      setChosenDraft(out.drafts[0]?.id || "");
+      setNotice(out.drafts.length ? "Select a saved workflow to load." : "No saved drafts were found.");
+    } catch { setNotice("Could not load draft list."); }
+    finally { setCloudBusy(false); }
+  };
+  const loadCloudDraft = async () => {
+    if (!chosenDraft) return;
+    setCloudBusy(true);
+    try {
+      const res = await fetch("/api/agent-builder/drafts/" + encodeURIComponent(chosenDraft), { credentials:"same-origin", cache:"no-store" });
+      const out: { draft?:{id:string;current_version:number}; revision?:{document:unknown}; error?:string } = await res.json();
+      if (!res.ok || !out.draft || !out.revision) { setNotice("Load failed: " + (out.error || String(res.status))); return; }
+      const imported = importWorkflowDraft(JSON.stringify(out.revision.document));
+      setGraph(imported.workflow);
+      setPositions(imported.positions);
+      setSource(""); setTarget("");
+      setSavedId(out.draft.id);
+      setSavedVersion(out.draft.current_version);
+      setNotice("Private cloud draft restored. This did not execute anything.");
+    } catch { setNotice("Invalid or unavailable cloud draft."); }
+    finally { setCloudBusy(false); }
+  };
   const importPlan = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -53,6 +101,8 @@ export function AgentBuilder() {
       const draft = importWorkflowDraft(await file.text());
       setGraph(draft.workflow);
       setPositions(draft.positions);
+      setSavedId(null);
+      setSavedVersion(null);
       setSource("");
       setTarget("");
       setNotice("Validated workflow draft imported. No execution or server upload.");
@@ -82,11 +132,19 @@ export function AgentBuilder() {
         <label>To<select value={target} onChange={e => setTarget(e.target.value)}><option value="">Choose target</option>{graph.nodes.map(n => <option key={n.id} value={n.id}>{n.label} [{n.id}]</option>)}</select></label>
         <button type="button" onClick={addConnection}>Connect selected nodes</button>
         <div className={styles.sectionTitle}>04 / Plan</div>
-        <button type="button" className={styles.secondary} onClick={() => {setGraph(createCampaignWorkflow());setPositions({});setNotice("Example restored.");}}>Restore example</button>
+        <button type="button" className={styles.secondary} onClick={() => {setGraph(createCampaignWorkflow());setPositions({});setSavedId(null);setSavedVersion(null);setNotice("Example restored.");}}>Restore example</button>
         <button type="button" className={styles.download} disabled={!report.ok} onClick={exportPlan}>Download validated draft ↓</button>
         <button type="button" className={styles.secondary} onClick={() => importInput.current?.click()}>Import workflow draft ↑</button>
         <input ref={importInput} type="file" accept=".json,application/json" onChange={importPlan} className={styles.hiddenInput} aria-label="Import Nightshift workflow JSON draft"/>
-        <p className={styles.disclaimer}>No model APIs, credentials, billing, background jobs, automated publishing, or server storage are connected.</p>
+        <div className={styles.sectionTitle}>05 / Private drafts (optional)</div>
+        <p className={styles.disclaimer}>Cloud storage requires a signed-in account and the server feature flag. It is disabled by default.</p>
+        <button type="button" disabled={cloudBusy || !report.ok} onClick={saveCloudDraft}>Save private draft to cloud</button>
+        <button type="button" className={styles.secondary} disabled={cloudBusy} onClick={listCloudDrafts}>List my cloud drafts</button>
+        {remoteDrafts.length > 0 && <>
+          <label>Saved workflow<select value={chosenDraft} onChange={e => setChosenDraft(e.target.value)}>{remoteDrafts.map(d => <option key={d.id} value={d.id}>{d.name} (v{d.current_version})</option>)}</select></label>
+          <button type="button" className={styles.secondary} disabled={cloudBusy || !chosenDraft} onClick={loadCloudDraft}>Load selected private draft</button>
+        </>}
+        <p className={styles.disclaimer}>No model APIs, credentials, billing, background jobs, or automated publishing are connected.</p>
         <p role="status" className={styles.notice}>{notice}</p>
       </aside>
       <section className={styles.canvas} aria-label="Workflow node graph">
