@@ -34,3 +34,6 @@ The noindex route `/agent-builder` renders a responsive graph planning interface
 
 ### Limitations to resolve in phase 2
 The first canvas is an accessible node-card/connection-list composition, not yet a draggable spatial node-edge canvas. Port types, role-based workspace persistence, actual approval tokens, model execution and the authenticated application navigation still require implementation. The public noindex preview intentionally has no secrets, provider calls, or saved private user data.
+
+## Phase 1C — movable canvas and typed ports
+Added a client-side draggable, bounded node-card workspace with accessible directional controls. A port map defines output/input compatibility for each allowlisted node type. New connections require both compatible types and the existing fail-closed graph validator. The canvas remains a draft-only planning surface: it has no worker executor, credentials, API calls, billing, persistence, approval token, SVG edge path rendering, collaboration, or deployment. Position changes currently exist only in client state, not in downloaded graph JSON. Native HTML drag works on supported pointer devices; arrow controls cover touch/keyboard repositioning. Dragging card positions is not equivalent to an authenticated automation execution.
