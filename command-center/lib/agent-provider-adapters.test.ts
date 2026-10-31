@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 import { executeAdapterRequest, inspectAdapterRequest } from "./server/agent-provider-adapters";
@@ -6,7 +6,7 @@ import { executeAdapterRequest, inspectAdapterRequest } from "./server/agent-pro
 const base = {
   provider: "ideogram", modelId: "approved-vector-model", capability: "vector",
   prompt: "Brand mark", requestId: "11111111-1111-4111-8111-111111111111",
-  ownerId: "22222222-2222-4222-8222-222222222222", assetIds: [],
+  ownerId: "22222222-2222-4222-8222-222222222222", assetIds: [] as string[],
 } as const;
 const model = {
   id: "approved-vector-model", provider: "ideogram", capability: "vector",
