@@ -2,6 +2,8 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { importWorkflowDraft } from "@/lib/agent-draft";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { readJsonBodyCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
 const ENABLED = process.env.NIGHTSHIFT_AGENT_DRAFTS_ENABLED === "true";
@@ -30,15 +32,13 @@ export async function GET() {
 }
 
 /** Saves a validated client-side plan atomically; never runs a model. */
-export async function POST(req: NextRequest) {
+export const POST = requireSameOrigin(async function POST(req: NextRequest) {
   if (!ENABLED) return response({ error: "agent_drafts_disabled" }, 503);
   const db = await session();
   if (!db) return response({ error: "unauthorized" }, 401);
-  const raw = await req.text();
-  if (raw.length > 180_000) return response({ error: "payload_too_large" }, 413);
-  let payload: unknown;
-  try { payload = JSON.parse(raw); }
-  catch { return response({ error: "invalid_json" }, 400); }
+  const parsed = await readJsonBodyCapped(req, 180_000);
+  if (!parsed.ok) return response({ error: parsed.reason === "too_large" ? "payload_too_large" : "invalid_json" }, parsed.reason === "too_large" ? 413 : 400);
+  const payload: unknown = parsed.value;
   if (!payload || typeof payload !== "object" || Array.isArray(payload))
     return response({ error: "invalid_request" }, 400);
   const request = payload as Record<string, unknown>;
@@ -72,4 +72,4 @@ export async function POST(req: NextRequest) {
   if (!saved || typeof saved.saved_id !== "string")
     return response({ error: "invalid_save_response" }, 502);
   return response({ id: saved.saved_id, version: saved.saved_version }, 200);
-}
+});
