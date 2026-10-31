@@ -63,3 +63,14 @@ Added a client-side draggable, bounded node-card workspace with accessible direc
 
 ### Remaining security caveat
 The database RPC now also checks allowed node types, non-empty labels, empty node configs (no provider credentials), typed edge kinds, duplicate edges and bounded positions. The TypeScript parser remains authoritative for full structural validation and future typed configuration. A caller with a valid authenticated session can still invoke RPC directly; keep the execution engine disconnected. Before enabling this feature in production, finish equivalence tests for the SQL and TypeScript validators, run real cross-tenant tests and review migration safety. **This PR remains NO-GO for production until these checks pass.**
+
+## Phase 2B — deterministic Agent Planner preview
+- `agent-planner.ts` safely maps recognized image/video/vector creative intent into approved, editable, schema-validated node graphs. Explicit output choice is required when the request is ambiguous.
+- `/agent-builder` has a local planner input with three output types. The text request is not sent to a provider; it is used only to select a deterministic template and then discarded from the graph.
+- The planner makes no price claims, picks no paid model, never issues API calls and never treats a structural review node as authorization.
+- `agent-planner.test.ts` contains unit scenarios for media-specific graphs, review presence, ambiguous requests, unsupported intents and length bounds.
+
+## CI blocker remediation
+- Security lab run 41168917077 reported a syntax error in migration 0129; a mistakenly duplicated SQL suffix was removed and the validation block repaired.
+- Frontend run 41168917085 reported a launch-checklist failure because `/agent-builder` is an authenticated/private route not listed in the public sitemap. The existing private-route test skip list now classifies it explicitly as private.
+- These are code changes pending repeat CI. Do not treat authored unit tests as executed test results.
