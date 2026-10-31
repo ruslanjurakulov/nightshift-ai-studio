@@ -108,3 +108,6 @@ The preceding run of PR #652 found three remaining categories:
 - Python deployment mapping: new `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` key was declared in the deploy template but missing in `deploy_web.yml`'s strict environment allowlist. It is now mapped from GitHub vars; absent or anything other than the literal string `true` leaves the endpoint disabled.
 
 All three remediations are committed but require CI rerun. Production migration, feature enablement, API billing and publishing remain OFF.
+
+## CI check — media memory regression isolation
+On commit `51fe8ffa04083178980a758819cd131c40f837c6`, Frontend and Security lab passed. The Python suite executed 10,443 tests, reporting one error in a real FFmpeg regression test (`test_a_big_coded_frame_behind_a_crop_window_is_refused_at_ingest`): clean clip process RSS exceeded the intentionally reduced 256 MiB attack fixture limit (271 MiB observed on the runner). In `tests/test_breach_media_memory.py`, the malicious coded-frame refusal continues to be tested under the tight 256 MiB limit, while the clean clip is tested under the actual unchanged production memory limit. This is a test isolation fix, not a higher runtime memory allowance. Re-run the entire CI; do not mark this PR ready based solely on the previous two green jobs.
