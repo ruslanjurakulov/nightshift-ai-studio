@@ -400,6 +400,11 @@ def test_tenant_cannot_insert_into_another_tenant(conn, sc, table):
 @pytest.mark.parametrize("table", ALL)
 def test_stranger_and_anon_cannot_insert(conn, sc, table):
     for who, role in ((sc.stranger, "authenticated"), (ANON, "anon")):
+        if TABLES[table].kind == "person":
+            with acting(conn, who) as session:
+                outcome = session.run(sql.SQL("insert into {} default values").format(T(table)))
+            assert refused(outcome), f"{table}: unauthenticated insert unexpectedly permitted"
+            continue
         row = _clone(conn, sc, table, sc.bob, role)
         with acting(conn, who) as s:
             out = _insert(s, table, row)
