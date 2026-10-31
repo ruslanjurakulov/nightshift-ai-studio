@@ -100,3 +100,11 @@ These are PR-only changes. Fresh CI is required. No production Supabase migratio
 - No API endpoints, credentials, worker jobs, credit reservations or paid model calls were added. This cannot be toggled on with a flag. Actual direct API integration requires a separate reviewed implementation and explicit release approval.
 
 CI status from the preceding commit is not assumed to carry over to these changes. Keep this PR draft until fresh frontend, Python and disposable security lab tests pass.
+
+## Phase 3B — latest CI repairs
+The preceding run of PR #652 found three remaining categories:
+- Frontend TypeScript: the inert provider adapter unit test passed a readonly `assetIds` array where `AdapterRequest` expects an ordinary mutable array. The test fixture now uses a correctly typed array; the implementation still does not execute.
+- Disposable Security lab: generic stranger/anon insert tests tried to clone a non-existent seeded personal workflow row. Personal tables are now attacked with a blind direct INSERT instead; authenticated-user owner isolation remains independently tested by `test_sec_agent_workflow_drafts.py`. This avoids weakening RLS.
+- Python deployment mapping: new `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` key was declared in the deploy template but missing in `deploy_web.yml`'s strict environment allowlist. It is now mapped from GitHub vars; absent or anything other than the literal string `true` leaves the endpoint disabled.
+
+All three remediations are committed but require CI rerun. Production migration, feature enablement, API billing and publishing remain OFF.
