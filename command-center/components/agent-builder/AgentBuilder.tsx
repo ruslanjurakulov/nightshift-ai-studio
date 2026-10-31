@@ -6,6 +6,7 @@ import { createCampaignWorkflow, inspectWorkflow, NODE_TYPES, type AgentWorkflow
 import { addNode, checkConnection, removeNode, PORTS, clampPosition, type NodePosition } from "@/lib/agent-graph-editor";
 import { canvasEdges, defaultNodePosition, exportWorkflowDraft, importWorkflowDraft } from "@/lib/agent-draft";
 import { planCreativeRequest, type CreativeIntent } from "@/lib/agent-planner";
+import { planProviderSelection, type DirectProvider } from "@/lib/agent-providers";
 import styles from "./agent-builder.module.css";
 
 export function AgentBuilder() {
@@ -15,6 +16,7 @@ export function AgentBuilder() {
   const [newType, setNewType] = useState<NodeType>("video.generate");
   const [requestText, setRequestText] = useState("");
   const [planType, setPlanType] = useState<CreativeIntent>("image");
+  const [provider, setProvider] = useState<DirectProvider>("ideogram");
   const [notice, setNotice] = useState("");
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
   const importInput = useRef<HTMLInputElement>(null);
@@ -28,6 +30,7 @@ export function AgentBuilder() {
   const report = useMemo(() => inspectWorkflow(graph), [graph]);
   const nodeMap = useMemo(() => new Map(graph.nodes.map(n => [n.id, n])), [graph]);
   const paths = useMemo(() => canvasEdges(graph, positions), [graph, positions]);
+  const providerPreview = planProviderSelection({provider, capability: provider === "ideogram" ? "vector" : "video"});
   const generatePlan = () => {
     const planned = planCreativeRequest(requestText, planType);
     if (!planned.ok) { setNotice("Planner refused request: " + planned.error); return; }
@@ -141,6 +144,17 @@ export function AgentBuilder() {
         <label>Output type<select value={planType} onChange={e => setPlanType(e.target.value as CreativeIntent)}><option value="image">Image</option><option value="video">Video</option><option value="vector">Vector / SVG</option></select></label>
         <button type="button" onClick={generatePlan} disabled={!requestText.trim()}>Build safe workflow draft</button>
         <p className={styles.disclaimer}>Rule-based planner, not an LLM. It generates an editable template and does not execute the request or choose an API provider.</p>
+        <div className={styles.sectionTitle}>00B / Direct model provider review</div>
+        <label>Original API source<select value={provider} onChange={e => setProvider(e.target.value as DirectProvider)}>
+          <option value="ideogram">Ideogram — Vector / SVG</option>
+          <option value="byteplus">BytePlus ModelArk — Seedance video</option>
+        </select></label>
+        {"error" in providerPreview ? <p className={styles.disclaimer}>Provider selection invalid.</p> : <div className={styles.providerPreview}>
+          <strong>{providerPreview.capability.toUpperCase()} · INTEGRATION PLANNED</strong>
+          <p>Price: not quoted. Real provider access: disabled.</p>
+          <ul>{providerPreview.blockers.slice(0,3).map(b => <li key={b}>{b}</li>)}</ul>
+        </div>}
+        <p className={styles.disclaimer}>No paid model requests are possible from this screen.</p>
         <div className={styles.sectionTitle}>01 / Workflow</div>
         <label>Workflow name<input maxLength={120} value={graph.name} onChange={e => setGraph(prev => ({...prev, name:e.target.value}))}/></label>
         <div className={styles.sectionTitle}>02 / Add a node</div>
