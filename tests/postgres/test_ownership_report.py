@@ -20,6 +20,11 @@ class ReportTests(unittest.TestCase):
         import json
         obj={'current_user':'postgres','session_user':'postgres','superuser':False,'tables':[{'table':t,'owner':'supabase_storage_admin','owner_usage':False,'owner_member':False} for t in ['objects','buckets']],'memberships':[]}
         self.assertEqual(safe_evidence('NOTICE: X6_EVIDENCE '+json.dumps(obj)),obj)
+        obj['supautils'] = {'version':None,'session_preloaded':False,'shared_preloaded':False,'objects_policy_grant':None,'buckets_policy_grant':None}
+        self.assertEqual(safe_evidence('NOTICE: X6_EVIDENCE '+json.dumps(obj)),obj)
+        obj['supautils']['version']='postgres://sentinel-secret'
+        with self.assertRaises(AssertionError): safe_evidence('X6_EVIDENCE '+json.dumps(obj))
+        obj.pop('supautils')
         obj['current_user']='postgres://secret'
         with self.assertRaises(AssertionError): safe_evidence('X6_EVIDENCE '+json.dumps(obj))
 

@@ -34,7 +34,16 @@ def safe_evidence(raw):
     if not matches: return None
     obj = json.loads(matches[-1])
     # Do not publish unrecognized fields or arbitrary messages/values.
-    assert set(obj) == {'current_user','session_user','superuser','tables','memberships'}
+    required = {'current_user','session_user','superuser','tables','memberships'}
+    assert set(obj) in (required, required | {'supautils'})
+    if 'supautils' in obj:
+        extension = obj['supautils']
+        assert set(extension) == {'version','session_preloaded','shared_preloaded','objects_policy_grant','buckets_policy_grant'}
+        assert extension['version'] is None or (isinstance(extension['version'], str) and re.fullmatch(r'[0-9][0-9A-Za-z.+-]{0,39}',extension['version']))
+        for key in ('session_preloaded','shared_preloaded'):
+            assert type(extension[key]) is bool
+        for key in ('objects_policy_grant','buckets_policy_grant'):
+            assert extension[key] is None or type(extension[key]) is bool
     name = lambda v: isinstance(v,str) and re.fullmatch(r'[a-z_][a-z_0-9]{0,62}',v)
     assert name(obj['current_user']) and name(obj['session_user'])
     assert type(obj['superuser']) is bool

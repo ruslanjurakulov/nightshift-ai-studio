@@ -119,3 +119,16 @@ Original image version tags and the pinned CLI stay unchanged. Report registry,
 allowlisted public image mentions and a fixed rate-limit indicator; never publish
 raw error lines. One bounded follow-up run is authorized by the owner's PR #647
 instruction. A successful diagnostic still does not validate the full chain.
+
+
+Ownership evidence correction: owner-role MEMBER/USAGE=false proves absence of
+native owner privileges, not absence of all policy management authority. The exact
+17.6.1.064 upstream image configuration explicitly grants policy management for
+postgres on storage.objects/buckets via supautils.policy_grants:
+https://github.com/supabase/postgres/blob/17.6.1.064/ansible/files/postgresql_config/supautils.conf.j2
+https://github.com/supabase/supautils#manage-policies
+The diagnostic now reads only the supautils version, preload indicators and two
+specific policy-grant booleans from the migration session. Missing settings remain
+null (unknown). It neither LOADs a library nor changes settings, roles, grants or
+policies. These settings are not themselves a successful CREATE POLICY probe.
+Production equivalence and the original 0004 failure still need reconciliation.

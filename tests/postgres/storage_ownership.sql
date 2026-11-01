@@ -4,6 +4,13 @@ declare evidence jsonb;
 begin
   select jsonb_build_object(
     'current_user', current_user, 'session_user', session_user,
+    'supautils', jsonb_build_object(
+      'version', current_setting('supautils.version', true),
+      'session_preloaded', 'supautils' = any(string_to_array(replace(current_setting('session_preload_libraries'), ' ', ''), ',')),
+      'shared_preloaded', 'supautils' = any(string_to_array(replace(current_setting('shared_preload_libraries'), ' ', ''), ',')),
+      'objects_policy_grant', (nullif(current_setting('supautils.policy_grants', true), '')::jsonb -> current_user) ? 'storage.objects',
+      'buckets_policy_grant', (nullif(current_setting('supautils.policy_grants', true), '')::jsonb -> current_user) ? 'storage.buckets'
+    ),
     'superuser', (select rolsuper from pg_roles where rolname=current_user),
     'tables', (select jsonb_agg(jsonb_build_object(
       'table', c.relname, 'owner', r.rolname,
