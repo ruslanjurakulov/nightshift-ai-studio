@@ -9,6 +9,8 @@ import sys
 
 
 def category(raw, code, oom=False):
+    # CLI retries can recover pull failures; the terminal exit is authoritative.
+    if code == 0: return 'startup_success'
     if code == 124: return 'startup_timeout'
     if 'no space left on device' in raw.lower(): return 'disk_exhaustion'
     if oom or re.search(r'out of memory|oomkill', raw, re.I): return 'memory_exhaustion'
