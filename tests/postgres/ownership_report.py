@@ -29,6 +29,12 @@ def pull_evidence(raw):
     return {'public_images_mentioned': images, 'pull_reason': reason}
 
 
+def chain_status(expected, started, code):
+    if code != 0:
+        return 'FAIL' if started else 'UNRUN'
+    return 'PASS' if started == expected else 'UNVERIFIED'
+
+
 def safe_evidence(raw):
     matches = re.findall(r'X6_EVIDENCE (\{[^\n]+\})', raw)
     if not matches: return None
@@ -85,6 +91,16 @@ def main(directory, code):
     report['sqlstate'] = sqlstates[-1] if sqlstates else None
     files = re.findall(r'Applying migration ([0-9]+_[A-Za-z0-9_-]+\.sql)',raw)
     report['last_migration_started'] = files[-1] if files else None
+    mode = os.environ.get('NIGHTSHIFT_TEST_MODE', 'ownership')
+    assert mode in ('ownership', 'full_chain')
+    if mode == 'full_chain':
+        expected = json.loads(pathlib.Path('migration-manifest.json').read_text())
+        assert expected and all(re.fullmatch(r'[0-9]+_[A-Za-z0-9_-]+\.sql', n) for n in expected)
+        report['scope'] = 'full_migration_chain'
+        report['expected_migrations'] = len(expected)
+        report['migrations_started'] = len(files)
+        report['full_chain'] = chain_status(expected, files, code)
+        report['first_failing_migration'] = files[-1] if code != 0 and files and report['failure_category'] == 'migration_failure' else None
     (out/'report.json').write_text(json.dumps(report,indent=2)+'\n')
 
 

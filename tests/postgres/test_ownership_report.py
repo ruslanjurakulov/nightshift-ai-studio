@@ -1,5 +1,5 @@
 import unittest
-from ownership_report import category, safe_evidence, pull_evidence
+from ownership_report import category, safe_evidence, pull_evidence, chain_status
 
 class ReportTests(unittest.TestCase):
     def test_pull_evidence_omits_sensitive_urls_and_messages(self):
@@ -8,6 +8,14 @@ class ReportTests(unittest.TestCase):
 
     def test_recovered_pull_error_is_not_terminal_failure(self):
         self.assertEqual(category("failed to pull image: toomanyrequests", 0), "startup_success")
+
+    def test_full_chain_requires_exact_complete_sequence(self):
+        names=['0000_base_schema.sql','0001_multi_channel.sql']
+        self.assertEqual(chain_status(names,names,0),'PASS')
+        self.assertEqual(chain_status(names,names[:1],0),'UNVERIFIED')
+        self.assertEqual(chain_status(names,list(reversed(names)),0),'UNVERIFIED')
+        self.assertEqual(chain_status(names,names,1),'FAIL')
+        self.assertEqual(chain_status(names,[],1),'UNRUN')
 
     def test_terminal_categories(self):
         for raw, code, expected in [('',124,'startup_timeout'),('no space left on device',1,'disk_exhaustion'),('out of memory',1,'memory_exhaustion'),('ERROR SQLSTATE 42501',1,'migration_failure'),('container unhealthy',1,'container_health_failure'),('failed to pull image',1,'image_pull_failure'),('arbitrary error',137,'unknown_startup_failure')]:

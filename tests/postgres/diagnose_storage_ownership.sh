@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
+export NIGHTSHIFT_TEST_MODE="${NIGHTSHIFT_TEST_MODE:-ownership}"
+[[ "$NIGHTSHIFT_TEST_MODE" == ownership || "$NIGHTSHIFT_TEST_MODE" == full_chain ]]
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]]
 [[ "$(supabase --version 2>/dev/null)" == 2.67.1 ]]
 cmp -s supabase/config.toml tests/postgres/config.toml
@@ -30,6 +32,11 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 python3 - <<'PY'
 from pathlib import Path
+import os, json
+files = sorted(f.name for f in Path('supabase/migrations').glob('*.sql'))
+Path('migration-manifest.json').write_text(json.dumps(files))
+if os.environ['NIGHTSHIFT_TEST_MODE'] == 'full_chain':
+    raise SystemExit(0)
 keep = {'0000_base_schema.sql','0001_multi_channel.sql','0002_measurement.sql','0003_shorts.sql'}
 p = Path('supabase/migrations')
 assert all((p/name).is_file() for name in keep)
@@ -59,5 +66,8 @@ python3 tests/postgres/ownership_report.py "$out_dir" "$rc"
 [[ "$rc" == 0 ]]
 python3 - "$out_dir/report.json" <<'PY'
 import json,sys
-assert json.load(open(sys.argv[1]))['ownership_sql'] == 'PASS'
+import os
+report = json.load(open(sys.argv[1]))
+key = 'full_chain' if os.environ['NIGHTSHIFT_TEST_MODE'] == 'full_chain' else 'ownership_sql'
+assert report[key] == 'PASS'
 PY

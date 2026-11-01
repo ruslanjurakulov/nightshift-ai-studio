@@ -132,3 +132,12 @@ specific policy-grant booleans from the migration session. Missing settings rema
 null (unknown). It neither LOADs a library nor changes settings, roles, grants or
 policies. These settings are not themselves a successful CREATE POLICY probe.
 Production equivalence and the original 0004 failure still need reconciliation.
+
+Manual `mode=full_chain` uses the same disposable runtime and protections, but
+leaves every original migration intact (plus the existing ephemeral 0000 base).
+No ownership probe is appended in this mode. The complete ordered filename
+manifest is compared with CLI migration-start records. PASS requires startup
+exit 0 and an exact complete sequence; missing/order-mismatched records yield
+UNVERIFIED. SQL failure reports the last migration started and SQLSTATE; no
+migrations started means UNRUN. This validates migration loading only, not RLS,
+worker ownership, concurrency or production parity. Default mode stays ownership.
