@@ -29,7 +29,7 @@ jobs:
       NIGHTSHIFT_MONITOR_PR: ${{ inputs.pr_number || '647' }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Unit tests
@@ -38,7 +38,7 @@ jobs:
         run: python3 tools/nightshift_orchestrator_monitor.py
       - name: Upload limited non-secret status report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nightshift-orchestrator-${{ github.run_id }}
           path: nightshift-orchestrator-report.json
