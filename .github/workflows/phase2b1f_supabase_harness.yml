@@ -21,7 +21,7 @@ jobs:
       SUPABASE_AUTOSTOP: "true"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Resource and safety preflight
         shell: bash
@@ -48,7 +48,7 @@ jobs:
           fi
 
       - name: Install pinned Supabase CLI
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v3
         with:
           version: 2.67.1
 
@@ -113,7 +113,7 @@ jobs:
 
       - name: Upload sanitized evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: phase2b1f-evidence-${{ github.run_id }}
           path: sanitized-evidence

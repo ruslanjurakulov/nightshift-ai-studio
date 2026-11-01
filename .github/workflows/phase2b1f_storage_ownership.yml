@@ -13,7 +13,7 @@ jobs:
     env:
       NIGHTSHIFT_TEST_PROJECT: nightshift-phase2b1f
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resource and remote-target preflight
         shell: bash
@@ -26,7 +26,7 @@ jobs:
             exit 1
           fi
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           version: 2.67.1
 
@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload sanitized ownership evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: phase2b1f-storage-ownership-${{ github.run_id }}
           path: sanitized-evidence
