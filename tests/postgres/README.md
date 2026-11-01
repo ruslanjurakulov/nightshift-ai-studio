@@ -107,3 +107,15 @@ Container status may be unavailable because CLI removes containers after failure
 Exit 137 alone is not proof of OOM; absent evidence remains unknown. A report with
 `ownership_sql=UNRUN` is not a pass. The full chain is always UNRUN on this path.
 Production executor equivalence remains unverified without owner-supplied evidence.
+
+
+Follow-up registry evidence: X5 run 40905661048 artifact 12910169734 ends
+with `toomanyrequests` while retrying `ghcr.io/supabase/postgres:17.6.1.064`.
+X6 run 40911606114 reports only image_pull_failure; its underlying reason is
+not independently recorded. Use `SUPABASE_INTERNAL_IMAGE_REGISTRY=public.ecr.aws`
+on the diagnostic step only. This is the default mirror in official CLI v2.67.1
+`internal/utils/docker.go` (GetRegistry/GetRegistryImageUrl), not a custom image.
+Original image version tags and the pinned CLI stay unchanged. Report registry,
+allowlisted public image mentions and a fixed rate-limit indicator; never publish
+raw error lines. One bounded follow-up run is authorized by the owner's PR #647
+instruction. A successful diagnostic still does not validate the full chain.

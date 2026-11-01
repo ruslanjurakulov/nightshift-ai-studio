@@ -1,5 +1,6 @@
 """Export only schema-validated diagnostics, never raw Docker/CLI output."""
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -15,6 +16,15 @@ def category(raw, code, oom=False):
     if re.search(r'unhealthy|health check.*fail', raw, re.I): return 'container_health_failure'
     if re.search(r'failed to (?:pull|resolve|copy)|pull access denied|manifest unknown|toomanyrequests|error pulling', raw, re.I): return 'image_pull_failure'
     return 'startup_success' if code == 0 else 'unknown_startup_failure'
+
+
+def pull_evidence(raw):
+    # Export only public image references, never arbitrary error text/URLs.
+    images = sorted(set(re.findall(
+        r"(?:ghcr\.io|public\.ecr\.aws)/supabase/[a-z0-9-]+:[A-Za-z0-9._-]+", raw)))
+    reason = ('rate_limited' if re.search(r'toomanyrequests|too many requests', raw, re.I)
+              else 'not_established')
+    return {'public_images_mentioned': images, 'pull_reason': reason}
 
 
 def safe_evidence(raw):
@@ -50,7 +60,9 @@ def main(directory, code):
         text = docker('inspect','--format','{{.State.Status}} {{.State.ExitCode}} {{.State.OOMKilled}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}',cid).strip()
         if re.fullmatch(r'(created|running|paused|restarting|removing|exited|dead) -?\d+ (true|false) (none|starting|healthy|unhealthy)',text):
             states.append(text)
-    report = {'scope':'diagnostic_subset_0000_0003','full_chain':'UNRUN',
+    registry = os.environ.get('SUPABASE_INTERNAL_IMAGE_REGISTRY', '')
+    assert registry in ('', 'ghcr.io', 'public.ecr.aws', 'docker.io')
+    report = {'registry':registry, **pull_evidence(raw), 'scope':'diagnostic_subset_0000_0003','full_chain':'UNRUN',
               'startup_exit_code':code,'failure_category':category(raw,code,any(' true ' in s for s in states)),
               'ownership_sql':'PASS' if evidence else 'UNRUN','migration_session':evidence,
               'disk_free_bytes':shutil.disk_usage('.').free,'container_states':states,

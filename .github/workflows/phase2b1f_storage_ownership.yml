@@ -39,6 +39,9 @@ jobs:
         run: tests/postgres/prepare_supabase.sh
 
       - name: Collect storage ownership evidence
+        env:
+          # CLI 2.67.1 default mirror; GHCR returned toomanyrequests in X5.
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: public.ecr.aws
         shell: bash
         run: |
           set -euo pipefail
