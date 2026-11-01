@@ -7,7 +7,7 @@ on:
         description: Diagnostic subset or unchanged complete migration chain
         type: choice
         default: ownership
-        options: [ownership, full_chain]
+        options: [ownership, full_chain, policy_repro]
 
 permissions:
   contents: read

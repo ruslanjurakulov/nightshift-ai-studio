@@ -1,7 +1,30 @@
 import unittest
-from ownership_report import category, safe_evidence, pull_evidence, chain_status
+from ownership_report import category, safe_evidence, pull_evidence, chain_status, policy_repro_evidence
 
 class ReportTests(unittest.TestCase):
+    def test_policy_repro_requires_before_after_and_fresh_session(self):
+        import json
+        good = {'current_user':'postgres','session_user':'postgres',
+                'policy_created':True,'sqlstate':None,'policy_absent':True,
+                'supautils_registered':True}
+        bad = dict(good, policy_created=False, sqlstate='42501')
+        probe = lambda obj: 'X6_POLICY_PROBE ' + json.dumps(obj) + '\n'
+        raw = probe(good) + 'X6_DUPLICATE {"duplicate_seen":true}\n' + probe(bad)
+        report = policy_repro_evidence(raw, probe(good), 0, 0)
+        self.assertEqual(report['reproduction'], 'REPRODUCED')
+        self.assertEqual(report['policy_repro'], 'PASS')
+        self.assertEqual(policy_repro_evidence(raw, '', 0, 1)['reproduction'], 'UNRUN')
+        self.assertEqual(policy_repro_evidence(raw, probe(good), 1, 0)['reproduction'], 'UNRUN')
+        self.assertEqual(policy_repro_evidence(probe(good), probe(good), 0, 0)['reproduction'], 'UNRUN')
+        clean = probe(good) + 'X6_DUPLICATE {"duplicate_seen":true}\n' + probe(good)
+        self.assertEqual(policy_repro_evidence(clean, probe(good), 0, 0)['reproduction'], 'NOT_REPRODUCED')
+        dirty = dict(good, policy_absent=False)
+        self.assertEqual(policy_repro_evidence(raw, probe(dirty), 0, 0)['policy_repro'], 'UNRUN')
+        with self.assertRaises(AssertionError):
+            policy_repro_evidence(raw, probe(dict(good, secret='sentinel-secret')), 0, 0)
+        with self.assertRaises(AssertionError):
+            policy_repro_evidence(raw, probe(dict(good, current_user='supabase_admin')), 0, 0)
+
     def test_pull_evidence_omits_sensitive_urls_and_messages(self):
         evidence = pull_evidence('toomanyrequests retry ghcr.io/supabase/postgres:17.6.1.064 https://private.example/?token=sentinel-secret')
         self.assertEqual(evidence, {'pull_reason':'rate_limited','public_images_mentioned':['ghcr.io/supabase/postgres:17.6.1.064']})

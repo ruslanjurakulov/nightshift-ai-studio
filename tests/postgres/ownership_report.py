@@ -35,6 +35,40 @@ def chain_status(expected, started, code):
     return 'PASS' if started == expected else 'UNVERIFIED'
 
 
+def policy_repro_evidence(raw, fresh, startup_code, fresh_code):
+    def probes(text):
+        found = re.findall(r'X6_POLICY_PROBE (\{[^\n]+\})', text)
+        result = []
+        for item in found:
+            obj = json.loads(item)
+            assert set(obj) == {'current_user','session_user','policy_created','sqlstate','policy_absent','supautils_registered'}
+            assert obj['current_user'] == obj['session_user'] == 'postgres'
+            for key in ('policy_created','policy_absent','supautils_registered'):
+                assert type(obj[key]) is bool
+            assert obj['sqlstate'] is None or re.fullmatch(r'[0-9A-Z]{5}',obj['sqlstate'])
+            assert obj['policy_created'] == (obj['sqlstate'] is None)
+            result.append(obj)
+        return result
+    before_after, reconnected = probes(raw), probes(fresh)
+    duplicate = re.findall(r'X6_DUPLICATE (\{[^\n]+\})',raw)
+    duplicate_seen = False
+    if duplicate:
+        assert len(duplicate) == 1
+        obj = json.loads(duplicate[0])
+        assert set(obj) == {'duplicate_seen'} and type(obj['duplicate_seen']) is bool
+        duplicate_seen = obj['duplicate_seen']
+    complete = (startup_code == fresh_code == 0 and len(before_after) == 2
+                and len(reconnected) == 1 and duplicate_seen
+                and all(p['policy_absent'] for p in before_after + reconnected))
+    reproduced = (complete and before_after[0]['policy_created']
+                  and before_after[1]['sqlstate'] == '42501'
+                  and reconnected[0]['policy_created'])
+    return {'policy_repro':'PASS' if complete else 'UNRUN',
+            'reproduction':'REPRODUCED' if reproduced else ('NOT_REPRODUCED' if complete else 'UNRUN'),
+            'duplicate_seen':duplicate_seen,'migration_probes':before_after,
+            'fresh_session_probes':reconnected,'fresh_session_exit_code':fresh_code}
+
+
 def safe_evidence(raw):
     matches = re.findall(r'X6_EVIDENCE (\{[^\n]+\})', raw)
     if not matches: return None
@@ -92,7 +126,13 @@ def main(directory, code):
     files = re.findall(r'Applying migration ([0-9]+_[A-Za-z0-9_-]+\.sql)',raw)
     report['last_migration_started'] = files[-1] if files else None
     mode = os.environ.get('NIGHTSHIFT_TEST_MODE', 'ownership')
-    assert mode in ('ownership', 'full_chain')
+    assert mode in ('ownership', 'full_chain', 'policy_repro')
+    if mode == 'policy_repro':
+        report['scope'] = 'diagnostic_base_only_policy_repro'
+        fresh_path, exit_path = out/'fresh.raw', out/'fresh.exit'
+        fresh = fresh_path.read_text(errors='replace') if fresh_path.exists() else ''
+        fresh_code = int(exit_path.read_text()) if exit_path.exists() else None
+        report.update(policy_repro_evidence(raw, fresh, code, fresh_code))
     if mode == 'full_chain':
         expected = json.loads(pathlib.Path('migration-manifest.json').read_text())
         assert expected and all(re.fullmatch(r'[0-9]+_[A-Za-z0-9_-]+\.sql', n) for n in expected)

@@ -141,3 +141,35 @@ exit 0 and an exact complete sequence; missing/order-mismatched records yield
 UNVERIFIED. SQL failure reports the last migration started and SQLSTATE; no
 migrations started means UNRUN. This validates migration loading only, not RLS,
 worker ownership, concurrency or production parity. Default mode stays ownership.
+
+### Caught-publication-error diagnostic
+
+Manual `mode=policy_repro` stages **only the generated base schema**, followed by
+two rollback-only Storage policy probes around a caught duplicate-publication
+error. The duplicate targets public.channels, which must already be a member of
+supabase_realtime. A new postgres connection then repeats the policy probe over
+the disposable container's local Unix socket. Container name and project label
+must match; no host/DSN input, password, role escalation or owner change is used.
+Each probe creates a deny-all diagnostic policy inside a subtransaction and
+deliberately rolls it back; an existing probe name is a fatal error.
+
+This tests a specific source-supported hypothesis: image source 17.6.1.064 pins
+supautils v3.0.1. Its ALTER PUBLICATION hook calls switch_to_superuser, executes
+the statement and restores the role only on normal return. utils.c stores an
+is_switched_to_superuser flag outside PostgreSQL transactional state. A caught
+duplicate_object can therefore leave the flag set after PostgreSQL restores the
+actual user. schema.sql adds channels to the publication and original 0001 tries
+to add it again. This is a hypothesis until the three real probes demonstrate
+success before the error, 42501 afterward, and success on a fresh connection.
+
+Sources (version-bound, not current upstream behavior):
+- https://github.com/supabase/postgres/blob/17.6.1.064/nix/ext/supautils.nix
+- https://github.com/supabase/supautils/blob/v3.0.1/src/supautils.c
+- https://github.com/supabase/supautils/blob/v3.0.1/src/utils.c
+- https://github.com/supabase/cli/blob/v2.67.1/pkg/migration/file.go
+
+Report `policy_repro=PASS` means the diagnostic completed and no policy persisted.
+Only `reproduction=REPRODUCED` confirms the expected before/after/reconnect pattern.
+Missing evidence or failed startup/session remains UNRUN. Full migration chain
+and Phase 2B.1G tests remain UNRUN in this mode. Original migrations are restored
+byte-for-byte; raw output stays private; only validated JSON is published.
