@@ -39,7 +39,7 @@ jobs:
 
       - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
         with:
-          version: 2.67.1
+          version: 2.122.0
 
       - name: Prepare isolated test project
         shell: bash
@@ -47,7 +47,7 @@ jobs:
 
       - name: Collect storage ownership evidence
         env:
-          # CLI 2.67.1 default mirror; GHCR returned toomanyrequests in X5.
+          # Official mirror; GHCR returned toomanyrequests in X5.
           SUPABASE_INTERNAL_IMAGE_REGISTRY: public.ecr.aws
         shell: bash
         run: |

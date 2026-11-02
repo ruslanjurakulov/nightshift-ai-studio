@@ -32,7 +32,7 @@ class PolicyHarnessTests(unittest.TestCase):
                 body = f'''#!/usr/bin/env python3
 import json, pathlib, sys
 args = sys.argv[1:]
-if args == ['--version']: print('2.67.1')
+if args == ['--version']: print('2.122.0')
 elif '--help' in args:
     print('--exclude [studio,postgres-meta,logflare,vector,realtime,edge-runtime,mailpit,supavisor]')
 else:

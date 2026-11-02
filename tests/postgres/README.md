@@ -173,3 +173,37 @@ Only `reproduction=REPRODUCED` confirms the expected before/after/reconnect patt
 Missing evidence or failed startup/session remains UNRUN. Full migration chain
 and Phase 2B.1G tests remain UNRUN in this mode. Original migrations are restored
 byte-for-byte; raw output stays private; only validated JSON is published.
+
+### Verified reproduction and runtime correction
+
+Run 41333927675 on d937f506 reproduced the fault on the old CLI 2.67.1 runtime:
+policy creation succeeded before the caught duplicate, failed with 42501 in the
+same session afterward, and succeeded on a fresh postgres session. All probe
+policies were absent after rollback; cleanup and restoration succeeded.
+Artifact: https://github.com/ruslanjurakulov/nightshift-ai-studio/actions/runs/41333927675/artifacts/13094139428
+
+Upstream fix 2356ecf3c4bbdde324418fe586a697a33fbe1051 first shipped in
+supautils 3.0.3. Do not repair this by changing table owners, granting roles,
+skipping duplicate-publication statements or removing original migrations.
+
+The ownership workflow now pins official CLI **2.122.0**, whose image catalog
+selects **17.11.0.006**, with **supautils 3.4.4** in the matching image source.
+This updates the disposable stack's service versions together. It is not a
+production upgrade and does not establish production equivalence. The older
+general phase2b1f_supabase_harness workflow is unchanged and is not the validation
+entrypoint for this correction. Historical 2.67.1 instructions above describe
+the reproduced baseline; use the ownership workflow for the corrected runtime.
+
+Sources:
+- https://github.com/supabase/supautils/releases/tag/v3.0.3
+- https://github.com/supabase/cli/blob/v2.122.0/apps/cli/src/shared/services/Dockerfile
+- https://github.com/supabase/postgres/blob/17.11.0.006/nix/ext/supautils.nix
+- https://github.com/supabase/cli/blob/v2.122.0/apps/cli/src/commands/start/start.exclude.ts
+- https://github.com/supabase/cli/blob/v2.122.0/apps/cli/src/command-internal/service-catalog.ts
+
+The exclude names, local-only start behavior and archive naming were checked
+against this release; runtime help validation remains fail-closed. Re-run
+`mode=full_chain` on a fresh disposable runner and report its first failure.
+No full-chain PASS is implied by the successful fault reproduction.
+Rollback: revert only this workflow/script version pin and its mock expectation
+to 2.67.1; this restores the diagnostic baseline, including its known defect.

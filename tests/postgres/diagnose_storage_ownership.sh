@@ -2,9 +2,10 @@
 set -euo pipefail
 umask 077
 export NIGHTSHIFT_TEST_MODE="${NIGHTSHIFT_TEST_MODE:-ownership}"
+export NO_COLOR=1
 [[ "$NIGHTSHIFT_TEST_MODE" == ownership || "$NIGHTSHIFT_TEST_MODE" == full_chain || "$NIGHTSHIFT_TEST_MODE" == policy_repro ]]
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]]
-[[ "$(supabase --version 2>/dev/null)" == 2.67.1 ]]
+[[ "$(supabase --version 2>/dev/null)" == 2.122.0 ]]
 cmp -s supabase/config.toml tests/postgres/config.toml
 [[ ! -e supabase/.temp/project-ref ]]
 for v in ${!PG@} SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD DATABASE_URL SUPABASE_URL SUPABASE_SERVICE_KEY; do
@@ -60,9 +61,10 @@ supabase start --help >"$out_dir/help.raw" 2>&1
 python3 - "$out_dir/help.raw" "$exclude" <<'PY'
 import pathlib,re,sys
 help = pathlib.Path(sys.argv[1]).read_text()
-line = next(x for x in help.splitlines() if '--exclude' in x)
-names = re.search(r'\[([^]]+)\]',line).group(1).split(',')
-assert set(sys.argv[2].split(',')) <= set(names)
+assert '--exclude' in help
+# Current CLI can wrap the documented name list across terminal lines.
+lists = re.findall(r'\[([a-z][a-z0-9,\s-]+)\]', help)
+assert any(set(sys.argv[2].split(',')) <= set(re.sub(r'\s+', '', names).split(',')) for names in lists)
 PY
 set +e
 timeout --signal=TERM --kill-after=30s 900s supabase start --exclude "$exclude" >"$out_dir/start.raw" 2>&1
