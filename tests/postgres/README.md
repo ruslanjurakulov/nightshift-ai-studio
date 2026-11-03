@@ -207,3 +207,27 @@ against this release; runtime help validation remains fail-closed. Re-run
 No full-chain PASS is implied by the successful fault reproduction.
 Rollback: revert only this workflow/script version pin and its mock expectation
 to 2.67.1; this restores the diagnostic baseline, including its known defect.
+
+### Post-migration catalog preflight
+
+`full_chain` now runs `runtime_compatibility.sql` in a fresh **read-only**
+transaction on the fixed project's Unix socket after startup succeeds. It checks
+the Auth/Storage tables and helpers referenced by original migrations, pgcrypto,
+the six platform roles, Storage object ownership/RLS metadata and the previews
+policy. It compares the database's migration-history versions with the entire
+staged manifest, including 0000, rather than relying only on startup log lines.
+Missing prerequisites or history discrepancies fail the workflow; a probe that
+did not execute remains UNRUN. The complete original SQL files stay unchanged.
+
+`verification_session` identifies this fresh verification connection. It must
+not be labelled the migration executor. Use manual `mode=ownership` separately
+to read identity from the actual CLI migration connection on this runtime.
+No JWT, Auth user data, environment credentials, history SQL or free-form error
+text is exported. A stale report is removed before starting so failed validation
+cannot upload a result from a previous invocation.
+
+The optional Storage operation helper and review-link policy are reported as
+separate booleans: migration 0101 deliberately omits the policy if that helper is
+absent. Catalog existence does not test Auth login, object access, RLS denial,
+worker authorization, gateway isolation, concurrency or production parity. These
+remain separate gates; this preflight does not start Phase 2B.1G.

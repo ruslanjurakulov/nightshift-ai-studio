@@ -1,7 +1,37 @@
 import unittest
-from ownership_report import category, safe_evidence, pull_evidence, chain_status, policy_repro_evidence
+from ownership_report import (category, safe_evidence, pull_evidence, chain_status,
+                              policy_repro_evidence, compatibility_evidence, COMPATIBILITY_CHECKS)
 
 class ReportTests(unittest.TestCase):
+    def test_compatibility_requires_exact_history_prerequisites_and_readonly_identity(self):
+        import copy
+        import json
+        expected = ['0000_base_schema.sql','0001_multi_channel.sql']
+        good = {'current_user':'postgres','session_user':'postgres','superuser':False,
+                'read_only':True,'checks':dict.fromkeys(COMPATIBILITY_CHECKS,True),
+                'review_links':{'operation_helper':True,'policy_present':True},
+                'migration_versions':['0000','0001']}
+        encode = lambda obj: 'X6_COMPATIBILITY '+json.dumps(obj)
+        result = compatibility_evidence(encode(good),0,expected)
+        self.assertEqual(result['runtime_compatibility'],'PASS')
+        self.assertEqual(result['migration_history'],'PASS')
+        for field, value in [('superuser',True),('read_only',False),
+                             ('migration_versions',['0000']),
+                             ('migration_versions',['0000','0000']),
+                             ('migration_versions',['0001','0000'])]:
+            bad = dict(good, **{field:value})
+            self.assertEqual(compatibility_evidence(encode(bad),0,expected)['runtime_compatibility'],'FAIL')
+        for key in COMPATIBILITY_CHECKS:
+            bad = copy.deepcopy(good)
+            bad['checks'][key] = False
+            self.assertEqual(compatibility_evidence(encode(bad),0,expected)['runtime_compatibility'],'FAIL')
+        self.assertEqual(compatibility_evidence('',None,expected)['runtime_compatibility'],'UNRUN')
+        self.assertEqual(compatibility_evidence('',0,expected)['runtime_compatibility'],'UNRUN')
+        self.assertEqual(compatibility_evidence(encode(good),1,expected)['runtime_compatibility'],'FAIL')
+        for bad in (dict(good, secret='sentinel-secret'), dict(good,current_user='supabase_admin'),
+                    dict(good,migration_versions=['sentinel-secret'])):
+            with self.assertRaises(AssertionError): compatibility_evidence(encode(bad),0,expected)
+
     def test_policy_repro_requires_before_after_and_fresh_session(self):
         import json
         good = {'current_user':'postgres','session_user':'postgres',

@@ -13,6 +13,9 @@ for v in ${!PG@} SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD DATABASE_URL SUPABAS
 done
 out_dir="${1:?output directory required}"
 mkdir -p "$out_dir"
+# A reused output directory must not publish a previous successful report if
+# validation fails this time. Never upload stale or partially validated evidence.
+rm -f "$out_dir/report.json" "$out_dir/fresh.raw" "$out_dir/fresh.exit"
 # Move the entire directory only after a complete backup exists. EXIT restores
 # the exact original files; a cancelled VM is disposable and never reused.
 backup_dir="$(mktemp -d)"
@@ -70,15 +73,17 @@ set +e
 timeout --signal=TERM --kill-after=30s 900s supabase start --exclude "$exclude" >"$out_dir/start.raw" 2>&1
 rc=$?
 set -e
-if [[ "$rc" == 0 && "$NIGHTSHIFT_TEST_MODE" == policy_repro ]]; then
-  # A fresh postgres session tests whether the fault is backend-local. No TCP
-  # endpoint, credentials, role changes or arbitrary container selection.
+if [[ "$rc" == 0 && ( "$NIGHTSHIFT_TEST_MODE" == policy_repro || "$NIGHTSHIFT_TEST_MODE" == full_chain ) ]]; then
+  # A fresh postgres session uses no TCP endpoint, credentials, role changes
+  # or arbitrary container selection. It is not the migration executor session.
   db_container=supabase_db_nightshift-phase2b1f
   [[ "$(docker inspect --format '{{index .Config.Labels "com.supabase.cli.project"}}' "$db_container")" == nightshift-phase2b1f ]]
+  probe_sql=tests/postgres/policy_probe.sql
+  [[ "$NIGHTSHIFT_TEST_MODE" != full_chain ]] || probe_sql=tests/postgres/runtime_compatibility.sql
   set +e
   timeout 30s docker exec -i "$db_container" env -i PATH=/usr/local/bin:/usr/bin:/bin \
     psql -X --no-password -h /var/run/postgresql -U postgres -d postgres \
-    --set ON_ERROR_STOP=1 < tests/postgres/policy_probe.sql >"$out_dir/fresh.raw" 2>&1
+    --set ON_ERROR_STOP=1 < "$probe_sql" >"$out_dir/fresh.raw" 2>&1
   fresh_rc=$?
   set -e
   printf '%s\n' "$fresh_rc" >"$out_dir/fresh.exit"
@@ -92,4 +97,6 @@ import os
 report = json.load(open(sys.argv[1]))
 key = {'full_chain':'full_chain', 'ownership':'ownership_sql', 'policy_repro':'policy_repro'}[os.environ['NIGHTSHIFT_TEST_MODE']]
 assert report[key] == 'PASS'
+if os.environ['NIGHTSHIFT_TEST_MODE'] == 'full_chain':
+    assert report['runtime_compatibility'] == 'PASS'
 PY

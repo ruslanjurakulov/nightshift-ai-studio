@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from ownership_report import COMPATIBILITY_CHECKS
 
 
 class PolicyHarnessTests(unittest.TestCase):
@@ -14,8 +15,12 @@ class PolicyHarnessTests(unittest.TestCase):
         probe = {'current_user':'postgres','session_user':'postgres',
                  'policy_created':True,'sqlstate':None,'policy_absent':True,
                  'supautils_registered':True}
-        for startup_code in (0, 1):
-            with self.subTest(startup_code=startup_code), tempfile.TemporaryDirectory() as temp:
+        compatibility = {'current_user':'postgres','session_user':'postgres','superuser':False,
+                         'read_only':True,'checks':dict.fromkeys(COMPATIBILITY_CHECKS,True),
+                         'review_links':{'operation_helper':True,'policy_present':True},
+                         'migration_versions':['0000','0001','0004']}
+        for mode, startup_code in [('policy_repro',0),('policy_repro',1),('full_chain',0),('full_chain',1)]:
+            with self.subTest(mode=mode,startup_code=startup_code), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 (root/'tests').mkdir()
                 shutil.copytree(source, root/'tests/postgres', ignore=shutil.ignore_patterns('__pycache__'))
@@ -37,11 +42,14 @@ elif '--help' in args:
     print('--exclude [studio,postgres-meta,logflare,vector,realtime,edge-runtime,mailpit,supavisor]')
 else:
     p = pathlib.Path('supabase/migrations')
-    assert sorted(x.name for x in p.iterdir()) == ['0000_base_schema.sql']
-    assert p.joinpath('0000_base_schema.sql').read_text().count('X6_POLICY_PROBE') == 2
-    print('Applying migration 0000_base_schema.sql')
+    if {mode!r} == 'policy_repro':
+        assert sorted(x.name for x in p.iterdir()) == ['0000_base_schema.sql']
+        assert p.joinpath('0000_base_schema.sql').read_text().count('X6_POLICY_PROBE') == 2
+    else:
+        assert {{f.name:f.read_bytes() for f in p.iterdir()}} == {original!r}
+    for f in sorted(p.iterdir()): print('Applying migration '+f.name)
     print('raw sentinel-secret must never be published')
-    if {startup_code} == 0:
+    if {startup_code} == 0 and {mode!r} == 'policy_repro':
         probe = {probe!r}
         print('X6_POLICY_PROBE '+json.dumps(probe))
         print('X6_DUPLICATE '+json.dumps({{'duplicate_seen':True}}))
@@ -57,13 +65,23 @@ if args[0] == 'inspect': print('nightshift-phase2b1f')
 elif args[0] == 'exec':
     assert 'supabase_db_nightshift-phase2b1f' in args
     assert '/var/run/postgresql' in args and '--no-password' in args
-    assert 'X6_POLICY_PROBE' in sys.stdin.read()
-    print('X6_POLICY_PROBE '+json.dumps({probe!r}))
+    sql = sys.stdin.read()
+    if {mode!r} == 'policy_repro':
+        assert 'X6_POLICY_PROBE' in sql
+        print('X6_POLICY_PROBE '+json.dumps({probe!r}))
+    else:
+        assert 'begin read only;' in sql and 'X6_COMPATIBILITY' in sql
+        print('X6_COMPATIBILITY '+json.dumps({compatibility!r}))
 ''')
                 for executable in fakebin.iterdir(): executable.chmod(0o755)
+                evidence = root/'evidence'
+                evidence.mkdir()
+                (evidence/'report.json').write_text('{"stale":"sentinel-secret"}')
+                (evidence/'fresh.raw').write_text('X6_COMPATIBILITY '+json.dumps(compatibility))
+                (evidence/'fresh.exit').write_text('0')
                 env = {'PATH':str(fakebin)+os.pathsep+os.environ['PATH'],
                        'GITHUB_ACTIONS':'true','RUNNER_ENVIRONMENT':'github-hosted',
-                       'NIGHTSHIFT_TEST_MODE':'policy_repro'}
+                       'NIGHTSHIFT_TEST_MODE':mode}
                 result = subprocess.run(['bash','tests/postgres/diagnose_storage_ownership.sh','evidence'],
                                         cwd=root,env=env,capture_output=True,text=True,timeout=30)
                 self.assertEqual(result.returncode, startup_code, result.stderr)
@@ -71,8 +89,12 @@ elif args[0] == 'exec':
                 report_text = (root/'evidence/report.json').read_text()
                 self.assertNotIn('sentinel-secret',report_text+result.stdout+result.stderr)
                 report = json.loads(report_text)
-                self.assertEqual(report['full_chain'],'UNRUN')
-                self.assertEqual(report['reproduction'],'REPRODUCED' if startup_code == 0 else 'UNRUN')
+                if mode == 'policy_repro':
+                    self.assertEqual(report['full_chain'],'UNRUN')
+                    self.assertEqual(report['reproduction'],'REPRODUCED' if startup_code == 0 else 'UNRUN')
+                else:
+                    self.assertEqual(report['full_chain'],'PASS' if startup_code == 0 else 'FAIL')
+                    self.assertEqual(report['runtime_compatibility'],'PASS' if startup_code == 0 else 'UNRUN')
 
 
 if __name__ == '__main__': unittest.main()

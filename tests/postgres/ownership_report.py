@@ -35,6 +35,46 @@ def chain_status(expected, started, code):
     return 'PASS' if started == expected else 'UNVERIFIED'
 
 
+COMPATIBILITY_CHECKS = {
+    'auth_users', 'auth_mfa_factors', 'storage_buckets', 'storage_objects',
+    'auth_uid', 'auth_role', 'auth_jwt', 'storage_foldername', 'pgcrypto',
+    'anon', 'authenticated', 'service_role', 'authenticator',
+    'supabase_auth_admin', 'supabase_storage_admin', 'storage_objects_rls',
+    'storage_owner_preserved', 'previews_read_policy',
+}
+
+
+def compatibility_evidence(raw, code, expected):
+    result = {'runtime_compatibility':'UNRUN', 'verification_session':None,
+              'migration_history':'UNRUN'}
+    if code is None:
+        return result
+    if code != 0:
+        return dict(result, runtime_compatibility='FAIL')
+    matches = re.findall(r'X6_COMPATIBILITY (\{[^\n]+\})', raw)
+    if not matches:
+        return result
+    assert len(matches) == 1
+    obj = json.loads(matches[0])
+    assert set(obj) == {'current_user','session_user','superuser','read_only','checks','review_links','migration_versions'}
+    assert obj['current_user'] == obj['session_user'] == 'postgres'
+    assert type(obj['superuser']) is bool and type(obj['read_only']) is bool
+    assert set(obj['checks']) == COMPATIBILITY_CHECKS
+    assert set(obj['review_links']) == {'operation_helper','policy_present'}
+    assert all(type(v) is bool for group in ('checks','review_links') for v in obj[group].values())
+    versions = obj['migration_versions']
+    assert isinstance(versions, list) and all(isinstance(v,str) and re.fullmatch(r'[0-9]{4}',v) for v in versions)
+    expected_versions = [n.split('_',1)[0] for n in expected]
+    history_matches = versions == expected_versions and len(set(versions)) == len(versions)
+    passed = (not obj['superuser'] and obj['read_only'] and all(obj['checks'].values())
+              and history_matches)
+    # Publish bounded booleans/counts, not the database's free-form history names.
+    obj.pop('migration_versions')
+    obj['migration_count'] = len(versions)
+    return dict(result, runtime_compatibility='PASS' if passed else 'FAIL',
+                verification_session=obj, migration_history='PASS' if history_matches else 'FAIL')
+
+
 def policy_repro_evidence(raw, fresh, startup_code, fresh_code):
     def probes(text):
         found = re.findall(r'X6_POLICY_PROBE (\{[^\n]+\})', text)
@@ -141,6 +181,10 @@ def main(directory, code):
         report['migrations_started'] = len(files)
         report['full_chain'] = chain_status(expected, files, code)
         report['first_failing_migration'] = files[-1] if code != 0 and files and report['failure_category'] == 'migration_failure' else None
+        fresh_path, exit_path = out/'fresh.raw', out/'fresh.exit'
+        fresh = fresh_path.read_text(errors='replace') if fresh_path.exists() else ''
+        fresh_code = int(exit_path.read_text()) if exit_path.exists() else None
+        report.update(compatibility_evidence(fresh, fresh_code, expected))
     (out/'report.json').write_text(json.dumps(report,indent=2)+'\n')
 
 
