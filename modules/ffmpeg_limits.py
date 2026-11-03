@@ -42,8 +42,8 @@ ffmpeg 7.0.2 on 4 cores; peak RSS from ``getrusage``):
 * The limit bounds the worker; it does not by itself refuse the file. Under
   it, Lens's crop-window file decodes completely (1787 MB peak RSS, two
   threads), and is stored as a 64x64 video. So ``run`` also reports the
-  child's own peak RSS (``wait4``), and the media library refuses a decode
-  that needed far more memory than the frame size its probe declared allows
+  child's peak RSS (``wait4`` from a fresh, small supervisor), and the media
+  library refuses a decode that needed far more memory than its probe allows
   (``media_library.expected_rss_bytes``): the frame the decoder really met
   was bigger than any check before it could see. That is an early refusal
   for small declared frames only (below about 7-8 MP, BR-L-015); a file that
@@ -53,11 +53,14 @@ ffmpeg 7.0.2 on 4 cores; peak RSS from ``getrusage``):
 from __future__ import annotations
 
 import os
+import signal
+import struct
 import subprocess
 import sys
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence
 
 #: Address-space limit of one ffmpeg child. Measured: a legitimate 8K DCI
@@ -169,7 +172,8 @@ class Outcome:
     timed_out: bool
     #: The end of stderr, for a log line (never shown to a member).
     tail: str
-    #: The child's peak resident memory (``wait4``), 0 when unknown.
+    #: Decoder peak RSS, including the small launcher's pre-exec footprint.
+    #: 0 when unavailable; missing accounting never produces a successful run.
     peak_rss_bytes: int = 0
 
     @property
@@ -210,38 +214,59 @@ class _StderrWatch(threading.Thread):
 
 
 class _Child:
-    """A started command, reaped with ``wait4`` so its own peak RSS is known
-    (``RUSAGE_CHILDREN`` would mix in every other child of the worker, which
-    runs uploads and exports on two threads). The lock keeps a kill from
-    reaching a pid that was reaped and could have been reused."""
+    """A supervisor and decoder in their own process group (Linux workers).
+
+    Keep the supervisor unreaped until its group is stopped, even on an
+    unexpected supervisor exit. WNOWAIT and the lock prevent PID/group reuse
+    between checking termination, killing descendants, and reaping.
+    """
 
     def __init__(self, proc: "subprocess.Popen"):
         self.proc = proc
         self.lock = threading.Lock()
         self.status: Optional[int] = None
-        self.maxrss_kb = 0
+        self.stop_started: Optional[float] = None
 
-    def kill(self) -> None:
+    def kill(self, *, force: bool = False) -> None:
         with self.lock:
             if self.status is None:
+                if self.stop_started is None:
+                    self.stop_started = time.monotonic()
                 try:
-                    os.kill(self.proc.pid, 9)
+                    os.killpg(self.proc.pid, signal.SIGKILL if force else signal.SIGTERM)
                 except OSError:
                     pass
+
+    def stop_and_reap(self) -> None:
+        self.kill()
+        deadline = time.monotonic() + 1
+        while not self.reap(block=False):
+            if time.monotonic() >= deadline:
+                self.kill(force=True)
+                self.reap(block=True)
+                break
+            time.sleep(.01)
 
     def reap(self, block: bool) -> bool:
         with self.lock:
             if self.status is not None:
                 return True
             try:
-                pid, status, usage = os.wait4(self.proc.pid, 0 if block else os.WNOHANG)
+                info = os.waitid(os.P_PID, self.proc.pid,
+                                 os.WEXITED | os.WNOWAIT | (0 if block else os.WNOHANG))
             except ChildProcessError:
                 self.status = self.proc.returncode if self.proc.returncode is not None else -1
                 return True
-            if pid == 0:
+            if info is None:
                 return False
+            # A dead supervisor must not leave a decoder (or its stderr pipe)
+            # behind. Its unreaped PID still reserves this process group ID.
+            try:
+                os.killpg(self.proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            _, status, _ = os.wait4(self.proc.pid, 0)
             self.status = os.waitstatus_to_exitcode(status)
-            self.maxrss_kb = int(usage.ru_maxrss)
             self.proc.returncode = self.status  # Popen must not wait for it again
             return True
 
@@ -251,9 +276,16 @@ def run(argv: Sequence[str], *, timeout_s: float, heartbeat: Optional[Callable[[
     """Run one ffmpeg command under the limits above and wait for it, calling
     ``heartbeat`` every ``beat_s`` while it works. Past ``timeout_s`` it is
     killed and reaped (``timed_out``); at the first refused frame it is
-    killed (``refused``). Never leaves a process behind."""
-    proc = subprocess.Popen(limited_argv(argv, mem_bytes), stdin=subprocess.DEVNULL,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=child_env())
+    killed (``refused``). Normal cancellation reaps the decoder; an unexpected
+    supervisor crash stops the group and leaves orphan reaping to host init."""
+    if not sys.platform.startswith("linux") or not hasattr(os, "WNOWAIT"):
+        raise RuntimeError("decoder accounting requires Linux waitid/WNOWAIT")
+    command = [sys.executable, "-I", "-S",
+               str(Path(__file__).with_name("ffmpeg_supervisor.py")),
+               *limited_argv(argv, mem_bytes)]
+    proc = subprocess.Popen(command, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            env=child_env(), start_new_session=True)
     child = _Child(proc)
     watch = _StderrWatch(proc.stderr, child.kill)
     watch.start()
@@ -265,9 +297,10 @@ def run(argv: Sequence[str], *, timeout_s: float, heartbeat: Optional[Callable[[
             now = time.monotonic()
             if now - started >= timeout_s:
                 timed_out = True
-                child.kill()
-                child.reap(block=True)
+                child.stop_and_reap()
                 break
+            if child.stop_started is not None and now - child.stop_started >= 1:
+                child.kill(force=True)
             if heartbeat is not None and now - last_beat >= beat_s:
                 last_beat = now
                 try:
@@ -277,15 +310,24 @@ def run(argv: Sequence[str], *, timeout_s: float, heartbeat: Optional[Callable[[
             time.sleep(min(pause, max(0.0, timeout_s - (now - started))))
             pause = min(pause * 2, 0.25)
     except BaseException:
-        child.kill()
-        child.reap(block=True)
+        child.stop_and_reap()
         raise
     finally:
         watch.join(timeout=10)
         if proc.stderr:
             proc.stderr.close()
-    return Outcome(None if timed_out else child.status, watch.refused, timed_out,
-                   watch.tail.decode("utf-8", "replace"), child.maxrss_kb * 1024)
+        # Only a 16-byte supervisor report is accepted; no child output or
+        # unbounded log is parsed as memory evidence. The group is dead now.
+        report = proc.stdout.read(17) if proc.stdout else b""
+        if proc.stdout:
+            proc.stdout.close()
+    status, peak = -1, 0
+    if child.status == 0 and len(report) == 16:
+        reported_status, reported_peak = struct.unpack("!qQ", report)
+        if -signal.NSIG < reported_status <= 255 and reported_peak > 0:
+            status, peak = reported_status, reported_peak
+    return Outcome(None if timed_out else status, watch.refused, timed_out,
+                   watch.tail.decode("utf-8", "replace"), peak)
 
 
 __all__ = ["CHILD_STACK_BYTES", "CHILD_ENV", "CHILD_MEM_BYTES", "DECODE_THREADS", "ENCODE_THREADS", "FILTER_THREADS", "Outcome",
