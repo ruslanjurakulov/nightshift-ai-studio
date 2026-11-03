@@ -79,3 +79,165 @@ The CI workflow redirects Supabase and migration output to files. Raw output is
 never written to the Actions console. Artifact creation fails if sanitization
 fails or known credential/DSN patterns remain.
 
+
+### X6 ownership evidence (diagnostic only)
+
+Run the existing `phase2b1f_storage_ownership.yml` manually on `main`. It uses
+CLI 2.67.1 and a 900-second startup deadline (plus 30-second termination grace).
+Postgres, gotrue/Auth, storage-api, Kong/PostgREST and image support remain.
+Studio, postgres-meta, logflare, vector, realtime, edge-runtime, mailpit and
+supavisor are excluded. Realtime/analytics/edge configuration is disabled too:
+CLI service initialization jobs otherwise still run despite `--exclude`.
+Names verified against official v2.67.1 `cmd/start.go`,
+`internal/start/start.go:ExcludableContainers`, and
+`pkg/config/templates/Dockerfile`; the runner also validates `start --help`.
+
+Only the disposable 0003 copy receives a read-only DO/NOTICE probe. This captures
+**actual migration-session** current_user/session_user, relowner, inherited
+owner-role USAGE, MEMBER, superuser and memberships before startup can destroy
+containers. It neither creates a persistent probe nor modifies grants/owners.
+The original complete directory is restored by EXIT trap, with byte comparison.
+Runner destruction bounds forced-cancellation cleanup; no subsequent full-chain
+validation uses the subset. Production SQL is unchanged.
+
+Only `ownership-evidence/report.json` is printed/uploaded. It is built from
+validated identity fields, numeric resource readings and fixed failure categories.
+Raw start/help logs, Docker environment and health-check output are never exported.
+Container status may be unavailable because CLI removes containers after failure.
+Exit 137 alone is not proof of OOM; absent evidence remains unknown. A report with
+`ownership_sql=UNRUN` is not a pass. The full chain is always UNRUN on this path.
+Production executor equivalence remains unverified without owner-supplied evidence.
+
+
+Follow-up registry evidence: X5 run 40905661048 artifact 12910169734 ends
+with `toomanyrequests` while retrying `ghcr.io/supabase/postgres:17.6.1.064`.
+X6 run 40911606114 reports only image_pull_failure; its underlying reason is
+not independently recorded. Use `SUPABASE_INTERNAL_IMAGE_REGISTRY=public.ecr.aws`
+on the diagnostic step only. This is the default mirror in official CLI v2.67.1
+`internal/utils/docker.go` (GetRegistry/GetRegistryImageUrl), not a custom image.
+Original image version tags and the pinned CLI stay unchanged. Report registry,
+allowlisted public image mentions and a fixed rate-limit indicator; never publish
+raw error lines. One bounded follow-up run is authorized by the owner's PR #647
+instruction. A successful diagnostic still does not validate the full chain.
+
+
+Ownership evidence correction: owner-role MEMBER/USAGE=false proves absence of
+native owner privileges, not absence of all policy management authority. The exact
+17.6.1.064 upstream image configuration explicitly grants policy management for
+postgres on storage.objects/buckets via supautils.policy_grants:
+https://github.com/supabase/postgres/blob/17.6.1.064/ansible/files/postgresql_config/supautils.conf.j2
+https://github.com/supabase/supautils#manage-policies
+The diagnostic now reads only the supautils version, preload indicators and two
+specific policy-grant booleans from the migration session. Missing settings remain
+null (unknown). It neither LOADs a library nor changes settings, roles, grants or
+policies. These settings are not themselves a successful CREATE POLICY probe.
+Production equivalence and the original 0004 failure still need reconciliation.
+
+Manual `mode=full_chain` uses the same disposable runtime and protections, but
+leaves every original migration intact (plus the existing ephemeral 0000 base).
+No ownership probe is appended in this mode. The complete ordered filename
+manifest is compared with CLI migration-start records. PASS requires startup
+exit 0 and an exact complete sequence; missing/order-mismatched records yield
+UNVERIFIED. SQL failure reports the last migration started and SQLSTATE; no
+migrations started means UNRUN. This validates migration loading only, not RLS,
+worker ownership, concurrency or production parity. Default mode stays ownership.
+
+### Caught-publication-error diagnostic
+
+Manual `mode=policy_repro` stages **only the generated base schema**, followed by
+two rollback-only Storage policy probes around a caught duplicate-publication
+error. The duplicate targets public.channels, which must already be a member of
+supabase_realtime. A new postgres connection then repeats the policy probe over
+the disposable container's local Unix socket. Container name and project label
+must match; no host/DSN input, password, role escalation or owner change is used.
+Each probe creates a deny-all diagnostic policy inside a subtransaction and
+deliberately rolls it back; an existing probe name is a fatal error.
+
+This tests a specific source-supported hypothesis: image source 17.6.1.064 pins
+supautils v3.0.1. Its ALTER PUBLICATION hook calls switch_to_superuser, executes
+the statement and restores the role only on normal return. utils.c stores an
+is_switched_to_superuser flag outside PostgreSQL transactional state. A caught
+duplicate_object can therefore leave the flag set after PostgreSQL restores the
+actual user. schema.sql adds channels to the publication and original 0001 tries
+to add it again. This is a hypothesis until the three real probes demonstrate
+success before the error, 42501 afterward, and success on a fresh connection.
+
+Sources (version-bound, not current upstream behavior):
+- https://github.com/supabase/postgres/blob/17.6.1.064/nix/ext/supautils.nix
+- https://github.com/supabase/supautils/blob/v3.0.1/src/supautils.c
+- https://github.com/supabase/supautils/blob/v3.0.1/src/utils.c
+- https://github.com/supabase/cli/blob/v2.67.1/pkg/migration/file.go
+
+Report `policy_repro=PASS` means the diagnostic completed and no policy persisted.
+Only `reproduction=REPRODUCED` confirms the expected before/after/reconnect pattern.
+Missing evidence or failed startup/session remains UNRUN. Full migration chain
+and Phase 2B.1G tests remain UNRUN in this mode. Original migrations are restored
+byte-for-byte; raw output stays private; only validated JSON is published.
+
+### Verified reproduction and runtime correction
+
+Run 41333927675 on d937f506 reproduced the fault on the old CLI 2.67.1 runtime:
+policy creation succeeded before the caught duplicate, failed with 42501 in the
+same session afterward, and succeeded on a fresh postgres session. All probe
+policies were absent after rollback; cleanup and restoration succeeded.
+Artifact: https://github.com/ruslanjurakulov/nightshift-ai-studio/actions/runs/41333927675/artifacts/13094139428
+
+Upstream fix 2356ecf3c4bbdde324418fe586a697a33fbe1051 first shipped in
+supautils 3.0.3. Do not repair this by changing table owners, granting roles,
+skipping duplicate-publication statements or removing original migrations.
+
+The ownership workflow now pins official CLI **2.122.0**, whose image catalog
+selects **17.11.0.006**, with **supautils 3.4.4** in the matching image source.
+This updates the disposable stack's service versions together. It is not a
+production upgrade and does not establish production equivalence. The older
+general phase2b1f_supabase_harness workflow is unchanged and is not the validation
+entrypoint for this correction. Historical 2.67.1 instructions above describe
+the reproduced baseline; use the ownership workflow for the corrected runtime.
+
+Sources:
+- https://github.com/supabase/supautils/releases/tag/v3.0.3
+- https://github.com/supabase/cli/blob/v2.122.0/apps/cli/src/shared/services/Dockerfile
+- https://github.com/supabase/postgres/blob/17.11.0.006/nix/ext/supautils.nix
+- https://github.com/supabase/cli/blob/v2.122.0/apps/cli/src/commands/start/start.exclude.ts
+- https://github.com/supabase/cli/blob/v2.122.0/apps/cli/src/command-internal/service-catalog.ts
+
+The exclude names, local-only start behavior and archive naming were checked
+against this release; runtime help validation remains fail-closed. Re-run
+`mode=full_chain` on a fresh disposable runner and report its first failure.
+No full-chain PASS is implied by the successful fault reproduction.
+Rollback: revert only this workflow/script version pin and its mock expectation
+to 2.67.1; this restores the diagnostic baseline, including its known defect.
+
+### Post-migration catalog preflight
+
+`full_chain` now runs `runtime_compatibility.sql` in a fresh **read-only**
+transaction on the fixed project's Unix socket after startup succeeds. It checks
+the Auth/Storage tables and helpers referenced by original migrations, pgcrypto,
+the six platform roles, Storage object ownership/RLS metadata and the previews
+policy. It compares the database's migration-history versions with the entire
+staged manifest, including 0000, rather than relying only on startup log lines.
+Missing prerequisites or history discrepancies fail the workflow; a probe that
+did not execute remains UNRUN. The complete original SQL files stay unchanged.
+
+`verification_session` identifies this fresh verification connection. It must
+not be labelled the migration executor. Use manual `mode=ownership` separately
+to read identity from the actual CLI migration connection on this runtime.
+No JWT, Auth user data, environment credentials, history SQL or free-form error
+text is exported. A stale report is removed before starting so failed validation
+cannot upload a result from a previous invocation.
+
+The optional Storage operation helper and review-link policy are reported as
+separate booleans: migration 0101 deliberately omits the policy if that helper is
+absent. Catalog existence does not test Auth login, object access, RLS denial,
+worker authorization, gateway isolation, concurrency or production parity. These
+remain separate gates; this preflight does not start Phase 2B.1G.
+
+CLI 2.122.0 does not attach a PostgreSQL NOTICE listener in its migration client
+(`apps/cli/src/command-internal/db-connection.sql-pg.layer.ts`). Run 41581864427
+therefore started successfully but had ownership_sql=UNRUN. Diagnostic staging
+now changes only its added probe messages from RAISE NOTICE to RAISE LOG. It reads
+the fixed project-checked database container's bounded log into a private file,
+before any fresh-session probe runs. Only schema-validated X6 markers become
+report fields; no raw database logs are printed or uploaded. Absent/truncated
+evidence remains UNRUN. Full-chain original SQL is unaffected, and no settings,
+grants, roles, table owners or persistent probe tables are changed.
