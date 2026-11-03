@@ -86,7 +86,7 @@ modify editor transition logic or change the FFmpeg dependency version.
 
 The monitor now uses the same reviewed checkout/upload-artifact SHAs as the
 other workflows. Main's two older Supabase workflows receive the identical
-pin-only changes already present in draft PR #647; none of that PR's runtime
+pins and non-persistent checkout settings already present in draft PR #647; none of that PR's runtime
 or migration changes is copied into this patch. Triggers, permissions and
 runner settings are unchanged.
 
