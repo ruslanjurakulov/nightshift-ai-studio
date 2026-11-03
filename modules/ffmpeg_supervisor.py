@@ -35,9 +35,14 @@ def main() -> None:
                              stdout=subprocess.DEVNULL, stderr=None)
     if stopping:
         stop(None, None)
-    _, status, usage = os.wait4(child.pid, 0)
-    child.returncode = os.waitstatus_to_exitcode(status)
-    os.write(1, struct.pack("!qQ", child.returncode, int(usage.ru_maxrss) * 1024))
+    # A late SIGTERM must never kill a PID after wait4 released it for reuse.
+    # Observe exit without reaping, then disarm the handler before wait4.
+    decoder = child
+    os.waitid(os.P_PID, decoder.pid, os.WEXITED | os.WNOWAIT)
+    child = None
+    _, status, usage = os.wait4(decoder.pid, 0)
+    decoder.returncode = os.waitstatus_to_exitcode(status)
+    os.write(1, struct.pack("!qQ", decoder.returncode, int(usage.ru_maxrss) * 1024))
 
 
 if __name__ == "__main__":

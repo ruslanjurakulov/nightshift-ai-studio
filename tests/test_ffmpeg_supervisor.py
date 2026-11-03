@@ -6,6 +6,7 @@ import struct
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -30,6 +31,34 @@ class SupervisorTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Linux"):
                 self.run_python("pass")
             start.assert_not_called()
+
+    def test_late_stop_cannot_signal_a_reaped_decoder_pid(self):
+        from modules import ffmpeg_supervisor as supervisor
+        handler = None
+        events = []
+
+        def register(signum, callback):
+            nonlocal handler
+            handler = callback
+
+        def observe(*args):
+            events.append("observed_unreaped_exit")
+
+        def reap(*args):
+            events.append("reaped")
+            # Simulate delivery just after the kernel has released this PID.
+            handler(signal.SIGTERM, None)
+            return 123, 0, SimpleNamespace(ru_maxrss=1024)
+
+        with mock.patch.object(supervisor.signal, "signal", register), \
+                mock.patch.object(supervisor.subprocess, "Popen", return_value=SimpleNamespace(pid=123)), \
+                mock.patch.object(supervisor.os, "waitid", observe), \
+                mock.patch.object(supervisor.os, "wait4", reap), \
+                mock.patch.object(supervisor.os, "kill") as kill, \
+                mock.patch.object(supervisor.os, "write"):
+            supervisor.main()
+        self.assertEqual(events, ["observed_unreaped_exit", "reaped"])
+        kill.assert_not_called()
 
     def test_decoder_stdout_cannot_forge_the_accounting_report(self):
         out = self.run_python("import os,struct;os.write(1,struct.pack('!qQ',0,1));"
