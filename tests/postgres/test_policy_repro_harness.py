@@ -45,6 +45,7 @@ else:
     if {mode!r} == 'policy_repro':
         assert sorted(x.name for x in p.iterdir()) == ['0000_base_schema.sql']
         assert p.joinpath('0000_base_schema.sql').read_text().count('X6_POLICY_PROBE') == 2
+        assert "raise log 'X6_" in p.joinpath('0000_base_schema.sql').read_text()
     else:
         assert {{f.name:f.read_bytes() for f in p.iterdir()}} == {original!r}
     for f in sorted(p.iterdir()): print('Applying migration '+f.name)
@@ -62,6 +63,14 @@ else:
 import json, sys
 args = sys.argv[1:]
 if args[0] == 'inspect': print('nightshift-phase2b1f')
+elif args[0] == 'logs':
+    assert args == ['logs','--tail','2000','supabase_db_nightshift-phase2b1f']
+    print('raw database sentinel-secret')
+    probe = {probe!r}
+    print('LOG: X6_POLICY_PROBE '+json.dumps(probe))
+    print('LOG: X6_DUPLICATE '+json.dumps({{'duplicate_seen':True}}))
+    probe.update(policy_created=False, sqlstate='42501')
+    print('LOG: X6_POLICY_PROBE '+json.dumps(probe))
 elif args[0] == 'exec':
     assert 'supabase_db_nightshift-phase2b1f' in args
     assert '/var/run/postgresql' in args and '--no-password' in args

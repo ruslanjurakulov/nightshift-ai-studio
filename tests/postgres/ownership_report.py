@@ -140,7 +140,9 @@ def safe_evidence(raw):
 def main(directory, code):
     out = pathlib.Path(directory)
     raw = (out/'start.raw').read_text(errors='replace')
-    evidence = safe_evidence(raw)  # Validation errors stop publication entirely.
+    server_path = out/'postgres.raw'
+    server_raw = server_path.read_text(errors='replace') if server_path.exists() else ''
+    evidence = safe_evidence(server_raw)  # Validation errors stop publication entirely.
     def docker(*args):
         p = subprocess.run(['docker',*args],capture_output=True,text=True,timeout=15)
         return p.stdout if p.returncode == 0 else ''
@@ -172,7 +174,7 @@ def main(directory, code):
         fresh_path, exit_path = out/'fresh.raw', out/'fresh.exit'
         fresh = fresh_path.read_text(errors='replace') if fresh_path.exists() else ''
         fresh_code = int(exit_path.read_text()) if exit_path.exists() else None
-        report.update(policy_repro_evidence(raw, fresh, code, fresh_code))
+        report.update(policy_repro_evidence(server_raw, fresh, code, fresh_code))
     if mode == 'full_chain':
         expected = json.loads(pathlib.Path('migration-manifest.json').read_text())
         assert expected and all(re.fullmatch(r'[0-9]+_[A-Za-z0-9_-]+\.sql', n) for n in expected)

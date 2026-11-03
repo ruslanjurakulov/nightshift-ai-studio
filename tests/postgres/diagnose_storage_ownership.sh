@@ -15,7 +15,7 @@ out_dir="${1:?output directory required}"
 mkdir -p "$out_dir"
 # A reused output directory must not publish a previous successful report if
 # validation fails this time. Never upload stale or partially validated evidence.
-rm -f "$out_dir/report.json" "$out_dir/fresh.raw" "$out_dir/fresh.exit"
+rm -f "$out_dir/report.json" "$out_dir/fresh.raw" "$out_dir/fresh.exit" "$out_dir/postgres.raw"
 # Move the entire directory only after a complete backup exists. EXIT restores
 # the exact original files; a cancelled VM is disposable and never reused.
 backup_dir="$(mktemp -d)"
@@ -53,10 +53,10 @@ for f in p.glob('*.sql'):
 if os.environ['NIGHTSHIFT_TEST_MODE'] == 'policy_repro':
     with (p/'0000_base_schema.sql').open('a') as f:
         for name in ('policy_probe.sql', 'publication_error_probe.sql', 'policy_probe.sql'):
-            f.write('\n' + Path('tests/postgres', name).read_text())
+            f.write('\n' + Path('tests/postgres', name).read_text().replace("raise notice 'X6_", "raise log 'X6_"))
 else:
     with (p/'0003_shorts.sql').open('a') as f:
-        f.write('\n' + Path('tests/postgres/storage_ownership.sql').read_text())
+        f.write('\n' + Path('tests/postgres/storage_ownership.sql').read_text().replace("raise notice 'X6_", "raise log 'X6_"))
 PY
 exclude='studio,postgres-meta,logflare,vector,realtime,edge-runtime,mailpit,supavisor'
 # CLI otherwise warns and ignores misspelled names. Validate against its help.
@@ -73,6 +73,14 @@ set +e
 timeout --signal=TERM --kill-after=30s 900s supabase start --exclude "$exclude" >"$out_dir/start.raw" 2>&1
 rc=$?
 set -e
+if [[ "$rc" == 0 && "$NIGHTSHIFT_TEST_MODE" != full_chain ]]; then
+  # CLI 2.122.0's database client does not forward NOTICE events. RAISE LOG in
+  # the ephemeral probe preserves actual migration-session evidence on the
+  # server. Read it before the fresh-session probe, which must stay distinct.
+  db_container=supabase_db_nightshift-phase2b1f
+  [[ "$(docker inspect --format '{{index .Config.Labels "com.supabase.cli.project"}}' "$db_container")" == nightshift-phase2b1f ]]
+  timeout 15s docker logs --tail 2000 "$db_container" >"$out_dir/postgres.raw" 2>&1 || true
+fi
 if [[ "$rc" == 0 && ( "$NIGHTSHIFT_TEST_MODE" == policy_repro || "$NIGHTSHIFT_TEST_MODE" == full_chain ) ]]; then
   # A fresh postgres session uses no TCP endpoint, credentials, role changes
   # or arbitrary container selection. It is not the migration executor session.

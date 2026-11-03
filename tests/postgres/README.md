@@ -231,3 +231,13 @@ separate booleans: migration 0101 deliberately omits the policy if that helper i
 absent. Catalog existence does not test Auth login, object access, RLS denial,
 worker authorization, gateway isolation, concurrency or production parity. These
 remain separate gates; this preflight does not start Phase 2B.1G.
+
+CLI 2.122.0 does not attach a PostgreSQL NOTICE listener in its migration client
+(`apps/cli/src/command-internal/db-connection.sql-pg.layer.ts`). Run 41581864427
+therefore started successfully but had ownership_sql=UNRUN. Diagnostic staging
+now changes only its added probe messages from RAISE NOTICE to RAISE LOG. It reads
+the fixed project-checked database container's bounded log into a private file,
+before any fresh-session probe runs. Only schema-validated X6 markers become
+report fields; no raw database logs are printed or uploaded. Absent/truncated
+evidence remains UNRUN. Full-chain original SQL is unaffected, and no settings,
+grants, roles, table owners or persistent probe tables are changed.
