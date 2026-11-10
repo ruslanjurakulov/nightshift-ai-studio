@@ -70,6 +70,7 @@ class SupervisorTests(unittest.TestCase):
         real_popen = fl.subprocess.Popen
         cases = [(b"", 0), (b"bad", 0), (struct.pack("!qQ", 0, 0), 0),
                  (struct.pack("!qQ", 256, 100), 0), (struct.pack("!qQ", 0, 100) + b"x", 0),
+                 (struct.pack("!qQ", -signal.NSIG, 100), 0), (struct.pack("!qQ", -10 ** 6, 100), 0),
                  (struct.pack("!qQ", 0, 100), 2)]
         with tempfile.TemporaryDirectory() as directory:
             script = Path(directory) / "broken_supervisor.py"
@@ -81,7 +82,8 @@ class SupervisorTests(unittest.TestCase):
                     with mock.patch.object(fl.subprocess, "Popen", start):
                         out = self.run_python("pass")
                     self.assertFalse(out.ok, out)
-                    self.assertNotEqual(out.returncode, 0)
+                    # One status for every report that is not accepted: a status no decoder can have is not passed on.
+                    self.assertEqual(out.returncode, -1)
                     self.assertEqual(out.peak_rss_bytes, 0)
 
     def assert_not_running(self, pid, *, reaped=False):
@@ -108,7 +110,11 @@ class SupervisorTests(unittest.TestCase):
                     pidfile = Path(directory) / name
                     code = ("import os,sys,time;from pathlib import Path;"
                             f"Path({str(pidfile)!r}).write_text(str(os.getpid()));" + action)
+                    before = time.monotonic()
                     out = self.run_python(code, timeout_s=1 if name == "timeout" else 10)
+                    # The decoder sleeps 60 s. A run that only returns once that sleep ends by itself did not stop it
+                    # (after a supervisor crash it is the group kill in reap that does).
+                    self.assertLess(time.monotonic() - before, 8)
                     self.assertFalse(out.ok, out)
                     self.assertTrue(pidfile.exists(), "decoder did not reach the fault injection")
                     self.assert_not_running(int(pidfile.read_text()), reaped=name != "crash")
@@ -129,6 +135,31 @@ class SupervisorTests(unittest.TestCase):
                 out = self.run_python("pass", timeout_s=.5)
             self.assertTrue(out.timed_out)
             self.assertLess(time.monotonic() - before, 5)
+
+    def test_a_refusal_is_enforced_even_when_the_supervisor_ignores_the_first_signal(self):
+        # The stderr watcher sends SIGTERM to the group at the refused frame. If nothing answers it, the main loop
+        # must send SIGKILL after the grace period instead of waiting out the whole timeout.
+        real_popen = fl.subprocess.Popen
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "deaf_supervisor.py"
+            script.write_text("import signal,subprocess,sys,time\n"
+                              "signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+                              "subprocess.Popen(sys.argv[1:],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL)\n"
+                              "time.sleep(60)\n")
+            pidfile = Path(directory) / "decoder.pid"
+            def start(argv, **kwargs):
+                return real_popen([*argv[:3], str(script), *argv[4:]], **kwargs)
+            code = ("import os,sys,time;from pathlib import Path;"
+                    f"Path({str(pidfile)!r}).write_text(str(os.getpid()));"
+                    "sys.stderr.write('get_buffer() failed');sys.stderr.flush();time.sleep(60)")
+            before = time.monotonic()
+            with mock.patch.object(fl.subprocess, "Popen", start):
+                out = self.run_python(code, timeout_s=30)
+            self.assertLess(time.monotonic() - before, 8)
+            self.assertTrue(out.refused, out)
+            self.assertFalse(out.timed_out)
+            self.assertFalse(out.ok)
+            self.assert_not_running(int(pidfile.read_text()))
 
     def test_heartbeat_continues_and_limits_are_unchanged(self):
         beats = []

@@ -69,7 +69,8 @@ export default async function MeasurePage() {
         .order("published_at", { ascending: false })
         .limit(500),
       // Snapshots carry no channel_id — they are scoped by the videos they join to.
-      supabase.from("metrics_snapshots").select("*").limit(5000),
+      // Newest first: when the row limit cuts the read, it cuts the oldest rows, never a video's latest one.
+      supabase.from("metrics_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(5000),
       supabase
         .from("retention_points")
         .select("*")

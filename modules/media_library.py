@@ -734,8 +734,10 @@ REFUSED_EXIT = 254
 #: RSS_BASE_BYTES + RSS_PER_PIXEL x N. 160 bytes a pixel is a 16-bit 4:4:4
 #: frame (6 bytes) times 16 reference frames plus the frames in flight, with
 #: room to spare; the base is ffmpeg, the 480p encoder and the sound, with
-#: room for a recording whose size changes on the way (measured: 98 MB for a
-#: 720p proxy, 136 MB for a 64x64 clip). It is only a cheap early refusal
+#: room for a recording whose size changes on the way (measured with the
+#: starting process's own memory counted in, see ffmpeg_limits: 98 MB for a
+#: 720p proxy, 136 MB for a 64x64 clip; the decoder alone needs about 20 MB for
+#: that clip). It is only a cheap early refusal
 #: for a SMALL declared frame that decoded big (Lens's crop-window file
 #: declares 64x64 and peaked at 1787 MB, BR-L-007); the guarantee is the
 #: address-space limit. A child reaches about 1.8 GB RSS under it, so from a
