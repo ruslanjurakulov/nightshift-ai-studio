@@ -58,7 +58,9 @@ const click = async (name: string) => {
 const type = (label: string | RegExp, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: NOW });
+  // Date is faked too: the 30-day username cooldown is measured from "now", and with the real clock these tests
+  // stopped passing 30 days after NOW.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"], now: NOW });
   vi.setSystemTime(NOW);
   h.update.mockReset().mockResolvedValue({ data: {}, error: null });
   h.signOutOthers.mockReset().mockResolvedValue({ error: null });

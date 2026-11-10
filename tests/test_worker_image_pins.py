@@ -1,11 +1,12 @@
-"""D10: the worker image installs pinned SDKs and has the Whisper model baked in."""
+"""D10: the worker image installs pinned SDKs and a pinned ffmpeg binary, and has the Whisper model baked in."""
 
 import re
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PINNED = ("elevenlabs", "google-genai", "edge-tts", "openai-whisper")
+# imageio-ffmpeg is the ffmpeg binary itself (see constraints.txt): a new release changes what every render and decode runs.
+PINNED = ("elevenlabs", "google-genai", "edge-tts", "openai-whisper", "imageio-ffmpeg")
 
 
 def pins():
@@ -20,7 +21,7 @@ def pins():
 
 
 class WorkerImagePins(unittest.TestCase):
-    def test_the_four_sdks_are_pinned_exactly(self):
+    def test_the_pinned_packages_are_exactly_these(self):
         self.assertEqual(sorted(pins()), sorted(PINNED))
 
     def test_every_pin_is_one_requirements_txt_also_names(self):
