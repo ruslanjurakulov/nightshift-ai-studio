@@ -12,3 +12,9 @@ elevenlabs==2.70.0
 google-genai==2.26.0
 edge-tts==7.2.8
 openai-whisper==20250625
+# imageio-ffmpeg carries the ffmpeg binary every render, probe and media-library decode runs
+# (modules/render_backend.resolve_ffmpeg). It is a dependency of moviepy with no pin of its own, so each new release
+# swapped that binary under the worker and CI without a change here: 0.7.0 (2026-10-27..29) changed how much memory the
+# decoder asks for, so tests/test_breach_media_memory refuses a small valid clip; 0.8.0 ships FFmpeg 9, which dropped
+# options the suite uses. 0.6.0 is what the last green run of the full suite installed (2026-10-26).
+imageio-ffmpeg==0.6.0
