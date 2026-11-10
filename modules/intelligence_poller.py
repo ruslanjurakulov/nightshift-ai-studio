@@ -481,8 +481,16 @@ class IntelligencePoller:
         except Exception:
             logger.warning("Retention poll failed for %s; no curve recorded", video_id, exc_info=True)
             return 0
+        # An answer that is not a list of rows is "no curve", never an error: this runs after the snapshot is stored,
+        # and an exception here would make the caller report that video as failed and leave it out of its count.
+        if not isinstance(curve, (list, tuple)):
+            if curve is not None:
+                logger.warning("Retention answer for %s is not a list of rows; no curve recorded", video_id)
+            return 0
         written = 0
         for row in curve:
+            if not isinstance(row, dict):
+                continue
             elapsed = _optional_float(row.get("elapsedVideoTimeRatio"))
             if elapsed is None:
                 continue
