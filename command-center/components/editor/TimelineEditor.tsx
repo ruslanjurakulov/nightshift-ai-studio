@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useId,
   useMemo,
@@ -116,6 +117,7 @@ import {
   deleteProject,
   fetchProject,
   requestExport,
+  requestExports,
   saveProject,
 } from "./editorApi";
 import { TimelineStrip, pictureEnd, type Selection } from "./TimelineStrip";
@@ -135,7 +137,18 @@ import {
 } from "@/lib/editorFrame";
 import { FitPicker, FramePicker } from "./FrameFitControls";
 import { ExportPresetPicker } from "./ExportPresetPicker";
-import { applyExportPreset } from "@/lib/editorExportPresets";
+import { ExportRatioPicker } from "./ExportRatioPicker";
+import {
+  PROJECT_FRAME,
+  exportFrameChoice,
+  frameMismatch,
+  frameProblems,
+  isExportFrameChoice,
+  latestPerFrame,
+  otherFrames,
+  type ExportFrameChoice,
+} from "@/lib/multiRatioExport/frames";
+import { applyExportPreset, exportPresetById, type ExportPresetId } from "@/lib/editorExportPresets";
 import {
   addOverlay,
   canAddOverlay,
@@ -288,6 +301,7 @@ export function TimelineEditor({
   aiTools = null,
   offerAssetId = null,
   focusPanel = null,
+  multiRatio = false,
 }: {
   projectId: string;
   title: string;
@@ -314,6 +328,9 @@ export function TimelineEditor({
   offerAssetId?: string | null;
   /** Open scrolled to a panel ("Improve with AI" → Captions from the library). */
   focusPanel?: "captions" | null;
+  /** May one export be asked in several frame sizes here (NIGHTSHIFT_MULTI_RATIO_EXPORT on AND migration 0129 applied,
+   *  as the server read them)? Default off: no size picker, and Export is the one plain export it always was. */
+  multiRatio?: boolean;
 }) {
   const { t, locale } = useI18n();
   const te = t.editor;
@@ -338,6 +355,10 @@ export function TimelineEditor({
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<EditorError | "text_empty" | null>(null);
   const [exports, setExports] = useState(initialExports);
+  // The sizes the next export makes (only with `multiRatio`): the project's own until the person ticks others.
+  const [frames, setFrames] = useState<ExportFrameChoice[]>([PROJECT_FRAME]);
+  // Sizes of the last request that were NOT started, each with the refusal's word.
+  const [frameRefusals, setFrameRefusals] = useState<{ frame: ExportFrameChoice; error: EditorError }[]>([]);
   const [assets, setAssets] = useState(initialAssets);
   const [adding, setAdding] = useState(false);
   const [addingSound, setAddingSound] = useState(false);
@@ -361,6 +382,20 @@ export function TimelineEditor({
   const current = useMemo(() => JSON.stringify(toDoc(model)), [model]);
   const dirty = current !== saved || title.trim() !== savedTitle;
   const active = exportActive(exports);
+  // Whether the edit fits each other size is the whole validator run once per size: kept off the typing / dragging path.
+  const settledModel = useDeferredValue(model);
+  const frameChoices = useMemo<ExportPresetId[]>(
+    () => (multiRatio ? otherFrames(settledModel) : []),
+    [multiRatio, settledModel],
+  );
+  const frameBlocked = useMemo(
+    () => frameChoices.filter((c) => frameProblems(settledModel, c).length > 0),
+    [frameChoices, settledModel],
+  );
+  // What Export would ask for now: a size that is no longer offered (the project took that size) or no longer fits is dropped.
+  const framesChosen = frames.filter(
+    (c) => c === PROJECT_FRAME || (frameChoices.includes(c) && !frameBlocked.includes(c)),
+  );
   const warnings = textWarnings(model);
   const soundWarns = soundWarnings(model);
   const speech = useMemo(() => speechSpans(model), [model]);
@@ -717,10 +752,54 @@ export function TimelineEditor({
     setSavedTitle(title.trim());
   }
 
+  /** Export in several sizes (migration 0129): one request, one export per size, each answered by itself. */
+  async function startFrameExports(want: readonly ExportFrameChoice[]): Promise<EditorError | null> {
+    if (dirty || active || starting) return null;
+    if (!want.length) return "bad_request";
+    setStarting(true);
+    setError(null);
+    setFrameRefusals([]);
+    const out = await requestExports(projectId, rev, want);
+    setStarting(false);
+    if (!out.ok) {
+      setError(out.error);
+      return out.error;
+    }
+    const now = new Date().toISOString();
+    const queued: EditorExport[] = [];
+    const refused: { frame: ExportFrameChoice; error: EditorError }[] = [];
+    for (const o of out.value) {
+      if ("error" in o) {
+        refused.push(o);
+        continue;
+      }
+      const p = o.frame === PROJECT_FRAME ? null : exportPresetById(o.frame);
+      queued.push({
+        id: o.id,
+        rev,
+        status: "queued",
+        reason: null,
+        durationS: total,
+        assetId: null,
+        createdAt: now,
+        finishedAt: null,
+        ...(p ? { frame: { preset: p.id, width: p.width, height: p.height } } : {}),
+      });
+    }
+    setFrameRefusals(refused);
+    // Newest first, like the server's list.
+    if (queued.length) setExports((e) => [...queued.reverse(), ...e]);
+    return refused[0]?.error ?? null;
+  }
+
   async function startExport(): Promise<EditorError | null> {
+    // Only the project's own size (always, without `multiRatio`): the request it always was, byte for byte.
+    if (multiRatio && !(framesChosen.length === 1 && framesChosen[0] === PROJECT_FRAME))
+      return startFrameExports(framesChosen);
     if (dirty || active || starting) return null;
     setStarting(true);
     setError(null);
+    setFrameRefusals([]);
     const out = await requestExport(projectId, rev);
     setStarting(false);
     if (!out.ok) {
@@ -965,7 +1044,12 @@ export function TimelineEditor({
     ? te.exportNeedsSave
     : active
       ? te.exportBusy
-      : null;
+      : multiRatio && framesChosen.length === 0
+        ? te.exportRatios.none
+        : null;
+  /** A size's name for a sentence: the format's, or "this project's size". */
+  const frameName = (c: string) =>
+    isExportFrameChoice(c) && c !== PROJECT_FRAME ? te.exportPreset.names[c] : te.exportRatios.own;
   const when = (iso: string | null) => {
     if (!iso) return "";
     const d = new Date(iso);
@@ -1131,6 +1215,30 @@ export function TimelineEditor({
           totalS={total}
           onChange={(id) => apply(applyExportPreset(model, id))}
         />
+        {multiRatio ? (
+          <ExportRatioPicker
+            width={model.width}
+            height={model.height}
+            totalS={total}
+            choices={frameChoices}
+            selected={framesChosen}
+            blocked={frameBlocked}
+            onChange={setFrames}
+          />
+        ) : null}
+        {frameRefusals.length ? (
+          <div role="alert" className="flex flex-col gap-1 text-sm text-[var(--color-fail)]">
+            {frameRefusals.map((r) => (
+              <p key={r.frame} className="m-0 break-words">
+                {fmt(te.exportRatios.refused, {
+                  name: frameName(r.frame),
+                  // "Not available" for a SIZE has its own sentence: the plain export still works.
+                  reason: r.error === "not_available" && r.frame !== PROJECT_FRAME ? te.exportRatios.notAvailable : te.errors[r.error],
+                })}
+              </p>
+            ))}
+          </div>
+        ) : null}
         <RenderBudgetNotice model={model} />
         <SettleNotice changes={settled} />
         <p className="m-0 hidden text-xs text-[var(--color-muted)] sm:block">
@@ -1155,7 +1263,40 @@ export function TimelineEditor({
         ) : null}
       </div>
 
-      {exports[0] ? (
+      {multiRatio ? (
+        // One panel per size of the newest exported version: each size is its own export with its own file.
+        latestPerFrame(exports).map((x) => {
+          const choice = exportFrameChoice(x);
+          const off = frameMismatch(x, x.assetId ? assets[x.assetId] : undefined);
+          return (
+            <ExportStatusPanel
+              key={x.id}
+              latest={x}
+              assets={assets}
+              currentRev={rev}
+              dirty={dirty}
+              busy={starting || active}
+              failing={poll.failing}
+              halt={poll.halt}
+              checking={poll.checking}
+              // The SAME size again; a size that is no longer on the list is never retried as the project's.
+              onRetry={() => startFrameExports(isExportFrameChoice(choice) ? [choice] : [])}
+              onCheckNow={poll.checkNow}
+              quietRetry={draft.resume.kind === "restore"}
+              heading={fmt(te.exportRatios.panelFor, {
+                name: x.frame
+                  ? `${frameName(choice)} · ${fmt(te.exportRatios.size, { w: x.frame.width, h: x.frame.height })}`
+                  : te.exportRatios.own,
+              })}
+              notice={
+                off && x.frame
+                  ? fmt(te.exportRatios.mismatch, { w: off.width, h: off.height, fw: x.frame.width, fh: x.frame.height })
+                  : null
+              }
+            />
+          );
+        })
+      ) : exports[0] ? (
         <ExportStatusPanel
           latest={exports[0]}
           assets={assets}

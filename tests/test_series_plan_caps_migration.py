@@ -66,7 +66,10 @@ class Numbering(unittest.TestCase):
         # 0128 (an edited picture remembers its original: media_uploads.parent_asset_id, request_upload's seven-argument overload,
         # register_asset) was reviewed against these pins: it mentions none of request_series_plan, series_plans or series_plan_cap_settings,
         # so nothing 0127's hashes guard moves. Any other later number needs its own review of this file's pins.
-        reviewed = ("0128",)
+        # 0129 (an export in another frame: editor_exports.frame_preset / frame_width / frame_height, editor_export_frame() and
+        # request_editor_export's three-argument overload) was reviewed the same way: it touches the video editor's export table and
+        # functions only and mentions none of the three words below, so nothing 0127's hashes guard moves.
+        reviewed = ("0128", "0129")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")
