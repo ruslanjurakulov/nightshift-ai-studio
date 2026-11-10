@@ -37,12 +37,19 @@ even when the caller did not request a per-frame memory check.
 The supervisor and decoder share a new private process group. Timeout,
 refusal, exceptions and unexpected supervisor exit stop that group. Linux
 `waitid(WNOWAIT)` retains the supervisor PID until group cleanup, preventing
-a PID-reuse window before `wait4` reaps it. Decoder exit and signal statuses,
-heartbeats, bounded stderr, `RLIMIT_AS`, stack and thread limits are preserved.
-Normal cancellation first sends SIGTERM: the supervisor kills and reaps the
-decoder before exiting. A supervisor that does not respond is killed after a
-one-second cleanup grace period. An abrupt supervisor crash can leave a killed
-orphan awaiting container init; the regression checks it cannot keep running.
+a PID-reuse window before `wait4` reaps it. Heartbeats, bounded stderr,
+`RLIMIT_AS`, stack and thread limits are preserved, and so are the decoder's
+exit and signal statuses for a run nobody stopped. A run stopped at a timeout or
+a refused frame reports whatever the decoder died of (normally -15, or -9 if it
+ignored SIGTERM; it used to be always -9), and any supervisor failure reports
+-1. Callers only test for non-zero.
+Normal cancellation first sends SIGTERM to the whole group (so ffmpeg receives
+it too, just before the supervisor's SIGKILL): the supervisor kills and reaps
+the decoder before exiting. A supervisor that does not respond is killed after a
+one-second cleanup grace period, at a timeout and at a refusal alike. An abrupt
+supervisor crash can leave a killed orphan awaiting container init; the
+regression checks that the run returns within seconds, not when the decoder
+would have ended by itself, and that the decoder is not left running.
 The public `limited_argv` API is unchanged. Pipeline renders that do not use
 this runner are unchanged.
 
@@ -82,18 +89,29 @@ Repository-wide validation is still required. In the existing CI run
 'vsync'`. These failures must be reported separately; this change does not
 modify editor transition logic or change the FFmpeg dependency version.
 
-## Workflow pins and rollback
+## Rollback
 
-The monitor now uses the same reviewed checkout/upload-artifact SHAs as the
-other workflows. Main's two older Supabase workflows receive the identical
-pins and non-persistent checkout settings already present in draft PR #647; none of that PR's runtime
-or migration changes is copied into this patch. Triggers, permissions and
-runner settings are unchanged.
+This change is merged (#659, 2026-11-10). To undo it, revert the decoder change
+as a unit (runner, supervisor, tests and this document). Drain active media
+work using the existing approved operational procedure before replacing worker
+code. Reverting restores the false-rejection risk described above; it needs no
+SQL, credit settlement, feature flag or secret change. The workflow action pins
+arrived separately (#658) and are not part of it.
 
-Before deployment, rollback is simply closing this draft PR. If separately
-approved and released later, revert the decoder commit as a unit (runner,
-supervisor, tests and documentation). Drain active media work using the
-existing approved operational procedure before replacing worker code. Reverting
-restores the false-rejection risk; it does not require SQL, credit settlement,
-feature flags or secret changes. The independent action-pin commit can remain.
-No merge or deployment is authorized by these local results.
+## Known limits (independent review, 2026-11-10)
+
+- A process that leaves the decoder's process group and keeps its stderr open
+  can hold `run` in its cleanup past the timeout (ffmpeg does not fork).
+- A failure between starting the supervisor and entering the guarded loop (for
+  example the stderr watcher thread cannot start) leaves a running decoder with
+  no deadline. Same before this change.
+- If the worker itself is killed mid-run, supervisor and decoder run on until
+  they end or the container is torn down, as ffmpeg did before. They are now in
+  their own session, so a signal to the worker's group no longer reaches them.
+- A failure of the supervisor itself (interpreter start, out of memory) is
+  reported as a failed decode, not as a worker error.
+- Not covered by a test: that the first stop signal is SIGTERM rather than
+  SIGKILL, that the supervisor's handler kills with SIGKILL, and its re-check of
+  a stop that arrived while the decoder was being started.
+- The supervisor's own footprint (about 10 MiB, 13 MiB without compiled
+  standard-library files) is part of every reading, by design.
