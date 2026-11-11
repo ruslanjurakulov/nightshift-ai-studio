@@ -100,10 +100,20 @@ product, campaign or concept every round, and asserts no deadlock and no foreign
   key plus their own session): only in an organization where they are an editor, within the caps, with every check of this page. Rows
   made that way are real rows, and the rollback refuses while any exist unless the owner sets `nightshift.ads_rollback_delete_rows`.
   To stop creates without a deploy, set every cap to 0. (The caps' numbers are the owner's decision and are not changed here.)
-- **An id's existence by timing: closed here.** 0047 (style kits) locks the row it was given before it checks membership, so a caller
-  guessing another organization's id could wait on its owner's write. 0131's functions read the row without a lock and check
-  membership first (the lock order above), so another organization's id, a made-up id and a busy row answer `not_found` alike,
-  without waiting. 0047 itself is unchanged.
+- **An id's existence by timing: the lock wait is closed, the compute time is not.** 0047 (style kits) locks the row it was given
+  before it checks membership, so a caller guessing another organization's id could wait on its owner's write. 0131's functions read
+  the row without a lock and check membership first (the lock order above), so nobody waits on another organization's busy row, and
+  every answer is the same `not_found`. The time to answer still differs: a made-up id stops before `is_org_member()` runs, another
+  organization's id runs it (about 0.35 ms against 1 ms in the review lab). Ids are random uuids, so this needs one already known.
+  0047 itself is unchanged.
+- **Membership is checked before the organization lock, not again after it.** An editor removed while their call waits on that lock
+  (milliseconds: every holder is one short function) still completes that one call. Removing a member does not take the lock, and
+  this was so before the lock-order change too. A later migration can close it by repeating `is_org_member(org, 'editor')` right
+  after `pg_advisory_xact_lock`.
+- **A hard delete of a media asset is not serialized with a product save that names it.** Nothing deletes a `media_assets` row today
+  except an organization's own cascade (the purge path soft-deletes, then marks `purged_at`, and a save then answers NS400). If a hard
+  purge is ever added, it can meet a product save with a deadlock (40P01) or a foreign-key error (23503) and should take the
+  organization lock first.
 - **The site address is a shape check, not an SSRF control** (above): Phase 2 must resolve and pin a public address when it fetches.
 
 ### The workspace (Command Center)
