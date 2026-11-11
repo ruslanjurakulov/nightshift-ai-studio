@@ -233,11 +233,12 @@ describe("each pricing shape the registry uses", () => {
   });
 
   it("per second of video with no set lengths: minutes only", () => {
-    expect(computeForModel(model("flux-3-video"), "10")).toEqual({ kind: "seconds", minutes: 0.9, clips: null, floorSeconds: null });
+    // $10 / $0.15 per second (BFL pricing, HD, read 2026-11-11) = 66.6 s -> 1.1 min.
+    expect(computeForModel(model("flux-3-video"), "10")).toEqual({ kind: "seconds", minutes: 1.1, clips: null, floorSeconds: null });
   });
 
   it("a video model with no price in the registry", () => {
-    const m = model("kling-v2.6");
+    const m = model("minimax-hailuo-2.3"); // billed per clip by MiniMax: no single per-second price in the registry
     expect(m.options).toEqual([]);
     expect(computeForModel(m, "10")).toEqual({ kind: "no_price" });
   });
@@ -313,7 +314,7 @@ describe("status", () => {
     const row = budgetModelOf(rowOf(entry("sonilo-music"), "beta"), null, TODAY)!;
     expect(row.availability).toBe("beta");
     expect(row.termsGate).toBe(true);
-    expect(model("gemini-3.1-flash-image").termsGate).toBe(false);
+    expect(model("ideogram-3").termsGate).toBe(false);
     expect(row.estimate).toBe(true);
     expect(budgetModelOf({ ...rowOf(entry("recraft-v4.1")), availability: "nonsense" }, null, TODAY)!.availability).toBeNull();
     const confirmed = rowOf(entry("recraft-v4.1"));
@@ -425,12 +426,12 @@ describe("every model in the registry", () => {
 });
 
 describe("every priced option against exact fraction arithmetic", () => {
-  // An independent oracle: registry prices have at most six decimals, so in micro-dollars they are integers, and every
+  // An independent oracle: registry prices have at most nine decimals (Scribe is $0.0000556/s), so in nano-dollars they are integers, and every
   // count is one integer division. The calculator must agree at every amount, small and very large.
   const AMOUNTS = [10, 13201, 40300, 1_000_000, 1_000_000_000];
-  const micro = (usd: number): bigint => {
-    const v = BigInt(Math.round(usd * 1e6));
-    expect(Number(v) / 1e6, `price ${usd} has more than six decimals`).toBe(usd);
+  const nano = (usd: number): bigint => {
+    const v = BigInt(Math.round(usd * 1e9));
+    expect(Number(v) / 1e9, `price ${usd} has more than nine decimals`).toBe(usd);
     return v;
   };
   const all = BUDGET_KINDS.flatMap((k) => budgetModelsFrom(REGISTRY.models.map((e) => rowOf(e)), null, TODAY)[k]);
@@ -439,10 +440,10 @@ describe("every priced option against exact fraction arithmetic", () => {
     let checked = 0;
     for (const m of all) {
       for (const o of m.options) {
-        const p = micro(o.usd);
+        const p = nano(o.usd);
         for (const d of m.durations.length ? m.durations : [null]) {
           for (const amount of AMOUNTS) {
-            const a = BigInt(amount) * 1_000_000n;
+            const a = BigInt(amount) * 1_000_000_000n;
             const got = computeForModel(m, String(amount), o.key, d);
             const where = `${m.id} ${o.key} ${d} $${amount}`;
             if (m.unit === "second") {

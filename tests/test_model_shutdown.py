@@ -169,14 +169,17 @@ class GoogleTermsTests(unittest.TestCase):
             # The older Cloud-terms notes stay (tests/test_model_registry.py pins them).
             self.assertTrue(any("§20.d" in n for n in notes), e.id)
 
-    def test_prices_and_sellability_of_the_google_entries_were_not_touched(self):
-        # This change adds notes, web_only and dates. It sets no gate and prices nothing.
+    def test_prices_of_the_google_entries_were_not_touched(self):
+        # This change added notes, web_only and dates, and priced nothing. The Gemini 3.x entries were gated
+        # later, on 2026-11-11, under the same Gemini API terms (tests/test_registry_corrections_2026_11_11.py);
+        # the Veo entries are past their shutdown and keep no gate.
         r = reg.load()
         for mid, price in (("veo-3.1", 0.4), ("veo-3.1-fast", 0.1), ("veo-3.1-lite", 0.05),
                            ("gemini-3.1-flash-image", 0.067), ("gemini-3-pro-image", 0.134)):
             self.assertEqual(r[mid].raw["pricing"]["provider_usd_per_unit"], price, mid)
+        for mid in VEO_IDS:
             self.assertIsNone(r[mid].terms_gate, mid)
-        for mid in OPS_IDS:
+        for mid in OPS_IDS + ("gemini-3.1-flash-image", "gemini-3-pro-image"):
             self.assertEqual(r[mid].terms_gate, "terms_review_required", mid)
 
 

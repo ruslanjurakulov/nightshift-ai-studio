@@ -16,6 +16,7 @@ No network, no key and no credit is touched.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import tempfile
@@ -49,6 +50,13 @@ SRC = "ab0c1d1e-0000-4000-8000-00000000a5e7"
 W, H = 320, 240
 GEMINI = "gemini-3.1-flash-image"       # an edit model without quality tiers
 OPENAI = "openai-gpt-image-2"           # an edit model that bills by tier
+
+
+def cleared(model):
+    """The registry entry with its terms gate cleared, as the owner would clear it. The run's mechanics are tested on it:
+    the Gemini 3.x images are gated since 2026-11-11 (docs/research/registry-corrections-2026-11-11.md), and the gate's
+    own refusal is pinned by test_a_model_that_cannot_edit_or_is_gated_stops_the_job with an explicitly gated entry."""
+    return dataclasses.replace(reg.get(model), terms_gate=None)
 
 
 def picture(size=(W, H), seed=1, mode="RGB") -> Image.Image:
@@ -163,7 +171,7 @@ class Base(unittest.TestCase):
     def run_job(self, j=None, *, behave=None, sold=(GEMINI, OPENAI), model=GEMINI, region_editor=True, source=None, attach=True,
                 library=True, adapter=None, entry=None, **kw):
         loop = adapter or Loopback(behave)
-        entry = entry or reg.get(model)
+        entry = entry or cleared(model)
         ra = ca.RegistryAdapter(entry, loop)
 
         def resolve(m):
@@ -377,7 +385,7 @@ class TheRun(Base):
             def record_cost(self, job_id, usage):
                 raise RuntimeError("record_creative_job_cost: HTTP 500")
 
-        entry = reg.get(GEMINI)
+        entry = cleared(GEMINI)
         loop = Loopback()
         q = NoCost(region_job(), ok_source(), sold=(GEMINI,))
         w = cw.CreativeWorker(q, lambda m: ca.RegistryAdapter(entry, loop), worker_id="w1", out_dir=self.out, credits=FakeCredits(9.0),
@@ -453,7 +461,7 @@ class Rule4TheModelAskedForOrNothing(Base):
             def reroute(self, *a, **k):
                 raise AssertionError("a region edit must never ask for another model")
 
-        entry = reg.get(GEMINI)
+        entry = cleared(GEMINI)
         loop = Loopback(lambda n, r: (_ for _ in ()).throw(AdapterError("rate_limited", "slow down", not_accepted=True)))
         q = NoReroute(region_job(), ok_source(), sold=(GEMINI,))
         w = cw.CreativeWorker(q, lambda m: ca.RegistryAdapter(entry, loop), worker_id="w1", out_dir=self.out, credits=FakeCredits(9.0),
@@ -508,7 +516,7 @@ class TheOrderThatCannotPayTwice(Base):
                 self.calls.append(("advance", step, task_id))
                 return False
 
-        entry = reg.get(GEMINI)
+        entry = cleared(GEMINI)
         loop = Loopback()
         q = Gone(region_job(), ok_source(), sold=(GEMINI,))
         w = cw.CreativeWorker(q, lambda m: ca.RegistryAdapter(entry, loop), worker_id="w1", out_dir=self.out, credits=FakeCredits(9.0),
@@ -555,7 +563,7 @@ class TheOrderThatCannotPayTwice(Base):
             def sellable_models(self, capability):
                 raise cw.CreativeUnavailable("sellable_models: HTTP 503")
 
-        entry = reg.get(GEMINI)
+        entry = cleared(GEMINI)
         loop = Loopback()
         q = Down(region_job(), ok_source())
         w = cw.CreativeWorker(q, lambda m: ca.RegistryAdapter(entry, loop), worker_id="w1", out_dir=self.out, credits=FakeCredits(9.0),

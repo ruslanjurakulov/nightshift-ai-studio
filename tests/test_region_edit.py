@@ -297,8 +297,13 @@ class ModelChoiceTests(unittest.TestCase):
         self.registry = reg.registry()
 
     def test_resolves_only_the_named_available_editing_model(self):
-        entry = resolve_edit_model("gemini-3.1-flash-image", available={"gemini-3.1-flash-image"}, registry=self.registry)
-        self.assertEqual(entry.id, "gemini-3.1-flash-image")
+        entry = resolve_edit_model("openai-gpt-image-2.5-flare", available={"openai-gpt-image-2.5-flare"}, registry=self.registry)
+        self.assertEqual(entry.id, "openai-gpt-image-2.5-flare")
+        # Gemini 3.1 Flash Image is terms-gated since 2026-11-11 (Gemini API Additional Terms, 18+ and consumer use):
+        # available or not, it is refused by its gate.
+        with self.assertRaises(RegionEditError) as cm:
+            resolve_edit_model("gemini-3.1-flash-image", available={"gemini-3.1-flash-image"}, registry=self.registry)
+        self.assertEqual(cm.exception.code, "model_gated")
 
     def test_no_default_unknown_noneditor_gated_or_unavailable_all_stop(self):
         avail = set(self.registry)

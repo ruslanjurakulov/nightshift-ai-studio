@@ -237,10 +237,14 @@ class Registry(unittest.TestCase):
         self.assertEqual((e.adapter, e.capabilities, e.output), ("audio.elevenlabs_scribe", ("captions",), "text"))
         self.assertEqual(OUTPUT_OF["captions"], "text")
         self.assertEqual(e.languages, ("uz", "ru", "en"))
-        # No customer price and no invented provider price: unknown is never 0.
+        # The provider price is the one ElevenLabs' page states ($0.20 per hour, read 2026-11-11,
+        # docs/research/registry-corrections-2026-11-11.md), never an invented one: unknown is never 0.
         self.assertEqual(e.credit_unit, "model_elevenlabs_scribe_v2_second")
-        self.assertIsNone(e.raw["pricing"]["provider_usd_per_unit"])
-        self.assertEqual(e.raw["pricing"]["unit"], "second")
+        p = e.raw["pricing"]
+        self.assertEqual((p["provider_usd_per_unit"], p["source_url"], p["as_of"], p["confirmed"]),
+                         (0.0000556, "https://elevenlabs.io/pricing/api", "2026-11-11", False))
+        self.assertIn("$0.20 Price per hour", p["note"])
+        self.assertEqual(p["unit"], "second")
 
     def test_it_is_probed_from_speech_and_nothing_else(self):
         req = reg.get(MODEL).probe_request(voice_id="A" * 20, generated_speech="/tmp/probe_speech.mp3")
