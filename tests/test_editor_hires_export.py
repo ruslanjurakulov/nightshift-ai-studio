@@ -6,8 +6,11 @@ What would break without these tests:
   * a paid frame rendered from a row that carries no quote (the database never writes one without it);
   * a paid export longer than its tier's cap rendered anyway (one 4K render holds the one export slot of EVERY organization);
   * a 4K export of a 60 fps project rendered (it ran out of memory, measured) or rendered at 30 in its place;
-  * a paid export killed at the free exports' 3 x length + 120 s after the person paid, or a free export (or a project whose OWN
-    frame is 4K, which another tool can save) given the paid budget for nothing;
+  * a paid export killed at the free exports' 3 x length + 120 s after the person paid, or a free export given the paid budget;
+  * a project whose OWN frame is above 1080p (another tool can save one) rendered above 1080p from a row without a paid frame: above
+    1080p is never free (hires_needs_paid_export);
+  * a paid export of a document with a speed curve rendered (the database priced it without the curve), or a paid render that starts
+    more minutes than the database priced (hires_length_mismatch);
   * a row the database already ended while handing it over (its credit hold was gone: credits_released) rendered for nothing;
   * the real ffmpeg not producing a file of exactly 2560x1440 / 3840x2160 (and the 9:16 twins) under the worker's limits;
   * the timeline validator crashing on malformed captions in its render-budget estimate (the small pre-existing fix of this change).
@@ -226,7 +229,7 @@ class TheSwitchAndTheRow(Base):
             self.assertFalse((self.root / editor_export.WORK_DIRNAME).exists())
 
     def test_the_new_reason_words_are_known(self):
-        for word in ("hires_off", "credits_released", "hires_fps"):
+        for word in ("hires_off", "credits_released", "hires_fps", "hires_needs_paid_export", "hires_speed_curve", "hires_length_mismatch"):
             self.assertIn(word, editor_export.REASONS)
             self.assertEqual(editor_export.ExportFailed(word).reason, word)
 
@@ -251,15 +254,59 @@ class TheCapAndTheBudgetOnTheWorker(Base):
             self.assertEqual((norm["width"], norm["height"]), (p.width, p.height))
             self.assertEqual(store_file.call_args.kwargs["provenance"]["frame"], i)
 
-    def test_a_free_frame_and_a_projects_own_big_frame_keep_the_free_budget(self):
+    def test_a_free_frame_keeps_the_free_budget(self):
         _, _, render, _ = self.run_export(framed("youtube_1080p", doc(60.0), quoted=None, duration_s=60))
         self.assertEqual(render.call_args.kwargs["timeout_s"], editor_export.render_timeout_s(60.0))
-        # A document whose OWN frame is 4K (no frame override, so nothing was paid): the free budget and no length cap.
-        own = {k: v for k, v in framed("youtube_2160p", doc(200.0, width=3840, height=2160), duration_s=200).items()
-               if k not in ("frame_preset", "frame_width", "frame_height", "quoted_credits")}
-        status, _, render, _ = self.run_export(own)
+
+    def test_a_row_without_a_paid_frame_is_never_rendered_above_1080p(self):
+        def own(w, h):
+            return {k: v for k, v in framed("youtube_2160p", doc(20.0, width=w, height=h), duration_s=20).items()
+                    if k not in ("frame_preset", "frame_width", "frame_height", "quoted_credits")}
+        for w, h in ((3840, 2160), (2160, 3840), (2560, 1440), (1920, 1082)):
+            for hires in (True, False):
+                self.assert_refused(own(w, h), "hires_needs_paid_export", hires=hires)
+        for w, h in ((1920, 1080), (1080, 1920), (1280, 720)):
+            status, _, render, _ = self.run_export(own(w, h), hires=False)
+            self.assertEqual(status, "done", (w, h))
+            self.assertEqual(render.call_args.kwargs["timeout_s"], editor_export.render_timeout_s(20.0))
+        # A free frame of a 4K project is a 1080p (or smaller) render: free, as before.
+        status, _, render, _ = self.run_export(framed("vertical_1080p", doc(20.0, width=3840, height=2160), quoted=None, duration_s=20),
+                                               hires=False)
         self.assertEqual(status, "done")
-        self.assertEqual(render.call_args.kwargs["timeout_s"], editor_export.render_timeout_s(200.0))
+        self.assertEqual((render.call_args.args[0]["width"], render.call_args.args[0]["height"]), (1080, 1920))
+
+    def test_a_paid_export_of_a_document_with_a_speed_curve_is_refused(self):
+        d = doc(4.0)
+        d["tracks"][0]["clips"][0]["speed_curve"] = [{"at": 0, "speed": 0.5}, {"at": 1, "speed": 0.5}]
+        self.assertEqual(tl.validate(d), [])
+        self.assertTrue(hires_export.has_speed_curve(d))
+        self.assertFalse(hires_export.has_speed_curve(doc(4.0)))
+        self.assert_refused(framed("youtube_1440p", d, duration_s=4), "hires_speed_curve")
+        status, _, _, _ = self.run_export(framed("vertical_1080p", d, quoted=None, duration_s=4))
+        self.assertEqual(status, "done")
+
+    def test_a_paid_render_that_starts_more_minutes_than_were_priced_is_refused(self):
+        for rendered, priced in ((61.0, 60), (121.0, 119.9), (60.5, None), (60.5, "x")):
+            self.assert_refused(framed("youtube_1440p", doc(rendered), duration_s=priced), "hires_length_mismatch")
+        for rendered, priced in ((60.0, 60), (61.0, 61), (59.0, 30), (120.0, 119.5)):
+            status, _, _, _ = self.run_export(framed("youtube_1440p", doc(rendered), duration_s=priced))
+            self.assertEqual(status, "done", (rendered, priced))
+
+    def test_the_minutes_are_counted_as_the_database_counts_them(self):
+        for length, minutes in ((0, 1), (6, 1), (60, 1), (60.001, 2), (61, 2), (179.5, 3), (180, 3), (240, 4), (300, 5)):
+            self.assertEqual(hires_export.started_minutes(length), minutes, length)
+        for bad in (None, "x", math.nan, math.inf, -1):
+            self.assertIsNone(hires_export.started_minutes(bad), bad)
+        self.assertFalse(hires_export.minutes_exceed(60.001, 60))           # within the database's millisecond rounding
+        self.assertTrue(hires_export.minutes_exceed(60.01, 60))
+        self.assertTrue(hires_export.minutes_exceed(10, None))
+        self.assertTrue(hires_export.minutes_exceed(None, 10))
+
+    def test_above_1080p_is_by_pixels_and_fails_closed(self):
+        for w, h in ((1920, 1080), (1080, 1920), (1080, 1080), (16, 16)):
+            self.assertFalse(hires_export.above_free(w, h), (w, h))
+        for w, h in ((1920, 1082), (2560, 1440), (3840, 2160), (4096, 4096), (None, 1080), ("1920", "1080"), (0, 0), (True, 1080)):
+            self.assertTrue(hires_export.above_free(w, h), (w, h))
 
     def test_4k_is_at_most_30_fps_and_is_never_rendered_at_a_lower_rate_in_its_place(self):
         self.assertEqual(hires_export.MAX_FPS, {"1440p": 60, "2160p": 30})

@@ -1,7 +1,7 @@
 # 1440p and 4K editor exports, sold by the started minute
 
 Owner decision (2026-11-11): offer 1440p and 4K; give the worker more render time for them; charge credits in proportion to render
-time. Exports up to 1080p stay free.
+time. Exports up to 1080p stay free, and **nothing above 1080p is free**: a project whose own frame is bigger is exported in a paid size.
 
 Behind `NIGHTSHIFT_HIRES_EXPORT` (web and media worker, one repository variable), **default off**, on top of
 `NIGHTSHIFT_MULTI_RATIO_EXPORT` (`docs/MULTI_RATIO_EXPORT.md`: a paid size is one of the "Sizes to export"). Migration
@@ -14,41 +14,50 @@ Under "Sizes to export", four more sizes, each marked "paid": YouTube wide 16:9 
 (1440 × 2560), YouTube wide 16:9 4K (3840 × 2160), Vertical 9:16 4K (2160 × 3840). Ticking one asks the server for its price
 (`GET /api/editor/projects/<id>/exports/quote`, the database's `quote_editor_export`) and shows, under the sizes:
 
-* "YouTube wide 16:9, 4K: 1 min × 4 credits = 4 credits", the workspace's available credits, and the total the export holds now;
-* a confirmation box, "Spend up to N credits on this export". **Export stays disabled until it is ticked.** Ticking another size,
-  saving a new version or a new price takes the confirmation back;
-* or, instead of a price, why it cannot be bought: not on sale yet; the video is longer than the size allows (5:00 at 1440p, 3:00 at
-  4K: the chip is disabled with that sentence); 4K of a project faster than 30 fps; only an editor, admin or owner may spend the
-  workspace's credits; not enough credits; the price could not be read ("Get the price again"); unsaved changes ("Save first").
+* "YouTube wide 16:9, 4K: 1 min × 4 credits = 4 credits charged, 30 held while it renders", the workspace's available credits, and
+  what the export holds and charges in all. The hold is the charge raised to the platform's `job_minimum` (`reserve_credits` refuses
+  less); the rest is given back when the video is ready, all of it if the export fails;
+* a confirmation box, "Spend up to N credits on this export" (N is the CHARGE). **Export stays disabled until it is ticked.** Ticking
+  another size, saving a new version or a new price takes the confirmation back;
+* or, instead of a price, why it cannot be bought: not on sale yet; the video has a speed curve (its length cannot be priced: the
+  chips are disabled with that sentence); the video is longer than the size allows (5:00 at 1440p, 3:00 at 4K: the chip is disabled
+  with that sentence); 4K of a project faster than 30 fps; only an editor, admin or owner may spend the workspace's credits; not
+  enough credits for the HOLD; the price could not be read ("Get the price again"); unsaved changes ("Save first").
 
-The paid sizes are never in "Export format" (the project's own frame): a project's own frame is exported free, so a 4K project frame
-would be a free 4K export.
+The paid sizes are never in "Export format" (the project's own frame). **A project whose own frame is above 1080p** (another tool can
+save one; saving it stays allowed) is not exported in its own size for free: the database refuses that request
+(`hires_needs_paid_export`), and the worker refuses a row without a paid frame above 1080p. In the editor "This project's size" is
+then disabled with a sentence that says what to do: tick the paid 1440p / 4K size (offered even when it is the project's own size)
+and confirm the price, tick a free size of 1080p or smaller, or set the project to 1080p or smaller under "Export format". Without the
+size picker, Export is disabled with the last of those.
 
 ## The rules
 
 | Rule | Where |
 | :-- | :-- |
 | Tiers by **pixels**, so a frame and its 9:16 twin are one tier: up to 1920 × 1080 free; up to 2560 × 1440 `1440p`; up to 3840 × 2160 `4K` | 0132 `editor_export_hires_terms`, `modules/hires_export.py`, `lib/hiresExport/limits.ts` (pinned equal) |
-| Price = credits per **started** output minute of the tier × the minutes (61 s = 2 minutes), never below `credit_prices.job_minimum`, rounded up to the cent | `editor_export_hires_terms` |
+| **Charge** = credits per **started** output minute of the tier × the minutes (61 s = 2 minutes), rounded up to the cent, **not** raised to `credit_prices.job_minimum`. **Hold** = the charge raised to `job_minimum` (0133's rule: `reserve_credits` refuses a hold below it). Both on the row (`quoted_credits`, `held_credits`) and in the quote (`credits`, `hold`) | `editor_export_hires_terms` |
 | The price is read from **one owner-edited row** (`editor_export_hires_prices`: `credits_per_minute_1440p`, `credits_per_minute_2160p`). NULL = not on sale (`not_on_sale`, NS403). RLS on, no policy, no privilege for anon / authenticated / service_role; a change leaves a `security_events` row (`editor.export.hires_price`); the row cannot be deleted or emptied | 0132 |
-| The request takes the number the person confirmed; a higher price is refused (`price_changed`, NS409), a lower one holds the lower one. The browser never sends a price of its own | `request_editor_export(project, rev, frame, max_credits)` |
+| The request takes the number the person confirmed and compares it with the **charge**; a higher charge, no number, NaN or an infinity is refused (`price_changed`, NS409), a lower charge holds the lower one. The browser never sends a price of its own | `request_editor_export(project, rev, frame, max_credits)` |
+| A document with a **speed curve** is not sold (`hires_speed_curve`): `editor_doc_duration` does not integrate a curve and the renderer does (a 45 s range at 0.25 × is 180 s on screen), so the price would be for the wrong length. The worker also refuses a paid row whose rendered length starts more minutes than the row's `duration_s` was priced at (`hires_length_mismatch`) | the overload, `quote_editor_export`, `editor_export.run_export` |
+| **Above 1080p is never free**: the two-argument request refuses a project whose own frame is above 1920 × 1080 pixels, the three-argument one a paid frame of the list (`hires_needs_paid_export`, NS400, before the organization's lock) | 0132's bodies of both (0054's / 0129's plus the marked lines), `editor_export.run_export` |
+| Lock order (0131's rule): the paid request reads the project without a lock, checks every gate, takes the organization's advisory lock, then locks the project row (`FOR NO KEY UPDATE`) and reads it again (a save or a delete in between is refused) | the overload |
 | Longest paid export: **300 s at 1440p, 180 s at 4K** (`hires_too_long`). Also a CHECK on `editor_exports` and the worker | 0132, `hires_export.MAX_S`, `HIRES_MAX_S` |
 | 4K is **at most 30 fps** (`hires_fps`). A 60 fps project is refused for 4K, never rendered at 30 in its place (CLAUDE.md rule 4). 1440p takes any rate | 0132, `hires_export.MAX_FPS`, `HIRES_MAX_FPS` |
 | Paying is an **editor's** (a viewer may still export free sizes). In the operator's exempt organization a platform admin's, and nothing is held | the four-argument overload |
 | A held paid export is a **run in progress**: it takes one of the plan's parallel runs while it waits and renders (`parallel_runs`, NS429) | 0034 `credit_reservations_concurrency` |
 | Each paid size is still **one export**: one of the three in flight, one of the twenty a day; one at a time per project per size | 0054 / 0129 lines, unchanged |
-| Hold at request time (after every limit, so a refused request holds nothing), **started** at once (a started hold lives 24 h; an unstarted one would be swept after 3 h while the export waits in the shared queue). Too few credits roll the whole request back (`insufficient_credits`, NS402) | the overload, `creative_platform_reserve` (0036) |
-| **Capture** the quote when the export is done; **release** everything when it fails (render failed, timed out, worker off, lost worker, deleted project). Once: a second finish changes nothing | the BEFORE UPDATE OF status trigger `editor_export_settle` |
+| Hold at request time (after every limit, so a refused request holds nothing), **started** at once (a started hold lives 24 h; an unstarted one would be swept after 3 h while the export waits in the shared queue). Too few credits for the HOLD roll the whole request back (`insufficient_credits`, NS402, the hold and the charge in the detail) | the overload, `creative_platform_reserve` (0036) |
+| **Capture** the charge when the export is done (never an amount from the worker; `capture_credits` gives the rest of the hold back); **release** everything when it fails (render failed, timed out, worker off, lost worker, deleted project). Once: a second finish changes nothing. A done export marked failed by hand keeps what it was charged | the BEFORE UPDATE OF status trigger `editor_export_settle` |
 | A hold that is gone when the worker takes the export (released, expired) ends it as `credits_released`; the worker renders nothing | the trigger, and `editor_export.run_export` (a claimed row that is not `rendering` is not rendered) |
-| Exports up to 1080p: the two- and three-argument `request_editor_export` keep their bodies (md5 `6d37b4d7…` and `83456b3c…`); the three-argument one cannot queue a paid size (the CHECK refuses a row above 1080p without a quote) | 0132 end-state asserts |
+| Exports up to 1080p: the two- and three-argument `request_editor_export` are 0054's / 0129's bodies plus only the refusal above 1080p (a pin test strips the marked lines and compares); the CHECK also refuses a frame row above 1080p without a quote | 0132 end-state asserts |
 | The worker renders a paid size only with its switch on (`hires_off`), only from a row with a quote, within the tier's length and rate, and with the **tier's time budget** | `modules/editor_export.py`, `modules/hires_export.py` |
 
 ## Time budget per tier
 
 The free exports get `min(5400, 3 × L + 120)` s. A paid export gets `min(5400, F × L + 120)` s, where `F` is **7 at 1440p and 12 at
 4K**, about 1.3 × the dearest render of the tier measured below on a box that was not swamped (1440p: 5.34 s per output second;
-4K at 30 fps: 9.82). Only a row with a paid frame gets it: a project whose OWN frame is 4K (another tool can save one) keeps the free
-budget, as before.
+4K at 30 fps: 9.82). Only a row with a paid frame gets it; a row without one is never rendered above 1080p (`hires_needs_paid_export`).
 
 **The one export worker.** `ExportService` renders one export at a time for every organization. At the caps a paid export may hold it
 for up to 37 minutes (1440p, 300 s) or 38 minutes (4K, 180 s) before it is stopped; typically about 23 (1440p60, 300 s) and 22 minutes
@@ -114,11 +123,14 @@ every case at 60.
 | 4K (≤ 30 fps) | 589 | $0.0125 | 1.25 | 3.75 | **4 credits** | 3:00 → 12 credits ($0.12) |
 
 The two prices keep the ratio of the render times (589 / 320 = 1.84; 4 / 2 = 2), which is what "in proportion to render time" asks.
-For comparison: a 1080p HD download is 1.25 credits a minute (`credit_prices.download_1080p_minute`). If the platform has a
-`job_minimum` price, every paid export holds and charges at least that. The price does not include the cost of the queue: a 4K export
-at its cap holds the one export worker for about 22 minutes. A higher price (for example 5 and 10) would also make that rarer.
+For comparison: a 1080p HD download is 1.25 credits a minute (`credit_prices.download_1080p_minute`). The platform's `job_minimum`
+(30 credits on the live price list) raises only the HOLD: a 1-minute 4K export at 4 credits a minute holds 30 while it renders and
+is charged 4 (the other 26 go back when it is done). So a workspace needs 30 credits available to start any paid export. The price
+does not include the cost of the queue: a 4K export at its cap holds the one export worker for about 22 minutes. A higher price (for
+example 5 and 10) would also make that rarer.
 
-To apply (SQL editor; leaves a security event):
+To apply (SQL editor; leaves a security event), **only once `NIGHTSHIFT_HIRES_EXPORT` is on in the media worker** (see the roll-out
+below; a price set while the worker's switch is off sells exports that the worker then refuses as `hires_off`, giving the hold back):
 
 ```sql
 update public.editor_export_hires_prices set credits_per_minute_1440p = 2, credits_per_minute_2160p = 4;
@@ -134,9 +146,15 @@ settle as usual).
   `quote_required` before the database is asked.
 * **Media worker** (`modules/hires_export.py` `FLAG`): off = a paid frame row fails at once with `hires_off`, before any file is read,
   and the database gives its credits back.
-* Order does not matter. Before 0132 the quote answers "not available" and nothing paid can be confirmed. A worker older than this
-  change refuses a paid row (`invalid_frame`: its presets file has no such id) and the hold is released. Turn the switch on only when
-  the web and the worker both run this version, after setting the prices.
+* **Not behind the switch:** from the moment 0132 is applied, a project whose own frame is above 1080p is not exported free by the plain
+  request (`hires_needs_paid_export`), whatever the switches say. Before applying, check that no project depends on it
+  (`select count(*) from public.editor_projects where deleted_at is null and (doc ->> 'width')::numeric * (doc ->> 'height')::numeric > 2073600;`
+  read 0 on 2026-11-11, with one editor project in all).
+* Before 0132 the quote answers "not available" and nothing paid can be confirmed. A worker older than this change refuses a paid row
+  (`invalid_frame`: its presets file has no such id) and the hold is released.
+* **Order of switching on:** (1) deploy the web and the worker with this version; (2) turn `NIGHTSHIFT_HIRES_EXPORT` on for the worker;
+  (3) turn it on for the web (the paid sizes appear and say "not on sale yet"); (4) only then set the prices. Stopping goes the other
+  way: prices to null first, then the switches off.
 
 ## Undo
 
@@ -147,8 +165,9 @@ NOT VALID when such a row exists), and the credit ledger keeps every hold, charg
 
 ## Not done here
 
-* A project whose own frame is above 1080p (another tool can save one) is still exported free through the plain export, with the free
-  time budget (unchanged from before 0132). Making that paid would change what existing documents do; a separate decision.
+* Speed curves are refused for paid sizes rather than priced: pricing them would need the renderer's integration of a curve
+  (`speed_ramp.out_length`) in SQL, exactly equal to Python's at every millisecond and minute boundary. Refusing is exact; the worker's
+  `hires_length_mismatch` check is the second line if the two lengths ever disagree for another reason.
 * The render-time estimate of the validator (`timeline.py` `render_timeout_s`) is still the free exports' 3 × L + 120 for every frame:
   a document that just fits that at 1080p can time out at 4K (the hold is then released in full).
 * Not measured on the AX42 itself. The factors are the number to raise if a legitimate paid export is cut off (`timed_out`).

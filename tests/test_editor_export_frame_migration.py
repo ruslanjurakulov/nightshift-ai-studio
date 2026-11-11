@@ -240,8 +240,9 @@ class TheFile(unittest.TestCase):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0129"), 1)
         self.assertEqual(max(n for n in numbers if n < "0129"), "0128")
-        # 0132 (1440p and 4K) is the one later file that builds on 0129 on purpose: it replaces the list and adds a fourth overload,
-        # and leaves this file's three-argument body as it is (tests/test_editor_hires_export_migration.py pins that).
+        # 0132 (1440p and 4K) is the one later file that builds on 0129 on purpose: it replaces the list, adds a fourth overload, and
+        # replaces this file's three-argument body with the same body plus only the marked lines that refuse a paid frame
+        # (tests/test_editor_hires_export_migration.py strips them and compares the rest with this file's body).
         for p in sorted(MIG.glob("*.sql")):
             if p.name[:4] > "0054" and not p.name.startswith(("0129_", "0132_")):
                 text = p.read_text(encoding="utf-8")
@@ -250,7 +251,7 @@ class TheFile(unittest.TestCase):
             if p.name[:4] > "0129" and not p.name.startswith("0132_"):
                 self.assertNotIn("frame_preset", p.read_text(encoding="utf-8"), p.name)
         later = (MIG / "0132_editor_hires_export.sql").read_text(encoding="utf-8")
-        self.assertNotIn(REQ3, later)
+        self.assertEqual(later.count(REQ3), 1)
 
     def test_the_rollback_refuses_before_it_changes_anything_and_is_one_transaction(self):
         self.assertRegex(ROLLBACK, r"(?m)^begin;$")

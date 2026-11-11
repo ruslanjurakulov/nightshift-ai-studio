@@ -29,10 +29,11 @@ const credits = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 /**
  * The price of the paid sizes the person ticked (1440p, 4K: migration 0132, NIGHTSHIFT_HIRES_EXPORT), BEFORE anything
  * is spent. Every number is the server's quote (GET .../exports/quote, quote_editor_export) for the SAVED revision:
- * nothing here prices. Export stays disabled until each ticked size is quoted, none is refused (not on sale, too long,
- * too fast for 4K, not this member's to spend, not enough credits), and the person ticks the confirmation, whose number
- * is what the route sends and the database refuses to exceed (price_changed). A change of the sizes, the revision or
- * the quote takes the confirmation back.
+ * nothing here prices. Each size says what it CHARGES when the video is ready and what it HOLDS while it renders (the
+ * charge raised to the platform's job minimum; the rest is given back). Export stays disabled until each ticked size is
+ * quoted, none is refused (not on sale, a speed curve, too long, too fast for 4K, not this member's to spend, not enough
+ * credits for the hold), and the person ticks the confirmation, whose number (the charge) is what the route sends and the
+ * database refuses to exceed (price_changed). A change of the sizes, the revision or the quote takes the confirmation back.
  *
  * States: saving first (the quote is for the saved version), loading, a quote, each refusal with its sentence, a read
  * that failed with "Get the price again". The sentences sit in a polite live region.
@@ -82,9 +83,10 @@ export function HiresExportQuote({
   const quotes = frames.map((f) => loaded[f]);
   const all = quotes.every((q): q is { state: "ok"; quote: HiresQuote } => q?.state === "ok");
   const total = all ? quotes.reduce((s, q) => s + (q.quote.exempt ? 0 : (q.quote.credits ?? 0)), 0) : null;
+  const held = all ? quotes.reduce((s, q) => s + (q.quote.exempt ? 0 : (q.quote.hold ?? 0)), 0) : null;
   const blocked = all && quotes.some((q) => quoteBlocker(q.quote) !== null);
   // The confirmation is for THIS set of quotes: anything that changes them takes it back.
-  const signature = all ? `${key}|${quotes.map((q) => `${q.quote.frame}:${q.quote.credits}`).join(",")}` : null;
+  const signature = all ? `${key}|${quotes.map((q) => `${q.quote.frame}:${q.quote.credits}:${q.quote.hold}`).join(",")}` : null;
   const ready = !dirty && all && !blocked && signature !== null && agreed === signature;
 
   const maxCredits = useMemo(() => {
@@ -118,6 +120,7 @@ export function HiresExportQuote({
       const q = l.quote;
       const why = quoteBlocker(q);
       if (why === "not_on_sale") lines.push({ key: f, text: fmt(hx.notOnSale, { name: name(f) }), tone: "warn" });
+      else if (why === "hires_speed_curve") lines.push({ key: f, text: fmt(hx.speedCurve, { name: name(f) }), tone: "warn" });
       else if (why === "hires_too_long")
         lines.push({
           key: f,
@@ -130,7 +133,7 @@ export function HiresExportQuote({
       else if (why === "insufficient_credits")
         lines.push({
           key: f,
-          text: fmt(hx.short, { name: name(f), credits: credits(q.credits ?? 0), available: credits(q.available ?? 0) }),
+          text: fmt(hx.short, { name: name(f), hold: credits(q.hold ?? 0), available: credits(q.available ?? 0) }),
           tone: "warn",
         });
       else if (q.exempt) lines.push({ key: f, text: fmt(hx.exemptLine, { name: name(f) }), tone: "plain" });
@@ -142,6 +145,7 @@ export function HiresExportQuote({
             minutes: q.minutes,
             perMinute: credits(q.creditsPerMinute ?? 0),
             credits: credits(q.credits ?? 0),
+            hold: credits(q.hold ?? 0),
           }),
           tone: "plain",
         });
@@ -174,11 +178,11 @@ export function HiresExportQuote({
           {hx.retry}
         </button>
       ) : null}
-      {all && !blocked && signature !== null && total !== null ? (
+      {all && !blocked && signature !== null && total !== null && held !== null ? (
         <>
-          {total > 0 ? (
+          {held > 0 ? (
             <p id={`${id}-total`} className="m-0 text-xs text-[var(--color-muted)]">
-              {fmt(hx.total, { credits: credits(total) })}
+              {fmt(hx.total, { credits: credits(total), hold: credits(held) })}
             </p>
           ) : null}
           <label className="flex min-h-11 items-center gap-2">
@@ -186,7 +190,7 @@ export function HiresExportQuote({
               type="checkbox"
               checked={agreed === signature}
               onChange={(e) => setAgreed(e.target.checked ? signature : null)}
-              aria-describedby={total > 0 ? `${id}-total` : undefined}
+              aria-describedby={held > 0 ? `${id}-total` : undefined}
             />
             <span>{fmt(hx.confirm, { credits: credits(total) })}</span>
           </label>

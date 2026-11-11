@@ -36,7 +36,8 @@ const VIDEO: EditorAsset = { id: A, kind: "video", name: "beach.mp4", durationS:
 const QUOTE = (frame: HiresPresetId, over: Partial<HiresQuote> = {}): HiresQuote => ({
   frame, tier: frame.endsWith("2160p") ? "2160p" : "1440p", durationS: 10, minutes: 1, maxS: frame.endsWith("2160p") ? 180 : 300,
   tooLong: false, maxFps: frame.endsWith("2160p") ? 30 : 60, tooFast: false, fps: 30, onSale: true,
-  creditsPerMinute: frame.endsWith("2160p") ? 12 : 6, credits: frame.endsWith("2160p") ? 12 : 6, available: 100, exempt: false, mayPay: true,
+  creditsPerMinute: frame.endsWith("2160p") ? 12 : 6, credits: frame.endsWith("2160p") ? 12 : 6, hold: frame.endsWith("2160p") ? 12 : 6,
+  speedCurve: false, available: 100, exempt: false, mayPay: true,
   ...over,
 });
 
@@ -137,9 +138,11 @@ describe("the price (HiresExportQuote)", () => {
   it("shows the server's numbers, and is ready only after the person ticks the yes", async () => {
     const load = vi.fn(ok());
     const q = quote(["youtube_1440p", "youtube_2160p"], load);
-    await waitFor(() => expect(screen.getByText(fmt(hx.line, { name: hx.names.youtube_2160p, minutes: 1, perMinute: "12", credits: "12" }))).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText(fmt(hx.line, { name: hx.names.youtube_2160p, minutes: 1, perMinute: "12", credits: "12", hold: "12" }))).toBeTruthy(),
+    );
     expect(load.mock.calls.map((c) => c.slice(1))).toEqual([[4, "youtube_1440p"], [4, "youtube_2160p"]]);
-    expect(screen.getByText(fmt(hx.total, { credits: "18" }))).toBeTruthy();
+    expect(screen.getByText(fmt(hx.total, { credits: "18", hold: "18" }))).toBeTruthy();
     expect(q.last().ready).toBe(false);
     await press(screen.getByRole("checkbox", { name: fmt(hx.confirm, { credits: "18" }) }));
     expect(q.last()).toEqual({ ready: true, key: "4|youtube_1440p,youtube_2160p", maxCredits: { youtube_1440p: 6, youtube_2160p: 12 } });
@@ -151,7 +154,9 @@ describe("the price (HiresExportQuote)", () => {
       [{ tooLong: true, durationS: 200 }, fmt(hx.tooLong, { name: hx.names.youtube_2160p, max: "3:00", length: "3:20" })],
       [{ tooFast: true, fps: 60 }, fmt(hx.tooFast, { name: hx.names.youtube_2160p, max: 30, fps: 60 })],
       [{ mayPay: false }, fmt(hx.notAllowed, { name: hx.names.youtube_2160p })],
-      [{ available: 5 }, fmt(hx.short, { name: hx.names.youtube_2160p, credits: "12", available: "5" })],
+      [{ available: 5 }, fmt(hx.short, { name: hx.names.youtube_2160p, hold: "12", available: "5" })],
+      [{ credits: 4, hold: 30, available: 20 }, fmt(hx.short, { name: hx.names.youtube_2160p, hold: "30", available: "20" })],
+      [{ speedCurve: true }, fmt(hx.speedCurve, { name: hx.names.youtube_2160p })],
     ];
     for (const [over, sentence] of cases) {
       const q = quote(["youtube_2160p"], ok(over));
@@ -177,11 +182,66 @@ describe("the price (HiresExportQuote)", () => {
     expect(idle).not.toHaveBeenCalled();
   });
 
+  it("with the platform's job minimum, the charge and the hold are both said, and the yes carries the CHARGE", async () => {
+    const q = quote(["youtube_2160p"], ok({ creditsPerMinute: 4, credits: 4, hold: 30 }));
+    await waitFor(() =>
+      expect(screen.getByText(fmt(hx.line, { name: hx.names.youtube_2160p, minutes: 1, perMinute: "4", credits: "4", hold: "30" }))).toBeTruthy(),
+    );
+    expect(screen.getByText(fmt(hx.total, { credits: "4", hold: "30" }))).toBeTruthy();
+    expect(hx.line).toMatch(/charged.*held while it renders/);
+    await press(screen.getByRole("checkbox", { name: fmt(hx.confirm, { credits: "4" }) }));
+    expect(q.last()).toEqual({ ready: true, key: "4|youtube_2160p", maxCredits: { youtube_2160p: 4 } });
+  });
+
   it("the exempt workspace is told nothing is held, and its yes carries the quoted number", async () => {
     const q = quote(["youtube_2160p"], ok({ exempt: true, available: null }));
     await waitFor(() => expect(screen.getByText(fmt(hx.exemptLine, { name: hx.names.youtube_2160p }))).toBeTruthy());
     await press(screen.getByRole("checkbox"));
     expect(q.last()).toEqual({ ready: true, key: "4|youtube_2160p", maxCredits: { youtube_2160p: 12 } });
+  });
+});
+
+describe("a project above 1080p and a speed curve in the editor", () => {
+  const big = () => ({ ...newDocForAsset(VIDEO)!, width: 3840, height: 2160 });
+
+  it("without the size picker, Export of a 4K project is disabled and says what to do", () => {
+    editor({ doc: big() });
+    expect(exportButton().disabled).toBe(true);
+    expect(screen.getAllByText(hx.ownTooBigOff).length).toBeGreaterThan(0);
+  });
+
+  it("with the sizes but without the paid ones, a free smaller size can still be exported", async () => {
+    editor({ multiRatio: true, doc: big() });
+    ratios()!.setAttribute("open", "");
+    const own = screen.getByRole("checkbox", { name: (n) => n.startsWith(te.exportRatios.own) }) as HTMLInputElement;
+    expect([own.checked, own.disabled]).toEqual([false, true]);
+    expect(exportButton().disabled).toBe(true);
+    await press(box(te.exportPreset.names.youtube_1080p));
+    await waitFor(() => expect(exportButton().disabled).toBe(false));
+    await press(exportButton());
+    expect(posts()).toEqual([{ rev: 1, frames: ["youtube_1080p"] }]);
+  });
+
+  it("with the paid sizes, a 4K project is exported in the paid 4K size after the price and the yes", async () => {
+    editor({ multiRatio: true, hires: true, doc: big() });
+    ratios()!.setAttribute("open", "");
+    expect(screen.getAllByText(hx.ownTooBig).length).toBeGreaterThan(0);
+    await press(box(hx.names.youtube_2160p));
+    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "12" }) }));
+    await waitFor(() => expect(exportButton().disabled).toBe(false));
+    await press(exportButton());
+    expect(posts()).toEqual([{ rev: 1, frames: ["youtube_2160p"], maxCredits: { youtube_2160p: 12 } }]);
+  });
+
+  it("a video with a speed curve cannot tick a paid size, and says why", () => {
+    const d = newDocForAsset(VIDEO)!;
+    const v = (d.tracks as { clips: Record<string, unknown>[] }[]).find((tr) => tr.clips.some((c) => "asset_id" in c))!;
+    v.clips[0].speed_curve = [{ at: 0, speed: 0.5 }, { at: 1, speed: 1 }];
+    editor({ multiRatio: true, hires: true, doc: d });
+    ratios()!.setAttribute("open", "");
+    for (const n of [hx.names.youtube_1440p, hx.names.vertical_2160p]) expect(box(n).disabled).toBe(true);
+    expect(box(te.exportPreset.names.square_1080).disabled).toBe(false);
+    expect(screen.getByText(hx.speedCurveAll)).toBeTruthy();
   });
 });
 

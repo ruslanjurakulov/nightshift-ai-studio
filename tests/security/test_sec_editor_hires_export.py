@@ -4,9 +4,15 @@ request_editor_export's four-argument overload queues a render of the saved revi
 the person confirmed after quote_editor_export showed them. What must hold:
 
   * nothing is sold on apply: both prices are NULL, and every request is refused (not_on_sale) before anything is locked, held or written;
-  * the price is the database's: the owner's row x the STARTED minutes, never below job_minimum, rounded up to the cent. The caller's number
-    only refuses a higher price (price_changed); a lower price holds the lower one; too few credits (insufficient_credits) or the plan's
-    parallel runs (parallel_runs) roll it all back;
+  * the price is the database's: the CHARGE is the owner's row x the STARTED minutes, rounded up to the cent and NOT raised to job_minimum;
+    the HOLD is the charge raised to job_minimum (reserve_credits refuses less), and done captures the charge only (the rest goes back). The
+    caller's number is compared with the charge and only refuses a higher one (price_changed; also NaN, the infinities, none); a lower
+    charge holds the lower one; too few credits for the HOLD (insufficient_credits) or the plan's parallel runs (parallel_runs) roll it all
+    back;
+  * above 1080p is never free: the two-argument export of a project whose own frame is above 1920x1080 pixels and the three-argument export
+    of a paid frame are refused (hires_needs_paid_export); a document with a speed curve is not sold (hires_speed_curve);
+  * the lock order: the paid request takes the organization's advisory lock before the project's row, and two requests at once see each
+    other's export under it (the three in flight hold);
   * the hold settles on every path that ends an export, exactly once: captured when done, released when failed (the worker, a timeout, a
     lost worker, a deleted project), and a hold that is gone when the worker takes the export ends it (credits_released) without a render;
   * the caps: 300 s at 1440p, 180 s at 4K, 4K at 30 fps, in the function and in the table's CHECK; each paid export is one of the three in
@@ -14,8 +20,8 @@ the person confirmed after quote_editor_export showed them. What must hold:
   * who: an editor or above of the project's organization (a viewer may export for free, not spend); in the exempt organization a platform
     admin; another organization's project reads as missing; anon and the service role reach nothing; nobody but the functions writes the
     credit columns; nobody but the owner, in the SQL editor, reads or writes the prices, and a change leaves a security event;
-  * a free frame is NOT sold here (invalid_frame), and the three-argument function cannot queue a paid frame (the CHECK refuses a row
-    without a quote): exports up to 1080p are exactly what they were;
+  * a free frame is NOT sold here (invalid_frame), and the three-argument function cannot queue a paid frame (hires_needs_paid_export, and
+    the CHECK refuses a row without a quote): exports up to 1080p are exactly what they were;
   * the file applies twice, refuses a body it has not seen, and its rollback takes it out (refusing while a paid export is in flight).
 
 Every flow runs in one transaction that is rolled back, switching between the member's session, the worker's (service role) and the owner's.
@@ -90,6 +96,28 @@ def row(s, eid):
     back_to_owner(s)
     return s.rows("select status, reason, frame_preset, quoted_credits::float, credit_ref, charged_credits::float "
                   "from public.editor_exports where id = %s", [eid])[0]
+
+
+def held(s, eid):
+    back_to_owner(s)
+    v = s.value("select held_credits from public.editor_exports where id = %s", [eid])
+    return None if v is None else float(v)
+
+
+def job_minimum(s, value) -> None:
+    back_to_owner(s)
+    s.conn.execute("insert into public.credit_prices (unit, credits_per_unit) values ('job_minimum', %s) "
+                   "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit", [value])
+
+
+def project_with(s, tenant, **fields) -> str:
+    """A project of `tenant`'s organization whose saved document has these top-level fields (width, height, fps)."""
+    d = doc(VIDEO[tenant.key])
+    d.update(fields)
+    become(s, tenant.actor)
+    pid = str(s.value(CREATE, [tenant.org, f"Doc {uuid.uuid4().hex[:6]}", json.dumps(d)]))
+    back_to_owner(s)
+    return pid
 
 
 def ledger(s, eid):
@@ -190,6 +218,7 @@ def test_a_paid_export_holds_exactly_the_quote_started_at_once(conn, sc):
     assert (q["tier"], q["minutes"], float(q["credits"]), float(q["credits_per_minute"]), q["max_s"]) == ("2160p", 1, 12.25, 12.25, 180), q
     assert q["too_long"] is False and q["on_sale"] is True and q["may_pay"] is True and q["exempt"] is False
     assert float(q["available"]) == bal - res
+    assert float(q["hold"]) == 12.25, q                # no job_minimum in the lab: the hold is the charge
     assert r == ("queued", None, "vertical_2160p", 12.25, f"ee:{eid}", None), r
     assert h == ("open", 12.25, True, None), h          # started: reserve_credits' 3-hour sweep of unstarted holds cannot take it
     assert after == (bal, res + 12.25)
@@ -210,17 +239,76 @@ def test_the_price_is_per_started_minute(conn, sc, seconds, minutes):
     assert r[3] == 2.5 * minutes
 
 
-def test_the_quote_is_never_below_the_platforms_job_minimum_and_is_rounded_up_to_the_cent(conn, sc):
+def test_with_job_minimum_30_the_charge_is_the_price_and_the_hold_is_30_and_done_captures_only_the_charge(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org, sc.alice.org)
+        price(s, 2, 4)
+        job_minimum(s, 30)
+        bal, res = account(s, sc.bob.org)
+        become(s, sc.bob.actor)
+        q = s.value(QUOTE, [PROJECT["b"], 1, "youtube_2160p"])
+        eid = s.value(REQ4, [PROJECT["b"], 1, "youtube_2160p", q["credits"]])     # the person confirms the CHARGE, not the hold
+        r, hd, h, during = row(s, eid), held(s, eid), hold(s, eid), account(s, sc.bob.org)
+        claim(s)
+        first = finish(s, eid, render_asset(s, sc.bob.org), None)
+        again = finish(s, eid, None, "late")
+        r2, h2, after, led = row(s, eid), hold(s, eid), account(s, sc.bob.org), ledger(s, eid)
+    assert (float(q["credits"]), float(q["hold"]), q["minutes"]) == (4.0, 30.0, 1), q
+    assert r[3] == 4.0 and hd == 30.0, (r, hd)
+    assert h == ("open", 30.0, True, None), h
+    assert during == (bal, res + 30)
+    assert (first, again) == ("done", "done")
+    assert r2[0] == "done" and r2[5] == 4.0, r2
+    assert h2 == ("captured", 30.0, True, 4.0), h2
+    assert after == (bal - 4, res)
+    assert led == [("reserve", 30.0), ("capture", -4.0), ("release", 26.0)], led
+
+
+def test_with_job_minimum_30_a_failure_gives_the_whole_hold_back(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org, sc.alice.org)
+        price(s, 2, 4)
+        job_minimum(s, 30)
+        bal, res = account(s, sc.bob.org)
+        become(s, sc.bob.actor)
+        eid = s.value(REQ4, [PROJECT["b"], 1, "youtube_1440p", 2])
+        claim(s)
+        finish(s, eid, None, "render_failed")
+        r, after, led = row(s, eid), account(s, sc.bob.org), ledger(s, eid)
+    assert r[:2] == ("failed", "render_failed") and r[5] == 0.0, r
+    assert after == (bal, res)
+    assert led == [("reserve", 30.0), ("release", 30.0)], led
+
+
+def test_with_job_minimum_30_the_hold_decides_whether_there_are_enough_credits(conn, sc):
     with as_superuser(conn, commit=False) as s:
         clear(s, sc.bob.org)
-        price(s, 0.01, 0.01)
-        s.conn.execute("insert into public.credit_prices (unit, credits_per_unit) values ('job_minimum', 2.001) "
-                       "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit")
+        bal, res = account(s, sc.bob.org)
+        avail = bal - res
+        price(s, 1, 1)
+        job_minimum(s, avail + 1)                        # the charge (1) fits; the hold (job_minimum) does not
         become(s, sc.bob.actor)
         q = s.value(QUOTE, [PROJECT["b"], 1, "youtube_1440p"])
-        eid = s.value(REQ4, [PROJECT["b"], 1, "youtube_1440p", q["credits"]])
-        h = hold(s, eid)
-    assert float(q["credits"]) == 2.01 and h[1] == 2.01, (q, h)
+        out = s.run(REQ4, [PROJECT["b"], 1, "youtube_1440p", 1])
+        written = exports_of(s, sc.bob.org)
+        after = account(s, sc.bob.org)
+    assert float(q["credits"]) == 1.0 and float(q["hold"]) == float(f"{avail + 1:.2f}") and float(q["available"]) == avail, q
+    assert refused(out, "NS402", "insufficient_credits"), out
+    assert written == 0 and after == (bal, res)
+
+
+@pytest.mark.parametrize("confirmed", [float("nan"), float("inf"), float("-inf"), -1, 10 ** 9])
+def test_a_confirmed_number_that_is_not_a_finite_amount_is_refused(conn, sc, confirmed):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        price(s, 1, 1)
+        before = account(s, sc.bob.org)
+        become(s, sc.bob.actor)
+        out = s.run(REQ4, [PROJECT["b"], 1, "youtube_1440p", confirmed])
+        written = exports_of(s, sc.bob.org)
+        after = account(s, sc.bob.org)
+    assert refused(out, "NS409", "price_changed"), out
+    assert written == 0 and after == before
 
 
 def test_a_higher_price_than_confirmed_is_refused_and_a_lower_one_holds_the_lower(conn, sc):
@@ -325,6 +413,25 @@ def test_a_failed_render_releases_the_whole_hold_once(conn, sc, reason):
     assert h[0] == "released" and h[3] is None, h
     assert after == (bal, res)
     assert led == [("reserve", 8.0), ("release", 8.0)], led
+
+
+def test_a_done_export_marked_failed_by_hand_keeps_its_charge(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org, sc.alice.org)
+        price(s, 2, 4)
+        job_minimum(s, 30)
+        bal, res = account(s, sc.bob.org)
+        become(s, sc.bob.actor)
+        eid = s.value(REQ4, [PROJECT["b"], 1, "youtube_2160p", 4])
+        claim(s)
+        finish(s, eid, render_asset(s, sc.bob.org), None)
+        back_to_owner(s)
+        s.conn.execute("update public.editor_exports set status = 'failed', reason = 'test' where id = %s", [eid])
+        r, h, after, led = row(s, eid), hold(s, eid), account(s, sc.bob.org), ledger(s, eid)
+    assert r[0] == "failed" and r[5] == 4.0, r                 # what the ledger charged, not 0
+    assert h == ("captured", 30.0, True, 4.0), h
+    assert after == (bal - 4, res)
+    assert led == [("reserve", 30.0), ("capture", -4.0), ("release", 26.0)], led
 
 
 def test_a_deleted_project_releases_its_waiting_paid_export(conn, sc):
@@ -454,14 +561,19 @@ def test_the_table_itself_refuses_a_paid_frame_without_a_quote_or_past_its_cap(c
         become(s, sc.bob.actor)
         eid = s.value(REQ4, [PROJECT["b"], 1, "youtube_1440p", 10])
         back_to_owner(s)
+        # As the owner's hand: a charge of 10 and a hold of 10, so that each change below breaks exactly one rule of the CHECK.
+        s.conn.execute("update public.editor_exports set quoted_credits = 10, held_credits = 10 where id = %s", [eid])
         outs = [
-            s.run("update public.editor_exports set quoted_credits = null, credit_ref = null where id = %s", [eid]),
+            # Each change alone breaks exactly one rule (the money columns move together, so a rule is never hidden by another).
+            s.run("update public.editor_exports set quoted_credits = null, held_credits = null, credit_ref = null where id = %s", [eid]),
             s.run("update public.editor_exports set duration_s = 300.001 where id = %s", [eid]),
             s.run("update public.editor_exports set frame_preset = 'youtube_2160p', frame_width = 3840, frame_height = 2160, "
                   "duration_s = 181 where id = %s", [eid]),
             s.run("update public.editor_exports set credit_ref = 'ee:' || gen_random_uuid() where id = %s", [eid]),
             s.run("update public.editor_exports set charged_credits = 11 where id = %s", [eid]),
-            s.run("update public.editor_exports set quoted_credits = -1, credit_ref = null where id = %s", [eid]),
+            s.run("update public.editor_exports set quoted_credits = -1, held_credits = null, credit_ref = null where id = %s", [eid]),
+            s.run("update public.editor_exports set held_credits = null where id = %s", [eid]),            # a hold without its amount
+            s.run("update public.editor_exports set held_credits = 9.99 where id = %s", [eid]),            # a hold below the charge
             s.run("update public.editor_exports set frame_width = 4096, frame_height = 2160 where id = %s", [eid]),
         ]
         fine = s.run("update public.editor_exports set frame_preset = 'youtube_2160p', frame_width = 3840, frame_height = 2160, "
@@ -495,6 +607,72 @@ def test_each_paid_export_is_one_of_the_three_in_flight_and_the_twenty_a_day(con
     assert after == before                                # a refused request holds nothing
 
 
+# ── above 1080p is never free; a speed curve is not sold ───────────────────
+
+@pytest.mark.parametrize("w,h,fps", [(3840, 2160, 60), (2160, 3840, 30), (2560, 1440, 30), (1920, 1082, 30)])
+def test_a_project_whose_own_frame_is_above_1080p_is_not_exported_free(conn, sc, w, h, fps):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        price(s, 1, 1)
+        many_parallel_runs(s)
+        before = account(s, sc.bob.org)
+        pid = project_with(s, sc.bob, width=w, height=h, fps=fps)
+        become(s, sc.bob.actor)
+        plain = s.run(REQ2, [pid, 1])
+        written = exports_of(s, sc.bob.org)
+        become(s, sc.bob.actor)
+        small = s.run(REQ3, [pid, 1, "youtube_1080p"])                  # a free frame of it: 1080p, downscaled, still free
+        after = account(s, sc.bob.org)
+    assert refused(plain, "NS400", "hires_needs_paid_export"), plain
+    assert written == 0
+    assert small.ok and after == before, small
+
+
+def test_a_4k_project_is_exported_in_its_size_through_the_paid_overload(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        price(s, 1, 3)
+        pid = project_with(s, sc.bob, width=3840, height=2160, fps=30)
+        become(s, sc.bob.actor)
+        eid = s.value(REQ4, [pid, 1, "youtube_2160p", 3])
+        r, h = row(s, eid), hold(s, eid)
+    assert r[:3] == ("queued", None, "youtube_2160p") and r[3] == 3.0 and h[0] == "open", (r, h)
+
+
+def test_a_1080p_project_is_still_exported_free_by_the_plain_request(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        before = account(s, sc.bob.org)
+        pid = project_with(s, sc.bob, width=1920, height=1080, fps=60)
+        become(s, sc.bob.actor)
+        eid = s.value(REQ2, [pid, 1])
+        r, after = row(s, eid), account(s, sc.bob.org)
+    assert r == ("queued", None, None, None, None, None) and after == before, r
+
+
+def test_a_document_with_a_speed_curve_is_not_sold_and_its_free_export_is_unchanged(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        price(s, 1, 1)
+        many_parallel_runs(s)
+        before = account(s, sc.bob.org)
+        d = doc(VIDEO["b"])
+        d["tracks"][0]["clips"][0]["speed_curve"] = [{"at": 0, "speed": 0.25}, {"at": 1, "speed": 0.25}]
+        become(s, sc.bob.actor)
+        pid = str(s.value(CREATE, [sc.bob.org, "Curve", json.dumps(d)]))
+        q = s.value(QUOTE, [pid, 1, "youtube_1440p"])
+        q_plain = s.value(QUOTE, [PROJECT["b"], 1, "youtube_1440p"])
+        out = s.run(REQ4, [pid, 1, "youtube_1440p", 100])
+        written = exports_of(s, sc.bob.org)
+        become(s, sc.bob.actor)
+        free = s.run(REQ3, [pid, 1, "vertical_1080p"])
+        after = account(s, sc.bob.org)
+    assert q["speed_curve"] is True and q_plain["speed_curve"] is False, (q, q_plain)
+    assert refused(out, "NS400", "hires_speed_curve"), out
+    assert written == 0
+    assert free.ok and after == before, free
+
+
 # ── who may ask ─────────────────────────────────────────────────────────────
 
 def test_a_free_frame_is_not_sold_here_and_a_paid_one_is_not_free_there(conn, sc):
@@ -515,7 +693,7 @@ def test_a_free_frame_is_not_sold_here_and_a_paid_one_is_not_free_there(conn, sc
     for f, out in outs4:
         assert refused(out, "NS400", "invalid_frame"), (f, out)
     for f, out in outs3:
-        assert refused(out, "23514", "editor_exports_hires_terms"), (f, out)
+        assert refused(out, "NS400", "hires_needs_paid_export"), (f, out)
     assert written == 0
     assert free_q == {"frame": "vertical_1080p", "width": 1080, "height": 1920, "paid": False, "duration_s": 6.0}, free_q
 
@@ -579,6 +757,7 @@ def test_the_exempt_organization_needs_a_platform_admin_and_holds_nothing(conn, 
         q = s.value(QUOTE, [pid, 1, "youtube_2160p"])
         eid = s.value(REQ4, [pid, 1, "youtube_2160p", q["credits"]])
         r = row(s, eid)
+        held_exempt = held(s, eid)
         holds = s.value("select count(*) from public.credit_reservations where job_id = 'ee:' || %s::text", [eid])
         # Dana is a member of the exempt organization and not a platform admin: even as its editor she may not spend there.
         s.conn.execute("update public.org_members set role = 'editor' where org_id = %s and user_id = %s", [DEFAULT_ORG, sc.dana.uid])
@@ -589,6 +768,7 @@ def test_the_exempt_organization_needs_a_platform_admin_and_holds_nothing(conn, 
         free = s.run(REQ3, [pid, 1, "vertical_1080p"])
     assert q["exempt"] is True and q["available"] is None and float(q["credits"]) == 4.0 and q["may_pay"] is True, q
     assert r == ("queued", None, "youtube_2160p", 4.0, None, None), r
+    assert held_exempt is None
     assert holds == 0
     assert dq["may_pay"] is False and refused(dana, "42501", "forbidden") and free.ok, (dq, dana, free)
 
@@ -650,7 +830,7 @@ def test_a_price_change_leaves_a_security_event_and_the_row_cannot_be_removed(co
 
 # ── the older functions ─────────────────────────────────────────────────────
 
-def test_the_free_functions_keep_their_bodies_and_their_answers(conn, sc):
+def test_the_free_functions_are_0132s_bodies_and_keep_their_answers_up_to_1080p(conn, sc):
     with as_superuser(conn, commit=False) as s:
         hashes = s.rows("select pg_get_function_identity_arguments(oid), md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc "
                         "where proname = 'request_editor_export' and pronamespace = 'public'::regnamespace order by 1")
@@ -661,8 +841,8 @@ def test_the_free_functions_keep_their_bodies_and_their_answers(conn, sc):
         busy = s.run(REQ3, [PROJECT["b"], 1, "youtube_1080p"])      # the project's own size while its plain export is in flight
         e3 = s.value(REQ3, [PROJECT["b"], 1, "square_1080"])
         r2, r3 = row(s, e2), row(s, e3)
-    assert hashes[:2] == [("p_project uuid, p_rev integer", "6d37b4d75092708981c28a56879c89b4"),
-                          ("p_project uuid, p_rev integer, p_frame text", "83456b3c70d9433ce0e21da1339198ad")], hashes
+    assert hashes[:2] == [("p_project uuid, p_rev integer", _pinned("req2")),
+                          ("p_project uuid, p_rev integer, p_frame text", _pinned("req3"))], hashes
     assert refused(busy, "NS409", "export_in_progress")
     assert r2 == ("queued", None, None, None, None, None) and r3 == ("queued", None, "square_1080", None, None, None), (r2, r3)
 
@@ -766,6 +946,47 @@ def test_two_paid_requests_at_once_with_credits_for_one_hold_exactly_one(race):
     assert held == one and n == 1, (held, one, n)
 
 
+def test_two_paid_requests_at_once_see_each_other_under_the_organizations_lock(race):
+    """With two exports already in flight, two paid requests of two projects at once: exactly one is the third, the other is refused.
+    Without the organization's advisory lock both would count two and both would be queued (four in flight)."""
+    with as_superuser(race["conn"]) as s:
+        s.conn.execute("update public.editor_exports set status = 'failed', reason = 'test' where org_id = %s", [race["org"]])
+        s.value("select public.grant_credits(%s, 1000, 'race')", [race["org"]])
+        s.conn.execute("update public.editor_export_hires_prices set credits_per_minute_1440p = 1")
+        for pid in race["projects"]:
+            s.conn.execute("insert into public.editor_exports (org_id, project_id, rev, doc, duration_s, status, requested_by) "
+                           "values (%s, %s, 1, '{}'::jsonb, 1, 'queued', gen_random_uuid())", [race["org"], pid])
+    barrier = threading.Barrier(2)
+    out = [None, None]
+
+    def one(i):
+        c = _session(race["dsn"], race["who"])
+        try:
+            barrier.wait()
+            try:
+                v = c.execute(REQ4, [race["projects"][i], 1, "youtube_1440p", 100]).fetchone()[0]
+                time.sleep(0.4)
+                c.commit()
+                out[i] = ("ok", v)
+            except psycopg.Error as e:
+                c.rollback()
+                out[i] = (e.sqlstate, str(e).splitlines()[0])
+        finally:
+            c.close()
+
+    threads = [threading.Thread(target=one, args=(i,)) for i in range(2)]
+    for t_ in threads:
+        t_.start()
+    for t_ in threads:
+        t_.join(30)
+    with as_superuser(race["conn"]) as s:
+        busy = s.value("select count(*) from public.editor_exports where org_id = %s and status in ('queued', 'rendering')", [race["org"]])
+        s.conn.execute("update public.editor_exports set status = 'failed', reason = 'test' where org_id = %s and status in ('queued', 'rendering')",
+                       [race["org"]])
+    assert sorted(o[0] for o in out) == ["NS409", "ok"], out
+    assert busy == 3, busy
+
+
 # ── the file ────────────────────────────────────────────────────────────────
 
 def _pinned(name: str) -> str:
@@ -791,6 +1012,10 @@ def test_the_live_bodies_are_the_ones_the_file_pins(conn):
     with as_superuser(conn, commit=False) as s:
         assert _hash(s, REQ4_SIG) == _pinned("req4")
         assert _hash(s, QUOTE_SIG) == _pinned("quote")
+        assert _hash(s, "public.request_editor_export(uuid, integer)") == _pinned("req2")
+        assert _hash(s, "public.request_editor_export(uuid, integer, text)") == _pinned("req3")
+        assert _hash(s, "public.editor_export_hires_terms(integer, integer, numeric)") == _pinned("terms")
+        assert _hash(s, "public.editor_export_settle()") == _pinned("settle")
         assert _hash(s, "public.editor_export_frame(text)") == _pinned("lst")
 
 
@@ -811,11 +1036,11 @@ def test_the_file_applies_twice_and_keeps_the_owners_price(conn, sc):
 
 
 @pytest.mark.parametrize("sig,find,put,says", [
-    ("public.request_editor_export(uuid, integer)", ">= 20 then", ">= 21 then", "not 0054's body"),
-    ("public.request_editor_export(uuid, integer, text)", ">= 20 then", ">= 21 then", "not 0129's body"),
+    ("public.request_editor_export(uuid, integer)", ">= 20 then", ">= 21 then", "neither 0054's nor 0132's body"),
+    ("public.request_editor_export(uuid, integer, text)", ">= 20 then", ">= 21 then", "neither 0129's nor 0132's body"),
     ("public.editor_export_frame(text)", "('square_1080', 1080, 1080)", "('square_1080', 8192, 8192)", "neither 0129's nor 0132's"),
     (REQ4_SIG, ">= 20 then", ">= 21 then", "request_editor_export(uuid, integer, text, numeric) with a body"),
-    ("public.editor_export_settle()", "new.charged_credits := 0;\n    end if;", "new.charged_credits := null;\n    end if;",
+    ("public.editor_export_settle()", "new.reason := 'credits_released';", "new.reason := 'credits_gone';",
      "editor_export_settle() with a body"),
 ])
 def test_the_file_refuses_a_body_it_has_not_seen_and_changes_nothing(conn, sig, find, put, says):
@@ -841,7 +1066,10 @@ def test_the_rollback_takes_it_out_and_the_file_applies_again(conn, sc):
         assert _hash(s, "public.editor_export_frame(text)") == "1bcfdbfab6526ce7d0ba07e167f5740c"
         assert s.value("select to_regclass('public.editor_export_hires_prices')") is None
         assert s.value("select count(*) from information_schema.columns where table_name = 'editor_exports' "
-                       "and column_name in ('quoted_credits', 'credit_ref', 'charged_credits')") == 0
+                       "and column_name in ('quoted_credits', 'held_credits', 'credit_ref', 'charged_credits')") == 0
+        # 0054's and 0129's bodies are back, byte for byte.
+        assert _hash(s, "public.request_editor_export(uuid, integer)") == "6d37b4d75092708981c28a56879c89b4"
+        assert _hash(s, "public.request_editor_export(uuid, integer, text)") == "83456b3c70d9433ce0e21da1339198ad"
         # The finished 4K export stays (its frame too), the ledger keeps its money, and the frame check is 0129's, NOT VALID for it.
         assert s.rows("select status, frame_preset from public.editor_exports where id = %s", [done]) == [("done", "youtube_2160p")]
         assert [(r[0], float(r[1])) for r in s.rows("select kind, amount from public.credit_transactions where job_id = %s order by id",

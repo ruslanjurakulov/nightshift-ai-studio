@@ -96,7 +96,7 @@ def test_a_member_exports_the_saved_revision_in_a_frame_of_the_list(conn, sc):
 
 
 def test_every_format_of_the_presets_file_is_accepted_with_exactly_its_size(conn, sc):
-    # The five free formats; the four paid ones after them (0132) cannot be queued through this overload (no quote), see below.
+    # The five free formats; the four paid ones after them (0132) cannot be queued through this overload (0132 refuses them), see below.
     assert [p["id"] for p in FREE] == ["youtube_1080p", "youtube_720p", "vertical_1080p", "square_1080", "feed_4x5_1080"]
     with as_superuser(conn, commit=False) as s:
         for p in FREE:
@@ -108,7 +108,8 @@ def test_every_format_of_the_presets_file_is_accepted_with_exactly_its_size(conn
         # The list answers for the file's formats and nothing else, in the file's order.
         listed = s.rows("select f.id, f.width, f.height from unnest(%s::text[]) with ordinality as i(id, n), "
                         "public.editor_export_frame(i.id) f order by i.n", [[p["id"] for p in PRESETS]])
-        # A paid frame through THIS overload carries no quote: 0132's check refuses the row, and nothing is written.
+        # A paid frame through THIS overload: 0132's body refuses it as hires_needs_paid_export (and its CHECK would refuse a row without a
+        # quote), and nothing is written.
         paid = []
         for p in PRESETS[5:]:
             clear(s, sc.bob.org)
@@ -117,7 +118,7 @@ def test_every_format_of_the_presets_file_is_accepted_with_exactly_its_size(conn
             paid[-1] = (paid[-1], exports_of(s, sc.bob.org))
     assert listed == [(p["id"], p["width"], p["height"]) for p in PRESETS]
     for out, written in paid:
-        assert refused(out, "23514", "editor_exports_hires_terms") and written == 0, out
+        assert refused(out, "NS400", "hires_needs_paid_export") and written == 0, out
 
 
 BAD_FRAMES = [
@@ -858,7 +859,8 @@ def test_the_two_argument_call_is_unchanged_and_writes_no_frame(conn, sc):
         body = s.value(f"select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc where oid = '{REQ2_SIG}'::regprocedure")
     assert row == [(None, None, None)]
     assert refused(busy, "NS409", "export_in_progress")
-    assert body == BEFORE_HASH
+    # 0054's body, or 0132's (0054's plus its refusal of a project above 1080p) while 0132 is applied.
+    assert body in (BEFORE_HASH, _pinned_0132("req2"))
 
 
 def test_the_api_roles_reach_the_overloads_they_should(conn):
@@ -904,13 +906,18 @@ def drift(s, sig: str, find: str, put: str) -> None:
     s.conn.execute(src.replace(find, put))
 
 
+def _pinned_0132(name: str) -> str:
+    return re.search(rf"oid = {name}\) <> '([0-9a-f]{{32}})'", sec_db.MIGRATION_0132.read_text(encoding="utf-8")).group(1)
+
+
 def test_the_live_bodies_are_the_ones_the_file_pins(conn):
     req3, lst = _pinned(MIGRATION.read_text(encoding="utf-8"))
     with as_superuser(conn, commit=False) as s:
-        assert (_hash(s, REQ2_SIG), _hash(s, REQ3_SIG)) == (BEFORE_HASH, req3)
-        # The list is 0132's while 0132 is applied (it replaced it), and 0129's again once 0132 is taken off.
-        lst132 = re.search(r"oid = lst\) <> '([0-9a-f]{32})'", sec_db.MIGRATION_0132.read_text(encoding="utf-8")).group(1)
-        assert _hash(s, LIST_SIG) == (lst132 if sec_db.has_0132(s) else lst)
+        # The list and the two request functions are 0132's while 0132 is applied (it replaced them), and 0129's / 0054's again once 0132
+        # is taken off.
+        on = sec_db.has_0132(s)
+        assert (_hash(s, REQ2_SIG), _hash(s, REQ3_SIG)) == ((_pinned_0132("req2"), _pinned_0132("req3")) if on else (BEFORE_HASH, req3))
+        assert _hash(s, LIST_SIG) == (_pinned_0132("lst") if on else lst)
         sec_db.take_off_0132(s)
         assert (_hash(s, REQ2_SIG), _hash(s, REQ3_SIG), _hash(s, LIST_SIG)) == (BEFORE_HASH, req3, lst)
 

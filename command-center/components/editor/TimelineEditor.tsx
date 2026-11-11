@@ -151,7 +151,14 @@ import {
   type ExportFrameChoice,
   type FramePresetId,
 } from "@/lib/multiRatioExport/frames";
-import { isHiresPresetId, overHiresCap, overHiresFps, type HiresPresetId } from "@/lib/hiresExport/limits";
+import {
+  aboveFree,
+  hasSpeedCurve,
+  isHiresPresetId,
+  overHiresCap,
+  overHiresFps,
+  type HiresPresetId,
+} from "@/lib/hiresExport/limits";
 import { applyExportPreset, isExportPresetId, setExportFps } from "@/lib/editorExportPresets";
 import {
   addOverlay,
@@ -423,10 +430,22 @@ export function TimelineEditor({
     const p = isHiresPresetId(c) ? framePresetById(c) : null;
     return p !== null && overHiresFps(p.width, p.height, model.fps);
   });
+  // Above 1080p is never free (0132): a project whose own frame is bigger is not exported in its own size by the free
+  // request (the server refuses it: hires_needs_paid_export). It is exported in a paid size, or in a free one (1080p or
+  // smaller), or after its frame is set to 1080p or smaller. Saving it stays allowed.
+  const ownAboveFree = aboveFree(model.width, model.height);
+  const ownBlocked = ownAboveFree ? (multiRatio && hires ? te.exportHires.ownTooBig : te.exportHires.ownTooBigOff) : null;
+  // A speed curve cannot be priced (the database's length leaves the curve out): no paid size is offered for it.
+  const speedCurve = useMemo(() => hires && hasSpeedCurve(toDoc(settledModel)), [hires, settledModel]);
   const framesChosen = frames.filter(
     (c) =>
-      c === PROJECT_FRAME ||
-      (frameChoices.includes(c) && !frameBlocked.includes(c) && !frameOverCap.includes(c) && !frameTooFast.includes(c)),
+      (c === PROJECT_FRAME && !ownAboveFree) ||
+      (c !== PROJECT_FRAME &&
+        frameChoices.includes(c) &&
+        !frameBlocked.includes(c) &&
+        !frameOverCap.includes(c) &&
+        !frameTooFast.includes(c) &&
+        !(speedCurve && isHiresPresetId(c))),
   );
   const paidChosen = framesChosen.filter((c): c is HiresPresetId => isHiresPresetId(c));
   // The person's yes to the server's quote of the paid sizes (HiresExportQuote): Export spends only with it.
@@ -1097,11 +1116,13 @@ export function TimelineEditor({
     ? te.exportNeedsSave
     : active
       ? te.exportBusy
-      : multiRatio && framesChosen.length === 0
-        ? te.exportRatios.none
-        : paidChosen.length > 0 && !paidReady
-          ? te.errors.quote_required
-          : null;
+      : !multiRatio && ownBlocked
+        ? ownBlocked
+        : multiRatio && framesChosen.length === 0
+          ? (ownBlocked ?? te.exportRatios.none)
+          : paidChosen.length > 0 && !paidReady
+            ? te.errors.quote_required
+            : null;
   /** A size's name for a sentence: the format's, or "this project's size". */
   const frameName = (c: string) =>
     isHiresPresetId(c)
@@ -1286,6 +1307,8 @@ export function TimelineEditor({
             overCap={frameOverCap}
             tooFast={frameTooFast}
             fps={model.fps}
+            ownBlocked={ownBlocked}
+            speedCurve={speedCurve}
             onChange={setFrames}
           />
         ) : null}

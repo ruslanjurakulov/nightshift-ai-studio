@@ -4,8 +4,12 @@ SQL does not run in this suite; the security lab runs it (tests/security/test_se
 cannot see, or what must agree across files:
 
   * the four-argument request_editor_export() is 0129's three-argument body BYTE FOR BYTE except for the lines marked 0132: additions,
-    plus ONE replaced line whose original is written next to it (so no gate of 0054 / 0129 moved);
-  * the two- and three-argument functions are not defined, dropped or re-granted here: an export up to 1080p is what it was;
+    plus TWO replaced lines whose originals are written next to them (the unlocked first read, and the credit columns): no gate of 0054 /
+    0129 moved, and the project's row is locked only after the organization's advisory lock (0131's order);
+  * the two- and three-argument functions are 0054's / 0129's bodies BYTE FOR BYTE plus only the marked lines that refuse above 1080p
+    (hires_needs_paid_export); they are not dropped or re-granted here, and the rollback puts the old bodies back;
+  * the charge is the price x the started minutes with NO job_minimum floor, the hold is the charge raised to job_minimum, and the
+    caller's number is compared with the charge;
   * the database's closed list is schemas/export_presets.json, id for id and pixel for pixel, and its first five rows are 0129's;
   * the prices are seeded NULL (nothing is sold on apply), the price table is closed to every API role, and no number in this file
     sets a price;
@@ -27,15 +31,19 @@ ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
 SQL = (MIG / "0132_editor_hires_export.sql").read_text(encoding="utf-8")
 SQL129 = (MIG / "0129_editor_export_frame.sql").read_text(encoding="utf-8")
+SQL054 = (MIG / "0054_editor_projects.sql").read_text(encoding="utf-8")
 ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0132_editor_hires_export.sql").read_text(encoding="utf-8")
 CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 CC = ROOT / "command-center"
 
+REQ2 = "create or replace function public.request_editor_export(p_project uuid, p_rev integer) returns uuid"
 REQ3 = "create or replace function public.request_editor_export(p_project uuid, p_rev integer, p_frame text) returns uuid"
 REQ4 = ("create or replace function public.request_editor_export(p_project uuid, p_rev integer, p_frame text, p_max_credits numeric) "
         "returns uuid")
 LIST = "create or replace function public.editor_export_frame(p_frame text)"
 HEADS = {
+    "req2": (REQ2, "language plpgsql"),
+    "req3": (REQ3, "language plpgsql"),
     "req4": (REQ4, "language plpgsql"),
     "quote": ("create or replace function public.quote_editor_export(", "language plpgsql"),
     "list": (LIST, "language sql"),
@@ -94,14 +102,20 @@ class TheOverloadIs0129sFunctionPlusTheHold(unittest.TestCase):
         self.assertEqual(code, [
             "terms    jsonb;   -- 0132",
             "price    numeric;   -- 0132",
+            "hold_c   numeric;   -- 0132",
             "ref      text;   -- 0132",
             "held     jsonb;   -- 0132",
             "why      text;   -- 0132",
+            "select * into p from public.editor_projects where id = p_project;   "
+            "-- 0132 replaces: select * into p from public.editor_projects where id = p_project for update;",
             "if frame_w::bigint * frame_h <= 2073600 then   -- 0132",
             "raise exception 'invalid_frame' using errcode = 'NS400', detail = 'not a paid frame';   -- 0132",
             "end if;   -- 0132",
             "if not public.is_org_member(p.org_id, 'editor') or (public.credits_exempt(p.org_id) and not public.is_platform_admin()) then   -- 0132",
             "raise exception 'forbidden' using errcode = '42501', detail = 'a paid export is asked by an editor or above';   -- 0132",
+            "end if;   -- 0132",
+            "if jsonb_path_exists(p.doc, 'lax $.tracks[*].clips[*].speed_curve') then   -- 0132",
+            "raise exception 'hires_speed_curve' using errcode = 'NS400';   -- 0132",
             "end if;   -- 0132",
             "terms := public.editor_export_hires_terms(frame_w, frame_h, round(total, 3));   -- 0132",
             "if round(total, 3) > (terms ->> 'max_s')::numeric then   -- 0132",
@@ -111,18 +125,29 @@ class TheOverloadIs0129sFunctionPlusTheHold(unittest.TestCase):
             "raise exception 'hires_fps' using errcode = 'NS400', detail = format('max_fps=%s', terms ->> 'max_fps');   -- 0132",
             "end if;   -- 0132",
             "price := (terms ->> 'credits')::numeric;   -- 0132",
+            "hold_c := (terms ->> 'hold')::numeric;   -- 0132",
             "if price is null then   -- 0132",
             "raise exception 'not_on_sale' using errcode = 'NS403';   -- 0132",
             "end if;   -- 0132",
-            "if p_max_credits is null or price > p_max_credits then   -- 0132",
+            "if p_max_credits is null or not (p_max_credits between 0 and 100000000) or price > p_max_credits then   -- 0132",
             "raise exception 'price_changed' using errcode = 'NS409', detail = format('price=%s confirmed=%s', price, p_max_credits);   -- 0132",
+            "end if;   -- 0132",
+            "if hold_c is null or hold_c < price then   -- 0132",
+            "raise exception '0132: the hold % is below the charge %', hold_c, price;   -- 0132",
+            "end if;   -- 0132",
+            "select * into p from public.editor_projects where id = p_project for no key update;   -- 0132",
+            "if not found or p.deleted_at is not null then   -- 0132",
+            "raise exception 'not_found' using errcode = 'P0002';   -- 0132",
+            "end if;   -- 0132",
+            "if p.rev <> p_rev then   -- 0132",
+            "raise exception 'stale_revision' using errcode = 'NS409', detail = format('current=%s', p.rev);   -- 0132",
             "end if;   -- 0132",
             "ref := 'ee:' || e.id::text;   -- 0132",
             "begin   -- 0132",
-            "held := public.creative_platform_reserve(p.org_id, ref, price);   -- 0132",
+            "held := public.creative_platform_reserve(p.org_id, ref, hold_c);   -- 0132",
             "exception when sqlstate 'NS402' then   -- 0132",
             "get stacked diagnostics why = pg_exception_detail;   -- 0132",
-            "raise exception 'insufficient_credits' using errcode = 'NS402', detail = why;   -- 0132",
+            "raise exception 'insufficient_credits' using errcode = 'NS402', detail = format('hold=%s charge=%s %s', hold_c, price, why);   -- 0132",
             "when sqlstate 'NS429' then   -- 0132",
             "get stacked diagnostics why = pg_exception_detail;   -- 0132",
             "raise exception 'parallel_runs' using errcode = 'NS429', detail = why;   -- 0132",
@@ -132,23 +157,25 @@ class TheOverloadIs0129sFunctionPlusTheHold(unittest.TestCase):
             "else   -- 0132",
             "perform public.editor_export_money('start', ref, null);   -- 0132",
             "end if;   -- 0132",
-            "set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h, quoted_credits = price, credit_ref = ref   "
+            "set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h, quoted_credits = price, "
+            "held_credits = case when ref is null then null else hold_c end, credit_ref = ref   "
             "-- 0132 replaces: set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h   -- 0129",
         ])
-        self.assertEqual(sum(REPLACES in ln for ln in marked), 1)
+        self.assertEqual(sum(REPLACES in ln for ln in marked), 2)
         for ln in marked:
             if ln not in code:
                 self.assertTrue(ln.startswith("-- 0132 "), ln)
 
     def test_the_gates_are_in_this_order(self):
         fn = " ".join(body(func(CODE, REQ4)).split())
-        gates = ["auth.uid() is null", "not public.is_org_member(p.org_id)", "public.editor_export_frame(p_frame)",
+        gates = ["auth.uid() is null", "select * into p from public.editor_projects where id = p_project;",
+                 "not public.is_org_member(p.org_id)", "public.editor_export_frame(p_frame)",
                  "raise exception 'invalid_frame' using errcode = 'NS400';", "frame_w::bigint * frame_h <= 2073600",
                  "public.is_org_member(p.org_id, 'editor')", "p_rev <> p.rev", "public.editor_doc_problem(p.org_id, p.doc)",
-                 "total > 1800", "raise exception 'hires_too_long'", "raise exception 'hires_fps'", "raise exception 'not_on_sale'",
-                 "raise exception 'price_changed'",
-                 "pg_advisory_xact_lock", ">= 3", ">= 20", "insert into public.editor_exports",
-                 "public.creative_platform_reserve(p.org_id, ref, price)", "public.editor_export_money('start', ref, null)",
+                 "total > 1800", "raise exception 'hires_speed_curve'", "raise exception 'hires_too_long'", "raise exception 'hires_fps'",
+                 "raise exception 'not_on_sale'", "raise exception 'price_changed'", "hold_c < price",
+                 "pg_advisory_xact_lock", "for no key update", "p.rev <> p_rev", ">= 3", ">= 20", "insert into public.editor_exports",
+                 "public.creative_platform_reserve(p.org_id, ref, hold_c)", "public.editor_export_money('start', ref, null)",
                  "update public.editor_exports set frame_preset = frame_id"]
         at = [fn.index(g) for g in gates]
         self.assertEqual(at, sorted(at), "a gate moved")
@@ -156,19 +183,43 @@ class TheOverloadIs0129sFunctionPlusTheHold(unittest.TestCase):
         self.assertLess(fn.index("raise exception 'not_on_sale'"), fn.index("pg_advisory_xact_lock"))
         # The hold comes after every limit, and the credit columns are written in the same statement as the frame (the CHECK sees both).
         self.assertLess(fn.index(">= 20"), fn.index("creative_platform_reserve"))
-        self.assertIn("frame_height = frame_h, quoted_credits = price, credit_ref = ref", fn)
-        # The caller's number is only ever compared: the hold is the database's price.
-        self.assertEqual(fn.count("p_max_credits"), 3)   # the null check, the comparison, and the refusal's detail
-        self.assertNotRegex(fn, r"reserve\([^)]*p_max_credits")
+        self.assertIn("frame_height = frame_h, quoted_credits = price, held_credits = case when ref is null then null else hold_c end, "
+                      "credit_ref = ref", fn)
+        # The caller's number is only ever compared, with the CHARGE: the hold is the database's charge raised to job_minimum.
+        self.assertEqual(fn.count("p_max_credits"), 4)   # the null check, the finite range, the comparison, and the refusal's detail
+        self.assertIn("price > p_max_credits", fn)
+        self.assertNotIn("hold_c > p_max_credits", fn)
+        self.assertNotRegex(fn, r"reserve\([^)]*(p_max_credits|price)")
+        # Lock order (0131): no row lock before the advisory lock; the row is locked and read again after it.
+        self.assertNotIn("for update", fn)
+        self.assertEqual(fn.count("for no key update"), 1)
+        self.assertLess(fn.index("pg_advisory_xact_lock"), fn.index("for no key update"))
 
     def test_the_overload_has_no_defaults_and_a_fixed_search_path(self):
         fn = func(CODE, REQ4)
         self.assertNotIn(" default ", fn.split("language", 1)[0])
         self.assertIn("language plpgsql volatile security definer set search_path = public, pg_temp as $$", fn)
 
-    def test_the_older_functions_are_not_touched(self):
-        self.assertNotIn("function public.request_editor_export(p_project uuid, p_rev integer) ", CODE)
-        self.assertNotIn(REQ3, CODE)
+    def test_the_older_functions_are_their_bodies_plus_only_the_refusal_above_1080p(self):
+        for head, older, added in (
+                (REQ2, SQL054, [
+                    "if jsonb_typeof(p.doc -> 'width') = 'number' and jsonb_typeof(p.doc -> 'height') = 'number'   -- 0132",
+                    "and (p.doc ->> 'width')::numeric * (p.doc ->> 'height')::numeric > 2073600 then   -- 0132",
+                    "raise exception 'hires_needs_paid_export' using errcode = 'NS400', detail = 'max_px=2073600';   -- 0132",
+                    "end if;   -- 0132"]),
+                (REQ3, SQL129, [
+                    "if frame_w::bigint * frame_h > 2073600 then   -- 0132",
+                    "raise exception 'hires_needs_paid_export' using errcode = 'NS400', detail = 'max_px=2073600';   -- 0132",
+                    "end if;   -- 0132"])):
+            mine = body(func(SQL, head))
+            self.assertEqual(without_the_marked_lines(mine).splitlines(), body(func(older, head)).splitlines(), head)
+            code = [ln.strip() for ln in mine.splitlines() if MARK in ln and not ln.strip().startswith("--")]
+            self.assertEqual(code, added, head)
+            # The refusal comes before the organization's lock and its limits: a refused export counts nothing.
+            fn = " ".join(body(func(CODE, head)).split())
+            self.assertLess(fn.index("raise exception 'hires_needs_paid_export'"), fn.index("pg_advisory_xact_lock"))
+            # The rollback puts the older body back, byte for byte.
+            self.assertEqual(func(ROLLBACK, head), func(older, head), head)
         self.assertNotRegex(CODE, r"(revoke|grant)[^;]*request_editor_export\(uuid, integer(, text)?\)")
         self.assertNotRegex(CODE, r"drop function")
         for name in ("claim_editor_export", "finish_editor_export", "editor_export_assets", "editor_export_heartbeat",
@@ -214,6 +265,8 @@ class TheMoney(unittest.TestCase):
         self.assertIn("new.reason := 'credits_released';", settle)
         self.assertIn("new.charged_credits := public.editor_export_money('capture', new.credit_ref, new.quoted_credits);", settle)
         self.assertIn("perform public.editor_export_money('release', new.credit_ref, null);", settle)
+        # A done row marked failed by hand keeps its charge (the hold was captured; nothing is released).
+        self.assertIn("if old.status = 'done' then new.charged_credits := old.charged_credits; else perform", settle)
         self.assertIn("create trigger editor_exports_settle before update of status on public.editor_exports for each row execute function "
                       "public.editor_export_settle();", " ".join(CODE.split()))
         money = " ".join(body(func(CODE, *HEADS["money"])).split())
@@ -231,6 +284,8 @@ class TheMoney(unittest.TestCase):
         self.assertIn("credit_ref = 'ee:' || id::text", check)
         self.assertIn(f"when jsonb_typeof(doc -> 'fps') = 'number' then (doc ->> 'fps')::numeric <= {hires_export.MAX_FPS['2160p']}", check)
         self.assertIn("charged_credits <= quoted_credits", check)
+        self.assertIn("(credit_ref is null or held_credits is not null)", check)
+        self.assertIn("(held_credits is null or (credit_ref is not null and held_credits >= quoted_credits))", check)
         shape = " ".join(CODE.split("add constraint editor_exports_frame_shape check (", 1)[1].split(";", 1)[0].split())
         self.assertIn(f"frame_width * frame_height <= {hires_export.TIER_2160P_MAX_PX}", shape)
 
@@ -256,7 +311,10 @@ class TheClosedListAndTheCaps(unittest.TestCase):
                       f"max_fps := {hires_export.MAX_FPS['1440p']};", terms)
         self.assertIn(f"tier := '2160p'; max_s := {hires_export.MAX_S['2160p']:g}; max_fps := {hires_export.MAX_FPS['2160p']};", terms)
         self.assertIn("ceil(greatest(coalesce(p_duration, 0), 0) / 60.0)", terms)   # a STARTED minute
-        self.assertIn("credits_round_up(greatest(cpm * minutes, coalesce(floor_c, 0)))", terms)
+        # The charge has no floor; the hold is the charge raised to job_minimum (0133's rule).
+        self.assertIn("credits := public.credits_round_up(cpm * minutes);", terms)
+        self.assertIn("hold := greatest(credits, coalesce(public.credits_round_up(floor_c), 0));", terms)
+        self.assertNotRegex(terms, r"credits := [^;]*floor_c")
         ts = (CC / "lib" / "hiresExport" / "limits.ts").read_text(encoding="utf-8")
         self.assertIn("export const FREE_MAX_PX = 1920 * 1080;", ts)
         self.assertEqual(hires_export.FREE_MAX_PX, 1920 * 1080)
@@ -285,23 +343,24 @@ class TheFile(unittest.TestCase):
         self.assertEqual(len(set(h.values())), len(h))
         found = set(re.findall(r"'([0-9a-f]{32})'", CODE))
         self.assertEqual(found, set(h.values()) | {REQ2_HASH, REQ3_HASH, LIST129_HASH})
-        # The drift guard and the end state each carry every new body (the list's once more in the guard's pair).
+        # The drift guard and the end state each carry every new body (the replaced ones in the guard's pair with their older body).
         for k, v in h.items():
             self.assertEqual(CODE.count(f"'{v}'"), 2, k)
-        self.assertEqual(CODE.count(f"'{REQ2_HASH}'"), 2)
-        self.assertEqual(CODE.count(f"'{REQ3_HASH}'"), 2)
-        self.assertEqual(CODE.count(f"'{LIST129_HASH}'"), 1)
-        self.assertIn(h["list"], SQL.split("set local lock_timeout", 1)[0])           # the header's "expected AFTER"
+        for old in (REQ2_HASH, REQ3_HASH, LIST129_HASH):
+            self.assertEqual(CODE.count(f"'{old}'"), 1, old)
+        for k in ("req2", "req3", "list"):
+            self.assertIn(h[k], SQL.split("set local lock_timeout", 1)[0], k)          # the header's "expected AFTER"
         self.assertEqual(set(re.findall(r"'([0-9a-f]{32})'", ROLLBACK)), set(h.values()) | {REQ2_HASH, REQ3_HASH, LIST129_HASH})
 
     def test_the_older_hashes_are_the_older_files_bodies(self):
+        self.assertEqual(md5_of_body(func(SQL054, REQ2)), REQ2_HASH)
         self.assertEqual(md5_of_body(func(SQL129, REQ3)), REQ3_HASH)
         self.assertEqual(md5_of_body(func(SQL129, LIST, "language sql")), LIST129_HASH)
 
     def test_it_refuses_a_body_it_has_not_seen_before_it_changes_anything(self):
         guard = CODE.split("alter table public.editor_exports add column", 1)[0]
-        self.assertIn(f"if h <> '{REQ2_HASH}' then", guard)
-        self.assertIn(f"if h <> '{REQ3_HASH}' then", guard)
+        self.assertIn(f"if h <> all (array['{REQ2_HASH}', '{hashes()['req2']}']) then", guard)
+        self.assertIn(f"if h <> all (array['{REQ3_HASH}', '{hashes()['req3']}']) then", guard)
         self.assertIn(f"if h <> all (array['{LIST129_HASH}', '{hashes()['list']}']) then", guard)
         self.assertIn("if h is not null and h <> want then", guard)
         self.assertNotIn("create or replace", guard)
@@ -312,7 +371,7 @@ class TheFile(unittest.TestCase):
         self.assertIn("set local lock_timeout = '5s';", CODE)
         for marker in ("APPLY AS ONE TRANSACTION", "WHAT TO VERIFY BEFORE YOU APPLY", "-- Verify (run after applying; every column should read true)"):
             self.assertIn(marker, SQL)
-        for col in ("quoted_credits numeric(12,2)", "credit_ref text", "charged_credits numeric(12,2)"):
+        for col in ("quoted_credits numeric(12,2)", "held_credits numeric(12,2)", "credit_ref text", "charged_credits numeric(12,2)"):
             self.assertIn(f"alter table public.editor_exports add column if not exists {col};", CODE)
         end = CODE.rsplit("do $$", 1)[1]
         self.assertGreaterEqual(end.count("raise exception '0132 end state:"), 15)
@@ -337,9 +396,11 @@ class TheFile(unittest.TestCase):
         self.assertIn("a paid export is still queued or rendering and holds credits", guard)
         self.assertIn("lock table public.editor_exports in share row exclusive mode;", guard)
         self.assertNotRegex(guard.split("begin;", 1)[1], r"\bdrop\b")
-        rest = ROLLBACK.split("-- 1. What 0132 added.", 1)[1]
+        rest = ROLLBACK.split("-- 1. What 0132 added.", 1)[1].split("-- 4. End state.", 1)[0]
+        # The statements the rollback runs, without the bodies of the functions it puts back (0129's has its own update of its own row).
+        statements = re.sub(r"create or replace function .*?\n\$\$;", "", rest, flags=re.S)
         for never in ("media_assets", "delete from", "truncate", "update public.editor_exports", "credit_transactions"):
-            self.assertNotIn(never, rest.split("-- 4. End state.", 1)[0], never)
+            self.assertNotIn(never, statements, never)
 
 
 class TheSwitchHasOneName(unittest.TestCase):
@@ -369,14 +430,15 @@ class TheSwitchHasOneName(unittest.TestCase):
 
     def test_every_new_reason_and_refusal_has_a_sentence_in_three_languages(self):
         editor = (CC / "lib" / "editor.ts").read_text(encoding="utf-8")
-        for word in ("hires_off", "credits_released", "hires_fps"):
+        for word in editor_export.REASONS:
             self.assertIn(f'"{word}"', editor.split("export const EXPORT_REASONS", 1)[1].split("] as const", 1)[0])
-        for word in ("not_on_sale", "price_changed", "insufficient_credits", "hires_too_long", "quote_required", "parallel_runs", "hires_fps"):
+        for word in ("not_on_sale", "price_changed", "insufficient_credits", "hires_too_long", "quote_required", "parallel_runs", "hires_fps",
+                     "hires_speed_curve", "hires_needs_paid_export"):
             self.assertIn(f'"{word}"', editor.split("export const EDITOR_ERRORS", 1)[1].split("] as const", 1)[0])
         for lang in ("en", "ru", "uz"):
             text = (CC / "lib" / "i18n" / f"{lang}.ts").read_text(encoding="utf-8")
             reasons = text.split("exportReasons: {", 1)[1].split("},", 1)[0]
-            for word in ("hires_off", "credits_released", "hires_fps"):
+            for word in ("hires_off", "credits_released", "hires_fps", "hires_needs_paid_export", "hires_speed_curve", "hires_length_mismatch"):
                 self.assertRegex(reasons, rf'(?m)^\s+{word}:\s*\n?\s*"', f"{lang}: {word}")
             self.assertIn(f"exportHires: exportHires{lang.capitalize()},", text)
 

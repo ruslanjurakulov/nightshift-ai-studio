@@ -17,7 +17,8 @@ render takes several times its own length (measured: docs/HIRES_EXPORT.md). A 30
 Why a bigger time budget: ``render_timeout_s`` of the free exports (3 x length + 120 s) was set from 1080p; a 4K render of a phone-like
 60 fps source needs more than that and would be killed as ``timed_out`` after the person waited. The factors below are the measured cost
 per second with a margin; the cap (``RENDER_TIMEOUT_MAX_S``, 90 minutes) still applies. Only an export whose row carries a paid hi-res
-FRAME (0132) gets them: a project whose own document is 4K (another tool can save one) keeps the free exports' budget, as before.
+FRAME (0132) gets them. A project whose own document is above 1080p (another tool can save one) is not exported free at all: the
+database refuses its plain export and the worker refuses a row without a paid frame above 1080p (``above_free``).
 
 The switch: ``NIGHTSHIFT_HIRES_EXPORT`` (default off), read by the worker and the Command Center under the same name. Off, the worker
 refuses a hi-res frame row (``hires_off``) before reading any file, and the editor does not offer the frames.
@@ -108,6 +109,51 @@ def fps_problem(width: Any, height: Any, fps: Any) -> Optional[str]:
     return None
 
 
+def above_free(width: Any, height: Any) -> bool:
+    """Is a picture of this size above 1080p (more than 1920x1080 pixels, either way up), so never exported free? Anything that is not
+    two positive integers counts as above (fail closed): the render would refuse it anyway."""
+    if not (_is_int(width) and _is_int(height)) or width <= 0 or height <= 0:
+        return True
+    return width * height > FREE_MAX_PX
+
+
+def has_speed_curve(doc: Mapping) -> bool:
+    """Does a clip of this document play on a speed curve? A paid export of one is refused: the database prices the length without
+    the curve (0132 hires_speed_curve)."""
+    for track in (doc.get("tracks") or []) if isinstance(doc, Mapping) else []:
+        for clip in (track.get("clips") or []) if isinstance(track, Mapping) else []:
+            if isinstance(clip, Mapping) and "speed_curve" in clip:
+                return True
+    return False
+
+
+def started_minutes(length_s: Any) -> Optional[int]:
+    """The started output minutes of a video of ``length_s`` seconds, as 0132 counts them (at least 1); None when it is not a number."""
+    try:
+        length = float(length_s)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(length) or length < 0:
+        return None
+    return max(1, math.ceil(round(length, 3) / 60.0))
+
+
+#: How far the rendered length may be past the priced one before it counts as another minute: the database rounds the total to the
+#: millisecond, the timeline each clip's end.
+MINUTE_SLACK_S = 0.002
+
+
+def minutes_exceed(rendered_s: Any, priced_s: Any) -> bool:
+    """Does the rendered length start more minutes than the row's priced length (``duration_s``)? Also True when either is not a
+    number: a paid row is rendered only for the minutes it was priced at."""
+    priced = started_minutes(priced_s)
+    try:
+        rendered = started_minutes(max(0.0, float(rendered_s) - MINUTE_SLACK_S))
+    except (TypeError, ValueError):
+        rendered = None
+    return priced is None or rendered is None or rendered > priced
+
+
 def render_timeout_s(width: Any, height: Any, length_s: Any) -> float:
     """The wall-clock budget of a paid export in this frame. A free frame gets the free exports' budget (``timeline.render_timeout_s``);
     NaN, infinity or garbage get the cap, never no limit."""
@@ -125,5 +171,6 @@ def render_timeout_s(width: Any, height: Any, length_s: Any) -> float:
     return min(RENDER_TIMEOUT_MAX_S, RENDER_TIMEOUT_PER_S[t] * length + RENDER_TIMEOUT_BASE_S)
 
 
-__all__ = ["FLAG", "FREE_MAX_PX", "MAX_FPS", "MAX_S", "RENDER_TIMEOUT_BASE_S", "RENDER_TIMEOUT_MAX_S", "RENDER_TIMEOUT_PER_S", "TIERS",
-           "TIER_1440P_MAX_PX", "TIER_2160P_MAX_PX", "enabled", "fps_problem", "length_problem", "render_timeout_s", "tier"]
+__all__ = ["FLAG", "FREE_MAX_PX", "MAX_FPS", "MAX_S", "MINUTE_SLACK_S", "RENDER_TIMEOUT_BASE_S", "RENDER_TIMEOUT_MAX_S",
+           "RENDER_TIMEOUT_PER_S", "TIERS", "TIER_1440P_MAX_PX", "TIER_2160P_MAX_PX", "above_free", "enabled", "fps_problem",
+           "has_speed_curve", "length_problem", "minutes_exceed", "render_timeout_s", "started_minutes", "tier"]

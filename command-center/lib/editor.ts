@@ -3445,10 +3445,15 @@ export const EXPORT_REASONS = [
   "frame_off",
   // A paid 1440p / 4K export (migration 0132, modules/editor_export.py): the worker's switch was off (the database gave
   // the credits back when the export failed), the hold was no longer open when the worker took it, or the version is
-  // faster than 4K allows (30 fps).
+  // faster than 4K allows (30 fps). Above 1080p is never free: a row without a paid frame whose picture is above 1080p, a
+  // paid export of a document with a speed curve (its length cannot be priced), or a render that would start more minutes
+  // than were priced.
   "hires_off",
   "credits_released",
   "hires_fps",
+  "hires_needs_paid_export",
+  "hires_speed_curve",
+  "hires_length_mismatch",
 ] as const;
 export type ExportReason = (typeof EXPORT_REASONS)[number];
 
@@ -3555,7 +3560,8 @@ export const EDITOR_ERRORS = [
   "no_duration",
   // A paid 1440p / 4K export (migration 0132): the size is not on sale, its price changed after the person confirmed
   // it, the credits are short, the video is longer than the size allows, no confirmed price came with the request,
-  // the plan's parallel runs are in use (a held paid export is a run in progress, 0034), or 4K of a project over 30 fps.
+  // the plan's parallel runs are in use (a held paid export is a run in progress, 0034), 4K of a project over 30 fps, a
+  // document with a speed curve, or a project whose own frame is above 1080p asked for free.
   "not_on_sale",
   "price_changed",
   "insufficient_credits",
@@ -3563,6 +3569,8 @@ export const EDITOR_ERRORS = [
   "quote_required",
   "parallel_runs",
   "hires_fps",
+  "hires_speed_curve",
+  "hires_needs_paid_export",
   "not_available",
   "network",
   "failed",
@@ -3585,6 +3593,8 @@ const DB_WORDS: Partial<Record<string, EditorError>> = {
   price_changed: "price_changed",
   parallel_runs: "parallel_runs",
   hires_fps: "hires_fps",
+  hires_speed_curve: "hires_speed_curve",
+  hires_needs_paid_export: "hires_needs_paid_export",
 };
 
 /** A database refusal (SQLSTATE + machine word, migration 0054) → a word and an HTTP status. */

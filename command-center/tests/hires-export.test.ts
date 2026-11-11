@@ -48,6 +48,8 @@ vi.mock("@/lib/server/editor-guard", async (orig) => ({
 const exportsRoute = await import("../app/api/editor/projects/[id]/exports/route");
 const quoteRoute = await import("../app/api/editor/projects/[id]/exports/quote/route");
 const {
+  aboveFree,
+  hasSpeedCurve,
   HIRES_EXPORT_PRESETS,
   HIRES_MAX_FPS,
   HIRES_MAX_S,
@@ -78,7 +80,8 @@ const post = (body: unknown) =>
 const getQuote = (qs: string) => quoteRoute.GET(new Request(`http://localhost/api/editor/projects/${PID}/exports/quote?${qs}`), ctx);
 
 const DBQUOTE = {
-  paid: true, tier: "2160p", max_s: 180, max_fps: 30, fps: 30, too_fast: false, minutes: 1, credits_per_minute: 12.5, credits: 12.5,
+  paid: true, tier: "2160p", max_s: 180, max_fps: 30, fps: 30, too_fast: false, minutes: 1, credits_per_minute: 12.5, credits: 12.5, hold: 12.5,
+  speed_curve: false,
   frame: "youtube_2160p", width: 3840, height: 2160, duration_s: 6, too_long: false, on_sale: true, may_pay: true,
   exempt: false, available: 100,
 };
@@ -128,12 +131,29 @@ describe("the tiers and caps", () => {
   });
 });
 
+describe("above 1080p and speed curves", () => {
+  it("above 1080p is by pixels and fails closed", () => {
+    for (const [w, h] of [[1920, 1080], [1080, 1920], [1280, 720]]) expect(aboveFree(w, h), `${w}x${h}`).toBe(false);
+    for (const [w, h] of [[1920, 1082], [2560, 1440], [3840, 2160], [4096, 4096]]) expect(aboveFree(w, h), `${w}x${h}`).toBe(true);
+    for (const bad of [[null, 1080], ["1920", "1080"], [0, 0], [1920.5, 1080]] as [unknown, unknown][]) expect(aboveFree(...bad)).toBe(true);
+  });
+
+  it("a speed curve is found where the database looks: any clip of any track of the saved document", () => {
+    expect(hasSpeedCurve({ tracks: [{ clips: [{ id: "a" }] }, { clips: [{ id: "b", speed_curve: [] }] }] })).toBe(true);
+    expect(hasSpeedCurve({ tracks: [{ clips: [{ id: "a", speed: 2 }] }] })).toBe(false);
+    expect(hasSpeedCurve({ tracks: [null, "x", { clips: "no" }] })).toBe(false);
+    expect(hasSpeedCurve({})).toBe(false);
+  });
+});
+
 describe("the frame list with paid frames", () => {
   it("offers paid frames only when the switch says so, and never the project's own size twice", () => {
     const m = { width: 1920, height: 1080 };
     expect(otherFrames(m)).not.toContain("youtube_2160p");
     expect(otherFrames(m, { hires: true }).slice(-4)).toEqual(["youtube_1440p", "vertical_1440p", "youtube_2160p", "vertical_2160p"]);
-    expect(otherFrames({ width: 3840, height: 2160 }, { hires: true })).not.toContain("youtube_2160p");
+    // A project whose own frame is 4K cannot export its own size free: the paid 4K format is its way, so it IS offered.
+    expect(otherFrames({ width: 3840, height: 2160 }, { hires: true })).toContain("youtube_2160p");
+    expect(otherFrames({ width: 3840, height: 2160 }, { hires: true })).toContain("youtube_1080p");
   });
 
   it("parses a paid frame only with the switch, in the list's order, and refuses the whole request otherwise", () => {
@@ -154,7 +174,7 @@ describe("the quote", () => {
     const q = parseHiresQuote(DBQUOTE)!;
     expect(q).toEqual({
       frame: "youtube_2160p", tier: "2160p", durationS: 6, minutes: 1, maxS: 180, tooLong: false, maxFps: 30, tooFast: false, fps: 30,
-      onSale: true, creditsPerMinute: 12.5, credits: 12.5, available: 100, exempt: false, mayPay: true,
+      onSale: true, creditsPerMinute: 12.5, credits: 12.5, hold: 12.5, speedCurve: false, available: 100, exempt: false, mayPay: true,
     });
     // The route's camelCase answer reads the same.
     expect(parseHiresQuote(q)).toEqual(q);
@@ -163,23 +183,31 @@ describe("the quote", () => {
     for (const bad of [
       null, [], "x", { ...DBQUOTE, frame: "square_1080" }, { ...DBQUOTE, tier: "8k" }, { ...DBQUOTE, paid: false },
       { ...DBQUOTE, on_sale: "yes" }, { ...DBQUOTE, minutes: null }, { ...DBQUOTE, max_fps: undefined }, { ...DBQUOTE, credits: null },
-      { ...DBQUOTE, credits: "abc" },
+      { ...DBQUOTE, credits: "abc" }, { ...DBQUOTE, hold: null }, { ...DBQUOTE, hold: undefined }, { ...DBQUOTE, hold: 12 },
     ])
       expect(parseHiresQuote(bad), JSON.stringify(bad)).toBeNull();
     // Not on sale: no number is kept even if one came along.
-    const off = parseHiresQuote({ ...DBQUOTE, on_sale: false, credits: null, credits_per_minute: null })!;
-    expect([off.onSale, off.credits, off.creditsPerMinute]).toEqual([false, null, null]);
+    const off = parseHiresQuote({ ...DBQUOTE, on_sale: false, credits: null, credits_per_minute: null, hold: null })!;
+    expect([off.onSale, off.credits, off.creditsPerMinute, off.hold]).toEqual([false, null, null, null]);
+    // The platform's job minimum raises the hold, never the charge.
+    const floor = parseHiresQuote({ ...DBQUOTE, credits: 4, hold: 30 })!;
+    expect([floor.credits, floor.hold]).toEqual([4, 30]);
+    expect(parseHiresQuote({ ...DBQUOTE, speed_curve: true })!.speedCurve).toBe(true);
   });
 
   it("names what blocks Export, in this order", () => {
     const q = parseHiresQuote(DBQUOTE)!;
     expect(quoteBlocker(q)).toBeNull();
     expect(quoteBlocker({ ...q, onSale: false, credits: null })).toBe("not_on_sale");
+    expect(quoteBlocker({ ...q, speedCurve: true, tooLong: true })).toBe("hires_speed_curve");
     expect(quoteBlocker({ ...q, tooLong: true })).toBe("hires_too_long");
     expect(quoteBlocker({ ...q, tooFast: true, fps: 60 })).toBe("hires_fps");
     expect(quoteBlocker({ ...q, mayPay: false })).toBe("forbidden");
     expect(quoteBlocker({ ...q, available: 12.49 })).toBe("insufficient_credits");
     expect(quoteBlocker({ ...q, available: 12.5 })).toBeNull();
+    // What must be available is the HOLD (the charge raised to job_minimum), not only the charge.
+    expect(quoteBlocker({ ...q, credits: 4, hold: 30, available: 29.99 })).toBe("insufficient_credits");
+    expect(quoteBlocker({ ...q, credits: 4, hold: 30, available: 30 })).toBeNull();
     expect(quoteBlocker({ ...q, exempt: true, available: null })).toBeNull();
   });
 });
@@ -297,6 +325,8 @@ describe("words and sentences", () => {
     expect(mapEditorError({ code: "NS400", message: "hires_too_long" })).toEqual({ error: "hires_too_long", status: 400 });
     expect(mapEditorError({ code: "NS429", message: "parallel_runs" })).toEqual({ error: "parallel_runs", status: 429 });
     expect(mapEditorError({ code: "NS400", message: "hires_fps" })).toEqual({ error: "hires_fps", status: 400 });
+    expect(mapEditorError({ code: "NS400", message: "hires_speed_curve" })).toEqual({ error: "hires_speed_curve", status: 400 });
+    expect(mapEditorError({ code: "NS400", message: "hires_needs_paid_export" })).toEqual({ error: "hires_needs_paid_export", status: 400 });
     for (const d of [en, ru, uz]) {
       for (const w of EDITOR_ERRORS) expect(d.editor.errors[w], w).toBeTruthy();
       for (const w of EXPORT_REASONS) expect(d.editor.exportReasons[w], w).toBeTruthy();
@@ -310,6 +340,9 @@ describe("words and sentences", () => {
     expect(canRetry("hires_off")).toBe(false);
     expect(canRetry("credits_released")).toBe(false);
     expect(canRetry("hires_fps")).toBe(false);
+    expect(canRetry("hires_needs_paid_export")).toBe(false);
+    expect(canRetry("hires_speed_curve")).toBe(false);
+    expect(canRetry("hires_length_mismatch")).toBe(false);
     expect(canRetry("timed_out")).toBe(true);
   });
 });

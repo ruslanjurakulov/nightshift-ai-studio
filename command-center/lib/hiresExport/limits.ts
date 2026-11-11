@@ -7,7 +7,8 @@
  *
  * Why the caps: the media worker renders ONE export at a time for every organization, and a 4K render takes several
  * times its own length. Why paid: the owner's decision (2026-11-11): credits in proportion to render time, exports up
- * to 1080p stay free. A price is shown only when the server computed it (quote_editor_export); nothing here prices.
+ * to 1080p stay free, and nothing above 1080p is free (a project whose own frame is bigger is exported in a paid size:
+ * `aboveFree`). A price is shown only when the server computed it (quote_editor_export); nothing here prices.
  */
 
 export const FREE_MAX_PX = 1920 * 1080;
@@ -57,6 +58,26 @@ export function hiresTier(width: unknown, height: unknown): HiresTier | null {
   return null;
 }
 
+/** Is a picture of this size above 1080p (more than 1920x1080 pixels either way up), so never exported free? Anything
+ *  that is not two positive integers counts as above (the render would refuse it anyway). */
+export function aboveFree(width: unknown, height: unknown): boolean {
+  if (!Number.isInteger(width) || !Number.isInteger(height)) return true;
+  const w = width as number;
+  const h = height as number;
+  if (w <= 0 || h <= 0) return true;
+  return w * h > FREE_MAX_PX;
+}
+
+/** Does a clip of this saved document (`toDoc`) play on a speed curve? The database's own test (0132: any clip of any track
+ *  with a `speed_curve`). A paid export of one is refused (hires_speed_curve): the database prices the length without
+ *  the curve, and the renderer plays it with it. */
+export function hasSpeedCurve(doc: { tracks?: readonly unknown[] }): boolean {
+  return (doc.tracks ?? []).some((t) => {
+    const clips = typeof t === "object" && t !== null ? (t as { clips?: unknown }).clips : undefined;
+    return Array.isArray(clips) && clips.some((c) => typeof c === "object" && c !== null && "speed_curve" in c);
+  });
+}
+
 /** Is a video of `lengthS` seconds over the paid frame's cap? false for a free frame. */
 export function overHiresCap(width: number, height: number, lengthS: number): boolean {
   const tier = hiresTier(width, height);
@@ -87,8 +108,14 @@ export interface HiresQuote {
   onSale: boolean;
   /** Credits per started minute; null = not on sale. */
   creditsPerMinute: number | null;
-  /** What Export will hold and, when the video is done, charge; null = not on sale. */
+  /** The charge: what the video costs when it is done (the price per minute x the minutes, NOT raised to the platform's
+   *  job minimum); the number the person confirms. null = not on sale. */
   credits: number | null;
+  /** What Export holds while the video waits and renders: the charge raised to the platform's job minimum. The rest is
+   *  given back when the video is done, all of it if it fails. null = not on sale. */
+  hold: number | null;
+  /** The saved version has a speed curve: not sold (its length cannot be priced). */
+  speedCurve: boolean;
   /** The organization's available credits; null in the operator's exempt organization (nothing is held there). */
   available: number | null;
   exempt: boolean;
@@ -113,12 +140,14 @@ export function parseHiresQuote(raw: unknown): HiresQuote | null {
   const maxFps = num(r.max_fps ?? r.maxFps);
   const cpm = r.credits_per_minute ?? r.creditsPerMinute;
   const credits = r.credits;
+  const hold = r.hold;
   const available = r.available;
   const onSale = r.on_sale ?? r.onSale;
   if (durationS === null || minutes === null || maxS === null || maxFps === null || typeof onSale !== "boolean") return null;
   const creditsPerMinute = cpm === null ? null : num(cpm);
   const creditsN = credits === null ? null : num(credits);
-  if (onSale && (creditsPerMinute === null || creditsN === null)) return null;
+  const holdN = hold === null || hold === undefined ? null : num(hold);
+  if (onSale && (creditsPerMinute === null || creditsN === null || holdN === null || holdN < creditsN)) return null;
   return {
     frame,
     tier,
@@ -132,6 +161,8 @@ export function parseHiresQuote(raw: unknown): HiresQuote | null {
     onSale,
     creditsPerMinute: onSale ? creditsPerMinute : null,
     credits: onSale ? creditsN : null,
+    hold: onSale ? holdN : null,
+    speedCurve: Boolean(r.speed_curve ?? r.speedCurve),
     available: available === null || available === undefined ? null : num(available),
     exempt: Boolean(r.exempt),
     mayPay: Boolean(r.may_pay ?? r.mayPay),
@@ -141,11 +172,13 @@ export function parseHiresQuote(raw: unknown): HiresQuote | null {
 /** Why Export cannot spend on this quote now, or null when it can: the word the editor shows a sentence for. */
 export function quoteBlocker(
   q: HiresQuote,
-): "not_on_sale" | "hires_too_long" | "hires_fps" | "forbidden" | "insufficient_credits" | null {
+): "not_on_sale" | "hires_speed_curve" | "hires_too_long" | "hires_fps" | "forbidden" | "insufficient_credits" | null {
   if (!q.onSale) return "not_on_sale";
+  if (q.speedCurve) return "hires_speed_curve";
   if (q.tooLong) return "hires_too_long";
   if (q.tooFast) return "hires_fps";
   if (!q.mayPay) return "forbidden";
-  if (!q.exempt && q.available !== null && q.credits !== null && q.available < q.credits) return "insufficient_credits";
+  // The HOLD must be available (reserve_credits holds it), not only the charge.
+  if (!q.exempt && q.available !== null && q.hold !== null && q.available < q.hold) return "insufficient_credits";
   return null;
 }

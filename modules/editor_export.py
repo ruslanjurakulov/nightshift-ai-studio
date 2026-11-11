@@ -87,6 +87,15 @@ free exports' ``render_timeout_s``. A claimed row that the database already
 ended (its hold was gone when it was claimed: ``credits_released``) is not
 rendered at all.
 
+Above 1080p is never free: a row without a paid frame whose picture is above
+1920x1080 pixels (a project whose OWN frame is bigger, exported through the
+plain request) is refused (``hires_needs_paid_export``); the database refuses
+it first (0132). A paid row is not rendered when its document has a speed
+curve (``hires_speed_curve``: the database cannot price a curve) or when the
+length rendered here starts more minutes than the database priced from the
+row's ``duration_s`` (``hires_length_mismatch``): the price is for the
+minutes the person confirmed, never for more.
+
 What is logged: export / asset ids, reason words, a frame id of the closed list
 and exception types — never a path, a document or a message from ffmpeg.
 """
@@ -137,7 +146,8 @@ RENDER_TIMEOUT_MAX_S = tl.RENDER_TIMEOUT_MAX_S
 #: Reason words a failed export can carry (the Command Center has a sentence
 #: for each; lib/editor.ts EXPORT_REASONS).
 REASONS = ("invalid_timeline", "asset_unavailable", "too_long", "render_failed", "store_failed",
-           "timed_out", "invalid_frame", "frame_off", "hires_off", "credits_released", "hires_fps")
+           "timed_out", "invalid_frame", "frame_off", "hires_off", "credits_released", "hires_fps",
+           "hires_needs_paid_export", "hires_speed_curve", "hires_length_mismatch")
 
 #: The switch of "one edit, several frame sizes" (migration 0129), the same word
 #: the Command Center reads (lib/multiRatioExport/flag.ts). Default OFF.
@@ -388,6 +398,15 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
                     raise ExportFailed("too_long")
                 if paid and hires_export.fps_problem(frame.width, frame.height, norm["fps"]):
                     raise ExportFailed("hires_fps")
+                # Above 1080p is paid (0132): a row without a paid frame is never rendered bigger than 1080p (defence in depth: the
+                # database refuses such a request first). norm carries the frame the render will use.
+                if not paid and hires_export.above_free(norm["width"], norm["height"]):
+                    raise ExportFailed("hires_needs_paid_export")
+                if paid and hires_export.has_speed_curve(norm):
+                    raise ExportFailed("hires_speed_curve")
+                # The price is the database's minutes of the row's duration_s; a render that lasts longer is never given for that price.
+                if paid and hires_export.minutes_exceed(length, export.get("duration_s")):
+                    raise ExportFailed("hires_length_mismatch")
                 # The library holds the export to the same decode budget as an upload
                 # when it stores it (store_generated). Check it here, before the
                 # render, not after it (BR-L-017). The timeline's frame cap keeps

@@ -7,60 +7,74 @@
 -- (default off), on top of NIGHTSHIFT_MULTI_RATIO_EXPORT (0129).
 --
 -- WHAT IT ADDS
---   editor_exports.quoted_credits / credit_ref / charged_credits
---                                   what a paid export was quoted and held (credit_reservations.job_id = 'ee:' || the export's id, or null for
---                                   the operator's exempt organization), and what it was charged once it ended. Null on every free export.
+--   editor_exports.quoted_credits / held_credits / credit_ref / charged_credits
+--                                   what a paid export costs (the charge), what was held while it waits and renders (the charge raised to
+--                                   job_minimum), the hold (credit_reservations.job_id = 'ee:' || the export's id; hold and ref are null in the
+--                                   operator's exempt organization), and what it was charged once it ended. Null on every free export.
 --   editor_export_hires_prices      ONE row, closed to every API role (RLS on, no policy, no privilege): credits per started output minute for a
 --                                   1440p frame and for a 4K frame. NULL = not on sale (the seed). Changed in the SQL editor only; a change leaves
 --                                   a security_events row (kind editor.export.hires_price); the row cannot be deleted or emptied.
 --   editor_export_hires_terms(w, h, length)     INTERNAL. The tier of a frame (1440p up to 2560x1440 pixels, 4K above), its longest export
---                                   (300 s / 180 s), its fastest rate (60 / 30 fps), the started minutes, the price per minute and the quote
---                                   (never below credit_prices' job_minimum, rounded up to the cent). A frame of at most 1920x1080 pixels is not
---                                   paid and gets no tier.
+--                                   (300 s / 180 s), its fastest rate (60 / 30 fps), the started minutes, the price per minute, the charge
+--                                   (price x minutes, rounded up to the cent, NOT raised to job_minimum) and the hold (the charge raised to
+--                                   job_minimum). A frame of at most 1920x1080 pixels is not paid and gets no tier.
 --   editor_export_money(op, ref, amount)        INTERNAL. start / capture / release of an export's hold AS THE PLATFORM (the JWT claims are
 --                                   cleared for the call and put back, the way creative_platform_reserve does it), so a member's session, the
 --                                   worker's and the owner's all settle the same hold the same way.
 --   editor_export_settle()          INTERNAL trigger, BEFORE UPDATE OF status on editor_exports, for a row that holds credits:
 --                                     queued -> rendering : the hold must still be open, or the export ends here as failed (credits_released)
 --                                                           and the worker that claimed it renders nothing (modules/editor_export.py);
---                                     -> done             : capture the quote (the whole hold, once);
+--                                     -> done             : capture the charge (capture_credits gives the rest of the hold back), once;
 --                                     -> failed           : release the hold (render failed, timed out, worker lost, project deleted,
---                                                           credits_released: every path that ends an export ends it here).
+--                                                           credits_released: every path that ends an export ends it here); a row
+--                                                           that was done (captured) and is marked failed by hand keeps its charge.
 --                                   Settling twice is a no-op (capture_credits and the release return what is already settled).
 --   quote_editor_export(project, rev, frame)    authenticated. The server-computed quote the editor shows BEFORE a person confirms: tier, length
---                                   and rate caps, minutes, price per minute, credits, the organization's available credits. Free frames answer
---                                   paid=false.
+--                                   and rate caps, minutes, price per minute, the charge (credits) and the hold, whether the document has a
+--                                   speed curve, the organization's available credits. Free frames answer paid=false.
 --   request_editor_export(project, rev, frame, max_credits)
 --                                   authenticated. NEW overload, four arguments, none defaulted. 0129's three-argument body BYTE FOR BYTE except
 --                                   for the lines marked 0132 (a pin test takes them out and compares what is left with 0129's body). It sells
 --                                   ONLY a frame above 1080p: a free frame is refused here (invalid_frame) and keeps going through 0129's function.
+--                                   Lock order (0131's rule: no row lock is held while waiting for an advisory lock): it reads the project
+--                                   WITHOUT a lock, checks membership and every gate, takes the organization's advisory lock, and only then
+--                                   locks the project row (FOR NO KEY UPDATE) and reads it again.
 --
 -- WHAT IT REPLACES
 --   editor_export_frame(text)       0129's closed list plus four frames, value for value schemas/export_presets.json
 --                                   (tests/test_editor_export_frame_migration.py and tests/test_editor_hires_export_migration.py compare them):
 --                                   youtube_1440p 2560x1440, vertical_1440p 1440x2560, youtube_2160p 3840x2160, vertical_2160p 2160x3840.
 --   editor_exports_frame_shape      0129's CHECK with the pixel ceiling raised from 2560x1440 to 3840x2160 (sides still 16-4096 and even).
--- NOT REPLACED: the two-argument request_editor_export (0054, md5 6d37b4d75092708981c28a56879c89b4) and the three-argument one (0129, md5
--- 83456b3c70d9433ce0e21da1339198ad). Both keep their bodies, so an export up to 1080p is exactly what it was: free, no credit touched. The
--- three-argument function now also finds the four new ids in the list, but it cannot queue one: the new CHECK editor_exports_hires_terms
--- refuses a frame above 1080p pixels that carries no quote, so that call fails with 23514 and writes nothing.
+--   request_editor_export(project, rev)         0054's body (md5 6d37b4d75092708981c28a56879c89b4) plus the lines marked 0132: a project whose
+--                                   OWN frame is above 1920x1080 pixels is refused (hires_needs_paid_export, NS400). Above 1080p is paid
+--                                   (the owner's decision), so such a project is exported in a paid frame through the four-argument overload,
+--                                   or after its frame is set to 1080p or smaller. Saving such a document stays allowed.
+--   request_editor_export(project, rev, frame)  0129's body (md5 83456b3c70d9433ce0e21da1339198ad) plus the lines marked 0132: a frame of the list
+--                                   above 1080p is refused (hires_needs_paid_export) before anything is locked. A pin test takes the marked
+--                                   lines out of both and compares what is left with 0054's / 0129's bodies; an export up to 1080p is exactly
+--                                   what it was: free, no credit touched. The CHECK editor_exports_hires_terms also refuses a frame row above
+--                                   1080p pixels that carries no quote.
 --
--- THE MONEY (0020 / 0036 unchanged)
---   * Price: editor_export_hires_prices, credits per STARTED output minute of the tier (a 61 s video is two minutes), times the minutes, never
---     below job_minimum, rounded up to the cent. Both NULL on apply: nothing is sold until the owner sets a number.
---   * Quote before confirm: quote_editor_export computes exactly the number the request will hold; the request takes the number the person
---     confirmed (p_max_credits) and refuses a higher price (price_changed, NS409: the owner changed it in between). A lower price holds the
---     lower one.
---   * Hold: creative_platform_reserve (0036) at request time, inside the request's transaction, after every limit; NS402 becomes
---     insufficient_credits (available / needed in the detail) and the whole call rolls back: no row, no hold. A held paid export is a run
+-- THE MONEY (0020 / 0036 unchanged; 0133's rule for a price below job_minimum)
+--   * Charge: editor_export_hires_prices, credits per STARTED output minute of the tier (a 61 s video is two minutes), times the minutes,
+--     rounded up to the cent, and NOT raised to job_minimum (the owner's price is the price). Both NULL on apply: nothing is sold until the
+--     owner sets a number.
+--   * Hold: reserve_credits refuses any hold below job_minimum, so the hold is greatest(charge, job_minimum); done captures the CHARGE only
+--     (capture_credits gives the rest back in the same transaction). With job_minimum 30 and a charge of 4: 30 held while it renders, 4
+--     charged. Both are on the row (quoted_credits = the charge, held_credits = the hold) and in the quote.
+--   * Quote before confirm: quote_editor_export computes exactly the charge and the hold the request will use; the request takes the number
+--     the person confirmed (p_max_credits, compared with the CHARGE, never the hold) and refuses a higher charge, a missing number, NaN or an
+--     infinity (price_changed, NS409). A lower charge holds the lower one.
+--   * Holding: creative_platform_reserve (0036) at request time, inside the request's transaction, after every limit; NS402 (the HOLD is not
+--     available) becomes insufficient_credits (hold, charge and reserve_credits' detail) and the whole call rolls back: no row, no hold. A held paid export is a run
 --     in progress like any paid run: it takes one of the plan's parallel runs (0034 credit_reservations_concurrency) while it waits and
 --     renders, and the plan's limit refuses it as parallel_runs (NS429). The hold is STARTED at once
 --     (start_credit_reservation), so reserve_credits' three-hour sweep of unstarted holds cannot return it while the export waits in the one
 --     queue every organization shares; a started hold lives 24 hours (0020).
---   * Settle: the trigger above, on every path that ends an export. Capture = the quote (render time is what the price per minute already
---     prices, measured per tier: docs/HIRES_EXPORT.md); release = everything. Nothing else moves a credit.
+--   * Settle: the trigger above, on every path that ends an export. Capture = the charge, once, with no amount from the worker (render time is
+--     what the price per minute already prices, measured per tier: docs/HIRES_EXPORT.md); release = everything. Nothing else moves a credit.
 --   * Exempt organization (the operator's own): only a platform owner or admin may ask for a paid export there (as for a creative job, 0036),
---     and nothing is held (credit_ref null, quoted_credits recorded).
+--     and nothing is held (credit_ref and held_credits null, quoted_credits recorded).
 --
 -- THE CAPS (one export at a time for EVERY organization on the media worker: a long 4K render holds the whole queue)
 --   * longest paid export: 300 s at 1440p, 180 s at 4K (hires_too_long, NS400, detail max_s=...), here, in the CHECK editor_exports_hires_terms,
@@ -68,11 +82,15 @@
 --   * 4K at 30 fps at most (hires_fps, NS400, detail max_fps=30), in the same three places: a 9:16 4K60 render with a cross-fade of a 16:9
 --     4K60 source died "out of memory" under the worker's 2 GiB address-space limit (four runs), and passed at 30 (measured, the bundled
 --     ffmpeg 7.0.2). A 60 fps project is refused for 4K, never rendered at 30 in its place (CLAUDE.md rule 4). 1440p60 passed;
+--   * a document with a speed curve (a clip's speed_curve) is not sold (hires_speed_curve, NS400): editor_doc_duration does not integrate a
+--     curve and the renderer does (modules/speed_ramp.py), so the length priced here would not be the length rendered. The worker also refuses
+--     a paid row whose rendered length starts more minutes than were priced (hires_length_mismatch);
 --   * everything of 0054 / 0129 still holds: three in flight and twenty a day per organization (each paid export counts as one), 30 minutes.
 --   * a paid export is asked by an EDITOR or above (a viewer may still ask for a free one, as 0054 allows); forbidden otherwise.
 --
 -- ERRORS (SQLSTATE + word; command-center/lib/editor.ts mapEditorError)
---   42501 forbidden · P0002 not_found · NS400 invalid_frame | hires_too_long | hires_fps | 0054's words · NS402 insufficient_credits ·
+--   42501 forbidden · P0002 not_found · NS400 invalid_frame | hires_too_long | hires_fps | hires_speed_curve | hires_needs_paid_export | 0054's
+--   words · NS402 insufficient_credits ·
 --   NS403 not_on_sale · NS409 price_changed | stale_revision | export_in_progress · NS429 daily_limit | parallel_runs
 --
 -- ORDER AND ROLL-OUT. Safe in either order with the Command Center and the worker (docs/HIRES_EXPORT.md). Needs 0129 (frame columns, the
@@ -81,19 +99,20 @@
 -- names exists with a body that is not its own.
 -- Additive and idempotent: add column if not exists, drop-then-add for its own constraints and triggers, create or replace, seed on conflict
 -- do nothing (a replay never undoes the owner's price). Undo: docs/sql/rollback_0132_editor_hires_export.sql (owner-applied).
--- NUMBER. 0132: the highest on main is 0131 (Ads Factory). One open pull request adds a migration: #674 (the brand scan, 0133), which names
--- no object of this file, and this file none of its (checked with gh api, 2026-11-11); they apply in either order.
+-- NUMBER. 0132: 0131 (Ads Factory) is before it, and 0133 (the brand scan, #674) was merged while this file was in review. 0133 names no object
+-- of this file, and this file none of its: they apply in either order.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only). Each hash is md5 of the body with every run of white space read as one space:
 --   select 'req2' fn, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.request_editor_export(uuid, integer)'::regprocedure
 --   union all select 'req3', md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.request_editor_export(uuid, integer, text)'::regprocedure
 --   union all select 'list', md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.editor_export_frame(text)'::regprocedure;
 --   expected BEFORE:  req2 6d37b4d75092708981c28a56879c89b4 · req3 83456b3c70d9433ce0e21da1339198ad · list 1bcfdbfab6526ce7d0ba07e167f5740c
---   expected AFTER:   req2 and req3 the same; list f44b57823aef5fb04c8be74912460c02 (the last block of this file asserts every body)
+--   expected AFTER:   req2 7d27be2166d301cf392daee41dffd2e2 · req3 7722885b3bf1d32c7b9de0d101a316ee · list f44b57823aef5fb04c8be74912460c02 (the last block of this file asserts every body)
 --   and none of this file's new names may exist yet (expected: no row):
 --     select to_regclass('public.editor_export_hires_prices'), to_regprocedure('public.request_editor_export(uuid, integer, text, numeric)');
 --
--- SETTING A PRICE (the owner, in the SQL editor; leaves a security_events row):
+-- SETTING A PRICE (the owner, in the SQL editor; leaves a security_events row). Only once NIGHTSHIFT_HIRES_EXPORT is on in the media worker
+-- (docs/HIRES_EXPORT.md): a price set while the worker's switch is off sells exports the worker then refuses (hires_off; the hold goes back).
 --   update public.editor_export_hires_prices set credits_per_minute_1440p = <n>, credits_per_minute_2160p = <n>;
 --   back to "not on sale": set them to null. The proposal (not applied) is in docs/HIRES_EXPORT.md.
 
@@ -130,16 +149,16 @@ begin
   if to_regprocedure('public.security_event_log(text, text, text, jsonb)') is null then
     raise exception '0132 needs 0107_owner_safety.sql (security_event_log): apply it first';
   end if;
-  -- The two request functions this file copies and leaves alone must be the ones it was written on.
+  -- The two request functions this file replaces must be the ones it was written on: 0054's / 0129's, or this file's own (a replay).
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
     from pg_proc p where p.oid = 'public.request_editor_export(uuid, integer)'::regprocedure;
-  if h <> '6d37b4d75092708981c28a56879c89b4' then
-    raise exception '0132 found a two-argument request_editor_export() that is not 0054''s body (md5 %): read the live body first', h;
+  if h <> all (array['6d37b4d75092708981c28a56879c89b4', '7d27be2166d301cf392daee41dffd2e2']) then
+    raise exception '0132 found a two-argument request_editor_export() that is neither 0054''s nor 0132''s body (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
     from pg_proc p where p.oid = 'public.request_editor_export(uuid, integer, text)'::regprocedure;
-  if h <> '83456b3c70d9433ce0e21da1339198ad' then
-    raise exception '0132 found a three-argument request_editor_export() that is not 0129''s body (md5 %): read the live body first', h;
+  if h <> all (array['83456b3c70d9433ce0e21da1339198ad', '7722885b3bf1d32c7b9de0d101a316ee']) then
+    raise exception '0132 found a three-argument request_editor_export() that is neither 0129''s nor 0132''s body (md5 %): read the live body first', h;
   end if;
   -- The list it replaces: 0129's, or this file's own (a replay).
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
@@ -149,11 +168,11 @@ begin
   end if;
   -- Every name this file creates: absent, or this file's own body.
   foreach pair slice 1 in array array[
-      ['public.request_editor_export(uuid, integer, text, numeric)', '213ac716678c8ef161a30f95545cd347'],
-      ['public.quote_editor_export(uuid, integer, text)', '44367a03fe7b4d23015eeb1f0a754890'],
-      ['public.editor_export_hires_terms(integer, integer, numeric)', '63c5d12194ae35ecc28327c2f5a27ee9'],
+      ['public.request_editor_export(uuid, integer, text, numeric)', '9e073e6ea46645241b5b99a65b0a7f93'],
+      ['public.quote_editor_export(uuid, integer, text)', '383185a2158b57dc695e4d3c26b147e7'],
+      ['public.editor_export_hires_terms(integer, integer, numeric)', '31904d0cf1f8b53316c0641e89a964a4'],
       ['public.editor_export_money(text, text, numeric)', '0b9a881cd63807ef95fc726beb304a2e'],
-      ['public.editor_export_settle()', '2bfe7ef700f26dbebf0368deb9d3283c'],
+      ['public.editor_export_settle()', 'f0f8174e28911205b265d08adb0e1f46'],
       ['public.editor_export_hires_prices_guard()', '3ceae02b0246ce2a8ec627840561b424'],
       ['public.editor_export_hires_prices_trail()', 'fffbfc847cd35cbbf793c66d140dc747']] loop
     fn := pair[1];
@@ -170,15 +189,18 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 
 alter table public.editor_exports add column if not exists quoted_credits numeric(12,2);
+alter table public.editor_exports add column if not exists held_credits numeric(12,2);
 alter table public.editor_exports add column if not exists credit_ref text;
 alter table public.editor_exports add column if not exists charged_credits numeric(12,2);
 
 comment on column public.editor_exports.quoted_credits is
-  'Credits a paid (above 1080p) export was quoted and confirmed at (migration 0132); null on every free export. Written only by request_editor_export(project, rev, frame, max_credits).';
+  'The charge of a paid (above 1080p) export: what it was quoted and confirmed at, and what done captures (migration 0132); null on every free export. Written only by request_editor_export(project, rev, frame, max_credits).';
+comment on column public.editor_exports.held_credits is
+  'What a paid export holds while it waits and renders: the charge raised to job_minimum (migration 0132). Null on a free export and in the exempt organization.';
 comment on column public.editor_exports.credit_ref is
   'The credit hold of a paid export (credit_reservations.job_id, ''ee:'' || id; migration 0132). Null on a free export and in the exempt organization.';
 comment on column public.editor_exports.charged_credits is
-  'What a paid export was charged when it ended (migration 0132): the quote when done, 0 when failed. Written only by editor_export_settle().';
+  'What a paid export was charged when it ended (migration 0132): the charge when done, 0 when failed. Written only by editor_export_settle().';
 
 -- 0129's check, with the ceiling at 4K. Every row passes it (0129's was stricter), so it validates without rewriting anything.
 alter table public.editor_exports drop constraint if exists editor_exports_frame_shape;
@@ -193,7 +215,7 @@ alter table public.editor_exports
 
 -- A frame above 1080p is never free and never long: it carries its quote and fits its tier's cap (300 s up to 1440p, 180 s and 30 fps
 -- above). No row before this file has a frame above 1080p (0129's list stopped there), so this validates as it is. The credit columns have
--- one shape.
+-- one shape: a hold is never below the charge.
 alter table public.editor_exports drop constraint if exists editor_exports_hires_terms;
 alter table public.editor_exports
   add constraint editor_exports_hires_terms check (
@@ -205,6 +227,8 @@ alter table public.editor_exports
                   else true end))
     and (quoted_credits is null or quoted_credits >= 0)
     and (credit_ref is null or (quoted_credits is not null and credit_ref = 'ee:' || id::text))
+    and (credit_ref is null or held_credits is not null)
+    and (held_credits is null or (credit_ref is not null and held_credits >= quoted_credits))
     and (charged_credits is null or (quoted_credits is not null and charged_credits >= 0 and charged_credits <= quoted_credits)));
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -307,9 +331,10 @@ $$;
 
 -- What a frame of p_width x p_height costs for a video of p_duration seconds. Up to 1920x1080 pixels (either way up): not paid, no tier.
 -- Up to 2560x1440: the 1440p tier (300 s at most, any rate). Above: the 4K tier (180 s at most, 30 fps at most: a cross-faded 9:16 4K60
--- render ran out of the worker's 2 GiB address space, measured; docs/HIRES_EXPORT.md). The quote is the price per started minute times the
--- minutes, never below the platform's job minimum (a hold below it is refused by reserve_credits), rounded up to the cent; null while the
--- tier's price is null (not on sale).
+-- render ran out of the worker's 2 GiB address space, measured; docs/HIRES_EXPORT.md). The charge ('credits') is the price per started
+-- minute times the minutes, rounded up to the cent, and NOT raised to the platform's job minimum; the hold ('hold') is the charge raised to
+-- it (reserve_credits refuses a hold below it; done captures the charge and gives the rest back). Both null while the tier's price is null
+-- (not on sale).
 create or replace function public.editor_export_hires_terms(p_width integer, p_height integer, p_duration numeric)
   returns jsonb
   language plpgsql stable set search_path = public, pg_temp as $$
@@ -322,6 +347,7 @@ declare
   minutes integer;
   floor_c numeric;
   credits numeric;
+  hold    numeric;
 begin
   if px is null or px <= 2073600 then
     return jsonb_build_object('paid', false);
@@ -339,11 +365,12 @@ begin
   end if;
   minutes := greatest(1, ceil(greatest(coalesce(p_duration, 0), 0) / 60.0))::integer;
   if cpm is not null then
+    credits := public.credits_round_up(cpm * minutes);
     select c.credits_per_unit into floor_c from public.credit_prices c where c.unit = 'job_minimum';
-    credits := public.credits_round_up(greatest(cpm * minutes, coalesce(floor_c, 0)));
+    hold := greatest(credits, coalesce(public.credits_round_up(floor_c), 0));
   end if;
   return jsonb_build_object('paid', true, 'tier', tier, 'max_s', max_s, 'max_fps', max_fps, 'minutes', minutes,
-                            'credits_per_minute', cpm, 'credits', credits);
+                            'credits_per_minute', cpm, 'credits', credits, 'hold', hold);
 end
 $$;
 
@@ -404,10 +431,17 @@ begin
     return new;
   end if;
   if new.status = 'done' then
+    -- The charge, never the hold and never a number from the worker: capture_credits gives the rest of the hold back.
     new.charged_credits := public.editor_export_money('capture', new.credit_ref, new.quoted_credits);
   elsif new.status = 'failed' then
-    perform public.editor_export_money('release', new.credit_ref, null);
-    new.charged_credits := 0;
+    if old.status = 'done' then
+      -- A finished export marked failed by hand keeps what it was charged: the hold was captured, and the release below would give back
+      -- nothing. Only a refund by hand in the ledger gives captured credits back.
+      new.charged_credits := old.charged_credits;
+    else
+      perform public.editor_export_money('release', new.credit_ref, null);
+      new.charged_credits := 0;
+    end if;
   end if;
   return new;
 end
@@ -423,7 +457,9 @@ create trigger editor_exports_settle
 -- ───────────────────────────────────────────────────────────────────────────
 
 -- The same gates as a request up to the length (sign-in, membership, the list, the revision, the document), then the terms of that frame
--- for this document. Read-only. A free frame answers paid=false and nothing else about money.
+-- for this document: the charge ('credits') and the hold ('hold'), and whether the document has a speed curve (not sold: the request
+-- refuses it as hires_speed_curve). 'available' is compared with the HOLD. Read-only. A free frame answers paid=false and nothing else
+-- about money.
 create or replace function public.quote_editor_export(p_project uuid, p_rev integer, p_frame text) returns jsonb
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
@@ -470,6 +506,7 @@ begin
     'too_long', round(total, 3) > (terms ->> 'max_s')::numeric,
     'fps', case when jsonb_typeof(p.doc -> 'fps') = 'number' then (p.doc ->> 'fps')::numeric end,
     'too_fast', jsonb_typeof(p.doc -> 'fps') = 'number' and (p.doc ->> 'fps')::numeric > (terms ->> 'max_fps')::numeric,
+    'speed_curve', jsonb_path_exists(p.doc, 'lax $.tracks[*].clips[*].speed_curve'),
     'on_sale', terms ->> 'credits' is not null,
     'may_pay', public.is_org_member(p.org_id, 'editor') and (not exempt or public.is_platform_admin()),
     'exempt', exempt,
@@ -481,8 +518,8 @@ $$;
 -- 6. request_editor_export — four arguments: 0129's function plus the hold, for a frame above 1080p only
 -- ───────────────────────────────────────────────────────────────────────────
 
--- Queue a render of revision p_rev in the paid frame p_frame, holding the quote the person confirmed (p_max_credits). Everything not marked
--- 0132 is 0129's three-argument function, line for line.
+-- Queue a render of revision p_rev in the paid frame p_frame for the charge the person confirmed (p_max_credits), holding the charge raised to
+-- job_minimum. Everything not marked 0132 is 0129's three-argument function, line for line.
 create or replace function public.request_editor_export(p_project uuid, p_rev integer, p_frame text, p_max_credits numeric) returns uuid
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -495,6 +532,7 @@ declare
   frame_h  integer;   -- 0129
   terms    jsonb;   -- 0132
   price    numeric;   -- 0132
+  hold_c   numeric;   -- 0132
   ref      text;   -- 0132
   held     jsonb;   -- 0132
   why      text;   -- 0132
@@ -502,7 +540,9 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into p from public.editor_projects where id = p_project for update;
+  -- 0132 read WITHOUT a lock: the row is locked only after the organization's advisory lock below (0131's order: no row lock is held
+  -- 0132 while waiting for an advisory lock), and read again then.
+  select * into p from public.editor_projects where id = p_project;   -- 0132 replaces: select * into p from public.editor_projects where id = p_project for update;
   if not found or p.deleted_at is not null or not public.is_org_member(p.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
@@ -512,7 +552,7 @@ begin
   if frame_id is null then   -- 0129
     raise exception 'invalid_frame' using errcode = 'NS400';   -- 0129
   end if;   -- 0129
-  -- 0132 only a frame above 1080p is sold here; a free one keeps going through the three-argument function, untouched.
+  -- 0132 only a frame above 1080p is sold here; a free one keeps going through the three-argument function.
   if frame_w::bigint * frame_h <= 2073600 then   -- 0132
     raise exception 'invalid_frame' using errcode = 'NS400', detail = 'not a paid frame';   -- 0132
   end if;   -- 0132
@@ -539,6 +579,11 @@ begin
   if total > 1800 then
     raise exception 'too_long' using errcode = 'NS400', detail = 'max_s=1800';
   end if;
+  -- 0132 a speed curve is not sold: editor_doc_duration does not integrate one and the renderer does, so the length priced here would not
+  -- 0132 be the length rendered (a 45 s range at a quarter of the speed is 180 s on screen).
+  if jsonb_path_exists(p.doc, 'lax $.tracks[*].clips[*].speed_curve') then   -- 0132
+    raise exception 'hires_speed_curve' using errcode = 'NS400';   -- 0132
+  end if;   -- 0132
   -- 0132 the tier's cap and price, before anything is locked or held. The length is the one the row will store (rounded to the ms).
   terms := public.editor_export_hires_terms(frame_w, frame_h, round(total, 3));   -- 0132
   if round(total, 3) > (terms ->> 'max_s')::numeric then   -- 0132
@@ -547,13 +592,193 @@ begin
   if jsonb_typeof(p.doc -> 'fps') = 'number' and (p.doc ->> 'fps')::numeric > (terms ->> 'max_fps')::numeric then   -- 0132
     raise exception 'hires_fps' using errcode = 'NS400', detail = format('max_fps=%s', terms ->> 'max_fps');   -- 0132
   end if;   -- 0132
+  -- 0132 the charge (what done captures) and the hold (the charge raised to job_minimum, which reserve_credits demands of any hold).
   price := (terms ->> 'credits')::numeric;   -- 0132
+  hold_c := (terms ->> 'hold')::numeric;   -- 0132
   if price is null then   -- 0132
     raise exception 'not_on_sale' using errcode = 'NS403';   -- 0132
   end if;   -- 0132
-  if p_max_credits is null or price > p_max_credits then   -- 0132
+  -- 0132 the caller's number is compared with the CHARGE, never the hold. NaN and the infinities are numerics too, and a comparison with
+  -- 0132 NaN is never true: they are refused like a missing number.
+  if p_max_credits is null or not (p_max_credits between 0 and 100000000) or price > p_max_credits then   -- 0132
     raise exception 'price_changed' using errcode = 'NS409', detail = format('price=%s confirmed=%s', price, p_max_credits);   -- 0132
   end if;   -- 0132
+  if hold_c is null or hold_c < price then   -- 0132
+    raise exception '0132: the hold % is below the charge %', hold_c, price;   -- 0132
+  end if;   -- 0132
+
+  -- One request per organization at a time: the limits hold under parallel clicks.
+  perform pg_advisory_xact_lock(hashtextextended('editor_exports:' || p.org_id::text, 0));
+  -- 0132 only now the project's row, and read again under the lock: a save or a delete in between is refused, never exported.
+  select * into p from public.editor_projects where id = p_project for no key update;   -- 0132
+  if not found or p.deleted_at is not null then   -- 0132
+    raise exception 'not_found' using errcode = 'P0002';   -- 0132
+  end if;   -- 0132
+  if p.rev <> p_rev then   -- 0132
+    raise exception 'stale_revision' using errcode = 'NS409', detail = format('current=%s', p.rev);   -- 0132
+  end if;   -- 0132
+  -- 0129 one at a time per project PER FRAME SIZE: the same picture twice is refused, another size is another file. An export in
+  -- 0129 flight without a frame is the size of the document it copied (jsonb compares numbers by value, and never raises on a doc
+  -- 0129 whose width is not a number). The organization's three in flight and twenty a day below are 0054's lines, unchanged, and
+  -- 0129 each frame counts as one.
+  if exists (select 1 from public.editor_exports
+              where project_id = p.id and status in ('queued', 'rendering') and coalesce(to_jsonb(frame_width), doc -> 'width') = to_jsonb(frame_w) and coalesce(to_jsonb(frame_height), doc -> 'height') = to_jsonb(frame_h)) then   -- 0129 replaces: where project_id = p.id and status in ('queued', 'rendering')) then
+    raise exception 'export_in_progress' using errcode = 'NS409';
+  end if;
+  if (select count(*) from public.editor_exports
+       where org_id = p.org_id and status in ('queued', 'rendering')) >= 3 then
+    raise exception 'export_in_progress' using errcode = 'NS409', detail = 'max_active=3';
+  end if;
+  if (select count(*) from public.editor_exports
+       where org_id = p.org_id and created_at > now() - interval '24 hours') >= 20 then
+    raise exception 'daily_limit' using errcode = 'NS429', detail = 'max=20';
+  end if;
+
+  insert into public.editor_exports (org_id, project_id, rev, doc, duration_s, requested_by)
+  values (p.org_id, p.id, p.rev, p.doc, round(total, 3), auth.uid())
+  returning * into e;
+  -- 0132 the hold, keyed by the export: after every limit, so a refused request holds nothing. Too few credits for the HOLD roll the whole
+  -- 0132 call back. Started at once, so reserve_credits' sweep of holds nobody started (three hours) cannot return it while the export waits.
+  ref := 'ee:' || e.id::text;   -- 0132
+  begin   -- 0132
+    held := public.creative_platform_reserve(p.org_id, ref, hold_c);   -- 0132
+  exception when sqlstate 'NS402' then   -- 0132
+    get stacked diagnostics why = pg_exception_detail;   -- 0132
+    raise exception 'insufficient_credits' using errcode = 'NS402', detail = format('hold=%s charge=%s %s', hold_c, price, why);   -- 0132
+  when sqlstate 'NS429' then   -- 0132
+    get stacked diagnostics why = pg_exception_detail;   -- 0132
+    raise exception 'parallel_runs' using errcode = 'NS429', detail = why;   -- 0132
+  end;   -- 0132
+  if coalesce((held ->> 'exempt')::boolean, false) then   -- 0132
+    ref := null;   -- 0132
+  else   -- 0132
+    perform public.editor_export_money('start', ref, null);   -- 0132
+  end if;   -- 0132
+  -- 0129 the frame is stamped on the row this call just made, in the same transaction: nobody ever sees it without one.
+  update public.editor_exports   -- 0129
+     set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h, quoted_credits = price, held_credits = case when ref is null then null else hold_c end, credit_ref = ref   -- 0132 replaces: set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h   -- 0129
+   where id = e.id;   -- 0129
+  return e.id;
+end
+$$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 6b. request_editor_export — two and three arguments: above 1080p is never free
+-- ───────────────────────────────────────────────────────────────────────────
+
+-- 0054's two-argument function, line for line, plus the lines marked 0132: a project whose own frame is above 1080p is refused
+-- (hires_needs_paid_export). create or replace keeps 0054's grants.
+create or replace function public.request_editor_export(p_project uuid, p_rev integer) returns uuid
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  p       public.editor_projects;
+  problem text;
+  total   numeric;
+  e       public.editor_exports;
+begin
+  if auth.uid() is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  select * into p from public.editor_projects where id = p_project for update;
+  if not found or p.deleted_at is not null or not public.is_org_member(p.org_id) then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  if p_rev is null or p_rev <> p.rev then
+    raise exception 'stale_revision' using errcode = 'NS409', detail = format('current=%s', p.rev);
+  end if;
+  -- Again now: a file used by the project may have been deleted since it was saved.
+  problem := public.editor_doc_problem(p.org_id, p.doc);
+  if problem is not null then
+    raise exception '%', problem using errcode = 'NS400';
+  end if;
+  total := public.editor_doc_duration(p.doc);
+  if total is null then
+    raise exception 'invalid_doc' using errcode = 'NS400';
+  end if;
+  if total <= 0 then
+    raise exception 'empty' using errcode = 'NS400';
+  end if;
+  if total > 1800 then
+    raise exception 'too_long' using errcode = 'NS400', detail = 'max_s=1800';
+  end if;
+  -- 0132 above 1080p is paid (the owner's decision, 2026-11-11), so a project whose OWN frame is above 1920x1080 pixels is not exported
+  -- 0132 free here: it is exported in a paid frame (the four-argument overload), or after its frame is set to 1080p or smaller. A frame
+  -- 0132 that is not two numbers is left to the worker's validator, which refuses it.
+  if jsonb_typeof(p.doc -> 'width') = 'number' and jsonb_typeof(p.doc -> 'height') = 'number'   -- 0132
+     and (p.doc ->> 'width')::numeric * (p.doc ->> 'height')::numeric > 2073600 then   -- 0132
+    raise exception 'hires_needs_paid_export' using errcode = 'NS400', detail = 'max_px=2073600';   -- 0132
+  end if;   -- 0132
+
+  -- One request per organization at a time: the limits hold under parallel clicks.
+  perform pg_advisory_xact_lock(hashtextextended('editor_exports:' || p.org_id::text, 0));
+  if exists (select 1 from public.editor_exports
+              where project_id = p.id and status in ('queued', 'rendering')) then
+    raise exception 'export_in_progress' using errcode = 'NS409';
+  end if;
+  if (select count(*) from public.editor_exports
+       where org_id = p.org_id and status in ('queued', 'rendering')) >= 3 then
+    raise exception 'export_in_progress' using errcode = 'NS409', detail = 'max_active=3';
+  end if;
+  if (select count(*) from public.editor_exports
+       where org_id = p.org_id and created_at > now() - interval '24 hours') >= 20 then
+    raise exception 'daily_limit' using errcode = 'NS429', detail = 'max=20';
+  end if;
+
+  insert into public.editor_exports (org_id, project_id, rev, doc, duration_s, requested_by)
+  values (p.org_id, p.id, p.rev, p.doc, round(total, 3), auth.uid())
+  returning * into e;
+  return e.id;
+end
+$$;
+
+-- 0129's three-argument function, line for line, plus the lines marked 0132: a paid frame of the list is refused (hires_needs_paid_export)
+-- before anything is locked. create or replace keeps 0129's grants.
+create or replace function public.request_editor_export(p_project uuid, p_rev integer, p_frame text) returns uuid
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  p       public.editor_projects;
+  problem text;
+  total   numeric;
+  e       public.editor_exports;
+  frame_id text;   -- 0129
+  frame_w  integer;   -- 0129
+  frame_h  integer;   -- 0129
+begin
+  if auth.uid() is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  select * into p from public.editor_projects where id = p_project for update;
+  if not found or p.deleted_at is not null or not public.is_org_member(p.org_id) then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  -- 0129 the frame, from the database's own closed list and only AFTER membership: null, a made-up word, a padded or upper-case id
+  -- 0129 and a size typed as text are one refusal. Width and height are read from the list, never from the caller.
+  select f.id, f.width, f.height into frame_id, frame_w, frame_h from public.editor_export_frame(p_frame) f;   -- 0129
+  if frame_id is null then   -- 0129
+    raise exception 'invalid_frame' using errcode = 'NS400';   -- 0129
+  end if;   -- 0129
+  -- 0132 a frame of the list above 1080p is paid: it is sold by the four-argument overload, never queued free here.
+  if frame_w::bigint * frame_h > 2073600 then   -- 0132
+    raise exception 'hires_needs_paid_export' using errcode = 'NS400', detail = 'max_px=2073600';   -- 0132
+  end if;   -- 0132
+  if p_rev is null or p_rev <> p.rev then
+    raise exception 'stale_revision' using errcode = 'NS409', detail = format('current=%s', p.rev);
+  end if;
+  -- Again now: a file used by the project may have been deleted since it was saved.
+  problem := public.editor_doc_problem(p.org_id, p.doc);
+  if problem is not null then
+    raise exception '%', problem using errcode = 'NS400';
+  end if;
+  total := public.editor_doc_duration(p.doc);
+  if total is null then
+    raise exception 'invalid_doc' using errcode = 'NS400';
+  end if;
+  if total <= 0 then
+    raise exception 'empty' using errcode = 'NS400';
+  end if;
+  if total > 1800 then
+    raise exception 'too_long' using errcode = 'NS400', detail = 'max_s=1800';
+  end if;
 
   -- One request per organization at a time: the limits hold under parallel clicks.
   perform pg_advisory_xact_lock(hashtextextended('editor_exports:' || p.org_id::text, 0));
@@ -577,26 +802,9 @@ begin
   insert into public.editor_exports (org_id, project_id, rev, doc, duration_s, requested_by)
   values (p.org_id, p.id, p.rev, p.doc, round(total, 3), auth.uid())
   returning * into e;
-  -- 0132 the hold, keyed by the export: after every limit, so a refused request holds nothing. Too few credits roll the whole call back.
-  -- 0132 Started at once, so reserve_credits' sweep of holds nobody started (three hours) cannot return it while the export waits in the queue.
-  ref := 'ee:' || e.id::text;   -- 0132
-  begin   -- 0132
-    held := public.creative_platform_reserve(p.org_id, ref, price);   -- 0132
-  exception when sqlstate 'NS402' then   -- 0132
-    get stacked diagnostics why = pg_exception_detail;   -- 0132
-    raise exception 'insufficient_credits' using errcode = 'NS402', detail = why;   -- 0132
-  when sqlstate 'NS429' then   -- 0132
-    get stacked diagnostics why = pg_exception_detail;   -- 0132
-    raise exception 'parallel_runs' using errcode = 'NS429', detail = why;   -- 0132
-  end;   -- 0132
-  if coalesce((held ->> 'exempt')::boolean, false) then   -- 0132
-    ref := null;   -- 0132
-  else   -- 0132
-    perform public.editor_export_money('start', ref, null);   -- 0132
-  end if;   -- 0132
   -- 0129 the frame is stamped on the row this call just made, in the same transaction: nobody ever sees it without one.
   update public.editor_exports   -- 0129
-     set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h, quoted_credits = price, credit_ref = ref   -- 0132 replaces: set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h   -- 0129
+     set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h   -- 0129
    where id = e.id;   -- 0129
   return e.id;
 end
@@ -636,14 +844,14 @@ declare
   role_name text;
   priv text;
 begin
-  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req2) <> '6d37b4d75092708981c28a56879c89b4'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req3) <> '83456b3c70d9433ce0e21da1339198ad'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req4) <> '213ac716678c8ef161a30f95545cd347'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = quote) <> '44367a03fe7b4d23015eeb1f0a754890'
+  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req2) <> '7d27be2166d301cf392daee41dffd2e2'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req3) <> '7722885b3bf1d32c7b9de0d101a316ee'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req4) <> '9e073e6ea46645241b5b99a65b0a7f93'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = quote) <> '383185a2158b57dc695e4d3c26b147e7'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = lst) <> 'f44b57823aef5fb04c8be74912460c02'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = terms) <> '63c5d12194ae35ecc28327c2f5a27ee9'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = terms) <> '31904d0cf1f8b53316c0641e89a964a4'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = money) <> '0b9a881cd63807ef95fc726beb304a2e'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = settle) <> '2bfe7ef700f26dbebf0368deb9d3283c'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = settle) <> 'f0f8174e28911205b265d08adb0e1f46'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = guard) <> '3ceae02b0246ce2a8ec627840561b424'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = trail) <> 'fffbfc847cd35cbbf793c66d140dc747' then
     raise exception '0132 end state: a function does not hold the body this file expects';
@@ -651,7 +859,7 @@ begin
   if (select count(*) from pg_proc where proname = 'request_editor_export' and pronamespace = 'public'::regnamespace) <> 3 then
     raise exception '0132 end state: request_editor_export() does not have exactly three overloads';
   end if;
-  -- The two callables are for signed-in members only; the two older ones keep 0054's / 0129's grants; the rest is nobody's.
+  -- The two callables are for signed-in members only; the two older ones keep 0054's / 0129's grants (create or replace); the rest is nobody's.
   if not (has_function_privilege('authenticated', req4, 'EXECUTE') and has_function_privilege('authenticated', quote, 'EXECUTE')
           and has_function_privilege('authenticated', req3, 'EXECUTE') and has_function_privilege('authenticated', req2, 'EXECUTE')) then
     raise exception '0132 end state: a signed-in member cannot call the export functions';
@@ -684,8 +892,8 @@ begin
   end if;
   if (select count(*) from information_schema.columns
        where table_schema = 'public' and table_name = 'editor_exports'
-         and column_name in ('quoted_credits', 'credit_ref', 'charged_credits') and is_nullable = 'YES' and column_default is null) <> 3 then
-    raise exception '0132 end state: the three credit columns are not all there, nullable and without a default';
+         and column_name in ('quoted_credits', 'held_credits', 'credit_ref', 'charged_credits') and is_nullable = 'YES' and column_default is null) <> 4 then
+    raise exception '0132 end state: the four credit columns are not all there, nullable and without a default';
   end if;
   if (select count(*) from pg_constraint where conrelid = 'public.editor_exports'::regclass and contype = 'c' and convalidated
         and conname in ('editor_exports_frame_shape', 'editor_exports_hires_terms')) <> 2 then
@@ -745,10 +953,12 @@ end $$;
 --   (select credits_per_minute_1440p is null and credits_per_minute_2160p is null from public.editor_export_hires_prices) as nothing_on_sale_yet,
 --   has_function_privilege('authenticated', 'public.request_editor_export(uuid,integer,text,numeric)', 'EXECUTE')
 --     and not has_function_privilege('anon', 'public.request_editor_export(uuid,integer,text,numeric)', 'EXECUTE') as paid_overload_scoped,
---   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) = '83456b3c70d9433ce0e21da1339198ad'
---      from pg_proc where oid = 'public.request_editor_export(uuid, integer, text)'::regprocedure) as free_frames_untouched,
+--   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) = '7722885b3bf1d32c7b9de0d101a316ee'
+--      from pg_proc where oid = 'public.request_editor_export(uuid, integer, text)'::regprocedure) as free_frames_refuse_paid_ones,
+--   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) = '7d27be2166d301cf392daee41dffd2e2'
+--      from pg_proc where oid = 'public.request_editor_export(uuid, integer)'::regprocedure) as own_frame_above_1080p_refused,
 --   not has_table_privilege('authenticated', 'public.editor_export_hires_prices', 'SELECT') as prices_closed;
 --
 -- Paid exports so far, and what they were charged (the ledger is credit_transactions, job_id 'ee:<export id>'):
---   select frame_preset, status, count(*), sum(quoted_credits), sum(charged_credits) from public.editor_exports
+--   select frame_preset, status, count(*), sum(quoted_credits), sum(held_credits), sum(charged_credits) from public.editor_exports
 --    where quoted_credits is not null group by 1, 2 order by 1, 2;

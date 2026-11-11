@@ -75,12 +75,13 @@ export function parseExportFrames(raw: unknown, opts: { hires?: boolean } = {}):
   return order.filter((c) => seen.has(c));
 }
 
-/** The formats the picker offers beside the project's own frame: every format whose size is NOT the project's (that
- *  one would be the same picture twice), and the paid ones (0132) only with `hires`. */
+/** The formats the picker offers beside the project's own frame: every free format whose size is NOT the project's (that
+ *  one would be the same picture twice), and the paid ones (0132) only with `hires`. Every paid one, its own size included:
+ *  a project whose frame is above 1080p cannot export its own size free, so the paid format of that size is its way. */
 export function otherFrames(model: Pick<EditorModel, "width" | "height">, opts: { hires?: boolean } = {}): FramePresetId[] {
   const free: FramePresetId[] = EXPORT_PRESETS.filter((p) => p.width !== model.width || p.height !== model.height).map((p) => p.id);
   if (!opts.hires) return free;
-  return [...free, ...HIRES_EXPORT_PRESETS.filter((p) => p.width !== model.width || p.height !== model.height).map((p) => p.id)];
+  return [...free, ...HIRES_EXPORT_PRESETS.map((p) => p.id)];
 }
 
 /**
