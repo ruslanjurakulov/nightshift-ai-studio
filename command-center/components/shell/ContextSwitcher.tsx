@@ -7,8 +7,8 @@ import { Check, ChevronDown, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { ALL_CHANNELS_SLUG, selectionSlug, type ChannelSelection } from "@/lib/channels";
-import { channelSwitchHref, rememberChannel, switchOrganization } from "@/lib/context-switch";
-import { navigate } from "@/lib/editor-nav";
+import { channelSwitchHref, rememberChannel, submitOrganizationSwitch, switchOrganization } from "@/lib/context-switch";
+import { navigate, needsDocumentLoad } from "@/lib/editor-nav";
 import type { OrgSummary } from "@/lib/orgs";
 import type { ChannelRow } from "@/lib/types";
 
@@ -67,6 +67,14 @@ export function ContextSwitcher({
       return;
     }
     if (busy) return;
+    const home = `/${ALL_CHANNELS_SLUG}`;
+    if (needsDocumentLoad(home)) {
+      // Leaving the editor's page is a full load, which may be cancelled at its unsaved-changes prompt: the switch
+      // is that load (a form post the server answers with the new organization's page), so a cancel sends nothing.
+      setOpen(false);
+      submitOrganizationSwitch(id);
+      return;
+    }
     setBusy(true);
     setFailed(false);
     if (await switchOrganization(id)) {

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { selectionSlug, type ChannelSelection } from "@/lib/channels";
 import { channelSwitchHref, rememberChannel } from "@/lib/context-switch";
+import { navigate } from "@/lib/editor-nav";
 import type { ChannelRow } from "@/lib/types";
 
 /**
@@ -68,7 +69,8 @@ export function ChannelSwitcher({
   function choose(next: string) {
     setOpen(false);
     rememberChannel(selectionSlug(next, channels));
-    router.push(channelSwitchHref(next, channels, pathname));
+    // Out of (or into) the editor's project page by a full load (lib/editor-nav.ts).
+    navigate(channelSwitchHref(next, channels, pathname), router);
   }
 
   return (
