@@ -40,8 +40,8 @@ declare
 begin
   for r in
     select * from (values
-      ('public.ads_clean_text(text, boolean)', '53ecd0c6309be86c4e134da323146e61'),
-      ('public.ads_text_ok(text, integer, integer, boolean)', '78ebe62fa220880ef2494563ab6cad99'),
+      ('public.ads_clean_text(text, boolean)', 'eb0cb2be33ffcb6213e858d445863bb2'),
+      ('public.ads_text_ok(text, integer, integer, boolean)', '52994765248e75d72c40c690113819ce'),
       ('public.ads_text_list_ok(text[], integer, integer)', '3a5bd8e451a350dd799c9b49f6bb5061'),
       ('public.ads_palette_ok(text[])', '94dfa0449defc9f2907f6e7ba9a00243'),
       ('public.ads_closed_list_ok(text[], text[], integer, integer)', 'd932104160cc4768d10342395e74128d'),
@@ -52,16 +52,16 @@ begin
       ('public.ad_concepts_guard()', '8f2f17776e0e93af231a1aec923ead88'),
       ('public.ads_factory_cap_settings_guard()', '51dafe4ec2c9f35974e9ff8289a6106b'),
       ('public.ads_factory_cap_settings_trail()', '986d228f1ab027e44e8a6837a1a49b3e'),
-      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', 'c6d162ea7c8abd3fa78243a1b3b6ae88'),
-      ('public.delete_brand_kit(uuid)', '38a605d9ff0aa9a8d49526c5f0e32733'),
-      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', '16de653c6557c7be611d4a6be2eeabd6'),
-      ('public.delete_brand_product(uuid)', '7f1f41e614b47c3762cc49a08867a39d'),
-      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', '05765d4994fc9a9a0bf0f090f7692b23'),
-      ('public.delete_ad_campaign(uuid)', 'f40f5bd45d120c36e095a5a659cdd347'),
-      ('public.add_ad_concepts(uuid, text, jsonb)', 'ef6ece5fadc12da31a3706be99095263'),
-      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', '92f3faa8775c9cceb6d867d632567002'),
-      ('public.set_ad_concept_status(uuid, text)', '0f4a08254f801319c12718f319dfa612'),
-      ('public.delete_ad_concept(uuid)', '821913088f82cc84b7aba3398c5bf029')
+      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', '28551886babbea8267dccf3422d03745'),
+      ('public.delete_brand_kit(uuid)', '2635341c6f8197af5a99b91d7f8ffcfb'),
+      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', 'f00193c3989a989981f0d8179108c201'),
+      ('public.delete_brand_product(uuid)', 'aca660b2900525114369e581ee8eedd4'),
+      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', '48077ccfd1968be7f3535d9777db2c6f'),
+      ('public.delete_ad_campaign(uuid)', '03100c6f93d056b76cc6e839ba17f2f7'),
+      ('public.add_ad_concepts(uuid, text, jsonb)', '3dc299ada52f732782fb21b443327c21'),
+      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', 'bcc4a24774ed10f0f32b6b49a1b4b31c'),
+      ('public.set_ad_concept_status(uuid, text)', '2dc00601b38a309c19176bb786bac11b'),
+      ('public.delete_ad_concept(uuid)', 'b7d4b35b581b130191efb1b29423c41f')
     ) v(sig, want)
   loop
     select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) into got from pg_proc where oid = to_regprocedure(r.sig);

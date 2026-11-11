@@ -43,7 +43,7 @@ const ID = (n: number) => `0a000000-0000-4000-8000-${String(n).padStart(12, "0")
 describe("text cleaning (the same answers as 0131's ads_clean_text)", () => {
   it("a single line: line breaks and tabs become one space, invisible characters go, the ends are trimmed", () => {
     expect(cleanLine(`  Ac${ZW}me${cp(7)} ${RLO}Co\r\nLtd${BOM} `)).toBe("Acme Co Ltd");
-    expect(cleanLine(`a\tb\n c${ZW}${RLO} d${cp(1)} `)).toBe("a b  c d");
+    expect(cleanLine(`a\tb\n c${ZW}${RLO} d${cp(1)} `)).toBe("a b c d");
     expect(cleanLine(`one${LSEP}two`)).toBe("one two");
     expect(cleanLine(`${ZW}${ZW}`)).toBe("");
     expect(cleanLine(null)).toBe("");
@@ -88,6 +88,18 @@ describe("text cleaning (the same answers as 0131's ads_clean_text)", () => {
       expect(cleanLine(c.repeat(3)), point.toString(16)).toBe("");
       expect(cleanBlock(c.repeat(3)), point.toString(16)).toBe("");
     }
+  });
+
+  it("reads a run of spaces as one space, whatever made it, in both kinds of field (the same answers as 0131)", () => {
+    const ideo = cp(0x3000);
+    const nb = cp(0xa0);
+    expect(cleanLine(`   x ${ideo} y  z `)).toBe("x y z");
+    expect(cleanBlock(`   x ${ideo} y  z `)).toBe("x y z");
+    expect(cleanLine(`a${nb}${nb}${ZW} ${cp(0x2003)}b`)).toBe("a b");
+    expect(cleanLine("a \n\t\n b")).toBe("a b");
+    expect(cleanBlock("a \n\t\n b")).toBe("a \n\n b");
+    expect(cleanLine(`Tea${ZW}  pot`)).toBe("Tea pot");
+    expect(parseKitInput({ name: `  Brand ${ideo}${ideo} A  ` })).toMatchObject({ ok: true, value: { name: "Brand A" } });
   });
 
   it("reads every blank-looking space as one ordinary space", () => {

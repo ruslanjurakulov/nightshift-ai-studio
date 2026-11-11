@@ -76,17 +76,22 @@ character nobody sees are removed: the class the comment inbox removes (BR-L-120
 shared `tests/fixtures/inbox_cleaner_cases.txt`), which includes the whole Unicode tag block U+E0000-E0FFF (a hidden-instruction
 channel to a model: the visual brief is what Phase 3 hands an image model), every variation selector (U+FE00-FE0F, U+E0100-E01EF; ads
 text drops U+FE0E/U+FE0F too), the Hangul fillers, the braille blank, the Arabic letter mark and the Mongolian vowel separator. The
-blank-looking spaces (no-break, ideographic, U+2000-200A and the like) read as one space, so a name of nothing but blanks or fillers is
+blank-looking spaces (no-break, ideographic, U+2000-200A and the like) are spaces and a run of spaces reads as one, so a name of nothing but blanks or fillers is
 empty and refused. A single-line field reads a run of line breaks or tabs as one space; a multi-line field keeps line breaks only.
 The text is cleaned only after sign-in and membership are checked. Nothing renders it as
 HTML (`tests/ads-factory-routes.test.ts` scans for `dangerouslySetInnerHTML`). A colour reaches a style attribute only as a checked
 `#rrggbb`. A font is a name of letters, digits, space, dot, underscore, apostrophe and hyphen: never a URL, a CSS value or a file.
 
-**Locks.** Every function that writes a kit, a product or a campaign takes its locks in one order: the row it changes `FOR NO KEY
-UPDATE`, then the organization's advisory lock, then the writes (a delete upgrades its row lock only then). A `FOR UPDATE` taken before
-the organization's lock blocked the `FOR KEY SHARE` an insert's foreign key check takes on its parent (a concept on its campaign, a
-product on its kit, a campaign line on its product) while that insert's writer held the organization's lock: a deadlock (40P01). The
-lab (`tests/security/test_sec_ads_factory.py`) races each pair for many rounds and asserts none.
+**Locks.** No function holds a row lock while it waits for the organization's advisory lock. Each writer of a kit, a product or a
+campaign reads its row without a lock, checks sign-in, membership and the editor role, takes the organization's lock, and only then
+locks the row `FOR NO KEY UPDATE` and reads it again (gone meanwhile: `not_found`). What else decides the write (the kit of a new
+product or campaign, the campaign of a concept press, the products a campaign names) is read again under the organization's lock too,
+so a row deleted a moment ago is `not_found` or `invalid_products`, never a foreign key error. Why: the holder of the organization's
+lock may be deleting a parent whose cascade must lock that row (a kit takes its products, a product its campaign lines, a campaign its
+lines and concepts) or inserting a child whose foreign key check needs `FOR KEY SHARE` on it; a row lock taken first made the two wait
+for each other (40P01). The concept functions lock one concept row after the membership check and take no organization lock, so a
+cascade that waits for them always finishes. The lab (`tests/security/test_sec_ads_factory.py`) races each pair, with a fresh kit,
+product, campaign or concept every round, and asserts no deadlock and no foreign key error.
 
 ### Known limits (Phase 1)
 
@@ -95,10 +100,10 @@ lab (`tests/security/test_sec_ads_factory.py`) races each pair for many rounds a
   key plus their own session): only in an organization where they are an editor, within the caps, with every check of this page. Rows
   made that way are real rows, and the rollback refuses while any exist unless the owner sets `nightshift.ads_rollback_delete_rows`.
   To stop creates without a deploy, set every cap to 0. (The caps' numbers are the owner's decision and are not changed here.)
-- **An id's existence can be timed.** As in 0047 (style kits), a function locks the row it was given before it checks membership.
-  Another organization's id and a made-up id get the same answer (`not_found`), but a caller who guesses a real id of another
-  organization while its owner is writing that row waits for the owner's transaction, and a made-up id does not. Ids are random
-  uuids and no content is revealed. Left as 0047 has it (closing it would mean an unlocked membership read before the lock).
+- **An id's existence by timing: closed here.** 0047 (style kits) locks the row it was given before it checks membership, so a caller
+  guessing another organization's id could wait on its owner's write. 0131's functions read the row without a lock and check
+  membership first (the lock order above), so another organization's id, a made-up id and a busy row answer `not_found` alike,
+  without waiting. 0047 itself is unchanged.
 - **The site address is a shape check, not an SSRF control** (above): Phase 2 must resolve and pin a public address when it fetches.
 
 ### The workspace (Command Center)

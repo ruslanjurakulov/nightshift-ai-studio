@@ -64,7 +64,7 @@
 --
 -- THE TEXT. Every text a person types is stored cleaned and length-capped, by the function AND by a check on the table: control characters and
 -- every character nobody sees (the class the comment inbox removes, BR-L-120, with the Unicode tag block, every variation selector and the
--- Hangul and braille fillers; ads_clean_text lists it) are removed, the blank-looking spaces read as one space, a single-line field has its
+-- Hangul and braille fillers; ads_clean_text lists it) are removed, a run of spaces (blank-looking ones included) is one space, a single-line field has its
 -- line breaks read as one space, a multi-line field keeps its line breaks only, and a text of nothing but blanks is empty (refused where a
 -- character is needed). Nothing here renders text as HTML and nothing here sends it to a model. site_url is refused unless it is https, a
 -- lower-case DNS name with a letter top-level label (so no IP literal, no `localhost`), no user:password, no port and printable ASCII after
@@ -118,8 +118,8 @@ declare
 begin
   for r in
     select * from (values
-      ('public.ads_clean_text(text, boolean)', '53ecd0c6309be86c4e134da323146e61'),
-      ('public.ads_text_ok(text, integer, integer, boolean)', '78ebe62fa220880ef2494563ab6cad99'),
+      ('public.ads_clean_text(text, boolean)', 'eb0cb2be33ffcb6213e858d445863bb2'),
+      ('public.ads_text_ok(text, integer, integer, boolean)', '52994765248e75d72c40c690113819ce'),
       ('public.ads_text_list_ok(text[], integer, integer)', '3a5bd8e451a350dd799c9b49f6bb5061'),
       ('public.ads_palette_ok(text[])', '94dfa0449defc9f2907f6e7ba9a00243'),
       ('public.ads_closed_list_ok(text[], text[], integer, integer)', 'd932104160cc4768d10342395e74128d'),
@@ -130,16 +130,16 @@ begin
       ('public.ad_concepts_guard()', '8f2f17776e0e93af231a1aec923ead88'),
       ('public.ads_factory_cap_settings_guard()', '51dafe4ec2c9f35974e9ff8289a6106b'),
       ('public.ads_factory_cap_settings_trail()', '986d228f1ab027e44e8a6837a1a49b3e'),
-      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', 'c6d162ea7c8abd3fa78243a1b3b6ae88'),
-      ('public.delete_brand_kit(uuid)', '38a605d9ff0aa9a8d49526c5f0e32733'),
-      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', '16de653c6557c7be611d4a6be2eeabd6'),
-      ('public.delete_brand_product(uuid)', '7f1f41e614b47c3762cc49a08867a39d'),
-      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', '05765d4994fc9a9a0bf0f090f7692b23'),
-      ('public.delete_ad_campaign(uuid)', 'f40f5bd45d120c36e095a5a659cdd347'),
-      ('public.add_ad_concepts(uuid, text, jsonb)', 'ef6ece5fadc12da31a3706be99095263'),
-      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', '92f3faa8775c9cceb6d867d632567002'),
-      ('public.set_ad_concept_status(uuid, text)', '0f4a08254f801319c12718f319dfa612'),
-      ('public.delete_ad_concept(uuid)', '821913088f82cc84b7aba3398c5bf029')
+      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', '28551886babbea8267dccf3422d03745'),
+      ('public.delete_brand_kit(uuid)', '2635341c6f8197af5a99b91d7f8ffcfb'),
+      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', 'f00193c3989a989981f0d8179108c201'),
+      ('public.delete_brand_product(uuid)', 'aca660b2900525114369e581ee8eedd4'),
+      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', '48077ccfd1968be7f3535d9777db2c6f'),
+      ('public.delete_ad_campaign(uuid)', '03100c6f93d056b76cc6e839ba17f2f7'),
+      ('public.add_ad_concepts(uuid, text, jsonb)', '3dc299ada52f732782fb21b443327c21'),
+      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', 'bcc4a24774ed10f0f32b6b49a1b4b31c'),
+      ('public.set_ad_concept_status(uuid, text)', '2dc00601b38a309c19176bb786bac11b'),
+      ('public.delete_ad_concept(uuid)', 'b7d4b35b581b130191efb1b29423c41f')
     ) v(sig, want)
   loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = to_regprocedure(r.sig);
@@ -162,8 +162,9 @@ end $$;
 -- and the whole Unicode tag block U+E0000-E0FFF (text spelled in tag characters is invisible and is a hidden-instruction channel to a model:
 -- visual_brief is what a later phase hands an image model). So a name cannot be made to read as another brand's, and nothing hides in a brief.
 -- A single-line field reads a run of line breaks or tabs as one space; a multi-line field keeps its line breaks (\r\n and \r folded to \n) and
--- nothing else. The blank-looking spaces (no-break, ogham, U+2000-200A, narrow no-break, medium mathematical, ideographic) read as one ordinary
--- space. Trimmed: a text of nothing but spaces and the fillers above cleans to '' and is refused wherever the field needs a character.
+-- nothing else. The blank-looking spaces (no-break, ogham, U+2000-200A, narrow no-break, medium mathematical, ideographic) are spaces, and a
+-- run of spaces (whatever was removed between them) reads as one. Trimmed: a text of nothing but spaces and the fillers above cleans to ''
+-- and is refused wherever the field needs a character.
 create or replace function public.ads_clean_text(p_text text, p_multiline boolean) returns text
   language sql immutable set search_path = public, pg_temp as $$
   select btrim(regexp_replace(regexp_replace(
@@ -174,11 +175,11 @@ create or replace function public.ads_clean_text(p_text text, p_multiline boolea
                 then '[\x01-\x09\x0b-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff]'
                 else '[\x01-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff]' end,
            '', 'g'),
-           '[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]', ' ', 'g'), E' \n')
+           '[ \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]+', ' ', 'g'), E' \n')
 $$;
 
 -- The same rule as a yes/no, for the checks on the tables: the text is already clean (what ads_clean_text would return: no character of the
--- class, no blank-looking space, nothing to trim) and within its length, so a text that needs a character holds one a person can see.
+-- class, no blank-looking space, no two spaces in a row, nothing to trim) and within its length, so a text that needs a character holds one a person can see.
 -- A check on the table is what holds for a writer that is not one of this file's functions.
 create or replace function public.ads_text_ok(p_text text, p_min integer, p_max integer, p_multiline boolean) returns boolean
   language sql immutable set search_path = public, pg_temp as $$
@@ -189,6 +190,7 @@ create or replace function public.ads_text_ok(p_text text, p_min integer, p_max 
                          then '[\x01-\x09\x0b-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff]'
                          else '[\x01-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff]' end)
      and p_text !~ '[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]'
+     and position('  ' in p_text) = 0
 $$;
 
 -- A list of NAMES (font names): at most p_max, no null, no duplicate, each 1..p_len characters of letters, digits, space, dot, underscore,
@@ -669,13 +671,17 @@ $$;
 -- 5. Brand kits
 -- ───────────────────────────────────────────────────────────────────────────
 
--- LOCK ORDER (every function below that writes a kit, a product or a campaign): first the row it changes, FOR NO KEY UPDATE; then the
--- organization's advisory lock (pg_advisory_xact_lock(hashtextextended('ads_factory:' || org, 0))); then the writes. A row lock taken
--- before the organization's lock must never block FOR KEY SHARE, the lock the foreign key check of an insert takes on its parent row:
--- the writer that holds the organization's lock may be inserting a child of that very row (a concept of the campaign, a product of the
--- kit, a campaign line naming the product), and a FOR UPDATE here made the two wait for each other (40P01). A delete upgrades its row
--- lock only under the organization's lock, when no such insert can be running. The concept functions lock one concept row, which
--- nothing references, and take no organization lock. tests/security/test_sec_ads_factory.py races every pair.
+-- LOCK ORDER (every function below that writes a kit, a product, a campaign or a concept). No function holds a row lock while it waits for
+-- the organization's advisory lock (pg_advisory_xact_lock(hashtextextended('ads_factory:' || org, 0))). Each one reads the row it was
+-- given WITHOUT a lock, checks sign-in, membership and the editor role (so a stranger never waits on, or for, another organization's
+-- row), takes the organization's lock, and only then locks the row FOR NO KEY UPDATE and reads it again: a row deleted meanwhile is
+-- `not_found`, never a foreign key error. Every other row it reads to decide (the kit of a new product or campaign, the campaign of a
+-- concept press, the products a campaign names) is read again under the organization's lock too. Why: a writer that holds the
+-- organization's lock may be deleting a parent whose cascade must lock this very row (a kit takes its products, a product its campaign
+-- lines, a campaign its lines and concepts), or inserting a child whose foreign key check needs FOR KEY SHARE on it; a row lock taken
+-- before the organization's lock made the two wait for each other (40P01). The concept functions lock one concept row (nothing
+-- references a concept) and take no organization lock: they never wait for a holder of it, so a cascade that waits for them always
+-- finishes. tests/security/test_sec_ads_factory.py races each of these pairs.
 
 -- p_kit null: create a kit in p_org. p_kit set: replace that kit's fields (its organization is the kit's own; p_org, if given, must agree).
 -- Returns the kit id.
@@ -697,8 +703,8 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
   if p_kit is not null then
-    select * into k from public.brand_kits where id = p_kit for no key update;
-    -- Another organization's kit reads as missing, never as "forbidden".
+    select * into k from public.brand_kits where id = p_kit;
+    -- Another organization's kit reads as missing, never as "forbidden". No lock yet: see LOCK ORDER above.
     if not found or not public.is_org_member(k.org_id) or (p_org is not null and p_org <> k.org_id) then
       raise exception 'not_found' using errcode = 'P0002';
     end if;
@@ -737,6 +743,12 @@ begin
 
   -- One writer per organization at a time: the caps hold under parallel requests.
   perform pg_advisory_xact_lock(hashtextextended('ads_factory:' || v_org::text, 0));
+  if p_kit is not null then
+    select * into k from public.brand_kits where id = p_kit for no key update;
+    if not found or k.org_id <> v_org then
+      raise exception 'not_found' using errcode = 'P0002';
+    end if;
+  end if;
 
   if p_kit is null then
     select s.kits_per_org into v_cap from public.ads_factory_cap_settings s;
@@ -767,7 +779,7 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into k from public.brand_kits where id = p_kit for no key update;
+  select * into k from public.brand_kits where id = p_kit;
   if not found or not public.is_org_member(k.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
@@ -775,6 +787,10 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('ads_factory:' || k.org_id::text, 0));
+  perform 1 from public.brand_kits where id = k.id for no key update;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
   if exists (select 1 from public.ad_campaigns where kit_id = k.id) then
     raise exception 'kit_in_use' using errcode = 'NS409';
   end if;
@@ -806,7 +822,7 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
   if p_product is not null then
-    select * into pr from public.brand_products where id = p_product for no key update;
+    select * into pr from public.brand_products where id = p_product;
     if not found or not public.is_org_member(pr.org_id) or (p_kit is not null and p_kit <> pr.kit_id) then
       raise exception 'not_found' using errcode = 'P0002';
     end if;
@@ -836,6 +852,17 @@ begin
   perform public.ads_check_images(k.org_id, p_images, 4);
 
   perform pg_advisory_xact_lock(hashtextextended('ads_factory:' || k.org_id::text, 0));
+  -- Read again under the organization's lock: a kit or a product deleted meanwhile is not_found.
+  perform 1 from public.brand_kits where id = k.id;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  if p_product is not null then
+    select * into pr from public.brand_products where id = p_product for no key update;
+    if not found or pr.kit_id <> k.id then
+      raise exception 'not_found' using errcode = 'P0002';
+    end if;
+  end if;
 
   if p_product is null then
     select s.products_per_kit into v_cap from public.ads_factory_cap_settings s;
@@ -870,7 +897,7 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into pr from public.brand_products where id = p_product for no key update;
+  select * into pr from public.brand_products where id = p_product;
   if not found or not public.is_org_member(pr.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
@@ -879,6 +906,10 @@ begin
   end if;
   -- The delete (and the campaign rows it takes with it) waits for any writer of the organization that is linking this product right now.
   perform pg_advisory_xact_lock(hashtextextended('ads_factory:' || pr.org_id::text, 0));
+  perform 1 from public.brand_products where id = pr.id for no key update;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
   delete from public.brand_products where id = pr.id;
   return true;
 end
@@ -906,7 +937,7 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
   if p_campaign is not null then
-    select * into c from public.ad_campaigns where id = p_campaign for no key update;
+    select * into c from public.ad_campaigns where id = p_campaign;
     if not found or not public.is_org_member(c.org_id) or (p_kit is not null and p_kit <> c.kit_id) then
       raise exception 'not_found' using errcode = 'P0002';
     end if;
@@ -938,14 +969,25 @@ begin
   if p_directions is null or not public.ads_closed_list_ok(p_directions, array['spotlight', 'editorial', 'minimal', 'lifestyle', 'bold'], 1, 3) then
     raise exception 'invalid_directions' using errcode = 'NS400';
   end if;
-  -- 1..20 products, each one of THIS kit's. Another kit's, another organization's and a made-up id are the same refusal.
+  perform pg_advisory_xact_lock(hashtextextended('ads_factory:' || k.org_id::text, 0));
+  -- Read again under the organization's lock: a kit or a campaign deleted meanwhile is not_found.
+  perform 1 from public.brand_kits where id = k.id;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  if p_campaign is not null then
+    select * into c from public.ad_campaigns where id = p_campaign for no key update;
+    if not found or c.kit_id <> k.id then
+      raise exception 'not_found' using errcode = 'P0002';
+    end if;
+  end if;
+  -- 1..20 products, each one of THIS kit's. Another kit's, another organization's and a made-up id are the same refusal. Checked under the
+  -- organization's lock, so a product deleted a moment ago is this refusal too, never a foreign key error.
   if n not between 1 and 20 or array_ndims(p_products) <> 1 or array_position(p_products, null) is not null
      or (select count(distinct x) from unnest(p_products) x) <> n
      or (select count(*) from public.brand_products p where p.id = any (p_products) and p.kit_id = k.id and p.org_id = k.org_id) <> n then
     raise exception 'invalid_products' using errcode = 'NS400', detail = 'min=1 max=20';
   end if;
-
-  perform pg_advisory_xact_lock(hashtextextended('ads_factory:' || k.org_id::text, 0));
 
   if p_campaign is null then
     select s.campaigns_per_org into v_cap from public.ads_factory_cap_settings s;
@@ -981,7 +1023,7 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into c from public.ad_campaigns where id = p_campaign for no key update;
+  select * into c from public.ad_campaigns where id = p_campaign;
   if not found or not public.is_org_member(c.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
@@ -990,6 +1032,10 @@ begin
   end if;
   -- The delete waits for a press that is adding concepts to this campaign right now, instead of failing it half-way.
   perform pg_advisory_xact_lock(hashtextextended('ads_factory:' || c.org_id::text, 0));
+  perform 1 from public.ad_campaigns where id = c.id for no key update;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
   delete from public.ad_campaigns where id = c.id;
   return true;
 end
@@ -1048,6 +1094,11 @@ begin
   v_hash := md5(p_concepts::text);
 
   perform pg_advisory_xact_lock(hashtextextended('ads_factory:' || c.org_id::text, 0));
+  -- Read again under the organization's lock: a campaign deleted meanwhile is not_found, and an edit that held the lock is seen.
+  select * into c from public.ad_campaigns where id = p_campaign;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
 
   select batch_hash into v_prior from public.ad_concepts where campaign_id = c.id and batch_key = p_batch limit 1;
   if v_prior is not null then
@@ -1155,12 +1206,17 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into x from public.ad_concepts where id = p_concept for update;
+  select * into x from public.ad_concepts where id = p_concept;
   if not found or not public.is_org_member(x.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
   if not public.is_org_member(x.org_id, 'editor') then
     raise exception 'forbidden' using errcode = '42501';
+  end if;
+  -- Locked only now (nobody waits on another organization's row), and read again: a concept deleted meanwhile is not_found.
+  select * into x from public.ad_concepts where id = p_concept for update;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
   end if;
   if x.status <> 'draft' then
     raise exception 'concept_not_draft' using errcode = 'NS409';
@@ -1223,12 +1279,17 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into x from public.ad_concepts where id = p_concept for update;
+  select * into x from public.ad_concepts where id = p_concept;
   if not found or not public.is_org_member(x.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
   if not public.is_org_member(x.org_id, 'editor') then
     raise exception 'forbidden' using errcode = '42501';
+  end if;
+  -- Locked only now (nobody waits on another organization's row), and read again: a concept deleted meanwhile is not_found.
+  select * into x from public.ad_concepts where id = p_concept for update;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
   end if;
   if p_status is null or p_status not in ('draft', 'approved', 'archived') then
     raise exception 'invalid_status' using errcode = 'NS400';
@@ -1258,12 +1319,17 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into x from public.ad_concepts where id = p_concept for update;
+  select * into x from public.ad_concepts where id = p_concept;
   if not found or not public.is_org_member(x.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
   if not public.is_org_member(x.org_id, 'editor') then
     raise exception 'forbidden' using errcode = '42501';
+  end if;
+  -- Locked only now (nobody waits on another organization's row), and read again: a concept deleted meanwhile is not_found.
+  select * into x from public.ad_concepts where id = p_concept for update;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
   end if;
   delete from public.ad_concepts where id = x.id;
   return true;
@@ -1373,8 +1439,8 @@ declare
 begin
   for r in
     select * from (values
-      ('public.ads_clean_text(text, boolean)', '53ecd0c6309be86c4e134da323146e61', false),
-      ('public.ads_text_ok(text, integer, integer, boolean)', '78ebe62fa220880ef2494563ab6cad99', false),
+      ('public.ads_clean_text(text, boolean)', 'eb0cb2be33ffcb6213e858d445863bb2', false),
+      ('public.ads_text_ok(text, integer, integer, boolean)', '52994765248e75d72c40c690113819ce', false),
       ('public.ads_text_list_ok(text[], integer, integer)', '3a5bd8e451a350dd799c9b49f6bb5061', false),
       ('public.ads_palette_ok(text[])', '94dfa0449defc9f2907f6e7ba9a00243', false),
       ('public.ads_closed_list_ok(text[], text[], integer, integer)', 'd932104160cc4768d10342395e74128d', false),
@@ -1385,16 +1451,16 @@ begin
       ('public.ad_concepts_guard()', '8f2f17776e0e93af231a1aec923ead88', false),
       ('public.ads_factory_cap_settings_guard()', '51dafe4ec2c9f35974e9ff8289a6106b', false),
       ('public.ads_factory_cap_settings_trail()', '986d228f1ab027e44e8a6837a1a49b3e', false),
-      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', 'c6d162ea7c8abd3fa78243a1b3b6ae88', true),
-      ('public.delete_brand_kit(uuid)', '38a605d9ff0aa9a8d49526c5f0e32733', true),
-      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', '16de653c6557c7be611d4a6be2eeabd6', true),
-      ('public.delete_brand_product(uuid)', '7f1f41e614b47c3762cc49a08867a39d', true),
-      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', '05765d4994fc9a9a0bf0f090f7692b23', true),
-      ('public.delete_ad_campaign(uuid)', 'f40f5bd45d120c36e095a5a659cdd347', true),
-      ('public.add_ad_concepts(uuid, text, jsonb)', 'ef6ece5fadc12da31a3706be99095263', true),
-      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', '92f3faa8775c9cceb6d867d632567002', true),
-      ('public.set_ad_concept_status(uuid, text)', '0f4a08254f801319c12718f319dfa612', true),
-      ('public.delete_ad_concept(uuid)', '821913088f82cc84b7aba3398c5bf029', true)
+      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', '28551886babbea8267dccf3422d03745', true),
+      ('public.delete_brand_kit(uuid)', '2635341c6f8197af5a99b91d7f8ffcfb', true),
+      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', 'f00193c3989a989981f0d8179108c201', true),
+      ('public.delete_brand_product(uuid)', 'aca660b2900525114369e581ee8eedd4', true),
+      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', '48077ccfd1968be7f3535d9777db2c6f', true),
+      ('public.delete_ad_campaign(uuid)', '03100c6f93d056b76cc6e839ba17f2f7', true),
+      ('public.add_ad_concepts(uuid, text, jsonb)', '3dc299ada52f732782fb21b443327c21', true),
+      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', 'bcc4a24774ed10f0f32b6b49a1b4b31c', true),
+      ('public.set_ad_concept_status(uuid, text)', '2dc00601b38a309c19176bb786bac11b', true),
+      ('public.delete_ad_concept(uuid)', 'b7d4b35b581b130191efb1b29423c41f', true)
     ) v(sig, want, member)
   loop
     fn := to_regprocedure(r.sig);

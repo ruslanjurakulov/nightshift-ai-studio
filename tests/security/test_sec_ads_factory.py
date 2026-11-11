@@ -726,7 +726,7 @@ def test_concurrent_presses_cannot_both_pass_the_campaign_cap(conn, sc):
 
 def _duel(conn, who, first, second, rounds):
     """Two real connections calling at the same moment, `rounds` times over; each call is its own transaction, committed. Every outcome
-    comes back, per side: "ok" or the SQLSTATE of the refusal."""
+    comes back, per side and in round order: "ok", or the SQLSTATE and the first word of the refusal ("P0002 not_found")."""
     gate = threading.Barrier(2, timeout=30)
     results = ([], [])
     broken = []
@@ -745,7 +745,7 @@ def _duel(conn, who, first, second, rounds):
                         results[k].append("ok")
                     except psycopg.Error as e:
                         c.rollback()
-                        results[k].append(e.sqlstate)
+                        results[k].append(f"{e.sqlstate} {(str(e).strip().split() or [''])[0]}")
         except Exception as e:                                     # a broken barrier: the other side died
             broken.append(repr(e))
             gate.abort()
@@ -759,7 +759,18 @@ def _duel(conn, who, first, second, rounds):
     return results
 
 
+def _outcomes(*sides):
+    """What came back, for an assertion message: each distinct outcome with how often."""
+    return [sorted((x, side.count(x)) for x in set(side)) for side in sides]
+
+
+def _deadlocks(*sides):
+    return sum(1 for side in sides for x in side if x.startswith("40P01"))
+
+
 ROUNDS = 120
+POOL = 100
+NOT_FOUND = "P0002 not_found"
 
 
 def _edit_campaign(i):
@@ -771,17 +782,16 @@ def _edit_kit(i):
 
 
 def test_editing_a_campaign_while_concepts_are_added_to_it_never_deadlocks(conn, sc):
-    """save_ad_campaign (an edit) locks the campaign row and then takes the organization's lock; add_ad_concepts takes the organization's
-    lock and then its insert needs FOR KEY SHARE on the same campaign row. A FOR UPDATE row lock made the two wait for each other
-    (40P01); FOR NO KEY UPDATE does not block a key share, so both always finish."""
+    """save_ad_campaign (an edit) and add_ad_concepts on the same campaign: the edit's campaign row and the press's foreign key check on
+    it. With a row lock taken before the organization's lock the two waited for each other (40P01)."""
     tag = f"duel-{uuid.uuid4().hex[:8]}"
     restore = _caps_for_a_race(conn, concepts_per_campaign=200)
     try:
         edits, adds = _duel(conn, sc.alice.actor, (SAVE_CAMPAIGN, _edit_campaign),
                             (ADD_CONCEPTS, lambda i: [CAMPAIGN["a"], f"{tag}-{i:04d}", json.dumps([concept(PRODUCTS["a"][0], headline=f"Duel {i}")])]),
                             ROUNDS)
-        assert "40P01" not in edits + adds, (edits.count("40P01"), adds.count("40P01"))
-        assert edits == ["ok"] * ROUNDS and adds == ["ok"] * ROUNDS, (sorted(set(edits)), sorted(set(adds)))
+        assert not _deadlocks(edits, adds), _outcomes(edits, adds)
+        assert edits == ["ok"] * ROUNDS and adds == ["ok"] * ROUNDS, _outcomes(edits, adds)
         with as_superuser(conn, commit=False) as s:
             assert s.value("select count(*) from public.ad_concepts where batch_key like %s", [tag + "%"]) == ROUNDS
             assert s.value("select array_agg(product_id::text order by position) from public.ad_campaign_products where campaign_id = %s",
@@ -793,15 +803,14 @@ def test_editing_a_campaign_while_concepts_are_added_to_it_never_deadlocks(conn,
 
 
 def test_editing_a_kit_while_products_are_added_to_it_never_deadlocks(conn, sc):
-    """save_brand_kit (an edit) locks the kit row and then takes the organization's lock; save_brand_product (a new product) takes the
-    organization's lock and then its insert needs FOR KEY SHARE on the kit row. The same cycle, closed the same way."""
+    """save_brand_kit (an edit) and a new product of the same kit: the edit's kit row and the insert's foreign key check on it."""
     tag = f"duel-{uuid.uuid4().hex[:8]}"
     restore = _caps_for_a_race(conn, products_per_kit=200)
     try:
         edits, adds = _duel(conn, sc.alice.actor, (SAVE_KIT, _edit_kit),
                             (SAVE_PRODUCT, lambda i: [KIT["a"], None, f"{tag}-{i:04d}", "", "", []]), ROUNDS)
-        assert "40P01" not in edits + adds, (edits.count("40P01"), adds.count("40P01"))
-        assert edits == ["ok"] * ROUNDS and adds == ["ok"] * ROUNDS, (sorted(set(edits)), sorted(set(adds)))
+        assert not _deadlocks(edits, adds), _outcomes(edits, adds)
+        assert edits == ["ok"] * ROUNDS and adds == ["ok"] * ROUNDS, _outcomes(edits, adds)
         with as_superuser(conn, commit=False) as s:
             assert s.value("select count(*) from public.brand_products where title like %s", [tag + "%"]) == ROUNDS
     finally:
@@ -811,69 +820,164 @@ def test_editing_a_kit_while_products_are_added_to_it_never_deadlocks(conn, sc):
 
 
 def test_editing_a_product_while_its_campaign_is_edited_never_deadlocks(conn, sc):
-    """save_brand_product (an edit) locks the product row and then takes the organization's lock; save_ad_campaign takes the organization's
-    lock and then its campaign-product insert needs FOR KEY SHARE on that product row."""
+    """save_brand_product (an edit) and save_ad_campaign naming that product: the product row and the campaign line's foreign key check."""
     edits, campaigns = _duel(conn, sc.alice.actor, (SAVE_PRODUCT, lambda i: [None, PRODUCTS["a"][1], "Product A2", "", "", []]),
                              (SAVE_CAMPAIGN, _edit_campaign), ROUNDS)
-    assert "40P01" not in edits + campaigns, (edits.count("40P01"), campaigns.count("40P01"))
-    assert edits == ["ok"] * ROUNDS and campaigns == ["ok"] * ROUNDS, (sorted(set(edits)), sorted(set(campaigns)))
+    assert not _deadlocks(edits, campaigns), _outcomes(edits, campaigns)
+    assert edits == ["ok"] * ROUNDS and campaigns == ["ok"] * ROUNDS, _outcomes(edits, campaigns)
+
+
+def _pool(conn, sc, tag, *, products=False, campaigns=False, concepts=False):
+    """POOL fresh rows of organization A, written by the database owner, one set per round: a kit, and on request a product of it, a
+    campaign of the kit naming the product, and an image concept of the campaign."""
+    rows = []
+    with as_superuser(conn) as s:
+        for i in range(POOL):
+            r = {"kit": str(s.value("insert into public.brand_kits (org_id, name) values (%s, %s) returning id", [sc.alice.org, f"{tag}-{i:04d}"]))}
+            if products:
+                r["product"] = str(s.value("insert into public.brand_products (kit_id, org_id, title) values (%s, %s, %s) returning id",
+                                           [r["kit"], sc.alice.org, f"{tag}-{i:04d}"]))
+            if campaigns:
+                r["campaign"] = str(s.value("insert into public.ad_campaigns (org_id, kit_id, name, objective, language, formats, directions) "
+                                            "values (%s, %s, %s, 'sales', 'en', '{1:1}', '{spotlight}') returning id",
+                                            [sc.alice.org, r["kit"], f"{tag}-{i:04d}"]))
+                s.conn.execute("insert into public.ad_campaign_products (campaign_id, org_id, kit_id, product_id, position) "
+                               "values (%s, %s, %s, %s, 0)", [r["campaign"], sc.alice.org, r["kit"], r["product"]])
+            if concepts:
+                r["concept"] = str(s.value("insert into public.ad_concepts (campaign_id, org_id, product_id, format, direction, kind, headline, "
+                                           "batch_key, batch_n, batch_hash) values (%s, %s, %s, '1:1', 'spotlight', 'image', 'Pool', %s, 0, %s) "
+                                           "returning id", [r["campaign"], sc.alice.org, r["product"], f"{tag}-{i:04d}", "0" * 32]))
+            rows.append(r)
+    return rows
+
+
+def _drop_pool(conn, sc, tag):
+    with as_superuser(conn) as s:
+        s.conn.execute("delete from public.ad_campaigns where org_id = %s and name like %s", [sc.alice.org, tag + "%"])
+        s.conn.execute("delete from public.brand_kits where org_id = %s and name like %s", [sc.alice.org, tag + "%"])
 
 
 def test_deleting_a_kit_while_a_product_is_added_to_it_never_deadlocks(conn, sc):
-    """delete_brand_kit locks the kit row and then takes the organization's lock; a new product takes the lock and then needs FOR KEY
-    SHARE on that kit. Each round deletes a fresh kit while a product is added to it: the delete always succeeds, the product is either
-    made first (and goes with its kit) or finds its kit gone, and nobody deadlocks."""
+    """delete_brand_kit and a new product of that kit. The delete always succeeds; the product is made first (and goes with its kit) or
+    finds its kit gone (not_found, never a foreign key error), and nobody deadlocks."""
     tag = f"duel-{uuid.uuid4().hex[:8]}"
-    rounds = 150
-    with as_superuser(conn) as s:
-        kits = [str(s.value("insert into public.brand_kits (org_id, name) values (%s, %s) returning id", [sc.alice.org, f"{tag}-{i:04d}"]))
-                for i in range(rounds)]
+    pool = _pool(conn, sc, tag)
     try:
-        deletes, adds = _duel(conn, sc.alice.actor, ("select public.delete_brand_kit(%s)", lambda i: [kits[i]]),
-                              (SAVE_PRODUCT, lambda i: [kits[i], None, f"{tag}-p{i:04d}", "", "", []]), rounds)
-        assert "40P01" not in deletes + adds, (deletes.count("40P01"), adds.count("40P01"))
-        assert deletes == ["ok"] * rounds, sorted(set(deletes))
-        assert set(adds) <= {"ok", "P0002", "23503"}, sorted(set(adds))
+        deletes, adds = _duel(conn, sc.alice.actor, ("select public.delete_brand_kit(%s)", lambda i: [pool[i]["kit"]]),
+                              (SAVE_PRODUCT, lambda i: [pool[i]["kit"], None, f"{tag}-p{i:04d}", "", "", []]), POOL)
+        assert not _deadlocks(deletes, adds), _outcomes(deletes, adds)
+        assert deletes == ["ok"] * POOL, _outcomes(deletes)
+        assert set(adds) <= {"ok", NOT_FOUND}, _outcomes(adds)
         with as_superuser(conn, commit=False) as s:
             assert s.value("select count(*) from public.brand_kits where name like %s", [tag + "%"]) == 0
             assert s.value("select count(*) from public.brand_products where title like %s", [tag + "%"]) == 0
     finally:
-        with as_superuser(conn) as s:
-            s.conn.execute("delete from public.brand_kits where org_id = %s and name like %s", [sc.alice.org, tag + "%"])
+        _drop_pool(conn, sc, tag)
 
 
-def test_deleting_a_product_while_its_campaign_is_edited_never_deadlocks(conn, sc):
-    """delete_brand_product deletes the product, and with it the campaign's row naming it; save_ad_campaign (an edit) deletes the campaign's
-    rows and writes them again, which needs FOR KEY SHARE on the product. Each round deletes a fresh product while its campaign is saved
-    with it: the delete always succeeds, the edit either lands first or finds the product gone, and nobody deadlocks."""
+def test_deleting_a_kit_while_one_of_its_products_is_edited_never_deadlocks(conn, sc):
+    """delete_brand_kit cascades to every product of the kit, and so needs each product row; save_brand_product (an edit) locks its
+    product. With that lock taken before the organization's lock, the edit held the product the delete's cascade needed while it waited
+    for the lock the delete held (40P01)."""
     tag = f"duel-{uuid.uuid4().hex[:8]}"
-    rounds = 150
-    restore = _caps_for_a_race(conn, products_per_kit=200, campaigns_per_org=200)
-    with as_superuser(conn) as s:
-        pairs = []
-        for i in range(rounds):
-            p = str(s.value("insert into public.brand_products (kit_id, org_id, title) values (%s, %s, %s) returning id",
-                            [KIT["a"], sc.alice.org, f"{tag}-{i:04d}"]))
-            c = str(s.value("insert into public.ad_campaigns (org_id, kit_id, name, objective, language, formats, directions) "
-                            "values (%s, %s, %s, 'sales', 'en', '{1:1}', '{spotlight}') returning id", [sc.alice.org, KIT["a"], f"{tag}-{i:04d}"]))
-            s.conn.execute("insert into public.ad_campaign_products (campaign_id, org_id, kit_id, product_id, position) values (%s, %s, %s, %s, 0)",
-                           [c, sc.alice.org, KIT["a"], p])
-            pairs.append((p, c))
+    pool = _pool(conn, sc, tag, products=True)
     try:
-        deletes, edits = _duel(conn, sc.alice.actor, ("select public.delete_brand_product(%s)", lambda i: [pairs[i][0]]),
-                               (SAVE_CAMPAIGN, lambda i: [None, pairs[i][1], f"{tag}-{i:04d}", "sales", "en", ["1:1"], ["spotlight"],
-                                                          [pairs[i][0], PRODUCTS["a"][0]]]), rounds)
-        assert "40P01" not in deletes + edits, (deletes.count("40P01"), edits.count("40P01"))
-        assert deletes == ["ok"] * rounds, sorted(set(deletes))
-        assert set(edits) <= {"ok", "NS400", "23503"}, sorted(set(edits))
+        deletes, edits = _duel(conn, sc.alice.actor, ("select public.delete_brand_kit(%s)", lambda i: [pool[i]["kit"]]),
+                               (SAVE_PRODUCT, lambda i: [None, pool[i]["product"], f"{tag}-edited", "", "", []]), POOL)
+        assert not _deadlocks(deletes, edits), _outcomes(deletes, edits)
+        assert deletes == ["ok"] * POOL, _outcomes(deletes)
+        assert set(edits) <= {"ok", NOT_FOUND}, _outcomes(edits)
+    finally:
+        _drop_pool(conn, sc, tag)
+
+
+def test_deleting_a_kit_while_one_of_its_products_is_deleted_never_deadlocks(conn, sc):
+    tag = f"duel-{uuid.uuid4().hex[:8]}"
+    pool = _pool(conn, sc, tag, products=True)
+    try:
+        kits, products = _duel(conn, sc.alice.actor, ("select public.delete_brand_kit(%s)", lambda i: [pool[i]["kit"]]),
+                               ("select public.delete_brand_product(%s)", lambda i: [pool[i]["product"]]), POOL)
+        assert not _deadlocks(kits, products), _outcomes(kits, products)
+        assert kits == ["ok"] * POOL, _outcomes(kits)
+        assert set(products) <= {"ok", NOT_FOUND}, _outcomes(products)
+    finally:
+        _drop_pool(conn, sc, tag)
+
+
+def test_deleting_a_kit_while_a_campaign_is_made_for_it_never_deadlocks_and_exactly_one_wins(conn, sc):
+    """delete_brand_kit refuses a kit with a campaign (kit_in_use); save_ad_campaign (a new campaign) needs the kit. Under the organization's
+    lock exactly one of the two happens each round: the campaign is made and the delete refuses, or the kit goes and the campaign is
+    not_found."""
+    tag = f"duel-{uuid.uuid4().hex[:8]}"
+    pool = _pool(conn, sc, tag, products=True)
+    restore = _caps_for_a_race(conn, campaigns_per_org=200)
+    try:
+        deletes, makes = _duel(conn, sc.alice.actor, ("select public.delete_brand_kit(%s)", lambda i: [pool[i]["kit"]]),
+                               (SAVE_CAMPAIGN, lambda i: [pool[i]["kit"], None, f"{tag}-{i:04d}", "sales", "en", ["1:1"], ["spotlight"],
+                                                          [pool[i]["product"]]]), POOL)
+        assert not _deadlocks(deletes, makes), _outcomes(deletes, makes)
+        assert set(deletes) <= {"ok", "NS409 kit_in_use"} and set(makes) <= {"ok", NOT_FOUND}, _outcomes(deletes, makes)
+        for i in range(POOL):
+            assert (deletes[i] == "ok") != (makes[i] == "ok"), (i, deletes[i], makes[i])
+    finally:
+        _drop_pool(conn, sc, tag)
+        restore()
+
+
+def test_deleting_a_product_while_a_campaign_naming_it_is_edited_never_deadlocks(conn, sc):
+    """delete_brand_product deletes the product and the campaign line naming it; save_ad_campaign (an edit naming it) writes the lines
+    again. The edit lands first, or it is refused as invalid_products (checked under the organization's lock): never a foreign key
+    error (23503, which the page could only show as a 502) and never a deadlock."""
+    tag = f"duel-{uuid.uuid4().hex[:8]}"
+    pool = _pool(conn, sc, tag, products=True, campaigns=True)
+    try:
+        deletes, edits = _duel(conn, sc.alice.actor, ("select public.delete_brand_product(%s)", lambda i: [pool[i]["product"]]),
+                               (SAVE_CAMPAIGN, lambda i: [None, pool[i]["campaign"], f"{tag}-{i:04d}", "sales", "en", ["1:1"], ["spotlight"],
+                                                          [pool[i]["product"]]]), POOL)
+        assert not _deadlocks(deletes, edits), _outcomes(deletes, edits)
+        assert deletes == ["ok"] * POOL, _outcomes(deletes)
+        assert set(edits) <= {"ok", "NS400 invalid_products"}, _outcomes(edits)
         with as_superuser(conn, commit=False) as s:
             assert s.value("select count(*) from public.brand_products where title like %s", [tag + "%"]) == 0
     finally:
-        with as_superuser(conn) as s:
-            s.conn.execute("delete from public.ad_campaigns where org_id = %s and name like %s", [sc.alice.org, tag + "%"])
-            s.conn.execute("delete from public.brand_products where kit_id = %s and title like %s", [KIT["a"], tag + "%"])
-        restore()
+        _drop_pool(conn, sc, tag)
 
+
+def test_deleting_a_campaign_while_concepts_are_added_to_it_never_deadlocks(conn, sc):
+    """delete_ad_campaign and add_ad_concepts on it: the press lands first (and its concepts go with the campaign) or finds the
+    campaign gone (not_found, read again under the organization's lock), never a foreign key error."""
+    tag = f"duel-{uuid.uuid4().hex[:8]}"
+    pool = _pool(conn, sc, tag, products=True, campaigns=True)
+    try:
+        deletes, adds = _duel(conn, sc.alice.actor, ("select public.delete_ad_campaign(%s)", lambda i: [pool[i]["campaign"]]),
+                              (ADD_CONCEPTS, lambda i: [pool[i]["campaign"], f"{tag}-{i:04d}", json.dumps([concept(pool[i]["product"])])]), POOL)
+        assert not _deadlocks(deletes, adds), _outcomes(deletes, adds)
+        assert deletes == ["ok"] * POOL, _outcomes(deletes)
+        assert set(adds) <= {"ok", NOT_FOUND}, _outcomes(adds)
+    finally:
+        _drop_pool(conn, sc, tag)
+
+
+@pytest.mark.parametrize("call", ["update", "status", "delete"])
+def test_deleting_a_campaign_while_one_of_its_concepts_is_changed_never_deadlocks(conn, sc, call):
+    """A concept function locks its concept (the child) and takes no organization lock; delete_ad_campaign's cascade needs that row. The
+    concept function never waits for the organization's lock, so the cascade always gets the row: the change lands first or finds the
+    concept gone."""
+    tag = f"duel-{uuid.uuid4().hex[:8]}"
+    pool = _pool(conn, sc, tag, products=True, campaigns=True, concepts=True)
+    query, params = {
+        "update": ("select public.update_ad_concept(%s, 'Changed', '', '', '', null)", lambda i: [pool[i]["concept"]]),
+        "status": ("select public.set_ad_concept_status(%s, 'approved')", lambda i: [pool[i]["concept"]]),
+        "delete": ("select public.delete_ad_concept(%s)", lambda i: [pool[i]["concept"]]),
+    }[call]
+    try:
+        deletes, changes = _duel(conn, sc.alice.actor, ("select public.delete_ad_campaign(%s)", lambda i: [pool[i]["campaign"]]),
+                                 (query, params), POOL)
+        assert not _deadlocks(deletes, changes), _outcomes(deletes, changes)
+        assert deletes == ["ok"] * POOL, _outcomes(deletes)
+        assert set(changes) <= {"ok", NOT_FOUND}, _outcomes(changes)
+    finally:
+        _drop_pool(conn, sc, tag)
 
 # ═══ 5. the text ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -1099,6 +1203,28 @@ def test_every_invisible_character_the_review_named_and_the_inbox_removes_is_rem
     assert s.value("select public.ads_clean_text(%s, false)", ["Чай 茶 " + chr(0x1F375)]) == "Чай 茶 " + chr(0x1F375)
     assert s.value("select public.ads_clean_text(%s, false)", [chr(0x2764) + chr(0xFE0F) + " tea"]) == chr(0x2764) + " tea"
 
+
+
+def test_a_run_of_spaces_reads_as_one_space_whatever_made_it(conn, w):
+    """Blank-looking spaces become spaces and a run of spaces (with whatever invisible character sat between them) is one space, in both
+    line modes; a line feed in a block stays. ads_text_ok refuses two spaces in a row, so the table holds only the collapsed form."""
+    s = w.su
+    become(s, None)
+    ideo, nb, zw = chr(0x3000), chr(0xA0), chr(0x200B)
+    for raw, line, block in (
+        (f"   x {ideo} y  z ", "x y z", "x y z"),
+        (f"a{nb}{nb}{zw} {chr(0x2003)}b", "a b", "a b"),
+        ("a \n\t\n b", "a b", "a \n\n b"),
+        (f"Tea{zw}  pot", "Tea pot", "Tea pot"),
+    ):
+        assert s.rows("select public.ads_clean_text(%s, false), public.ads_clean_text(%s, true)", [raw, raw]) == [(line, block)], repr(raw)
+    for bad in ("a  b", "a" + nb + "b"):
+        assert s.value("select not public.ads_text_ok(%s, 0, 100, false) and not public.ads_text_ok(%s, 0, 100, true)", [bad, bad]), repr(bad)
+    out = s.run("update public.brand_kits set name = 'Two  spaces' where id = %s", [KIT["a"]])
+    assert not out.ok and out.sqlstate == "23514", out
+    assert save_kit(s, w.alice, None, KIT["a"], name=f"  Brand {ideo}{ideo} A  ").ok
+    become(s, None)
+    assert s.value("select name from public.brand_kits where id = %s", [KIT["a"]]) == "Brand A"
 
 BLANK_NAMES = (chr(0x3164), chr(0x2003), chr(0xA0) * 2, chr(0xE0041) + chr(0xE0042), chr(0x115F) + chr(0x1160) + chr(0xFFA0), chr(0x2800),
                chr(0x3000) + chr(0x180E), chr(0x2800) + "\n" + chr(0x3164))

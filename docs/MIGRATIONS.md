@@ -573,8 +573,9 @@ site, calls a model, prices, holds or charges a credit, queues a job or publishe
 - **Drift guard.** Refuses (changes nothing) if a function of one of its names exists with another body; the last block asserts the end state (every body by md5,
   every grant, RLS, the policies, the checks, the foreign keys, the triggers, the settings row).
 - **Apply as ONE transaction.** `set local lock_timeout = '5s'`. Applies in any order relative to 0129 and 0130 (it names no object any migration after 0107 creates).
-- **Locks.** One order everywhere: the row a function changes FOR NO KEY UPDATE, then the organization's advisory lock, then the writes (a FOR UPDATE row lock
-  deadlocked against an insert's foreign key check, 40P01; the lab races every pair).
+- **Locks.** No function holds a row lock while it waits for the organization's advisory lock: read the row unlocked, check membership and role, take the
+  organization's lock, then lock the row FOR NO KEY UPDATE and read it again (and everything else that decides the write). A row locked first deadlocked against
+  a parent delete's cascade or an insert's foreign key check under that lock (40P01); the lab races each pair.
 - **Undo.** `docs/sql/rollback_0131_ads_factory.sql` (owner-applied): refuses a body that is not 0131's, and refuses while the content tables hold rows unless
   `set local nightshift.ads_rollback_delete_rows = 'yes'` is given in the same transaction (the rows are what people typed). Drops exactly what 0131 added.
 - **Tests.** `tests/test_ads_factory_migration.py` (the file, pinned), `tests/security/test_sec_ads_factory.py` (the lab: tenants, roles, caps, races, the rollback).

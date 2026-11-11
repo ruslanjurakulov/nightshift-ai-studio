@@ -119,8 +119,12 @@ function isBlankSpace(cp: number): boolean {
   return BLANK_SPACES.some(([lo, hi]) => cp >= lo && cp <= hi);
 }
 
-/** Only spaces and line feeds, as Postgres btrim(text, ' \n') trims (the blank-looking spaces are ordinary spaces by then). */
-function trimPlain(s: string): string {
+/**
+ * A run of spaces reads as one (the blank-looking spaces are ordinary spaces by then, and whatever was removed between them is gone), then
+ * only spaces and line feeds are trimmed, as Postgres btrim(text, ' \n') trims.
+ */
+function trimPlain(raw: string): string {
+  const s = raw.replace(/ {2,}/g, " ");
   let a = 0;
   let b = s.length;
   while (a < b && (s[a] === " " || s[a] === "\n")) a++;
@@ -130,7 +134,7 @@ function trimPlain(s: string): string {
 
 /**
  * A single-line field: a run of line breaks or tabs is one space, a blank-looking space is a space, everything invisible is removed, trimmed.
- * A text of nothing but those cleans to "" (and is refused wherever the field needs a character).
+ * A run of spaces is one space. A text of nothing but those cleans to "" (and is refused wherever the field needs a character).
  */
 export function cleanLine(raw: unknown): string {
   const out: string[] = [];

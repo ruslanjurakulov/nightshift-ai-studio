@@ -237,20 +237,35 @@ class Order(unittest.TestCase):
         b = code(body(TEXT, "update_ad_concept"))
         self.assertGreater(b.index("ads_clean_text("), b.index("'concept_not_draft'"))
 
-    def test_a_row_locked_before_the_organization_lock_never_blocks_a_key_share(self):
-        for name in ("save_brand_kit", "delete_brand_kit", "save_brand_product", "delete_brand_product", "save_ad_campaign", "delete_ad_campaign"):
+    WRITERS = {"save_brand_kit": "brand_kits", "delete_brand_kit": "brand_kits", "save_brand_product": "brand_products",
+               "delete_brand_product": "brand_products", "save_ad_campaign": "ad_campaigns", "delete_ad_campaign": "ad_campaigns"}
+
+    def test_no_row_is_locked_before_the_organization_lock_and_the_row_is_read_again_under_it(self):
+        for name, table in self.WRITERS.items():
             b = code(body(TEXT, name))
+            lock = b.index(self.ORG_LOCK)
+            self.assertNotRegex(b[:lock], r"\bfor (no key update|update|share|key share)\b", f"{name} holds a row lock while it waits")
+            self.assertLess(b.rindex("'editor')", 0, lock), lock, f"{name} takes the organization lock before the editor check")
+            self.assertRegex(b[lock:], rf"from public\.{table} where id = [\w.]+ for no key update;", name)
             self.assertNotRegex(b, r"\bfor (update|share)\b", name)
-            self.assertIn("for no key update;", b, name)
-            self.assertLess(b.index("for no key update;"), b.index(self.ORG_LOCK), name)
             for write in re.finditer(r"\b(insert into|update|delete from) public\.", b):
-                self.assertLess(b.index(self.ORG_LOCK), write.start(), (name, write.group(0)))
+                self.assertLess(lock, write.start(), (name, write.group(0)))
+
+    def test_what_decides_a_write_is_read_again_under_the_organization_lock(self):
+        for name, read in (("save_brand_product", "perform 1 from public.brand_kits where id = k.id;"),
+                           ("save_ad_campaign", "perform 1 from public.brand_kits where id = k.id;"),
+                           ("save_ad_campaign", "from public.brand_products p where p.id = any (p_products)"),
+                           ("add_ad_concepts", "select * into c from public.ad_campaigns where id = p_campaign;")):
+            b = code(body(TEXT, name))
+            self.assertGreater(b.rindex(read), b.index(self.ORG_LOCK), (name, read))
 
     def test_the_concept_functions_lock_one_leaf_row_and_no_organization(self):
         for name in ("update_ad_concept", "set_ad_concept_status", "delete_ad_concept"):
             b = code(body(TEXT, name))
             self.assertIn("from public.ad_concepts where id = p_concept for update;", b, name)
             self.assertNotIn(self.ORG_LOCK, b, name)
+            # Membership first, the lock after it: nobody waits on another organization's concept.
+            self.assertLess(b.index("'editor')"), b.index("for update;"), name)
         self.assertNotRegex(code(TEXT), r"references public\.ad_concepts\b", "a concept is a leaf: nothing references it")
 
 
@@ -292,9 +307,11 @@ class AgreesWithTheCommandCenter(unittest.TestCase):
         c = code(TEXT)
         self.assertEqual(c.count(f"'{sql}'"), 2, "single-line class in ads_clean_text and ads_text_ok")
         self.assertEqual(c.count(f"'{multi}'"), 2, "multi-line class in ads_clean_text and ads_text_ok")
-        self.assertEqual(c.count(f"'{spaces}'"), 2, "blank-looking spaces in ads_clean_text and ads_text_ok")
-        self.assertIn(f"'{spaces}', ' ', 'g'), E' \\n')", code(body(TEXT, "ads_clean_text")))
+        # ads_clean_text reads a run of spaces, blank-looking ones included, as one space; ads_text_ok refuses a blank-looking space and
+        # two spaces in a row.
+        self.assertIn(f"'[ {spaces[1:-1]}]+', ' ', 'g'), E' \\n')", code(body(TEXT, "ads_clean_text")))
         self.assertIn(f"and p_text !~ '{spaces}'", code(body(TEXT, "ads_text_ok")))
+        self.assertIn("and position('  ' in p_text) = 0", code(body(TEXT, "ads_text_ok")))
         self.assertEqual(ts_ranges("INVISIBLE_RANGES"), ranges)
         self.assertEqual(ts_ranges("BLANK_SPACES"), SPACES)
 
