@@ -429,6 +429,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Agent Builder private drafts (0130): tests/security/sec_agent_drafts_0130.py — one plan of two versions each for Alice and Bob.
     import sec_agent_drafts_0130
     sec_agent_drafts_0130.seed(conn, sc)
+    # Ads Factory, Phase 1 (0131): tests/security/sec_ads_factory_0131.py — one kit, two products, one campaign, two concepts per tenant.
+    import sec_ads_factory_0131
+    sec_ads_factory_0131.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

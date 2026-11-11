@@ -6,6 +6,7 @@ import { isOperator } from "@/lib/auth/org-roles";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { getDictionary } from "@/lib/i18n/server";
 import { navGroupsFor } from "@/lib/navigation";
+import { adsFactoryEnabled } from "@/lib/adsFactory/flag";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,7 +25,8 @@ export default async function AllSectionsPage() {
   return (
     <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="organization" title={t.nav.allSections} subtitle={t.ownerShell.allSectionsLead} />
-      {navGroupsFor(true).map((group, gi) => (
+      {/* A section behind a server-side switch (Ads) is listed only while that switch is on. */}
+      {navGroupsFor(true, { adsFactory: adsFactoryEnabled() }).map((group, gi) => (
         <section key={group.label ?? `g${gi}`} aria-label={group.label ? t.nav[group.label] : t.nav.allSections} className="flex flex-col gap-2">
           {group.label && <h2 className="px-1 text-xs font-semibold text-[var(--color-muted)]">{t.nav[group.label]}</h2>}
           <ul className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 lg:grid-cols-3">

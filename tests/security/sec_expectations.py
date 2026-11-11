@@ -632,3 +632,8 @@ sec_model_switch_0124.extend(TABLES, FUNCTIONS)
 import sec_series_plan_caps_0127  # noqa: E402
 
 sec_series_plan_caps_0127.extend(TABLES, FUNCTIONS)
+
+# Migration 0131 (Ads Factory, Phase 1: brand kits, products, campaigns, concepts and their caps): tests/security/sec_ads_factory_0131.py
+import sec_ads_factory_0131  # noqa: E402
+
+sec_ads_factory_0131.extend(TABLES, FUNCTIONS)

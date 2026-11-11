@@ -292,6 +292,7 @@ class TheWebOnlyFeatureSwitchesCanBeSetFromGitHub(unittest.TestCase):
         self.assertIn("NIGHTSHIFT_REGION_EDITOR", found)
         self.assertIn("NIGHTSHIFT_IMAGE_EDITOR", found)
         self.assertIn("NIGHTSHIFT_RESULTS_DASHBOARD", found)
+        self.assertIn("NIGHTSHIFT_ADS_FACTORY", found)
 
     def test_every_feature_switch_has_a_web_example_key_and_a_workflow_mapping(self):
         web_keys = _example_keys(ROOT / "deploy" / ".env.web.example")
@@ -333,6 +334,32 @@ class TheResultsDashboardSwitchIsWebOnlyAndDeployable(unittest.TestCase):
         flag = (ROOT / "command-center" / "lib" / "resultsDashboard" / "flag.ts").read_text(encoding="utf-8")
         self.assertIn(f'"{self.NAME}"', flag)
         self.assertIn(f"process.env.{self.NAME}", flag)
+
+
+class TheAdsFactorySwitchIsWebOnlyAndDeployable(unittest.TestCase):
+    """NIGHTSHIFT_ADS_FACTORY (docs/ADS_FACTORY.md, Phase 1) is read by the Command Center only: the page, the /api/ads routes and the
+    navigation entry. The owner can set it from GitHub (web example + deploy_web.yml, empty = off), and it stays off the worker: Phase 1 has
+    no job, so a worker switch would be a switch that does nothing (Phase 2's brand scanner will bring its own, named in that change)."""
+
+    NAME = "NIGHTSHIFT_ADS_FACTORY"
+
+    def test_it_is_a_web_key_with_no_value_and_a_workflow_mapping(self):
+        web = (ROOT / "deploy" / ".env.web.example").read_text(encoding="utf-8")
+        self.assertRegex(web, rf"(?m)^{self.NAME}=$", "empty must mean off")
+        flow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
+        self.assertIn(f"WEBENV_{self.NAME}: ${{{{ vars.{self.NAME} }}}}", flow)
+
+    def test_it_has_no_worker_side_and_no_python_reader(self):
+        self.assertNotIn(self.NAME, _example_keys(ROOT / "deploy" / ".env.worker.example"))
+        flow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
+        self.assertNotIn(f"WORKERENV_{self.NAME}", flow)
+        self.assertNotIn(self.NAME, names_read_by_the_code())
+
+    def test_the_command_center_reads_exactly_that_name_on_the_server(self):
+        flag = (ROOT / "command-center" / "lib" / "adsFactory" / "flag.ts").read_text(encoding="utf-8")
+        self.assertIn(f'"{self.NAME}"', flag)
+        self.assertIn(f"process.env.{self.NAME}", flag)
+        self.assertNotIn("NEXT_PUBLIC", flag.split("*/", 1)[1], "a NEXT_PUBLIC value would be compiled into the browser")
 
 
 if __name__ == "__main__":

@@ -110,6 +110,10 @@ def put_back_0127(session) -> None:
     session.conn.execute(MIGRATION_0127.read_text(encoding="utf-8"))
 
 
+MIGRATION_0131 = MIGRATIONS / "0131_ads_factory.sql"
+ROLLBACK_0131 = REPO / "docs" / "sql" / "rollback_0131_ads_factory.sql"
+
+
 MIGRATION_0125 = MIGRATIONS / "0125_model_shutdown.sql"
 ROLLBACK_0125 = REPO / "docs" / "sql" / "rollback_0125_model_shutdown.sql"
 

@@ -29,6 +29,7 @@ import { reviewLinkUz, reviewPageUz } from "./review-link/uz";
 import { regionEditUz } from "./region-edit/uz";
 import { imageEditorUz } from "./image-editor/uz";
 import { resultsDashboardUz } from "./results-dashboard/uz";
+import { adsFactoryUz } from "./ads-factory/uz";
 
 /** Oʻzbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) atayin tarjima qilinmaydi. */
@@ -50,6 +51,8 @@ export const uz: Dictionary = {
   regionEdit: regionEditUz,
   imageEditor: imageEditorUz,
   resultsDashboard: resultsDashboardUz,
+  /** The Ads workspace (NIGHTSHIFT_ADS_FACTORY): ./ads-factory/uz.ts. */
+  adsFactory: adsFactoryUz,
   reviewPage: reviewPageUz,
   improveAi: improveUz,
   brand: {
@@ -103,6 +106,7 @@ export const uz: Dictionary = {
     editor: "Muharrir",
     workflows: "Ssenariylar",
     series: "Seriyalar",
+    ads: "Reklama",
     members: "Jamoa",
     organization: "Sozlamalar",
     credits: "Kreditlar",
