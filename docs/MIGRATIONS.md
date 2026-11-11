@@ -554,6 +554,32 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
   frame; drops the overload, the list, the check and the three columns. Exported videos stay in the library.
 - **Review.** Needs the independent security review before merge, and a person reading the live two-argument `request_editor_export` hash first.
 
+## 1440p and 4K exports, sold by the started minute (0132)
+
+0132 (`0132_editor_hires_export.sql`, `docs/HIRES_EXPORT.md`) is **live on apply and sells nothing**: both prices are seeded NULL ("not on sale").
+It **adds** three nullable columns to `editor_exports` (`quoted_credits`, `credit_ref`, `charged_credits`) and one CHECK (`editor_exports_hires_terms`:
+a frame above 1080p carries its quote, 300 s / 180 s at most, 4K at most 30 fps), **replaces** 0129's CHECK `editor_exports_frame_shape` (ceiling
+2560x1440 → 3840x2160) and 0129's list `editor_export_frame(text)` (its five rows plus four paid ones, value for value `schemas/export_presets.json`),
+and **adds** one table (`editor_export_hires_prices`, one row, closed to every API role, changed in the SQL editor only, a change leaves a
+`security_events` row), a settling trigger on `editor_exports`, three internal functions, `quote_editor_export` and the four-argument
+`request_editor_export` (both granted to `authenticated` only). The two- and three-argument `request_editor_export` are **not touched** (md5
+`6d37b4d75092708981c28a56879c89b4` and `83456b3c70d9433ce0e21da1339198ad` before and after): an export up to 1080p is free and what it was.
+
+- **The money.** Hold at request (after every limit) via `creative_platform_reserve`, started at once; capture the quote when done, release when failed,
+  on every path that ends an export (one BEFORE UPDATE OF status trigger), once. A hold that is gone when the worker claims the export fails it
+  (`credits_released`) before any render. A held paid export takes one of the plan's parallel runs (`parallel_runs`).
+- **Drift guard.** Refuses (changes nothing) if the two- or three-argument `request_editor_export` is not 0054's / 0129's body, if the list is
+  neither 0129's nor its own, or if any name it creates exists with another body. The last block asserts every body by md5, every grant, the
+  checks, the trigger, RLS and the price row.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'` (two constraints are dropped and added on `editor_exports`).
+- **Undo.** `docs/sql/rollback_0132_editor_hires_export.sql` (owner-applied; before 0129's rollback): refuses a body that is not 0132's and refuses
+  while a paid export is queued or rendering; puts 0129's list back byte for byte and 0129's frame check (NOT VALID while a finished 4K row exists).
+- **Tests.** `tests/test_editor_hires_export_migration.py` (the file, pinned; the caps of SQL, Python and TypeScript compared),
+  `tests/security/test_sec_editor_hires_export.py` (the lab: grants, refusals, hold / capture / release, idempotency, NULL price, caps, a race,
+  the rollback). 0129's lab tests take 0132 off first where they replay 0129 (`sec_db.take_off_0132`).
+- **Numbering.** #674 (the brand scan) holds 0133 in an open pull request; it names nothing of 0132's and 0132 nothing of its. Whichever merges
+  second updates the two numbering tests (`tests/test_ads_factory_migration.py`, `tests/test_series_plan_caps_migration.py`) to list both.
+
 ## Saved agent plans (0130)
 
 0130 (`0130_agent_workflow_drafts.sql`, `docs/product/AGENT_NODE_BUILDER.md`) is **live on apply and dark**: it adds two tables

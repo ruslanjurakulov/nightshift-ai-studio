@@ -22,6 +22,7 @@ import { overlayUz } from "./overlay/uz";
 import { shapesUz } from "./shapes/uz";
 import { exportPresetUz } from "./editor-presets/uz";
 import { exportRatiosUz } from "./editor-ratios/uz";
+import { exportHiresUz } from "./editor-hires/uz";
 import { clipToolsUz } from "./editor-clip-tools/uz";
 import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
@@ -5121,6 +5122,7 @@ export const uz: Dictionary = {
     /** Export format picker: ./editor-presets/uz.ts. */
     exportPreset: exportPresetUz,
     exportRatios: exportRatiosUz,
+    exportHires: exportHiresUz,
     /** Frame rate, clip volume, detach audio, duplicate / copy / paste: ./editor-clip-tools/uz.ts. */
     clipTools: clipToolsUz,
     /** Cross-fade styles and text looks: ./editor-looks/uz.ts. */
@@ -5325,6 +5327,9 @@ export const uz: Dictionary = {
       project_deleted: "Loyiha bu eksport boshlanishidan oldin oʻchirildi.",
       invalid_frame: "Bu oʻlcham eksport formatlari orasida yoʻq, shuning uchun hech narsa render qilinmadi. Oʻlchamni qaytadan tanlab, eksport qiling.",
       frame_off: "Boshqa oʻlchamlarda eksport qilish serverda oʻchirilgan, shuning uchun hech narsa render qilinmadi. Loyiha oʻlchamida eksport qiling yoki keyinroq urinib koʻring.",
+      hires_off: "1440p va 4K eksporti serverda oʻchirilgan, shuning uchun hech narsa render qilinmadi va kreditlar qaytarildi.",
+      credits_released: "Bu eksport uchun band qilingan kreditlar u boshlanishidan oldin qaytarildi, shuning uchun hech narsa render qilinmadi. Ularni qayta band qilish uchun yana eksport qiling.",
+      hires_fps: "4K eksporti soniyasiga koʻpi bilan 30 kadr boʻladi, bu versiya esa tezroq, shuning uchun hech narsa render qilinmadi va kreditlar qaytarildi.",
       other: "Eksport amalga oshmadi.",
     },
     exportRev: "{rev}-versiya",
@@ -5370,6 +5375,13 @@ export const uz: Dictionary = {
       export_in_progress: "Eksport allaqachon bajarilmoqda. Tugashini kuting.",
       limit_reached: "Tashkilotdagi loyihalar soni chegarasiga yetdingiz. Yangisini boshlash uchun bittasini oʻchiring.",
       daily_limit: "Bugungi bepul eksportlar chegarasiga yetdingiz. Ertaga qayta urinib koʻring.",
+      not_on_sale: "Bu oʻlcham hali sotuvda emas. Boshqa oʻlchamni tanlang.",
+      price_changed: "Siz tasdiqlaganingizdan keyin narx oʻzgardi. Yangi narxni tekshirib, qayta tasdiqlang.",
+      insufficient_credits: "Bu eksport uchun kredit yetarli emas. Kredit qoʻshing yoki kichikroq oʻlchamni tanlang.",
+      hires_too_long: "Video bu oʻlcham ruxsat berganidan uzunroq: 1440p da 5 daqiqa, 4K da 3 daqiqa.",
+      quote_required: "Avval narxni tasdiqlang, keyin eksport qiling.",
+      parallel_runs: "Tarifingizdagi barcha parallel ishga tushirishlar band. Ulardan biri tugashini kuting yoki tarifni oshiring.",
+      hires_fps: "4K eksporti soniyasiga koʻpi bilan 30 kadr boʻladi. Kadr tezligini 30 yoki undan past qiling yoki 1440p ni tanlang.",
       clips_full: "Bu loyihada klip soni allaqachon eng koʻpi. Avval muharrirda bittasini oʻchiring.",
       sounds_full: "Bu loyihada ovozlar soni allaqachon eng koʻpi. Avval muharrirda bittasini oʻchiring.",
       no_duration: "Bu faylning uzunligi hali nomaʼlum, shuning uchun uni qoʻshib boʻlmaydi. Birozdan keyin qayta urinib koʻring.",

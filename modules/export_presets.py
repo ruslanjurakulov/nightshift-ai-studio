@@ -20,8 +20,11 @@ frame, a ten-hour cap) fails at once instead of at a member's export:
 
 * the frame is even-sided (H.264 4:2:0), inside ``timeline.MIN_SIDE`` /
   ``MAX_SIDE`` and no bigger than ``timeline.LARGE_FRAME_PX`` (1440p), which is
-  also ``ffmpeg_limits.LARGE_OUTPUT_PX``: a preset never puts an export into the
-  large-frame regime that needs the memory guards;
+  also ``ffmpeg_limits.LARGE_OUTPUT_PX`` — EXCEPT a 4K frame of the paid tier
+  (migration 0132, ``modules/hires_export.py``): a frame above 1080p must be
+  one of the paid tiers, and its recommended length must be at most its tier's
+  hard cap (``hires_export.MAX_S``: 300 s at 1440p, 180 s at 4K), so the
+  advice can never be longer than what the export accepts;
 * the frame rate is one of ``timeline.FPS_VALUES``;
 * the recommended length is at most ``editor_export.EXPORT_MAX_S`` (the export's
   own cap, the database's too), and a full-length video at the preset's frame
@@ -29,12 +32,16 @@ frame, a ten-hour cap) fails at once instead of at a member's export:
   rate is chosen apart from the frame) stays inside the library's decode budget
   (``media_library.DECODE_BUDGET_PX``).
 
-No 1440p or 4K preset: a new format is a new migration on purpose (the database's
-own copy of this list, ``editor_export_frame`` in 0129, is compared id for id by
-tests/test_editor_export_frame_migration.py), and above 1440p every export is in
-the large-frame regime (no blur or zoom past 2 on a cross-fade, no interpolation,
-a 0.7 s reverse at 4K60) and measured at about 4 s of render per second at 4K60
-with the bundled ffmpeg, past the worker's 3 s per second budget.
+1440p and 4K (migration 0132): four presets above 1080p, each a frame and its
+9:16 twin. They are PAID (credits per started output minute, the database's
+price row), offered only in "Sizes to export" while ``NIGHTSHIFT_HIRES_EXPORT``
+is on, never in the format picker (a project's own frame is exported free, so a
+4K project frame would be a free 4K export), capped in length, and rendered
+with their tier's time budget (``hires_export``). Above 1440p every export is in
+the large-frame regime (no blur or zoom past 2 on a cross-fade, no
+interpolation, a 0.7 s reverse at 4K60). A new format is still a new migration
+on purpose (the database's own copy of this list, ``editor_export_frame``, is
+compared id for id by tests/test_editor_hires_export_migration.py).
 
 The recommended length is advice, not a refusal: a vertical project that was
 already 4 minutes long exported before presets existed and must keep doing so.
@@ -54,7 +61,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
-from modules import editor_export, ffmpeg_limits
+from modules import editor_export, ffmpeg_limits, hires_export
 from modules import media_library as ml
 from modules import timeline as tl
 
@@ -62,6 +69,9 @@ PRESETS_PATH = Path(__file__).resolve().parent.parent / "schemas" / "export_pres
 VERSION = 1
 _ID = re.compile(r"^[a-z0-9_]{1,32}$")
 _KEYS = ("id", "width", "height", "fps", "max_duration_s")
+#: The only frames above 1440p a preset may be: the 4K frame and its 9:16 twin, the sizes whose renders were measured under
+#: ffmpeg_limits.CHILD_MEM_BYTES with the large-frame rules (docs/HIRES_EXPORT.md). Another big frame is not "4K" because it is big.
+MEASURED_4K = ((3840, 2160), (2160, 3840))
 
 
 class UnknownPreset(ValueError):
@@ -107,9 +117,15 @@ def parse_preset(raw: Any) -> Preset:
         if not (_is_int(side) and tl.MIN_SIDE <= side <= tl.MAX_SIDE and side % 2 == 0):
             raise PresetDataError(f"{where}: {name} must be an even integer from {tl.MIN_SIDE} to {tl.MAX_SIDE}")
     largest = min(tl.LARGE_FRAME_PX, ffmpeg_limits.LARGE_OUTPUT_PX)
-    if w * h > largest:
-        raise PresetDataError(f"{where}: the frame is at most {largest} pixels (1440p); a bigger one needs "
-                              "the large-frame memory guards a preset must not depend on")
+    paid = hires_export.tier(w, h)
+    if w * h > largest and (w, h) not in MEASURED_4K:
+        raise PresetDataError(f"{where}: the frame is at most {largest} pixels (1440p), or exactly 3840x2160 / 2160x3840: "
+                              "the 4K frames measured under the worker's memory limit (paid, migration 0132)")
+    if w * h > hires_export.FREE_MAX_PX and paid is None:
+        raise PresetDataError(f"{where}: a frame above 1080p must be one of the paid tiers")
+    if paid is not None and _is_number(cap) and cap > hires_export.MAX_S[paid]:
+        raise PresetDataError(f"{where}: a {paid} export is at most {hires_export.MAX_S[paid]:g} s long, so its "
+                              "max_duration_s cannot be longer")
     if not (_is_int(fps) and fps in tl.FPS_VALUES):
         raise PresetDataError(f"{where}: fps must be one of {', '.join(map(str, tl.FPS_VALUES))}")
     if not (_is_number(cap) and 0 < cap <= editor_export.EXPORT_MAX_S):
@@ -189,5 +205,16 @@ def long_for(duration_s: float, preset: Preset) -> bool:
     return duration_s > preset.max_duration_s
 
 
-__all__ = ["PRESETS_PATH", "Preset", "PresetDataError", "UnknownPreset", "apply", "get", "load", "long_for",
+def is_paid(preset: Preset) -> bool:
+    """A frame above 1080p (migration 0132): sold by the minute, capped in length, behind NIGHTSHIFT_HIRES_EXPORT."""
+    return hires_export.tier(preset.width, preset.height) is not None
+
+
+def free(presets: Optional[Mapping[str, Preset]] = None) -> Dict[str, Preset]:
+    """The presets an export is free in (up to 1080p): the format picker's list."""
+    table = presets if presets is not None else load()
+    return {k: p for k, p in table.items() if not is_paid(p)}
+
+
+__all__ = ["PRESETS_PATH", "Preset", "PresetDataError", "UnknownPreset", "apply", "free", "get", "is_paid", "load", "long_for",
            "parse_preset", "preset_of", "problems"]

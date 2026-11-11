@@ -3443,6 +3443,12 @@ export const EXPORT_REASONS = [
   // the closed list, or the worker's switch was off when it arrived.
   "invalid_frame",
   "frame_off",
+  // A paid 1440p / 4K export (migration 0132, modules/editor_export.py): the worker's switch was off (the database gave
+  // the credits back when the export failed), the hold was no longer open when the worker took it, or the version is
+  // faster than 4K allows (30 fps).
+  "hires_off",
+  "credits_released",
+  "hires_fps",
 ] as const;
 export type ExportReason = (typeof EXPORT_REASONS)[number];
 
@@ -3547,6 +3553,16 @@ export const EDITOR_ERRORS = [
   "clips_full",
   "sounds_full",
   "no_duration",
+  // A paid 1440p / 4K export (migration 0132): the size is not on sale, its price changed after the person confirmed
+  // it, the credits are short, the video is longer than the size allows, no confirmed price came with the request,
+  // the plan's parallel runs are in use (a held paid export is a run in progress, 0034), or 4K of a project over 30 fps.
+  "not_on_sale",
+  "price_changed",
+  "insufficient_credits",
+  "hires_too_long",
+  "quote_required",
+  "parallel_runs",
+  "hires_fps",
   "not_available",
   "network",
   "failed",
@@ -3564,6 +3580,11 @@ const DB_WORDS: Partial<Record<string, EditorError>> = {
   export_in_progress: "export_in_progress",
   limit_reached: "limit_reached",
   daily_limit: "daily_limit",
+  // 0132
+  hires_too_long: "hires_too_long",
+  price_changed: "price_changed",
+  parallel_runs: "parallel_runs",
+  hires_fps: "hires_fps",
 };
 
 /** A database refusal (SQLSTATE + machine word, migration 0054) → a word and an HTTP status. */
@@ -3578,6 +3599,11 @@ export function mapEditorError(
       return { error: DB_WORDS[word] ?? "stale_revision", status: 409 };
     case "NS429":
       return { error: DB_WORDS[word] ?? "limit_reached", status: 429 };
+    // 0132: a paid export. NS402 is reserve_credits' "insufficient credits" (renamed by the function), NS403 "not on sale".
+    case "NS402":
+      return { error: "insufficient_credits", status: 402 };
+    case "NS403":
+      return { error: "not_on_sale", status: 403 };
     case "42501":
       return { error: "forbidden", status: 403 };
     case "P0002":

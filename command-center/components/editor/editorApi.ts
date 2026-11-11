@@ -1,5 +1,6 @@
 import { coerceExports, editorErrorWord, type EditorAsset, type EditorError, type EditorExport, type TimelineDoc } from "@/lib/editor";
 import { PROJECT_FRAME, isExportFrameChoice, type ExportFrameChoice } from "@/lib/multiRatioExport/frames";
+import { parseHiresQuote, type HiresPresetId, type HiresQuote } from "@/lib/hiresExport/limits";
 
 /**
  * The editor page's calls to its routes (migration 0054). Each resolves —
@@ -57,14 +58,22 @@ export type FrameOutcome = { frame: ExportFrameChoice; id: string } | { frame: E
  * is "failed", never assumed queued. If the server answers the way it does with the switch off (one plain export,
  * no per-frame list), that is said as it is: the project's own frame was queued and every other size is
  * "not_available".
+ *
+ * `maxCredits` (migration 0132): for each paid 1440p / 4K frame, the number of credits the person confirmed after the
+ * server quoted it. Sent only when there is one, so a request without paid frames is the body it always was.
  */
-export async function requestExports(id: string, rev: number, frames: readonly ExportFrameChoice[]): Promise<EditorResult<FrameOutcome[]>> {
+export async function requestExports(
+  id: string,
+  rev: number,
+  frames: readonly ExportFrameChoice[],
+  maxCredits?: Readonly<Partial<Record<HiresPresetId, number>>>,
+): Promise<EditorResult<FrameOutcome[]>> {
   let res: Response;
   try {
     res = await fetch(`${base(id)}/exports`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ rev, frames }),
+      body: JSON.stringify(maxCredits && Object.keys(maxCredits).length ? { rev, frames, maxCredits } : { rev, frames }),
       cache: "no-store",
     });
   } catch {
@@ -93,6 +102,16 @@ export async function requestExports(id: string, rev: number, frames: readonly E
     ok: true,
     value: [plain, ...frames.filter((f) => f !== PROJECT_FRAME).map((frame): FrameOutcome => ({ frame, error: "not_available" }))],
   };
+}
+
+/** The server's quote of a paid 1440p / 4K export of the saved revision `rev` (migration 0132). Never a number made up
+ *  here: a quote the route did not send whole is "failed". */
+export function fetchHiresQuote(id: string, rev: number, frame: HiresPresetId): Promise<EditorResult<HiresQuote>> {
+  const q = new URLSearchParams({ rev: String(rev), frame });
+  return call(`${base(id)}/exports/quote?${q.toString()}`, "GET", undefined, (b) => {
+    const quote = parseHiresQuote(b.quote);
+    return quote && quote.frame === frame ? quote : null;
+  });
 }
 
 export interface ProjectSnapshot {

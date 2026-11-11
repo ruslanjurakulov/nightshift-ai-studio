@@ -197,6 +197,10 @@ jobs:
           # true or yes). Empty = no size picker in the editor and the export route ignores `frames`. Setting nothing leaves it dark; this
           # change does not set it. The media worker reads the same variable (WORKERENV_ below).
           WEBENV_NIGHTSHIFT_MULTI_RATIO_EXPORT: ${{ vars.NIGHTSHIFT_MULTI_RATIO_EXPORT }}
+          # 1440p and 4K exports, sold by the minute (docs/HIRES_EXPORT.md, migration 0132): off unless this repository variable is on (on, 1,
+          # true or yes), on top of the one above. Empty = no paid size in the editor. Setting nothing leaves it dark; this change does not set
+          # it. The media worker reads the same variable (WORKERENV_ below).
+          WEBENV_NIGHTSHIFT_HIRES_EXPORT: ${{ vars.NIGHTSHIFT_HIRES_EXPORT }}
           # Ads Factory, Phase 1 (docs/ADS_FACTORY.md): off unless this repository variable is on (on, 1, true or yes). Empty = the page, /api/ads/*
           # and the navigation entry are gone (404). Web only: there is no worker side in Phase 1. Setting nothing leaves it dark; this change does not set it.
           WEBENV_NIGHTSHIFT_ADS_FACTORY: ${{ vars.NIGHTSHIFT_ADS_FACTORY }}
@@ -455,6 +459,9 @@ jobs:
           # One edit, several frame sizes, the media worker's side (docs/MULTI_RATIO_EXPORT.md): the same repository variable as the web's.
           # Empty = off, and an export that carries a frame override is failed at once (frame_off). This change does not set it.
           WORKERENV_NIGHTSHIFT_MULTI_RATIO_EXPORT: ${{ vars.NIGHTSHIFT_MULTI_RATIO_EXPORT }}
+          # 1440p and 4K exports, the media worker's side (docs/HIRES_EXPORT.md): the same repository variable as the web's. Empty = off, and
+          # a paid export that reaches the worker is failed at once (hires_off) with its credits released. This change does not set it.
+          WORKERENV_NIGHTSHIFT_HIRES_EXPORT: ${{ vars.NIGHTSHIFT_HIRES_EXPORT }}
           WORKERENV_NIGHTSHIFT_VOICE_GATE_STRICT: ${{ vars.NIGHTSHIFT_VOICE_GATE_STRICT }}
           WORKERENV_NIGHTSHIFT_SERIES_PLANNER: ${{ vars.NIGHTSHIFT_SERIES_PLANNER }}
           # The owner's model switch (migration 0124, docs/MODEL_SWITCH.md): the SAME repository variable the Command Center reads

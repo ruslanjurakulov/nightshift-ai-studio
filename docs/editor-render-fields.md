@@ -794,12 +794,10 @@ Branch `claude/editor-parity-1`. Free: ffmpeg and the browser only, no model, no
 * Measured with the bundled ffmpeg 7.0.2 on a 4-core box (one clip, H.264 source at the project's rate):
   1080p30 0.53 s of render per second of video, 1080p60 0.99, 1440p60 1.72, 4K60 3.95. The worker allows
   `3 x length + 120` s.
-* NOT added: a 1440p or a 4K format. A new format is a new migration on purpose (0129's
-  `editor_export_frame` keeps its own copy of the list for the multi-ratio export, and
-  `tests/test_editor_export_frame_migration.py` compares them id for id). 4K would also put every export
-  in the large-frame regime (no blur and no zoom past 2 on a cross-faded clip, no interpolation, a 0.7 s
-  reverse at 4K60, the 2 GiB address-space notes above) and measured 3.95 s per second at 4K60, past the
-  worker's 3 s per second. Both stay later items; the document already accepts those sizes from another tool.
+* NOT added here: a 1440p or a 4K format. They came later as PAID sizes of "Sizes to export" (migration
+  0132, `docs/HIRES_EXPORT.md`, behind `NIGHTSHIFT_HIRES_EXPORT`): sold by the started minute, 300 s / 180 s
+  at most, 4K at 30 fps at most, with their own time budget (7 and 12 s per second). They are never in the
+  format picker: a project's own frame is exported free.
 
 ### `gain_db` on a V clip (its own sound's level)
 
@@ -921,4 +919,4 @@ native read.
 * Voice-over recording in the editor (the microphone is allowed on the editor page only, an owner decision;
   today `microphone=()` site-wide in `command-center/next.config.ts` and `deploy/Caddyfile`): a separate
   branch.
-* A 1440p format (a migration replacing 0129's `editor_export_frame` list) and, later, 4K.
+* 1440p and 4K: done as paid sizes (migration 0132, `docs/HIRES_EXPORT.md`).

@@ -637,3 +637,8 @@ sec_series_plan_caps_0127.extend(TABLES, FUNCTIONS)
 import sec_ads_factory_0131  # noqa: E402
 
 sec_ads_factory_0131.extend(TABLES, FUNCTIONS)
+
+# Migration 0132 (1440p and 4K editor exports, sold by the started minute; the owner's price row): tests/security/sec_editor_hires_0132.py
+import sec_editor_hires_0132  # noqa: E402
+
+sec_editor_hires_0132.extend(TABLES, FUNCTIONS)

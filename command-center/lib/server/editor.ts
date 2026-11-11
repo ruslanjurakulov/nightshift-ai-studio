@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { MEDIA_ASSET_COLUMNS, coerceAssets, parseMediaId } from "@/lib/media";
 import { mediaDir, mediaUrlSecret, withUrls } from "@/lib/server/media";
 import { multiRatioExportEnabled } from "@/lib/multiRatioExport/flag";
+import { hiresExportEnabled } from "@/lib/hiresExport/flag";
 import {
   EDITOR_EXPORT_COLUMNS,
   EDITOR_EXPORT_FRAME_COLUMNS,
@@ -45,6 +46,9 @@ export interface EditorProjectData {
   /** May an export be asked in another frame here? True only while NIGHTSHIFT_MULTI_RATIO_EXPORT is on AND the
    *  database has migration 0129 (the frame columns could be read). False = the editor offers the plain export only. */
   multiRatio: boolean;
+  /** Are the paid 1440p / 4K sizes offered in that picker? NIGHTSHIFT_HIRES_EXPORT on, on top of `multiRatio`
+   *  (migration 0132). Before 0132 is applied the quote answers "not available" and nothing paid can be confirmed. */
+  hires: boolean;
 }
 
 export type EditorRead<T> =
@@ -265,6 +269,7 @@ export async function loadEditorProject(
         exports: exportRows,
         assets,
         multiRatio,
+        hires: multiRatio && hiresExportEnabled(),
       },
     };
   } catch {

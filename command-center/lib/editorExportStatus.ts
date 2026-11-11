@@ -66,6 +66,11 @@ const NOT_RETRYABLE: readonly (ExportReason | "other")[] = [
   // request would end the same way and only spend one of the day's exports.
   "invalid_frame",
   "frame_off",
+  // A paid 1440p / 4K export (0132): its switch is off on the worker, its credits were given back before it started, or
+  // the version is too fast for 4K. Exporting again goes through the price and the confirmation, never a quiet retry.
+  "hires_off",
+  "credits_released",
+  "hires_fps",
 ];
 
 export function canRetry(reason: EditorExport["reason"]): boolean {
