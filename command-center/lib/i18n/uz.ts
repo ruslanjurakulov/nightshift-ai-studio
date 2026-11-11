@@ -24,6 +24,8 @@ import { exportPresetUz } from "./editor-presets/uz";
 import { exportRatiosUz } from "./editor-ratios/uz";
 import { exportHiresUz } from "./editor-hires/uz";
 import { clipToolsUz } from "./editor-clip-tools/uz";
+import { parity2Uz } from "./editor-parity2/uz";
+import { voiceOverUz } from "./editor-voiceover/uz";
 import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
@@ -5125,8 +5127,12 @@ export const uz: Dictionary = {
     exportHires: exportHiresUz,
     /** Frame rate, clip volume, detach audio, duplicate / copy / paste: ./editor-clip-tools/uz.ts. */
     clipTools: clipToolsUz,
+    /** Voice-over recorded in the editor: ./editor-voiceover/uz.ts. */
+    voiceOver: voiceOverUz,
     /** Cross-fade styles and text looks: ./editor-looks/uz.ts. */
     looks: looksUz,
+    /** Advanced colour, masks and silence removal: ./editor-parity2/uz.ts. */
+    parity2: parity2Uz,
     fx: fxUz,
     title: "Muharrir",
     subtitle: "Videolaringizni qirqing, boʻling, tezlashtiring yoki sekinlashtiring va ustiga matn qoʻying.",

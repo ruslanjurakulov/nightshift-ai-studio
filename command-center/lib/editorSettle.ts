@@ -20,6 +20,7 @@ import {
   INTERP_SECONDS_PER_FRAME,
   XFADE_LARGE_ZOOM_MAX,
   layout,
+  lookSeconds,
   ms,
   setSpeed,
   stabilizeSeconds,
@@ -46,7 +47,9 @@ export type SettleChange =
   | { kind: "stabilize"; clip: number }
   | { kind: "blur"; clip: number }
   | { kind: "zoom"; clip: number; max: number }
-  | { kind: "speed"; clip: number; max: number };
+  | { kind: "speed"; clip: number; max: number }
+  | { kind: "look"; clip: number }
+  | { kind: "mask"; clip: number };
 
 function drop(c: VideoClip, ...keys: (keyof VideoClip)[]): VideoClip {
   const out = { ...c };
@@ -116,7 +119,7 @@ export function settleAll(
   previous?: EditorModel,
 ): { model: EditorModel; changes: SettleChange[] } {
   const hasLimits =
-    model.clips.some((c) => c.reverse || c.interpolate || c.stabilize || c.speed > 1) ||
+    model.clips.some((c) => c.reverse || c.interpolate || c.stabilize || c.speed > 1 || c.color || c.mask) ||
     Boolean(model.shapes?.length);
   const large = isLargeFrame(model);
   if (!hasLimits && !large) return { model, changes: [] };
@@ -141,6 +144,24 @@ export function settleAll(
         m = put(m, c.id, drop(x, "blur"));
         changes.push({ kind: "blur", clip: number(c.id) });
         x = m.clips.find((k) => k.id === c.id)!;
+      }
+      const mv = x.move;
+      if (mv && [mv.from, mv.to].some((p) => (p.zoom ?? 1) > XFADE_LARGE_ZOOM_MAX)) {
+        const cap = (p: typeof mv.from) => ((p.zoom ?? 1) > XFADE_LARGE_ZOOM_MAX ? { ...p, zoom: XFADE_LARGE_ZOOM_MAX } : p);
+        m = put(m, c.id, { ...x, move: { from: cap(mv.from), to: cap(mv.to) } });
+        changes.push({ kind: "zoom", clip: number(c.id), max: XFADE_LARGE_ZOOM_MAX });
+      }
+    }
+
+  // 2a. in such a frame a mask is not offered on a cross-faded clip, and a masked clip zooms at most the cap
+  if (large)
+    for (const c of [...m.clips]) {
+      const x = m.clips.find((k) => k.id === c.id)!;
+      if (!x.mask) continue;
+      if (isCrossfaded(m, c.id)) {
+        m = put(m, c.id, drop(x, "mask"));
+        changes.push({ kind: "mask", clip: number(c.id) });
+        continue;
       }
       const mv = x.move;
       if (mv && [mv.from, mv.to].some((p) => (p.zoom ?? 1) > XFADE_LARGE_ZOOM_MAX)) {
@@ -205,6 +226,20 @@ export function settleAll(
 
   // 4b. what is still over after that and is fast clips' decoding: slowed as in 2b
   m = slowFastClips(m, [], changes, number);
+
+  // 4c. what is still over is colour and masks (another frame size or rate, a shorter timeline): the
+  //     dearest clip's colour and mask come off first, the last clip first on a tie
+  for (let guard = 0; guard < 64 && !fitsWithoutShapes(m); guard += 1) {
+    let worst: { id: string; cost: number } | null = null;
+    for (const c of m.clips) {
+      const cost = lookSeconds(c, m.fps, m.width, m.height);
+      if (cost > 0 && (!worst || cost >= worst.cost)) worst = { id: c.id, cost };
+    }
+    if (!worst) break;
+    const x = m.clips.find((k) => k.id === worst!.id)!;
+    changes.push({ kind: "look", clip: number(worst.id) });
+    m = put(m, worst.id, drop(x, "color", "mask"));
+  }
 
   // 5. shapes that no longer fit the export's memory or time (another frame size, a shorter timeline) are made
   //    narrower, the widest first, and the last ones are removed only when even the narrowest do not fit

@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { loadDocument } from "@/lib/editor-nav";
 import { Clapperboard, Film, Plus } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -41,7 +41,6 @@ export function EditorHome({
   const { t } = useI18n();
   const te = t.editor;
   const path = useChannelPath();
-  const router = useRouter();
   const titleId = useId();
   const [title, setTitle] = useState(te.defaultTitle);
   const [picked, setPicked] = useState<string | null>(videos?.[0]?.id ?? null);
@@ -65,7 +64,8 @@ export function EditorHome({
       setError(out.error);
       return;
     }
-    router.push(path(`/editor/${out.value.id}`));
+    // A full load: the project page must get its own Permissions-Policy (the voice-over microphone, lib/editor-nav.ts).
+    loadDocument(path(`/editor/${out.value.id}`));
   }
 
   return (
@@ -171,7 +171,8 @@ export function EditorHome({
           <ul className="g3-projects">
             {projects.map((p) => (
               <li key={p.id}>
-                <Link href={path(`/editor/${p.id}`)} className="g3-project">
+                {/* A full load, not a client transition: the editor page's own Permissions-Policy allows the microphone (lib/editor-nav.ts). */}
+                <a href={path(`/editor/${p.id}`)} className="g3-project">
                   <span className="g3-project-frame" aria-hidden>
                     <Clapperboard className="size-5" strokeWidth={1.5} />
                   </span>
@@ -180,7 +181,7 @@ export function EditorHome({
                     <span className="block text-sm text-[var(--color-muted)]">{fmt(te.updated, { when: when(p.updatedAt) })}</span>
                   </span>
                   <span className="g3-project-open">{te.open}</span>
-                </Link>
+                </a>
               </li>
             ))}
           </ul>

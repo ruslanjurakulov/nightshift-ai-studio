@@ -33,6 +33,10 @@ export function SettleNotice({ changes }: { changes: readonly SettleChange[] }) 
         return fmt(s.zoom, { n: c.clip, max: c.max });
       case "speed":
         return fmt(t.editor.clipTools.settledSpeed, { n: c.clip, max: c.max });
+      case "look":
+        return fmt(t.editor.parity2.settledLook, { n: c.clip });
+      case "mask":
+        return fmt(t.editor.parity2.settledMask, { n: c.clip });
     }
   };
   return (

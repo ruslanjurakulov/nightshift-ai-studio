@@ -477,9 +477,13 @@ describe("what the Ads code never does (read from the source)", () => {
       if (server) expect(/\bfetch\(|\bhttps?\.request|\bnet\.connect|dns\./.test(src), f).toBe(false);
     }
     const client = files.filter((f) => f.includes(join("components", "ads"))).map(code).join("\n");
-    // One fetch, in adsRequest, and every adsRequest names an /api/ads path.
-    expect([...client.matchAll(/\bfetch\(\s*([\w.]+)/g)].map((m) => m[1])).toEqual(["url"]);
+    // Two fetches: adsRequest's, and the brand scan panel's own call() (0133; it also reads retry_after and price), and every adsRequest
+    // and every call() names an /api/ads path (the scan's, /api/ads/scan).
+    expect([...client.matchAll(/\bfetch\(\s*([\w.]+)/g)].map((m) => m[1])).toEqual(["url", "url"]);
     expect([...client.matchAll(/adsRequest(?:<[^>]*>)?\(\s*"[A-Z]+",\s*[`"]([^`"$?]*)/g)].every((m) => m[1].startsWith("/api/ads"))).toBe(true);
+    const calls = [...client.matchAll(/\bcall(?:<[^>]*>)?\(\s*"[A-Z]+",\s*[`"]([^`"$?]*)/g)].map((m) => m[1]);
+    expect(calls.length).toBeGreaterThan(3);
+    expect(calls.every((u) => u.startsWith("/api/ads/scan"))).toBe(true);
   });
 
   it("never renders typed text as HTML", () => {

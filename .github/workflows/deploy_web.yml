@@ -204,6 +204,9 @@ jobs:
           # Ads Factory, Phase 1 (docs/ADS_FACTORY.md): off unless this repository variable is on (on, 1, true or yes). Empty = the page, /api/ads/*
           # and the navigation entry are gone (404). Web only: there is no worker side in Phase 1. Setting nothing leaves it dark; this change does not set it.
           WEBENV_NIGHTSHIFT_ADS_FACTORY: ${{ vars.NIGHTSHIFT_ADS_FACTORY }}
+          # Ads Factory, Phase 2 (docs/ADS_FACTORY.md, migration 0133): the "Scan my site" panel and /api/ads/scan/*, off unless this repository
+          # variable is on (and NIGHTSHIFT_ADS_FACTORY too). Setting nothing leaves it dark; this change does not set it.
+          WEBENV_NIGHTSHIFT_ADS_BRAND_SCAN: ${{ vars.NIGHTSHIFT_ADS_BRAND_SCAN }}
           WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
           WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}

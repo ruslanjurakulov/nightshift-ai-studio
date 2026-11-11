@@ -240,6 +240,111 @@ class CaddyFramingTests(unittest.TestCase):
         self.assertNotIn("frame-ancestors", self.code)
 
 
+class CaddyMicrophoneTests(unittest.TestCase):
+    """The microphone is allowed on the timeline editor's project page only (owner decision, 2026-11-11).
+
+    On the self-hosted box Caddy has the last word: its deferred `>Permissions-Policy` replaces whatever the
+    app sent (docs/DEPLOY_AX42.md: the headers are Caddy's). So the path split must be HERE, and it must be the
+    same split as next.config.ts (tests/security-headers.test.ts pins the app's). A Caddy line that allowed the
+    microphone everywhere would open it to every page; one that denied it everywhere would make the editor's
+    Record button fail before the person is even asked.
+    """
+
+    POLICY = ('camera=(), microphone={mic}, geolocation=(), '
+              'payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()')
+    PROJECT = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+
+    @classmethod
+    def setUpClass(cls):
+        text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+        cls.code = "\n".join(l for l in text.splitlines() if not l.strip().startswith("#"))
+        cls.next_config = (APP / "next.config.ts").read_text(encoding="utf-8")
+
+    def lines(self):
+        """(matcher, value) of every line that sets Permissions-Policy."""
+        out = []
+        for line in self.code.splitlines():
+            if "Permissions-Policy" not in line:
+                continue
+            m = re.fullmatch(r"\theader @(\w+) >Permissions-Policy `(.+)`", line)
+            self.assertIsNotNone(m, f"Permissions-Policy only by a matcher, deferred: {line!r}")
+            out.append((m.group(1), m.group(2)))
+        return out
+
+    def matcher(self, name):
+        """The matcher's conditions: ('regexp' | 'not regexp' | 'not path' | 'path', argument), ANDed."""
+        block = re.search(rf"^\t@{name} \{{\n(.*?)^\t\}}", self.code, re.S | re.M)
+        if block:
+            body = [l.strip() for l in block.group(1).splitlines() if l.strip()]
+        else:
+            one = re.search(rf"^\t@{name} (.+)$", self.code, re.M)
+            self.assertIsNotNone(one, name)
+            body = [one.group(1).strip()]
+        conds = []
+        for c in body:
+            neg = c.startswith("not ")
+            c = c[4:] if neg else c
+            kind, _, arg = c.partition(" ")
+            self.assertIn(kind, ("path_regexp", "path"), c)
+            conds.append((("not " if neg else "") + ("regexp" if kind == "path_regexp" else "path"), arg.strip()))
+        return conds
+
+    def matches(self, name, path):
+        def one(kind, arg):
+            if kind.endswith("regexp"):
+                # Go RE2 syntax; this pattern uses nothing Python's re reads differently.
+                hit = re.search(arg, path) is not None
+            else:
+                hit = path.startswith(arg[:-1]) if arg.endswith("*") else path == arg
+            return not hit if kind.startswith("not ") else hit
+        return all(one(k, a) for k, a in self.matcher(name))
+
+    def policy_for(self, path):
+        values = {v for name, v in self.lines() if self.matches(name, path)}
+        self.assertEqual(len(values), 1, f"{path}: exactly one Permissions-Policy value, got {values}")
+        return values.pop()
+
+    def test_the_editor_project_page_may_ask_for_the_microphone(self):
+        for path in (f"/chronos/editor/{self.PROJECT}", f"/all-channels/editor/{self.PROJECT.upper()}",
+                     f"/chronos/editor/{self.PROJECT}/"):
+            self.assertEqual(self.policy_for(path), self.POLICY.format(mic="(self)"), path)
+
+    def test_every_other_path_still_denies_it(self):
+        for path in ("/", "/studio", "/pricing", "/login", "/chronos/settings", "/chronos/videos",
+                     "/chronos/agents/voice", "/chronos/editor", f"/chronos/editor/image/{self.PROJECT}",
+                     f"/chronos/editor/{self.PROJECT}/more", f"/chronos/editor/{self.PROJECT}x",
+                     f"/x/chronos/editor/{self.PROJECT}", f"/api/editor/{self.PROJECT}",
+                     f"/api/editor/projects/{self.PROJECT}", "/api/media/uploads", f"/api/media/file/{self.PROJECT}/o"):
+            self.assertEqual(self.policy_for(path), self.POLICY.format(mic="()"), path)
+
+    def test_only_self_and_only_the_microphone_is_ever_opened(self):
+        values = {v for _n, v in self.lines()}
+        self.assertEqual(values, {self.POLICY.format(mic="()"), self.POLICY.format(mic="(self)")})
+        for v in values:
+            self.assertNotIn("*", v)
+
+    def test_the_deploy_check_expects_the_same_two_values_and_an_editor_path(self):
+        script = (DEPLOY / "remote-deploy.sh").read_text(encoding="utf-8")
+        val = lambda name: re.search(rf"^{name}='(.*)'$", script, re.M).group(1)  # noqa: E731
+        self.assertEqual(val("CADDY_PP_DENY"), self.POLICY.format(mic="()"))
+        self.assertEqual(val("CADDY_PP_MIC"), self.POLICY.format(mic="(self)"))
+        mic_path = re.search(r"^CADDY_PP_MIC_PATH=(\S+)$", script, re.M).group(1)
+        self.assertEqual(self.policy_for(mic_path), self.POLICY.format(mic="(self)"))
+        deny = re.search(r"^CADDY_PP_DENY_PATHS=\((.*)\)$", script, re.M).group(1).split()
+        self.assertEqual(deny, ["/login", "/api/account"])
+        for path in deny:
+            self.assertEqual(self.policy_for(path), self.POLICY.format(mic="()"))
+
+    def test_the_app_sends_the_same_two_values(self):
+        # next.config.ts builds both from one template; the literal parts must be Caddy's.
+        tpl = re.search(r"`(camera=\(\), microphone=\$\{microphone\}[^`]*)`", self.next_config)
+        self.assertIsNotNone(tpl)
+        self.assertEqual(tpl.group(1).replace("${microphone}", "{mic}"), self.POLICY)
+        self.assertIn('permissionsPolicy("(self)")', self.next_config)
+        self.assertIn("/editor/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})",
+                      self.next_config)
+
+
 class CaddyReloadStepTests(unittest.TestCase):
     """deploy/remote-deploy.sh makes a Caddyfile change take effect, and only a safe one.
 
@@ -378,6 +483,11 @@ class CaddyReloadStepTests(unittest.TestCase):
                 continue
             name, _, value = line.partition(" ")
             sent[name] = value.strip("`\"")
+        # A header sent per path (Permissions-Policy: the editor page's microphone, see CaddyMicrophoneTests)
+        # is set by one-line, deferred `header @matcher >Name value` directives outside the block.
+        for m in re.finditer(r"^\theader @\w+ >(\S+) (.+)$", self.caddyfile, re.M):
+            if m.group(1) != "X-Frame-Options":
+                sent.setdefault(m.group(1), m.group(2).strip("`\""))
         exact = {e.split(": ", 1)[0]: e.split(": ", 1)[1] for e in self.array("CADDY_HEADERS")}
         present = set(self.array("CADDY_HEADERS_PRESENT"))
         self.assertEqual(set(sent), set(exact) | present)
@@ -401,7 +511,15 @@ class CaddyReloadStepTests(unittest.TestCase):
         self.assertIn("--resolve", fetch)
         self.assertNotIn("-k ", fetch)
         self.assertNotIn("--insecure", self.code)
-        self.assertNotRegex(self.code, r"https?://(?!localhost:2019/)[a-z]")
+        # The two Permissions-Policy values name Paddle's checkout origins: header text compared with what
+        # Caddy sent, never an address anything is fetched from. Only those two lines may carry a URL.
+        pp = [l for l in self.code.splitlines() if l.startswith(("CADDY_PP_DENY=", "CADDY_PP_MIC="))]
+        self.assertEqual(len(pp), 2)
+        for line in pp:
+            self.assertEqual(set(re.findall(r"https?://[^\"' ]+", line)),
+                             {"https://buy.paddle.com", "https://sandbox-buy.paddle.com"})
+        rest = "\n".join(l for l in self.code.splitlines() if l not in pp)
+        self.assertNotRegex(rest, r"https?://(?!localhost:2019/)[a-z]")
         self.assertNotIn("sudo", self.code)
         self.assertNotIn("set -x", self.code)
 

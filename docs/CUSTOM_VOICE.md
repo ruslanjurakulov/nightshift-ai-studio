@@ -516,6 +516,8 @@ confirm text does not claim the voice was heard; **no voice can be approved from
   the browser has it) and says "Recording is not enabled for this site yet", but does not change the headers: opening the microphone is a
   deploy-header change to make on purpose, for this one path (`microphone=(self)` in both places, and the Caddy line must exclude the path,
   because two policies are intersected). It is not made here (nothing live).
+  (2026-11-11: the microphone is now allowed on the timeline editor's project page only, for voice-over —
+  docs/editor-render-fields.md section 13. This page is still `microphone=()`.)
 - **V3-G2, a 30 to 60 second recording and the phrase check disagree.** The worker accepts at most the phrase plus 8 other words
   (`MAX_EXTRA_WORDS`): about 14 words in all. Thirty seconds of normal speech is about 75 words and fails with `verification_failed`. The page
   asks for the phrase once and for the recording to run to 30 seconds, which in practice means long pauses. Either the worker checks the

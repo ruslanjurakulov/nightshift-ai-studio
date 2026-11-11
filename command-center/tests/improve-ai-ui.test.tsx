@@ -20,7 +20,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
-    <a href={href} {...rest}>
+    <a href={href} data-next-link="" {...rest}>
       {children}
     </a>
   ),
@@ -28,6 +28,8 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
 
 import { I18nProvider } from "@/lib/i18n/context";
+import { documentNav } from "@/lib/editor-nav";
+import { expectEditorLinksAreFullLoads } from "./support/editor-link-guard";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
 import { uz } from "@/lib/i18n/uz";
@@ -50,8 +52,12 @@ const json = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
 let fetchMock: ReturnType<typeof vi.fn>;
 let extra: (url: string, init?: RequestInit) => Promise<Response> | undefined;
+const assign = vi.fn();
 beforeEach(() => {
   router.push.mockReset();
+  // Into and out of the editor's project page is a full document load (lib/editor-nav.ts), never router.push.
+  assign.mockReset();
+  vi.spyOn(documentNav, "assign").mockImplementation(assign);
   extra = () => undefined;
   fetchMock = vi.fn((url: string, init?: RequestInit) => {
     const own = extra(String(url), init);
@@ -183,7 +189,7 @@ describe("Captions", () => {
     expect(screen.queryByTestId("improve-with-ai-dialog")).toBeNull();
     fireEvent.click(await within(send).findByLabelText(en.editor.send.existingOption));
     fireEvent.click(within(send).getByRole("button", { name: en.editor.send.submit }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/chronos/editor/${P1}?focus=captions`));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(`/chronos/editor/${P1}?focus=captions`));
     expect(spendingCalls()).toHaveLength(0);
   });
 
@@ -489,6 +495,8 @@ describe("the Studio result", () => {
     const link = await screen.findByTestId("add-to-project");
     expect(link.getAttribute("href")).toBe(`/chronos/editor/${P1}?add=${NEWFILE}`);
     expect(link.getAttribute("aria-label")).toBe(tx.addToProject);
+    // A full load into the project page (lib/editor-nav.ts): a plain anchor, judged by the href it resolved to.
+    expectEditorLinksAreFullLoads();
   });
 
   it("without a project there is no such link", async () => {

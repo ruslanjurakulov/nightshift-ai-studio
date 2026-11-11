@@ -50,6 +50,7 @@ import {
   partialOpacityMove,
   fastCharged,
   fastSeconds,
+  lookSeconds,
   renderTimeoutS,
   reverseMaxSeconds,
   setSpeed,
@@ -628,6 +629,8 @@ export interface RenderWork {
   shapeEst: number;
   /** What clips faster than 1x add (lib/editor.ts `fastSeconds`). */
   fastEst: number;
+  /** What advanced colour and masks add (lib/editor.ts `lookSeconds`). */
+  lookEst: number;
   work: number;
   allowed: number;
   ok: boolean;
@@ -649,7 +652,11 @@ export function renderWork(model: EditorModel): RenderWork {
     );
   const shapeEst = shapeWorkSeconds(model.shapes ?? [], model.fps, model, length);
   const fastEst = fastCharged(model.clips.reduce((n, c) => n + fastSeconds(c), 0), length);
-  const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + shapeEst;
+  const lookEst = fastCharged(
+    model.clips.reduce((n, c) => n + lookSeconds(c, model.fps, model.width, model.height), 0),
+    length,
+  );
+  const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + lookEst + shapeEst;
   const allowed = renderTimeoutS(length);
   return {
     length,
@@ -657,9 +664,10 @@ export function renderWork(model: EditorModel): RenderWork {
     stabEst,
     shapeEst,
     fastEst,
+    lookEst,
     work,
     allowed,
-    ok: interpEst + stabEst + shapeEst + fastEst <= 0 || work <= allowed + 1e-9,
+    ok: interpEst + stabEst + shapeEst + fastEst + lookEst <= 0 || work <= allowed + 1e-9,
   };
 }
 

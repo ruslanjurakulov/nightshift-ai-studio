@@ -3,6 +3,7 @@
 import { useEffect, useRef, type CSSProperties, type Ref, type RefObject } from "react";
 import type { VideoClip } from "@/lib/editor";
 import { previewObjectFit } from "@/lib/editorFrame";
+import { huePreview, maskPreviewStyle } from "@/lib/editorLook";
 import {
   LOOK_FILTER_ID,
   hasLook,
@@ -135,6 +136,25 @@ export function ClipPicture({
   onLoadedMetadata: () => void;
   onError: () => void;
 }) {
+  const look = lookWrap(clip);
+  if (look) {
+    // A mask (fixed in the frame) and a hue turn sit on the whole frame, as in the export; approximate.
+    return (
+      <div className="absolute inset-0" style={look} data-testid="clip-look-preview">
+        <ClipPicture
+          clip={clip ? { ...clip, mask: undefined, color: undefined } : clip}
+          still={still}
+          src={src}
+          frame={frame}
+          source={source}
+          progress={progress}
+          videoRef={videoRef}
+          onLoadedMetadata={onLoadedMetadata}
+          onError={onError}
+        />
+      </div>
+    );
+  }
   const staged = needsStage(clip, still) || (clip?.vignette ?? 0) > 0;
   const filter = previewFilterStyle(clip, frame.width);
   const media = (style: CSSProperties, className?: string) =>
@@ -206,4 +226,11 @@ export function ClipPicture({
   ) : (
     picture
   );
+}
+
+/** The frame-level style of a clip's mask and hue turn (null without either: the element is the one it was). */
+function lookWrap(clip: VideoClip | null | undefined): CSSProperties | null {
+  if (!clip || (!clip.mask && !clip.color?.hue)) return null;
+  const hue = huePreview(clip);
+  return { ...maskPreviewStyle(clip.mask), ...(hue ? { filter: hue } : {}) };
 }

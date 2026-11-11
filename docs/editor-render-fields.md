@@ -35,6 +35,7 @@ into one commit) and #484 (group 11); group 12 is the editor-parity change that 
 | 10 | `claude/render-stabilise` | V clip `stabilize` | on main (#480) |
 | 11 | `claude/editor-shapes` | top-level `shapes` (stickers, shapes, progress bar) | on main (#484) |
 | 12 | `claude/editor-parity-1` | V clip `gain_db`; a video on an A track (detached sound); `speed` 0.1-10; export frame rate | added by this branch (section 12) |
+| 14 | `claude/editor-parity-2` | V clip `color` (temperature, tint, hue, curve), `mask`; silence removal (no field) | added by this branch (section 14) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -665,6 +666,9 @@ project keeps exactly its document.
 | clip `gain_db` | "Volume" 0-200 % slider under the clip's sound switch (`ClipVolumeDetach` in `ClipSoundTools.tsx`); muting is the switch | 12 |
 | a video on an A track | "Detach audio" beside the volume (same component) | 12 |
 | (no field) | "Duplicate", "Copy", "Paste after this clip" in the clip inspector (`ClipCopyTools`), and Ctrl/Cmd + D, C, V | 12 |
+| clip `color` | "Colour balance" section: temperature, tint, hue sliders and a tone-curve radio group (`ClipColorSection` in `ClipLookSections.tsx`) | 14 |
+| clip `mask` | "Mask" section: shape radios, centre / size / soft edge / corner sliders, invert (`ClipMaskSection`) | 14 |
+| (no field) | "Remove silences" section: threshold and length sliders, find, the proposed cuts, apply (`ClipSilenceSection`) | 14 |
 
 Export formats (P): `schemas/export_presets.json` is the list (YouTube wide 1080p and 720p, vertical
 1080x1920 for Shorts / Reels / TikTok, square, 4:5), `modules/export_presets.py` loads it and refuses an
@@ -797,7 +801,8 @@ Branch `claude/editor-parity-1`. Free: ffmpeg and the browser only, no model, no
 * NOT added here: a 1440p or a 4K format. They came later as PAID sizes of "Sizes to export" (migration
   0132, `docs/HIRES_EXPORT.md`, behind `NIGHTSHIFT_HIRES_EXPORT`): sold by the started minute, 300 s / 180 s
   at most, 4K at 30 fps at most, with their own time budget (7 and 12 s per second). They are never in the
-  format picker: a project's own frame is exported free.
+  format picker, and nothing above 1080p is free: a project whose own frame is bigger is exported in a paid
+  size (section 15).
 
 ### `gain_db` on a V clip (its own sound's level)
 
@@ -916,7 +921,192 @@ native read.
 
 ### Next
 
-* Voice-over recording in the editor (the microphone is allowed on the editor page only, an owner decision;
-  today `microphone=()` site-wide in `command-center/next.config.ts` and `deploy/Caddyfile`): a separate
-  branch.
-* 1440p and 4K: done as paid sizes (migration 0132, `docs/HIRES_EXPORT.md`).
+* Voice-over recording in the editor: section 13.
+* 1440p and 4K: done as paid sizes (migration 0132, `docs/HIRES_EXPORT.md`): section 15.
+
+## 13. Voice-over recorded in the editor (no new field)
+
+A take recorded in the editor becomes an ordinary sound on an A track (`asset_id` of an AUDIO asset); the
+document, the validators (`lib/editor.ts`, `modules/timeline.py`) and the render are unchanged.
+
+**The microphone, on one page.** Owner decision (2026-11-11): `microphone=(self)` on the timeline editor's
+project page `/<channel>/editor/<project uuid>` only; every other path, `/api` included, keeps `microphone=()`.
+Both layers send it: `command-center/next.config.ts` (`EDITOR_MIC_SOURCE`, a later rule replacing the site-wide
+value on that path) and `deploy/Caddyfile` (two mutually exclusive matchers plus a deny for `/api/*`, each a
+deferred `>Permissions-Policy`, so Caddy's value replaces the app's: on the self-hosted box Caddy's is the one the
+browser gets, docs/DEPLOY_AX42.md). `tests/security-headers.test.ts` and `tests/test_deploy_self_host.py`
+(`CaddyMicrophoneTests`) pin the split and that both layers send the same two values. The browser still asks the
+person every time, and the page asks only when Record is pressed. A policy is fixed per document, so the
+project page is entered and left by FULL document loads (`lib/editor-nav.ts`): links into it are plain `<a href>`
+(EditorHome, the Studio desk, "Back to project") and "create" / "Open in editor" use `loadDocument`; while the
+editor is open, every in-app link click becomes a full load (`useFullLoadLinks`, a capture listener ahead of
+Next's `<Link>` that only calls `preventDefault`, so the link's own `onClick` still runs, e.g. a notification is
+marked read), so no later page, the custom voice page included, keeps `microphone=(self)`. Links whose target is
+known only at run time use `PageLink` (a plain anchor when it resolves to a project page: an export-done
+notification; "Add to project" is a plain anchor), and the command palette and the channel / organization
+switcher go through `navigate()` (a full load from or to a project page, the router otherwise). The editor's
+`beforeunload` guard therefore also covers leaving by a link (it is skipped after the project is deleted). Should
+a client-side route in still happen, the recorder detects the inherited policy (`document.permissionsPolicy` /
+`featurePolicy`) and offers "Reload page" instead of calling it a refusal. The custom voice page
+(docs/CUSTOM_VOICE.md, V3-G1) is not opened by this. `deploy/remote-deploy.sh` checks both values exactly: in the
+adapted config, and live (the deny value on `/login` and `/api/account`, the `(self)` value on a
+`/c/editor/<uuid>` path; a restored older Caddyfile is held to the deny value only).
+
+**Recording** (`components/editor/VoiceOverRecorder.tsx`, the shared `components/voice/useVoiceRecorder.ts` with
+options): 1 s to 10 min (stopped at 10:00 and kept; a take a background tab's throttled timers stopped late is
+also kept, shown at its real length, to trim on the timeline), 128 kbit/s asked of MediaRecorder, a level meter
+(Web Audio analyser, never connected to the speakers), preview, re-take, discard, cancel. Stop, Cancel, closing
+the panel, leaving the page and `pagehide` release the microphone. A hidden page does NOT stop the take: Chromium
+also calls a window hidden when another window covers it, which is where a script is read from.
+
+**Upload** (`lib/editor-voiceover.ts`): the media library's ordinary path, nothing new on the database side.
+POST `/api/media/uploads` (membership, type allowlist, size cap, quota) and the PUT, then the page polls the new
+read-only `GET /api/media/uploads/<ticket>` (status, a known reason word, asset id; RLS) every 1.5 s for up to
+3 minutes, reads the registered asset (`GET /api/media/<id>`), and only then places it at the playhead as it was
+when Add was pressed. A take over 25 MB is refused in the browser (10 min at 128 kbit/s is 9.6 MB; the
+database's 95 MiB default cap still applies). A WebM take is uploaded with NO extension in its name: the
+database maps `.webm` to video (`media_ext_mime`) and would refuse an audio upload so named; Ogg is `.ogg` and
+Safari's MP4 `.m4a`.
+
+**The worker** (`modules/media_library.py`): a recorder writes WebM as a stream, so its header carries no length
+(measured: a WebM/Opus written to a pipe probes with no `format.duration`), and the worker refused it as "no
+length". For a sound-only file of a streamed container (WebM, Ogg, MP4) with no length in its header, the
+length is now measured from the first sound stream's packet times (`ffprobe -show_entries packet=...`, demuxer
+forced, `file` protocol only, read line by line, killed at the probe timeout). A video without a length is
+still refused (its decode budget is computed from that length). `tests/test_editor_voiceover.py` covers the
+ingest and renders a streamed WebM/Opus take and a WAV take on an A track through the real export path.
+
+Strings: `lib/i18n/editor-voiceover/{en,ru,uz}.ts` (`t.editor.voiceOver`); ru and uz are drafts for a native
+read.
+
+## 14. Advanced colour, shape masks, silence removal (editor parity 2a)
+
+Branch `claude/editor-parity-2`. Free: ffmpeg, Pillow and the browser only, no model, no migration, no new route.
+Effects pack, in/out animations on video clips, "apply transition to all" and beat markers (parity 2b) are not in
+this change.
+
+### `color` on a V clip (advanced colour)
+
+```json
+"color": { "temperature": 40, "tint": -10, "hue": 25, "curve": "matte" }
+```
+
+* every key optional, at least one: `temperature` -100 (cool, blue) .. 100 (warm, amber), `tint` -100 (green) ..
+  100 (magenta), `hue` -180..180 degrees, `curve` one of `lighter`, `darker`, `contrast`, `strong-contrast`,
+  `matte`, `cross-process` (`COLOR_CURVES`; closed list, no free text reaches ffmpeg). Zeros are dropped by
+  `normalise`; a colour of only zeros is the clip without one. Saturation and brightness stay the clip's `grade`
+  (the panel's hint says so): no second field for the same thing.
+* export (`render_backend.colour_adjust_filters`), right after the grade and before the named look: temperature and
+  tint are one `lutyuv` that moves U/V by a constant (+100 temperature: U -18, V +14 levels; +100 tint: U and V +12),
+  hue is `hue=h=`, a curve is ffmpeg's own `curves` preset (`matte` is `master='0/0.08 0.5/0.5 1/0.9'`).
+* preview: the hue only (CSS `hue-rotate`); temperature, tint and curves are seen in the export (the panel says so).
+
+### `mask` on a V clip
+
+```json
+"mask": { "shape": "rounded", "x": 0.5, "y": 0.5, "w": 0.6, "h": 0.6, "feather": 0.1, "radius": 0.25, "invert": false }
+```
+
+* `shape` (required) `rect`, `ellipse` or `rounded`; `x`, `y` the centre (0..1 of the FRAME), `w`, `h` the size
+  (0.05..1 of the frame), `feather` 0..0.5 (the soft band, a fraction of the shape's shorter side), `radius` 0..0.5
+  (`rounded` only; refused on the others), `invert` (hide the inside instead). `normalise` fills the defaults
+  (0.5, 0.5, 0.6, 0.6, feather 0, radius 0.25 on rounded) so two spellings of one mask are one document.
+* the mask is fixed in the frame: a `move` zooms the picture under it; outside it (inverted: inside) the frame is
+  black. Fades and the cross-fade come after it.
+* export: Pillow draws the mask once per frame size (`render_backend.draw_mask`, supersampled up to 1440p, feather =
+  Gaussian blur of `feather x short side / 4`) into the segment's temp dir, and the clip's chain becomes a graph
+  `[0:v]<chain>[pm];[1:v]format=gray[km];[pm][km]alphamerge[ka];color=black[kb];[kb][ka]overlay` before its fades
+  (`-loop 1 -i mask.png` is the second input, with the still decoder cap). A cross-fade's masked side gets the same
+  merge in the xfade graph. A clip without a mask keeps its `-vf` chain byte for byte
+  (`samples/parity2_argv_golden.json`, made from origin/main, pins five representative documents).
+* memory (measured with ffmpeg 7.0.2 under the export's 2 GiB limit, `timeline_render.render(..., timeout_s=...)`):
+  at 4K60 a mask on either side of a cross-fade ran out of memory in every combination tried (one side, both,
+  with colour, with zoom 2, with the blur fit); a single masked 4K60 clip passed alone, with colour, with the blur
+  fit and with a zoom to 2, and failed with a zoom to 4 (a still with a zoom to 3 too). At 2560x1440@60 every
+  combination passed. So, in a frame above 1440p (`LARGE_FRAME_PX`): a mask is refused on a cross-faded clip, and a
+  masked clip zooms at most `XFADE_LARGE_ZOOM_MAX` (2). The editor settles both (step 2a of `settleAll`: the mask
+  comes off a cross-faded clip, the zoom is held at 2, each with a notice).
+* preview: the ellipse as a radial CSS mask (with feather and inversion), a rectangle as a clip path (inverted: a
+  frame with a hole); a rectangle's feather is not drawn (the panel says the preview is approximate).
+
+### Render budget (#672's rules)
+
+Each clip with colour or a mask is charged `per x length x (W x H x fps) / (1920 x 1080 x 30)` seconds of work,
+`per` = 0.15 (temperature/tint) + 0.2 (hue) + 0.35 (curve) + 0.3 (mask) (`COLOR_*_SECONDS_PER_S`,
+`MASK_SECONDS_PER_S`, the same in `timeline.py` and `lib/editor.ts`). It adds to `length + interpolation + steadying +
+fast clips (+ shapes)` against `render_timeout_s(length)`, and like the fast-clip charge it is not charged on a
+timeline longer than an export (`EXPORT_LENGTH_MAX_S`). The sentence names "colour and masks". Settle order: step 4c,
+after the fast clips (4b) and before the shapes (5): while the timeline is over, the dearest clip's colour and mask
+come off (the last clip first on a tie) with "Clip N: its colour and mask were taken off". A panel change that would
+not fit is not made and the reason is shown (`lookCheck`).
+
+Measurements (marginal seconds of render per second of video, the bundled ffmpeg 7.0.2, a phone-like 1080p60
+H.264 noisy 15 Mb/s source, segment encode settings, best of 2-3). The box was shared with other builders' test
+suites (load 9-10 on 4 cores), so the numbers are noisy; the charge takes the dearest seen: 1080p30 project:
+lutyuv 0.07-0.17, hue 0.16, curves 0.13-0.34, mask 0.16-0.27; 1080p60 project: lutyuv up to 0.23, hue up to 0.27,
+curves 0.28-0.56, mask 0.14-0.48. (`colorbalance`, the obvious tint filter, cost 1.3 s/s at 1080p30 and 3.3 at 60,
+so it is not used; `colortemperature` 0.57/0.92.) Consequences: at 1080p30 a 10-minute clip with every colour and a
+mask still fits (1 + 1.0 = 2.0 s per second); at 4K60 (x8) a masked clip longer than about 120 / (1 + 8 x 0.3 - 3) =
+300 s is refused.
+
+### Silence removal (no field)
+
+* The section "Remove silences" of a video clip: threshold -70..-20 dB (default -40), minimum length 0.2-3 s
+  (default 0.6). "Find silences" reads the clip's file in the browser (the library's signed link of the 480p proxy,
+  which keeps the sound: the same access check as the preview) with the waveform's caps (40 MB, 20 minutes), and
+  keeps the loudest sample of each 10 ms block. A silence is ffmpeg's `silencedetect` rule on those blocks (every
+  channel under the threshold for at least the minimum; it starts at the first quiet sample and ends at the first
+  loud one or the end). `samples/silence_cases.json` holds what the real ffmpeg reports on six signals at four
+  probes each; `tests/test_editor_silence.py` checks the file against ffmpeg and `editor-silence.test.ts` holds the
+  TypeScript detector to it (within one block).
+* The proposal is a list of cuts (0.1 s of sound kept either side, none leaving a piece shorter than a clip, never
+  the whole clip); nothing changes until the person presses "Cut N silent parts", which is one undo step: splits and
+  ripple deletes of the picture (texts, sounds and overlays keep their times; the hint says so). Only for a video
+  clip at one speed, forwards (no curve, reverse or freeze); stops at `MAX_EDITOR_CLIPS` and says how many fitted.
+* The clip's own sound must be on (`audio: true`): a muted clip has nothing to listen to, and a clip whose sound
+  was detached to an A track would lose step with it if only the picture were cut ("Turn it on first").
+* A split piece keeps its side's fade only as long as the piece is (`splitClip` and `timeline.split_clip`: fade in +
+  fade out within the piece, the in-fade giving way), so cutting near a faded end leaves a document that saves.
+* The threshold is compared as a 32-bit float, as ffmpeg compares float samples: a level of exactly 0.01 is not
+  under -40 dB (cases at 22,050 and 48,000 Hz in `samples/silence_cases.json`). Blocks are a whole number of
+  samples and times are labelled by that length (221 samples, 10.02 ms, at 22,050 Hz). The cut list is shown in
+  timeline times.
+* Why not on the server: the web image has no ffmpeg and a worker job needs a queue table (a migration, out of scope).
+  The analysis is free, one file at a time, at most 6 new files a minute per tab, and once per file per page.
+
+### Strings
+
+`lib/i18n/editor-parity2/{en,ru,uz}.ts` (`t.editor.parity2`); ru and uz are drafts for a native read.
+
+### Rollout
+
+As section 12: older validators refuse `color` and `mask` ("is not a known field"), so merge as one commit and use
+the new controls only after the worker has been rebuilt by the deploy.
+
+## 15. 1440p and 4K, sold by the started minute (no new field)
+
+Migration 0132, behind `NIGHTSHIFT_HIRES_EXPORT` (default off) on top of `NIGHTSHIFT_MULTI_RATIO_EXPORT`; the whole
+design, the measurements and the price proposal are in `docs/HIRES_EXPORT.md`. The document does not change: a paid
+size is a FRAME of the export row (0129's `frame_preset` / `frame_width` / `frame_height`), chosen from four more
+entries of the closed list (`schemas/export_presets.json`): `youtube_1440p` 2560x1440, `vertical_1440p` 1440x2560,
+`youtube_2160p` 3840x2160, `vertical_2160p` 2160x3840.
+
+* **Tiers by pixels:** up to 1920x1080 free; up to 2560x1440 the 1440p tier (300 s at most, any rate); above it the
+  4K tier (180 s at most, 30 fps at most: a cross-faded 9:16 4K60 render ran out of the 2 GiB limit, measured).
+  `modules/hires_export.py`, `lib/hiresExport/limits.ts` and 0132 hold the same numbers (a parity test).
+* **Nothing above 1080p is free.** The plain export of a project whose OWN frame is above 1920x1080 pixels is refused
+  (`hires_needs_paid_export`), by the database and by the worker; the document may still be saved at that size.
+* **The large-frame rules apply to the paid frame.** The worker validates the document in the frame it renders
+  (`framed_doc`), and the editor checks each size the same way (`frameProblems`), so the 4K tier, which is the only
+  tier above `LARGE_FRAME_PX` (2560x1440), carries every rule of a large frame: no blur and no zoom past 2 on a
+  cross-faded clip, no interpolation, the reverse cap, and section 14's mask rules (no mask on a cross-faded clip, a
+  masked clip zooms at most `XFADE_LARGE_ZOOM_MAX`). The 1440p tier is not a large frame (section 14 measured every
+  mask combination passing at 2560x1440@60). The 4K tier's 30 fps cap is on top: it removes the 4K60 cases section 14
+  measured and leaves its rules standing.
+* **The render-time estimate** of `validate` (section 14's colour and mask charges, interpolation, steadying, fast
+  clips, shapes) is scaled by the frame's pixels and rate as before and checked against the FREE budget
+  `render_timeout_s(length)`, also for a paid frame. That is stricter than the paid render budget (7 or 12 s per
+  second), so a paid size the estimate does not fit is shown as not exportable before any price is asked (a 4K30
+  clip with every colour and a mask is charged 4 s per second on top of its length, so it fits up to about 60 s).
+* **A speed curve** is not sold in a paid size (`hires_speed_curve`): the database prices the length without the
+  curve.

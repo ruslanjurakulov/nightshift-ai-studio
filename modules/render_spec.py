@@ -246,6 +246,15 @@ ANIM_POP_FROM = 0.6
 FILTERS = ("mono", "sepia", "vintage", "cinematic", "cool", "warm", "high-contrast")
 BLUR_MAX = 30.0
 ROTATIONS = (0, 90, 180, 270)
+#: Advanced colour and masks (modules/timeline.py holds the same lists and numbers; a test pins them).
+COLOR_TEMP_MAX = 100.0
+COLOR_TINT_MAX = 100.0
+COLOR_HUE_MAX = 180.0
+COLOR_CURVES = ("lighter", "darker", "contrast", "strong-contrast", "matte", "cross-process")
+MASK_SHAPES = ("rect", "ellipse", "rounded")
+MASK_MIN = 0.05
+MASK_FEATHER_MAX = 0.5
+MASK_RADIUS_MAX = 0.5
 
 #: A speed curve / interpolated slow motion (modules/timeline.py holds the same
 #: numbers; a test pins them).
@@ -357,6 +366,11 @@ class ClipEffects:
     flip_h: bool = False
     flip_v: bool = False
     rotate: int = 0
+    #: Advanced colour (the document's ``color``): chroma moves, a hue turn in degrees, a named curve.
+    temperature: float = 0.0
+    tint: float = 0.0
+    hue: float = 0.0
+    curve: Optional[str] = None
 
     @property
     def active(self) -> bool:
@@ -370,7 +384,7 @@ class ClipEffects:
         d: dict = {}
         base = ClipEffects()
         for key in ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
-                    "flip_h", "flip_v", "rotate"):
+                    "flip_h", "flip_v", "rotate", "temperature", "tint", "hue", "curve"):
             _put_if(d, key, getattr(self, key), getattr(base, key))
         return d
 
@@ -385,6 +399,9 @@ class ClipEffects:
             sharpen=float(d.get("sharpen") or 0.0), grain=float(d.get("grain") or 0.0),
             flip_h=bool(d.get("flip_h", False)), flip_v=bool(d.get("flip_v", False)),
             rotate=int(d.get("rotate") or 0),
+            temperature=float(d.get("temperature") or 0.0), tint=float(d.get("tint") or 0.0),
+            hue=float(d.get("hue") or 0.0),
+            curve=(str(d["curve"]) if d.get("curve") is not None else None),
         )
 
 
@@ -448,6 +465,52 @@ def _effects_problems(name: str, fx: ClipEffects) -> List[str]:
             problems.append(f"{name} {key} must be true or false")
     if not (isinstance(fx.rotate, int) and not isinstance(fx.rotate, bool) and fx.rotate in ROTATIONS):
         problems.append(f"{name} rotate must be one of {list(ROTATIONS)}")
+    for key, hi in (("temperature", COLOR_TEMP_MAX), ("tint", COLOR_TINT_MAX), ("hue", COLOR_HUE_MAX)):
+        v = getattr(fx, key)
+        if not (_finite(v) and -hi <= v <= hi):
+            problems.append(f"{name} {key} must be from {-hi:g} to {hi:g} (got {v})")
+    if fx.curve is not None and fx.curve not in COLOR_CURVES:
+        problems.append(f"{name} has unknown curve {fx.curve!r}")
+    return problems
+
+
+@dataclass(frozen=True)
+class ClipMask:
+    """A shape the picture is seen through, in FRAME fractions: its centre ``x``, ``y`` and size ``w``,
+    ``h``; ``feather`` the soft edge (a fraction of the shape's shorter side), ``radius`` a rounded
+    rectangle's corner (the same unit), ``invert`` = black inside instead of outside. Drawn once as a
+    still (render_backend.mask_png) and merged as the picture's alpha over black."""
+    shape: str = "rect"
+    x: float = 0.5
+    y: float = 0.5
+    w: float = 0.6
+    h: float = 0.6
+    feather: float = 0.0
+    radius: float = 0.0
+    invert: bool = False
+
+    def to_dict(self) -> dict:
+        return {"shape": self.shape, "x": self.x, "y": self.y, "w": self.w, "h": self.h,
+                "feather": self.feather, "radius": self.radius, "invert": self.invert}
+
+    @staticmethod
+    def from_dict(d: dict) -> "ClipMask":
+        return ClipMask(str(d.get("shape", "rect")), float(d.get("x", 0.5)), float(d.get("y", 0.5)),
+                        float(d.get("w", 0.6)), float(d.get("h", 0.6)), float(d.get("feather", 0.0)),
+                        float(d.get("radius", 0.0)), bool(d.get("invert", False)))
+
+
+def _mask_problems(name: str, m: ClipMask) -> List[str]:
+    problems: List[str] = []
+    if m.shape not in MASK_SHAPES:
+        problems.append(f"{name} has unknown mask shape {m.shape!r}")
+    for key, lo, hi in (("x", 0.0, 1.0), ("y", 0.0, 1.0), ("w", MASK_MIN, 1.0), ("h", MASK_MIN, 1.0),
+                        ("feather", 0.0, MASK_FEATHER_MAX), ("radius", 0.0, MASK_RADIUS_MAX)):
+        v = getattr(m, key)
+        if not (_finite(v) and lo <= v <= hi):
+            problems.append(f"{name} mask {key} must be from {lo:g} to {hi:g} (got {v})")
+    if not isinstance(m.invert, bool):
+        problems.append(f"{name} mask invert must be true or false")
     return problems
 
 
@@ -579,6 +642,8 @@ class Segment:
     interpolate: bool = False
     #: Smooth camera shake (vidstab, two passes, else deshake). Video only.
     stabilize: bool = False
+    #: A shape the picture is seen through (None = the whole frame, the chain it always was).
+    mask: Optional[ClipMask] = None
 
     @property
     def graded(self) -> bool:
@@ -611,6 +676,8 @@ class Segment:
             d["curve"] = self.curve.to_dict()
         _put_if(d, "interpolate", self.interpolate, False)
         _put_if(d, "stabilize", self.stabilize, False)
+        if self.mask is not None:
+            d["mask"] = self.mask.to_dict()
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
         _put_if(d, "xfade_style", self.xfade_style, XFADE_DEFAULT_STYLE)
@@ -641,6 +708,7 @@ class Segment:
             angle=float(d.get("angle") or 0.0),
             curve=(SpeedCurve.from_dict(d["curve"]) if isinstance(d.get("curve"), dict) else None),
             interpolate=bool(d.get("interpolate", False)), stabilize=bool(d.get("stabilize", False)),
+            mask=(ClipMask.from_dict(d["mask"]) if isinstance(d.get("mask"), dict) else None),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
             xfade_style=str(d.get("xfade_style") or XFADE_DEFAULT_STYLE),
         )
@@ -1020,6 +1088,10 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
         problems.append(f"{name} stabilize is for moving video (not a picture or a frozen frame)")
     if seg.crop is not None:
         problems.extend(_crop_problems(name, seg.crop))
+    if seg.mask is not None:
+        problems.extend(_mask_problems(name, seg.mask))
+        if not frame_exact:
+            problems.append(f"{name} has a mask, which needs frame_exact")
     if not (_finite(seg.angle) and -ANGLE_MAX <= seg.angle <= ANGLE_MAX):
         problems.append(f"{name} angle must be from {-ANGLE_MAX:g} to {ANGLE_MAX:g}")
     if seg.reverse and seg.freeze:

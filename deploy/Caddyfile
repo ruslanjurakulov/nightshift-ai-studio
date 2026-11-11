@@ -26,14 +26,32 @@
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		# payment= is opened to Paddle's checkout frame only (the Buy credits
-		# overlay, docs/PADDLE_SETUP.md): with payment=() the browser hides
-		# Apple Pay / Google Pay inside it. Our own page still gets nothing.
-		Permissions-Policy `camera=(), microphone=(), geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()`
 		# What server and framework answered is nobody's business.
 		-Server
 		-X-Powered-By
 	}
+
+	# Permissions-Policy. payment= is opened to Paddle's checkout frame only
+	# (the Buy credits overlay, docs/PADDLE_SETUP.md): with payment=() the
+	# browser hides Apple Pay / Google Pay inside it. Our own page still gets
+	# nothing. The microphone is allowed to this origin on ONE page, the
+	# timeline editor's project page /<channel>/editor/<project uuid>, for a
+	# voice-over (owner decision, 2026-11-11); the browser still asks the person
+	# each time. Every other path, /api included, keeps microphone=(). The two
+	# matchers below cannot both match one request, and the /api line only
+	# repeats the deny, so no two lines with different values ever meet. The
+	# `>` defers the write: it replaces what the app sent (next.config.ts sends
+	# the same two values on the same paths), so each response carries exactly
+	# one Permissions-Policy, Caddy's.
+	@micPage {
+		path_regexp ^/[^/]+/editor/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/?$
+		not path /api/*
+	}
+	@noMicPage not path_regexp ^/[^/]+/editor/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/?$
+	@noMicApi path /api/*
+	header @micPage >Permissions-Policy `camera=(), microphone=(self), geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()`
+	header @noMicPage >Permissions-Policy `camera=(), microphone=(), geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()`
+	header @noMicApi >Permissions-Policy `camera=(), microphone=(), geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()`
 
 	# The dashboard is never meant to be framed; this closes clickjacking on
 	# the buttons that write review intents. The one exception is the Mobile
