@@ -62,8 +62,9 @@
 #      brand channel's approved posts; off unless its section is sent);
 #   7. last, loads deploy/Caddyfile into the running Caddy without a restart
 #      (a bind-mounted file that changes does not make compose recreate it),
-#      but ONLY the exact file whose sha256 is pinned below
-#      (CADDYFILE_APPROVED_SHA256): any other Caddyfile is refused and Caddy
+#      but ONLY the exact file whose sha256 is pinned in CADDYFILE_APPROVED_SHA256
+#      as the DEPLOYED commit's copy of this script has it (read from that
+#      commit, not from the copy now running): any other Caddyfile is refused and Caddy
 #      keeps its config. Then it checks the headers Caddy really sends and puts
 #      the previous config back if anything is off (see "Caddy" below and
 #      docs/DEPLOY_AX42.md).
@@ -310,8 +311,24 @@ write_env() {
 # a matcher that skips a path. A person reviewing the Caddyfile does, and
 # updates this hash in the same PR:
 #     sha256sum deploy/Caddyfile
-# tests/test_deploy_self_host.py fails until the two agree. The environment
-# override is for the tests; sshd does not pass client environment.
+# tests/test_deploy_self_host.py fails until the two agree.
+#
+# WHICH COPY OF THIS LINE COUNTS. bash runs the copy of this script that was on
+# the server BEFORE the checkout (main() is parsed whole first), so the value
+# below, as the running copy has it, is the PREVIOUS commit's pin: a PR that
+# changed the Caddyfile and this line together used to fail its first deploy and
+# load on the next one. So caddy_apply reads the pin from the deployed commit's
+# own deploy/remote-deploy.sh (`git show <sha>:deploy/remote-deploy.sh`, this
+# exact line, exactly once), never from the running copy, and the new Caddyfile
+# loads in the same run. That is no weaker: the commit is already proven to be on
+# origin/main (step 2), the Caddyfile hashed is that commit's, and the pin and the
+# Caddyfile change in the same reviewed diff. The pin was never a secret; it is a
+# tripwire that makes a Caddyfile change impossible to land without a reviewer
+# seeing both lines change together. A malicious Caddyfile with its own pin edit
+# passes the gate exactly as it did before (a deploy later), so the review of the
+# PR is the control, not this hash. The environment override
+# NIGHTSHIFT_CADDYFILE_APPROVED_SHA256 still wins when set (tests); sshd does not
+# pass client environment, so the key holder cannot set it.
 CADDYFILE_APPROVED_SHA256="${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-37fdde60fd271dee054c02b6bfa5f6ff18847646deee0d308f63c2fa9080dd13}"
 
 # This is the CONTRACT: what Caddy must keep sending. It mirrors the `header`
@@ -510,15 +527,27 @@ caddy_rollback() {
   die "the previous config could not be verified either (see the lines above: is Caddy or the app answering on 127.0.0.1:${CADDY_VERIFY_PORT}?). On the server: dc ps, dc logs --tail 100 caddy"
 }
 
+# The pin the deployed commit carries: its deploy/remote-deploy.sh's
+# CADDYFILE_APPROVED_SHA256 line, exactly that shape, exactly once. Prints the
+# 64 hex characters, or nothing (no such file, no such line, or more than one).
+#   caddy_pin_of <commit>
+caddy_pin_of() {
+  local sha="$1" text pins
+  text="$(git -C "$APP_DIR" show "${sha}:deploy/remote-deploy.sh" 2>/dev/null)" || return 0
+  pins="$(sed -nE 's/^CADDYFILE_APPROVED_SHA256="\$\{NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-([0-9a-f]{64})\}"$/\1/p' <<<"$text")"
+  [[ "$pins" =~ ^[0-9a-f]{64}$ ]] && printf '%s' "$pins"
+  return 0
+}
+
 # The step. Runs after the worker steps, so a worker that fails to start ends
 # the deploy before this point and the Caddyfile is not reloaded that time.
 # Never leaves Caddy without a working config: the pinned hash, validate and
 # the contract guard come before anything is loaded, reload is atomic (a config
 # that fails to load leaves the running one in place), and the check after it
 # decides whether the new file stays.
-#   caddy_apply <host>
+#   caddy_apply <host> <deployed commit>
 caddy_apply() {
-  local host="$1" new="$APP_DIR/deploy/Caddyfile" dir="$CADDY_STATE_DIR"
+  local host="$1" sha="$2" new="$APP_DIR/deploy/Caddyfile" dir="$CADDY_STATE_DIR" approved
   local loaded="$dir/.caddyfile.loaded" marker="$dir/.caddyfile.loaded.sha256" running="$dir/.caddy-running.json"
   local newsha oldsha=none adapted dropped n up=0 snap
   if [[ -L "$new" ]]; then die "caddy: deploy/Caddyfile is a symlink; refused, nothing was loaded"; fi
@@ -531,9 +560,19 @@ caddy_apply() {
   trap "rm -f '$snap'" EXIT
   cp "$new" "$snap" || die "caddy: cannot copy deploy/Caddyfile"
   newsha="$(sha256sum "$snap" | cut -d' ' -f1)"
-  if [[ "$newsha" != "$CADDYFILE_APPROVED_SHA256" ]]; then
-    die "caddy: deploy/Caddyfile changed (${newsha:0:12}, approved ${CADDYFILE_APPROVED_SHA256:0:12}); NOT validated, NOT loaded, Caddy keeps its config. Review it, then update CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh in the same PR"
+  # The deployed commit's own pin (see CADDYFILE_APPROVED_SHA256), unless the
+  # environment override is set.
+  if [[ -n "${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-}" ]]; then
+    approved="$NIGHTSHIFT_CADDYFILE_APPROVED_SHA256"
+  else
+    approved="$(caddy_pin_of "$sha")"
+    [[ -n "$approved" ]] \
+      || die "caddy: commit ${sha:0:12} has no single CADDYFILE_APPROVED_SHA256 line in deploy/remote-deploy.sh; the Caddyfile was NOT validated or loaded and Caddy keeps its config"
   fi
+  if [[ "$newsha" != "$approved" ]]; then
+    die "caddy: deploy/Caddyfile of commit ${sha:0:12} is ${newsha:0:12}, but that commit's deploy/remote-deploy.sh approves ${approved:0:12}; NOT validated, NOT loaded, Caddy keeps its config. Review the Caddyfile, then put \`sha256sum deploy/Caddyfile\` into CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh, in the same commit; it takes effect on that commit's own deploy"
+  fi
+  log "caddy: the Caddyfile matches the hash commit ${sha:0:12} approves (${approved:0:12})"
   if [[ -f "$marker" ]]; then oldsha="$(cat "$marker")"; fi
   # Reload is idempotent (Caddy answers "unchanged" for a config it already
   # runs) and the live check is the real test, so both always run; the hash
@@ -903,7 +942,7 @@ main() {
   for line in "${web_lines[@]}"; do
     if [[ "$line" == DOMAIN=* ]]; then domain="${line#DOMAIN=}"; fi
   done
-  caddy_apply "${CADDY_VERIFY_HOST:-$domain}"
+  caddy_apply "${CADDY_VERIFY_HOST:-$domain}" "$sha"
 
   # Each build leaves the previous image dangling; a few of these a week fill
   # a disk. Only dangling images: nothing a container still uses.
