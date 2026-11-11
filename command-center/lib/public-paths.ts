@@ -285,6 +285,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   // channel named "Atelier", whose URL slug would be it) would lose every
   // screen. Reserved so no customer can take the word.
   "atelier",
+  // The Agent Builder page (/agent-builder) and its draft routes (migration 0130): a channel of that id would be shadowed by it.
+  "agent-builder",
 ] as const;
 
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */

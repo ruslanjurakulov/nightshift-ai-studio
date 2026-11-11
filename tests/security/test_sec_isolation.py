@@ -34,7 +34,7 @@ from sec_expectations import TABLES, Kind
 from sec_scenario import DEFAULT_ORG
 
 ALL = sorted(TABLES)
-SCOPED = sorted(t for t, k in TABLES.items() if k.kind in ("org", "channel", "video"))
+SCOPED = sorted(t for t, k in TABLES.items() if k.kind in ("org", "channel", "video", "person"))
 
 
 def T(table: str) -> sql.Composed:
@@ -46,6 +46,8 @@ def T(table: str) -> sql.Composed:
 def owner_of(sc, kind: Kind, row: dict):
     """The organization a row belongs to, as the expectations define it;
     'platform' for the operator's channel-less rows."""
+    if kind.kind == "person":
+        return row.get(kind.col)  # a person, not an organization: compared with scope_value(), never with tenant.org
     if kind.kind == "org":
         return row.get(kind.col)
     if kind.kind == "channel":
@@ -59,14 +61,14 @@ def owner_of(sc, kind: Kind, row: dict):
 
 
 def scope_value(sc, tenant, kind: Kind):
-    return {"org": tenant.org, "channel": tenant.channel, "video": tenant.video}[kind.kind]
+    return {"org": tenant.org, "channel": tenant.channel, "video": tenant.video, "person": tenant.actor.uid}[kind.kind]
 
 
 def scope_predicate(sc, tenant, table: str):
     """SQL + params selecting `tenant`'s rows of `table` (every row, for a
     table that belongs to nobody in particular)."""
     kind = TABLES[table]
-    if kind.kind in ("org", "channel", "video"):
+    if kind.kind in ("org", "channel", "video", "person"):
         return sql.SQL("{} = %s").format(sql.Identifier(kind.col)), [scope_value(sc, tenant, kind)]
     return sql.SQL("true"), []
 
@@ -112,6 +114,11 @@ def test_tenant_reads_only_its_own_rows(conn, sc, table):
         return
     if kind.kind == "public":
         assert out.ok, f"{table} is declared public but a signed-in user cannot read it: {out!r}"
+        return
+    if kind.kind == "person":
+        leaked = [r for r in rows if r.get(kind.col) != sc.bob.actor.uid]
+        assert not leaked, f"{table}: Bob reads rows that are not his own: {leaked[:3]}"
+        assert rows, f"{table}: Bob cannot read his own rows ({out!r}) — the isolation check would be vacuous"
         return
     owners = {owner_of(sc, kind, r) for r in rows}
     leaked = [r for r in rows if owner_of(sc, kind, r) != sc.bob.org]
@@ -325,10 +332,12 @@ def _clone(conn, sc, table: str, tenant, role: str, scope_to=None):
     with as_superuser(conn, commit=False) as s:
         row = s.value(sql.SQL("select to_jsonb(t) from {} t where ").format(T(table)) + pred + sql.SQL(" limit 1"), params)
     assert row is not None, f"{table}: the scenario seeded no row for org {tenant.key.upper()}"
-    uniques = _unique_columns(conn, table) | set(kind.mutate)
+    uniques = (_unique_columns(conn, table) | set(kind.mutate)) - set(kind.keep)
     out = {}
     for name, udt, has_default, may_insert in _columns(conn, table, role):
-        if not may_insert:
+        # A person's table is attacked with a whole, valid row, granted or not: the refusal must be the privilege or the policy
+        # (42501), never a NOT NULL or a foreign key that a looser grant or a `using (true)` policy would sail past.
+        if not may_insert and kind.kind != "person":
             continue
         if kind.col == name and scope_to is not None:
             out[name] = scope_to
@@ -354,7 +363,7 @@ def _insert(s, table: str, row: dict):
 @pytest.mark.parametrize("table", ALL)
 def test_tenant_inserts_into_its_own_scope_only_where_declared(conn, sc, table):
     kind = TABLES[table]
-    if kind.kind not in ("org", "channel", "video"):
+    if kind.kind not in ("org", "channel", "video", "person"):
         row = _clone(conn, sc, table, sc.bob, "authenticated")
         with acting(conn, sc.bob.actor) as s:
             out = _insert(s, table, row)
@@ -370,6 +379,8 @@ def test_tenant_inserts_into_its_own_scope_only_where_declared(conn, sc, table):
     else:
         assert refused(out), (f"{table}: Bob can insert rows directly ({out!r}) — declare own_insert=True in "
                               "sec_expectations if that is intended")
+        if kind.kind == "person":
+            assert out.sqlstate == "42501", f"{table}: Bob's insert of a valid row was refused for another reason: {out!r}"
 
 
 @pytest.mark.parametrize("table", SCOPED)
@@ -394,6 +405,8 @@ def test_stranger_and_anon_cannot_insert(conn, sc, table):
         with acting(conn, who) as s:
             out = _insert(s, table, row)
         assert refused(out), f"{table}: {who.name} inserted a row ({out!r})"
+        if TABLES[table].kind == "person":
+            assert out.sqlstate == "42501", f"{table}: {who.name}'s insert of a valid row was refused for another reason: {out!r}"
 
 
 def test_the_default_org_is_nobody_elses(conn, sc):

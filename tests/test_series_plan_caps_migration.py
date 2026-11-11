@@ -69,7 +69,9 @@ class Numbering(unittest.TestCase):
         # 0129 (an export in another frame: editor_exports.frame_preset / frame_width / frame_height, editor_export_frame() and
         # request_editor_export's three-argument overload) was reviewed the same way: it touches the video editor's export table and
         # functions only and mentions none of the three words below, so nothing 0127's hashes guard moves.
-        reviewed = ("0128", "0129")
+        # 0130 adds isolated agent draft/version tables and a save-only function;
+        # reviewed against request_series_plan, series_plans and series_plan_cap_settings pins.
+        reviewed = ("0128", "0129", "0130")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")
