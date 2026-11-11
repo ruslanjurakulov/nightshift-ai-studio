@@ -54,6 +54,8 @@ export const adsBrandScanEn = {
     urlLabel: "Page to start from",
     urlHint: "Your home page, on the domain you proved (or one of its subdomains).",
     price: "A scan costs {credits} credits. They are held when you start and charged only if the scan finishes; a failed scan costs nothing.",
+    priceHeld:
+      "{hold} credits are held while it runs, {credits} is charged. The rest is released when the scan finishes, and all of it if the scan fails.",
     free: "A scan costs no credits in this workspace.",
     notOnSale: "Scanning is not available yet. Nothing can be bought here for now.",
     start: "Scan for {credits} credits",
@@ -175,6 +177,8 @@ export const adsBrandScanEn = {
     idempotency_conflict: "That press was already used for another scan. Press again.",
     scan_not_ready: "The scan has not finished yet.",
     insufficient_credits: "There are not enough credits for a scan. Nothing was charged.",
+    scan_hold_unavailable: "A scan needs more credits available while it runs than this workspace has. Nothing was charged.",
+    scan_hold_unavailable_for: "A scan needs {hold} credits available while it runs, with {credits} charged. Nothing was charged.",
     parallel_limit: "Your plan's runs are all in use. Wait for one to finish. Nothing was charged.",
   },
 };

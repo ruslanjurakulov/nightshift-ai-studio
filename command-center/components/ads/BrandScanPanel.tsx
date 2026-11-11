@@ -41,7 +41,7 @@ type Payload = {
   scans: BrandScan[];
   pictures: Record<string, { thumbUrl: string | null; name: string | null }>;
 };
-type Failure = { error: ScanError; max?: number; retry_after?: number; price?: number };
+type Failure = { error: ScanError; max?: number; retry_after?: number; price?: number; hold?: number };
 type Result<T> = { ok: true; data: T } | ({ ok: false } & Failure);
 
 async function call<T>(method: "GET" | "POST", url: string, body?: unknown): Promise<Result<T>> {
@@ -55,7 +55,7 @@ async function call<T>(method: "GET" | "POST", url: string, body?: unknown): Pro
     const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
     if (!res.ok || !json) {
       const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
-      return { ok: false, error: typeof json?.error === "string" ? (json.error as ScanError) : "failed", max: num(json?.max), retry_after: num(json?.retry_after), price: num(json?.price) };
+      return { ok: false, error: typeof json?.error === "string" ? (json.error as ScanError) : "failed", max: num(json?.max), retry_after: num(json?.retry_after), price: num(json?.price), hold: num(json?.hold) };
     }
     return { ok: true, data: json as T };
   } catch {
@@ -68,6 +68,8 @@ export function scanErrorText(t: AdsBrandScanDictionary, f: Failure): string {
   if (f.error === "limit_reached" && typeof f.max === "number") return fmt(t.errors.limit_reached_max, { max: f.max });
   if (f.error === "too_soon" && typeof f.retry_after === "number") return fmt(t.errors.too_soon_after, { seconds: f.retry_after });
   if (f.error === "price_changed" && typeof f.price === "number") return fmt(t.errors.price_changed_to, { credits: f.price });
+  if (f.error === "scan_hold_unavailable" && typeof f.hold === "number" && typeof f.price === "number")
+    return fmt(t.errors.scan_hold_unavailable_for, { hold: f.hold, credits: f.price });
   return (t.errors as Record<string, string>)[f.error] ?? t.errors.failed;
 }
 
@@ -422,7 +424,9 @@ function ScanStep({
       ? ts.notOnSale
       : quote.exempt || quote.credits === 0
         ? ts.free
-        : fmt(ts.price, { credits: quote.credits ?? "" });
+        : quote.hold !== null && quote.credits !== null && quote.hold > quote.credits
+          ? fmt(ts.priceHeld, { hold: quote.hold, credits: quote.credits })
+          : fmt(ts.price, { credits: quote.credits ?? "" });
 
   return (
     <div className="ads-fieldset">

@@ -238,15 +238,22 @@ export const BRAND_DOMAIN_COLUMNS = "id, host, token, verified_at, last_checked_
 
 export interface ScanQuote {
   onSale: boolean;
+  /** What a finished scan is CHARGED (the owner exempted the scan from job_minimum). The scan is started with this as its ceiling. */
   credits: number | null;
+  /** What is HELD while the scan runs: the price raised to job_minimum (reserve_credits demands it of every hold); the rest is released. */
+  hold: number | null;
   exempt: boolean;
 }
 export function coerceQuote(raw: unknown): ScanQuote | null {
-  const q = raw as { on_sale?: unknown; credits?: unknown; exempt?: unknown } | null;
+  const q = raw as { on_sale?: unknown; credits?: unknown; hold?: unknown; exempt?: unknown } | null;
   if (!q || typeof q !== "object" || typeof q.on_sale !== "boolean") return null;
-  const credits = typeof q.credits === "number" && Number.isFinite(q.credits) && q.credits >= 0 ? q.credits : null;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+  const credits = num(q.credits);
   if (q.on_sale && credits === null) return null;
-  return { onSale: q.on_sale, credits: q.on_sale ? credits : null, exempt: q.exempt === true };
+  if (!q.on_sale) return { onSale: false, credits: null, hold: null, exempt: q.exempt === true };
+  // A hold below the price is impossible; one that is missing reads as the price itself (never as a smaller number).
+  const hold = num(q.hold) !== null && num(q.hold)! >= credits! ? num(q.hold) : credits;
+  return { onSale: true, credits, hold, exempt: q.exempt === true };
 }
 
 // ── accepting ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -289,7 +296,7 @@ export type ScanError =
   | "unauthorized" | "forbidden" | "not_found" | "bad_request" | "org_required" | "not_available" | "not_configured" | "read_failed" | "failed"
   | "invalid_host" | "hosting_parent" | "invalid_url" | "invalid_idempotency_key" | "invalid_fields" | "name_required" | "invalid_reference"
   | "limit_reached" | "too_soon" | "platform_busy" | "not_on_sale" | "price_changed" | "domain_not_verified" | "scan_in_progress"
-  | "idempotency_conflict" | "scan_not_ready" | "insufficient_credits" | "parallel_limit";
+  | "idempotency_conflict" | "scan_not_ready" | "insufficient_credits" | "scan_hold_unavailable" | "parallel_limit";
 
 const NS400 = ["invalid_host", "hosting_parent", "invalid_url", "invalid_idempotency_key", "invalid_fields", "name_required", "invalid_reference"];
 const NS409 = ["not_on_sale", "price_changed", "domain_not_verified", "scan_in_progress", "idempotency_conflict", "scan_not_ready"];
@@ -301,6 +308,8 @@ export interface MappedScanError {
   max?: number;
   retryAfter?: number;
   price?: number;
+  /** What a scan holds while it runs (scan_hold_unavailable), as the database named it. */
+  hold?: number;
 }
 
 /** A database refusal as a closed word. The platform's cap names no number, so none is shown (rule 5). */
@@ -315,8 +324,11 @@ export function mapScanError(error: { code?: string; message?: string; details?:
       const m = /(?:^|\s)price=(\d{1,6}(?:\.\d{1,2})?)(?:\s|$)/.exec(details);
       return m && word === "price_changed" ? { error: "price_changed", status: 409, price: Number(m[1]) } : { error: word as ScanError, status: 409 };
     }
-    case "NS402":
-      return { error: "insufficient_credits", status: 402 };
+    case "NS402": {
+      if (word !== "scan_hold_unavailable") return { error: "insufficient_credits", status: 402 };
+      const m = /(?:^|\s)hold=(\d{1,6}(?:\.\d{1,2})?)\s+price=(\d{1,6}(?:\.\d{1,2})?)(?:\s|$)/.exec(details);
+      return m ? { error: "scan_hold_unavailable", status: 402, hold: Number(m[1]), price: Number(m[2]) } : { error: "scan_hold_unavailable", status: 402 };
+    }
     case "NS429": {
       if (word === "too_soon") {
         const m = /(?:^|\s)retry_after=(\d{1,4})(?:\s|$)/.exec(details);

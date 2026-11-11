@@ -180,6 +180,8 @@ describe("POST /api/ads/scan", () => {
       [{ code: "NS429", message: "platform_busy" }, { status: 429, body: { error: "platform_busy" } }],
       [{ code: "NS429", message: "parallel run limit reached", details: "active=1 limit=1" }, { status: 429, body: { error: "parallel_limit" } }],
       [{ code: "NS402", message: "insufficient credits", details: "available=0 needed=1" }, { status: 402, body: { error: "insufficient_credits" } }],
+      [{ code: "NS402", message: "scan_hold_unavailable", details: "hold=30 price=1" }, { status: 402, body: { error: "scan_hold_unavailable", hold: 30, price: 1 } }],
+      [{ code: "NS402", message: "scan_hold_unavailable", details: "hold=lots" }, { status: 402, body: { error: "scan_hold_unavailable" } }],
       [{ code: "NS400", message: "hosting_parent" }, { status: 400, body: { error: "hosting_parent" } }],
       [{ code: "42501", message: "forbidden" }, { status: 403, body: { error: "forbidden" } }],
       [{ code: "NS409", message: "something new" }, { status: 502, body: { error: "failed" } }],
@@ -271,10 +273,10 @@ describe("GET /api/ads/scan", () => {
     h.tables.brand_domains = { data: [{ id: DOMAIN, host: "shop.example.com", token: TOKEN, verified_at: null, last_checked_at: null, last_check_code: "no_record" }], error: null };
     h.tables.brand_domain_checks = { data: [{ domain_id: DOMAIN }], error: null };
     h.tables.brand_scans = { data: [{ id: SCAN, url: "https://shop.example.com/", status: "ready", result: RESULT, price_credits: 1, charged_credits: 1, accepted_fields: ["name"], kit_id: null, created_at: "2026-11-11T00:00:00Z" }], error: null };
-    h.rpc.quote_brand_scan = { data: { on_sale: true, credits: 1, exempt: false }, error: null };
+    h.rpc.quote_brand_scan = { data: { on_sale: true, credits: 1, hold: 30, exempt: false }, error: null };
     const res = await json(await root.GET(req("/api/ads/scan", "GET")));
     expect(res.status).toBe(200);
-    expect(res.body.quote).toEqual({ onSale: true, credits: 1, exempt: false });
+    expect(res.body.quote).toEqual({ onSale: true, credits: 1, hold: 30, exempt: false });
     expect(res.body.domains).toEqual([{ id: DOMAIN, host: "shop.example.com", recordName: "_nightshift.shop.example.com", recordValue: `nightshift-verify=${TOKEN}`,
       verifiedAt: null, lastCheckedAt: null, lastCheckCode: "no_record", pending: true }]);
     const scan = (res.body.scans as Record<string, unknown>[])[0] as unknown as import("../lib/adsFactory/scan").BrandScan;
@@ -334,9 +336,12 @@ describe("the model", () => {
   });
 
   it("a quote that is on sale names a price, one that is not names none", () => {
-    expect(model.coerceQuote({ on_sale: false, credits: 5 })).toEqual({ onSale: false, credits: null, exempt: false });
+    expect(model.coerceQuote({ on_sale: false, credits: 5, hold: 30 })).toEqual({ onSale: false, credits: null, hold: null, exempt: false });
     expect(model.coerceQuote({ on_sale: true, credits: null })).toBeNull();
-    expect(model.coerceQuote({ on_sale: true, credits: 1, exempt: true })).toEqual({ onSale: true, credits: 1, exempt: true });
+    expect(model.coerceQuote({ on_sale: true, credits: 1, exempt: true })).toEqual({ onSale: true, credits: 1, hold: 1, exempt: true });
+    // The charged price and the hold (the price raised to job_minimum) stay apart; a hold below the price is never believed.
+    expect(model.coerceQuote({ on_sale: true, credits: 1, hold: 30 })).toEqual({ onSale: true, credits: 1, hold: 30, exempt: false });
+    expect(model.coerceQuote({ on_sale: true, credits: 5, hold: 2 })).toEqual({ onSale: true, credits: 5, hold: 5, exempt: false });
     expect(model.coerceQuote(null)).toBeNull();
   });
 });
@@ -371,7 +376,7 @@ describe("strings", () => {
     const errors: string[] = ["unauthorized", "forbidden", "not_found", "bad_request", "org_required", "not_available", "not_configured", "read_failed", "failed",
       "invalid_host", "hosting_parent", "invalid_url", "invalid_idempotency_key", "invalid_fields", "name_required", "invalid_reference", "limit_reached",
       "too_soon", "platform_busy", "not_on_sale", "price_changed", "domain_not_verified", "scan_in_progress", "idempotency_conflict", "scan_not_ready",
-      "insufficient_credits", "parallel_limit"];
+      "insufficient_credits", "scan_hold_unavailable", "parallel_limit"];
     const sql = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0133_brand_scan.sql"), "utf8");
     // invalid_result is the worker's refusal (finish_brand_scan, service_role): no member route can receive it.
     for (const m of sql.matchAll(/raise exception '([a-z_]+)' using errcode = 'NS4\d\d'/g)) if (m[1] !== "invalid_result") expect(errors, m[1]).toContain(m[1]);

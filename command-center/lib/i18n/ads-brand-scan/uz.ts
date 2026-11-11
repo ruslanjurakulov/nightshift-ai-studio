@@ -52,6 +52,8 @@ export const adsBrandScanUz: AdsBrandScanDictionary = {
     urlLabel: "Qaysi sahifadan boshlash",
     urlHint: "Tasdiqlangan domendagi (yoki uning subdomenidagi) bosh sahifangiz.",
     price: "Skanerlash {credits} kredit turadi. Ular boshlaganingizda band qilinadi va faqat skanerlash tugasa yechiladi; muvaffaqiyatsiz skanerlash hech narsa turmaydi.",
+    priceHeld:
+      "Skanerlash davomida {hold} kredit band qilinadi, {credits} kredit yechiladi. Qolgani skanerlash tugaganda, muvaffaqiyatsiz boʻlsa esa hammasi qaytariladi.",
     free: "Bu ish maydonida skanerlash kredit talab qilmaydi.",
     notOnSale: "Skanerlash hozircha mavjud emas. Hozir bu yerda hech narsa sotib olib boʻlmaydi.",
     start: "{credits} kreditga skanerlash",
@@ -173,6 +175,8 @@ export const adsBrandScanUz: AdsBrandScanDictionary = {
     idempotency_conflict: "Bu bosish boshqa skanerlash uchun ishlatilgan. Yana bosing.",
     scan_not_ready: "Skanerlash hali tugamagan.",
     insufficient_credits: "Skanerlash uchun kredit yetarli emas. Hech narsa yechilmadi.",
+    scan_hold_unavailable: "Skanerlash davomida bu ish maydonidagidan koʻproq mavjud kredit kerak. Hech narsa yechilmadi.",
+    scan_hold_unavailable_for: "Skanerlash davomida {hold} ta mavjud kredit kerak, {credits} kredit yechiladi. Hech narsa yechilmadi.",
     parallel_limit: "Tarifingizdagi barcha ishga tushirishlar band. Bittasi tugashini kuting. Hech narsa yechilmadi.",
   },
 };

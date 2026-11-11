@@ -163,6 +163,18 @@ describe("2. the scan", () => {
     expect(sent[1].idem).toBe(sent[0].idem);
   });
 
+  it("with the hold raised to the minimum: says 30 held, 1 charged; the scan is started with 1 as its ceiling; a short balance is named", async () => {
+    state = { quote: { onSale: true, credits: 1, hold: 30, exempt: false }, domains: [domain({ verifiedAt: "2026-11-11T00:00:00Z" })], scans: [] };
+    show();
+    await openPanel();
+    expect(await screen.findByText(
+      "30 credits are held while it runs, 1 is charged. The rest is released when the scan finishes, and all of it if the scan fails.")).toBeTruthy();
+    answers.push((url, m) => (m === "POST" && url === "/api/ads/scan" ? { status: 402, body: { error: "scan_hold_unavailable", hold: 30, price: 1 } } : undefined));
+    fireEvent.click(screen.getByRole("button", { name: "Scan for 1 credits" }));
+    expect(await screen.findByText("A scan needs 30 credits available while it runs, with 1 charged. Nothing was charged.")).toBeTruthy();
+    expect((posts("/api/ads/scan").find((c) => c.url === "/api/ads/scan")!.body as Record<string, unknown>).max_credits).toBe(1);
+  });
+
   it("refuses an address outside the proved domain before anything is sent", async () => {
     state.domains = [domain({ verifiedAt: "2026-11-11T00:00:00Z" })];
     show();

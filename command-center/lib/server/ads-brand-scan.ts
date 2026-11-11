@@ -40,6 +40,7 @@ export function scanRefusal(error: { code?: string; message?: string; details?: 
   if (m.max !== undefined) extra.max = m.max;
   if (m.retryAfter !== undefined) extra.retry_after = m.retryAfter;
   if (m.price !== undefined) extra.price = m.price;
+  if (m.hold !== undefined) extra.hold = m.hold;
   return scanFail(m.error, m.status, extra);
 }
 

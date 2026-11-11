@@ -286,7 +286,8 @@ On the brand kit section of `/{channel}/ads`, drawn only with `NIGHTSHIFT_ADS_BR
 1. **Prove the site**: the person types their domain (a scheme, a path and a final dot are taken off; a hosting parent is refused before
    anything is sent), gets the TXT record to add (name and value with Copy buttons), and presses **Check now** (the panel reads again
    every few seconds while the check waits, and says what the last check found).
-2. **Scan**: the quote is shown (`not on sale` hides the button); the button names the price and sends it as `max_credits` with a press id
+2. **Scan**: the quote is shown (`not on sale` hides the button; with the hold raised to job_minimum it reads "30 credits are held while
+   it runs, 1 is charged", and a short balance is refused as "a scan needs 30 credits available while it runs, with 1 charged"); the button names the price and sends it as `max_credits` with a press id
    that a retry after a lost answer reuses (one scan, one hold); a different price is said with the database's number.
 3. **Review and accept**: every proposal next to what the chosen kit holds now (or "a new brand kit"), with where it was found (the place
    and the page address, as text, never a link); the person ticks fields and accepts; a new kit needs the name.
