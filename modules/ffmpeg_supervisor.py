@@ -15,7 +15,9 @@ import sys
 
 def main() -> None:
     # The outer runner owns this private process group and its deadline. The
-    # decoder cannot write the accounting pipe: only the supervisor keeps it.
+    # decoder does not inherit the accounting pipe: only the supervisor keeps
+    # it. (A decoder that could run code might reopen it through /proc; the
+    # runner then reads more than 16 bytes and rejects the report.)
     child = None
     stopping = False
 

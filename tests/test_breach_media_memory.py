@@ -446,8 +446,10 @@ class RealDecoderTests(unittest.TestCase):
 
     def test_a_big_coded_frame_behind_a_crop_window_is_refused_at_ingest(self):
         # The real base (512 MB) needs Lens's 14336x14336 file (1787 MB peak);
-        # this quarter-size fixture peaks near 570 MB, so the base is lowered
-        # to 256 MB, still above the clean 64x64 clip's ~140 MB.
+        # this quarter-size fixture peaks near 500 MB, so the base is lowered
+        # to 256 MB, still far above the clean 64x64 clip's ~20 MB (both read
+        # from a small supervisor; the older figures, ~570 and ~140 MB, had the
+        # test process's own memory counted in).
         probe = _video(64, 64, "8.5", avg_frame_rate="10/1")
         with mock.patch.object(ml, "RSS_BASE_BYTES", 256 * 1024 ** 2, create=True):
             with self.assertRaises(ml.IngestReject) as e:
