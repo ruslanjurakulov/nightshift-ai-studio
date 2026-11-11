@@ -19,7 +19,10 @@ This is the admin-run tool that makes that call and records it:
 
 ``--all`` skips every model whose ``terms_gate`` is open (vendor terms not cleared):
 a gated model is probed only when it is named with ``--model``, so the workflow's
-empty "model" input never makes a paid call to one.
+empty "model" input never makes a paid call to one. A REGISTRY-ONLY model (one
+whose capability the database does not know yet, ``ModelEntry.registry_only``) is
+never probed, named or not: its result could not be recorded, and "a probe that
+is not recorded is money spent for nothing".
 
 Run it on the worker (the provider keys live in its env; docs/DEPLOY_AX42.md)
 with SUPABASE_URL and SUPABASE_SERVICE_KEY set. Each probe is the registry
@@ -299,8 +302,17 @@ def select(entries: Iterable, ids: Sequence[str], capability: Optional[str], eve
     # vendor terms are not cleared: a gated model is probed only when it is NAMED.
     # Likewise a model past its announced shutdown date (registry ``shutdown``): ``--all`` does not spend on it, and only a probe BY NAME
     # (which is how the owner learns whether the id still answers) is let through its adapter's refusal.
-    chosen = [e for e in entries if e.id in ids or (everything and not e.terms_gate and not e.shut_down())]
+    # A registry-only entry is never chosen, even by name: record_model_probe has no model row and no capability to store its
+    # result under, so the call would be paid for and lost (``registry_only_left_out`` is how the log says so).
+    chosen = [e for e in entries if not e.registry_only
+              and (e.id in ids or (everything and not e.terms_gate and not e.shut_down()))]
     return [e for e in chosen if capability is None or capability in e.capabilities]
+
+
+def registry_only_left_out(entries: Iterable, ids: Sequence[str], capability: Optional[str]) -> List:
+    """The registry-only entries that were NAMED and are not probed all the same (so the log can say why). Under ``--all``
+    an unnamed one is reported with the gated ones: every registry-only entry is gated (model_registry's cross rule)."""
+    return [e for e in entries if e.registry_only and e.id in ids and (capability is None or capability in e.capabilities)]
 
 
 def gated_left_out(entries: Iterable, ids: Sequence[str], capability: Optional[str], everything: bool) -> List:
@@ -363,6 +375,10 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
     setup_logging(env, stream, brief=args.brief)
 
     entries = select(model_registry.registry().values(), args.model, args.capability, args.all)
+    for e in registry_only_left_out(model_registry.registry().values(), args.model, args.capability):
+        logger.info(f"skipped {e.id}" if args.brief else
+                    f"SKIP {e.id}: registry-only ({', '.join(e.capabilities)} is not a capability the database knows yet), so a "
+                    f"probe could not be recorded and is not run; a migration must add the capability first")
     if not entries and not args.sync:
         logger.info("nothing selected: pass --model ID, --all, or --sync")
         return 2

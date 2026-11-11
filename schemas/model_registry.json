@@ -5946,6 +5946,147 @@
         "input_image": "generated",
         "end_frame": "generated"
       }
+    },
+    {
+      "id": "sonilo-music",
+      "display_name": "Sonilo Text to Music",
+      "provider": "sonilo",
+      "adapter": "audio.sonilo",
+      "vendor_model": "text-to-music",
+      "capabilities": [
+        "music"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [
+        10,
+        15,
+        20,
+        30,
+        45,
+        60,
+        90,
+        120
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://platform.sonilo.com/docs/api/text-to-music",
+        "checked_at": "2026-11-10",
+        "source": "vendor_docs_search",
+        "evidence": "Sonilo's own pages read in full 2026-11-10 (not search extracts): docs introduction, quickstart, errors, the reference pages, openapi.json, llms-full.txt, pricing, Terms of Service, Privacy Policy, licensing help.",
+        "note": "REGISTRY-ONLY: the database has no 'music' capability yet. POST /v1/text-to-music (multipart, mode=async, output_format=mp3, variants_num=1), poll GET /v1/tasks/{id}; Bearer key. Sonilo takes 5-360 s; 10-120 s offered (10 s billing floor; this schema caps a duration at 120). No model field exists."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.00225,
+        "source_url": "https://platform.sonilo.com/pricing",
+        "as_of": "2026-11-10",
+        "confirmed": false,
+        "note": "ESTIMATE. Pricing page: $0.135 / min ($0.00225 / sec), 'Per-second metering'; llms-full.txt: a 10-second billing floor. The account's discount_factor multiplies it. What a failed task costs is not stated (one vendor example shows refunded: true; unverified)."
+      },
+      "credit_unit": "model_sonilo_music_second",
+      "entitlement": "models_audio:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "API docs 'Commercial use' (read 2026-11-10): 'Audio generated through the Sonilo API can be used commercially — in your own product and by your end users, including ads, client work and monetized channels.' Film, TV, broadcast and streaming release: 'contact sales first'.",
+        "Licensing help (reviewed 2026-10-01) names our case: users 'scoring their edits in a video-editing app ... can publish it commercially'. But it ends 'the Terms govern if anything here differs', and ToS 6.2 grants commercial rights by web plan only; the API is not a plan there.",
+        "ToS (October 2, 2026) section 4: 'You may not use the Service or Outputs to build, train, benchmark, or offer a product or service that competes with Sonilo.' A studio that sells music for a video may be read as one (our reading, not Sonilo's).",
+        "ToS 11: no right to 'Assign, sublicense, resell, or otherwise transfer rights in the Software except as expressly authorized by Sonilo'. 12.2: 'Any use of the Service not expressly allowed by these Terms requires our prior written consent'.",
+        "ToS 10 'API Use': keys may not be shared; no use 'at scale to create datasets, train models, or replicate core Sonilo functionality without our written permission'; 'any additional API terms' apply (none found at any URL tried).",
+        "TRAINING, Privacy Policy (October 10, 2026): Sonilo 'may use uploaded videos, prompts, user instructions, generated outputs' for training, 'by default to all users, and there is no separate opt-out'. ToS 6.3: only 'a separate plan, product setting, or written agreement' ends it.",
+        "ToS 5.2 / 6.3: an 'irrevocable, non-exclusive, worldwide, perpetual, royalty-free' (6.3: sublicensable) licence over Inputs and Outputs. RETENTION: the API has no route that deletes a task or an uploaded video; nothing sent can be taken back by us.",
+        "ToS 6.1: Sonilo 'assigns to you any rights we may have in the Outputs'. 8.2: 'Output may not be unique, and other users may receive similar or identical results', and it may not be protectable. 16.3: we indemnify Sonilo for what is done with Outputs.",
+        "YOUTUBE: 'A Content ID claim is still possible. Sonilo says it does not register generated tracks with Content ID'. Licence certificates are for web plans; 'For API output, retain its generation record'. Outputs carry 'an inaudible provenance watermark'.",
+        "ToS 2: 'at least 13 years old'; 3.1: under 18 'only with permission from a parent or legal guardian'. 18 / 19: California law, AAA arbitration, class-action waiver, claims within one year. 16.2: liability capped at six months' fees or USD $100.",
+        "ATTRIBUTION: none is required for API output in the pages read (the 'Music by Sonilo' credit is the Free web tier's rule). Whether a free TRIAL API call counts as Free-tier, non-commercial output is not stated.",
+        "NOT read / not found: any separate API terms or acceptable-use policy (404 at the URLs tried), an enterprise agreement, a country list. Sign-up and the Stripe prepaid top-up (from $20) from Uzbekistan not verified.",
+        "Gate stays open until a person has Sonilo's written answer on the compete clause and on resale for credits, and has settled the training and no-delete exposure of customers' prompts and videos. No credit price may be added before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 3,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "music",
+        "prompt": "a calm piano melody",
+        "duration_s": 10
+      }
+    },
+    {
+      "id": "sonilo-video-music",
+      "display_name": "Sonilo Video to Music",
+      "provider": "sonilo",
+      "adapter": "audio.sonilo",
+      "vendor_model": "video-to-music",
+      "capabilities": [
+        "video_music"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://platform.sonilo.com/docs/api/video-to-music",
+        "checked_at": "2026-11-10",
+        "source": "vendor_docs_search",
+        "evidence": "Sonilo's own pages read in full 2026-11-10 (not search extracts): docs introduction, quickstart, errors, the reference pages, openapi.json, llms-full.txt, pricing, Terms of Service, Privacy Policy, licensing help.",
+        "note": "REGISTRY-ONLY: the database has no 'video_music' capability yet. POST /v1/video-to-music with the video as a file (MP4, 300 MB, 6 minutes at most), mode=async, output_format=mp3, variants_num=1; poll GET /v1/tasks/{id}. Billed for the video's seconds, 10 at least. No model field exists."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.009,
+        "source_url": "https://platform.sonilo.com/pricing",
+        "as_of": "2026-11-10",
+        "confirmed": false,
+        "note": "ESTIMATE. Pricing page: $0.54 / min ($0.009 / sec), 'Per-second metering'; llms-full.txt: a 10-second billing floor. The account's discount_factor multiplies it. What a failed task costs is not stated (one vendor example shows refunded: true; unverified)."
+      },
+      "credit_unit": "model_sonilo_video_music_second",
+      "entitlement": "models_audio:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "API docs 'Commercial use' (read 2026-11-10): 'Audio generated through the Sonilo API can be used commercially — in your own product and by your end users, including ads, client work and monetized channels.' Film, TV, broadcast and streaming release: 'contact sales first'.",
+        "Licensing help (reviewed 2026-10-01) names our case: users 'scoring their edits in a video-editing app ... can publish it commercially'. But it ends 'the Terms govern if anything here differs', and ToS 6.2 grants commercial rights by web plan only; the API is not a plan there.",
+        "ToS (October 2, 2026) section 4: 'You may not use the Service or Outputs to build, train, benchmark, or offer a product or service that competes with Sonilo.' A studio that sells music for a video may be read as one (our reading, not Sonilo's).",
+        "ToS 11: no right to 'Assign, sublicense, resell, or otherwise transfer rights in the Software except as expressly authorized by Sonilo'. 12.2: 'Any use of the Service not expressly allowed by these Terms requires our prior written consent'.",
+        "ToS 10 'API Use': keys may not be shared; no use 'at scale to create datasets, train models, or replicate core Sonilo functionality without our written permission'; 'any additional API terms' apply (none found at any URL tried).",
+        "TRAINING, Privacy Policy (October 10, 2026): Sonilo 'may use uploaded videos, prompts, user instructions, generated outputs' for training, 'by default to all users, and there is no separate opt-out'. ToS 6.3: only 'a separate plan, product setting, or written agreement' ends it.",
+        "ToS 5.2 / 6.3: an 'irrevocable, non-exclusive, worldwide, perpetual, royalty-free' (6.3: sublicensable) licence over Inputs and Outputs. RETENTION: the API has no route that deletes a task or an uploaded video; nothing sent can be taken back by us.",
+        "ToS 6.1: Sonilo 'assigns to you any rights we may have in the Outputs'. 8.2: 'Output may not be unique, and other users may receive similar or identical results', and it may not be protectable. 16.3: we indemnify Sonilo for what is done with Outputs.",
+        "YOUTUBE: 'A Content ID claim is still possible. Sonilo says it does not register generated tracks with Content ID'. Licence certificates are for web plans; 'For API output, retain its generation record'. Outputs carry 'an inaudible provenance watermark'.",
+        "ToS 2: 'at least 13 years old'; 3.1: under 18 'only with permission from a parent or legal guardian'. 18 / 19: California law, AAA arbitration, class-action waiver, claims within one year. 16.2: liability capped at six months' fees or USD $100.",
+        "ATTRIBUTION: none is required for API output in the pages read (the 'Music by Sonilo' credit is the Free web tier's rule). Whether a free TRIAL API call counts as Free-tier, non-commercial output is not stated.",
+        "NOT read / not found: any separate API terms or acceptable-use policy (404 at the URLs tried), an enterprise agreement, a country list. Sign-up and the Stripe prepaid top-up (from $20) from Uzbekistan not verified.",
+        "A customer's VIDEO is uploaded to Sonilo as a file (never as a link) and stays there: used for training by default, under a perpetual licence, with no delete route. The customer must be told and must agree before this is sold.",
+        "Gate stays open until a person has Sonilo's written answer on the compete clause and on resale for credits, and has settled the training and no-delete exposure of customers' prompts and videos. No credit price may be added before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1,
+        "max_source_seconds": 360
+      },
+      "quality_tier": 3,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "video_music",
+        "prompt": "score this clip",
+        "input_video": "generated"
+      }
     }
   ]
 }
