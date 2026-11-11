@@ -48,11 +48,13 @@ from modules.capabilities.base import (
     OUTPUT_OF,
     PICTURE_OPS,
     PROMPT_OPTIONAL,
+    REGISTRY_ONLY_CAPABILITIES,
     RELIGHT,
     RELIGHT_LOOKS,
     UPSCALE,
     VIDEO_EDIT,
     VIDEO_INPUT,
+    VIDEO_MUSIC,
     VIDEO_OPS,
     VIDEO_REFRAME,
     VIDEO_REMOVE_BG,
@@ -283,6 +285,12 @@ class ModelEntry:
         d = self.shutdown_on
         return d is not None and d <= (on or datetime.now(timezone.utc).date())
 
+    @property
+    def registry_only(self) -> bool:
+        """The entry lists a capability the database does not know yet (``REGISTRY_ONLY_CAPABILITIES``): it exists in the file
+        and nowhere else. It is not synced, not probed and has no row a price or a job could hang on."""
+        return bool(REGISTRY_ONLY_CAPABILITIES & set(self.capabilities))
+
     def vendor_model_for(self, capability: str) -> str:
         return self.vendor_model_by_capability.get(capability) or self.vendor_model
 
@@ -507,6 +515,16 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             errors.append(_err(mid, "captions are a web tool: api_exposure must be web_only"))
         if any(c in VIDEO_INPUT for c in caps) and any(c not in VIDEO_INPUT for c in caps):
             errors.append(_err(mid, "a video tool model lists only video tools"))
+        if VIDEO_MUSIC in caps and not m["limits"].get("max_source_seconds"):
+            # The vendor bills the video's seconds: without a documented longest input a length it refuses would be sold.
+            errors.append(_err(mid, "video_music needs limits.max_source_seconds"))
+        if REGISTRY_ONLY_CAPABILITIES & set(caps):
+            # The database's capability lists (0100) do not hold these. The entry is left out of the sync, so it must be
+            # dark by its own fields too, and must not carry a capability the sync would then silently drop with it.
+            if any(c not in REGISTRY_ONLY_CAPABILITIES for c in caps):
+                errors.append(_err(mid, "a capability the database does not know yet is never listed beside one it knows"))
+            if not m["terms_gate"] or m["api_exposure"] != "web_only" or m["pricing"]["confirmed"]:
+                errors.append(_err(mid, "a registry-only entry stays dark: terms_gate set, api_exposure web_only, price unconfirmed"))
         if m.get("end_frame"):
             if I2V not in caps:
                 errors.append(_err(mid, "end_frame is for a model that animates a picture (i2v)"))
@@ -675,9 +693,14 @@ _COLUMNS = ("id", "display_name", "provider", "adapter", "capabilities", "credit
 
 def sync_rows(entries: Sequence[ModelEntry]) -> List[dict]:
     """The rows ``sync_model_registry`` (migration 0035) upserts: static facts
-    only — never availability or verification, which the database owns."""
+    only — never availability or verification, which the database owns. A
+    registry-only entry (``ModelEntry.registry_only``) is not among them."""
     rows = []
     for e in entries:
+        if e.registry_only:
+            # One row with a capability outside 0100's check would fail the whole call (and with it every other model's
+            # sync). The entry stays in the file until a migration teaches the database its capability.
+            continue
         spec = {k: v for k, v in e.raw.items() if k not in _COLUMNS}
         rows.append({"id": e.id, "display_name": e.display_name, "provider": e.provider,
                      "adapter": e.adapter, "capabilities": list(e.capabilities),
