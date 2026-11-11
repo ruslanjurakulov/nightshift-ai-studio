@@ -187,18 +187,31 @@ def probe_image(dest: Path, *, end: bool = False) -> Path:
     return dest
 
 
-#: A video upscale's probe source (0052): two seconds of ffmpeg's test pattern
-#: at 24 fps — nothing of anyone's, and the cheapest frame count to bill.
+#: The source of every probe that starts from a video (registry ``probe.input_video``: the video upscale of 0052, the video
+#: ops of 0100, music for a video): two seconds of ffmpeg's test pattern at 24 fps, nothing of anyone's, and the cheapest
+#: frame count to bill.
 PROBE_VIDEO_ARGS = ("-f", "lavfi", "-i", "testsrc2=size=640x360:rate=24", "-t", "2",
                     "-pix_fmt", "yuv420p", "-c:v", "libx264", "-an")
+
+
+def _ffmpeg() -> Optional[str]:
+    """The ffmpeg the rest of the code renders with (``render_backend.resolve_ffmpeg``: the pinned imageio-ffmpeg binary,
+    else ``ffmpeg`` on PATH), or None when neither is there. Not ``shutil.which("ffmpeg")`` alone: the worker image and the
+    CI runner carry the pinned binary and no system ffmpeg, so a PATH lookup skipped every probe that starts from a video."""
+    from modules.render_backend import resolve_ffmpeg  # noqa: PLC0415 - only a video probe needs the render module
+
+    exe = resolve_ffmpeg()
+    found = shutil.which(exe) if exe and os.sep not in exe else exe
+    return found if found and Path(found).is_file() and os.access(found, os.X_OK) else None
 
 
 def probe_video(dest: Path, *, runner: Callable[..., "subprocess.CompletedProcess"] = None) -> Path:
     """Draw the probe's source video. No ffmpeg here is our setup, not the
     vendor's answer: the probe is skipped (not_configured), never faked."""
-    exe = shutil.which("ffmpeg")
+    exe = _ffmpeg()
     if not exe:
-        raise AdapterError(E_NOT_CONFIGURED, "a video upscale probe needs ffmpeg on this machine")
+        raise AdapterError(E_NOT_CONFIGURED, "a probe that starts from a video needs ffmpeg on this machine (the "
+                                             "imageio-ffmpeg package, or ffmpeg on PATH)")
     run = runner or subprocess.run
     try:
         run([exe, "-y", "-v", "error", *PROBE_VIDEO_ARGS, str(dest)], capture_output=True, timeout=120, check=True)

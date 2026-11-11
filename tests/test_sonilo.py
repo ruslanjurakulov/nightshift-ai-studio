@@ -1051,6 +1051,54 @@ class EndToEndTests(Case):
         self.assertTrue(res.message.startswith(AFTER_COMPLETION), res.message)
 
 
+class ProbeVideoTests(unittest.TestCase):
+    """The probe's drawn video is made with the ffmpeg the rest of the code renders with. A PATH lookup alone skipped every
+    probe that starts from a video on the CI runner and the worker image, which carry the pinned imageio-ffmpeg binary only."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="sonilo_probe_video_"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
+
+    def test_the_pinned_binary_draws_it_with_nothing_on_path(self):
+        from modules import render_backend
+        from tools.probe_models import probe_video
+
+        exe = render_backend.resolve_ffmpeg()
+        if os.sep not in exe:
+            self.skipTest("imageio-ffmpeg is not installed here")
+        with mock.patch.dict(os.environ, {"PATH": str(self.tmp)}):
+            clip = probe_video(self.tmp / "probe.mp4")
+        self.assertEqual(clip.read_bytes()[4:8], b"ftyp")
+
+    def test_the_resolvers_answer_is_what_runs(self):
+        from tools import probe_models
+
+        fake = self.tmp / "ffmpeg-pinned"
+        fake.write_text("#!/bin/sh\n")
+        fake.chmod(0o755)
+        ran = []
+
+        def runner(cmd, **kw):
+            ran.append(cmd[0])
+            Path(cmd[-1]).write_bytes(MP4)
+        with mock.patch("modules.render_backend.resolve_ffmpeg", return_value=str(fake)), \
+                mock.patch("shutil.which", side_effect=AssertionError("PATH must not decide")):
+            probe_models.probe_video(self.tmp / "v.mp4", runner=runner)
+        self.assertEqual(ran, [str(fake)])
+
+    def test_no_ffmpeg_at_all_is_our_setup_never_the_vendors_answer(self):
+        from tools import probe_models
+
+        for answer in (str(self.tmp / "missing-ffmpeg"), "ffmpeg"):
+            with mock.patch("modules.render_backend.resolve_ffmpeg", return_value=answer), \
+                    mock.patch.dict(os.environ, {"PATH": str(self.tmp)}):
+                with self.assertRaises(AdapterError, msg=answer) as cm:
+                    probe_models.probe_video(self.tmp / "v.mp4", runner=lambda *a, **k: self.fail("ran"))
+            self.assertEqual(cm.exception.code, E_NOT_CONFIGURED, answer)
+            self.assertIn("a probe that starts from a video needs ffmpeg", cm.exception.message)
+            self.assertNotIn("upscale", cm.exception.message)
+
+
 # ══ wiring ═════════════════════════════════════════════════════════════════════════════════
 
 class WiringTests(unittest.TestCase):
