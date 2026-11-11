@@ -24,8 +24,13 @@ PostgREST would serve each of them.
 from __future__ import annotations
 
 import json
+import os
 import re
+import threading
+import time
+import uuid
 
+import psycopg
 import pytest
 
 import sec_db
@@ -476,6 +481,321 @@ def test_a_refused_frame_leaves_no_row_and_spends_nothing_of_the_day(conn, sc):
         assert exports_of(s, sc.bob.org) == 0
         become(s, sc.bob.actor)
         assert s.run(REQ3, [PROJECT["b"], 1, "square_1080"]).ok
+
+
+def test_a_format_of_the_projects_own_size_is_the_projects_own_frame_while_the_plain_export_is_in_flight(conn, sc):
+    """Project B is 1920x1080, which is youtube_1080p's size: asking for it beside the plain export would be the same picture twice."""
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        assert s.value("select (doc -> 'width')::int * 10000 + (doc -> 'height')::int from public.editor_projects where id = %s",
+                       [PROJECT["b"]]) == 19201080
+        become(s, sc.bob.actor)
+        assert s.run(REQ2, [PROJECT["b"], 1]).ok
+        same = s.run(REQ3, [PROJECT["b"], 1, "youtube_1080p"])
+        other = s.run(REQ3, [PROJECT["b"], 1, "vertical_1080p"])
+        flying = in_flight(s, sc.bob.org)
+        # The other way round: the same size asked as a format first, then once more (the plain one refuses anything in flight).
+        clear(s, sc.bob.org)
+        become(s, sc.bob.actor)
+        assert s.run(REQ3, [PROJECT["b"], 1, "youtube_1080p"]).ok
+        again = s.run(REQ3, [PROJECT["b"], 1, "youtube_1080p"])
+        plain = s.run(REQ2, [PROJECT["b"], 1])
+    assert refused(same, "NS409", "export_in_progress"), same
+    assert other.ok, other
+    assert flying == sorted(["-", "vertical_1080p"])
+    assert refused(again, "NS409", "export_in_progress") and refused(plain, "NS409", "export_in_progress"), (again, plain)
+
+
+def test_the_size_of_a_plain_export_in_flight_is_the_size_of_the_document_it_copied(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        # A plain export asked while the project was 1080x1920 (the project has been saved in another size since).
+        vertical = doc(VIDEO["b"])
+        vertical["width"], vertical["height"] = 1080, 1920
+        s.conn.execute("insert into public.editor_exports (org_id, project_id, rev, doc, duration_s, requested_by) "
+                       "values (%s, %s, 1, %s::jsonb, 6, gen_random_uuid())", [sc.bob.org, PROJECT["b"], json.dumps(vertical)])
+        become(s, sc.bob.actor)
+        that_size = s.run(REQ3, [PROJECT["b"], 1, "vertical_1080p"])
+        own_size_now = s.run(REQ3, [PROJECT["b"], 1, "youtube_1080p"])
+        # A row whose document holds no number for its size (no API path writes one) matches no frame and raises nothing.
+        clear(s, sc.bob.org)
+        for odd in ({"width": "1080", "height": "1920"}, {"width": None}, {}, {"width": [1080], "height": {"h": 1920}}):
+            s.conn.execute("insert into public.editor_exports (org_id, project_id, rev, doc, duration_s, status, requested_by) "
+                           "values (%s, %s, 1, %s::jsonb, 6, 'queued', gen_random_uuid())", [sc.bob.org, PROJECT["b"], json.dumps(odd)])
+            become(s, sc.bob.actor)
+            out = s.run(REQ3, [PROJECT["b"], 1, "vertical_1080p"])
+            assert refused(out, "NS409", "export_in_progress") or out.ok, (odd, out)
+            assert out.sqlstate != "22P02", (odd, out)
+            clear(s, sc.bob.org)
+        # 1080.0 is 1080: jsonb compares numbers by value.
+        vertical["width"], vertical["height"] = 1080.0, 1920.0
+        s.conn.execute("insert into public.editor_exports (org_id, project_id, rev, doc, duration_s, requested_by) "
+                       "values (%s, %s, 1, %s::jsonb, 6, gen_random_uuid())", [sc.bob.org, PROJECT["b"], json.dumps(vertical)])
+        become(s, sc.bob.actor)
+        float_size = s.run(REQ3, [PROJECT["b"], 1, "vertical_1080p"])
+    assert refused(that_size, "NS409", "export_in_progress"), that_size
+    assert own_size_now.ok, own_size_now
+    assert refused(float_size, "NS409", "export_in_progress"), float_size
+
+
+def test_an_empty_or_unreadable_document_is_refused_with_a_frame_as_without(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        become(s, sc.bob.actor)
+        empty = {"version": 1, "width": 1920, "height": 1080, "fps": 30,
+                 "tracks": [{"id": "t1", "kind": "T", "clips": [{"id": "x", "start_s": 0, "end_s": 0, "text": "a"}]}]}
+        rev = s.value(SAVE, [PROJECT["b"], 1, None, json.dumps(empty)])
+        out_empty, plain_empty = s.run(REQ3, [PROJECT["b"], rev, "square_1080"]), s.run(REQ2, [PROJECT["b"], rev])
+        unreadable = dict(empty, tracks=[{"id": "t1", "kind": "T", "clips": [{"id": "x", "start_s": "soon", "end_s": "later", "text": "a"}]}])
+        rev = s.value(SAVE, [PROJECT["b"], rev, None, json.dumps(unreadable)])
+        out_bad, plain_bad = s.run(REQ3, [PROJECT["b"], rev, "square_1080"]), s.run(REQ2, [PROJECT["b"], rev])
+        written = exports_of(s, sc.bob.org)
+    assert refused(out_empty, "NS400", "empty") and (out_empty.sqlstate, out_empty.error) == (plain_empty.sqlstate, plain_empty.error), (out_empty, plain_empty)
+    assert refused(out_bad, "NS400", "invalid_doc") and (out_bad.sqlstate, out_bad.error) == (plain_bad.sqlstate, plain_bad.error), (out_bad, plain_bad)
+    assert written == 0
+
+
+def test_a_rendering_export_takes_one_of_the_organizations_three_places(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        become(s, sc.bob.actor)
+        assert s.run(REQ3, [PROJECT["b"], 1, "vertical_1080p"]).ok
+        back_to_owner(s)
+        s.conn.execute("update public.editor_exports set status = 'rendering' where org_id = %s", [sc.bob.org])
+        become(s, sc.bob.actor)
+        assert s.run(REQ3, [PROJECT["b"], 1, "square_1080"]).ok
+        assert s.run(REQ3, [PROJECT["b"], 1, "feed_4x5_1080"]).ok
+        fourth = s.run(REQ3, [PROJECT["b"], 1, "youtube_720p"])
+        # Done and failed ones take no place.
+        back_to_owner(s)
+        s.conn.execute("update public.editor_exports set status = 'done', asset_id = %s where org_id = %s and status = 'rendering'",
+                       [s.value("select public.register_asset(gen_random_uuid(), %s, 'video', 'video/mp4', 10, repeat('6', 64), 'render') ->> 'id'",
+                                [sc.bob.org]), sc.bob.org])
+        become(s, sc.bob.actor)
+        after_done = s.run(REQ3, [PROJECT["b"], 1, "youtube_720p"])
+    assert refused(fourth, "NS409", "export_in_progress"), fourth
+    assert "max_active" in (fourth.error or "") or fourth.sqlstate == "NS409"
+    assert after_done.ok, after_done
+
+
+@pytest.mark.parametrize("age,counts", [("23 hours 59 minutes", True), ("24 hours 1 minute", False)])
+def test_the_daily_count_is_the_last_24_hours(conn, sc, age, counts):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        for _ in range(20):
+            s.conn.execute("insert into public.editor_exports (org_id, project_id, rev, doc, duration_s, status, requested_by, created_at) "
+                           "values (%s, %s, 1, '{}'::jsonb, 1, 'failed', gen_random_uuid(), now() - %s::interval)", [sc.bob.org, PROJECT["b"], age])
+        become(s, sc.bob.actor)
+        out = s.run(REQ3, [PROJECT["b"], 1, "square_1080"])
+    if counts:
+        assert refused(out, "NS429", "daily_limit"), out
+    else:
+        assert out.ok, out
+
+
+# ── two connections at once ─────────────────────────────────────────────────
+# A database of its own: these tests COMMIT (a race needs two transactions that see each other's commits), and the last one runs the
+# rollback for real. One tenant, built the way the scenario builds one, without touching the session lab's ids.
+
+@pytest.fixture(scope="module")
+def race():
+    from sec_editor_0054 import register
+    from sec_scenario import _create_org, _signup
+
+    dsn = sec_db.admin_dsn()
+    name = f"ns_security_race_{uuid.uuid4().hex[:8]}"
+    db = sec_db.build(dsn, name)
+    c = psycopg.connect(db, autocommit=True)
+    try:
+        who = sec_db.user("racer", f"racer-{uuid.uuid4().hex[:6]}@example.com")
+        _signup(c, who)
+        org = _create_org(c, who, "Race org")
+        video = register(c, org, "race-video")
+        projects = []
+        with acting(c, who, commit=True) as s:
+            for i in range(4):
+                projects.append(str(s.value(CREATE, [org, f"Race {i}", json.dumps(doc(video))])))
+        yield {"dsn": db, "conn": c, "who": who, "org": org, "projects": projects}
+    finally:
+        c.close()
+        if not os.environ.get("NIGHTSHIFT_SECURITY_KEEP"):
+            sec_db.drop_database(dsn, name)
+
+
+def _session(dsn: str, who) -> psycopg.Connection:
+    """A connection with an open transaction in which PostgREST would be serving `who`."""
+    c = psycopg.connect(dsn)
+    c.execute("select set_config('request.jwt.claims', %s, true)", [json.dumps(who.claims())])
+    c.execute("select set_config('request.jwt.claim.role', %s, true)", [who.role])
+    c.execute(f"set local role {who.role}")
+    return c
+
+
+def _reset(r) -> None:
+    with as_superuser(r["conn"]) as s:
+        s.conn.execute("delete from public.editor_exports where org_id = %s", [r["org"]])
+
+
+def _together(calls, hold_s: float = 0.4):
+    """Run each call in its own connection and transaction, all started at once; each commits `hold_s` after its call answered.
+    Returns each call's outcome: ("ok", value) or (sqlstate, first line of the message)."""
+    barrier = threading.Barrier(len(calls))
+    out = [None] * len(calls)
+
+    def one(i, fn):
+        c = fn["open"]()
+        try:
+            barrier.wait()
+            try:
+                v = c.execute(fn["sql"], fn["args"]).fetchone()[0]
+                time.sleep(hold_s)
+                c.commit()
+                out[i] = ("ok", v)
+            except psycopg.Error as e:
+                c.rollback()
+                out[i] = (e.sqlstate, str(e).splitlines()[0])
+        finally:
+            c.close()
+
+    threads = [threading.Thread(target=one, args=(i, fn)) for i, fn in enumerate(calls)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    return out
+
+
+def test_four_requests_at_once_on_four_projects_queue_exactly_three(race):
+    _reset(race)
+    open_ = lambda: _session(race["dsn"], race["who"])  # noqa: E731
+    out = _together([{"open": open_, "sql": REQ3, "args": [p, 1, "vertical_1080p"]} for p in race["projects"]])
+    oks = [o for o in out if o[0] == "ok"]
+    refusals = [o for o in out if o[0] != "ok"]
+    assert len(oks) == 3, out
+    assert refusals == [("NS409", "export_in_progress")], out
+    with as_superuser(race["conn"], commit=False) as s:
+        assert s.value("select count(*) from public.editor_exports where org_id = %s and status = 'queued'", [race["org"]]) == 3
+    _reset(race)
+
+
+def test_two_requests_at_once_at_nineteen_today_queue_exactly_one(race):
+    _reset(race)
+    with as_superuser(race["conn"]) as s:
+        for _ in range(19):
+            s.conn.execute("insert into public.editor_exports (org_id, project_id, rev, doc, duration_s, status, requested_by) "
+                           "values (%s, %s, 1, '{}'::jsonb, 1, 'failed', gen_random_uuid())", [race["org"], race["projects"][3]])
+    open_ = lambda: _session(race["dsn"], race["who"])  # noqa: E731
+    out = _together([{"open": open_, "sql": REQ3, "args": [race["projects"][0], 1, "square_1080"]},
+                     {"open": open_, "sql": REQ3, "args": [race["projects"][1], 1, "feed_4x5_1080"]}])
+    assert sorted(o[0] for o in out) == ["NS429", "ok"], out
+    with as_superuser(race["conn"], commit=False) as s:
+        assert s.value("select count(*) from public.editor_exports where org_id = %s", [race["org"]]) == 20
+    _reset(race)
+
+
+def _rollback_sql(timeout: str = "2s") -> str:
+    """The rollback file as the owner pastes it (with its own begin / commit), with a shorter lock wait so a test does not sit 5 s."""
+    text = ROLLBACK.read_text(encoding="utf-8")
+    assert text.count("set local lock_timeout = '5s';") == 1
+    return text.replace("set local lock_timeout = '5s';", f"set local lock_timeout = '{timeout}';")
+
+
+def _rolled_back(r) -> bool:
+    with as_superuser(r["conn"], commit=False) as s:
+        return s.value(f"select to_regprocedure('{REQ3_SIG}') is null")
+
+
+def _queued_of(r) -> int:
+    with as_superuser(r["conn"], commit=False) as s:
+        return s.value("select count(*) from public.editor_exports where org_id = %s and status in ('queued', 'rendering')", [r["org"]])
+
+
+def _put_back(r) -> None:
+    if _rolled_back(r):
+        _reset(r)
+        r["conn"].execute(MIGRATION.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("a_commits_after", [0.3, None], ids=["request-commits-while-rollback-waits", "request-outlasts-the-wait"])
+def test_a_rollback_racing_a_framed_request_never_leaves_it_queued_without_its_frame(race, a_commits_after):
+    """Connection A asks for a framed export and keeps its transaction open; B pastes the rollback. Either B refuses (it sees the
+    export in flight, or it cannot get its lock in time) or the rollback goes through with no export of A's left waiting. Never:
+    rollback applied and A's export queued, which the worker would render in the project's frame."""
+    _put_back(race)
+    _reset(race)
+    a = _session(race["dsn"], race["who"])
+    a.execute(REQ3, [race["projects"][0], 1, "vertical_1080p"])
+    result = {}
+
+    def b():
+        c = psycopg.connect(race["dsn"], autocommit=True)
+        try:
+            c.execute(_rollback_sql())
+            result["b"] = "applied"
+        except psycopg.Error as e:
+            result["b"] = (e.sqlstate, str(e).splitlines()[0])
+        finally:
+            c.close()
+
+    t = threading.Thread(target=b)
+    t.start()
+    if a_commits_after is not None:
+        time.sleep(a_commits_after)
+        a.commit()
+        t.join(20)
+    else:
+        t.join(20)
+        a.commit()
+    a.close()
+    applied = _rolled_back(race)
+    queued = _queued_of(race)
+    try:
+        assert not (applied and queued), (result, applied, queued)
+        assert result["b"] != "applied" and not applied, result
+        if a_commits_after is not None:
+            assert "an export in flight carries a frame" in result["b"][1], result
+        else:
+            assert result["b"][0] == "55P03", result          # lock_not_available: it waited and stopped, changing nothing
+        assert queued == 1
+    finally:
+        _put_back(race)
+        _reset(race)
+
+
+def test_a_request_racing_a_rollback_in_progress_fails_and_leaves_nothing(race):
+    """B has run the rollback and not committed yet; A asks for a framed export meanwhile. A waits for B, then fails (its function or
+    its columns are gone): the rollback is applied and A left nothing behind."""
+    _put_back(race)
+    _reset(race)
+    b = psycopg.connect(race["dsn"])
+    b.execute("\n".join(ln for ln in _rollback_sql().splitlines() if ln.strip() not in ("begin;", "commit;")))
+    result = {}
+
+    def a():
+        c = _session(race["dsn"], race["who"])
+        try:
+            result["a"] = ("ok", c.execute(REQ3, [race["projects"][1], 1, "square_1080"]).fetchone()[0])
+            c.commit()
+        except psycopg.Error as e:
+            c.rollback()
+            result["a"] = (e.sqlstate, str(e).splitlines()[0])
+        finally:
+            c.close()
+
+    t = threading.Thread(target=a)
+    t.start()
+    time.sleep(0.5)
+    assert t.is_alive(), result           # A waits for B's lock instead of writing past it
+    b.commit()
+    b.close()
+    t.join(20)
+    try:
+        assert _rolled_back(race)
+        assert result["a"][0] != "ok", result
+        assert _queued_of(race) == 0
+    finally:
+        _put_back(race)
+        _reset(race)
 
 
 # ── the worker's side ───────────────────────────────────────────────────────

@@ -171,6 +171,44 @@ describe("with the switch on", () => {
     ]);
   });
 
+  it("the project's own size and a format of that same size are refused together, before any export is asked", async () => {
+    bothOverloads();
+    h.table.editor_projects = { data: { width: 1920, height: 1080 }, error: null };
+    for (const frames of [["project", "youtube_1080p"], ["youtube_1080p", "project"], ["project", "vertical_1080p", "youtube_1080p"]]) {
+      h.calls = [];
+      const res = await post({ rev: 3, frames });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "bad_request" });
+      expect(exportCalls()).toHaveLength(0);
+      // The size is read under the caller's own session, the project's id pinned.
+      const read = h.calls.find((c) => c.kind === "from" && c.name === "editor_projects")!;
+      expect(read.chain).toEqual(expect.arrayContaining([{ m: "select", a: ["doc->width, doc->height"] }, { m: "eq", a: ["id", PID] }]));
+    }
+    expect(h.audits).toHaveLength(0);
+  });
+
+  it("a format of another size beside the project's own goes through, and a format alone is never compared", async () => {
+    bothOverloads();
+    h.table.editor_projects = { data: { width: 1920, height: 1080 }, error: null };
+    expect((await post({ rev: 3, frames: ["project", "vertical_1080p"] })).status).toBe(201);
+    h.calls = [];
+    // Without "project" there is nothing to compare: no read, and youtube_1080p alone is one export like any other.
+    expect((await post({ rev: 3, frames: ["youtube_1080p"] })).status).toBe(201);
+    expect(h.calls.filter((c) => c.kind === "from" && c.name === "editor_projects")).toHaveLength(0);
+  });
+
+  it("when the project's size cannot be read the database decides (it refuses the same picture twice itself)", async () => {
+    let n = 0;
+    h.rpc.request_editor_export = (args) =>
+      args.p_frame === "youtube_1080p" ? { data: null, error: { code: "NS409", message: "export_in_progress" } } : { data: E(++n), error: null };
+    for (const read of [{ data: null, error: { code: "57014", message: "timeout" } }, { data: null, error: null }]) {
+      h.table.editor_projects = read;
+      const res = await post({ rev: 3, frames: ["project", "youtube_1080p"] });
+      expect(res.status).toBe(201);
+      expect((await res.json()).exports[1]).toEqual({ frame: "youtube_1080p", error: "export_in_progress" });
+    }
+  });
+
   it("nothing else in the body reaches the database", async () => {
     bothOverloads();
     await post({ rev: 3, frames: ["vertical_1080p"], width: 8192, height: 8192, fps: 240, doc: { width: 8192 }, p_frame: "8192x8192", frame: "9:16", credits: 0 });

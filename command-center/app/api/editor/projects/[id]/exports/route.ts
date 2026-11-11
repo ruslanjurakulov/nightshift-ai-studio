@@ -7,6 +7,7 @@ import { parseMediaId } from "@/lib/media";
 import { mapEditorError, type EditorError } from "@/lib/editor";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { multiRatioExportEnabled } from "@/lib/multiRatioExport/flag";
+import { exportPresetById } from "@/lib/editorExportPresets";
 import {
   PROJECT_FRAME,
   parseExportFrames,
@@ -70,6 +71,26 @@ export const POST = requireSameOrigin(async function POST(
     const frames = parseExportFrames(asked);
     if (!frames)
       return NextResponse.json({ error: "bad_request" }, { status: 400 });
+    // "This project's size" and a format of that same size are the same picture twice: one export of the day for nothing.
+    // Refused whole, like any request that is not understood. The project's size is read under the caller's own session
+    // (RLS); if it cannot be read the request goes on and the database refuses the second one itself (0129: a format of
+    // the size of an export in flight is export_in_progress).
+    if (frames.includes(PROJECT_FRAME) && frames.length > 1) {
+      const { data: own } = await supabase
+        .from("editor_projects")
+        .select("doc->width, doc->height")
+        .eq("id", id)
+        .maybeSingle();
+      const size = own as { width?: unknown; height?: unknown } | null;
+      if (
+        size &&
+        frames.some((f) => {
+          const p = f === PROJECT_FRAME ? null : exportPresetById(f);
+          return p !== null && p.width === size.width && p.height === size.height;
+        })
+      )
+        return NextResponse.json({ error: "bad_request" }, { status: 400 });
+    }
     const results: (
       | { frame: ExportFrameChoice; id: string; status: "queued" }
       | { frame: ExportFrameChoice; error: EditorError }

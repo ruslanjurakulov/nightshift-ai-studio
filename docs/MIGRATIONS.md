@@ -545,7 +545,7 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
 - **What it enforces.** The frame must be an id of the database's own list (the five of `schemas/export_presets.json`; a pin test compares them), looked at
   only after sign-in and membership; anything else is NS400 `invalid_frame`. Width and height on the row come from the list, never from the caller. Every
   gate of 0054 is there in 0054's order; each frame is one export against the organization's three in flight and twenty a day.
-- **The one rule with a new shape.** "One export at a time per project" is, in the new overload only, "one at a time per project per frame".
+- **The one rule with a new shape.** "One export at a time per project" is, in the new overload only, "one at a time per project per frame size" (a plain export in flight has the size of the document it copied, so a format of the project's own size is refused beside it).
 - **Roll-out.** Either order with the Command Center and the worker; see `docs/MULTI_RATIO_EXPORT.md`. The switch goes on only when both run this version.
 - **Drift guard.** Refuses (changes nothing) if the live two-argument `request_editor_export` is not 0054's body (the overload is a copy of it), or if a
   three-argument overload or an `editor_export_frame` that is not its own already exists; the last block asserts the end state.

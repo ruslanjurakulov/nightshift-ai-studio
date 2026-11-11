@@ -73,7 +73,7 @@ class TheOverloadIs0054sFunctionPlusTheFrame(unittest.TestCase):
         self.assertEqual(without_the_marked_lines(mine).splitlines(), body(func(SQL54, REQ2)).splitlines())
         # Not vacuous: the marked lines are really there, and taking them out is what makes the two equal.
         self.assertNotEqual(mine.splitlines(), body(func(SQL54, REQ2)).splitlines())
-        self.assertEqual(len(mine.splitlines()) - len(body(func(SQL54, REQ2)).splitlines()), 15)
+        self.assertEqual(len(mine.splitlines()) - len(body(func(SQL54, REQ2)).splitlines()), 17)
 
     def test_exactly_these_lines_were_added_and_one_was_replaced(self):
         mine = body(func(SQL, REQ3))
@@ -87,7 +87,8 @@ class TheOverloadIs0054sFunctionPlusTheFrame(unittest.TestCase):
             "if frame_id is null then   -- 0129",
             "raise exception 'invalid_frame' using errcode = 'NS400';   -- 0129",
             "end if;   -- 0129",
-            "where project_id = p.id and status in ('queued', 'rendering') and frame_preset = frame_id) then   "
+            "where project_id = p.id and status in ('queued', 'rendering') and coalesce(to_jsonb(frame_width), doc -> 'width') = to_jsonb(frame_w) "
+            "and coalesce(to_jsonb(frame_height), doc -> 'height') = to_jsonb(frame_h)) then   "
             "-- 0129 replaces: where project_id = p.id and status in ('queued', 'rendering')) then",
             "update public.editor_exports   -- 0129",
             "set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h   -- 0129",
@@ -108,7 +109,7 @@ class TheOverloadIs0054sFunctionPlusTheFrame(unittest.TestCase):
                  "raise exception 'invalid_frame'", "p_rev <> p.rev", "public.editor_doc_problem(p.org_id, p.doc)",
                  "public.editor_doc_duration(p.doc)", "total <= 0", "total > 1800",
                  "pg_advisory_xact_lock(hashtextextended('editor_exports:' || p.org_id::text, 0))",
-                 "frame_preset = frame_id", ">= 3", ">= 20", "insert into public.editor_exports",
+                 "coalesce(to_jsonb(frame_width), doc -> 'width') = to_jsonb(frame_w)", ">= 3", ">= 20", "insert into public.editor_exports",
                  "update public.editor_exports set frame_preset = frame_id"]
         at = [fn.index(g) for g in gates]
         self.assertEqual(at, sorted(at), "a gate moved")

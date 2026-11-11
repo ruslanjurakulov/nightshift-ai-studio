@@ -11,7 +11,8 @@
 -- are dropped). That matters for an export still waiting or rendering, which would then be rendered in the project's own frame, so the
 -- file REFUSES while one exists.
 --
--- WHAT IT DOES, in one transaction:
+-- WHAT IT DOES, in one transaction, holding a SHARE ROW EXCLUSIVE lock on editor_exports from before the check to the end (no export
+-- can be asked for between the check and the drop):
 --   0. REFUSES (changes nothing) if the three-argument request_editor_export() or editor_export_frame() is not 0129's body (a later change
 --      would be undone), if the two-argument request_editor_export() is not 0054's body, or if an export that is queued or rendering
 --      carries a frame.
@@ -23,6 +24,11 @@
 
 begin;
 set local lock_timeout = '5s';
+-- Before the in-flight check, and held to the end: an export asked for WHILE this runs would otherwise be written between the check
+-- and the drop, lose its frame with the columns and be rendered in the project's frame. SHARE ROW EXCLUSIVE conflicts with the ROW
+-- EXCLUSIVE a request takes to insert, so a request waits for this file (and then fails, its function or columns gone), or this file
+-- waits for the request (and then sees it in flight and refuses). Within lock_timeout; past it the file stops and changes nothing.
+lock table public.editor_exports in share row exclusive mode;
 
 do $$
 declare
@@ -30,7 +36,7 @@ declare
 begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
     from pg_proc p where p.oid = to_regprocedure('public.request_editor_export(uuid, integer, text)');
-  if h is distinct from 'f928b139368bf2e97ddc4c0e098c8fc2' then
+  if h is distinct from '83456b3c70d9433ce0e21da1339198ad' then
     raise exception 'rollback 0129: the three-argument request_editor_export() is missing or is not 0129''s body (md5 %): a later change would be undone; read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h

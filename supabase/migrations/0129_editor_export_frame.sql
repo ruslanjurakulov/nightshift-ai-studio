@@ -30,7 +30,10 @@
 --   An export in a frame is one export like any other: it takes one of the organization's three waiting-or-rendering places and one of
 --   its twenty a day, under the same advisory lock, and it is free (nothing here holds, charges or refunds a credit; no provider is called).
 --   ONE RULE HAS A NEW SHAPE, in the new overload only: "one export at a time per project" becomes "one export at a time per project PER
---   FRAME" (the same frame of the same project twice is export_in_progress; a different frame is a different file and may wait beside it).
+--   FRAME SIZE" (the same size of the same project twice is export_in_progress; a different size is a different file and may wait beside
+--   it). The size of an export in flight is its row's frame, or, for a row without one, the frame of the document it copied: so a format
+--   that is the project's own size (youtube_1080p on a 1920x1080 project) is refused while the plain export of that project is in flight,
+--   and the other way round the two-argument function refuses anyway.
 --   The organization's cap of three in flight is what bounds the worker, and it is unchanged, so one project can never hold more than the
 --   three places its organization has. The two-argument function still refuses while ANY export of the project is in flight.
 --
@@ -78,7 +81,7 @@ begin
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
     from pg_proc p where p.oid = to_regprocedure('public.request_editor_export(uuid, integer, text)');
-  if h is not null and h <> 'f928b139368bf2e97ddc4c0e098c8fc2' then
+  if h is not null and h <> '83456b3c70d9433ce0e21da1339198ad' then
     raise exception '0129 found a three-argument request_editor_export() that is not this file''s (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
@@ -188,10 +191,12 @@ begin
 
   -- One request per organization at a time: the limits hold under parallel clicks.
   perform pg_advisory_xact_lock(hashtextextended('editor_exports:' || p.org_id::text, 0));
-  -- 0129 one at a time per project PER FRAME: the same frame twice is refused, another frame is another file. The organization's
-  -- 0129 three in flight and twenty a day below are 0054's lines, unchanged, and each frame counts as one.
+  -- 0129 one at a time per project PER FRAME SIZE: the same picture twice is refused, another size is another file. An export in
+  -- 0129 flight without a frame is the size of the document it copied (jsonb compares numbers by value, and never raises on a doc
+  -- 0129 whose width is not a number). The organization's three in flight and twenty a day below are 0054's lines, unchanged, and
+  -- 0129 each frame counts as one.
   if exists (select 1 from public.editor_exports
-              where project_id = p.id and status in ('queued', 'rendering') and frame_preset = frame_id) then   -- 0129 replaces: where project_id = p.id and status in ('queued', 'rendering')) then
+              where project_id = p.id and status in ('queued', 'rendering') and coalesce(to_jsonb(frame_width), doc -> 'width') = to_jsonb(frame_w) and coalesce(to_jsonb(frame_height), doc -> 'height') = to_jsonb(frame_h)) then   -- 0129 replaces: where project_id = p.id and status in ('queued', 'rendering')) then
     raise exception 'export_in_progress' using errcode = 'NS409';
   end if;
   if (select count(*) from public.editor_exports
@@ -235,7 +240,7 @@ declare
   priv text;
 begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req2) <> '6d37b4d75092708981c28a56879c89b4'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req3) <> 'f928b139368bf2e97ddc4c0e098c8fc2'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req3) <> '83456b3c70d9433ce0e21da1339198ad'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = lst) <> '1bcfdbfab6526ce7d0ba07e167f5740c' then
     raise exception '0129 end state: a function does not hold the body this file expects';
   end if;
