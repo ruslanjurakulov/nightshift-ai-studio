@@ -42,6 +42,7 @@ EMAIL_EXAMPLE = ROOT / "deploy" / ".env.email.example"
 BUILD_SERVICE = ROOT / "deploy" / "build-service-env.py"
 OPERATOR_EXAMPLE = ROOT / "deploy" / ".env.operator.example"
 MARKETING_EXAMPLE = ROOT / "deploy" / ".env.marketing.example"
+BRANDSCAN_EXAMPLE = ROOT / "deploy" / ".env.brandscan.example"
 TELEGRAM_WORKFLOW = ROOT / ".github" / "workflows" / "telegram_control.yml"
 ALERTS_WORKFLOW = ROOT / ".github" / "workflows" / "operator_alerts.yml"
 
@@ -143,7 +144,7 @@ class WorkflowMappingTests(unittest.TestCase):
         # the worker step may name it, and that goes to the worker's own file.
         for s in steps():
             if s.get("name") in ("Build the worker env", "Build the notify env", "Build the e-mail env",
-                                 "Build the operator-bot env", "Build the marketing env"):
+                                 "Build the operator-bot env", "Build the marketing env", "Build the brand-scan env"):
                 continue
             self.assertNotRegex(yaml.safe_dump(s), r"(secrets|vars)\.\w*SERVICE", s.get("name"))
 
@@ -306,13 +307,14 @@ FAKE_DOCKER = textwrap.dedent(
         exit 0 ;;
       *" up "*creative-worker) exit "${FAKE_CREATIVE_UP_RC:-0}" ;;
       *" up "*marketing-worker) exit "${FAKE_MARKETING_UP_RC:-0}" ;;
+      *" up "*brand-scan-worker) exit "${FAKE_BRANDSCAN_UP_RC:-0}" ;;
       *" up "*notify-worker) exit "${FAKE_NOTIFY_UP_RC:-0}" ;;
       *" up "*email-worker) exit "${FAKE_EMAIL_UP_RC:-0}" ;;
       *" up "*operator-bot) exit "${FAKE_OPERATOR_UP_RC:-0}" ;;
       *" up "*worker) exit "${FAKE_WORKER_UP_RC:-0}" ;;
       *" up "*) exit "${FAKE_UP_RC:-0}" ;;
       *" ps -q web"|*" ps -aq web") echo cid123 ;;
-      *" ps -q worker"|*" ps -q media-worker"|*" ps -q creative-worker"|*" ps -q notify-worker"|*" ps -q email-worker"|*" ps -q operator-bot"|*" ps -q marketing-worker") echo cidw ;;
+      *" ps -q worker"|*" ps -q media-worker"|*" ps -q creative-worker"|*" ps -q notify-worker"|*" ps -q email-worker"|*" ps -q operator-bot"|*" ps -q marketing-worker"|*" ps -q brand-scan-worker") echo cidw ;;
       inspect*) echo "${FAKE_HEALTH:-healthy}" ;;
       logs*) echo "${FAKE_LOG_TEXT:-}" ;;
       *" logs "*) echo "${FAKE_LOG_TEXT:-}" ;;
@@ -394,6 +396,7 @@ class _RemoteDeployFixture(unittest.TestCase):
         shutil.copy(EMAIL_EXAMPLE, up / "deploy" / ".env.email.example")
         shutil.copy(OPERATOR_EXAMPLE, up / "deploy" / ".env.operator.example")
         shutil.copy(MARKETING_EXAMPLE, up / "deploy" / ".env.marketing.example")
+        shutil.copy(BRANDSCAN_EXAMPLE, up / "deploy" / ".env.brandscan.example")
         (up / "deploy" / "docker-compose.yml").write_text("services: {}\n")
         self.git(up, "add", "-A")
         self.git(up, "commit", "-q", "-m", "A")
@@ -424,6 +427,7 @@ class _RemoteDeployFixture(unittest.TestCase):
         self.email_env_file = self.tmp / ".env.email"
         self.operator_env_file = self.tmp / ".env.operator"
         self.marketing_env_file = self.tmp / ".env.marketing"
+        self.brandscan_env_file = self.tmp / ".env.brandscan"
 
     def payload(self, sha=None, drop=(), **values):
         vals = {k: "" for k in example_keys()}
@@ -450,6 +454,7 @@ class _RemoteDeployFixture(unittest.TestCase):
             NIGHTSHIFT_EMAIL_ENV_FILE=str(self.email_env_file),
             NIGHTSHIFT_OPERATOR_ENV_FILE=str(self.operator_env_file),
             NIGHTSHIFT_MARKETING_ENV_FILE=str(self.marketing_env_file),
+            NIGHTSHIFT_BRANDSCAN_ENV_FILE=str(self.brandscan_env_file),
             NIGHTSHIFT_LOCK_FILE=str(self.tmp / ".deploy.lock"),
             NIGHTSHIFT_DOCKER=str(self.tmp / "docker"),
             NIGHTSHIFT_HEALTH_TIMEOUT="10",
@@ -1584,6 +1589,7 @@ SENDERS = {
     "Build the notify env": ("NIGHTSHIFT_NOTIFY_WORKER", "NOTIFYENV_", NOTIFY_EXAMPLE, "notify"),
     "Build the e-mail env": ("NIGHTSHIFT_EMAIL_WORKER", "EMAILENV_", EMAIL_EXAMPLE, "email"),
     "Build the marketing env": ("NIGHTSHIFT_MARKETING_WORKER", "MARKETINGENV_", MARKETING_EXAMPLE, "marketing"),
+    "Build the brand-scan env": ("NIGHTSHIFT_ADS_BRAND_SCAN", "BRANDSCANENV_", BRANDSCAN_EXAMPLE, "brandscan"),
 }
 
 
@@ -1713,6 +1719,53 @@ class SenderWorkflowTests(unittest.TestCase):
         self.assertEqual(c["marketing-worker"]["command"], ["python", "tools/marketing_worker.py"])
         self.assertEqual(c["marketing-worker"]["environment"]["NIGHTSHIFT_WORKER_ID"], "marketing-01")
 
+    def test_the_brand_scan_step_maps_the_supabase_secrets_and_the_same_switch_as_the_panel(self):
+        s = step(name="Build the brand-scan env")
+        self.assertEqual(s["if"], "steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_ADS_BRAND_SCAN == 'on'")
+        self.assertEqual(s["env"], {
+            "PAYLOAD": "${{ steps.payload.outputs.file }}",
+            "BRANDSCANENV_SUPABASE_URL": "${{ secrets.SUPABASE_URL }}",
+            "BRANDSCANENV_SUPABASE_SERVICE_KEY": "${{ secrets.SUPABASE_SERVICE_KEY }}",
+            "BRANDSCANENV_NIGHTSHIFT_ADS_BRAND_SCAN": "${{ vars.NIGHTSHIFT_ADS_BRAND_SCAN }}",
+        })
+        self.assertEqual(_example_keys_of(BRANDSCAN_EXAMPLE), ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "NIGHTSHIFT_ADS_BRAND_SCAN"])
+        # One switch: the web container's panel reads the same repository variable; the service key never reaches the web.
+        self.assertEqual(step("payload")["env"]["WEBENV_NIGHTSHIFT_ADS_BRAND_SCAN"], "${{ vars.NIGHTSHIFT_ADS_BRAND_SCAN }}")
+        self.assertNotIn("SUPABASE_SERVICE_KEY", yaml.safe_dump(step("payload")))
+        for example in (WORKER_EXAMPLE, NOTIFY_EXAMPLE, EMAIL_EXAMPLE, OPERATOR_EXAMPLE, MARKETING_EXAMPLE):
+            self.assertNotIn("NIGHTSHIFT_ADS_BRAND_SCAN=", example.read_text(), example.name)
+
+    def test_the_brand_scan_worker_service_is_its_own_profile_with_the_media_volume_and_bounded(self):
+        c = yaml.safe_load((ROOT / "deploy" / "docker-compose.yml").read_text())["services"]
+        w = c["brand-scan-worker"]
+        self.assertEqual(w["profiles"], ["brandscan"])
+        self.assertEqual(w["env_file"], [{"path": "${BRANDSCAN_ENV_FILE:-/opt/nightshift/.env.brandscan}", "required": False}])
+        self.assertEqual(w["command"], ["python", "tools/brand_scan_worker.py"])
+        self.assertEqual(w["image"], "nightshift-worker:latest")
+        self.assertEqual(w["user"], "1000:1000")
+        self.assertEqual(w["environment"], {"NIGHTSHIFT_WORKER_ID": "brand-scan-01", "NIGHTSHIFT_MEDIA_DIR": "/app/media", "HOME": "/tmp"})
+        self.assertEqual(w["volumes"], ["media:/app/media"])
+        self.assertEqual(w["cap_drop"], ["ALL"])
+        self.assertEqual(w["security_opt"], ["no-new-privileges:true"])
+        for key in ("ports", "expose", "privileged", "network_mode"):
+            self.assertNotIn(key, w)
+        # Bounded: the palette child alone may take 768 MB of address space (modules/brand_extract.py), so the container gets
+        # that plus room for the worker, a small CPU weight (the dashboard and renders first) and a cap on processes.
+        from modules import brand_extract
+        limit = int(w["mem_limit"].rstrip("m")) * 1024 * 1024
+        self.assertGreaterEqual(limit, brand_extract.PALETTE_MEM_BYTES + 512 * 1024 * 1024)
+        self.assertLessEqual(limit, 2 * 1024 ** 3)
+        self.assertEqual(w["cpu_shares"], 128)
+        self.assertEqual(w["pids_limit"], 256)
+        self.assertEqual(w["restart"], "unless-stopped")
+        self.assertEqual(w["stop_grace_period"], "45s")
+        for svc in ("web", "worker", "media-worker", "creative-worker", "notify-worker", "email-worker", "operator-bot", "marketing-worker"):
+            self.assertNotIn(".env.brandscan", yaml.safe_dump(c[svc]))
+        # No Caddy route: Caddy never names it, and nothing proxies to it.
+        caddyfile = (ROOT / "deploy" / "Caddyfile").read_text().lower()
+        for word in ("brand-scan", "brandscan", "brand_scan"):
+            self.assertNotIn(word, caddyfile)
+
 
 class BuildServiceEnvTests(unittest.TestCase):
     SECRET = "sender-secret-never-printed"
@@ -1733,6 +1786,7 @@ class BuildServiceEnvTests(unittest.TestCase):
             "TELEGRAM_CHANNEL_BOT_TOKEN": "456:def",
             "MARKETING_TELEGRAM_CHAT": "@nightshift_test",
             "NIGHTSHIFT_MARKETING_POSTS": "on",
+            "NIGHTSHIFT_ADS_BRAND_SCAN": "on",
         }
         vals = {k: vals[k] for k in _example_keys_of(example)}
         vals.update(over)
@@ -1741,16 +1795,18 @@ class BuildServiceEnvTests(unittest.TestCase):
     def build(self, service, **over):
         env, example = self.values(service, **over)
         prefix = next(v for v in SENDERS.values() if v[3] == service)[1]
-        return self.mod.build(env, example.read_text(), prefix, example.name, self.mod.OPTIONAL.get(service, frozenset()))
+        return self.mod.build(env, example.read_text(), prefix, example.name, self.mod.OPTIONAL.get(service, frozenset()),
+                              self.mod.GATED.get(service, {}), self.mod.EXACT.get(service, {}))
 
     def test_one_line_per_key_in_the_examples_order(self):
-        for service, example in (("notify", NOTIFY_EXAMPLE), ("email", EMAIL_EXAMPLE), ("marketing", MARKETING_EXAMPLE)):
+        for service, example in (("notify", NOTIFY_EXAMPLE), ("email", EMAIL_EXAMPLE), ("marketing", MARKETING_EXAMPLE),
+                                 ("brandscan", BRANDSCAN_EXAMPLE)):
             lines, errors = self.build(service)
             self.assertEqual(errors, [])
             self.assertEqual([l.split("=", 1)[0] for l in lines], _example_keys_of(example))
 
     def test_every_key_is_required(self):
-        for service, example in (("notify", NOTIFY_EXAMPLE), ("email", EMAIL_EXAMPLE)):
+        for service, example in (("notify", NOTIFY_EXAMPLE), ("email", EMAIL_EXAMPLE), ("brandscan", BRANDSCAN_EXAMPLE)):
             for key in _example_keys_of(example):
                 with self.subTest(service=service, key=key):
                     _, errors = self.build(service, **{key: " "})
@@ -1783,6 +1839,13 @@ class BuildServiceEnvTests(unittest.TestCase):
         self.assertIn("TELEGRAM_CHANNEL_BOT_TOKEN contains", text)
         self.assertNotIn(self.SECRET, text)
 
+    def test_the_brand_scan_switch_in_its_own_file_is_exactly_on(self):
+        lines, errors = self.build("brandscan")
+        self.assertEqual((lines[-1], errors), ("NIGHTSHIFT_ADS_BRAND_SCAN=on", []))
+        for bad in ("true", "1", "ON", "yes", "off"):
+            _, errors = self.build("brandscan", NIGHTSHIFT_ADS_BRAND_SCAN=bad)
+            self.assertIn("NIGHTSHIFT_ADS_BRAND_SCAN must be exactly `on` here", "\n".join(errors), bad)
+
     def test_a_key_the_workflow_forgot_fails(self):
         _, errors = self.build("notify", TELEGRAM_CUSTOMER_BOT_TOKEN=None)
         self.assertIn("TELEGRAM_CUSTOMER_BOT_TOKEN is in deploy/.env.notify.example but not mapped", "\n".join(errors))
@@ -1812,7 +1875,7 @@ class BuildServiceEnvTests(unittest.TestCase):
 
     def test_main_appends_the_marker_and_prints_no_value_and_a_refusal_leaves_the_payload_alone(self):
         for service, marker in (("notify", "NIGHTSHIFT_NOTIFY_ENV=on"), ("email", "NIGHTSHIFT_EMAIL_ENV=on"),
-                                ("marketing", "NIGHTSHIFT_MARKETING_ENV=on")):
+                                ("marketing", "NIGHTSHIFT_MARKETING_ENV=on"), ("brandscan", "NIGHTSHIFT_BRAND_SCAN_ENV=on")):
             with self.subTest(service):
                 tmp = Path(tempfile.mkdtemp())
                 self.addCleanup(shutil.rmtree, tmp, True)
@@ -2700,3 +2763,99 @@ class WorkerImageTest(unittest.TestCase):
         self.assertLess(chown, readable)
         self.assertLess(readable, private)
 
+
+class RemoteDeployBrandScanTests(_RemoteDeployFixture):
+    """The brand scan worker's section of the payload, on the same fixture. Off is the default and removes everything."""
+
+    def section(self, drop=(), **values):
+        vals = dict(SUPABASE_URL="https://abc.supabase.co", SUPABASE_SERVICE_KEY=self.SECRET, NIGHTSHIFT_ADS_BRAND_SCAN="on")
+        vals.update(values)
+        return "\n".join(["NIGHTSHIFT_BRAND_SCAN_ENV=on"] + [f"{k}={v}" for k, v in vals.items() if k not in drop]) + "\n"
+
+    def up_calls(self, svc="brand-scan-worker"):
+        return [c for c in self.docker_calls() if c.endswith(f"up -d --build --no-deps {svc}")]
+
+    def clean(self):
+        for f in (self.env_file, self.brandscan_env_file, self.docker_log):
+            f.unlink(missing_ok=True)
+
+    def test_absent_removes_the_service_and_its_env_file_and_starts_nothing(self):
+        self.brandscan_env_file.write_text("SUPABASE_SERVICE_KEY=left-behind\n")
+        Path(str(self.brandscan_env_file) + ".prev").write_text("SUPABASE_SERVICE_KEY=older\n")
+        proc = self.deploy(self.payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.up_calls(), [])
+        self.assertFalse(self.brandscan_env_file.exists())
+        self.assertFalse(Path(str(self.brandscan_env_file) + ".prev").exists())
+        self.assertTrue(any(c.endswith("rm --stop --force brand-scan-worker") for c in self.docker_calls()))
+        self.assertIn("brand-scan-worker is off (GitHub variable NIGHTSHIFT_ADS_BRAND_SCAN is not 'on')", proc.stdout)
+        self.assertIn("brand-scan-worker off", proc.stdout)
+
+    def test_on_writes_its_own_600_file_with_exactly_three_names_and_starts_after_web(self):
+        proc = self.deploy(self.payload(NIGHTSHIFT_ADS_BRAND_SCAN="on") + self.section())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(stat.S_IMODE(self.brandscan_env_file.stat().st_mode), 0o600)
+        text = self.brandscan_env_file.read_text()
+        names = [l.split("=", 1)[0] for l in text.splitlines() if l and not l.startswith("#")]
+        self.assertEqual(names, ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "NIGHTSHIFT_ADS_BRAND_SCAN"])
+        self.assertIn("NIGHTSHIFT_ADS_BRAND_SCAN=on\n", text)
+        self.assertNotIn("NIGHTSHIFT_BRAND_SCAN_ENV", text)
+        self.assertNotIn("SUPABASE_SERVICE_KEY", self.env_file.read_text(), "the web file never gets the service key")
+        calls = self.docker_calls()
+        web_up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --remove-orphans web caddy")]
+        up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --no-deps brand-scan-worker")]
+        self.assertEqual((len(web_up), len(up)), (1, 1))
+        self.assertLess(web_up[0], up[0])
+        self.assertTrue(all("--profile brandscan" in c for c in calls if " up " in f" {c} "))
+        self.assertTrue(any(c.startswith("inspect -f brand-scan-worker after 0s: state=") for c in calls))
+        self.assertIn("brand-scan-worker log hints:", proc.stdout)
+        self.assertIn("brand-scan-worker on", proc.stdout)
+        self.assertEqual(self.up_calls("marketing-worker") + self.up_calls("worker") + self.up_calls("notify-worker"), [])
+
+    def test_switching_off_after_on_removes_the_container_and_both_copies_of_the_file(self):
+        self.assertEqual(self.deploy(self.payload() + self.section()).returncode, 0)
+        self.assertEqual(self.deploy(self.payload() + self.section()).returncode, 0)
+        self.assertTrue(Path(str(self.brandscan_env_file) + ".prev").exists())
+        proc = self.deploy(self.payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse(self.brandscan_env_file.exists())
+        self.assertFalse(Path(str(self.brandscan_env_file) + ".prev").exists())
+
+    def test_the_switch_in_the_section_must_say_on_and_nothing_may_be_empty(self):
+        for value in ("off", "true", "1", "ON", ""):
+            with self.subTest(value):
+                self.clean()
+                proc = self.deploy(self.payload() + self.section(NIGHTSHIFT_ADS_BRAND_SCAN=value))
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("NIGHTSHIFT_ADS_BRAND_SCAN", proc.stderr)
+                self.assertFalse(self.brandscan_env_file.exists())
+                self.assertEqual(self.docker_calls(), [])
+        for key in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY"):
+            self.clean()
+            self.assertRefused(self.deploy(self.payload() + self.section(**{key: ""})), f"{key} is required and empty")
+
+    def test_a_key_it_does_not_read_is_refused_in_particular_a_provider_key_or_a_bot_token(self):
+        for name in ("GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHANNEL_BOT_TOKEN", "MEDIA_URL_SECRET"):
+            with self.subTest(name):
+                self.clean()
+                proc = self.deploy(self.payload() + self.section(**{name: self.SECRET}))
+                self.assertRefused(proc, f"{name} is not a key in deploy/.env.brandscan.example")
+                self.assertFalse(self.brandscan_env_file.exists())
+
+    def test_a_missing_or_repeated_key_and_a_repeated_marker_are_refused(self):
+        self.assertRefused(self.deploy(self.payload() + self.section(drop=("NIGHTSHIFT_ADS_BRAND_SCAN",))), "NIGHTSHIFT_ADS_BRAND_SCAN is missing")
+        self.assertRefused(self.deploy(self.payload() + self.section() + "NIGHTSHIFT_BRAND_SCAN_ENV=on\n"),
+                           "NIGHTSHIFT_BRAND_SCAN_ENV is not a key in deploy/.env.brandscan.example")
+        for value in ("off", "1"):
+            self.assertRefused(self.deploy(self.payload(NIGHTSHIFT_BRAND_SCAN_ENV=value)),
+                               "NIGHTSHIFT_BRAND_SCAN_ENV is not a key in deploy/.env.web.example")
+
+    def test_a_worker_that_fails_to_start_fails_the_deploy_after_web(self):
+        proc = self.deploy(self.payload() + self.section(), FAKE_BRANDSCAN_UP_RC="1")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("the brand scan worker did not start", proc.stderr)
+
+    def test_the_output_never_carries_a_value(self):
+        proc = self.deploy(self.payload() + self.section(SUPABASE_SERVICE_KEY=self.SECRET))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn(self.SECRET, proc.stdout + proc.stderr)

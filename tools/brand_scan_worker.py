@@ -1,8 +1,9 @@
 """Brand scan worker — migration 0133, ``modules/brand_scan.py`` (docs/ADS_FACTORY.md, "Phase 2: brand scan").
 
 DARK. It does nothing unless ``NIGHTSHIFT_ADS_BRAND_SCAN=on``: with the switch off (the default) it says so and exits 0
-without connecting to anything. It is not in deploy/docker-compose.yml yet: adding a service for it is a release step
-(docs/ADS_FACTORY.md, "Releasing Phase 2"), after the owner has set a price.
+without connecting to anything. It runs as the `brand-scan-worker` service of deploy/docker-compose.yml (profile
+`brandscan`), which the deploy starts only while the repository variable NIGHTSHIFT_ADS_BRAND_SCAN is `on`
+(docs/ADS_FACTORY.md, "Releasing Phase 2": the owner sets the price after the worker runs).
 
 With the switch on it claims, one at a time, the DNS TXT checks people asked for ("Check now") and the brand scans they
 paid for, runs each (modules/dns_txt.py, modules/brand_fetch.py, modules/brand_extract.py) and records the result

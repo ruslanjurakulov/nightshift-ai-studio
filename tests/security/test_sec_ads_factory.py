@@ -1636,8 +1636,8 @@ def test_0131_touches_no_object_it_did_not_add(conn, sc):
     name = f"ns_ads_base_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.create_database(admin, name)
     try:
-        # 0133 (the brand scan) needs 0131: it is left out too, and is not part of what is compared.
-        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0131_", "0133_"))])
+        # 0133 (the brand scan) and 0134 (its follow-up) need 0131: they are left out too, and are not part of what is compared.
+        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0131_", "0133_", "0134_"))])
         with psycopg.connect(dsn, autocommit=True) as c:
             s = sec_db.Session(c)
             assert all(v == [] for v in fingerprint(s, True).values()), "the base has none of 0131's names"

@@ -369,6 +369,13 @@ Standart — o'chiq; o'chiq paytda hech qanday sir kerak emas. Konteyner bor bo'
 ham, `NIGHTSHIFT_MARKETING_POSTS` = `on` bo'lmaguncha u hech narsa qoralamaydi va
 yubormaydi. Qadamlar va nomlar: `docs/MARKETING_POSTS.md`.
 
+**Brend skaneri** (`brand-scan-worker`, Ads Factory 2-bosqich): switch
+`NIGHTSHIFT_ADS_BRAND_SCAN` = aynan `on` (repository variable; xuddi shu variable
+"Scan my site" panelini ham ko'rsatadi) → **Deploy web** → **Run workflow**. O'z env
+fayli `.env.brandscan` (faqat `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` va switch),
+`media` volume, portsiz, Caddy marshrutisiz. Standart — o'chiq. Narx bazada qo'yilmaguncha
+skanerlash sotilmaydi; tartib: `docs/ADS_FACTORY.md`, "Releasing Phase 2".
+
 ---
 
 Quyidagi 0–13-bo'limlar — serverni noldan tayyorlash va **qo'lda** deploy
