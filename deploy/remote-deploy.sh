@@ -329,6 +329,7 @@ write_env() {
 # PR is the control, not this hash. The environment override
 # NIGHTSHIFT_CADDYFILE_APPROVED_SHA256 still wins when set (tests); sshd does not
 # pass client environment, so the key holder cannot set it.
+# shellcheck disable=SC2034  # data, not read here: caddy_pin_of reads this line from the deployed commit
 CADDYFILE_APPROVED_SHA256="${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-37fdde60fd271dee054c02b6bfa5f6ff18847646deee0d308f63c2fa9080dd13}"
 
 # This is the CONTRACT: what Caddy must keep sending. It mirrors the `header`
@@ -549,16 +550,27 @@ caddy_pin_of() {
 caddy_apply() {
   local host="$1" sha="$2" new="$APP_DIR/deploy/Caddyfile" dir="$CADDY_STATE_DIR" approved
   local loaded="$dir/.caddyfile.loaded" marker="$dir/.caddyfile.loaded.sha256" running="$dir/.caddy-running.json"
-  local newsha oldsha=none adapted dropped n up=0 snap
-  if [[ -L "$new" ]]; then die "caddy: deploy/Caddyfile is a symlink; refused, nothing was loaded"; fi
-  if [[ ! -f "$new" ]]; then log "caddy: this commit has no deploy/Caddyfile; nothing to load"; return 0; fi
+  local newsha oldsha=none adapted dropped n up=0 snap entry
+  # The Caddyfile is the deployed COMMIT's blob, like the pin (caddy_pin_of), never
+  # the working-tree file: no .gitattributes filter, eol conversion or server git
+  # setting can change the bytes between the commit and the hash. Its tree entry
+  # says what it is: none = nothing to load; a symlink (120000) could point
+  # anywhere and is refused; only a regular file (100644 / 100755) is read.
+  entry="$(git -C "$APP_DIR" ls-tree "$sha" -- deploy/Caddyfile 2>/dev/null)" \
+    || die "caddy: cannot read the tree of commit ${sha:0:12}; nothing was loaded"
+  if [[ -z "$entry" ]]; then log "caddy: this commit has no deploy/Caddyfile; nothing to load"; return 0; fi
+  case "${entry%% *}" in
+    120000) die "caddy: deploy/Caddyfile is a symlink; refused, nothing was loaded" ;;
+    100644 | 100755) ;;
+    *) die "caddy: deploy/Caddyfile is not a regular file in commit ${sha:0:12}; refused, nothing was loaded" ;;
+  esac
   # One copy, made once: the hash, validate, adapt, reload and the saved
   # rollback copy all use these very bytes, so the file cannot change between
-  # being approved and being loaded. A symlink could point anywhere: refused.
+  # being approved and being loaded.
   snap="$(mktemp "$dir/.caddyfile.XXXXXX")" || die "caddy: cannot create a temporary file in $dir"
   # shellcheck disable=SC2064  # expand $snap now
   trap "rm -f '$snap'" EXIT
-  cp "$new" "$snap" || die "caddy: cannot copy deploy/Caddyfile"
+  git -C "$APP_DIR" cat-file blob "${sha}:deploy/Caddyfile" >"$snap" || die "caddy: cannot read deploy/Caddyfile from commit ${sha:0:12}"
   newsha="$(sha256sum "$snap" | cut -d' ' -f1)"
   # The deployed commit's own pin (see CADDYFILE_APPROVED_SHA256), unless the
   # environment override is set.

@@ -99,6 +99,13 @@ shuni tuzatadi, **restart qilmasdan**:
    `NIGHTSHIFT_CADDYFILE_APPROVED_SHA256` (faqat testlar uchun) berilsa, u ustun;
    sshd mijoz yuborgan muhitni qabul qilmaydi, shuning uchun deploy kaliti egasi
    uni o'rnata olmaydi.
+
+   Caddyfile ham ishchi papkadagi fayldan emas, commit'ning o'zidan
+   (`git cat-file blob <sha>:deploy/Caddyfile`) o'qiladi, shuning uchun
+   `.gitattributes` yoki serverdagi git sozlamalari baytlarni o'zgartira olmaydi.
+   Eski deploy'ni qayta ishga tushirish (ilovani orqaga qaytarish kabi) endi o'sha
+   commit'ning Caddyfile'ini yuklaydi — agar u header shartnomasidan (2-band va
+   jonli tekshiruv) o'tsa.
 1. `caddy validate` (konteyner ichida, fayl `main`dagi commit'dan stdin orqali
    beriladi). Konteyner umuman ishlamayotgan bo'lsa (to'xtagan/restart loop)
    alohida xabar chiqadi — fayl ayblanmaydi.
