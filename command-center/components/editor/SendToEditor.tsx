@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { loadDocument } from "@/lib/editor-nav";
 import { Clapperboard } from "lucide-react";
 import { LibraryDialog } from "@/components/media/LibraryDialog";
 import { useI18n } from "@/lib/i18n/context";
@@ -103,7 +103,6 @@ export function SendDialog({
   const te = t.editor;
   const ts = te.send;
   const path = useChannelPath();
-  const router = useRouter();
   const ids = useId();
   const [projects, setProjects] = useState<ProjectChoice[] | null>(null);
   const [listError, setListError] = useState<EditorError | null>(null);
@@ -157,7 +156,8 @@ export function SendDialog({
       return;
     }
     // Stay "busy" while the editor opens: a second press would add the file twice.
-    router.push(path(`/editor/${out.value.id}${focus ? `?focus=${focus}` : ""}`));
+    // A full load: the project page must get its own Permissions-Policy (the voice-over microphone, lib/editor-nav.ts).
+    loadDocument(path(`/editor/${out.value.id}${focus ? `?focus=${focus}` : ""}`));
   }
 
   const note = kind === "image" ? fmt(ts.stillNote, { s: STILL_DEFAULT_S }) : kind === "audio" ? ts.soundNote : ts.videoNote;

@@ -17,7 +17,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
-    <a href={href} {...rest}>
+    <a href={href} data-next-link="" {...rest}>
       {children}
     </a>
   ),
@@ -25,6 +25,7 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/chronos${p}` }));
 
 import { I18nProvider } from "@/lib/i18n/context";
+import { expectEditorLinksAreFullLoads } from "./support/editor-link-guard";
 import { dictionaries } from "@/lib/i18n";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { GenerateSection } from "@/components/studio/GenerateSection";
@@ -416,6 +417,8 @@ describe("the desk switcher, the overview and the YouTube desk", () => {
     const meter = screen.getByRole("meter", { name: t.desk.creditsTitle });
     expect(meter.getAttribute("aria-valuenow")).toBe("100");
     expect(screen.getByRole("link", { name: /Cut two/ }).getAttribute("href")).toBe("/chronos/editor/p1");
+    // Judged by the href it resolved to: every link into a project is a plain anchor (a full load).
+    expectEditorLinksAreFullLoads();
   });
 
   it("the operator's own organization reads as not charged", () => {

@@ -68,6 +68,8 @@ INTENTIONALLY_UNREACHABLE = {
     # -- owner decisions still pending (never enable from a test) ------------------
     "NIGHTSHIFT_AVATAR": "a whole presenter config as JSON; the discrete NIGHTSHIFT_AVATAR_* variables, which are deployable, "
                          "override it and are the form to use",
+    "NIGHTSHIFT_ADS_BRAND_SCAN": "the brand scan worker (tools/brand_scan_worker.py, migration 0133) waits on the owner's price; it "
+                                 "has no compose service yet, and adding one with this switch is docs/ADS_FACTORY.md 'Releasing Phase 2'",
 }
 
 

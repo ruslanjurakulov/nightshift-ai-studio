@@ -23,6 +23,7 @@ import { exportPresetEn } from "./editor-presets/en";
 import { exportRatiosEn } from "./editor-ratios/en";
 import { clipToolsEn } from "./editor-clip-tools/en";
 import { parity2En } from "./editor-parity2/en";
+import { voiceOverEn } from "./editor-voiceover/en";
 import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
@@ -5137,6 +5138,8 @@ export const en = {
     exportRatios: exportRatiosEn,
     /** Frame rate, clip volume, detach audio, duplicate / copy / paste: ./editor-clip-tools/en.ts. */
     clipTools: clipToolsEn,
+    /** Voice-over recorded in the editor: ./editor-voiceover/en.ts. */
+    voiceOver: voiceOverEn,
     /** Cross-fade styles and text looks: ./editor-looks/en.ts. */
     looks: looksEn,
     /** Advanced colour, masks and silence removal: ./editor-parity2/en.ts. */

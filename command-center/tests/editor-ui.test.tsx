@@ -31,6 +31,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { I18nProvider } from "@/lib/i18n/context";
+import { documentNav } from "@/lib/editor-nav";
 import { en } from "@/lib/i18n/en";
 import { fmt } from "@/lib/i18n";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
@@ -92,6 +93,7 @@ const calls = (method: string, part: string) =>
 const bodyOf = (call: unknown[]) =>
   JSON.parse(String((call[1] as RequestInit).body));
 
+const assign = vi.fn();
 beforeEach(() => {
   routes = [];
   fetchMock = vi.fn((url: string, init?: RequestInit) => {
@@ -107,6 +109,9 @@ beforeEach(() => {
   );
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   router.push.mockReset();
+  // Into and out of the editor's project page is a full document load (lib/editor-nav.ts), never router.push.
+  assign.mockReset();
+  vi.spyOn(documentNav, "assign").mockImplementation(assign);
 });
 afterEach(() => {
   cleanup();
@@ -500,7 +505,7 @@ describe("the editor", () => {
     expect(calls("DELETE", PID)).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: te.deleteYes }));
     await waitFor(() =>
-      expect(router.push).toHaveBeenCalledWith("/chronos/editor"),
+      expect(assign).toHaveBeenCalledWith("/chronos/editor"),
     );
   });
 
@@ -542,7 +547,7 @@ describe("the project list", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: te.create }));
     await waitFor(() =>
-      expect(router.push).toHaveBeenCalledWith(`/chronos/editor/${PID}`),
+      expect(assign).toHaveBeenCalledWith(`/chronos/editor/${PID}`),
     );
     expect(bodyOf(calls("POST", "/api/editor/projects")[0])).toEqual({
       org_id: ORG,
@@ -558,7 +563,7 @@ describe("the project list", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(
       te.errors.limit_reached,
     );
-    expect(router.push).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
   });
 
   it("points to the library when there is no video yet, and lists projects", () => {

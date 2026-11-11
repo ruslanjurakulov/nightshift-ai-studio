@@ -449,7 +449,7 @@ MASK_DEFAULTS = {"x": 0.5, "y": 0.5, "w": 0.6, "h": 0.6, "feather": 0.0}
 MASK_RADIUS_DEFAULT = 0.25
 _MASK_KEYS = ("shape", "x", "y", "w", "h", "feather", "radius", "invert")
 #: What colour and masks add to the render-time estimate, seconds per second of the clip at 1080p30,
-#: scaled by the frame's pixels x rate (docs/editor-render-fields.md section 13 has the measurements).
+#: scaled by the frame's pixels x rate (docs/editor-render-fields.md section 14 has the measurements).
 #: Charged like fast clips: only for a timeline an export renders (``EXPORT_LENGTH_MAX_S``).
 LOOK_REF_PIXEL_RATE = 1920 * 1080 * 30
 COLOR_CHROMA_SECONDS_PER_S = 0.15    # temperature / tint (one lookup table)
@@ -1809,7 +1809,7 @@ def _large_frame_crossfade_problems(doc: dict, track: dict) -> List[str]:
 
 def _large_frame_mask_problems(doc: dict, track: dict) -> List[str]:
     """What a mask cannot afford in a frame above 1440p (measured with ffmpeg 7.0.2 under the export's 2 GiB
-    limit, docs/editor-render-fields.md section 13): on a cross-faded clip (either side) it ran out of memory,
+    limit, docs/editor-render-fields.md section 14): on a cross-faded clip (either side) it ran out of memory,
     and on a single clip with a move zooming past ``XFADE_LARGE_ZOOM_MAX`` too (4K60; up to 2 passed)."""
     w, h = doc.get("width"), doc.get("height")
     if not (_is_int(w) and _is_int(h) and w * h > LARGE_FRAME_PX):

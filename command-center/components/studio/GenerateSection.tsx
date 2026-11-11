@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, type CSSProperties } from "react";
-import Link from "next/link";
 import { useChannelPath } from "@/lib/channels-client";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { JobFeed } from "@/components/studio/JobFeed";
@@ -115,9 +114,10 @@ export function GenerateSection({
   const fromProject = project ? (
     <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--color-muted)]" data-testid="from-project">
       <span>{t.improveAi.fromProject}</span>
-      <Link href={path(`/editor/${project}`)} className="tap-link text-[var(--color-primary)] underline">
+      {/* A full load into the editor's project page: it must get its own Permissions-Policy (lib/editor-nav.ts). */}
+      <a href={path(`/editor/${project}`)} className="tap-link text-[var(--color-primary)] underline">
         {t.improveAi.backToProject}
-      </Link>
+      </a>
     </p>
   ) : null;
 

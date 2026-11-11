@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PageLink } from "@/components/navigation/PageLink";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -338,7 +339,8 @@ function Item({
   const amount = view.amount ? fmt(t.notifications[view.amount.key], { n: formatCredits(view.amount.n, locale) }) : null;
   return (
     <div className="hover:bg-[var(--color-fg)]/5 focus-within:bg-[var(--color-fg)]/5">
-      <Link
+      {/* An export-done notification opens the editor's project page: as a new document (PageLink). */}
+      <PageLink
         href={href}
         onClick={() => {
           onOpen();
@@ -360,11 +362,11 @@ function Item({
           {amount && <span className="tnum block text-xs text-[var(--color-muted)]">{amount}</span>}
         </span>
         <span className="tnum shrink-0 text-xs text-[var(--color-muted)]">{when}</span>
-      </Link>
+      </PageLink>
       {anotherHref && (
         // The two things a returning person wants next to a finished video: look at it, or make the next one.
         <div className="flex flex-wrap gap-2 px-3 pb-2.5 pl-[26px]">
-          <Link
+          <PageLink
             href={href}
             onClick={() => {
               onOpen();
@@ -373,7 +375,7 @@ function Item({
             className="btn-sky pill px-3 py-1 text-xs"
           >
             {t.notifications.openAction}
-          </Link>
+          </PageLink>
           <Link href={anotherHref} onClick={onClose} className="btn-sky is-quiet pill px-3 py-1 text-xs">
             {t.notifications.makeAnother}
           </Link>

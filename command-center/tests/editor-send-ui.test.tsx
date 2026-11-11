@@ -14,6 +14,7 @@ const router = { push: vi.fn(), refresh: vi.fn(), back: vi.fn(), replace: vi.fn(
 vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => "/chronos/library" }));
 
 import { I18nProvider } from "@/lib/i18n/context";
+import { documentNav } from "@/lib/editor-nav";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
 import { uz } from "@/lib/i18n/uz";
@@ -36,8 +37,12 @@ let listing: () => Promise<Response>;
 let sending: () => Promise<Response>;
 const sends = () => fetchMock.mock.calls.filter(([u]) => String(u) === "/api/editor/send");
 
+const assign = vi.fn();
 beforeEach(() => {
   router.push.mockReset();
+  // Into and out of the editor's project page is a full document load (lib/editor-nav.ts), never router.push.
+  assign.mockReset();
+  vi.spyOn(documentNav, "assign").mockImplementation(assign);
   listing = () => json({ projects: [{ id: P1, title: "Trip" }, { id: P2, title: "Promo" }] });
   sending = () => json({ id: P1, created: false });
   fetchMock = vi.fn((url: string) => (String(url).startsWith("/api/editor/projects") ? listing() : sending()));
@@ -63,7 +68,7 @@ describe("SendToEditor", () => {
     expect((name as HTMLInputElement).value).toBe("Beach clip");
     fireEvent.change(name, { target: { value: "  My   cut " } });
     fireEvent.click(within(dialog).getByRole("button", { name: ts.submit }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/chronos/editor/${P2}`));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(`/chronos/editor/${P2}`));
     expect(sends()).toHaveLength(1);
     expect(JSON.parse(String((sends()[0]![1] as RequestInit).body))).toEqual({ org_id: ORG, asset_id: ASSET, title: "My cut" });
   });
@@ -75,7 +80,7 @@ describe("SendToEditor", () => {
     expect(pick.value).toBe(P1);
     fireEvent.change(pick, { target: { value: P2 } });
     fireEvent.click(within(dialog).getByRole("button", { name: ts.submit }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/chronos/editor/${P1}`));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(`/chronos/editor/${P1}`));
     expect(JSON.parse(String((sends()[0]![1] as RequestInit).body))).toEqual({ org_id: ORG, asset_id: ASSET, project_id: P2 });
   });
 
@@ -91,7 +96,7 @@ describe("SendToEditor", () => {
     fireEvent.keyDown(within(dialog).getByLabelText(ts.projectName), { key: "Enter" });
     expect(sends()).toHaveLength(1);
     release(new Response(JSON.stringify({ id: P1, created: true }), { status: 201 }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
   });
 
   it.each([
@@ -105,7 +110,7 @@ describe("SendToEditor", () => {
     fireEvent.click(await within(dialog).findByLabelText(ts.existingOption));
     fireEvent.click(within(dialog).getByRole("button", { name: ts.submit }));
     expect((await within(dialog).findByRole("alert")).textContent).toBe(en.editor.errors[word]);
-    expect(router.push).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
     expect((within(dialog).getByRole("button", { name: ts.submit }) as HTMLButtonElement).disabled).toBe(false);
   });
 

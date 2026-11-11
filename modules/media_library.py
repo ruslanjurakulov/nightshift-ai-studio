@@ -55,6 +55,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -641,7 +642,85 @@ def proxy_timeout_s(info: "Probe", nbytes: int) -> float:
     return min(float(PROXY_TIMEOUT_S), PROXY_TIMEOUT_BASE_S + max(work_s, floor_s))
 
 
-def run_probe(exe: str, path: Path, sniffed: str, *, timeout_s: float = PROBE_TIMEOUT_S) -> Probe:
+#: Containers a browser's recorder (MediaRecorder: the editor's voice-over) writes as a STREAM: the header goes
+#: out before the length is known and is never rewritten, so ffprobe reports no duration at all for a perfectly
+#: good recording (measured: a WebM/Opus written to a pipe probes with no ``format.duration``; the same sound
+#: written to a seekable file has one). For these, and only when the file holds sound and no picture, the length
+#: is MEASURED from the sound's own packet timestamps (:func:`measure_audio_length`) instead of refused.
+STREAMED_AUDIO_MIMES = frozenset({"video/webm", "audio/webm", "audio/ogg", "video/mp4", "audio/mp4"})
+
+
+def needs_measured_length(sniffed: str, data: Mapping) -> bool:
+    """A sound-only file of a streamed container whose header carries no length. A VIDEO without a length is
+    never measured here: its decode budget is computed from the header's length, and stays refused."""
+    if sniffed not in STREAMED_AUDIO_MIMES:
+        return False
+    fmt = data.get("format") if isinstance(data.get("format"), Mapping) else {}
+    duration = _num(fmt.get("duration"))
+    if duration is not None and duration > 0:
+        return False
+    streams = [s for s in (data.get("streams") or []) if isinstance(s, Mapping)]
+    if any(s.get("codec_type") == "video" and not (s.get("disposition") or {}).get("attached_pic") for s in streams):
+        return False
+    return any(s.get("codec_type") == "audio" for s in streams)
+
+
+def packet_command(exe: str, path: Path, mime: str) -> List[str]:
+    """The first sound stream's packet times, one ``pts,duration`` line each; demuxer forced, files only."""
+    return [exe, "-v", "error", "-protocol_whitelist", "file", "-f", DEMUXER[mime], "-select_streams", "a:0",
+            "-show_entries", "packet=pts_time,duration_time", "-of", "csv=p=0", str(path)]
+
+
+def measure_audio_length(exe: str, path: Path, mime: str, *, timeout_s: float = PROBE_TIMEOUT_S) -> Optional[float]:
+    """The end of the last sound packet, in seconds, or None when there is none to read. The packet list is read
+    line by line and only the furthest end is kept, so a file of millions of tiny packets costs time (bounded by
+    ``timeout_s``, then the probe is killed) and never memory. Nothing is decoded."""
+    try:
+        proc = subprocess.Popen(packet_command(exe, path, mime), stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    except OSError:
+        raise IngestReject("probe_failed", "ffprobe could not be started") from None
+    timer = threading.Timer(timeout_s, proc.kill)
+    timer.start()
+    end: Optional[float] = None
+    try:
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            parts = raw.decode("ascii", "replace").strip().split(",")
+            pts = _num(parts[0]) if parts and parts[0] not in ("", "N/A") else None
+            if pts is None or pts < 0:
+                continue
+            dur = _num(parts[1]) if len(parts) > 1 and parts[1] not in ("", "N/A") else None
+            stop = pts + (dur if dur is not None and dur > 0 else 0.0)
+            if end is None or stop > end:
+                end = stop
+        code = proc.wait()
+    finally:
+        timed_out = not timer.is_alive()
+        timer.cancel()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+    if timed_out:
+        raise IngestReject("probe_failed", "ffprobe took too long")
+    if code != 0:
+        raise IngestReject("not_media", "ffprobe could not read the file's sound")
+    return end if end is not None and end > 0 else None
+
+
+def with_measured_length(data: Mapping, seconds: Optional[float]) -> dict:
+    """ffprobe's answer with the measured length in place of the missing one (None leaves it missing, which
+    interpret_probe refuses as a file with no length)."""
+    out = dict(data)
+    fmt = dict(data.get("format")) if isinstance(data.get("format"), Mapping) else {}
+    if seconds is not None:
+        fmt["duration"] = f"{seconds:.6f}"
+    out["format"] = fmt
+    return out
+
+
+def run_probe(exe: str, path: Path, sniffed: str, *, timeout_s: float = PROBE_TIMEOUT_S,
+              measurer: Optional[Callable[..., Optional[float]]] = None) -> Probe:
     try:
         proc = subprocess.run(probe_command(exe, path, sniffed), capture_output=True, timeout=timeout_s)
     except subprocess.TimeoutExpired:
@@ -652,7 +731,11 @@ def run_probe(exe: str, path: Path, sniffed: str, *, timeout_s: float = PROBE_TI
         data = json.loads(proc.stdout.decode("utf-8", "replace") or "{}")
     except ValueError:
         raise IngestReject("probe_failed", "ffprobe answered something unreadable") from None
-    return interpret_probe(sniffed, data if isinstance(data, dict) else {})
+    data = data if isinstance(data, dict) else {}
+    if needs_measured_length(sniffed, data):
+        measure = measurer or measure_audio_length
+        data = with_measured_length(data, measure(exe, path, sniffed, timeout_s=timeout_s))
+    return interpret_probe(sniffed, data)
 
 
 def check_caption(path: Path) -> None:
@@ -1324,8 +1407,10 @@ def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], 
 
 
 #: Who made a stored file (media_assets.source): a creative job's provider
-#: output, or one of our own renders (an editor export, migration 0054).
-STORED_SOURCES = ("generated", "render")
+#: output, one of our own renders (an editor export, migration 0054), or a
+#: picture a brand scan read from the customer's own site (migration 0133:
+#: 'pipeline', never 'generated', so it is not labelled AI-generated).
+STORED_SOURCES = ("generated", "render", "pipeline")
 
 
 def store_generated(path: Path, *, asset_id, org_id: str, store: MediaStore, media_root: Path,

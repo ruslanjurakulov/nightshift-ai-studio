@@ -361,7 +361,7 @@ export const MASK_DEFAULTS = { x: 0.5, y: 0.5, w: 0.6, h: 0.6, feather: 0 } as c
 export const MASK_RADIUS_DEFAULT = 0.25;
 const MASK_KEYS = ["shape", "x", "y", "w", "h", "feather", "radius", "invert"];
 /** What colour and masks add to the render-time estimate, seconds per second of a clip at 1080p30, scaled by
- *  the frame's pixels x rate (modules/timeline.py, the same numbers; measured, docs section 13). */
+ *  the frame's pixels x rate (modules/timeline.py, the same numbers; measured, docs section 14). */
 export const LOOK_REF_PIXEL_RATE = 1920 * 1080 * 30;
 export const COLOR_CHROMA_SECONDS_PER_S = 0.15;
 export const COLOR_HUE_SECONDS_PER_S = 0.2;

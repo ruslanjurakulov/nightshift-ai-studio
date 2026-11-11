@@ -1,4 +1,6 @@
-"""The network half of the Ads Factory brand scan (docs/ADS_FACTORY.md, Phase 2, "The fetch"). Dark: nothing imports it yet.
+"""The network half of the Ads Factory brand scan (docs/ADS_FACTORY.md, Phase 2, "The fetch"). Dark: only the brand scan job
+(``modules/brand_scan.py``) and the DNS TXT check (``modules/dns_txt.py``) import it, and they run only with
+``NIGHTSHIFT_ADS_BRAND_SCAN=on``.
 
 The scan reads a CUSTOMER's site, so the host is whatever a person typed, not a vendor on an allow-list
 (``modules/capabilities/safe_fetch.py`` keeps that list for result links; it is not loosened here). Any name can
@@ -27,12 +29,14 @@ control. This module is:
   A content-type allow-list per kind; SVG is refused (it is a document, not a picture). ``Accept-Encoding: identity``
   and a compressed answer is refused, so there is no decoder to bomb.
 * **Manners.** robots.txt of a host is read before anything else on it and its rules for our user agent are honoured
-  (RFC 9309 matching: ``*`` and ``$``, the longest pattern wins, Allow wins a tie; ``RobotsRules``);
+  (RFC 9309 matching: ``*`` and ``$``, the longest pattern wins, Allow wins a tie, an escaped unreserved character is
+  the character itself in the pattern and in the path; ``RobotsRules``);
   the user agent names Nightshift and where to reach us. No cookie is kept or sent, no credential, no script is run.
 
 What it returns is bytes, the final URL and the content type (``Fetched``). Extraction (title, Open Graph, JSON-LD,
-palette, fonts) is a later step and is not here; the only HTML read here is the bounded same-host link list the
-six-page limit needs (``same_host_links``).
+palette, fonts) is ``modules/brand_extract.py``, and the scan job that drives both is ``modules/brand_scan.py``
+(migration 0133, dark behind ``NIGHTSHIFT_ADS_BRAND_SCAN``); the only HTML read here is the bounded same-host link
+list the six-page limit needs (``same_host_links``).
 
 Known limits:
 * **The site rule is narrow on purpose.** There is no public-suffix list (no dependency carries one), so instead of
@@ -50,7 +54,13 @@ Known limits:
   that cannot be read (5xx, too large, compressed, off-site redirect) is read as "disallow everything" (RFC 9309
   section 2.3.1.4).
 * **A lookup that is abandoned keeps its thread** until the system resolver gives up on its own (``getaddrinfo``
-  cannot be cancelled); the scan has moved on and never uses the answer.
+  cannot be cancelled); the scan has moved on and never uses the answer. A name whose lookup failed, was refused or
+  was abandoned is remembered for the rest of the scan (``_addresses`` answers the same refusal again), so one name
+  costs at most one lookup and at most one abandoned thread per scan.
+* **Hosting parents.** The entry host may not be a bare public suffix or shared hosting parent (``co.uk``-style
+  country second levels, ``myshopify.com``, ``github.io``, ``vercel.app`` ...: ``hosting_parent``, a short explicit
+  list, not a public-suffix list): every tenant is a subdomain of it, and nobody owns it. Nor is such a name the
+  "apex twin" of ``www.<it>``.
 """
 
 from __future__ import annotations
@@ -68,7 +78,12 @@ from html.parser import HTMLParser
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote, urljoin, urlsplit
 
-from modules.capabilities.safe_fetch import _SAFE_URL, sniff_image_mime
+# Nothing of modules.capabilities is imported at module level: that package imports every vendor adapter and ``requests``,
+# which the pure parts of this module (the URL shape, the link list, robots.txt) and modules/brand_extract.py must not need
+# (the security lab runs the extractor with only psycopg and pytest installed). The picture sniff is imported where a
+# picture is read; the printable-ASCII rule is safe_fetch's own pattern, written out here and pinned equal by
+# tests/test_brand_fetch.py.
+_SAFE_URL = re.compile(r"[\x21-\x5b\x5d-\x7e]+")
 
 # ── limits (docs/ADS_FACTORY.md, Phase 2, "The fetch") ─────────────────────────────────────────────────────────────
 
@@ -127,6 +142,7 @@ E_TIMEOUT = "timeout"
 E_ROBOTS = "robots"
 E_LIMIT = "limit"
 E_BAD_RESPONSE = "bad_response"
+E_HOSTING_PARENT = "hosting_parent"
 
 
 class BrandFetchError(Exception):
@@ -308,9 +324,36 @@ def _shape(url, max_chars: int) -> Tuple[str, str]:
     return m.group(1), path
 
 
+#: Names that are not a site of their own but the parent of many tenants' sites (a public suffix, or a hosting domain
+#: whose subdomains belong to different customers). Entered as the site itself, every tenant would be "the same site"
+#: (``same_site`` lets a scan follow the entry host's subdomains), and nobody can prove they own it. A small explicit
+#: list, not a public-suffix list (no dependency carries one); 0133's ``ads_hosting_parent`` holds the same names.
+HOSTING_PARENTS = frozenset({
+    "myshopify.com", "github.io", "vercel.app", "netlify.app", "herokuapp.com", "s3.amazonaws.com", "blogspot.com",
+    "pages.dev", "web.app", "firebaseapp.com", "azurewebsites.net",
+})
+#: The generic second level of a country code: ``co.uk``, ``com.au``, ``org.uz`` ... (two labels, the last two letters).
+COUNTRY_SECOND_LEVEL = frozenset({"ac", "co", "com", "edu", "gov", "ltd", "me", "mil", "net", "nic", "or", "org", "plc", "sch"})
+
+
+def hosting_parent(host: str) -> bool:
+    """``host`` is a bare public suffix or a shared hosting parent: ``co.uk``, ``com.au``, ``myshopify.com``, ``github.io``
+    (the tenant ``shop.myshopify.com`` and the site ``shop.co.uk`` are not)."""
+    host = (host or "").lower().rstrip(".")
+    if host in HOSTING_PARENTS:
+        return True
+    labels = host.split(".")
+    return len(labels) == 2 and len(labels[1]) == 2 and labels[1].isalpha() and labels[0] in COUNTRY_SECOND_LEVEL
+
+
 def check_entry_url(url) -> Tuple[str, str]:
-    """The entry URL, held to exactly what 0131's ``ads_site_url_ok`` accepts (12 to 300 characters)."""
-    return _shape(url, 300)
+    """The entry URL, held to exactly what 0131's ``ads_site_url_ok`` accepts (12 to 300 characters), and not the bare
+    parent of many tenants' sites (``hosting_parent``): the site of a tenant is entered by its own name."""
+    host, path = _shape(url, 300)
+    if hosting_parent(host):
+        raise BrandFetchError(E_HOSTING_PARENT, f"{host} is a public suffix or a shared hosting domain, not one site; "
+                                                f"enter the site's own name (e.g. shop.{host})")
+    return host, path
 
 
 def derive_url(base: str, ref: str) -> str:
@@ -347,7 +390,8 @@ def same_site(host: str, entry: str) -> bool:
     subdomain of the same parent, and one tenant must not be able to redirect the scan into another."""
     if host == entry or host.endswith("." + entry):          # the www twin of an apex is one of its subdomains
         return True
-    return entry.startswith("www.") and host == entry[4:]
+    # The apex twin of www.<x>, unless <x> is a hosting parent (www.github.io is one tenant; github.io is not its twin).
+    return entry.startswith("www.") and host == entry[4:] and not hosting_parent(host)
 
 
 # ── the link list (the only HTML read here) ───────────────────────────────────────────────────────────────────────
@@ -407,9 +451,21 @@ def _product_first(urls: Sequence[str]) -> List[str]:
 _ROBOTS_AGENTS = frozenset({ROBOTS_TOKEN.lower(), "nightshift"})
 
 
+#: RFC 3986's unreserved characters: an escape of one of them is the character itself (RFC 9309 section 2.2.2).
+_UNRESERVED = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
+
+def _unescape_unreserved(m: "re.Match") -> str:
+    ch = chr(int(m.group(1), 16))
+    return ch if ch in _UNRESERVED else "%" + m.group(1).upper()
+
+
 def _robots_norm(s: str) -> str:
-    """A path or a pattern in one spelling: non-ASCII and unsafe characters percent-encoded, escapes upper-cased."""
-    return re.sub(r"%[0-9a-fA-F]{2}", lambda m: m.group(0).upper(), quote(s, safe=_QUOTE_SAFE))
+    """A path or a pattern in one spelling (RFC 9309 section 2.2.2): non-ASCII and unsafe characters percent-encoded,
+    every escape upper-cased, and an escape of an unreserved character (ALPHA DIGIT - . _ ~) decoded, so ``/%62az`` and
+    ``/baz`` are one path. Reserved characters (``%2F`` is not ``/``) and the rest stay escaped. One pass, left to
+    right: what a decode produces is never read as the start of another escape (``%2562`` stays ``%2562``)."""
+    return re.sub(r"%([0-9a-fA-F]{2})", _unescape_unreserved, quote(s, safe=_QUOTE_SAFE))
 
 
 def _robots_match(pattern: str, path: str) -> bool:
@@ -596,6 +652,9 @@ class SiteScan:
         self._pinned: Dict[str, Tuple[str, ...]] = {}
         self._robots: Dict[str, Optional[RobotsRules]] = {}
         self._looked_up: set = set()
+        #: A lookup that failed or was refused, by host: asked again, the scan answers the same refusal without a second
+        #: lookup, so one name costs at most one lookup and at most one abandoned resolver thread per scan.
+        self._failed: Dict[str, BrandFetchError] = {}
         self._tls: Optional[ssl.SSLContext] = _test_net.tls if _test_net is not None else None
         self._count = {HTML: 0, CSS: 0, IMAGE: 0}
         #: The host pages are read from: the home page's final host once it is known.
@@ -686,17 +745,25 @@ class SiteScan:
         """The pinned answers for ``host``: resolved once per scan, every one public, or a refusal."""
         if host in self._pinned:
             return self._pinned[host]
+        if host in self._failed:
+            raise self._failed[host]
         self.budget.check()
         if host not in self._looked_up and len(self._looked_up) >= MAX_HOSTS:
             raise BrandFetchError(E_LIMIT, f"at most {MAX_HOSTS} host names per scan; {host} was not looked up")
         self._looked_up.add(host)
-        answers = list(dict.fromkeys(self._resolve_within_budget(host)))
-        if not answers:
-            raise BrandFetchError(E_DNS, f"{host} has no address")
-        for a in answers:
-            problem = address_problem(a)
-            if problem:
-                raise BrandFetchError(E_NOT_PUBLIC, f"{host} resolves to {problem}; nothing was requested")
+        try:
+            answers = list(dict.fromkeys(self._resolve_within_budget(host)))
+            if not answers:
+                raise BrandFetchError(E_DNS, f"{host} has no address")
+            for a in answers:
+                problem = address_problem(a)
+                if problem:
+                    raise BrandFetchError(E_NOT_PUBLIC, f"{host} resolves to {problem}; nothing was requested")
+        except BrandFetchError as e:
+            # Remembered whatever it was (no answer, a private one, a lookup that hung past its wait): its thread, if it is
+            # still running, is the only one this name will ever get in this scan.
+            self._failed[host] = e
+            raise
         self._pinned[host] = tuple(answers)
         return self._pinned[host]
 
@@ -826,6 +893,9 @@ class SiteScan:
             body += chunk
             if len(body) > cap:
                 raise BrandFetchError(E_TOO_LARGE, f"the answer is over the {cap} byte cap; stopped reading")
+        if kind == IMAGE:
+            from modules.capabilities.safe_fetch import sniff_image_mime  # noqa: PLC0415 — see the imports above
+
         if kind == IMAGE and sniff_image_mime(bytes(body[:16])) != ctype:
             raise BrandFetchError(E_CONTENT_TYPE, f"the bytes are not a {ctype} picture")
         return _Answer(status, None, ctype, bytes(body))
