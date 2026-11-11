@@ -5,7 +5,8 @@ concepts, scripts and storyboards; later phases turn approved concepts into imag
 edited in Nightshift's own editor and exported per format, and published only after a person approves.
 
 This document is the phased plan. **Phase 1 is the only phase that is built** (this pull request). Everything under Phase 2 to Phase 6
-is a design, not code. Competitor products were used as benchmarks of what a customer expects; no code, asset or text of theirs is used,
+is a design, not code, except Phase 2's network fetcher (`modules/brand_fetch.py`), a dark module nothing calls yet (see "Built so far"
+under Phase 2). Competitor products were used as benchmarks of what a customer expects; no code, asset or text of theirs is used,
 and no customer-facing string names one (`tests/ads-factory-i18n.test.ts` runs the banned-wording list over every string).
 
 The first draft of this idea is draft PR #651 (`feat/nightshift-ads-studio-mvp`): a public, unauthenticated concept page and a pure
@@ -152,7 +153,7 @@ Phase 1 is free and uncharged: no model call is made, so there is nothing to pri
    and adding `brand_kit.*`, `brand_product.*`, `ad_campaign.*`, `ad_concepts.add` and `ad_concept.*` to the trail means replacing
    `audit_action_allowed` (0087 / 0093), which several open pull requests may also touch. Decide whether a later migration adds them.
 
-## Phase 2: brand scan (a worker job; designed, not built)
+## Phase 2: brand scan (a worker job; designed; only the fetcher is built, dark)
 
 The person enters their site; a worker reads a few public pages and proposes a DRAFT brand kit plus product candidates, which the person
 reviews and accepts field by field. Nothing is accepted automatically.
@@ -200,6 +201,28 @@ each field came from. Rate limits stop using the worker as a crawler. The worker
 
 **Owner decisions.** The caps; free or priced; whether a scan may run against a domain whose WHOIS / DNS TXT does not prove ownership
 (a DNS TXT verification step would be the strong form).
+
+**Built so far: the fetcher only (`modules/brand_fetch.py`, dark).** Nothing imports it but `tests/test_brand_fetch.py` (a test pins
+that across `modules/`, `tools/`, `deploy/`, `command-center/` and the entry scripts). It is "The fetch" above, minus extraction:
+`SiteScan(url)` reads robots.txt, the home page and up to five same-host pages it links to (product paths first), and on request up
+to 4 stylesheets and 6 pictures, and returns raw bytes, the final URL and the media type.
+- The entry URL is 0131's `ads_site_url_ok` shape plus one refusal more (a backslash).
+- Every name is looked up once per scan and pinned. The lookup is for the absolute name (no resolv.conf search domain), runs in a
+  thread waited for at most 5 s or what is left of the 30 s budget, and a scan looks up at most 4 distinct names.
+- Every answer must be public. `address_problem` uses the module's own table of special-use ranges, so a change in Python's
+  `ipaddress` tables cannot widen it, and IPv6 must be inside 2000::/3. It names the class it refuses.
+- The socket goes to that address with SNI, Host and certificate check on the name.
+- Redirects: at most 3, each re-checked, and only to the entry host, its subdomains, or its www / apex twin. There is no
+  public-suffix list, and no "registrable domain" guess either: tenants of one shared hosting domain (`*.myshopify.com`,
+  `*.github.io`, `*.vercel.app`) cannot redirect the scan into each other. A home page that redirects to a sibling host
+  (`www.shop.com` to `store.shop.com`) fails, and the person enters the host the site really lives on.
+- All NAT64 (`64:ff9b::/96`, `64:ff9b:1::/48`), 6to4 and Teredo addresses are refused, public embedding or not.
+- robots.txt follows RFC 9309 (`*`, `$`, longest match, Allow wins a tie; groups for `NightshiftBrandScan` / `Nightshift`, else
+  `*`). It is decoded as UTF-8 with a byte-order mark dropped and parsed whatever its content type. One that cannot be read (5xx,
+  too large, compressed, off-site redirect) is read as "disallow everything". Crawl-delay is not waited for.
+
+Not built yet, each waiting on the owner decisions above: the migration (`brand_scans`, the caps), the RPCs, the queue kind and
+worker wiring, the extraction, the media library ingest of pictures, and any UI.
 
 ## Phase 3: image ads through the existing creative job pipeline (designed)
 
