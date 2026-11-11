@@ -23,19 +23,24 @@ export function Disclosure({
   title,
   active = false,
   testId,
+  lazy = false,
   children,
 }: {
   title: string;
   active?: boolean;
   testId?: string;
+  /** Render the contents only while open (a long section stays out of the page until it is wanted). */
+  lazy?: boolean;
   children: ReactNode;
 }) {
   const [initial] = useState(active);
+  const [open, setOpen] = useState(active);
   return (
     <details
       className="group m-0 flex min-w-0 flex-col gap-1.5 rounded-[var(--ns-r-key)] border border-[var(--color-border)] px-3"
       open={initial || undefined}
       data-testid={testId}
+      onToggle={lazy ? (e) => setOpen((e.currentTarget as HTMLDetailsElement).open) : undefined}
     >
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-[var(--color-fg)] [&::-webkit-details-marker]:hidden">
         <span>{title}</span>
@@ -46,7 +51,7 @@ export function Disclosure({
           />
         ) : null}
       </summary>
-      <div className="flex min-w-0 flex-col gap-2 pb-3">{children}</div>
+      <div className="flex min-w-0 flex-col gap-2 pb-3">{!lazy || open ? children : null}</div>
     </details>
   );
 }

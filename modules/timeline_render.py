@@ -102,6 +102,7 @@ from modules.render_spec import (
     AudioTrack,
     ClipCrop,
     ClipEffects,
+    ClipMask,
     ClipMove,
     SpeedCurve,
     PictureOverlay,
@@ -141,7 +142,11 @@ def _effects(clip: dict) -> dict:
     exactly what it was before effects existed; normalise() has dropped every
     value that means "off")."""
     given = {k: clip[k] for k in tl._EFFECT_KEYS if k in clip}
-    return {"effects": ClipEffects(**given)} if given else {}
+    given.update(clip.get("color") or {})     # advanced colour rides on the same effects (render_backend)
+    out = {"effects": ClipEffects(**given)} if given else {}
+    if "mask" in clip:
+        out["mask"] = ClipMask(**clip["mask"])
+    return out
 
 
 def _crop_angle(clip: dict) -> dict:

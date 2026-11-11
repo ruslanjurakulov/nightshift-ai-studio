@@ -1,0 +1,675 @@
+{
+ "about": "Signals and what the bundled ffmpeg's silencedetect reports on each (tests/test_editor_silence.py makes them again and checks; command-center/tests/editor-silence.test.ts holds lib/editorSilence.ts to the same answers). A part is [kind, seconds, amplitude (or one per channel), sine frequency Hz]; kind \"dc\" is a constant level (the frequency is unused).",
+ "cases": [
+  {
+   "name": "speech-like pauses, mono",
+   "rate": 44100,
+   "channels": 1,
+   "parts": [
+    [
+     "tone",
+     1.0,
+     0.5,
+     440
+    ],
+    [
+     "quiet",
+     1.0,
+     0.0005,
+     50
+    ],
+    [
+     "tone",
+     0.5,
+     0.3,
+     300
+    ],
+    [
+     "quiet",
+     0.3,
+     0.0005,
+     50
+    ],
+    [
+     "tone",
+     0.7,
+     0.4,
+     220
+    ],
+    [
+     "quiet",
+     1.2,
+     0.0005,
+     50
+    ]
+   ],
+   "probes": [
+    {
+     "threshold_db": -40,
+     "min_s": 0.5,
+     "silences": [
+      [
+       1.0,
+       2.0
+      ],
+      [
+       3.5,
+       4.7
+      ]
+     ]
+    },
+    {
+     "threshold_db": -60,
+     "min_s": 0.5,
+     "silences": [
+      [
+       1.0,
+       2.0
+      ],
+      [
+       3.5,
+       4.7
+      ]
+     ]
+    },
+    {
+     "threshold_db": -30,
+     "min_s": 0.2,
+     "silences": [
+      [
+       1.0,
+       2.0
+      ],
+      [
+       2.5,
+       2.8
+      ],
+      [
+       3.5,
+       4.7
+      ]
+     ]
+    },
+    {
+     "threshold_db": -70,
+     "min_s": 0.3,
+     "silences": []
+    }
+   ]
+  },
+  {
+   "name": "quiet start, stereo",
+   "rate": 48000,
+   "channels": 2,
+   "parts": [
+    [
+     "quiet",
+     0.8,
+     [
+      0.0005,
+      0.0005
+     ],
+     60
+    ],
+    [
+     "tone",
+     1.0,
+     [
+      0.5,
+      0.2
+     ],
+     500
+    ],
+    [
+     "quiet",
+     0.9,
+     [
+      0.0005,
+      0.0005
+     ],
+     60
+    ],
+    [
+     "tone",
+     0.6,
+     [
+      0.4,
+      0.4
+     ],
+     350
+    ]
+   ],
+   "probes": [
+    {
+     "threshold_db": -40,
+     "min_s": 0.5,
+     "silences": [
+      [
+       0.0,
+       0.8
+      ],
+      [
+       1.8,
+       2.7
+      ]
+     ]
+    },
+    {
+     "threshold_db": -60,
+     "min_s": 0.5,
+     "silences": [
+      [
+       0.0,
+       0.8
+      ],
+      [
+       1.8,
+       2.7
+      ]
+     ]
+    },
+    {
+     "threshold_db": -30,
+     "min_s": 0.2,
+     "silences": [
+      [
+       0.0,
+       0.8
+      ],
+      [
+       1.8,
+       2.7
+      ]
+     ]
+    },
+    {
+     "threshold_db": -70,
+     "min_s": 0.3,
+     "silences": []
+    }
+   ]
+  },
+  {
+   "name": "one channel stays loud",
+   "rate": 44100,
+   "channels": 2,
+   "parts": [
+    [
+     "tone",
+     0.5,
+     [
+      0.5,
+      0.5
+     ],
+     440
+    ],
+    [
+     "quiet",
+     1.0,
+     [
+      0.0005,
+      0.3
+     ],
+     200
+    ],
+    [
+     "tone",
+     0.5,
+     [
+      0.5,
+      0.5
+     ],
+     440
+    ]
+   ],
+   "probes": [
+    {
+     "threshold_db": -40,
+     "min_s": 0.5,
+     "silences": []
+    },
+    {
+     "threshold_db": -60,
+     "min_s": 0.5,
+     "silences": []
+    },
+    {
+     "threshold_db": -30,
+     "min_s": 0.2,
+     "silences": []
+    },
+    {
+     "threshold_db": -70,
+     "min_s": 0.3,
+     "silences": []
+    }
+   ]
+  },
+  {
+   "name": "a quiet level between two thresholds",
+   "rate": 44100,
+   "channels": 1,
+   "parts": [
+    [
+     "tone",
+     0.6,
+     0.5,
+     440
+    ],
+    [
+     "quiet",
+     1.0,
+     0.003,
+     80
+    ],
+    [
+     "tone",
+     0.6,
+     0.5,
+     440
+    ]
+   ],
+   "probes": [
+    {
+     "threshold_db": -40,
+     "min_s": 0.5,
+     "silences": [
+      [
+       0.6,
+       1.6
+      ]
+     ]
+    },
+    {
+     "threshold_db": -60,
+     "min_s": 0.5,
+     "silences": []
+    },
+    {
+     "threshold_db": -30,
+     "min_s": 0.2,
+     "silences": [
+      [
+       0.6,
+       1.6
+      ]
+     ]
+    },
+    {
+     "threshold_db": -70,
+     "min_s": 0.3,
+     "silences": []
+    }
+   ]
+  },
+  {
+   "name": "short gaps under the minimum",
+   "rate": 22050,
+   "channels": 1,
+   "parts": [
+    [
+     "tone",
+     0.4,
+     0.5,
+     440
+    ],
+    [
+     "quiet",
+     0.25,
+     0.0005,
+     50
+    ],
+    [
+     "tone",
+     0.4,
+     0.5,
+     440
+    ],
+    [
+     "quiet",
+     0.45,
+     0.0005,
+     50
+    ],
+    [
+     "tone",
+     0.4,
+     0.5,
+     440
+    ]
+   ],
+   "probes": [
+    {
+     "threshold_db": -40,
+     "min_s": 0.5,
+     "silences": []
+    },
+    {
+     "threshold_db": -60,
+     "min_s": 0.5,
+     "silences": []
+    },
+    {
+     "threshold_db": -30,
+     "min_s": 0.2,
+     "silences": [
+      [
+       0.4,
+       0.65
+      ],
+      [
+       1.05,
+       1.5
+      ]
+     ]
+    },
+    {
+     "threshold_db": -70,
+     "min_s": 0.3,
+     "silences": []
+    }
+   ]
+  },
+  {
+   "name": "all quiet",
+   "rate": 44100,
+   "channels": 1,
+   "parts": [
+    [
+     "quiet",
+     1.5,
+     0.0005,
+     50
+    ]
+   ],
+   "probes": [
+    {
+     "threshold_db": -40,
+     "min_s": 0.5,
+     "silences": [
+      [
+       0.0,
+       1.5
+      ]
+     ]
+    },
+    {
+     "threshold_db": -60,
+     "min_s": 0.5,
+     "silences": [
+      [
+       0.0,
+       1.5
+      ]
+     ]
+    },
+    {
+     "threshold_db": -30,
+     "min_s": 0.2,
+     "silences": [
+      [
+       0.0,
+       1.5
+      ]
+     ]
+    },
+    {
+     "threshold_db": -70,
+     "min_s": 0.3,
+     "silences": []
+    }
+   ]
+  },
+  {
+   "name": "a level of exactly 0.01 (-40 dB), 22050 Hz",
+   "rate": 22050,
+   "channels": 1,
+   "parts": [
+    [
+     "tone",
+     0.4,
+     0.5,
+     440
+    ],
+    [
+     "dc",
+     1.0,
+     0.01,
+     0
+    ],
+    [
+     "tone",
+     0.4,
+     0.5,
+     440
+    ],
+    [
+     "quiet",
+     0.8,
+     0.0005,
+     50
+    ],
+    [
+     "tone",
+     0.3,
+     0.5,
+     440
+    ]
+   ],
+   "probes": [
+    {
+     "threshold_db": -40,
+     "min_s": 0.5,
+     "silences": [
+      [
+       1.8,
+       2.6
+      ]
+     ]
+    },
+    {
+     "threshold_db": -60,
+     "min_s": 0.5,
+     "silences": [
+      [
+       1.8,
+       2.6
+      ]
+     ]
+    },
+    {
+     "threshold_db": -30,
+     "min_s": 0.2,
+     "silences": [
+      [
+       0.4,
+       1.4
+      ],
+      [
+       1.8,
+       2.6
+      ]
+     ]
+    },
+    {
+     "threshold_db": -70,
+     "min_s": 0.3,
+     "silences": []
+    }
+   ]
+  },
+  {
+   "name": "a level of exactly 0.01 (-40 dB), 48000 Hz stereo",
+   "rate": 48000,
+   "channels": 2,
+   "parts": [
+    [
+     "tone",
+     0.3,
+     [
+      0.5,
+      0.5
+     ],
+     330
+    ],
+    [
+     "dc",
+     0.9,
+     [
+      0.01,
+      0.01
+     ],
+     0
+    ],
+    [
+     "dc",
+     0.7,
+     [
+      0.0099,
+      0.0099
+     ],
+     0
+    ],
+    [
+     "tone",
+     0.3,
+     [
+      0.5,
+      0.5
+     ],
+     330
+    ]
+   ],
+   "probes": [
+    {
+     "threshold_db": -40,
+     "min_s": 0.5,
+     "silences": [
+      [
+       1.2,
+       1.9
+      ]
+     ]
+    },
+    {
+     "threshold_db": -60,
+     "min_s": 0.5,
+     "silences": []
+    },
+    {
+     "threshold_db": -30,
+     "min_s": 0.2,
+     "silences": [
+      [
+       0.3,
+       1.9
+      ]
+     ]
+    },
+    {
+     "threshold_db": -70,
+     "min_s": 0.3,
+     "silences": []
+    }
+   ]
+  },
+  {
+   "name": "odd rate 22050 Hz, silences of uneven length",
+   "rate": 22050,
+   "channels": 1,
+   "parts": [
+    [
+     "quiet",
+     0.537,
+     0.0005,
+     50
+    ],
+    [
+     "tone",
+     0.311,
+     0.5,
+     440
+    ],
+    [
+     "quiet",
+     0.733,
+     0.0005,
+     50
+    ],
+    [
+     "tone",
+     0.219,
+     0.4,
+     300
+    ],
+    [
+     "quiet",
+     0.611,
+     0.0005,
+     50
+    ]
+   ],
+   "probes": [
+    {
+     "threshold_db": -40,
+     "min_s": 0.5,
+     "silences": [
+      [
+       0.0,
+       0.537
+      ],
+      [
+       0.848,
+       1.581
+      ],
+      [
+       1.8,
+       2.411
+      ]
+     ]
+    },
+    {
+     "threshold_db": -60,
+     "min_s": 0.5,
+     "silences": [
+      [
+       0.0,
+       0.537
+      ],
+      [
+       0.848,
+       1.581
+      ],
+      [
+       1.8,
+       2.411
+      ]
+     ]
+    },
+    {
+     "threshold_db": -30,
+     "min_s": 0.2,
+     "silences": [
+      [
+       0.0,
+       0.537
+      ],
+      [
+       0.848,
+       1.581
+      ],
+      [
+       1.8,
+       2.411
+      ]
+     ]
+    },
+    {
+     "threshold_db": -70,
+     "min_s": 0.3,
+     "silences": []
+    }
+   ]
+  }
+ ]
+}

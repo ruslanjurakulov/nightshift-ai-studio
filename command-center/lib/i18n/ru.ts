@@ -23,6 +23,7 @@ import { shapesRu } from "./shapes/ru";
 import { exportPresetRu } from "./editor-presets/ru";
 import { exportRatiosRu } from "./editor-ratios/ru";
 import { clipToolsRu } from "./editor-clip-tools/ru";
+import { parity2Ru } from "./editor-parity2/ru";
 import { voiceOverRu } from "./editor-voiceover/ru";
 import { looksRu } from "./editor-looks/ru";
 import { fxRu } from "./editor-fx/ru";
@@ -5128,6 +5129,8 @@ export const ru: Dictionary = {
     voiceOver: voiceOverRu,
     /** Cross-fade styles and text looks: ./editor-looks/ru.ts. */
     looks: looksRu,
+    /** Advanced colour, masks and silence removal: ./editor-parity2/ru.ts. */
+    parity2: parity2Ru,
     fx: fxRu,
     title: "Редактор",
     subtitle: "Обрезайте, делите, ускоряйте и замедляйте видео и добавляйте на них текст.",

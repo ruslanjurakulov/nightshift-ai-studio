@@ -1,0 +1,75 @@
+/**
+ * The editor's second parity batch: advanced colour, a shape mask and silence removal on a video clip
+ * (`t.editor.parity2`). Own file so the main dictionaries only gain one line. English is the source:
+ * ru.ts and uz.ts are typed `Parity2Dictionary`, so they must carry exactly these keys. The ru and uz
+ * sentences are drafts: have a native speaker read them.
+ */
+export const parity2En = {
+  color: {
+    title: "Colour balance",
+    temperature: "Temperature",
+    tint: "Tint",
+    hue: "Hue",
+    value: "{v}",
+    hueValue: "{v}°",
+    curveLegend: "Tone curve",
+    curveNone: "None",
+    curves: {
+      lighter: "Lighter",
+      darker: "Darker",
+      contrast: "More contrast",
+      "strong-contrast": "Strong contrast",
+      matte: "Matte",
+      "cross-process": "Cross process",
+    },
+    reset: "Reset colour balance",
+    hint: "Temperature makes the picture warmer (amber) or cooler (blue); tint moves it toward magenta or green; hue turns every colour. Saturation and brightness are in Colour above.",
+    previewNote: "The preview shows the hue only; temperature, tint and the curve are seen in the export.",
+  },
+  mask: {
+    title: "Mask",
+    legend: "Shape",
+    none: "None",
+    shapes: { rect: "Rectangle", ellipse: "Ellipse", rounded: "Rounded" },
+    x: "Across",
+    y: "Down",
+    w: "Width",
+    h: "Height",
+    feather: "Soft edge",
+    radius: "Corners",
+    percent: "{v}%",
+    invert: "Invert (hide the inside)",
+    hint: "The picture is seen through the shape and the rest of the frame is black. The shape stays where it is in the frame while the clip's move zooms the picture under it.",
+    previewNote: "The preview is approximate: a soft edge is drawn on the ellipse only. The export is exact.",
+  },
+  budget: "Colour and masks would make the video take about {work} s to export, but a {length} s video is allowed {allowed} s. This change was not made.",
+  silence: {
+    title: "Remove silences",
+    find: "Find silences",
+    threshold: "Quieter than",
+    thresholdValue: "{v} dB",
+    minLength: "For at least",
+    minValue: "{v} s",
+    hint: "Finds the quiet parts of this clip's own sound and proposes cutting them, keeping a tenth of a second either side. Nothing changes until you apply. Texts, captions, sounds and overlays keep their times.",
+    working: "Listening to the clip's sound…",
+    none: "No silence that long and that quiet in this clip.",
+    found: { one: "{n} silent part, {s} s in all. Applying cuts it out and closes the gap.", few: "{n} silent parts, {s} s in all. Applying cuts them out and closes the gaps.", many: "{n} silent parts, {s} s in all. Applying cuts them out and closes the gaps." },
+    apply: { one: "Cut {n} silent part", few: "Cut {n} silent parts", many: "Cut {n} silent parts" },
+    applied: { one: "{n} silent part cut ({s} s shorter). Undo brings it back.", few: "{n} silent parts cut ({s} s shorter). Undo brings them back.", many: "{n} silent parts cut ({s} s shorter). Undo brings them back." },
+    partial: "{n} of {total} silent parts cut: the picture can hold at most {max} clips.",
+    keepTimes: "Only the picture moves up: texts, captions, sounds and overlays stay at their times.",
+    cut: "{a} – {b}",
+    too_large: "This file is too long or too big to listen to in the browser.",
+    unavailable: "The browser could not read this file's sound. Try again later.",
+    no_sound: "This file has no sound to listen to.",
+    busy: "Another file is being listened to, or too many were just now. Try again in a minute.",
+    still: "A photo has no sound.",
+    retimed: "Only a clip at one speed, played forwards, can have its silences cut.",
+    no_audio: "This clip's own sound is off (muted, or detached to a sound of its own). Turn it on first: cutting the picture alone would put a detached sound out of step.",
+    full: "The picture already has {max} clips.",
+  },
+  settledLook: "Clip {n}: its colour and mask were taken off: with them the video would take longer to export than it is allowed.",
+  settledMask: "Clip {n}: its mask was taken off: in a frame above 1440p a cross-faded clip cannot have one (the export would run out of memory).",
+};
+
+export type Parity2Dictionary = typeof parity2En;
