@@ -289,8 +289,11 @@ _SYNC_LOCK = threading.Lock()
 
 def resolve(model_id: str, *, env=None) -> Optional[RegistryAdapter]:
     """The adapter for ``model_id`` (registry file), or None when the file does
-    not know it — the worker then fails the job with ``adapter_missing``."""
+    not know it or holds it as registry-only — the worker then fails the job
+    with ``adapter_missing``."""
     entry = model_registry.get(str(model_id or ""))
-    if entry is None:
+    # A registry-only entry (a capability the database does not know yet) has no row a job could have been priced or
+    # held against: a job that names one did not come through create_creative_job, and it gets no adapter.
+    if entry is None or entry.registry_only:
         return None
     return RegistryAdapter(entry, build_adapter(entry.adapter, env=env))

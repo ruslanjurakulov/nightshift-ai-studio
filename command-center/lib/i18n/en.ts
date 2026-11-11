@@ -19,6 +19,7 @@ import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
 import { shapesEn } from "./shapes/en";
 import { exportPresetEn } from "./editor-presets/en";
+import { exportRatiosEn } from "./editor-ratios/en";
 import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
@@ -5128,6 +5129,8 @@ export const en = {
     shapes: shapesEn,
     /** Export format picker: ./editor-presets/en.ts. */
     exportPreset: exportPresetEn,
+    /** Several frame sizes from one edit: ./editor-ratios/en.ts. */
+    exportRatios: exportRatiosEn,
     /** Cross-fade styles and text looks: ./editor-looks/en.ts. */
     looks: looksEn,
     fx: fxEn,
@@ -5328,6 +5331,8 @@ export const en = {
       timed_out: "The render took longer than its time limit and was stopped. Try again; if it happens again, shorten the video or use fewer clips.",
       worker_lost: "The server stopped while rendering. Try again.",
       project_deleted: "The project was deleted before this export started.",
+      invalid_frame: "This size is not one of the export formats, so nothing was rendered. Choose the size again and export.",
+      frame_off: "Exporting in other sizes is switched off on the server, so nothing was rendered. Export in this project's size, or try again later.",
       other: "The export failed.",
     },
     exportRev: "Version {rev}",

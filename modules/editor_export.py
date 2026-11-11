@@ -46,20 +46,47 @@ only the ``file`` protocol allowed, the way an upload is checked.
 Text on the picture is written to an ASS file by ``ass_captions`` with its
 override characters escaped; it never becomes part of an ffmpeg argument.
 
-What is logged: export / asset ids, reason words and exception types — never
-a path, a document or a message from ffmpeg.
+Another frame, from a closed list (migration 0129)
+--------------------------------------------------
+An export row may carry a frame override (``frame_preset`` / ``frame_width`` /
+``frame_height``): the same saved revision rendered in another size, so one
+edit gives a 16:9, a 9:16, a 1:1 and a 4:5 file without a copy of the project.
+The override is a PARAMETER, not a render path: ``width`` and ``height`` of the
+document are replaced and the document then goes through exactly what any
+document goes through (``timeline.load``: every frame, budget and memory rule
+against the NEW frame; the same layout; the same ffmpeg commands under the same
+``ffmpeg_limits``). Nothing else moves: the frame rate, the clips, the texts
+and every clip's own ``fit``. A source whose shape is not the new frame's is
+therefore fitted the way that clip already says, ``contain`` unless the person
+chose ``cover`` or ``blur``: bars rather than a crop, because cutting the sides
+off a picture is an editing decision and this is not an edit.
+
+The database's function is the first check (the closed list of 0129); this
+module is the second, and it does not take the row's word for it: the id must
+be one of ``schemas/export_presets.json`` and the row's width and height must
+be exactly that entry's, or the export ends as ``invalid_frame`` before any
+file is read. A row with only some of the three values is refused the same
+way, never rendered in the project's frame. And it is off unless
+``NIGHTSHIFT_MULTI_RATIO_EXPORT`` is on in THIS process (the Command Center
+reads the same name): a frame row that arrives while it is off ends as
+``frame_off``. A row with no override takes none of this: it is rendered
+exactly as before.
+
+What is logged: export / asset ids, reason words, a frame id of the closed list
+and exception types — never a path, a document or a message from ffmpeg.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import threading
 import uuid
 from pathlib import Path
-from typing import Callable, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional
 
 from modules import media_library as ml
 from modules import render_backend
@@ -94,7 +121,20 @@ RENDER_TIMEOUT_MAX_S = tl.RENDER_TIMEOUT_MAX_S
 #: Reason words a failed export can carry (the Command Center has a sentence
 #: for each; lib/editor.ts EXPORT_REASONS).
 REASONS = ("invalid_timeline", "asset_unavailable", "too_long", "render_failed", "store_failed",
-           "timed_out")
+           "timed_out", "invalid_frame", "frame_off")
+
+#: The switch of "one edit, several frame sizes" (migration 0129), the same word
+#: the Command Center reads (lib/multiRatioExport/flag.ts). Default OFF.
+FRAME_FLAG = "NIGHTSHIFT_MULTI_RATIO_EXPORT"
+#: The three columns of an export row that carry a frame override, in the
+#: database's order. All None = the project's own frame.
+FRAME_COLUMNS = ("frame_preset", "frame_width", "frame_height")
+
+
+def multi_ratio_enabled(env: Mapping[str, str]) -> bool:
+    """Is a frame override rendered by this process? ``on`` / ``1`` / ``true`` /
+    ``yes``; anything else, or nothing, is off."""
+    return str(env.get(FRAME_FLAG, "") or "").strip().lower() in ("on", "1", "true", "yes")
 
 
 def render_timeout_s(length_s: float) -> float:
@@ -114,6 +154,64 @@ class ExportFailed(Exception):
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason if reason in REASONS else "render_failed"
+
+
+# ── the frame an export was asked in (migration 0129) ────────────────────────
+
+
+def _is_int(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def frame_override(export: Mapping, *, enabled: bool, presets: Optional[Mapping[str, Any]] = None):
+    """The frame this export must be rendered in instead of the project's own:
+    an entry of the closed list (``export_presets.Preset``), or None when the
+    row carries no override at all.
+
+    Raises ExportFailed: ``frame_off`` when the row carries one and this
+    process's switch is off; ``invalid_frame`` when the three values are not
+    EXACTLY one entry of ``schemas/export_presets.json`` (an id outside the
+    list, a size that is not that id's, a number that is not an integer, or
+    only some of the three). The row is the database's, and the database
+    checked it (0129); this is asked again because a frame size that reaches
+    ffmpeg must come from our own list whatever a row says."""
+    preset_id, width, height = (export.get(k) for k in FRAME_COLUMNS)
+    if preset_id is None and width is None and height is None:
+        return None
+    if not enabled:
+        raise ExportFailed("frame_off")
+    # Here, not at the top: export_presets imports this module for EXPORT_MAX_S.
+    from modules import export_presets
+
+    try:
+        preset = export_presets.get(preset_id, presets)
+    except export_presets.UnknownPreset:
+        raise ExportFailed("invalid_frame") from None
+    except export_presets.PresetDataError as e:
+        # Our own list cannot be read: nothing may be rendered from a guess.
+        logger.warning("editor export: the frame list is unreadable (%s)", type(e).__name__)
+        raise ExportFailed("invalid_frame") from None
+    if not (_is_int(width) and _is_int(height)) or (width, height) != (preset.width, preset.height):
+        raise ExportFailed("invalid_frame")
+    return preset
+
+
+def framed_doc(doc: Any, frame) -> Any:
+    """What ``timeline.load`` is given: the export's document, with the frame
+    override's width and height when there is one. Without an override it is
+    the document itself, untouched. With one, only the two top-level numbers
+    change, on a copy (the claimed row is not edited); the validator then
+    judges the whole document against the NEW frame."""
+    source = doc if isinstance(doc, (dict, str, bytes)) else {}
+    if frame is None:
+        return source
+    if not isinstance(source, dict):
+        # The database hands a document over as an object. Text here is not a
+        # row of ours, and re-parsing it would be a second parser to keep safe.
+        raise ExportFailed("invalid_timeline")
+    out = dict(source)
+    out["width"], out["height"] = frame.width, frame.height
+    return out
 
 
 # ── which files, and what is in them ─────────────────────────────────────────
@@ -210,12 +308,16 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
                store_file: Callable[..., dict] = ml.store_generated,
                has_audio: Optional[Callable[[Path, str], bool]] = None,
                new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
-               heartbeat_s: float = HEARTBEAT_S) -> str:
+               heartbeat_s: float = HEARTBEAT_S, frames_enabled: bool = False) -> str:
     """Render one claimed export and finish it. Returns the status the
     database recorded ('done' / 'failed'). Never raises for a bad document,
     a missing file or an ffmpeg failure — those end the export with a reason
     word; a database outage propagates (the export is handed out again once
-    its heartbeat goes stale)."""
+    its heartbeat goes stale).
+
+    ``frames_enabled``: whether a frame override on the row (0129) is
+    rendered. Off by default, so a caller that never heard of it refuses a
+    frame row instead of rendering it in the project's frame."""
     eid = ml.canonical_id(export.get("id"))
     org = ml.canonical_id(export.get("org_id"))
     project = ml.canonical_id(export.get("project_id"))
@@ -235,8 +337,13 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
                 dur = 0.0
             if dur > EXPORT_MAX_S:
                 raise ExportFailed("too_long")
+            # Before anything is read or rendered: a frame this worker may not use
+            # (switch off, or not exactly an entry of the closed list) ends the export here.
+            frame = frame_override(export, enabled=frames_enabled)
+            if frame is not None:
+                logger.info("editor export %s: frame %s", eid, frame.id)
             try:
-                norm = tl.load(doc if isinstance(doc, (dict, str, bytes)) else {})
+                norm = tl.load(framed_doc(doc, frame))
                 length = tl.duration_s(norm)
                 if length > EXPORT_MAX_S:
                     raise ExportFailed("too_long")
@@ -291,7 +398,8 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
                                     tools=tools, expect_kind="video", source="render", project_id=project,
                                     original_name="export.mp4",
                                     provenance={"tool": "editor", "editor_project": project,
-                                                "editor_export": eid, "rev": export.get("rev")})
+                                                "editor_export": eid, "rev": export.get("rev"),
+                                                **({"frame": frame.id} if frame is not None else {})})
             except (ml.IngestReject, ml.StoreUnavailable) as e:
                 logger.warning("editor export %s: storing failed (%s)", eid, type(e).__name__)
                 raise ExportFailed("store_failed") from None
@@ -309,11 +417,15 @@ class ExportService:
     """What tools/media_worker.py runs on its export thread: at most one
     export at a time, beside (never instead of) upload checking."""
 
-    def __init__(self, store: ml.MediaStore, *, media_root: Path, worker_id: str, tools: ml.Tools):
+    def __init__(self, store: ml.MediaStore, *, media_root: Path, worker_id: str, tools: ml.Tools,
+                 frames_enabled: Optional[bool] = None):
         self.store = store
         self.media_root = Path(media_root)
         self.worker_id = worker_id
         self.tools = tools
+        #: NIGHTSHIFT_MULTI_RATIO_EXPORT in this process (default off): an export
+        #: that carries a frame override (0129) is refused while it is off.
+        self.frames_enabled = multi_ratio_enabled(os.environ) if frames_enabled is None else bool(frames_enabled)
         self._warned = False
 
     def run_once(self) -> bool:
@@ -328,7 +440,7 @@ class ExportService:
         if not export:
             return False
         run_export(export, store=self.store, media_root=self.media_root, worker_id=self.worker_id,
-                   tools=self.tools)
+                   tools=self.tools, frames_enabled=self.frames_enabled)
         return True
 
 
@@ -345,5 +457,6 @@ def serve(service: ExportService, stop: threading.Event, poll_s: float) -> None:
             stop.wait(poll_s)
 
 
-__all__ = ["EXPORT_MAX_S", "ExportFailed", "ExportService", "REASONS", "audio_probe_command",
-           "build_resolver", "probe_has_audio", "render_timeout_s", "run_export", "serve"]
+__all__ = ["EXPORT_MAX_S", "ExportFailed", "ExportService", "FRAME_COLUMNS", "FRAME_FLAG", "REASONS",
+           "audio_probe_command", "build_resolver", "frame_override", "framed_doc", "multi_ratio_enabled",
+           "probe_has_audio", "render_timeout_s", "run_export", "serve"]

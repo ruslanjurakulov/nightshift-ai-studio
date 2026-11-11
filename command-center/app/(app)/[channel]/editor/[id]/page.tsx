@@ -98,6 +98,7 @@ export default async function EditorProjectPage({
         aiTools={aiTools}
         offerAssetId={parseIdParam(q.add)}
         focusPanel={focus === "captions" ? "captions" : null}
+        multiRatio={p.multiRatio}
       />
     </div>
   );

@@ -495,7 +495,9 @@ class Probe(Tmp):
         from tools import probe_models
 
         session = RecordingSession([])
-        with mock.patch.object(probe_models.shutil, "which", return_value=None):
+        # No ffmpeg at all: neither the pinned imageio-ffmpeg binary (the resolver falls back to a bare name) nor one on PATH.
+        with mock.patch("modules.render_backend.resolve_ffmpeg", return_value="ffmpeg"), \
+                mock.patch.object(probe_models.shutil, "which", return_value=None):
             res = probe_models.run_probe(reg.get("runway-video-upscale"), env=ENV, voice_id=None, workdir=self.root,
                                          session=session)
         self.assertEqual(res.code, E_NOT_CONFIGURED)

@@ -20,6 +20,7 @@ import { siteRu } from "./site/ru";
 import { overlayRu } from "./overlay/ru";
 import { shapesRu } from "./shapes/ru";
 import { exportPresetRu } from "./editor-presets/ru";
+import { exportRatiosRu } from "./editor-ratios/ru";
 import { looksRu } from "./editor-looks/ru";
 import { fxRu } from "./editor-fx/ru";
 import { captionStylesRu } from "./caption-styles/ru";
@@ -5116,6 +5117,7 @@ export const ru: Dictionary = {
     shapes: shapesRu,
     /** Export format picker: ./editor-presets/ru.ts. */
     exportPreset: exportPresetRu,
+    exportRatios: exportRatiosRu,
     /** Cross-fade styles and text looks: ./editor-looks/ru.ts. */
     looks: looksRu,
     fx: fxRu,
@@ -5316,6 +5318,8 @@ export const ru: Dictionary = {
       timed_out: "Рендер шёл дольше отведённого времени и был остановлен. Попробуйте снова; если повторится, сократите видео или уберите часть клипов.",
       worker_lost: "Сервер остановился во время рендера. Попробуйте снова.",
       project_deleted: "Проект удалён до начала этого экспорта.",
+      invalid_frame: "Этого размера нет среди форматов экспорта, поэтому ничего не отрендерено. Выберите размер заново и экспортируйте.",
+      frame_off: "Экспорт в других размерах отключён на сервере, поэтому ничего не отрендерено. Экспортируйте в размере проекта или попробуйте позже.",
       other: "Экспорт не удался.",
     },
     exportRev: "Версия {rev}",

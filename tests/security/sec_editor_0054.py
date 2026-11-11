@@ -48,6 +48,9 @@ def extend(tables: dict, functions: dict) -> None:
         "editor_clean_title": SERVICE,
         "editor_doc_problem": SERVICE,
         "editor_doc_duration": SERVICE,
+        # 0129: the closed list of frames an export may be asked in. Internal: only request_editor_export(project, rev, frame)
+        # reads it (that overload is USER like the two-argument one, under the same name above).
+        "editor_export_frame": SERVICE,
     })
 
 

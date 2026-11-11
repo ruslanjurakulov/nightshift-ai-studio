@@ -62,6 +62,10 @@ const NOT_RETRYABLE: readonly (ExportReason | "other")[] = [
   "asset_unavailable",
   "too_long",
   "project_deleted",
+  // An export in another frame (0129): the frame on the row, or the worker's switch, is the problem. The same
+  // request would end the same way and only spend one of the day's exports.
+  "invalid_frame",
+  "frame_off",
 ];
 
 export function canRetry(reason: EditorExport["reason"]): boolean {

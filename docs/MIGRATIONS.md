@@ -533,6 +533,27 @@ revoked from public, anon and service_role. Nothing happens until the image edit
   parent; puts 0051's body back byte for byte; drops the overload, index, constraint and column. Links already written on `media_assets` stay.
 - **Review.** Needs the independent security review before merge, and a person reading the live `register_asset` hash first.
 
+## An export in another frame (0129)
+
+0129 (`0129_editor_export_frame.sql`, `docs/MULTI_RATIO_EXPORT.md`) is **live on apply and dark**: it adds three nullable columns to `editor_exports`
+(`frame_preset`, `frame_width`, `frame_height`, one CHECK), **adds one internal function** (`editor_export_frame(text)`, the closed list of export formats,
+no API role may call it) and **adds one function overload** (the three-argument `request_editor_export`: 0054's two-argument body plus the lines marked
+`-- 0129`). It **replaces no function**: the two-argument `request_editor_export` is not touched (md5 `6d37b4d75092708981c28a56879c89b4` before and after).
+It adds no table, no policy and no grant on any table; the overload is granted to `authenticated` only (as the two-argument one), revoked from public, anon
+and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
+
+- **What it enforces.** The frame must be an id of the database's own list (the five of `schemas/export_presets.json`; a pin test compares them), looked at
+  only after sign-in and membership; anything else is NS400 `invalid_frame`. Width and height on the row come from the list, never from the caller. Every
+  gate of 0054 is there in 0054's order; each frame is one export against the organization's three in flight and twenty a day.
+- **The one rule with a new shape.** "One export at a time per project" is, in the new overload only, "one at a time per project per frame size" (a plain export in flight has the size of the document it copied, so a format of the project's own size is refused beside it).
+- **Roll-out.** Either order with the Command Center and the worker; see `docs/MULTI_RATIO_EXPORT.md`. The switch goes on only when both run this version.
+- **Drift guard.** Refuses (changes nothing) if the live two-argument `request_editor_export` is not 0054's body (the overload is a copy of it), or if a
+  three-argument overload or an `editor_export_frame` that is not its own already exists; the last block asserts the end state.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`.
+- **Undo.** `docs/sql/rollback_0129_editor_export_frame.sql` (owner-applied): refuses a body that is not 0129's and refuses while an export in flight carries a
+  frame; drops the overload, the list, the check and the three columns. Exported videos stay in the library.
+- **Review.** Needs the independent security review before merge, and a person reading the live two-argument `request_editor_export` hash first.
+
 ## Ads Factory, Phase 1: brand kits, products, campaigns, concepts (0131)
 
 0131 (`0131_ads_factory.sql`, `docs/ADS_FACTORY.md`) is **live on apply and dark**: it **adds seven tables** (`brand_kits`, `brand_products`,

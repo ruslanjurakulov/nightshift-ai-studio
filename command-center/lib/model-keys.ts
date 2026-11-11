@@ -38,6 +38,7 @@ export const MODEL_KEY_PROVIDER_IDS = [
   "pika",
   "recraft",
   "runway",
+  "sonilo",
   "vidu",
   "xai",
 ] as const;
@@ -109,7 +110,7 @@ const json = (rest: { auth: VerifyStrategyHttp["auth"] } & Partial<VerifyStrateg
 type VerifyStrategyHttp = Extract<VerifyStrategy, { kind: "http" }>;
 
 /**
- * Every vendor, in display order. Each `docUrl` and `keyUrlSource` below was opened and read on 2026-10-25; the request shapes are the
+ * Every vendor, in display order. Each `docUrl` and `keyUrlSource` below was opened and read on 2026-10-25 (Sonilo's on 2026-11-10); the request shapes are the
  * vendors' own examples. Nothing here was CALLED with a key (no key was used in building this).
  */
 export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
@@ -350,6 +351,27 @@ export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
     // `remaining_credits`. A check built on that would be a guess, so the key is never sent anywhere. docUrl is the FAQ page that says where
     // keys are made.
     strategy: { kind: "format_only", docUrl: "https://platform.vidu.com/docs/overview/faq" },
+  },
+  {
+    id: "sonilo",
+    name: "Sonilo (music)",
+    // "Generate and manage keys from the API Keys page" (the docs introduction links platform.sonilo.com/dashboard/api-keys).
+    keyUrl: "https://platform.sonilo.com/dashboard/api-keys",
+    keyUrlSource: "https://platform.sonilo.com/docs",
+    envSets: [["SONILO_API_KEY"]],
+    scopedKeys: false,
+    strategy: json({
+      origin: "https://api.sonilo.com",
+      // The account read Sonilo's own authentication example uses ("List enabled services and limits"): a GET that makes nothing. The
+      // pricing page bills generations by the second and lists no price for an account read; the pages do not use the word "free" for it.
+      // The answer must hold an `available_services` array (the OpenAPI document, the reference table and the example all name it).
+      path: "/v1/account/services",
+      auth: { header: "Authorization", scheme: "bearer" },
+      // "Revoked or missing keys return 401; valid keys without endpoint access return 403": only 401 says the key is not accepted.
+      rejectStatuses: [401],
+      expect: { kind: "field", name: "available_services", type: "array" },
+      docUrl: "https://platform.sonilo.com/docs/api/list-services",
+    }),
   },
   {
     id: "alibaba",
