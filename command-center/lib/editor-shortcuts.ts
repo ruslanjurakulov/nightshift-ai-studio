@@ -104,9 +104,29 @@ export function resolveShortcut(e: KeyLike, focus: FocusKind): ShortcutAction | 
   return null;
 }
 
+/** The clip clipboard: Ctrl / Cmd + D, C or V on the editor (never in a text field or on a slider, never
+ *  with Alt or Shift, never a held-down repeat). Copy also stays the browser's while some text on the page
+ *  is selected (`textSelected`): a person copying words must get the words. */
+export type ClipShortcut = "duplicate" | "copy" | "paste";
+export function resolveClipShortcut(
+  e: KeyLike,
+  focus: FocusKind,
+  textSelected = false,
+): ClipShortcut | null {
+  if (e.defaultPrevented || e.repeat) return null;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return null;
+  if (focus === "text" || focus === "slider") return null;
+  // The physical key on layouts whose `key` is not a Latin letter (Cyrillic: "в", "с", "м").
+  const letter = /^[a-z]$/i.test(e.key) ? e.key.toLowerCase() : (e.code ?? "").replace(/^Key/, "").toLowerCase();
+  if (letter === "d") return "duplicate";
+  if (letter === "c") return textSelected ? null : "copy";
+  if (letter === "v") return "paste";
+  return null;
+}
+
 /** One row of the shortcuts help. `keys` are literal key names; `labelKey` names the dictionary entry. */
 export interface ShortcutHelpRow {
-  action: ShortcutAction | "undo" | "redo" | "save";
+  action: ShortcutAction | ClipShortcut | "undo" | "redo" | "save";
   keys: string[][];
 }
 
@@ -118,6 +138,9 @@ export const SHORTCUT_HELP: readonly ShortcutHelpRow[] = [
   { action: "leftBig", keys: [["Shift", "←"], ["Shift", "→"]] },
   { action: "zoomIn", keys: [["+"], ["-"]] },
   { action: "zoomFit", keys: [["0"]] },
+  { action: "duplicate", keys: [["Ctrl", "D"]] },
+  { action: "copy", keys: [["Ctrl", "C"]] },
+  { action: "paste", keys: [["Ctrl", "V"]] },
   { action: "undo", keys: [["Ctrl", "Z"]] },
   { action: "redo", keys: [["Ctrl", "Shift", "Z"]] },
   { action: "save", keys: [["Ctrl", "S"]] },

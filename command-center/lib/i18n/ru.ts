@@ -21,6 +21,7 @@ import { overlayRu } from "./overlay/ru";
 import { shapesRu } from "./shapes/ru";
 import { exportPresetRu } from "./editor-presets/ru";
 import { exportRatiosRu } from "./editor-ratios/ru";
+import { clipToolsRu } from "./editor-clip-tools/ru";
 import { looksRu } from "./editor-looks/ru";
 import { fxRu } from "./editor-fx/ru";
 import { captionStylesRu } from "./caption-styles/ru";
@@ -5118,6 +5119,8 @@ export const ru: Dictionary = {
     /** Export format picker: ./editor-presets/ru.ts. */
     exportPreset: exportPresetRu,
     exportRatios: exportRatiosRu,
+    /** Frame rate, clip volume, detach audio, duplicate / copy / paste: ./editor-clip-tools/ru.ts. */
+    clipTools: clipToolsRu,
     /** Cross-fade styles and text looks: ./editor-looks/ru.ts. */
     looks: looksRu,
     fx: fxRu,

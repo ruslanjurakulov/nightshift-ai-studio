@@ -17,6 +17,8 @@ import {
   RENDER_TIMEOUT_BASE_S,
   RENDER_TIMEOUT_MAX_S,
   RENDER_TIMEOUT_PER_S,
+  RAMP_SPEED_MAX,
+  RAMP_SPEED_MIN,
   SPEEDS,
   SPEED_MAX,
   SPEED_MIN,
@@ -383,12 +385,12 @@ function SpeedBox({
 }
 
 /** Speed over the clip as a small line drawing (speed on a log scale from the
- *  slowest to the fastest the document allows). The point rows are the control. */
+ *  slowest to the fastest a curve allows). The point rows are the control. */
 function CurvePlot({ points }: { points: readonly SpeedPoint[] }) {
   const { t } = useI18n();
   const c = t.editor.fx.speed.curve;
   const y = (s: number) =>
-    36 - (36 * Math.log(s / SPEED_MIN)) / Math.log(SPEED_MAX / SPEED_MIN);
+    36 - (36 * Math.log(s / RAMP_SPEED_MIN)) / Math.log(RAMP_SPEED_MAX / RAMP_SPEED_MIN);
   const path = points.map((p) => `${p.at * 100},${y(p.speed).toFixed(2)}`).join(" ");
   const label = fmt(c.graph, {
     points: points
@@ -513,8 +515,8 @@ function CurveEditor({
                     i === 0 ? c.atStart : i === curve.length - 1 ? c.atEnd : fmt(c.point, { n: i + 1 })
                   })`}
                   value={p.speed}
-                  min={SPEED_MIN}
-                  max={SPEED_MAX}
+                  min={RAMP_SPEED_MIN}
+                  max={RAMP_SPEED_MAX}
                   step={0.05}
                   text={fmt(t.editor.speedValue, { x: p.speed })}
                   onChange={(v, g) => edit(setCurvePoint(model, id, i, { speed: v }), g)}
@@ -563,8 +565,8 @@ function CurveEditor({
         {fmt(c.hint, {
           min: RAMP_MIN_POINTS,
           max: RAMP_MAX_POINTS,
-          smin: SPEED_MIN,
-          smax: SPEED_MAX,
+          smin: RAMP_SPEED_MIN,
+          smax: RAMP_SPEED_MAX,
         })}
       </p>
     </Disclosure>

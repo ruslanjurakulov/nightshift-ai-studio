@@ -1,5 +1,5 @@
 /**
- * Speed 0.25-4, reverse and freeze (modules/timeline.py SPEED_*, REVERSE_*): the
+ * Speed 0.1-10 (a curve 0.25-4), reverse and freeze (modules/timeline.py SPEED_*, REVERSE_*): the
  * limits are the backend's, the memory bound for a reversed range is the same
  * arithmetic, a frozen clip refuses what contradicts it, and the model keeps the
  * flags. Shared cases (samples/timeline_doc_cases.json) are judged by both
@@ -11,6 +11,8 @@ import { join } from "node:path";
 import {
   REVERSE_BYTES_PER_PIXEL,
   REVERSE_MAX_BYTES,
+  RAMP_SPEED_MAX,
+  RAMP_SPEED_MIN,
   SPEED_MAX,
   SPEED_MIN,
   canSplit,
@@ -44,7 +46,8 @@ function doc(
 describe("the constants are the backend's", () => {
   it("speed range and reverse memory", () => {
     const py = readFileSync(join(__dirname, "..", "..", "modules", "timeline.py"), "utf8");
-    expect(/SPEED_MIN, SPEED_MAX = ([\d.]+), ([\d.]+)/.exec(py)!.slice(1).map(Number)).toEqual([SPEED_MIN, SPEED_MAX]);
+    expect(/\nSPEED_MIN, SPEED_MAX = ([\d.]+), ([\d.]+)/.exec(py)!.slice(1).map(Number)).toEqual([SPEED_MIN, SPEED_MAX]);
+    expect(/RAMP_SPEED_MIN, RAMP_SPEED_MAX = ([\d.]+), ([\d.]+)/.exec(py)!.slice(1).map(Number)).toEqual([RAMP_SPEED_MIN, RAMP_SPEED_MAX]);
     expect(REVERSE_MAX_BYTES).toBe(512 * 1024 ** 2);
     expect(REVERSE_BYTES_PER_PIXEL).toBe(1.5);
     expect(py).toContain("REVERSE_MAX_BYTES = 512 * 1024 * 1024");
@@ -52,12 +55,18 @@ describe("the constants are the backend's", () => {
 });
 
 describe("speed", () => {
-  it("runs from a quarter to four times", () => {
-    for (const ok of [0.25, 0.3, 1, 3, 4]) expect(validateTimeline(doc({ speed: ok })), String(ok)).toEqual([]);
-    for (const bad of [0.249, 4.001, 0, -1, "2", null, NaN])
+  it("runs from a tenth to ten times (a curve stays inside a quarter to four)", () => {
+    for (const ok of [0.1, 0.25, 0.3, 1, 3, 4, 6, 10]) expect(validateTimeline(doc({ speed: ok })), String(ok)).toEqual([]);
+    for (const bad of [0.099, 10.001, 0, -1, "2", null, NaN])
       expect(validateTimeline(doc({ speed: bad })).join(";"), String(bad)).toContain("speed must be");
-    expect(setSpeed(toModel(doc()), "c1", 10).clips[0].speed).toBe(4);
-    expect(setSpeed(toModel(doc()), "c1", 0.01).clips[0].speed).toBe(0.25);
+    expect(setSpeed(toModel(doc()), "c1", 12).clips[0].speed).toBe(10);
+    expect(setSpeed(toModel(doc()), "c1", 0.01).clips[0].speed).toBe(0.1);
+    expect([RAMP_SPEED_MIN, RAMP_SPEED_MAX]).toEqual([0.25, 4]);
+    const curve = (s: number) => doc({ speed_curve: [{ at: 0, speed: 1 }, { at: 1, speed: s }] });
+    expect(validateTimeline(curve(4))).toEqual([]);
+    expect(validateTimeline(curve(0.25))).toEqual([]);
+    for (const bad of [5, 0.2, 10, 0.1])
+      expect(validateTimeline(curve(bad)).join(";"), String(bad)).toContain("speed must be");
   });
 });
 

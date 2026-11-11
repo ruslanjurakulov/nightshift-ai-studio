@@ -19,6 +19,8 @@ import {
   RAMP_MAX_POINTS,
   RAMP_MIN_GAP,
   RAMP_MIN_POINTS,
+  RAMP_SPEED_MAX,
+  RAMP_SPEED_MIN,
   SPEED_MAX,
   SPEED_MIN,
   addClip,
@@ -381,7 +383,8 @@ describe("speed curve", () => {
     const many = Array.from({ length: RAMP_MAX_POINTS + 1 }, (_, i) => ({ at: i / RAMP_MAX_POINTS, speed: 1 }));
     expect(setClipCurve(m, id, many)).toBe(m);
     const wild = setClipCurve(m, id, [{ at: 0.2, speed: 99 }, { at: 0.7, speed: 0 }]);
-    expect(curveOf(c0(wild))).toEqual([{ at: 0, speed: SPEED_MAX }, { at: 1, speed: SPEED_MIN }]);
+    // a curve's points stay inside its own, narrower range (not the constant speed's 0.1-10)
+    expect(curveOf(c0(wild))).toEqual([{ at: 0, speed: RAMP_SPEED_MAX }, { at: 1, speed: RAMP_SPEED_MIN }]);
     valid(wild);
   });
 

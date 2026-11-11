@@ -50,9 +50,10 @@ How a timeline maps onto the spec:
   does, it fades in or out across the overlap.
 * **Sound** — a V clip with ``audio: true`` whose source has a sound track
   becomes an ``AudioTrack`` of that same file (same trim, start and speed,
-  ``atempo`` keeping the pitch), first; then every A clip (trim, gain, fades,
-  start). All are mixed and cut to the picture's length. A video clip without
-  ``audio`` is silent, as before.
+  ``atempo`` keeping the pitch, its ``gain_db``), first; then every A clip (trim,
+  gain, fades, start). All are mixed and cut to the picture's length. A video clip
+  without ``audio`` is silent, as before. An A clip may name a video file (a
+  detached sound): it is that file's sound, and nothing when the file has none.
 * **Ducking** — an A track with ``duck`` gets, on each of its clips, the
   speech spans that can touch it (V clips whose source is KNOWN to carry
   sound and play it, and every clip of an A track with ``role: "speech"``),
@@ -299,6 +300,7 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 start_s=clip["start_s"],
                 in_s=clip["in_s"],
                 speed=clip["speed"],
+                gain_db=clip.get("gain_db", 0.0),
                 reverse=bool(clip.get("reverse")),
                 denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
                 **_tempos(clip),
@@ -307,7 +309,11 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 crossfade_s=d_in if joined else 0.0,
             ))
     def speaks(clip: dict) -> bool:
+        # A sound file always sounds; a video only when its file is known to carry sound
+        # (the V clip's own sound, or an A clip that plays a video's sound).
         asset = assets[clip["asset_id"]]
+        if asset.kind == tl.ASSET_AUDIO:
+            return True
         return asset.kind == tl.ASSET_VIDEO and asset.has_audio is True
 
     speech = tl.speech_spans(doc, speaks)
@@ -318,6 +324,10 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
         merged = (tl.merge_spans(speech, duck["attack_s"] + duck["release_s"])
                   if duck and speech else [])
         for clip in track["clips"]:
+            if not speaks(clip):
+                # A detached sound whose video has no sound track: silent, never an error
+                # (an input with no audio stream would make the whole mix fail).
+                continue
             extra = {}
             if merged:
                 first, last = clip["start_s"], tl.clip_end_s(clip)

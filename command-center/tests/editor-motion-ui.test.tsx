@@ -32,6 +32,8 @@ import {
   RENDER_TIMEOUT_BASE_S,
   RENDER_TIMEOUT_MAX_S,
   RENDER_TIMEOUT_PER_S,
+  RAMP_SPEED_MAX,
+  RAMP_SPEED_MIN,
   SPEEDS,
   SPEED_MAX,
   SPEED_MIN,
@@ -186,7 +188,7 @@ describe("the third fit: blurred background", () => {
   });
 });
 
-describe("speed 0.25 to 4", () => {
+describe("speed 0.1 to 10", () => {
   it("offers every speed of the list, the document's own range included, as one radio group", () => {
     mount(videoDoc());
     const radios = within(speedGroup()).getAllByRole("radio") as HTMLInputElement[];
@@ -204,14 +206,14 @@ describe("speed 0.25 to 4", () => {
     const box = fmt(sp.custom, { min: SPEED_MIN, max: SPEED_MAX });
     expect((screen.getByRole("spinbutton", { name: box }) as HTMLInputElement).value).toBe("4");
     setNumber(box, "99");
-    expect(clip0(await save()).speed).toBe(4);
-    setNumber(box, "0.1");
+    expect(clip0(await save()).speed).toBe(SPEED_MAX);
+    setNumber(box, "0.01");
     expect((screen.getByRole("spinbutton", { name: box }) as HTMLInputElement).value).toBe(String(SPEED_MIN));
     setNumber(box, "1.7");
-    expect(clip0(toDoc(toModel(savedDoc()))).speed).toBe(4);
+    expect(clip0(toDoc(toModel(savedDoc()))).speed).toBe(SPEED_MAX);
     undo();
     undo();
-    expect(radio(speedGroup(), fmt(te.speedValue, { x: 4 })).checked).toBe(true);
+    expect(radio(speedGroup(), fmt(te.speedValue, { x: SPEED_MAX })).checked).toBe(true);
   });
 
   it("a photo has the chips only, and says the rest is for video", () => {
@@ -358,7 +360,7 @@ describe("speed curve", () => {
     const doc = await save();
     expect(clip0(doc).speed_curve).toEqual([{ at: 0, speed: 1 }, { at: 0.5, speed: 1 }, { at: 1, speed: 0.25 }]);
     expect(validateTimeline(doc)).toEqual([]);
-    expect(s.textContent).toContain(fmt(sp.curve.hint, { min: 2, max: 6, smin: SPEED_MIN, smax: SPEED_MAX }));
+    expect(s.textContent).toContain(fmt(sp.curve.hint, { min: 2, max: 6, smin: RAMP_SPEED_MIN, smax: RAMP_SPEED_MAX }));
   });
 
   it("a point's speed and place are sliders in the document's ranges; a drag is one undo step", () => {
@@ -367,8 +369,8 @@ describe("speed curve", () => {
     fireEvent.click(check(curve(), sp.curve.toggle));
     const mid = within(curve()).getByTestId("curve-point-1");
     const speed = slider(mid, new RegExp(`^${sp.curve.speed}`));
-    expect(Number(speed.min)).toBe(SPEED_MIN);
-    expect(Number(speed.max)).toBe(SPEED_MAX);
+    expect(Number(speed.min)).toBe(RAMP_SPEED_MIN);
+    expect(Number(speed.max)).toBe(RAMP_SPEED_MAX);
     fireEvent.pointerDown(speed);
     setSlider(speed, 2);
     setSlider(speed, 3);
@@ -716,7 +718,7 @@ describe("the engine's last limits, on the screen", () => {
     mount(videoDoc({ out_s: 4 }));
     more();
     expect(section(sp.curve.title).textContent).toContain(
-      fmt(sp.curve.hint, { min: 2, max: 6, smin: SPEED_MIN, smax: SPEED_MAX }),
+      fmt(sp.curve.hint, { min: 2, max: 6, smin: RAMP_SPEED_MIN, smax: RAMP_SPEED_MAX }),
     );
     expect(sp.curve.hint).toMatch(/a few seconds/);
   });

@@ -2,10 +2,12 @@
  * Export presets: a CLOSED list of frame shapes the editor offers for an export
  * (YouTube wide, vertical for Shorts / Reels / TikTok, square, a 4:5 feed shape).
  *
- * A preset is parameters and nothing else: a frame size, a frame rate and a
- * recommended length. Choosing one writes `width`, `height` and `fps` into the
- * document, exactly the fields the frame picker already writes (lib/editorFrame.ts
- * `setFrame`), and the document then goes through the ordinary validator
+ * A preset is parameters and nothing else: a frame size, a usual frame rate and a
+ * recommended length. Choosing one writes `width` and `height` into the document,
+ * exactly the fields the frame picker already writes (lib/editorFrame.ts `setFrame`).
+ * The RATE is chosen on its own (`EXPORT_FPS`, 24 / 25 / 30 / 60: `setExportFps` writes
+ * the document's `fps`), so a 1080p project at 60 fps is still "YouTube 1080p". The
+ * document then goes through the ordinary validator
  * (`validateTimeline`), save, and export request. It adds no field to the document, no
  * route, no price and no render path; the export is the same ffmpeg run under the
  * same limits (modules/ffmpeg_limits.py, modules/editor_export.py).
@@ -14,6 +16,10 @@
  * schemas/export_presets.json and refuses any entry outside the limits below. A test
  * (tests/editor-export-presets.test.ts) compares this list to that file value for value,
  * so the two cannot drift.
+ *
+ * No 1440p or 4K format here: a new format is a new migration on purpose (the database's copy of
+ * this list, 0129 `editor_export_frame`), and above 1440p an export is in the large-frame regime and
+ * measured past the worker's time budget at 4K60 (modules/export_presets.py says the numbers).
  *
  * The recommended length is advice: a project longer than it can still be exported (a
  * vertical project that was 4 minutes long exported before presets existed). The numbers
@@ -37,6 +43,23 @@ export const EXPORT_PRESETS = [
 ] as const;
 
 export type ExportPreset = (typeof EXPORT_PRESETS)[number];
+
+/** The frame rates the export format offers (FPS_VALUES also holds 50, which a document from another
+ *  tool may carry: it renders, and the picker then shows no rate chosen). 30 is what every format starts at. */
+export const EXPORT_FPS = [24, 25, 30, 60] as const;
+export type ExportFps = (typeof EXPORT_FPS)[number];
+
+export function isExportFps(v: unknown): v is ExportFps {
+  return typeof v === "number" && (EXPORT_FPS as readonly number[]).includes(v);
+}
+
+/** The model at another frame rate and nothing else changed; the same model back for a rate that
+ *  is not offered or is already the model's (choosing it again is not an undo step). The editor's
+ *  settling (lib/editorSettle.ts) then fits what depends on the rate (a backwards part, smoothing). */
+export function setExportFps(model: EditorModel, fps: unknown): EditorModel {
+  if (!isExportFps(fps) || model.fps === fps) return model;
+  return { ...model, fps };
+}
 export type ExportPresetId = ExportPreset["id"];
 
 /** Is this one of the closed list? Exact match: no trimming, no case folding. */
@@ -69,29 +92,23 @@ export function presetProblems(p: {
   return out;
 }
 
-/** The preset a frame and rate are exactly, or null (a custom size, or a document from
- *  another tool: the picker then shows none selected). */
+/** The preset a frame is exactly, at whatever rate, or null (a custom size, or a document
+ *  from another tool: the picker then shows none selected). */
 export function exportPresetOf(
-  m: Pick<EditorModel, "width" | "height" | "fps">,
+  m: Pick<EditorModel, "width" | "height">,
 ): ExportPresetId | null {
   return (
-    EXPORT_PRESETS.find(
-      (p) => p.width === m.width && p.height === m.height && p.fps === m.fps,
-    )?.id ?? null
+    EXPORT_PRESETS.find((p) => p.width === m.width && p.height === m.height)?.id ?? null
   );
 }
 
-/** The model with the preset's frame size and rate, and nothing else changed. The same
- *  model back when it already is that frame (choosing it again is not an undo step) and
- *  for an id outside the list. Clips, texts and sounds are untouched. */
+/** The model with the preset's frame size, and nothing else changed (the rate stays the
+ *  model's own). The same model back when it already is that frame (choosing it again is
+ *  not an undo step) and for an id outside the list. Clips, texts and sounds are untouched. */
 export function applyExportPreset(model: EditorModel, id: unknown): EditorModel {
   const p = exportPresetById(id);
-  if (
-    !p ||
-    (model.width === p.width && model.height === p.height && model.fps === p.fps)
-  )
-    return model;
-  return { ...model, width: p.width, height: p.height, fps: p.fps };
+  if (!p || (model.width === p.width && model.height === p.height)) return model;
+  return { ...model, width: p.width, height: p.height };
 }
 
 /** Is a video this long past the preset's recommended length? Only advice. */

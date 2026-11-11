@@ -47,9 +47,9 @@ against the argv captured from the code before this extension):
   * ``RenderSpec.overlays`` — text, written by ``ass_captions`` to one ASS
     file the backend burns in with the same ``subtitles`` filter.
   * ``Segment.speed`` / ``AudioTrack.speed`` — play a source faster or
-    slower (0.5-2). The picture is retimed with ``setpts`` before it is
-    fitted and resampled to the output rate; the sound with one ``atempo``
-    stage, which keeps its pitch. Text never reaches a filter graph: it goes
+    slower (0.1-10). The picture is retimed with ``setpts`` before it is
+    fitted and resampled to the output rate; the sound with a chain of
+    ``atempo`` stages (each within 0.5-2), which keeps its pitch. Text never reaches a filter graph: it goes
     into the ASS file, escaped by ``ass_captions.escape_text``.
   * ``Segment.clip_s`` / ``offset_s`` / ``seed`` / ``xfade`` — a cross-fade.
     A clip that dissolves into the next is rendered as pieces: each piece is
@@ -273,7 +273,9 @@ ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
 
 #: Playback speed bounds (modules/timeline.py offers exactly this range). A sound
 #: outside 0.5-2 goes through chained ``atempo`` stages, each within it.
-SPEED_MIN, SPEED_MAX = 0.25, 4.0
+SPEED_MIN, SPEED_MAX = 0.1, 10.0
+#: A speed curve's points (timeline.RAMP_SPEED_* are the same numbers).
+RAMP_SPEED_MIN, RAMP_SPEED_MAX = 0.25, 4.0
 
 
 def _speed_ok(v) -> bool:
@@ -477,8 +479,8 @@ def _curve_problems(name: str, c: SpeedCurve) -> List[str]:
     problems: List[str] = []
     if pts[0][0] != 0 or pts[-1][0] != 1 or any(b[0] <= a[0] for a, b in zip(pts, pts[1:])):
         problems.append(f"{name} speed curve must run from 0 to 1 in increasing order")
-    if not all(SPEED_MIN <= s <= SPEED_MAX for _a, s in pts):
-        problems.append(f"{name} speed curve speeds must be from {SPEED_MIN:g} to {SPEED_MAX:g}")
+    if not all(RAMP_SPEED_MIN <= s <= RAMP_SPEED_MAX for _a, s in pts):
+        problems.append(f"{name} speed curve speeds must be from {RAMP_SPEED_MIN:g} to {RAMP_SPEED_MAX:g}")
     return problems
 
 
@@ -1172,9 +1174,9 @@ def validate(spec: RenderSpec) -> List[str]:
             problems.append(f"audio track {i} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g}")
             continue
         if t.tempos and (len(t.tempos) > speed_ramp.SLICES_MAX or t.speed != 1.0
-                         or not all(_finite(x) and SPEED_MIN <= x <= SPEED_MAX for x in t.tempos)):
+                         or not all(_finite(x) and RAMP_SPEED_MIN <= x <= RAMP_SPEED_MAX for x in t.tempos)):
             problems.append(f"audio track {i} has bad speed-ramp tempos (at most {speed_ramp.SLICES_MAX}, "
-                            f"each from {SPEED_MIN:g} to {SPEED_MAX:g}, with speed 1)")
+                            f"each from {RAMP_SPEED_MIN:g} to {RAMP_SPEED_MAX:g}, with speed 1)")
             continue
         if t.fade_in_s + t.fade_out_s > t.output_s + 1e-9:
             problems.append(f"audio track {i} fades are longer than the track")

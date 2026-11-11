@@ -22,7 +22,10 @@ import {
   applyExportPreset,
   exportPresetById,
   exportPresetOf,
+  EXPORT_FPS,
+  isExportFps,
   isExportPresetId,
+  setExportFps,
   isLongForPreset,
   presetProblems,
 } from "@/lib/editorExportPresets";
@@ -77,7 +80,8 @@ describe("the closed list", () => {
       expect(p.maxDurationS, p.id).toBeLessThanOrEqual(EXPORT_MAX_S);
       expect(FPS_VALUES as readonly number[], p.id).toContain(p.fps);
     }
-    expect(new Set(EXPORT_PRESETS.map((p) => `${p.width}x${p.height}@${p.fps}`)).size).toBe(
+    // The picker tells formats apart by the frame alone (the rate is chosen on its own).
+    expect(new Set(EXPORT_PRESETS.map((p) => `${p.width}x${p.height}`)).size).toBe(
       EXPORT_PRESETS.length,
     );
   });
@@ -119,20 +123,22 @@ describe("a closed set: anything else is refused", () => {
 });
 
 describe("choosing a preset is a document edit", () => {
-  it("writes the frame size and rate and touches nothing else", () => {
+  it("writes the frame size and touches nothing else: the rate stays the project's own", () => {
     const m = model();
     const v = applyExportPreset(m, "vertical_1080p");
     expect([v.width, v.height, v.fps]).toEqual([1080, 1920, 30]);
     expect(v.clips).toBe(m.clips);
     expect(v.texts).toBe(m.texts);
     expect(v.sounds).toBe(m.sounds);
-    const f = applyExportPreset({ ...m, fps: 60 }, "youtube_1080p");
-    expect(f.fps).toBe(30);
+    const f = applyExportPreset({ ...m, fps: 60 }, "vertical_1080p");
+    expect([f.width, f.height, f.fps]).toEqual([1080, 1920, 60]);
   });
 
-  it("choosing the one already chosen is not a change (no undo step)", () => {
+  it("choosing the one already chosen is not a change (no undo step), at any rate", () => {
     const m = model();
     expect(applyExportPreset(m, "youtube_1080p")).toBe(m);
+    const m60 = { ...m, fps: 60 };
+    expect(applyExportPreset(m60, "youtube_1080p")).toBe(m60);
   });
 
   it("every preset makes a document the ordinary validator accepts", () => {
@@ -143,10 +149,47 @@ describe("choosing a preset is a document edit", () => {
     }
   });
 
-  it("the preset of a model is the one its frame and rate are exactly", () => {
-    expect(exportPresetOf({ width: 1280, height: 1000, fps: 30 })).toBeNull();
-    expect(exportPresetOf({ width: 1080, height: 1080, fps: 60 })).toBeNull();
-    expect(exportPresetOf({ width: 1080, height: 1350, fps: 30 })).toBe("feed_4x5_1080");
+  it("the preset of a model is the one its frame is exactly, at any rate", () => {
+    expect(exportPresetOf({ width: 1280, height: 1000 })).toBeNull();
+    expect(exportPresetOf({ width: 1080, height: 1082 })).toBeNull();
+    expect(exportPresetOf({ width: 1080, height: 1080 })).toBe("square_1080");
+    expect(exportPresetOf({ width: 1080, height: 1350 })).toBe("feed_4x5_1080");
+  });
+});
+
+describe("the frame rate is chosen on its own", () => {
+  it("offers 24, 25, 30 and 60, every one a rate the document accepts", () => {
+    expect([...EXPORT_FPS]).toEqual([24, 25, 30, 60]);
+    for (const r of EXPORT_FPS) expect(FPS_VALUES as readonly number[]).toContain(r);
+  });
+
+  it("writes only fps, and every preset at every offered rate is a document the validator accepts", () => {
+    for (const p of EXPORT_PRESETS)
+      for (const r of EXPORT_FPS) {
+        const m = setExportFps(applyExportPreset(model(), p.id), r);
+        expect(m.fps).toBe(r);
+        expect([m.width, m.height]).toEqual([p.width, p.height]);
+        expect(exportPresetOf(m)).toBe(p.id);
+        expect(validateTimeline(toDoc(m)), `${p.id}@${r}`).toEqual([]);
+      }
+  });
+
+  it("refuses a rate it does not offer, and the same rate again is no change", () => {
+    const m = model();
+    expect(setExportFps(m, 30)).toBe(m);
+    for (const bad of [50, 45, 0, "60", null, undefined, 60.5, Number.NaN]) {
+      expect(setExportFps(m, bad), String(bad)).toBe(m);
+      expect(isExportFps(bad), String(bad)).toBe(false);
+    }
+    const sixty = setExportFps(m, 60);
+    expect(sixty.clips).toBe(m.clips);
+    expect(toDoc(sixty).fps).toBe(60);
+  });
+
+  it("a full-length video at 60 fps stays inside the library's decode budget in every format", () => {
+    // modules/media_library.DECODE_BUDGET_PX (1e12); modules/export_presets.py judges the same at max(FPS_VALUES).
+    for (const p of EXPORT_PRESETS)
+      expect(p.width * p.height * Math.max(...FPS_VALUES) * p.maxDurationS, p.id).toBeLessThanOrEqual(1e12);
   });
 });
 

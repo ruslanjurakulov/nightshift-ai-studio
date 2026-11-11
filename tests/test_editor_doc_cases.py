@@ -70,14 +70,36 @@ class DocCasesTestCase(unittest.TestCase):
             "cross-fade on the first clip": "a cross-fade needs a clip before it",
             "cross-fades meet inside a clip": "its cross-fades (0.600 + 0.600 s) are longer than the clip",
             "music of another organization": "is not available",
-            "a video on the music track": "a A track takes audio",
-            "an image on the music track": "a A track takes audio",
+            "an image on the music track": "a A track takes audio or video",
             "a sound on the picture track": "a V track takes video or image",
         }
         for name, needle in needles.items():
             with self.subTest(name):
                 problems = verdict(cases[name])
                 self.assertTrue(any(needle in p for p in problems), problems)
+
+    def test_the_editor_parity_cases_fail_for_the_reason_their_name_gives(self):
+        # speed 0.1-10 (a curve stays 0.25-4) and a clip's own volume (gain_db -60..6 on a V clip)
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        needles = {
+            "speed above 10": "speed must be a number >= 0.1 and <= 10",
+            "speed below 0.1": "speed must be a number >= 0.1 and <= 10",
+            "a speed curve point above 4": "speed must be a number >= 0.25 and <= 4",
+            "a speed curve point below 0.25": "speed must be a number >= 0.25 and <= 4",
+            "clip sound above +6 dB": "gain_db must be a number >= -60 and <= 6",
+            "clip sound below -60 dB": "gain_db must be a number >= -60 and <= 6",
+            "clip sound gain as text": "gain_db must be a number",
+            "clip sound gain as true": "gain_db must be a number",
+            "clip sound gain not a number": "gain_db must be a number",
+        }
+        for name, needle in needles.items():
+            with self.subTest(name):
+                problems = verdict(cases[name])
+                self.assertTrue(any(needle in p for p in problems), problems)
+        for name in ("speed 10 (the fastest)", "speed 0.1 (the slowest)", "clip sound at +6 dB (200 %)",
+                     "clip sound at -60 dB (0 %)", "a video's sound on a sound track (detached audio)"):
+            with self.subTest(name):
+                self.assertEqual(verdict(cases[name]), [])
 
     def test_the_grade_cases_fail_for_the_reason_their_name_gives(self):
         cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}

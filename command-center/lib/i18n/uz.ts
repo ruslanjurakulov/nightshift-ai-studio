@@ -21,6 +21,7 @@ import { overlayUz } from "./overlay/uz";
 import { shapesUz } from "./shapes/uz";
 import { exportPresetUz } from "./editor-presets/uz";
 import { exportRatiosUz } from "./editor-ratios/uz";
+import { clipToolsUz } from "./editor-clip-tools/uz";
 import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
@@ -5118,6 +5119,8 @@ export const uz: Dictionary = {
     /** Export format picker: ./editor-presets/uz.ts. */
     exportPreset: exportPresetUz,
     exportRatios: exportRatiosUz,
+    /** Frame rate, clip volume, detach audio, duplicate / copy / paste: ./editor-clip-tools/uz.ts. */
+    clipTools: clipToolsUz,
     /** Cross-fade styles and text looks: ./editor-looks/uz.ts. */
     looks: looksUz,
     fx: fxUz,

@@ -34,6 +34,8 @@ import {
   RAMP_MIN_GAP,
   RAMP_MIN_POINTS,
   RENDER_PLAIN_FACTOR,
+  RAMP_SPEED_MAX,
+  RAMP_SPEED_MIN,
   SPEED_MAX,
   SPEED_MIN,
   STABILIZE_MAX_DOC_S,
@@ -481,7 +483,7 @@ export function curveFromSpeeds(speeds: readonly number[]): SpeedPoint[] {
   const n = speeds.length;
   return speeds.map((s, i) => ({
     at: n === 1 ? 0 : round3(i / (n - 1)),
-    speed: round3(clamp(s, SPEED_MIN, SPEED_MAX)),
+    speed: round3(clamp(s, RAMP_SPEED_MIN, RAMP_SPEED_MAX)),
   }));
 }
 
@@ -489,7 +491,7 @@ function cleanCurve(points: readonly SpeedPoint[]): SpeedPoint[] | null {
   if (points.length < RAMP_MIN_POINTS || points.length > RAMP_MAX_POINTS) return null;
   const out = points.map((p) => ({
     at: round3(clamp(finite(p.at, 0), 0, 1)),
-    speed: round3(clamp(finite(p.speed, 1), SPEED_MIN, SPEED_MAX)),
+    speed: round3(clamp(finite(p.speed, 1), RAMP_SPEED_MIN, RAMP_SPEED_MAX)),
   }));
   out[0].at = 0;
   out[out.length - 1].at = 1;
@@ -546,7 +548,7 @@ export function setCurvePoint(
   const curve = at ? curveOf(at) : null;
   if (!at || !curve || index < 0 || index >= curve.length) return model;
   const p = { ...curve[index] };
-  if (patch.speed !== undefined) p.speed = clamp(finite(patch.speed, p.speed), SPEED_MIN, SPEED_MAX);
+  if (patch.speed !== undefined) p.speed = clamp(finite(patch.speed, p.speed), RAMP_SPEED_MIN, RAMP_SPEED_MAX);
   if (patch.at !== undefined && index > 0 && index < curve.length - 1) {
     p.at = clamp(
       finite(patch.at, p.at),

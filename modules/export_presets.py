@@ -3,8 +3,10 @@ for an export (YouTube wide, vertical for Shorts / Reels / TikTok, square, a
 4:5 feed shape).
 
 A preset is a label's worth of PARAMETERS and nothing else: a frame size, a
-frame rate and a recommended length. It is not a new render path. Choosing one
-only writes ``width`` / ``height`` / ``fps`` into the timeline document, and the
+default frame rate and a recommended length. It is not a new render path. Choosing
+one only writes ``width`` / ``height`` into the timeline document; the rate is the
+document's own ``fps``, which the editor's rate picker (24, 25, 30 or 60) writes
+on its own, so a 1080p project at 60 fps is still "YouTube 1080p". The
 document then goes through exactly what any document goes through:
 ``timeline.validate`` (every frame, fps and render-budget rule), the same
 ``timeline_render`` layout, the same ``render_backend`` commands under the same
@@ -23,7 +25,16 @@ frame, a ten-hour cap) fails at once instead of at a member's export:
 * the frame rate is one of ``timeline.FPS_VALUES``;
 * the recommended length is at most ``editor_export.EXPORT_MAX_S`` (the export's
   own cap, the database's too), and a full-length video at the preset's frame
-  stays inside the library's decode budget (``media_library.DECODE_BUDGET_PX``).
+  AND THE FASTEST RATE A DOCUMENT MAY HAVE (``max(timeline.FPS_VALUES)``, 60: the
+  rate is chosen apart from the frame) stays inside the library's decode budget
+  (``media_library.DECODE_BUDGET_PX``).
+
+No 1440p or 4K preset: a new format is a new migration on purpose (the database's
+own copy of this list, ``editor_export_frame`` in 0129, is compared id for id by
+tests/test_editor_export_frame_migration.py), and above 1440p every export is in
+the large-frame regime (no blur or zoom past 2 on a cross-fade, no interpolation,
+a 0.7 s reverse at 4K60) and measured at about 4 s of render per second at 4K60
+with the bundled ffmpeg, past the worker's 3 s per second budget.
 
 The recommended length is advice, not a refusal: a vertical project that was
 already 4 minutes long exported before presets existed and must keep doing so.
@@ -66,6 +77,7 @@ class Preset:
     id: str
     width: int
     height: int
+    #: The format's usual rate (shown beside it); the export's rate is the document's own ``fps``.
     fps: int
     #: Longer than this, the picker says the video is long for the format.
     #: Advice: the export itself is only ever refused by the export's own limits.
@@ -103,16 +115,16 @@ def parse_preset(raw: Any) -> Preset:
     if not (_is_number(cap) and 0 < cap <= editor_export.EXPORT_MAX_S):
         raise PresetDataError(f"{where}: max_duration_s must be above 0 and at most "
                               f"{editor_export.EXPORT_MAX_S:g} (the export's own cap)")
-    if ml.decode_work(w, h, fps, cap) > ml.DECODE_BUDGET_PX:
+    if ml.decode_work(w, h, max(tl.FPS_VALUES), cap) > ml.DECODE_BUDGET_PX:
         raise PresetDataError(f"{where}: a video of max_duration_s at this frame passes the library's decode budget")
     return Preset(pid, w, h, fps, float(cap))
 
 
 def load(path: Path = PRESETS_PATH) -> Dict[str, Preset]:
     """The presets by id, in file order. Raises PresetDataError for anything
-    that is not the documented shape, a duplicate id, or two presets that are
-    the same frame at the same rate (the picker tells them apart by the
-    document's frame, so they must differ)."""
+    that is not the documented shape, a duplicate id, or two presets of the
+    same frame (the picker tells them apart by the document's frame alone, the
+    rate being chosen on its own, so they must differ)."""
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
@@ -127,9 +139,9 @@ def load(path: Path = PRESETS_PATH) -> Dict[str, Preset]:
         p = parse_preset(raw)
         if p.id in out:
             raise PresetDataError(f"duplicate preset id {p.id!r}")
-        if (p.width, p.height, p.fps) in frames:
-            raise PresetDataError(f"preset {p.id!r} repeats another preset's frame and rate")
-        frames.add((p.width, p.height, p.fps))
+        if (p.width, p.height) in frames:
+            raise PresetDataError(f"preset {p.id!r} repeats another preset's frame")
+        frames.add((p.width, p.height))
         out[p.id] = p
     return out
 
@@ -144,12 +156,13 @@ def get(preset_id: Any, presets: Optional[Mapping[str, Preset]] = None) -> Prese
 
 
 def apply(doc: Mapping[str, Any], preset_id: Any, presets: Optional[Mapping[str, Preset]] = None) -> dict:
-    """A copy of ``doc`` with the preset's frame size and rate and nothing else
-    changed. It is NOT validated here: pass it to ``timeline.validate`` /
+    """A copy of ``doc`` with the preset's frame size and nothing else changed
+    (its ``fps`` is the document's own: the rate is chosen apart from the frame).
+    It is NOT validated here: pass it to ``timeline.validate`` /
     ``timeline.load`` like any document (``problems`` below does)."""
     p = get(preset_id, presets)
     out = copy.deepcopy(dict(doc))
-    out["width"], out["height"], out["fps"] = p.width, p.height, p.fps
+    out["width"], out["height"] = p.width, p.height
     return out
 
 
@@ -161,12 +174,12 @@ def problems(doc: Mapping[str, Any], preset_id: Any, presets: Optional[Mapping[s
 
 
 def preset_of(doc: Mapping[str, Any], presets: Optional[Mapping[str, Preset]] = None) -> Optional[Preset]:
-    """The preset a document's frame and rate are exactly, or None (a custom
-    size, or a document from another tool: no preset is shown as chosen)."""
+    """The preset a document's frame is exactly, at whatever rate, or None (a
+    custom size, or a document from another tool: no preset is shown as chosen)."""
     table = presets if presets is not None else load()
-    key = (doc.get("width"), doc.get("height"), doc.get("fps"))
+    key = (doc.get("width"), doc.get("height"))
     for p in table.values():
-        if key == (p.width, p.height, p.fps):
+        if key == (p.width, p.height):
             return p
     return None
 

@@ -21,7 +21,7 @@ not a project dependency — tests keep the two in sync)::
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s,
                              style?: <one of XFADE_STYLES, crossfade only> },
-              speed?: 0.25..4, audio?: bool, reverse?: bool, freeze?: bool,
+              speed?: 0.1..10, audio?: bool, gain_db?: -60..6, reverse?: bool, freeze?: bool,
               denoise?: bool, loudnorm?: bool,
               crop?: {x?, y?, w?, h?}, angle?: -180..180,
               speed_curve?: [ {at: 0..1, speed: 0.25..4}, ... 2-6 points ], interpolate?: bool,
@@ -95,8 +95,10 @@ Rules this module keeps:
 * **Speed changes how long a clip lasts, not what it shows.** ``in_s`` and
   ``out_s`` are SOURCE times; a V clip at ``speed`` 2 plays that range in
   half the time, so its end on the timeline is
-  ``start_s + (out_s - in_s) / speed``. The range is 0.25-4; the clip's own
-  sound keeps its pitch (a chain of ``atempo`` stages, each within 0.5-2).
+  ``start_s + (out_s - in_s) / speed``. The range is 0.1-10 (``SPEED_MIN`` /
+  ``SPEED_MAX``; a speed CURVE stays inside 0.25-4, ``RAMP_SPEED_MIN`` /
+  ``RAMP_SPEED_MAX``); the clip's own sound keeps its pitch (a chain of ``atempo``
+  stages, each within 0.5-2).
 * **Reverse and freeze are clip options.** ``reverse: true`` plays the source
   range ``in_s``..``out_s`` backwards (picture and the clip's own sound), at its
   ``speed``. ffmpeg's ``reverse`` holds every frame of the range in memory, so
@@ -252,7 +254,14 @@ Rules this module keeps:
   picture-overlay path; a document without ``shapes`` renders the commands it always did.
 * **A video clip's own sound is opt-in** (``audio: true``) so documents
   written before it render exactly as they did. It follows the clip's trim
-  and speed; a source with no sound track is silent, never an error.
+  and speed; a source with no sound track is silent, never an error. Its level
+  is ``gain_db`` (``GAIN_DB_MIN``-``CLIP_GAIN_DB_MAX``: from silent to about 200 %,
+  0 = as recorded, dropped by ``normalise``), applied after ``denoise`` /
+  ``loudnorm`` like an A clip's; it means nothing without ``audio: true``.
+* **An A clip may play a VIDEO file's sound** (the editor's "detach audio": the
+  clip's own sound moved to a track of its own, where it is moved, trimmed and
+  deleted like any sound). An A clip on a video whose file has no sound track is
+  silent, never an error, exactly like a V clip's own sound.
 """
 
 from __future__ import annotations
@@ -362,8 +371,24 @@ SHADOW_MAX = 20.0
 BOX_OPACITY_DEFAULT = 0.7
 #: Per-clip playback speed (render_spec.SPEED_MIN/MAX are the same numbers; a test
 #: pins them). The sound of a clip outside 0.5-2 goes through a chain of
-#: ``atempo`` stages, each inside that range, so its pitch is kept.
-SPEED_MIN, SPEED_MAX = 0.25, 4.0
+#: ``atempo`` stages, each inside that range, so its pitch is kept. 0.25-4 until
+#: the editor-parity change widened it: the picture is one ``setpts`` at any speed
+#: and the sound a longer ``atempo`` chain (10x = 2, 2, 2, 1.25; 0.1x = 0.5, 0.5,
+#: 0.5, 0.8). Measured on a 4-core box with the bundled ffmpeg 7.0.2 (1080p30
+#: source and project): 0.80 s of render per timeline second at 1x, 1.16 at 4x,
+#: 1.58 at 10x, 0.46 at 0.1x, inside the worker's ``render_timeout_s`` (3 s per
+#: second + 120). A fast clip decodes ``speed`` seconds of source per second, so a
+#: 4K60 SOURCE is far dearer (9.0 s per second at 4x, 13.3 at 10x): that was
+#: already over the time budget at 4x, and the worker's wall-clock limit is what
+#: stops it (the export fails with a reason, never hangs).
+SPEED_MIN, SPEED_MAX = 0.1, 10.0
+#: A speed curve's points keep the narrower range its sound slices were tuned for
+#: (render_spec.RAMP_SPEED_* are the same numbers; a test pins them).
+RAMP_SPEED_MIN, RAMP_SPEED_MAX = 0.25, 4.0
+#: A video clip's own sound may be raised to about 200 % (+6 dB) and lowered to
+#: silence; an A clip goes to +12 dB (``GAIN_DB_MAX``), a clip's own sound is not
+#: a mastering tool.
+CLIP_GAIN_DB_MAX = 6.0
 
 #: Entrance / exit animations of a text or an overlay (render_spec.ANIM_* are
 #: the same lists; a test pins them). The name decides which filter or ASS tag
@@ -494,7 +519,9 @@ ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds an overlay may use (a picture or a video, never a sound).
 OVERLAY_ASSET_KINDS = (ASSET_VIDEO, ASSET_IMAGE)
 #: Which asset kinds a clip on each track kind may use.
-TRACK_ASSET_KINDS = {KIND_V: (ASSET_VIDEO, ASSET_IMAGE), KIND_A: (ASSET_AUDIO,)}
+#: An A clip may take a video file too: it plays that file's sound (the editor's
+#: "detach audio"); a picture has none.
+TRACK_ASSET_KINDS = {KIND_V: (ASSET_VIDEO, ASSET_IMAGE), KIND_A: (ASSET_AUDIO, ASSET_VIDEO)}
 
 #: A pathological document must not become a megabyte of error text.
 _MAX_REPORTED = 20
@@ -517,7 +544,7 @@ _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
                                   "grade", "move", "reverse", "freeze", "denoise", "loudnorm", "crop", "angle", "speed_curve",
-                                  "interpolate", "stabilize") + _EFFECT_KEYS
+                                  "interpolate", "stabilize", "gain_db") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s", "denoise", "loudnorm")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
@@ -886,6 +913,8 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
         speed = clip["speed"] if (_is_num(clip["speed"]) and SPEED_MIN <= clip["speed"] <= SPEED_MAX) else None
     if kind == KIND_V and "audio" in clip and not isinstance(clip["audio"], bool):
         problems.append(f"{where}: audio must be true or false")
+    if kind == KIND_V:
+        _num_in(clip, "gain_db", GAIN_DB_MIN, CLIP_GAIN_DB_MAX, where, problems)
     ramp = None
     if kind == KIND_V and "speed_curve" in clip:
         ramp = _validate_speed_curve(clip, where, problems)
@@ -987,9 +1016,9 @@ def _validate_speed_curve(clip, where, problems):
             ok = False
             continue
         _num_in(p, "at", 0, 1, pw, problems)
-        _num_in(p, "speed", SPEED_MIN, SPEED_MAX, pw, problems)
+        _num_in(p, "speed", RAMP_SPEED_MIN, RAMP_SPEED_MAX, pw, problems)
         if not (_is_num(p.get("at")) and 0 <= p["at"] <= 1 and _is_num(p.get("speed"))
-                and SPEED_MIN <= p["speed"] <= SPEED_MAX):
+                and RAMP_SPEED_MIN <= p["speed"] <= RAMP_SPEED_MAX):
             ok = False
             continue
         pts.append((p["at"], p["speed"]))
@@ -1497,14 +1526,15 @@ def speech_spans(doc: dict, sounding: Optional[Callable[[dict], bool]] = None
                  ) -> List[Tuple[float, float]]:
     """``(start, end)`` of every stretch of speech on the timeline, sorted: the
     clips of every A track whose role is ``speech``, and every V clip that
-    plays its own sound (``audio: true``). ``sounding`` narrows the V clips to
+    plays its own sound (``audio: true``). ``sounding`` narrows the clips to
     those whose source is known to carry sound (the render passes it; a
-    silent file has nothing to duck under)."""
+    silent file has nothing to duck under): every such V clip, and a speech
+    clip on a VIDEO file (a detached sound), whose file may have none."""
     out: List[Tuple[float, float]] = []
     for track in doc.get("tracks") or []:
         kind = track.get("kind")
         for clip in track.get("clips") or []:
-            if kind == KIND_A and track.get("role") == "speech":
+            if kind == KIND_A and track.get("role") == "speech" and (sounding is None or sounding(clip)):
                 out.append((_ms(clip["start_s"]), clip_end_s(clip)))
             elif kind == KIND_V and clip.get("audio") is True and (sounding is None or sounding(clip)):
                 out.append((_ms(clip["start_s"]), clip_end_s(clip)))
@@ -1684,6 +1714,10 @@ def normalise(doc: dict) -> dict:
                     for k in ("reverse", "freeze", "denoise", "loudnorm"):
                         if c.get(k) is False:
                             del c[k]
+                    if "gain_db" in c:
+                        c["gain_db"] = _ms(c["gain_db"])
+                        if c["gain_db"] == 0:
+                            del c["gain_db"]   # as recorded: the clip it was without the field
                     if "speed_curve" in c:
                         c["speed_curve"] = [{"at": _ms(p["at"]), "speed": _ms(p["speed"])} for p in c["speed_curve"]]
                     for k in ("interpolate", "stabilize"):

@@ -4,16 +4,21 @@ import { useId } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import {
+  EXPORT_FPS,
   EXPORT_PRESETS,
   exportPresetById,
   exportPresetOf,
+  isExportFps,
   isLongForPreset,
+  type ExportFps,
   type ExportPresetId,
 } from "@/lib/editorExportPresets";
 import { formatClock } from "@/lib/editorExportStatus";
 
 /**
- * The export format: YouTube wide, vertical (Shorts / Reels / TikTok), square, 4:5.
+ * The export format: YouTube wide, vertical (Shorts / Reels / TikTok), square, 4:5, and
+ * the frame rate (24, 25, 30 or 60), chosen apart: the format is the frame, the rate is
+ * the whole video's.
  *
  * Choosing one is the same undoable document edit the frame picker makes (frame size
  * and rate), so it is saved with the project and the export renders the saved version
@@ -30,6 +35,7 @@ export function ExportPresetPicker({
   fps,
   totalS,
   onChange,
+  onFps,
 }: {
   width: number;
   height: number;
@@ -37,11 +43,13 @@ export function ExportPresetPicker({
   /** The video's length in seconds, for the advice line. */
   totalS: number;
   onChange: (id: ExportPresetId) => void;
+  onFps: (fps: ExportFps) => void;
 }) {
   const { t } = useI18n();
   const ep = t.editor.exportPreset;
+  const ct = t.editor.clipTools.fps;
   const id = useId();
-  const current = exportPresetOf({ width, height, fps });
+  const current = exportPresetOf({ width, height });
   const preset = current ? exportPresetById(current) : null;
   const names: Record<ExportPresetId, string> = ep.names;
   const long = current !== null && isLongForPreset(current, totalS);
@@ -82,7 +90,7 @@ export function ExportPresetPicker({
             ? fmt(ep.detail, {
                 w: preset.width,
                 h: preset.height,
-                fps: preset.fps,
+                fps,
               })
             : fmt(ep.custom, { w: width, h: height, fps })}{" "}
           {ep.hint}
@@ -95,6 +103,35 @@ export function ExportPresetPicker({
                 max: formatClock(preset.maxDurationS),
               })
             : null}
+        </p>
+      </fieldset>
+      <fieldset
+        className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0 pb-1"
+        aria-describedby={`${id}-fps-hint`}
+      >
+        <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">{ct.legend}</legend>
+        <div className="flex flex-wrap gap-1.5">
+          {EXPORT_FPS.map((r) => (
+            <label
+              key={r}
+              className="ns-chip"
+              data-radio=""
+              data-on={fps === r ? "true" : undefined}
+            >
+              <input
+                type="radio"
+                name={`${id}-fps`}
+                value={r}
+                checked={fps === r}
+                onChange={() => onFps(r)}
+                className="sr-only"
+              />
+              {fmt(ct.value, { fps: r })}
+            </label>
+          ))}
+        </div>
+        <p id={`${id}-fps-hint`} className="m-0 text-xs text-[var(--color-muted)]">
+          {isExportFps(fps) ? ct.hint : `${fmt(ct.other, { fps })} ${ct.hint}`}
         </p>
       </fieldset>
     </details>

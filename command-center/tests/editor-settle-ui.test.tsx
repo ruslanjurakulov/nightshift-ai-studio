@@ -216,17 +216,17 @@ describe("clean-up is not heard in the preview", () => {
 });
 
 describe("number boxes show what the document will hold", () => {
-  const speedBox = () => screen.getByRole("spinbutton", { name: fmt(fxe.speed.custom, { min: 0.25, max: 4 }) }) as HTMLInputElement;
+  const speedBox = () => screen.getByRole("spinbutton", { name: fmt(fxe.speed.custom, { min: 0.1, max: 10 }) }) as HTMLInputElement;
   it("a speed typed past the range shows the clamped value, even when that is the value already held", () => {
-    mount(squareDoc({ out_s: 4, speed: 4 }));
+    mount(squareDoc({ out_s: 4, speed: 10 }));
     fireEvent.change(speedBox(), { target: { value: "99" } });
     fireEvent.keyDown(speedBox(), { key: "Enter" });
     expect(speedBox().value).toBe(String(SPEED_MAX));
     fireEvent.change(speedBox(), { target: { value: "0.01" } });
     fireEvent.blur(speedBox());
-    expect(speedBox().value).toBe("0.25");
+    expect(speedBox().value).toBe("0.1");
     // the hint the box is described by is the one in the dictionary
-    expect(screen.getByText(fmt(fxe.speed.customHint, { min: 0.25, max: 4 }))).toBeTruthy();
+    expect(screen.getByText(fmt(fxe.speed.customHint, { min: 0.1, max: 10 }))).toBeTruthy();
     expect(speedBox().getAttribute("aria-describedby")).toBeTruthy();
   });
 

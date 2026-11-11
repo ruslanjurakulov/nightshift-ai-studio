@@ -213,7 +213,6 @@ describe("PUT /api/editor/projects/<id>", () => {
   });
 
   it.each([
-    ["a video on the music track", VID, "invalid_doc"],
     ["an image on the music track", PIC, "invalid_doc"],
     // Another organization's file reads like a made-up one: not there.
     ["a file this member cannot read", "0d000000-0000-4000-8000-0000000000aa", "invalid_asset"],
@@ -243,8 +242,8 @@ describe("PUT /api/editor/projects/<id>", () => {
   });
 
   it.each([
-    ["speed 5", goodDoc({ speed: 5 })],
-    ["speed 0.2", goodDoc({ speed: 0.2 })],
+    ["speed 11", goodDoc({ speed: 11 })],
+    ["speed 0.05", goodDoc({ speed: 0.05 })],
     ["out before in", goodDoc({ in_s: 9, out_s: 1 })],
     ["a path smuggled in", goodDoc({ path: "/etc/passwd" })],
     ["audio as text", goodDoc({ audio: "yes" })],
