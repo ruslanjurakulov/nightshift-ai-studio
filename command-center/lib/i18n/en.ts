@@ -10,6 +10,7 @@ import { confirmSheetsEn } from "./confirm-sheets/en";
 import { ownerRpcEn } from "./owner-rpc/en";
 import { marketingEn } from "./marketing/en";
 import { modelSwitchEn } from "./model-switch/en";
+import { modelBudgetEn } from "./model-budget/en";
 import { modelKeysEn } from "./model-keys/en";
 import { seriesPlanEn } from "./series-plan/en";
 import { ownerTruthEn } from "./owner-truth/en";
@@ -51,6 +52,7 @@ export const en = {
   ownerRpc: ownerRpcEn,
   marketing: marketingEn,
   modelSwitch: modelSwitchEn,
+  modelBudget: modelBudgetEn,
   modelKeys: modelKeysEn,
   seriesPlan: seriesPlanEn,
   ownerTruth: ownerTruthEn,

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
@@ -6,6 +7,7 @@ import { ErrorState } from "@/components/ReadError";
 import { ModelAvailabilityBoard } from "@/components/models/ModelAvailabilityBoard";
 import { ModelDiscovery } from "@/components/models/ModelDiscovery";
 import { ModelSwitchBoard } from "@/components/models/ModelSwitchBoard";
+import { ModelBudgetBoard } from "@/components/models/ModelBudgetBoard";
 import { isOperator } from "@/lib/auth/org-roles";
 import { resolvePlatformRole } from "@/lib/auth/roles";
 import { modelSwitchOn, readModelSwitches } from "@/lib/server/model-switch";
@@ -13,6 +15,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { isMissingFunction } from "@/lib/orgs";
 import { readCreditPriceList } from "@/lib/server/credits";
+import { chargedPrices } from "@/lib/credits";
+import { budgetModelsFrom } from "@/lib/owner/budget";
 import { readCustomerModels, readOperatorModels } from "@/lib/server/model-discovery";
 import { coerceAdminModels, latestProbes } from "@/lib/models-admin";
 import { filtersFromQuery } from "@/lib/models-discovery";
@@ -37,7 +41,11 @@ export const revalidate = 0;
  *  - the platform OWNER, with NIGHTSHIFT_MODEL_SWITCH on, also has the model
  *    switches (?view=switch, migration 0124): a provider or a model turned OFF
  *    for now (a vendor balance is empty). That is a different thing from the
- *    availability above, which is the sale lifecycle.
+ *    availability above, which is the sale lifecycle;
+ *  - the platform OWNER also has "Prices & budget" (?view=budget): every
+ *    registry model with the vendor's own price and a dollar calculator
+ *    (lib/owner/budget.ts). Vendor costs are the platform's, so anybody else
+ *    who opens the address gets a 404 and nothing is read for them.
  *
  * Read as the signed-in person; no service key. Prices come from the live
  * price list (credit_prices) and are only shown, never edited here (the price
@@ -56,22 +64,29 @@ export default async function ModelsPage({
   const q = await searchParams;
   const manage = operator && q.view === "manage";
   const switchView = operator && q.view === "switch";
+  const budgetView = q.view === "budget";
+  // The platform owner (an admin who is not the owner is not), fail closed (null is no). Asked only of an operator: a
+  // customer, or anybody opening ?view=budget who is not an operator, costs no lookup. An operator is asked on every view
+  // because the views' navigation, drawn on each of them, carries the owner's "Prices & budget" link.
+  const platformOwner = operator && (await resolvePlatformRole()) === "owner";
+  // Vendor costs are the platform owner's alone: anybody else opening the address learns nothing, not even that it exists.
+  if (budgetView && !platformOwner) notFound();
   // The owner's switches (0124): the view exists only for the platform owner and only while the server variable is on (dark otherwise).
   const switchOn = modelSwitchOn();
-  const isOwner = operator && switchOn && (await resolvePlatformRole()) === "owner";
+  const isOwner = switchOn && platformOwner;
   const { slug } = await getChannelContext();
 
   const header = (
     <PageHeader
       icon="models"
-      title={c.title}
-      subtitle={switchView ? t.modelSwitch.subtitle : manage ? t.models.subtitle : operator ? c.subtitleOperator : c.subtitle}
+      title={budgetView ? t.modelBudget.title : c.title}
+      subtitle={budgetView ? undefined : switchView ? t.modelSwitch.subtitle : manage ? t.models.subtitle : operator ? c.subtitleOperator : c.subtitle}
     />
   );
   // The operator's two views: the catalog, and the availability switches.
   const views = operator ? (
     <nav aria-label={c.viewsLabel} className={styles.views}>
-      <Link href={channelPath(slug, "/models")} aria-current={manage || switchView ? undefined : "page"}>
+      <Link href={channelPath(slug, "/models")} aria-current={manage || switchView || budgetView ? undefined : "page"}>
         {c.viewBrowse}
       </Link>
       <Link href={`${channelPath(slug, "/models")}?view=manage`} aria-current={manage ? "page" : undefined}>
@@ -80,6 +95,11 @@ export default async function ModelsPage({
       {isOwner && (
         <Link href={`${channelPath(slug, "/models")}?view=switch`} aria-current={switchView ? "page" : undefined}>
           {t.modelSwitch.viewSwitch}
+        </Link>
+      )}
+      {platformOwner && (
+        <Link href={`${channelPath(slug, "/models")}?view=budget`} aria-current={budgetView ? "page" : undefined}>
+          {t.modelBudget.viewBudget}
         </Link>
       )}
     </nav>
@@ -103,6 +123,38 @@ export default async function ModelsPage({
 
   const supabase = await createClient();
   if (!supabase) return <NotConfigured />;
+
+  if (budgetView) {
+    // The registry as synced from schemas/model_registry.json (model_registry_admin(): the database refuses anyone but a
+    // platform admin) and the owner's price list, folded to what a customer is charged. Read only; nothing is written.
+    const [registry, prices] = await Promise.all([supabase.rpc("model_registry_admin"), readCreditPriceList(supabase)]);
+    if (registry.error) {
+      if (isMissingFunction(registry.error)) return note(t.modelBudget.notEnabled);
+      if (registry.error.code === "42501") notFound();
+      return (
+        <div className="rhythm ns-open">
+          {header}
+          {views}
+          <div>
+            <ErrorState compact message={t.modelBudget.failed} />
+          </div>
+        </div>
+      );
+    }
+    const charged =
+      prices.supported && !prices.failed
+        ? Object.fromEntries(Object.values(chargedPrices(prices.prices)).map((p) => [p.unit, p.creditsPerUnit]))
+        : null;
+    const groups = budgetModelsFrom(registry.data, charged, new Date().toISOString().slice(0, 10));
+    if (Object.values(groups).every((g) => g.length === 0)) return note(t.modelBudget.empty);
+    return (
+      <div className="rhythm ns-open">
+        {header}
+        {views}
+        <ModelBudgetBoard groups={groups} pricesUnread={charged === null} />
+      </div>
+    );
+  }
 
   if (switchView) {
     // The owner's switches (0124). Off by default: with the server variable off nothing is read.

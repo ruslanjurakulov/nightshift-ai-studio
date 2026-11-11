@@ -10,6 +10,7 @@ import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
 import { marketingUz } from "./marketing/uz";
 import { modelSwitchUz } from "./model-switch/uz";
+import { modelBudgetUz } from "./model-budget/uz";
 import { modelKeysUz } from "./model-keys/uz";
 import { seriesPlanUz } from "./series-plan/uz";
 import { ownerTruthUz } from "./owner-truth/uz";
@@ -43,6 +44,7 @@ export const uz: Dictionary = {
   ownerRpc: ownerRpcUz,
   marketing: marketingUz,
   modelSwitch: modelSwitchUz,
+  modelBudget: modelBudgetUz,
   modelKeys: modelKeysUz,
   seriesPlan: seriesPlanUz,
   ownerTruth: ownerTruthUz,

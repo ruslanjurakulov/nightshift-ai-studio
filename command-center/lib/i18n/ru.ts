@@ -10,6 +10,7 @@ import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
 import { marketingRu } from "./marketing/ru";
 import { modelSwitchRu } from "./model-switch/ru";
+import { modelBudgetRu } from "./model-budget/ru";
 import { modelKeysRu } from "./model-keys/ru";
 import { seriesPlanRu } from "./series-plan/ru";
 import { ownerTruthRu } from "./owner-truth/ru";
@@ -43,6 +44,7 @@ export const ru: Dictionary = {
   ownerRpc: ownerRpcRu,
   marketing: marketingRu,
   modelSwitch: modelSwitchRu,
+  modelBudget: modelBudgetRu,
   modelKeys: modelKeysRu,
   seriesPlan: seriesPlanRu,
   ownerTruth: ownerTruthRu,
