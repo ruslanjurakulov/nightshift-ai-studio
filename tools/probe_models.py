@@ -19,7 +19,10 @@ This is the admin-run tool that makes that call and records it:
 
 ``--all`` skips every model whose ``terms_gate`` is open (vendor terms not cleared):
 a gated model is probed only when it is named with ``--model``, so the workflow's
-empty "model" input never makes a paid call to one.
+empty "model" input never makes a paid call to one. A REGISTRY-ONLY model (one
+whose capability the database does not know yet, ``ModelEntry.registry_only``) is
+never probed, named or not: its result could not be recorded, and "a probe that
+is not recorded is money spent for nothing".
 
 Run it on the worker (the provider keys live in its env; docs/DEPLOY_AX42.md)
 with SUPABASE_URL and SUPABASE_SERVICE_KEY set. Each probe is the registry
@@ -184,18 +187,34 @@ def probe_image(dest: Path, *, end: bool = False) -> Path:
     return dest
 
 
-#: A video upscale's probe source (0052): two seconds of ffmpeg's test pattern
-#: at 24 fps — nothing of anyone's, and the cheapest frame count to bill.
+#: The source of every probe that starts from a video (registry ``probe.input_video``: the video upscale of 0052, the video
+#: ops of 0100, music for a video): two seconds of ffmpeg's test pattern at 24 fps, nothing of anyone's, and the cheapest
+#: frame count to bill.
 PROBE_VIDEO_ARGS = ("-f", "lavfi", "-i", "testsrc2=size=640x360:rate=24", "-t", "2",
                     "-pix_fmt", "yuv420p", "-c:v", "libx264", "-an")
+
+
+def _ffmpeg() -> Optional[str]:
+    """The ffmpeg the rest of the code renders with (``render_backend.resolve_ffmpeg``: the pinned imageio-ffmpeg binary,
+    else ``ffmpeg`` on PATH), or None when neither is there. Not ``shutil.which("ffmpeg")`` alone: the GitHub runner that
+    runs the Probe models workflow has the pinned binary but no system ffmpeg, so a PATH lookup skipped there every probe
+    that starts from a video. (The worker image installs ffmpeg with apt, so a probe run there behaved the same before;
+    it now runs the pinned binary, like every render.) Effect on cost: on the next Probe models run with an empty model
+    input, runway-video-upscale is probed for real when its key is set (about $0.34, a 2 s 24 fps source)."""
+    from modules.render_backend import resolve_ffmpeg  # noqa: PLC0415 - only a video probe needs the render module
+
+    exe = resolve_ffmpeg()
+    found = shutil.which(exe) if exe and os.sep not in exe else exe
+    return found if found and Path(found).is_file() and os.access(found, os.X_OK) else None
 
 
 def probe_video(dest: Path, *, runner: Callable[..., "subprocess.CompletedProcess"] = None) -> Path:
     """Draw the probe's source video. No ffmpeg here is our setup, not the
     vendor's answer: the probe is skipped (not_configured), never faked."""
-    exe = shutil.which("ffmpeg")
+    exe = _ffmpeg()
     if not exe:
-        raise AdapterError(E_NOT_CONFIGURED, "a video upscale probe needs ffmpeg on this machine")
+        raise AdapterError(E_NOT_CONFIGURED, "a probe that starts from a video needs ffmpeg on this machine (the "
+                                             "imageio-ffmpeg package, or ffmpeg on PATH)")
     run = runner or subprocess.run
     try:
         run([exe, "-y", "-v", "error", *PROBE_VIDEO_ARGS, str(dest)], capture_output=True, timeout=120, check=True)
@@ -299,8 +318,17 @@ def select(entries: Iterable, ids: Sequence[str], capability: Optional[str], eve
     # vendor terms are not cleared: a gated model is probed only when it is NAMED.
     # Likewise a model past its announced shutdown date (registry ``shutdown``): ``--all`` does not spend on it, and only a probe BY NAME
     # (which is how the owner learns whether the id still answers) is let through its adapter's refusal.
-    chosen = [e for e in entries if e.id in ids or (everything and not e.terms_gate and not e.shut_down())]
+    # A registry-only entry is never chosen, even by name: record_model_probe has no model row and no capability to store its
+    # result under, so the call would be paid for and lost (``registry_only_left_out`` is how the log says so).
+    chosen = [e for e in entries if not e.registry_only
+              and (e.id in ids or (everything and not e.terms_gate and not e.shut_down()))]
     return [e for e in chosen if capability is None or capability in e.capabilities]
+
+
+def registry_only_left_out(entries: Iterable, ids: Sequence[str], capability: Optional[str]) -> List:
+    """The registry-only entries that were NAMED and are not probed all the same (so the log can say why). Under ``--all``
+    an unnamed one is reported with the gated ones: every registry-only entry is gated (model_registry's cross rule)."""
+    return [e for e in entries if e.registry_only and e.id in ids and (capability is None or capability in e.capabilities)]
 
 
 def gated_left_out(entries: Iterable, ids: Sequence[str], capability: Optional[str], everything: bool) -> List:
@@ -363,6 +391,10 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
     setup_logging(env, stream, brief=args.brief)
 
     entries = select(model_registry.registry().values(), args.model, args.capability, args.all)
+    for e in registry_only_left_out(model_registry.registry().values(), args.model, args.capability):
+        logger.info(f"skipped {e.id}" if args.brief else
+                    f"SKIP {e.id}: registry-only ({', '.join(e.capabilities)} is not a capability the database knows yet), so a "
+                    f"probe could not be recorded and is not run; a migration must add the capability first")
     if not entries and not args.sync:
         logger.info("nothing selected: pass --model ID, --all, or --sync")
         return 2
