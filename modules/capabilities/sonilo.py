@@ -14,10 +14,12 @@ name them. Nothing here was called with a key.
 * A task is created with ``POST /v1/text-to-music`` or ``POST /v1/video-to-music`` (``multipart/form-data``) and
   ``mode=async``, which answers ``202 {"task_id", "status": "processing"}``; ``GET /v1/tasks/{task_id}`` answers ``status``
   (processing | succeeded | failed), ``audio[]`` with ``url`` / ``content_type`` / ``file_size`` / ``stream_index`` when it
-  succeeded, ``error {code, message}`` (and, in the errors page's example, ``"refunded": true``) when it failed.
+  succeeded, ``error {code, message}`` (and, in the errors page's example as read 2026-11-10, ``"refunded": true``; not found again when re-checked
+  2026-11-11, unconfirmed) when it failed.
 * WHY ASYNC, when the vendor's default is a stream: the stream answers the audio inside the submit's own response, so a
   worker that dies mid-stream has paid for a track nobody can fetch again. An async task has an id that is stored before
-  the first poll and its file is kept 7 days ("A temporary download URL for the audio file, valid for 7 days").
+  the first poll and its file is kept for a while (read 2026-11-10: "A temporary download URL for the audio file, valid
+  for 7 days"; not found again when re-checked 2026-11-11, so the 7 days are unconfirmed).
 * Authentication is ``Authorization: Bearer sk_...``. The key goes to the API host and nowhere else; no redirect is followed.
 * ``Accept-Encoding: identity`` rides every call, and an answer that comes back with another ``Content-Encoding`` is not
   used (at submit that is UNCONFIRMED SPEND, like any other unreadable answer). This does not bound memory: the HTTP
@@ -45,15 +47,16 @@ Not sent: ``video_url``, ``segments``, ``prompt_influence``, ``preserve_speech``
 links this adapter does not read). Not wired, so nobody can reach them: the stream mode, video-to-video, sound effects,
 combined sound, audio ducking, video analysis, proofread and dubbing.
 
-RESULT LINKS: the pages say the audio is "hosted on Sonilo storage" and print ``cdn.example.com`` in every example; no
-real host is named. ``RESULT_HOSTS`` is therefore EMPTY: every link is refused (fail closed) with the host it names and
+RESULT LINKS: no page names a real host (read 2026-11-10: "hosted on Sonilo storage", ``cdn.example.com`` in the
+examples; neither found again when re-checked 2026-11-11). ``RESULT_HOSTS`` is therefore EMPTY: every link is refused (fail closed) with the host it names and
 the ``SPEND MAY HAVE OCCURRED`` note. The first real probe ends that way; a person reads the host, checks it is Sonilo's,
 pins that EXACT host here (never a parent domain other customers' buckets share) and probes again. The first probe's
 task is not fetched again by any code path.
 
 BILLING: nothing read says what a failed generation costs. The errors page shows a failed task with ``"refunded": true``;
 that is one example, not a rule, and it is quoted as Sonilo's own statement only when a task carries it. The task page
-says a task "keeps running and is billed on the server regardless" of whether anyone polls it, and there is no cancel.
+said (2026-11-10; not found again 2026-11-11, unconfirmed) that a task "keeps running and is billed on the server
+regardless" of whether anyone polls it; the OpenAPI document has no cancel.
 
 TERMS: ``terms_gate: terms_review_required`` (docs/research/sonilo-first-party.md).
 """

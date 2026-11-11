@@ -196,8 +196,11 @@ PROBE_VIDEO_ARGS = ("-f", "lavfi", "-i", "testsrc2=size=640x360:rate=24", "-t", 
 
 def _ffmpeg() -> Optional[str]:
     """The ffmpeg the rest of the code renders with (``render_backend.resolve_ffmpeg``: the pinned imageio-ffmpeg binary,
-    else ``ffmpeg`` on PATH), or None when neither is there. Not ``shutil.which("ffmpeg")`` alone: the worker image and the
-    CI runner carry the pinned binary and no system ffmpeg, so a PATH lookup skipped every probe that starts from a video."""
+    else ``ffmpeg`` on PATH), or None when neither is there. Not ``shutil.which("ffmpeg")`` alone: the GitHub runner that
+    runs the Probe models workflow has the pinned binary but no system ffmpeg, so a PATH lookup skipped there every probe
+    that starts from a video. (The worker image installs ffmpeg with apt, so a probe run there behaved the same before;
+    it now runs the pinned binary, like every render.) Effect on cost: on the next Probe models run with an empty model
+    input, runway-video-upscale is probed for real when its key is set (about $0.34, a 2 s 24 fps source)."""
     from modules.render_backend import resolve_ffmpeg  # noqa: PLC0415 - only a video probe needs the render module
 
     exe = resolve_ffmpeg()

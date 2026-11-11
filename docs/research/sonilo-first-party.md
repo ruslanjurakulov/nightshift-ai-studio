@@ -1,5 +1,7 @@
 # Sonilo on the Sonilo API: music from words, and music scored to a video
 
+
+> **Re-check 2026-11-11 (independent review).** These quotes from the 2026-11-10 reading were NOT found again on the live pages and are treated as unconfirmed until a person reads them by hand: `"refunded": true` (errors page / openapi.json), "valid for 7 days", "keeps running and is billed on the server regardless", "hosted on Sonilo storage" / `cdn.example.com`, and "For API output, retain its generation record" (not on /help/licensing). The watermark sentence is in llms-full.txt, not on the licensing page. These were confirmed again: the Privacy Policy training-by-default and no-opt-out sentences, ToS §4 (competing products), §6.3 (perpetual licence) and §12.2 (prior written consent), "A Content ID claim is still possible", and that the only DELETE in openapi.json is `/v1/account/keys/self`. No code relies on the unconfirmed ones for safety: every path fails closed.
 Status: adapter shipped DARK and REGISTRY-ONLY, 2026-11-10. Internal notes. Nothing here makes a model available or for sale. No key was used and no generation was made while building this.
 
 | Registry id | Vendor model (endpoint) | Adapter | Key | Gate | Capability | What it does |
