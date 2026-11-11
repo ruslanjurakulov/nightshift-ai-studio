@@ -937,7 +937,11 @@ person every time, and the page asks only when Record is pressed. A policy is fi
 project page is entered and left by FULL document loads (`lib/editor-nav.ts`): links into it are plain `<a href>`
 (EditorHome, the Studio desk, "Back to project") and "create" / "Open in editor" use `loadDocument`; while the
 editor is open, every in-app link click becomes a full load (`useFullLoadLinks`, a capture listener ahead of
-Next's `<Link>`), so no later page, the custom voice page included, keeps `microphone=(self)`. The editor's
+Next's `<Link>` that only calls `preventDefault`, so the link's own `onClick` still runs, e.g. a notification is
+marked read), so no later page, the custom voice page included, keeps `microphone=(self)`. Links whose target is
+known only at run time use `PageLink` (a plain anchor when it resolves to a project page: an export-done
+notification; "Add to project" is a plain anchor), and the command palette and the channel / organization
+switcher go through `navigate()` (a full load from or to a project page, the router otherwise). The editor's
 `beforeunload` guard therefore also covers leaving by a link (it is skipped after the project is deleted). Should
 a client-side route in still happen, the recorder detects the inherited policy (`document.permissionsPolicy` /
 `featurePolicy`) and offers "Reload page" instead of calling it a refusal. The custom voice page
@@ -946,10 +950,11 @@ adapted config, and live (the deny value on `/login` and `/api/account`, the `(s
 `/c/editor/<uuid>` path; a restored older Caddyfile is held to the deny value only).
 
 **Recording** (`components/editor/VoiceOverRecorder.tsx`, the shared `components/voice/useVoiceRecorder.ts` with
-options): 1 s to 10 min (stopped at 10:00; a take that ran past it in a paused tab is discarded), 128 kbit/s
-asked of MediaRecorder, a level meter (Web Audio analyser, never connected to the speakers), preview, re-take,
-discard, cancel. Stop, Cancel, closing the panel, leaving the page and `pagehide` release the microphone; the
-page being hidden (`visibilitychange`) stops the take and keeps it.
+options): 1 s to 10 min (stopped at 10:00 and kept; a take a background tab's throttled timers stopped late is
+also kept, shown at its real length, to trim on the timeline), 128 kbit/s asked of MediaRecorder, a level meter
+(Web Audio analyser, never connected to the speakers), preview, re-take, discard, cancel. Stop, Cancel, closing
+the panel, leaving the page and `pagehide` release the microphone. A hidden page does NOT stop the take: Chromium
+also calls a window hidden when another window covers it, which is where a script is read from.
 
 **Upload** (`lib/editor-voiceover.ts`): the media library's ordinary path, nothing new on the database side.
 POST `/api/media/uploads` (membership, type allowlist, size cap, quota) and the PUT, then the page polls the new

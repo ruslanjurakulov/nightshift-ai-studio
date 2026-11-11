@@ -22,6 +22,15 @@ export function isEditorProjectPath(pathname: string): boolean {
   return PROJECT_PATH.test(pathname);
 }
 
+/** Is this link (relative or absolute; query and hash ignored) the editor's project page? */
+export function isEditorProjectHref(href: string): boolean {
+  try {
+    return isEditorProjectPath(new URL(href, "https://app.invalid").pathname);
+  } catch {
+    return false;
+  }
+}
+
 /** Indirection so tests can watch the load (jsdom cannot navigate). */
 export const documentNav = {
   assign(href: string): void {
@@ -32,6 +41,20 @@ export const documentNav = {
 /** Open `href` as a new document (never a client-side transition). */
 export function loadDocument(href: string): void {
   documentNav.assign(href);
+}
+
+/**
+ * Programmatic navigation in the app (the command palette, the channel / organization switcher): a full document load
+ * when leaving the editor's project page or going to one, so neither page carries the other's Permissions-Policy;
+ * the router's client-side transition everywhere else. Says which it did ("document" = no refresh is needed).
+ */
+export function navigate(href: string, router: { push(href: string): void }, here: string = window.location.pathname): "document" | "client" {
+  if (isEditorProjectPath(here) || isEditorProjectHref(href)) {
+    loadDocument(href);
+    return "document";
+  }
+  router.push(href);
+  return "client";
 }
 
 export interface ClickLike {

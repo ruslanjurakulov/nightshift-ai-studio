@@ -19,6 +19,7 @@ import { MAX_RECORDING_SECONDS, MAX_RECORDING_TOLERANCE_SECONDS, MIN_RECORDING_S
  *  recorded     a take within the guard is ready to listen to and to send
  *  tooShort     the take was shorter than the guard; discarded
  *  tooLong      the take ran past the limit (a paused or throttled tab); discarded, never shortened on screen with the longer audio kept
+ *               (unless `keepOverLimit`: then it is `recorded`, with its real length and `overMax` set)
  *  denied       the person (or their browser settings) refused the microphone
  *  noDevice     no microphone found
  *  failed       anything else the recorder reported
@@ -53,6 +54,12 @@ export interface RecorderOptions {
   typeFor?: (mime: string | null | undefined) => { type: string; ext: string } | null;
   /** Measure the input level while recording (`level`, 0..1), where the browser has Web Audio. */
   meter?: boolean;
+  /**
+   * A take that ran past `maxSeconds + toleranceSeconds` (a background tab whose timers were throttled, so the stop at
+   * the limit came late) is KEPT, with its real length, instead of thrown away as `tooLong`. For a take that can be
+   * trimmed afterwards (the editor's voice-over); the custom voice sample keeps the strict default.
+   */
+  keepOverLimit?: boolean;
   /** Passed to MediaRecorder: a known bit rate makes the size of a long take predictable. */
   audioBitsPerSecond?: number;
 }
@@ -116,6 +123,8 @@ export function useVoiceRecorder(options: RecorderOptions = {}) {
   const [shortBy, setShortBy] = useState<number | null>(null);
   /** The take stopped because it reached the limit (told to the person; a longer one is never recorded). */
   const [hitMax, setHitMax] = useState(false);
+  /** The kept take ran past the limit (`keepOverLimit`); its length is the measured one, not the limit. */
+  const [overMax, setOverMax] = useState(false);
   /** The input level while recording (0..1), or null where it is not measured (no meter asked, no Web Audio). */
   const [level, setLevel] = useState<number | null>(null);
 
@@ -198,13 +207,16 @@ export function useVoiceRecorder(options: RecorderOptions = {}) {
       }
       // The page's clock stops the take at 60 within one tick; anything well past that means the timers were paused (a background
       // tab) while the recorder kept going. Showing "60 s" over a longer recording would be a measurement we did not make.
-      if (elapsed > maxSeconds + toleranceSeconds) {
+      const over = elapsed > maxSeconds + toleranceSeconds;
+      if (over && !opts.current.keepOverLimit) {
         setShortBy(elapsed);
         setSeconds(0);
         setState("tooLong");
         return;
       }
-      const clamped = Math.min(Math.floor(elapsed), maxSeconds);
+      // Kept past the limit: shown as the length it really is, never as the limit (a measurement we did not make).
+      const clamped = over ? Math.floor(elapsed) : Math.min(Math.floor(elapsed), maxSeconds);
+      setOverMax(over);
       const objectUrl = URL.createObjectURL(blob);
       url.current = objectUrl;
       setSeconds(clamped);
@@ -262,6 +274,7 @@ export function useVoiceRecorder(options: RecorderOptions = {}) {
     dropTake();
     setShortBy(null);
     setHitMax(false);
+    setOverMax(false);
     setSeconds(0);
     setState("requesting");
     const mine = ++generation.current;
@@ -334,6 +347,7 @@ export function useVoiceRecorder(options: RecorderOptions = {}) {
     dropTake();
     setShortBy(null);
     setHitMax(false);
+    setOverMax(false);
     setSeconds(0);
     setState(supported() ? (microphoneBlockedBySite() ? "blockedBySite" : "idle") : "unsupported");
   }, [dropTake]);
@@ -352,5 +366,5 @@ export function useVoiceRecorder(options: RecorderOptions = {}) {
     reset();
   }, [release, reset]);
 
-  return { state, seconds, take, shortBy, hitMax, level, start, stop, reset, cancel };
+  return { state, seconds, take, shortBy, hitMax, overMax, level, start, stop, reset, cancel };
 }

@@ -33,7 +33,7 @@ export const voiceOverUz: VoiceOverDictionary = {
   noDevice: "Mikrofon topilmadi. Uni ulang va qayta urinib koʻring.",
   failed: "Yozish kutilmaganda toʻxtadi. Qayta urinib koʻring.",
   tooShort: "Yozuv {length} davom etdi — {min} dan qisqa. Qayta yozing.",
-  tooLong: "Yozuv {max} dan oshib ketdi (ehtimol, varaq fonda boʻlgan), shuning uchun saqlanmadi. Qayta yozing.",
+  pastMax: "Sahifa fonda boʻlgani uchun yozuv {max} chegarasidan keyinroq toʻxtadi. Yozuv toʻliq saqlandi; uni taymlaynda qisqartiring.",
   tooLarge: "Yozuv {max} dan katta, uni yuklab boʻlmaydi. Qisqaroq yozing.",
   uploadFailed: "Yozuvni yuklab boʻlmadi.",
   rejected: "Server yozuvni rad etdi.",

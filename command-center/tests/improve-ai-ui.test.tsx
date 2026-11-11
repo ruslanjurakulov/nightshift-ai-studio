@@ -20,7 +20,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
-    <a href={href} {...rest}>
+    <a href={href} data-next-link="" {...rest}>
       {children}
     </a>
   ),
@@ -29,6 +29,7 @@ vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { documentNav } from "@/lib/editor-nav";
+import { expectEditorLinksAreFullLoads } from "./support/editor-link-guard";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
 import { uz } from "@/lib/i18n/uz";
@@ -494,6 +495,8 @@ describe("the Studio result", () => {
     const link = await screen.findByTestId("add-to-project");
     expect(link.getAttribute("href")).toBe(`/chronos/editor/${P1}?add=${NEWFILE}`);
     expect(link.getAttribute("aria-label")).toBe(tx.addToProject);
+    // A full load into the project page (lib/editor-nav.ts): a plain anchor, judged by the href it resolved to.
+    expectEditorLinksAreFullLoads();
   });
 
   it("without a project there is no such link", async () => {

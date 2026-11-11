@@ -5,7 +5,8 @@
  *
  * What would break without these, one by one: the microphone asked for when the panel opens (it must be only on Record);
  * a take started without a click; the microphone light left on after Stop, Cancel, closing the panel or leaving the
- * page; a take shorter than a second, or one that ran past ten minutes in a paused tab, offered for upload; a refused,
+ * page; a take shorter than a second offered for upload; a take stopped by a hidden page (a covered window) or thrown
+ * away because a background tab's timers stopped it past ten minutes (it is kept, at its real length); a refused,
  * missing or site-blocked microphone shown as one message (their remedies differ); a take uploaded twice after the
  * server already has it; a take placed anywhere but where the playhead was when Add was pressed; a refusal of the
  * upload lost; state changes that a screen reader never hears; controls smaller than 44 px or not reachable as
@@ -273,28 +274,25 @@ describe("leaving releases the microphone", () => {
     expect(screen.getByRole("button", { name: tv().record })).toBeTruthy();
   });
 
-  it("the page being hidden (another tab, a locked phone) stops the take and KEEPS it; a visible page does nothing", async () => {
+  it("the page being hidden does NOT stop the take (Chromium calls a covered window hidden: a script read from another app)", async () => {
     const setVisibility = (v: "hidden" | "visible") => Object.defineProperty(document, "visibilityState", { value: v, configurable: true });
     mount();
     vi.useFakeTimers();
     await press(tv().record);
-    await advance(4000);
     try {
-      setVisibility("visible");
-      await act(async () => {
-        document.dispatchEvent(new Event("visibilitychange"));
-      });
-      expect(screen.getByRole("button", { name: tv().stop })).toBeTruthy();
-      expect(media.tracksStopped).toBe(0);
       setVisibility("hidden");
       await act(async () => {
         document.dispatchEvent(new Event("visibilitychange"));
       });
+      await advance(4000);
+      expect(screen.getByRole("button", { name: tv().stop })).toBeTruthy();
+      expect(media.tracksStopped).toBe(0);
+      expect(screen.getByTestId("voiceover-elapsed").textContent).toBe(fmt(tv().elapsed, { now: "0:04", max: "10:00" }));
     } finally {
       delete (document as { visibilityState?: unknown }).visibilityState;
     }
+    await press(tv().stop);
     expect(media.tracksStopped).toBe(1);
-    expect(media.contextsClosed).toBe(1);
     expect(status()).toBe(fmt(tv().recorded, { length: "0:04" }));
     expect(screen.getByLabelText(tv().preview)).toBeTruthy();
     expect(screen.getByRole("button", { name: tv().add })).toBeTruthy();
@@ -361,15 +359,26 @@ describe("refusals, each with its own remedy", () => {
     expect(media.tracksStopped).toBe(1);
   });
 
-  it("a take that ran past the limit in a paused tab is not kept", async () => {
+  it("a take the limit stopped late (a background tab's throttled timers) is KEPT, with its real length", async () => {
     mount();
     vi.useFakeTimers();
     await press(tv().record);
-    // The tab was in the background: its timers did not run, the recorder did.
+    // The tab was in the background: its timers did not run, the recorder did. The next tick stops it, 30 s late.
     vi.setSystemTime(Date.now() + (VOICEOVER_MAX_SECONDS + 30) * 1000);
-    await press(tv().stop);
-    expect(alertText()).toBe(fmt(tv().tooLong, { max: "10:00" }));
-    expect(screen.queryByRole("button", { name: tv().add })).toBeNull();
+    await advance(300);
+    expect(screen.queryByRole("button", { name: tv().stop })).toBeNull();
+    expect(alertText()).toBe("");
+    // Its measured length, never the limit (rule 5), and why it is longer.
+    expect(status()).toBe(`${fmt(tv().recorded, { length: "10:30" })} ${fmt(tv().pastMax, { max: "10:00" })}`);
+    expect(screen.getByLabelText(tv().preview)).toBeTruthy();
+    expect((screen.getByRole("button", { name: tv().add }) as HTMLButtonElement).disabled).toBe(false);
+    expect(media.tracksStopped).toBe(1);
+  });
+
+  it("the custom voice sample keeps the strict rule: past its limit is still thrown away", async () => {
+    // The default (keepOverLimit off) is the custom voice page's, unchanged: tests/custom-voice-ui.test.tsx pins it.
+    const src = (await import("node:fs")).readFileSync("components/voice/useVoiceRecorder.ts", "utf8");
+    expect(src).toMatch(/if \(over && !opts\.current\.keepOverLimit\) \{/);
   });
 });
 

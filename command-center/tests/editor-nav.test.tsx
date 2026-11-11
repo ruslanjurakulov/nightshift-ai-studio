@@ -22,8 +22,12 @@ vi.mock("next/navigation", () => ({
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { en } from "@/lib/i18n/en";
-import { documentNav, fullLoadTarget, isEditorProjectPath } from "@/lib/editor-nav";
+import { documentNav, fullLoadTarget, isEditorProjectHref, isEditorProjectPath, navigate } from "@/lib/editor-nav";
 import { useFullLoadLinks } from "@/components/editor/useFullLoadLinks";
+import { PageLink } from "@/components/navigation/PageLink";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtime";
+import type { ReactNode } from "react";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { newDocForAsset, toDoc, toModel, type EditorAsset } from "@/lib/editor";
 
@@ -128,6 +132,136 @@ describe("while the editor is open, leaving is a full load", () => {
   });
 });
 
+/**
+ * A Next app router, as far as `<Link>` needs one to try a client-side transition. Whether it TRIED is read from
+ * `onNavigate`, which Next calls only on the way to a client transition (and whose preventDefault cancels it, so a
+ * regression here fails the assertion instead of reaching the real router).
+ */
+function WithRouter({ children }: { children: ReactNode }) {
+  // Outside a Next build `next/link` is the pages-router Link (RouterContext); in the app it is the app-dir one
+  // (AppRouterContext). Both run the onClick prop, then return on defaultPrevented, then call onNavigate.
+  const pages = { beforePopState() {}, push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(async () => {}) };
+  return (
+    <AppRouterContext.Provider value={{} as never}>
+      <RouterContext.Provider value={pages as never}>{children}</RouterContext.Provider>
+    </AppRouterContext.Provider>
+  );
+}
+
+describe("a link's own onClick still runs (no stopPropagation)", () => {
+  function EditorPage({ onClick, onNavigate }: { onClick: () => void; onNavigate: (e: { preventDefault(): void }) => void }) {
+    useFullLoadLinks();
+    return (
+      <Link href="/chronos/library" onClick={onClick} onNavigate={(e) => { e.preventDefault(); onNavigate(e); }}>
+        notification
+      </Link>
+    );
+  }
+
+  it("inside the editor, a Link with onClick runs its handler, a full load happens, and no client transition starts", () => {
+    const onClick = vi.fn();
+    const onNavigate = vi.fn();
+    render(
+      <WithRouter>
+        <EditorPage onClick={onClick} onNavigate={onNavigate} />
+      </WithRouter>,
+    );
+    fireEvent.click(screen.getByText("notification"));
+    expect(onClick).toHaveBeenCalledTimes(1); // e.g. a notification marked read
+    expect(assign).toHaveBeenCalledWith(`${window.location.origin}/chronos/library`);
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("the probe works: the same Link outside the editor does try its client transition", () => {
+    const onNavigate = vi.fn();
+    render(
+      <WithRouter>
+        <Link href="/chronos/library" onNavigate={(e) => { e.preventDefault(); onNavigate(); }}>
+          plain
+        </Link>
+      </WithRouter>,
+    );
+    fireEvent.click(screen.getByText("plain"));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(assign).not.toHaveBeenCalled();
+  });
+});
+
+describe("PageLink: a link whose target is known only at run time", () => {
+  it("into a project page it is a plain anchor (no client transition) and still runs its onClick", () => {
+    const onClick = vi.fn((e: { preventDefault(): void }) => e.preventDefault()); // jsdom cannot follow it
+    const onNavigate = vi.fn();
+    render(
+      <WithRouter>
+        <PageLink href={`/chronos/editor/${PID}`} onClick={onClick} onNavigate={onNavigate} prefetch={false} className="x">
+          export ready
+        </PageLink>
+      </WithRouter>,
+    );
+    const a = screen.getByText("export ready");
+    expect(a.getAttribute("href")).toBe(`/chronos/editor/${PID}`);
+    expect(a.className).toBe("x");
+    expect(a.hasAttribute("prefetch")).toBe(false);
+    fireEvent.click(a);
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("anywhere else it is an ordinary Next Link", () => {
+    const onNavigate = vi.fn((e: { preventDefault(): void }) => e.preventDefault());
+    render(
+      <WithRouter>
+        <PageLink href="/chronos/credits" onNavigate={onNavigate}>
+          credits
+        </PageLink>
+      </WithRouter>,
+    );
+    fireEvent.click(screen.getByText("credits"));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it("recognises a project href with a query or hash, and nothing else", () => {
+    expect(isEditorProjectHref(`/chronos/editor/${PID}?add=${VID}`)).toBe(true);
+    expect(isEditorProjectHref(`https://app.example/chronos/editor/${PID}#x`)).toBe(true);
+    expect(isEditorProjectHref("/chronos/editor")).toBe(false);
+    expect(isEditorProjectHref("/chronos/library")).toBe(false);
+  });
+});
+
+describe("navigate(): the command palette and the switchers", () => {
+  const router = () => ({ push: vi.fn() });
+
+  it("from the editor's project page anywhere: a full load, the router is not used", () => {
+    const r = router();
+    expect(navigate("/chronos/agents/voice", r, `/chronos/editor/${PID}`)).toBe("document");
+    expect(assign).toHaveBeenCalledWith("/chronos/agents/voice");
+    expect(r.push).not.toHaveBeenCalled();
+  });
+
+  it("from anywhere into a project page: a full load", () => {
+    const r = router();
+    expect(navigate(`/other/editor/${PID}`, r, "/chronos/videos")).toBe("document");
+    expect(assign).toHaveBeenCalledWith(`/other/editor/${PID}`);
+    expect(r.push).not.toHaveBeenCalled();
+  });
+
+  it("between other pages: the router's client transition, as before", () => {
+    const r = router();
+    expect(navigate("/chronos/library", r, "/chronos/editor")).toBe("client");
+    expect(r.push).toHaveBeenCalledWith("/chronos/library");
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["components/CommandPalette.tsx", 2],
+    ["components/shell/ContextSwitcher.tsx", 2],
+  ] as const)("%s navigates only through navigate()", (file, uses) => {
+    const src = readFileSync(join(__dirname, "..", file), "utf8");
+    expect(src).not.toMatch(/router\.push\(/);
+    expect(src.match(/\bnavigate\(/g)?.length).toBe(uses);
+  });
+});
+
 describe("the editor page itself", () => {
   const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
 
@@ -196,6 +330,16 @@ describe("no client-side way into the editor's project page", () => {
     const src = readFileSync(join(ROOT, file), "utf8");
     if (anchor) expect(src).toMatch(anchor);
     if (load) expect(src).toMatch(load);
+  });
+
+  it("links whose project address is computed (Add to project, an export-done notification) are full loads too", () => {
+    const feed = readFileSync(join(ROOT, "components/studio/JobFeed.tsx"), "utf8");
+    expect(feed).toMatch(/<a\s+href=\{path\(editorAddHref\(/);
+    expect(feed).not.toMatch(/<Link\s+href=\{path\(editorAddHref\(/);
+    const bell = readFileSync(join(ROOT, "components/shell/NotificationBell.tsx"), "utf8");
+    expect(bell.match(/<PageLink\s+href=\{href\}/g)).toHaveLength(2);
+    expect(bell).not.toMatch(/<Link\s+href=\{href\}/);
+    // tests/notification-bell.test.tsx, improve-ai-ui and studio-desks check the rendered (resolved) hrefs.
   });
 
   it("the editor page's way out of a deleted project is a full load too", () => {

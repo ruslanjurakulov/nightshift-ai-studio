@@ -55,9 +55,11 @@ export interface VoiceOverRecorderProps {
 /**
  * "Record voice-over": the microphone is asked for only when Record is pressed (never on opening the panel), the take
  * can be heard, re-taken or thrown away, and "Add to timeline" sends it through the media library's ordinary upload and
- * places it once the server has registered it (lib/editor-voiceover.ts). Leaving the page, closing the panel or
- * hiding the page mid-take stops the recorder and releases the microphone. Hidden (another tab, a minimised window,
- * a locked phone) STOPS the take and keeps it to hear and add; left (pagehide, unmount) throws it away.
+ * places it once the server has registered it (lib/editor-voiceover.ts). Leaving the page (pagehide), closing the
+ * panel or unmounting stops the recorder, throws the take away and releases the microphone. A HIDDEN page does not:
+ * Chromium also calls a window hidden when another window covers it, which is exactly where a script is read from.
+ * Instead the 10-minute limit stops the take by itself and keeps it; if a background tab's throttled timers stop it
+ * late, it is still kept, with its real length, to trim on the timeline.
  */
 export function VoiceOverRecorder({ orgId, canAdd, position, onAdd, onClose, upload = uploadVoiceOver }: VoiceOverRecorderProps) {
   const { t } = useI18n();
@@ -71,13 +73,12 @@ export function VoiceOverRecorder({ orgId, canAdd, position, onAdd, onClose, upl
     typeFor: voiceTakeType,
     meter: true,
     audioBitsPerSecond: VOICEOVER_BITS_PER_SECOND,
+    keepOverLimit: true,
   });
   const [phase, setPhase] = useState<Phase>({ at: "record" });
   const aborter = useRef<AbortController | null>(null);
   const cancelRef = useRef(rec.cancel);
   cancelRef.current = rec.cancel;
-  const stopRef = useRef(rec.stop);
-  stopRef.current = rec.stop;
   const onAddRef = useRef(onAdd);
   onAddRef.current = onAdd;
 
@@ -85,16 +86,9 @@ export function VoiceOverRecorder({ orgId, canAdd, position, onAdd, onClose, upl
   // hook's own clean-up). The wait for the server ends with the page; the upload, once sent, is the server's.
   useEffect(() => {
     const leave = () => cancelRef.current();
-    // A hidden page is not a recording anyone is watching: the take so far is kept and the microphone released.
-    // stop() does nothing unless a take is running.
-    const hidden = () => {
-      if (document.visibilityState === "hidden") stopRef.current();
-    };
     window.addEventListener("pagehide", leave);
-    document.addEventListener("visibilitychange", hidden);
     return () => {
       window.removeEventListener("pagehide", leave);
-      document.removeEventListener("visibilitychange", hidden);
       aborter.current?.abort();
     };
   }, []);
@@ -166,7 +160,9 @@ export function VoiceOverRecorder({ orgId, canAdd, position, onAdd, onClose, upl
   else if (rec.state === "requesting") status = tv.requesting;
   else if (rec.state === "recording") status = tv.recording;
   else if (rec.state === "recorded" && rec.take)
-    status = `${fmt(tv.recorded, { length: clock(rec.take.seconds) })}${rec.hitMax ? ` ${fmt(tv.hitMax, { max })}` : ""}`;
+    status = `${fmt(tv.recorded, { length: clock(rec.take.seconds) })}${
+      rec.overMax ? ` ${fmt(tv.pastMax, { max })}` : rec.hitMax ? ` ${fmt(tv.hitMax, { max })}` : ""
+    }`;
   else if (rec.state === "unsupported") alert = { head: tv.unsupported, detail: null };
   else if (rec.state === "blockedBySite") alert = { head: tv.blockedBySite, detail: null };
   else if (rec.state === "denied") alert = { head: tv.denied, detail: null };
@@ -174,7 +170,6 @@ export function VoiceOverRecorder({ orgId, canAdd, position, onAdd, onClose, upl
   else if (rec.state === "failed") alert = { head: tv.failed, detail: null };
   else if (rec.state === "tooShort")
     alert = { head: fmt(tv.tooShort, { length: clock(rec.shortBy ?? 0), min: clock(VOICEOVER_MIN_SECONDS) }), detail: null };
-  else if (rec.state === "tooLong") alert = { head: fmt(tv.tooLong, { max }), detail: null };
 
   const startOver = () => {
     setPhase({ at: "record" });
@@ -292,7 +287,7 @@ export function VoiceOverRecorder({ orgId, canAdd, position, onAdd, onClose, upl
         ) : (
           <button type="button" onClick={startOver} className={primary}>
             <Mic className="size-4" aria-hidden />
-            {rec.state === "idle" ? tv.record : rec.state === "tooShort" || rec.state === "tooLong" ? tv.recordAgain : tv.tryAgain}
+            {rec.state === "idle" ? tv.record : rec.state === "tooShort" ? tv.recordAgain : tv.tryAgain}
           </button>
         )}
       </div>

@@ -32,7 +32,7 @@ export const voiceOverEn = {
   noDevice: "No microphone was found. Connect one and try again.",
   failed: "The recording stopped unexpectedly. Try again.",
   tooShort: "That take was {length}, shorter than {min}. Record again.",
-  tooLong: "That take ran past {max} (the tab may have been in the background), so it was not kept. Record again.",
+  pastMax: "The page was in the background, so it stopped after the {max} limit. The whole take is kept; trim it on the timeline.",
   tooLarge: "The take is larger than {max}, so it cannot be uploaded. Record a shorter one.",
   uploadFailed: "The take could not be uploaded.",
   rejected: "The server refused the recording.",
