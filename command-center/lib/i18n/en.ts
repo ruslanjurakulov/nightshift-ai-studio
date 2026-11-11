@@ -22,6 +22,7 @@ import { shapesEn } from "./shapes/en";
 import { exportPresetEn } from "./editor-presets/en";
 import { exportRatiosEn } from "./editor-ratios/en";
 import { clipToolsEn } from "./editor-clip-tools/en";
+import { parity2En } from "./editor-parity2/en";
 import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
 import { captionStylesEn } from "./caption-styles/en";
@@ -5138,6 +5139,8 @@ export const en = {
     clipTools: clipToolsEn,
     /** Cross-fade styles and text looks: ./editor-looks/en.ts. */
     looks: looksEn,
+    /** Advanced colour, masks and silence removal: ./editor-parity2/en.ts. */
+    parity2: parity2En,
     fx: fxEn,
     title: "Editor",
     subtitle: "Trim, split, speed up or slow down your videos and put text on them.",

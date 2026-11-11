@@ -29,7 +29,9 @@ not a project dependency — tests keep the two in sync)::
               grade?: { brightness: -1..1, contrast: 0..2, saturation: 0..3 },
               filter?, filter_strength?, vignette?, blur?, sharpen?, grain?,
               flip_h?, flip_v?, rotate?,
-              move?: { from: {zoom?, x?, y?}, to: {zoom?, x?, y?} } }
+              move?: { from: {zoom?, x?, y?}, to: {zoom?, x?, y?} },
+              color?: { temperature?: -100..100, tint?: -100..100, hue?: -180..180, curve?: <COLOR_CURVES> },
+              mask?: { shape: "rect"|"ellipse"|"rounded", x?, y?, w?, h?, feather?: 0..0.5, radius?, invert? } }
     A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s?,
               denoise?: bool, loudnorm?: bool }
@@ -426,6 +428,35 @@ ROTATIONS = (0, 90, 180, 270)
 _EFFECT_KEYS = ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
                 "flip_h", "flip_v", "rotate")
 
+#: Advanced colour (editor parity 2), V clips: ``color: {temperature?, tint?, hue?, curve?}``.
+#: temperature -100 (cool, blue) .. 100 (warm, amber) and tint -100 (green) .. 100 (magenta) move the
+#: picture's chroma; hue turns every colour by that many degrees; curve is a named tone curve. Saturation
+#: and lightness are the existing ``grade``. render_spec.COLOR_* are the same; a test pins them.
+COLOR_TEMP_MAX = 100.0
+COLOR_TINT_MAX = 100.0
+COLOR_HUE_MAX = 180.0
+COLOR_CURVES = ("lighter", "darker", "contrast", "strong-contrast", "matte", "cross-process")
+_COLOR_KEYS = ("temperature", "tint", "hue", "curve")
+#: A shape mask on a V clip (editor parity 2): ``mask: {shape, x?, y?, w?, h?, feather?, radius?, invert?}``,
+#: in FRAME fractions (the centre x, y; the size w, h), fixed in the frame (a move zooms the picture under
+#: it). Outside the shape the frame is black (``invert``: inside). ``feather`` 0..0.5 is the soft edge as a
+#: fraction of the shape's shorter side; ``radius`` 0..0.5 (``rounded`` only) the corner as a fraction of it.
+MASK_SHAPES = ("rect", "ellipse", "rounded")
+MASK_MIN = 0.05
+MASK_FEATHER_MAX = 0.5
+MASK_RADIUS_MAX = 0.5
+MASK_DEFAULTS = {"x": 0.5, "y": 0.5, "w": 0.6, "h": 0.6, "feather": 0.0}
+MASK_RADIUS_DEFAULT = 0.25
+_MASK_KEYS = ("shape", "x", "y", "w", "h", "feather", "radius", "invert")
+#: What colour and masks add to the render-time estimate, seconds per second of the clip at 1080p30,
+#: scaled by the frame's pixels x rate (docs/editor-render-fields.md section 13 has the measurements).
+#: Charged like fast clips: only for a timeline an export renders (``EXPORT_LENGTH_MAX_S``).
+LOOK_REF_PIXEL_RATE = 1920 * 1080 * 30
+COLOR_CHROMA_SECONDS_PER_S = 0.15    # temperature / tint (one lookup table)
+COLOR_HUE_SECONDS_PER_S = 0.2
+COLOR_CURVE_SECONDS_PER_S = 0.35
+MASK_SECONDS_PER_S = 0.3
+
 #: A clip's move (render_spec.MOVE_* are the same; a test pins them).
 MOVE_ZOOM_MIN, MOVE_ZOOM_MAX = 1.0, 4.0
 MOVE_POINT_DEFAULTS = {"zoom": 1.0, "x": 0.5, "y": 0.5}
@@ -557,7 +588,7 @@ _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
                                   "grade", "move", "reverse", "freeze", "denoise", "loudnorm", "crop", "angle", "speed_curve",
-                                  "interpolate", "stabilize", "gain_db") + _EFFECT_KEYS
+                                  "interpolate", "stabilize", "gain_db", "color", "mask") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s", "denoise", "loudnorm")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
@@ -820,25 +851,30 @@ def validate(doc: Any) -> List[str]:
                        for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True)
         interp_est = INTERP_SECONDS_PER_FRAME * total_interp if total_interp <= INTERP_MAX_FRAMES_DOC else 0.0
         fast_raw = _fast_sum(doc)
+        look_raw = _look_sum(doc, fps, w, h)
         length = None
-        if interp_est + stab_est + fast_raw > 0:
+        if interp_est + stab_est + fast_raw + look_raw > 0:
             try:
                 # The captions and overlays are checked further down: a time there can still be a number too
                 # big for a float, and that is their problem to report, not a crash of this estimate.
                 length = duration_s(doc)
             except (OverflowError, ValueError):
                 length = None
-        fast_est = fast_raw if length is not None and length <= EXPORT_LENGTH_MAX_S + 1e-9 else 0.0
-        if length is not None and interp_est + stab_est + fast_est > 0:
-            work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est + fast_est
+        in_export = length is not None and length <= EXPORT_LENGTH_MAX_S + 1e-9
+        fast_est = fast_raw if in_export else 0.0
+        look_est = look_raw if in_export else 0.0
+        if length is not None and interp_est + stab_est + fast_est + look_est > 0:
+            work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est + fast_est + look_est
             allowed = render_timeout_s(length)
             if work > allowed + 1e-9:
                 what = " and ".join(n for n, v in (("interpolated slow motion", interp_est),
                                                    ("stabilising", stab_est),
-                                                   ("playing clips faster than 1x", fast_est)) if v > 0)
+                                                   ("playing clips faster than 1x", fast_est),
+                                                   ("colour and masks", look_est)) if v > 0)
                 fix = " and ".join(n for n, v in (("slow less of it", interp_est),
                                                   ("stabilise less of it", stab_est),
-                                                  ("speed them up less", fast_est)) if v > 0)
+                                                  ("speed them up less", fast_est),
+                                                  ("use fewer colour changes and masks", look_est)) if v > 0)
                 problems.append(f"timeline: {what} would take about {work:.0f} s to render, but a {length:.0f} s "
                                 f"timeline is allowed {allowed:.0f} s — {fix} or make the timeline longer")
 
@@ -871,7 +907,8 @@ def validate(doc: Any) -> List[str]:
                 length = duration_s(doc)
                 shape_est = shape_art.work_seconds(doc["shapes"], fps, w, h, length)
                 interp_est, stab_est = _interp_stab_estimates(doc, fps, w, h)
-                work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est + fast_estimate(doc) + shape_est
+                work = (RENDER_PLAIN_FACTOR * length + interp_est + stab_est + fast_estimate(doc) + look_estimate(doc)
+                        + shape_est)
                 allowed = render_timeout_s(length)
                 if shape_est > 0 and work > allowed + 1e-9:
                     problems.append(f"timeline: the shapes would take about {shape_est:.0f} s to render (about {work:.0f} s "
@@ -1000,6 +1037,10 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
             for k, (lo, hi) in GRADE_RANGES.items():
                 _num_in(clip["grade"], k, lo, hi, f"{where} grade", problems)
         _validate_effects(clip, where, problems)
+        if "color" in clip:
+            _validate_color(clip["color"], where, problems)
+        if "mask" in clip:
+            _validate_mask(clip["mask"], where, problems)
         if "move" in clip:
             _validate_clip_move(clip["move"], where, problems)
         if "crop" in clip:
@@ -1146,6 +1187,80 @@ def _validate_effects(clip, where, problems) -> None:
     if "rotate" in clip and not (_is_num(clip["rotate"]) and clip["rotate"] == int(clip["rotate"])
                                  and int(clip["rotate"]) in ROTATIONS):
         problems.append(f"{where}: rotate must be one of {list(ROTATIONS)}")
+
+
+def _validate_color(color, where, problems) -> None:
+    """A V clip's ``color`` (advanced colour): every key optional, at least one, each in its range; the
+    curve a name from the closed list (no free text reaches ffmpeg)."""
+    cw = f"{where} color"
+    if not _fields(color, _COLOR_KEYS, (), cw, problems):
+        return
+    if not color:
+        problems.append(f"{cw}: give at least one of {list(_COLOR_KEYS)}")
+    _num_in(color, "temperature", -COLOR_TEMP_MAX, COLOR_TEMP_MAX, cw, problems)
+    _num_in(color, "tint", -COLOR_TINT_MAX, COLOR_TINT_MAX, cw, problems)
+    _num_in(color, "hue", -COLOR_HUE_MAX, COLOR_HUE_MAX, cw, problems)
+    if "curve" in color and not (isinstance(color["curve"], str) and color["curve"] in COLOR_CURVES):
+        problems.append(f"{cw}: curve must be one of {list(COLOR_CURVES)}")
+
+
+def _validate_mask(mask, where, problems) -> None:
+    """A V clip's ``mask``: a closed-list shape, its centre and size in frame fractions, a feather and
+    (rounded only) a corner radius in their ranges, ``invert`` a boolean."""
+    mw = f"{where} mask"
+    if not _fields(mask, _MASK_KEYS, ("shape",), mw, problems):
+        return
+    if not (isinstance(mask.get("shape"), str) and mask["shape"] in MASK_SHAPES):
+        problems.append(f"{mw}: shape must be one of {list(MASK_SHAPES)}")
+    for k in ("x", "y"):
+        _num_in(mask, k, 0, 1, mw, problems)
+    for k in ("w", "h"):
+        _num_in(mask, k, MASK_MIN, 1, mw, problems)
+    _num_in(mask, "feather", 0, MASK_FEATHER_MAX, mw, problems)
+    if "radius" in mask:
+        _num_in(mask, "radius", 0, MASK_RADIUS_MAX, mw, problems)
+        if mask.get("shape") in ("rect", "ellipse"):
+            problems.append(f"{mw}: radius is only for a rounded shape")
+    if "invert" in mask and not isinstance(mask["invert"], bool):
+        problems.append(f"{mw}: invert must be true or false")
+
+
+def look_seconds(clip: dict, fps: int, width: int, height: int) -> float:
+    """The estimated render seconds a clip's advanced colour and mask add: their per-second costs over the
+    clip's length on the timeline, scaled by the frame's pixels x rate against 1080p30 (0 without them, or
+    for a length that is not a usable number)."""
+    color = clip.get("color") if isinstance(clip.get("color"), dict) else {}
+    per = 0.0
+    if color.get("temperature") or color.get("tint"):
+        per += COLOR_CHROMA_SECONDS_PER_S
+    if color.get("hue"):
+        per += COLOR_HUE_SECONDS_PER_S
+    if color.get("curve"):
+        per += COLOR_CURVE_SECONDS_PER_S
+    if isinstance(clip.get("mask"), dict):
+        per += MASK_SECONDS_PER_S
+    if per <= 0 or not (_in_range(clip.get("in_s")) and _in_range(clip.get("out_s"))):
+        return 0.0
+    try:
+        length = clip_length_s(clip)
+    except (OverflowError, ValueError, ZeroDivisionError, TypeError):
+        return 0.0
+    return per * max(0.0, length) * (width * height * fps) / LOOK_REF_PIXEL_RATE
+
+
+def _look_sum(doc: dict, fps: int, width: int, height: int) -> float:
+    return sum(look_seconds(c, fps, width, height) for t in doc.get("tracks") or []
+               if isinstance(t, dict) and t.get("kind") == KIND_V and isinstance(t.get("clips"), list)
+               for c in t["clips"] if isinstance(c, dict))
+
+
+def look_estimate(doc: dict) -> float:
+    """``look_seconds`` over every V clip, as ``validate`` charges it: nothing for a timeline longer than
+    an export renders (it is refused for its length anyway). For a structurally valid document."""
+    raw = _look_sum(doc, doc["fps"], doc["width"], doc["height"])
+    if raw <= 0 or duration_s(doc) > EXPORT_LENGTH_MAX_S + 1e-9:
+        return 0.0
+    return raw
 
 
 def _validate_timed_text(obj, where, problems) -> None:
@@ -1692,6 +1807,34 @@ def _large_frame_crossfade_problems(doc: dict, track: dict) -> List[str]:
     return problems
 
 
+def _large_frame_mask_problems(doc: dict, track: dict) -> List[str]:
+    """What a mask cannot afford in a frame above 1440p (measured with ffmpeg 7.0.2 under the export's 2 GiB
+    limit, docs/editor-render-fields.md section 13): on a cross-faded clip (either side) it ran out of memory,
+    and on a single clip with a move zooming past ``XFADE_LARGE_ZOOM_MAX`` too (4K60; up to 2 passed)."""
+    w, h = doc.get("width"), doc.get("height")
+    if not (_is_int(w) and _is_int(h) and w * h > LARGE_FRAME_PX):
+        return []
+    problems, faded = [], set()
+    for prev, clip, _d in crossfades(track):
+        faded.update((str(prev["id"]), str(clip["id"])))
+    for c in _sorted_clips(track):
+        if not isinstance(c.get("mask"), dict):
+            continue
+        if str(c["id"]) in faded:
+            problems.append(f"{_where(track, c)}: a mask is not offered on a cross-faded clip in a frame above 1440p "
+                            f"({w}x{h}) — the render would run out of memory; remove the mask, the cross-fade or "
+                            f"lower the frame size")
+            continue
+        move = c.get("move")
+        zooms = [p.get("zoom", 1.0) for p in (move.get("from"), move.get("to")) if isinstance(p, dict)] \
+            if isinstance(move, dict) else []
+        if any(_is_num(z) and z > XFADE_LARGE_ZOOM_MAX for z in zooms):
+            problems.append(f"{_where(track, c)}: a masked clip zooms at most {XFADE_LARGE_ZOOM_MAX:g} in a frame "
+                            f"above 1440p ({w}x{h}) — the render would run out of memory; lower the zoom, remove "
+                            f"the mask or lower the frame size")
+    return problems
+
+
 def _transition_problems(doc: dict) -> List[str]:
     problems = []
     for track in doc.get("tracks") or []:
@@ -1699,6 +1842,7 @@ def _transition_problems(doc: dict) -> List[str]:
             continue
         problems.extend(_crossfade_problems(track))
         problems.extend(_large_frame_crossfade_problems(doc, track))
+        problems.extend(_large_frame_mask_problems(doc, track))
         fades = effective_fades(track)
         for clip in track.get("clips") or []:
             fi, fo = fades[str(clip["id"])]
@@ -1762,6 +1906,7 @@ def normalise(doc: dict) -> dict:
                         if c["grade"] == GRADE_NEUTRAL:
                             del c["grade"]   # no change: the clip is the one it was without it
                     _normalise_effects(c)
+                    _normalise_look(c)
                     for k in ("reverse", "freeze", "denoise", "loudnorm"):
                         if c.get(k) is False:
                             del c[k]
@@ -1883,6 +2028,28 @@ def _normalise_effects(c: dict) -> None:
         c["rotate"] = int(c["rotate"])
     if c.get("rotate") == 0:
         del c["rotate"]
+
+
+def _normalise_look(c: dict) -> None:
+    """Advanced colour and the mask: numbers rounded, "no change" dropped (a colour of only zeros is the
+    clip without one), a mask's defaults filled in (two spellings of one mask are one document)."""
+    if "color" in c:
+        col = {k: (_ms(v) if k != "curve" else v) for k, v in c["color"].items()}
+        col = {k: v for k, v in col.items() if v != 0}
+        if col:
+            c["color"] = col
+        else:
+            del c["color"]
+    if "mask" in c:
+        m = {**MASK_DEFAULTS, **c["mask"]}
+        if m["shape"] == "rounded":
+            m.setdefault("radius", MASK_RADIUS_DEFAULT)
+        for k in ("x", "y", "w", "h", "feather", "radius"):
+            if k in m:
+                m[k] = _ms(m[k])
+        if m.get("invert") is False:
+            del m["invert"]
+        c["mask"] = m
 
 
 def _normalise_anims(item: dict) -> None:

@@ -35,6 +35,7 @@ into one commit) and #484 (group 11); group 12 is the editor-parity change that 
 | 10 | `claude/render-stabilise` | V clip `stabilize` | on main (#480) |
 | 11 | `claude/editor-shapes` | top-level `shapes` (stickers, shapes, progress bar) | on main (#484) |
 | 12 | `claude/editor-parity-1` | V clip `gain_db`; a video on an A track (detached sound); `speed` 0.1-10; export frame rate | added by this branch (section 12) |
+| 13 | `claude/editor-parity-2` | V clip `color` (temperature, tint, hue, curve), `mask`; silence removal (no field) | added by this branch (section 13) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -665,6 +666,9 @@ project keeps exactly its document.
 | clip `gain_db` | "Volume" 0-200 % slider under the clip's sound switch (`ClipVolumeDetach` in `ClipSoundTools.tsx`); muting is the switch | 12 |
 | a video on an A track | "Detach audio" beside the volume (same component) | 12 |
 | (no field) | "Duplicate", "Copy", "Paste after this clip" in the clip inspector (`ClipCopyTools`), and Ctrl/Cmd + D, C, V | 12 |
+| clip `color` | "Colour balance" section: temperature, tint, hue sliders and a tone-curve radio group (`ClipColorSection` in `ClipLookSections.tsx`) | 13 |
+| clip `mask` | "Mask" section: shape radios, centre / size / soft edge / corner sliders, invert (`ClipMaskSection`) | 13 |
+| (no field) | "Remove silences" section: threshold and length sliders, find, the proposed cuts, apply (`ClipSilenceSection`) | 13 |
 
 Export formats (P): `schemas/export_presets.json` is the list (YouTube wide 1080p and 720p, vertical
 1080x1920 for Shorts / Reels / TikTok, square, 4:5), `modules/export_presets.py` loads it and refuses an
@@ -922,3 +926,99 @@ native read.
   today `microphone=()` site-wide in `command-center/next.config.ts` and `deploy/Caddyfile`): a separate
   branch.
 * A 1440p format (a migration replacing 0129's `editor_export_frame` list) and, later, 4K.
+
+## 13. Advanced colour, shape masks, silence removal (editor parity 2a)
+
+Branch `claude/editor-parity-2`. Free: ffmpeg, Pillow and the browser only, no model, no migration, no new route.
+Effects pack, in/out animations on video clips, "apply transition to all" and beat markers (parity 2b) are not in
+this change.
+
+### `color` on a V clip (advanced colour)
+
+```json
+"color": { "temperature": 40, "tint": -10, "hue": 25, "curve": "matte" }
+```
+
+* every key optional, at least one: `temperature` -100 (cool, blue) .. 100 (warm, amber), `tint` -100 (green) ..
+  100 (magenta), `hue` -180..180 degrees, `curve` one of `lighter`, `darker`, `contrast`, `strong-contrast`,
+  `matte`, `cross-process` (`COLOR_CURVES`; closed list, no free text reaches ffmpeg). Zeros are dropped by
+  `normalise`; a colour of only zeros is the clip without one. Saturation and brightness stay the clip's `grade`
+  (the panel's hint says so): no second field for the same thing.
+* export (`render_backend.colour_adjust_filters`), right after the grade and before the named look: temperature and
+  tint are one `lutyuv` that moves U/V by a constant (+100 temperature: U -18, V +14 levels; +100 tint: U and V +12),
+  hue is `hue=h=`, a curve is ffmpeg's own `curves` preset (`matte` is `master='0/0.08 0.5/0.5 1/0.9'`).
+* preview: the hue only (CSS `hue-rotate`); temperature, tint and curves are seen in the export (the panel says so).
+
+### `mask` on a V clip
+
+```json
+"mask": { "shape": "rounded", "x": 0.5, "y": 0.5, "w": 0.6, "h": 0.6, "feather": 0.1, "radius": 0.25, "invert": false }
+```
+
+* `shape` (required) `rect`, `ellipse` or `rounded`; `x`, `y` the centre (0..1 of the FRAME), `w`, `h` the size
+  (0.05..1 of the frame), `feather` 0..0.5 (the soft band, a fraction of the shape's shorter side), `radius` 0..0.5
+  (`rounded` only; refused on the others), `invert` (hide the inside instead). `normalise` fills the defaults
+  (0.5, 0.5, 0.6, 0.6, feather 0, radius 0.25 on rounded) so two spellings of one mask are one document.
+* the mask is fixed in the frame: a `move` zooms the picture under it; outside it (inverted: inside) the frame is
+  black. Fades and the cross-fade come after it.
+* export: Pillow draws the mask once per frame size (`render_backend.draw_mask`, supersampled up to 1440p, feather =
+  Gaussian blur of `feather x short side / 4`) into the segment's temp dir, and the clip's chain becomes a graph
+  `[0:v]<chain>[pm];[1:v]format=gray[km];[pm][km]alphamerge[ka];color=black[kb];[kb][ka]overlay` before its fades
+  (`-loop 1 -i mask.png` is the second input, with the still decoder cap). A cross-fade's masked side gets the same
+  merge in the xfade graph. A clip without a mask keeps its `-vf` chain byte for byte
+  (`samples/parity2_argv_golden.json`, made from origin/main, pins five representative documents).
+* memory (measured with ffmpeg 7.0.2 under the export's 2 GiB limit, `timeline_render.render(..., timeout_s=...)`):
+  at 4K60 a mask on either side of a cross-fade ran out of memory in every combination tried (one side, both,
+  with colour, with zoom 2, with the blur fit); a single masked 4K60 clip passed alone, with colour, with the blur
+  fit and with a zoom to 2, and failed with a zoom to 4 (a still with a zoom to 3 too). At 2560x1440@60 every
+  combination passed. So, in a frame above 1440p (`LARGE_FRAME_PX`): a mask is refused on a cross-faded clip, and a
+  masked clip zooms at most `XFADE_LARGE_ZOOM_MAX` (2). The editor settles both (step 2a of `settleAll`: the mask
+  comes off a cross-faded clip, the zoom is held at 2, each with a notice).
+* preview: the ellipse as a radial CSS mask (with feather and inversion), a rectangle as a clip path (inverted: a
+  frame with a hole); a rectangle's feather is not drawn (the panel says the preview is approximate).
+
+### Render budget (#672's rules)
+
+Each clip with colour or a mask is charged `per x length x (W x H x fps) / (1920 x 1080 x 30)` seconds of work,
+`per` = 0.15 (temperature/tint) + 0.2 (hue) + 0.35 (curve) + 0.3 (mask) (`COLOR_*_SECONDS_PER_S`,
+`MASK_SECONDS_PER_S`, the same in `timeline.py` and `lib/editor.ts`). It adds to `length + interpolation + steadying +
+fast clips (+ shapes)` against `render_timeout_s(length)`, and like the fast-clip charge it is not charged on a
+timeline longer than an export (`EXPORT_LENGTH_MAX_S`). The sentence names "colour and masks". Settle order: step 4c,
+after the fast clips (4b) and before the shapes (5): while the timeline is over, the dearest clip's colour and mask
+come off (the last clip first on a tie) with "Clip N: its colour and mask were taken off". A panel change that would
+not fit is not made and the reason is shown (`lookCheck`).
+
+Measurements (marginal seconds of render per second of video, the bundled ffmpeg 7.0.2, a phone-like 1080p60
+H.264 noisy 15 Mb/s source, segment encode settings, best of 2-3). The box was shared with other builders' test
+suites (load 9-10 on 4 cores), so the numbers are noisy; the charge takes the dearest seen: 1080p30 project:
+lutyuv 0.07-0.17, hue 0.16, curves 0.13-0.34, mask 0.16-0.27; 1080p60 project: lutyuv up to 0.23, hue up to 0.27,
+curves 0.28-0.56, mask 0.14-0.48. (`colorbalance`, the obvious tint filter, cost 1.3 s/s at 1080p30 and 3.3 at 60,
+so it is not used; `colortemperature` 0.57/0.92.) Consequences: at 1080p30 a 10-minute clip with every colour and a
+mask still fits (1 + 1.0 = 2.0 s per second); at 4K60 (x8) a masked clip longer than about 120 / (1 + 8 x 0.3 - 3) =
+300 s is refused.
+
+### Silence removal (no field)
+
+* The section "Remove silences" of a video clip: threshold -70..-20 dB (default -40), minimum length 0.2-3 s
+  (default 0.6). "Find silences" reads the clip's file in the browser (the library's signed link of the 480p proxy,
+  which keeps the sound: the same access check as the preview) with the waveform's caps (40 MB, 20 minutes), and
+  keeps the loudest sample of each 10 ms block. A silence is ffmpeg's `silencedetect` rule on those blocks (every
+  channel under the threshold for at least the minimum; it starts at the first quiet sample and ends at the first
+  loud one or the end). `samples/silence_cases.json` holds what the real ffmpeg reports on six signals at four
+  probes each; `tests/test_editor_silence.py` checks the file against ffmpeg and `editor-silence.test.ts` holds the
+  TypeScript detector to it (within one block).
+* The proposal is a list of cuts (0.1 s of sound kept either side, none leaving a piece shorter than a clip, never
+  the whole clip); nothing changes until the person presses "Cut N silent parts", which is one undo step: splits and
+  ripple deletes of the picture (texts, sounds and overlays keep their times; the hint says so). Only for a video
+  clip at one speed, forwards (no curve, reverse or freeze); stops at `MAX_EDITOR_CLIPS` and says how many fitted.
+* Why not on the server: the web image has no ffmpeg and a worker job needs a queue table (a migration, out of scope).
+  The analysis is free, one file at a time, at most 6 new files a minute per tab, and once per file per page.
+
+### Strings
+
+`lib/i18n/editor-parity2/{en,ru,uz}.ts` (`t.editor.parity2`); ru and uz are drafts for a native read.
+
+### Rollout
+
+As section 12: older validators refuse `color` and `mask` ("is not a known field"), so merge as one commit and use
+the new controls only after the worker has been rebuilt by the deploy.

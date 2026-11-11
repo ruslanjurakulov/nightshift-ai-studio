@@ -212,11 +212,47 @@ def colour_filter(name: str, k: float) -> str:
     return f"curves={args},format=yuv420p"
 
 
+#: Advanced colour. temperature and tint move the chroma planes by a constant (one lookup table, cheap): at
+#: +100 a warm picture loses COLOR_TEMP_U levels of blue difference (U) and gains COLOR_TEMP_V of red
+#: difference (V); +100 tint (magenta) adds COLOR_TINT_UV to both, -100 (green) takes it from both.
+COLOR_TEMP_U = 18.0
+COLOR_TEMP_V = 14.0
+COLOR_TINT_UV = 12.0
+#: The named tone curves: ffmpeg's own presets, and "matte" (lifted blacks, softened whites).
+_COLOR_CURVE_ARGS = {
+    "lighter": "preset=lighter",
+    "darker": "preset=darker",
+    "contrast": "preset=medium_contrast",
+    "strong-contrast": "preset=strong_contrast",
+    "cross-process": "preset=cross_process",
+    "matte": "master='0/0.08 0.5/0.5 1/0.9'",
+}
+
+
+def colour_adjust_filters(fx) -> List[str]:
+    """The advanced colour of a clip's effects ([] without it): the chroma move of temperature and tint,
+    the hue turn, then the tone curve. Only listed names and formatted numbers are written."""
+    out: List[str] = []
+    du = -COLOR_TEMP_U * fx.temperature / 100.0 + COLOR_TINT_UV * fx.tint / 100.0
+    dv = COLOR_TEMP_V * fx.temperature / 100.0 + COLOR_TINT_UV * fx.tint / 100.0
+    if fx.temperature or fx.tint:
+        # lut values are clipped to the plane's range by the filter itself.
+        out.append(f"format=yuv420p,lutyuv=u=val{du:+.3f}:v=val{dv:+.3f}")
+    if fx.hue:
+        out.append(f"hue=h={fx.hue:.3f}")
+    if fx.curve is not None:
+        args = _COLOR_CURVE_ARGS.get(fx.curve)
+        if args is None:
+            raise ValueError(f"unknown curve {fx.curve!r}")
+        out.append(f"curves={args},format=yuv420p")
+    return out
+
+
 def effect_filters(fx) -> List[str]:
     """The colour and texture filters of a clip's effects, in the order they run
-    (look, blur, sharpen, grain, vignette). The geometric ones are
+    (advanced colour, look, blur, sharpen, grain, vignette). The geometric ones are
     :func:`geometry_filter`. Only listed names and formatted numbers are written."""
-    out: List[str] = []
+    out: List[str] = colour_adjust_filters(fx)
     if fx.filter is not None and fx.filter_strength > 0:
         out.append(colour_filter(fx.filter, fx.filter_strength))
     if fx.blur > 0:
@@ -461,6 +497,86 @@ def _static_image_cmd(ffmpeg: str, path: str, dur: str, width: int, height: int,
             "-vf", pre + fit(width, height, fps, grade) + extra_vf, *common, str(out_path)]
 
 
+# ── masks ────────────────────────────────────────────────────────────────────
+#
+# A clip's mask is drawn once as a grey still the size of the frame (white = seen) and merged into the
+# picture's alpha, which is then laid over black: the chain of a masked clip becomes a filter graph with
+# the drawn still as its second input. A clip without a mask keeps its -vf chain byte for byte.
+
+#: Draw a mask twice the frame's size (then shrink it) up to this many pixels, for smooth curved edges.
+MASK_SUPERSAMPLE_MAX_PX = 2560 * 1440
+
+
+def mask_png_path(mask, workdir: Path, width: int, height: int) -> Path:
+    """Where the drawing of ``mask`` for this frame is kept: named by what it draws, so every piece of a
+    clip (and every clip with the same mask) shares one file."""
+    key = hashlib.sha1(f"{width}x{height}|{sorted(mask.to_dict().items())}".encode()).hexdigest()[:16]
+    return Path(workdir) / f"mask-{key}.png"
+
+
+def draw_mask(mask, width: int, height: int, path: Path) -> Path:
+    """Draw ``mask`` (render_spec.ClipMask) into ``path``: an 8-bit grey PNG of the frame, white where the
+    picture is seen. Written to a temporary name and renamed, so two pieces drawing it at once are safe."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageOps  # noqa: PLC0415  (Pillow: a dependency already)
+
+    ss = 2 if width * height <= MASK_SUPERSAMPLE_MAX_PX else 1
+    W, H = width * ss, height * ss
+    img = Image.new("L", (W, H), 0)
+    draw = ImageDraw.Draw(img)
+    mw, mh = mask.w * W, mask.h * H
+    cx, cy = mask.x * W, mask.y * H
+    box = (cx - mw / 2, cy - mh / 2, cx + mw / 2 - 1, cy + mh / 2 - 1)
+    short = min(mw, mh)
+    if mask.shape == "ellipse":
+        draw.ellipse(box, fill=255)
+    elif mask.shape == "rounded":
+        draw.rounded_rectangle(box, radius=max(0.0, mask.radius * short), fill=255)
+    elif mask.shape == "rect":
+        draw.rectangle(box, fill=255)
+    else:
+        raise ValueError(f"unknown mask shape {mask.shape!r}")
+    if ss > 1:
+        img = img.resize((width, height), Image.LANCZOS)
+    if mask.feather > 0:
+        # The soft band is about feather x the shorter side wide (two sigma either side of the edge).
+        img = img.filter(ImageFilter.GaussianBlur(radius=mask.feather * short / ss / 4.0))
+    if mask.invert:
+        img = ImageOps.invert(img)
+    part = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.part")
+    img.save(part, format="PNG")
+    os.replace(part, path)
+    return path
+
+
+def ensure_masks(seg: Segment, workdir: Path, width: int, height: int) -> None:
+    """Draw the masks this segment's commands read (its own and, for a cross-fade, the incoming clip's)."""
+    for s in (seg, seg.xfade):
+        if s is not None and s.mask is not None:
+            p = mask_png_path(s.mask, workdir, width, height)
+            if not p.exists():
+                draw_mask(s.mask, width, height, p)
+
+
+def _mask_merge(body_label: str, mask_input: int, width: int, height: int, fps: int, out_label: str) -> str:
+    """``...;`` that sees ``[body_label]`` through the drawn mask (input ``mask_input``) over black."""
+    t = out_label
+    return (f"[{mask_input}:v]format=gray[{t}m];[{body_label}][{t}m]alphamerge[{t}a];"
+            f"color=c=black:s={int(width)}x{int(height)}:r={int(fps)}[{t}b];"
+            f"[{t}b][{t}a]overlay=shortest=1:format=auto,format=yuv420p")
+
+
+def _masked_command(cmd: List[str], seg: Segment, body: str, tail: str, workdir: Path,
+                    width: int, height: int, fps: int) -> List[str]:
+    """A one-input segment command (``-vf body+tail``) with the clip's mask: the drawn still as the second
+    input and the chain as a graph that merges it before ``tail`` (the fades and the piece's trim)."""
+    vf = cmd.index("-vf")
+    first = cmd.index("-i")
+    png = str(mask_png_path(seg.mask, workdir, width, height))
+    graph = f"[0:v]{body}[pm];" + _mask_merge("pm", 1, width, height, fps, "k") + f"{tail}[o]"
+    return [*cmd[:first + 2], "-loop", "1", "-i", png, *cmd[first + 2:vf],
+            "-filter_complex", graph, "-map", "[o]", *cmd[vf + 2:]]
+
+
 def segment_commands(
     ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int, fps: int,
     *, seed: Optional[str] = None, x264: Sequence[str] = (), frame_exact: bool = False,
@@ -485,6 +601,19 @@ def segment_commands(
     the export's time limit. The pipeline's commands are unchanged."""
     cmds = _segment_commands(ffmpeg, seg, out_path, width, height, fps,
                              seed=seed, x264=x264, frame_exact=frame_exact)
+    if seg.mask is not None and seg.xfade is None and seg.path and seg.kind != KIND_COLOR:
+        # A mask needs frame_exact (render_spec.validate): the tail is the fades and the piece's trim.
+        frames = segment_frames(seg.duration, fps)
+        full = segment_frames(seg.clip_s, fps) if seg.clip_s > 0 else frames
+        tail = _fade_filters(seg, full / fps) + _piece_trim(seg, fps)
+        masked = []
+        for c in cmds:
+            vf = c[c.index("-vf") + 1]
+            if not vf.endswith(tail):
+                raise ValueError("a masked segment's chain does not end with its fades")
+            masked.append(_masked_command(c, seg, vf[:len(vf) - len(tail)], tail, out_path.parent,
+                                          width, height, fps))
+        cmds = masked
     if frame_exact or seg.xfade is not None:
         videos = [s.path for s in (seg, seg.xfade) if s is not None and s.path and s.kind == KIND_VIDEO]
         return [cap_inputs(c, video_inputs=videos, out_pixels=width * height) for c in cmds]
@@ -671,25 +800,36 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
     to one frame rate, time base and pixel format — xfade refuses two inputs
     that differ in any of them (a still's pan reaches it at the still's own
     rate otherwise)."""
+    inputs, body = _xfade_side_body(seg, width, height, fps, seed, hold, tag, stab)
+    return inputs, body + _xfade_tail(seg, fps)
+
+
+def _xfade_tail(seg: Segment, fps: int) -> str:
     full = segment_frames(seg.full_s, fps)
-    tail = (_fade_filters(seg, full / fps) + _piece_trim(seg, fps)
+    return (_fade_filters(seg, full / fps) + _piece_trim(seg, fps)
             + f",settb=1/{fps},fps={fps},format=yuv420p")
+
+
+def _xfade_side_body(seg: Segment, width: int, height: int, fps: int, seed: str,
+                     hold: bool, tag: str = "", stab: str = "") -> tuple:
+    """(input args, chain up to the fades) of one side of a cross-fade (:func:`_xfade_side`)."""
+    full = segment_frames(seg.full_s, fps)
     grade = grade_filter(seg)
     mv = move_filter(seg.move, width, height, full) if seg.move is not None else ""
     ang = sar_filter(seg) + angle_filter(seg, width, height)
     if seg.kind == KIND_IMAGE and seg.move is not None:
         return (["-loop", "1", "-i", seg.path],
-                geometry_filter(seg) + _scale_crop(width, height, fps, grade) + ang + mv + tail)
+                geometry_filter(seg) + _scale_crop(width, height, fps, grade) + ang + mv)
     if seg.kind == KIND_IMAGE:
         if hold:
             # A timeline's still fills the frame in the move, so it does held too.
             return (["-loop", "1", "-i", seg.path],
-                    geometry_filter(seg) + _scale_crop(width, height, fps, grade) + ang + tail)
+                    geometry_filter(seg) + _scale_crop(width, height, fps, grade) + ang)
         return (["-i", seg.path],
                 geometry_filter(seg) + ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full))
-                + _then(grade) + ang + tail)
+                + _then(grade) + ang)
     inputs, chain = _video_source(seg, width, height, fps, full, tag, stab)
-    return inputs, chain + mv + tail
+    return inputs, chain + mv
 
 
 def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int,
@@ -715,12 +855,32 @@ def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, heigh
     common = ["-c:v", "libx264", *x264, "-pix_fmt", "yuv420p", "-r", str(fps)]
 
     def cmd(hold: bool) -> List[str]:
-        ia, ca = _xfade_side(seg, width, height, fps, seed_a, hold, "a", stab_filter(ffmpeg, seg, out_path.parent))
-        ib, cb = _xfade_side(x, width, height, fps, seed_b, hold, "b", stab_filter(ffmpeg, x, out_path.parent))
-        graph = (f"[0:v]{ca}[xa];[1:v]{cb}[xb];"
-                 f"[xa][xb]xfade=transition={style}:duration={frames / fps:.6f}:offset=0[xv]")
-        return [ffmpeg, "-y", *ia, *ib, "-filter_complex", graph, "-map", "[xv]",
-                "-frames:v", str(frames), "-an", *common, str(out_path)]
+        if seg.mask is None and x.mask is None:
+            ia, ca = _xfade_side(seg, width, height, fps, seed_a, hold, "a", stab_filter(ffmpeg, seg, out_path.parent))
+            ib, cb = _xfade_side(x, width, height, fps, seed_b, hold, "b", stab_filter(ffmpeg, x, out_path.parent))
+            graph = (f"[0:v]{ca}[xa];[1:v]{cb}[xb];"
+                     f"[xa][xb]xfade=transition={style}:duration={frames / fps:.6f}:offset=0[xv]")
+            return [ffmpeg, "-y", *ia, *ib, "-filter_complex", graph, "-map", "[xv]",
+                    "-frames:v", str(frames), "-an", *common, str(out_path)]
+        # A side with a mask is seen through it (over black) before its fades; the drawn stills are inputs
+        # after the two clips'.
+        extra: List[str] = []
+        parts: List[str] = []
+        for i, (s_, seed_, tag) in enumerate(((seg, seed_a, "a"), (x, seed_b, "b"))):
+            inp, body = _xfade_side_body(s_, width, height, fps, seed_, hold, tag,
+                                         stab_filter(ffmpeg, s_, out_path.parent))
+            extra.append(inp)
+            tail = _xfade_tail(s_, fps)
+            if s_.mask is None:
+                parts.append(f"[{i}:v]{body}{tail}[x{tag}];")
+                continue
+            n = 2 + len([p for p in parts if "alphamerge" in p])
+            parts.append(f"[{i}:v]{body}[p{tag}];" + _mask_merge(f"p{tag}", n, width, height, fps, f"k{tag}")
+                         + f"{tail}[x{tag}];")
+        pngs = [str(mask_png_path(s_.mask, out_path.parent, width, height)) for s_ in (seg, x) if s_.mask is not None]
+        graph = "".join(parts) + f"[xa][xb]xfade=transition={style}:duration={frames / fps:.6f}:offset=0[xv]"
+        return [ffmpeg, "-y", *extra[0], *extra[1], *[a for p in pngs for a in ("-loop", "1", "-i", p)],
+                "-filter_complex", graph, "-map", "[xv]", "-frames:v", str(frames), "-an", *common, str(out_path)]
 
     if KIND_IMAGE in (seg.kind, x.kind):
         return [cmd(False), cmd(True)]
@@ -766,6 +926,7 @@ def _normalize_segment(
     # Only a timeline export passes a deadline; every other caller (and the
     # tests that stand in for _run) makes exactly the call it always made.
     run = _run if deadline is None else (lambda c: _run(c, deadline=deadline))
+    ensure_masks(seg, out_path.parent, width, height)
     for trf, part, detect in segment_prepasses(ffmpeg, seg, out_path, width, height):
         # vidstab's first pass. No quiet fallback if it fails: the clip was asked to be steadied.
         if trf.exists() and trf.stat().st_size > 0:

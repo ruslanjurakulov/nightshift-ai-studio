@@ -334,6 +334,39 @@ export function reverseMaxSeconds(width: number, height: number, fps: number): n
   return limit;
 }
 export type Rotation = (typeof ROTATIONS)[number];
+/** Advanced colour on a V clip (modules/timeline.py COLOR_*; a test pins them): temperature -100 (cool)
+ *  .. 100 (warm), tint -100 (green) .. 100 (magenta), hue -180..180 degrees, a named tone curve. Saturation
+ *  and lightness are the clip's `grade`. */
+export const COLOR_TEMP_MAX = 100;
+export const COLOR_TINT_MAX = 100;
+export const COLOR_HUE_MAX = 180;
+export const COLOR_CURVES = [
+  "lighter",
+  "darker",
+  "contrast",
+  "strong-contrast",
+  "matte",
+  "cross-process",
+] as const;
+export type ColorCurve = (typeof COLOR_CURVES)[number];
+const COLOR_KEYS = ["temperature", "tint", "hue", "curve"];
+/** A shape mask on a V clip (modules/timeline.py MASK_*): centre and size in frame fractions, a feather and
+ *  a rounded shape's corner radius as fractions of the shape's shorter side. */
+export const MASK_SHAPES = ["rect", "ellipse", "rounded"] as const;
+export type MaskShape = (typeof MASK_SHAPES)[number];
+export const MASK_MIN = 0.05;
+export const MASK_FEATHER_MAX = 0.5;
+export const MASK_RADIUS_MAX = 0.5;
+export const MASK_DEFAULTS = { x: 0.5, y: 0.5, w: 0.6, h: 0.6, feather: 0 } as const;
+export const MASK_RADIUS_DEFAULT = 0.25;
+const MASK_KEYS = ["shape", "x", "y", "w", "h", "feather", "radius", "invert"];
+/** What colour and masks add to the render-time estimate, seconds per second of a clip at 1080p30, scaled by
+ *  the frame's pixels x rate (modules/timeline.py, the same numbers; measured, docs section 13). */
+export const LOOK_REF_PIXEL_RATE = 1920 * 1080 * 30;
+export const COLOR_CHROMA_SECONDS_PER_S = 0.15;
+export const COLOR_HUE_SECONDS_PER_S = 0.2;
+export const COLOR_CURVE_SECONDS_PER_S = 0.35;
+export const MASK_SECONDS_PER_S = 0.3;
 const EFFECT_KEYS = [
   "filter",
   "filter_strength",
@@ -400,6 +433,8 @@ const V_CLIP_KEYS = [
   "speed_curve",
   "interpolate",
   "stabilize",
+  "color",
+  "mask",
   "gain_db",
   ...EFFECT_KEYS,
 ];
@@ -499,6 +534,26 @@ export interface ClipCrop {
   h?: number;
 }
 
+export interface ClipColor {
+  temperature?: number;
+  tint?: number;
+  hue?: number;
+  curve?: ColorCurve;
+}
+
+export interface ClipMask {
+  shape: MaskShape;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  feather?: number;
+  /** A rounded shape's corner (fraction of the shorter side); only on `rounded`. */
+  radius?: number;
+  /** Black inside the shape instead of outside. */
+  invert?: boolean;
+}
+
 export interface VideoClip {
   id: string;
   asset_id: string;
@@ -552,6 +607,10 @@ export interface VideoClip {
   interpolate?: boolean;
   /** Smooth camera shake (decodes the clip twice; video only, not with freeze). */
   stabilize?: boolean;
+  /** Advanced colour (lib/editorLook.ts); none = no change. */
+  color?: ClipColor;
+  /** A shape the picture is seen through, fixed in the frame (lib/editorLook.ts). */
+  mask?: ClipMask;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -865,10 +924,11 @@ function interpStabEstimates(
   fps: number,
   width: number,
   height: number,
-): { interp: number; interpEst: number; stabEst: number; fastEst: number } {
+): { interp: number; interpEst: number; stabEst: number; fastEst: number; lookEst: number } {
   let interp = 0;
   let stabEst = 0;
   let fastEst = 0;
+  let lookEst = 0;
   for (const t of counted)
     if (t.kind === "V")
       for (const c of t.clips) {
@@ -884,8 +944,15 @@ function interpStabEstimates(
         }
         if (c.stabilize === true) stabEst += stabilizeSeconds(c, fps, width, height);
         fastEst += fastSeconds(c);
+        lookEst += lookSeconds(c, fps, width, height);
       }
-  return { interp, interpEst: interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0, stabEst, fastEst };
+  return {
+    interp,
+    interpEst: interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0,
+    stabEst,
+    fastEst,
+    lookEst,
+  };
 }
 
 /**
@@ -1026,19 +1093,21 @@ export function validateTimeline(doc: unknown): string[] {
     const est = interpStabEstimates(counted, fps, doc.width, doc.height);
     const { interp, interpEst, stabEst } = est;
     const fastEst = fastCharged(est.fastEst, docDuration(doc as unknown as TimelineDoc));
+    const lookEst = fastCharged(est.lookEst, docDuration(doc as unknown as TimelineDoc));
     if (interp > INTERP_MAX_FRAMES_DOC)
       problems.push(
         `timeline: interpolated slow motion would make about ${Math.round(interp)} frames (1080p equivalent) in all; at most ${INTERP_MAX_FRAMES_DOC} per timeline`,
       );
-    if (interpEst + stabEst + fastEst > 0) {
+    if (interpEst + stabEst + fastEst + lookEst > 0) {
       const length = docDuration(doc as unknown as TimelineDoc);
-      const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst;
+      const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + lookEst;
       const allowed = renderTimeoutS(length);
       if (work > allowed + 1e-9) {
         const what = [
           interpEst > 0 ? "interpolated slow motion" : "",
           stabEst > 0 ? "stabilising" : "",
           fastEst > 0 ? "playing clips faster than 1x" : "",
+          lookEst > 0 ? "colour and masks" : "",
         ]
           .filter(Boolean)
           .join(" and ");
@@ -1046,6 +1115,7 @@ export function validateTimeline(doc: unknown): string[] {
           interpEst > 0 ? "slow less of it" : "",
           stabEst > 0 ? "stabilise less of it" : "",
           fastEst > 0 ? "speed them up less" : "",
+          lookEst > 0 ? "use fewer colour changes and masks" : "",
         ]
           .filter(Boolean)
           .join(" and ");
@@ -1081,7 +1151,13 @@ export function validateTimeline(doc: unknown): string[] {
         const length = docDuration(doc as unknown as TimelineDoc);
         const shapeEst = shapeWorkSeconds(doc.shapes as WorkShape[], fps, { width: doc.width, height: doc.height }, length);
         const est = interpStabEstimates(counted, fps, doc.width, doc.height);
-        const work = RENDER_PLAIN_FACTOR * length + est.interpEst + est.stabEst + fastCharged(est.fastEst, length) + shapeEst;
+        const work =
+          RENDER_PLAIN_FACTOR * length +
+          est.interpEst +
+          est.stabEst +
+          fastCharged(est.fastEst, length) +
+          fastCharged(est.lookEst, length) +
+          shapeEst;
         const allowed = renderTimeoutS(length);
         if (shapeEst > 0 && work > allowed + 1e-9)
           problems.push(
@@ -1264,6 +1340,8 @@ function validateMediaClip(
           problems,
         );
     validateEffects(clip, where, problems);
+    if ("color" in clip) validateColor(clip.color, where, problems);
+    if ("mask" in clip) validateMask(clip.mask, where, problems);
     if ("move" in clip) validateClipMove(clip.move, where, problems);
     if ("crop" in clip) validateCrop(clip.crop, where, problems);
     numIn(clip, "angle", -ANGLE_MAX, ANGLE_MAX, where, problems);
@@ -1511,6 +1589,59 @@ function validateEffects(
     !(isInt(clip.rotate) && (ROTATIONS as readonly number[]).includes(clip.rotate))
   )
     problems.push(`${where}: rotate must be 0, 90, 180 or 270`);
+}
+
+/** A V clip's `color` (modules/timeline.py _validate_color). */
+function validateColor(color: unknown, where: string, problems: string[]) {
+  const cw = `${where} color`;
+  if (!fields(color, COLOR_KEYS, [], cw, problems)) return;
+  if (!Object.keys(color).length) problems.push(`${cw}: give at least one of ${COLOR_KEYS.join(", ")}`);
+  numIn(color, "temperature", -COLOR_TEMP_MAX, COLOR_TEMP_MAX, cw, problems);
+  numIn(color, "tint", -COLOR_TINT_MAX, COLOR_TINT_MAX, cw, problems);
+  numIn(color, "hue", -COLOR_HUE_MAX, COLOR_HUE_MAX, cw, problems);
+  if (
+    "curve" in color &&
+    !(typeof color.curve === "string" && (COLOR_CURVES as readonly string[]).includes(color.curve))
+  )
+    problems.push(`${cw}: curve is not available`);
+}
+
+/** A V clip's `mask` (modules/timeline.py _validate_mask). */
+function validateMask(mask: unknown, where: string, problems: string[]) {
+  const mw = `${where} mask`;
+  if (!fields(mask, MASK_KEYS, ["shape"], mw, problems)) return;
+  if (!(typeof mask.shape === "string" && (MASK_SHAPES as readonly string[]).includes(mask.shape)))
+    problems.push(`${mw}: shape must be rect, ellipse or rounded`);
+  for (const k of ["x", "y"]) numIn(mask, k, 0, 1, mw, problems);
+  for (const k of ["w", "h"]) numIn(mask, k, MASK_MIN, 1, mw, problems);
+  numIn(mask, "feather", 0, MASK_FEATHER_MAX, mw, problems);
+  if ("radius" in mask) {
+    numIn(mask, "radius", 0, MASK_RADIUS_MAX, mw, problems);
+    if (mask.shape === "rect" || mask.shape === "ellipse")
+      problems.push(`${mw}: radius is only for a rounded shape`);
+  }
+  if ("invert" in mask && typeof mask.invert !== "boolean")
+    problems.push(`${mw}: invert must be true or false`);
+}
+
+/** The estimated render seconds a clip's colour and mask add (modules/timeline.py `look_seconds`). */
+export function lookSeconds(
+  c: Record<string, unknown> | VideoClip,
+  fps: number,
+  width: number,
+  height: number,
+): number {
+  const r = c as Record<string, unknown>;
+  const color = isObj(r.color) ? r.color : {};
+  let per = 0;
+  if (color.temperature || color.tint) per += COLOR_CHROMA_SECONDS_PER_S;
+  if (color.hue) per += COLOR_HUE_SECONDS_PER_S;
+  if (color.curve) per += COLOR_CURVE_SECONDS_PER_S;
+  if (isObj(r.mask)) per += MASK_SECONDS_PER_S;
+  if (per <= 0 || !isNum(r.in_s) || !isNum(r.out_s)) return 0;
+  const length = mediaLength(r);
+  if (!Number.isFinite(length)) return 0;
+  return (per * Math.max(0, length) * (width * height * fps)) / LOOK_REF_PIXEL_RATE;
 }
 
 function validateTimedText(
@@ -1996,12 +2127,46 @@ function largeFrameCrossfadeProblems(doc: TimelineDoc, track: TimelineTrack): st
   return problems;
 }
 
+/** What a mask cannot afford in a frame above 1440p (modules/timeline.py `_large_frame_mask_problems`):
+ *  a cross-faded clip, or a move zooming past XFADE_LARGE_ZOOM_MAX (measured: out of memory). */
+function largeFrameMaskProblems(doc: TimelineDoc, track: TimelineTrack): string[] {
+  const w = doc.width;
+  const h = doc.height;
+  if (!(isInt(w) && isInt(h) && w * h > LARGE_FRAME_PX)) return [];
+  const faded = new Set<string>();
+  for (const [prev, clip] of crossfades(track)) {
+    faded.add(String(prev.id));
+    faded.add(String(clip.id));
+  }
+  const problems: string[] = [];
+  for (const c of sortedClips(track)) {
+    if (!isObj(c.mask)) continue;
+    const id = String(c.id);
+    if (faded.has(id)) {
+      problems.push(
+        `track ${track.id} clip ${id}: a mask is not offered on a cross-faded clip in a frame above 1440p (${w}x${h}) — the render would run out of memory`,
+      );
+      continue;
+    }
+    const mv = c.move;
+    const zooms = isObj(mv)
+      ? [mv.from, mv.to].filter(isObj).map((p) => (p as Record<string, unknown>).zoom ?? 1)
+      : [];
+    if (zooms.some((z) => isNum(z) && z > XFADE_LARGE_ZOOM_MAX))
+      problems.push(
+        `track ${track.id} clip ${id}: a masked clip zooms at most ${XFADE_LARGE_ZOOM_MAX} in a frame above 1440p (${w}x${h})`,
+      );
+  }
+  return problems;
+}
+
 function transitionProblems(doc: TimelineDoc): string[] {
   const problems: string[] = [];
   for (const track of doc.tracks) {
     if (track.kind !== "V") continue;
     problems.push(...crossfadeProblems(track));
     problems.push(...largeFrameCrossfadeProblems(doc, track));
+    problems.push(...largeFrameMaskProblems(doc, track));
     const clips = [...track.clips].sort(
       (a, b) =>
         ms(Number(a.start_s)) - ms(Number(b.start_s)) ||
@@ -2229,6 +2394,20 @@ function effectsOf(c: Record<string, unknown>): Partial<VideoClip> {
   return out as Partial<VideoClip>;
 }
 
+/** A document clip's colour and mask as the model holds them (a colour of only zeros is none). */
+function lookOf(c: Record<string, unknown>): Partial<VideoClip> {
+  const out: Partial<VideoClip> = {};
+  if (isObj(c.color)) {
+    const col: Record<string, unknown> = {};
+    for (const k of ["temperature", "tint", "hue"]) if (isNum(c.color[k]) && c.color[k] !== 0) col[k] = c.color[k];
+    if (typeof c.color.curve === "string" && (COLOR_CURVES as readonly string[]).includes(c.color.curve))
+      col.curve = c.color.curve;
+    if (Object.keys(col).length) out.color = col as ClipColor;
+  }
+  if (isObj(c.mask) && typeof c.mask.shape === "string") out.mask = { ...(c.mask as unknown as ClipMask) };
+  return out;
+}
+
 function transitionOf(v: unknown): { transition: Transition } | object {
   if (
     !isObj(v) ||
@@ -2386,6 +2565,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
         : {}),
       ...gradeFieldOf(c.grade),
       ...effectsOf(c),
+      ...lookOf(c),
       ...(c.reverse === true ? { reverse: true } : {}),
       ...(c.freeze === true ? { freeze: true } : {}),
       ...(c.denoise === true ? { denoise: true } : {}),

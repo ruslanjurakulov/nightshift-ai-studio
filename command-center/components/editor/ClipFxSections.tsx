@@ -41,6 +41,7 @@ import {
 import { Disclosure, RadioChips, SliderRow, ToggleRow } from "./FxControls";
 import { ClipMoveSection } from "./ClipMotionSections";
 import { ClipCleanSection } from "./CleanSections";
+import { ClipColorSection, ClipMaskSection, ClipSilenceSection } from "./ClipLookSections";
 
 /**
  * The selected clip's look and effects, and its crop and tilt, as two native
@@ -403,7 +404,9 @@ export function ClipFxSections({
 }: {
   model: EditorModel;
   clip: VideoClip;
-  source: Pick<EditorAsset, "width" | "height"> | null;
+  source:
+    | (Pick<EditorAsset, "width" | "height"> & Partial<Pick<EditorAsset, "id" | "kind" | "viewUrl" | "durationS">>)
+    | null;
   /** A photo: some moves differ (it has an automatic slow zoom). */
   still: boolean;
   apply: Apply;
@@ -412,6 +415,8 @@ export function ClipFxSections({
   return (
     <>
       <ClipEffectsSection model={model} clip={clip} apply={apply} showClip={showClip} />
+      <ClipColorSection model={model} clip={clip} apply={apply} showClip={showClip} />
+      <ClipMaskSection model={model} clip={clip} apply={apply} showClip={showClip} />
       <ClipCropSection
         model={model}
         clip={clip}
@@ -427,6 +432,7 @@ export function ClipFxSections({
         showClip={showClip}
       />
       <ClipCleanSection model={model} clip={clip} still={still} apply={apply} />
+      {still ? null : <ClipSilenceSection model={model} clip={clip} asset={source} apply={apply} />}
     </>
   );
 }

@@ -437,6 +437,99 @@
           "type": "boolean",
           "default": false,
           "description": "Smooth camera shake (ffmpeg vidstab, two passes, with an automatic zoom to hide the borders; the built-in deshake if the build has no vidstab). Video only; not with freeze. The source range is at most STABILIZE_MAX_S (120 s) and a document's stabilised ranges 300 s in all."
+        },
+        "color": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "description": "Advanced colour (editor parity 2): temperature -100 (cool) .. 100 (warm) and tint -100 (green) .. 100 (magenta) move the chroma, hue turns every colour by that many degrees, curve is a named tone curve. Zeros are dropped by normalise; saturation and lightness are the grade.",
+          "properties": {
+            "temperature": {
+              "type": "number",
+              "minimum": -100,
+              "maximum": 100,
+              "default": 0
+            },
+            "tint": {
+              "type": "number",
+              "minimum": -100,
+              "maximum": 100,
+              "default": 0
+            },
+            "hue": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180,
+              "default": 0
+            },
+            "curve": {
+              "enum": [
+                "lighter",
+                "darker",
+                "contrast",
+                "strong-contrast",
+                "matte",
+                "cross-process"
+              ]
+            }
+          }
+        },
+        "mask": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "shape"
+          ],
+          "description": "A shape the picture is seen through (editor parity 2), in frame fractions and fixed in the frame: the centre x, y and size w, h; feather is the soft edge and radius a rounded shape's corner (radius only on rounded), both as fractions of the shape's shorter side; invert hides the inside instead. Outside the shape the frame is black.",
+          "properties": {
+            "shape": {
+              "enum": [
+                "rect",
+                "ellipse",
+                "rounded"
+              ]
+            },
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.5
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.5
+            },
+            "w": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 1,
+              "default": 0.6
+            },
+            "h": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 1,
+              "default": 0.6
+            },
+            "feather": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5,
+              "default": 0
+            },
+            "radius": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5,
+              "default": 0.25
+            },
+            "invert": {
+              "type": "boolean",
+              "default": false
+            }
+          }
         }
       }
     },

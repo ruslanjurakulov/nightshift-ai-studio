@@ -223,3 +223,6 @@ export function peaksFor(
 export function clearPeaksCache(): void {
   cache.clear();
 }
+
+/** The capped reader and the offline decoder, for the editor's silence analysis (lib/editorSilence.ts). */
+export { readCapped as readCappedBody, decoder as offlineDecoder };
