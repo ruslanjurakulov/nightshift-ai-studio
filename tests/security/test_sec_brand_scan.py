@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import re
+from decimal import Decimal
 import threading
 import uuid
 
@@ -467,7 +468,7 @@ def test_a_null_price_is_not_on_sale_and_the_quote_says_so(conn, w):
     assert refused(out, "NS409", "not_on_sale"), out
     assert counts(s) == before
     become(s, w.org.viewer)
-    assert s.value("select public.quote_brand_scan(%s)", [w.org.id]) == {"on_sale": False, "credits": None, "exempt": False}
+    assert s.value("select public.quote_brand_scan(%s)", [w.org.id]) == {"on_sale": False, "credits": None, "hold": None, "exempt": False}
 
 
 def test_the_shipped_price_is_null_and_a_missing_settings_row_is_not_on_sale_either(conn, w):
@@ -479,19 +480,117 @@ def test_the_shipped_price_is_null_and_a_missing_settings_row_is_not_on_sale_eit
     assert refused(scan(s, w.org, "https://shop.scan.test/"), "NS409", "not_on_sale"), "a missing row is never free"
 
 
-def test_a_price_is_raised_to_the_platforms_job_minimum_and_rounded_up_to_the_cent(conn, w):
-    s = w.su
+def job_minimum(s, n):
     become(s, None)
-    s.rows("insert into public.credit_prices (unit, credits_per_unit, margin) values ('job_minimum', 3, 0) "
-           "on conflict (unit) do update set credits_per_unit = 3 returning 1")
-    become(s, w.org.ed)
-    assert s.value("select (public.quote_brand_scan(%s) ->> 'credits')::numeric", [w.org.id]) == 3
+    s.rows("insert into public.credit_prices (unit, credits_per_unit, margin) values ('job_minimum', %s, 0) "
+           "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit returning 1", [n])
+
+
+def quote(s, who, org):
+    become(s, who)
+    q = s.value("select public.quote_brand_scan(%s)", [org])
+    return q["credits"], q["hold"]
+
+
+def held(s, sid):
+    become(s, None)
+    return s.rows("select status, amount, captured from public.credit_reservations where job_id = %s", [f"bs:{sid}"])
+
+
+def test_the_price_is_charged_as_set_and_only_the_hold_is_raised_to_job_minimum(conn, w):
+    """The owner exempted the scan from job_minimum. reserve_credits still refuses a hold below it, so the hold is greatest(price, minimum)
+    and only the price is captured: with job_minimum 30 and a price of 1, 30 are held while it runs and 1 is charged."""
+    s = w.su
+    job_minimum(s, 30)
+    price(s, 1)
+    assert quote(s, w.org.viewer, w.org.id) == (1, 30)
+    out = scan(s, w.org, U, max_credits=1)
+    assert out.ok and out.rows[0][0]["credits"] == 1, out
+    sid = out.rows[0][0]["id"]
+    become(s, None)
+    assert s.value("select price_credits from public.brand_scans where id = %s", [sid]) == 1
+    assert held(s, sid) == [("open", 30, None)]
+    assert w.org.account() == (100, 30), "30 held while it runs"
+    claim(s)
+    assert finish(s, sid, result(U)).rows[0][0]["charged"] == 1
+    assert w.org.account() == (99, 0), "exactly 1 charged, the other 29 released in the same transaction"
+    assert held(s, sid) == [("captured", 30, 1)]
+    become(s, None)
+    assert s.value("select charged_credits from public.brand_scans where id = %s", [sid]) == 1
+
+
+def test_with_the_raised_hold_every_failure_releases_all_of_it(conn, w):
+    s = w.su
+    job_minimum(s, 30)
+    price(s, 1)
+    # A failure the worker reports.
+    sid = scan(s, w.org, U).rows[0][0]["id"]
+    claim(s)
+    become(s, SERVICE)
+    s.value("select public.fail_brand_scan(%s, %s, 'fetch_robots')", [sid, WORKER])
+    assert w.org.account() == (100, 0) and held(s, sid)[0][0] == "released"
+    # A scan nobody took (the claim's sweep), and one whose worker went quiet (the next request's sweep).
+    a = scan(s, w.org, U).rows[0][0]["id"]
+    assert w.org.account() == (100, 30)
+    become(s, None)
+    s.rows("update public.brand_scans set created_at = now() - interval '3 hours' where id = %s returning 1", [a])
+    assert claim(s) is None
+    assert w.org.account() == (100, 0) and held(s, a)[0][0] == "released"
+    b = scan(s, w.org, U).rows[0][0]["id"]
+    become(s, None)
+    s.rows("update public.brand_scans set status = 'running', worker_id = 'gone', claimed_at = now() - interval '20 minutes' where id = %s returning 1", [b])
+    c = scan(s, w.org, U)
+    assert c.ok, c
+    become(s, None)
+    assert s.value("select error_code from public.brand_scans where id = %s", [b]) == "expired" and held(s, b)[0][0] == "released"
+    assert w.org.account() == (100, 30), "only the new scan's hold is open"
+    # A hold that is gone when the worker claims: the scan fails, nothing stays held.
+    become(s, SERVICE)
+    s.value("select public.release_credits(%s)", [f"bs:{c.rows[0][0]['id']}"])
+    assert claim(s) is None
+    become(s, None)
+    assert s.value("select error_code from public.brand_scans where id = %s", [c.rows[0][0]["id"]]) == "hold_missing"
+    assert w.org.account() == (100, 0)
+
+
+def test_without_the_hold_available_the_refusal_names_the_hold_and_the_price(conn, w):
+    s = w.su
+    poor = Org(s, credits=29)
+    domain(s, poor, "poor.scan.test")
+    job_minimum(s, 30)
+    price(s, 1)
+    before = counts(s)
+    out, detail = call(become(s, poor.ed), REQUEST_SCAN, [poor.id, "https://poor.scan.test/", key(), 1])
+    assert refused(out, "NS402", "scan_hold_unavailable") and detail == "hold=30 price=1", (out, detail)
+    assert counts(s) == before and poor.account() == (29, 0)
+    become(s, SERVICE)
+    s.value("select public.grant_credits(%s, 1, 'lab')", [poor.id])
+    assert scan(s, poor, "https://poor.scan.test/", max_credits=1).ok, "30 available: it starts"
+
+
+def test_the_confirmed_price_is_the_charged_one_not_the_hold(conn, w):
+    s = w.su
+    job_minimum(s, 30)
+    price(s, 1)
+    assert scan(s, w.org, U, max_credits=1).ok, "1 confirmed is enough although 30 are held"
+    become(s, None)
+    s.rows("update public.brand_scans set status = 'failed', error_code = 'lab' where org_id = %s and status = 'requested' returning 1", [w.org.id])
+    out, detail = call(become(s, w.org.ed), REQUEST_SCAN, [w.org.id, U, key(), Decimal("0.5")])
+    assert refused(out, "NS409", "price_changed") and detail == "price=1", (out, detail)
+
+
+def test_a_price_is_rounded_up_to_the_cent_and_free_stays_free(conn, w):
+    s = w.su
+    job_minimum(s, 3)
     price(s, 0)
-    become(s, w.org.ed)
-    assert s.value("select (public.quote_brand_scan(%s) ->> 'credits')::numeric", [w.org.id]) == 0, "free stays free"
+    assert quote(s, w.org.ed, w.org.id) == (0, 0), "free stays free, and holds nothing"
     price(s, 4.001)
     become(s, w.org.ed)
     assert s.value("select public.quote_brand_scan(%s) ->> 'credits'", [w.org.id]) == "4.01"
+    price(s, 2)
+    assert quote(s, w.org.ed, w.org.id) == (2, 3)
+    job_minimum(s, 1)
+    assert quote(s, w.org.ed, w.org.id) == (2, 2), "a minimum below the price raises nothing"
 
 
 def test_a_scan_needs_a_verified_domain_of_the_same_organization_that_is_its_host_or_a_parent(conn, w):

@@ -43,11 +43,14 @@
 -- a TXT record at `_nightshift.<host>` ITSELF counts (a CNAME pointing elsewhere does not).
 --
 -- MONEY (the owner's decision: priced per scan, at cost, the price itself limits volume). The price is brand_scan_settings.price_credits, never
--- anything the client sends; a price above 0 is raised to the platform's job_minimum, as creative_price does. request_brand_scan HOLDS it
--- (reserve_credits, through 0036's creative_platform_reserve after checking the editor role itself, exactly as create_creative_job does), the
--- worker's finish CAPTURES it (capture_credits), a failure RELEASES it (release_credits); a scan nobody took within 2 hours, or whose worker
--- went quiet for 15 minutes, is failed and released by the next claim or request. The caller confirms the price it was shown (p_max_credits):
--- a higher price is `price_changed`, never charged. The exempt organization (the operator's) is not charged, and only a platform admin may
+-- anything the client sends, and it is NOT raised to the platform's job_minimum (the owner's decision: a scan costs its own price). But
+-- reserve_credits refuses any hold below job_minimum, and no shared money function is changed here, so request_brand_scan HOLDS
+-- greatest(price, job_minimum) (reserve_credits, through 0036's creative_platform_reserve after checking the editor role itself, exactly as
+-- create_creative_job does), the worker's finish CAPTURES exactly the price (capture_credits, which releases the rest of the hold in the same
+-- transaction), and a failure RELEASES the whole hold (release_credits); a scan nobody took within 2 hours, or whose worker went quiet for 15
+-- minutes, is failed and released by the next claim or request. With job_minimum 30 and a price of 1: 30 held while it runs, 1 charged. A
+-- person without the hold available is refused `scan_hold_unavailable` (NS402, detail hold=… price=…). The caller confirms the price it was
+-- shown (p_max_credits, compared with the charged price, never the hold): a higher price is `price_changed`, never charged. The exempt organization (the operator's) is not charged, and only a platform admin may
 -- scan there (create_creative_job's rule). A hold counts as one of the plan's parallel runs (0034), as every hold does.
 --
 -- CAPS. One scan in flight per organization (a unique index: requested or running). Platform-wide per 24 hours: scans (all statuses, failed
@@ -129,14 +132,14 @@ begin
       ('public.ads_scan_url_ok(text)', 'd734d3fedb41ffed175eae91287e449c'),
       ('public.brand_scan_field_ok(jsonb, text)', '353d784aab148ab2af4324383bdeae51'),
       ('public.brand_scan_result_ok(jsonb)', '05e268084c5d68c2291897ce2f759d44'),
-      ('public.brand_scan_price()', 'c2187431324f7bfc59ba2d9dcbb17ec9'),
+      ('public.brand_scan_price()', '596c0cd1d82759855ae5496b6acf20b0'),
       ('public.brand_scan_fail_locked(uuid, text)', '2ed1f012de9cb7e16df70d7cc748cc91'),
       ('public.brand_scan_settings_guard()', 'd55aaee7b70dc8655a5fb02f3682a5bb'),
       ('public.brand_scan_settings_trail()', 'c5f5e10faae661c30f58a25e2ff5b5aa'),
       ('public.request_domain_verification(uuid, text)', '5cf3a05a1cd6291caa58b7bfb4f41ab7'),
       ('public.check_domain_verification(uuid)', '9da8c07a8a5d7fc194b796eb8c35a2d6'),
-      ('public.quote_brand_scan(uuid)', '1852f3812e91c4629c25e1990c5c3483'),
-      ('public.request_brand_scan(uuid, text, text, numeric)', 'df669395959880f4a5733b6f79b0b976'),
+      ('public.quote_brand_scan(uuid)', 'ba5d8b562c6893d8b0ef49ff4392d8b2'),
+      ('public.request_brand_scan(uuid, text, text, numeric)', '812a6131a465414f5b0235f6f705fe5a'),
       ('public.accept_brand_scan_fields(uuid, uuid, text[])', '33e5092fed2d2b50b594eae230aaffb1'),
       ('public.claim_domain_check(text)', '82141353f6d88e824d4d299fa34b8890'),
       ('public.finish_domain_check(uuid, text, boolean, text)', '62b0880595b8713fa3ba8d93c146c7f0'),
@@ -426,7 +429,7 @@ create index if not exists brand_scans_domain_idx on public.brand_scans (domain_
 
 create table if not exists public.brand_scan_settings (
   id                    boolean primary key default true,
-  -- NULL: not on sale (the seed). 0: free. Otherwise the credits one scan costs (raised to the platform's job_minimum).
+  -- NULL: not on sale (the seed). 0: free. Otherwise the credits one scan costs (charged as is; the HOLD is raised to job_minimum).
   price_credits         numeric,
   platform_daily_scans  integer not null default 500,
   platform_daily_checks integer not null default 5000,
@@ -497,25 +500,18 @@ create trigger brand_scan_settings_trail
 -- 4. The price, and ending a scan
 -- ───────────────────────────────────────────────────────────────────────────
 
--- The price of one scan now: NULL (not on sale), 0 (free), or the setting rounded up to the cent and raised to the platform's job_minimum
--- (a hold below it would be refused by reserve_credits). A missing settings row reads as NOT ON SALE, never as free.
+-- The price of one scan now, what is CHARGED: NULL (not on sale), 0 (free), or the setting rounded up to the cent. It is not raised to the
+-- platform's job_minimum (the owner exempted the scan); the hold is (request_brand_scan). A missing settings row reads as NOT ON SALE.
 create or replace function public.brand_scan_price() returns numeric
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
   v_price numeric;
-  v_floor numeric;
 begin
   select s.price_credits into v_price from public.brand_scan_settings s;
   if v_price is null then
     return null;
   end if;
   v_price := public.credits_round_up(v_price);
-  if v_price > 0 then
-    select credits_per_unit into v_floor from public.credit_prices where unit = 'job_minimum';
-    if v_floor is not null then
-      v_price := greatest(v_price, public.credits_round_up(v_floor));
-    end if;
-  end if;
   -- At most two places, as the hold and the ledger keep it (credits_round_up already went up to the cent), and no trailing zeros: 2, 4.01.
   return trim_scale(round(v_price, 2));
 end
@@ -703,18 +699,26 @@ $$;
 -- 6. Scans: the quote and the request (members)
 -- ───────────────────────────────────────────────────────────────────────────
 
--- What a scan would cost this organization now (any member): on_sale false while the price is NULL. `credits` is what request_brand_scan
--- would hold; `exempt` says the operator's organization pays nothing.
+-- What a scan would cost this organization now (any member): on_sale false while the price is NULL. `credits` is what a finished scan is
+-- charged; `hold` is what request_brand_scan holds while it runs (the price raised to job_minimum, which reserve_credits demands of any
+-- hold; the rest is released when the scan finishes); `exempt` says the operator's organization pays nothing.
 create or replace function public.quote_brand_scan(p_org uuid) returns jsonb
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
   v_price numeric;
+  v_floor numeric;
+  v_hold  numeric;
 begin
   if auth.uid() is null or p_org is null or not public.is_org_member(p_org) then
     raise exception 'forbidden' using errcode = '42501';
   end if;
   v_price := public.brand_scan_price();
-  return jsonb_build_object('on_sale', v_price is not null, 'credits', v_price, 'exempt', public.credits_exempt(p_org));
+  v_hold := v_price;
+  if v_price > 0 then
+    select credits_per_unit into v_floor from public.credit_prices where unit = 'job_minimum';
+    v_hold := trim_scale(round(greatest(v_price, coalesce(public.credits_round_up(v_floor), 0)), 2));
+  end if;
+  return jsonb_build_object('on_sale', v_price is not null, 'credits', v_price, 'hold', v_hold, 'exempt', public.credits_exempt(p_org));
 end
 $$;
 
@@ -723,7 +727,9 @@ $$;
 -- higher price now is `price_changed`, never charged. The URL is 0131's site shape (and no backslash, which the worker refuses); its host must
 -- be a VERIFIED domain of this organization or a subdomain of one (`domain_not_verified`). Refusals, in order: forbidden, invalid_url,
 -- hosting_parent, invalid_idempotency_key, idempotency_conflict (or the replay), not_on_sale, price_changed, domain_not_verified,
--- scan_in_progress, platform_busy, and NS402 insufficient credits / NS429 parallel run limit from the hold. A refusal changes nothing.
+-- scan_in_progress, platform_busy, scan_hold_unavailable (NS402: the hold, the price raised to job_minimum, is not available; detail
+-- hold=… price=…), and NS429 parallel run limit from the hold. A refusal changes nothing. The hold is greatest(price, job_minimum); the
+-- scan's price_credits is the price, which finish_brand_scan captures (the rest of the hold is released then).
 create or replace function public.request_brand_scan(p_org uuid, p_url text, p_idem text, p_max_credits numeric) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -732,6 +738,8 @@ declare
   v_host  text;
   v_hash  text;
   v_price numeric;
+  v_floor numeric;
+  v_hold  numeric;
   v_cap   integer;
   v_id    uuid := gen_random_uuid();
   v_ref   text;
@@ -814,10 +822,19 @@ begin
     raise exception 'platform_busy' using errcode = 'NS429';
   end if;
 
-  -- The hold: the price this function computed, under a reference it made, never the caller's (NS402 / NS429 come from here).
+  -- The hold: the price this function computed, raised to job_minimum (reserve_credits refuses any hold below it), under a reference it
+  -- made, never the caller's. Only the price is captured when the scan finishes (finish_brand_scan); the rest of the hold goes back then,
+  -- and all of it on a failure. Not enough credits for the hold is said as such (scan_hold_unavailable, with both numbers); NS429 (the
+  -- plan's parallel runs) comes through as it is.
   if v_price > 0 then
+    select credits_per_unit into v_floor from public.credit_prices where unit = 'job_minimum';
+    v_hold := trim_scale(round(greatest(v_price, coalesce(public.credits_round_up(v_floor), 0)), 2));
     v_ref := 'bs:' || v_id::text;
-    res := public.creative_platform_reserve(p_org, v_ref, v_price);
+    begin
+      res := public.creative_platform_reserve(p_org, v_ref, v_hold);
+    exception when sqlstate 'NS402' then
+      raise exception 'scan_hold_unavailable' using errcode = 'NS402', detail = format('hold=%s price=%s', v_hold, v_price);
+    end;
     if coalesce((res ->> 'exempt')::boolean, false) then
       v_ref := null;
     end if;
@@ -1195,14 +1212,14 @@ begin
       ('public.ads_scan_url_ok(text)', 'd734d3fedb41ffed175eae91287e449c', ''),
       ('public.brand_scan_field_ok(jsonb, text)', '353d784aab148ab2af4324383bdeae51', ''),
       ('public.brand_scan_result_ok(jsonb)', '05e268084c5d68c2291897ce2f759d44', ''),
-      ('public.brand_scan_price()', 'c2187431324f7bfc59ba2d9dcbb17ec9', ''),
+      ('public.brand_scan_price()', '596c0cd1d82759855ae5496b6acf20b0', ''),
       ('public.brand_scan_fail_locked(uuid, text)', '2ed1f012de9cb7e16df70d7cc748cc91', ''),
       ('public.brand_scan_settings_guard()', 'd55aaee7b70dc8655a5fb02f3682a5bb', ''),
       ('public.brand_scan_settings_trail()', 'c5f5e10faae661c30f58a25e2ff5b5aa', ''),
       ('public.request_domain_verification(uuid, text)', '5cf3a05a1cd6291caa58b7bfb4f41ab7', 'authenticated'),
       ('public.check_domain_verification(uuid)', '9da8c07a8a5d7fc194b796eb8c35a2d6', 'authenticated'),
-      ('public.quote_brand_scan(uuid)', '1852f3812e91c4629c25e1990c5c3483', 'authenticated'),
-      ('public.request_brand_scan(uuid, text, text, numeric)', 'df669395959880f4a5733b6f79b0b976', 'authenticated'),
+      ('public.quote_brand_scan(uuid)', 'ba5d8b562c6893d8b0ef49ff4392d8b2', 'authenticated'),
+      ('public.request_brand_scan(uuid, text, text, numeric)', '812a6131a465414f5b0235f6f705fe5a', 'authenticated'),
       ('public.accept_brand_scan_fields(uuid, uuid, text[])', '33e5092fed2d2b50b594eae230aaffb1', 'authenticated'),
       ('public.claim_domain_check(text)', '82141353f6d88e824d4d299fa34b8890', 'service_role'),
       ('public.finish_domain_check(uuid, text, boolean, text)', '62b0880595b8713fa3ba8d93c146c7f0', 'service_role'),

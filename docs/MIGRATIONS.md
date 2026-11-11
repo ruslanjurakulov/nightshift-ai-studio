@@ -611,7 +611,8 @@ refuses `not_on_sale`. The worker (`tools/brand_scan_worker.py`) does nothing un
 - **Who may do what.** Members read their organization's rows; no API role writes any table; the settings are closed. Five SECURITY DEFINER
   member functions to `authenticated` (each checks the editor role; `quote_brand_scan` any member), five worker functions to
   `service_role` only, nine helpers to nobody.
-- **Money.** A request holds the database's price (`creative_platform_reserve`), the worker's finish captures it, every failure and the
+- **Money.** The price is charged as set (exempt from `job_minimum`); a request holds `greatest(price, job_minimum)` (`creative_platform_reserve`;
+  reserve_credits is not changed), the worker's finish captures exactly the price and the rest of the hold is released, every failure and the
   stale sweeps release it; the confirmed price (`p_max_credits`) only refuses a higher one; an idempotent replay holds nothing twice.
 - **Caps.** One scan in flight per organization (unique index), `platform_daily_scans` (500) and `platform_daily_checks` (5000) per
   24 hours under a platform lock after the organization's; 10 domains per organization; one check per domain per 15 s.

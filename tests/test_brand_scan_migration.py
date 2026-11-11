@@ -200,8 +200,16 @@ class Money(unittest.TestCase):
         b = code(body(TEXT, "request_brand_scan"))
         self.assertIn("v_price := public.brand_scan_price();", b)
         self.assertIn("raise exception 'not_on_sale' using errcode = 'NS409';", b)
-        self.assertIn("creative_platform_reserve(p_org, v_ref, v_price)", b, "the hold is the computed price, never p_max_credits")
-        self.assertIn("unit = 'job_minimum'", code(body(TEXT, "brand_scan_price")))
+        self.assertIn("creative_platform_reserve(p_org, v_ref, v_hold)", b, "the hold is computed here, never p_max_credits")
+        hold = "v_hold := trim_scale(round(greatest(v_price, coalesce(public.credits_round_up(v_floor), 0)), 2));"
+        self.assertIn(hold, b, "the hold is the price raised to job_minimum")
+        self.assertIn(hold, code(body(TEXT, "quote_brand_scan")), "and the quote names the same hold")
+        # The owner exempted the scan from job_minimum: the CHARGED price is the setting, never raised (only the hold is).
+        self.assertNotIn("job_minimum", code(body(TEXT, "brand_scan_price")))
+        self.assertIn("if p_max_credits is null or v_price > p_max_credits then", b, "the confirmed price is the charged one, not the hold")
+        self.assertIn("public.capture_credits(x.credit_ref, x.price_credits, false)", code(body(TEXT, "finish_brand_scan")))
+        self.assertIn("'requested', case when v_ref is null then 0 else v_price end", b, "the scan stores the price, not the hold")
+        self.assertIn("exception when sqlstate 'NS402' then\n      raise exception 'scan_hold_unavailable'", b)
 
     def test_locks_then_caps_then_the_hold_then_the_row(self):
         b = code(body(TEXT, "request_brand_scan"))

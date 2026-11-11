@@ -195,11 +195,14 @@ needs a verified domain of the SAME organization that is the scan's host or a pa
 it starts the scan (`ownership_not_proven` / `ownership_unknown` fail it before any request goes to the site, credits released).
 At most 10 domains per organization.
 
-**Money.** `quote_brand_scan` shows the price (`brand_scan_price()`: the setting, rounded up to the cent, a price above 0 raised to
-the platform's `job_minimum` as `creative_price` does). `request_brand_scan` takes the price the person confirmed (`max_credits`; a higher
-price now is `price_changed`, never charged) and HOLDS the computed price (`reserve_credits` through 0036's `creative_platform_reserve`,
-after checking the editor role itself, exactly as `create_creative_job` does). The worker's `finish_brand_scan` CAPTURES it; every failure
-RELEASES it (`fail_brand_scan`, and the sweeps: a scan nobody took within 2 hours, or whose worker went quiet for 15 minutes, is failed
+**Money.** `quote_brand_scan` shows the price (`brand_scan_price()`: the setting, rounded up to the cent; the owner EXEMPTED the scan
+from `job_minimum`, so it is not raised) and the hold. `reserve_credits` refuses any hold below `job_minimum`, and no shared money function
+is changed, so the HOLD is `greatest(price, job_minimum)`: with the live minimum of 30 and a price of 1, **30 credits are held while the scan
+runs and 1 is charged**. `request_brand_scan` takes the price the person confirmed (`max_credits`, compared with the charged price, never
+the hold; a higher price now is `price_changed`, never charged) and holds (`reserve_credits` through 0036's `creative_platform_reserve`,
+after checking the editor role itself, exactly as `create_creative_job` does); without the hold available it refuses
+`scan_hold_unavailable` (NS402, detail `hold=30 price=1`). The worker's `finish_brand_scan` CAPTURES exactly the price, and
+`capture_credits` releases the rest of the hold in the same transaction; every failure RELEASES the whole hold (`fail_brand_scan`, and the sweeps: a scan nobody took within 2 hours, or whose worker went quiet for 15 minutes, is failed
 and released by the next claim or by the organization's next request). The same press again (`idem`) answers the first scan and holds
 nothing twice. The operator's (exempt) organization is not charged and only a platform admin may scan there. A hold counts as one of the
 plan's parallel runs (0034), as every hold does.
@@ -282,17 +285,29 @@ link. `finish_brand_scan` checks it all again. A failure is a closed word: `owne
 - **DNSSEC** is not checked by us; the resolver validates signed zones itself.
 - **A verification is not re-checked on a timer**; every scan re-checks it, and so does every "Check now".
 
-### Costs: the proposed price (owner decision; seeded NULL)
+### Costs: the approved price and caps (owner decision, 2026-11-11; seeded NULL, set after merge)
 
-Proposed: **1 credit per scan** (`update public.brand_scan_settings set price_credits = 1;`). Cost basis (assumptions, not
+**Approved values** (the owner, 2026-11-11). The migration keeps the seed NULL (not on sale); they go live in a separate settings step
+after merge, in the SQL editor:
+
+```sql
+update public.brand_scan_settings set price_credits = 1, platform_daily_scans = 500, platform_daily_checks = 5000;
+```
+
+- price: **1 credit per scan** (charged; exempt from `job_minimum`, the hold is `greatest(1, job_minimum)` = 30 today and released down to 1);
+- platform cap: **500 scans per 24 hours**;
+- domain checks: **5,000 per 24 hours**.
+
+The proposal and its basis, as approved: **1 credit per scan** (`update public.brand_scan_settings set price_credits = 1;`). Cost basis (assumptions, not
 measurements: our own dedicated worker server at roughly EUR 50 a month, 8 cores, inbound traffic not billed; 1 credit is about
 $0.01 retail, docs/API.md): one scan holds one worker slot for at most 30 s of wall clock (mostly waiting on the site), uses at most a few
 CPU-seconds (the HTML parse, one Pillow decode in the child, a thumbnail when ffmpeg is there), downloads at most about 41 MB (6 pages,
 4 stylesheets, 6 pictures, all capped; typically 1-3 MB), asks the resolver twice (free), and stores at most 5 pictures in the
 organization's own library quota. That is well under $0.001 of marginal cost; 1 credit is the smallest whole price, covers the scans
 that fail (those are released, so they cost the person nothing) and the worst case many times over, and still makes a scan cost money
-for anyone who would use it as a crawler (each scan also needs a domain they control). The quote raises any price above 0 to the
-platform's `job_minimum`, so read it first: `select credits_per_unit from public.credit_prices where unit = 'job_minimum';`.
+for anyone who would use it as a crawler (each scan also needs a domain they control). The charged price is not raised to the platform's
+`job_minimum`; the HOLD is (reserve_credits demands it of every hold), so a person needs that many credits available while the scan runs:
+`select credits_per_unit from public.credit_prices where unit = 'job_minimum';` (30.00 on 2026-11-11).
 
 Proposed platform cap: **500 scans per 24 hours** (the seed). Each scan reads one site, at most 12 requests and about 41 MB, so 500 is
 at most about 6,000 requests and 20 GB a day in the worst case, and about 5 hours of one worker slot; a scan is a once-per-brand action,
@@ -312,7 +327,7 @@ a kit with `source = 'scan'` unless its scan's domain is verified.
 3. Add a `brand-scan-worker` service to `deploy/docker-compose.yml` (worker image, `command: ["python", "tools/brand_scan_worker.py"]`,
    uid 1000, the `media` volume rw, the worker env file, `NIGHTSHIFT_ADS_BRAND_SCAN=on`), and let outbound HTTPS reach customer sites
    and `cloudflare-dns.com`.
-4. Set the price: `update public.brand_scan_settings set price_credits = 1;` (or the owner's number), and `NIGHTSHIFT_ADS_BRAND_SCAN=on`
+4. Set the approved values: `update public.brand_scan_settings set price_credits = 1, platform_daily_scans = 500, platform_daily_checks = 5000;`, and `NIGHTSHIFT_ADS_BRAND_SCAN=on`
    for the Command Center (the page, the second pull request).
 5. Undo: the switch off (loses nothing), or the price back to NULL (no new scans), or `docs/sql/rollback_0133_brand_scan.sql`.
 
