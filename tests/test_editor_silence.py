@@ -42,7 +42,11 @@ def signal(case):
                 amp = amp[ch]
             n = int(round(seconds * rate))
             t = np.arange(n, dtype=np.float64) / rate
-            parts.append((amp * np.sin(2 * np.pi * freq * t)).astype(np.float32))
+            if kind == "dc":
+                # a constant level: the exact-threshold cases (a float32 sample of exactly 0.01 at -40 dB)
+                parts.append(np.full(n, amp, dtype=np.float32))
+            else:
+                parts.append((amp * np.sin(2 * np.pi * freq * t)).astype(np.float32))
         chans.append(np.concatenate(parts))
     return np.stack(chans, axis=1).reshape(-1)
 
@@ -67,7 +71,7 @@ class SilenceCasesTestCase(unittest.TestCase):
         if not exe:
             self.skipTest("ffmpeg not available")
         cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]
-        self.assertGreaterEqual(len(cases), 6)
+        self.assertGreaterEqual(len(cases), 9)
         for case in cases:
             for probe in case["probes"]:
                 with self.subTest(case=case["name"], probe=probe):
@@ -76,6 +80,15 @@ class SilenceCasesTestCase(unittest.TestCase):
                     for (a, b), (x, y) in zip(got, probe["silences"]):
                         self.assertAlmostEqual(a, x, delta=0.002)
                         self.assertAlmostEqual(b, y, delta=0.002)
+
+    def test_the_exact_threshold_and_odd_rate_cases_are_there(self):
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        exact = [c for c in cases.values() if any(p[0] == "dc" and p[2] in (0.01, [0.01, 0.01]) for p in c["parts"])]
+        self.assertGreaterEqual({c["rate"] for c in exact}, {22050, 48000})
+        # ffmpeg compares a float sample with the threshold as a float: exactly 0.01 is NOT under -40 dB
+        for c in exact:
+            p40 = [p for p in c["probes"] if p["threshold_db"] == -40][0]
+            self.assertFalse(any(a <= 0.5 < b for a, b in p40["silences"]), (c["name"], p40))
 
     def test_every_case_has_a_silence_and_a_probe_that_finds_none(self):
         cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]

@@ -3110,6 +3110,10 @@ export function splitClip(
         : { ...c, id: newId, in_s: cut },
   );
   delete second.fade_in_s;
+  // A piece keeps its side's fade only as long as the piece is (the validator's rule: fade in + fade out
+  // within the clip's length; modules/timeline.py split_clip does the same).
+  fitPieceFades(first);
+  fitPieceFades(second);
   if (second.audio && audioInputs(model) >= MAX_AUDIO_CLIPS)
     second.audio = false;
   if (c.move) {
@@ -3127,6 +3131,17 @@ export function splitClip(
   }
   const next = [...clips.slice(0, i), first, second, ...clips.slice(i + 1)];
   return { model: { ...model, clips: layout(next) }, newId };
+}
+
+/** Shorten a split piece's fades so fade in + fade out fit its length (the in-fade first gives way). */
+function fitPieceFades(c: VideoClip): void {
+  const length = clipLength(c);
+  const fo = Math.min(c.fade_out_s ?? 0, length);
+  const fi = Math.min(c.fade_in_s ?? 0, length - fo);
+  if (c.fade_out_s !== undefined) c.fade_out_s = ms(fo);
+  if (c.fade_in_s !== undefined) c.fade_in_s = ms(fi);
+  if ((c.fade_in_s ?? 0) + (c.fade_out_s ?? 0) > length + 1e-9 && c.fade_in_s !== undefined)
+    c.fade_in_s = Math.max(0, Math.floor((length - (c.fade_out_s ?? 0)) * 1000) / 1000);
 }
 
 export function setSpeed(

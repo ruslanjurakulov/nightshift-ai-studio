@@ -96,6 +96,49 @@ class MaskDocumentTestCase(unittest.TestCase):
             self.assertEqual(c["mask"]["shape"], "ellipse")
 
 
+class SplitFadesTestCase(unittest.TestCase):
+    """split_clip keeps each piece's fades inside it (lib/editor.ts splitClip does the same): a short head
+    or tail piece of a faded clip used to keep the whole fade, and the document no longer validated."""
+
+    def test_the_reviews_case_a_short_tail_keeps_only_as_much_fade_out_as_it_is_long(self):
+        d = tl.normalise(vdoc(out_s=12, fade_in_s=0.5, fade_out_s=0.7, audio=True))
+        d = tl.split_clip(d, "c1", 11.5, "c2")
+        a, b = d["tracks"][0]["clips"]
+        self.assertEqual((a["fade_in_s"], a["fade_out_s"], b["fade_in_s"], b["fade_out_s"]), (0.5, 0.0, 0.0, 0.5))
+        self.assertEqual(tl.validate(d), [])
+        d = tl.split_clip(tl.normalise(vdoc(out_s=12, fade_in_s=0.5)), "c1", 0.2, "c2")
+        self.assertEqual(d["tracks"][0]["clips"][0]["fade_in_s"], 0.2)
+        self.assertEqual(tl.validate(d), [])
+
+    def test_random_splits_of_faded_clips_at_1x_and_2x_always_validate(self):
+        import random
+        rng = random.Random(675)
+        done = 0
+        for _ in range(1500):
+            rng_ = rng.choice([1.0, 2.5, 6.0, 12.0])
+            # Speeds whose source cut lands on the millisecond: at 0.25, 0.5 or 3 split_clip's own rounding can
+            # leave the halves overlapping by 1 ms with no fade at all (on origin/main too; a separate issue).
+            speed = rng.choice([1.0, 2.0])
+            length = rng_ / speed
+            clip = {"fade_in_s": round(rng.uniform(0, length / 2), 3), "fade_out_s": round(rng.uniform(0, length / 2), 3),
+                    "speed": speed, "audio": rng.random() < 0.5}
+            if rng.random() < 0.3:
+                clip["move"] = {"from": {"zoom": 1.5}, "to": {"zoom": 1, "x": 0.2}}
+            if rng.random() < 0.3:
+                clip["mask"] = {"shape": "ellipse", "feather": 0.2}
+            d = tl.normalise(vdoc(out_s=rng_, **clip))
+            if tl.validate(d):
+                continue
+            at = round(rng.uniform(0.1, length - 0.1), 3)   # pieces of at least a clip (the editor's MIN_CLIP_S)
+            try:
+                d2 = tl.split_clip(d, "c1", at, "c2")
+            except tl.TimelineError:
+                continue
+            self.assertEqual(tl.validate(d2), [], (clip, at))
+            done += 1
+        self.assertGreater(done, 1000)
+
+
 class TwinsTestCase(unittest.TestCase):
     def test_render_spec_the_schema_and_the_editor_have_the_same_lists_and_numbers(self):
         for name in ("COLOR_TEMP_MAX", "COLOR_TINT_MAX", "COLOR_HUE_MAX", "COLOR_CURVES", "MASK_SHAPES", "MASK_MIN",
@@ -114,6 +157,30 @@ class TwinsTestCase(unittest.TestCase):
             self.assertIn(f"export const {name} = {getattr(tl, name):g};", ts, name)
         for k in tl.COLOR_CURVES:
             self.assertIn(k, rb._COLOR_CURVE_ARGS)
+
+    def test_the_spec_refuses_every_colour_and_mask_value_out_of_range(self):
+        """render_spec.validate is the last check before a graph is written: each range holds there too."""
+        def seg(**kw):
+            return rs.Segment(duration=1.0, path="/m/a.mp4", **kw)
+
+        def spec_problems(s_):
+            return rs._segment_problems("segment 0", s_, True)
+
+        for k, hi in (("temperature", rs.COLOR_TEMP_MAX), ("tint", rs.COLOR_TINT_MAX), ("hue", rs.COLOR_HUE_MAX)):
+            self.assertEqual(spec_problems(seg(effects=rs.ClipEffects(**{k: hi}))), [], k)
+            self.assertEqual(spec_problems(seg(effects=rs.ClipEffects(**{k: -hi}))), [], k)
+            for bad in (hi + 0.001, -hi - 0.001, float("nan")):
+                self.assertTrue(any(f"{k} must be from" in p for p in spec_problems(seg(effects=rs.ClipEffects(**{k: bad})))),
+                                (k, bad))
+        for k, lo, hi in (("x", 0.0, 1.0), ("y", 0.0, 1.0), ("w", rs.MASK_MIN, 1.0), ("h", rs.MASK_MIN, 1.0),
+                          ("feather", 0.0, rs.MASK_FEATHER_MAX), ("radius", 0.0, rs.MASK_RADIUS_MAX)):
+            for ok in (lo, hi):
+                self.assertEqual(spec_problems(seg(mask=rs.ClipMask(**{k: ok}))), [], (k, ok))
+            for bad in (lo - 0.001, hi + 0.001, float("inf")):
+                self.assertTrue(any(f"mask {k} must be from" in p for p in spec_problems(seg(mask=rs.ClipMask(**{k: bad})))),
+                                (k, bad))
+        self.assertTrue(spec_problems(seg(mask=rs.ClipMask(invert=1))))
+        self.assertTrue(rs._segment_problems("segment 0", seg(mask=rs.ClipMask()), False))   # needs frame_exact
 
     def test_only_listed_names_reach_the_filter_graph(self):
         with self.assertRaises(ValueError):

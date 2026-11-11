@@ -2146,9 +2146,26 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
                 second.update(id=new_id, start_s=at, in_s=cut, fade_in_s=0.0)
                 clip.update(out_s=cut, fade_out_s=0.0)
             second.pop("transition", None)
+            # A piece keeps its side's fade only as long as the piece is (the validator's rule: fade in +
+            # fade out within the clip's length; lib/editor.ts splitClip does the same).
+            for piece in (clip, second):
+                _fit_piece_fades(piece)
             track["clips"].insert(i + 1, second)
             return out
     raise TimelineError([f"no clip {clip_id!r} in this timeline"])
+
+
+def _fit_piece_fades(c: dict) -> None:
+    """Shorten a split piece's fades so ``fade_in_s + fade_out_s`` fits its length (the in-fade gives way)."""
+    length = clip_length_s(c)
+    fo = min(float(c.get("fade_out_s", 0) or 0), length)
+    fi = min(float(c.get("fade_in_s", 0) or 0), length - fo)
+    if "fade_out_s" in c:
+        c["fade_out_s"] = _ms(fo)
+    if "fade_in_s" in c:
+        c["fade_in_s"] = _ms(fi)
+        if c["fade_in_s"] + c.get("fade_out_s", 0) > length + 1e-9:
+            c["fade_in_s"] = max(0.0, math.floor((length - c.get("fade_out_s", 0)) * 1000) / 1000)
 
 
 # ── assets ──────────────────────────────────────────────────────────────────

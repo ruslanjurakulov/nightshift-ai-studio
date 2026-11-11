@@ -39,6 +39,12 @@ export const SILENCE_MIN_S_DEFAULT = 0.6;
 export const SILENCE_KEEP_S = 0.1;
 export const ANALYSES_PER_MINUTE = 6;
 
+/** The real length of a block at `sampleRate`: a whole number of samples, so 22,050 Hz blocks are 221
+ *  samples (10.02 ms), not 10 ms. Times are labelled by this, never by `b x BLOCK_S`. */
+export function blockSeconds(sampleRate: number, blockS: number = BLOCK_S): number {
+  return Math.max(1, Math.round(sampleRate * blockS)) / sampleRate;
+}
+
 /** The loudest sample (any channel, absolute) of each block of `blockS` seconds. */
 export function envelope(
   channels: readonly Float32Array[],
@@ -66,7 +72,10 @@ export type Span = [number, number];
 
 /**
  * The silent parts of an envelope (seconds): runs of blocks whose loudest sample is under `thresholdDb`
- * (strictly, as silencedetect) lasting at least `minS`. A run reaching the end ends at the end.
+ * (strictly, as silencedetect) lasting at least `minS`. A run reaching the end ends at the end. The
+ * threshold is compared as a 32-bit float, as ffmpeg compares float samples (`const float noise`), so
+ * a sample of exactly 0.01 is not under -40 dB. `blockS` is the envelope's real block length
+ * ({@link blockSeconds}).
  */
 export function detectSilences(
   env: Float32Array,
@@ -74,7 +83,7 @@ export function detectSilences(
   minS: number,
   blockS: number = BLOCK_S,
 ): Span[] {
-  const amp = 10 ** (thresholdDb / 20);
+  const amp = Math.fround(10 ** (thresholdDb / 20));
   const need = Math.max(1, Math.round(minS / blockS));
   const out: Span[] = [];
   let start = -1;
@@ -92,7 +101,7 @@ export function detectSilences(
 
 /** Can this clip's silences be cut? A still has no sound; a curve, a reversed or a frozen clip has no
  *  one source time per moment that a cut could follow. */
-export type SilenceProblem = "still" | "retimed" | "full";
+export type SilenceProblem = "still" | "retimed" | "no_audio" | "full";
 export function silenceProblem(
   model: EditorModel,
   c: VideoClip,
@@ -100,6 +109,9 @@ export function silenceProblem(
 ): SilenceProblem | null {
   if (assetKind !== "video") return "still";
   if (c.speed_curve || c.reverse || c.freeze) return "retimed";
+  // Its own sound is off (muted, or detached to a sound of its own on an A track): there is nothing here to
+  // listen to, and cutting the picture alone would put a detached sound out of step with it.
+  if (!c.audio) return "no_audio";
   if (model.clips.length >= MAX_EDITOR_CLIPS) return "full";
   return null;
 }
@@ -170,13 +182,31 @@ export function applyCuts(
   return { model: m, applied };
 }
 
+/** The cuts (source seconds) as the timeline times the person sees, for the list shown before applying. */
+export function cutTimes(c: Pick<VideoClip, "start_s" | "in_s" | "speed">, cuts: readonly Span[]): Span[] {
+  const at = (src: number) => ms(c.start_s + (src - c.in_s) / (c.speed || 1));
+  return cuts.map(([a, b]) => [at(a), at(b)]);
+}
+
+/** Which sentence a count takes: Russian has three forms (1 / 2-4 / 5+, 11-14 as 5+), English and Uzbek
+ *  two (one / the rest). */
+export function countForm(n: number, locale: string): "one" | "few" | "many" {
+  const i = Math.abs(Math.trunc(n));
+  if (locale.toLowerCase().startsWith("ru")) {
+    if (i % 10 === 1 && i % 100 !== 11) return "one";
+    if (i % 10 >= 2 && i % 10 <= 4 && (i % 100 < 12 || i % 100 > 14)) return "few";
+    return "many";
+  }
+  return i === 1 ? "one" : "few";
+}
+
 /** Seconds of the timeline the cuts take out (shown before the person confirms). */
 export function cutSeconds(c: Pick<VideoClip, "speed">, cuts: readonly Span[]): number {
   return ms(cuts.reduce((n, [a, b]) => n + (b - a), 0) / (c.speed || 1));
 }
 
 export type EnvelopeResult =
-  | { status: "ready"; env: Float32Array; durationS: number }
+  | { status: "ready"; env: Float32Array; durationS: number; blockS: number }
   | { status: "too_large" | "unavailable" | "busy" | "no_sound" };
 
 const recent: number[] = [];
@@ -198,7 +228,13 @@ export function resetSilenceAnalysis(): void {
 
 async function loadEnvelope(url: string, knownDurationS: number | null): Promise<EnvelopeResult> {
   if (knownDurationS !== null && knownDurationS > MAX_WAVEFORM_SECONDS) return { status: "too_large" };
-  const ctx = offlineDecoder();
+  let ctx: ReturnType<typeof offlineDecoder>;
+  try {
+    ctx = offlineDecoder();
+  } catch {
+    // A browser whose decoder throws when made is "unavailable", never a panel stuck on "working".
+    return { status: "unavailable" };
+  }
   if (!ctx || typeof fetch !== "function") return { status: "unavailable" };
   try {
     const res = await fetch(url);
@@ -213,7 +249,7 @@ async function loadEnvelope(url: string, knownDurationS: number | null): Promise
     const channels: Float32Array[] = [];
     for (let c = 0; c < audio.numberOfChannels; c += 1) channels.push(audio.getChannelData(c));
     const rate = (audio as { sampleRate?: number }).sampleRate ?? channels[0].length / audio.duration;
-    return { status: "ready", env: envelope(channels, rate), durationS: audio.duration };
+    return { status: "ready", env: envelope(channels, rate), durationS: audio.duration, blockS: blockSeconds(rate) };
   } catch {
     // A video whose file has no sound track does not decode as audio at all.
     return { status: "no_sound" };
@@ -232,8 +268,15 @@ export function silenceEnvelopeFor(
   if (!analysisAllowed(now)) return Promise.resolve({ status: "busy" });
   recent.push(now);
   inFlight = true;
-  const p = loadEnvelope(url, knownDurationS).then((r) => {
-    inFlight = false;
+  const p = (async (): Promise<EnvelopeResult> => {
+    try {
+      return await loadEnvelope(url, knownDurationS);
+    } catch {
+      return { status: "unavailable" };
+    } finally {
+      inFlight = false;
+    }
+  })().then((r) => {
     if (r.status === "unavailable") cache.delete(assetId);
     return r;
   });

@@ -13,6 +13,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MIN_CLIP_S,
   clipEnd,
+  layout,
+  ms,
   modelDuration,
   newDocForAsset,
   setSpeed,
@@ -28,7 +30,10 @@ import {
   SILENCE_KEEP_S,
   analysisAllowed,
   applyCuts,
+  blockSeconds,
+  countForm,
   cutSeconds,
+  cutTimes,
   detectSilences,
   envelope,
   proposeCuts,
@@ -55,10 +60,11 @@ function channelsOf(c: (typeof cases.cases)[number]): Float32Array[] {
   const out: Float32Array[] = [];
   for (let ch = 0; ch < c.channels; ch += 1) {
     const parts: number[] = [];
-    for (const [, seconds, amp0, freq] of c.parts) {
+    for (const [kind, seconds, amp0, freq] of c.parts) {
       const amp = Array.isArray(amp0) ? amp0[ch] : amp0;
       const n = Math.round(seconds * c.rate);
-      for (let i = 0; i < n; i += 1) parts.push(Math.fround(amp * Math.sin((2 * Math.PI * freq * i) / c.rate)));
+      for (let i = 0; i < n; i += 1)
+        parts.push(kind === "dc" ? Math.fround(amp) : Math.fround(amp * Math.sin((2 * Math.PI * freq * i) / c.rate)));
     }
     out.push(Float32Array.from(parts));
   }
@@ -77,17 +83,37 @@ describe("the detector is ffmpeg's silencedetect, to within one block", () => {
     let compared = 0;
     for (const c of cases.cases) {
       const env = envelope(channelsOf(c), c.rate);
+      const block = blockSeconds(c.rate);
       for (const p of c.probes) {
-        const got = detectSilences(env, p.threshold_db, p.min_s);
+        const got = detectSilences(env, p.threshold_db, p.min_s, block);
         expect(got.length, `${c.name} ${p.threshold_db} dB ${p.min_s} s`).toBe(p.silences.length);
         got.forEach(([a, b], i) => {
-          expect(Math.abs(a - p.silences[i][0])).toBeLessThanOrEqual(BLOCK_S + 1e-9);
-          expect(Math.abs(b - p.silences[i][1])).toBeLessThanOrEqual(BLOCK_S + 1e-9);
+          expect(Math.abs(a - p.silences[i][0])).toBeLessThanOrEqual(block + 1e-9);
+          expect(Math.abs(b - p.silences[i][1])).toBeLessThanOrEqual(block + 1e-9);
           compared += 1;
         });
       }
     }
     expect(compared).toBeGreaterThan(10);
+    expect(cases.cases.some((c) => c.parts.some((p) => p[0] === "dc"))).toBe(true);
+  });
+
+  it("compares the threshold as a 32-bit float, as ffmpeg does: exactly 0.01 is not under -40 dB", () => {
+    const at = new Float32Array(4410).fill(0.01);
+    expect(detectSilences(envelope([at], 44100), -40, 0.05)).toEqual([]);
+    const under = new Float32Array(4410).fill(0.0099);
+    expect(detectSilences(envelope([under], 44100), -40, 0.05)).toEqual([[0, 0.1]]);
+  });
+
+  it("labels each block by its real length: at 22,050 Hz a block is 221 samples, not 10 ms", () => {
+    expect(BLOCK_S).toBe(0.01);
+    expect(blockSeconds(22050)).toBeCloseTo(221 / 22050, 12);
+    expect(blockSeconds(48000)).toBe(0.01);
+    // 1000 blocks of quiet at 22,050 Hz are 10.023 s, not 10 s
+    const quiet = new Float32Array(221 * 1000);
+    const [[a, b]] = detectSilences(envelope([quiet], 22050), -40, 0.5, blockSeconds(22050));
+    expect(a).toBe(0);
+    expect(b).toBeCloseTo((221 * 1000) / 22050, 3);
   });
 
   it("a block is quiet only when every channel is under the threshold", () => {
@@ -166,12 +192,74 @@ describe("applying the cuts", () => {
   it("is offered for a video at one speed, forwards; not for a still, a curve, reverse or freeze", () => {
     const m = model();
     expect(silenceProblem(m, m.clips[0], "video")).toBeNull();
+    // its own sound off (muted, or detached to an A track): refused, so a detached sound stays in step
+    expect(silenceProblem(m, { ...m.clips[0], audio: false }, "video")).toBe("no_audio");
     expect(silenceProblem(m, m.clips[0], "image")).toBe("still");
     expect(silenceProblem(m, { ...m.clips[0], reverse: true }, "video")).toBe("retimed");
     expect(silenceProblem(m, { ...m.clips[0], freeze: true }, "video")).toBe("retimed");
     expect(
       silenceProblem(m, { ...m.clips[0], speed_curve: [{ at: 0, speed: 1 }, { at: 1, speed: 2 }] }, "video"),
     ).toBe("retimed");
+  });
+});
+
+describe("splitting keeps every piece's fades inside it (the validator's rule)", () => {
+  it("the review's case: a 12 s clip faded 0.5 in and 0.7 out, cut 2.1-11.5, still validates", () => {
+    const m = model({ fade_in_s: 0.5, fade_out_s: 0.7 }, 12);
+    const cuts = proposeCuts(m.clips[0], [[2, 11.6]]);
+    expect(cuts).toEqual([[2.1, 11.5]]);
+    const out = applyCuts(m, m.clips[0].id, cuts).model;
+    expect(out.clips.map((c) => [c.in_s, c.out_s, c.fade_in_s ?? 0, c.fade_out_s ?? 0])).toEqual([
+      [0, 2.1, 0.5, 0],
+      [11.5, 12, 0, 0.5],
+    ]);
+    expect(validateTimeline(toDoc(out))).toEqual([]);
+  });
+
+  it("random cuts on random clips (fades, speeds, cross-fades, moves, masks) always give a valid document", () => {
+    let seed = 20261111;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    const pick = <T,>(xs: readonly T[]) => xs[Math.floor(rnd() * xs.length)];
+    let applied = 0;
+    for (let i = 0; i < 1500; i += 1) {
+      const n = 1 + Math.floor(rnd() * 3);
+      const m0 = model({}, 30);
+      const clips: VideoClip[] = [];
+      for (let k = 0; k < n; k += 1) {
+        const range = pick([1, 2.5, 6, 12, 30]);
+        const c: VideoClip = { ...m0.clips[0], id: `c${k}`, in_s: 0, out_s: range, speed: pick([0.5, 1, 1, 2, 3]) };
+        const len = range / c.speed;
+        if (rnd() < 0.6) c.fade_in_s = Math.round(rnd() * Math.min(2, len / 2) * 1000) / 1000;
+        if (rnd() < 0.6) c.fade_out_s = Math.round(rnd() * Math.min(2, len / 2) * 1000) / 1000;
+        if (rnd() < 0.3) c.move = { from: { zoom: 1 + rnd() }, to: { zoom: 1 + rnd(), x: rnd() } };
+        if (rnd() < 0.3) c.mask = { shape: pick(["rect", "ellipse", "rounded"] as const), feather: 0.2 };
+        if (k > 0 && rnd() < 0.4) c.transition = { type: "crossfade", duration_s: pick([0.2, 0.5, 1]) };
+        clips.push(c);
+      }
+      const m = { ...m0, clips: layout(clips) };
+      if (validateTimeline(toDoc(m)).length) continue;
+      const target = pick(m.clips);
+      const silences: [number, number][] = [];
+      let at = target.in_s + rnd() * 0.5;
+      while (at < target.out_s) {
+        const e = at + 0.05 + rnd() * 3;
+        silences.push([ms(at), ms(Math.min(e, target.out_s + rnd()))]);
+        at = e + 0.05 + rnd() * 2;
+      }
+      const out = applyCuts(m, target.id, proposeCuts(target, silences));
+      applied += out.applied;
+      expect(validateTimeline(toDoc(out.model)), `case ${i}`).toEqual([]);
+    }
+    expect(applied).toBeGreaterThan(1000);
+  });
+});
+
+describe("what the panel shows", () => {
+  it("the cut list in timeline times (the clip's start and speed), and counts in each language's forms", () => {
+    expect(cutTimes({ start_s: 10, in_s: 4, speed: 2 }, [[6, 8]])).toEqual([[11, 12]]);
+    expect([1, 2, 5, 11, 21, 22].map((n) => countForm(n, "ru"))).toEqual(["one", "few", "many", "many", "one", "few"]);
+    expect([1, 2, 5].map((n) => countForm(n, "en"))).toEqual(["one", "few", "few"]);
+    expect([1, 3].map((n) => countForm(n, "uz"))).toEqual(["one", "few"]);
   });
 });
 
@@ -199,6 +287,22 @@ describe("the analysis is limited", () => {
       expect(r.status).toBe("busy");
       expect(ANALYSES_PER_MINUTE).toBeGreaterThan(1);
     });
+  });
+
+  it("a decoder that throws when made is 'unavailable', and the next file may be analysed", async () => {
+    resetSilenceAnalysis();
+    vi.stubGlobal("fetch", vi.fn());
+    vi.stubGlobal(
+      "OfflineAudioContext",
+      class {
+        constructor() {
+          throw new Error("no audio here");
+        }
+      },
+    );
+    const r = await silenceEnvelopeFor("a5", "https://x/a5", 1, 0);
+    expect(r.status).toBe("unavailable");
+    expect(analysisAllowed(1)).toBe(true);
   });
 
   it("a file past the waveform's length cap is not downloaded", async () => {

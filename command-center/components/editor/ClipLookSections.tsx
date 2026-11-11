@@ -38,7 +38,9 @@ import {
   SILENCE_MIN_S_MAX,
   SILENCE_MIN_S_MIN,
   applyCuts,
+  countForm,
   cutSeconds,
+  cutTimes,
   detectSilences,
   proposeCuts,
   silenceEnvelopeFor,
@@ -232,7 +234,7 @@ export function ClipSilenceSection({
   asset: Partial<Pick<EditorAsset, "id" | "kind" | "viewUrl" | "durationS">> | null;
   apply: Apply;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const s = t.editor.parity2.silence;
   const [db, setDb] = useState(SILENCE_DB_DEFAULT);
   const [minS, setMinS] = useState(SILENCE_MIN_S_DEFAULT);
@@ -245,7 +247,7 @@ export function ClipSilenceSection({
   const problem = silenceProblem(model, clip, asset?.kind);
   const cuts: Span[] =
     result && result !== "working" && result.status === "ready"
-      ? proposeCuts(clip, detectSilences(result.env, db, minS))
+      ? proposeCuts(clip, detectSilences(result.env, db, minS, result.blockS))
       : [];
   const find = () => {
     if (!asset?.id || !asset.viewUrl) {
@@ -263,7 +265,7 @@ export function ClipSilenceSection({
         ? s[result.status]
         : result
           ? cuts.length
-            ? fmt(s.found, { n: cuts.length, s: cutSeconds(clip, cuts).toFixed(1) })
+            ? fmt(s.found[countForm(cuts.length, locale)], { n: cuts.length, s: cutSeconds(clip, cuts).toFixed(1) })
             : s.none
           : null;
   return (
@@ -303,12 +305,15 @@ export function ClipSilenceSection({
       {cuts.length && !problem ? (
         <>
           <ul className="m-0 flex flex-wrap gap-1.5 p-0 text-xs tabular-nums" data-testid="silence-cuts">
-            {cuts.map(([a, b]) => (
+            {cutTimes(clip, cuts).map(([a, b]) => (
               <li key={`${a}-${b}`} className="list-none">
                 {fmt(s.cut, { a: formatTime(a), b: formatTime(b) })}
               </li>
             ))}
           </ul>
+          <p className="m-0 text-xs text-[var(--color-muted)]" data-testid="silence-keep-times">
+            {s.keepTimes}
+          </p>
           <button
             type="button"
             className="btn-primary inline-flex min-h-11 items-center self-start px-3 py-1.5 text-xs"
@@ -321,11 +326,11 @@ export function ClipSilenceSection({
               setDone(
                 r.applied < cuts.length
                   ? fmt(s.partial, { n: r.applied, total: cuts.length, max: MAX_EDITOR_CLIPS })
-                  : fmt(s.applied, { n: r.applied, s: cutSeconds(clip, applied).toFixed(1) }),
+                  : fmt(s.applied[countForm(r.applied, locale)], { n: r.applied, s: cutSeconds(clip, applied).toFixed(1) }),
               );
             }}
           >
-            {fmt(s.apply, { n: cuts.length })}
+            {fmt(s.apply[countForm(cuts.length, locale)], { n: cuts.length })}
           </button>
         </>
       ) : null}

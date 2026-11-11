@@ -136,9 +136,10 @@ describe("Remove silences", () => {
     mount(newDocForAsset(VIDEO)!);
     const s = await section(p2.silence.title);
     fireEvent.click(within(s).getByRole("button", { name: p2.silence.find }));
-    await waitFor(() => expect(within(s).getByTestId("silence-status").textContent).toBe(fmt(p2.silence.found, { n: 1, s: "1.8" })));
+    await waitFor(() => expect(within(s).getByTestId("silence-status").textContent).toBe(fmt(p2.silence.found.one, { n: 1, s: "1.8" })));
     expect(within(s).getByTestId("silence-cuts").textContent).toContain("0:03");
-    fireEvent.click(within(s).getByRole("button", { name: fmt(p2.silence.apply, { n: 1 }) }));
+    expect(within(s).getByTestId("silence-keep-times").textContent).toBe(p2.silence.keepTimes);
+    fireEvent.click(within(s).getByRole("button", { name: fmt(p2.silence.apply.one, { n: 1 }) }));
     const d = await save();
     expect(d.tracks[0].clips.map((c) => [c.in_s, c.out_s])).toEqual([[0, 3.1], [4.9, 10]]);
     expect(validateTimeline(d)).toEqual([]);

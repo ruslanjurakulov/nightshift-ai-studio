@@ -1011,6 +1011,14 @@ mask still fits (1 + 1.0 = 2.0 s per second); at 4K60 (x8) a masked clip longer 
   the whole clip); nothing changes until the person presses "Cut N silent parts", which is one undo step: splits and
   ripple deletes of the picture (texts, sounds and overlays keep their times; the hint says so). Only for a video
   clip at one speed, forwards (no curve, reverse or freeze); stops at `MAX_EDITOR_CLIPS` and says how many fitted.
+* The clip's own sound must be on (`audio: true`): a muted clip has nothing to listen to, and a clip whose sound
+  was detached to an A track would lose step with it if only the picture were cut ("Turn it on first").
+* A split piece keeps its side's fade only as long as the piece is (`splitClip` and `timeline.split_clip`: fade in +
+  fade out within the piece, the in-fade giving way), so cutting near a faded end leaves a document that saves.
+* The threshold is compared as a 32-bit float, as ffmpeg compares float samples: a level of exactly 0.01 is not
+  under -40 dB (cases at 22,050 and 48,000 Hz in `samples/silence_cases.json`). Blocks are a whole number of
+  samples and times are labelled by that length (221 samples, 10.02 ms, at 22,050 Hz). The cut list is shown in
+  timeline times.
 * Why not on the server: the web image has no ffmpeg and a worker job needs a queue table (a migration, out of scope).
   The analysis is free, one file at a time, at most 6 new files a minute per tab, and once per file per page.
 
