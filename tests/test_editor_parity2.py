@@ -7,7 +7,7 @@ tone curve) and a shape mask (``mask``: rect / ellipse / rounded, feather, inver
   fast clips (only for a timeline an export renders), and the sentence names them;
 * old documents: a document without the fields builds exactly the argv origin/main built
   (samples/parity2_argv_golden.json);
-* real ffmpeg (render_backend.resolve_ffmpeg) with ffprobe and pixel sampling: the mask shows the
+* real ffmpeg (render_backend.resolve_ffmpeg; size and frame count read with it too, no ffprobe) and pixel sampling: the mask shows the
   picture inside and black outside (inverted: the other way), a feather is a ramp, a mask works on a
   still, on both sides of a cross-fade and under a move; temperature, tint, hue and curves move the
   colour the way their names say.
@@ -242,12 +242,14 @@ class RealRenderTestCase(unittest.TestCase):
         return [tuple(raw[(y * w + x) * 3:(y * w + x) * 3 + 3]) for x, y in pts]
 
     def probe(self, path):
-        out = subprocess.run(["ffprobe", "-v", "error", "-count_frames", "-show_entries",
-                              "stream=width,height,nb_read_frames", "-of", "json", str(path)],
-                             capture_output=True, text=True)
-        if out.returncode:
-            self.skipTest("ffprobe not available")
-        return json.loads(out.stdout)["streams"][0]
+        """Size and decoded frame count with the bundled ffmpeg alone (CI has no ffprobe on PATH): the
+        repo's own ffmpeg-only readers, video_qc's ``ffmpeg -i`` parse and scene_remotion's frame count."""
+        from modules import scene_remotion, video_qc
+        v = video_qc._probe_ffmpeg(self.ffmpeg, Path(path))["video"]
+        frames = scene_remotion.count_frames(self.ffmpeg, path)
+        self.assertIsNotNone(v, path)
+        self.assertIsNotNone(frames, path)
+        return {"width": v["width"], "height": v["height"], "nb_read_frames": frames}
 
     def test_an_ellipse_shows_the_picture_inside_and_black_outside_and_invert_swaps_them(self):
         out = self.render(vdoc(mask={"shape": "ellipse", "w": 0.5, "h": 0.5}))
