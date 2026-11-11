@@ -1,4 +1,5 @@
 import { coerceExports, editorErrorWord, type EditorAsset, type EditorError, type EditorExport, type TimelineDoc } from "@/lib/editor";
+import { PROJECT_FRAME, isExportFrameChoice, type ExportFrameChoice } from "@/lib/multiRatioExport/frames";
 
 /**
  * The editor page's calls to its routes (migration 0054). Each resolves —
@@ -44,6 +45,54 @@ export function deleteProject(id: string): Promise<EditorResult<true>> {
 
 export function requestExport(id: string, rev: number): Promise<EditorResult<{ id: string }>> {
   return call(`${base(id)}/exports`, "POST", { rev }, (b) => (typeof b.id === "string" ? { id: b.id } : null));
+}
+
+/** How one frame of a several-size export request ended: queued (its export id) or refused (a word). */
+export type FrameOutcome = { frame: ExportFrameChoice; id: string } | { frame: ExportFrameChoice; error: EditorError };
+
+/**
+ * Export the saved revision in several frame sizes (migration 0129): one request, ONE export per frame, each counted
+ * and checked by itself. Only ids of the closed list travel ("project" = the project's own frame); no size does.
+ * Resolves to an outcome for every frame that was asked, in the order asked. A frame the server did not answer for
+ * is "failed", never assumed queued. If the server answers the way it does with the switch off (one plain export,
+ * no per-frame list), that is said as it is: the project's own frame was queued and every other size is
+ * "not_available".
+ */
+export async function requestExports(id: string, rev: number, frames: readonly ExportFrameChoice[]): Promise<EditorResult<FrameOutcome[]>> {
+  let res: Response;
+  try {
+    res = await fetch(`${base(id)}/exports`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ rev, frames }),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, error: "network" };
+  }
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (res.status === 401) return { ok: false, error: "unauthorized" };
+  if (Array.isArray(json.exports)) {
+    const rows = (json.exports as unknown[]).filter(
+      (r): r is { frame: ExportFrameChoice; id?: unknown; error?: unknown } =>
+        typeof r === "object" && r !== null && isExportFrameChoice((r as { frame?: unknown }).frame),
+    );
+    return {
+      ok: true,
+      value: frames.map((frame) => {
+        const r = rows.find((x) => x.frame === frame);
+        return r && typeof r.id === "string" ? { frame, id: r.id } : { frame, error: r ? editorErrorWord(r.error) : "failed" };
+      }),
+    };
+  }
+  if (!res.ok) return { ok: false, error: editorErrorWord(json.error) };
+  if (typeof json.id !== "string") return { ok: false, error: "failed" };
+  // The server did not read `frames`: the switch is off there. It queued the plain export and nothing else.
+  const plain: FrameOutcome = { frame: PROJECT_FRAME, id: json.id };
+  return {
+    ok: true,
+    value: [plain, ...frames.filter((f) => f !== PROJECT_FRAME).map((frame): FrameOutcome => ({ frame, error: "not_available" }))],
+  };
 }
 
 export interface ProjectSnapshot {

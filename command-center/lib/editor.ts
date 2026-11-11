@@ -3263,8 +3263,20 @@ export const EXPORT_REASONS = [
   "timed_out",
   "worker_lost",
   "project_deleted",
+  // An export in another frame (migration 0129, modules/editor_export.py): the row's frame was not exactly an entry of
+  // the closed list, or the worker's switch was off when it arrived.
+  "invalid_frame",
+  "frame_off",
 ] as const;
 export type ExportReason = (typeof EXPORT_REASONS)[number];
+
+/** The frame an export was asked in (migration 0129): a format of the closed list and its size as the database's
+ *  list had it. Absent (null) = the project's own frame, which is every export before 0129. */
+export interface ExportFrame {
+  preset: string;
+  width: number;
+  height: number;
+}
 
 export interface EditorExport {
   id: string;
@@ -3275,10 +3287,16 @@ export interface EditorExport {
   assetId: string | null;
   createdAt: string | null;
   finishedAt: string | null;
+  /** The frame it was asked in. ABSENT for the project's own frame (and when the columns were not read: before 0129,
+   *  or with the switch off), so a plain export is the object it always was. */
+  frame?: ExportFrame;
 }
 
 export const EDITOR_EXPORT_COLUMNS =
   "id, rev, status, reason, duration_s, asset_id, created_at, finished_at";
+/** The same, with the frame an export was asked in (migration 0129). Read only while the switch is on; a database
+ *  without 0129 answers "no such column" and the reader falls back to the columns above (lib/server/editor.ts). */
+export const EDITOR_EXPORT_FRAME_COLUMNS = `${EDITOR_EXPORT_COLUMNS}, frame_preset, frame_width, frame_height`;
 export const EDITOR_PROJECT_COLUMNS =
   "id, org_id, title, rev, doc, created_at, updated_at";
 export const EDITOR_PROJECT_LIST_COLUMNS = "id, title, rev, updated_at";
@@ -3306,6 +3324,16 @@ export function coerceExports(rows: unknown): EditorExport[] {
           ? (r.reason as ExportReason)
           : "other";
     const dur = Number(r.duration_s ?? r.durationS);
+    // The row's three columns (the server's read) or the object the route sent on (the page's poll). All three or
+    // nothing: a frame that is half there is shown as no frame, never as a guessed one.
+    const f = isObj(r.frame) ? r.frame : null;
+    const preset = f ? f.preset : r.frame_preset;
+    const fw = f ? f.width : r.frame_width;
+    const fh = f ? f.height : r.frame_height;
+    const frame: ExportFrame | null =
+      typeof preset === "string" && /^[a-z0-9_]{1,32}$/.test(preset) && isInt(fw) && isInt(fh) && fw > 0 && fh > 0
+        ? { preset, width: fw, height: fh }
+        : null;
     out.push({
       id: r.id,
       rev: Number(r.rev) || 0,
@@ -3315,6 +3343,7 @@ export function coerceExports(rows: unknown): EditorExport[] {
       assetId: str(r.asset_id, r.assetId),
       createdAt: str(r.created_at, r.createdAt),
       finishedAt: str(r.finished_at, r.finishedAt),
+      ...(frame ? { frame } : {}),
     });
   }
   return out;

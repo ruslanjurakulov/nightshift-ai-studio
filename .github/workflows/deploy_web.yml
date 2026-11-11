@@ -191,6 +191,10 @@ jobs:
           # Results dashboard (docs/RESULTS_DASHBOARD.md): off unless this repository variable is on (on, 1, true or yes). Empty = the page and
           # /api/results are a 404. Read-only, web only: there is no worker side. Setting nothing leaves it dark; this change does not set it.
           WEBENV_NIGHTSHIFT_RESULTS_DASHBOARD: ${{ vars.NIGHTSHIFT_RESULTS_DASHBOARD }}
+          # One edit, several frame sizes (docs/MULTI_RATIO_EXPORT.md, migration 0129): off unless this repository variable is on (on, 1,
+          # true or yes). Empty = no size picker in the editor and the export route ignores `frames`. Setting nothing leaves it dark; this
+          # change does not set it. The media worker reads the same variable (WORKERENV_ below).
+          WEBENV_NIGHTSHIFT_MULTI_RATIO_EXPORT: ${{ vars.NIGHTSHIFT_MULTI_RATIO_EXPORT }}
           WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
           WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
@@ -442,6 +446,9 @@ jobs:
           # Region editor, the worker's side (docs/REGION_EDITOR.md): the same repository variable as the web's. Empty = off, and a region
           # edit that reaches the worker is failed at once with its credits released. This change does not set it.
           WORKERENV_NIGHTSHIFT_REGION_EDITOR: ${{ vars.NIGHTSHIFT_REGION_EDITOR }}
+          # One edit, several frame sizes, the media worker's side (docs/MULTI_RATIO_EXPORT.md): the same repository variable as the web's.
+          # Empty = off, and an export that carries a frame override is failed at once (frame_off). This change does not set it.
+          WORKERENV_NIGHTSHIFT_MULTI_RATIO_EXPORT: ${{ vars.NIGHTSHIFT_MULTI_RATIO_EXPORT }}
           WORKERENV_NIGHTSHIFT_VOICE_GATE_STRICT: ${{ vars.NIGHTSHIFT_VOICE_GATE_STRICT }}
           WORKERENV_NIGHTSHIFT_SERIES_PLANNER: ${{ vars.NIGHTSHIFT_SERIES_PLANNER }}
           # The owner's model switch (migration 0124, docs/MODEL_SWITCH.md): the SAME repository variable the Command Center reads

@@ -123,7 +123,8 @@ export default async function AnalyticsPage() {
   if (supabase) {
     const [vid, snap] = await Promise.all([
       uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope)).order("published_at", { ascending: false }).limit(500),
-      supabase.from("metrics_snapshots").select("*").limit(5000),
+      // Newest first: when the row limit cuts the read, it cuts the oldest rows, never a video's latest one.
+      supabase.from("metrics_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(5000),
     ]);
     if (vid.error || snap.error) dbHealthy = false;
     videos = (vid.data as VideoRow[]) ?? [];

@@ -9,6 +9,10 @@ moviepy==1.0.3
 # PIL path calling Image.ANTIALIAS, which Pillow 10 removed. compositor.py
 # aliases that constant as a safety net; cv2 avoids the branch altogether.
 opencv-python>=4.8.0
+# The ffmpeg binary every render, probe and media-library decode runs comes from this package
+# (modules/render_backend.resolve_ffmpeg). moviepy installs it anyway; it is named here because the code imports it
+# directly and constraints.txt pins it (a new release swaps the binary: see the note there).
+imageio-ffmpeg>=0.6.0
 pydub>=0.25.1
 # audioop was removed from the stdlib in Python 3.13; audioop-lts backfills it
 # and its wheels REQUIRE >=3.13. On 3.11/3.12 (what the workflows run) audioop

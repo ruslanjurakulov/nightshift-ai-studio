@@ -720,6 +720,32 @@ class MetricsPollWindowTestCase(unittest.TestCase):
         self._make_poller(analytics_client=analytics).poll_own_channel_metrics()
         self.assertEqual(analytics.video_retention.call_count, 1)
 
+    def test_a_malformed_retention_answer_never_uncounts_a_stored_snapshot(self):
+        # The curve is read after the snapshot is stored. A row that is not a mapping used to raise there: the video
+        # was logged as failed and left out of the count although its snapshot was already in the store.
+        for answer in (["junk", 7, None, {"elapsedVideoTimeRatio": 0.5, "audienceWatchRatio": 0.4}], None, "oops", 3, {"rows": []}):
+            with self.subTest(answer=answer):
+                self.setUp()
+                ids = self._store_videos_published(0)
+                analytics = self._analytics()
+                analytics.video_retention.return_value = answer
+                with self.assertNoLogs("modules.intelligence_poller", level="ERROR"):
+                    written = self._make_poller(analytics_client=analytics).poll_own_channel_metrics()
+                self.assertEqual(written, 1)
+                self.assertEqual(self.store.latest_metrics(ids[0])["views"], 10)
+                points = self.store.conn.execute("select count(*) from retention_points").fetchone()[0]
+                self.assertEqual(points, 1 if isinstance(answer, list) else 0)
+                self.tearDown()
+        self.setUp()
+
+    def test_a_malformed_retention_answer_is_not_reported_as_a_failed_video(self):
+        self._store_videos_published(0)
+        analytics = self._analytics()
+        analytics.video_retention.return_value = ["junk"]
+        with self.assertLogs("modules.intelligence_poller", level="INFO") as logs:
+            self._make_poller(analytics_client=analytics).poll_own_channel_metrics(days=30, max_calls=600)
+        self.assertFalse([line for line in logs.output if "Failed to poll/record" in line], logs.output)
+
     def test_a_video_with_an_unreadable_publish_date_keeps_its_curve(self):
         self.store.record_video(video_id="odd", title="odd", published_at="2026-13-45")
         analytics = self._analytics()

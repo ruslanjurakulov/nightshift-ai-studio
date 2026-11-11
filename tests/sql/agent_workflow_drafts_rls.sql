@@ -1,4 +1,4 @@
--- Disposable, transaction-rolled-back ownership test for migration 0129.
+-- Disposable, transaction-rolled-back ownership test for migration 0130.
 -- RUN ONLY ON AN ISOLATED SUPABASE INSTANCE. Not a production migration.
 begin;
 

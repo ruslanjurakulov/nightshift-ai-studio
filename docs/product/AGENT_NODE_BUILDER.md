@@ -46,7 +46,7 @@ Added a client-side draggable, bounded node-card workspace with accessible direc
 - GitHub CI must be reviewed before merging. A review node in saved JSON is never equivalent to a user's live approval.
 
 ## Phase 2A — private draft persistence (implementation in this draft PR)
-- New migration `0129_agent_workflow_drafts.sql`: distinct from existing billing-backed `workflows` in migration 0073.
+- New migration `0130_agent_workflow_drafts.sql` (written as 0129, renumbered to 0130 on 2026-11-11 because 0129 went to the editor export frames, #661): distinct from existing billing-backed `workflows` in migration 0073.
 - Tables `agent_workflow_drafts` and `agent_workflow_draft_versions` with owner-bound foreign keys, RLS enforced for read, immutable version snapshots, and no direct authenticated write grants.
 - Atomic `save_agent_workflow_draft(draft_id, expected_version, document)` uses current `auth.uid()`, row locks, version compare-and-swap, a 50-draft limit per person and 30 saved revisions per draft.
 - `GET/POST /api/agent-builder/drafts` and `GET /api/agent-builder/drafts/[id]?version=N`; all use the cookie-bound logged-in user's anon Supabase client. POST uses same-origin CSRF checks and a hard streaming body limit.

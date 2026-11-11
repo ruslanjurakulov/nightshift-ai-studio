@@ -2,8 +2,10 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { MEDIA_ASSET_COLUMNS, coerceAssets, parseMediaId } from "@/lib/media";
 import { mediaDir, mediaUrlSecret, withUrls } from "@/lib/server/media";
+import { multiRatioExportEnabled } from "@/lib/multiRatioExport/flag";
 import {
   EDITOR_EXPORT_COLUMNS,
+  EDITOR_EXPORT_FRAME_COLUMNS,
   EDITOR_PROJECT_COLUMNS,
   EDITOR_PROJECT_LIST_COLUMNS,
   coerceExports,
@@ -40,6 +42,9 @@ export interface EditorProjectData {
   exports: EditorExport[];
   /** The files the document uses and the finished exports, by id, with preview links. */
   assets: Record<string, EditorAsset>;
+  /** May an export be asked in another frame here? True only while NIGHTSHIFT_MULTI_RATIO_EXPORT is on AND the
+   *  database has migration 0129 (the frame columns could be read). False = the editor offers the plain export only. */
+  multiRatio: boolean;
 }
 
 export type EditorRead<T> =
@@ -57,6 +62,18 @@ function isMissing(
     (e.code === "42P01" ||
       e.code === "PGRST205" ||
       /does not exist|could not find the table/i.test(e.message ?? "")),
+  );
+}
+
+/** "This column does not exist": the frame columns of 0129 are not there yet. */
+function isMissingColumn(
+  e: { code?: string; message?: string } | null | undefined,
+): boolean {
+  return Boolean(
+    e &&
+    (e.code === "42703" ||
+      e.code === "PGRST204" ||
+      /column .* does not exist|could not find the .* column/i.test(e.message ?? "")),
   );
 }
 
@@ -181,19 +198,31 @@ export async function loadEditorProject(
   if (!supabase) return { state: "not_available" };
   if (!pid) return { state: "not_found" };
   try {
-    const [project, exports] = await Promise.all([
+    // With the switch off this is the read it always was. With it on, the frame an export was asked in is read too
+    // (migration 0129); a database that does not have the columns yet says so, and the editor then offers the plain
+    // export only, instead of failing to open.
+    const wantFrames = multiRatioExportEnabled();
+    const readExports = (columns: string) =>
+      supabase
+        .from("editor_exports")
+        .select(columns)
+        .eq("project_id", pid)
+        .order("created_at", { ascending: false })
+        .limit(10);
+    const [project, firstExports] = await Promise.all([
       supabase
         .from("editor_projects")
         .select(EDITOR_PROJECT_COLUMNS)
         .eq("id", pid)
         .maybeSingle(),
-      supabase
-        .from("editor_exports")
-        .select(EDITOR_EXPORT_COLUMNS)
-        .eq("project_id", pid)
-        .order("created_at", { ascending: false })
-        .limit(10),
+      readExports(wantFrames ? EDITOR_EXPORT_FRAME_COLUMNS : EDITOR_EXPORT_COLUMNS),
     ]);
+    let exports = firstExports;
+    let multiRatio = wantFrames;
+    if (wantFrames && isMissingColumn(firstExports.error)) {
+      exports = await readExports(EDITOR_EXPORT_COLUMNS);
+      multiRatio = false;
+    }
     if (project.error)
       return isMissing(project.error)
         ? { state: "not_available" }
@@ -235,6 +264,7 @@ export async function loadEditorProject(
         updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
         exports: exportRows,
         assets,
+        multiRatio,
       },
     };
   } catch {

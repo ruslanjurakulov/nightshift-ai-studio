@@ -1,9 +1,13 @@
-"""A vendor-announced shutdown date: the registry field, the Google entries, the sale guard, the Veo client.
+"""A vendor-announced shutdown date: the registry field, the entries that carry one, the sale guard, the Veo client.
 
-Google's deprecations page (ai.google.dev/gemini-api/docs/deprecations, read 2026-10-25)
+Google's deprecations page (ai.google.dev/gemini-api/docs/deprecations, read 2026-10-25
+and again 2026-11-10, when it named gemini-omni-1.2-flash as the replacement)
 lists veo-3.1-generate-preview, -fast- and -lite- with shutdown 2026-10-22 and
-calls every date there "the earliest possible". These tests pin what Nightshift
-does with that, and what it refuses to do:
+calls every date there "the earliest possible". Three more dates were read on
+2026-11-10, each on its vendor's own page (docs/research/monitoring-claims-2026-11-10.md):
+BytePlus ends seedance-1-5-pro-251215 on 2026-11-11, Google routes
+gemini-omni-1.1-flash to 1.2 from 2026-12-03, OpenAI removes gpt-image-2 on
+2027-02-10. These tests pin what Nightshift does with that, and what it refuses to do:
 
 * the date is a registry field with its source, and it ends the sale (migration
   0125) on that day; a date nobody can read does not read as "safe";
@@ -43,6 +47,13 @@ ROLLBACK_PATH = REPO / "docs" / "sql" / "rollback_0125_model_shutdown.sql"
 VEO_IDS = ("veo-3.1", "veo-3.1-fast", "veo-3.1-lite")
 OPS_IDS = ("gemini-2.5-flash-image-expand", "gemini-2.5-flash-image-relight", "gemini-2.5-flash-image-erase")
 DEPRECATIONS = "https://ai.google.dev/gemini-api/docs/deprecations"
+#: Read 2026-11-10 on each vendor's own page: registry id -> (shutdown.on, the page, the replacement that page names).
+READ_2026_11_10 = {
+    "seedance-1.5-pro": ("2026-11-11", "https://docs.byteplus.com/en/docs/ModelArk/1350667", "dreamina-seedance-2-0-mini-260615"),
+    "gemini-omni-1.1-flash": ("2026-12-03", DEPRECATIONS, "gemini-omni-1.2-flash"),
+    "openai-gpt-image-2": ("2027-02-10", "https://developers.openai.com/api/docs/deprecations",
+                           "gpt-image-2.6-sunburst or gpt-image-2.6-flare"),
+}
 
 
 class RegistryFieldTests(unittest.TestCase):
@@ -51,7 +62,7 @@ class RegistryFieldTests(unittest.TestCase):
         for mid in VEO_IDS:
             s = r[mid].raw["shutdown"]
             self.assertEqual((s["on"], s["source_url"], s["as_of"], s["replacement"]),
-                             ("2026-10-22", DEPRECATIONS, "2026-10-25", "gemini-omni-1.1-flash"), mid)
+                             ("2026-10-22", DEPRECATIONS, "2026-11-10", "gemini-omni-1.2-flash"), mid)
             self.assertEqual(r[mid].shutdown_on, date(2026, 10, 22))
             self.assertIn("EARLIEST", r[mid].raw["api_documented"]["note"], mid)
             self.assertIn("tools/probe_models.py", r[mid].raw["api_documented"]["note"], mid)
@@ -65,9 +76,31 @@ class RegistryFieldTests(unittest.TestCase):
             self.assertTrue(r[mid].shut_down(date(2027, 3, 15)), mid)
 
     def test_no_other_entry_claims_a_shutdown_date(self):
-        # A date is a vendor announcement with a source, never a guess: only the entries Google's page lists.
+        # A date is a vendor announcement with a source, never a guess: only the entries a vendor's own page lists.
         have = {mid for mid, e in reg.load().items() if "shutdown" in e.raw}
-        self.assertEqual(have, set(VEO_IDS) | set(OPS_IDS))
+        self.assertEqual(have, set(VEO_IDS) | set(OPS_IDS) | set(READ_2026_11_10))
+
+    def test_the_dates_read_on_2026_11_10_carry_their_vendor_page_and_end_the_sale_on_that_day(self):
+        r = reg.load()
+        for mid, (on, page, replacement) in READ_2026_11_10.items():
+            s = r[mid].raw["shutdown"]
+            self.assertEqual((s["on"], s["source_url"], s["as_of"], s["replacement"]), (on, page, "2026-11-10", replacement), mid)
+            day = date.fromisoformat(on)
+            self.assertFalse(r[mid].shut_down(date.fromordinal(day.toordinal() - 1)), mid)
+            self.assertTrue(r[mid].shut_down(day), mid)
+        # Each note says what the vendor does on that day, so nobody reads the date as "the id returns 404".
+        self.assertIn("NOT migrated automatically", r["seedance-1.5-pro"].raw["api_documented"]["note"])
+        self.assertIn("gpt-image-2-2026-04-21", r["openai-gpt-image-2"].raw["api_documented"]["note"])
+
+    def test_the_models_next_to_a_retired_one_carry_no_date_because_their_vendor_announced_none(self):
+        # BytePlus retires 1.5 Pro only (1.0 Pro, the daily pipeline's SEEDANCE_MODEL default, is on its live list with no date);
+        # OpenAI's page deprecates gpt-image-2 only, not the 2.5 pair.
+        r = reg.load()
+        self.assertEqual(r["seedance-1.0-pro"].vendor_model, config.SEEDANCE_MODEL)
+        for mid in ("seedance-1.0-pro", "seedance-2.0", "seedance-2.5", "seedream-5.0-pro", "seedream-5.0-flash", "seedream-4.5",
+                    "openai-gpt-image-2.5-flare", "openai-gpt-image-2.5-sunburst"):
+            self.assertNotIn("shutdown", r[mid].raw, mid)
+            self.assertFalse(r[mid].shut_down(date(2999, 1, 1)), mid)
 
     def test_gemini_3_1_flash_image_names_its_replacement_but_has_no_date(self):
         e = reg.load()["gemini-3.1-flash-image"]
@@ -84,7 +117,8 @@ class RegistryFieldTests(unittest.TestCase):
         self.assertTrue(e.shut_down(date(2026, 10, 23)))
 
     def test_an_entry_without_a_date_is_never_shut_down_here(self):
-        self.assertFalse(reg.load()["openai-gpt-image-2"].shut_down(date(2999, 1, 1)))
+        # gpt-image-2 stood here until OpenAI announced its removal (2027-02-10); the 2.5 pair has no announced date.
+        self.assertFalse(reg.load()["openai-gpt-image-2.5-flare"].shut_down(date(2999, 1, 1)))
 
     def test_the_schema_demands_the_source_and_a_real_date(self):
         def mutate(fn):
@@ -288,7 +322,7 @@ class VeoClientTests(unittest.TestCase):
                 cfg = veo_config(VEO_MODEL=vendor)
                 self.assertEqual(cfg.model, vendor)                   # kept as configured, never rewritten
                 e = self.assertStops(cfg, vendor, "2026-10-22", "EARLIEST", "may already be off",
-                                     "not verified here", "will not guess or switch models", "gemini-omni-1.1-flash",
+                                     "not verified here", "will not guess or switch models", "gemini-omni-1.2-flash",
                                      f"tools/probe_models.py --model {mid}")
                 self.assertIn(DEPRECATIONS, e.remedy)
 

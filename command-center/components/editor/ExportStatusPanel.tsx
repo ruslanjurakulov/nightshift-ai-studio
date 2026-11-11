@@ -56,6 +56,8 @@ export function ExportStatusPanel({
   onRetry,
   onCheckNow,
   quietRetry = false,
+  heading,
+  notice = null,
 }: {
   /** The newest export of the project. */
   latest: EditorExport;
@@ -77,6 +79,10 @@ export function ExportStatusPanel({
   /** The draft banner is showing and its "Restore changes" is the one primary
    *  action on the screen: "Try again" steps back to a quiet button. */
   quietRetry?: boolean;
+  /** The panel's title when it is not "Latest export": one panel per frame size (migration 0129) names its size. */
+  heading?: string;
+  /** A warning about the finished file, in words (its size is not the size that was asked for). */
+  notice?: string | null;
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
@@ -161,7 +167,7 @@ export function ExportStatusPanel({
       className="panel flex min-w-0 flex-col gap-3 p-4 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] sm:p-5"
     >
       <h2 id={`${id}-h`} className="m-0 text-[15px] font-semibold">
-        {ep.latest}
+        {heading ?? ep.latest}
       </h2>
 
       <div
@@ -186,6 +192,11 @@ export function ExportStatusPanel({
         {latest.status === "failed" ? (
           <p className="m-0 break-words text-sm text-[var(--color-fail)]">
             {te.exportReasons[latest.reason ?? "other"]}
+          </p>
+        ) : null}
+        {notice ? (
+          <p data-export-notice="" className="m-0 break-words text-sm text-[var(--color-warn)]">
+            {notice}
           </p>
         ) : null}
         {running && halt ? (

@@ -20,6 +20,7 @@ import { siteUz } from "./site/uz";
 import { overlayUz } from "./overlay/uz";
 import { shapesUz } from "./shapes/uz";
 import { exportPresetUz } from "./editor-presets/uz";
+import { exportRatiosUz } from "./editor-ratios/uz";
 import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
@@ -5112,6 +5113,7 @@ export const uz: Dictionary = {
     shapes: shapesUz,
     /** Export format picker: ./editor-presets/uz.ts. */
     exportPreset: exportPresetUz,
+    exportRatios: exportRatiosUz,
     /** Cross-fade styles and text looks: ./editor-looks/uz.ts. */
     looks: looksUz,
     fx: fxUz,
@@ -5312,6 +5314,8 @@ export const uz: Dictionary = {
       timed_out: "Render ajratilgan vaqtdan uzoq davom etdi va toʻxtatildi. Qayta urinib koʻring; yana takrorlansa, videoni qisqartiring yoki kamroq klip ishlating.",
       worker_lost: "Render paytida server toʻxtab qoldi. Qayta urinib koʻring.",
       project_deleted: "Loyiha bu eksport boshlanishidan oldin oʻchirildi.",
+      invalid_frame: "Bu oʻlcham eksport formatlari orasida yoʻq, shuning uchun hech narsa render qilinmadi. Oʻlchamni qaytadan tanlab, eksport qiling.",
+      frame_off: "Boshqa oʻlchamlarda eksport qilish serverda oʻchirilgan, shuning uchun hech narsa render qilinmadi. Loyiha oʻlchamida eksport qiling yoki keyinroq urinib koʻring.",
       other: "Eksport amalga oshmadi.",
     },
     exportRev: "{rev}-versiya",
