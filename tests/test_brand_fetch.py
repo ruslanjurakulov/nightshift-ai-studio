@@ -19,6 +19,7 @@ import shutil
 import socket
 import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -350,6 +351,23 @@ class DefaultPathHasNoWayAround(unittest.TestCase):
         # Migration 0133 wired it into the brand scan job, which runs only with NIGHTSHIFT_ADS_BRAND_SCAN=on
         # (tests/test_brand_scan_worker.py pins the switch). Nothing else may import it.
         self.assertEqual(sorted(users), ["brand_extract.py", "brand_scan.py", "brand_scan_worker.py", "dns_txt.py"])
+
+    def test_the_url_rule_is_safe_fetchs_and_the_pure_parts_need_no_vendor_package(self):
+        from modules.capabilities import safe_fetch
+        self.assertEqual(bf._SAFE_URL.pattern, safe_fetch._SAFE_URL.pattern)
+        # The security lab imports the extractor (and through it this module) with only psycopg and pytest installed: nothing of
+        # modules.capabilities (which imports requests) may be imported at module level.
+        code = subprocess.run(
+            [sys.executable, "-c", "import sys, builtins; real = builtins.__import__\n"
+             "def guard(name, *a, **k):\n"
+             "    if name == 'requests' or name.startswith('requests.') or name.startswith('modules.capabilities'):\n"
+             "        raise ImportError(name)\n"
+             "    return real(name, *a, **k)\n"
+             "builtins.__import__ = guard\n"
+             "import modules.brand_fetch, modules.brand_extract\n"
+             "modules.brand_extract.clean_text('x'); modules.brand_fetch.derive_url('https://a.test/', '/b')\n"],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=60)
+        self.assertEqual(code.returncode, 0, code.stderr[-500:])
 
     def test_no_http_library_that_follows_redirects_or_keeps_cookies_is_used(self):
         src = (ROOT / "modules" / "brand_fetch.py").read_text(encoding="utf-8")

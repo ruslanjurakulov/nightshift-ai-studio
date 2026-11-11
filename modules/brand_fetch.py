@@ -78,7 +78,12 @@ from html.parser import HTMLParser
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote, urljoin, urlsplit
 
-from modules.capabilities.safe_fetch import _SAFE_URL, sniff_image_mime
+# Nothing of modules.capabilities is imported at module level: that package imports every vendor adapter and ``requests``,
+# which the pure parts of this module (the URL shape, the link list, robots.txt) and modules/brand_extract.py must not need
+# (the security lab runs the extractor with only psycopg and pytest installed). The picture sniff is imported where a
+# picture is read; the printable-ASCII rule is safe_fetch's own pattern, written out here and pinned equal by
+# tests/test_brand_fetch.py.
+_SAFE_URL = re.compile(r"[\x21-\x5b\x5d-\x7e]+")
 
 # ── limits (docs/ADS_FACTORY.md, Phase 2, "The fetch") ─────────────────────────────────────────────────────────────
 
@@ -888,6 +893,9 @@ class SiteScan:
             body += chunk
             if len(body) > cap:
                 raise BrandFetchError(E_TOO_LARGE, f"the answer is over the {cap} byte cap; stopped reading")
+        if kind == IMAGE:
+            from modules.capabilities.safe_fetch import sniff_image_mime  # noqa: PLC0415 — see the imports above
+
         if kind == IMAGE and sniff_image_mime(bytes(body[:16])) != ctype:
             raise BrandFetchError(E_CONTENT_TYPE, f"the bytes are not a {ctype} picture")
         return _Answer(status, None, ctype, bytes(body))
