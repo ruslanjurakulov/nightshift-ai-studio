@@ -34,7 +34,8 @@
 --                        requested | running | ready | failed, a closed error code, the result (bounded jsonb: proposed fields, each with the
 --                        page and the place it came from: brand_scan_result_ok), the credits held / charged, an idempotency key and request
 --                        hash, and which fields a person accepted into which kit.
---   brand_scan_settings  one row: price_credits (NULL = not on sale; the seed), platform_daily_scans (500), platform_daily_checks (5000).
+--   brand_scan_settings  one row: price_credits (NULL = not on sale; the seed), platform_daily_scans (500), platform_daily_checks (5000),
+--                        org_daily_scans (20) and org_daily_checks (200): one organization cannot use up the platform's day.
 --
 -- OWNERSHIP (the owner's decision: the strong form). A scan runs only under a VERIFIED domain of the same organization that is the scan's host
 -- or a parent of it (verified shop.com covers www.shop.com and shop.com; it does not cover shop.co.uk or othershop.com). The worker reads the
@@ -53,9 +54,11 @@
 -- shown (p_max_credits, compared with the charged price, never the hold): a higher price is `price_changed`, never charged. The exempt organization (the operator's) is not charged, and only a platform admin may
 -- scan there (create_creative_job's rule). A hold counts as one of the plan's parallel runs (0034), as every hold does.
 --
--- CAPS. One scan in flight per organization (a unique index: requested or running). Platform-wide per 24 hours: scans (all statuses, failed
--- ones too) and domain checks, under one platform lock taken AFTER the organization's (0127's order). The platform's refusal carries no
--- number. 10 domains per organization and one check per domain per 15 seconds are fixed, not settings.
+-- CAPS. One scan in flight per organization (a unique index: requested or running). Per ORGANIZATION per 24 hours (all statuses, failed
+-- ones too, which release their hold and so would otherwise cost nothing): org_daily_scans and org_daily_checks, counted under the
+-- organization's lock, refused `org_daily_limit` with no number. Then platform-wide per 24 hours: scans and domain checks, under one
+-- platform lock taken AFTER the organization's (0127's order). The platform's refusal carries no number either. Pictures a failed scan
+-- had stored are deleted from the library (brand_scan_fail_locked). 10 domains per organization and one check per domain per 15 seconds are fixed, not settings.
 --
 -- LOCK ORDER. As 0131: no function holds a row lock while it waits for an advisory lock. request_brand_scan / request_domain_verification /
 -- check_domain_verification read without a lock, check sign-in and the role, take the organization's lock ('brand_scan:' || org), then the
@@ -133,14 +136,14 @@ begin
       ('public.brand_scan_field_ok(jsonb, text)', '353d784aab148ab2af4324383bdeae51'),
       ('public.brand_scan_result_ok(jsonb)', '05e268084c5d68c2291897ce2f759d44'),
       ('public.brand_scan_price()', '596c0cd1d82759855ae5496b6acf20b0'),
-      ('public.brand_scan_fail_locked(uuid, text)', '2ed1f012de9cb7e16df70d7cc748cc91'),
+      ('public.brand_scan_fail_locked(uuid, text)', '67e8ee83bde9ec4512a3d6135c9c07ee'),
       ('public.brand_scan_settings_guard()', 'd55aaee7b70dc8655a5fb02f3682a5bb'),
-      ('public.brand_scan_settings_trail()', 'c5f5e10faae661c30f58a25e2ff5b5aa'),
+      ('public.brand_scan_settings_trail()', '8274499327749e163dd9d306e47339ea'),
       ('public.request_domain_verification(uuid, text)', '5cf3a05a1cd6291caa58b7bfb4f41ab7'),
-      ('public.check_domain_verification(uuid)', '9da8c07a8a5d7fc194b796eb8c35a2d6'),
+      ('public.check_domain_verification(uuid)', 'b90fdc7e1117c05bca74fd6d3ed9fdbf'),
       ('public.quote_brand_scan(uuid)', 'ba5d8b562c6893d8b0ef49ff4392d8b2'),
-      ('public.request_brand_scan(uuid, text, text, numeric)', '812a6131a465414f5b0235f6f705fe5a'),
-      ('public.accept_brand_scan_fields(uuid, uuid, text[])', '33e5092fed2d2b50b594eae230aaffb1'),
+      ('public.request_brand_scan(uuid, text, text, numeric)', 'e696f6295465ae9b321766aea7a40b99'),
+      ('public.accept_brand_scan_fields(uuid, uuid, text[])', '8ccc1bdaec64c9cfdb579485ea655059'),
       ('public.claim_domain_check(text)', '82141353f6d88e824d4d299fa34b8890'),
       ('public.finish_domain_check(uuid, text, boolean, text)', '62b0880595b8713fa3ba8d93c146c7f0'),
       ('public.claim_brand_scan(text)', 'ccab2f97d979a930735b44fed06b237f'),
@@ -433,6 +436,10 @@ create table if not exists public.brand_scan_settings (
   price_credits         numeric,
   platform_daily_scans  integer not null default 500,
   platform_daily_checks integer not null default 5000,
+  -- One organization's share of the day (safety defaults, not yet owner-approved): a failed scan releases its hold, so without these one
+  -- organization could fill the platform's caps for nothing.
+  org_daily_scans       integer not null default 20,
+  org_daily_checks      integer not null default 200,
   updated_at            timestamptz not null default now()
 );
 
@@ -441,10 +448,11 @@ alter table public.brand_scan_settings add constraint brand_scan_settings_one_ro
 alter table public.brand_scan_settings drop constraint if exists brand_scan_settings_numbers;
 alter table public.brand_scan_settings add constraint brand_scan_settings_numbers
   check ((price_credits is null or price_credits between 0 and 1000)
-         and platform_daily_scans between 0 and 100000 and platform_daily_checks between 0 and 100000);
+         and platform_daily_scans between 0 and 100000 and platform_daily_checks between 0 and 100000
+         and org_daily_scans between 0 and 10000 and org_daily_checks between 0 and 100000);
 
 comment on table public.brand_scan_settings is
-  'One row (migration 0133): price_credits per brand scan (NULL = not on sale, the seed), and the platform-wide caps per 24 hours on scans (platform_daily_scans, default 500) and domain checks (platform_daily_checks, default 5000). 0 refuses all. Changed in the SQL editor only; a trigger leaves a mark in security_events.';
+  'One row (migration 0133): price_credits per brand scan (NULL = not on sale, the seed), and the platform-wide caps per 24 hours on scans (platform_daily_scans, default 500) and domain checks (platform_daily_checks, default 5000), and one organization''s share of each (org_daily_scans 20, org_daily_checks 200). 0 refuses all. Changed in the SQL editor only; a trigger leaves a mark in security_events.';
 
 insert into public.brand_scan_settings (id) values (true) on conflict (id) do nothing;
 
@@ -478,11 +486,14 @@ create or replace function public.brand_scan_settings_trail() returns trigger
 begin
   begin
     if new.price_credits is distinct from old.price_credits or new.platform_daily_scans is distinct from old.platform_daily_scans
-       or new.platform_daily_checks is distinct from old.platform_daily_checks then
+       or new.platform_daily_checks is distinct from old.platform_daily_checks or new.org_daily_scans is distinct from old.org_daily_scans
+       or new.org_daily_checks is distinct from old.org_daily_checks then
       perform public.security_event_log('ads.brand_scan.settings', 'warning', 'brand_scan_settings',
         jsonb_build_object('price_credits', jsonb_build_array(old.price_credits, new.price_credits),
                            'platform_daily_scans', jsonb_build_array(old.platform_daily_scans, new.platform_daily_scans),
-                           'platform_daily_checks', jsonb_build_array(old.platform_daily_checks, new.platform_daily_checks)));
+                           'platform_daily_checks', jsonb_build_array(old.platform_daily_checks, new.platform_daily_checks),
+                           'org_daily_scans', jsonb_build_array(old.org_daily_scans, new.org_daily_scans),
+                           'org_daily_checks', jsonb_build_array(old.org_daily_checks, new.org_daily_checks)));
     end if;
   exception when others then
     raise warning 'brand scan settings trail failed: %', sqlerrm;
@@ -519,6 +530,9 @@ $$;
 
 -- Fail a scan the caller has locked, and give its hold back. creative_platform_release clears the caller's claims for the one call, so a
 -- member's request (sweeping its organization's stale scan) and the worker reach release_credits alike; a hold already gone returns 0.
+-- The pictures the worker stored for this scan (source pipeline, provenance origin brand_scan and this scan's id, the scan's own
+-- organization) are deleted from the library as a member's delete is (deleted_at; the media worker then removes the files and gives the
+-- bytes back to the quota): a failed scan leaves nothing behind. A ready scan's pictures are never touched here.
 create or replace function public.brand_scan_fail_locked(p_scan uuid, p_code text) returns void
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -531,6 +545,12 @@ begin
   returning * into x;
   if x.id is not null and x.credit_ref is not null then
     perform public.creative_platform_release(x.credit_ref);
+  end if;
+  if x.id is not null then
+    update public.media_assets
+       set deleted_at = now()
+     where org_id = x.org_id and source = 'pipeline' and deleted_at is null
+       and provenance ->> 'origin' = 'brand_scan' and provenance ->> 'scan_id' = x.id::text;
   end if;
 end
 $$;
@@ -589,6 +609,7 @@ declare
   c      public.brand_domain_checks;
   v_last timestamptz;
   v_cap  integer;
+  v_ocap integer;
 begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
@@ -612,9 +633,14 @@ begin
     raise exception 'too_soon' using errcode = 'NS429',
       detail = format('retry_after=%s', greatest(1, ceil(extract(epoch from (v_last + interval '15 seconds' - now())))::integer));
   end if;
-  perform pg_advisory_xact_lock(hashtextextended('brand_domain_check_global', 0));
-  select s.platform_daily_checks into v_cap from public.brand_scan_settings s;
+  -- This organization's share of the day first, under its own lock (no number in the refusal), then the platform's.
+  select s.platform_daily_checks, s.org_daily_checks into v_cap, v_ocap from public.brand_scan_settings s;
   v_cap := coalesce(v_cap, 5000);
+  v_ocap := coalesce(v_ocap, 200);
+  if (select count(*) from public.brand_domain_checks where org_id = d.org_id and requested_at > now() - interval '24 hours') >= v_ocap then
+    raise exception 'org_daily_limit' using errcode = 'NS429';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('brand_domain_check_global', 0));
   if (select count(*) from public.brand_domain_checks where requested_at > now() - interval '24 hours') >= v_cap then
     raise exception 'platform_busy' using errcode = 'NS429';
   end if;
@@ -741,6 +767,7 @@ declare
   v_floor numeric;
   v_hold  numeric;
   v_cap   integer;
+  v_ocap  integer;
   v_id    uuid := gen_random_uuid();
   v_ref   text;
   res     jsonb;
@@ -770,6 +797,10 @@ begin
   end if;
   if p_idem is null or p_idem !~ '^[A-Za-z0-9_:.-]{8,128}$' then
     raise exception 'invalid_idempotency_key' using errcode = 'NS400';
+  end if;
+  -- NaN and the infinities are numerics too, and a comparison with NaN is never true: refused before anything reads them.
+  if p_max_credits is not null and not (p_max_credits between 0 and 1000) then
+    raise exception 'price_changed' using errcode = 'NS409';
   end if;
   v_hash := md5(jsonb_build_object('url', v_url, 'max_credits', p_max_credits)::text);
 
@@ -801,6 +832,15 @@ begin
     raise exception 'domain_not_verified' using errcode = 'NS409';
   end if;
 
+  -- This organization's share of the day (all statuses: a failed scan released its hold, so it cost nothing), under its own lock and before
+  -- the platform's. No number in the refusal.
+  select s.platform_daily_scans, s.org_daily_scans into v_cap, v_ocap from public.brand_scan_settings s;
+  v_cap := coalesce(v_cap, 500);
+  v_ocap := coalesce(v_ocap, 20);
+  if (select count(*) from public.brand_scans where org_id = p_org and created_at > now() - interval '24 hours') >= v_ocap then
+    raise exception 'org_daily_limit' using errcode = 'NS429';
+  end if;
+
   -- Platform-wide, after the organization's lock (0127's order, so two requests never wait on each other). Its refusal carries no number.
   perform pg_advisory_xact_lock(hashtextextended('brand_scan_global', 0));
   -- This organization's scan that nobody took in time, or whose worker went quiet, gives its place and its hold back first.
@@ -816,8 +856,6 @@ begin
   if exists (select 1 from public.brand_scans where org_id = p_org and status in ('requested', 'running')) then
     raise exception 'scan_in_progress' using errcode = 'NS409';
   end if;
-  select s.platform_daily_scans into v_cap from public.brand_scan_settings s;
-  v_cap := coalesce(v_cap, 500);
   if (select count(*) from public.brand_scans where created_at > now() - interval '24 hours') >= v_cap then
     raise exception 'platform_busy' using errcode = 'NS429';
   end if;
@@ -829,6 +867,9 @@ begin
   if v_price > 0 then
     select credits_per_unit into v_floor from public.credit_prices where unit = 'job_minimum';
     v_hold := trim_scale(round(greatest(v_price, coalesce(public.credits_round_up(v_floor), 0)), 2));
+    if v_hold < v_price then
+      raise exception 'brand scan hold % is below its price %', v_hold, v_price;
+    end if;
     v_ref := 'bs:' || v_id::text;
     begin
       res := public.creative_platform_reserve(p_org, v_ref, v_hold);
@@ -1101,6 +1142,8 @@ begin
   -- Products: each chosen candidate becomes a new product of the kit.
   foreach fld in array p_fields loop
     continue when fld not like 'product:%';
+    -- A product candidate is added once per scan: accepting it again (into any kit) adds no copy.
+    continue when fld = any (x.accepted_fields);
     pr := x.result -> 'products' -> substr(fld, 9)::integer;
     select s.products_per_kit into v_cap from public.ads_factory_cap_settings s;
     v_cap := coalesce(v_cap, 20);
@@ -1213,14 +1256,14 @@ begin
       ('public.brand_scan_field_ok(jsonb, text)', '353d784aab148ab2af4324383bdeae51', ''),
       ('public.brand_scan_result_ok(jsonb)', '05e268084c5d68c2291897ce2f759d44', ''),
       ('public.brand_scan_price()', '596c0cd1d82759855ae5496b6acf20b0', ''),
-      ('public.brand_scan_fail_locked(uuid, text)', '2ed1f012de9cb7e16df70d7cc748cc91', ''),
+      ('public.brand_scan_fail_locked(uuid, text)', '67e8ee83bde9ec4512a3d6135c9c07ee', ''),
       ('public.brand_scan_settings_guard()', 'd55aaee7b70dc8655a5fb02f3682a5bb', ''),
-      ('public.brand_scan_settings_trail()', 'c5f5e10faae661c30f58a25e2ff5b5aa', ''),
+      ('public.brand_scan_settings_trail()', '8274499327749e163dd9d306e47339ea', ''),
       ('public.request_domain_verification(uuid, text)', '5cf3a05a1cd6291caa58b7bfb4f41ab7', 'authenticated'),
-      ('public.check_domain_verification(uuid)', '9da8c07a8a5d7fc194b796eb8c35a2d6', 'authenticated'),
+      ('public.check_domain_verification(uuid)', 'b90fdc7e1117c05bca74fd6d3ed9fdbf', 'authenticated'),
       ('public.quote_brand_scan(uuid)', 'ba5d8b562c6893d8b0ef49ff4392d8b2', 'authenticated'),
-      ('public.request_brand_scan(uuid, text, text, numeric)', '812a6131a465414f5b0235f6f705fe5a', 'authenticated'),
-      ('public.accept_brand_scan_fields(uuid, uuid, text[])', '33e5092fed2d2b50b594eae230aaffb1', 'authenticated'),
+      ('public.request_brand_scan(uuid, text, text, numeric)', 'e696f6295465ae9b321766aea7a40b99', 'authenticated'),
+      ('public.accept_brand_scan_fields(uuid, uuid, text[])', '8ccc1bdaec64c9cfdb579485ea655059', 'authenticated'),
       ('public.claim_domain_check(text)', '82141353f6d88e824d4d299fa34b8890', 'service_role'),
       ('public.finish_domain_check(uuid, text, boolean, text)', '62b0880595b8713fa3ba8d93c146c7f0', 'service_role'),
       ('public.claim_brand_scan(text)', 'ccab2f97d979a930735b44fed06b237f', 'service_role'),
@@ -1312,7 +1355,8 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 --   select
 --     (select price_credits is null from public.brand_scan_settings) as not_on_sale_until_the_owner_sets_a_price,
---     (select platform_daily_scans = 500 and platform_daily_checks = 5000 from public.brand_scan_settings) as default_caps_if_untouched,
+--     (select platform_daily_scans = 500 and platform_daily_checks = 5000 and org_daily_scans = 20 and org_daily_checks = 200
+--        from public.brand_scan_settings) as default_caps_if_untouched,
 --     has_function_privilege('authenticated', 'public.request_brand_scan(uuid,text,text,numeric)', 'EXECUTE')
 --       and not has_function_privilege('anon', 'public.request_brand_scan(uuid,text,text,numeric)', 'EXECUTE')
 --       and not has_function_privilege('authenticated', 'public.finish_brand_scan(uuid,text,jsonb)', 'EXECUTE')

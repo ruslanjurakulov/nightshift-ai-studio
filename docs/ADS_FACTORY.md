@@ -172,7 +172,7 @@ so `request_brand_scan` refuses `not_on_sale` until the owner sets one (proposal
 | `brand_domains` | org, host (a lower-case DNS name, never a bare public suffix or a shared hosting parent), a random token, `verified_at` / `verified_by` (who asked for the check that found the record), the last check's time and code | `request_domain_verification`; the worker's `finish_domain_check` |
 | `brand_domain_checks` | one row per "Check now": who asked, when the worker took it, ok + a closed code (the worker's queue) | `check_domain_verification`; `claim_domain_check` / `finish_domain_check` |
 | `brand_scans` | org, the entry URL (0131's site shape), host, the verified domain it ran under, status `requested \| running \| ready \| failed`, a closed error code, the result (bounded jsonb), credits held / charged, idempotency key + request hash, which fields were accepted into which kit | `request_brand_scan`; `claim_brand_scan` / `finish_brand_scan` / `fail_brand_scan`; `accept_brand_scan_fields` |
-| `brand_scan_settings` | one row: `price_credits` (NULL = not on sale, the seed), `platform_daily_scans` (500), `platform_daily_checks` (5000) | the SQL editor only (a change leaves a `security_events` row of kind `ads.brand_scan.settings`) |
+| `brand_scan_settings` | one row: `price_credits` (NULL = not on sale, the seed), `platform_daily_scans` (500), `platform_daily_checks` (5000), one organization's share `org_daily_scans` (20) and `org_daily_checks` (200) | the SQL editor only (a change leaves a `security_events` row of kind `ads.brand_scan.settings`) |
 
 Members read their organization's rows (RLS, viewer and up); no API role writes any table directly; the settings are closed to every API
 role. Member functions (`authenticated`, each checks sign-in, membership and the editor role itself; another organization's id is
@@ -207,8 +207,12 @@ and released by the next claim or by the organization's next request). The same 
 nothing twice. The operator's (exempt) organization is not charged and only a platform admin may scan there. A hold counts as one of the
 plan's parallel runs (0034), as every hold does.
 
-**Caps.** One scan in flight per organization (a unique index); platform-wide per 24 hours `platform_daily_scans` (all statuses, failed
-ones too) under one platform lock taken after the organization's (0127's order); the platform's refusal (`platform_busy`) names no number.
+**Caps.** One scan in flight per organization (a unique index). Per organization per 24 hours `org_daily_scans` (20) and
+`org_daily_checks` (200), all statuses, failed ones too (a failed scan releases its hold, so without this share one organization could
+use up the platform's day for nothing), counted under the organization's lock; refused `org_daily_limit` with no number. Then
+platform-wide per 24 hours `platform_daily_scans` and `platform_daily_checks` under one platform lock taken after the organization's
+(0127's order); the platform's refusal (`platform_busy`) names no number either. A confirmed price that is not a number between 0 and
+1000 (NaN, an infinity) is `price_changed`.
 
 **Locks.** As 0131: no function holds a row lock while it waits for an advisory lock. `request_*` / `check_*` read without a lock, check
 the role, take `brand_scan:<org>`, then the platform lock where they count a cap, and only then touch rows (the credit account inside
@@ -265,7 +269,10 @@ session, `RLIMIT_AS` / `RLIMIT_CPU` / `RLIMIT_FSIZE` 0 / `RLIMIT_NOFILE` set bef
 side and 40 megapixels checked from the header before any pixel is decoded). The logo and up to four product pictures are stored through
 the media library (`media_library.store_generated`: the bytes sniffed, probed when ffprobe is there, `register_asset` with source
 `pipeline` — never `generated`, so nothing reads as AI-made — and the scan in the provenance); the result names those assets, never a
-link. `finish_brand_scan` checks it all again. A failure is a closed word: `ownership_not_proven`, `ownership_unknown`,
+link. `finish_brand_scan` checks it all again. When the scan fails (any failure, a refused finish, the sweeps), `brand_scan_fail_locked`
+deletes those pictures from the library (`deleted_at`, as a member's delete; the media worker removes the files and the bytes go back
+to the quota): only pictures of the scan's own organization with the scan's id in the provenance, never a ready scan's. The worker takes
+a domain check and a scan in turn, so a queue of slow DNS checks cannot starve the scans (or the reverse). A failure is a closed word: `ownership_not_proven`, `ownership_unknown`,
 `fetch_<fetcher code>` (the home page: `fetch_robots`, `fetch_not_public`, `fetch_timeout`, `fetch_hosting_parent` ...), `nothing_found`,
 `invalid_result`, `worker_error`.
 
@@ -277,13 +284,16 @@ link. `finish_brand_scan` checks it all again. A failure is a closed word: `owne
 - **The database is not dark.** The member functions are granted on apply. While the price is NULL nobody can request a scan; a
   signed-in editor can still ask for a domain token and queue DNS checks (at most 10 domains, one check per 15 s per domain,
   `platform_daily_checks` platform-wide), which nothing claims while the worker is off. To stop checks too:
-  `update public.brand_scan_settings set platform_daily_checks = 0;`.
+  `update public.brand_scan_settings set platform_daily_checks = 0;` (or one organization's share: `org_daily_checks`).
 - **A CDN on another domain.** The fetcher reads only the entry host, its subdomains and its www / apex twin, so a logo or product picture
   served from another domain (a shop platform's CDN) is not read; the result notes `logo_off_site` / `image_off_site` and proposes no
   picture. A stylesheet on another domain is likewise not read (`css_off_site`).
 - **The resolver's cache** decides how soon a newly added TXT record is seen; the page says so, and the person presses "Check now" again.
 - **DNSSEC** is not checked by us; the resolver validates signed zones itself.
 - **A verification is not re-checked on a timer**; every scan re-checks it, and so does every "Check now".
+- **The www / apex twin.** A redirect from the entry host to its `www.` twin (or from `www.` to the apex) is followed, and the twin is not
+  verified separately: verifying `shop.com` covers `www.shop.com`, and a scan of `www.shop.com` may be redirected to `shop.com`. Both
+  are the same zone's names in practice; the security review accepted this as is (Low), and it is noted here rather than changed.
 
 ### Costs: the approved price and caps (owner decision, 2026-11-11; seeded NULL, set after merge)
 
@@ -297,6 +307,11 @@ update public.brand_scan_settings set price_credits = 1, platform_daily_scans = 
 - price: **1 credit per scan** (charged; exempt from `job_minimum`, the hold is `greatest(1, job_minimum)` = 30 today and released down to 1);
 - platform cap: **500 scans per 24 hours**;
 - domain checks: **5,000 per 24 hours**.
+
+**Safety defaults, not yet owner-approved** (added at the security review; they ship as the column defaults, so nothing needs setting
+unless the owner chooses other numbers): one organization's share of the day, **20 scans** (`org_daily_scans`) and **200 domain
+checks** (`org_daily_checks`) per 24 hours. To set them explicitly: `update public.brand_scan_settings set org_daily_scans = 20,
+org_daily_checks = 200;`.
 
 The proposal and its basis, as approved: **1 credit per scan** (`update public.brand_scan_settings set price_credits = 1;`). Cost basis (assumptions, not
 measurements: our own dedicated worker server at roughly EUR 50 a month, 8 cores, inbound traffic not billed; 1 credit is about
@@ -318,7 +333,8 @@ so real demand is far below it. Domain checks: **5000 per 24 hours** (one DNS-ov
 Scanning someone else's brand: impossible without control of their DNS zone, and re-checked at every scan. The worker never follows a
 link to another domain and honours robots.txt. Trademarks and logos: the scanned logo is the verified owner's own; the result keeps where
 each field came from. Rate: the price, the platform cap, one scan in flight per organization. Phase 3 must still refuse to generate from
-a kit with `source = 'scan'` unless its scan's domain is verified.
+a kit with `source = 'scan'` unless its scan's domain is verified. One organization cannot use up the platform's day: 20 scans and 200
+checks per organization per 24 hours (failed scans count). Accepting the same product candidate again adds no copy.
 
 ### Releasing Phase 2
 

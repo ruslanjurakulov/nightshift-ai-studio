@@ -7,8 +7,8 @@ content tables, and that nobody reads the settings. These prove the paths where 
   * a NULL price refuses (`not_on_sale`), a verified domain of the SAME organization that is the scan's host or its parent is required;
   * money: a request holds the price the database computed, a finish captures it, a failure or a stale scan releases it, a retry is free,
     a higher price than the one confirmed is refused, an empty account refuses before anything is written;
-  * the caps: one scan in flight per organization, the platform's daily scans and checks, 10 domains, one check per 15 seconds, and real
-    concurrent presses that cannot pass any of them;
+  * the caps: one scan in flight per organization, each organization's share of the day and the platform's daily scans and checks,
+    10 domains, one check per 15 seconds, and real concurrent presses that cannot pass any of them; a failed scan's pictures deleted;
   * the domain check: a pending check answered again, the worker's answer, a definite "no" taking a verification away;
   * the result: every shape, length, character and picture checked before a scan is ready, for the worker AND for a direct write;
   * accepting: only a ready scan, only proposed fields, 0131's cleaning and caps, the kit's own organization, no deadlock with 0131's writers;
@@ -382,6 +382,31 @@ def test_the_platforms_daily_checks_are_capped_and_the_refusal_names_no_number(c
     d2 = domain(s, w.org, "cap2.scan.test", verify=False)
     become(s, w.org.ed)
     assert refused(s.run(CHECK_DOMAIN, [d2["id"]]), "NS429", "platform_busy")
+
+
+def test_one_organization_uses_up_only_its_own_share_of_the_days_checks(conn, w):
+    """Without a share of its own, one organization could press "Check now" until the platform's day was used up for everyone."""
+    s = w.su
+    other = Org(s)
+    become(s, None)
+    total = s.value("select count(*) from public.brand_domain_checks where requested_at > now() - interval '24 hours'")
+    mine = s.value("select count(*) from public.brand_domain_checks where org_id = %s", [w.org.id])
+    assert mine == 1, "the fixture's own check"
+    set_settings(s, org_daily_checks=3, platform_daily_checks=total + 3)
+    for host in ("o1.scan.test", "o2.scan.test"):
+        d = domain(s, w.org, host, verify=False)
+        assert s.run(CHECK_DOMAIN, [d["id"]]).ok, host
+    d3 = domain(s, w.org, "o3.scan.test", verify=False)
+    before = counts(s)
+    out, detail = call(become(s, w.org.ed), CHECK_DOMAIN, [d3["id"]])
+    assert refused(out, "NS429", "org_daily_limit") and detail == "", (out, detail)
+    assert counts(s) == before
+    od = domain(s, other, "other-o.scan.test", verify=False)
+    assert s.run(CHECK_DOMAIN, [od["id"]]).ok, "another organization is not held back by this one's presses"
+    od2 = domain(s, other, "other-o2.scan.test", verify=False)
+    set_settings(s, org_daily_checks=0)
+    become(s, other.ed)
+    assert refused(s.run(CHECK_DOMAIN, [od2["id"]]), "NS429", "org_daily_limit"), "0 pauses every organization's checks"
 
 
 def test_the_worker_finds_the_record_and_the_person_who_asked_verified_it(conn, w):
@@ -784,6 +809,106 @@ def test_a_scan_whose_hold_is_gone_is_failed_by_the_claim(conn, w):
     assert s.value("select error_code from public.brand_scans where id = %s", [sid]) == "hold_missing"
 
 
+def fail(s, sid, code="robots"):
+    assert claim(s)["scan_id"] == sid
+    become(s, SERVICE)
+    s.value("select public.fail_brand_scan(%s, %s, %s)", [sid, WORKER, code])
+
+
+def test_one_organization_uses_up_only_its_own_share_of_the_days_scans(conn, w):
+    """A failed scan releases its hold, so it costs nothing: without a share of its own, one organization could fail scans until the
+    platform's day was used up for everyone. Failed scans count, the refusal names no number, and another organization still scans."""
+    s = w.su
+    other = Org(s)
+    domain(s, other, "other-shop.scan.test")
+    become(s, None)
+    total = s.value("select count(*) from public.brand_scans where created_at > now() - interval '24 hours'")
+    set_settings(s, org_daily_scans=2, platform_daily_scans=total + 3)
+    for _ in range(2):
+        fail(s, scan(s, w.org, U).rows[0][0]["id"])
+    before = counts(s)
+    out, detail = call(become(s, w.org.ed), REQUEST_SCAN, [w.org.id, U, key(), 5])
+    assert refused(out, "NS429", "org_daily_limit") and detail == "", (out, detail)
+    assert counts(s) == before and w.org.account() == (100, 0)
+    out = scan(s, other, "https://other-shop.scan.test/")
+    assert out.ok, ("another organization is not held back by this one's failures", out)
+    set_settings(s, org_daily_scans=0)
+    become(s, None)
+    s.rows("update public.brand_scans set status = 'failed', error_code = 'lab' where org_id = %s and status = 'requested' returning 1", [other.id])
+    assert refused(scan(s, other, "https://other-shop.scan.test/"), "NS429", "org_daily_limit"), "0 pauses every organization's scans"
+
+
+@pytest.mark.parametrize("ceiling", [Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity"), Decimal(-1), Decimal("1000.01")])
+def test_a_confirmed_price_that_is_not_a_number_in_range_is_refused_before_anything_is_written(conn, w, ceiling):
+    """NaN compares greater than every number, so `price > NaN` is never true: it is refused as a changed price, as is a ceiling no price
+    can reach (the settings cap the price at 1000)."""
+    s = w.su
+    before = counts(s)
+    out, detail = call(become(s, w.org.ed), REQUEST_SCAN, [w.org.id, U, key(), ceiling])
+    assert refused(out, "NS409", "price_changed") and detail == "", (ceiling, out, detail)
+    assert counts(s) == before and w.org.account() == (100, 0)
+
+
+def test_the_charge_is_the_stored_price_and_the_hold_never_below_it(conn, w):
+    """The worker's finish has no amount: it captures the price stored at the request, never the (larger) hold."""
+    s = w.su
+    become(s, None)
+    assert "p_amount" not in s.value("select pg_get_function_identity_arguments('public.finish_brand_scan(uuid,text,jsonb)'::regprocedure)")
+    job_minimum(s, 30)
+    price(s, 1)
+    sid = scan(s, w.org, U, max_credits=1).rows[0][0]["id"]
+    become(s, None)
+    s.rows("update public.credit_prices set credits_per_unit = 0 where unit = 'job_minimum' returning 1")
+    claim(s)
+    assert finish(s, sid, result(U)).rows[0][0]["charged"] == 1
+    assert w.org.account() == (99, 0)
+    assert held(s, sid) == [("captured", 30, 1)]
+
+
+def scan_picture(s, org, scan_id, label="pic"):
+    """A picture the worker stored for ``scan_id`` (register_asset, source pipeline, the scan in the provenance)."""
+    become(s, SERVICE)
+    return str(s.value("select public.register_asset(gen_random_uuid(), %s, 'image', 'image/png', 1000, %s, 'pipeline', p_width => 64, "
+                       "p_height => 64, p_provenance => %s::jsonb) ->> 'id'",
+                       [org.id, uuid.uuid4().hex * 2, json.dumps({"origin": "brand_scan", "scan_id": str(scan_id), "role": label})]))
+
+
+def deleted(s, ids):
+    become(s, None)
+    return dict(s.rows("select id::text, deleted_at is not null from public.media_assets where id = any(%s::uuid[])", [list(ids)]))
+
+
+def test_a_failed_scan_deletes_the_pictures_it_stored_and_nothing_else(conn, w):
+    s = w.su
+    other = Org(s)
+    domain(s, other, "other-shop.scan.test")
+    # A ready scan's pictures stay: they are the result a person may accept.
+    kept_sid = ready_scan(s, w.org)
+    kept = scan_picture(s, w.org, kept_sid)
+    sid = scan(s, w.org, U).rows[0][0]["id"]
+    claim(s)
+    logo, mug = scan_picture(s, w.org, sid, "logo"), scan_picture(s, w.org, sid, "product")
+    mine = w.org.image("uploaded")                                   # the member's own upload
+    forged = scan_picture(s, other, sid)                             # another organization's row naming this scan
+    # The worker's finish is refused (a bad result), so the worker fails the scan.
+    assert not finish(s, sid, {"bad": 1}).ok
+    become(s, SERVICE)
+    s.value("select public.fail_brand_scan(%s, %s, 'invalid_result')", [sid, WORKER])
+    assert deleted(s, [logo, mug, mine, forged, kept]) == {logo: True, mug: True, mine: False, forged: False, kept: False}
+    # The claim's sweep (a scan nobody took) and the request's sweep (a worker gone quiet) delete them the same way.
+    a = scan(s, w.org, U).rows[0][0]["id"]
+    pa = scan_picture(s, w.org, a)
+    become(s, None)
+    s.rows("update public.brand_scans set created_at = now() - interval '3 hours' where id = %s returning 1", [a])
+    assert claim(s) is None
+    b = scan(s, w.org, U).rows[0][0]["id"]
+    pb = scan_picture(s, w.org, b)
+    become(s, None)
+    s.rows("update public.brand_scans set status = 'running', worker_id = 'gone', claimed_at = now() - interval '20 minutes' where id = %s returning 1", [b])
+    assert scan(s, w.org, U).ok
+    assert deleted(s, [pa, pb, kept, mine]) == {pa: True, pb: True, kept: False, mine: False}
+
+
 def test_a_free_scan_holds_nothing_and_the_operators_organization_needs_a_platform_admin(conn, w):
     s = w.su
     price(s, 0)
@@ -972,6 +1097,19 @@ def test_what_may_be_accepted_and_by_whom(conn, w):
     pending = scan(s, w.org, U).rows[0][0]["id"]
     assert refused(accept(s, w.org.ed, pending, None, ["name"]), "NS409", "scan_not_ready")
     assert KIT_A
+
+
+def test_accepting_a_product_again_adds_no_copy(conn, w):
+    s = w.su
+    sid = ready_scan(s, w.org, products=[product(U), product(U, "Plate")])
+    out = accept(s, w.org.ed, sid, None, ["name", "product:0"])
+    assert out.ok, out
+    kit = out.rows[0][0]
+    for fields in (["product:0"], ["product:0"], ["product:0", "product:1"]):
+        assert accept(s, w.org.ed, sid, kit, fields).ok, fields
+    become(s, None)
+    assert sorted(r[0] for r in s.rows("select title from public.brand_products where kit_id = %s", [kit])) == ["Mug", "Plate"]
+    assert s.value("select accepted_fields from public.brand_scans where id = %s", [sid]) == ["name", "product:0", "product:1"]
 
 
 def _kit_a():
@@ -1181,7 +1319,8 @@ def test_the_settings_row_cannot_be_deleted_or_set_out_of_range_and_a_change_lea
     assert refused(s.run("truncate public.brand_scan_settings"), "42501", "brand_scan_settings keeps its one row")
     assert not s.run("insert into public.brand_scan_settings (id) values (false)").ok
     for bad in ("price_credits = -1", "price_credits = 1001", "platform_daily_scans = -1", "platform_daily_checks = 100001",
-                "platform_daily_scans = null"):
+                "platform_daily_scans = null", "org_daily_scans = -1", "org_daily_scans = 10001", "org_daily_checks = 100001",
+                "org_daily_checks = null"):
         assert not s.run(f"update public.brand_scan_settings set {bad}").ok, bad
     marks = s.value("select count(*) from public.security_events where kind = 'ads.brand_scan.settings'")
     set_settings(s, price_credits=1)
@@ -1189,6 +1328,13 @@ def test_the_settings_row_cannot_be_deleted_or_set_out_of_range_and_a_change_lea
     assert row[0] == "warning" and row[1] == "brand_scan_settings" and row[2]["price_credits"] == [2, 1], row
     set_settings(s, price_credits=1)
     assert s.value("select count(*) from public.security_events where kind = 'ads.brand_scan.settings'") == marks + 1
+    set_settings(s, org_daily_scans=5)
+    row = s.rows("select detail from public.security_events where kind = 'ads.brand_scan.settings' order by id desc limit 1")[0]
+    assert row[0]["org_daily_scans"] == [20, 5] and row[0]["org_daily_checks"] == [200, 200], row
+    set_settings(s, org_daily_checks=7)
+    row = s.rows("select detail from public.security_events where kind = 'ads.brand_scan.settings' order by id desc limit 1")[0]
+    assert row[0]["org_daily_checks"] == [200, 7] and row[0]["org_daily_scans"] == [5, 5], row
+    assert s.value("select count(*) from public.security_events where kind = 'ads.brand_scan.settings'") == marks + 3
 
 
 @pytest.mark.parametrize("name", ["request_brand_scan", "finish_brand_scan", "ads_hosting_parent", "brand_scan_result_ok"])

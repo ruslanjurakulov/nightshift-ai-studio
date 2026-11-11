@@ -126,13 +126,21 @@ class Scope(unittest.TestCase):
             self.assertIn(m, TABLES)
         self.assertNotRegex(self.c, r"\bdrop (table|function|column)\b")
 
-    def test_the_only_writes_to_older_tables_are_the_accept_into_0131s_kits_and_products(self):
+    def test_the_only_writes_to_older_tables_are_the_accept_into_0131s_kits_and_products_and_a_failed_scans_pictures(self):
         writes = {(m.group(1), m.group(2)) for m in re.finditer(r"\b(insert into|update|delete from) public\.(\w+)", self.c)}
         older = {w for w in writes if w[1] not in TABLES}
         self.assertEqual(older, {("insert into", "brand_kits"), ("update", "brand_kits"), ("insert into", "brand_products"),
-                                 ("insert into", "brand_product_images")})
+                                 ("insert into", "brand_product_images"), ("update", "media_assets")})
+        # A failed scan's pictures: only deleted_at, only this scan's own pictures in its own organization, in one function.
+        f = code(body(TEXT, "brand_scan_fail_locked"))
+        self.assertIn("update public.media_assets\n       set deleted_at = now()\n     where org_id = x.org_id and source = 'pipeline' and deleted_at is null\n"
+                      "       and provenance ->> 'origin' = 'brand_scan' and provenance ->> 'scan_id' = x.id::text;", f)
+        for other in set(ALL) - {"brand_scan_fail_locked"}:
+            self.assertNotIn("public.media_assets\n       set", code(body(TEXT, other)), other)
+        self.assertEqual(self.c.count("update public.media_assets"), 1)
         a = code(body(TEXT, "accept_brand_scan_fields")).lower()
-        for _, t in older:
+        self.assertIn("continue when fld = any (x.accepted_fields);", a, "a product is added once per scan")
+        for _, t in older - {("update", "media_assets")}:
             self.assertIn(f"public.{t}", a)
             for other in set(ALL) - {"accept_brand_scan_fields"}:
                 self.assertNotRegex(code(body(TEXT, other)).lower(), rf"\b(insert into|update|delete from) public\.{t}\b", other)
@@ -210,6 +218,13 @@ class Money(unittest.TestCase):
         self.assertIn("public.capture_credits(x.credit_ref, x.price_credits, false)", code(body(TEXT, "finish_brand_scan")))
         self.assertIn("'requested', case when v_ref is null then 0 else v_price end", b, "the scan stores the price, not the hold")
         self.assertIn("exception when sqlstate 'NS402' then\n      raise exception 'scan_hold_unavailable'", b)
+        self.assertIn("if v_hold < v_price then", b, "the hold is never below the charge")
+        self.assertLess(b.index("if v_hold < v_price then"), b.index("creative_platform_reserve("))
+        self.assertNotIn("p_amount", body(TEXT, "finish_brand_scan").split("$$")[0], "the finish takes no amount: it charges the stored price")
+        # NaN and the infinities never reach a comparison (NaN is greater than every number, so `price > NaN` is never true).
+        guard = "if p_max_credits is not null and not (p_max_credits between 0 and 1000) then"
+        self.assertIn(guard, b)
+        self.assertLess(b.index(guard), b.index("v_hash := md5("))
 
     def test_locks_then_caps_then_the_hold_then_the_row(self):
         b = code(body(TEXT, "request_brand_scan"))
@@ -245,6 +260,15 @@ class Money(unittest.TestCase):
         self.assertIn("interval '15 seconds'", code(body(TEXT, "check_domain_verification")))
         self.assertIn("create unique index if not exists brand_scans_one_in_flight on public.brand_scans (org_id) where status in ('requested', 'running');", c)
         self.assertIn("raise exception 'platform_busy' using errcode = 'NS429';", c, "the platform's refusal names no number")
+        # One organization's share of the day, counted under its own lock, BEFORE the platform's lock and cap; no number in the refusal.
+        self.assertIn("org_daily_scans       integer not null default 20,", c)
+        self.assertIn("org_daily_checks      integer not null default 200,", c)
+        for name, fallback in (("request_brand_scan", "v_ocap := coalesce(v_ocap, 20);"), ("check_domain_verification", "v_ocap := coalesce(v_ocap, 200);")):
+            b = code(body(TEXT, name))
+            self.assertIn(fallback, b, name)
+            refusal = b.index("raise exception 'org_daily_limit' using errcode = 'NS429';")
+            self.assertLess(b.index("pg_advisory_xact_lock(hashtextextended('brand_scan:' ||"), refusal, name)
+            self.assertLess(refusal, b.index("_global', 0))"), name)
 
 
 class AgreesWithTheWorker(unittest.TestCase):

@@ -604,7 +604,7 @@ site, calls a model, prices, holds or charges a credit, queues a job or publishe
 0133 (`0133_brand_scan.sql`, `docs/ADS_FACTORY.md` "Phase 2") is **live on apply and dark**: it **adds four tables** (`brand_domains`,
 `brand_domain_checks`, `brand_scans`, `brand_scan_settings`), nine internal functions, five member functions and five worker functions. It
 **replaces nothing**; its only writes to older tables are `accept_brand_scan_fields`'s into 0131's kits and products, through 0131's
-cleaning and caps. The scan is **not on sale** until the owner sets `brand_scan_settings.price_credits` (seeded NULL): `request_brand_scan`
+cleaning and caps, and a failed scan's own pictures marked deleted in `media_assets`. The scan is **not on sale** until the owner sets `brand_scan_settings.price_credits` (seeded NULL): `request_brand_scan`
 refuses `not_on_sale`. The worker (`tools/brand_scan_worker.py`) does nothing unless `NIGHTSHIFT_ADS_BRAND_SCAN=on`.
 
 - **Number.** 0133: 0132 is reserved by another open pull request (the hi-res export); neither names anything the other adds.
@@ -614,8 +614,10 @@ refuses `not_on_sale`. The worker (`tools/brand_scan_worker.py`) does nothing un
 - **Money.** The price is charged as set (exempt from `job_minimum`); a request holds `greatest(price, job_minimum)` (`creative_platform_reserve`;
   reserve_credits is not changed), the worker's finish captures exactly the price and the rest of the hold is released, every failure and the
   stale sweeps release it; the confirmed price (`p_max_credits`) only refuses a higher one; an idempotent replay holds nothing twice.
-- **Caps.** One scan in flight per organization (unique index), `platform_daily_scans` (500) and `platform_daily_checks` (5000) per
-  24 hours under a platform lock after the organization's; 10 domains per organization; one check per domain per 15 s.
+- **Caps.** One scan in flight per organization (unique index); one organization's share per 24 hours, `org_daily_scans` (20) and
+  `org_daily_checks` (200; safety defaults, not yet owner-approved), refused `org_daily_limit`; `platform_daily_scans` (500) and
+  `platform_daily_checks` (5000) per 24 hours under a platform lock after the organization's; 10 domains per organization; one check per
+  domain per 15 s. A failed scan's stored pictures are deleted from the library (the one write to `media_assets`: `deleted_at`).
 - **Drift guard.** Refuses a function of its names with another body; the last block asserts the end state (bodies, grants, RLS, policies,
   checks, the index, the triggers, the settings row).
 - **Apply as ONE transaction.** `set local lock_timeout = '5s'`. Needs 0131 (its checks use 0131's text rules).

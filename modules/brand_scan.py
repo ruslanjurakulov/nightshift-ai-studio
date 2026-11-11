@@ -131,18 +131,23 @@ class BrandScanWorker:
         self.library = library
         self.palette = palette
         self.scratch = scratch
+        #: Which queue run_once asks first; it alternates, so slow DNS answers (which an organization controls) cannot starve scans,
+        #: and a long scan cannot starve the checks.
+        self._checks_first = True
 
     # -- the loop --------------------------------------------------------------------------------------------------
     def run_once(self) -> bool:
-        """One domain check, else one scan. False when there was nothing to do."""
-        job = self.store.claim_check(self.worker_id)
-        if job:
-            self.process_check(job)
-            return True
-        job = self.store.claim_scan(self.worker_id)
-        if job:
-            self.process_scan(job)
-            return True
+        """One domain check or one scan, the two queues taking turns (the other is asked when the first is empty). False when
+        there was nothing to do."""
+        queues = [(self.store.claim_check, self.process_check), (self.store.claim_scan, self.process_scan)]
+        if not self._checks_first:
+            queues.reverse()
+        self._checks_first = not self._checks_first
+        for claim, process in queues:
+            job = claim(self.worker_id)
+            if job:
+                process(job)
+                return True
         return False
 
     def process_check(self, job: Mapping[str, Any]) -> str:

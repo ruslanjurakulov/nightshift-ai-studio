@@ -206,6 +206,18 @@ class Spoofing(unittest.TestCase):
         self.assertEqual(self.check(chained(dt.MAX_POINTERS - 1)), dt.VERIFIED, "within the cap the name reads as ours")
         self.assertEqual(self.check(chained(dt.MAX_POINTERS)), dt.DNS_ERROR, "one jump too many")
 
+    def test_a_label_holding_a_dot_or_another_byte_is_never_our_name(self):
+        # "_nightshift.shop" as ONE label, then "example", "com": joined as text it would spell the name we asked for.
+        dotted = b"\x10_nightshift.shop" + name_bytes("example.com")
+        theirs = txt_rdata(f"nightshift-verify={TOKEN}".encode())
+        self.assertEqual(self.check(answer(records=[rr(dotted, dt.TXT, theirs)])), dt.NO_RECORD)
+        for bad in (b"_night shift", b"_night\x00shift", b"_night/shift", b"_nightshift\xff"):
+            owner = bytes([len(bad)]) + bad + name_bytes("shop.example.com")
+            self.assertEqual(self.check(answer(records=[rr(owner, dt.TXT, theirs)])), dt.NO_RECORD, bad)
+        # The same trick in the question: an answer to another question.
+        q = struct.pack("!HHHHHH", QID, 0x8180, 1, 1, 0, 0) + dotted + struct.pack("!HH", dt.TXT, dt.IN) + OURS
+        self.assertEqual(self.check(q), dt.DNS_ERROR)
+
     def test_a_name_longer_than_255_bytes_is_refused(self):
         long_owner = (b"\x3f" + b"a" * 63) * 4 + b"\x00"
         self.assertEqual(self.check(answer(records=[rr(long_owner, dt.TXT, b"\x01x")])), dt.DNS_ERROR)
@@ -372,6 +384,20 @@ class OverHttps(unittest.TestCase):
         v = dt.TxtVerifier(dt.doh_transport(self.net(server)), budget_s=1)
         self.assertIn(v.check(HOST, TOKEN), (dt.TIMEOUT, dt.DNS_ERROR))
         self.assertLess(time.monotonic() - t, 3)
+
+    def test_a_tls_context_that_does_not_check_the_name_is_refused_before_anything_is_sent(self):
+        server = Resolver(echo)
+        self.addCleanup(server.close)
+        for loose in ("no_name", "no_cert"):
+            ctx = ssl.create_default_context(cafile=str(_CERTS["dir"] / "ca.pem"))
+            ctx.check_hostname = False
+            if loose == "no_cert":
+                ctx.verify_mode = ssl.CERT_NONE
+            net = self.net(server)
+            net = bf._TestNet(resolve=net.resolve, connect=net.connect, tls=ctx)
+            self.assertEqual(dt.TxtVerifier(dt.doh_transport(net), budget_s=5).check(HOST, TOKEN), dt.DNS_ERROR, loose)
+            self.assertEqual(self.dialled, [], "refused before any connection")
+        self.assertEqual(server.requests, [])
 
     def test_only_a_real_test_hook_is_accepted_and_the_default_is_the_fixed_resolver(self):
         class Lookalike:

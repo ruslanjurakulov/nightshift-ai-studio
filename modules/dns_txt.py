@@ -64,6 +64,7 @@ VERIFIED, MISMATCH, NO_RECORD, DNS_ERROR, TIMEOUT = "verified", "mismatch", "no_
 #: The host shape 0133's ads_scan_host_ok holds (a lower-case DNS name, letters or punycode last, no underscore).
 _HOST = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:xn--[a-z0-9-]{1,59}|[a-z]{2,63})\Z")
 _TOKEN = re.compile(r"[0-9a-f]{32}\Z")
+_LABEL = re.compile(rb"[A-Za-z0-9_-]{1,63}")
 
 
 class DnsError(Exception):
@@ -133,10 +134,10 @@ def _read_name(msg: bytes, pos: int) -> "tuple[str, int]":
         total += n + 1
         if total > 255:
             raise DnsError(DNS_ERROR, "a name over 255 bytes")
-        try:
-            labels.append(msg[pos + 1:pos + 1 + n].decode("ascii").lower())
-        except UnicodeDecodeError:
-            labels.append("\x00")                      # never equal to the name we asked for
+        label = msg[pos + 1:pos + 1 + n]
+        # Letters, digits, hyphen and underscore only: a label that holds a dot ("_nightshift.shop" as ONE label) would read back as two
+        # labels of the name we asked for, and any other byte is no host name. Such a label is never equal to ours.
+        labels.append(label.decode("ascii").lower() if _LABEL.fullmatch(label) else "\x00")
         pos += 1 + n
     return ".".join(labels), end
 

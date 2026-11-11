@@ -158,6 +158,19 @@ class Worker(unittest.TestCase):
             self.assertEqual(store.calls, [("finish_check", "c1", verdict == dns_txt.VERIFIED, verdict)])
             self.assertEqual(self.verifier.asked, [("brand-shop.test", TOKEN)])
 
+    def test_checks_and_scans_take_turns_so_slow_dns_cannot_starve_scans(self):
+        checks = [{"check_id": f"c{i}", "host": "brand-shop.test", "token": TOKEN} for i in range(5)]
+        store = FakeStore(checks=checks, scans=[job(), job()])
+        w = self.worker(store, self.site())
+        for _ in range(4):
+            self.assertTrue(w.run_once())
+        kinds = [c[0] for c in store.calls]
+        self.assertEqual(kinds, ["finish_check", "finish_scan", "finish_check", "finish_scan"])
+        # With one queue empty the other is still served every time.
+        for _ in range(3):
+            self.assertTrue(w.run_once())
+        self.assertEqual([c[0] for c in store.calls][4:], ["finish_check"] * 3)
+
     def test_nothing_to_do_is_said(self):
         self.assertFalse(self.worker(FakeStore()).run_once())
 
