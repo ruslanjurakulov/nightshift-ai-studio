@@ -149,6 +149,70 @@ class SpeedDocumentTestCase(unittest.TestCase):
             self.assertAlmostEqual(prod, s, delta=0.003 * len(stages) * max(1, s), msg=str(s))
 
 
+class FastClipRenderTimeTestCase(unittest.TestCase):
+    """A clip faster than 1x decodes `speed` seconds of source per second: the render-time estimate
+    charges it, so a long fast timeline is refused up front instead of holding the one export worker
+    until its wall-clock limit kills it."""
+
+    def doc(self, length, speed, fps=60, **clip):
+        return vdoc(width=1920, height=1080, fps=fps, out_s=length * speed, speed=speed, **clip)
+
+    def test_each_second_of_source_beyond_the_clips_length_is_charged(self):
+        k = tl.FAST_SECONDS_PER_SOURCE_S
+        self.assertAlmostEqual(tl.fast_seconds(self.doc(10, 10)["tracks"][0]["clips"][0]), k * 90)
+        self.assertAlmostEqual(tl.fast_seconds(self.doc(10, 2)["tracks"][0]["clips"][0]), k * 10)
+        for clip in (self.doc(10, 1)["tracks"][0]["clips"][0], self.doc(10, 0.5)["tracks"][0]["clips"][0],
+                     {"in_s": 0, "out_s": 4, "freeze": True}, {"in_s": "x", "out_s": 4}):
+            self.assertEqual(tl.fast_seconds(clip), 0.0, clip)
+        # a curve is charged by its own length: 0.25 s of 4 s range at 1 then 4 lasts less than 4 s
+        curved = vdoc(out_s=4, speed_curve=[{"at": 0, "speed": 1}, {"at": 1, "speed": 4}])["tracks"][0]["clips"][0]
+        self.assertAlmostEqual(tl.fast_seconds(curved), k * (4 - tl.clip_length_s(curved)), places=6)
+        self.assertGreater(tl.fast_seconds(curved), 0)
+
+    def test_a_long_ten_times_timeline_is_refused_and_a_short_one_passes(self):
+        got = tl.validate(self.doc(200, 10))
+        self.assertTrue(any("playing clips faster than 1x would take about" in p and "speed them up less" in p
+                            for p in got), got)
+        self.assertEqual(tl.validate(self.doc(30, 10)), [])
+        # the boundary is the worker's own allowance: 1 + 9k seconds per second against 3 per second + 120
+        k = tl.FAST_SECONDS_PER_SOURCE_S
+        edge = tl.RENDER_TIMEOUT_BASE_S / (1 + 9 * k - tl.RENDER_TIMEOUT_PER_S)
+        self.assertEqual(tl.validate(self.doc(round(edge - 1), 10)), [])
+        self.assertTrue(tl.validate(self.doc(round(edge + 1), 10)))
+
+    def test_four_times_over_the_longest_export_still_fits(self):
+        # every document valid before the wider range (speeds up to 4) and nothing else dear stays valid
+        self.assertEqual(tl.validate(self.doc(1800, 4)), [])
+        self.assertLessEqual(1 + 3 * tl.FAST_SECONDS_PER_SOURCE_S, tl.RENDER_TIMEOUT_PER_S)
+
+    def test_the_charge_adds_to_stabilising_and_names_both(self):
+        def doc(speed):
+            d = vdoc(width=1920, height=1080, fps=60, out_s=60 * speed, speed=speed)
+            d["tracks"][0]["clips"].append({"id": "c2", "asset_id": BASE, "start_s": 60, "in_s": 0, "out_s": 30,
+                                            "stabilize": True})
+            return d
+        self.assertEqual(tl.validate(doc(1)), [], "the steadied clip alone fits")
+        got = tl.validate(doc(10))
+        self.assertTrue(any("stabilising and playing clips faster than 1x" in p for p in got), got)
+
+    def test_shapes_and_fast_clips_are_charged_together(self):
+        # 90 s at 10x fits on its own (373.5 s of 390), a full-width rectangle (about 26 s) on its own too;
+        # together they do not, and the shapes' sentence says so
+        def doc(speed):
+            d = self.doc(90, speed)
+            d["shapes"] = [{"id": "h1", "kind": "rect", "start_s": 0, "end_s": 90, "w": 1.0}]
+            return d
+        self.assertEqual(tl.validate(self.doc(90, 10)), [])
+        self.assertEqual(tl.validate(doc(1)), [])
+        got = tl.validate(doc(10))
+        self.assertTrue(any("the shapes would take about" in p for p in got), got)
+
+    def test_the_constant_is_the_editors(self):
+        ts = EDITOR_TS.read_text(encoding="utf-8")
+        self.assertEqual(float(re.search(r"export const FAST_SECONDS_PER_SOURCE_S = ([\d.]+);", ts).group(1)),
+                         tl.FAST_SECONDS_PER_SOURCE_S)
+
+
 class SpecTestCase(unittest.TestCase):
     def test_the_clips_level_reaches_its_own_sound_and_nothing_else(self):
         spec = tr.to_render_spec(vdoc(audio=True, gain_db=-6), {BASE: video()}.get, "/o.mp4")
@@ -169,7 +233,23 @@ class SpecTestCase(unittest.TestCase):
         doc = with_sound(vdoc(out_s=4), asset=BASE, start_s=1, in_s=0.5, out_s=2.5, gain_db=-3)
         spec = tr.to_render_spec(doc, {BASE: video()}.get, "/o.mp4")
         self.assertEqual(spec.audio_tracks, [rs.AudioTrack("/m/a.mp4", duration_s=2.0, start_s=1.0, in_s=0.5,
-                                                           gain_db=-3.0)])
+                                                           gain_db=-3.0, video_source=True)])
+        self.assertEqual(rs.AudioTrack.from_dict(spec.audio_tracks[0].to_dict()), spec.audio_tracks[0])
+
+    def test_a_detached_sound_gets_the_video_decoder_cap_and_a_song_keeps_the_still_one(self):
+        doc = with_sound(vdoc(out_s=4), asset=BASE)
+        doc["tracks"].append({"id": "a2", "kind": "A", "clips": [
+            {"id": "m2", "asset_id": MU, "start_s": 0, "in_s": 0, "out_s": 4}]})
+        table = {BASE: video(path="/m/v.mp4"), MU: tl.ResolvedAsset(MU, "audio", "/m/song.mp3", 30.0)}
+        spec = tr.to_render_spec(doc, table.get, "/o.mp4")
+        cmd = rs.build_ffmpeg_command(spec, "/w/c.txt")
+        def cap_of(path):
+            i = cmd.index(path)
+            before = cmd[max(0, i - 12):i]
+            return int(before[before.index("-max_pixels") + 1])
+        self.assertEqual(cap_of("/m/v.mp4"), rs.decoder_max_pixels(rs.DECODE_VIDEO_MAX_PIXELS))
+        self.assertEqual(cap_of("/m/song.mp3"), rs.decoder_max_pixels(rs.DECODE_MAX_PIXELS))
+        self.assertNotIn("video_source", rs.AudioTrack("/m/song.mp3", 1.0).to_dict())
 
     def test_a_video_with_no_sound_track_is_silent_and_ducks_nothing(self):
         doc = with_sound(vdoc(out_s=4), asset=BASE)

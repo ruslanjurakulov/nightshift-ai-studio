@@ -31,6 +31,8 @@ export function SettleNotice({ changes }: { changes: readonly SettleChange[] }) 
         return fmt(s.blur, { n: c.clip });
       case "zoom":
         return fmt(s.zoom, { n: c.clip, max: c.max });
+      case "speed":
+        return fmt(t.editor.clipTools.settledSpeed, { n: c.clip, max: c.max });
     }
   };
   return (

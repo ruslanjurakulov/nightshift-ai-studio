@@ -378,9 +378,9 @@ BOX_OPACITY_DEFAULT = 0.7
 #: source and project): 0.80 s of render per timeline second at 1x, 1.16 at 4x,
 #: 1.58 at 10x, 0.46 at 0.1x, inside the worker's ``render_timeout_s`` (3 s per
 #: second + 120). A fast clip decodes ``speed`` seconds of source per second, so a
-#: 4K60 SOURCE is far dearer (9.0 s per second at 4x, 13.3 at 10x): that was
-#: already over the time budget at 4x, and the worker's wall-clock limit is what
-#: stops it (the export fails with a reason, never hangs).
+#: 4K60 SOURCE is far dearer (9.0 s per second at 4x, 13.3 at 10x). So a fast
+#: clip is charged in the render-time estimate (``FAST_SECONDS_PER_SOURCE_S``),
+#: and a long fast timeline is refused before it reaches the export worker.
 SPEED_MIN, SPEED_MAX = 0.1, 10.0
 #: A speed curve's points keep the narrower range its sound slices were tuned for
 #: (render_spec.RAMP_SPEED_* are the same numbers; a test pins them).
@@ -475,6 +475,14 @@ RENDER_TIMEOUT_BASE_S = 120.0
 RENDER_TIMEOUT_MAX_S = 5400.0
 RENDER_PLAIN_FACTOR = 1.0
 INTERP_SECONDS_PER_FRAME = 0.4
+#: A clip played faster than 1x decodes ``speed`` seconds of SOURCE for every second it lasts, and
+#: that decoding is real render time the plain ``RENDER_PLAIN_FACTOR`` does not see: each second of
+#: source beyond the clip's own length (``range - length``, so a constant speed s over a part that
+#: lasts L costs ``L * (s - 1)``; a curve the same by its own length) is charged this many seconds.
+#: Calibrated on the worst common case, a phone-like 1080p60 H.264 source (noise, 15 Mb/s) in a
+#: 1080p60 project, so that ``1 + 9 k`` covers what a 10x clip measured per second (the numbers
+#: are in docs/editor-render-fields.md section 12). Slow and frozen clips cost nothing here.
+FAST_SECONDS_PER_SOURCE_S = 0.35
 
 
 def render_timeout_s(length_s: float) -> float:
@@ -806,15 +814,18 @@ def validate(doc: Any) -> List[str]:
         stab_est = sum(stabilize_seconds(c, fps, w, h) for t in counted if t.get("kind") == KIND_V
                        for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True)
         interp_est = INTERP_SECONDS_PER_FRAME * total_interp if total_interp <= INTERP_MAX_FRAMES_DOC else 0.0
-        if interp_est + stab_est > 0:
+        fast_est = fast_estimate(doc)
+        if interp_est + stab_est + fast_est > 0:
             length = duration_s(doc)
-            work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est
+            work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est + fast_est
             allowed = render_timeout_s(length)
             if work > allowed + 1e-9:
                 what = " and ".join(n for n, v in (("interpolated slow motion", interp_est),
-                                                   ("stabilising", stab_est)) if v > 0)
+                                                   ("stabilising", stab_est),
+                                                   ("playing clips faster than 1x", fast_est)) if v > 0)
                 fix = " and ".join(n for n, v in (("slow less of it", interp_est),
-                                                  ("stabilise less of it", stab_est)) if v > 0)
+                                                  ("stabilise less of it", stab_est),
+                                                  ("speed them up less", fast_est)) if v > 0)
                 problems.append(f"timeline: {what} would take about {work:.0f} s to render, but a {length:.0f} s "
                                 f"timeline is allowed {allowed:.0f} s — {fix} or make the timeline longer")
 
@@ -847,7 +858,7 @@ def validate(doc: Any) -> List[str]:
                 length = duration_s(doc)
                 shape_est = shape_art.work_seconds(doc["shapes"], fps, w, h, length)
                 interp_est, stab_est = _interp_stab_estimates(doc, fps, w, h)
-                work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est + shape_est
+                work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est + fast_estimate(doc) + shape_est
                 allowed = render_timeout_s(length)
                 if shape_est > 0 and work > allowed + 1e-9:
                     problems.append(f"timeline: the shapes would take about {shape_est:.0f} s to render (about {work:.0f} s "
@@ -1392,6 +1403,24 @@ def _interp_stab_estimates(doc: dict, fps: int, w: int, h: int) -> Tuple[float, 
     stab = sum(stabilize_seconds(c, fps, w, h) for t in counted if t.get("kind") == KIND_V
                for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True)
     return (INTERP_SECONDS_PER_FRAME * total if total <= INTERP_MAX_FRAMES_DOC else 0.0), stab
+
+
+def fast_seconds(clip: dict) -> float:
+    """The estimated render seconds a clip played faster than 1x adds: ``FAST_SECONDS_PER_SOURCE_S``
+    per second of source it decodes beyond its own length (0 for a clip at or below 1x, a frozen
+    clip, or a range that is not a usable number)."""
+    if clip.get("freeze") is True or not (_in_range(clip.get("in_s")) and _in_range(clip.get("out_s"))):
+        return 0.0
+    rng = _ms(clip["out_s"]) - _ms(clip["in_s"])
+    if rng <= 0:
+        return 0.0
+    return FAST_SECONDS_PER_SOURCE_S * max(0.0, rng - clip_length_s(clip))
+
+
+def fast_estimate(doc: dict) -> float:
+    """``fast_seconds`` over every V clip of the document, as ``validate`` charges it."""
+    return sum(fast_seconds(c) for t in doc.get("tracks") or [] if isinstance(t, dict) and t.get("kind") == KIND_V
+               and isinstance(t.get("clips"), list) for c in t["clips"] if isinstance(c, dict))
 
 
 def stabilize_seconds(clip: dict, fps: int, width: int, height: int) -> float:

@@ -25,6 +25,9 @@ export const clipToolsEn = {
     retimed: "Only a clip at normal speed, played forwards, can give its sound away: a sound has no speed or direction.",
     sounds_full: "This project already has {max} sounds. Delete one to detach this one.",
   },
+  waveVideo: "The wave of a video's sound is not drawn.",
+  settledSpeed: "Clip {n} now plays at {max}×: faster, it would take longer to export than a video this long is allowed.",
+  renderBudgetFast: "Clips played faster than 1× would take about {work} s to export, but a {length} s video is allowed {allowed} s. Lower their speed or make the video longer.",
   clipboard: {
     group: "Copy this clip",
     duplicate: "Duplicate",

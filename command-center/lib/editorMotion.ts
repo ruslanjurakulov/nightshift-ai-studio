@@ -48,6 +48,7 @@ import {
   modelDuration,
   ms,
   partialOpacityMove,
+  fastSeconds,
   renderTimeoutS,
   reverseMaxSeconds,
   setSpeed,
@@ -624,6 +625,8 @@ export interface RenderWork {
   stabEst: number;
   /** What the shape layers add (lib/editorShapes.ts `shapeWorkSeconds`). */
   shapeEst: number;
+  /** What clips faster than 1x add (lib/editor.ts `fastSeconds`). */
+  fastEst: number;
   work: number;
   allowed: number;
   ok: boolean;
@@ -644,16 +647,18 @@ export function renderWork(model: EditorModel): RenderWork {
       0,
     );
   const shapeEst = shapeWorkSeconds(model.shapes ?? [], model.fps, model, length);
-  const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + shapeEst;
+  const fastEst = model.clips.reduce((n, c) => n + fastSeconds(c), 0);
+  const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + shapeEst;
   const allowed = renderTimeoutS(length);
   return {
     length,
     interpEst,
     stabEst,
     shapeEst,
+    fastEst,
     work,
     allowed,
-    ok: interpEst + stabEst + shapeEst <= 0 || work <= allowed + 1e-9,
+    ok: interpEst + stabEst + shapeEst + fastEst <= 0 || work <= allowed + 1e-9,
   };
 }
 

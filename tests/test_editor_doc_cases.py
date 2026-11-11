@@ -91,13 +91,16 @@ class DocCasesTestCase(unittest.TestCase):
             "clip sound gain as text": "gain_db must be a number",
             "clip sound gain as true": "gain_db must be a number",
             "clip sound gain not a number": "gain_db must be a number",
+            "200 s at 10x is more than the export's time allows":
+                "playing clips faster than 1x would take about",
         }
         for name, needle in needles.items():
             with self.subTest(name):
                 problems = verdict(cases[name])
                 self.assertTrue(any(needle in p for p in problems), problems)
         for name in ("speed 10 (the fastest)", "speed 0.1 (the slowest)", "clip sound at +6 dB (200 %)",
-                     "clip sound at -60 dB (0 %)", "a video's sound on a sound track (detached audio)"):
+                     "clip sound at -60 dB (0 %)", "a video's sound on a sound track (detached audio)",
+                     "30 s at 10x fits the export's time", "30 minutes at 4x fits the export's time"):
             with self.subTest(name):
                 self.assertEqual(verdict(cases[name]), [])
 

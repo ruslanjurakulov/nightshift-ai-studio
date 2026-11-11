@@ -767,11 +767,17 @@ export function RenderBudgetNotice({ model }: { model: EditorModel }) {
   if (r.ok) return null;
   return (
     <p role="status" className="m-0 text-xs text-[var(--color-warn)]" data-testid="render-budget">
-      {fmt(t.editor.fx.renderBudget, {
-        work: Math.round(r.work),
-        length: Math.round(r.length),
-        allowed: Math.round(r.allowed),
-      })}
+      {fmt(
+        // a timeline whose only cost is fast clips says so (the slow-motion sentence would be wrong)
+        r.fastEst > 0 && r.interpEst + r.stabEst + r.shapeEst <= 0
+          ? t.editor.clipTools.renderBudgetFast
+          : t.editor.fx.renderBudget,
+        {
+          work: Math.round(r.work),
+          length: Math.round(r.length),
+          allowed: Math.round(r.allowed),
+        },
+      )}
     </p>
   );
 }

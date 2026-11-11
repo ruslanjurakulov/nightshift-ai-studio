@@ -825,6 +825,13 @@ Branch `claude/editor-parity-1`. Free: ffmpeg and the browser only, no model, no
   the clip plays now, with its level and clean-up; one input of the mix either way. A cross-fade's blend of
   the two clips' sounds is not carried (the sound plays as it is). One Undo returns it.
 * The database's `editor_doc_problem` (0054) checks only whose file an id is, so nothing changes there.
+* In the final pass such an input gets the VIDEO decoder cap (`AudioTrack.video_source`, then
+  `cap_inputs(video_inputs=...)`), like a video overlay; a sound file keeps the still cap. Only the input's
+  `[n:a]` is used, and ffmpeg decodes only the streams a graph uses; the cap is there in case that changes.
+  (A V clip's own sound keeps the cap it always had, so older documents render the same argv.)
+* The timeline does not draw a wave for a sound read from a video (`SoundWave` says "not drawn" instead):
+  reading a whole video into the tab for it is not worth it. `loadPeaks` also stops a download at
+  `MAX_WAVEFORM_BYTES` when the server sends no length, instead of reading the whole file.
 
 ### `speed` 0.1 to 10 (constant), a curve 0.25 to 4
 
@@ -835,9 +842,33 @@ Branch `claude/editor-parity-1`. Free: ffmpeg and the browser only, no model, no
 * Cost, measured as above (1080p30 source and project, 6 s of timeline): 0.80 s of render per second at
   1x, 1.16 at 4x, 1.58 at 10x, 0.46 at 0.1x, inside the worker's 3 s per second. A fast clip decodes
   `speed` seconds of source for every second, so the SOURCE decides: a 4K60 source took 9.0 s per second
-  at 4x (already allowed before) and 13.3 at 10x. No document rule can see a source's size, so the
-  worker's wall-clock limit is what stops such an export (it fails with a reason, never hangs); the export
-  time limits and caps are unchanged. A 10x clip still needs one frame (`0.1 s` of source at 10x is refused).
+  at 4x (already allowed before) and 13.3 at 10x. A 10x clip still needs one frame (`0.1 s` of source at
+  10x is refused).
+* **The render-time estimate charges fast clips** (`FAST_SECONDS_PER_SOURCE_S`, k = 0.35, in
+  `timeline.py` and `lib/editor.ts`; `fast_seconds` / `fastSeconds`): each second of source a clip decodes
+  beyond its own length (`range - length`: `L x (speed - 1)` at a constant speed, a curve by its own
+  length) adds k seconds to `work = length + interpolation + steadying + shapes`, which must fit
+  `render_timeout_s(length) = min(5400, 3 x length + 120)`. Without it a long fast timeline passed the
+  validators and then held the one export worker (one export at a time for every organization) until its
+  wall-clock limit killed it. Calibration, on the worst common case, a phone-like source (1080p60 H.264,
+  noise, 15 Mb/s), 6 s of timeline, best of two, the bundled ffmpeg 7.0.2 on a 4-core box, through
+  `timeline_render.render`: a 1080p30 project 1.37 s per second at 1x, 2.06 at 4x, 2.40 at 6x, 3.06 at
+  10x; a 1080p60 project 2.13 at 1x, 3.10 at 4x, 4.06 at 10x (one 6x run, 5.44, was a busy-box outlier).
+  An independent run through `run_export` measured 1.70 / 2.58 / 3.71 (1080p60) and 2.83 (10x in a 1080p30
+  project). The marginal cost is 0.19-0.32 s per extra second of source; k is chosen so the estimate of a
+  10x clip, `1 + 9 k = 4.15` s per second, covers the dearest 10x measurement (4.06). Consequences:
+  * every constant-speed timeline at 10x longer than `120 / (1 + 9 k - 3)` = about 104 s is refused (a
+    shorter one passes); a 30 s part at 10x inside a 10-minute video costs 95 s more and passes;
+  * up to 4x nothing that passed before is refused for speed alone (`1 + 3 k = 2.05` < 3 per second), so
+    documents saved before the wider range keep passing unless they ALSO use steadying, smoothing or shapes
+    near the budget, where the fast part now counts too. The estimate is still under the measured cost of
+    long 4x clips from noisy 60 fps footage in a 60 fps project (3.10 per second, already over the
+    worker's 3 on `main`): charging that would refuse every long 4x timeline, so it is left as it was;
+  * the editor settles it like the other budgets (`lib/editorSettle.ts` step 4b, after smoothing and
+    steadying are switched off): the fastest constant-speed clip is slowed to the fastest speed (two
+    decimals) that fits, and the notice says "Clip N now plays at S×" (`t.editor.clipTools.settledSpeed`);
+    the line under the toolbar names fast clips when they are the only cost (`renderBudgetFast`). The
+    save route and the worker refuse what still does not fit, with the validator's sentence.
 * The database's `editor_doc_duration` (0054) divides by `speed` whatever it is, so the 30-minute check is
   right for any speed in the range; no migration.
 
@@ -848,6 +879,27 @@ Branch `claude/editor-parity-1`. Free: ffmpeg and the browser only, no model, no
   is off when the mix is full; refused at `MAX_EDITOR_CLIPS`. The clipboard is the editor's (one clip of
   this project), not the system's. Keys: Ctrl/Cmd + D, C, V on a selected clip (`resolveClipShortcut`),
   never in a text field or on a slider, and copy stays the browser's while text is selected.
+
+### Rollout: the worker must run this before the web app's editor is used with it
+
+Older validators refuse every new document field (`gain_db`, a speed outside 0.25-4, a video on an A
+track), so a document saved by the new editor and exported by an older worker fails with
+`invalid_timeline` (it fails closed: nothing is rendered wrongly, but the export counts against the
+organization's 20 a day). How the deploy runs today (`.github/workflows/deploy_web.yml` ->
+`deploy/remote-deploy.sh`): one job, on a push to `main` that touches `command-center/**` or `modules/**`
+(and others), checks out one commit for both, then **web first, worker second**, not atomically:
+
+1. `docker compose up -d --build --remove-orphans web caddy`, then it waits for web to be healthy;
+2. only then, and only when the worker section of the env is sent ("worker on"), it rebuilds `worker` and
+   restarts `media-worker` (which runs the editor exports, `tools/media_worker.py` -> `ExportService`) and,
+   when switched on, `creative-worker`, from the image just built.
+
+So the new web app is live a few minutes (the worker image build) before the export worker can render
+what it saves, and if a deploy runs with the worker off, the media worker stays on its older image until
+a deploy with it on. Order for this change: merge as one commit (both halves deploy in the same run), and
+do not use the new controls until the run has finished step 2; if the worker was off for that run, run
+the workflow again (workflow_dispatch) with it on. An export refused in that window can be asked again
+once the worker is updated.
 
 ### Strings
 

@@ -21,6 +21,7 @@ import {
   XFADE_LARGE_ZOOM_MAX,
   layout,
   ms,
+  setSpeed,
   stabilizeSeconds,
   type EditorModel,
   type VideoClip,
@@ -44,7 +45,8 @@ export type SettleChange =
   | { kind: "interpolate"; clip: number }
   | { kind: "stabilize"; clip: number }
   | { kind: "blur"; clip: number }
-  | { kind: "zoom"; clip: number; max: number };
+  | { kind: "zoom"; clip: number; max: number }
+  | { kind: "speed"; clip: number; max: number };
 
 function drop(c: VideoClip, ...keys: (keyof VideoClip)[]): VideoClip {
   const out = { ...c };
@@ -58,7 +60,8 @@ function put(model: EditorModel, id: string, c: VideoClip): EditorModel {
 
 export function settleAll(model: EditorModel): { model: EditorModel; changes: SettleChange[] } {
   const hasLimits =
-    model.clips.some((c) => c.reverse || c.interpolate || c.stabilize) || Boolean(model.shapes?.length);
+    model.clips.some((c) => c.reverse || c.interpolate || c.stabilize || c.speed > 1) ||
+    Boolean(model.shapes?.length);
   const large = isLargeFrame(model);
   if (!hasLimits && !large) return { model, changes: [] };
   const changes: SettleChange[] = [];
@@ -127,6 +130,30 @@ export function settleAll(model: EditorModel): { model: EditorModel; changes: Se
     const x = m.clips.find((k) => k.id === worst!.id)!;
     changes.push({ kind: worst.kind, clip: number(worst.id) });
     m = put(m, worst.id, drop(x, worst.kind));
+  }
+
+  // 4b. clips faster than 1x decode that many seconds of source for each second they last, and the export
+  //     cannot afford it on a long timeline: the fastest constant-speed clip is slowed to the fastest speed
+  //     that fits (two decimals), then the next, until it fits. A curve stays (its points are at most 4x,
+  //     which always fits on its own).
+  for (let guard = 0; guard < 64 && !withoutShapes(m).ok; guard += 1) {
+    const fastest = m.clips
+      .filter((c) => !c.speed_curve && !c.freeze && c.speed > 1)
+      .sort((a, b) => b.speed - a.speed)[0];
+    if (!fastest) break;
+    const at = (s: number) => setSpeed(m, fastest.id, s);
+    let lo = 1;
+    let hi = fastest.speed;
+    if (withoutShapes(at(lo)).ok)
+      for (let i = 0; i < 40 && hi - lo > 0.001; i += 1) {
+        const mid = (lo + hi) / 2;
+        if (withoutShapes(at(mid)).ok) lo = mid;
+        else hi = mid;
+      }
+    let s = Math.max(1, Math.floor(lo * 100) / 100);
+    while (s > 1 && !withoutShapes(at(s)).ok) s = Math.max(1, Math.round((s - 0.01) * 100) / 100);
+    m = at(s);
+    changes.push({ kind: "speed", clip: number(fastest.id), max: s });
   }
 
   // 5. shapes that no longer fit the export's memory or time (another frame size, a shorter timeline) are made

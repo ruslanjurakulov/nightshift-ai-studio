@@ -11,6 +11,10 @@
 import { describe, expect, it } from "vitest";
 import {
   CLIP_GAIN_DB_MAX,
+  FAST_SECONDS_PER_SOURCE_S,
+  RENDER_TIMEOUT_BASE_S,
+  RENDER_TIMEOUT_PER_S,
+  fastSeconds,
   GAIN_DB_MIN,
   MAX_AUDIO_CLIPS,
   MAX_EDITOR_CLIPS,
@@ -40,6 +44,8 @@ import {
   type VideoClip,
 } from "@/lib/editor";
 import { resolveClipShortcut, SHORTCUT_HELP } from "@/lib/editor-shortcuts";
+import { renderWork } from "@/lib/editorMotion";
+import { settleAll } from "@/lib/editorSettle";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
 import { uz } from "@/lib/i18n/uz";
@@ -105,6 +111,59 @@ describe("a clip's own volume, 0 to 200 %", () => {
       expect(validateTimeline(doc({ gain_db: bad })).join(";"), String(bad)).toContain("gain_db must be a number from -60 to 6");
     for (const k of ["volume", "gain", "mute"])
       expect(validateTimeline(doc({ [k]: 1 })).join(";"), k).toContain(`${k} is not a known field`);
+  });
+});
+
+describe("fast clips are charged in the export's time estimate", () => {
+  // A 1080p60 project with one clip of `len` timeline seconds at `speed`.
+  const fast = (len: number, speed: number): EditorModel => {
+    const m = toModel(newDocForAsset({ id: A, durationS: 3000, width: 1920, height: 1080 })!);
+    return { ...m, fps: 60, clips: m.clips.map((c) => ({ ...c, in_s: 0, out_s: len * speed, speed })) };
+  };
+  it("charges each second of source beyond the clip's length, nothing at or below 1x or frozen", () => {
+    expect(fastSeconds(c0(fast(10, 10)))).toBeCloseTo(FAST_SECONDS_PER_SOURCE_S * 90, 9);
+    expect(fastSeconds(c0(fast(10, 1)))).toBe(0);
+    expect(fastSeconds(c0(fast(10, 0.5)))).toBe(0);
+    expect(fastSeconds({ in_s: 0, out_s: 4, freeze: true })).toBe(0);
+    expect(fastSeconds({ in_s: "x", out_s: 4 })).toBe(0);
+    expect(renderWork(fast(10, 10)).fastEst).toBeCloseTo(FAST_SECONDS_PER_SOURCE_S * 90, 9);
+  });
+
+  it("a long 10x timeline is refused by the validator and a short one passes (the same cases judge Python)", () => {
+    expect(validateTimeline(toDoc(fast(200, 10))).join(";")).toContain("playing clips faster than 1x would take about");
+    expect(validateTimeline(toDoc(fast(30, 10)))).toEqual([]);
+    const edge = RENDER_TIMEOUT_BASE_S / (1 + 9 * FAST_SECONDS_PER_SOURCE_S - RENDER_TIMEOUT_PER_S);
+    expect(validateTimeline(toDoc(fast(Math.round(edge - 1), 10)))).toEqual([]);
+    expect(validateTimeline(toDoc(fast(Math.round(edge + 1), 10)))).not.toEqual([]);
+    expect(renderWork(fast(200, 10)).ok).toBe(false);
+    expect(renderWork(fast(30, 10)).ok).toBe(true);
+    // the old range stays: 30 minutes at 4x still fits
+    expect(validateTimeline(toDoc(fast(1800, 4)))).toEqual([]);
+  });
+
+  it("shapes and fast clips are charged together (the shapes' sentence names it)", () => {
+    const doc = (speed: number) => ({ ...toDoc(fast(90, speed)), shapes: [{ id: "h1", kind: "rect", start_s: 0, end_s: 90, w: 1 }] });
+    expect(validateTimeline(toDoc(fast(90, 10)))).toEqual([]);
+    expect(validateTimeline(doc(1))).toEqual([]);
+    expect(validateTimeline(doc(10)).join(";")).toContain("the shapes would take about");
+  });
+
+  it("settling slows the fastest clip to the fastest speed that fits, says so, and leaves a fitting one alone", () => {
+    const over = fast(200, 10);
+    const out = settleAll(over);
+    expect(out.changes).toHaveLength(1);
+    const ch = out.changes[0];
+    expect(ch.kind).toBe("speed");
+    const s = c0(out.model).speed;
+    expect(ch).toEqual({ kind: "speed", clip: 1, max: s });
+    expect(s).toBeGreaterThan(1);
+    expect(s).toBeLessThan(10);
+    expect(validateTimeline(toDoc(out.model))).toEqual([]);
+    // two decimals, and 0.01 faster would not fit
+    expect(Math.round(s * 100) / 100).toBe(s);
+    expect(renderWork(setSpeed(out.model, "c1", s + 0.01)).ok).toBe(false);
+    const fine = fast(30, 10);
+    expect(settleAll(fine).model).toBe(fine);
   });
 });
 

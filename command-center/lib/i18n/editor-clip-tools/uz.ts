@@ -25,6 +25,9 @@ export const clipToolsUz: ClipToolsDictionary = {
     retimed: "Faqat oddiy tezlikda, oldinga oʻynaydigan klip ovozini ajratish mumkin: ovozning tezligi va yoʻnalishi yoʻq.",
     sounds_full: "Loyihada allaqachon {max} ta ovoz bor. Buni ajratish uchun bittasini oʻchiring.",
   },
+  waveVideo: "Videodan olingan ovoz toʻlqini chizilmaydi.",
+  settledSpeed: "{n}-klip endi {max}× tezlikda: tezroq boʻlsa, uni eksport qilish shu uzunlikdagi video uchun ajratilgan vaqtdan koʻproq vaqt oladi.",
+  renderBudgetFast: "Tezlashtirilgan kliplar taxminan {work} s eksport qilishni talab qiladi, {length} s li video uchun esa {allowed} s ajratilgan. Ularning tezligini pasaytiring yoki videoni uzunroq qiling.",
   clipboard: {
     group: "Bu klip nusxasi",
     duplicate: "Takrorlash",

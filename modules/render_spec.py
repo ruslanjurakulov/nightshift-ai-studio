@@ -684,6 +684,9 @@ class AudioTrack:
     #: A speed ramp's sound: the trimmed source is cut into ``len(tempos)`` equal
     #: slices, slice ``j`` played at ``tempos[j]`` (``speed`` is then 1).
     tempos: Tuple[float, ...] = ()
+    #: The file is a VIDEO (an A clip that plays a video's sound, the editor's
+    #: "detach audio"): its input gets the video decoder cap in the final pass.
+    video_source: bool = False
 
     @property
     def output_s(self) -> float:
@@ -701,6 +704,7 @@ class AudioTrack:
         _put_if(d, "reverse", self.reverse, False)
         _put_if(d, "denoise", self.denoise, False)
         _put_if(d, "loudnorm", self.loudnorm, False)
+        _put_if(d, "video_source", self.video_source, False)
         if self.tempos:
             d["tempos"] = list(self.tempos)
         if self.duck_spans:
@@ -729,6 +733,7 @@ class AudioTrack:
             reverse=bool(d.get("reverse", False)),
             denoise=bool(d.get("denoise", False)), loudnorm=bool(d.get("loudnorm", False)),
             tempos=tuple(float(t) for t in (d.get("tempos") or [])),
+            video_source=bool(d.get("video_source", False)),
         )
 
 
@@ -1671,12 +1676,15 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     if labels:
         cmd += ["-c:a", "aac"]
     cmd.append(spec.output_path)
-    # Audio tracks are read as [n:a] only, so no picture of theirs is decoded;
-    # the cap is there anyway, on every input. No -xerror: a damaged audio
-    # frame is skipped, as it always was. A video overlay is held to the video
-    # decoder cap, a picture to the still one.
+    # An audio track's picture is not used by this graph (only its [n:a] is), and ffmpeg
+    # decodes only the streams a graph uses; the cap is there anyway, on every input, in
+    # case that ever changes. No -xerror: a damaged audio frame is skipped, as it always
+    # was. A video overlay and a sound read from a video file (a detached sound) are held
+    # to the video decoder cap, every other input to the still one. (A V clip's own sound
+    # keeps the cap it always had: older documents render byte for byte the same argv.)
     return cap_inputs(cmd, out_pixels=spec.width * spec.height,
-                      video_inputs=[o.path for o in spec.picture_overlays if o.kind == KIND_VIDEO],
+                      video_inputs=[o.path for o in spec.picture_overlays if o.kind == KIND_VIDEO]
+                      + [t.path for t in spec.audio_tracks if t.video_source],
                       single_thread_inputs=[o.path for o in spec.picture_overlays]
                       if any(o.shape is not None for o in spec.picture_overlays) else ())
 

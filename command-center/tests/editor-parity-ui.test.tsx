@@ -21,6 +21,8 @@ import { ru } from "@/lib/i18n/ru";
 import { uz } from "@/lib/i18n/uz";
 import { fmt } from "@/lib/i18n";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
+import { SoundWave } from "@/components/editor/SoundWave";
+import { MAX_WAVEFORM_BYTES, loadPeaks } from "@/lib/waveform";
 import {
   CLIP_GAIN_DB_MAX,
   SPEEDS,
@@ -196,6 +198,84 @@ describe("speed keys", () => {
     const doc = await save();
     expect(vclips(doc)[0].speed).toBe(10);
     expect(validateTimeline(doc)).toEqual([]);
+  });
+});
+
+describe("the wave of a detached sound", () => {
+  it("is not read from a video (no download), and a word says so instead of a flat line", () => {
+    render(
+      <I18nProvider locale="en">
+        <SoundWave sound={{ asset_id: A, in_s: 0, out_s: 4 }} asset={VIDEO} />
+      </I18nProvider>,
+    );
+    expect(screen.getByText(ct.waveVideo)).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("sound-wave")).toBeNull();
+  });
+
+  it("a file sent without a length is cut off at the cap instead of read whole", async () => {
+    class Ctx {
+      decodeAudioData() {
+        return Promise.resolve({ duration: 1, numberOfChannels: 1, getChannelData: () => new Float32Array(10) });
+      }
+    }
+    vi.stubGlobal("OfflineAudioContext", Ctx);
+    const chunk = new Uint8Array(4 * 1024 * 1024);
+    let sent = 0;
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        sent += chunk.byteLength;
+        c.enqueue(chunk);
+      },
+      cancel,
+    });
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(body, { status: 200 }))));
+    expect(await loadPeaks("/m/huge", null)).toEqual({ status: "too_large" });
+    expect(sent).toBeLessThanOrEqual(MAX_WAVEFORM_BYTES + 3 * chunk.byteLength);
+    expect(cancel).toHaveBeenCalled();
+  });
+});
+
+describe("a fast clip on a long timeline", () => {
+  it("choosing 10x is slowed to what the export can afford, with the reason on the screen, and saves", async () => {
+    const LONG: EditorAsset = { ...VIDEO, durationS: 3000 };
+    const doc = newDocForAsset(LONG)!;
+    Object.assign(doc.tracks[0].clips[0], { audio: true, out_s: 2000 });
+    doc.fps = 60;
+    render(
+      <I18nProvider locale="en">
+        <TimelineEditor projectId={PID} title="Trip" rev={1} doc={doc} exports={[]}
+          assets={{ [A]: LONG }} videos={[LONG]} userId="user-1" />
+      </I18nProvider>,
+    );
+    const g = screen.getByTestId("speed-chips");
+    fireEvent.click(within(g).getByRole("radio", { name: fmt(te.speedValue, { x: 10 }) }));
+    const notice = screen.getByTestId("settled");
+    const saved = await save();
+    const speed = vclips(saved)[0].speed as number;
+    expect(speed).toBeGreaterThan(1);
+    expect(speed).toBeLessThan(10);
+    expect(notice.textContent).toContain(fmt(ct.settledSpeed, { n: 1, max: speed }));
+    expect(validateTimeline(saved)).toEqual([]);
+  });
+});
+
+describe("a saved document that does not fit only because of its fast clips", () => {
+  it("says so under the toolbar with the numbers (not the slow-motion sentence)", () => {
+    const LONG: EditorAsset = { ...VIDEO, durationS: 3000 };
+    const doc = newDocForAsset(LONG)!;
+    Object.assign(doc.tracks[0].clips[0], { out_s: 2000, speed: 10 });
+    doc.fps = 60;
+    render(
+      <I18nProvider locale="en">
+        <TimelineEditor projectId={PID} title="Trip" rev={1} doc={doc} exports={[]}
+          assets={{ [A]: LONG }} videos={[LONG]} userId="user-1" />
+      </I18nProvider>,
+    );
+    const line = screen.getByTestId("render-budget").textContent ?? "";
+    expect(line.startsWith(ct.renderBudgetFast.split("{")[0])).toBe(true);
+    expect(line).not.toContain(te.fx.renderBudget.split("{")[0]);
   });
 });
 

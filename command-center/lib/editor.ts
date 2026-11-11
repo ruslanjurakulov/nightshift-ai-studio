@@ -291,6 +291,9 @@ export const RENDER_TIMEOUT_BASE_S = 120;
 export const RENDER_TIMEOUT_MAX_S = 5400;
 export const RENDER_PLAIN_FACTOR = 1;
 export const INTERP_SECONDS_PER_FRAME = 0.4;
+/** Render seconds charged per second of SOURCE a clip faster than 1x decodes beyond its own length
+ *  (modules/timeline.py FAST_SECONDS_PER_SOURCE_S; calibrated on a 1080p60 phone-like source). */
+export const FAST_SECONDS_PER_SOURCE_S = 0.35;
 export function renderTimeoutS(lengthS: number): number {
   return Math.min(
     RENDER_TIMEOUT_MAX_S,
@@ -728,6 +731,17 @@ function mediaLength(r: Record<string, unknown>): number {
   return ms(range / speedOf(r));
 }
 
+/** The estimated render seconds a clip faster than 1x adds (modules/timeline.py `fast_seconds`):
+ *  FAST_SECONDS_PER_SOURCE_S per second of source beyond its own length; 0 at or below 1x, frozen, or
+ *  for a range that is not a usable number. */
+export function fastSeconds(c: Record<string, unknown> | VideoClip): number {
+  const r = c as Record<string, unknown>;
+  if (r.freeze === true || !isNum(r.in_s) || !isNum(r.out_s)) return 0;
+  const range = ms(r.out_s) - ms(r.in_s);
+  if (!(range > 0)) return 0;
+  return FAST_SECONDS_PER_SOURCE_S * Math.max(0, range - mediaLength(r));
+}
+
 /** A speed curve that can be worked with (the validator has the strict rules). */
 function usableCurve(v: unknown): SpeedPoint[] | null {
   if (!Array.isArray(v) || v.length < RAMP_MIN_POINTS) return null;
@@ -844,9 +858,10 @@ function interpStabEstimates(
   fps: number,
   width: number,
   height: number,
-): { interp: number; interpEst: number; stabEst: number } {
+): { interp: number; interpEst: number; stabEst: number; fastEst: number } {
   let interp = 0;
   let stabEst = 0;
+  let fastEst = 0;
   for (const t of counted)
     if (t.kind === "V")
       for (const c of t.clips) {
@@ -861,8 +876,9 @@ function interpStabEstimates(
           interp += interpolatedFrames(c.in_s, c.out_s, slowest, fps, width, height);
         }
         if (c.stabilize === true) stabEst += stabilizeSeconds(c, fps, width, height);
+        fastEst += fastSeconds(c);
       }
-  return { interp, interpEst: interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0, stabEst };
+  return { interp, interpEst: interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0, stabEst, fastEst };
 }
 
 /**
@@ -1000,25 +1016,27 @@ export function validateTimeline(doc: unknown): string[] {
       `timeline: at most ${STABILIZE_MAX_DOC_S} s of video can be stabilised in all (got ${Math.round(stabS)} s)`,
     );
   if (!problems.length && isInt(doc.width) && isInt(doc.height) && fps) {
-    const { interp, interpEst, stabEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
+    const { interp, interpEst, stabEst, fastEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
     if (interp > INTERP_MAX_FRAMES_DOC)
       problems.push(
         `timeline: interpolated slow motion would make about ${Math.round(interp)} frames (1080p equivalent) in all; at most ${INTERP_MAX_FRAMES_DOC} per timeline`,
       );
-    if (interpEst + stabEst > 0) {
+    if (interpEst + stabEst + fastEst > 0) {
       const length = docDuration(doc as unknown as TimelineDoc);
-      const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst;
+      const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst;
       const allowed = renderTimeoutS(length);
       if (work > allowed + 1e-9) {
         const what = [
           interpEst > 0 ? "interpolated slow motion" : "",
           stabEst > 0 ? "stabilising" : "",
+          fastEst > 0 ? "playing clips faster than 1x" : "",
         ]
           .filter(Boolean)
           .join(" and ");
         const fix = [
           interpEst > 0 ? "slow less of it" : "",
           stabEst > 0 ? "stabilise less of it" : "",
+          fastEst > 0 ? "speed them up less" : "",
         ]
           .filter(Boolean)
           .join(" and ");
@@ -1053,8 +1071,8 @@ export function validateTimeline(doc: unknown): string[] {
       else if (fps && !problems.length) {
         const length = docDuration(doc as unknown as TimelineDoc);
         const shapeEst = shapeWorkSeconds(doc.shapes as WorkShape[], fps, { width: doc.width, height: doc.height }, length);
-        const { interpEst, stabEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
-        const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + shapeEst;
+        const { interpEst, stabEst, fastEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
+        const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + shapeEst;
         const allowed = renderTimeoutS(length);
         if (shapeEst > 0 && work > allowed + 1e-9)
           problems.push(

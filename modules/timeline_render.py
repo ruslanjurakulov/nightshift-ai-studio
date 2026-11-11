@@ -345,6 +345,7 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 fade_in_s=clip["fade_in_s"],
                 fade_out_s=clip["fade_out_s"],
                 denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
+                video_source=assets[clip["asset_id"]].kind == tl.ASSET_VIDEO,
                 **extra,
             ))
     return tracks
