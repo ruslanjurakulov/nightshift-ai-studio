@@ -110,13 +110,14 @@ class RegistryEntryTests(unittest.TestCase):
     def setUp(self):
         self.r = reg.load()
 
-    def test_the_two_models_are_registered_on_the_flux3_adapter_and_flux2_is_untouched(self):
+    def test_the_two_models_are_registered_on_the_flux3_adapter_and_flux2_keeps_its_adapter(self):
         for mid in IDS:
             e = self.r[mid]
             self.assertEqual((e.adapter, e.provider, e.vendor_model, e.capabilities), ("image.bfl3", "bfl", mid, ("t2i",)), mid)
             self.assertTrue(e.is_async, mid)
         for mid in ("flux-2-pro", "flux-2-max", "flux-2-flex"):
-            self.assertEqual((self.r[mid].adapter, self.r[mid].terms_gate), ("image.bfl", None), mid)
+            # Gated since 2026-11-11 under the same API Terms 2(b) (tests/test_registry_corrections_2026_11_11.py).
+            self.assertEqual((self.r[mid].adapter, self.r[mid].terms_gate), ("image.bfl", "terms_review_required"), mid)
 
     def test_none_of_them_can_be_sold_until_a_person_has_decided_the_training_licence_question(self):
         for mid in IDS:

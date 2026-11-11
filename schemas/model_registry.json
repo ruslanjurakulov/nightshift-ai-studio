@@ -289,13 +289,15 @@
       },
       "credit_unit": "model_gemini_3_1_flash_image_image",
       "entitlement": "models_image:basic",
-      "terms_gate": null,
+      "terms_gate": "terms_review_required",
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
         "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
         "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
-        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
+        "Gemini API Additional Terms re-read 2026-11-11 (aistudio.google.com/docs/terms, 'Effective March 23, 2026'): 'You must be 18 years of age or older to use the APIs' and the API 'is for developers building with Google AI models for professional or business purposes, not for consumer use.'",
+        "Those clauses keep gemini-nano-banana-2.1 and gemini-omni-1.1-flash gated until the owner's lawyer has read them, and they cover this model the same way: terms_review_required (was null until 2026-11-11). No credit price was changed; the gate makes it inert."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -365,13 +367,15 @@
       },
       "credit_unit": "model_gemini_3_1_flash_lite_image_image",
       "entitlement": "models_image:basic",
-      "terms_gate": null,
+      "terms_gate": "terms_review_required",
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
         "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
         "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
-        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
+        "Gemini API Additional Terms re-read 2026-11-11 (aistudio.google.com/docs/terms, 'Effective March 23, 2026'): 'You must be 18 years of age or older to use the APIs' and the API 'is for developers building with Google AI models for professional or business purposes, not for consumer use.'",
+        "Those clauses keep gemini-nano-banana-2.1 and gemini-omni-1.1-flash gated until the owner's lawyer has read them, and they cover this model the same way: terms_review_required (was null until 2026-11-11). No credit price was changed; the gate makes it inert."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -446,13 +450,15 @@
       },
       "credit_unit": "model_gemini_3_pro_image_image",
       "entitlement": "models_image:premium",
-      "terms_gate": null,
+      "terms_gate": "terms_review_required",
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
         "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
         "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
-        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
+        "Gemini API Additional Terms re-read 2026-11-11 (aistudio.google.com/docs/terms, 'Effective March 23, 2026'): 'You must be 18 years of age or older to use the APIs' and the API 'is for developers building with Google AI models for professional or business purposes, not for consumer use.'",
+        "Those clauses keep gemini-nano-banana-2.1 and gemini-omni-1.1-flash gated until the owner's lawyer has read them, and they cover this model the same way: terms_review_required (was null until 2026-11-11). No credit price was changed; the gate makes it inert."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -721,13 +727,15 @@
       },
       "credit_unit": "model_gemini_3_6_flash_request",
       "entitlement": null,
-      "terms_gate": null,
+      "terms_gate": "terms_review_required",
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
         "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
         "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
-        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading"
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
+        "Gemini API Additional Terms re-read 2026-11-11 (aistudio.google.com/docs/terms, 'Effective March 23, 2026'): 'You must be 18 years of age or older to use the APIs' and the API 'is for developers building with Google AI models for professional or business purposes, not for consumer use.'",
+        "Those clauses keep gemini-nano-banana-2.1 and gemini-omni-1.1-flash gated until the owner's lawyer has read them, and they cover this model the same way: terms_review_required (was null until 2026-11-11). No credit price was changed; the gate makes it inert."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -775,11 +783,11 @@
       },
       "pricing": {
         "unit": "second",
-        "provider_usd_per_unit": null,
-        "source_url": null,
-        "as_of": null,
+        "provider_usd_per_unit": 5.56e-05,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-11-11",
         "confirmed": false,
-        "note": "billed per hour of audio, rate by plan; no per-second figure was read from the pricing page, so none is claimed"
+        "note": "elevenlabs.io/pricing/api read 2026-11-11: Scribe v2 '$0.20 Price per hour', the same on every plan row = $0.0000556/s (rounded up). Keyterm prompting (+$0.050/h) and transcript editing (+$0.070/h) are extra; this adapter sends neither."
       },
       "credit_unit": "model_elevenlabs_scribe_v2_second",
       "entitlement": null,
@@ -902,9 +910,11 @@
       },
       "credit_unit": "model_flux_2_pro_image",
       "entitlement": "models_image:premium",
-      "terms_gate": null,
+      "terms_gate": "terms_review_required",
       "terms_notes": [
-        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call"
+        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call",
+        "FLUX API Service Terms (bfl.ai/legal/flux-api-service-terms, 'Last Revised on August 4, 2026', read 2026-11-11) 2(b): BFL gets a 'perpetual, irrevocable, worldwide, non-exclusive, and fully sublicensable' licence to Input and Output; 'the Company may use Inputs and Outputs to train'.",
+        "Those terms cover every 'FLUX AI Model' (Developer Terms 1(f): 'the Company's artificial intelligence models'), this one included. Same reason as flux-3-image's gate: terms_review_required (was null until 2026-11-11) until the owner decides the training licence."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -962,9 +972,11 @@
       },
       "credit_unit": "model_flux_2_max_image",
       "entitlement": "models_image:ultra",
-      "terms_gate": null,
+      "terms_gate": "terms_review_required",
       "terms_notes": [
-        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call"
+        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call",
+        "FLUX API Service Terms (bfl.ai/legal/flux-api-service-terms, 'Last Revised on August 4, 2026', read 2026-11-11) 2(b): BFL gets a 'perpetual, irrevocable, worldwide, non-exclusive, and fully sublicensable' licence to Input and Output; 'the Company may use Inputs and Outputs to train'.",
+        "Those terms cover every 'FLUX AI Model' (Developer Terms 1(f): 'the Company's artificial intelligence models'), this one included. Same reason as flux-3-image's gate: terms_review_required (was null until 2026-11-11) until the owner decides the training licence."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -1022,9 +1034,11 @@
       },
       "credit_unit": "model_flux_2_flex_image",
       "entitlement": "models_image:premium",
-      "terms_gate": null,
+      "terms_gate": "terms_review_required",
       "terms_notes": [
-        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call"
+        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call",
+        "FLUX API Service Terms (bfl.ai/legal/flux-api-service-terms, 'Last Revised on August 4, 2026', read 2026-11-11) 2(b): BFL gets a 'perpetual, irrevocable, worldwide, non-exclusive, and fully sublicensable' licence to Input and Output; 'the Company may use Inputs and Outputs to train'.",
+        "Those terms cover every 'FLUX AI Model' (Developer Terms 1(f): 'the Company's artificial intelligence models'), this one included. Same reason as flux-3-image's gate: terms_review_required (was null until 2026-11-11) until the owner decides the training licence."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -1107,7 +1121,7 @@
         "BFL FLUX API Service Terms (revised 2026-08-04, bfl.ai/legal/flux-api-service-terms, read 2026-10-25) 2(a): licensed to run integrations 'whereby End Users of a Developer Application can interface with the FLUX AI Models from within' it; a hosted endpoint for third parties is barred, hence web_only.",
         "Same terms 2(b): BFL gets a perpetual, irrevocable, sublicensable licence to every Input and Output 'to train and improve' its models. That reaches each end user's prompts and pictures: a privacy-notice decision for the owner, and why the gate is terms_review_required.",
         "Developer Terms of Service (same date) 2(c): end users must be bound to an agreement, acceptable-use and privacy policy no less protective than BFL's; 6(k): no uploads relating to people under 18; 6(i): never strip Content Credentials; 6(c): no Output used to train other models.",
-        "Developer Terms 4(b): end users may use Output commercially; it may not be unique. Usage Policy (read): no election or campaign content, no misleading content, no C2PA tampering. NOT read: EU variants, Order Forms. Uzbekistan NOT verified. The flux-2 entries share these terms, with no gate."
+        "Developer Terms 4(b): end users may use Output commercially; it may not be unique. Usage Policy (read): no election or campaign content, no misleading content, no C2PA tampering. NOT read: EU variants, Order Forms. Uzbekistan NOT verified. flux-2 and flux-3-video share these terms and this gate."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -1191,7 +1205,7 @@
         "BFL FLUX API Service Terms (revised 2026-08-04, bfl.ai/legal/flux-api-service-terms, read 2026-10-25) 2(a): licensed to run integrations 'whereby End Users of a Developer Application can interface with the FLUX AI Models from within' it; a hosted endpoint for third parties is barred, hence web_only.",
         "Same terms 2(b): BFL gets a perpetual, irrevocable, sublicensable licence to every Input and Output 'to train and improve' its models. That reaches each end user's prompts and pictures: a privacy-notice decision for the owner, and why the gate is terms_review_required.",
         "Developer Terms of Service (same date) 2(c): end users must be bound to an agreement, acceptable-use and privacy policy no less protective than BFL's; 6(k): no uploads relating to people under 18; 6(i): never strip Content Credentials; 6(c): no Output used to train other models.",
-        "Developer Terms 4(b): end users may use Output commercially; it may not be unique. Usage Policy (read): no election or campaign content, no misleading content, no C2PA tampering. NOT read: EU variants, Order Forms. Uzbekistan NOT verified. The flux-2 entries share these terms, with no gate."
+        "Developer Terms 4(b): end users may use Output commercially; it may not be unique. Usage Policy (read): no election or campaign content, no misleading content, no C2PA tampering. NOT read: EU variants, Order Forms. Uzbekistan NOT verified. flux-2 and flux-3-video share these terms and this gate."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -2039,19 +2053,22 @@
       },
       "pricing": {
         "unit": "second",
-        "provider_usd_per_unit": null,
-        "source_url": null,
-        "as_of": null,
-        "confirmed": false
+        "provider_usd_per_unit": 0.042,
+        "source_url": "https://kling.ai/document-api/pricing/base/video",
+        "as_of": "2026-11-11",
+        "confirmed": false,
+        "note": "kling.ai/document-api/pricing/base/video read 2026-11-11: 'Kling 2.6 | No Native Audio' '0.3 Units ($0.042) /s' at 720P ($0.07/s 1080P); native audio is 1080P only. The adapter always sends mode std (720p)."
       },
       "credit_unit": "model_kling_v2_6_second",
       "entitlement": "models_video:premium",
       "terms_gate": "terms_review_required",
       "terms_notes": [
-        "Kling paid-service terms: licence is non-sublicensable; offering it to our users may read as sublicensing — written confirmation needed"
+        "Kling paid-service terms: licence is non-sublicensable; offering it to our users may read as sublicensing — written confirmation needed",
+        "Kling Terms of API Paid Service (kling.ai/document-api/guides/protocols/paid-service, effective 2026-04-21, read 2026-11-11) 3.3: a 'non-exclusive, non-transferable or sublicensable' licence; 'no right to disseminate, transfer, license, or provide these resources to others for use'. So web_only.",
+        "Same terms 3.8: the API Key 'can only be used for the authorized your Client Application' and may not be transferred, rented or lent 'to any third party'; 3.5: use, transfer or sublicense beyond the authorization lets Kling suspend the service immediately."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1
@@ -2118,10 +2135,12 @@
       "entitlement": "models_video:ultra",
       "terms_gate": "terms_review_required",
       "terms_notes": [
-        "Kling paid-service terms: licence is non-sublicensable; offering it to our users may read as sublicensing — written confirmation needed"
+        "Kling paid-service terms: licence is non-sublicensable; offering it to our users may read as sublicensing — written confirmation needed",
+        "Kling Terms of API Paid Service (kling.ai/document-api/guides/protocols/paid-service, effective 2026-04-21, read 2026-11-11) 3.3: a 'non-exclusive, non-transferable or sublicensable' licence; 'no right to disseminate, transfer, license, or provide these resources to others for use'. So web_only.",
+        "Same terms 3.8: the API Key 'can only be used for the authorized your Client Application' and may not be transferred, rented or lent 'to any third party'; 3.5: use, transfer or sublicense beyond the authorization lets Kling suspend the service immediately."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1
@@ -2171,9 +2190,10 @@
       "pricing": {
         "unit": "second",
         "provider_usd_per_unit": null,
-        "source_url": null,
-        "as_of": null,
-        "confirmed": false
+        "source_url": "https://platform.minimax.io/docs/pricing/overview",
+        "as_of": "2026-11-11",
+        "confirmed": false,
+        "note": "Billed per CLIP (MiniMax pricing, Legacy Models, read 2026-11-11): '$0.28 per 768P, 6s video', '$0.56 per 768P, 10s video', '$0.49 per 1080P, 6s video'; no 1080P 10 s price. No one per-second figure fits ($0.047-0.082/s), so none is claimed."
       },
       "credit_unit": "model_minimax_hailuo_2_3_second",
       "entitlement": "models_video:premium",
@@ -2621,13 +2641,15 @@
       "entitlement": "models_video:ultra",
       "terms_gate": null,
       "terms_notes": [
-        "Runway API terms: show 'Powered by Runway' linking runwayml.com where the feature appears; our user terms must protect Runway at least as much"
+        "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",
+        "Runway Terms of Use (runway.com/terms-of-use, 'Last updated October 23, 2026', read 2026-11-11) §1: the APIs may be used to 'make that functionality available to end users as part of Your Application', which must 'prominently display \"Powered by Runway\" and link to runway.com'.",
+        "Same terms §1.3(a): 'you shall not license, sell, rent, lease, transfer, assign, reproduce, distribute, host, or similarly exploit any Services except as permitted through the APIs'; §2.1: API keys 'are for your use only'. Hence api_exposure web_only."
       ],
       "attribution": {
         "text": "Powered by Runway",
-        "url": "https://runwayml.com"
+        "url": "https://runway.com"
       },
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 1000,
         "max_concurrent_per_org": 1
@@ -2688,13 +2710,15 @@
       "entitlement": "models_video:premium",
       "terms_gate": null,
       "terms_notes": [
-        "Runway API terms: show 'Powered by Runway' linking runwayml.com where the feature appears; our user terms must protect Runway at least as much"
+        "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",
+        "Runway Terms of Use (runway.com/terms-of-use, 'Last updated October 23, 2026', read 2026-11-11) §1: the APIs may be used to 'make that functionality available to end users as part of Your Application', which must 'prominently display \"Powered by Runway\" and link to runway.com'.",
+        "Same terms §1.3(a): 'you shall not license, sell, rent, lease, transfer, assign, reproduce, distribute, host, or similarly exploit any Services except as permitted through the APIs'; §2.1: API keys 'are for your use only'. Hence api_exposure web_only."
       ],
       "attribution": {
         "text": "Powered by Runway",
-        "url": "https://runwayml.com"
+        "url": "https://runway.com"
       },
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 1000,
         "max_concurrent_per_org": 1
@@ -2761,13 +2785,15 @@
       "entitlement": "models_video:premium",
       "terms_gate": null,
       "terms_notes": [
-        "Runway API terms: show 'Powered by Runway' linking runwayml.com where the feature appears; our user terms must protect Runway at least as much"
+        "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",
+        "Runway Terms of Use (runway.com/terms-of-use, 'Last updated October 23, 2026', read 2026-11-11) §1: the APIs may be used to 'make that functionality available to end users as part of Your Application', which must 'prominently display \"Powered by Runway\" and link to runway.com'.",
+        "Same terms §1.3(a): 'you shall not license, sell, rent, lease, transfer, assign, reproduce, distribute, host, or similarly exploit any Services except as permitted through the APIs'; §2.1: API keys 'are for your use only'. Hence api_exposure web_only."
       ],
       "attribution": {
         "text": "Powered by Runway",
-        "url": "https://runwayml.com"
+        "url": "https://runway.com"
       },
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 1000,
         "max_concurrent_per_org": 1,
@@ -3088,10 +3114,13 @@
       },
       "credit_unit": "model_seedance_1_0_pro_second",
       "entitlement": "models_video:premium",
-      "terms_gate": null,
-      "terms_notes": [],
+      "terms_gate": "written_consent_required",
+      "terms_notes": [
+        "BytePlus Customer Agreement (docs.byteplus.com/en/docs/legal/docs-customer-agreement, 'Effective: Sep 30, 2026', read 2026-11-11) 6.2(1): unless 'consented in writing to by BytePlus in advance', you shall not be an OEM, SaaS, 'Model as a Service' (MaaS) provider, reseller or distributor.",
+        "6.2(1) covers every Service, so 1.0 Pro needs the written consent Seedance 2.x and Seedream wait for: terms_gate written_consent_required (was null until 2026-11-11) and web_only (a public API is MaaS). The daily pipeline's SEEDANCE_MODEL does not read this gate."
+      ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1
@@ -3444,10 +3473,11 @@
         "§4.48.1(d)(v) also bars using the models or their Output to build products that compete with Alibaba Cloud's. (h)(ii): label Outputs conspicuously 'if required under applicable laws'; the operator bears all responsibility for its product (h)(i) and indemnifies Alibaba (h)(iv).",
         "§4.48.1(e): Model Studio claims no ownership of Output; (g)(v): Output may be identical across customers. Read 2026-10-25 at alibabacloud.com/help/en/legal. NOT read: the Membership Agreement the Product Terms incorporate, and any order form or negotiated terms.",
         "No age limit found in the text read. Sign-up and payment from Uzbekistan were not verified; keys, models and endpoints are region-bound (Singapore here).",
-        "Gate stays open until Alibaba Cloud authorises Nightshift in writing. No credit price may be added before then; wan-2.7 and wan-3.0 keep the credit_prices rows seeded earlier, which the gate makes inert."
+        "Gate stays open until Alibaba Cloud authorises Nightshift in writing. No credit price may be added before then; wan-2.7 and wan-3.0 keep the credit_prices rows seeded earlier, which the gate makes inert.",
+        "Product Terms re-read 2026-11-11 (alibabacloud.com/help/en/legal/latest/alibaba-cloud-international-website-product-terms-of-service, 'Last Updated:Oct 19, 2026'): §4.48.1(d)(v) still bars to 'resell Model Studio or AI models provided through Model Studio'. A public API resells the model: web_only."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1
@@ -3520,10 +3550,11 @@
         "§4.48.1(d)(v) also bars using the models or their Output to build products that compete with Alibaba Cloud's. (h)(ii): label Outputs conspicuously 'if required under applicable laws'; the operator bears all responsibility for its product (h)(i) and indemnifies Alibaba (h)(iv).",
         "§4.48.1(e): Model Studio claims no ownership of Output; (g)(v): Output may be identical across customers. Read 2026-10-25 at alibabacloud.com/help/en/legal. NOT read: the Membership Agreement the Product Terms incorporate, and any order form or negotiated terms.",
         "No age limit found in the text read. Sign-up and payment from Uzbekistan were not verified; keys, models and endpoints are region-bound (Singapore here).",
-        "Gate stays open until Alibaba Cloud authorises Nightshift in writing. No credit price may be added before then; wan-2.7 and wan-3.0 keep the credit_prices rows seeded earlier, which the gate makes inert."
+        "Gate stays open until Alibaba Cloud authorises Nightshift in writing. No credit price may be added before then; wan-2.7 and wan-3.0 keep the credit_prices rows seeded earlier, which the gate makes inert.",
+        "Product Terms re-read 2026-11-11 (alibabacloud.com/help/en/legal/latest/alibaba-cloud-international-website-product-terms-of-service, 'Last Updated:Oct 19, 2026'): §4.48.1(d)(v) still bars to 'resell Model Studio or AI models provided through Model Studio'. A public API resells the model: web_only."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1
@@ -3863,17 +3894,26 @@
       },
       "pricing": {
         "unit": "second",
-        "provider_usd_per_unit": 0.17,
-        "source_url": "https://docs.bfl.ai/release-notes",
-        "as_of": "2026-09-30",
+        "provider_usd_per_unit": 0.15,
+        "source_url": "https://bfl.ai/pricing",
+        "as_of": "2026-11-11",
         "confirmed": false,
-        "note": "from $0.17/s full render (search extract)"
+        "note": "bfl.ai/pricing read 2026-11-11, FLUX 3 Video: 'Text / Image → Video, HD$0.15/s', 'FHD$0.24/s' (720p is HD, 1080p FHD). t2v default is hd (api.bfl.ai/openapi.json). No default_resolution, so a quote uses the base row at any resolution. Was $0.17 (search extract).",
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.15,
+            "1080p": 0.24
+          }
+        }
       },
       "credit_unit": "model_flux_3_video_second",
       "entitlement": "models_video:premium",
-      "terms_gate": null,
+      "terms_gate": "terms_review_required",
       "terms_notes": [
-        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call"
+        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call",
+        "FLUX API Service Terms (bfl.ai/legal/flux-api-service-terms, 'Last Revised on August 4, 2026', read 2026-11-11) 2(b): BFL gets a 'perpetual, irrevocable, worldwide, non-exclusive, and fully sublicensable' licence to Input and Output; 'the Company may use Inputs and Outputs to train'.",
+        "Those terms cover every 'FLUX AI Model' (Developer Terms 1(f): 'the Company's artificial intelligence models'), this one included. Same reason as flux-3-image's gate: terms_review_required (was null until 2026-11-11) until the owner decides the training licence."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -4180,19 +4220,22 @@
       },
       "pricing": {
         "unit": "character",
-        "provider_usd_per_unit": null,
-        "source_url": null,
-        "as_of": null,
-        "confirmed": false
+        "provider_usd_per_unit": 8e-05,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-11-11",
+        "confirmed": false,
+        "note": "elevenlabs.io/pricing/api read 2026-11-11: v4 '$0.08 Price per 1K characters', the same on every plan row."
       },
       "credit_unit": "model_elevenlabs_v4_character",
       "entitlement": "models_audio:premium",
       "terms_gate": "plan_required:scale",
       "terms_notes": [
-        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive",
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025', read 2026-11-11) §2.B(a): Customer may not 'Make Available a Service to any third party who will itself Make Available the applicable Service or Bundled Service'. Hence api_exposure web_only.",
+        "Same OEM Terms §1.C: 'Services cannot be used independent of the Customer Solution'; §2.A grants use solely to integrate the Services with the Customer Solution and to demonstrate, Make Available and support the Bundled Service to End Users."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 3000,
         "max_concurrent_per_org": 4
@@ -4230,19 +4273,22 @@
       },
       "pricing": {
         "unit": "character",
-        "provider_usd_per_unit": null,
-        "source_url": null,
-        "as_of": null,
-        "confirmed": false
+        "provider_usd_per_unit": 8e-05,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-11-11",
+        "confirmed": false,
+        "note": "elevenlabs.io/pricing/api read 2026-11-11: v3 '$0.08 Price per 1K characters', the same on every plan row; '5,000 character limit'."
       },
       "credit_unit": "model_elevenlabs_v3_character",
       "entitlement": "models_audio:premium",
       "terms_gate": "plan_required:scale",
       "terms_notes": [
-        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive",
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025', read 2026-11-11) §2.B(a): Customer may not 'Make Available a Service to any third party who will itself Make Available the applicable Service or Bundled Service'. Hence api_exposure web_only.",
+        "Same OEM Terms §1.C: 'Services cannot be used independent of the Customer Solution'; §2.A grants use solely to integrate the Services with the Customer Solution and to demonstrate, Make Available and support the Bundled Service to End Users."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 3000,
         "max_concurrent_per_org": 4
@@ -4290,10 +4336,12 @@
       "entitlement": "models_audio:basic",
       "terms_gate": "plan_required:scale",
       "terms_notes": [
-        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive",
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025', read 2026-11-11) §2.B(a): Customer may not 'Make Available a Service to any third party who will itself Make Available the applicable Service or Bundled Service'. Hence api_exposure web_only.",
+        "Same OEM Terms §1.C: 'Services cannot be used independent of the Customer Solution'; §2.A grants use solely to integrate the Services with the Customer Solution and to demonstrate, Make Available and support the Bundled Service to End Users."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 10000,
         "max_concurrent_per_org": 4
@@ -4341,10 +4389,12 @@
       "entitlement": "models_audio:basic",
       "terms_gate": "plan_required:scale",
       "terms_notes": [
-        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive",
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025', read 2026-11-11) §2.B(a): Customer may not 'Make Available a Service to any third party who will itself Make Available the applicable Service or Bundled Service'. Hence api_exposure web_only.",
+        "Same OEM Terms §1.C: 'Services cannot be used independent of the Customer Solution'; §2.A grants use solely to integrate the Services with the Customer Solution and to demonstrate, Make Available and support the Bundled Service to End Users."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 40000,
         "max_concurrent_per_org": 4
@@ -4402,10 +4452,12 @@
       "entitlement": "models_audio:basic",
       "terms_gate": "plan_required:scale",
       "terms_notes": [
-        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive",
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025', read 2026-11-11) §2.B(a): Customer may not 'Make Available a Service to any third party who will itself Make Available the applicable Service or Bundled Service'. Hence api_exposure web_only.",
+        "Same OEM Terms §1.C: 'Services cannot be used independent of the Customer Solution'; §2.A grants use solely to integrate the Services with the Customer Solution and to demonstrate, Make Available and support the Bundled Service to End Users."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 450,
         "max_concurrent_per_org": 4
@@ -4455,10 +4507,12 @@
       "entitlement": "models_audio:basic",
       "terms_gate": "plan_required:scale",
       "terms_notes": [
-        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive",
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025', read 2026-11-11) §2.B(a): Customer may not 'Make Available a Service to any third party who will itself Make Available the applicable Service or Bundled Service'. Hence api_exposure web_only.",
+        "Same OEM Terms §1.C: 'Services cannot be used independent of the Customer Solution'; §2.A grants use solely to integrate the Services with the Customer Solution and to demonstrate, Make Available and support the Bundled Service to End Users."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 200,
         "max_concurrent_per_org": 4
@@ -4513,10 +4567,12 @@
       "entitlement": "models_audio:basic",
       "terms_gate": "plan_required:scale",
       "terms_notes": [
-        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive",
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025', read 2026-11-11) §2.B(a): Customer may not 'Make Available a Service to any third party who will itself Make Available the applicable Service or Bundled Service'. Hence api_exposure web_only.",
+        "Same OEM Terms §1.C: 'Services cannot be used independent of the Customer Solution'; §2.A grants use solely to integrate the Services with the Customer Solution and to demonstrate, Make Available and support the Bundled Service to End Users."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 200,
         "max_concurrent_per_org": 1
@@ -4572,10 +4628,12 @@
       "entitlement": "models_audio:basic",
       "terms_gate": "plan_required:scale",
       "terms_notes": [
-        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive",
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025', read 2026-11-11) §2.B(a): Customer may not 'Make Available a Service to any third party who will itself Make Available the applicable Service or Bundled Service'. Hence api_exposure web_only.",
+        "Same OEM Terms §1.C: 'Services cannot be used independent of the Customer Solution'; §2.A grants use solely to integrate the Services with the Customer Solution and to demonstrate, Make Available and support the Bundled Service to End Users."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 200,
         "max_concurrent_per_org": 1
@@ -5267,7 +5325,7 @@
         "checked_at": "2026-10-25",
         "source": "vendor_docs_search",
         "evidence": "ai.google.dev omni, models/gemini-omni-flash, background-execution, pricing and deprecations pages read in full 2026-10-25 (.md.txt), not search extracts. No real call made.",
-        "note": "Interactions API (POST /v1beta/interactions). UNVERIFIED: background:true for Omni (the background page names other models; Omni's own page shows a sync call). No duration setting exists: 3-10 s, steered in the prompt."
+        "note": "Interactions API (POST /v1beta/interactions). UNVERIFIED: background:true for Omni. No duration setting: 3-10 s, steered in the prompt. Deprecations (read 2026-11-11): 'Effective December 3, 2026, the endpoint is automatically routing API requests to gemini-omni-1.2-flash'."
       },
       "shutdown": {
         "on": "2026-12-03",
@@ -5290,7 +5348,7 @@
             "4k": null
           }
         },
-        "note": "ESTIMATE. 5,792 output tokens per second of 720p x $17.50 per 1M = $0.1014/s (Google: 'approximately $0.10'). Excludes input tokens ($1.50/1M) and text output ($9/1M). 360p, 1080p, 4k: no price on any page. Billed seconds = the length produced (3-10 s), not requested."
+        "note": "ESTIMATE. 5,792 output tokens per s of 720p x $17.50 per 1M = $0.1014/s. Excludes input tokens ($1.50/1M). From 2026-12-03 Google routes every 1.1 call to gemini-omni-1.2-flash, 'billed at gemini-omni-1.2-flash rates' ($12/1M video, ~$0.07/s 720p; read 2026-11-11). Sale ends then."
       },
       "credit_unit": "model_gemini_omni_1_1_flash_second",
       "entitlement": "models_video:premium",
@@ -5304,7 +5362,8 @@
         "Use only in an available region (Gemini API Additional Terms); EEA/CH/UK users need Paid Services. Uzbekistan is on Google's region list; billing from Uzbekistan was NOT verified. Output carries invisible SynthID; no customer watermark duty found.",
         "Not read: whether a refused or failed request is billed (no Google page says); how long a stored interaction (store=true, needed to fetch the clip) is kept; the Prohibited Use Policy in detail. Uploaded-video edit/extend is not offered in the EEA, Switzerland or the UK (not wired here).",
         "A poll that fails with an HTTP error does not mean the clip stopped: Omni may still be running and billing at Google. Keep the task id, retry the poll with the same id, and never submit again.",
-        "Gate stays open until the owner's lawyer has read the Gemini API Additional Terms and the Google APIs Terms for a credits-based creative platform whose users may be under 18 or consumers. No credit price may be added before that."
+        "Gate stays open until the owner's lawyer has read the Gemini API Additional Terms and the Google APIs Terms for a credits-based creative platform whose users may be under 18 or consumers. No credit price may be added before that.",
+        "Silent routing: from 2026-12-03 a call to gemini-omni-1.1-flash is served by gemini-omni-1.2-flash and billed at 1.2's rates (aistudio.google.com/docs/pricing and /docs/deprecations, read 2026-11-11). shutdown.on ends the sale that day, so no 1.1 job is sold as 1.1 after it."
       ],
       "attribution": null,
       "api_exposure": "web_only",
