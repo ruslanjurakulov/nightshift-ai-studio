@@ -1397,13 +1397,14 @@
       "entitlement": "models_image:basic",
       "terms_gate": null,
       "terms_notes": [
+        "Ideogram Developer API Agreement 2.3.3 (rev. 2024-08-14): no providing the Ideogram API or model access to third parties. Studio generations fit 2.1(b); our public API and MCP would pass it on. Hence api_exposure web_only",
         "Ideogram API terms: show 'Powered by Ideogram' and Ideogram's marks where the feature is offered"
       ],
       "attribution": {
         "text": "Powered by Ideogram",
         "url": "https://ideogram.ai"
       },
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 2
@@ -1452,13 +1453,14 @@
       "entitlement": "models_image:premium",
       "terms_gate": null,
       "terms_notes": [
+        "Ideogram Developer API Agreement 2.3.3 (rev. 2024-08-14): no providing the Ideogram API or model access to third parties. Studio generations fit 2.1(b); our public API and MCP would pass it on. Hence api_exposure web_only",
         "Ideogram API terms: show 'Powered by Ideogram' and Ideogram's marks where the feature is offered"
       ],
       "attribution": {
         "text": "Powered by Ideogram",
         "url": "https://ideogram.ai"
       },
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 2
@@ -1509,13 +1511,14 @@
       "entitlement": "models_image:basic",
       "terms_gate": null,
       "terms_notes": [
+        "Ideogram Developer API Agreement 2.3.3 (rev. 2024-08-14): no providing the Ideogram API or model access to third parties. Studio generations fit 2.1(b); our public API and MCP would pass it on. Hence api_exposure web_only",
         "Ideogram API terms: show 'Powered by Ideogram' and Ideogram's marks where the feature is offered"
       ],
       "attribution": {
         "text": "Powered by Ideogram",
         "url": "https://ideogram.ai"
       },
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 2
