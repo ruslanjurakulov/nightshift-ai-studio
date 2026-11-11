@@ -88,10 +88,14 @@ export const MAX_AUDIO_CLIPS = 64;
 export const MAX_TOTAL_CLIPS = 5000;
 export const MAX_CUES = 5000;
 export const MAX_TEXT = 500;
-export const SPEED_MIN = 0.25;
-export const SPEED_MAX = 4;
+/** A clip's constant speed (modules/timeline.py SPEED_MIN/MAX; 0.25-4 before the editor-parity change). */
+export const SPEED_MIN = 0.1;
+export const SPEED_MAX = 10;
+/** A speed CURVE's points keep the narrower range its sound slices were tuned for (timeline.py RAMP_SPEED_*). */
+export const RAMP_SPEED_MIN = 0.25;
+export const RAMP_SPEED_MAX = 4;
 /** The speeds the editor's keys offer, from the document's slowest to its fastest (any value between is valid; the number box takes it). */
-export const SPEEDS = [SPEED_MIN, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, SPEED_MAX] as const;
+export const SPEEDS = [SPEED_MIN, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, SPEED_MAX] as const;
 export const SIZE_MIN = 8;
 export const SIZE_MAX = 512;
 /** The text sizes the editor's slider offers, in output pixels. */
@@ -99,6 +103,10 @@ export const TEXT_SIZE_MIN = 24;
 export const TEXT_SIZE_MAX = 200;
 export const GAIN_DB_MIN = -60;
 export const GAIN_DB_MAX = 12;
+/** A video clip's own sound: from silent up to about 200 % (+6 dB); timeline.py CLIP_GAIN_DB_MAX. */
+export const CLIP_GAIN_DB_MAX = 6;
+/** The clip volume control (0-200 %): its loudest step, and 0 % is GAIN_DB_MIN (-60 dB, silent to the ear). */
+export const CLIP_VOLUME_MAX_PCT = 200;
 /** Music ducking (modules/timeline.py DUCK_*): a track is lowered by an exact
  *  amount while speech plays. The slider offers a narrower range than a
  *  document may hold: under 3 dB is hard to hear, over 30 dB is a mute. */
@@ -283,6 +291,9 @@ export const RENDER_TIMEOUT_BASE_S = 120;
 export const RENDER_TIMEOUT_MAX_S = 5400;
 export const RENDER_PLAIN_FACTOR = 1;
 export const INTERP_SECONDS_PER_FRAME = 0.4;
+/** Render seconds charged per second of SOURCE a clip faster than 1x decodes beyond its own length
+ *  (modules/timeline.py FAST_SECONDS_PER_SOURCE_S; calibrated on a 1080p60 phone-like source). */
+export const FAST_SECONDS_PER_SOURCE_S = 0.35;
 export function renderTimeoutS(lengthS: number): number {
   return Math.min(
     RENDER_TIMEOUT_MAX_S,
@@ -389,6 +400,7 @@ const V_CLIP_KEYS = [
   "speed_curve",
   "interpolate",
   "stabilize",
+  "gain_db",
   ...EFFECT_KEYS,
 ];
 const A_CLIP_KEYS = [
@@ -495,6 +507,9 @@ export interface VideoClip {
   out_s: number;
   speed: number;
   audio: boolean;
+  /** The level of the clip's own sound in dB (GAIN_DB_MIN..CLIP_GAIN_DB_MAX); absent = 0, as
+   *  recorded. Only matters with `audio: true`. The editor shows it as 0-200 %. */
+  gain_db?: number;
   /** blur = the whole picture over a blurred copy of itself (no bars). */
   fit?: "contain" | "cover" | "blur";
   /** The clip's colour grade (ffmpeg eq); none = no change. lib/editorGrade.ts. */
@@ -716,6 +731,24 @@ function mediaLength(r: Record<string, unknown>): number {
   return ms(range / speedOf(r));
 }
 
+/** The estimated render seconds a clip faster than 1x adds (modules/timeline.py `fast_seconds`):
+ *  FAST_SECONDS_PER_SOURCE_S per second of source beyond its own length; 0 at or below 1x, frozen, or
+ *  for a range that is not a usable number. */
+export function fastSeconds(c: Record<string, unknown> | VideoClip): number {
+  const r = c as Record<string, unknown>;
+  if (r.freeze === true || !isNum(r.in_s) || !isNum(r.out_s)) return 0;
+  const range = ms(r.out_s) - ms(r.in_s);
+  if (!(range > 0)) return 0;
+  return FAST_SECONDS_PER_SOURCE_S * Math.max(0, range - mediaLength(r));
+}
+
+/** The fast-clip charge as the validators apply it (modules/timeline.py `fast_estimate`): nothing for a
+ *  timeline longer than the export renders (EXPORT_MAX_S), which the export refuses anyway and whose
+ *  allowance has stopped growing; charging there would refuse at save drafts that saved before. */
+export function fastCharged(fastEst: number, lengthS: number): number {
+  return lengthS > EXPORT_MAX_S + 1e-9 ? 0 : fastEst;
+}
+
 /** A speed curve that can be worked with (the validator has the strict rules). */
 function usableCurve(v: unknown): SpeedPoint[] | null {
   if (!Array.isArray(v) || v.length < RAMP_MIN_POINTS) return null;
@@ -832,9 +865,10 @@ function interpStabEstimates(
   fps: number,
   width: number,
   height: number,
-): { interp: number; interpEst: number; stabEst: number } {
+): { interp: number; interpEst: number; stabEst: number; fastEst: number } {
   let interp = 0;
   let stabEst = 0;
+  let fastEst = 0;
   for (const t of counted)
     if (t.kind === "V")
       for (const c of t.clips) {
@@ -849,8 +883,9 @@ function interpStabEstimates(
           interp += interpolatedFrames(c.in_s, c.out_s, slowest, fps, width, height);
         }
         if (c.stabilize === true) stabEst += stabilizeSeconds(c, fps, width, height);
+        fastEst += fastSeconds(c);
       }
-  return { interp, interpEst: interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0, stabEst };
+  return { interp, interpEst: interp <= INTERP_MAX_FRAMES_DOC ? INTERP_SECONDS_PER_FRAME * interp : 0, stabEst, fastEst };
 }
 
 /**
@@ -988,25 +1023,29 @@ export function validateTimeline(doc: unknown): string[] {
       `timeline: at most ${STABILIZE_MAX_DOC_S} s of video can be stabilised in all (got ${Math.round(stabS)} s)`,
     );
   if (!problems.length && isInt(doc.width) && isInt(doc.height) && fps) {
-    const { interp, interpEst, stabEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
+    const est = interpStabEstimates(counted, fps, doc.width, doc.height);
+    const { interp, interpEst, stabEst } = est;
+    const fastEst = fastCharged(est.fastEst, docDuration(doc as unknown as TimelineDoc));
     if (interp > INTERP_MAX_FRAMES_DOC)
       problems.push(
         `timeline: interpolated slow motion would make about ${Math.round(interp)} frames (1080p equivalent) in all; at most ${INTERP_MAX_FRAMES_DOC} per timeline`,
       );
-    if (interpEst + stabEst > 0) {
+    if (interpEst + stabEst + fastEst > 0) {
       const length = docDuration(doc as unknown as TimelineDoc);
-      const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst;
+      const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst;
       const allowed = renderTimeoutS(length);
       if (work > allowed + 1e-9) {
         const what = [
           interpEst > 0 ? "interpolated slow motion" : "",
           stabEst > 0 ? "stabilising" : "",
+          fastEst > 0 ? "playing clips faster than 1x" : "",
         ]
           .filter(Boolean)
           .join(" and ");
         const fix = [
           interpEst > 0 ? "slow less of it" : "",
           stabEst > 0 ? "stabilise less of it" : "",
+          fastEst > 0 ? "speed them up less" : "",
         ]
           .filter(Boolean)
           .join(" and ");
@@ -1041,8 +1080,8 @@ export function validateTimeline(doc: unknown): string[] {
       else if (fps && !problems.length) {
         const length = docDuration(doc as unknown as TimelineDoc);
         const shapeEst = shapeWorkSeconds(doc.shapes as WorkShape[], fps, { width: doc.width, height: doc.height }, length);
-        const { interpEst, stabEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
-        const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + shapeEst;
+        const est = interpStabEstimates(counted, fps, doc.width, doc.height);
+        const work = RENDER_PLAIN_FACTOR * length + est.interpEst + est.stabEst + fastCharged(est.fastEst, length) + shapeEst;
         const allowed = renderTimeoutS(length);
         if (shapeEst > 0 && work > allowed + 1e-9)
           problems.push(
@@ -1134,6 +1173,7 @@ function validateMediaClip(
   }
   if (kind === "V" && "audio" in clip && typeof clip.audio !== "boolean")
     problems.push(`${where}: audio must be true or false`);
+  if (kind === "V") numIn(clip, "gain_db", GAIN_DB_MIN, CLIP_GAIN_DB_MAX, where, problems);
   let curve: SpeedPoint[] | null = null;
   if (kind === "V" && "speed_curve" in clip)
     curve = validateSpeedCurve(clip, where, problems);
@@ -1295,15 +1335,15 @@ function validateSpeedCurve(
       return;
     }
     numIn(p, "at", 0, 1, pw, problems);
-    numIn(p, "speed", SPEED_MIN, SPEED_MAX, pw, problems);
+    numIn(p, "speed", RAMP_SPEED_MIN, RAMP_SPEED_MAX, pw, problems);
     if (
       !(
         isNum(p.at) &&
         p.at >= 0 &&
         p.at <= 1 &&
         isNum(p.speed) &&
-        p.speed >= SPEED_MIN &&
-        p.speed <= SPEED_MAX
+        p.speed >= RAMP_SPEED_MIN &&
+        p.speed <= RAMP_SPEED_MAX
       )
     ) {
       ok = false;
@@ -2340,6 +2380,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
       out_s: Number(c.out_s),
       speed: isNum(c.speed) ? c.speed : 1,
       audio: c.audio === true,
+      ...(isNum(c.gain_db) && c.gain_db !== 0 ? { gain_db: c.gain_db } : {}),
       ...(c.fit === "cover" || c.fit === "contain" || c.fit === "blur"
         ? { fit: c.fit as "cover" | "contain" | "blur" }
         : {}),
@@ -2432,6 +2473,7 @@ export function toDoc(model: EditorModel): TimelineDoc {
         in_s: ms(c.in_s),
         out_s: ms(c.out_s),
         speed: ms(c.speed),
+        ...(c.gain_db !== undefined ? { gain_db: ms(c.gain_db) } : {}),
       })),
     },
     ...model.keep,
@@ -2939,6 +2981,140 @@ export function setClipAudio(
     ...model,
     clips: model.clips.map((c) => (c.id === id ? { ...c, audio } : c)),
   };
+}
+
+/** The clip volume control's percent for a clip's own sound (100 = as recorded; GAIN_DB_MIN reads 0). */
+export function clipVolumePct(c: Pick<VideoClip, "gain_db">): number {
+  const db = c.gain_db ?? 0;
+  if (db <= GAIN_DB_MIN) return 0;
+  return Math.round(100 * 10 ** (db / 20));
+}
+
+/** dB for a percent of the control: 0 % is GAIN_DB_MIN, 200 % is held at CLIP_GAIN_DB_MAX
+ *  (+6 dB reads 200 %), to the millisecond-style 3 decimals the document stores. */
+export function volumePctToDb(pct: number): number {
+  if (!Number.isFinite(pct) || pct <= 0) return GAIN_DB_MIN;
+  return ms(clamp(20 * Math.log10(pct / 100), GAIN_DB_MIN, CLIP_GAIN_DB_MAX));
+}
+
+/** Set the level of a clip's own sound from the control's percent. 100 % REMOVES the field,
+ *  so an untouched clip keeps exactly its document. */
+export function setClipVolume(model: EditorModel, id: string, pct: number): EditorModel {
+  const at = model.clips.find((c) => c.id === id);
+  if (!at) return model;
+  const db = volumePctToDb(pct);
+  if ((at.gain_db ?? 0) === db) return model;
+  return {
+    ...model,
+    clips: model.clips.map((c) => {
+      if (c.id !== id) return c;
+      const { gain_db: _old, ...rest } = c;
+      void _old;
+      return db === 0 ? rest : { ...rest, gain_db: db };
+    }),
+  };
+}
+
+/** Why a clip's own sound cannot be detached to a sound track of its own, or null when it can.
+ *  A sound clip has no speed or direction, so only a forward clip at 1x is offered; a photo has no
+ *  sound; the editor holds at most MAX_EDITOR_SOUNDS sounds. */
+export type DetachProblem = "no_sound" | "not_video" | "retimed" | "sounds_full";
+export function detachProblem(
+  model: EditorModel,
+  id: string,
+  assetKind: EditorAsset["kind"] | undefined,
+): DetachProblem | null {
+  const c = model.clips.find((x) => x.id === id);
+  if (!c || !c.audio || c.freeze) return "no_sound";
+  if (assetKind !== "video") return "not_video";
+  if (c.speed !== 1 || c.speed_curve || c.reverse) return "retimed";
+  if (model.sounds.length >= MAX_EDITOR_SOUNDS) return "sounds_full";
+  return null;
+}
+
+/**
+ * Detach a clip's own sound: the clip goes silent and the same stretch of the same file becomes a
+ * sound of its own (a speech sound, as the clip's sound was for ducking), where it starts on the
+ * timeline now; from then on it is moved, trimmed and deleted like any sound and no longer follows
+ * the clip. Its level and clean-up go with it. One input of the mix either way (MAX_AUDIO_CLIPS).
+ * Null when `detachProblem` says no.
+ */
+export function detachClipAudio(
+  model: EditorModel,
+  id: string,
+  assetKind: EditorAsset["kind"] | undefined,
+): { model: EditorModel; soundId: string } | null {
+  if (detachProblem(model, id, assetKind) !== null) return null;
+  const c = layout(model.clips).find((x) => x.id === id)!;
+  const soundId = freshId(model, "m");
+  const sound: SoundClip = {
+    id: soundId,
+    asset_id: c.asset_id,
+    start_s: ms(c.start_s),
+    in_s: ms(c.in_s),
+    out_s: ms(c.out_s),
+    gain_db: ms(clamp(c.gain_db ?? 0, GAIN_DB_MIN, GAIN_DB_MAX)),
+    fade_in_s: 0,
+    fade_out_s: 0,
+    role: "speech",
+    ...(c.denoise ? { denoise: true } : {}),
+    ...(c.loudnorm ? { loudnorm: true } : {}),
+  };
+  return {
+    model: {
+      ...model,
+      clips: model.clips.map((x) => {
+        if (x.id !== id) return x;
+        const { gain_db: _g, denoise: _d, loudnorm: _l, ...rest } = x;
+        void _g;
+        void _d;
+        void _l;
+        return { ...rest, audio: false };
+      }),
+      sounds: [...model.sounds, sound],
+    },
+    soundId,
+  };
+}
+
+/** Can one more clip go on the picture lane? */
+export function canInsertClip(model: EditorModel): boolean {
+  return model.clips.length < MAX_EDITOR_CLIPS;
+}
+
+/**
+ * A copy of `source` (a clip of this project: duplicate, or paste) put right after clip `afterId`
+ * (at the end when that is not on the lane), with a fresh id. The copy keeps every setting of the
+ * original but its way in: it follows the clip before it with a cut (a cross-fade belongs to the
+ * place a clip was, not to the clip). Its own sound is off when the mix is already full. The
+ * editor's settling (lib/editorSettle.ts) then keeps per-project budgets (smoothing, steadying) honest.
+ */
+export function insertClipCopy(
+  model: EditorModel,
+  source: VideoClip,
+  afterId: string | null,
+): { model: EditorModel; id: string } | null {
+  if (!canInsertClip(model)) return null;
+  const id = freshId(model, "c");
+  const copy: VideoClip = withoutTransition({
+    ...(JSON.parse(JSON.stringify(source)) as VideoClip),
+    id,
+    audio: source.audio && audioInputs(model) < MAX_AUDIO_CLIPS,
+  });
+  const clips = layout(model.clips);
+  const i = afterId === null ? -1 : clips.findIndex((c) => c.id === afterId);
+  const at = i < 0 ? clips.length : i + 1;
+  const next = [...clips.slice(0, at), copy, ...clips.slice(at)];
+  return { model: { ...model, clips: layout(next) }, id };
+}
+
+/** Duplicate clip `id`: its copy right after it. */
+export function duplicateClip(
+  model: EditorModel,
+  id: string,
+): { model: EditorModel; id: string } | null {
+  const c = model.clips.find((x) => x.id === id);
+  return c ? insertClipCopy(model, c, id) : null;
 }
 
 export function removeClip(model: EditorModel, id: string): EditorModel {
@@ -3460,10 +3636,11 @@ export function docAssetIds(doc: TimelineDoc): string[] {
   return [...ids].sort();
 }
 
-/** What a track kind may hold (modules/timeline.py TRACK_ASSET_KINDS). */
+/** What a track kind may hold (modules/timeline.py TRACK_ASSET_KINDS). A sound may be a video
+ *  file's sound (a clip's detached audio); a picture has none. */
 const TRACK_ASSET_KINDS: Record<"V" | "A", readonly string[]> = {
   V: ["video", "image"],
-  A: ["audio"],
+  A: ["audio", "video"],
 };
 
 /**

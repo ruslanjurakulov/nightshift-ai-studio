@@ -1,6 +1,6 @@
-"""Speed 0.25-4 with the pitch kept, reverse, and freeze-frame (backend half).
+"""Speed 0.1-10 with the pitch kept, reverse, and freeze-frame (backend half).
 
-Fields (modules/timeline.py): ``speed`` (now 0.25-4), ``reverse``, ``freeze`` on
+Fields (modules/timeline.py): ``speed`` (0.25-4, then 0.1-10), ``reverse``, ``freeze`` on
 a V clip. By class:
 
 * the document: the speed range at both ends and beyond, ``reverse`` /
@@ -49,11 +49,13 @@ def problems_of(**kw):
 
 class DocumentTestCase(unittest.TestCase):
     def test_speed_range_at_both_ends_and_beyond(self):
-        for ok in (0.25, 0.3, 0.5, 1, 2, 3, 4, 4.0):
+        for ok in (0.1, 0.15, 0.25, 0.3, 0.5, 1, 2, 3, 4, 4.0, 5, 8, 10, 10.0):
             self.assertEqual(problems_of(speed=ok), [], ok)
-        for bad in (0.249, 0.2, 4.001, 5, 100, 0, -1, "2", None, True, float("nan"), float("inf"), [2]):
+        for bad in (0.099, 0.05, 10.001, 11, 100, 0, -1, "2", None, True, float("nan"), float("inf"), [2]):
             self.assertTrue(any("speed must be a number" in p for p in problems_of(speed=bad)), bad)
-        self.assertEqual((tl.SPEED_MIN, tl.SPEED_MAX), (0.25, 4.0))
+        self.assertEqual((tl.SPEED_MIN, tl.SPEED_MAX), (0.1, 10.0))
+        # a speed curve keeps the range its sound slices were tuned for
+        self.assertEqual((tl.RAMP_SPEED_MIN, tl.RAMP_SPEED_MAX), (0.25, 4.0))
 
     def test_a_faster_or_slower_clip_lasts_accordingly(self):
         n = tl.normalise(vdoc(out_s=4, speed=4))
@@ -126,7 +128,10 @@ class DocumentTestCase(unittest.TestCase):
         schema = json.loads(tl.SCHEMA_PATH.read_text(encoding="utf-8"))
         props = schema["$defs"]["video_clip"]["properties"]
         self.assertEqual(set(props), set(tl._V_CLIP_KEYS))
-        self.assertEqual((props["speed"]["minimum"], props["speed"]["maximum"]), (0.25, 4.0))
+        self.assertEqual((props["speed"]["minimum"], props["speed"]["maximum"]), (0.1, 10.0))
+        curve = props["speed_curve"]["items"]["properties"]["speed"]
+        self.assertEqual((curve["minimum"], curve["maximum"]), (tl.RAMP_SPEED_MIN, tl.RAMP_SPEED_MAX))
+        self.assertEqual((rs.RAMP_SPEED_MIN, rs.RAMP_SPEED_MAX), (tl.RAMP_SPEED_MIN, tl.RAMP_SPEED_MAX))
         self.assertEqual(props["reverse"]["type"], "boolean")
         self.assertEqual(props["freeze"]["type"], "boolean")
         self.assertEqual((rs.SPEED_MIN, rs.SPEED_MAX), (tl.SPEED_MIN, tl.SPEED_MAX))
@@ -257,9 +262,10 @@ class SpecTestCase(unittest.TestCase):
         loose = rs.Segment(2.0, "/m/a.mp4", reverse=True)
         self.assertTrue(any("needs frame_exact" in p for p in rs.validate(rs.RenderSpec("/o.mp4", segments=[loose]))))
         self.assertEqual(problems(reverse=True, speed=4.0), [])
-        self.assertTrue(problems(speed=4.5))
+        self.assertEqual(problems(speed=10.0), [])
+        self.assertTrue(problems(speed=10.5))
         self.assertTrue(any("audio track 0 speed" in p for p in rs.validate(rs.RenderSpec(
-            "/o.mp4", segments=[rs.Segment(1.0, "/m/a.mp4")], audio_tracks=[rs.AudioTrack("/a.wav", 1.0, speed=0.2)]))))
+            "/o.mp4", segments=[rs.Segment(1.0, "/m/a.mp4")], audio_tracks=[rs.AudioTrack("/a.wav", 1.0, speed=0.05)]))))
 
 
 class CommandTestCase(unittest.TestCase):

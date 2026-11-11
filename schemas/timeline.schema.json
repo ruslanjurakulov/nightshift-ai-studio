@@ -239,8 +239,8 @@
         },
         "speed": {
           "type": "number",
-          "minimum": 0.25,
-          "maximum": 4.0,
+          "minimum": 0.1,
+          "maximum": 10.0,
           "default": 1,
           "description": "Playback speed. in_s/out_s stay source times; the clip lasts (out_s - in_s) / speed. Its own sound (audio: true) keeps its pitch."
         },
@@ -248,6 +248,13 @@
           "type": "boolean",
           "default": false,
           "description": "Play the video's own sound, trimmed and sped like the picture. Off by default so older documents render as before; a source with no sound is silent."
+        },
+        "gain_db": {
+          "type": "number",
+          "minimum": -60.0,
+          "maximum": 6.0,
+          "default": 0,
+          "description": "Level of the clip's own sound in dB (0 = as recorded, 6 = about 200 %), after denoise and loudnorm. Only matters with audio: true."
         },
         "grade": {
           "$ref": "#/$defs/grade",

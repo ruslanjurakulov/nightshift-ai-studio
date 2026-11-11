@@ -21,6 +21,7 @@ import {
   XFADE_LARGE_ZOOM_MAX,
   layout,
   ms,
+  setSpeed,
   stabilizeSeconds,
   type EditorModel,
   type VideoClip,
@@ -44,7 +45,8 @@ export type SettleChange =
   | { kind: "interpolate"; clip: number }
   | { kind: "stabilize"; clip: number }
   | { kind: "blur"; clip: number }
-  | { kind: "zoom"; clip: number; max: number };
+  | { kind: "zoom"; clip: number; max: number }
+  | { kind: "speed"; clip: number; max: number };
 
 function drop(c: VideoClip, ...keys: (keyof VideoClip)[]): VideoClip {
   const out = { ...c };
@@ -56,9 +58,66 @@ function put(model: EditorModel, id: string, c: VideoClip): EditorModel {
   return { ...model, clips: model.clips.map((x) => (x.id === id ? c : x)) };
 }
 
-export function settleAll(model: EditorModel): { model: EditorModel; changes: SettleChange[] } {
+/** The constant-speed clips faster than 1x (a curve stays: its points are at most 4x, which always fits
+ *  on its own; a frozen clip has no speed). */
+function fastClips(m: EditorModel): VideoClip[] {
+  return m.clips.filter((c) => !c.speed_curve && !c.freeze && c.speed > 1);
+}
+
+/** The export's time allowance without the shapes (they are settled last and must not cost clips anything). */
+function fitsWithoutShapes(m: EditorModel): boolean {
+  return renderWork({ ...m, shapes: undefined }).ok;
+}
+
+/**
+ * Clips faster than 1x decode that many seconds of source for each second they last, and on a long timeline
+ * the export cannot afford it. While the timeline is over its allowance, one fast clip at a time is slowed to
+ * the fastest speed that fits (two decimals): those named in `first` (the clips this edit made faster) in that
+ * order, then the fastest. A clip that cannot fit even at 1x is put at 1x and the next one is tried.
+ */
+function slowFastClips(
+  model: EditorModel,
+  first: readonly string[],
+  changes: SettleChange[],
+  number: (id: string) => number,
+): EditorModel {
+  let m = model;
+  for (let guard = 0; guard < 64 && !fitsWithoutShapes(m); guard += 1) {
+    const fast = fastClips(m);
+    const fastest =
+      first.map((id) => fast.find((c) => c.id === id)).find((c) => c !== undefined) ??
+      [...fast].sort((a, b) => b.speed - a.speed)[0];
+    if (!fastest) break;
+    const at = (s: number) => setSpeed(m, fastest.id, s);
+    let lo = 1;
+    let hi = fastest.speed;
+    if (fitsWithoutShapes(at(lo)))
+      for (let i = 0; i < 40 && hi - lo > 0.001; i += 1) {
+        const mid = (lo + hi) / 2;
+        if (fitsWithoutShapes(at(mid))) lo = mid;
+        else hi = mid;
+      }
+    let s = Math.max(1, Math.floor(lo * 100) / 100);
+    while (s > 1 && !fitsWithoutShapes(at(s))) s = Math.max(1, Math.round((s - 0.01) * 100) / 100);
+    m = at(s);
+    changes.push({ kind: "speed", clip: number(fastest.id), max: s });
+  }
+  return m;
+}
+
+/**
+ * `previous` (the model before the edit, when the caller has it) tells which clips the edit made faster: when
+ * the timeline is over its time allowance because of fast clips, those are slowed first, before anything
+ * else's smoothing or steadying is switched off (making clip 2 ten times faster must not quietly cost clip 1
+ * its steadying).
+ */
+export function settleAll(
+  model: EditorModel,
+  previous?: EditorModel,
+): { model: EditorModel; changes: SettleChange[] } {
   const hasLimits =
-    model.clips.some((c) => c.reverse || c.interpolate || c.stabilize) || Boolean(model.shapes?.length);
+    model.clips.some((c) => c.reverse || c.interpolate || c.stabilize || c.speed > 1) ||
+    Boolean(model.shapes?.length);
   const large = isLargeFrame(model);
   if (!hasLimits && !large) return { model, changes: [] };
   const changes: SettleChange[] = [];
@@ -90,6 +149,21 @@ export function settleAll(model: EditorModel): { model: EditorModel; changes: Se
         changes.push({ kind: "zoom", clip: number(c.id), max: XFADE_LARGE_ZOOM_MAX });
       }
     }
+
+  // 2b. over the export's time allowance, and fast clips' decoding is what tips it (with every fast clip at
+  //     1x it would fit): the fast clips are slowed first, those this edit made faster before the others, and
+  //     smoothing and steadying stay. When it would not fit even then, they are settled below first.
+  if (!fitsWithoutShapes(m) && fastClips(m).length) {
+    const allAtOne = fastClips(m).reduce((x, c) => setSpeed(x, c.id, 1), m);
+    if (fitsWithoutShapes(allAtOne)) {
+      const before = new Map((previous?.clips ?? []).map((c) => [c.id, c.speed_curve ? 1 : c.speed]));
+      const edited = fastClips(m)
+        .filter((c) => c.speed > (before.get(c.id) ?? Number.POSITIVE_INFINITY))
+        .sort((a, b) => b.speed - a.speed)
+        .map((c) => c.id);
+      m = slowFastClips(m, edited, changes, number);
+    }
+  }
 
   // 3. smoothing and steadying that no longer fit are switched off, the last clip first
   //    (each is judged as if it were on, with the others as they stand)
@@ -128,6 +202,9 @@ export function settleAll(model: EditorModel): { model: EditorModel; changes: Se
     changes.push({ kind: worst.kind, clip: number(worst.id) });
     m = put(m, worst.id, drop(x, worst.kind));
   }
+
+  // 4b. what is still over after that and is fast clips' decoding: slowed as in 2b
+  m = slowFastClips(m, [], changes, number);
 
   // 5. shapes that no longer fit the export's memory or time (another frame size, a shorter timeline) are made
   //    narrower, the widest first, and the last ones are removed only when even the narrowest do not fit

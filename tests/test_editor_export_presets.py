@@ -8,8 +8,9 @@ length) from a CLOSED list. These tests pin what makes that safe:
   fps list, the export's 1800 s cap, the decode budget);
 * a bad data file fails on load, naming the rule, and an unknown preset id is
   refused whatever it looks like;
-* applying a preset only writes width / height / fps, and the document then
-  goes through the ordinary timeline validator and the ordinary render
+* applying a preset only writes width / height (the rate is the document's own,
+  chosen apart from the frame: 24, 25, 30 or 60 in the editor), and the document
+  then goes through the ordinary timeline validator and the ordinary render
   commands with the same hardening flags on every input.
 """
 
@@ -68,12 +69,13 @@ class TheListTestCase(unittest.TestCase):
                 self.assertGreater(p.max_duration_s, 0)
                 self.assertLessEqual(p.max_duration_s, 1800.0)             # the export's own cap
                 self.assertLessEqual(p.max_duration_s, editor_export.EXPORT_MAX_S)
-                self.assertLessEqual(ml.decode_work(p.width, p.height, p.fps, p.max_duration_s),
+                # at the fastest rate a document may choose, not only the preset's own
+                self.assertLessEqual(ml.decode_work(p.width, p.height, max(tl.FPS_VALUES), p.max_duration_s),
                                      ml.DECODE_BUDGET_PX)
 
-    def test_no_two_presets_are_the_same_frame_at_the_same_rate(self):
-        # The picker tells them apart by the document's frame, so they must differ.
-        keys = [(p.width, p.height, p.fps) for p in ep.load().values()]
+    def test_no_two_presets_are_the_same_frame(self):
+        # The picker tells them apart by the document's frame alone (the rate is chosen apart), so they must differ.
+        keys = [(p.width, p.height) for p in ep.load().values()]
         self.assertEqual(len(keys), len(set(keys)))
 
     def test_the_export_limit_the_caps_are_held_to_is_the_databases(self):
@@ -130,6 +132,12 @@ class BadDataTestCase(unittest.TestCase):
         with mock.patch.object(ml, "DECODE_BUDGET_PX", 1e9):
             self.assertIn("decode budget", self.refused())
 
+    def test_the_decode_budget_is_judged_at_60_fps_whatever_the_presets_own_rate(self):
+        # 1080x1350 for 600 s: 2.6e10 pixels at 30 fps, 5.2e10 at 60. A budget between the two must
+        # refuse the 30 fps entry too, since a person can export it at 60.
+        with mock.patch.object(ml, "DECODE_BUDGET_PX", 4e10):
+            self.assertIn("decode budget", self.refused(fps=30))
+
 
 class LoadTestCase(unittest.TestCase):
     def load(self, presets, **top):
@@ -148,6 +156,8 @@ class LoadTestCase(unittest.TestCase):
     def test_duplicates_empty_lists_and_the_wrong_version_are_refused(self):
         self.assertIn("duplicate", self.refused([entry(), entry(width=1080, height=1080)]))
         self.assertIn("repeats", self.refused([entry(id="a"), entry(id="b")]))
+        # the same frame at another rate is the same choice in the picker
+        self.assertIn("repeats", self.refused([entry(id="a"), entry(id="b", fps=60)]))
         self.assertIn("non-empty", self.refused([]))
         self.assertIn("version", self.refused([entry()], version=2))
         self.assertIn("version", self.refused([entry()], extra=True))
@@ -189,12 +199,13 @@ class ClosedSetTestCase(unittest.TestCase):
 
 
 class ApplyTestCase(unittest.TestCase):
-    def test_a_preset_writes_the_frame_and_the_rate_and_nothing_else(self):
+    def test_a_preset_writes_the_frame_and_nothing_else_the_rate_is_the_documents(self):
         doc = golden_doc()
+        doc["fps"] = 60
         before = copy.deepcopy(doc)
         for p in ep.load().values():
             out = ep.apply(doc, p.id)
-            self.assertEqual((out["width"], out["height"], out["fps"]), (p.width, p.height, p.fps))
+            self.assertEqual((out["width"], out["height"], out["fps"]), (p.width, p.height, 60))
             rest = {k: v for k, v in out.items() if k not in ("width", "height", "fps")}
             self.assertEqual(rest, {k: v for k, v in doc.items() if k not in ("width", "height", "fps")})
         self.assertEqual(doc, before)        # the caller's document is never edited
@@ -220,34 +231,37 @@ class ApplyTestCase(unittest.TestCase):
         worse["tracks"][0]["clips"][0]["speed"] = 99
         self.assertTrue(any("speed" in s for s in ep.problems(worse, "vertical_1080p")))
 
-    def test_the_validator_judges_the_frame_and_rate_the_preset_sets(self):
+    def test_the_validator_judges_the_presets_frame_at_the_documents_rate(self):
         # Interpolated slow motion is budgeted in frames at the OUTPUT's rate and size: the same
-        # clip passes at 30 fps and is refused at 60, and the preset's rate is the one judged.
-        doc = golden_doc(width=1920, height=1080)
+        # clip passes at 30 fps and is refused at 60, and the DOCUMENT's rate is the one judged.
+        doc = golden_doc(width=1280, height=720)
         clip = doc["tracks"][0]["clips"][0]
         clip.update({"in_s": 0.0, "out_s": 4.0, "speed": 0.5, "interpolate": True})
         doc["tracks"][0]["clips"] = [clip]
-        table = {"p30": ep.parse_preset(entry(id="p30", width=1920, height=1080, fps=30)),
-                 "p60": ep.parse_preset(entry(id="p60", width=1920, height=1080, fps=60))}
-        self.assertEqual(ep.problems(doc, "p30", table), [])
-        self.assertTrue(any("interpolating" in s for s in ep.problems(doc, "p60", table)))
-        # The same document, judged as its own frame at 60 fps, gives the same answer.
+        doc["fps"] = 30
+        self.assertEqual(ep.problems(doc, "youtube_1080p"), [])
         doc60 = copy.deepcopy(doc)
         doc60["fps"] = 60
-        self.assertEqual(ep.problems(doc, "p60", table), tl.validate(doc60))
+        self.assertTrue(any("interpolating" in s for s in ep.problems(doc60, "youtube_1080p")))
+        # The same document, judged as its own frame at 60 fps, gives the same answer.
+        own = copy.deepcopy(doc60)
+        own["width"], own["height"] = 1920, 1080
+        self.assertEqual(ep.problems(doc60, "youtube_1080p"), tl.validate(own))
 
 
 class PresetOfTestCase(unittest.TestCase):
-    def test_a_documents_preset_is_the_one_its_frame_and_rate_are_exactly(self):
+    def test_a_documents_preset_is_the_one_its_frame_is_exactly_at_any_rate(self):
         for p in ep.load().values():
-            doc = ep.apply(golden_doc(), p.id)
-            self.assertEqual(ep.preset_of(doc).id, p.id)
+            for fps in tl.FPS_VALUES:
+                doc = ep.apply(golden_doc(), p.id)
+                doc["fps"] = fps
+                self.assertEqual(ep.preset_of(doc).id, p.id, (p.id, fps))
 
-    def test_a_custom_size_or_rate_matches_none(self):
+    def test_a_custom_size_matches_none(self):
         doc = golden_doc(width=1280, height=1000)
         self.assertIsNone(ep.preset_of(doc))
         doc = ep.apply(golden_doc(), "square_1080")
-        doc["fps"] = 60
+        doc["height"] = 1082
         self.assertIsNone(ep.preset_of(doc))
         self.assertIsNone(ep.preset_of({}))
 
@@ -285,7 +299,7 @@ class SameRenderPathTestCase(unittest.TestCase):
     def test_the_frame_in_the_commands_is_the_presets(self):
         for p in ep.load().values():
             cmds, spec = self.commands(ep.apply(golden_doc(), p.id))
-            self.assertEqual((spec.width, spec.height, spec.fps), (p.width, p.height, p.fps))
+            self.assertEqual((spec.width, spec.height, spec.fps), (p.width, p.height, golden_doc()["fps"]))
             text = " ".join(" ".join(c) for c in cmds)
             self.assertIn(f"{p.width}:{p.height}", text)
 

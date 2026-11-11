@@ -17,19 +17,24 @@ note for text looks).
 
 ## Status
 
+Every group below is on `main` (checked 2026-11-11 against `modules/timeline.py`, `lib/editor.ts`
+and the editor panels). The branches were merged as #466 (group 1), #480 (groups 2-10, squashed
+into one commit) and #484 (group 11); group 12 is the editor-parity change that added this line.
+
 | # | Branch | Fields | State |
 |---|--------|--------|-------|
-| 1 | `claude/render-xfade-more` | `transition.style` (23 more names) | PR open |
-| 2 | `claude/render-anim-inout` | text and overlay `anim_in`, `anim_out`, `anim_in_s`, `anim_out_s` | PR open (stacked on 1) |
-| 3 | `claude/render-effects` | V clip `filter`, `filter_strength`, `vignette`, `blur`, `sharpen`, `grain`, `flip_h`, `flip_v`, `rotate` | PR open (stacked on 2) |
-| 4 | `claude/render-keyframes` | V clip `move` (Ken Burns zoom/pan); overlay `move.to` (x, y, w, opacity) | PR open (stacked on 3) |
-| 5 | `claude/render-blur-fit` | V clip `fit: "blur"` | PR open (stacked on 4) |
-| 6 | `claude/render-speed` | V clip `speed` 0.25-4 (pitch kept), `reverse`, `freeze` | PR open (stacked on 5) |
-| 7 | `claude/render-chroma-audio` | overlay `chroma`; `denoise`, `loudnorm` on A clips and V clips | PR open (stacked on 6) |
-| 8 | `claude/render-crop` | V clip `crop` rectangle, free `angle` | PR open (stacked on 7) |
-| 9 | `claude/render-speed-ramp` | V clip `speed_curve` (2-6 points), `interpolate` | PR open (stacked on 8) |
-| 10 | `claude/render-stabilise` | V clip `stabilize` | PR open (stacked on 9) |
-| 11 | `claude/editor-shapes` | top-level `shapes` (stickers, shapes, progress bar) | PR open (on main) |
+| 1 | `claude/render-xfade-more` | `transition.style` (23 more names) | on main (#466) |
+| 2 | `claude/render-anim-inout` | text and overlay `anim_in`, `anim_out`, `anim_in_s`, `anim_out_s` | on main (#480) |
+| 3 | `claude/render-effects` | V clip `filter`, `filter_strength`, `vignette`, `blur`, `sharpen`, `grain`, `flip_h`, `flip_v`, `rotate` | on main (#480) |
+| 4 | `claude/render-keyframes` | V clip `move` (Ken Burns zoom/pan); overlay `move.to` (x, y, w, opacity) | on main (#480) |
+| 5 | `claude/render-blur-fit` | V clip `fit: "blur"` | on main (#480) |
+| 6 | `claude/render-speed` | V clip `speed` (0.25-4 then; 0.1-10 since group 12), `reverse`, `freeze` | on main (#480) |
+| 7 | `claude/render-chroma-audio` | overlay `chroma`; `denoise`, `loudnorm` on A clips and V clips | on main (#480) |
+| 8 | `claude/render-crop` | V clip `crop` rectangle, free `angle` | on main (#480) |
+| 9 | `claude/render-speed-ramp` | V clip `speed_curve` (2-6 points), `interpolate` | on main (#480) |
+| 10 | `claude/render-stabilise` | V clip `stabilize` | on main (#480) |
+| 11 | `claude/editor-shapes` | top-level `shapes` (stickers, shapes, progress bar) | on main (#484) |
+| 12 | `claude/editor-parity-1` | V clip `gain_db`; a video on an A track (detached sound); `speed` 0.1-10; export frame rate | added by this branch (section 12) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -235,17 +240,16 @@ like `contain` (the picture alone).
   left alone and listed for the owner. Chains of the new fields (`blur`, turns,
   crop, effects that turn) add `setsar=1` themselves.
 
-## 6. Speed 0.25 to 4, reverse, freeze
+## 6. Speed 0.1 to 10, reverse, freeze
 
-* `speed` on a V clip is now 0.25 to 4 (was 0.5 to 2). `in_s`/`out_s` stay SOURCE
+* `speed` on a V clip is 0.1 to 10 (0.5 to 2 at first, then 0.25 to 4; group 12 widened it, see
+  section 12 for the cost). A speed CURVE keeps 0.25 to 4 (section 9). `in_s`/`out_s` stay SOURCE
   times; the clip lasts `(out_s - in_s) / speed` on the timeline. Its own sound
   (`audio: true`) keeps its pitch at every speed (chained `atempo` stages).
-  The editor's own list (`SPEEDS` in `lib/editor.ts`, 0.5 to 2) is a subset
-  the picker offers; the constants `SPEED_MIN`/`SPEED_MAX` are the document's
-  (0.25/4), and `setSpeed` clamps to them. Track C: widen `SPEEDS` (and the
-  picker) as wanted, e.g. 0.25, 0.5, ..., 3, 4.
-  At 0.25x a frame is shown four times; there is no frame interpolation (a
-  later item adds optional flow-based slow motion).
+  The editor's own list (`SPEEDS` in `lib/editor.ts`: 0.1, 0.25, 0.5, 0.75, 1,
+  1.25, 1.5, 2, 3, 4, 6, 10) is what the keys offer; the constants
+  `SPEED_MIN`/`SPEED_MAX` are the document's (0.1/10), and `setSpeed` clamps to
+  them. At 0.1x a frame is shown ten times unless `interpolate` is on (section 9).
 * `reverse: true`: plays the source range backwards (picture and the clip's own
   sound), at its `speed`. ffmpeg's `reverse` holds the whole range in memory,
   so the range is capped: `out_s - in_s` frames at the DOCUMENT's frame size
@@ -651,21 +655,25 @@ project keeps exactly its document.
 | clip `move` | "Zoom and pan" (`ClipMoveSection`): presets, start and end windows, a map | C2 |
 | overlay `move.to` | "Move to an end position" (`OverlayMoveSection`) | C2 |
 | clip `fit: "blur"` | third key of "Picture in the frame" (`FitPicker`); `fitOf()` reports it | C2 |
-| clip `speed` 0.25-4, `reverse`, `freeze` | "Speed" keys + number box, "Direction, freeze and slow motion" (`ClipSpeedSection`), "Freeze the frame at the playhead" | C2 |
+| clip `speed` 0.1-10, `reverse`, `freeze` | "Speed" keys + number box, "Direction, freeze and slow motion" (`ClipSpeedSection`), "Freeze the frame at the playhead" | C2 |
 | overlay `chroma` | "Remove a background colour" (`OverlayChromaSection`): ready screens, colour box, code, screen picker where the browser has one, how much, softness | C3 |
 | `denoise`, `loudnorm` | "Steady picture and clean sound" on a clip (`ClipCleanSection`), "Clean up sound" on a music / sound clip | C3 |
 | clip `stabilize` | toggle in "Steady picture and clean sound", with the cost, the limits and the project's use | C3 |
 | clip `speed_curve`, `interpolate` | "Speed curve" (point rows and a plot), "Smoother slow motion" with its budget | C2 |
 | `shapes` | "Add shape" beside Add overlay and Add text: a picker of seven tiles (radio group, 44 px) and an inspector per kind (`ShapePanel.tsx`) | E |
-| `width`, `height`, `fps` | "Export format" (`ExportPresetPicker`): five formats from a closed list, a native disclosure with a radio group, beside the Export button | P |
+| `width`, `height`, `fps` | "Export format" (`ExportPresetPicker`): five formats from a closed list, a native disclosure with a radio group, beside the Export button; a second radio group "Frame rate" (24, 25, 30, 60) writes `fps` on its own | P, 12 |
+| clip `gain_db` | "Volume" 0-200 % slider under the clip's sound switch (`ClipVolumeDetach` in `ClipSoundTools.tsx`); muting is the switch | 12 |
+| a video on an A track | "Detach audio" beside the volume (same component) | 12 |
+| (no field) | "Duplicate", "Copy", "Paste after this clip" in the clip inspector (`ClipCopyTools`), and Ctrl/Cmd + D, C, V | 12 |
 
 Export formats (P): `schemas/export_presets.json` is the list (YouTube wide 1080p and 720p, vertical
 1080x1920 for Shorts / Reels / TikTok, square, 4:5), `modules/export_presets.py` loads it and refuses an
 entry outside the limits it must not exceed (even sides, nothing above 1440p, the fps list, a
 recommended length of at most the export's 1800 s, the library's decode budget), and
 `lib/editorExportPresets.ts` is the twin the picker reads (a test compares it to the JSON). A format is a
-frame size, a rate and a recommended length, nothing more: choosing one writes `width`, `height` and `fps`
-(the fields the frame picker already writes), so the document goes through `timeline.validate`, the same
+frame size, a usual rate and a recommended length, nothing more: choosing one writes `width` and `height`
+(the fields the frame picker already writes; the rate is the "Frame rate" group's, group 12), so the document
+goes through `timeline.validate`, the same
 layout and the same ffmpeg commands and limits as any other. No new document field, route, migration or
 price. The recommended length is advice (a sentence under the picker), never a refusal: a vertical
 project over 3 minutes exported before formats existed and still does. The lengths are this project's
@@ -766,3 +774,151 @@ leaves a document the validators refuse.
 Preview: the same polygons as SVG (close to exact), the progress bar's fill at the playhead, the
 entrance / exit roughly; the note under the preview says the exported file is the reference, and the
 label's width is an estimate.
+
+## 12. Frame rate, a clip's own volume, detach audio, speed 0.1 to 10, copy and paste
+
+Branch `claude/editor-parity-1`. Free: ffmpeg and the browser only, no model, no migration, no new route.
+
+### Export frame rate (`fps`, already a document field)
+
+* The export format picker has a second radio group, "Frame rate": 24, 25, 30, 60 (`EXPORT_FPS` in
+  `lib/editorExportPresets.ts`). It writes the document's `fps` and nothing else (`setExportFps`); a
+  format writes `width` / `height` and keeps the rate (`applyExportPreset`, `export_presets.apply`), and a
+  document's format is found by its frame alone (`exportPresetOf`, `export_presets.preset_of`), so a
+  1080p project at 60 fps is still "YouTube 1080p". 50, which `FPS_VALUES` allows, is shown as none checked
+  with a sentence; it still exports.
+* `modules/export_presets.py` now checks each format's decode budget at `max(FPS_VALUES)` (60), not at the
+  format's own 30, since any format may be exported at 60.
+* Every rate-dependent limit (reverse, interpolation, stabilise and shape budgets) is the validator's as
+  before; the editor's settling (`lib/editorSettle.ts`) runs after a rate change like after any edit.
+* Measured with the bundled ffmpeg 7.0.2 on a 4-core box (one clip, H.264 source at the project's rate):
+  1080p30 0.53 s of render per second of video, 1080p60 0.99, 1440p60 1.72, 4K60 3.95. The worker allows
+  `3 x length + 120` s.
+* NOT added: a 1440p or a 4K format. A new format is a new migration on purpose (0129's
+  `editor_export_frame` keeps its own copy of the list for the multi-ratio export, and
+  `tests/test_editor_export_frame_migration.py` compares them id for id). 4K would also put every export
+  in the large-frame regime (no blur and no zoom past 2 on a cross-faded clip, no interpolation, a 0.7 s
+  reverse at 4K60, the 2 GiB address-space notes above) and measured 3.95 s per second at 4K60, past the
+  worker's 3 s per second. Both stay later items; the document already accepts those sizes from another tool.
+
+### `gain_db` on a V clip (its own sound's level)
+
+* -60 to +6 dB (`GAIN_DB_MIN`, `CLIP_GAIN_DB_MAX`); absent or 0 = as recorded (`normalise` drops 0). It
+  applies to the clip's own sound only, after `denoise` / `loudnorm`, exactly like an A clip's `gain_db`,
+  and means nothing without `audio: true` (the validator accepts it there, as it does `denoise`).
+* The editor shows it as "Volume" 0-200 %: `volumePctToDb(pct) = 20 log10(pct / 100)`, held to
+  -60..+6 (200 % is +6 dB, 199.5 % exactly; 0 % is -60 dB, silent to the ear: measured more than 55 dB
+  under the tone). Muting is the clip's existing sound switch (`audio: false`): no sound track at all.
+* Older validators refuse the field ("gain_db is not a known field"), so a document using it cannot slip
+  through an older worker or route.
+
+### A video on an A track (detached audio)
+
+* `TRACK_ASSET_KINDS` lets an A clip name a VIDEO (Python and `docAssetProblems`): it plays that file's
+  sound, trimmed with `in_s` / `out_s` like any sound. A picture on an A track is still refused. The shared
+  case "a video on the music track" is now valid ("a video's sound on a sound track (detached audio)").
+* A video whose file has no sound track (`has_audio` false or unknown) renders that A clip as nothing, and
+  it does not count as speech for ducking: an input with no audio stream would make the whole mix fail.
+* "Detach audio" (`detachClipAudio`): offered for a clip that plays its own sound, from a video, at speed 1,
+  forwards, with no curve (a sound has no speed or direction), while there is room for a sound
+  (`MAX_EDITOR_SOUNDS`). The clip's sound switch goes off and a speech sound of the same file is added where
+  the clip plays now, with its level and clean-up; one input of the mix either way. A cross-fade's blend of
+  the two clips' sounds is not carried (the sound plays as it is). One Undo returns it.
+* The database's `editor_doc_problem` (0054) checks only whose file an id is, so nothing changes there.
+* In the final pass such an input gets the VIDEO decoder cap (`AudioTrack.video_source`, then
+  `cap_inputs(video_inputs=...)`), like a video overlay; a sound file keeps the still cap. Only the input's
+  `[n:a]` is used, and ffmpeg decodes only the streams a graph uses; the cap is there in case that changes.
+  The cap list is by file path, so a file that is both a clip's own sound and a detached sound in one
+  document gets the video cap on both inputs; a document with no detached sound renders the same argv as
+  before.
+* The timeline does not draw a wave for a sound read from a video (`SoundWave` says "not drawn" instead):
+  reading a whole video into the tab for it is not worth it. `loadPeaks` also stops a download at
+  `MAX_WAVEFORM_BYTES` when the server sends no length, instead of reading the whole file.
+
+### `speed` 0.1 to 10 (constant), a curve 0.25 to 4
+
+* `SPEED_MIN`/`SPEED_MAX` are 0.1/10 in `timeline.py`, `render_spec.py`, `lib/editor.ts` and the schema;
+  a speed curve's points keep `RAMP_SPEED_MIN`/`RAMP_SPEED_MAX` (0.25/4), which its sound slices were
+  tuned for. The picture is one `setpts` at any speed; the sound is a longer chain of `atempo` stages each
+  within 0.5-2 (10x = 2, 2, 2, 1.25; 0.1x = 0.5, 0.5, 0.5, 0.8), pitch kept (measured: 440 Hz stays 440).
+* Cost, measured as above (1080p30 source and project, 6 s of timeline): 0.80 s of render per second at
+  1x, 1.16 at 4x, 1.58 at 10x, 0.46 at 0.1x, inside the worker's 3 s per second. A fast clip decodes
+  `speed` seconds of source for every second, so the SOURCE decides: a 4K60 source took 9.0 s per second
+  at 4x (already allowed before) and 13.3 at 10x. A 10x clip still needs one frame (`0.1 s` of source at
+  10x is refused).
+* **The render-time estimate charges fast clips** (`FAST_SECONDS_PER_SOURCE_S`, k = 0.35, in
+  `timeline.py` and `lib/editor.ts`; `fast_seconds` / `fastSeconds`): each second of source a clip decodes
+  beyond its own length (`range - length`: `L x (speed - 1)` at a constant speed, a curve by its own
+  length) adds k seconds to `work = length + interpolation + steadying + shapes`, which must fit
+  `render_timeout_s(length) = min(5400, 3 x length + 120)`. Without it a long fast timeline passed the
+  validators and then held the one export worker (one export at a time for every organization) until its
+  wall-clock limit killed it. Calibration, on the worst common case, a phone-like source (1080p60 H.264,
+  noise, 15 Mb/s), 6 s of timeline, best of two, the bundled ffmpeg 7.0.2 on a 4-core box, through
+  `timeline_render.render`: a 1080p30 project 1.37 s per second at 1x, 2.06 at 4x, 2.40 at 6x, 3.06 at
+  10x; a 1080p60 project 2.13 at 1x, 3.10 at 4x, 4.06 at 10x (one 6x run, 5.44, was a busy-box outlier).
+  An independent run through `run_export` measured 1.70 / 2.58 / 3.71 (1080p60) and 2.83 (10x in a 1080p30
+  project). The marginal cost is 0.19-0.32 s per extra second of source; k is chosen so the estimate of a
+  10x clip, `1 + 9 k = 4.15` s per second, covers the dearest 10x measurement (4.06). Consequences:
+  * every constant-speed timeline at 10x longer than `120 / (1 + 9 k - 3)` = about 104 s is refused (a
+    shorter one passes); a 30 s part at 10x inside a 10-minute video costs 95 s more and passes;
+  * up to 4x nothing that passed before is refused for speed alone (`1 + 3 k = 2.05` < 3 per second), so
+    documents saved before the wider range keep passing unless they ALSO use steadying, smoothing or shapes
+    near the budget, where the fast part now counts too. The estimate is still under the measured cost of
+    long 4x clips from noisy 60 fps footage in a 60 fps project (3.10 per second, already over the
+    worker's 3 on `main`): charging that would refuse every long 4x timeline, so it is left as it was;
+  * a timeline longer than an export (`EXPORT_MAX_S`, 1800 s; `timeline.EXPORT_LENGTH_MAX_S`) is not
+    charged at all (`fast_estimate` / `fastCharged`): the export refuses it for its length anyway, and from
+    about 1760 s the allowance stops growing (5400 s), so a charge there only refused at SAVE long drafts
+    that saved before (45 minutes at 4x, 75 at 2x, 90 minutes with 10 s at 1.01x: shared cases);
+  * the editor settles it (`lib/editorSettle.ts`): when the timeline is over its allowance and it would fit
+    with every fast clip at 1x, the fast clips are slowed FIRST (step 2b, before any smoothing or steadying
+    is judged): the clip this edit made faster before the others, then the fastest, each to the fastest
+    speed (two decimals) that fits. So making clip 2 ten times faster no longer switches off clip 1's
+    steadying. When it would not fit even then, smoothing and steadying are settled first as before (steps
+    3 and 4) and the fast clips after them (4b). The notice says "Clip N now plays at S×"
+    (`t.editor.clipTools.settledSpeed`);
+    the line under the toolbar names fast clips when they are the only cost (`renderBudgetFast`). The
+    save route and the worker refuse what still does not fit, with the validator's sentence.
+* The database's `editor_doc_duration` (0054) divides by `speed` whatever it is, so the 30-minute check is
+  right for any speed in the range; no migration.
+
+### Duplicate, copy, paste (no field)
+
+* Model operations in `lib/editor.ts` (`duplicateClip`, `insertClipCopy`): a whole clip with a fresh id,
+  right after a clip, following it with a cut (a cross-fade belongs to a place, not to a clip); its own sound
+  is off when the mix is full; refused at `MAX_EDITOR_CLIPS`. The clipboard is the editor's (one clip of
+  this project), not the system's. Keys: Ctrl/Cmd + D, C, V on a selected clip (`resolveClipShortcut`),
+  never in a text field or on a slider, and copy stays the browser's while text is selected.
+
+### Rollout: the worker must run this before the web app's editor is used with it
+
+Older validators refuse every new document field (`gain_db`, a speed outside 0.25-4, a video on an A
+track), so a document saved by the new editor and exported by an older worker fails with
+`invalid_timeline` (it fails closed: nothing is rendered wrongly, but the export counts against the
+organization's 20 a day). How the deploy runs today (`.github/workflows/deploy_web.yml` ->
+`deploy/remote-deploy.sh`): one job, on a push to `main` that touches `command-center/**` or `modules/**`
+(and others), checks out one commit for both, then **web first, worker second**, not atomically:
+
+1. `docker compose up -d --build --remove-orphans web caddy`, then it waits for web to be healthy;
+2. only then, and only when the worker section of the env is sent ("worker on"), it rebuilds `worker` and
+   restarts `media-worker` (which runs the editor exports, `tools/media_worker.py` -> `ExportService`) and,
+   when switched on, `creative-worker`, from the image just built.
+
+So the new web app is live a few minutes (the worker image build) before the export worker can render
+what it saves, and if a deploy runs with the worker off, the media worker stays on its older image until
+a deploy with it on. Order for this change: merge as one commit (both halves deploy in the same run), and
+do not use the new controls until the run has finished step 2; if the worker was off for that run, run
+the workflow again (workflow_dispatch) with it on. An export refused in that window can be asked again
+once the worker is updated.
+
+### Strings
+
+`lib/i18n/editor-clip-tools/{en,ru,uz}.ts` (`t.editor.clipTools`); ru and uz are marked as drafts for a
+native read.
+
+### Next
+
+* Voice-over recording in the editor (the microphone is allowed on the editor page only, an owner decision;
+  today `microphone=()` site-wide in `command-center/next.config.ts` and `deploy/Caddyfile`): a separate
+  branch.
+* A 1440p format (a migration replacing 0129's `editor_export_frame` list) and, later, 4K.

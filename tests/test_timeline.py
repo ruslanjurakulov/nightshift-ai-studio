@@ -267,10 +267,12 @@ class ResolveAssetsTestCase(unittest.TestCase):
 
     def test_wrong_kind_on_a_track_is_refused(self):
         d = tl.load(base_doc())
-        swapped = resolver({MU: tl.ResolvedAsset(MU, "video", "/m/x.mp4", 60.0)})
+        swapped = resolver({MU: tl.ResolvedAsset(MU, "image", "/m/x.png", None)})
         with self.assertRaises(tl.TimelineError) as cm:
             tl.resolve_assets(d, swapped)
-        self.assertIn("a A track takes audio", str(cm.exception))
+        self.assertIn("a A track takes audio or video", str(cm.exception))
+        # a video on an A track is its sound (the editor's "detach audio"), not a wrong kind
+        tl.resolve_assets(d, resolver({MU: tl.ResolvedAsset(MU, "video", "/m/x.mp4", 60.0, True)}))
 
     def test_clip_past_the_end_of_its_source_is_refused(self):
         d = tl.load(base_doc())

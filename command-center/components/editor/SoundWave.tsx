@@ -31,7 +31,10 @@ export function SoundWave({
 }) {
   const { t } = useI18n();
   const te = t.editor;
-  const url = asset?.viewUrl ?? null;
+  // A detached sound plays a VIDEO file: reading a whole video into the tab for its wave is not worth it,
+  // so none is drawn and a word says why (never a flat line that would read as silence).
+  const isVideo = asset?.kind === "video";
+  const url = isVideo ? null : (asset?.viewUrl ?? null);
   const known = asset?.durationS ?? null;
   const [result, setResult] = useState<PeaksResult | null>(null);
 
@@ -61,6 +64,7 @@ export function SoundWave({
     );
   }, [result, sound.in_s, sound.out_s]);
 
+  if (isVideo) return <span className="ml-1.5 text-xs opacity-70">{t.editor.clipTools.waveVideo}</span>;
   if (!url) return null;
   if (result && result.status !== "ready")
     return (

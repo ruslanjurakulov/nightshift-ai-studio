@@ -132,6 +132,34 @@ function decoder(): DecodeContext | null {
 }
 
 /**
+ * The body, or null once it passes `cap` bytes: a server that sends no length (or a wrong one) does not
+ * get the whole file read into the tab; the download is cancelled at the cap.
+ */
+async function readCapped(res: Response, cap: number): Promise<ArrayBuffer | null> {
+  const reader = res.body?.getReader?.();
+  if (!reader) return res.arrayBuffer();
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > cap) {
+      void reader.cancel().catch(() => {});
+      return null;
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.byteLength;
+  }
+  return out.buffer;
+}
+
+/**
  * Fetch `url` and summarise its audio. Never throws: a file too big for a tab,
  * a link the browser may not read, a format it cannot decode and a missing
  * decoder are each a status. `knownDurationS` (from the library) is checked
@@ -152,8 +180,8 @@ export async function loadPeaks(
     const size = Number(res.headers.get("content-length"));
     if (Number.isFinite(size) && size > MAX_WAVEFORM_BYTES)
       return { status: "too_large" };
-    const data = await res.arrayBuffer();
-    if (data.byteLength > MAX_WAVEFORM_BYTES) return { status: "too_large" };
+    const data = await readCapped(res, MAX_WAVEFORM_BYTES);
+    if (data === null || data.byteLength > MAX_WAVEFORM_BYTES) return { status: "too_large" };
     const audio = await ctx.decodeAudioData(data);
     if (!(audio.duration > 0) || audio.numberOfChannels < 1)
       return { status: "unavailable" };

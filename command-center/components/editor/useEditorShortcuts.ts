@@ -4,15 +4,18 @@ import { useEffect, useRef } from "react";
 import {
   canSplit,
   clipAt,
+  duplicateClip,
+  insertClipCopy,
   removeClip,
   removeSound,
   removeText,
   splitClip,
   type EditorModel,
+  type VideoClip,
 } from "@/lib/editor";
 import { removeOverlay } from "@/lib/editorOverlay";
 import { removeShape } from "@/lib/editorShapeModel";
-import { focusKind, resolveShortcut } from "@/lib/editor-shortcuts";
+import { focusKind, resolveClipShortcut, resolveShortcut } from "@/lib/editor-shortcuts";
 import { nudgePlayhead } from "@/lib/editor-timeline-view";
 import type { Selection } from "./TimelineStrip";
 import type { TimelineView } from "./useTimelineView";
@@ -37,6 +40,11 @@ export function useEditorShortcuts(p: {
   /** Called after Delete removed a shape: focus belongs on "Add shape", not <body>. */
   onShapeRemoved?: () => void;
   view: TimelineView;
+  /** The editor's clip clipboard (Ctrl+C / Ctrl+V / Ctrl+D on a selected clip). */
+  clipboard?: VideoClip | null;
+  setClipboard?: (c: VideoClip) => void;
+  /** Called with the id of a clip a paste or duplicate made: it becomes the selection. */
+  onClipInserted?: (id: string) => void;
 }) {
   const ref = useRef(p);
   ref.current = p;
@@ -50,17 +58,37 @@ export function useEditorShortcuts(p: {
       const idle = t === document.body || t === document.documentElement;
       if (!idle && !(t instanceof Element && t.closest("[data-editor-root]"))) return;
       const el = t instanceof HTMLElement ? t : null;
-      const action = resolveShortcut(
-        { key: e.key, code: e.code, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, shiftKey: e.shiftKey, repeat: e.repeat, defaultPrevented: e.defaultPrevented },
-        focusKind(
-          el && {
-            tag: el.tagName,
-            inputType: el instanceof HTMLInputElement ? el.type : undefined,
-            role: el.getAttribute("role"),
-            editable: el.isContentEditable,
-          },
-        ),
+      const keyLike = { key: e.key, code: e.code, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, shiftKey: e.shiftKey, repeat: e.repeat, defaultPrevented: e.defaultPrevented };
+      const focus = focusKind(
+        el && {
+          tag: el.tagName,
+          inputType: el instanceof HTMLInputElement ? el.type : undefined,
+          role: el.getAttribute("role"),
+          editable: el.isContentEditable,
+        },
       );
+      const clipKey = resolveClipShortcut(keyLike, focus, Boolean(window.getSelection()?.toString()));
+      if (clipKey) {
+        const s = ref.current;
+        const sel = s.selected?.kind === "clip" ? s.model.clips.find((c) => c.id === s.selected?.id) : undefined;
+        if (!sel) return;            // nothing of the editor's is selected: the browser keeps its key
+        e.preventDefault();
+        if (clipKey === "copy") {
+          s.setClipboard?.(sel);
+          return;
+        }
+        const out =
+          clipKey === "duplicate"
+            ? duplicateClip(s.model, sel.id)
+            : s.clipboard
+              ? insertClipCopy(s.model, s.clipboard, sel.id)
+              : null;
+        if (!out) return;
+        s.apply(out.model);
+        s.onClipInserted?.(out.id);
+        return;
+      }
+      const action = resolveShortcut(keyLike, focus);
       if (!action) return;
       const s = ref.current;
       const fps = s.model.fps;

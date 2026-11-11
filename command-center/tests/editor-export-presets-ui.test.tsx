@@ -6,7 +6,7 @@
  * format renders, spends and publishes nothing.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 
 const router = { push: vi.fn(), refresh: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() };
@@ -55,13 +55,16 @@ afterEach(() => {
 
 function picker(props: Partial<ComponentProps<typeof ExportPresetPicker>> = {}, locale: "en" | "ru" | "uz" = "en") {
   const onChange = vi.fn();
+  const onFps = vi.fn();
   const ui: ReactNode = (
     <I18nProvider locale={locale}>
-      <ExportPresetPicker width={1920} height={1080} fps={30} totalS={20} onChange={onChange} {...props} />
+      <ExportPresetPicker width={1920} height={1080} fps={30} totalS={20} onChange={onChange} onFps={onFps} {...props} />
     </I18nProvider>
   );
-  return { onChange, ...render(ui) };
+  return { onChange, onFps, ...render(ui) };
 }
+const formatGroup = (legend = ep.legend) => screen.getByRole("group", { name: legend });
+const formatRadios = () => within(formatGroup()).getAllByRole("radio") as HTMLInputElement[];
 const open = () => {
   const d = document.querySelector("details")!;
   d.setAttribute("open", "");
@@ -82,7 +85,7 @@ describe("the picker on its own", () => {
     picker();
     open();
     expect(screen.getByRole("group", { name: ep.legend })).toBeTruthy();
-    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    const radios = formatRadios();
     expect(radios.map((r) => r.value)).toEqual(EXPORT_PRESETS.map((p) => p.id));
     expect(new Set(radios.map((r) => r.name)).size).toBe(1);
     for (const r of radios) expect(r.type).toBe("radio");
@@ -111,15 +114,45 @@ describe("the picker on its own", () => {
     picker({ width: 1280, height: 1000, fps: 24 });
     open();
     expect(document.querySelector("summary")!.textContent).toBe(ep.summaryCustom);
-    for (const r of screen.getAllByRole("radio")) expect((r as HTMLInputElement).checked).toBe(false);
+    for (const r of formatRadios()) expect(r.checked).toBe(false);
     const group = screen.getByRole("group", { name: ep.legend });
     const hint = document.getElementById(group.getAttribute("aria-describedby")!)!;
     expect(hint.textContent).toBe(`${fmt(ep.custom, { w: 1280, h: 1000, fps: 24 })} ${ep.hint}`);
   });
 
-  it("a rate off the format's is a custom size too", () => {
+  it("the rate is chosen apart: 60 fps is still the format, and the hint says the project's rate", () => {
     picker({ fps: 60 });
-    expect(document.querySelector("summary")!.textContent).toBe(ep.summaryCustom);
+    expect(document.querySelector("summary")!.textContent).toBe(fmt(ep.summary, { name: ep.names.youtube_1080p }));
+    open();
+    const hint = document.getElementById(formatGroup().getAttribute("aria-describedby")!)!;
+    expect(hint.textContent).toBe(`${fmt(ep.detail, { w: 1920, h: 1080, fps: 60 })} ${ep.hint}`);
+  });
+
+  it("is a second labelled group of real radios for 24, 25, 30 and 60 fps, the project's rate checked", () => {
+    const { onFps, onChange } = picker({ fps: 25 });
+    open();
+    const ct = te.clipTools.fps;
+    const group = screen.getByRole("group", { name: ct.legend });
+    const radios = within(group).getAllByRole("radio") as HTMLInputElement[];
+    expect(radios.map((r) => Number(r.value))).toEqual([24, 25, 30, 60]);
+    expect(new Set(radios.map((r) => r.name)).size).toBe(1);
+    expect(radios.filter((r) => r.checked).map((r) => r.value)).toEqual(["25"]);
+    fireEvent.click(within(group).getByRole("radio", { name: fmt(ct.value, { fps: 60 }) }));
+    expect(onFps).toHaveBeenCalledTimes(1);
+    expect(onFps).toHaveBeenCalledWith(60);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(document.getElementById(group.getAttribute("aria-describedby")!)!.textContent).toBe(ct.hint);
+  });
+
+  it("a rate the list does not offer (50) checks none and says it still exports at that rate", () => {
+    picker({ fps: 50 });
+    open();
+    const ct = te.clipTools.fps;
+    const group = screen.getByRole("group", { name: ct.legend });
+    for (const r of within(group).getAllByRole("radio")) expect((r as HTMLInputElement).checked).toBe(false);
+    expect(document.getElementById(group.getAttribute("aria-describedby")!)!.textContent).toBe(
+      `${fmt(ct.other, { fps: 50 })} ${ct.hint}`,
+    );
   });
 
   it("says a video is long for the format only past the recommended length, and never blocks", () => {
@@ -129,7 +162,7 @@ describe("the picker on its own", () => {
     expect(status().textContent).toBe("");
     rerender(
       <I18nProvider locale="en">
-        <ExportPresetPicker width={1080} height={1920} fps={30} totalS={312} onChange={onChange} />
+        <ExportPresetPicker width={1080} height={1920} fps={30} totalS={312} onChange={onChange} onFps={vi.fn()} />
       </I18nProvider>,
     );
     expect(status().textContent).toBe(fmt(ep.longForFormat, { length: "5:12", max: "3:00" }));
@@ -144,8 +177,11 @@ describe("the picker on its own", () => {
       expect(document.querySelector("summary")!.textContent).toBe(
         fmt(d.editor.exportPreset.summary, { name: d.editor.exportPreset.names.youtube_1080p }),
       );
-      expect(screen.getAllByRole("radio")).toHaveLength(EXPORT_PRESETS.length);
-      expect(screen.getByRole("group", { name: d.editor.exportPreset.legend })).toBeTruthy();
+      const g = screen.getByRole("group", { name: d.editor.exportPreset.legend });
+      expect(within(g).getAllByRole("radio")).toHaveLength(EXPORT_PRESETS.length);
+      const fg = screen.getByRole("group", { name: d.editor.clipTools.fps.legend });
+      for (const fps of [24, 25, 30, 60])
+        expect(within(fg).getByRole("radio", { name: fmt(d.editor.clipTools.fps.value, { fps }) })).toBeTruthy();
     }
   });
 });
@@ -169,11 +205,31 @@ describe("in the editor", () => {
     expect(screen.getByRole("button", { name: te.export })).toBeTruthy();
   });
 
-  it("reads the document's frame rate: 60 fps is not any listed format", () => {
+  it("reads the document's frame rate: 60 fps is the same format, with 60 checked", () => {
     mount((d) => {
       d.fps = 60;
     });
-    expect(screen.getByText(ep.summaryCustom).tagName).toBe("SUMMARY");
+    expect(screen.getByText(fmt(ep.summary, { name: ep.names.youtube_1080p })).tagName).toBe("SUMMARY");
+    document.querySelector("details")!.setAttribute("open", "");
+    const fg = screen.getByRole("group", { name: te.clipTools.fps.legend });
+    expect((within(fg).getByRole("radio", { name: fmt(te.clipTools.fps.value, { fps: 60 }) }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("choosing 60 fps is an undoable edit that is saved with the project, and the frame stays", async () => {
+    mount();
+    document.querySelector("details")!.setAttribute("open", "");
+    const fg = screen.getByRole("group", { name: te.clipTools.fps.legend });
+    fireEvent.click(within(fg).getByRole("radio", { name: fmt(te.clipTools.fps.value, { fps: 60 }) }));
+    expect(screen.getByText(te.unsaved)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: te.undo }));
+    expect((within(fg).getByRole("radio", { name: fmt(te.clipTools.fps.value, { fps: 30 }) }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: te.redo }));
+    fireEvent.click(screen.getByRole("button", { name: te.save }));
+    await waitFor(() => expect(screen.getByText(te.saved)).toBeTruthy());
+    const put = fetchMock.mock.calls.find(([, i]) => (i as RequestInit | undefined)?.method === "PUT")!;
+    const body = JSON.parse(String((put[1] as RequestInit).body));
+    expect([body.doc.width, body.doc.height, body.doc.fps]).toEqual([1920, 1080, 60]);
+    expect(fetchMock.mock.calls.filter(([u]) => String(u).includes("/exports"))).toHaveLength(0);
   });
 
   it("reads the project's length: a vertical video over 3 minutes is told so, and Export stays on", () => {

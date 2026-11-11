@@ -123,7 +123,7 @@ import {
 import { TimelineStrip, pictureEnd, type Selection } from "./TimelineStrip";
 import { DraftBanner } from "./DraftBanner";
 import { useEditorDraft } from "./useEditorDraft";
-import { SoundPreview } from "./SoundPreview";
+import { SoundPreview, previewVolume } from "./SoundPreview";
 import { CaptionsPanel, type CaptionModelOption } from "./CaptionsPanel";
 import { captionsOf, cuesAt } from "@/lib/captions";
 import { CaptionPreview } from "./CaptionPreview";
@@ -148,7 +148,7 @@ import {
   otherFrames,
   type ExportFrameChoice,
 } from "@/lib/multiRatioExport/frames";
-import { applyExportPreset, exportPresetById, type ExportPresetId } from "@/lib/editorExportPresets";
+import { applyExportPreset, exportPresetById, setExportFps, type ExportPresetId } from "@/lib/editorExportPresets";
 import {
   addOverlay,
   canAddOverlay,
@@ -184,6 +184,7 @@ import { ClipPicture, LookFilterDefs } from "./ClipPicture";
 import { ClipFxSections } from "./ClipFxSections";
 import { ClipSpeedSection, OverlayMoveSection, RenderBudgetNotice } from "./ClipMotionSections";
 import { OverlayChromaSection, SoundCleanSection } from "./CleanSections";
+import { ClipCopyTools, ClipVolumeDetach } from "./ClipSoundTools";
 import { OverlayAnimSection, ShapeAnimSection, TextAnimSection } from "./AnimPicker";
 import { ANIM_REST, animFrame, playsNatively, writtenText, type AnimFrame } from "@/lib/editorFxPreview";
 import { trimLimited } from "@/lib/editorMotion";
@@ -228,6 +229,16 @@ const fieldClass =
   "rounded-[var(--ns-r-key)] w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
 const quietBtn =
   "btn-quiet inline-flex items-center gap-1.5 px-3 py-1.5 text-xs";
+
+/** The preview's playback rate: a browser that cannot play a rate (0.1x and 10x are inside every
+ *  major engine's range, but not every engine's) keeps the last one instead of breaking the preview. */
+function setRate(v: HTMLVideoElement, speed: number) {
+  try {
+    v.playbackRate = speed;
+  } catch {
+    /* NotSupportedError: the export is the reference, the preview only approximates */
+  }
+}
 
 /** Keys inside these keep their own meaning. */
 function typing(target: EventTarget | null): boolean {
@@ -350,6 +361,8 @@ export function TimelineEditor({
     return first ? { kind: "clip", id: first.id } : null;
   });
   const [playhead, setPlayhead] = useState(0);
+  // The editor's own clipboard: one picture clip of this project (copy / paste), never the system's.
+  const [clipboard, setClipboard] = useState<VideoClip | null>(null);
   const [playing, setPlaying] = useState(false);
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -443,7 +456,7 @@ export function TimelineEditor({
       if (raw === model) return;
       // Any edit can push a clip over a limit that depends on something else (the
       // frame shape, the timeline's length, a neighbour's cross-fade): settle it.
-      const fixed = settleAll(raw);
+      const fixed = settleAll(raw, model);
       const next = fixed.model;
       setSettled(fixed.changes);
       if (!group || gesture.current !== group) {
@@ -573,8 +586,10 @@ export function TimelineEditor({
   useEffect(() => {
     const v = video.current;
     if (!v || !at) return;
-    v.playbackRate = at.clip.speed;
+    setRate(v, at.clip.speed);
     v.muted = !at.clip.audio;
+    // The clip's own volume, as far as a browser goes (an element plays at most 100 %; the export does 200 %).
+    v.volume = previewVolume(at.clip.gain_db ?? 0);
     const switched = shownClip.current !== at.clip.id;
     shownClip.current = at.clip.id;
     if (!playsNatively(at.clip)) {
@@ -659,7 +674,7 @@ export function TimelineEditor({
 
   // Timeline zoom and snapping, the single-key shortcuts, the playhead slider's snapping.
   const view = useTimelineView({ total, playhead });
-  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; }, onShapeRemoved: () => { shapeFocus.current = "add"; } });
+  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; }, onShapeRemoved: () => { shapeFocus.current = "add"; }, clipboard, setClipboard, onClipInserted: (id) => setSelected({ kind: "clip", id }) });
   const scrub = usePlayheadScrub({ clips, model, view, setPlayhead, setPlaying });
 
   async function refreshLinks() {
@@ -1214,6 +1229,7 @@ export function TimelineEditor({
           fps={model.fps}
           totalS={total}
           onChange={(id) => apply(applyExportPreset(model, id))}
+          onFps={(fps) => apply(setExportFps(model, fps))}
         />
         {multiRatio ? (
           <ExportRatioPicker
@@ -1349,7 +1365,7 @@ export function TimelineEditor({
                   const v = video.current;
                   if (v && at) {
                     v.currentTime = at.sourceS;
-                    v.playbackRate = at.clip.speed;
+                    setRate(v, at.clip.speed);
                     if (playing)
                       void v.play?.()?.catch?.(() => setPlaying(false));
                   }
@@ -1966,6 +1982,25 @@ export function TimelineEditor({
               }
               onAudio={(a) => apply(setClipAudio(model, clip.id, a))}
               audioLocked={(!clip.audio && audioFull) || Boolean(clip.freeze)}
+              sound={
+                <ClipVolumeDetach
+                  model={model}
+                  clip={clip}
+                  assetKind={assets[clip.asset_id]?.kind}
+                  apply={apply}
+                  onDetached={(soundId) => setSelected({ kind: "sound", id: soundId })}
+                />
+              }
+              copy={
+                <ClipCopyTools
+                  model={model}
+                  clip={clip}
+                  clipboard={clipboard}
+                  onCopy={setClipboard}
+                  apply={apply}
+                  onInserted={(newId) => setSelected({ kind: "clip", id: newId })}
+                />
+              }
               crossfade={crossfadeOf(clip)}
               maxCrossfade={maxCrossfade(model, clip.id)}
               onCrossfade={(d) => apply(setCrossfade(model, clip.id, d))}
@@ -2183,6 +2218,8 @@ function ClipInspector({
   fx,
   onAudio,
   audioLocked,
+  sound,
+  copy,
   crossfade,
   maxCrossfade: maxX,
   onCrossfade,
@@ -2214,6 +2251,10 @@ function ClipInspector({
   fx?: ReactNode;
   onAudio: (a: boolean) => void;
   audioLocked: boolean;
+  /** The clip's own sound: volume and "Detach audio" (ClipVolumeDetach). */
+  sound?: ReactNode;
+  /** Duplicate / copy / paste (ClipCopyTools). */
+  copy?: ReactNode;
   /** The cross-fade into this clip in seconds (0 = a cut). */
   crossfade: number;
   /** The longest it can be (0 = this clip cannot have one). */
@@ -2271,6 +2312,7 @@ function ClipInspector({
         />
         {te.sound}
       </label>
+      {sound}
       <fieldset
         className="m-0 flex flex-col gap-1.5 border-0 p-0"
         aria-describedby={`${id}-xf`}
@@ -2356,6 +2398,7 @@ function ClipInspector({
           </p>
         ) : null}
       </div>
+      {copy}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
