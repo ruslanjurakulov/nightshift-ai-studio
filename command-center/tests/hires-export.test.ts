@@ -60,7 +60,8 @@ const {
   quoteBlocker,
 } = await import("../lib/hiresExport/limits");
 const { hiresExportEnabled } = await import("../lib/hiresExport/flag");
-const { otherFrames, parseExportFrames, framePresetById, PROJECT_FRAME } = await import("../lib/multiRatioExport/frames");
+const { otherFrames, parseExportFrames, framePresetById, frameProblems, PROJECT_FRAME } = await import("../lib/multiRatioExport/frames");
+const { toModel } = await import("../lib/editor");
 const { mapEditorError, EDITOR_ERRORS, EXPORT_REASONS } = await import("../lib/editor");
 const { canRetry } = await import("../lib/editorExportStatus");
 const { en } = await import("../lib/i18n/en");
@@ -143,6 +144,26 @@ describe("above 1080p and speed curves", () => {
     expect(hasSpeedCurve({ tracks: [{ clips: [{ id: "a", speed: 2 }] }] })).toBe(false);
     expect(hasSpeedCurve({ tracks: [null, "x", { clips: "no" }] })).toBe(false);
     expect(hasSpeedCurve({})).toBe(false);
+  });
+});
+
+describe("editor parity 2a's large-frame rules in the paid sizes", () => {
+  // A mask on a cross-faded clip is refused above 2560x1440 (modules/timeline.py LARGE_FRAME_PX): the editor checks each size
+  // as the worker does, so the 4K sizes are blocked and the 1440p ones are not.
+  const A = "11111111-1111-4111-8111-111111111111";
+  const masked = toModel({
+    version: 1, width: 1920, height: 1080, fps: 30,
+    tracks: [{ id: "v1", kind: "V", clips: [
+      { id: "c1", asset_id: A, start_s: 0, in_s: 0, out_s: 3 },
+      { id: "c2", asset_id: A, start_s: 2.5, in_s: 3, out_s: 6, mask: { shape: "ellipse" }, transition: { type: "crossfade", duration_s: 0.5 } },
+    ] }],
+  } as never);
+  it("blocks 4K and leaves 1440p", () => {
+    expect(frameProblems(masked, "youtube_2160p").length).toBeGreaterThan(0);
+    expect(frameProblems(masked, "vertical_2160p").length).toBeGreaterThan(0);
+    expect(frameProblems(masked, "youtube_1440p")).toEqual([]);
+    expect(frameProblems(masked, "vertical_1440p")).toEqual([]);
+    expect(frameProblems(masked, "youtube_1080p")).toEqual([]);
   });
 });
 

@@ -342,6 +342,61 @@ class TheCapAndTheBudgetOnTheWorker(Base):
         self.assertEqual(status, "done")
 
 
+class TheParity2aRulesInThePaidFrames(Base):
+    """Editor parity 2a (#675): a mask on a cross-faded clip and a masked clip's zoom are capped above LARGE_FRAME_PX (2560x1440),
+    and colour / masks are charged in the render-time estimate by the frame's pixels and rate. A paid frame is validated AS that
+    frame, so the 4K tier carries those caps, the 1440p tier does not, and the 4K tier's 30 fps cap sits on top."""
+
+    COLOR = {"temperature": 40, "tint": -10, "hue": 25, "curve": "matte"}
+
+    def crossfaded(self, **second):
+        d = doc(6.0)
+        d["tracks"][0]["clips"] = [
+            {"id": "c1", "asset_id": V1, "start_s": 0, "in_s": 0.0, "out_s": 3.0},
+            dict({"id": "c2", "asset_id": V1, "start_s": 2.5, "in_s": 3.0, "out_s": 6.0,
+                  "transition": {"type": "crossfade", "duration_s": 0.5}}, **second)]
+        return d
+
+    def test_the_tiers_meet_the_large_frame_line_where_parity_2a_drew_it(self):
+        self.assertEqual(tl.LARGE_FRAME_PX, hires_export.TIER_1440P_MAX_PX)   # 1440p is not a large frame; every 4K frame is
+
+    def test_a_mask_on_a_cross_faded_clip_is_refused_at_4k_and_rendered_at_1440p(self):
+        d = self.crossfaded(mask={"shape": "ellipse"})
+        self.assertEqual(tl.validate(d), [])                                   # fine in the project's own 1080p frame
+        for i in ("youtube_2160p", "vertical_2160p"):
+            self.assert_refused(framed(i, d, duration_s=5.5), "invalid_timeline")
+        for i in ("youtube_1440p", "vertical_1440p"):
+            status, _, render, _ = self.run_export(framed(i, d, duration_s=5.5))
+            self.assertEqual(status, "done", i)
+            self.assertIn("mask", render.call_args.args[0]["tracks"][0]["clips"][1])
+
+    def test_colour_and_a_mask_are_charged_by_the_paid_frames_pixels(self):
+        # 4K30: 4x the 1080p30 pixels, so every colour and a mask cost 4 s per second on top of the length, against the
+        # free 3 x L + 120 s estimate: up to 60 s fits. 1440p30 (1.78x) fits at any length up to its 300 s cap.
+        def clip(length):
+            return doc(length, tracks=[{"id": "v1", "kind": "V", "clips": [
+                {"id": "c1", "asset_id": V1, "start_s": 0, "in_s": 0.0, "out_s": length, "color": self.COLOR,
+                 "mask": {"shape": "rect"}}]}])
+        self.assertEqual(tl.validate(clip(170.0)), [])
+        status, _, _, _ = self.run_export(framed("youtube_2160p", clip(59.0), duration_s=59))
+        self.assertEqual(status, "done")
+        self.assert_refused(framed("youtube_2160p", clip(70.0), duration_s=70), "invalid_timeline")
+        status, _, _, _ = self.run_export(framed("youtube_1440p", clip(170.0), duration_s=170))
+        self.assertEqual(status, "done")
+
+    def test_the_4k_rate_cap_is_on_top_of_the_large_frame_rules(self):
+        # Both refuse, each on its own: a 4K60 document is refused for its rate even with nothing a large frame forbids, and a
+        # masked cross-fade at 4K60 is refused by the validator (which runs first, when the document is read in the frame).
+        plain = self.crossfaded()
+        plain["fps"] = 60
+        self.assert_refused(framed("youtube_2160p", plain, duration_s=5.5), "hires_fps")
+        masked = self.crossfaded(mask={"shape": "ellipse"})
+        masked["fps"] = 60
+        self.assert_refused(framed("youtube_2160p", masked, duration_s=5.5), "invalid_timeline")
+        status, _, _, _ = self.run_export(framed("youtube_1440p", masked, duration_s=5.5))
+        self.assertEqual(status, "done")                                       # 1440p60 with a masked cross-fade: measured fine
+
+
 class MalformedCaptionsDoNotCrashTheBudget(unittest.TestCase):
     """modules/timeline.py: the render-budget block reads the timeline's length (captions included) BEFORE the captions are
     validated. A malformed captions value used to raise TypeError / AttributeError out of validate() instead of a problem."""
