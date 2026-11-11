@@ -5,7 +5,8 @@ concepts, scripts and storyboards; later phases turn approved concepts into imag
 edited in Nightshift's own editor and exported per format, and published only after a person approves.
 
 This document is the phased plan. **Phase 1 is the only phase that is built** (this pull request). Everything under Phase 2 to Phase 6
-is a design, not code. Competitor products were used as benchmarks of what a customer expects; no code, asset or text of theirs is used,
+is a design, not code, except Phase 2's network fetcher (`modules/brand_fetch.py`), a dark module nothing calls yet (see "Built so far"
+under Phase 2). Competitor products were used as benchmarks of what a customer expects; no code, asset or text of theirs is used,
 and no customer-facing string names one (`tests/ads-factory-i18n.test.ts` runs the banned-wording list over every string).
 
 The first draft of this idea is draft PR #651 (`feat/nightshift-ads-studio-mvp`): a public, unauthenticated concept page and a pure
@@ -152,7 +153,7 @@ Phase 1 is free and uncharged: no model call is made, so there is nothing to pri
    and adding `brand_kit.*`, `brand_product.*`, `ad_campaign.*`, `ad_concepts.add` and `ad_concept.*` to the trail means replacing
    `audit_action_allowed` (0087 / 0093), which several open pull requests may also touch. Decide whether a later migration adds them.
 
-## Phase 2: brand scan (a worker job; designed, not built)
+## Phase 2: brand scan (a worker job; designed; only the fetcher is built, dark)
 
 The person enters their site; a worker reads a few public pages and proposes a DRAFT brand kit plus product candidates, which the person
 reviews and accepts field by field. Nothing is accepted automatically.
@@ -200,6 +201,19 @@ each field came from. Rate limits stop using the worker as a crawler. The worker
 
 **Owner decisions.** The caps; free or priced; whether a scan may run against a domain whose WHOIS / DNS TXT does not prove ownership
 (a DNS TXT verification step would be the strong form).
+
+**Built so far: the fetcher only (`modules/brand_fetch.py`, dark).** Nothing imports it but `tests/test_brand_fetch.py` (a test pins
+that). It is "The fetch" above, minus extraction: `SiteScan(url)` reads robots.txt, the home page and up to five same-host pages it
+links to (product paths first), and on request up to 4 stylesheets and 6 pictures, and returns raw bytes, the final URL and the media
+type. The entry URL is 0131's `ads_site_url_ok` shape plus one refusal more (a backslash); every name is resolved once per scan and
+pinned, every answer must be public (`address_problem` names the class it refuses), the socket goes to that address with SNI, Host and
+certificate check on the name. Redirects: at most 3, each re-checked, on the original host or under its last two labels (three under a
+country second level such as `co.uk`). No public-suffix list is used (none is in requirements.txt), so two customers of one shared
+hosting domain (`a.github.io`, `b.github.io`) count as one site for a redirect; the target is still resolved and checked public.
+All NAT64 (`64:ff9b::/96`, `64:ff9b:1::/48`), 6to4 and Teredo addresses are refused, public embedding or not. A robots.txt that cannot
+be read (5xx, too large, compressed, off-site redirect) is read as "disallow everything"; Crawl-delay is not waited for. Not built yet,
+each waiting on the owner decisions above: the migration (`brand_scans`, the caps), the RPCs, the queue kind and worker wiring, the
+extraction, the media library ingest of pictures, and any UI.
 
 ## Phase 3: image ads through the existing creative job pipeline (designed)
 
