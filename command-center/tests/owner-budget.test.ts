@@ -97,6 +97,17 @@ describe("a typed amount", () => {
 });
 
 describe("exact arithmetic", () => {
+  it("rescales the price when the budget has more decimals than the price (review gap 1)", () => {
+    // 10.123456 / 0.04 = 253.0864 -> 253; a price left at its own scale would read 2,530,864.
+    expect(computeBudget({ budget: "10.123456", kind: "image", unit: "image", usdPerUnit: 0.04 })).toEqual({ kind: "images", count: 253 });
+    expect(computeBudget({ budget: "0.000001", kind: "image", unit: "image", usdPerUnit: 0.0000004 })).toEqual({ kind: "images", count: 2 });
+  });
+
+  it("a count beyond exact JavaScript integers is not shown as a number (review gap 2)", () => {
+    // $1B at $0.0000001 = 1e16 > Number.MAX_SAFE_INTEGER: never a rounded, wrong count.
+    expect(computeBudget({ budget: "1000000000", kind: "image", unit: "image", usdPerUnit: 0.0000001 })).toEqual({ kind: "no_price" });
+  });
+
   it("reads a registry price as the decimal it was written as", () => {
     expect(decimalOf(0.036667)).toEqual({ num: 36667n, scale: 6 });
     expect(decimalOf(4e-5)).toEqual({ num: 4n, scale: 5 });
