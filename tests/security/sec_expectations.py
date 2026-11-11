@@ -642,3 +642,8 @@ sec_ads_factory_0131.extend(TABLES, FUNCTIONS)
 import sec_editor_hires_0132  # noqa: E402
 
 sec_editor_hires_0132.extend(TABLES, FUNCTIONS)
+
+# Migration 0133 (Ads Factory, Phase 2: the brand scan, domains proven by DNS TXT, priced scans): tests/security/sec_brand_scan_0133.py
+import sec_brand_scan_0133  # noqa: E402
+
+sec_brand_scan_0133.extend(TABLES, FUNCTIONS)

@@ -76,7 +76,9 @@ class Numbering(unittest.TestCase):
         # caps live in their own table). The loop under this line checks exactly that for every reviewed number.
         # 0132 (1440p and 4K editor exports, sold by the minute: editor_exports' credit columns, editor_export_hires_prices, the four-argument
         # request_editor_export) was reviewed the same way: the video editor's export table and functions only, none of the three words.
-        reviewed = ("0128", "0129", "0130", "0131", "0132")
+        # 0133 (Ads Factory, Phase 2: brand_domains, brand_domain_checks, brand_scans, brand_scan_settings and their functions) was
+        # reviewed the same way: its own tables and functions, plus writes into 0131's kits and products; none of the three words below.
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")
