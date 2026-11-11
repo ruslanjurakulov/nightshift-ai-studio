@@ -279,6 +279,21 @@ a domain check and a scan in turn, so a queue of slow DNS checks cannot starve t
 `tools/brand_scan_worker.py` exits at once unless `NIGHTSHIFT_ADS_BRAND_SCAN=on`; it needs `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and
 (for pictures) `NIGHTSHIFT_MEDIA_DIR`. It is NOT in `deploy/docker-compose.yml` yet (a release step, below).
 
+### The page ("Scan my site", Command Center)
+
+On the brand kit section of `/{channel}/ads`, drawn only with `NIGHTSHIFT_ADS_BRAND_SCAN` on (server-side, read per request, on top of
+`NIGHTSHIFT_ADS_FACTORY`; off = no button, and every `/api/ads/scan/*` route answers 404 before it reads the session). Three steps:
+1. **Prove the site**: the person types their domain (a scheme, a path and a final dot are taken off; a hosting parent is refused before
+   anything is sent), gets the TXT record to add (name and value with Copy buttons), and presses **Check now** (the panel reads again
+   every few seconds while the check waits, and says what the last check found).
+2. **Scan**: the quote is shown (`not on sale` hides the button); the button names the price and sends it as `max_credits` with a press id
+   that a retry after a lost answer reuses (one scan, one hold); a different price is said with the database's number.
+3. **Review and accept**: every proposal next to what the chosen kit holds now (or "a new brand kit"), with where it was found (the place
+   and the page address, as text, never a link); the person ticks fields and accepts; a new kit needs the name.
+Routes: `GET /api/ads/scan`, `POST /api/ads/scan`, `POST /api/ads/scan/domains`, `POST /api/ads/scan/domains/:id/check`,
+`POST /api/ads/scan/:id/accept` — same-origin, the member's own session, one 0133 function each, never the service key, never a fetch.
+Strings: `lib/i18n/ads-brand-scan/` (en; ru and uz are drafts that need a native read).
+
 ### Known limits (Phase 2)
 
 - **The database is not dark.** The member functions are granted on apply. While the price is NULL nobody can request a scan; a
@@ -344,7 +359,7 @@ checks per organization per 24 hours (failed scans count). Accepting the same pr
    uid 1000, the `media` volume rw, the worker env file, `NIGHTSHIFT_ADS_BRAND_SCAN=on`), and let outbound HTTPS reach customer sites
    and `cloudflare-dns.com`.
 4. Set the approved values: `update public.brand_scan_settings set price_credits = 1, platform_daily_scans = 500, platform_daily_checks = 5000;`, and `NIGHTSHIFT_ADS_BRAND_SCAN=on`
-   for the Command Center (the page, the second pull request).
+   for the Command Center (the "Scan my site" panel).
 5. Undo: the switch off (loses nothing), or the price back to NULL (no new scans), or `docs/sql/rollback_0133_brand_scan.sql`.
 
 ## Phase 3: image ads through the existing creative job pipeline (designed)
@@ -391,6 +406,8 @@ Paid ad accounts (ads managers) are out of scope until the owner decides on them
 consent and review.
 
 ## Strings that need a native read
+
+- `command-center/lib/i18n/ads-brand-scan/ru.ts` and `uz.ts` (Phase 2's "Scan my site" panel): every string.
 
 - `command-center/lib/i18n/ads-factory/ru.ts` and `uz.ts`: every string (written by a non-native speaker, marked in the file header).
 - The ru and uz concept templates in `command-center/lib/adsFactory/concepts.ts` (`RU`, `UZ`): these become ad copy a customer

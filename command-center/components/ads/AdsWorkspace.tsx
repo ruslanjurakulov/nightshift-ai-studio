@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { Chip } from "@/components/ui/Chip";
 import { CampaignDialog, ConceptDialog, DeleteDialog, KitDialog, ProductDialog } from "@/components/ads/AdsDialogs";
+import { BrandScanPanel } from "@/components/ads/BrandScanPanel";
 import { adsErrorText, adsRequest, newBatchKey, type AdsPayload } from "@/components/ads/api";
 import {
   ADS_LIMITS,
@@ -63,12 +64,15 @@ export function AdsWorkspace({
   canEdit,
   initial,
   libraryHref,
+  scan = false,
 }: {
   orgId: string;
   /** The member's role in this organization allows changes (editor or above). The database decides again on every write. */
   canEdit: boolean;
   initial: AdsWorkspaceData;
   libraryHref: string;
+  /** NIGHTSHIFT_ADS_BRAND_SCAN, decided on the server: the "Scan my site" panel (migration 0133) is drawn only when it is on. */
+  scan?: boolean;
 }) {
   const { t } = useI18n();
   const ta = t.adsFactory;
@@ -154,6 +158,7 @@ export function AdsWorkspace({
               </button>
             )}
           </div>
+          {scan && <BrandScanPanel orgId={orgId} canEdit={canEdit} kits={data.kits} onAccepted={() => void refresh()} />}
           {data.kits.length === 0 ? (
             <p className="ads-note">{ta.kits.empty}</p>
           ) : (
