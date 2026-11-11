@@ -189,10 +189,11 @@ begin
           and (select array_agg(k order by k) from jsonb_object_keys(v_node) k) is distinct from array['config', 'id', 'label', 'type']
        or jsonb_typeof(v_node->'id') is distinct from 'string'
        or jsonb_typeof(v_node->'label') is distinct from 'string'
+       or jsonb_typeof(v_node->'type') is distinct from 'string'
        or (v_node ? 'config' and v_node->'config' is distinct from '{}'::jsonb)
     then raise exception 'invalid_agent_node' using errcode = '22023'; end if;
     v_id := v_node->>'id';
-    v_type := v_node->>'type';  -- any JSON type: only the text of a string can equal a registry name below
+    v_type := v_node->>'type';  -- a string (checked above): a JSON null would make every test on it NULL
     v_label := v_node->>'label';
     if v_id !~ '^[A-Za-z][A-Za-z0-9_-]{0,63}$'
        or v_id = any(v_ids)

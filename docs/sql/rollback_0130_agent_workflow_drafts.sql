@@ -30,7 +30,7 @@ declare
 begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
     from pg_proc p where p.oid = to_regprocedure('public.save_agent_workflow_draft(uuid, integer, jsonb)');
-  if h is distinct from '475b08e3a582fd812fac8c17fb60627a' then
+  if h is distinct from '7fe9d1359748e6e311f95678843a6b2e' then
     raise exception 'rollback 0130: save_agent_workflow_draft() is missing or is not 0130''s body (md5 %): a later change would be undone; read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h
