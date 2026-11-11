@@ -599,6 +599,30 @@ site, calls a model, prices, holds or charges a credit, queues a job or publishe
   `set local nightshift.ads_rollback_delete_rows = 'yes'` is given in the same transaction (the rows are what people typed). Drops exactly what 0131 added.
 - **Tests.** `tests/test_ads_factory_migration.py` (the file, pinned), `tests/security/test_sec_ads_factory.py` (the lab: tenants, roles, caps, races, the rollback).
 
+## Ads Factory, Phase 2: the brand scan (0133)
+
+0133 (`0133_brand_scan.sql`, `docs/ADS_FACTORY.md` "Phase 2") is **live on apply and dark**: it **adds four tables** (`brand_domains`,
+`brand_domain_checks`, `brand_scans`, `brand_scan_settings`), nine internal functions, five member functions and five worker functions. It
+**replaces nothing**; its only writes to older tables are `accept_brand_scan_fields`'s into 0131's kits and products, through 0131's
+cleaning and caps. The scan is **not on sale** until the owner sets `brand_scan_settings.price_credits` (seeded NULL): `request_brand_scan`
+refuses `not_on_sale`. The worker (`tools/brand_scan_worker.py`) does nothing unless `NIGHTSHIFT_ADS_BRAND_SCAN=on`.
+
+- **Number.** 0133: 0132 is reserved by another open pull request (the hi-res export); neither names anything the other adds.
+- **Who may do what.** Members read their organization's rows; no API role writes any table; the settings are closed. Five SECURITY DEFINER
+  member functions to `authenticated` (each checks the editor role; `quote_brand_scan` any member), five worker functions to
+  `service_role` only, nine helpers to nobody.
+- **Money.** A request holds the database's price (`creative_platform_reserve`), the worker's finish captures it, every failure and the
+  stale sweeps release it; the confirmed price (`p_max_credits`) only refuses a higher one; an idempotent replay holds nothing twice.
+- **Caps.** One scan in flight per organization (unique index), `platform_daily_scans` (500) and `platform_daily_checks` (5000) per
+  24 hours under a platform lock after the organization's; 10 domains per organization; one check per domain per 15 s.
+- **Drift guard.** Refuses a function of its names with another body; the last block asserts the end state (bodies, grants, RLS, policies,
+  checks, the index, the triggers, the settings row).
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`. Needs 0131 (its checks use 0131's text rules).
+- **Undo.** `docs/sql/rollback_0133_brand_scan.sql` (owner-applied; run it BEFORE 0131's): refuses a body that is not 0133's, a scan in
+  flight, and rows unless `set local nightshift.brand_scan_rollback_delete_rows = 'yes'`. Kits and products accepted from a scan stay.
+- **Tests.** `tests/test_brand_scan_migration.py` (the file, pinned), `tests/security/test_sec_brand_scan.py` (the lab: roles, the price,
+  the domain rule, holds / captures / releases, idempotency, caps and races, the result checks, accepting, the rollback).
+
 ## The owner's model switch (0124)
 
 0124 (`0124_model_switch.sql`, `docs/MODEL_SWITCH.md`) is **live on apply and dark**: it replaces five functions that exist on the live

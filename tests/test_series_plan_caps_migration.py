@@ -74,7 +74,9 @@ class Numbering(unittest.TestCase):
         # 0131 (Ads Factory, Phase 1: brand_kits, brand_products, ad_campaigns, ad_concepts, ads_factory_cap_settings and their functions) was
         # reviewed the same way: it adds its own tables and functions only, replaces nothing, and names none of the three words below (its
         # caps live in their own table). The loop under this line checks exactly that for every reviewed number.
-        reviewed = ("0128", "0129", "0130", "0131")
+        # 0133 (Ads Factory, Phase 2: brand_domains, brand_domain_checks, brand_scans, brand_scan_settings and their functions) was
+        # reviewed the same way: its own tables and functions, plus writes into 0131's kits and products; none of the three words below.
+        reviewed = ("0128", "0129", "0130", "0131", "0133")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

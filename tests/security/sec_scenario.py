@@ -432,6 +432,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Ads Factory, Phase 1 (0131): tests/security/sec_ads_factory_0131.py — one kit, two products, one campaign, two concepts per tenant.
     import sec_ads_factory_0131
     sec_ads_factory_0131.seed(conn, sc)
+    # Ads Factory, Phase 2 (0133): tests/security/sec_brand_scan_0133.py — one verified domain and one ready scan per tenant.
+    import sec_brand_scan_0133
+    sec_brand_scan_0133.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

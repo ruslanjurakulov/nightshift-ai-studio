@@ -1611,6 +1611,7 @@ def test_the_rollback_removes_exactly_what_0131_added_and_0131_applies_again(con
     rollback = ROLLBACK.read_text(encoding="utf-8")
     assert re.search(r"(?m)^begin;$", rollback) and len(re.findall(r"(?m)^commit;$", rollback)) == 1
     with as_superuser(conn, commit=False) as su:
+        sec_db.take_off_0133(su)                             # 0133 (the brand scan) sits on 0131's text rules: it comes off first
         ours, others = fingerprint(su, True), fingerprint(su, False)
         events = su.value("select count(*) from public.security_events")
         assets = su.value("select count(*) from public.media_assets")
@@ -1635,7 +1636,8 @@ def test_0131_touches_no_object_it_did_not_add(conn, sc):
     name = f"ns_ads_base_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0131_")])
+        # 0133 (the brand scan) needs 0131: it is left out too, and is not part of what is compared.
+        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0131_", "0133_"))])
         with psycopg.connect(dsn, autocommit=True) as c:
             s = sec_db.Session(c)
             assert all(v == [] for v in fingerprint(s, True).values()), "the base has none of 0131's names"
