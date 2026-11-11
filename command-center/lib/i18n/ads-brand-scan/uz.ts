@@ -167,6 +167,7 @@ export const adsBrandScanUz: AdsBrandScanDictionary = {
     too_soon: "Qayta tekshirishdan oldin bir necha soniya kuting.",
     too_soon_after: "Qayta tekshirishdan oldin {seconds} soniya kuting.",
     platform_busy: "Skanerlash hozir band. Keyinroq urinib koʻring. Hech narsa yechilmadi.",
+    org_daily_limit: "Bu ish maydoni bugungi skanerlash va tekshiruvlarini ishlatib boʻldi. Ertaga urinib koʻring. Hech narsa yechilmadi.",
     not_on_sale: "Skanerlash hozircha mavjud emas. Hech narsa yechilmadi.",
     price_changed: "Narx oʻzgardi. Yangi narxni koʻring va yana bosing. Hech narsa yechilmadi.",
     price_changed_to: "Endi narx — {credits} kredit. Shu narxda skanerlash uchun yana bosing. Hech narsa yechilmadi.",

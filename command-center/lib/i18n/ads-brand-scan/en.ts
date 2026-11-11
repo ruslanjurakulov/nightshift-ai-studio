@@ -169,6 +169,7 @@ export const adsBrandScanEn = {
     too_soon: "Wait a few seconds before checking again.",
     too_soon_after: "Wait {seconds} seconds before checking again.",
     platform_busy: "Scanning is busy right now. Try again later. Nothing was charged.",
+    org_daily_limit: "This workspace has used its scans and checks for today. Try again tomorrow. Nothing was charged.",
     not_on_sale: "Scanning is not available yet. Nothing was charged.",
     price_changed: "The price changed. Look at the new price and press again. Nothing was charged.",
     price_changed_to: "The price is now {credits} credits. Press again to scan at that price. Nothing was charged.",

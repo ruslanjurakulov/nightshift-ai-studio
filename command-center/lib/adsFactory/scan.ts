@@ -295,7 +295,7 @@ export function parseAcceptInput(raw: unknown): AcceptParse {
 export type ScanError =
   | "unauthorized" | "forbidden" | "not_found" | "bad_request" | "org_required" | "not_available" | "not_configured" | "read_failed" | "failed"
   | "invalid_host" | "hosting_parent" | "invalid_url" | "invalid_idempotency_key" | "invalid_fields" | "name_required" | "invalid_reference"
-  | "limit_reached" | "too_soon" | "platform_busy" | "not_on_sale" | "price_changed" | "domain_not_verified" | "scan_in_progress"
+  | "limit_reached" | "too_soon" | "platform_busy" | "org_daily_limit" | "not_on_sale" | "price_changed" | "domain_not_verified" | "scan_in_progress"
   | "idempotency_conflict" | "scan_not_ready" | "insufficient_credits" | "scan_hold_unavailable" | "parallel_limit";
 
 const NS400 = ["invalid_host", "hosting_parent", "invalid_url", "invalid_idempotency_key", "invalid_fields", "name_required", "invalid_reference"];
@@ -335,6 +335,8 @@ export function mapScanError(error: { code?: string; message?: string; details?:
         return m ? { error: "too_soon", status: 429, retryAfter: Number(m[1]) } : { error: "too_soon", status: 429 };
       }
       if (word === "platform_busy") return { error: "platform_busy", status: 429 };
+      // This workspace's share of the day: the database names no number, so none is shown.
+      if (word === "org_daily_limit") return { error: "org_daily_limit", status: 429 };
       if (word === "parallel run limit reached") return { error: "parallel_limit", status: 429 };
       const m = /(?:^|\s)max=(\d{1,5})(?:\s|$)/.exec(details);
       return m ? { error: "limit_reached", status: 409, max: Number(m[1]) } : { error: "limit_reached", status: 409 };

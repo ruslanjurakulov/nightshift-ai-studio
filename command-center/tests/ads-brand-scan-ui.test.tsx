@@ -175,6 +175,17 @@ describe("2. the scan", () => {
     expect((posts("/api/ads/scan").find((c) => c.url === "/api/ads/scan")!.body as Record<string, unknown>).max_credits).toBe(1);
   });
 
+  it("this workspace's share of the day used up: a plain sentence, no number", async () => {
+    state.domains = [domain({ verifiedAt: "2026-11-11T00:00:00Z" })];
+    show();
+    await openPanel();
+    expect(await screen.findByText(/A scan costs 1 credits/)).toBeTruthy();
+    answers.push((url, m) => (m === "POST" && url === "/api/ads/scan" ? { status: 429, body: { error: "org_daily_limit", max: 20 } } : undefined));
+    fireEvent.click(screen.getByRole("button", { name: "Scan for 1 credits" }));
+    const said = await screen.findByText(t.errors.org_daily_limit);
+    expect(said.textContent).not.toMatch(/\d/);
+  });
+
   it("refuses an address outside the proved domain before anything is sent", async () => {
     state.domains = [domain({ verifiedAt: "2026-11-11T00:00:00Z" })];
     show();

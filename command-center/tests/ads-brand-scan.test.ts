@@ -178,6 +178,8 @@ describe("POST /api/ads/scan", () => {
       [{ code: "NS409", message: "scan_in_progress" }, { status: 409, body: { error: "scan_in_progress" } }],
       [{ code: "NS409", message: "idempotency_conflict" }, { status: 409, body: { error: "idempotency_conflict" } }],
       [{ code: "NS429", message: "platform_busy" }, { status: 429, body: { error: "platform_busy" } }],
+      [{ code: "NS429", message: "org_daily_limit" }, { status: 429, body: { error: "org_daily_limit" } }],
+      [{ code: "NS429", message: "org_daily_limit", details: "max=20" }, { status: 429, body: { error: "org_daily_limit" } }],
       [{ code: "NS429", message: "parallel run limit reached", details: "active=1 limit=1" }, { status: 429, body: { error: "parallel_limit" } }],
       [{ code: "NS402", message: "insufficient credits", details: "available=0 needed=1" }, { status: 402, body: { error: "insufficient_credits" } }],
       [{ code: "NS402", message: "scan_hold_unavailable", details: "hold=30 price=1" }, { status: 402, body: { error: "scan_hold_unavailable", hold: 30, price: 1 } }],
@@ -225,6 +227,8 @@ describe("the domain and check routes", () => {
     expect(await json(await check.POST(req(`/api/ads/scan/domains/${DOMAIN}/check`, "POST"), ctx(DOMAIN)))).toEqual({ status: 429, body: { error: "too_soon", retry_after: 9 } });
     h.rpc.check_domain_verification = { data: null, error: { code: "NS429", message: "platform_busy" } };
     expect(await json(await check.POST(req(`/api/ads/scan/domains/${DOMAIN}/check`, "POST"), ctx(DOMAIN)))).toEqual({ status: 429, body: { error: "platform_busy" } });
+    h.rpc.check_domain_verification = { data: null, error: { code: "NS429", message: "org_daily_limit" } };
+    expect(await json(await check.POST(req(`/api/ads/scan/domains/${DOMAIN}/check`, "POST"), ctx(DOMAIN)))).toEqual({ status: 429, body: { error: "org_daily_limit" } });
     h.calls.length = 0;
     expect((await check.POST(req("/api/ads/scan/domains/x/check", "POST"), ctx("not-a-uuid"))).status).toBe(404);
     expect(h.calls).toEqual([]);
@@ -375,7 +379,7 @@ describe("strings", () => {
     const t = ADS_BRAND_SCAN_STRINGS[loc];
     const errors: string[] = ["unauthorized", "forbidden", "not_found", "bad_request", "org_required", "not_available", "not_configured", "read_failed", "failed",
       "invalid_host", "hosting_parent", "invalid_url", "invalid_idempotency_key", "invalid_fields", "name_required", "invalid_reference", "limit_reached",
-      "too_soon", "platform_busy", "not_on_sale", "price_changed", "domain_not_verified", "scan_in_progress", "idempotency_conflict", "scan_not_ready",
+      "too_soon", "platform_busy", "org_daily_limit", "not_on_sale", "price_changed", "domain_not_verified", "scan_in_progress", "idempotency_conflict", "scan_not_ready",
       "insufficient_credits", "scan_hold_unavailable", "parallel_limit"];
     const sql = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0133_brand_scan.sql"), "utf8");
     // invalid_result is the worker's refusal (finish_brand_scan, service_role): no member route can receive it.
