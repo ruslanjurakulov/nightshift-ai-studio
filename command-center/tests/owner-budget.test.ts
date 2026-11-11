@@ -17,8 +17,7 @@ import {
   budgetModelsFrom,
   computeBudget,
   computeForModel,
-  floorCount,
-  floorMinutes,
+  decimalOf,
   floorSecondsOf,
   parseBudget,
   type BudgetModel,
@@ -65,43 +64,72 @@ describe("a typed amount", () => {
     expect(parseBudget("10,5")).toBe(10.5);
     expect(parseBudget("$10")).toBe(10);
     expect(parseBudget("0.01")).toBe(0.01);
+    expect(parseBudget("10,50")).toBe(10.5);
+    expect(parseBudget("1000")).toBe(1000);
+    expect(parseBudget("1000000000")).toBe(1e9);
     expect(parseBudget(25)).toBe(25);
   });
 
+  it("refuses a comma followed by exactly three digits: '1,000' is a thousand to one reader and one dollar to another", () => {
+    for (const ambiguous of ["1,000", "10,500", "1,000,000", "999,999", "$1,000"]) expect(parseBudget(ambiguous), ambiguous).toBeNull();
+    expect(parseBudget("1,0")).toBe(1);
+    expect(parseBudget("1,0000")).toBe(1);
+    expect(parseBudget("1.000")).toBe(1);
+  });
+
   it("is nothing when it is not an amount", () => {
-    for (const bad of ["", " ", "abc", "-1", "0", "0.0", "1e3", "10.5.5", "10,5,5", "1 000", "Infinity", "NaN", "1000000001", "10$", "+10", "0x10", ".5"]) {
+    for (const bad of ["", " ", "abc", "-1", "0", "0.0", "1e3", "10.5.5", "10,5,5", "1 000", "Infinity", "NaN", "1000000001", "1000000000.000001", "1.1234567", "10$", "+10", "0x10", ".5"]) {
       expect(parseBudget(bad), JSON.stringify(bad)).toBeNull();
     }
     for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -5, 0, null, undefined, {}, [], true]) expect(parseBudget(bad), String(bad)).toBeNull();
   });
 
-  it("an empty or invalid amount shows nothing, whatever the price", () => {
-    for (const bad of ["", "abc", "-3", "0"]) {
-      expect(computeBudget({ budget: bad, kind: "image", unit: "image", usdPerUnit: 0.04 })).toEqual({ kind: "empty" });
-      expect(computeBudget({ budget: bad, kind: "image", unit: "image", usdPerUnit: null })).toEqual({ kind: "empty" });
+  it("nothing typed shows nothing; something that is not an amount says so; whatever the price", () => {
+    for (const blank of ["", "   ", null, undefined]) {
+      expect(computeBudget({ budget: blank, kind: "image", unit: "image", usdPerUnit: 0.04 })).toEqual({ kind: "empty" });
+      expect(computeBudget({ budget: blank, kind: "image", unit: "image", usdPerUnit: null })).toEqual({ kind: "empty" });
+    }
+    for (const bad of ["abc", "-3", "0", "1,000"]) {
+      expect(computeBudget({ budget: bad, kind: "image", unit: "image", usdPerUnit: 0.04 })).toEqual({ kind: "invalid" });
+      expect(computeBudget({ budget: bad, kind: "image", unit: "image", usdPerUnit: null })).toEqual({ kind: "invalid" });
     }
   });
 });
 
-describe("rounding", () => {
-  it("is always down, and forgives only floating-point dust", () => {
-    expect(floorCount(2.99)).toBe(2);
-    expect(floorCount(285.714)).toBe(285);
+describe("exact arithmetic", () => {
+  it("reads a registry price as the decimal it was written as", () => {
+    expect(decimalOf(0.036667)).toEqual({ num: 36667n, scale: 6 });
+    expect(decimalOf(4e-5)).toEqual({ num: 4n, scale: 5 });
+    expect(decimalOf(1e-7)).toEqual({ num: 1n, scale: 7 });
+    expect(decimalOf(1e21)).toEqual({ num: 10n ** 21n, scale: 0 });
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1]) expect(decimalOf(bad)).toBeNull();
+  });
+
+  it("is exact where floating point is not, and never rounds up", () => {
     // $10 / $0.00004 is 249999.99999999997 in binary arithmetic and exactly 250 000 on paper.
     expect(10 / 0.00004).toBeLessThan(250000);
-    expect(floorCount(10 / 0.00004)).toBe(250000);
-    expect(floorCount(0.6 / 0.2)).toBe(3);
-    // Not a number is never "0": computeBudget turns it into "no price".
-    expect(floorCount(Number.NaN)).toBeNaN();
-    expect(floorCount(Number.POSITIVE_INFINITY)).toBeNaN();
-    expect(floorCount(-1)).toBe(0);
+    expect(computeBudget({ budget: "10", kind: "audio", unit: "character", usdPerUnit: 0.00004 })).toEqual({ kind: "characters", count: 250000 });
+    expect(computeBudget({ budget: "0.6", kind: "image", unit: "image", usdPerUnit: 0.2 })).toEqual({ kind: "images", count: 3 });
+    // The cases a floating-point tolerance once rounded UP: each must be the exact floor.
+    expect(computeForModel(model("elevenlabs-flash-v2.5"), "40300")).toEqual({ kind: "characters", count: 1_007_500_000 });
+    expect(computeForModel(model("recraft-v4.1-flash"), "1000000")).toEqual({ kind: "images", count: 142_857_142 });
+    // $13 201 / $0.036667 = 360 023.9... s = 6000.39... min: 6000.3, not 6000.4.
+    expect(computeForModel(model("elevenlabs-dubbing-v2"), "13201")).toEqual({ kind: "seconds", minutes: 6000.3, clips: null, floorSeconds: null });
+    expect(computeBudget({ budget: "1000000000", kind: "video", unit: "second", usdPerUnit: 0.1, durationS: 5 })).toEqual({
+      kind: "videos",
+      count: 2_000_000_000,
+      durationS: 5,
+      billedS: 5,
+      minutes: 166_666_666.6,
+    });
+    expect(computeBudget({ budget: "1000000000", kind: "image", unit: "image", usdPerUnit: 0.5 })).toEqual({ kind: "images", count: 2_000_000_000 });
   });
 
   it("minutes keep one decimal, rounded down", () => {
-    expect(floorMinutes(248)).toBe(4.1);
-    expect(floorMinutes(59)).toBe(0.9);
-    expect(floorMinutes(60)).toBe(1);
-    expect(floorMinutes(0)).toBe(0);
+    expect(computeBudget({ budget: "2.48", kind: "audio", unit: "second", usdPerUnit: 0.01 })).toMatchObject({ minutes: 4.1 });
+    expect(computeBudget({ budget: "0.59", kind: "audio", unit: "second", usdPerUnit: 0.01 })).toMatchObject({ minutes: 0.9 });
+    expect(computeBudget({ budget: "0.6", kind: "audio", unit: "second", usdPerUnit: 0.01 })).toMatchObject({ minutes: 1 });
+    expect(computeBudget({ budget: "0.05", kind: "audio", unit: "second", usdPerUnit: 0.01 })).toMatchObject({ minutes: 0 });
   });
 });
 
@@ -273,7 +301,8 @@ describe("status", () => {
   it("carries the sale state, the terms gate and the estimate mark", () => {
     const row = budgetModelOf(rowOf(entry("sonilo-music"), "beta"), null, TODAY)!;
     expect(row.availability).toBe("beta");
-    expect(row.termsGate).toBe("terms_review_required");
+    expect(row.termsGate).toBe(true);
+    expect(model("gemini-3.1-flash-image").termsGate).toBe(false);
     expect(row.estimate).toBe(true);
     expect(budgetModelOf({ ...rowOf(entry("recraft-v4.1")), availability: "nonsense" }, null, TODAY)!.availability).toBeNull();
     const confirmed = rowOf(entry("recraft-v4.1"));
@@ -357,7 +386,8 @@ describe("every model in the registry", () => {
           for (const n of numbersIn(x)) expect(Number.isFinite(n), `${m.id} ${o.key} ${d}`).toBe(true);
         }
       }
-      for (const bad of ["", "abc", "-1"]) expect(computeForModel(m, bad), `${m.id} ${bad}`).toEqual({ kind: "empty" });
+      expect(computeForModel(m, ""), m.id).toEqual({ kind: "empty" });
+      for (const bad of ["abc", "-1", "1,000"]) expect(computeForModel(m, bad), `${m.id} ${bad}`).toEqual({ kind: "invalid" });
     }
   });
 
@@ -380,5 +410,52 @@ describe("every model in the registry", () => {
     expect(budgetModelOf("nope", null, TODAY)).toBeNull();
     // A row with no spec at all is a model with no price, not a crash.
     expect(budgetModelOf({ id: "ok-id", provider: "x" }, null, TODAY)).toMatchObject({ options: [], kind: "other", unit: null });
+  });
+});
+
+describe("every priced option against exact fraction arithmetic", () => {
+  // An independent oracle: registry prices have at most six decimals, so in micro-dollars they are integers, and every
+  // count is one integer division. The calculator must agree at every amount, small and very large.
+  const AMOUNTS = [10, 13201, 40300, 1_000_000, 1_000_000_000];
+  const micro = (usd: number): bigint => {
+    const v = BigInt(Math.round(usd * 1e6));
+    expect(Number(v) / 1e6, `price ${usd} has more than six decimals`).toBe(usd);
+    return v;
+  };
+  const all = BUDGET_KINDS.flatMap((k) => budgetModelsFrom(REGISTRY.models.map((e) => rowOf(e)), null, TODAY)[k]);
+
+  it("agrees for every model, option, length and amount", () => {
+    let checked = 0;
+    for (const m of all) {
+      for (const o of m.options) {
+        const p = micro(o.usd);
+        for (const d of m.durations.length ? m.durations : [null]) {
+          for (const amount of AMOUNTS) {
+            const a = BigInt(amount) * 1_000_000n;
+            const got = computeForModel(m, String(amount), o.key, d);
+            const where = `${m.id} ${o.key} ${d} $${amount}`;
+            if (m.unit === "second") {
+              const billed = d === null ? null : BigInt(Math.max(d, m.floorSeconds ?? 0));
+              if (m.kind === "video" && d !== null && billed !== null) {
+                const count = a / (p * billed);
+                expect(got, where).toEqual({ kind: "videos", count: Number(count), durationS: d, billedS: Number(billed), minutes: Number((count * BigInt(d)) / 6n) / 10 });
+              } else {
+                expect(got, where).toEqual({
+                  kind: "seconds",
+                  minutes: Number(a / (p * 6n)) / 10,
+                  clips: d === null || billed === null ? null : { count: Number(a / (p * billed)), durationS: d, billedS: Number(billed) },
+                  floorSeconds: m.floorSeconds,
+                });
+              }
+            } else {
+              const kind = m.unit === "image" ? "images" : m.unit === "character" ? "characters" : "requests";
+              expect(got, where).toEqual({ kind, count: Number(a / p) });
+            }
+            checked++;
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(500);
   });
 });

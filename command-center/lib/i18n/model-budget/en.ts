@@ -55,6 +55,8 @@ export const modelBudgetEn = {
   seconds: "{n} s",
   budget: "Budget ($)",
   budgetPlaceholder: "e.g. 10",
+  notAmount: "Not an amount. Type dollars like 10 or 10.5, without thousands separators.",
+  forAmount: "(for {amount})",
   startsOn: {
     default_resolution: "Counted at the default resolution.",
     base: "Counted at the registry's base price.",

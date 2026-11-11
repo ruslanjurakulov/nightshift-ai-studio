@@ -52,6 +52,8 @@ export const modelBudgetUz: ModelBudgetDictionary = {
   seconds: "{n} s",
   budget: "Byudjet ($)",
   budgetPlaceholder: "masalan, 10",
+  notAmount: "Bu summa emas. Dollarni 10 yoki 10,5 kabi, minglik ajratgichlarsiz yozing.",
+  forAmount: "({amount} uchun)",
   startsOn: {
     default_resolution: "Standart oʻlcham boʻyicha hisoblandi.",
     base: "Reestrning asosiy narxi boʻyicha hisoblandi.",

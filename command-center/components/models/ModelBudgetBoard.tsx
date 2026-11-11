@@ -9,6 +9,7 @@ import {
   BUDGET_KINDS,
   computeBudget,
   defaultDuration,
+  parseBudget,
   optionOf,
   type BudgetKind,
   type BudgetModel,
@@ -108,13 +109,13 @@ function BudgetRow({ m }: { m: BudgetModel }) {
         </p>
       ) : (
         <>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex min-w-0 max-w-full flex-wrap items-end gap-3">
             {m.options.length > 1 && (
-              <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]" htmlFor={`${ids}-opt`}>
+              <label className="flex min-w-0 max-w-full flex-col gap-1 break-words text-xs text-[var(--color-muted)]" htmlFor={`${ids}-opt`}>
                 {b.option}
                 <select
                   id={`${ids}-opt`}
-                  className="min-h-[44px] rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-2 text-sm text-[var(--color-fg)]"
+                  className="min-h-[44px] w-full max-w-full truncate rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-2 text-sm text-[var(--color-fg)]"
                   value={optionKey ?? ""}
                   onChange={(e) => setOptionKey(e.target.value)}
                 >
@@ -127,11 +128,11 @@ function BudgetRow({ m }: { m: BudgetModel }) {
               </label>
             )}
             {lengthApplies && m.durations.length > 1 && (
-              <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]" htmlFor={`${ids}-len`}>
+              <label className="flex min-w-0 max-w-full flex-col gap-1 break-words text-xs text-[var(--color-muted)]" htmlFor={`${ids}-len`}>
                 {b.length}
                 <select
                   id={`${ids}-len`}
-                  className="min-h-[44px] rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-2 text-sm text-[var(--color-fg)]"
+                  className="min-h-[44px] w-full max-w-full truncate rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-2 text-sm text-[var(--color-fg)]"
                   value={durationS ?? ""}
                   onChange={(e) => setDurationS(Number(e.target.value))}
                 >
@@ -143,7 +144,7 @@ function BudgetRow({ m }: { m: BudgetModel }) {
                 </select>
               </label>
             )}
-            <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]" htmlFor={`${ids}-budget`}>
+            <label className="flex min-w-0 max-w-full flex-col gap-1 break-words text-xs text-[var(--color-muted)]" htmlFor={`${ids}-budget`}>
               {b.budget}
               <input
                 id={`${ids}-budget`}
@@ -151,23 +152,25 @@ function BudgetRow({ m }: { m: BudgetModel }) {
                 inputMode="decimal"
                 autoComplete="off"
                 placeholder={b.budgetPlaceholder}
-                className="min-h-[44px] w-32 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 text-sm text-[var(--color-fg)]"
+                className="min-h-[44px] w-32 max-w-full rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 text-sm text-[var(--color-fg)] aria-[invalid=true]:border-[var(--color-fail)]"
                 value={budget}
                 onChange={(e) => setBudget(e.target.value)}
+                aria-invalid={result.kind === "invalid" ? true : undefined}
+                aria-describedby={`${ids}-result`}
                 data-testid="budget-input"
               />
             </label>
           </div>
           <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
             <dt className="text-[var(--color-muted)]">{b.vendorCost}</dt>
-            <dd className="m-0 text-[var(--color-fg)]" data-testid="budget-vendor-cost">
+            <dd className="m-0 min-w-0 break-words text-[var(--color-fg)]" data-testid="budget-vendor-cost">
               {option ? `${usd(option.usd, locale)} ${perUnit}` : b.noPrice}
               {option && optionKey !== null && (m.options.length > 1 || optionKey !== BASE) ? ` · ${optionText(optionKey)}` : ""}
               {m.estimate ? ` · ${b.estimate}` : ""}
               {m.asOf ? ` · ${fmt(b.asOf, { date: m.asOf })}` : ""}
             </dd>
             <dt className="text-[var(--color-muted)]">{b.customer}</dt>
-            <dd className="m-0 text-[var(--color-fg)]" data-testid="budget-customer">
+            <dd className="m-0 min-w-0 break-words text-[var(--color-fg)]" data-testid="budget-customer">
               {m.customerUnread
                 ? b.customerUnread
                 : option?.customerCredits != null
@@ -178,7 +181,7 @@ function BudgetRow({ m }: { m: BudgetModel }) {
           {m.unpricedVariants.length > 0 && (
             <p className="m-0 text-[11px] text-[var(--color-muted)]">{fmt(b.unpriced, { keys: m.unpricedVariants.map((k) => variantLabel(k, b)).join(", ") })}</p>
           )}
-          <BudgetLine result={result} m={m} optionKey={optionKey} durationS={durationS} />
+          <BudgetLine id={`${ids}-result`} result={result} m={m} budget={budget} optionKey={optionKey} durationS={durationS} />
         </>
       )}
     </li>
@@ -194,18 +197,40 @@ function statusChips(m: BudgetModel, b: Text): { text: string; warn: boolean }[]
 }
 
 /** The small text under the field: nothing until an amount is typed. */
-function BudgetLine({ result, m, optionKey, durationS }: { result: BudgetResult; m: BudgetModel; optionKey: string | null; durationS: number | null }) {
+function BudgetLine({
+  id,
+  result,
+  m,
+  budget,
+  optionKey,
+  durationS,
+}: {
+  id: string;
+  result: BudgetResult;
+  m: BudgetModel;
+  budget: string;
+  optionKey: string | null;
+  durationS: number | null;
+}) {
   const { t, locale } = useI18n();
   const b = t.modelBudget;
   const n = (v: number) => formatNumber(v, locale, 0);
   const min = (v: number) => formatNumber(v, locale, 1);
-  if (result.kind === "empty") return <p className="m-0 min-h-[1rem] text-xs" aria-live="polite" data-testid="budget-result" />;
+  if (result.kind === "empty") return <p id={id} className="m-0 min-h-[1rem] text-xs" aria-live="polite" data-testid="budget-result" />;
+  if (result.kind === "invalid")
+    return (
+      <p id={id} className="m-0 text-xs text-[var(--color-fail)]" aria-live="polite" data-testid="budget-result">
+        {b.notAmount}
+      </p>
+    );
   if (result.kind === "no_price")
     return (
-      <p className="m-0 text-xs text-[var(--color-muted)]" aria-live="polite" data-testid="budget-result">
+      <p id={id} className="m-0 text-xs text-[var(--color-muted)]" aria-live="polite" data-testid="budget-result">
         {b.noPrice}
       </p>
     );
+  // The amount as it was read, so "10,5" is visibly $10.5 and nothing else.
+  const amount = parseBudget(budget);
   const main: string[] = [];
   // Short clauses about billing ("each billed as 10 s"), and whole sentences about what the count stands on.
   const notes: string[] = [];
@@ -237,8 +262,9 @@ function BudgetLine({ result, m, optionKey, durationS }: { result: BudgetResult;
   if (optionKey === m.defaultOption && m.defaultWhy && (m.options.length > 1 || optionKey !== BASE)) basis.push(b.startsOn[m.defaultWhy]);
   if (durationS !== null && durationS === defaultDuration(m) && m.durations.length > 1 && (result.kind === "videos" || (result.kind === "seconds" && result.clips))) basis.push(b.shortest);
   return (
-    <p className="m-0 text-xs text-[var(--color-fg)]" aria-live="polite" data-testid="budget-result">
+    <p id={id} className="m-0 break-words text-xs text-[var(--color-fg)]" aria-live="polite" data-testid="budget-result">
       {main.join(" · ")}
+      {amount !== null && <span className="text-[var(--color-muted)]"> {fmt(b.forAmount, { amount: `$${formatNumber(amount, locale, 6)}` })}</span>}
       {notes.length > 0 && <span className="text-[var(--color-muted)]"> — {notes.join("; ")}</span>}
       {basis.length > 0 && <span className="block text-[11px] text-[var(--color-muted)]">{basis.join(" ")}</span>}
     </p>

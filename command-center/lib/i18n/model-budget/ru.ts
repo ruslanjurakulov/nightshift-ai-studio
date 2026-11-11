@@ -52,6 +52,8 @@ export const modelBudgetRu: ModelBudgetDictionary = {
   seconds: "{n} с",
   budget: "Бюджет ($)",
   budgetPlaceholder: "напр. 10",
+  notAmount: "Это не сумма. Введите доллары, например 10 или 10,5, без разделителей тысяч.",
+  forAmount: "(на {amount})",
   startsOn: {
     default_resolution: "Посчитано в разрешении по умолчанию.",
     base: "Посчитано по базовой цене реестра.",

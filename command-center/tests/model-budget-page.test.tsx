@@ -184,10 +184,21 @@ describe("the calculator under each model", () => {
     expect(text).toContain("Videos of 4 s: ≈ 62 (≈ 4.1 min in all)");
     expect(text).toContain(en.modelBudget.startsOn.default_resolution);
     expect(text).toContain(en.modelBudget.shortest);
-    fireEvent.change(r.getByTestId("budget-input"), { target: { value: "ten" } });
+    expect(text).toContain("(for $10)");
+    expect(r.getByTestId("budget-input").getAttribute("aria-invalid")).toBeNull();
+    for (const bad of ["ten", "1,000", "-5"]) {
+      fireEvent.change(r.getByTestId("budget-input"), { target: { value: bad } });
+      expect(r.getByTestId("budget-result").textContent, bad).toBe(en.modelBudget.notAmount);
+      expect(r.getByTestId("budget-input").getAttribute("aria-invalid"), bad).toBe("true");
+    }
+    // Clearing the field is not an error: it shows nothing again.
+    fireEvent.change(r.getByTestId("budget-input"), { target: { value: "" } });
     expect(r.getByTestId("budget-result").textContent).toBe("");
+    expect(r.getByTestId("budget-input").getAttribute("aria-invalid")).toBeNull();
     fireEvent.change(r.getByTestId("budget-input"), { target: { value: "10,5" } });
     expect(r.getByTestId("budget-result").textContent).toContain("≈ 65");
+    // The amount as read is echoed, so a comma decimal is visibly what was meant.
+    expect(r.getByTestId("budget-result").textContent).toContain("(for $10.5)");
   });
 
   it("recounts when another option or length is picked", async () => {
@@ -203,12 +214,12 @@ describe("the calculator under each model", () => {
     await board();
     const img = within(row("recraft-v4.1"));
     fireEvent.change(img.getByTestId("budget-input"), { target: { value: "10" } });
-    expect(img.getByTestId("budget-result").textContent).toBe("Images: ≈ 285");
+    expect(img.getByTestId("budget-result").textContent).toBe("Images: ≈ 285 (for $10)");
     expect(img.getByTestId("budget-customer").textContent).toBe("6 credits per image");
     expect(img.getByTestId("budget-vendor-cost").textContent).toContain(en.modelBudget.estimate);
     const voice = within(row("elevenlabs-flash-v2.5"));
     fireEvent.change(voice.getByTestId("budget-input"), { target: { value: "10" } });
-    expect(voice.getByTestId("budget-result").textContent).toBe("Characters of speech: ≈ 250,000");
+    expect(voice.getByTestId("budget-result").textContent).toBe("Characters of speech: ≈ 250,000 (for $10)");
     expect(voice.getByTestId("budget-customer").textContent).toBe(en.modelBudget.customerNone);
   });
 

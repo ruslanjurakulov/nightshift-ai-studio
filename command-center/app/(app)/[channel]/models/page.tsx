@@ -65,7 +65,9 @@ export default async function ModelsPage({
   const manage = operator && q.view === "manage";
   const switchView = operator && q.view === "switch";
   const budgetView = q.view === "budget";
-  // The platform owner (an admin who is not the owner is not): asked only of an operator, and fail closed (null is no).
+  // The platform owner (an admin who is not the owner is not), fail closed (null is no). Asked only of an operator: a
+  // customer, or anybody opening ?view=budget who is not an operator, costs no lookup. An operator is asked on every view
+  // because the views' navigation, drawn on each of them, carries the owner's "Prices & budget" link.
   const platformOwner = operator && (await resolvePlatformRole()) === "owner";
   // Vendor costs are the platform owner's alone: anybody else opening the address learns nothing, not even that it exists.
   if (budgetView && !platformOwner) notFound();

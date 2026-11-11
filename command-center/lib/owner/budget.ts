@@ -45,8 +45,8 @@ export interface BudgetModel {
   unit: PriceUnit | null;
   /** The sale state of 0035 (null when the row carried none we know). */
   availability: Availability | null;
-  /** spec.terms_gate: the vendor's terms are not yet cleared, so the model cannot be sold. */
-  termsGate: string | null;
+  /** spec.terms_gate is set: the vendor's terms are not yet cleared, so the model cannot be sold. Only the fact travels. */
+  termsGate: boolean;
   /** spec.shutdown.on: the vendor's announced shutdown date, and whether it has passed. */
   shutdownOn: string | null;
   pastShutdown: boolean;
@@ -182,7 +182,7 @@ export function budgetModelOf(row: unknown, charged: Record<string, number> | nu
     kind: kindOf(spec.output),
     unit,
     availability: isAvailability(row.availability) ? row.availability : null,
-    termsGate: str(spec.terms_gate),
+    termsGate: str(spec.terms_gate) !== null,
     shutdownOn,
     pastShutdown: shutdownOn !== null && shutdownOn <= today,
     estimate: pricing.confirmed !== true,
@@ -213,41 +213,93 @@ export function budgetModelsFrom(rows: unknown, charged: Record<string, number> 
 
 // ── the calculator ────────────────────────────────────────────────────────────
 
+
 /** The largest amount the calculator takes. Past it the figures stop meaning anything; it reads as invalid. */
 export const MAX_BUDGET_USD = 1_000_000_000;
 
+/** An exact non-negative decimal as a fraction: `num / 10^scale`. */
+export interface Decimal {
+  num: bigint;
+  scale: number;
+}
+
+/**
+ * A number as the exact decimal it was written as. JSON numbers (the registry's prices) print back as the shortest
+ * decimal that reads as the same double ("0.036667", "4e-05" -> "0.00004"), which is the figure the registry states;
+ * arithmetic on that decimal is exact, where arithmetic on the double is not ($40 300 / $0.00004 in floating point is
+ * 1 007 499 999.9999999, and a nudge to fix that dust rounds other answers UP). null for anything that is not a finite,
+ * non-negative number.
+ */
+export function decimalOf(n: number): Decimal | null {
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return null;
+  const m = /^(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/i.exec(String(n));
+  if (!m) return null;
+  const frac = m[2] ?? "";
+  const exp = m[3] ? Number(m[3]) : 0;
+  let num = BigInt(m[1] + frac);
+  let scale = frac.length - exp;
+  if (scale < 0) {
+    num *= 10n ** BigInt(-scale);
+    scale = 0;
+  }
+  return { num, scale };
+}
+
+/** The amount typed, exactly, or null. Shared by parseBudget (the number) and the calculator (the exact fraction). */
+function parseBudgetDecimal(raw: unknown): Decimal | null {
+  let d: Decimal | null = null;
+  if (typeof raw === "number") d = decimalOf(raw);
+  else if (typeof raw === "string") {
+    const s = raw.trim().replace(/^\$\s*/, "");
+    if (!/^\d{1,10}(?:[.,]\d{1,6})?$/.test(s)) return null;
+    // "1,000" is a thousand to an English reader and one dollar to a Russian one: a comma followed by exactly three
+    // digits is ambiguous, so it is no amount at all ("10,5" and "10,50" stay a decimal comma).
+    if (/,\d{3}$/.test(s)) return null;
+    const [whole, frac = ""] = s.split(/[.,]/);
+    d = { num: BigInt(whole + frac), scale: frac.length };
+  }
+  if (d === null || d.num <= 0n) return null;
+  // At most MAX_BUDGET_USD: num / 10^scale <= MAX  <=>  num <= MAX * 10^scale.
+  if (d.num > BigInt(MAX_BUDGET_USD) * 10n ** BigInt(d.scale)) return null;
+  return d;
+}
+
 /**
  * A typed amount in dollars, or null for anything that is not one: empty, words, a negative, zero, more than one
- * separator, past MAX_BUDGET_USD. A comma is a decimal separator too ("10,5"): Russian and Uzbek write it that way.
+ * separator, more than six decimals, an ambiguous "1,000", past MAX_BUDGET_USD. A comma is a decimal separator too
+ * ("10,5"): Russian and Uzbek write it that way.
  */
 export function parseBudget(raw: unknown): number | null {
-  if (typeof raw === "number") return Number.isFinite(raw) && raw > 0 && raw <= MAX_BUDGET_USD ? raw : null;
-  if (typeof raw !== "string") return null;
-  const s = raw.trim().replace(/^\$\s*/, "");
-  if (!/^\d{1,10}(?:[.,]\d{1,6})?$/.test(s)) return null;
-  const n = Number(s.replace(",", "."));
-  return Number.isFinite(n) && n > 0 && n <= MAX_BUDGET_USD ? n : null;
+  const d = parseBudgetDecimal(raw);
+  return d === null ? null : Number(d.num) / 10 ** d.scale;
+}
+
+/** Was anything typed at all? Blank shows nothing; something that is not an amount says so. */
+function isBlank(raw: unknown): boolean {
+  return raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === "");
 }
 
 /**
- * Round down, forgiving the floating-point dust of a division that is exact on paper ($10 / $0.00004 is 249999.99999999997
- * in binary, and is 250 000 characters). The tolerance is relative and far below one unit of anything counted here.
+ * floor((budget / price) / per), exactly: (b.num * 10^p.scale) / (p.num * 10^b.scale * per), integer division.
+ * `per` is how many units one counted thing takes (seconds per clip; 1 for an image). Rounds DOWN, always.
  */
-export function floorCount(x: number): number {
-  // Not a number stays not a number, so computeBudget can refuse it; it must never read as "0 videos".
-  if (!Number.isFinite(x)) return Number.NaN;
-  if (x <= 0) return 0;
-  return Math.floor(x * (1 + 1e-9));
+function exactCount(b: Decimal, p: Decimal, per: bigint): bigint {
+  const scale = BigInt(Math.max(b.scale, p.scale));
+  const bn = b.num * 10n ** (scale - BigInt(b.scale));
+  const pn = p.num * 10n ** (scale - BigInt(p.scale));
+  return bn / (pn * per);
 }
 
-/** Minutes, rounded down to one decimal. */
-export function floorMinutes(seconds: number): number {
-  return floorCount((seconds / 60) * 10) / 10;
+/** A BigInt count as a number, or NaN when it cannot be one exactly (computeBudget then answers "no price"). */
+function asNumber(n: bigint): number {
+  return n <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(n) : Number.NaN;
 }
 
 export type BudgetResult =
-  /** Nothing typed, or not an amount: the view shows nothing. */
+  /** Nothing typed: the view shows nothing. */
   | { kind: "empty" }
+  /** Something typed that is not an amount: the view says so. */
+  | { kind: "invalid" }
   /** The registry has no price for this model (or this option): the view says so, and never a number. */
   | { kind: "no_price" }
   /** A video model with set lengths: `count` clips of `durationS` (each billed `billedS`), `minutes` of video in all. */
@@ -270,35 +322,42 @@ export interface BudgetInput {
   floorSeconds?: number | null;
 }
 
-/** What `budget` dollars buy at `usdPerUnit`, rounded down. Never NaN or Infinity: the answer is a count or a kind with none. */
+/**
+ * What `budget` dollars buy at `usdPerUnit`, rounded down, in exact decimal arithmetic. Never NaN or Infinity: the
+ * answer is a count or a kind with none. Minutes keep one decimal, also rounded down (tenths = seconds / 6).
+ */
 export function computeBudget(input: BudgetInput): BudgetResult {
-  const budget = parseBudget(input.budget);
-  if (budget === null) return { kind: "empty" };
+  if (isBlank(input.budget)) return { kind: "empty" };
+  const b = parseBudgetDecimal(input.budget);
+  if (b === null) return { kind: "invalid" };
   const price = positivePrice(input.usdPerUnit);
-  if (price === null || input.unit === null) return { kind: "no_price" };
+  const p = price === null ? null : decimalOf(price);
+  if (p === null || p.num <= 0n || input.unit === null) return { kind: "no_price" };
   const floor = typeof input.floorSeconds === "number" && Number.isInteger(input.floorSeconds) && input.floorSeconds > 0 ? input.floorSeconds : null;
   const d = typeof input.durationS === "number" && Number.isInteger(input.durationS) && input.durationS > 0 ? input.durationS : null;
+  const tenths = (n: bigint) => asNumber(n) / 10;
 
   let out: BudgetResult;
   switch (input.unit) {
     case "image":
-      out = { kind: "images", count: floorCount(budget / price) };
+      out = { kind: "images", count: asNumber(exactCount(b, p, 1n)) };
       break;
     case "character":
-      out = { kind: "characters", count: floorCount(budget / price) };
+      out = { kind: "characters", count: asNumber(exactCount(b, p, 1n)) };
       break;
     case "request":
-      out = { kind: "requests", count: floorCount(budget / price) };
+      out = { kind: "requests", count: asNumber(exactCount(b, p, 1n)) };
       break;
     case "second": {
       // A job shorter than the floor is billed the floor.
       const billed = d === null ? null : Math.max(d, floor ?? 0);
       if (input.kind === "video" && d !== null && billed !== null) {
-        const count = floorCount(budget / (billed * price));
-        out = { kind: "videos", count, durationS: d, billedS: billed, minutes: floorMinutes(count * d) };
+        const count = exactCount(b, p, BigInt(billed));
+        out = { kind: "videos", count: asNumber(count), durationS: d, billedS: billed, minutes: tenths((count * BigInt(d)) / 6n) };
       } else {
-        const clips = d !== null && billed !== null ? { count: floorCount(budget / (billed * price)), durationS: d, billedS: billed } : null;
-        out = { kind: "seconds", minutes: floorMinutes(budget / price), clips, floorSeconds: floor };
+        const clips = d !== null && billed !== null ? { count: asNumber(exactCount(b, p, BigInt(billed))), durationS: d, billedS: billed } : null;
+        // Tenths of a minute = floor(seconds / 6), seconds = budget / price.
+        out = { kind: "seconds", minutes: tenths(exactCount(b, p, 6n)), clips, floorSeconds: floor };
       }
       break;
     }
@@ -321,8 +380,9 @@ export function defaultDuration(m: Pick<BudgetModel, "durations">): number | nul
 
 /** The model's own starting answer for an amount: its default option and shortest length. */
 export function computeForModel(m: BudgetModel, budget: unknown, optionKey: string | null = m.defaultOption, durationS: number | null = defaultDuration(m)): BudgetResult {
+  if (isBlank(budget)) return { kind: "empty" };
+  if (parseBudget(budget) === null) return { kind: "invalid" };
   const opt = optionOf(m, optionKey);
-  if (parseBudget(budget) === null) return { kind: "empty" };
   if (!opt) return { kind: "no_price" };
   return computeBudget({ budget, kind: m.kind, unit: m.unit, usdPerUnit: opt.usd, durationS, floorSeconds: m.floorSeconds });
 }
