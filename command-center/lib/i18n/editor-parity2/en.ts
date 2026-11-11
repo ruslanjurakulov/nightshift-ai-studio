@@ -68,7 +68,7 @@ export const parity2En = {
     no_audio: "This clip's own sound is off (muted, or detached to a sound of its own). Turn it on first: cutting the picture alone would put a detached sound out of step.",
     full: "The picture already has {max} clips.",
   },
-  settledLook: "Clip {n}: its colour and mask were taken off: with them the video would take longer to export than it is allowed.",
+  settledLook: "Clip {n}: its colour, mask, effects and animations were taken off: with them the video would take longer to export than it is allowed.",
   settledMask: "Clip {n}: its mask was taken off: in a frame above 1440p a cross-faded clip cannot have one (the export would run out of memory).",
 };
 

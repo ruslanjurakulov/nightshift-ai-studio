@@ -456,6 +456,23 @@ COLOR_CHROMA_SECONDS_PER_S = 0.15    # temperature / tint (one lookup table)
 COLOR_HUE_SECONDS_PER_S = 0.2
 COLOR_CURVE_SECONDS_PER_S = 0.35
 MASK_SECONDS_PER_S = 0.3
+#: Effects pack (editor parity 2b), V clips: ``fx: {glitch?, shake?, rgb_split?, flash?}``, each an intensity
+#: 0..100 (0 = off, dropped by normalise; at least one). Closed names: each picks the ffmpeg filters written.
+FX_NAMES = ("glitch", "shake", "rgb_split", "flash")
+FX_MAX = 100.0
+#: Their render cost, seconds per second of the clip at 1080p30 (scaled like the colour's): half of what each
+#: measured at 1080p60 (rgbashift 1.06, glitch 0.67, shake 0.32, flash 0.14; docs section 16), rounded up.
+FX_SECONDS_PER_S = {"glitch": 0.35, "shake": 0.2, "rgb_split": 0.55, "flash": 0.1}
+#: Entrance and exit animations of a V clip (editor parity 2b): ``anim_in`` / ``anim_out`` from this list,
+#: ``anim_in_s`` / ``anim_out_s`` 0.1..2 s and each at most half the clip. A slide moves the whole picture in
+#: from (out to) the frame's edge over black; zoom grows it from 60 % (shrinks it to 60 %) over black.
+V_ANIMS = ("fade", "slide-up", "slide-down", "slide-left", "slide-right", "zoom")
+#: A slide or zoom lays the picture over black every frame of the clip (one overlay; a fade is a plain fade).
+ANIM_MOVE_SECONDS_PER_S = 0.3
+#: A cross-faded clip in a frame above 1440p takes at most this many effects of the pack: at 4K60 every effect
+#: alone passed on both sides of a cross-fade, and all four on one side, but all four on both sides (and all
+#: four with a zoom entrance) ran out of the export's 2 GiB (measured; docs section 16).
+FX_LARGE_XFADE_MAX = 1
 
 #: A clip's move (render_spec.MOVE_* are the same; a test pins them).
 MOVE_ZOOM_MIN, MOVE_ZOOM_MAX = 1.0, 4.0
@@ -588,7 +605,8 @@ _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
                                   "grade", "move", "reverse", "freeze", "denoise", "loudnorm", "crop", "angle", "speed_curve",
-                                  "interpolate", "stabilize", "gain_db", "color", "mask") + _EFFECT_KEYS
+                                  "interpolate", "stabilize", "gain_db", "color", "mask", "fx",
+                                  "anim_in", "anim_out", "anim_in_s", "anim_out_s") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s", "denoise", "loudnorm")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
@@ -872,11 +890,11 @@ def validate(doc: Any) -> List[str]:
                 what = " and ".join(n for n, v in (("interpolated slow motion", interp_est),
                                                    ("stabilising", stab_est),
                                                    ("playing clips faster than 1x", fast_est),
-                                                   ("colour and masks", look_est)) if v > 0)
+                                                   ("colour, masks and effects", look_est)) if v > 0)
                 fix = " and ".join(n for n, v in (("slow less of it", interp_est),
                                                   ("stabilise less of it", stab_est),
                                                   ("speed them up less", fast_est),
-                                                  ("use fewer colour changes and masks", look_est)) if v > 0)
+                                                  ("use fewer colour changes, masks and effects", look_est)) if v > 0)
                 problems.append(f"timeline: {what} would take about {work:.0f} s to render, but a {length:.0f} s "
                                 f"timeline is allowed {allowed:.0f} s — {fix} or make the timeline longer")
 
@@ -1043,6 +1061,9 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
             _validate_color(clip["color"], where, problems)
         if "mask" in clip:
             _validate_mask(clip["mask"], where, problems)
+        if "fx" in clip:
+            _validate_fx(clip["fx"], where, problems)
+        _validate_clip_anims(clip, where, problems)
         if "move" in clip:
             _validate_clip_move(clip["move"], where, problems)
         if "crop" in clip:
@@ -1227,6 +1248,41 @@ def _validate_mask(mask, where, problems) -> None:
         problems.append(f"{mw}: invert must be true or false")
 
 
+def _validate_fx(fx, where, problems) -> None:
+    """A V clip's ``fx``: closed names, each 0..100, at least one."""
+    fw = f"{where} fx"
+    if not _fields(fx, FX_NAMES, (), fw, problems):
+        return
+    if not fx:
+        problems.append(f"{fw}: give at least one of {list(FX_NAMES)}")
+    for k in FX_NAMES:
+        _num_in(fx, k, 0, FX_MAX, fw, problems)
+
+
+def _validate_clip_anims(clip, where, problems) -> None:
+    """A V clip's entrance and exit: names from ``V_ANIMS``, durations 0.1..2 s (0.4 when absent), a duration
+    only with its name, each at most half the clip, and not on the same side as the clip's own fade."""
+    for side in ("in", "out"):
+        name, dur = f"anim_{side}", f"anim_{side}_s"
+        if name in clip and not (isinstance(clip[name], str) and clip[name] in V_ANIMS):
+            problems.append(f"{where}: {name} must be one of {list(V_ANIMS)}")
+        if dur in clip:
+            _num_in(clip, dur, ANIM_MIN_S, ANIM_MAX_S, where, problems)
+            if name not in clip:
+                problems.append(f"{where}: {dur} needs {name}")
+        fade = clip.get(f"fade_{side}_s", 0)
+        if name in clip and _is_num(fade) and fade > 0:
+            problems.append(f"{where}: {name} and fade_{side}_s cannot both be set (a fade is an animation)")
+        if name in clip and _in_range(clip.get("in_s")) and _in_range(clip.get("out_s")):
+            d = clip.get(dur, ANIM_DEFAULT_S)
+            try:
+                length = clip_length_s(clip)
+            except (OverflowError, ValueError, ZeroDivisionError, TypeError):
+                continue
+            if _is_num(d) and d > length / 2 + 1e-9:
+                problems.append(f"{where}: {name} lasts {d:g} s, more than half the clip ({length:.3f} s)")
+
+
 def look_seconds(clip: dict, fps: int, width: int, height: int) -> float:
     """The estimated render seconds a clip's advanced colour and mask add: their per-second costs over the
     clip's length on the timeline, scaled by the frame's pixels x rate against 1080p30 (0 without them, or
@@ -1241,6 +1297,12 @@ def look_seconds(clip: dict, fps: int, width: int, height: int) -> float:
         per += COLOR_CURVE_SECONDS_PER_S
     if isinstance(clip.get("mask"), dict):
         per += MASK_SECONDS_PER_S
+    fx = clip.get("fx") if isinstance(clip.get("fx"), dict) else {}
+    for k, cost in FX_SECONDS_PER_S.items():
+        if _is_num(fx.get(k)) and fx[k] > 0:
+            per += cost
+    if any(clip.get(k) in ("slide-up", "slide-down", "slide-left", "slide-right", "zoom") for k in ("anim_in", "anim_out")):
+        per += ANIM_MOVE_SECONDS_PER_S
     if per <= 0 or not (_in_range(clip.get("in_s")) and _in_range(clip.get("out_s"))):
         return 0.0
     try:
@@ -1837,6 +1899,26 @@ def _large_frame_mask_problems(doc: dict, track: dict) -> List[str]:
     return problems
 
 
+def _large_frame_fx_problems(doc: dict, track: dict) -> List[str]:
+    """At most ``FX_LARGE_XFADE_MAX`` effects of the pack on a cross-faded clip in a frame above 1440p."""
+    w, h = doc.get("width"), doc.get("height")
+    if not (_is_int(w) and _is_int(h) and w * h > LARGE_FRAME_PX):
+        return []
+    faded = {}
+    for prev, clip, _d in crossfades(track):
+        faded[str(prev["id"])] = prev
+        faded[str(clip["id"])] = clip
+    problems = []
+    for cid, c in faded.items():
+        fx = c.get("fx") if isinstance(c.get("fx"), dict) else {}
+        n = sum(1 for k in FX_NAMES if _is_num(fx.get(k)) and fx[k] > 0)
+        if n > FX_LARGE_XFADE_MAX:
+            problems.append(f"{_where(track, c)}: a cross-faded clip takes at most {FX_LARGE_XFADE_MAX} effect in a "
+                            f"frame above 1440p ({w}x{h}) — the render would run out of memory; keep one, remove "
+                            f"the cross-fade or lower the frame size")
+    return problems
+
+
 def _transition_problems(doc: dict) -> List[str]:
     problems = []
     for track in doc.get("tracks") or []:
@@ -1845,6 +1927,7 @@ def _transition_problems(doc: dict) -> List[str]:
         problems.extend(_crossfade_problems(track))
         problems.extend(_large_frame_crossfade_problems(doc, track))
         problems.extend(_large_frame_mask_problems(doc, track))
+        problems.extend(_large_frame_fx_problems(doc, track))
         fades = effective_fades(track)
         for clip in track.get("clips") or []:
             fi, fo = fades[str(clip["id"])]
@@ -1909,6 +1992,11 @@ def normalise(doc: dict) -> dict:
                             del c["grade"]   # no change: the clip is the one it was without it
                     _normalise_effects(c)
                     _normalise_look(c)
+                    if "fx" in c:
+                        c["fx"] = {k: _ms(v) for k, v in c["fx"].items() if _ms(v) != 0}
+                        if not c["fx"]:
+                            del c["fx"]
+                    _normalise_anims(c)
                     for k in ("reverse", "freeze", "denoise", "loudnorm"):
                         if c.get(k) is False:
                             del c[k]
@@ -2150,11 +2238,32 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
             second.pop("transition", None)
             # A piece keeps its side's fade only as long as the piece is (the validator's rule: fade in +
             # fade out within the clip's length; lib/editor.ts splitClip does the same).
+            # The way in stays with the first half and the way out with the second (as the fades do).
+            for k in ("anim_out", "anim_out_s"):
+                clip.pop(k, None)
+            for k in ("anim_in", "anim_in_s"):
+                second.pop(k, None)
             for piece in (clip, second):
                 _fit_piece_fades(piece)
+                _fit_piece_anims(piece)
             track["clips"].insert(i + 1, second)
             return out
     raise TimelineError([f"no clip {clip_id!r} in this timeline"])
+
+
+def _fit_piece_anims(c: dict) -> None:
+    """Hold a split piece's animation to half the piece (lib/editor.ts fitPieceAnims); under 0.1 s it goes."""
+    half = clip_length_s(c) / 2
+    for side in ("in", "out"):
+        name, dur = f"anim_{side}", f"anim_{side}_s"
+        if name not in c:
+            continue
+        d = min(float(c.get(dur, ANIM_DEFAULT_S)), math.floor(half * 1000) / 1000)
+        if d < ANIM_MIN_S:
+            c.pop(name, None)
+            c.pop(dur, None)
+        else:
+            c[dur] = _ms(d)
 
 
 def _fit_piece_fades(c: dict) -> None:

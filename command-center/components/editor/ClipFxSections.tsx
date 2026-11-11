@@ -42,6 +42,7 @@ import { Disclosure, RadioChips, SliderRow, ToggleRow } from "./FxControls";
 import { ClipMoveSection } from "./ClipMotionSections";
 import { ClipCleanSection } from "./CleanSections";
 import { ClipColorSection, ClipMaskSection, ClipSilenceSection } from "./ClipLookSections";
+import { ClipAnimSection, ClipFxPackSection } from "./ClipFxPackSections";
 
 /**
  * The selected clip's look and effects, and its crop and tilt, as two native
@@ -417,6 +418,8 @@ export function ClipFxSections({
       <ClipEffectsSection model={model} clip={clip} apply={apply} showClip={showClip} />
       <ClipColorSection model={model} clip={clip} apply={apply} showClip={showClip} />
       <ClipMaskSection model={model} clip={clip} apply={apply} showClip={showClip} />
+      <ClipFxPackSection model={model} clip={clip} apply={apply} showClip={showClip} />
+      <ClipAnimSection model={model} clip={clip} apply={apply} showClip={showClip} />
       <ClipCropSection
         model={model}
         clip={clip}

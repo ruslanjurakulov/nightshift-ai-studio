@@ -140,6 +140,8 @@ export interface SnapSources {
   playhead: number;
   /** The moving clip: clips after it ripple with it, so their edges are no fixed target. */
   skipClipsAfter?: string;
+  /** Beat markers (timeline seconds, lib/editorBeats.ts): edges snap to the beat too. */
+  beats?: readonly number[];
 }
 
 /**
@@ -158,6 +160,7 @@ export function snapTargets(s: SnapSources): number[] {
   }
   for (const x of s.texts) out.push(x.start_s, x.end_s);
   for (const x of s.sounds) out.push(x.start_s, x.start_s + soundLength(x));
+  for (const b of s.beats ?? []) out.push(b);
   const sorted = out.filter((n) => Number.isFinite(n) && n >= 0).sort((a, b) => a - b);
   return sorted.filter((n, i) => i === 0 || n - sorted[i - 1] > 1e-4);
 }

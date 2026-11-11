@@ -68,6 +68,6 @@ export const parity2Uz: Parity2Dictionary = {
     no_audio: "Bu klipning oʻz ovozi oʻchirilgan (oʻchirilgan yoki alohida tovushga ajratilgan). Avval uni yoqing: faqat tasvirni kesish ajratilgan tovushni tasvirdan ajratib qoʻyadi.",
     full: "Tasvirda allaqachon {max} ta klip bor.",
   },
-  settledLook: "Klip {n}: rang va niqob olib tashlandi: ular bilan eksport ruxsat etilganidan uzoqroq davom etardi.",
+  settledLook: "Klip {n}: rang, niqob, effektlar va animatsiyalar olib tashlandi: ular bilan eksport ruxsat etilganidan uzoqroq davom etardi.",
   settledMask: "Klip {n}: niqob olib tashlandi: 1440p dan katta kadrda oʻtishli klipda niqob boʻlolmaydi (eksportga xotira yetmaydi).",
 };
