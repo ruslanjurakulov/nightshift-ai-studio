@@ -48,6 +48,9 @@ class Kind:
     # Columns to give fresh values when cloning a row for an insert attack,
     # beyond the primary key and unique constraints (expression indexes).
     mutate: Tuple[str, ...] = ()
+    # Key columns to copy as they are when cloning (a fresh value would only break a foreign key, and the attack would be
+    # refused for the wrong reason): agent_workflow_draft_versions keeps its draft, and gets a fresh version number.
+    keep: Tuple[str, ...] = ()
     own_insert_setup: Optional[str] = None
     # False for a table that is one person's own inbox (notifications, 0064):
     # not even a platform admin reads another person's rows, so the "operator
@@ -67,6 +70,12 @@ def Video(col="video_id", **kw) -> Kind:
     return Kind("video", col, **kw)
 
 
+def Person(col="owner_id", **kw) -> Kind:
+    """One person's own rows (`col` is their auth uid), not their organization's and not the operator's: the owner reads
+    them (sec_agent_drafts_0130 seeds a row for Alice and for Bob), nobody else does, and no API role writes them."""
+    return Kind("person", col, operator_reads=False, **kw)
+
+
 def Platform(**kw) -> Kind:
     return Kind("platform", own_read=False, **kw)
 
@@ -82,6 +91,9 @@ def Service(**kw) -> Kind:
 TABLES: Dict[str, Kind] = {
     # tenancy
     "organizations": Org("id"),
+    # 0130: one person's Agent Builder plans and their saved versions; written only by save/delete_agent_workflow_draft().
+    "agent_workflow_drafts": Person(),
+    "agent_workflow_draft_versions": Person(keep=("draft_id",)),
     # No direct write for any API role since 0091: a workspace has one person (create_organization() adds it).
     "org_members": Org(mutate=("email",)),
     "app_members": Platform(),
@@ -205,6 +217,9 @@ PRICE_LIST = (True, True)
 
 FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # tenancy and roles (0007, 0018)
+    # 0130: the only writers of the two draft tables; each binds to auth.uid() (test_sec_agent_workflow_drafts.py).
+    "save_agent_workflow_draft": USER,
+    "delete_agent_workflow_draft": USER,
     "accessible_channel_ids": HELPER,
     "accessible_org_ids": HELPER,
     "accessible_video_ids": HELPER,

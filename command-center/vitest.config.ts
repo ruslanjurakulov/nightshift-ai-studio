@@ -13,6 +13,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["tests/**/*.test.{ts,tsx}"],
+    // lib/**: unit tests that sit next to their module (lib/agent-*.test.ts, lib/server/agent-provider-adapters.test.ts).
+    include: ["tests/**/*.test.{ts,tsx}", "lib/**/*.test.ts"],
   },
 });

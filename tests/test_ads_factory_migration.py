@@ -107,8 +107,9 @@ class Numbering(unittest.TestCase):
     def test_the_number_is_unique_and_after_everything_merged_first(self):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0131"), 1)
-        self.assertIn("0128", numbers)
-        # 0129 (#661) is merged; 0130 (#652) is an open pull request that may merge before or after this file: 0131 names nothing they add.
+        for earlier in ("0128", "0129", "0130"):
+            self.assertIn(earlier, numbers)
+        # 0129 (#661) and 0130 (#652) are merged before this file: 0131 names nothing they add, so it applies after them or without them.
         self.assertEqual([n for n in numbers if n > "0131"], [], "a later number needs its own review of this file's pins")
 
     def test_the_file_says_it_is_applied_as_one_transaction_and_what_to_verify(self):

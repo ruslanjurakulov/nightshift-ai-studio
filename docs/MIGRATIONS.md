@@ -554,6 +554,25 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
   frame; drops the overload, the list, the check and the three columns. Exported videos stay in the library.
 - **Review.** Needs the independent security review before merge, and a person reading the live two-argument `request_editor_export` hash first.
 
+## Saved agent plans (0130)
+
+0130 (`0130_agent_workflow_drafts.sql`, `docs/product/AGENT_NODE_BUILDER.md`) is **live on apply and dark**: it adds two tables
+(`agent_workflow_drafts`, `agent_workflow_draft_versions`, one owner-only SELECT policy each, RLS on, no write grant to any API role) and two
+SECURITY DEFINER functions with an empty search_path (`save_agent_workflow_draft`, `delete_agent_workflow_draft(uuid)`), granted to `authenticated`
+only and revoked from public, anon and service_role. It **replaces no function** and touches no older table, grant or policy. Plans belong to one
+person (no organization column); another person's id answers P0002 like a missing one.
+
+- **What it enforces.** Every level of the document has an exact key set and checked JSON types; names and labels are counted raw, must hold a
+  visible character and none of the BR-L-120 class; positions are plain integers in bounds; node types come from a closed list; an export needs an
+  incoming edge; 150 KB per document, 50 plans per person, the newest 30 versions kept (an older one is pruned in the same locked transaction).
+- **Not covered by the switch.** `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` hides the page and routes only; a signed-in person can call both functions
+  through PostgREST within those limits.
+- **Drift guard.** The last block asserts the end state (grants incl. service_role, RLS, one policy per table, definer + search_path, size CHECK).
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'` (the foreign key to `auth.users` takes a SHARE ROW EXCLUSIVE lock there).
+- **Undo.** `docs/sql/rollback_0130_agent_workflow_drafts.sql` (owner-applied): refuses a function body that is not 0130's and refuses while any
+  plan exists unless its `set local` override line is turned on; drops both functions and both tables.
+- **Review.** Independent security review done (two rounds) before merge.
+
 ## Ads Factory, Phase 1: brand kits, products, campaigns, concepts (0131)
 
 0131 (`0131_ads_factory.sql`, `docs/ADS_FACTORY.md`) is **live on apply and dark**: it **adds seven tables** (`brand_kits`, `brand_products`,

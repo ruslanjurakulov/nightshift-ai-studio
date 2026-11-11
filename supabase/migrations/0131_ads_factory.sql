@@ -16,9 +16,9 @@
 -- (CLAUDE.md rule 3: a browser writes a row and stops). Generating pictures and video from an approved concept is Phase 3 and Phase 4, each with
 -- its own migration, quote and hold.
 --
--- NUMBER. 0131: the highest on main is 0129 (the multi-ratio export, #661, 0129_editor_export_frame, merged). 0130 is taken by the agent
--- workflow drafts (#652, renumbered from 0129 to 0130), an open pull request. This file depends on neither and they depend on nothing
--- here: it names no object any migration after 0107 creates and replaces no function, so it applies in any order relative to 0129 and 0130.
+-- NUMBER. 0131: the highest on main is 0130 (the agent workflow drafts, #652, 0130_agent_workflow_drafts), after 0129 (the multi-ratio
+-- export, #661, 0129_editor_export_frame); both are merged. This file depends on neither and they depend on nothing here: it names no
+-- object any migration after 0107 creates and replaces no function, so it applies in any order relative to 0129 and 0130.
 --
 -- APPLY AS ONE TRANSACTION: the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1. `set local lock_timeout`
 -- assumes it, and the last block of this file asserts the end state, so a half-applied file cannot be left behind.

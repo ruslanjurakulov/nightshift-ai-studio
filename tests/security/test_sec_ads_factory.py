@@ -1653,7 +1653,7 @@ def test_0131_touches_no_object_it_did_not_add(conn, sc):
         sec_db.drop_database(admin, name)
 
 
-def test_0131_applies_without_the_two_open_numbers_before_it_and_in_any_order_with_later_files(conn):
+def test_0131_applies_without_0129_and_0130_before_it_and_in_any_order_with_later_files(conn):
     """0131 names nothing a migration after 0107 creates: on a database that stops at 0107 plus the media library it applies as it is."""
     text = migration_body()
     for later in ("series_plans", "render_jobs", "creative_jobs", "credit_", "reserve_credits", "publish_requests", "request_upload", "register_asset"):
