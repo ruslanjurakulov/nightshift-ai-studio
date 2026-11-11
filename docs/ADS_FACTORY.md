@@ -17,7 +17,9 @@ to action, a visual brief and storyboard beats. It is built as an authenticated,
 ## What is NOT built (read this first)
 
 - **No web site is read.** The site address is a note a person types. Nothing in the database, the Command Center or a worker opens it.
-  The brand scanner is Phase 2, designed below, and must be a worker job when it is built.
+  The brand scanner is Phase 2, designed below, and must be a worker job when it is built. The address is checked for SHAPE only
+  (https, a DNS name, no IP literal, no port, no password): that is not an SSRF control, since any name can resolve to a private
+  address. Phase 2's scanner must resolve the name itself and pin a public address at fetch time (see "The fetch" below).
 - **No picture, no video, no model call.** Concept drafts are filled in from fixed templates with words the person typed. The visual
   brief is not sent to any model.
 - **No price, no credit, no charge.** Nothing in Phase 1 quotes, holds, captures or refunds a credit.
@@ -69,11 +71,35 @@ organization (two presses cannot both pass). `0` refuses every create of that ki
 Fixed (not settings): 4 pictures per product, 20 products per campaign, 12 concepts per press, 8 storyboard beats. Change a cap:
 `update public.ads_factory_cap_settings set kits_per_org = 10;` (leaves a `security_events` row of kind `ads.factory.caps`).
 
-**Text.** Every text is stored cleaned and length-capped by the function AND by a CHECK on the table: control characters and the
-invisible or direction-changing characters (soft hyphen, zero-width, bidi marks and overrides, word joiners, BOM) are removed; a
-single-line field reads a run of line breaks or tabs as one space; a multi-line field keeps line breaks only. Nothing renders it as
+**Text.** Every text is stored cleaned and length-capped by the function AND by a CHECK on the table: control characters and every
+character nobody sees are removed: the class the comment inbox removes (BR-L-120: `modules/comment_replies.py`, `inbox_clean_text`, the
+shared `tests/fixtures/inbox_cleaner_cases.txt`), which includes the whole Unicode tag block U+E0000-E0FFF (a hidden-instruction
+channel to a model: the visual brief is what Phase 3 hands an image model), every variation selector (U+FE00-FE0F, U+E0100-E01EF; ads
+text drops U+FE0E/U+FE0F too), the Hangul fillers, the braille blank, the Arabic letter mark and the Mongolian vowel separator. The
+blank-looking spaces (no-break, ideographic, U+2000-200A and the like) read as one space, so a name of nothing but blanks or fillers is
+empty and refused. A single-line field reads a run of line breaks or tabs as one space; a multi-line field keeps line breaks only.
+The text is cleaned only after sign-in and membership are checked. Nothing renders it as
 HTML (`tests/ads-factory-routes.test.ts` scans for `dangerouslySetInnerHTML`). A colour reaches a style attribute only as a checked
 `#rrggbb`. A font is a name of letters, digits, space, dot, underscore, apostrophe and hyphen: never a URL, a CSS value or a file.
+
+**Locks.** Every function that writes a kit, a product or a campaign takes its locks in one order: the row it changes `FOR NO KEY
+UPDATE`, then the organization's advisory lock, then the writes (a delete upgrades its row lock only then). A `FOR UPDATE` taken before
+the organization's lock blocked the `FOR KEY SHARE` an insert's foreign key check takes on its parent (a concept on its campaign, a
+product on its kit, a campaign line on its product) while that insert's writer held the organization's lock: a deadlock (40P01). The
+lab (`tests/security/test_sec_ads_factory.py`) races each pair for many rounds and asserts none.
+
+### Known limits (Phase 1)
+
+- **The switch hides the page, not the database.** The ten member functions are granted to `authenticated` from the moment 0131 is
+  applied. While `NIGHTSHIFT_ADS_FACTORY` is off, a signed-in member can still call them directly through PostgREST (the public anon
+  key plus their own session): only in an organization where they are an editor, within the caps, with every check of this page. Rows
+  made that way are real rows, and the rollback refuses while any exist unless the owner sets `nightshift.ads_rollback_delete_rows`.
+  To stop creates without a deploy, set every cap to 0. (The caps' numbers are the owner's decision and are not changed here.)
+- **An id's existence can be timed.** As in 0047 (style kits), a function locks the row it was given before it checks membership.
+  Another organization's id and a made-up id get the same answer (`not_found`), but a caller who guesses a real id of another
+  organization while its owner is writing that row waits for the owner's transaction, and a made-up id does not. Ids are random
+  uuids and no content is revealed. Left as 0047 has it (closing it would mean an unlocked membership read before the lock).
+- **The site address is a shape check, not an SSRF control** (above): Phase 2 must resolve and pin a public address when it fetches.
 
 ### The workspace (Command Center)
 
@@ -193,8 +219,7 @@ presses render, which is priced like any editor render.
 ## Phase 5: variants and exports per format (designed)
 
 Each concept carries its formats; export uses `schemas/export_presets.json` (`square_1080`, `feed_4x5_1080`, `vertical_1080p`,
-`youtube_1080p`) and the multi-ratio export being built in parallel (PR #661, `0129_editor_export_frame`, branch
-`claude/multi-ratio-export`): one source, a reframe per ratio, one export per preset. Variants (headline A/B) are separate concepts.
+`youtube_1080p`) and the multi-ratio export (#661, `0129_editor_export_frame`, merged): one source, a reframe per ratio, one export per preset. Variants (headline A/B) are separate concepts.
 Exports are priced as editor exports already are.
 
 ## Phase 6: approve before publish (designed)
@@ -214,7 +239,9 @@ consent and review.
 ## Releasing Phase 1
 
 1. Read the live database first (read-only; the queries are in the migration header, "WHAT TO VERIFY BEFORE YOU APPLY").
-2. Merge: the migration applies itself on deploy. It is dark: nothing calls it while the switch is off.
+2. Merge: the migration applies itself on deploy. The page is dark while the switch is off, but the database is not: a signed-in
+   editor can call the ten functions through PostgREST within the caps, and rows made that way make the rollback refuse unless told
+   the rows may go (see "Known limits").
 3. Set the repository variable `NIGHTSHIFT_ADS_FACTORY=on` and run "Deploy web" (a restart is enough).
 4. Undo: switch it off (loses nothing). To remove the tables too: `docs/sql/rollback_0131_ads_factory.sql`, which refuses while rows
    exist unless told they may go.

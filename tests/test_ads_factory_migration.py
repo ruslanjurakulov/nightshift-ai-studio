@@ -12,6 +12,7 @@
 """
 
 import hashlib
+import json
 import re
 import unittest
 from pathlib import Path
@@ -22,6 +23,30 @@ FILE = MIG / "0131_ads_factory.sql"
 TEXT = FILE.read_text(encoding="utf-8")
 ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0131_ads_factory.sql").read_text(encoding="utf-8")
 MODEL = (ROOT / "command-center" / "lib" / "adsFactory" / "model.ts").read_text(encoding="utf-8")
+INBOX = json.loads((ROOT / "tests" / "fixtures" / "inbox_cleaner_cases.txt").read_text(encoding="utf-8"))
+
+
+def ts_ranges(name: str) -> list:
+    block = MODEL[MODEL.index(f"const {name}: "):]
+    block = block[:block.index("];")]
+    return [(int(a, 16), int(b, 16)) for a, b in re.findall(r"\[0x([0-9a-f]+), 0x([0-9a-f]+)\]", block)]
+
+
+def sql_char(cp: int) -> str:
+    if cp < 0xA0:
+        return "\\x%02x" % cp
+    return ("\\u%04x" % cp) if cp <= 0xFFFF else ("\\U%08x" % cp)
+
+
+def sql_range(lo: int, hi: int) -> str:
+    return sql_char(lo) if lo == hi else f"{sql_char(lo)}-{sql_char(hi)}"
+
+
+# The ads class: every range removed (single-line; the multi-line class keeps U+000A) and the blank-looking spaces read as one space.
+INVISIBLE = [(0x01, 0x1F), (0x7F, 0x9F), (0xAD, 0xAD), (0x34F, 0x34F), (0x61C, 0x61C), (0x115F, 0x115F), (0x1160, 0x1160), (0x17B4, 0x17B4),
+             (0x17B5, 0x17B5), (0x180B, 0x180F), (0x200B, 0x200F), (0x2028, 0x202E), (0x2060, 0x206F), (0x2800, 0x2800), (0x3164, 0x3164), (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF),
+             (0xFFA0, 0xFFA0), (0xFFF0, 0xFFFB), (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF)]
+SPACES = [(0xA0, 0xA0), (0x1680, 0x1680), (0x2000, 0x200A), (0x202F, 0x202F), (0x205F, 0x205F), (0x3000, 0x3000)]
 
 TABLES = ["brand_kits", "brand_products", "brand_product_images", "ad_campaigns", "ad_campaign_products", "ad_concepts", "ads_factory_cap_settings"]
 CONTENT = TABLES[:-1]
@@ -83,7 +108,7 @@ class Numbering(unittest.TestCase):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0131"), 1)
         self.assertIn("0128", numbers)
-        # 0129 (#661) and 0130 (#652) are open pull requests that may merge before or after this file: 0131 names nothing they add.
+        # 0129 (#661) is merged; 0130 (#652) is an open pull request that may merge before or after this file: 0131 names nothing they add.
         self.assertEqual([n for n in numbers if n > "0131"], [], "a later number needs its own review of this file's pins")
 
     def test_the_file_says_it_is_applied_as_one_transaction_and_what_to_verify(self):
@@ -194,6 +219,41 @@ class Grants(unittest.TestCase):
             self.assertIn("raise exception 'not_found' using errcode = 'P0002'", b, name)
 
 
+class Order(unittest.TestCase):
+    """What a function does first: the caller is checked before anything they sent is worked on, and the locks are always taken in one
+    order (the row FOR NO KEY UPDATE, then the organization's lock, then the writes), so two writers never wait for each other."""
+
+    ORG_LOCK = "pg_advisory_xact_lock(hashtextextended('ads_factory:' ||"
+
+    def test_no_text_is_cleaned_before_sign_in_and_membership_are_checked(self):
+        for name in MEMBER:
+            b = code(body(TEXT, name))
+            if "ads_clean_text(" not in b:
+                continue
+            first = b.index("ads_clean_text(")
+            self.assertGreater(first, b.index("\nbegin\n"), f"{name} cleans in its declarations")
+            self.assertGreater(first, b.rindex("'editor')"), f"{name} cleans before the editor check")
+            self.assertGreater(first, b.rindex("raise exception 'forbidden'"), name)
+        b = code(body(TEXT, "update_ad_concept"))
+        self.assertGreater(b.index("ads_clean_text("), b.index("'concept_not_draft'"))
+
+    def test_a_row_locked_before_the_organization_lock_never_blocks_a_key_share(self):
+        for name in ("save_brand_kit", "delete_brand_kit", "save_brand_product", "delete_brand_product", "save_ad_campaign", "delete_ad_campaign"):
+            b = code(body(TEXT, name))
+            self.assertNotRegex(b, r"\bfor (update|share)\b", name)
+            self.assertIn("for no key update;", b, name)
+            self.assertLess(b.index("for no key update;"), b.index(self.ORG_LOCK), name)
+            for write in re.finditer(r"\b(insert into|update|delete from) public\.", b):
+                self.assertLess(b.index(self.ORG_LOCK), write.start(), (name, write.group(0)))
+
+    def test_the_concept_functions_lock_one_leaf_row_and_no_organization(self):
+        for name in ("update_ad_concept", "set_ad_concept_status", "delete_ad_concept"):
+            b = code(body(TEXT, name))
+            self.assertIn("from public.ad_concepts where id = p_concept for update;", b, name)
+            self.assertNotIn(self.ORG_LOCK, b, name)
+        self.assertNotRegex(code(TEXT), r"references public\.ad_concepts\b", "a concept is a leaf: nothing references it")
+
+
 class AgreesWithTheCommandCenter(unittest.TestCase):
     def ts_list(self, name: str) -> list:
         m = re.search(rf"export const {name} = \[([^\]]*)\] as const;", MODEL)
@@ -223,11 +283,35 @@ class AgreesWithTheCommandCenter(unittest.TestCase):
         self.assertEqual(ts, sql)
 
     def test_the_invisible_characters_are_the_same_class(self):
-        sql = "[\\x01-\\x1f\\x7f-\\x9f\\u00ad\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\ufeff]"
-        self.assertEqual(code(TEXT).count(f"'{sql}'"), 2, "single-line class in ads_clean_text and ads_text_ok")
-        ranges = re.findall(r"\[0x([0-9a-f]+), 0x([0-9a-f]+)\]", MODEL)
-        self.assertEqual([(int(a, 16), int(b, 16)) for a, b in ranges],
-                         [(0x01, 0x1F), (0x7F, 0x9F), (0xAD, 0xAD), (0x200B, 0x200F), (0x2028, 0x202E), (0x2060, 0x2064), (0x2066, 0x2069), (0xFEFF, 0xFEFF)])
+        # One class, written once per function and per line mode: the single-line class (ads_clean_text and ads_text_ok), the multi-line
+        # class (the same, keeping the line feed) and the blank-looking spaces (read as a space by the one, refused by the other).
+        ranges = [(lo, hi) for lo, hi in INVISIBLE]
+        sql = "[" + "".join(sql_range(lo, hi) for lo, hi in ranges) + "]"
+        multi = sql.replace(sql_range(0x01, 0x1F), sql_range(0x01, 0x09) + sql_range(0x0B, 0x1F), 1)
+        spaces = "[" + "".join(sql_range(lo, hi) for lo, hi in SPACES) + "]"
+        c = code(TEXT)
+        self.assertEqual(c.count(f"'{sql}'"), 2, "single-line class in ads_clean_text and ads_text_ok")
+        self.assertEqual(c.count(f"'{multi}'"), 2, "multi-line class in ads_clean_text and ads_text_ok")
+        self.assertEqual(c.count(f"'{spaces}'"), 2, "blank-looking spaces in ads_clean_text and ads_text_ok")
+        self.assertIn(f"'{spaces}', ' ', 'g'), E' \\n')", code(body(TEXT, "ads_clean_text")))
+        self.assertIn(f"and p_text !~ '{spaces}'", code(body(TEXT, "ads_text_ok")))
+        self.assertEqual(ts_ranges("INVISIBLE_RANGES"), ranges)
+        self.assertEqual(ts_ranges("BLANK_SPACES"), SPACES)
+
+    def test_the_class_holds_every_character_the_comment_inbox_removes_and_the_two_emoji_selectors(self):
+        # BR-L-120: the repository's class of characters nobody sees (modules/comment_replies.py, inbox_clean_text, lib/comment-inbox) is
+        # in the shared fixture. Ads text removes all of it, and U+FE0E / U+FE0F too (an ad's words keep no emoji-style selector: the zero
+        # width joiner that builds an emoji sequence is removed already, and a selector is then a hidden channel).
+        def covered(lo, hi, table):
+            return all(any(a <= cp <= b for a, b in table) for cp in range(lo, hi + 1))
+        for lo, hi in INBOX["strip"]:
+            self.assertTrue(covered(lo, hi, INVISIBLE), hex(lo))
+        self.assertTrue(covered(0xFE0E, 0xFE0F, INVISIBLE))
+        self.assertEqual([tuple(x) for x in INBOX["space"]], SPACES)
+        # The ones the independent review named, one by one: the tag block, the variation selectors and their supplement, the fillers.
+        for cp in (0xE0000, 0xE0041, 0xE007F, 0xE0FFF, 0xE0100, 0xE01EF, 0x061C, 0x180E, 0x034F, 0x115F, 0x3164, 0xFFA0, 0x2800, 0xFE00,
+                   0xFE0F, 0xFFF9, 0xFFFB, 0x1D173, 0x1D17A, 0x17B4, 0x17B5, 0x2065):
+            self.assertTrue(covered(cp, cp, INVISIBLE), hex(cp))
 
     def test_the_lengths(self):
         limits = dict(re.findall(r"^\s+(\w+): (\d+),$", MODEL[MODEL.index("export const ADS_LIMITS"):MODEL.index("} as const;", MODEL.index("export const ADS_LIMITS"))], re.M))

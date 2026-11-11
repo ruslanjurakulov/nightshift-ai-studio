@@ -558,8 +558,10 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
 
 0131 (`0131_ads_factory.sql`, `docs/ADS_FACTORY.md`) is **live on apply and dark**: it **adds seven tables** (`brand_kits`, `brand_products`,
 `brand_product_images`, `ad_campaigns`, `ad_campaign_products`, `ad_concepts`, `ads_factory_cap_settings`), twelve internal functions and ten member functions.
-It **replaces nothing** and adds no column, policy, trigger or grant to any existing object. Nothing calls it until `NIGHTSHIFT_ADS_FACTORY` is on (the page and
-`/api/ads/*` are a 404 before that). Nothing in it fetches a site, calls a model, prices, holds or charges a credit, queues a job or publishes.
+It **replaces nothing** and adds no column, policy, trigger or grant to any existing object. Nothing in the application calls it until `NIGHTSHIFT_ADS_FACTORY`
+is on (the page and `/api/ads/*` are a 404 before that), but the ten member functions are granted to `authenticated` on apply: a signed-in editor can call them
+through PostgREST while the page is off, within the caps, and rows made that way make the rollback refuse unless told the rows may go. Nothing in it fetches a
+site, calls a model, prices, holds or charges a credit, queues a job or publishes.
 
 - **Who may do what.** Members (viewer and up) read their organization's rows (one SELECT policy per table, `accessible_org_ids('viewer')`). No API role holds
   INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER on any of the seven; anon holds nothing; service_role holds SELECT on the six content tables only. Every
@@ -570,7 +572,9 @@ It **replaces nothing** and adds no column, policy, trigger or grant to any exis
   database under one advisory lock per organization; a missing row reads as the defaults.
 - **Drift guard.** Refuses (changes nothing) if a function of one of its names exists with another body; the last block asserts the end state (every body by md5,
   every grant, RLS, the policies, the checks, the foreign keys, the triggers, the settings row).
-- **Apply as ONE transaction.** `set local lock_timeout = '5s'`. Applies in any order relative to 0129 (it names no object any migration after 0107 creates).
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`. Applies in any order relative to 0129 and 0130 (it names no object any migration after 0107 creates).
+- **Locks.** One order everywhere: the row a function changes FOR NO KEY UPDATE, then the organization's advisory lock, then the writes (a FOR UPDATE row lock
+  deadlocked against an insert's foreign key check, 40P01; the lab races every pair).
 - **Undo.** `docs/sql/rollback_0131_ads_factory.sql` (owner-applied): refuses a body that is not 0131's, and refuses while the content tables hold rows unless
   `set local nightshift.ads_rollback_delete_rows = 'yes'` is given in the same transaction (the rows are what people typed). Drops exactly what 0131 added.
 - **Tests.** `tests/test_ads_factory_migration.py` (the file, pinned), `tests/security/test_sec_ads_factory.py` (the lab: tenants, roles, caps, races, the rollback).

@@ -66,19 +66,47 @@ export const ADS_LIMITS = {
 // ── text (the same cleaning as 0131's ads_clean_text) ─────────────────────────
 
 /**
- * Code point ranges removed from every text: control characters and the invisible or direction-changing ones (soft hyphen, zero-width,
- * bidi marks and overrides, word joiners, BOM). Written as numbers on purpose: a source file with those characters in it is a file
- * nobody can review.
+ * Code point ranges removed from every text: control characters and every character nobody sees, the class the comment inbox removes
+ * (BR-L-120: modules/comment_replies.py, lib/comment-inbox, tests/fixtures/inbox_cleaner_cases.txt) plus the emoji/text selectors U+FE0E and
+ * U+FE0F: the C1 block, soft hyphen, combining grapheme joiner, Arabic letter mark, Hangul fillers, Khmer inherent vowels, Mongolian selectors,
+ * zero-width and direction marks, separators, embeddings and overrides, word joiner, invisible operators and deprecated format controls, braille
+ * blank, every variation selector, BOM, interlinear annotation controls, the Egyptian, Bamum and musical format controls and the whole Unicode
+ * tag block (text spelled in tag characters is a hidden-instruction channel to a model). The same class as 0131's ads_clean_text. Written as
+ * numbers on purpose: a source file with those characters in it is a file nobody can review.
  */
 const INVISIBLE_RANGES: readonly (readonly [number, number])[] = [
   [0x01, 0x1f],
   [0x7f, 0x9f],
   [0xad, 0xad],
+  [0x34f, 0x34f],
+  [0x61c, 0x61c],
+  [0x115f, 0x115f],
+  [0x1160, 0x1160],
+  [0x17b4, 0x17b4],
+  [0x17b5, 0x17b5],
+  [0x180b, 0x180f],
   [0x200b, 0x200f],
   [0x2028, 0x202e],
-  [0x2060, 0x2064],
-  [0x2066, 0x2069],
+  [0x2060, 0x206f],
+  [0x2800, 0x2800],
+  [0x3164, 0x3164],
+  [0xfe00, 0xfe0f],
   [0xfeff, 0xfeff],
+  [0xffa0, 0xffa0],
+  [0xfff0, 0xfffb],
+  [0x13430, 0x1343f],
+  [0x1bca0, 0x1bca3],
+  [0x1d173, 0x1d17a],
+  [0xe0000, 0xe0fff],
+];
+/** Blank-looking spaces read as one ordinary space (no-break, ogham, U+2000-200A, narrow no-break, medium mathematical, ideographic). */
+const BLANK_SPACES: readonly (readonly [number, number])[] = [
+  [0xa0, 0xa0],
+  [0x1680, 0x1680],
+  [0x2000, 0x200a],
+  [0x202f, 0x202f],
+  [0x205f, 0x205f],
+  [0x3000, 0x3000],
 ];
 /** What a single-line field reads as one space: tab, the line breaks, and the two Unicode line separators. */
 const LINE_BREAKS: readonly number[] = [0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x2028, 0x2029];
@@ -87,7 +115,11 @@ function isInvisible(cp: number): boolean {
   return cp === 0 || INVISIBLE_RANGES.some(([lo, hi]) => cp >= lo && cp <= hi);
 }
 
-/** Only spaces and line feeds, as Postgres btrim(text, ' \n') trims; String.trim() would also eat no-break spaces the database keeps. */
+function isBlankSpace(cp: number): boolean {
+  return BLANK_SPACES.some(([lo, hi]) => cp >= lo && cp <= hi);
+}
+
+/** Only spaces and line feeds, as Postgres btrim(text, ' \n') trims (the blank-looking spaces are ordinary spaces by then). */
 function trimPlain(s: string): string {
   let a = 0;
   let b = s.length;
@@ -96,7 +128,10 @@ function trimPlain(s: string): string {
   return s.slice(a, b);
 }
 
-/** A single-line field: a run of line breaks or tabs is one space, everything invisible is removed, trimmed. */
+/**
+ * A single-line field: a run of line breaks or tabs is one space, a blank-looking space is a space, everything invisible is removed, trimmed.
+ * A text of nothing but those cleans to "" (and is refused wherever the field needs a character).
+ */
 export function cleanLine(raw: unknown): string {
   const out: string[] = [];
   let inBreak = false;
@@ -108,18 +143,20 @@ export function cleanLine(raw: unknown): string {
       continue;
     }
     inBreak = false;
-    if (!isInvisible(cp)) out.push(ch);
+    if (isBlankSpace(cp)) out.push(" ");
+    else if (!isInvisible(cp)) out.push(ch);
   }
   return trimPlain(out.join(""));
 }
 
-/** A multi-line field: line breaks are kept (\r\n and \r read as \n), everything else invisible is removed, trimmed. */
+/** A multi-line field: line breaks are kept (\r\n and \r read as \n), a blank-looking space is a space, everything else invisible is removed, trimmed. */
 export function cleanBlock(raw: unknown): string {
   const text = (typeof raw === "string" ? raw : "").replace(/\r\n?/g, "\n");
   const out: string[] = [];
   for (const ch of text) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (cp === 0x0a || !isInvisible(cp)) out.push(ch);
+    if (isBlankSpace(cp)) out.push(" ");
+    else if (cp === 0x0a || !isInvisible(cp)) out.push(ch);
   }
   return trimPlain(out.join(""));
 }

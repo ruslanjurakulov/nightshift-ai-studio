@@ -2,7 +2,8 @@
 -- Nothing in the app runs it.
 --
 -- WHEN YOU NEED IT. If the Ads Factory tables and functions must be withdrawn. To only HIDE the feature, switch NIGHTSHIFT_ADS_FACTORY off on
--- the Command Center (the page and /api/ads/* then answer 404 and nothing calls these functions); that needs no rollback and loses nothing.
+-- the Command Center (the page and /api/ads/* then answer 404); that needs no rollback and loses nothing. The switch does not close the
+-- database: a signed-in editor can still call the ten functions directly through PostgREST, within the caps (0 in every cap stops creates).
 -- To only move a cap, run e.g.   update public.ads_factory_cap_settings set kits_per_org = 10;   (0 refuses every create, a pause).
 --
 -- READ THIS FIRST: 0131 replaced nothing, so there is no earlier body to put back; this file only DROPS what 0131 added. That includes the six
@@ -39,8 +40,8 @@ declare
 begin
   for r in
     select * from (values
-      ('public.ads_clean_text(text, boolean)', 'ff1ca5943d4f18c4a80a3886ad923d7a'),
-      ('public.ads_text_ok(text, integer, integer, boolean)', '399a58283f5aeb5232439ff58f57ecd3'),
+      ('public.ads_clean_text(text, boolean)', '53ecd0c6309be86c4e134da323146e61'),
+      ('public.ads_text_ok(text, integer, integer, boolean)', '78ebe62fa220880ef2494563ab6cad99'),
       ('public.ads_text_list_ok(text[], integer, integer)', '3a5bd8e451a350dd799c9b49f6bb5061'),
       ('public.ads_palette_ok(text[])', '94dfa0449defc9f2907f6e7ba9a00243'),
       ('public.ads_closed_list_ok(text[], text[], integer, integer)', 'd932104160cc4768d10342395e74128d'),
@@ -51,14 +52,14 @@ begin
       ('public.ad_concepts_guard()', '8f2f17776e0e93af231a1aec923ead88'),
       ('public.ads_factory_cap_settings_guard()', '51dafe4ec2c9f35974e9ff8289a6106b'),
       ('public.ads_factory_cap_settings_trail()', '986d228f1ab027e44e8a6837a1a49b3e'),
-      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', '2e14854e37aa1bdd8b1bb954c2b74cab'),
-      ('public.delete_brand_kit(uuid)', '19c3c23e868649fc31a557447377fef4'),
-      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', 'b8b03341ba3feabc0fe096f7a1ae6591'),
-      ('public.delete_brand_product(uuid)', 'f12d9a709080a18b191f0301d7d34a60'),
-      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', 'e920cbecc1ed1c7c866fa269e97477ae'),
-      ('public.delete_ad_campaign(uuid)', 'd7d0d0c52c1197de1c02fdeef314f18a'),
+      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', 'c6d162ea7c8abd3fa78243a1b3b6ae88'),
+      ('public.delete_brand_kit(uuid)', '38a605d9ff0aa9a8d49526c5f0e32733'),
+      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', '16de653c6557c7be611d4a6be2eeabd6'),
+      ('public.delete_brand_product(uuid)', '7f1f41e614b47c3762cc49a08867a39d'),
+      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', '05765d4994fc9a9a0bf0f090f7692b23'),
+      ('public.delete_ad_campaign(uuid)', 'f40f5bd45d120c36e095a5a659cdd347'),
       ('public.add_ad_concepts(uuid, text, jsonb)', 'ef6ece5fadc12da31a3706be99095263'),
-      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', 'a56b3cdc0b409131c54c33e7486d2e61'),
+      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', '92f3faa8775c9cceb6d867d632567002'),
       ('public.set_ad_concept_status(uuid, text)', '0f4a08254f801319c12718f319dfa612'),
       ('public.delete_ad_concept(uuid)', '821913088f82cc84b7aba3398c5bf029')
     ) v(sig, want)

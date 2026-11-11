@@ -4,8 +4,11 @@
 -- *** LIVE ON APPLY. *** Merging this file applies it to the live database. It ADDS seven tables, twelve internal functions and ten functions a
 -- signed-in member may call. It replaces NOTHING that exists there, rewrites no existing row, adds no column to an existing table and touches no
 -- existing function, policy or grant (the last block asserts the end state, and tests/test_ads_factory_migration.py pins that no other object is
--- named). Until the owner sets NIGHTSHIFT_ADS_FACTORY=on on the Command Center nothing in the application calls any of it: the page and the
--- /api/ads/* routes answer 404 before they ask the database anything.
+-- named). Until the owner sets NIGHTSHIFT_ADS_FACTORY=on on the Command Center nothing in the APPLICATION calls any of it: the page and the
+-- /api/ads/* routes answer 404 before they ask the database anything. The DATABASE is not dark: the ten member functions are granted to
+-- `authenticated` from the moment this applies, so a signed-in member can call them directly through PostgREST (the public anon key and
+-- their own session) while the page is off, within the caps below and only in an organization where they are an editor. Rows made that
+-- way are real rows: the rollback then refuses unless told the rows may go (docs/ADS_FACTORY.md, "Known limits").
 --
 -- WHAT THIS DOES NOT DO. Nothing here fetches a web site (site_url is TEXT: a note a person typed, read by nothing), calls a model or any
 -- provider, prices, holds, charges or refunds a credit, queues a job, publishes, or changes a video's privacy. There is no worker function and
@@ -13,11 +16,9 @@
 -- (CLAUDE.md rule 3: a browser writes a row and stops). Generating pictures and video from an approved concept is Phase 3 and Phase 4, each with
 -- its own migration, quote and hold.
 --
--- NUMBER. 0131: the highest on main is 0128 (the upload parent link). 0129 is taken by the multi-ratio export (#661,
--- 0129_editor_export_frame) and 0130 by the agent workflow drafts (#652, renumbered from 0129 to 0130), both open pull requests that
--- are to merge before this one (checked with gh api against every open pull request's files at push time). This file depends on neither
--- and they depend on nothing here: it names no object any migration after 0107 creates and replaces no function, so it applies in any
--- order relative to 0129 and 0130.
+-- NUMBER. 0131: the highest on main is 0129 (the multi-ratio export, #661, 0129_editor_export_frame, merged). 0130 is taken by the agent
+-- workflow drafts (#652, renumbered from 0129 to 0130), an open pull request. This file depends on neither and they depend on nothing
+-- here: it names no object any migration after 0107 creates and replaces no function, so it applies in any order relative to 0129 and 0130.
 --
 -- APPLY AS ONE TRANSACTION: the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1. `set local lock_timeout`
 -- assumes it, and the last block of this file asserts the end state, so a half-applied file cannot be left behind.
@@ -62,10 +63,13 @@
 --   Structural limits that are NOT settings: 4 pictures per product, 20 products per campaign, 12 concepts per add, 8 storyboard beats.
 --
 -- THE TEXT. Every text a person types is stored cleaned and length-capped, by the function AND by a check on the table: control characters and
--- the invisible / direction-changing characters (soft hyphen, zero-width, bidi marks and overrides, BOM; the class 0108 refuses) are removed, a
--- single-line field has its line breaks read as one space, a multi-line field keeps its line breaks only. Nothing here renders text as HTML and
--- nothing here sends it to a model. site_url is refused unless it is https, a lower-case DNS name with a letter top-level label (so no IP
--- literal, no `localhost`), no user:password, no port and printable ASCII after the host: a shape check on a note, not permission to fetch it.
+-- every character nobody sees (the class the comment inbox removes, BR-L-120, with the Unicode tag block, every variation selector and the
+-- Hangul and braille fillers; ads_clean_text lists it) are removed, the blank-looking spaces read as one space, a single-line field has its
+-- line breaks read as one space, a multi-line field keeps its line breaks only, and a text of nothing but blanks is empty (refused where a
+-- character is needed). Nothing here renders text as HTML and nothing here sends it to a model. site_url is refused unless it is https, a
+-- lower-case DNS name with a letter top-level label (so no IP literal, no `localhost`), no user:password, no port and printable ASCII after
+-- the host: a shape check on a note, not permission to fetch it and no defence against a name that resolves to a private address (Phase 2's
+-- scanner must resolve the name and pin a public address at fetch time).
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; run as the SQL editor on the live project). None of the names may exist yet (expected: no row):
 --     select c.relname from pg_class c where c.relnamespace = 'public'::regnamespace
@@ -114,8 +118,8 @@ declare
 begin
   for r in
     select * from (values
-      ('public.ads_clean_text(text, boolean)', 'ff1ca5943d4f18c4a80a3886ad923d7a'),
-      ('public.ads_text_ok(text, integer, integer, boolean)', '399a58283f5aeb5232439ff58f57ecd3'),
+      ('public.ads_clean_text(text, boolean)', '53ecd0c6309be86c4e134da323146e61'),
+      ('public.ads_text_ok(text, integer, integer, boolean)', '78ebe62fa220880ef2494563ab6cad99'),
       ('public.ads_text_list_ok(text[], integer, integer)', '3a5bd8e451a350dd799c9b49f6bb5061'),
       ('public.ads_palette_ok(text[])', '94dfa0449defc9f2907f6e7ba9a00243'),
       ('public.ads_closed_list_ok(text[], text[], integer, integer)', 'd932104160cc4768d10342395e74128d'),
@@ -126,14 +130,14 @@ begin
       ('public.ad_concepts_guard()', '8f2f17776e0e93af231a1aec923ead88'),
       ('public.ads_factory_cap_settings_guard()', '51dafe4ec2c9f35974e9ff8289a6106b'),
       ('public.ads_factory_cap_settings_trail()', '986d228f1ab027e44e8a6837a1a49b3e'),
-      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', '2e14854e37aa1bdd8b1bb954c2b74cab'),
-      ('public.delete_brand_kit(uuid)', '19c3c23e868649fc31a557447377fef4'),
-      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', 'b8b03341ba3feabc0fe096f7a1ae6591'),
-      ('public.delete_brand_product(uuid)', 'f12d9a709080a18b191f0301d7d34a60'),
-      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', 'e920cbecc1ed1c7c866fa269e97477ae'),
-      ('public.delete_ad_campaign(uuid)', 'd7d0d0c52c1197de1c02fdeef314f18a'),
+      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', 'c6d162ea7c8abd3fa78243a1b3b6ae88'),
+      ('public.delete_brand_kit(uuid)', '38a605d9ff0aa9a8d49526c5f0e32733'),
+      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', '16de653c6557c7be611d4a6be2eeabd6'),
+      ('public.delete_brand_product(uuid)', '7f1f41e614b47c3762cc49a08867a39d'),
+      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', '05765d4994fc9a9a0bf0f090f7692b23'),
+      ('public.delete_ad_campaign(uuid)', 'f40f5bd45d120c36e095a5a659cdd347'),
       ('public.add_ad_concepts(uuid, text, jsonb)', 'ef6ece5fadc12da31a3706be99095263'),
-      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', 'a56b3cdc0b409131c54c33e7486d2e61'),
+      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', '92f3faa8775c9cceb6d867d632567002'),
       ('public.set_ad_concept_status(uuid, text)', '0f4a08254f801319c12718f319dfa612'),
       ('public.delete_ad_concept(uuid)', '821913088f82cc84b7aba3398c5bf029')
     ) v(sig, want)
@@ -149,23 +153,32 @@ end $$;
 -- 1. Text and list rules (internal: no API role may call them)
 -- ───────────────────────────────────────────────────────────────────────────
 
--- Text a person typed, made storable. Removed: control characters and the invisible or direction-changing ones (the class 0108 refuses in a
--- public post: soft hyphen, zero-width, bidi marks and overrides, word joiners, BOM), so a name cannot be made to read as another brand's. A
--- single-line field reads a run of line breaks or tabs as one space; a multi-line field keeps its line breaks (\r\n and \r folded to \n) and
--- nothing else. Trimmed.
+-- Text a person typed, made storable. Removed: control characters and every character nobody sees, the class the comment inbox removes
+-- (BR-L-120: modules/comment_replies.py, inbox_clean_text, tests/fixtures/inbox_cleaner_cases.txt) and the two emoji/text selectors U+FE0E and
+-- U+FE0F as well: the C1 block, soft hyphen, combining grapheme joiner, Arabic letter mark, Hangul fillers (U+115F, U+1160, U+3164, U+FFA0),
+-- Khmer inherent vowels, Mongolian selectors and vowel separator, zero-width and direction marks, line/paragraph separators, embeddings and
+-- overrides, word joiner, invisible operators and deprecated format controls (U+2060-206F), braille blank, every variation selector
+-- (U+FE00-FE0F, and U+E0100-E01EF inside the tag block), BOM, interlinear annotation controls, the Egyptian, Bamum and musical format controls,
+-- and the whole Unicode tag block U+E0000-E0FFF (text spelled in tag characters is invisible and is a hidden-instruction channel to a model:
+-- visual_brief is what a later phase hands an image model). So a name cannot be made to read as another brand's, and nothing hides in a brief.
+-- A single-line field reads a run of line breaks or tabs as one space; a multi-line field keeps its line breaks (\r\n and \r folded to \n) and
+-- nothing else. The blank-looking spaces (no-break, ogham, U+2000-200A, narrow no-break, medium mathematical, ideographic) read as one ordinary
+-- space. Trimmed: a text of nothing but spaces and the fillers above cleans to '' and is refused wherever the field needs a character.
 create or replace function public.ads_clean_text(p_text text, p_multiline boolean) returns text
   language sql immutable set search_path = public, pg_temp as $$
-  select btrim(regexp_replace(
+  select btrim(regexp_replace(regexp_replace(
            case when p_multiline
                 then regexp_replace(coalesce(p_text, ''), '\r\n?', E'\n', 'g')
                 else regexp_replace(coalesce(p_text, ''), '[\x09-\x0d\u2028\u2029]+', ' ', 'g') end,
            case when p_multiline
-                then '[\x01-\x09\x0b-\x1f\x7f-\x9f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]'
-                else '[\x01-\x1f\x7f-\x9f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]' end,
-           '', 'g'), E' \n')
+                then '[\x01-\x09\x0b-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff]'
+                else '[\x01-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff]' end,
+           '', 'g'),
+           '[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]', ' ', 'g'), E' \n')
 $$;
 
--- The same rule as a yes/no, for the checks on the tables: the text is already clean (what ads_clean_text would return) and within its length.
+-- The same rule as a yes/no, for the checks on the tables: the text is already clean (what ads_clean_text would return: no character of the
+-- class, no blank-looking space, nothing to trim) and within its length, so a text that needs a character holds one a person can see.
 -- A check on the table is what holds for a writer that is not one of this file's functions.
 create or replace function public.ads_text_ok(p_text text, p_min integer, p_max integer, p_multiline boolean) returns boolean
   language sql immutable set search_path = public, pg_temp as $$
@@ -173,8 +186,9 @@ create or replace function public.ads_text_ok(p_text text, p_min integer, p_max 
      and char_length(p_text) between p_min and p_max
      and p_text = btrim(p_text, E' \n')
      and p_text !~ (case when p_multiline
-                         then '[\x01-\x09\x0b-\x1f\x7f-\x9f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]'
-                         else '[\x01-\x1f\x7f-\x9f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]' end)
+                         then '[\x01-\x09\x0b-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff]'
+                         else '[\x01-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff]' end)
+     and p_text !~ '[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]'
 $$;
 
 -- A list of NAMES (font names): at most p_max, no null, no duplicate, each 1..p_len characters of letters, digits, space, dot, underscore,
@@ -655,6 +669,14 @@ $$;
 -- 5. Brand kits
 -- ───────────────────────────────────────────────────────────────────────────
 
+-- LOCK ORDER (every function below that writes a kit, a product or a campaign): first the row it changes, FOR NO KEY UPDATE; then the
+-- organization's advisory lock (pg_advisory_xact_lock(hashtextextended('ads_factory:' || org, 0))); then the writes. A row lock taken
+-- before the organization's lock must never block FOR KEY SHARE, the lock the foreign key check of an insert takes on its parent row:
+-- the writer that holds the organization's lock may be inserting a child of that very row (a concept of the campaign, a product of the
+-- kit, a campaign line naming the product), and a FOR UPDATE here made the two wait for each other (40P01). A delete upgrades its row
+-- lock only under the organization's lock, when no such insert can be running. The concept functions lock one concept row, which
+-- nothing references, and take no organization lock. tests/security/test_sec_ads_factory.py races every pair.
+
 -- p_kit null: create a kit in p_org. p_kit set: replace that kit's fields (its organization is the kit's own; p_org, if given, must agree).
 -- Returns the kit id.
 create or replace function public.save_brand_kit(
@@ -664,9 +686,9 @@ create or replace function public.save_brand_kit(
 declare
   k        public.brand_kits;
   v_org    uuid := p_org;
-  v_name   text := public.ads_clean_text(p_name, false);
-  v_url    text := nullif(btrim(coalesce(p_site_url, '')), '');
-  v_voice  text := public.ads_clean_text(p_voice, true);
+  v_name   text;
+  v_url    text;
+  v_voice  text;
   v_pal    text[];
   v_fonts  text[];
   v_cap    integer;
@@ -675,7 +697,7 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
   if p_kit is not null then
-    select * into k from public.brand_kits where id = p_kit for update;
+    select * into k from public.brand_kits where id = p_kit for no key update;
     -- Another organization's kit reads as missing, never as "forbidden".
     if not found or not public.is_org_member(k.org_id) or (p_org is not null and p_org <> k.org_id) then
       raise exception 'not_found' using errcode = 'P0002';
@@ -686,6 +708,10 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
+  -- Cleaned only now: nothing a caller sends is worked on before sign-in and membership are checked.
+  v_name  := public.ads_clean_text(p_name, false);
+  v_url   := nullif(btrim(coalesce(p_site_url, '')), '');
+  v_voice := public.ads_clean_text(p_voice, true);
   if char_length(v_name) not between 1 and 80 then
     raise exception 'invalid_name' using errcode = 'NS400', detail = 'max=80';
   end if;
@@ -741,7 +767,7 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into k from public.brand_kits where id = p_kit for update;
+  select * into k from public.brand_kits where id = p_kit for no key update;
   if not found or not public.is_org_member(k.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
@@ -771,16 +797,16 @@ declare
   k        public.brand_kits;
   pr       public.brand_products;
   v_kit    uuid := p_kit;
-  v_title  text := public.ads_clean_text(p_title, false);
-  v_desc   text := public.ads_clean_text(p_description, true);
-  v_price  text := public.ads_clean_text(p_price, false);
+  v_title  text;
+  v_desc   text;
+  v_price  text;
   v_cap    integer;
 begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
   if p_product is not null then
-    select * into pr from public.brand_products where id = p_product for update;
+    select * into pr from public.brand_products where id = p_product for no key update;
     if not found or not public.is_org_member(pr.org_id) or (p_kit is not null and p_kit <> pr.kit_id) then
       raise exception 'not_found' using errcode = 'P0002';
     end if;
@@ -794,6 +820,10 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
+  -- Cleaned only now, after sign-in and membership.
+  v_title := public.ads_clean_text(p_title, false);
+  v_desc  := public.ads_clean_text(p_description, true);
+  v_price := public.ads_clean_text(p_price, false);
   if char_length(v_title) not between 1 and 120 then
     raise exception 'invalid_title' using errcode = 'NS400', detail = 'max=120';
   end if;
@@ -840,13 +870,15 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into pr from public.brand_products where id = p_product for update;
+  select * into pr from public.brand_products where id = p_product for no key update;
   if not found or not public.is_org_member(pr.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
   if not public.is_org_member(pr.org_id, 'editor') then
     raise exception 'forbidden' using errcode = '42501';
   end if;
+  -- The delete (and the campaign rows it takes with it) waits for any writer of the organization that is linking this product right now.
+  perform pg_advisory_xact_lock(hashtextextended('ads_factory:' || pr.org_id::text, 0));
   delete from public.brand_products where id = pr.id;
   return true;
 end
@@ -866,7 +898,7 @@ declare
   k       public.brand_kits;
   c       public.ad_campaigns;
   v_kit   uuid := p_kit;
-  v_name  text := public.ads_clean_text(p_name, false);
+  v_name  text;
   n       integer := coalesce(cardinality(p_products), 0);
   v_cap   integer;
 begin
@@ -874,7 +906,7 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
   if p_campaign is not null then
-    select * into c from public.ad_campaigns where id = p_campaign for update;
+    select * into c from public.ad_campaigns where id = p_campaign for no key update;
     if not found or not public.is_org_member(c.org_id) or (p_kit is not null and p_kit <> c.kit_id) then
       raise exception 'not_found' using errcode = 'P0002';
     end if;
@@ -888,6 +920,8 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
+  -- Cleaned only now, after sign-in and membership.
+  v_name := public.ads_clean_text(p_name, false);
   if char_length(v_name) not between 1 and 80 then
     raise exception 'invalid_name' using errcode = 'NS400', detail = 'max=80';
   end if;
@@ -947,13 +981,15 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into c from public.ad_campaigns where id = p_campaign for update;
+  select * into c from public.ad_campaigns where id = p_campaign for no key update;
   if not found or not public.is_org_member(c.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
   if not public.is_org_member(c.org_id, 'editor') then
     raise exception 'forbidden' using errcode = '42501';
   end if;
+  -- The delete waits for a press that is adding concepts to this campaign right now, instead of failing it half-way.
+  perform pg_advisory_xact_lock(hashtextextended('ads_factory:' || c.org_id::text, 0));
   delete from public.ad_campaigns where id = c.id;
   return true;
 end
@@ -1110,10 +1146,10 @@ create or replace function public.update_ad_concept(
 declare
   x        public.ad_concepts;
   b        jsonb;
-  v_head   text := public.ads_clean_text(p_headline, false);
-  v_body   text := public.ads_clean_text(p_body, true);
-  v_cta    text := public.ads_clean_text(p_cta, false);
-  v_brief  text := public.ads_clean_text(p_visual_brief, true);
+  v_head   text;
+  v_body   text;
+  v_cta    text;
+  v_brief  text;
   v_beats  jsonb;
 begin
   if auth.uid() is null then
@@ -1129,6 +1165,11 @@ begin
   if x.status <> 'draft' then
     raise exception 'concept_not_draft' using errcode = 'NS409';
   end if;
+  -- Cleaned only now, after sign-in, membership and the status.
+  v_head  := public.ads_clean_text(p_headline, false);
+  v_body  := public.ads_clean_text(p_body, true);
+  v_cta   := public.ads_clean_text(p_cta, false);
+  v_brief := public.ads_clean_text(p_visual_brief, true);
   if char_length(v_head) not between 1 and 120 then
     raise exception 'invalid_headline' using errcode = 'NS400', detail = 'max=120';
   end if;
@@ -1332,8 +1373,8 @@ declare
 begin
   for r in
     select * from (values
-      ('public.ads_clean_text(text, boolean)', 'ff1ca5943d4f18c4a80a3886ad923d7a', false),
-      ('public.ads_text_ok(text, integer, integer, boolean)', '399a58283f5aeb5232439ff58f57ecd3', false),
+      ('public.ads_clean_text(text, boolean)', '53ecd0c6309be86c4e134da323146e61', false),
+      ('public.ads_text_ok(text, integer, integer, boolean)', '78ebe62fa220880ef2494563ab6cad99', false),
       ('public.ads_text_list_ok(text[], integer, integer)', '3a5bd8e451a350dd799c9b49f6bb5061', false),
       ('public.ads_palette_ok(text[])', '94dfa0449defc9f2907f6e7ba9a00243', false),
       ('public.ads_closed_list_ok(text[], text[], integer, integer)', 'd932104160cc4768d10342395e74128d', false),
@@ -1344,14 +1385,14 @@ begin
       ('public.ad_concepts_guard()', '8f2f17776e0e93af231a1aec923ead88', false),
       ('public.ads_factory_cap_settings_guard()', '51dafe4ec2c9f35974e9ff8289a6106b', false),
       ('public.ads_factory_cap_settings_trail()', '986d228f1ab027e44e8a6837a1a49b3e', false),
-      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', '2e14854e37aa1bdd8b1bb954c2b74cab', true),
-      ('public.delete_brand_kit(uuid)', '19c3c23e868649fc31a557447377fef4', true),
-      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', 'b8b03341ba3feabc0fe096f7a1ae6591', true),
-      ('public.delete_brand_product(uuid)', 'f12d9a709080a18b191f0301d7d34a60', true),
-      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', 'e920cbecc1ed1c7c866fa269e97477ae', true),
-      ('public.delete_ad_campaign(uuid)', 'd7d0d0c52c1197de1c02fdeef314f18a', true),
+      ('public.save_brand_kit(uuid, uuid, text, text, uuid, text[], text[], text)', 'c6d162ea7c8abd3fa78243a1b3b6ae88', true),
+      ('public.delete_brand_kit(uuid)', '38a605d9ff0aa9a8d49526c5f0e32733', true),
+      ('public.save_brand_product(uuid, uuid, text, text, text, uuid[])', '16de653c6557c7be611d4a6be2eeabd6', true),
+      ('public.delete_brand_product(uuid)', '7f1f41e614b47c3762cc49a08867a39d', true),
+      ('public.save_ad_campaign(uuid, uuid, text, text, text, text[], text[], uuid[])', '05765d4994fc9a9a0bf0f090f7692b23', true),
+      ('public.delete_ad_campaign(uuid)', 'f40f5bd45d120c36e095a5a659cdd347', true),
       ('public.add_ad_concepts(uuid, text, jsonb)', 'ef6ece5fadc12da31a3706be99095263', true),
-      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', 'a56b3cdc0b409131c54c33e7486d2e61', true),
+      ('public.update_ad_concept(uuid, text, text, text, text, jsonb)', '92f3faa8775c9cceb6d867d632567002', true),
       ('public.set_ad_concept_status(uuid, text)', '0f4a08254f801319c12718f319dfa612', true),
       ('public.delete_ad_concept(uuid)', '821913088f82cc84b7aba3398c5bf029', true)
     ) v(sig, want, member)
@@ -1468,6 +1509,7 @@ end $$;
 --     not has_table_privilege('authenticated', 'public.ads_factory_cap_settings', 'SELECT')
 --       and not has_table_privilege('service_role', 'public.ads_factory_cap_settings', 'SELECT') as settings_closed_to_api_roles;
 --
--- What the tables hold (expected: all zero until the owner switches NIGHTSHIFT_ADS_FACTORY on):
+-- What the tables hold (expected: all zero until the owner switches NIGHTSHIFT_ADS_FACTORY on, unless a member called the functions directly;
+-- see the header):
 --   select (select count(*) from public.brand_kits) as kits, (select count(*) from public.brand_products) as products,
 --          (select count(*) from public.ad_campaigns) as campaigns, (select count(*) from public.ad_concepts) as concepts;
