@@ -42,6 +42,7 @@ import {
   RAIL_HIDDEN_KEYS,
   STUDIO_TOOLS,
   navGroupsFor,
+  navShown,
   sectionAllowed,
   sidebarCurrent,
 } from "@/lib/navigation";
@@ -121,7 +122,8 @@ describe("customer sidebar model", () => {
 
   it("leaves the operator's console exactly as it was", () => {
     const keys = navGroupsFor(true).flatMap((g) => g.items.map((i) => i.key));
-    expect(keys).toEqual(NAV_ITEMS.map((i) => i.key).filter((k) => !RAIL_HIDDEN_KEYS.includes(k)));
+    // Minus the sections behind a server-side switch that is off by default (Ads): tests/ads-factory-nav.test.tsx holds both states.
+    expect(keys).toEqual(NAV_ITEMS.map((i) => i.key).filter((k) => !RAIL_HIDDEN_KEYS.includes(k) && navShown(k)));
     expect(navGroupsFor(false).flatMap((g) => g.items.map((i) => i.key))).toEqual(CUSTOMER_RAIL.map((i) => i.key));
   });
 });

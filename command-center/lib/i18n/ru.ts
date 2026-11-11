@@ -28,6 +28,7 @@ import { reviewLinkRu, reviewPageRu } from "./review-link/ru";
 import { regionEditRu } from "./region-edit/ru";
 import { imageEditorRu } from "./image-editor/ru";
 import { resultsDashboardRu } from "./results-dashboard/ru";
+import { adsFactoryRu } from "./ads-factory/ru";
 
 /** Русский. Технические идентификаторы (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) намеренно не переводятся. */
@@ -49,6 +50,8 @@ export const ru: Dictionary = {
   regionEdit: regionEditRu,
   imageEditor: imageEditorRu,
   resultsDashboard: resultsDashboardRu,
+  /** The Ads workspace (NIGHTSHIFT_ADS_FACTORY): ./ads-factory/ru.ts. */
+  adsFactory: adsFactoryRu,
   reviewPage: reviewPageRu,
   improveAi: improveRu,
   brand: {
@@ -102,6 +105,7 @@ export const ru: Dictionary = {
     editor: "Редактор",
     workflows: "Сценарии",
     series: "Серии",
+    ads: "Реклама",
     members: "Команда",
     organization: "Настройки",
     credits: "Кредиты",

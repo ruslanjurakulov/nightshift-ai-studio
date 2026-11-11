@@ -425,6 +425,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # The owner's model switches (0124): tests/security/sec_model_switch_0124.py — one inert switch, one log row, one dismissed alert.
     import sec_model_switch_0124
     sec_model_switch_0124.seed(conn, sc)
+    # Ads Factory, Phase 1 (0131): tests/security/sec_ads_factory_0131.py — one kit, two products, one campaign, two concepts per tenant.
+    import sec_ads_factory_0131
+    sec_ads_factory_0131.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

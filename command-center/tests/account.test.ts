@@ -14,6 +14,7 @@ import {
   isOperatorOnlySection,
   landingSection,
   navGroupsFor,
+  navShown,
   sectionAllowed,
 } from "@/lib/navigation";
 import { accountPlan, coerceAccountSummary, creditsSpent, derivePlan, packFromPurchase } from "@/lib/account";
@@ -62,8 +63,11 @@ describe("nav filtering by role", () => {
     const op = keys(true);
     expect(op).not.toContain("accounts");
     expect(op).not.toContain("members");
-    const expected = NAV_ITEMS.map((i) => i.key).filter((k) => !RAIL_HIDDEN_KEYS.includes(k));
+    // A section behind a server-side switch (Ads, NIGHTSHIFT_ADS_FACTORY) is not listed while its switch is off, which is the default
+    // navGroupsFor is called with here; tests/ads-factory-nav.test.tsx holds both states.
+    const expected = NAV_ITEMS.map((i) => i.key).filter((k) => !RAIL_HIDDEN_KEYS.includes(k) && navShown(k));
     expect(op).toEqual(expected);
+    expect(op).not.toContain("ads");
   });
 
   it("drops a group left empty instead of rendering a bare heading", () => {

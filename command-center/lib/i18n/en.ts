@@ -27,6 +27,7 @@ import { reviewLinkEn, reviewPageEn } from "./review-link/en";
 import { regionEditEn } from "./region-edit/en";
 import { imageEditorEn } from "./image-editor/en";
 import { resultsDashboardEn } from "./results-dashboard/en";
+import { adsFactoryEn } from "./ads-factory/en";
 
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
@@ -57,6 +58,8 @@ export const en = {
   regionEdit: regionEditEn,
   imageEditor: imageEditorEn,
   resultsDashboard: resultsDashboardEn,
+  /** The Ads workspace (NIGHTSHIFT_ADS_FACTORY): ./ads-factory/en.ts. */
+  adsFactory: adsFactoryEn,
   reviewPage: reviewPageEn,
   improveAi: improveEn,
   brand: {
@@ -110,6 +113,7 @@ export const en = {
     editor: "Editor",
     workflows: "Workflows",
     series: "Series",
+    ads: "Ads",
     members: "Team",
     organization: "Settings",
     credits: "Credits",

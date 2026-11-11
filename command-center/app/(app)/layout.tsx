@@ -40,6 +40,7 @@ import { getDictionary, getLocale } from "@/lib/i18n/server";
 import { MotionProvider } from "@/components/motion/MotionProvider";
 import { FlashNotice } from "@/components/account/FlashNotice";
 import { SkipLink } from "@/components/shell/SkipLink";
+import { adsFactoryEnabled } from "@/lib/adsFactory/flag";
 import { ShellOffsets } from "@/components/shell/ShellOffsets";
 import "./app-redesign.css";
 import "./app-pages-1.css";
@@ -185,7 +186,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           Motion's core until a page of theirs animates with it. */}
       <MotionProvider>
       <NavigationProvider channelNames={channelNames}>
-        <ShellProvider operator={operator}>
+        {/* The optional sections' switches are read HERE, on the server, per request: the navigation lists Ads only while its switch is on. */}
+        <ShellProvider operator={operator} features={{ adsFactory: adsFactoryEnabled() }}>
         <SidebarProvider initialCollapsed={!operator && sidebarCollapsed}>
           <div className="app-shell atmos relative flex min-h-svh flex-col">
             {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}

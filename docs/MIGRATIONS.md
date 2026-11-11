@@ -533,6 +533,27 @@ revoked from public, anon and service_role. Nothing happens until the image edit
   parent; puts 0051's body back byte for byte; drops the overload, index, constraint and column. Links already written on `media_assets` stay.
 - **Review.** Needs the independent security review before merge, and a person reading the live `register_asset` hash first.
 
+## Ads Factory, Phase 1: brand kits, products, campaigns, concepts (0131)
+
+0131 (`0131_ads_factory.sql`, `docs/ADS_FACTORY.md`) is **live on apply and dark**: it **adds seven tables** (`brand_kits`, `brand_products`,
+`brand_product_images`, `ad_campaigns`, `ad_campaign_products`, `ad_concepts`, `ads_factory_cap_settings`), twelve internal functions and ten member functions.
+It **replaces nothing** and adds no column, policy, trigger or grant to any existing object. Nothing calls it until `NIGHTSHIFT_ADS_FACTORY` is on (the page and
+`/api/ads/*` are a 404 before that). Nothing in it fetches a site, calls a model, prices, holds or charges a credit, queues a job or publishes.
+
+- **Who may do what.** Members (viewer and up) read their organization's rows (one SELECT policy per table, `accessible_org_ids('viewer')`). No API role holds
+  INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER on any of the seven; anon holds nothing; service_role holds SELECT on the six content tables only. Every
+  write is one of ten SECURITY DEFINER functions (pinned `search_path`), granted to `authenticated` alone, each checking sign-in, membership and the editor role.
+  Another organization's id and a made-up id are the same `not_found`.
+- **Caps** (`ads_factory_cap_settings`, one row, closed to every API role, changed in the SQL editor, a change leaves a `security_events` row of kind
+  `ads.factory.caps`): 5 kits per organization, 20 products per kit, 20 campaigns per organization, 24 concepts per campaign. 0 pauses creating. Counted in the
+  database under one advisory lock per organization; a missing row reads as the defaults.
+- **Drift guard.** Refuses (changes nothing) if a function of one of its names exists with another body; the last block asserts the end state (every body by md5,
+  every grant, RLS, the policies, the checks, the foreign keys, the triggers, the settings row).
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`. Applies in any order relative to 0129 (it names no object any migration after 0107 creates).
+- **Undo.** `docs/sql/rollback_0131_ads_factory.sql` (owner-applied): refuses a body that is not 0131's, and refuses while the content tables hold rows unless
+  `set local nightshift.ads_rollback_delete_rows = 'yes'` is given in the same transaction (the rows are what people typed). Drops exactly what 0131 added.
+- **Tests.** `tests/test_ads_factory_migration.py` (the file, pinned), `tests/security/test_sec_ads_factory.py` (the lab: tenants, roles, caps, races, the rollback).
+
 ## The owner's model switch (0124)
 
 0124 (`0124_model_switch.sql`, `docs/MODEL_SWITCH.md`) is **live on apply and dark**: it replaces five functions that exist on the live

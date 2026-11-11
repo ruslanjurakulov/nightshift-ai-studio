@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { OPERATOR_TABS, navGroupsFor, operatorTabCurrent, tabsFor, type NavKey, type OperatorTab } from "@/lib/navigation";
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
+import { useShell } from "@/components/shell/ShellContext";
 import { type AccountPlan } from "@/lib/account";
 import { Avatar } from "@/components/account/Avatar";
 import { nav as MNav } from "motion/react-m";
@@ -49,9 +50,11 @@ function NavList({ operator, onNavigate }: { operator: boolean; onNavigate?: () 
   const { t } = useI18n();
   const isActive = useIsActive();
   const path = useChannelPath();
+  // A section behind a server-side switch (Ads) is in the rail only while the layout says that switch is on.
+  const { features } = useShell();
   return (
     <nav className="flex flex-col gap-5">
-      {navGroupsFor(operator).map((group, gi) => (
+      {navGroupsFor(operator, features).map((group, gi) => (
         <div key={group.label ?? `g${gi}`} className="flex flex-col gap-0.5">
           {group.label && (
             <div className="px-3 pb-1 pt-1 text-xs font-semibold text-[var(--color-muted)]">

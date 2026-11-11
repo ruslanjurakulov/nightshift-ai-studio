@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { tabsFor } from "@/lib/navigation";
+import { useShell } from "@/components/shell/ShellContext";
 
 /**
  * Bring the current tab into view inside the strip, sideways only. It does not
@@ -38,7 +39,9 @@ export function SectionTabs() {
   const pathname = usePathname();
   const path = useChannelPath();
   const section = pathname.split("/")[2] ?? "";
-  const group = tabsFor(section);
+  // A tab behind a server-side switch (Ads) is listed only while the layout says that switch is on.
+  const { features } = useShell();
+  const group = tabsFor(section, features);
   const nav = useRef<HTMLElement>(null);
   const mounted = useRef(false);
   // On a narrow screen the strip scrolls sideways: show the tab you are on, on arrival and on every route change.

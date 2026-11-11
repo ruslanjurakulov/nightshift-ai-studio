@@ -65,6 +65,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/inbox", key: "inbox" },
       { href: "/studio", key: "studio" },
       { href: "/styles", key: "styles" },
+      // Brand kits, campaigns and ad concepts (migration 0131). Listed only while NIGHTSHIFT_ADS_FACTORY is on: see FEATURE_GATED below.
+      { href: "/ads", key: "ads" },
       { href: "/library", key: "library" },
       { href: "/editor", key: "editor" },
       { href: "/workflows", key: "workflows" },
@@ -131,6 +133,27 @@ export const NAV_GROUPS: NavGroup[] = [
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
 /**
+ * Switches the SERVER read for this request (never a NEXT_PUBLIC value) that decide whether a section is listed at all.
+ * The (app) layout reads them and hands them to the shell (components/shell/ShellContext); every list below takes them as an
+ * argument and defaults to "all off", so a caller that forgets to pass them hides the section rather than showing a link to a 404.
+ */
+export interface NavFeatures {
+  /** NIGHTSHIFT_ADS_FACTORY (lib/adsFactory/flag.ts): the Ads workspace. */
+  adsFactory: boolean;
+}
+
+export const NO_NAV_FEATURES: NavFeatures = { adsFactory: false };
+
+/** A section that exists only while its switch is on. Off: no rail entry, no tab, and its page answers 404 on its own. */
+const FEATURE_GATED: Partial<Record<SectionKey, keyof NavFeatures>> = { ads: "adsFactory" };
+
+/** Is this section listed for a request with these switches? Hiding is presentation; the page and its routes check the switch themselves. */
+export function navShown(key: SectionKey, features: NavFeatures = NO_NAV_FEATURES): boolean {
+  const flag = FEATURE_GATED[key];
+  return flag === undefined || features[flag] === true;
+}
+
+/**
  * The operator's phone: "All sections", the page behind the bottom bar's More tab. It lists the whole
  * console, so a phone needs no drawer to reach a screen. Operator-only like every screen not in
  * CUSTOMER_NAV_KEYS, and not a rail entry.
@@ -178,6 +201,8 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "credits",
   "usage",
   "series",
+  // The Ads workspace: a customer's own brand kits and campaigns (shown only while its switch is on).
+  "ads",
   "organization",
   "developers",
 ];
@@ -215,6 +240,8 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
     { href: "/studio", key: "studio" },
     { href: "/styles", key: "styles" },
     { href: "/series", key: "series" },
+    // Brand kits, campaigns and ad concepts (migration 0131); a tab only while NIGHTSHIFT_ADS_FACTORY is on.
+    { href: "/ads", key: "ads" },
     // Comments on the channel's videos, with replies a person approves (migration 0081).
     { href: "/inbox", key: "inbox" },
     // The catalog of models a customer may use (sellable_models()), by task.
@@ -315,12 +342,15 @@ export function sidebarCurrent(section: string, tool: string | null): string | n
   return null;
 }
 
-/** The tab group (and its rail entry) that `section` belongs to, if any. */
-export function tabsFor(section: string): { rail: "hub" | "settings"; items: readonly SectionItem[] } | null {
+/** The tab group (and its rail entry) that `section` belongs to, if any; a tab whose switch is off is left out. */
+export function tabsFor(
+  section: string,
+  features: NavFeatures = NO_NAV_FEATURES,
+): { rail: "hub" | "settings"; items: readonly SectionItem[] } | null {
   const href = "/" + section;
   for (const rail of ["hub", "settings"] as const) {
     if (SECTION_TABS[rail].some((i) => i.href === href) || RAIL_SCREENS[rail].includes(href)) {
-      return { rail, items: SECTION_TABS[rail] };
+      return { rail, items: SECTION_TABS[rail].filter((i) => navShown(i.key, features)) };
     }
   }
   return null;
@@ -360,9 +390,9 @@ export function operatorTabCurrent(section: string): OperatorTab["key"] {
 }
 
 /** The rail for a viewer: the five customer destinations, or the operator's console. */
-export function navGroupsFor(operator: boolean): NavGroup[] {
+export function navGroupsFor(operator: boolean, features: NavFeatures = NO_NAV_FEATURES): NavGroup[] {
   if (!operator) return [{ items: [...CUSTOMER_RAIL] }];
-  const keep = (item: NavItem) => !RAIL_HIDDEN_KEYS.includes(item.key);
+  const keep = (item: NavItem) => !RAIL_HIDDEN_KEYS.includes(item.key) && navShown(item.key, features);
   return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter(keep) })).filter((g) => g.items.length > 0);
 }
 
