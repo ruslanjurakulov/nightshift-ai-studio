@@ -110,9 +110,11 @@ class Numbering(unittest.TestCase):
         for earlier in ("0128", "0129", "0130"):
             self.assertIn(earlier, numbers)
         # 0129 (#661) and 0130 (#652) are merged before this file: 0131 names nothing they add, so it applies after them or without them.
+        # 0132 (1440p and 4K editor exports, sold by the minute) was reviewed against these pins: it touches the video editor's export
+        # table and functions and the credit helpers of 0020 / 0036 only, and replaces or alters nothing of 0131's.
         # 0133 (the brand scan, Phase 2) was reviewed against these pins: it replaces none of 0131's functions and alters none of its
         # tables (tests/test_brand_scan_migration.py pins that), and 0131's rollback must wait for 0133's (its checks use 0131's rules).
-        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0133",)], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133")], [], "a later number needs its own review of this file's pins")
 
     def test_the_file_says_it_is_applied_as_one_transaction_and_what_to_verify(self):
         self.assertIn("APPLY AS ONE TRANSACTION", TEXT)

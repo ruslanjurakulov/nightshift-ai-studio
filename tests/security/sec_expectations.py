@@ -638,6 +638,11 @@ import sec_ads_factory_0131  # noqa: E402
 
 sec_ads_factory_0131.extend(TABLES, FUNCTIONS)
 
+# Migration 0132 (1440p and 4K editor exports, sold by the started minute; the owner's price row): tests/security/sec_editor_hires_0132.py
+import sec_editor_hires_0132  # noqa: E402
+
+sec_editor_hires_0132.extend(TABLES, FUNCTIONS)
+
 # Migration 0133 (Ads Factory, Phase 2: the brand scan, domains proven by DNS TXT, priced scans): tests/security/sec_brand_scan_0133.py
 import sec_brand_scan_0133  # noqa: E402
 

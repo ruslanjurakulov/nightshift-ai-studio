@@ -21,6 +21,7 @@ import { overlayEn } from "./overlay/en";
 import { shapesEn } from "./shapes/en";
 import { exportPresetEn } from "./editor-presets/en";
 import { exportRatiosEn } from "./editor-ratios/en";
+import { exportHiresEn } from "./editor-hires/en";
 import { clipToolsEn } from "./editor-clip-tools/en";
 import { parity2En } from "./editor-parity2/en";
 import { voiceOverEn } from "./editor-voiceover/en";
@@ -5136,6 +5137,7 @@ export const en = {
     exportPreset: exportPresetEn,
     /** Several frame sizes from one edit: ./editor-ratios/en.ts. */
     exportRatios: exportRatiosEn,
+    exportHires: exportHiresEn,
     /** Frame rate, clip volume, detach audio, duplicate / copy / paste: ./editor-clip-tools/en.ts. */
     clipTools: clipToolsEn,
     /** Voice-over recorded in the editor: ./editor-voiceover/en.ts. */
@@ -5344,6 +5346,12 @@ export const en = {
       project_deleted: "The project was deleted before this export started.",
       invalid_frame: "This size is not one of the export formats, so nothing was rendered. Choose the size again and export.",
       frame_off: "Exporting in other sizes is switched off on the server, so nothing was rendered. Export in this project's size, or try again later.",
+      hires_off: "1440p and 4K exports are switched off on the server, so nothing was rendered and the credits were given back.",
+      credits_released: "The credits held for this export were given back before it started, so nothing was rendered. Export again to hold them again.",
+      hires_fps: "4K exports are at most 30 frames per second, and this version is faster, so nothing was rendered and the credits were given back.",
+      hires_needs_paid_export: "This project is larger than 1080p, and exports above 1080p are paid, so nothing was rendered. Export it in a paid size, or set it to 1080p or smaller.",
+      hires_speed_curve: "A video with a speed curve cannot be exported in 1440p or 4K yet, so nothing was rendered and the credits were given back.",
+      hires_length_mismatch: "The video came out longer than the minutes that were priced, so nothing was rendered and the credits were given back. Export it again to get a new price.",
       other: "The export failed.",
     },
     exportRev: "Version {rev}",
@@ -5389,6 +5397,15 @@ export const en = {
       export_in_progress: "An export is already on its way. Wait for it to finish.",
       limit_reached: "You have reached the most projects one organization can have. Delete one to start another.",
       daily_limit: "You have reached today's limit of free exports. Try again tomorrow.",
+      not_on_sale: "This size is not on sale yet. Choose another size.",
+      price_changed: "The price changed after you confirmed it. Check the new price and confirm again.",
+      insufficient_credits: "There are not enough credits for this export. Add credits or choose a smaller size.",
+      hires_too_long: "This video is longer than this size allows: 5 minutes at 1440p, 3 minutes at 4K.",
+      quote_required: "Confirm the price first, then export.",
+      parallel_runs: "All of your plan's parallel runs are in use. Wait for one to finish, or upgrade the plan.",
+      hires_fps: "4K exports are at most 30 frames per second. Set the frame rate to 30 or lower, or choose 1440p.",
+      hires_speed_curve: "A video with a speed curve cannot be exported in 1440p or 4K yet. Remove the speed curve, or choose 1080p or smaller.",
+      hires_needs_paid_export: "This project is larger than 1080p, and exports above 1080p are paid. Export it in a paid size, or set it to 1080p or smaller under “Export format”.",
       clips_full: "This project already has the most clips it can hold. Remove one in the editor first.",
       sounds_full: "This project already has the most sounds it can hold. Remove one in the editor first.",
       no_duration: "This file's length is not known yet, so it can't be added. Try again in a moment.",

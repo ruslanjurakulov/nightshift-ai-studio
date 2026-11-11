@@ -798,12 +798,11 @@ Branch `claude/editor-parity-1`. Free: ffmpeg and the browser only, no model, no
 * Measured with the bundled ffmpeg 7.0.2 on a 4-core box (one clip, H.264 source at the project's rate):
   1080p30 0.53 s of render per second of video, 1080p60 0.99, 1440p60 1.72, 4K60 3.95. The worker allows
   `3 x length + 120` s.
-* NOT added: a 1440p or a 4K format. A new format is a new migration on purpose (0129's
-  `editor_export_frame` keeps its own copy of the list for the multi-ratio export, and
-  `tests/test_editor_export_frame_migration.py` compares them id for id). 4K would also put every export
-  in the large-frame regime (no blur and no zoom past 2 on a cross-faded clip, no interpolation, a 0.7 s
-  reverse at 4K60, the 2 GiB address-space notes above) and measured 3.95 s per second at 4K60, past the
-  worker's 3 s per second. Both stay later items; the document already accepts those sizes from another tool.
+* NOT added here: a 1440p or a 4K format. They came later as PAID sizes of "Sizes to export" (migration
+  0132, `docs/HIRES_EXPORT.md`, behind `NIGHTSHIFT_HIRES_EXPORT`): sold by the started minute, 300 s / 180 s
+  at most, 4K at 30 fps at most, with their own time budget (7 and 12 s per second). They are never in the
+  format picker, and nothing above 1080p is free: a project whose own frame is bigger is exported in a paid
+  size (section 15).
 
 ### `gain_db` on a V clip (its own sound's level)
 
@@ -923,7 +922,7 @@ native read.
 ### Next
 
 * Voice-over recording in the editor: section 13.
-* A 1440p format (a migration replacing 0129's `editor_export_frame` list) and, later, 4K.
+* 1440p and 4K: done as paid sizes (migration 0132, `docs/HIRES_EXPORT.md`): section 15.
 
 ## 13. Voice-over recorded in the editor (no new field)
 
@@ -1083,3 +1082,31 @@ mask still fits (1 + 1.0 = 2.0 s per second); at 4K60 (x8) a masked clip longer 
 
 As section 12: older validators refuse `color` and `mask` ("is not a known field"), so merge as one commit and use
 the new controls only after the worker has been rebuilt by the deploy.
+
+## 15. 1440p and 4K, sold by the started minute (no new field)
+
+Migration 0132, behind `NIGHTSHIFT_HIRES_EXPORT` (default off) on top of `NIGHTSHIFT_MULTI_RATIO_EXPORT`; the whole
+design, the measurements and the price proposal are in `docs/HIRES_EXPORT.md`. The document does not change: a paid
+size is a FRAME of the export row (0129's `frame_preset` / `frame_width` / `frame_height`), chosen from four more
+entries of the closed list (`schemas/export_presets.json`): `youtube_1440p` 2560x1440, `vertical_1440p` 1440x2560,
+`youtube_2160p` 3840x2160, `vertical_2160p` 2160x3840.
+
+* **Tiers by pixels:** up to 1920x1080 free; up to 2560x1440 the 1440p tier (300 s at most, any rate); above it the
+  4K tier (180 s at most, 30 fps at most: a cross-faded 9:16 4K60 render ran out of the 2 GiB limit, measured).
+  `modules/hires_export.py`, `lib/hiresExport/limits.ts` and 0132 hold the same numbers (a parity test).
+* **Nothing above 1080p is free.** The plain export of a project whose OWN frame is above 1920x1080 pixels is refused
+  (`hires_needs_paid_export`), by the database and by the worker; the document may still be saved at that size.
+* **The large-frame rules apply to the paid frame.** The worker validates the document in the frame it renders
+  (`framed_doc`), and the editor checks each size the same way (`frameProblems`), so the 4K tier, which is the only
+  tier above `LARGE_FRAME_PX` (2560x1440), carries every rule of a large frame: no blur and no zoom past 2 on a
+  cross-faded clip, no interpolation, the reverse cap, and section 14's mask rules (no mask on a cross-faded clip, a
+  masked clip zooms at most `XFADE_LARGE_ZOOM_MAX`). The 1440p tier is not a large frame (section 14 measured every
+  mask combination passing at 2560x1440@60). The 4K tier's 30 fps cap is on top: it removes the 4K60 cases section 14
+  measured and leaves its rules standing.
+* **The render-time estimate** of `validate` (section 14's colour and mask charges, interpolation, steadying, fast
+  clips, shapes) is scaled by the frame's pixels and rate as before and checked against the FREE budget
+  `render_timeout_s(length)`, also for a paid frame. That is stricter than the paid render budget (7 or 12 s per
+  second), so a paid size the estimate does not fit is shown as not exportable before any price is asked (a 4K30
+  clip with every colour and a mask is charged 4 s per second on top of its length, so it fits up to about 60 s).
+* **A speed curve** is not sold in a paid size (`hires_speed_curve`): the database prices the length without the
+  curve.

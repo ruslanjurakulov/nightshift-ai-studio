@@ -4,8 +4,9 @@ A preset is a label's worth of parameters (frame size, rate, recommended
 length) from a CLOSED list. These tests pin what makes that safe:
 
 * the list in the data file is the list the Command Center shows, and every
-  entry sits inside the limits it must never exceed (even sides, 1440p, the
-  fps list, the export's 1800 s cap, the decode budget);
+  entry sits inside the limits it must never exceed (even sides, 1080p for a
+  free one, a paid tier's frame and length cap for a 1440p / 4K one (0132),
+  the fps list, the export's 1800 s cap, the decode budget);
 * a bad data file fails on load, naming the rule, and an unknown preset id is
   refused whatever it looks like;
 * applying a preset only writes width / height (the rate is the document's own,
@@ -22,13 +23,16 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modules import editor_export, export_presets as ep, ffmpeg_limits
+from modules import editor_export, export_presets as ep, ffmpeg_limits, hires_export
 from modules import media_library as ml
 from modules import timeline as tl
 from modules import timeline_render as tr
 from tests.test_timeline_render import ASSETS, full_argv, golden_doc
 
-EXPECTED_IDS = ["youtube_1080p", "youtube_720p", "vertical_1080p", "square_1080", "feed_4x5_1080"]
+EXPECTED_IDS = ["youtube_1080p", "youtube_720p", "vertical_1080p", "square_1080", "feed_4x5_1080",
+                "youtube_1440p", "vertical_1440p", "youtube_2160p", "vertical_2160p"]
+#: The paid frames (migration 0132): each a frame and its 9:16 twin.
+PAID_IDS = {"youtube_1440p": "1440p", "vertical_1440p": "1440p", "youtube_2160p": "2160p", "vertical_2160p": "2160p"}
 
 
 def entry(**over):
@@ -62,8 +66,15 @@ class TheListTestCase(unittest.TestCase):
                 self.assertEqual((p.width % 2, p.height % 2), (0, 0))      # H.264 4:2:0
                 self.assertGreaterEqual(min(p.width, p.height), tl.MIN_SIDE)
                 self.assertLessEqual(max(p.width, p.height), tl.MAX_SIDE)
-                self.assertLessEqual(p.width * p.height, 2560 * 1440)      # never the large-frame regime
-                self.assertLessEqual(p.width * p.height, ffmpeg_limits.LARGE_OUTPUT_PX)
+                tier = hires_export.tier(p.width, p.height)
+                self.assertEqual(tier, PAID_IDS.get(p.id))                   # paid exactly when the list says so
+                if tier is None:
+                    self.assertLessEqual(p.width * p.height, 1920 * 1080)  # free: never above 1080p
+                    self.assertLessEqual(p.width * p.height, ffmpeg_limits.LARGE_OUTPUT_PX)
+                else:
+                    self.assertLessEqual(p.max_duration_s, hires_export.MAX_S[tier])   # advice never past the hard cap
+                    if p.width * p.height > ffmpeg_limits.LARGE_OUTPUT_PX:
+                        self.assertIn((p.width, p.height), ((3840, 2160), (2160, 3840)))
                 self.assertLessEqual(p.width * p.height, tl.MAX_FRAME_PIXELS)
                 self.assertIn(p.fps, tl.FPS_VALUES)
                 self.assertGreater(p.max_duration_s, 0)
@@ -93,10 +104,17 @@ class BadDataTestCase(unittest.TestCase):
         self.assertIn("even", self.refused(height=1351))
         self.assertIn("even", self.refused(width=8))                  # under MIN_SIDE
         self.assertIn("even", self.refused(height=tl.MAX_SIDE + 2))
-        self.assertIn("1440p", self.refused(width=3840, height=2160))  # 4K needs the large-frame guards
-        self.assertIn("1440p", self.refused(width=2560, height=1442))  # one row over the line
-        # Exactly 1440p is the largest frame a preset may be.
-        self.assertEqual(ep.parse_preset(entry(width=2560, height=1440)).width, 2560)
+        self.assertIn("1440p", self.refused(width=2560, height=1442))  # one row over the line, and not a measured 4K frame
+        self.assertIn("1440p", self.refused(width=4096, height=2160))  # DCI 4K was not measured under the memory limit
+        self.assertIn("1440p", self.refused(width=3840, height=2162))
+        # 4K is a preset only as the paid tier's own frame, and only as long as that tier's cap (0132).
+        self.assertIn("at most 180 s", self.refused(width=3840, height=2160))
+        self.assertIn("at most 180 s", self.refused(width=2160, height=3840, max_duration_s=181))
+        self.assertEqual(ep.parse_preset(entry(width=3840, height=2160, max_duration_s=180)).width, 3840)
+        self.assertIn("at most 300 s", self.refused(width=2560, height=1440))
+        self.assertEqual(ep.parse_preset(entry(width=2560, height=1440, max_duration_s=300)).width, 2560)
+        # Between 1080p and 1440p a frame is the 1440p tier by its pixels, and capped like it.
+        self.assertIn("at most 300 s", self.refused(width=2048, height=1152))
 
     def test_a_rate_that_is_not_on_the_documents_list_is_refused(self):
         self.assertIn("fps", self.refused(fps=45))

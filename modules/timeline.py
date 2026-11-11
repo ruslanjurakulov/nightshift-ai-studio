@@ -856,9 +856,11 @@ def validate(doc: Any) -> List[str]:
         if interp_est + stab_est + fast_raw + look_raw > 0:
             try:
                 # The captions and overlays are checked further down: a time there can still be a number too
-                # big for a float, and that is their problem to report, not a crash of this estimate.
+                # big for a float, and that is their problem to report, not a crash of this estimate. The captions
+                # may not even have their shape yet ('x', {"cues": "x"}, {"cues": [5]}, a cue without a time):
+                # reading them then raises TypeError / AttributeError / KeyError, which is the same kind of problem.
                 length = duration_s(doc)
-            except (OverflowError, ValueError):
+            except (OverflowError, ValueError, TypeError, AttributeError, KeyError):
                 length = None
         in_export = length is not None and length <= EXPORT_LENGTH_MAX_S + 1e-9
         fast_est = fast_raw if in_export else 0.0

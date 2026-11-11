@@ -30,6 +30,9 @@ It is not an edit: nothing in the document changes, nothing is saved, the projec
 Text sizes are in output pixels, so the same text is larger relative to a narrower frame, exactly as when the format is changed in
 "Export format". Look at a size there first when the layout matters.
 
+1440p and 4K are four more sizes of the same list, PAID by the started minute and behind a second switch,
+`NIGHTSHIFT_HIRES_EXPORT` (migration 0132): `docs/HIRES_EXPORT.md`.
+
 ## The switch
 
 `NIGHTSHIFT_MULTI_RATIO_EXPORT` is one GitHub repository variable that feeds **both** halves:

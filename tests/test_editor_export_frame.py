@@ -139,8 +139,11 @@ class AnExportWithoutAFrameIsWhatItWas(Base):
 
 class TheFrameIsRendered(Base):
     def test_every_format_of_the_list_is_rendered_in_exactly_its_size(self):
-        self.assertEqual(sorted(PRESETS), sorted(["youtube_1080p", "youtube_720p", "vertical_1080p", "square_1080", "feed_4x5_1080"]))
-        for p in PRESETS.values():
+        self.assertEqual(sorted(export_presets.free(PRESETS)),
+                         sorted(["youtube_1080p", "youtube_720p", "vertical_1080p", "square_1080", "feed_4x5_1080"]))
+        # The four paid frames of 0132 (1440p, 4K) have their own rules: tests/test_editor_hires_export.py.
+        self.assertEqual(len(PRESETS), 9)
+        for p in export_presets.free(PRESETS).values():
             status, store, render, store_file = self.run_export(framed(p.id))
             self.assertEqual(status, "done", p.id)
             norm = render.call_args.args[0]

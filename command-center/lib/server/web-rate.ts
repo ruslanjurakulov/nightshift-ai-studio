@@ -47,6 +47,9 @@ export const EDITOR_SAVE_RATE: RateRule = { bucket: "editor.save", max: 300, win
 export const EDITOR_CREATE_RATE: RateRule = { bucket: "editor.create", max: 60, windowSeconds: 3600 };
 /** Export requests (POST): 30 an hour; the database also allows one at a time and a daily count. */
 export const EDITOR_EXPORT_RATE: RateRule = { bucket: "editor.export", max: 30, windowSeconds: 3600 };
+/** Price quotes of a paid 1440p / 4K export (GET, migration 0132): read-only, asked when a paid size is ticked. 120 per
+ *  10 minutes; the export itself is still EDITOR_EXPORT_RATE. */
+export const EDITOR_QUOTE_RATE: RateRule = { bucket: "editor.quote", max: 120, windowSeconds: 600 };
 /** "Open in editor" sends (POST): 120 per 10 minutes = 12 a minute. */
 export const EDITOR_SEND_RATE: RateRule = { bucket: "editor.send", max: 120, windowSeconds: 600 };
 
