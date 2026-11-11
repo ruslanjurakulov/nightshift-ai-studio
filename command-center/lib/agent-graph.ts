@@ -17,11 +17,38 @@ export const NODE_TYPES = [
 
 export type NodeType = (typeof NODE_TYPES)[number];
 
+/**
+ * Characters a name or a label may never hold: the class of BR-L-120 (modules/comment_replies.py `_STRIP`, migration 0081
+ * `inbox_clean_text`) plus the line feed. Controls (C0, C1, DEL, so no ANSI escapes), soft hyphen, grapheme joiner, Arabic letter mark,
+ * Hangul/Khmer fillers, Mongolian selectors, zero-width and direction marks, embeddings, overrides and isolates, invisible operators,
+ * braille blank, variation selectors FE00-FE0D, BOM, interlinear annotation controls, Egyptian/Bamum/musical format controls and the
+ * Unicode tag block. Migration 0130 (`v_refused` in save_agent_workflow_draft) refuses exactly the same class.
+ */
+export const REFUSED_TEXT_CHARS =
+  /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff0-\ufffb\u{13430}-\u{1343f}\u{1bca0}-\u{1bca3}\u{1d173}-\u{1d17a}\u{e0000}-\u{e0fff}]/u;
+/** At least one character that is not a space (ASCII or a blank-looking one): the same rule as 0130's `v_visible`. */
+const VISIBLE_CHAR = /[^ \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/u;
+
+/**
+ * A plan's name or a node's label, checked RAW (before trimming) exactly as migration 0130 checks it: 1 to `max` characters counted
+ * as code points (Postgres char_length), a visible character, none of REFUSED_TEXT_CHARS. Trimmed afterwards, so what is stored is
+ * never longer than what was checked.
+ */
+function displayText(max: number) {
+  return z.string()
+    .refine(s => { const n = Array.from(s).length; return n >= 1 && n <= max; }, { message: `1 to ${max} characters` })
+    .refine(s => !REFUSED_TEXT_CHARS.test(s), { message: "Control, direction or invisible characters are not allowed" })
+    .refine(s => VISIBLE_CHAR.test(s), { message: "Needs a visible character" })
+    .transform(s => s.trim());
+}
+
 const NodeSchema = z.object({
   id: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/),
   type: z.enum(NODE_TYPES),
-  label: z.string().trim().min(1).max(80),
-  config: z.record(z.string(), z.union([z.string().max(500), z.number().finite(), z.boolean()])).default({}),
+  label: displayText(80),
+  // Empty until a reviewed per-node config schema exists: the database (0130) refuses anything but {} too, so no provider key,
+  // endpoint or setting can be stored in a plan.
+  config: z.object({}).strict().default({}),
 }).strict();
 
 const EdgeSchema = z.object({
@@ -31,7 +58,7 @@ const EdgeSchema = z.object({
 
 export const WorkflowSchema = z.object({
   version: z.literal(1),
-  name: z.string().trim().min(1).max(120),
+  name: displayText(120),
   nodes: z.array(NodeSchema).max(64),
   edges: z.array(EdgeSchema).max(128),
 }).strict();
@@ -39,7 +66,6 @@ export const WorkflowSchema = z.object({
 export type AgentWorkflow = z.infer<typeof WorkflowSchema>;
 
 const REQUIRES_APPROVAL = new Set<NodeType>(["asset.export"]);
-const CREATIVE_TYPES = new Set<NodeType>(["image.generate", "video.generate", "vector.generate"]);
 
 // Only registry-defined types are valid; no arbitrary code nodes, URLs,
 // shell commands, JS snippets or user-supplied provider identifiers.
@@ -89,9 +115,6 @@ export function inspectWorkflow(input: unknown): { ok: boolean; errors: string[]
     reviewed.set(id, approved);
     if (REQUIRES_APPROVAL.has(n.type) && !everyPathReviewed) {
       errors.push("Export requires an upstream review.approval node on every path");
-    }
-    if (CREATIVE_TYPES.has(n.type) && (n.config.providerKey || n.config.apiKey || n.config.endpoint)) {
-      errors.push("Provider credentials/endpoints are forbidden in graph config");
     }
   }
   return { ok: errors.length === 0, errors, order: errors.length ? [] : order, requiresApproval: nodes.some(n => REQUIRES_APPROVAL.has(n.type)) };

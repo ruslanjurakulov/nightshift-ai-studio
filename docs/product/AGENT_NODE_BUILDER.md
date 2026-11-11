@@ -46,23 +46,24 @@ Added a client-side draggable, bounded node-card workspace with accessible direc
 - GitHub CI must be reviewed before merging. A review node in saved JSON is never equivalent to a user's live approval.
 
 ## Phase 2A — private draft persistence (implementation in this draft PR)
-- New migration `0130_agent_workflow_drafts.sql` (written as 0129, renumbered to 0130 on 2026-11-11 because 0129 went to the editor export frames, #661): distinct from existing billing-backed `workflows` in migration 0073.
-- Tables `agent_workflow_drafts` and `agent_workflow_draft_versions` with owner-bound foreign keys, RLS enforced for read, immutable version snapshots, and no direct authenticated write grants.
-- Atomic `save_agent_workflow_draft(draft_id, expected_version, document)` uses current `auth.uid()`, row locks, version compare-and-swap, a 50-draft limit per person and 30 saved revisions per draft.
-- `GET/POST /api/agent-builder/drafts` and `GET /api/agent-builder/drafts/[id]?version=N`; all use the cookie-bound logged-in user's anon Supabase client. POST uses same-origin CSRF checks and a hard streaming body limit.
-- The editor has optional cloud Save, List and Load buttons. Imported local JSON starts a new cloud document instead of overwriting an older one.
-- Feature flag `NIGHTSHIFT_AGENT_DRAFTS_ENABLED=true` is REQUIRED to expose the endpoints; it defaults OFF. Do not enable on production before disposable SQL and route tests pass.
-- `tests/sql/agent_workflow_drafts_rls.sql` is a **disposable database test only**: two synthetic auth users, cross-user SELECT and save refusal, append-only versions and stale-version conflict. Rollback at end. This test has not been executed in this PR.
+- Migration `0130_agent_workflow_drafts.sql` (written as 0129, renumbered to 0130 on 2026-11-11 because 0129 went to the editor export frames, #661): distinct from the billing-backed `workflows` of migration 0073. Applied as one transaction with `lock_timeout = '5s'` (its foreign key to `auth.users` locks that table against sign-ups while it runs); its last block asserts the end state (grants, RLS, the one owner-only read policy per table, SECURITY DEFINER with an empty `search_path`). Undo: `docs/sql/rollback_0130_agent_workflow_drafts.sql`, which refuses while any plan exists unless its override line is set on purpose.
+- Tables `agent_workflow_drafts` and `agent_workflow_draft_versions`: one person's rows (not the organization's, not the operator's). RLS is enabled (not forced: the two functions are SECURITY DEFINER owned by the migration role, the repository's pattern); signed-in users may SELECT their own rows; no API role (anon, authenticated or service_role) may write either table.
+- `save_agent_workflow_draft(draft_id, expected_version, document)` binds to `auth.uid()`, takes a row lock and compares the version, allows 50 plans per person (under a per-person advisory lock) and keeps the newest 30 versions of each plan (a save past 30 prunes the oldest; version numbers keep counting). `delete_agent_workflow_draft(draft_id)` lets the owner remove a plan and all of its versions. Another person's id reads exactly like a made-up one (`draft_not_found`) for both.
+- The function checks the whole document and fails closed: exactly the known keys at every level (a missing key is a refusal, not a NULL that slips through), JSON types, format/version values, 64 nodes / 128 edges, the node id pattern and uniqueness, the eight registry types, labels (1-80 characters) and the name (1-120), both measured raw and refused if they hold no visible character or any control, direction, zero-width or tag character (the BR-L-120 class), `config` exactly `{}`, the typed edge kinds, duplicate edges, an export with no incoming (reviewed) edge, and positions as plain integers inside the canvas. `lib/agent-graph.ts` and `lib/agent-draft.ts` apply the same rules, so a draft the editor accepts is one the database accepts.
+- `GET/POST /api/agent-builder/drafts`, `GET /api/agent-builder/drafts/[id]?version=N` and `DELETE /api/agent-builder/drafts/[id]`, all with the signed-in user's cookie-bound Supabase client. POST and DELETE are same-origin checked; POST has a hard streaming body limit. A refusal of the function (a bad document, a conflict, a limit, another person's id) is a 4xx; only a missing function or an unreachable database is a 503.
+- The editor has optional cloud Save, List, Load and Delete buttons. Imported local JSON starts a new cloud document instead of overwriting an older one.
+- Switch `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` (on, 1, true or yes; default off): off, every draft route answers the public 404 before reading the session.
+
+### What the switch does NOT cover
+The switch hides the web routes only. Once migration 0130 is applied, **any signed-in user can call `save_agent_workflow_draft()` and `delete_agent_workflow_draft()` directly through PostgREST with the browser (anon) key, whatever the switch says**, and read their own rows of the two tables. That is accepted on purpose and bounded by the database itself: 50 plans per person, 30 versions per plan, 150 KB per version, the document rules above, and only the caller's own rows. Nothing stored is ever executed, billed or published. If even that exposure is unwanted before launch, do not apply 0130 yet (or apply its rollback).
+
+### Tests
+`tests/security/test_sec_agent_workflow_drafts.py` (security lab, real Postgres): every guard of the function has a test that fails when the guard is removed, including two-connection races for the 50-plan limit and the version lock, and the rollback. `tests/security/test_sec_isolation.py` attacks real seeded rows of both tables (`tests/security/sec_agent_drafts_0130.py`). `command-center/tests/agent-drafts-route.test.ts` covers the switch, same-origin, the body cap and the error mapping.
 
 ### Required deployment/release sequence (NOT performed)
-1. Inspect migration numbering and apply only to a disposable Supabase instance; ensure 0129 is not reserved on another branch.
-2. Run isolated RLS SQL tests and enforce that an authenticated API client cannot bypass the application-level graph validator via direct RPC calls.
-3. Run command-center typecheck, unit tests, lint, route CSRF and cross-tenant tests; add version concurrency/race tests.
-4. Deploy authenticated UI in a safe staging environment and explicitly toggle feature flag THERE, not in production.
-5. After security review, obtain explicit production release approval. No automated migrations or production feature enablement.
-
-### Remaining security caveat
-The database RPC now also checks allowed node types, non-empty labels, empty node configs (no provider credentials), typed edge kinds, duplicate edges and bounded positions. The TypeScript parser remains authoritative for full structural validation and future typed configuration. A caller with a valid authenticated session can still invoke RPC directly; keep the execution engine disconnected. Before enabling this feature in production, finish equivalence tests for the SQL and TypeScript validators, run real cross-tenant tests and review migration safety. **This PR remains NO-GO for production until these checks pass.**
+1. Confirm 0130 is still the next free migration number; apply it to a disposable Supabase instance first.
+2. Run the security lab and the Command Center checks (typecheck, unit tests, lint).
+3. Apply 0130 to production only with explicit approval, then turn the switch on in staging before production.
 
 ## Phase 2B — deterministic Agent Planner preview
 - `agent-planner.ts` safely maps recognized image/video/vector creative intent into approved, editable, schema-validated node graphs. Explicit output choice is required when the request is ambiguous.
@@ -88,7 +89,7 @@ Frontend check passed. Security lab found PostgreSQL `42725 operator is not uniq
 ## Phase 2D — CI catalog and workflow supply-chain repairs
 After the previous PR run, Frontend passed, but the Security lab catalog test failed because migration 0129's person-owned tables and RPC were not declared. We now declare a `Person(owner_id)` isolation kind separately from organization-owned data; tests assert owner-only reads and no direct inserts. `save_agent_workflow_draft` is registered as an authenticated-only function in the closed function catalog.
 
-The Python suite found the disabled-by-default `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` flag absent from `deploy/.env.web.example`; it is now listed explicitly as `false`. It also flagged unpinned GitHub Actions in the read-only monitor and two disposable local Supabase workflows. Those actions are now locked to reviewed 40-character commit hashes, and checkout credentials remain nonpersistent. For `supabase/setup-cli`, v1.7.1's upstream immutable commit is `ab058987d8d6c725971f6cf9d0b5c98467e30bd1`.
+The Python suite found the disabled-by-default `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` flag absent from `deploy/.env.web.example`; it is now listed (empty = off). It also flagged unpinned GitHub Actions in the read-only monitor and two disposable local Supabase workflows. Those actions are now locked to reviewed 40-character commit hashes, and checkout credentials remain nonpersistent. For `supabase/setup-cli`, v1.7.1's upstream immutable commit is `ab058987d8d6c725971f6cf9d0b5c98467e30bd1`.
 
 These are PR-only changes. Fresh CI is required. No production Supabase migration, cloud flag enablement, merge or real model execution occurred.
 
@@ -96,7 +97,7 @@ These are PR-only changes. Fresh CI is required. No production Supabase migratio
 - `command-center/lib/server/agent-provider-adapters.ts` creates a server-only preparation boundary for Ideogram vector and BytePlus video requests. Provider model IDs must be present in a separately approved allowlist; arbitrary client endpoint URLs and API keys are rejected.
 - Every request has a UUID request ID and owner ID, bounded prompt and asset list. This is **schema checking, not a substitute for actual authenticated user and asset ownership checks**.
 - License/redistribution verification is a blocking condition. `inspectAdapterRequest` returns an inert plan; `executeAdapterRequest` always throws `nightshift_agent_provider_execution_disabled`.
-- `agent-provider-adapters.test.ts` checks rejection of unapproved models, leaked extra fields, unsupported capability, missing terms approval and any execution attempt.
+- `lib/server/agent-provider-adapters.test.ts` (next to its module; `vitest.config.ts` now collects `lib/**/*.test.ts`, which no run picked up before) checks rejection of unapproved models, leaked extra fields, unsupported capability, missing terms approval and any execution attempt.
 - No API endpoints, credentials, worker jobs, credit reservations or paid model calls were added. This cannot be toggled on with a flag. Actual direct API integration requires a separate reviewed implementation and explicit release approval.
 
 CI status from the preceding commit is not assumed to carry over to these changes. Keep this PR draft until fresh frontend, Python and disposable security lab tests pass.
@@ -104,10 +105,10 @@ CI status from the preceding commit is not assumed to carry over to these change
 ## Phase 3B — latest CI repairs
 The preceding run of PR #652 found three remaining categories:
 - Frontend TypeScript: the inert provider adapter unit test passed a readonly `assetIds` array where `AdapterRequest` expects an ordinary mutable array. The test fixture now uses a correctly typed array; the implementation still does not execute.
-- Disposable Security lab: generic stranger/anon insert tests tried to clone a non-existent seeded personal workflow row. Personal tables are now attacked with a blind direct INSERT instead; authenticated-user owner isolation remains independently tested by `test_sec_agent_workflow_drafts.py`. This avoids weakening RLS.
-- Python deployment mapping: new `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` key was declared in the deploy template but missing in `deploy_web.yml`'s strict environment allowlist. It is now mapped from GitHub vars; absent or anything other than the literal string `true` leaves the endpoint disabled.
+- Disposable Security lab: generic stranger/anon insert tests tried to clone a non-existent seeded personal workflow row. The lab now seeds one plan for each of two people, and the isolation tests attack those real rows with whole, valid inserts (superseding a blind `insert ... default values`, which a permissive policy would not have been caught by).
+- Python deployment mapping: new `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` key was declared in the deploy template but missing in `deploy_web.yml`'s strict environment allowlist. It is now mapped from GitHub vars; absent, empty or anything but on / 1 / true / yes leaves the routes a 404.
 
 All three remediations are committed but require CI rerun. Production migration, feature enablement, API billing and publishing remain OFF.
 
-## CI check — media memory regression isolation
-On commit `51fe8ffa04083178980a758819cd131c40f837c6`, Frontend and Security lab passed. The Python suite executed 10,443 tests, reporting one error in a real FFmpeg regression test (`test_a_big_coded_frame_behind_a_crop_window_is_refused_at_ingest`): clean clip process RSS exceeded the intentionally reduced 256 MiB attack fixture limit (271 MiB observed on the runner). In `tests/test_breach_media_memory.py`, the malicious coded-frame refusal continues to be tested under the tight 256 MiB limit, while the clean clip is tested under the actual unchanged production memory limit. This is a test isolation fix, not a higher runtime memory allowance. Re-run the entire CI; do not mark this PR ready based solely on the previous two green jobs.
+## CI check — media memory regression isolation (reverted)
+An earlier commit moved the clean 64x64 clip check in `tests/test_breach_media_memory.py` outside the strict 256 MiB limit. That made the test unable to catch a limit that refuses every file, so the hunk is back to `main`'s version exactly. A runner whose ffmpeg baseline exceeds the fixture limit needs its own fix on `main`, not in this PR.

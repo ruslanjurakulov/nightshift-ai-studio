@@ -1,30 +1,36 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireSameOrigin } from "@/lib/server/same-origin";
+import { DRAFT_ID, agentDraftsEnabled, draftRpcFailure } from "@/lib/server/agent-drafts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store" };
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+type Params = { params: Promise<{ id: string }> };
 function json(body: unknown, status: number) {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
-/**
- * Read one authenticated owner's draft and version history. RLS is authoritative;
- * cross-user IDs are indistinguishable from missing IDs.
- */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  if (process.env.NIGHTSHIFT_AGENT_DRAFTS_ENABLED !== "true")
-    return json({ error: "agent_drafts_disabled" }, 503);
-  const { id } = await params;
-  if (!UUID.test(id)) return json({ error: "invalid_id" }, 400);
+/** The switch is off: the same 404 as a route that does not exist, before the session is read. */
+const disabled = () => json({ error: "not_found" }, 404);
+
+async function session() {
   const db = await createClient();
+  if (!db) return null;
+  const { data: { user }, error } = await db.auth.getUser();
+  return !error && user ? db : null;
+}
+
+/**
+ * Read one authenticated owner's draft and one of its kept versions. RLS is authoritative;
+ * cross-user IDs are indistinguishable from missing IDs, and so is a version the database pruned.
+ */
+export async function GET(request: Request, { params }: Params) {
+  if (!agentDraftsEnabled()) return disabled();
+  const { id } = await params;
+  if (!DRAFT_ID.test(id)) return json({ error: "invalid_id" }, 400);
+  const db = await session();
   if (!db) return json({ error: "unauthorized" }, 401);
-  const { data: { user }, error: authError } = await db.auth.getUser();
-  if (authError || !user) return json({ error: "unauthorized" }, 401);
   const { data: draft, error: draftError } = await db.from("agent_workflow_drafts")
     .select("id,name,current_version,created_at,updated_at")
     .eq("id", id).maybeSingle();
@@ -42,3 +48,18 @@ export async function GET(
   if (!revision) return json({ error: "not_found" }, 404);
   return json({ draft, revision }, 200);
 }
+
+/** The owner deletes one plan and every version of it (delete_agent_workflow_draft, 0130). Another person's id is not_found. */
+export const DELETE = requireSameOrigin(async function DELETE(_request: Request, { params }: Params) {
+  if (!agentDraftsEnabled()) return disabled();
+  const { id } = await params;
+  if (!DRAFT_ID.test(id)) return json({ error: "invalid_id" }, 400);
+  const db = await session();
+  if (!db) return json({ error: "unauthorized" }, 401);
+  const { error } = await db.rpc("delete_agent_workflow_draft", { p_draft_id: id });
+  if (error) {
+    const failure = draftRpcFailure(error);
+    return json({ error: failure.error }, failure.status);
+  }
+  return json({ deleted: id }, 200);
+});

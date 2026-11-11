@@ -109,6 +109,24 @@ export function AgentBuilder() {
     } catch { setNotice("Invalid or unavailable cloud draft."); }
     finally { setCloudBusy(false); }
   };
+  const deleteCloudDraft = async () => {
+    if (!chosenDraft) return;
+    const chosen = remoteDrafts.find(d => d.id === chosenDraft);
+    if (!window.confirm("Delete the private draft \u201c" + (chosen?.name ?? "") + "\u201d and all of its saved versions? This cannot be undone.")) return;
+    setCloudBusy(true);
+    try {
+      const res = await fetch("/api/agent-builder/drafts/" + encodeURIComponent(chosenDraft), { method:"DELETE", credentials:"same-origin" });
+      const out: { deleted?:string; error?:string } = await res.json();
+      if (!res.ok || out.deleted !== chosenDraft) { setNotice("Delete failed: " + (out.error || String(res.status))); return; }
+      const rest = remoteDrafts.filter(d => d.id !== chosenDraft);
+      setRemoteDrafts(rest);
+      setChosenDraft(rest[0]?.id || "");
+      // The canvas keeps the plan; it is no longer tied to the deleted cloud draft, so the next save starts a new one.
+      if (savedId === chosenDraft) { setSavedId(null); setSavedVersion(null); }
+      setNotice("Private draft deleted with all of its versions. Your canvas is unchanged.");
+    } catch { setNotice("Could not delete the draft."); }
+    finally { setCloudBusy(false); }
+  };
   const importPlan = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -176,6 +194,7 @@ export function AgentBuilder() {
         {remoteDrafts.length > 0 && <>
           <label>Saved workflow<select value={chosenDraft} onChange={e => setChosenDraft(e.target.value)}>{remoteDrafts.map(d => <option key={d.id} value={d.id}>{d.name} (v{d.current_version})</option>)}</select></label>
           <button type="button" className={styles.secondary} disabled={cloudBusy || !chosenDraft} onClick={loadCloudDraft}>Load selected private draft</button>
+          <button type="button" className={styles.secondary} disabled={cloudBusy || !chosenDraft} onClick={deleteCloudDraft}>Delete selected private draft</button>
         </>}
         <p className={styles.disclaimer}>No model APIs, credentials, billing, background jobs, or automated publishing are connected.</p>
         <p role="status" className={styles.notice}>{notice}</p>

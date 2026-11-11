@@ -1,7 +1,7 @@
 /** Serializable editor-only layout, never provider instructions. */
 import { z } from "zod";
 import { WorkflowSchema, inspectWorkflow, type AgentWorkflow } from "./agent-graph";
-import { clampPosition, type NodePosition } from "./agent-graph-editor";
+import { CONNECTIONS, clampPosition, type NodePosition } from "./agent-graph-editor";
 
 const Position = z.object({ x: z.number().finite(), y: z.number().finite() }).strict();
 const Draft = z.object({
@@ -16,9 +16,22 @@ export function defaultNodePosition(index: number): NodePosition {
   return { x: 20 + (index % 3) * 250, y: 20 + Math.floor(index / 3) * 250 };
 }
 
+/**
+ * The rules a stored draft must meet beyond the graph checks of inspectWorkflow: every edge is one of the typed CONNECTIONS. Migration
+ * 0130's save_agent_workflow_draft() enforces the same list, so a draft this accepts is one the database accepts.
+ */
+function connectionsAllowed(workflow: AgentWorkflow): boolean {
+  const types = new Map(workflow.nodes.map(node => [node.id, node.type]));
+  return workflow.edges.every(edge => {
+    const from = types.get(edge.source);
+    const to = types.get(edge.target);
+    return from !== undefined && to !== undefined && CONNECTIONS[from].includes(to);
+  });
+}
+
 export function exportWorkflowDraft(workflow: AgentWorkflow, positions: Record<string, NodePosition>): string {
   const report = inspectWorkflow(workflow);
-  if (!report.ok) throw new Error("Invalid workflow");
+  if (!report.ok || !connectionsAllowed(workflow)) throw new Error("Invalid workflow");
   const retained: Record<string, NodePosition> = {};
   workflow.nodes.forEach((node, index) => {
     const at = positions[node.id] ?? defaultNodePosition(index);
@@ -34,7 +47,7 @@ export function importWorkflowDraft(content: string): WorkflowDraft {
   catch { throw new Error("Invalid JSON file"); }
   const result = Draft.safeParse(parsed);
   if (!result.success) throw new Error("Unsupported or invalid Nightshift draft");
-  if (!inspectWorkflow(result.data.workflow).ok) throw new Error("Workflow validation failed");
+  if (!inspectWorkflow(result.data.workflow).ok || !connectionsAllowed(result.data.workflow)) throw new Error("Workflow validation failed");
   const ids = new Set(result.data.workflow.nodes.map(node => node.id));
   if (Object.keys(result.data.positions).some(id => !ids.has(id))) throw new Error("Layout contains unknown node");
   const positions: Record<string, NodePosition> = {};

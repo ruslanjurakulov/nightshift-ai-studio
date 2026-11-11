@@ -36,9 +36,9 @@ describe("Nightshift agent graph: safe planning only", () => {
     graph.edges.push({ source: "missing", target: "export" });
     expect(inspectWorkflow(graph).ok).toBe(false);
   });
-  it("blocks provider secrets in graph", () => {
+  it("blocks provider secrets in graph: config is always empty (the database, migration 0130, refuses anything else too)", () => {
     const graph = createCampaignWorkflow();
-    graph.nodes[3].config = { apiKey: "never-persist-secrets-here" };
+    (graph.nodes[3] as { config: unknown }).config = { apiKey: "never-persist-secrets-here" };
     expect(inspectWorkflow(graph).ok).toBe(false);
   });
   it("does not accept unrecognized fields", () => {

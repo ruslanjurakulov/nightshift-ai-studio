@@ -63,6 +63,7 @@ export function inspectAdapterRequest(input: unknown, approvedModels: ProviderRe
 }
 
 /** Strictly denied even for an otherwise valid and approved model. */
-export async function executeAdapterRequest(_input: AdapterRequest): Promise<never> {
+export async function executeAdapterRequest(input: AdapterRequest): Promise<never> {
+  void input; // never read: nothing is dispatched, whatever the request says
   throw new Error("nightshift_agent_provider_execution_disabled");
 }
