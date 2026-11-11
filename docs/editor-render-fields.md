@@ -918,7 +918,48 @@ native read.
 
 ### Next
 
-* Voice-over recording in the editor (the microphone is allowed on the editor page only, an owner decision;
-  today `microphone=()` site-wide in `command-center/next.config.ts` and `deploy/Caddyfile`): a separate
-  branch.
+* Voice-over recording in the editor: section 13.
 * A 1440p format (a migration replacing 0129's `editor_export_frame` list) and, later, 4K.
+
+## 13. Voice-over recorded in the editor (no new field)
+
+A take recorded in the editor becomes an ordinary sound on an A track (`asset_id` of an AUDIO asset); the
+document, the validators (`lib/editor.ts`, `modules/timeline.py`) and the render are unchanged.
+
+**The microphone, on one page.** Owner decision (2026-11-11): `microphone=(self)` on the timeline editor's
+project page `/<channel>/editor/<project uuid>` only; every other path, `/api` included, keeps `microphone=()`.
+Both layers send it: `command-center/next.config.ts` (`EDITOR_MIC_SOURCE`, a later rule replacing the site-wide
+value on that path) and `deploy/Caddyfile` (two mutually exclusive matchers plus a deny for `/api/*`, each a
+deferred `>Permissions-Policy`, so Caddy's value replaces the app's: on the self-hosted box Caddy's is the one the
+browser gets, docs/DEPLOY_AX42.md). `tests/security-headers.test.ts` and `tests/test_deploy_self_host.py`
+(`CaddyMicrophoneTests`) pin the split and that both layers send the same two values. The browser still asks the
+person every time, and the page asks only when Record is pressed. A policy is fixed per document: reaching the
+editor by an in-app link from a page that denies the microphone keeps that page's policy, so Chromium refuses
+the microphone there. The recorder detects it (`document.permissionsPolicy` / `featurePolicy`) and offers
+"Reload page" instead of calling it a refusal. The custom voice page (docs/CUSTOM_VOICE.md, V3-G1) is not
+opened by this.
+
+**Recording** (`components/editor/VoiceOverRecorder.tsx`, the shared `components/voice/useVoiceRecorder.ts` with
+options): 1 s to 10 min (stopped at 10:00; a take that ran past it in a paused tab is discarded), 128 kbit/s
+asked of MediaRecorder, a level meter (Web Audio analyser, never connected to the speakers), preview, re-take,
+discard, cancel. Stop, Cancel, closing the panel, leaving the page and `pagehide` release the microphone.
+
+**Upload** (`lib/editor-voiceover.ts`): the media library's ordinary path, nothing new on the database side.
+POST `/api/media/uploads` (membership, type allowlist, size cap, quota) and the PUT, then the page polls the new
+read-only `GET /api/media/uploads/<ticket>` (status, a known reason word, asset id; RLS) every 1.5 s for up to
+3 minutes, reads the registered asset (`GET /api/media/<id>`), and only then places it at the playhead as it was
+when Add was pressed. A take over 25 MB is refused in the browser (10 min at 128 kbit/s is 9.6 MB; the
+database's 95 MiB default cap still applies). A WebM take is uploaded with NO extension in its name: the
+database maps `.webm` to video (`media_ext_mime`) and would refuse an audio upload so named; Ogg is `.ogg` and
+Safari's MP4 `.m4a`.
+
+**The worker** (`modules/media_library.py`): a recorder writes WebM as a stream, so its header carries no length
+(measured: a WebM/Opus written to a pipe probes with no `format.duration`), and the worker refused it as "no
+length". For a sound-only file of a streamed container (WebM, Ogg, MP4) with no length in its header, the
+length is now measured from the first sound stream's packet times (`ffprobe -show_entries packet=...`, demuxer
+forced, `file` protocol only, read line by line, killed at the probe timeout). A video without a length is
+still refused (its decode budget is computed from that length). `tests/test_editor_voiceover.py` covers the
+ingest and renders a streamed WebM/Opus take and a WAV take on an A track through the real export path.
+
+Strings: `lib/i18n/editor-voiceover/{en,ru,uz}.ts` (`t.editor.voiceOver`); ru and uz are drafts for a native
+read.

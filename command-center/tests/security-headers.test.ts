@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getPathMatch } from "next/dist/shared/lib/router/utils/path-match";
-import nextConfig, { FONT_FILES } from "../next.config";
+import nextConfig, { EDITOR_PERMISSIONS_POLICY, FONT_FILES, PERMISSIONS_POLICY } from "../next.config";
 import { PUBLIC_FONT_PATHS } from "@/lib/public-paths";
 
 /**
@@ -80,6 +80,61 @@ describe("security headers (BR-S-007)", () => {
 
   it("does not advertise the framework", () => {
     expect(nextConfig.poweredByHeader).toBe(false);
+  });
+});
+
+/**
+ * The microphone (owner decision, 2026-11-11): allowed to this origin on the timeline editor's project page, for
+ * a voice-over, and nowhere else. A wider rule would let any page of ours (or a script injected into one) ask for
+ * the microphone; a narrower one would leave the editor's Record button refused by the browser before the person
+ * is even asked. deploy/Caddyfile carries the same split (tests/test_deploy_self_host.py).
+ */
+describe("the microphone is the editor page's only", () => {
+  const PROJECT = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
+
+  it.each([`/chronos/editor/${PROJECT}`, `/all-channels/editor/${PROJECT.toUpperCase()}`])("%s may ask for it (self only)", async (path) => {
+    const h = await headersFor(path);
+    expect(h["permissions-policy"]).toBe(EDITOR_PERMISSIONS_POLICY);
+    expect(h["permissions-policy"]).toContain("microphone=(self)");
+    // Only the microphone changes: no camera, no location, payment still only Paddle's frame, never `*`.
+    expect(h["permissions-policy"]).toMatch(/camera=\(\), microphone=\(self\), geolocation=\(\)/);
+    expect(h["permissions-policy"]).toContain('payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com")');
+    expect(h["permissions-policy"]).not.toContain("*");
+    expect(h["x-frame-options"]).toBe("DENY");
+    expect(h["content-security-policy"]).toBe("frame-ancestors 'none'");
+  });
+
+  it.each([
+    "/",
+    "/studio",
+    "/pricing",
+    "/login",
+    "/chronos/settings",
+    "/chronos/videos",
+    "/chronos/agents/voice",
+    "/chronos/library",
+    "/chronos/editor",
+    `/chronos/editor/image/${PROJECT}`,
+    `/chronos/editor/${PROJECT}/more`,
+    `/chronos/editor/${PROJECT}x`,
+    "/chronos/editor/not-a-project",
+    `/api/editor/${PROJECT}`,
+    `/api/editor/projects/${PROJECT}`,
+    "/api/media/uploads",
+    "/api/credits/estimate",
+  ])("%s still denies it", async (path) => {
+    const h = await headersFor(path);
+    expect(h["permissions-policy"]).toBe(PERMISSIONS_POLICY);
+    expect(h["permissions-policy"]).toContain("microphone=()");
+    expect(h["permissions-policy"]).not.toContain("microphone=(self)");
+  });
+
+  it("the signed media file route gets no microphone either", async () => {
+    expect((await headersFor(`/api/media/file/${PROJECT}/original`))["permissions-policy"]).toBe(PERMISSIONS_POLICY);
+  });
+
+  it("the two policies differ in the microphone and nothing else", () => {
+    expect(EDITOR_PERMISSIONS_POLICY.replace("microphone=(self)", "microphone=()")).toBe(PERMISSIONS_POLICY);
   });
 });
 

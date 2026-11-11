@@ -312,7 +312,7 @@ write_env() {
 #     sha256sum deploy/Caddyfile
 # tests/test_deploy_self_host.py fails until the two agree. The environment
 # override is for the tests; sshd does not pass client environment.
-CADDYFILE_APPROVED_SHA256="${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-8c3c4e819f366fbd2a5951d3677f593cb35e729aae093a079e2f592fd7bdfc0c}"
+CADDYFILE_APPROVED_SHA256="${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-37fdde60fd271dee054c02b6bfa5f6ff18847646deee0d308f63c2fa9080dd13}"
 
 # This is the CONTRACT: what Caddy must keep sending. It mirrors the `header`
 # blocks of deploy/Caddyfile (tests/test_deploy_self_host.py compares the two).

@@ -23,6 +23,7 @@ import {
   Redo2,
   Scissors,
   Shapes,
+  Mic,
   Music,
   Trash2,
   Type,
@@ -35,6 +36,7 @@ import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
 import { isImproveKind } from "@/lib/creative/improve";
+import { VoiceOverRecorder } from "@/components/editor/VoiceOverRecorder";
 import {
   GAIN_DB_MAX,
   GAIN_DB_MIN,
@@ -375,6 +377,8 @@ export function TimelineEditor({
   const [assets, setAssets] = useState(initialAssets);
   const [adding, setAdding] = useState(false);
   const [addingSound, setAddingSound] = useState(false);
+  /** The voice-over panel. Opening it asks for nothing: the microphone is asked for only when Record is pressed. */
+  const [recordingVoice, setRecordingVoice] = useState(false);
   const [addingOverlay, setAddingOverlay] = useState(false);
   const [addingShape, setAddingShape] = useState(false);
   // Why the last "Add to video" was refused by the export's budgets (said politely, in words).
@@ -1013,6 +1017,16 @@ export function TimelineEditor({
     setAddingSound(false);
   }
 
+  /** A registered voice-over take, placed like any sound (where the playhead was when "Add" was pressed). */
+  function onAddVoiceOver(a: EditorAsset, at: number): boolean {
+    const out = addSound(model, a, at);
+    if (!out) return false;
+    setAssets((x) => ({ ...x, [a.id]: a }));
+    apply(out.model);
+    setSelected({ kind: "sound", id: out.id });
+    return true;
+  }
+
   function onAddOverlay(a: EditorAsset) {
     const out = addOverlay(
       model,
@@ -1594,6 +1608,17 @@ export function TimelineEditor({
               <Music className="size-3.5" aria-hidden />
               {te.addSound}
             </button>
+            {orgId ? (
+              <button
+                type="button"
+                onClick={() => setRecordingVoice((v) => !v)}
+                aria-expanded={recordingVoice}
+                className={quietBtn}
+              >
+                <Mic className="size-3.5" aria-hidden />
+                {te.voiceOver.open}
+              </button>
+            ) : null}
             <button
               type="button"
               ref={addOverlayButton}
@@ -1695,6 +1720,15 @@ export function TimelineEditor({
             <p className="m-0 text-xs text-[var(--color-muted)]">
               {fmt(te.audioFull, { max: MAX_AUDIO_CLIPS })}
             </p>
+          ) : null}
+          {recordingVoice && orgId ? (
+            <VoiceOverRecorder
+              orgId={orgId}
+              canAdd={canAddSound(model)}
+              position={() => (playhead < picture ? playhead : 0)}
+              onAdd={onAddVoiceOver}
+              onClose={() => setRecordingVoice(false)}
+            />
           ) : null}
           {addingSound ? (
             <section
