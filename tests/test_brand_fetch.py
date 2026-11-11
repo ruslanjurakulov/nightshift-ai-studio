@@ -246,8 +246,14 @@ REFUSED_ADDRESSES = [
     ("64:ff9b::7f00:1", "NAT64 address of a loopback"), ("64:ff9b::a00:1", "NAT64 address of a private"),
     ("64:ff9b::a9fe:a9fe", "NAT64 address of a cloud metadata"), ("64:ff9b::6440:1", "NAT64 address of a carrier"),
     ("64:ff9b:1::a00:1", "local-use NAT64"),
-    ("192.0.2.1", "private"), ("198.51.100.1", "private"), ("203.0.113.1", "private"), ("2001:db8::1", "private"),
-    ("198.18.0.1", "private"), ("192.0.0.8", "private"), ("100::1", "reserved"),
+    ("192.0.2.1", "documentation"), ("198.51.100.1", "documentation"), ("203.0.113.1", "documentation"),
+    ("2001:db8::1", "documentation"), ("3fff::1", "documentation"),
+    ("198.18.0.1", "benchmarking"), ("192.0.0.8", "IETF protocol"), ("192.0.0.192", "IETF protocol"),
+    ("192.88.99.1", "6to4 relay"), ("0.1.2.3", "this network"), ("100::1", "reserved"), ("0:1::1", "(::/8)"),
+    ("2001:2::1", "IETF protocol"), ("5f00::1", "SRv6"), ("4000::1", "outside IPv6 global unicast"),
+    ("e000::1", "outside IPv6 global unicast"),
+    # Public embeddings: a NAT64 or Teredo address is refused whatever it carries (a worker behind DNS64 cannot scan).
+    ("64:ff9b::808:808", "a NAT64 address"), ("2001:0:4136:e378:8000:63bf:f7f7:f7f7", "a Teredo address"),
     ("not-an-ip", "not an IP"),
 ]
 PUBLIC_ADDRESSES = ["93.184.215.14", "8.8.8.8", "1.1.1.1", "2606:4700::1111", "2a00:1450:4001:81c::200e"]
@@ -295,7 +301,7 @@ class DefaultPathHasNoWayAround(unittest.TestCase):
         real = socket.getaddrinfo
 
         def fake(host, *a, **k):
-            if host == SITE:
+            if host == SITE + ".":
                 return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
             return real(host, *a, **k)
 
@@ -326,7 +332,10 @@ class DefaultPathHasNoWayAround(unittest.TestCase):
         self.assertGreaterEqual(ctx.minimum_version, ssl.TLSVersion.TLSv1_2)
 
     def test_nothing_but_this_module_and_its_tests_names_the_test_hook_or_imports_the_module(self):
-        files = [ROOT / "main.py", ROOT / "config.py", *(ROOT / "modules").rglob("*.py"), *(ROOT / "tools").rglob("*.py")]
+        files = [ROOT / "main.py", ROOT / "config.py", *(ROOT / "modules").rglob("*.py"), *(ROOT / "tools").rglob("*.py"),
+                 *(ROOT / "deploy").rglob("*.py"),
+                 *(p for p in (ROOT / "command-center").rglob("*.py") if "node_modules" not in p.parts)]
+        self.assertIn(ROOT / "deploy" / "build-worker-env.py", files, "the widened scan really reaches deploy/")
         hook, users = [], []
         for path in files:
             if path.name == "brand_fetch.py":
@@ -400,17 +409,32 @@ class UrlRule(Base):
                     bf.derive_url(base, ref)
                 self.assertEqual(cm.exception.code, bf.E_BAD_URL)
 
-    def test_the_site_rule_is_the_host_or_under_its_last_two_labels(self):
+    def test_the_site_rule_is_the_entry_host_its_subdomains_and_the_www_apex_twin(self):
+        self.assertTrue(bf.same_site(SITE, SITE))
         self.assertTrue(bf.same_site("www.brand-shop.test", SITE))
         self.assertTrue(bf.same_site(SITE, "www.brand-shop.test"))
         self.assertTrue(bf.same_site("cdn.shop.brand-shop.test", "shop.brand-shop.test"))
+        self.assertTrue(bf.same_site("img.www.brand-shop.test", "www.brand-shop.test"))
+        self.assertFalse(bf.same_site("store.brand-shop.test", "www.brand-shop.test"), "a sibling is not the entry")
+        self.assertFalse(bf.same_site("brand-shop.test", "shop.brand-shop.test"), "the parent is not the entry")
+        self.assertFalse(bf.same_site("www2.brand-shop.test", "www.brand-shop.test"))
         self.assertFalse(bf.same_site("evilbrand-shop.test", SITE))
         self.assertFalse(bf.same_site("brand-shop.test.evil.test", SITE))
         self.assertFalse(bf.same_site("other-brand.test", SITE))
-        self.assertTrue(bf.same_site("www.shop.co.uk", "shop.co.uk"))
-        self.assertFalse(bf.same_site("evil.co.uk", "shop.co.uk"), "a country second level is not a site")
-        self.assertFalse(bf.same_site("evil.co.uk", "co.uk"))
-        self.assertEqual(bf.site_of("a.b.shop.com.au"), "shop.com.au")
+        self.assertFalse(bf.same_site("evil.co.uk", "shop.co.uk"))
+        self.assertFalse(bf.same_site("www.test", "w.test"))
+        for parent in ("myshopify.com", "github.io", "vercel.app", "s3.amazonaws.com", "netlify.app"):
+            with self.subTest(parent=parent):
+                self.assertFalse(bf.same_site(f"victim.{parent}", f"attacker.{parent}"), "tenants are not one site")
+                self.assertFalse(bf.same_site(f"www.victim.{parent}", f"attacker.{parent}"))
+
+    def test_a_redirect_to_a_sibling_of_the_entry_host_is_not_followed_or_resolved(self):
+        # The shared-hosting shape: attacker.<parent> sending the scan to victim.<parent>. Here the entry is the www host
+        # and the sibling is store.<parent>; the certificate covers both, so only the site rule can stop it.
+        self.names["store.brand-shop.test"] = [OTHER_IP]
+        self.server.on("/", redirect("https://store.brand-shop.test/"), host=WWW)
+        self.refused(bf.E_OFF_SITE, self.scan(f"https://{WWW}/").home)
+        self.assertNotIn("store.brand-shop.test", self.resolved)
 
 
 # ── a scan that works ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -799,6 +823,258 @@ class Certificates(Base):
         ctx2.check_hostname = False
         self.refused(bf.E_TLS, self.scan(tls=ctx2).home)
         self.assertEqual(self.dialed, [])
+
+
+# ── the name lookup inside the budget ─────────────────────────────────────────────────────────────────────────────
+
+class Lookups(Base):
+    def test_a_slow_resolver_is_cut_at_the_scan_budget(self):
+        def slow():
+            time.sleep(3)
+            return [SITE_IP]
+        self.names[SITE] = slow
+        t = time.monotonic()
+        self.refused(bf.E_TIMEOUT, self.scan(budget=Budget(0.5)).home)
+        self.assertLess(time.monotonic() - t, 1.5)
+        self.assertEqual(self.dialed, [])
+
+    def test_a_slow_resolver_is_cut_at_the_connect_timeout_inside_a_long_budget(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+        self.names[SITE] = lambda: release.wait(10) and [SITE_IP]
+        with mock.patch.object(bf, "CONNECT_TIMEOUT_S", 0.3):
+            t = time.monotonic()
+            e = self.refused(bf.E_DNS, self.scan(budget=Budget(30)).home)
+        self.assertLess(time.monotonic() - t, 1.5)
+        self.assertIn("did not resolve within", e.message)
+
+    def test_after_the_deadline_no_new_name_is_looked_up(self):
+        now = [0.0]
+        s = self.scan(budget=Budget(30, clock=lambda: now[0]))
+        self.server.on("/", answer(200, b"<html></html>"))
+        s.home()
+        now[0] = 31.0
+        for call in (lambda: s.css(f"https://{WWW}/s.css"), lambda: s.image(f"https://img.{SITE}/a.png"),
+                     lambda: s._addresses(f"late.{SITE}")):
+            self.refused(bf.E_TIMEOUT, call)
+        self.assertEqual(self.resolved, [SITE])
+        self.assertEqual(s._looked_up, {SITE}, "a name refused for time does not use up the name cap either")
+
+    def test_at_most_four_distinct_names_per_scan(self):
+        for name in ("a", "b", "c"):
+            self.names[f"{name}.{SITE}"] = [SITE_IP]
+            self.server.on("/s.css", answer(200, b"a{}", ctype="text/css"), host=f"{name}.{SITE}")
+        self.server.on("/s.css", answer(200, b"a{}", ctype="text/css"))
+        s = self.scan()
+        for host in (SITE, f"a.{SITE}", f"b.{SITE}", f"c.{SITE}"):
+            s.css(f"https://{host}/s.css")
+        self.names[f"d.{SITE}"] = [SITE_IP]
+        e = self.refused(bf.E_LIMIT, s.image, f"https://d.{SITE}/i.png")
+        self.assertIn("4 host names", e.message)
+        self.assertNotIn(f"d.{SITE}", self.resolved)
+        self.assertEqual(bf.MAX_HOSTS, 4)
+
+    def test_a_refused_or_failed_lookup_still_counts_toward_the_cap(self):
+        self.names[f"a.{SITE}"] = ["10.0.0.1"]
+        self.names[f"b.{SITE}"] = []
+        s = self.scan()
+        self.refused(bf.E_NOT_PUBLIC, s.css, f"https://a.{SITE}/s.css")
+        self.refused(bf.E_DNS, s.css, f"https://b.{SITE}/s.css")
+        for name in ("c", "d"):                               # not in the resolver's map: the lookup fails
+            self.refused(bf.E_DNS, s.css, f"https://{name}.{SITE}/s.css")
+        self.refused(bf.E_LIMIT, s.image, f"https://{SITE}/i.png")
+        self.assertNotIn(SITE, self.resolved)
+
+    def test_the_system_resolver_asks_for_the_absolute_name(self):
+        asked = []
+
+        def fake(host, *a, **k):
+            asked.append(host)
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (SITE_IP, 443))]
+
+        with mock.patch.object(socket, "getaddrinfo", fake):
+            self.assertEqual(bf._system_resolve(SITE), [SITE_IP])
+        self.assertEqual(asked, [SITE + "."], "no resolv.conf search domain may be tried")
+
+    def test_the_trust_store_is_loaded_once_per_scan(self):
+        self.server.on("/", answer(200, b"<html></html>"))
+        calls = []
+        real = bf._system_tls
+
+        def counting():
+            calls.append(1)
+            return real()
+
+        net = self.net()
+        # The default TLS path with the test's connect: build the scan without a TLS override.
+        s = SiteScan(f"https://{SITE}/", _test_net=net)
+        s._tls = None
+        with mock.patch.object(bf, "_system_tls", counting):
+            for _ in range(3):
+                with self.assertRaises(BrandFetchError):     # the public roots do not trust the test CA
+                    s.css(f"https://{SITE}/s{_}.css")
+        self.assertEqual(len(calls), 1)
+
+
+# ── robots.txt rules (RFC 9309) ───────────────────────────────────────────────────────────────────────────────────
+
+class RobotsMatching(unittest.TestCase):
+    def rules(self, text):
+        return bf.RobotsRules(text)
+
+    def test_wildcards_anchors_longest_match_and_ties(self):
+        r = self.rules("User-agent: *\nDisallow: /*.json$\nDisallow: /private\nAllow: /private/ok\n"
+                       "Disallow: /tie\nAllow: /tie\nDisallow: /a*b*c\n")
+        cases = {"/x.json": False, "/x.json?y=1": True, "/dir/x.json": False, "/private/x": False,
+                 "/private/ok/1": True, "/tie": True, "/a-b-c": False, "/a-c-b": True, "/": True}
+        for path, want in cases.items():
+            self.assertEqual(r.allowed(path), want, path)
+
+    def test_disallow_star_and_dollar(self):
+        self.assertFalse(self.rules("User-agent: *\nDisallow: /*\n").allowed("/"))
+        self.assertFalse(self.rules("User-agent: *\nDisallow: /*\n").allowed("/products/a"))
+        r = self.rules("User-agent: *\nDisallow: /$\n")
+        self.assertFalse(r.allowed("/"))
+        self.assertTrue(r.allowed("/about"))
+
+    def test_our_group_wins_over_star_and_groups_are_merged(self):
+        r = self.rules("User-agent: *\nDisallow: /\n\nUser-agent: NightshiftBrandScan\nAllow: /\nDisallow: /a\n\n"
+                       "User-agent: other\nDisallow: /b\n\nuser-agent: nightshift\nDisallow: /c\n")
+        self.assertTrue(r.allowed("/b"))
+        self.assertFalse(r.allowed("/a"))
+        self.assertFalse(r.allowed("/c"), "a group for the brand name applies too, merged with ours")
+        two = self.rules("User-agent: other\nUser-agent: NightshiftBrandScan/2\nDisallow: /x\n")
+        self.assertFalse(two.allowed("/x"))
+
+    def test_rules_before_any_group_and_empty_disallow_are_ignored(self):
+        r = self.rules("Disallow: /\nUser-agent: *\nDisallow:\nCrawl-delay: 10\nSitemap: https://x.test/s.xml\n")
+        self.assertTrue(r.allowed("/"))
+
+    def test_percent_escapes_compare_in_one_spelling(self):
+        r = self.rules("User-agent: *\nDisallow: /caf%c3%a9\nDisallow: /ü\n")
+        self.assertFalse(r.allowed("/caf%C3%A9/menu"))
+        self.assertFalse(r.allowed("/%C3%BC"))
+
+    def test_robots_txt_itself_is_always_allowed(self):
+        self.assertTrue(self.rules("User-agent: *\nDisallow: /\n").allowed("/robots.txt"))
+
+    def test_a_pattern_made_of_stars_cannot_make_the_match_slow(self):
+        r = self.rules("User-agent: *\nDisallow: /" + "*a" * 2000 + "*b\n")
+        t = time.monotonic()
+        self.assertTrue(r.allowed("/" + "a" * 2040))
+        self.assertLess(time.monotonic() - t, 0.5)
+
+
+class RobotsOverTheWire(Base):
+    def test_a_byte_order_mark_does_not_lose_the_first_group(self):
+        self.server.on("/robots.txt", answer(200, b"\xef\xbb\xbfUser-agent: *\nDisallow: /\n", ctype="text/plain"))
+        self.refused(bf.E_ROBOTS, self.scan().home)
+        self.assertEqual(self.server.paths(), ["/robots.txt"])
+
+    def test_rules_are_read_whatever_the_content_type(self):
+        for ctype in ("application/octet-stream", "text/html", ""):
+            with self.subTest(ctype=ctype):
+                self.server.on("/robots.txt", answer(200, b"User-agent: *\nDisallow: /\n", ctype=ctype))
+                self.refused(bf.E_ROBOTS, self.scan().home)
+        self.assertNotIn("/", self.server.paths())
+
+    def test_disallow_star_and_dollar_over_the_wire(self):
+        self.server.on("/", answer(200, b"<a href='/about'>a</a>"))
+        self.server.on("/about", answer(200, b"<html></html>"))
+        self.server.on("/robots.txt", answer(200, b"User-agent: NightshiftBrandScan\nDisallow: /$\n", ctype="text/plain"))
+        self.refused(bf.E_ROBOTS, self.scan().home)
+        s = self.scan(f"https://{SITE}/about")
+        self.assertEqual(s.home().url, f"https://{SITE}/about")
+        self.server.on("/robots.txt", answer(200, b"User-agent: *\nDisallow: /*\n", ctype="text/plain"))
+        self.refused(bf.E_ROBOTS, self.scan(f"https://{SITE}/about").home)
+
+    def test_a_query_is_part_of_what_the_rules_match(self):
+        self.server.on("/robots.txt", answer(200, b"User-agent: *\nDisallow: /*?sort=\n", ctype="text/plain"))
+        self.server.on("/p?sort=price", answer(200, b"<html></html>"))
+        self.refused(bf.E_ROBOTS, self.scan(f"https://{SITE}/p?sort=price").home)
+        self.assertNotIn("/p?sort=price", self.server.paths())
+
+
+# ── framing past the body cap ─────────────────────────────────────────────────────────────────────────────────────
+
+class Framing(Base):
+    def test_a_trailer_flood_after_a_full_body_is_stopped(self):
+        def send(tls):
+            tls.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/css\r\nTransfer-Encoding: chunked\r\n\r\n")
+            for _ in range(256):
+                tls.sendall(b"400\r\n" + b"x" * 1024 + b"\r\n")
+            tls.sendall(b"0\r\n")
+            for i in range(60):                               # ~120 KiB of trailer: past MAX_FRAMING_BYTES
+                tls.sendall(b"X-T-%d: %s\r\n" % (i, b"t" * 2000))
+            tls.sendall(b"\r\n")
+        self.server.on("/s.css", send)
+        self.refused(bf.E_TOO_LARGE, self.scan().css, f"https://{SITE}/s.css")
+
+    def test_a_short_trailer_after_a_full_body_is_read(self):
+        def send(tls):
+            tls.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/css\r\nTransfer-Encoding: chunked\r\n\r\n")
+            for _ in range(256):
+                tls.sendall(b"400\r\n" + b"x" * 1024 + b"\r\n")
+            tls.sendall(b"0\r\nX-T: " + b"t" * 20000 + b"\r\n\r\n")
+        self.server.on("/s.css", send)
+        self.assertEqual(len(self.scan().css(f"https://{SITE}/s.css").body), 256 * 1024)
+
+    def test_a_chunk_extension_flood_is_stopped(self):
+        def send(tls):
+            tls.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/css\r\nTransfer-Encoding: chunked\r\n\r\n")
+            for _ in range(400):                              # 1 byte of body per ~60 KiB of extension
+                tls.sendall(b"1;ext=" + b"e" * 60000 + b"\r\nx\r\n")
+            tls.sendall(b"0\r\n\r\n")
+        self.server.on("/s.css", send)
+        self.refused(bf.E_TOO_LARGE, self.scan().css, f"https://{SITE}/s.css")
+
+    def test_the_framing_allowance_is_the_documented_number(self):
+        self.assertEqual((bf.MAX_FRAMING_BYTES, bf.MAX_HEADER_BYTES), (64 * 1024, 64 * 1024))
+
+
+class LinkParsingInsideTheBudget(Base):
+    def test_a_home_page_that_used_up_the_budget_is_not_parsed(self):
+        now = [0.0]
+        self.server.on("/", answer(200, b"<a href='/products/a'>a</a>"))
+        s = self.scan(budget=Budget(30, clock=lambda: now[0]))
+        real_home = s.home
+
+        def slow_home():
+            page = real_home()
+            now[0] = 31.0
+            return page
+
+        s.home = slow_home
+        with mock.patch.object(bf, "same_host_links", side_effect=AssertionError("parsed after the deadline")):
+            self.refused(bf.E_TIMEOUT, s.pages)
+
+    def test_no_page_is_started_once_the_parse_used_up_the_budget(self):
+        now = [0.0]
+        self.server.on("/", answer(200, b"<a href='/products/a'>a</a>"))
+        s = self.scan(budget=Budget(30, clock=lambda: now[0]))
+        real = bf.same_host_links
+
+        def slow_parse(*a, **k):
+            now[0] = 31.0
+            return real(*a, **k)
+
+        with mock.patch.object(bf, "same_host_links", slow_parse):
+            self.refused(bf.E_TIMEOUT, s.pages)
+        self.assertEqual(s._count[bf.HTML], 1, "no page request was even counted")
+
+    def test_the_budget_is_checked_around_the_link_list(self):
+        now = [0.0]
+        self.server.on("/", answer(200, b"<a href='/products/a'>a</a>"))
+        s = self.scan(budget=Budget(30, clock=lambda: now[0]))
+        real = bf.same_host_links
+
+        def slow_parse(*a, **k):
+            now[0] = 31.0                                     # the parse used up the scan
+            return real(*a, **k)
+
+        with mock.patch.object(bf, "same_host_links", slow_parse):
+            self.refused(bf.E_TIMEOUT, s.pages)
+        self.assertNotIn("/products/a", self.server.paths())
 
 
 if __name__ == "__main__":

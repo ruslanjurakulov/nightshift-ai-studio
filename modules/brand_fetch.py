@@ -12,18 +12,22 @@ control. This module is:
   dropped, non-ASCII in the path percent-encoded) and held to it with a longer length limit.
   The host is read by ONE parser (the 0131 pattern) and that host is the one resolved, connected to and named in SNI
   and Host, so two URL parsers cannot disagree about where the request goes.
-* **The address.** The name is resolved ONCE per scan (``getaddrinfo``) and the scan refuses unless EVERY answer is
-  public (``address_problem``). The socket is opened to that resolved address and TLS verifies the certificate for
+* **The address.** The name is resolved ONCE per scan (``getaddrinfo`` of the absolute name, so no search domain is
+  tried; in a thread waited for within the budget, since the customer runs the name server; at most ``MAX_HOSTS``
+  names per scan) and the scan refuses unless EVERY answer is public (``address_problem``: this module's own table of
+  special-use ranges, IPv6 only inside 2000::/3, not ``ipaddress``'s flags alone). The socket is opened to that resolved address and TLS verifies the certificate for
   the NAME (SNI and Host carry it): there is no second lookup, so DNS rebinding cannot move the target between the
   check and the connect, and a later request in the same scan reuses the pinned answer.
 * **Redirects** are read, never followed by a library: at most ``MAX_HOPS``, each re-checked (shape, port, the
-  address of a host not seen yet in this scan, robots.txt) and kept on the original's site (``same_site``).
+  address of a host not seen yet in this scan, robots.txt) and kept on the entry host, its subdomains or its
+  www / apex twin (``same_site``).
 * **Bounds.** Connect 5 s, read 10 s, 30 s of wall clock for the whole scan (one ``Budget`` across every call, every
   socket wait capped by what is left of it, so a server dripping one byte at a time cannot outlive it). Byte caps per
   kind, checked against Content-Length and again while reading; counts per kind (6 pages, 4 stylesheets, 6 images).
   A content-type allow-list per kind; SVG is refused (it is a document, not a picture). ``Accept-Encoding: identity``
   and a compressed answer is refused, so there is no decoder to bomb.
-* **Manners.** robots.txt of a host is read before anything else on it and a Disallow for our user agent is honoured;
+* **Manners.** robots.txt of a host is read before anything else on it and its rules for our user agent are honoured
+  (RFC 9309 matching: ``*`` and ``$``, the longest pattern wins, Allow wins a tie; ``RobotsRules``);
   the user agent names Nightshift and where to reach us. No cookie is kept or sent, no credential, no script is run.
 
 What it returns is bytes, the final URL and the content type (``Fetched``). Extraction (title, Open Graph, JSON-LD,
@@ -31,17 +35,22 @@ palette, fonts) is a later step and is not here; the only HTML read here is the 
 six-page limit needs (``same_host_links``).
 
 Known limits:
-* **The site rule is not the public-suffix list.** ``same_site`` keeps a hop on the original host or a subdomain of
-  its last two labels (three when they look like a country's second level, ``co.uk``). On a shared hosting domain
-  (``a.github.io`` and ``b.github.io``) two customers count as one site, so a redirect from one to the other is
-  followed. The target is still resolved and checked public; the harm is reading the wrong customer's public pages.
-  No dependency carries the list today (requirements.txt); adding one is a later decision.
+* **The site rule is narrow on purpose.** There is no public-suffix list (no dependency carries one), so instead of
+  guessing a registrable domain ``same_site`` allows only the entry host, its subdomains and the www / apex swap. A
+  site whose home page redirects to a sibling (``shop.com`` to ``store.shop.com`` is fine; ``www.shop.com`` to
+  ``store.shop.com`` is not, nor ``shop.co.uk`` to ``shop.com``) fails that request; the person types the host the
+  site really lives on. Tenants of one shared hosting domain (``a.github.io``, ``b.myshopify.com``) cannot redirect
+  the scan into each other.
 * **NAT64, 6to4 and Teredo.** Every address in ``64:ff9b::/96`` (and the local-use ``64:ff9b:1::/48``), in 6to4
-  ``2002::/16`` and in Teredo ``2001::/32`` is refused, public embedding or not (they are reserved / not global in ``ipaddress``); the message
-  names a private embedding when there is one. A worker on an IPv6-only network behind DNS64 cannot scan.
-* **robots.txt** is honoured for Allow / Disallow only (``urllib.robotparser``; its longest-match rules are simpler
-  than RFC 9309's); Crawl-delay is not waited for (a scan is at most a dozen requests). A robots.txt that cannot be
-  read (5xx, timeout, too large, off-site redirect) is read as "disallow everything" (RFC 9309 section 2.3.1.4).
+  ``2002::/16`` and in Teredo ``2001::/32`` is refused, public embedding or not (they sit in this module's deny
+  table or outside 2000::/3); the message names a private embedding when there is one. A worker on an IPv6-only
+  network behind DNS64 cannot scan.
+* **robots.txt** is honoured for Allow / Disallow (groups for ``NightshiftBrandScan`` or ``Nightshift``, else ``*``);
+  Crawl-delay is not waited for (a scan is at most a dozen requests). It is parsed whatever its content type. One
+  that cannot be read (5xx, too large, compressed, off-site redirect) is read as "disallow everything" (RFC 9309
+  section 2.3.1.4).
+* **A lookup that is abandoned keeps its thread** until the system resolver gives up on its own (``getaddrinfo``
+  cannot be cancelled); the scan has moved on and never uses the answer.
 """
 
 from __future__ import annotations
@@ -52,12 +61,12 @@ import ipaddress
 import re
 import socket
 import ssl
+import threading
 import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote, urljoin, urlsplit
-from urllib.robotparser import RobotFileParser
 
 from modules.capabilities.safe_fetch import _SAFE_URL, sniff_image_mime
 
@@ -69,6 +78,9 @@ READ_TIMEOUT_S = 10.0
 SCAN_WALL_CLOCK_S = 30.0
 #: Redirects followed for one request (the request itself plus at most this many hops).
 MAX_HOPS = 3
+#: Distinct host names one scan may look up (the entry host, its www twin and two more): a site cannot make the
+#: worker resolve names for it without end.
+MAX_HOSTS = 4
 PORT = 443
 
 HTML, CSS, IMAGE, ROBOTS = "html", "css", "image", "robots"
@@ -145,6 +157,10 @@ class Budget:
     def remaining(self) -> float:
         return self.deadline - self._clock()
 
+    def check(self) -> None:
+        """Refuse to start anything once the wall clock has run out."""
+        self.timeout(0.0)
+
     def timeout(self, cap: float) -> float:
         """The timeout for the next wait: ``cap`` or what is left of the scan, whichever is shorter."""
         left = self.remaining()
@@ -156,39 +172,81 @@ class Budget:
 # ── the address rule ──────────────────────────────────────────────────────────────────────────────────────────────
 
 _METADATA = frozenset(ipaddress.ip_address(a) for a in ("169.254.169.254", "fd00:ec2::254", "100.100.100.200"))
-_CGNAT = ipaddress.ip_network("100.64.0.0/10")
 _NAT64_WKP = ipaddress.ip_network("64:ff9b::/96")
 _NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")
 _IPV4_COMPATIBLE = ipaddress.ip_network("::/96")
 _TEREDO = ipaddress.ip_network("2001::/32")
+_SIX_TO_FOUR = ipaddress.ip_network("2002::/16")
+#: Every IPv6 address the scan may connect to is global unicast (RFC 4291); nothing outside it is a web site.
+_GLOBAL_UNICAST = ipaddress.ip_network("2000::/3")
+
+
+def _table(*rows: Tuple[str, str]) -> Tuple[Tuple[ipaddress._BaseNetwork, str], ...]:
+    return tuple((ipaddress.ip_network(net), f"{label} ({net})") for net, label in rows)
+
+
+#: The special-use ranges (IANA's registries), written out here so the rule does not depend on which ``ipaddress``
+#: tables the Python in the worker happens to carry (they changed in 3.11.10 / 3.12.4 / 3.13). Order matters only for
+#: the message: the first row that holds the address names it.
+_DENY_V4 = _table(
+    ("0.0.0.0/8", "a 'this network' address"),
+    ("10.0.0.0/8", "a private address"),
+    ("100.64.0.0/10", "a carrier-grade NAT address"),
+    ("127.0.0.0/8", "a loopback address"),
+    ("169.254.0.0/16", "a link-local address"),
+    ("172.16.0.0/12", "a private address"),
+    ("192.0.0.0/24", "an IETF protocol assignment address"),
+    ("192.0.2.0/24", "a documentation address"),
+    ("192.88.99.0/24", "a 6to4 relay anycast address"),
+    ("192.168.0.0/16", "a private address"),
+    ("198.18.0.0/15", "a benchmarking address"),
+    ("198.51.100.0/24", "a documentation address"),
+    ("203.0.113.0/24", "a documentation address"),
+    ("224.0.0.0/4", "a multicast address"),
+    ("240.0.0.0/4", "a reserved address"),
+)
+_DENY_V6 = _table(
+    ("::/8", "a reserved address"),
+    ("100::/8", "a reserved address (discard-only and unassigned)"),
+    ("2001::/23", "an IETF protocol assignment address"),
+    ("2001:db8::/32", "a documentation address"),
+    ("2002::/16", "a 6to4 address"),
+    ("3fff::/20", "a documentation address"),
+    ("5f00::/16", "an SRv6 SID address"),
+    ("fc00::/7", "a unique local (private) address"),
+    ("fe80::/10", "a link-local address"),
+    ("fec0::/10", "a site-local address"),
+    ("ff00::/8", "a multicast address"),
+)
+
+
+def _listed(a, table) -> Optional[str]:
+    for net, label in table:
+        if a in net:
+            return label
+    return None
 
 
 def _v4_problem(a: ipaddress.IPv4Address) -> Optional[str]:
     if a in _METADATA:
         return "a cloud metadata address"
-    if a.is_loopback:
-        return "a loopback address"
     if a.is_unspecified:
         return "the unspecified address"
-    if a.is_link_local:
-        return "a link-local address"
-    if a.is_multicast:
-        return "a multicast address"
-    if a in _CGNAT:
-        return "a carrier-grade NAT address (100.64.0.0/10)"
-    if a.is_reserved:
-        return "a reserved address"
-    if a.is_private:
-        return "a private address"
-    if not a.is_global:
+    listed = _listed(a, _DENY_V4)
+    if listed:
+        return listed
+    # The stdlib's own view, behind the table: a range the table misses and a newer Python knows is still refused.
+    if a.is_loopback or a.is_link_local or a.is_multicast or a.is_reserved or a.is_private or not a.is_global:
         return "an address that is not globally routable"
     return None
 
 
 def address_problem(addr: str) -> Optional[str]:
     """Why ``addr`` (an IP address as text, as ``getaddrinfo`` gives it) may not be connected to, or None when it is
-    public. Each class is named on purpose rather than left to ``is_global`` alone: Python's tables have changed
-    between patch releases, and several of them call a multicast, an IPv4-compatible or a NAT64 address global."""
+    public. The rule is this module's own table (``_DENY_V4`` / ``_DENY_V6``, plus "IPv6 must be global unicast"),
+    with the classes that embed an IPv4 address named first; ``ipaddress``'s flags only back it up, because Python's
+    tables have changed between patch releases and several of them call a multicast, an IPv4-compatible or a NAT64
+    address global."""
     try:
         a = ipaddress.ip_address(addr)
     except ValueError:
@@ -207,8 +265,8 @@ def address_problem(addr: str) -> Optional[str]:
         return "the unspecified address"
     if a in _IPV4_COMPATIBLE:
         return f"an IPv4-compatible IPv6 address (of {ipaddress.IPv4Address(int(a) & 0xFFFFFFFF)})"
-    if a.sixtofour is not None:
-        inner = _v4_problem(a.sixtofour)
+    if a in _SIX_TO_FOUR:
+        inner = _v4_problem(ipaddress.IPv4Address((int(a) >> 80) & 0xFFFFFFFF))
         return f"a 6to4 address of {inner}" if inner else "a 6to4 address"
     if a in _TEREDO:
         server, client = a.teredo
@@ -219,17 +277,12 @@ def address_problem(addr: str) -> Optional[str]:
         return f"a NAT64 address of {inner}" if inner else "a NAT64 address"
     if a in _NAT64_LOCAL:
         return "a local-use NAT64 address"
-    if a.is_link_local:
-        return "a link-local address"
-    if a.is_site_local:
-        return "a site-local address"
-    if a.is_multicast:
-        return "a multicast address"
-    if a.is_reserved:
-        return "a reserved address"
-    if a.is_private:
-        return "a private address"
-    if not a.is_global:
+    listed = _listed(a, _DENY_V6)
+    if listed:
+        return listed
+    if a not in _GLOBAL_UNICAST:
+        return "an address outside IPv6 global unicast (2000::/3)"
+    if a.is_link_local or a.is_site_local or a.is_multicast or a.is_reserved or a.is_private or not a.is_global:
         return "an address that is not globally routable"
     return None
 
@@ -242,11 +295,6 @@ _SHAPE = re.compile(r"https://((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:xn-
                     r"(/[\x21-\x7e]*)?\Z")
 #: What ``quote`` leaves alone in a derived path: printable ASCII except the characters URL parsers disagree on.
 _QUOTE_SAFE = "".join(chr(c) for c in range(0x21, 0x7F) if chr(c) not in '\\"<>^`{|}%') + "%"
-
-#: Second-level labels under which a country's registrations sit (``example.co.uk``): the site is three labels there.
-_COUNTRY_SECOND_LEVEL = frozenset({"ac", "co", "com", "edu", "gob", "gov", "go", "ltd", "mil", "ne", "net", "nic", "or",
-                                   "org", "plc", "sch"})
-
 
 def _shape(url, max_chars: int) -> Tuple[str, str]:
     """``(host, request target)`` for a URL of 0131's shape, else ``bad_url``."""
@@ -293,22 +341,13 @@ def derive_url(base: str, ref: str) -> str:
     return out
 
 
-def site_of(host: str) -> Optional[str]:
-    """The registrable part of ``host`` by the conservative rule (no public-suffix list: see the module's limits),
-    or None when ``host`` is itself a country second level (``co.uk``) and only that exact host may be read."""
-    labels = host.split(".")
-    country_sld = len(labels[-1]) == 2 and len(labels) >= 2 and labels[-2] in _COUNTRY_SECOND_LEVEL
-    if country_sld:
-        return ".".join(labels[-3:]) if len(labels) >= 3 else None
-    return ".".join(labels[-2:])
-
-
-def same_site(host: str, original: str) -> bool:
-    """``host`` is ``original`` or under the original's registrable part."""
-    if host == original:
+def same_site(host: str, entry: str) -> bool:
+    """``host`` is the entry host, a subdomain of it, or its www / apex twin (``www.shop.com`` and ``shop.com``). Nothing
+    wider: on a shared hosting domain (``*.myshopify.com``, ``*.github.io``, ``*.vercel.app``) every tenant is a
+    subdomain of the same parent, and one tenant must not be able to redirect the scan into another."""
+    if host == entry or host.endswith("." + entry):          # the www twin of an apex is one of its subdomains
         return True
-    site = site_of(original)
-    return site is not None and (host == site or host.endswith("." + site))
+    return entry.startswith("www.") and host == entry[4:]
 
 
 # ── the link list (the only HTML read here) ───────────────────────────────────────────────────────────────────────
@@ -362,10 +401,89 @@ def _product_first(urls: Sequence[str]) -> List[str]:
     return [u for u in urls if productish(u)] + [u for u in urls if not productish(u)]
 
 
+# ── robots.txt (RFC 9309) ─────────────────────────────────────────────────────────────────────────────────────────
+
+#: The group names that address this scanner: its product token, and the brand name a site owner would write.
+_ROBOTS_AGENTS = frozenset({ROBOTS_TOKEN.lower(), "nightshift"})
+
+
+def _robots_norm(s: str) -> str:
+    """A path or a pattern in one spelling: non-ASCII and unsafe characters percent-encoded, escapes upper-cased."""
+    return re.sub(r"%[0-9a-fA-F]{2}", lambda m: m.group(0).upper(), quote(s, safe=_QUOTE_SAFE))
+
+
+def _robots_match(pattern: str, path: str) -> bool:
+    """RFC 9309 section 2.2.3: ``*`` is any run of characters, a final ``$`` anchors the end, everything else is a
+    prefix match. Done by splitting on ``*`` and finding each piece leftmost, not with a regex: a pattern from the
+    site with many ``*`` must not be able to make the match backtrack."""
+    anchored = pattern.endswith("$")
+    if anchored:
+        pattern = pattern[:-1]
+    parts = pattern.split("*")
+    if not path.startswith(parts[0]):
+        return False
+    pos = len(parts[0])
+    if len(parts) == 1:
+        return pos == len(path) if anchored else True
+    for piece in parts[1:-1]:
+        i = path.find(piece, pos)
+        if i < 0:
+            return False
+        pos = i + len(piece)
+    last = parts[-1]
+    if anchored:
+        return len(path) - len(last) >= pos and path.endswith(last)
+    return path.find(last, pos) >= 0
+
+
+class RobotsRules:
+    """The Allow / Disallow rules of one robots.txt that apply to this scanner (RFC 9309): the groups naming us, all of
+    them merged, else the ``*`` groups merged. The longest matching pattern decides; on a tie Allow wins; no match
+    allows. Crawl-delay and Sitemap are read past, not honoured."""
+
+    def __init__(self, text: str = ""):
+        groups: List[Tuple[List[str], List[Tuple[bool, str]]]] = []
+        current, in_rules = None, False
+        for raw in text.splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if ":" not in line:
+                continue
+            key, value = (p.strip() for p in line.split(":", 1))
+            key = key.lower()
+            if key == "user-agent":
+                if current is None or in_rules:
+                    current, in_rules = ([], []), False
+                    groups.append(current)
+                current[0].append(value.split("/", 1)[0].strip().lower())
+            elif key in ("allow", "disallow") and current is not None:
+                in_rules = True
+                if value.startswith(("/", "*")):              # an empty Disallow is no rule (RFC 9309 2.2.2)
+                    current[1].append((key == "allow", _robots_norm(value)))
+        ours = [rules for agents, rules in groups if _ROBOTS_AGENTS.intersection(agents)]
+        if not ours:
+            ours = [rules for agents, rules in groups if "*" in agents]
+        self.rules: List[Tuple[bool, str]] = [r for rules in ours for r in rules]
+
+    def allowed(self, target: str) -> bool:
+        """``target`` is a request target (path and query)."""
+        path = _robots_norm(target)
+        if path == "/robots.txt":
+            return True
+        best: Optional[Tuple[int, bool]] = None
+        for allow, pattern in self.rules:
+            if _robots_match(pattern, path):
+                key = (len(pattern), allow)                    # longer wins; on a tie True (Allow) > False
+                if best is None or key > best:
+                    best = key
+        return True if best is None else best[1]
+
+
 # ── the connection ────────────────────────────────────────────────────────────────────────────────────────────────
 
 def _system_resolve(host: str) -> List[str]:
-    infos = socket.getaddrinfo(host, PORT, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+    # The absolute name (a final dot): no search domain of the worker's resolv.conf is tried, so "shop.test" cannot
+    # come back as "shop.test.internal.corp".
+    infos = socket.getaddrinfo(host + ".", PORT, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     return [info[4][0] for info in infos]
 
 
@@ -476,7 +594,9 @@ class SiteScan:
         self.budget = budget or Budget()
         self._net = _test_net
         self._pinned: Dict[str, Tuple[str, ...]] = {}
-        self._robots: Dict[str, Optional[RobotFileParser]] = {}
+        self._robots: Dict[str, Optional[RobotsRules]] = {}
+        self._looked_up: set = set()
+        self._tls: Optional[ssl.SSLContext] = _test_net.tls if _test_net is not None else None
         self._count = {HTML: 0, CSS: 0, IMAGE: 0}
         #: The host pages are read from: the home page's final host once it is known.
         self.page_host: Optional[str] = None
@@ -506,7 +626,10 @@ class SiteScan:
         ``(url, code)`` for each one that was refused; the home page failing, or the budget running out, raises."""
         first = self.home()
         got, skipped = [first], []
-        for url in _product_first(same_host_links(first.body, first.url))[:MAX_COUNT[HTML] - 1]:
+        self.budget.check()
+        links = _product_first(same_host_links(first.body, first.url))[:MAX_COUNT[HTML] - 1]
+        self.budget.check()
+        for url in links:
             try:
                 got.append(self.page(url))
             except BrandFetchError as e:
@@ -525,10 +648,11 @@ class SiteScan:
     def _get(self, url: str, kind: str) -> Fetched:
         current = url
         for hop in range(MAX_HOPS + 1):
+            self.budget.check()
             host, target = _shape(current, MAX_DERIVED_URL_CHARS)
             if not same_site(host, self.host):
                 raise BrandFetchError(E_OFF_SITE, f"{host} is not on the scanned site ({self.host}); not read")
-            if kind != ROBOTS and not self._allowed(host, current):
+            if kind != ROBOTS and not self._allowed(host, target):
                 raise BrandFetchError(E_ROBOTS, f"robots.txt of {host} disallows {ROBOTS_TOKEN} here")
             ans = self._request(host, target, kind)
             if ans.location is None:
@@ -538,39 +662,35 @@ class SiteScan:
             current = derive_url(current, ans.location)
         raise AssertionError("unreachable")
 
-    def _allowed(self, host: str, url: str) -> bool:
+    def _allowed(self, host: str, target: str) -> bool:
         if host not in self._robots:
             self._robots[host] = self._read_robots(host)
         rules = self._robots[host]
-        return rules is not None and rules.can_fetch(USER_AGENT, url)
+        return rules is not None and rules.allowed(target)
 
-    def _read_robots(self, host: str) -> Optional[RobotFileParser]:
+    def _read_robots(self, host: str) -> Optional[RobotsRules]:
         """The rules of ``host``; None means "disallow everything" (it could not be read)."""
-        rules = RobotFileParser()
         try:
             got = self._get(f"https://{host}/robots.txt", ROBOTS)
         except BrandFetchError as e:
             if e.code == E_HTTP and getattr(e, "status", 0) and 400 <= e.status < 500:
-                rules.parse([])           # RFC 9309: unavailable (4xx) = no rules
-                return rules
-            if e.code in (E_TIMEOUT, E_NOT_PUBLIC, E_DNS, E_CONNECT, E_TLS):
+                return RobotsRules()      # RFC 9309: unavailable (4xx) = no rules
+            if e.code in (E_TIMEOUT, E_NOT_PUBLIC, E_DNS, E_CONNECT, E_TLS, E_LIMIT):
                 raise                     # the scan is over / the host cannot be read anyway: say that, not "robots"
             return None                   # 5xx, too large, compressed, an off-site or endless redirect: disallow all
-        if got.content_type.startswith("text/"):
-            rules.parse(got.body.decode("utf-8", errors="replace").splitlines())
-        else:
-            rules.parse([])
-        return rules
+        # Whatever the content type says: a site that serves its rules as text/html or octet-stream still meant them.
+        # utf-8-sig: a byte-order mark would otherwise glue itself to the first "User-agent" and lose that group.
+        return RobotsRules(got.body.decode("utf-8-sig", errors="replace"))
 
     def _addresses(self, host: str) -> Tuple[str, ...]:
         """The pinned answers for ``host``: resolved once per scan, every one public, or a refusal."""
         if host in self._pinned:
             return self._pinned[host]
-        resolve = self._net.resolve if self._net is not None else _system_resolve
-        try:
-            answers = list(dict.fromkeys(resolve(host)))
-        except (OSError, UnicodeError) as e:
-            raise BrandFetchError(E_DNS, f"{host} did not resolve ({type(e).__name__})") from None
+        self.budget.check()
+        if host not in self._looked_up and len(self._looked_up) >= MAX_HOSTS:
+            raise BrandFetchError(E_LIMIT, f"at most {MAX_HOSTS} host names per scan; {host} was not looked up")
+        self._looked_up.add(host)
+        answers = list(dict.fromkeys(self._resolve_within_budget(host)))
         if not answers:
             raise BrandFetchError(E_DNS, f"{host} has no address")
         for a in answers:
@@ -580,9 +700,36 @@ class SiteScan:
         self._pinned[host] = tuple(answers)
         return self._pinned[host]
 
+    def _resolve_within_budget(self, host: str) -> List[str]:
+        """``getaddrinfo`` has no timeout of its own and the customer runs the name server, so it runs in a thread that
+        is waited for at most the connect timeout or what is left of the scan. A lookup that does not come back in
+        time is abandoned (the thread ends on its own; its answer is never used)."""
+        resolve = self._net.resolve if self._net is not None else _system_resolve
+        wait = self.budget.timeout(CONNECT_TIMEOUT_S)
+        box: Dict[str, object] = {}
+
+        def run():
+            try:
+                box["answers"] = list(resolve(host))
+            except (OSError, UnicodeError) as e:
+                box["error"] = e
+
+        t = threading.Thread(target=run, name="brand-fetch-dns", daemon=True)
+        t.start()
+        t.join(wait)
+        if t.is_alive():
+            if wait < CONNECT_TIMEOUT_S or self.budget.remaining() <= 0:
+                raise BrandFetchError(E_TIMEOUT, "the scan's wall clock ran out while a name was being looked up")
+            raise BrandFetchError(E_DNS, f"{host} did not resolve within {wait:g} s")
+        if "error" in box:
+            raise BrandFetchError(E_DNS, f"{host} did not resolve ({type(box['error']).__name__})")
+        return box.get("answers", [])
+
     def _open(self, host: str) -> ssl.SSLSocket:
         connect = self._net.connect if self._net is not None else _system_connect
-        tls = self._net.tls if self._net is not None else _system_tls()
+        if self._tls is None:
+            self._tls = _system_tls()      # the trust store is read once per scan, not once per request
+        tls = self._tls
         if not tls.check_hostname or tls.verify_mode != ssl.CERT_REQUIRED:
             raise BrandFetchError(E_TLS, "a TLS context that does not verify the certificate's name is refused")
         last = "no address"

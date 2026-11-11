@@ -203,17 +203,26 @@ each field came from. Rate limits stop using the worker as a crawler. The worker
 (a DNS TXT verification step would be the strong form).
 
 **Built so far: the fetcher only (`modules/brand_fetch.py`, dark).** Nothing imports it but `tests/test_brand_fetch.py` (a test pins
-that). It is "The fetch" above, minus extraction: `SiteScan(url)` reads robots.txt, the home page and up to five same-host pages it
-links to (product paths first), and on request up to 4 stylesheets and 6 pictures, and returns raw bytes, the final URL and the media
-type. The entry URL is 0131's `ads_site_url_ok` shape plus one refusal more (a backslash); every name is resolved once per scan and
-pinned, every answer must be public (`address_problem` names the class it refuses), the socket goes to that address with SNI, Host and
-certificate check on the name. Redirects: at most 3, each re-checked, on the original host or under its last two labels (three under a
-country second level such as `co.uk`). No public-suffix list is used (none is in requirements.txt), so two customers of one shared
-hosting domain (`a.github.io`, `b.github.io`) count as one site for a redirect; the target is still resolved and checked public.
-All NAT64 (`64:ff9b::/96`, `64:ff9b:1::/48`), 6to4 and Teredo addresses are refused, public embedding or not. A robots.txt that cannot
-be read (5xx, too large, compressed, off-site redirect) is read as "disallow everything"; Crawl-delay is not waited for. Not built yet,
-each waiting on the owner decisions above: the migration (`brand_scans`, the caps), the RPCs, the queue kind and worker wiring, the
-extraction, the media library ingest of pictures, and any UI.
+that across `modules/`, `tools/`, `deploy/`, `command-center/` and the entry scripts). It is "The fetch" above, minus extraction:
+`SiteScan(url)` reads robots.txt, the home page and up to five same-host pages it links to (product paths first), and on request up
+to 4 stylesheets and 6 pictures, and returns raw bytes, the final URL and the media type.
+- The entry URL is 0131's `ads_site_url_ok` shape plus one refusal more (a backslash).
+- Every name is looked up once per scan and pinned. The lookup is for the absolute name (no resolv.conf search domain), runs in a
+  thread waited for at most 5 s or what is left of the 30 s budget, and a scan looks up at most 4 distinct names.
+- Every answer must be public. `address_problem` uses the module's own table of special-use ranges, so a change in Python's
+  `ipaddress` tables cannot widen it, and IPv6 must be inside 2000::/3. It names the class it refuses.
+- The socket goes to that address with SNI, Host and certificate check on the name.
+- Redirects: at most 3, each re-checked, and only to the entry host, its subdomains, or its www / apex twin. There is no
+  public-suffix list, and no "registrable domain" guess either: tenants of one shared hosting domain (`*.myshopify.com`,
+  `*.github.io`, `*.vercel.app`) cannot redirect the scan into each other. A home page that redirects to a sibling host
+  (`www.shop.com` to `store.shop.com`) fails, and the person enters the host the site really lives on.
+- All NAT64 (`64:ff9b::/96`, `64:ff9b:1::/48`), 6to4 and Teredo addresses are refused, public embedding or not.
+- robots.txt follows RFC 9309 (`*`, `$`, longest match, Allow wins a tie; groups for `NightshiftBrandScan` / `Nightshift`, else
+  `*`). It is decoded as UTF-8 with a byte-order mark dropped and parsed whatever its content type. One that cannot be read (5xx,
+  too large, compressed, off-site redirect) is read as "disallow everything". Crawl-delay is not waited for.
+
+Not built yet, each waiting on the owner decisions above: the migration (`brand_scans`, the caps), the RPCs, the queue kind and
+worker wiring, the extraction, the media library ingest of pictures, and any UI.
 
 ## Phase 3: image ads through the existing creative job pipeline (designed)
 
