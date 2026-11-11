@@ -311,6 +311,15 @@ Strings: `lib/i18n/ads-brand-scan/` (en; ru and uz are drafts that need a native
   verified separately: verifying `shop.com` covers `www.shop.com`, and a scan of `www.shop.com` may be redirected to `shop.com`. Both
   are the same zone's names in practice; the security review accepted this as is (Low), and it is noted here rather than changed.
 
+Follow-ups from the final delta review (both Low; to be fixed in a later migration, not in 0133 or the page):
+- **A failed scan can soft-delete a picture a person already put into a kit.** The worker stores a scan's pictures in the library before
+  the scan finishes. If a member puts one of them into a brand kit (as its logo, or as a product picture) while the scan is still
+  running, and the scan then fails, `brand_scan_fail_locked` marks that picture deleted (`deleted_at`), and it disappears from under
+  the kit. The fix: skip the assets that `brand_kits.logo_asset_id` or `brand_product_images.asset_id` refer to.
+- **No test covers the `source = 'pipeline'` filter.** A mutation that removes it from `brand_scan_fail_locked`'s delete is not
+  caught. The other filters (organization, `origin = 'brand_scan'`, the scan id) are covered. The lab needs a picture with the scan's
+  provenance but another source, and must check that the picture stays.
+
 ### Costs: the approved price and caps (owner decision, 2026-11-11; seeded NULL, set after merge)
 
 **Approved values** (the owner, 2026-11-11). The migration keeps the seed NULL (not on sale); they go live in a separate settings step
