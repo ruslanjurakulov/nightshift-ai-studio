@@ -3,8 +3,10 @@
  * Editor follow-ups after parity 2a:
  *  * a split never leaves a piece shorter than one frame at the clip's speed (`minPieceS`, in `canSplit` and in
  *    the silence cuts): at 10x a frame is a third of a second of source, and a shorter piece was refused at save;
- *  * an organization chosen on the editor's page is switched on the NEW page, after the full load committed: a
- *    person who cancels the editor's unsaved-changes prompt stays on a page whose session is still its own.
+ *  * silence cuts are split at their source times, so at every speed every proposed cut is applied;
+ *  * an organization chosen on the editor's page is switched by a form-post NAVIGATION (app/api/org/switch;
+ *    tests/org-switch-route.test.ts has the route): the editor's unsaved-changes prompt runs first, and a cancel
+ *    sends nothing.
  * (The Back arrow and the section shell's way home go through navigate(): tests/editor-nav.test.tsx's source test.)
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,7 +21,8 @@ vi.mock("next/navigation", () => ({
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { ContextSwitcher } from "@/components/shell/ContextSwitcher";
-import { PENDING_ORG_TTL_MS, applyPendingOrganizationSwitch, deferOrganizationSwitch } from "@/lib/context-switch";
+import { formNav } from "@/lib/context-switch";
+import { OrgSwitcher } from "@/components/org/OrgSwitcher";
 import { documentNav } from "@/lib/editor-nav";
 import {
   MIN_CLIP_S,
@@ -34,6 +37,7 @@ import {
   type EditorModel,
 } from "@/lib/editor";
 import { applyCuts, proposeCuts } from "@/lib/editorSilence";
+import { SPEEDS } from "@/lib/editor";
 import type { OrgSummary } from "@/lib/orgs";
 
 const A = "11111111-1111-4111-8111-111111111111";
@@ -86,73 +90,124 @@ const ORGS: OrgSummary[] = [
   { id: "o2", name: "Second", slug: "second", role: "owner", is_default: false },
 ] as OrgSummary[];
 
+describe("every proposed cut is applied, at every speed", () => {
+  it("the review's case: 15 s at 6x and 30 fps, two cuts, both applied", () => {
+    const m = model(6, 15);
+    const c = m.clips[0];
+    const cuts = proposeCuts(c, [[1, 2], [2, 3]], 30);
+    const out = applyCuts(m, c.id, cuts);
+    expect(out).toMatchObject({ applied: cuts.length, stopped: null });
+    expect(validateTimeline(toDoc(out.model))).toEqual([]);
+  });
+
+  it("a seeded property: random silences on clips at every speed and rate", () => {
+    let seed = 679;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    let total = 0;
+    for (let i = 0; i < 600; i += 1) {
+      const speed = SPEEDS[Math.floor(rnd() * SPEEDS.length)];
+      const fps = [24, 25, 30, 50, 60][Math.floor(rnd() * 5)];
+      const m0 = model(speed, 40);
+      const m = { ...m0, fps };
+      const c = m.clips[0];
+      const silences: [number, number][] = [];
+      for (let at = c.in_s + rnd(); at < c.out_s; at += 0.3 + rnd() * 3) {
+        const e = at + 0.2 + rnd() * 2;
+        silences.push([Math.round(at * 1000) / 1000, Math.round(e * 1000) / 1000]);
+        at = e;
+      }
+      const cuts = proposeCuts(c, silences, fps);
+      const out = applyCuts(m, c.id, cuts);
+      if (out.stopped === "full") continue;
+      expect({ applied: out.applied, stopped: out.stopped, cuts: JSON.stringify(cuts), clips: out.model.clips.length }, `case ${i} at ${speed}x ${fps} fps`).toMatchObject({ applied: cuts.length, stopped: null });
+      expect(validateTimeline(toDoc(out.model)), `case ${i}`).toEqual([]);
+      total += cuts.length;
+    }
+    expect(total).toBeGreaterThan(1000);
+  });
+
+  it("says why it stopped: the clip limit, or a piece the rules refuse", () => {
+    const m = model(1, 40);
+    const c = m.clips[0];
+    // hand-made cuts (proposeCuts would never make this one): 0.05 s is less than a clip may be
+    expect(applyCuts(m, c.id, [[1, 1.05]])).toMatchObject({ applied: 0, stopped: "piece" });
+    const many: [number, number][] = Array.from({ length: 80 }, (_, k) => [0.3 + k * 0.45, 0.5 + k * 0.45]);
+    expect(applyCuts(m, c.id, many)).toMatchObject({ stopped: "full" });
+  });
+
+  it("two cuts closer than a frame at the clip's speed become one (nothing under a frame is left between)", () => {
+    // at 10x / 30 fps a frame is 0.333 s of source; between [1.1, 1.9] and [2.15, 2.9] only 0.25 s would be left
+    expect(proposeCuts({ in_s: 0, out_s: 10, speed: 10 }, [[1, 2], [2.05, 3]], 30)).toEqual([[1.1, 2.9]]);
+    expect(proposeCuts({ in_s: 0, out_s: 10, speed: 1 }, [[1, 2], [2.05, 3]], 30)).toEqual([[1.1, 1.9], [2.15, 2.9]]);
+  });
+});
+
 describe("switching organization from the editor's page", () => {
+  const submit = vi.fn();
   const assign = vi.fn();
   let fetchMock: ReturnType<typeof vi.fn>;
   beforeEach(() => {
-    sessionStorage.clear();
     refresh.mockReset();
     push.mockReset();
+    submit.mockReset();
     assign.mockReset();
+    vi.spyOn(formNav, "submit").mockImplementation(submit);
     vi.spyOn(documentNav, "assign").mockImplementation(assign);
     fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 })));
     vi.stubGlobal("fetch", fetchMock);
   });
   afterEach(() => {
     cleanup();
+    document.querySelectorAll("form[action='/api/org/switch']").forEach((f) => f.remove());
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     window.history.replaceState({}, "", "/");
   });
-  const mount = () =>
+  const mountPhone = () =>
     render(
       <I18nProvider locale="en">
         <ContextSwitcher orgs={ORGS} currentOrgId="o1" channels={[]} selection={"all" as never} />
       </I18nProvider>,
     );
-  const pick = (name: string) => {
-    fireEvent.click(document.querySelector("[data-context-switcher]") as HTMLElement);
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(name) }));
+  const sent = () => {
+    expect(submit).toHaveBeenCalledTimes(1);
+    const form = submit.mock.calls[0][0] as HTMLFormElement;
+    return { method: form.method, action: new URL(form.action).pathname, orgId: new FormData(form).get("orgId") };
   };
 
-  it("asks the server nothing until the new page has loaded, so a cancelled prompt changes nothing", async () => {
+  it("the phone switcher: a form post that IS the navigation, and no switch asked for before it", () => {
     window.history.replaceState({}, "", `/chronos/editor/${PID}`);
-    mount();
-    pick("Second");
-    expect(assign).toHaveBeenCalledWith("/all-channels");
-    // the person cancels the editor's prompt: the old page stays, and its session is still the first org's
-    await new Promise((r) => setTimeout(r, 20));
-    expect(fetchMock.mock.calls.filter(([u]) => String(u) === "/api/org/select")).toEqual([]);
+    mountPhone();
+    fireEvent.click(document.querySelector("[data-context-switcher]") as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: /Second/ }));
+    expect(sent()).toEqual({ method: "post", action: "/api/org/switch", orgId: "o2" });
+    // a cancelled prompt sends nothing: nothing was asked of the server ahead of the navigation
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
   });
 
-  it("the new page makes the switch and refreshes; a later load does not repeat it", async () => {
+  it("the desktop switcher does the same on the editor's page", () => {
     window.history.replaceState({}, "", `/chronos/editor/${PID}`);
-    deferOrganizationSwitch("o2", "/all-channels");
-    window.history.replaceState({}, "", "/all-channels");
-    mount();
-    await waitFor(() => expect(refresh).toHaveBeenCalled());
-    const calls = fetchMock.mock.calls.filter(([u]) => String(u) === "/api/org/select");
-    expect(calls).toHaveLength(1);
-    expect(JSON.parse(String((calls[0][1] as RequestInit).body))).toEqual({ orgId: "o2" });
-    expect(await applyPendingOrganizationSwitch("/all-channels")).toBe(false);
-  });
-
-  it("a kept switch for another page, or an old one, is dropped without asking the server", async () => {
-    deferOrganizationSwitch("o2", "/all-channels", 1000);
-    expect(await applyPendingOrganizationSwitch(`/chronos/editor/${PID}`, 1001)).toBe(false);
-    deferOrganizationSwitch("o2", "/all-channels", 1000);
-    expect(await applyPendingOrganizationSwitch("/all-channels", 1000 + PENDING_ORG_TTL_MS + 1)).toBe(false);
+    render(
+      <I18nProvider locale="en">
+        <OrgSwitcher orgs={ORGS} currentId="o1" />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getAllByRole("button")[0]);
+    fireEvent.click(screen.getByRole("option", { name: /Second/ }));
+    expect(sent()).toEqual({ method: "post", action: "/api/org/switch", orgId: "o2" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("away from the editor it switches at once, as before, and refreshes the client transition", async () => {
+  it("away from the editor both switch at once, as before, and refresh the client transition", async () => {
     window.history.replaceState({}, "", "/chronos/analytics");
-    mount();
-    pick("Second");
+    mountPhone();
+    fireEvent.click(document.querySelector("[data-context-switcher]") as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: /Second/ }));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/all-channels"));
     expect(fetchMock.mock.calls.some(([u]) => String(u) === "/api/org/select")).toBe(true);
     expect(refresh).toHaveBeenCalled();
-    expect(assign).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
   });
 });

@@ -325,7 +325,7 @@ export function ClipSilenceSection({
               setResult(null);
               setDone(
                 r.applied < cuts.length
-                  ? fmt(s.partial, { n: r.applied, total: cuts.length, max: MAX_EDITOR_CLIPS })
+                  ? fmt(r.stopped === "piece" ? s.partialPiece : s.partial, { n: r.applied, total: cuts.length, max: MAX_EDITOR_CLIPS })
                   : fmt(s.applied[countForm(r.applied, locale)], { n: r.applied, s: cutSeconds(clip, applied).toFixed(1) }),
               );
             }}

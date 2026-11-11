@@ -42,45 +42,29 @@ export async function switchOrganization(orgId: string): Promise<boolean> {
   }
 }
 
-/**
- * An organization switch that must wait for a full document load (leaving the editor's project page, which
- * runs its unsaved-changes prompt). Switching first and then loading left a person who cancelled the prompt on
- * the old page under the NEW organization's session. So the intent is kept in this tab's session storage and
- * the new page asks the server ({@link applyPendingOrganizationSwitch}); a cancelled load changes nothing.
- */
-const PENDING_ORG_KEY = "ns.pendingOrgSwitch";
-/** How long a kept switch is good for: a cancelled one must not fire on a later, unrelated load. */
-export const PENDING_ORG_TTL_MS = 60_000;
-
-export function deferOrganizationSwitch(orgId: string, href: string, now: number = Date.now()): void {
-  try {
-    const path = new URL(href, window.location.origin).pathname;
-    window.sessionStorage.setItem(PENDING_ORG_KEY, JSON.stringify({ orgId, path, at: now }));
-  } catch {
-    // no storage: the switch is simply not made (the page stays as it is)
-  }
-}
+/** Indirection so tests can watch the form go (jsdom cannot navigate). */
+export const formNav = {
+  submit(form: HTMLFormElement): void {
+    form.submit();
+  },
+};
 
 /**
- * On a page load: the switch kept for exactly this page within PENDING_ORG_TTL_MS is made now (true when the
- * server switched; the caller then refreshes). Any kept switch is forgotten either way.
+ * Switch organization as a NAVIGATION (app/api/org/switch): a same-origin form post that the server answers by
+ * switching and redirecting to `/all-channels` under the new organization. Used where leaving the page must be a
+ * full document load (the editor's project page): the page's unsaved-changes prompt runs before anything is sent,
+ * so a person who cancels it changes nothing.
  */
-export async function applyPendingOrganizationSwitch(pathname: string, now: number = Date.now()): Promise<boolean> {
-  let pending: { orgId?: unknown; path?: unknown; at?: unknown } | null = null;
-  try {
-    const raw = window.sessionStorage.getItem(PENDING_ORG_KEY);
-    window.sessionStorage.removeItem(PENDING_ORG_KEY);
-    pending = raw ? JSON.parse(raw) : null;
-  } catch {
-    return false;
-  }
-  if (
-    !pending ||
-    typeof pending.orgId !== "string" ||
-    pending.path !== pathname ||
-    typeof pending.at !== "number" ||
-    !(now - pending.at >= 0 && now - pending.at <= PENDING_ORG_TTL_MS)
-  )
-    return false;
-  return switchOrganization(pending.orgId);
+export function submitOrganizationSwitch(orgId: string): void {
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = "/api/org/switch";
+  form.style.display = "none";
+  const field = document.createElement("input");
+  field.type = "hidden";
+  field.name = "orgId";
+  field.value = orgId;
+  form.appendChild(field);
+  document.body.appendChild(form);
+  formNav.submit(form);
 }
