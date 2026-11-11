@@ -669,9 +669,12 @@ frame size, a rate and a recommended length, nothing more: choosing one writes `
 layout and the same ffmpeg commands and limits as any other. No new document field, route, migration or
 price. The recommended length is advice (a sentence under the picker), never a refusal: a vertical
 project over 3 minutes exported before formats existed and still does. The lengths are this project's
-conservative numbers, not any platform's rules. Exporting one project in several ratios at once is NOT
-built: an export renders the saved revision's document, one export per project at a time, so it needs
-either a frame override on the export request (a migration) or one copy of the project per ratio.
+conservative numbers, not any platform's rules. Exporting one project in several ratios at once is the
+frame override on the export request (migration 0129, behind `NIGHTSHIFT_MULTI_RATIO_EXPORT`, default
+off; `docs/MULTI_RATIO_EXPORT.md`): "Sizes to export" asks for one export per ticked format, by id only,
+and the worker replaces `width` and `height` of the saved document for that render (the rate, the clips
+and every clip's own `fit` stay). It adds no document field. Without the switch an export renders the
+saved revision's document in its own frame, one export per project at a time, as before.
 
 Preview: look (curve tables as an SVG filter, pinned to
 `samples/clip_look_curves.json`), blur, vignette, turn, mirror, crop, free angle

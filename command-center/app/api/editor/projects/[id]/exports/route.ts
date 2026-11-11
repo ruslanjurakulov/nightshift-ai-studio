@@ -4,8 +4,15 @@ import { logAudit } from "@/lib/server/audit";
 import { editorRateLimited, readSmallBody } from "@/lib/server/editor-guard";
 import { EDITOR_EXPORT_RATE } from "@/lib/server/web-rate";
 import { parseMediaId } from "@/lib/media";
-import { mapEditorError } from "@/lib/editor";
+import { mapEditorError, type EditorError } from "@/lib/editor";
 import { requireSameOrigin } from "@/lib/server/same-origin";
+import { multiRatioExportEnabled } from "@/lib/multiRatioExport/flag";
+import { exportPresetById } from "@/lib/editorExportPresets";
+import {
+  PROJECT_FRAME,
+  parseExportFrames,
+  type ExportFrameChoice,
+} from "@/lib/multiRatioExport/frames";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +24,17 @@ export const dynamic = "force-dynamic";
  * free-export limits); the media worker renders it with the ffmpeg engine and
  * puts the video in the library. It holds and charges no credits, calls no
  * provider, and publishes nothing — publishing stays behind the publish gate.
+ *
+ * Several frame sizes (migration 0129, NIGHTSHIFT_MULTI_RATIO_EXPORT, default off). While the switch is OFF the body's
+ * `frames` field is not read at all and this route is exactly what it was. While it is ON, POST `{ rev, frames }` asks
+ * for ONE export per entry of `frames`: "project" (the project's own frame, the two-argument function, as always) or
+ * the id of a format of the closed list (lib/editorExportPresets.ts). Only the ID travels: no width, height or ratio
+ * is accepted from the client, and the database reads the size from its own list. An entry outside the list refuses
+ * the whole request before the database is asked. Each entry is its own request_editor_export() call, so each one
+ * passes every gate of 0054 by itself and counts as one export against the organization's limits; the answer says,
+ * frame by frame, which were queued and which were refused and why. Before 0129 is applied the three-argument function
+ * does not exist: that frame is answered "not_available" and NOTHING is rendered in its place (an export in the wrong
+ * frame would be a quiet substitute); the project's own frame still goes through.
  */
 export const POST = requireSameOrigin(async function POST(
   request: Request,
@@ -43,6 +61,84 @@ export const POST = requireSameOrigin(async function POST(
   const supabase = await createClient();
   if (!supabase)
     return NextResponse.json({ error: "not_available" }, { status: 503 });
+
+  // Only while the switch is on is the field looked at; off, a request that carries it is the plain export.
+  const asked =
+    multiRatioExportEnabled() && body && typeof body === "object" && !Array.isArray(body)
+      ? (body as { frames?: unknown }).frames
+      : undefined;
+  if (asked !== undefined) {
+    const frames = parseExportFrames(asked);
+    if (!frames)
+      return NextResponse.json({ error: "bad_request" }, { status: 400 });
+    // "This project's size" and a format of that same size are the same picture twice: one export of the day for nothing.
+    // Refused whole, like any request that is not understood. The project's size is read under the caller's own session
+    // (RLS); if it cannot be read the request goes on and the database refuses the second one itself (0129: a format of
+    // the size of an export in flight is export_in_progress).
+    if (frames.includes(PROJECT_FRAME) && frames.length > 1) {
+      const { data: own } = await supabase
+        .from("editor_projects")
+        .select("doc->width, doc->height")
+        .eq("id", id)
+        .maybeSingle();
+      const size = own as { width?: unknown; height?: unknown } | null;
+      if (
+        size &&
+        frames.some((f) => {
+          const p = f === PROJECT_FRAME ? null : exportPresetById(f);
+          return p !== null && p.width === size.width && p.height === size.height;
+        })
+      )
+        return NextResponse.json({ error: "bad_request" }, { status: 400 });
+    }
+    const results: (
+      | { frame: ExportFrameChoice; id: string; status: "queued" }
+      | { frame: ExportFrameChoice; error: EditorError }
+    )[] = [];
+    let firstRefusal: { error: EditorError; status: number } | null = null;
+    for (const frame of frames) {
+      // Two calls on purpose: the project's own frame is the two-argument function, untouched by 0129.
+      const { data, error } =
+        frame === PROJECT_FRAME
+          ? await supabase.rpc("request_editor_export", {
+              p_project: id,
+              p_rev: rev,
+            })
+          : await supabase.rpc("request_editor_export", {
+              p_project: id,
+              p_rev: rev,
+              p_frame: frame,
+            });
+      const exportId = error ? null : parseMediaId(data);
+      if (error || !exportId) {
+        const mapped = error
+          ? mapEditorError(error)
+          : { error: "failed" as const, status: 502 };
+        firstRefusal ??= mapped;
+        results.push({ frame, error: mapped.error });
+        continue;
+      }
+      await logAudit({
+        action: "editor.export_request",
+        target: exportId,
+        detail:
+          frame === PROJECT_FRAME
+            ? { project: id, rev }
+            : { project: id, rev, frame },
+      });
+      results.push({ frame, id: exportId, status: "queued" });
+    }
+    const queued = results.some((r) => "id" in r);
+    // 201 when at least one export was queued; otherwise the first refusal decides the status, and its word is the
+    // answer's `error` too, so a caller that reads only that still gets a sentence.
+    return queued || !firstRefusal
+      ? NextResponse.json({ exports: results }, { status: 201 })
+      : NextResponse.json(
+          { error: firstRefusal.error, exports: results },
+          { status: firstRefusal.status },
+        );
+  }
+
   const { data, error } = await supabase.rpc("request_editor_export", {
     p_project: id,
     p_rev: rev,
