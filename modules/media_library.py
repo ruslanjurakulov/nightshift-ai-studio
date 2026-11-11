@@ -1324,8 +1324,10 @@ def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], 
 
 
 #: Who made a stored file (media_assets.source): a creative job's provider
-#: output, or one of our own renders (an editor export, migration 0054).
-STORED_SOURCES = ("generated", "render")
+#: output, one of our own renders (an editor export, migration 0054), or a
+#: picture a brand scan read from the customer's own site (migration 0133:
+#: 'pipeline', never 'generated', so it is not labelled AI-generated).
+STORED_SOURCES = ("generated", "render", "pipeline")
 
 
 def store_generated(path: Path, *, asset_id, org_id: str, store: MediaStore, media_root: Path,

@@ -113,6 +113,17 @@ def put_back_0127(session) -> None:
 MIGRATION_0131 = MIGRATIONS / "0131_ads_factory.sql"
 ROLLBACK_0131 = REPO / "docs" / "sql" / "rollback_0131_ads_factory.sql"
 
+MIGRATION_0133 = MIGRATIONS / "0133_brand_scan.sql"
+ROLLBACK_0133 = REPO / "docs" / "sql" / "rollback_0133_brand_scan.sql"
+
+
+def take_off_0133(session) -> None:
+    """0133's checks use 0131's text rules, so 0131's rollback refuses while 0133 is in place. A test that rolls back 0131 takes 0133 off
+    first with its own rollback (its rows go too: the test runs in a transaction that is rolled back)."""
+    session.conn.execute("set local nightshift.brand_scan_rollback_delete_rows = 'yes'")
+    text = ROLLBACK_0133.read_text(encoding="utf-8")
+    session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
 
 MIGRATION_0125 = MIGRATIONS / "0125_model_shutdown.sql"
 ROLLBACK_0125 = REPO / "docs" / "sql" / "rollback_0125_model_shutdown.sql"

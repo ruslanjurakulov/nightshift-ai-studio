@@ -19,6 +19,7 @@ import shutil
 import socket
 import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -345,8 +346,28 @@ class DefaultPathHasNoWayAround(unittest.TestCase):
                 hook.append(path.name)
             if "brand_fetch" in text:
                 users.append(path.name)
-        self.assertEqual(hook, [])
-        self.assertEqual(users, [], "the fetcher is dark: wiring it into a job is a later, owner-approved step")
+        # The DNS TXT check passes the hook on to its own transport (for its tests); nothing else names it.
+        self.assertEqual(hook, ["dns_txt.py"])
+        # Migration 0133 wired it into the brand scan job, which runs only with NIGHTSHIFT_ADS_BRAND_SCAN=on
+        # (tests/test_brand_scan_worker.py pins the switch). Nothing else may import it.
+        self.assertEqual(sorted(users), ["brand_extract.py", "brand_scan.py", "brand_scan_worker.py", "dns_txt.py"])
+
+    def test_the_url_rule_is_safe_fetchs_and_the_pure_parts_need_no_vendor_package(self):
+        from modules.capabilities import safe_fetch
+        self.assertEqual(bf._SAFE_URL.pattern, safe_fetch._SAFE_URL.pattern)
+        # The security lab imports the extractor (and through it this module) with only psycopg and pytest installed: nothing of
+        # modules.capabilities (which imports requests) may be imported at module level.
+        code = subprocess.run(
+            [sys.executable, "-c", "import sys, builtins; real = builtins.__import__\n"
+             "def guard(name, *a, **k):\n"
+             "    if name == 'requests' or name.startswith('requests.') or name.startswith('modules.capabilities'):\n"
+             "        raise ImportError(name)\n"
+             "    return real(name, *a, **k)\n"
+             "builtins.__import__ = guard\n"
+             "import modules.brand_fetch, modules.brand_extract\n"
+             "modules.brand_extract.clean_text('x'); modules.brand_fetch.derive_url('https://a.test/', '/b')\n"],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=60)
+        self.assertEqual(code.returncode, 0, code.stderr[-500:])
 
     def test_no_http_library_that_follows_redirects_or_keeps_cookies_is_used(self):
         src = (ROOT / "modules" / "brand_fetch.py").read_text(encoding="utf-8")
@@ -427,6 +448,35 @@ class UrlRule(Base):
             with self.subTest(parent=parent):
                 self.assertFalse(bf.same_site(f"victim.{parent}", f"attacker.{parent}"), "tenants are not one site")
                 self.assertFalse(bf.same_site(f"www.victim.{parent}", f"attacker.{parent}"))
+
+    def test_a_bare_public_suffix_or_hosting_parent_is_not_an_entry_host(self):
+        # Security review follow-up (C): every tenant is a subdomain of these, so "the site and its subdomains" would be
+        # all of them, and nobody can own one. Refused before anything is resolved.
+        for host in ("co.uk", "com.au", "org.uz", "ac.jp", "co.za", "myshopify.com", "github.io", "vercel.app", "netlify.app",
+                     "herokuapp.com", "s3.amazonaws.com", "blogspot.com", "pages.dev", "web.app", "firebaseapp.com",
+                     "azurewebsites.net"):
+            with self.subTest(host=host):
+                self.assertTrue(bf.hosting_parent(host))
+                with self.assertRaises(BrandFetchError) as cm:
+                    SiteScan(f"https://{host}/", _test_net=self.net())
+                self.assertEqual(cm.exception.code, bf.E_HOSTING_PARENT)
+                self.assertIn(host, cm.exception.message)
+        for host in ("shop.myshopify.com", "a.github.io", "shop.co.uk", "www.brand-shop.co.uk", "a.co", "co.com", "uk.co",
+                     "brand-shop.test", "my.vercel.app", "github.com", "co.uzz"):
+            with self.subTest(host=host):
+                self.assertFalse(bf.hosting_parent(host))
+                bf.check_entry_url(f"https://{host}/")
+        self.assertEqual(self.resolved, [])
+        self.assertEqual(bf.HOSTING_PARENTS, frozenset({
+            "myshopify.com", "github.io", "vercel.app", "netlify.app", "herokuapp.com", "s3.amazonaws.com", "blogspot.com",
+            "pages.dev", "web.app", "firebaseapp.com", "azurewebsites.net"}))
+
+    def test_a_hosting_parent_is_not_the_apex_twin_of_its_www_tenant(self):
+        self.assertTrue(bf.same_site("brand-shop.test", "www.brand-shop.test"))
+        for parent in ("github.io", "myshopify.com", "co.uk"):
+            with self.subTest(parent=parent):
+                self.assertFalse(bf.same_site(parent, f"www.{parent}"))
+        self.assertTrue(bf.same_site("x.www.github.io", "www.github.io"), "the tenant's own subdomains still are")
 
     def test_a_redirect_to_a_sibling_of_the_entry_host_is_not_followed_or_resolved(self):
         # The shared-hosting shape: attacker.<parent> sending the scan to victim.<parent>. Here the entry is the www host
@@ -885,6 +935,42 @@ class Lookups(Base):
         self.refused(bf.E_LIMIT, s.image, f"https://{SITE}/i.png")
         self.assertNotIn(SITE, self.resolved)
 
+    def test_a_failed_or_refused_lookup_is_remembered_and_never_repeated(self):
+        # Security review follow-up (A): one lookup per name per scan, whatever its answer was.
+        self.names[f"a.{SITE}"] = ["10.0.0.1"]
+        self.names[f"b.{SITE}"] = []
+        s = self.scan()
+        for host, code in ((f"a.{SITE}", bf.E_NOT_PUBLIC), (f"b.{SITE}", bf.E_DNS), (f"c.{SITE}", bf.E_DNS)):
+            with self.subTest(host=host):
+                first = self.refused(code, s.css, f"https://{host}/s.css")
+                self.assertIs(self.refused(code, s.image, f"https://{host}/i.png"), first, "the stored refusal again")
+                for _ in range(3):
+                    self.assertIs(self.refused(code, s._addresses, host), first)
+                self.assertEqual(self.resolved.count(host), 1)
+        self.assertEqual(self.dialed, [])
+
+    def test_an_abandoned_lookup_leaves_at_most_one_thread_per_name(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+        calls = []
+
+        def hang():
+            calls.append(threading.current_thread())
+            release.wait(10)
+            return [SITE_IP]
+
+        self.names[f"slow.{SITE}"] = hang
+        s = self.scan(budget=Budget(30))
+        with mock.patch.object(bf, "CONNECT_TIMEOUT_S", 0.2):
+            first = self.refused(bf.E_DNS, s.css, f"https://slow.{SITE}/s.css")
+            t = time.monotonic()
+            for _ in range(3):
+                self.assertIs(self.refused(bf.E_DNS, s.css, f"https://slow.{SITE}/s.css"), first)
+            self.assertLess(time.monotonic() - t, 0.15, "no second wait: the answer is the remembered refusal")
+        self.assertEqual(len(calls), 1, "one lookup, so one resolver thread, for the name in this scan")
+        self.assertTrue(calls[0].is_alive() and calls[0].name == "brand-fetch-dns", "the abandoned one, still waiting")
+        release.set()
+
     def test_the_system_resolver_asks_for_the_absolute_name(self):
         asked = []
 
@@ -954,6 +1040,32 @@ class RobotsMatching(unittest.TestCase):
         r = self.rules("User-agent: *\nDisallow: /caf%c3%a9\nDisallow: /ü\n")
         self.assertFalse(r.allowed("/caf%C3%A9/menu"))
         self.assertFalse(r.allowed("/%C3%BC"))
+
+    def test_an_escaped_unreserved_character_is_the_character_itself(self):
+        # Security review follow-up (B), RFC 9309 section 2.2.2 and its example table: %62%61%7A is "baz"; the escape of a
+        # reserved character (%2F, %3A) stays an escape, and so does anything outside the unreserved set (%2A is not "*").
+        self.assertFalse(self.rules("User-agent: *\nDisallow: /foo/bar/baz\n").allowed("/foo/bar/%62%61%7A"))
+        self.assertFalse(self.rules("User-agent: *\nDisallow: /foo/bar/%62%61%7A\n").allowed("/foo/bar/baz"))
+        self.assertFalse(self.rules("User-agent: *\nDisallow: /foo/bar/%62%61%7a\n").allowed("/foo/bar/baz"), "lower-case hex")
+        self.assertFalse(self.rules("User-agent: *\nDisallow: /foo/bar/ツ\n").allowed("/foo/bar/%E3%83%84"))
+        self.assertFalse(self.rules("User-agent: *\nDisallow: /foo/bar/%E3%83%84\n").allowed("/foo/bar/ツ"))
+        self.assertFalse(self.rules("User-agent: *\nDisallow: /foo/bar?baz=https%3A%2F%2Ffoo.bar\n")
+                         .allowed("/foo/bar?baz=https%3A%2F%2Ffoo.bar"))
+        for c, esc in (("-", "%2D"), (".", "%2E"), ("_", "%5F"), ("~", "%7E"), ("~", "%7e"), ("A", "%41"), ("0", "%30")):
+            with self.subTest(esc=esc):
+                self.assertFalse(self.rules(f"User-agent: *\nDisallow: /a{c}b\n").allowed(f"/a{esc}b"))
+                self.assertFalse(self.rules(f"User-agent: *\nDisallow: /a{esc}b\n").allowed(f"/a{c}b"))
+        self.assertTrue(self.rules("User-agent: *\nDisallow: /a/b\n").allowed("/a%2Fb"), "%2F is not a path separator")
+        self.assertTrue(self.rules("User-agent: *\nDisallow: /a%2Fb\n").allowed("/a/b"))
+        self.assertTrue(self.rules("User-agent: *\nDisallow: /x%2Ay\n").allowed("/xzzy"), "an escaped star is no wildcard")
+        self.assertFalse(self.rules("User-agent: *\nDisallow: /x%2Ay\n").allowed("/x%2ay"))
+        self.assertTrue(self.rules("User-agent: *\nDisallow: /x%24\n").allowed("/x"), "an escaped dollar is no anchor")
+        self.assertTrue(self.rules("User-agent: *\nDisallow: /b\n").allowed("/%2562"), "decoded once, never twice")
+        self.assertEqual(bf._robots_norm("/%62%61%7a/%2f/%e3%83%84/%2562"), "/baz/%2F/%E3%83%84/%2562")
+        # Allow / Disallow decide on one spelling: the longer rule wins whichever way either side was written.
+        r = self.rules("User-agent: *\nDisallow: /shop\nAllow: /%73hop/%6Fk\n")
+        self.assertTrue(r.allowed("/shop/ok"))
+        self.assertFalse(r.allowed("/%73hop/no"))
 
     def test_robots_txt_itself_is_always_allowed(self):
         self.assertTrue(self.rules("User-agent: *\nDisallow: /\n").allowed("/robots.txt"))

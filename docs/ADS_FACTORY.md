@@ -4,9 +4,9 @@ A person writes down a brand (later: Nightshift reads it from their own site), p
 concepts, scripts and storyboards; later phases turn approved concepts into image and video ads through the model makers' own APIs,
 edited in Nightshift's own editor and exported per format, and published only after a person approves.
 
-This document is the phased plan. **Phase 1 is the only phase that is built** (this pull request). Everything under Phase 2 to Phase 6
-is a design, not code, except Phase 2's network fetcher (`modules/brand_fetch.py`), a dark module nothing calls yet (see "Built so far"
-under Phase 2). Competitor products were used as benchmarks of what a customer expects; no code, asset or text of theirs is used,
+This document is the phased plan. **Phase 1 is built**, and **Phase 2 (the brand scan) is built dark** behind
+`NIGHTSHIFT_ADS_BRAND_SCAN` (default off) with its price seeded NULL, i.e. not on sale (migration 0133, see "Phase 2: brand scan").
+Everything under Phase 3 to Phase 6 is a design, not code. Competitor products were used as benchmarks of what a customer expects; no code, asset or text of theirs is used,
 and no customer-facing string names one (`tests/ads-factory-i18n.test.ts` runs the banned-wording list over every string).
 
 The first draft of this idea is draft PR #651 (`feat/nightshift-ads-studio-mvp`): a public, unauthenticated concept page and a pure
@@ -17,10 +17,11 @@ to action, a visual brief and storyboard beats. It is built as an authenticated,
 
 ## What is NOT built (read this first)
 
-- **No web site is read.** The site address is a note a person types. Nothing in the database, the Command Center or a worker opens it.
-  The brand scanner is Phase 2, designed below, and must be a worker job when it is built. The address is checked for SHAPE only
-  (https, a DNS name, no IP literal, no port, no password): that is not an SSRF control, since any name can resolve to a private
-  address. Phase 2's scanner must resolve the name itself and pin a public address at fetch time (see "The fetch" below).
+- **No web site is read in Phase 1.** The kit's site address is a note a person types; nothing in the database or the Command Center
+  opens it. The address is checked for SHAPE only (https, a DNS name, no IP literal, no port, no password): that is not an SSRF
+  control, since any name can resolve to a private address. Only Phase 2's worker reads a site, and only one whose owner proved the
+  domain with a DNS TXT record and paid for the scan; it resolves the name itself and pins a public address at fetch time (see "The
+  fetch" below).
 - **No picture, no video, no model call.** Concept drafts are filled in from fixed templates with words the person typed. The visual
   brief is not sent to any model.
 - **No price, no credit, no charge.** Nothing in Phase 1 quotes, holds, captures or refunds a credit.
@@ -153,76 +154,198 @@ Phase 1 is free and uncharged: no model call is made, so there is nothing to pri
    and adding `brand_kit.*`, `brand_product.*`, `ad_campaign.*`, `ad_concepts.add` and `ad_concept.*` to the trail means replacing
    `audit_action_allowed` (0087 / 0093), which several open pull requests may also touch. Decide whether a later migration adds them.
 
-## Phase 2: brand scan (a worker job; designed; only the fetcher is built, dark)
+## Phase 2: brand scan (built, dark: `NIGHTSHIFT_ADS_BRAND_SCAN`, default off; the price seeded NULL = not on sale)
 
-The person enters their site; a worker reads a few public pages and proposes a DRAFT brand kit plus product candidates, which the person
-reviews and accepts field by field. Nothing is accepted automatically.
+The person proves they own their domain, asks for one priced scan, and a worker reads a few public pages of the site and proposes brand
+fields (each with the page and the place it came from); the person reviews them next to the kit and accepts field by field. Nothing is
+accepted automatically, and no model is called.
 
-**Data.** `brand_scans`: org, requested_by, the normalised URL, `ownership_confirmed_by` + `ownership_confirmed_at` (the person ticked
-"I own this site or may use its brand"; required, stored, never defaulted), status `requested | running | ready | failed`, error code,
-the result (bounded jsonb: proposed fields, each with where it came from), the kit it produced (`brand_kits.source = 'scan'`), an
-idempotency key and request hash. `brand_scan_cap_settings` (one row, as 0127): per person per day, per organization per day, and
-platform-wide per day. A queue row of a new `render_jobs` kind (or a dedicated queue table, to keep `render_jobs_payment_guard` out of
-it), claimed by the worker with `for update skip locked`.
+**Owner decisions (2026-11-11), as built.** Build it. Priced per scan in credits at cost (the price itself limits volume) — seeded NULL,
+so `request_brand_scan` refuses `not_on_sale` until the owner sets one (proposal below). Only a generous PLATFORM-wide daily safety cap
+(no per-person or per-organization daily cap). Ownership proved by DNS TXT (the strong form). Everything dark behind
+`NIGHTSHIFT_ADS_BRAND_SCAN`.
 
-**RPCs.** `request_brand_scan(org, url, confirm_ownership, idem)`: editor, confirmation required, URL shape check (0131's), caps under
-the organization lock then a platform lock (0127's order), idempotent replay, returns the scan id. `finish_brand_scan(...)`:
-service_role only, writes the draft. `accept_brand_scan_fields(scan, fields[])`: the person copies chosen fields into the kit.
+### Data (migration `0133_brand_scan.sql`)
 
-**The fetch (Python worker, never the Next server).** Reuse and extend `modules/capabilities/safe_fetch.py` (today an allow-list of
-vendor hosts, which does not fit an arbitrary customer host), as a new `modules/brand_fetch.py`:
-- https only; port 443 only; no credentials in the URL; printable ASCII; the host urllib3 connects to must be the host that was checked.
-- Resolve the name ONCE (`getaddrinfo`) and refuse unless EVERY address is public: refuse private, loopback, link-local, CGNAT
-  (100.64/10), multicast, reserved, unspecified, IPv4-mapped and IPv4-compatible IPv6, 6to4/Teredo of a private address, NAT64 of a
-  private address, and the metadata addresses (169.254.169.254, fd00:ec2::254, 100.100.100.200). Connect to the resolved IP with SNI
-  and Host of the name (no second lookup: DNS rebinding cannot change the target between check and connect).
-- No automatic redirects. At most 3 hops, each re-validated (scheme, port, resolution) and kept to the same registrable domain.
-- Timeouts: connect 5 s, read 10 s, total wall clock 30 s per scan. Byte caps: HTML 1.5 MB, CSS 256 KB each (at most 4), each image
-  5 MB (at most 6). Content-type allow-list (text/html, text/css, image/png, image/jpeg, image/webp, image/svg+xml refused or
-  rasterised in a child process only). `Accept-Encoding: identity`, or a bounded decoder that stops at the cap (gzip bomb).
-- At most 6 pages: the home page and product pages linked from it on the same host. robots.txt is read first and a Disallow for our
-  user agent is honoured. An honest User-Agent naming Nightshift and a contact page; no cookies, no credentials, no scripts executed.
-- Extraction: `<title>`, meta description, Open Graph / Twitter cards, JSON-LD `Organization` and `Product`, icon and logo candidates,
-  `theme-color`, a small palette from the logo (Pillow in a child process with size caps and byte sniffing: `modules/capabilities/pictures.py`),
-  font-family NAMES from inline and linked CSS (no font is downloaded). Every extracted string is untrusted: HTML-unescaped once,
-  control and invisible characters stripped, length-capped to 0131's limits, never rendered as HTML, never used as a prompt without
-  the prompt checks of the creative job path. Images are stored through the media library ingest path (`request_upload` /
-  `register_asset` limits and sniffing), never hot-linked.
-- Tests: loopback HTTPS servers and an attacker listener that must receive zero requests (private targets, redirects to them,
-  rebinding by a resolver that answers differently the second time), oversize, slow-drip, gzip-bomb and hostile HTML bodies; each rule
-  mutation-checked.
+| Table | What it holds | Writes |
+| :-- | :-- | :-- |
+| `brand_domains` | org, host (a lower-case DNS name, never a bare public suffix or a shared hosting parent), a random token, `verified_at` / `verified_by` (who asked for the check that found the record), the last check's time and code | `request_domain_verification`; the worker's `finish_domain_check` |
+| `brand_domain_checks` | one row per "Check now": who asked, when the worker took it, ok + a closed code (the worker's queue) | `check_domain_verification`; `claim_domain_check` / `finish_domain_check` |
+| `brand_scans` | org, the entry URL (0131's site shape), host, the verified domain it ran under, status `requested \| running \| ready \| failed`, a closed error code, the result (bounded jsonb), credits held / charged, idempotency key + request hash, which fields were accepted into which kit | `request_brand_scan`; `claim_brand_scan` / `finish_brand_scan` / `fail_brand_scan`; `accept_brand_scan_fields` |
+| `brand_scan_settings` | one row: `price_credits` (NULL = not on sale, the seed), `platform_daily_scans` (500), `platform_daily_checks` (5000), one organization's share `org_daily_scans` (20) and `org_daily_checks` (200) | the SQL editor only (a change leaves a `security_events` row of kind `ads.brand_scan.settings`) |
 
-**Costs.** No model call is needed for extraction; a scan costs bandwidth and worker time only. Owner decision: free with caps (as
-series planning), or a small fixed credit price through `reserve_credits` / `capture_credits` with release on failure.
+Members read their organization's rows (RLS, viewer and up); no API role writes any table directly; the settings are closed to every API
+role. Member functions (`authenticated`, each checks sign-in, membership and the editor role itself; another organization's id is
+`not_found`): `request_domain_verification(org, host)`, `check_domain_verification(domain)`, `quote_brand_scan(org)` (any member),
+`request_brand_scan(org, url, idem, max_credits)`, `accept_brand_scan_fields(scan, kit, fields[])`. Worker functions (`service_role`
+only, `credits_trusted_caller()`): `claim_domain_check`, `finish_domain_check`, `claim_brand_scan`, `finish_brand_scan`,
+`fail_brand_scan`. Rollback: `docs/sql/rollback_0133_brand_scan.sql` (before 0131's; refuses while rows exist or a scan is in flight).
 
-**Abuse.** Scanning someone else's brand: the ownership confirmation is stored with who and when, and Phase 3 refuses to generate from
-a scanned kit unless the confirmation exists. Trademarks and logos: the scanned logo is the person's own claim; the report keeps where
-each field came from. Rate limits stop using the worker as a crawler. The worker never follows a link to another domain.
+**Ownership (DNS TXT).** The person adds a TXT record **`_nightshift.<host>`** with the value **`nightshift-verify=<token>`** (an
+underscore label, not the apex: the apex's TXT records are SPF and other services' tokens; RFC 8552's convention, as `_acme-challenge`
+and `_dmarc`). "Check now" queues one check (a double click is the same check; a new one waits 15 s after the last; at most
+`platform_daily_checks` per 24 hours platform-wide). The worker reads the record over **DNS-over-HTTPS from one fixed resolver**
+(`modules/dns_txt.py`, `cloudflare-dns.com`): the stdlib has no TXT lookup and dnspython is not a dependency; a plain UDP answer could be
+forged by an off-path attacker (and a forgery here would verify a domain the attacker does not own), an answer over TLS cannot; the
+resolver is a fixed name, so there is no SSRF surface; the connection is the brand fetcher's own safe socket. The answer is parsed
+strictly (our id, a response, not truncated, the question we asked, at most 4 KB, every name and record in bounds, compression pointers
+backwards only and at most 16) and ONLY a TXT record whose owner is exactly `_nightshift.<host>` counts: a CNAME is not followed. A
+definite "no" (`no_record`, `mismatch`) takes a verification away; a failure to ask (`dns_error`, `timeout`) leaves it as it was. A scan
+needs a verified domain of the SAME organization that is the scan's host or a parent of it, and the worker reads the record AGAIN when
+it starts the scan (`ownership_not_proven` / `ownership_unknown` fail it before any request goes to the site, credits released).
+At most 10 domains per organization.
 
-**Owner decisions.** The caps; free or priced; whether a scan may run against a domain whose WHOIS / DNS TXT does not prove ownership
-(a DNS TXT verification step would be the strong form).
+**Money.** `quote_brand_scan` shows the price (`brand_scan_price()`: the setting, rounded up to the cent; the owner EXEMPTED the scan
+from `job_minimum`, so it is not raised) and the hold. `reserve_credits` refuses any hold below `job_minimum`, and no shared money function
+is changed, so the HOLD is `greatest(price, job_minimum)`: with the live minimum of 30 and a price of 1, **30 credits are held while the scan
+runs and 1 is charged**. `request_brand_scan` takes the price the person confirmed (`max_credits`, compared with the charged price, never
+the hold; a higher price now is `price_changed`, never charged) and holds (`reserve_credits` through 0036's `creative_platform_reserve`,
+after checking the editor role itself, exactly as `create_creative_job` does); without the hold available it refuses
+`scan_hold_unavailable` (NS402, detail `hold=30 price=1`). The worker's `finish_brand_scan` CAPTURES exactly the price, and
+`capture_credits` releases the rest of the hold in the same transaction; every failure RELEASES the whole hold (`fail_brand_scan`, and the sweeps: a scan nobody took within 2 hours, or whose worker went quiet for 15 minutes, is failed
+and released by the next claim or by the organization's next request). The same press again (`idem`) answers the first scan and holds
+nothing twice. The operator's (exempt) organization is not charged and only a platform admin may scan there. A hold counts as one of the
+plan's parallel runs (0034), as every hold does.
 
-**Built so far: the fetcher only (`modules/brand_fetch.py`, dark).** Nothing imports it but `tests/test_brand_fetch.py` (a test pins
-that across `modules/`, `tools/`, `deploy/`, `command-center/` and the entry scripts). It is "The fetch" above, minus extraction:
-`SiteScan(url)` reads robots.txt, the home page and up to five same-host pages it links to (product paths first), and on request up
-to 4 stylesheets and 6 pictures, and returns raw bytes, the final URL and the media type.
-- The entry URL is 0131's `ads_site_url_ok` shape plus one refusal more (a backslash).
-- Every name is looked up once per scan and pinned. The lookup is for the absolute name (no resolv.conf search domain), runs in a
-  thread waited for at most 5 s or what is left of the 30 s budget, and a scan looks up at most 4 distinct names.
-- Every answer must be public. `address_problem` uses the module's own table of special-use ranges, so a change in Python's
-  `ipaddress` tables cannot widen it, and IPv6 must be inside 2000::/3. It names the class it refuses.
-- The socket goes to that address with SNI, Host and certificate check on the name.
-- Redirects: at most 3, each re-checked, and only to the entry host, its subdomains, or its www / apex twin. There is no
-  public-suffix list, and no "registrable domain" guess either: tenants of one shared hosting domain (`*.myshopify.com`,
-  `*.github.io`, `*.vercel.app`) cannot redirect the scan into each other. A home page that redirects to a sibling host
-  (`www.shop.com` to `store.shop.com`) fails, and the person enters the host the site really lives on.
-- All NAT64 (`64:ff9b::/96`, `64:ff9b:1::/48`), 6to4 and Teredo addresses are refused, public embedding or not.
-- robots.txt follows RFC 9309 (`*`, `$`, longest match, Allow wins a tie; groups for `NightshiftBrandScan` / `Nightshift`, else
-  `*`). It is decoded as UTF-8 with a byte-order mark dropped and parsed whatever its content type. One that cannot be read (5xx,
-  too large, compressed, off-site redirect) is read as "disallow everything". Crawl-delay is not waited for.
+**Caps.** One scan in flight per organization (a unique index). Per organization per 24 hours `org_daily_scans` (20) and
+`org_daily_checks` (200), all statuses, failed ones too (a failed scan releases its hold, so without this share one organization could
+use up the platform's day for nothing), counted under the organization's lock; refused `org_daily_limit` with no number. Then
+platform-wide per 24 hours `platform_daily_scans` and `platform_daily_checks` under one platform lock taken after the organization's
+(0127's order); the platform's refusal (`platform_busy`) names no number either. A confirmed price that is not a number between 0 and
+1000 (NaN, an infinity) is `price_changed`.
 
-Not built yet, each waiting on the owner decisions above: the migration (`brand_scans`, the caps), the RPCs, the queue kind and
-worker wiring, the extraction, the media library ingest of pictures, and any UI.
+**Locks.** As 0131: no function holds a row lock while it waits for an advisory lock. `request_*` / `check_*` read without a lock, check
+the role, take `brand_scan:<org>`, then the platform lock where they count a cap, and only then touch rows (the credit account inside
+`reserve_credits`). `accept_brand_scan_fields` takes 0131's `ads_factory:<org>` (it writes kits and products under 0131's caps), then
+locks the kit row, as 0131's writers do. The worker's functions take no advisory lock. The lab races each pair.
+
+**The result** (`brand_scan_result_ok`, at most 64 KB, exactly this shape): `pages` (up to 6 URLs read), `fields` (`name`,
+`description`, `logo`, `palette`, `fonts`, `theme_color`; each `{value, source: {url, where}}`, `where` one of a closed list of places:
+`og_site_name`, `jsonld_organization`, `title`, `meta_description`, `icon`, `apple_touch_icon`, `logo_palette`, `css`, ...), `products` (up
+to 8 candidates: title, description, price TEXT, image), `notes` (up to 20 closed words with a URL: what was skipped and why: an SVG
+logo, a robots rule, a stylesheet on another site). Every text is 0131-clean and within 0131's lengths, every colour `#rrggbb`, every
+font a 0131 name, every picture a LIVE IMAGE of the organization's own library (checked in `finish_brand_scan`) — the result never
+links to the site.
+
+**Accepting.** `accept_brand_scan_fields(scan, kit, fields[])`: a READY scan of the caller's organization; `kit` NULL makes a new kit
+(`source = 'scan'`; needs `name`; 0131's `kits_per_org`), otherwise only the chosen fields of that kit change. Fields: `name`,
+`description` (into the kit's voice notes), `site_url` (the scanned URL), `logo`, `palette`, `theme_color` (put first in the palette),
+`fonts`, `product:0` .. `product:7` (each a new product of the kit, `source = 'scan'`, with its picture; 0131's `products_per_kit`).
+Every value goes through `ads_clean_text` and 0131's checks again; a picture deleted from the library since the scan is refused.
+
+### The fetch (Python worker, never the Next server)
+
+`modules/brand_fetch.py` (merged in #669, dark until now), with the three follow-ups its security review asked for before wiring:
+(A) a failed, refused or abandoned lookup is remembered per host for the rest of the scan (`_addresses` raises the stored refusal
+again): one lookup and at most one abandoned resolver thread per name per scan; (B) robots.txt patterns and paths are compared in one
+spelling, with `%XX` escapes of unreserved characters (`ALPHA DIGIT - . _ ~`) decoded in both (RFC 9309 section 2.2.2; the RFC's
+`/foo/bar/%62%61%7A` example is a test), reserved escapes (`%2F`) and everything else left escaped; (C) an entry host that is a bare
+public suffix or a shared hosting parent is refused (`hosting_parent`: `co.uk`-style two-label country second levels, `myshopify.com`,
+`github.io`, `vercel.app`, `netlify.app`, `herokuapp.com`, `s3.amazonaws.com`, `blogspot.com`, `pages.dev`, `web.app`,
+`firebaseapp.com`, `azurewebsites.net`; a short explicit list, the same in 0133's `ads_hosting_parent`), and such a name is not the
+"apex twin" of `www.<it>` either.
+
+The rest is as built in #669:
+- https only; port 443 only; no credentials in the URL; printable ASCII; the host urllib3 would connect to is the host that was checked.
+- Every name is looked up once per scan (`getaddrinfo` of the absolute name, no resolv.conf search domain, in a thread waited for at most
+  5 s or what is left of the 30 s budget, at most 4 distinct names per scan) and refused unless EVERY answer is public (the module's own
+  table of special-use ranges; IPv6 only inside 2000::/3; all NAT64, 6to4 and Teredo refused). The socket goes to that address with SNI,
+  Host and the certificate check on the name: DNS rebinding cannot move the target.
+- Redirects: at most 3, each re-checked, only to the entry host, its subdomains, or its www / apex twin.
+- Connect 5 s, read 10 s, 30 s per scan. HTML 1.5 MB, CSS 256 KB (at most 4), images 5 MB (at most 6). Content types per kind; SVG
+  refused; `Accept-Encoding: identity`, a compressed answer refused.
+- robots.txt first on every host (RFC 9309; `NightshiftBrandScan` / `Nightshift` groups, else `*`; unreadable = disallow all).
+
+### The scan job (`modules/brand_scan.py`, `tools/brand_scan_worker.py`)
+
+The worker claims a domain check (above) or a scan. A scan: read the TXT record again; `SiteScan(url).pages()` (home + up to five
+same-host pages, product pages first); `modules/brand_extract.py` reads `<title>`, the meta description, Open Graph and Twitter cards,
+`theme-color`, JSON-LD `Organization` (and its kinds) and `Product`, icon / logo candidates (never SVG), and font-family NAMES from inline
+and up to four linked stylesheets (no font is downloaded); every string is read once by the HTML parser, then cleaned exactly as 0131's
+`ads_clean_text` (the lab pins the Python and the SQL equal, character for character) and cut to 0131's length; a `<script>` that is not
+JSON-LD is never read, and JSON-LD is at most 256 KB and 32 levels per script, 8 scripts per page. The logo is the first candidate the
+fetcher accepts; its palette is read by `modules/brand_palette.py` in a CHILD process (argv only, no key in its environment, its own
+session, `RLIMIT_AS` / `RLIMIT_CPU` / `RLIMIT_FSIZE` 0 / `RLIMIT_NOFILE` set before Pillow is imported, PNG / JPEG / WEBP only, 8192 px a
+side and 40 megapixels checked from the header before any pixel is decoded). The logo and up to four product pictures are stored through
+the media library (`media_library.store_generated`: the bytes sniffed, probed when ffprobe is there, `register_asset` with source
+`pipeline` — never `generated`, so nothing reads as AI-made — and the scan in the provenance); the result names those assets, never a
+link. `finish_brand_scan` checks it all again. When the scan fails (any failure, a refused finish, the sweeps), `brand_scan_fail_locked`
+deletes those pictures from the library (`deleted_at`, as a member's delete; the media worker removes the files and the bytes go back
+to the quota): only pictures of the scan's own organization with the scan's id in the provenance, never a ready scan's. The worker takes
+a domain check and a scan in turn, so a queue of slow DNS checks cannot starve the scans (or the reverse). A failure is a closed word: `ownership_not_proven`, `ownership_unknown`,
+`fetch_<fetcher code>` (the home page: `fetch_robots`, `fetch_not_public`, `fetch_timeout`, `fetch_hosting_parent` ...), `nothing_found`,
+`invalid_result`, `worker_error`.
+
+`tools/brand_scan_worker.py` exits at once unless `NIGHTSHIFT_ADS_BRAND_SCAN=on`; it needs `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and
+(for pictures) `NIGHTSHIFT_MEDIA_DIR`. It is NOT in `deploy/docker-compose.yml` yet (a release step, below).
+
+### Known limits (Phase 2)
+
+- **The database is not dark.** The member functions are granted on apply. While the price is NULL nobody can request a scan; a
+  signed-in editor can still ask for a domain token and queue DNS checks (at most 10 domains, one check per 15 s per domain,
+  `platform_daily_checks` platform-wide), which nothing claims while the worker is off. To stop checks too:
+  `update public.brand_scan_settings set platform_daily_checks = 0;` (or one organization's share: `org_daily_checks`).
+- **A CDN on another domain.** The fetcher reads only the entry host, its subdomains and its www / apex twin, so a logo or product picture
+  served from another domain (a shop platform's CDN) is not read; the result notes `logo_off_site` / `image_off_site` and proposes no
+  picture. A stylesheet on another domain is likewise not read (`css_off_site`).
+- **The resolver's cache** decides how soon a newly added TXT record is seen; the page says so, and the person presses "Check now" again.
+- **DNSSEC** is not checked by us; the resolver validates signed zones itself.
+- **A verification is not re-checked on a timer**; every scan re-checks it, and so does every "Check now".
+- **The www / apex twin.** A redirect from the entry host to its `www.` twin (or from `www.` to the apex) is followed, and the twin is not
+  verified separately: verifying `shop.com` covers `www.shop.com`, and a scan of `www.shop.com` may be redirected to `shop.com`. Both
+  are the same zone's names in practice; the security review accepted this as is (Low), and it is noted here rather than changed.
+
+### Costs: the approved price and caps (owner decision, 2026-11-11; seeded NULL, set after merge)
+
+**Approved values** (the owner, 2026-11-11). The migration keeps the seed NULL (not on sale); they go live in a separate settings step
+after merge, in the SQL editor:
+
+```sql
+update public.brand_scan_settings set price_credits = 1, platform_daily_scans = 500, platform_daily_checks = 5000;
+```
+
+- price: **1 credit per scan** (charged; exempt from `job_minimum`, the hold is `greatest(1, job_minimum)` = 30 today and released down to 1);
+- platform cap: **500 scans per 24 hours**;
+- domain checks: **5,000 per 24 hours**.
+
+**Safety defaults, not yet owner-approved** (added at the security review; they ship as the column defaults, so nothing needs setting
+unless the owner chooses other numbers): one organization's share of the day, **20 scans** (`org_daily_scans`) and **200 domain
+checks** (`org_daily_checks`) per 24 hours. To set them explicitly: `update public.brand_scan_settings set org_daily_scans = 20,
+org_daily_checks = 200;`.
+
+The proposal and its basis, as approved: **1 credit per scan** (`update public.brand_scan_settings set price_credits = 1;`). Cost basis (assumptions, not
+measurements: our own dedicated worker server at roughly EUR 50 a month, 8 cores, inbound traffic not billed; 1 credit is about
+$0.01 retail, docs/API.md): one scan holds one worker slot for at most 30 s of wall clock (mostly waiting on the site), uses at most a few
+CPU-seconds (the HTML parse, one Pillow decode in the child, a thumbnail when ffmpeg is there), downloads at most about 41 MB (6 pages,
+4 stylesheets, 6 pictures, all capped; typically 1-3 MB), asks the resolver twice (free), and stores at most 5 pictures in the
+organization's own library quota. That is well under $0.001 of marginal cost; 1 credit is the smallest whole price, covers the scans
+that fail (those are released, so they cost the person nothing) and the worst case many times over, and still makes a scan cost money
+for anyone who would use it as a crawler (each scan also needs a domain they control). The charged price is not raised to the platform's
+`job_minimum`; the HOLD is (reserve_credits demands it of every hold), so a person needs that many credits available while the scan runs:
+`select credits_per_unit from public.credit_prices where unit = 'job_minimum';` (30.00 on 2026-11-11).
+
+Proposed platform cap: **500 scans per 24 hours** (the seed). Each scan reads one site, at most 12 requests and about 41 MB, so 500 is
+at most about 6,000 requests and 20 GB a day in the worst case, and about 5 hours of one worker slot; a scan is a once-per-brand action,
+so real demand is far below it. Domain checks: **5000 per 24 hours** (one DNS-over-HTTPS query each).
+
+### Abuse
+
+Scanning someone else's brand: impossible without control of their DNS zone, and re-checked at every scan. The worker never follows a
+link to another domain and honours robots.txt. Trademarks and logos: the scanned logo is the verified owner's own; the result keeps where
+each field came from. Rate: the price, the platform cap, one scan in flight per organization. Phase 3 must still refuse to generate from
+a kit with `source = 'scan'` unless its scan's domain is verified. One organization cannot use up the platform's day: 20 scans and 200
+checks per organization per 24 hours (failed scans count). Accepting the same product candidate again adds no copy.
+
+### Releasing Phase 2
+
+1. Read the live database first (the queries in the migration header, "WHAT TO VERIFY BEFORE YOU APPLY"); 0131 must be applied.
+2. Merge: the migration applies itself on deploy. Nothing can be bought while the price is NULL.
+3. Add a `brand-scan-worker` service to `deploy/docker-compose.yml` (worker image, `command: ["python", "tools/brand_scan_worker.py"]`,
+   uid 1000, the `media` volume rw, the worker env file, `NIGHTSHIFT_ADS_BRAND_SCAN=on`), and let outbound HTTPS reach customer sites
+   and `cloudflare-dns.com`.
+4. Set the approved values: `update public.brand_scan_settings set price_credits = 1, platform_daily_scans = 500, platform_daily_checks = 5000;`, and `NIGHTSHIFT_ADS_BRAND_SCAN=on`
+   for the Command Center (the page, the second pull request).
+5. Undo: the switch off (loses nothing), or the price back to NULL (no new scans), or `docs/sql/rollback_0133_brand_scan.sql`.
 
 ## Phase 3: image ads through the existing creative job pipeline (designed)
 
