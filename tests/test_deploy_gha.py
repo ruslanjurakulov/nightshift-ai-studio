@@ -296,7 +296,8 @@ FAKE_DOCKER = textwrap.dedent(
         case "$sub" in
           validate) [[ "$body" == *SYNTAX* ]] && exit 1; exit 0 ;;
           adapt)
-            j='{"X-Frame-Options":["DENY"],"Permissions-Policy":["x"],"X-Content-Type-Options":["nosniff"],"Referrer-Policy":["strict-origin-when-cross-origin"],"delete":["Server","X-Powered-By"]'
+            j='{"X-Frame-Options":["DENY"],"set":{"Permissions-Policy":["camera=(), microphone=(), geolocation=(), payment=(\\"https://buy.paddle.com\\" \\"https://sandbox-buy.paddle.com\\"), usb=()"]},"X-Content-Type-Options":["nosniff"],"Referrer-Policy":["strict-origin-when-cross-origin"],"delete":["Server","X-Powered-By"]'
+            [[ "$body" == *PP_DROP_MIC* ]] || j="$j"',"set2":{"Permissions-Policy":["camera=(), microphone=(self), geolocation=(), payment=(\\"https://buy.paddle.com\\" \\"https://sandbox-buy.paddle.com\\"), usb=()"]}'
             [[ "$body" == *NO_HSTS_STATIC* ]] || j="$j,\\"Strict-Transport-Security\\":[\\"max-age=31536000\\"]"
             [[ "$body" == *WIDEN* ]] && j="$j,\\"X-Frame-Options\\":[\\"SAMEORIGIN\\"]"
             echo "$j}"; exit 0 ;;
@@ -334,7 +335,15 @@ FAKE_CURL = textwrap.dedent(
     [[ "$live" == *NO_HSTS_LIVE* ]] || echo "Strict-Transport-Security: max-age=31536000"
     echo "X-Content-Type-Options: nosniff"
     echo "Referrer-Policy: strict-origin-when-cross-origin"
-    echo "Permissions-Policy: camera=()"
+    # Permissions-Policy as deploy/Caddyfile sends it: (self) on the editor's project page only.
+    deny='camera=(), microphone=(), geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()'
+    mic='camera=(), microphone=(self), geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()'
+    if [[ "$live" == *PP_WIDE* || ( "$path" =~ ^/[^/]+/editor/[0-9a-f-]{36}$ && "$live" != *PP_NO_MIC* ) ]]; then
+      echo "Permissions-Policy: $mic"
+    else
+      echo "Permissions-Policy: $deny"
+    fi
+    [[ "$live" == *PP_DOUBLE* ]] && echo "Permissions-Policy: $deny"
     [[ "$live" == *SERVER_LEAK* ]] && echo "Server: Caddy"
     if [[ "$live" == *ODD_XFO* ]]; then
       echo "X-Frame-Options: ALLOW-FROM https://attacker.example"
@@ -730,6 +739,33 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
                 self.assertNotIn(bad, self.live.read_text())
                 self.assertIn("# v1", self.loaded())  # the bad file never becomes the rollback copy
                 self.assertNoTemp()
+
+    def test_a_file_that_drops_the_editor_microphone_value_is_refused_before_loading(self):
+        self.assertEqual(self.deploy_caddy(self.push("v1")).returncode, 0)
+        self.docker_log.unlink()
+        proc = self.deploy_caddy(self.push("PP_DROP_MIC"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("no longer sets: Permissions-Policy (the editor value)", proc.stderr)
+        self.assertNotIn("reload", self.caddy_calls())
+        self.assertIn("# v1", self.live.read_text())
+
+    def test_a_wrong_permissions_policy_after_the_reload_restores_the_previous_file_and_fails(self):
+        # The microphone opened beyond the editor page, the editor page without it, and a second policy line.
+        self.assertEqual(self.deploy_caddy(self.push("v1")).returncode, 0)
+        for bad, expect in (
+            ("PP_WIDE", "/login: Permissions-Policy is not exactly the deny value"),
+            ("PP_NO_MIC", "the editor page: Permissions-Policy is not exactly the editor value"),
+            ("PP_DOUBLE", "/api/account: Permissions-Policy is not exactly the deny value"),
+        ):
+            with self.subTest(bad=bad):
+                self.docker_log.unlink(missing_ok=True)
+                proc = self.deploy_caddy(self.push(bad))
+                self.assertNotEqual(proc.returncode, 0, proc.stdout)
+                self.assertIn(expect, proc.stderr)
+                self.assertIn("previous config is back", proc.stderr)
+                self.assertIn("# v1", self.live.read_text())
+                # Which rule broke is named; the value Caddy sent is not printed.
+                self.assertNotIn("payment=", proc.stdout + proc.stderr)
 
     def test_a_reload_that_fails_restores_and_fails(self):
         self.assertEqual(self.deploy_caddy(self.push("v1")).returncode, 0)

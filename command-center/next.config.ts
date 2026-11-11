@@ -8,11 +8,30 @@ import type { NextConfig } from "next";
  * cannot break a page. The full content policy (BR-S-008) carries a nonce per
  * response, so it is set in middleware.ts (lib/security/csp.ts), not here.
  */
-const PERMISSIONS_POLICY =
+const permissionsPolicy = (microphone: "()" | "(self)") =>
   // payment= is opened to Paddle's checkout frame only (the Buy credits
   // overlay): with payment=() the browser hides Apple Pay / Google Pay inside
   // it. Our own page still gets nothing.
-  'camera=(), microphone=(), geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()';
+  `camera=(), microphone=${microphone}, geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()`;
+
+/** Every page and route: no camera, no microphone. */
+export const PERMISSIONS_POLICY = permissionsPolicy("()");
+
+/**
+ * The one exception (owner decision, 2026-11-11): the timeline editor's project page may ask for the
+ * microphone, for a voice-over. `(self)` lets this origin's own document ASK; the browser still asks the
+ * person every time, and the page asks only when "Record" is pressed. No other page, no frame, no other
+ * origin. deploy/Caddyfile sends the same two values on the same paths (and, being the proxy, has the last
+ * word on the self-hosted box; tests/test_deploy_self_host.py keeps them equal).
+ */
+export const EDITOR_PERMISSIONS_POLICY = permissionsPolicy("(self)");
+
+/**
+ * `/<channel>/editor/<project uuid>` and nothing else: not the editor's project list, not the image editor
+ * (`/<channel>/editor/image/<id>`), and never under /api (a channel named "api" is not a page).
+ */
+export const EDITOR_MIC_SOURCE =
+  "/:channel((?!api/)[^/]+)/editor/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
 
 export const SECURITY_HEADERS = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -112,6 +131,8 @@ const nextConfig: NextConfig = {
       // them. It gets the non-overlapping headers from the next rule.
       { source: "/((?!api/media/file/).*)", headers: SECURITY_HEADERS },
       { source: "/api/media/file/:path*", headers: MEDIA_FILE_HEADERS },
+      // After the site-wide rule, so its Permissions-Policy replaces that one on this path only.
+      { source: EDITOR_MIC_SOURCE, headers: [{ key: "Permissions-Policy", value: EDITOR_PERMISSIONS_POLICY }] },
       // The self-hosted font files carry their version in their name, so
       // they — and only they, by exact name — are cached as immutable. Any
       // other /fonts/... path (a redirect to /login, a 404, an app screen)

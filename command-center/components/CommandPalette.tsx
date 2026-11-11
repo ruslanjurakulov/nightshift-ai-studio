@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { navigate } from "@/lib/editor-nav";
 import { createClient } from "@/lib/supabase/client";
 import { orgWide, scopeQuery, type ChannelScope } from "@/lib/channels";
 import { useI18n } from "@/lib/i18n/context";
@@ -171,7 +172,8 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
         if (gTimer) clearTimeout(gTimer);
         if (target) {
           e.preventDefault();
-          router.push(path(target.href));
+          // Out of (or into) the editor's project page by a full load (lib/editor-nav.ts).
+          navigate(path(target.href), router);
         }
         return;
       }
@@ -217,7 +219,7 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
   function choose(item: Item) {
     setOpen(false);
     if (item.id === BACK_ID) goBack();
-    else router.push(path(item.href));
+    else navigate(path(item.href), router);
   }
 
   function onListKey(e: React.KeyboardEvent) {

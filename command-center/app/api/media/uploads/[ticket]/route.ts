@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { unlink } from "node:fs/promises";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { mediaStagingDir, receiveUpload, stagedUploadPath } from "@/lib/server/media";
-import { mapMediaError, parseMediaId } from "@/lib/media";
+import { knownUploadReason, mapMediaError, parseMediaId } from "@/lib/media";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
@@ -31,6 +31,38 @@ export const dynamic = "force-dynamic";
  * 3. finish_upload_receive(ticket, bytes, ok) — then the worker takes over;
  *    nothing is served until it has checked the content.
  */
+/**
+ * Where one upload is: `{ status, reason, asset_id }` of the ticket, read under the caller's session (RLS: a member of
+ * the ticket's organization; anyone else, a made-up id and a swept ticket all read as not found). The editor's
+ * voice-over waits on this until the worker has registered the take, then places that asset; nothing here writes.
+ * `reason` is a word from UPLOAD_REASONS or null, never the worker's free text.
+ */
+export async function GET(_request: Request, { params }: { params: Promise<{ ticket: string }> }) {
+  const user = await getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const { ticket: raw } = await params;
+  const ticket = parseMediaId(raw);
+  if (!ticket) return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  const supabase = await createClient();
+  if (!supabase) return NextResponse.json({ error: "not_configured" }, { status: 503 });
+  const { data, error } = await supabase.from("media_uploads").select("id, status, reason, asset_id").eq("id", ticket).maybeSingle();
+  if (error) {
+    const mapped = mapMediaError(error);
+    return NextResponse.json({ error: mapped.error }, { status: mapped.status });
+  }
+  const row = (data ?? null) as { status?: unknown; reason?: unknown; asset_id?: unknown } | null;
+  if (!row || typeof row.status !== "string") return NextResponse.json({ error: "not_found" }, { status: 404 });
+  return NextResponse.json(
+    {
+      ticket,
+      status: row.status,
+      reason: knownUploadReason(typeof row.reason === "string" ? row.reason : null),
+      asset_id: parseMediaId(row.asset_id),
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
+
 export const PUT = requireSameOrigin(async function PUT(request: Request, { params }: { params: Promise<{ ticket: string }> }) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });

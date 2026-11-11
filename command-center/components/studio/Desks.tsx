@@ -219,10 +219,11 @@ export function StudioOverview({
                   {projects.projects.slice(0, 5).map((p) => {
                     return (
                       <li key={p.id}>
-                        <Link href={path(`/editor/${p.id}`)} className="desk-project">
+                        {/* A full load into the editor's project page: it must get its own Permissions-Policy (lib/editor-nav.ts). */}
+                        <a href={path(`/editor/${p.id}`)} className="desk-project">
                           <span className="min-w-0 truncate text-sm font-semibold text-[var(--color-fg)]">{p.title}</span>
                           <LocalTime iso={p.updatedAt} locale={locale} className="shrink-0 text-xs text-[var(--color-muted)]" />
-                        </Link>
+                        </a>
                       </li>
                     );
                   })}

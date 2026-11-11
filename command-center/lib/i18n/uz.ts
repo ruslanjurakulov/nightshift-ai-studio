@@ -23,6 +23,7 @@ import { shapesUz } from "./shapes/uz";
 import { exportPresetUz } from "./editor-presets/uz";
 import { exportRatiosUz } from "./editor-ratios/uz";
 import { clipToolsUz } from "./editor-clip-tools/uz";
+import { voiceOverUz } from "./editor-voiceover/uz";
 import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
 import { captionStylesUz } from "./caption-styles/uz";
@@ -5123,6 +5124,8 @@ export const uz: Dictionary = {
     exportRatios: exportRatiosUz,
     /** Frame rate, clip volume, detach audio, duplicate / copy / paste: ./editor-clip-tools/uz.ts. */
     clipTools: clipToolsUz,
+    /** Voice-over recorded in the editor: ./editor-voiceover/uz.ts. */
+    voiceOver: voiceOverUz,
     /** Cross-fade styles and text looks: ./editor-looks/uz.ts. */
     looks: looksUz,
     fx: fxUz,

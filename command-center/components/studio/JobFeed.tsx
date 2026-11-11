@@ -383,7 +383,8 @@ export function JobFeed({
           </button>
         )}
         {project && isSendKind(kind) && job.result_asset_ids[0] && editorAddHref(project, job.result_asset_ids[0]) && (
-          <Link
+          // A full load into the editor's project page: it must get its own Permissions-Policy (lib/editor-nav.ts).
+          <a
             href={path(editorAddHref(project, job.result_asset_ids[0]) as string)}
             className={`${onMedia} !w-auto gap-1.5 px-2.5 text-xs font-semibold`}
             aria-label={t.improveAi.addToProject}
@@ -392,7 +393,7 @@ export function JobFeed({
           >
             <Clapperboard aria-hidden className="size-4" />
             <span className="max-sm:sr-only">{t.improveAi.addToProject}</span>
-          </Link>
+          </a>
         )}
         {isSendKind(kind) && job.result_asset_ids[0] && (
           <SendToEditor orgId={orgId} assetId={job.result_asset_ids[0]} kind={kind} variant="icon" className={onMedia} />

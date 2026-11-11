@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { ALL_CHANNELS_SLUG, selectionSlug, type ChannelSelection } from "@/lib/channels";
 import { channelSwitchHref, rememberChannel, switchOrganization } from "@/lib/context-switch";
+import { navigate } from "@/lib/editor-nav";
 import type { OrgSummary } from "@/lib/orgs";
 import type { ChannelRow } from "@/lib/types";
 
@@ -56,7 +57,8 @@ export function ContextSwitcher({
   function pickChannel(id: string) {
     setOpen(false);
     rememberChannel(selectionSlug(id, channels));
-    router.push(channelSwitchHref(id, channels, pathname));
+    // Out of (or into) the editor's project page by a full load (lib/editor-nav.ts).
+    navigate(channelSwitchHref(id, channels, pathname), router);
   }
 
   async function pickOrg(id: string) {
@@ -69,8 +71,8 @@ export function ContextSwitcher({
     setFailed(false);
     if (await switchOrganization(id)) {
       setOpen(false);
-      router.push(`/${ALL_CHANNELS_SLUG}`);
-      router.refresh();
+      // A full load already reads everything afresh; only a client transition needs the refresh.
+      if (navigate(`/${ALL_CHANNELS_SLUG}`, router) === "client") router.refresh();
     } else {
       setFailed(true);
     }

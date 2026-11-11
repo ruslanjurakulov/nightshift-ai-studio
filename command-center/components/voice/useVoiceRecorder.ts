@@ -19,6 +19,7 @@ import { MAX_RECORDING_SECONDS, MAX_RECORDING_TOLERANCE_SECONDS, MIN_RECORDING_S
  *  recorded     a take within the guard is ready to listen to and to send
  *  tooShort     the take was shorter than the guard; discarded
  *  tooLong      the take ran past the limit (a paused or throttled tab); discarded, never shortened on screen with the longer audio kept
+ *               (unless `keepOverLimit`: then it is `recorded`, with its real length and `overMax` set)
  *  denied       the person (or their browser settings) refused the microphone
  *  noDevice     no microphone found
  *  failed       anything else the recorder reported
@@ -37,6 +38,48 @@ export type RecorderState =
   | "failed";
 
 export type Take = { blob: Blob; url: string; type: string; ext: string; seconds: number };
+
+/**
+ * What a caller may change. The defaults are the custom voice's (a 30 to 60 second sample, the voice-samples bucket's
+ * types), so that page is unchanged; the editor's voice-over passes its own limits and types and asks for a level meter.
+ */
+export interface RecorderOptions {
+  /** A take shorter than this is thrown away (`tooShort`). */
+  minSeconds?: number;
+  /** The take is stopped at this length. */
+  maxSeconds?: number;
+  /** How far past `maxSeconds` a take may run before it is thrown away (`tooLong`): a paused tab. */
+  toleranceSeconds?: number;
+  /** The recorder's type -> the type and extension the take is kept as; null = not one the destination accepts. */
+  typeFor?: (mime: string | null | undefined) => { type: string; ext: string } | null;
+  /** Measure the input level while recording (`level`, 0..1), where the browser has Web Audio. */
+  meter?: boolean;
+  /**
+   * A take that ran past `maxSeconds + toleranceSeconds` (a background tab whose timers were throttled, so the stop at
+   * the limit came late) is KEPT, with its real length, instead of thrown away as `tooLong`. For a take that can be
+   * trimmed afterwards (the editor's voice-over); the custom voice sample keeps the strict default.
+   */
+  keepOverLimit?: boolean;
+  /** Passed to MediaRecorder: a known bit rate makes the size of a long take predictable. */
+  audioBitsPerSecond?: number;
+}
+
+type AudioContextLike = {
+  createMediaStreamSource: (s: MediaStream) => { connect: (n: unknown) => void; disconnect?: () => void };
+  createAnalyser: () => { fftSize: number; getByteTimeDomainData: (a: Uint8Array) => void };
+  close?: () => Promise<void> | void;
+};
+
+/** RMS of 8-bit time-domain samples (128 = silence) as 0..1, scaled so ordinary speech reads well up the meter. */
+export function levelOf(samples: Uint8Array): number {
+  if (samples.length === 0) return 0;
+  let sum = 0;
+  for (const v of samples) {
+    const x = (v - 128) / 128;
+    sum += x * x;
+  }
+  return Math.min(1, Math.sqrt(sum / samples.length) * 3);
+}
 
 /** Types tried in this order; the first the browser supports is used. Safari records audio/mp4, the others webm or ogg. */
 const CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg", "audio/mp4"];
@@ -68,7 +111,10 @@ function pickMime(): string | undefined {
   return CANDIDATES.find((c) => MediaRecorder.isTypeSupported(c));
 }
 
-export function useVoiceRecorder() {
+export function useVoiceRecorder(options: RecorderOptions = {}) {
+  // Read through a ref: the callbacks below stay the same across renders whatever object the caller passes.
+  const opts = useRef(options);
+  opts.current = options;
   // Always "idle" on the first render, so the server's HTML and the browser's agree; what this browser can do is read on mount.
   const [state, setState] = useState<RecorderState>("idle");
   const [seconds, setSeconds] = useState(0);
@@ -77,6 +123,10 @@ export function useVoiceRecorder() {
   const [shortBy, setShortBy] = useState<number | null>(null);
   /** The take stopped because it reached the limit (told to the person; a longer one is never recorded). */
   const [hitMax, setHitMax] = useState(false);
+  /** The kept take ran past the limit (`keepOverLimit`); its length is the measured one, not the limit. */
+  const [overMax, setOverMax] = useState(false);
+  /** The input level while recording (0..1), or null where it is not measured (no meter asked, no Web Audio). */
+  const [level, setLevel] = useState<number | null>(null);
 
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -88,10 +138,24 @@ export function useVoiceRecorder() {
   // device) must not produce one.
   const wanted = useRef(false);
   const alive = useRef(true);
+  const audio = useRef<AudioContextLike | null>(null);
+  const meterTick = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Bumped by cancel(): a microphone answer that arrives after it belongs to a request nobody wants any more. */
+  const generation = useRef(0);
 
   const release = useCallback(() => {
     if (tick.current) clearInterval(tick.current);
     tick.current = null;
+    if (meterTick.current) clearInterval(meterTick.current);
+    meterTick.current = null;
+    // The meter holds the stream too: its context is closed with it, or the browser keeps the input open.
+    try {
+      void audio.current?.close?.();
+    } catch {
+      // already closed
+    }
+    audio.current = null;
+    if (alive.current) setLevel(null);
     // The microphone light goes off the moment recording ends, whatever ended it.
     stream.current?.getTracks().forEach((t) => t.stop());
     stream.current = null;
@@ -124,7 +188,7 @@ export function useVoiceRecorder() {
     (elapsed: number) => {
       const rec = recorder.current;
       const mime = (rec?.mimeType || chunks.current[0]?.type || "").toString();
-      const kind = sampleTypeFor(mime);
+      const kind = (opts.current.typeFor ?? sampleTypeFor)(mime);
       const blob = new Blob(chunks.current, { type: kind?.type ?? mime });
       chunks.current = [];
       release();
@@ -133,7 +197,9 @@ export function useVoiceRecorder() {
         setState("failed");
         return;
       }
-      if (elapsed < MIN_RECORDING_SECONDS) {
+      const { minSeconds = MIN_RECORDING_SECONDS, maxSeconds = MAX_RECORDING_SECONDS, toleranceSeconds = MAX_RECORDING_TOLERANCE_SECONDS } =
+        opts.current;
+      if (elapsed < minSeconds) {
         setShortBy(elapsed);
         setSeconds(0);
         setState("tooShort");
@@ -141,13 +207,16 @@ export function useVoiceRecorder() {
       }
       // The page's clock stops the take at 60 within one tick; anything well past that means the timers were paused (a background
       // tab) while the recorder kept going. Showing "60 s" over a longer recording would be a measurement we did not make.
-      if (elapsed > MAX_RECORDING_SECONDS + MAX_RECORDING_TOLERANCE_SECONDS) {
+      const over = elapsed > maxSeconds + toleranceSeconds;
+      if (over && !opts.current.keepOverLimit) {
         setShortBy(elapsed);
         setSeconds(0);
         setState("tooLong");
         return;
       }
-      const clamped = Math.min(Math.floor(elapsed), MAX_RECORDING_SECONDS);
+      // Kept past the limit: shown as the length it really is, never as the limit (a measurement we did not make).
+      const clamped = over ? Math.floor(elapsed) : Math.min(Math.floor(elapsed), maxSeconds);
+      setOverMax(over);
       const objectUrl = URL.createObjectURL(blob);
       url.current = objectUrl;
       setSeconds(clamped);
@@ -170,6 +239,29 @@ export function useVoiceRecorder() {
     }
   }, [release]);
 
+  /** A level meter on the live input: an AnalyserNode read ten times a second. Never connected to the speakers. */
+  const startMeter = useCallback((media: MediaStream) => {
+    const w = window as unknown as { AudioContext?: new () => AudioContextLike; webkitAudioContext?: new () => AudioContextLike };
+    const Ctx = w.AudioContext ?? w.webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      const ctx = new Ctx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      ctx.createMediaStreamSource(media).connect(analyser);
+      audio.current = ctx;
+      const buf = new Uint8Array(analyser.fftSize);
+      setLevel(0);
+      meterTick.current = setInterval(() => {
+        analyser.getByteTimeDomainData(buf);
+        if (alive.current) setLevel(levelOf(buf));
+      }, 100);
+    } catch {
+      // No meter is not a failed recording: the take goes on, the meter is simply not shown.
+      audio.current = null;
+    }
+  }, []);
+
   const start = useCallback(async () => {
     if (!supported()) {
       setState("unsupported");
@@ -182,18 +274,20 @@ export function useVoiceRecorder() {
     dropTake();
     setShortBy(null);
     setHitMax(false);
+    setOverMax(false);
     setSeconds(0);
     setState("requesting");
+    const mine = ++generation.current;
     let media: MediaStream;
     try {
       media = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
-      if (!alive.current) return;
+      if (!alive.current || mine !== generation.current) return;
       const name = (e as { name?: string } | null)?.name ?? "";
       setState(name === "NotFoundError" || name === "OverconstrainedError" ? "noDevice" : name === "NotAllowedError" || name === "SecurityError" ? "denied" : "failed");
       return;
     }
-    if (!alive.current) {
+    if (!alive.current || mine !== generation.current) {
       media.getTracks().forEach((t) => t.stop());
       return;
     }
@@ -202,7 +296,9 @@ export function useVoiceRecorder() {
     let rec: MediaRecorder;
     try {
       const mimeType = pickMime();
-      rec = mimeType ? new MediaRecorder(media, { mimeType }) : new MediaRecorder(media);
+      const bits = opts.current.audioBitsPerSecond;
+      const recOpts: MediaRecorderOptions = { ...(mimeType ? { mimeType } : {}), ...(bits ? { audioBitsPerSecond: bits } : {}) };
+      rec = Object.keys(recOpts).length > 0 ? new MediaRecorder(media, recOpts) : new MediaRecorder(media);
     } catch {
       release();
       setState("unsupported");
@@ -233,25 +329,42 @@ export function useVoiceRecorder() {
       return;
     }
     setState("recording");
+    if (opts.current.meter) startMeter(media);
+    const maxSeconds = opts.current.maxSeconds ?? MAX_RECORDING_SECONDS;
     tick.current = setInterval(() => {
       const elapsed = (Date.now() - startedAt.current) / 1000;
-      if (elapsed >= MAX_RECORDING_SECONDS) {
-        setSeconds(MAX_RECORDING_SECONDS);
+      if (elapsed >= maxSeconds) {
+        setSeconds(maxSeconds);
         setHitMax(true);
         stop();
         return;
       }
       setSeconds(Math.floor(elapsed));
     }, 250);
-  }, [dropTake, finish, release, stop]);
+  }, [dropTake, finish, release, stop, startMeter]);
 
   const reset = useCallback(() => {
     dropTake();
     setShortBy(null);
     setHitMax(false);
+    setOverMax(false);
     setSeconds(0);
     setState(supported() ? (microphoneBlockedBySite() ? "blockedBySite" : "idle") : "unsupported");
   }, [dropTake]);
 
-  return { state, seconds, take, shortBy, hitMax, start, stop, reset };
+  /** Throw away whatever is going on (a take in progress or a finished one) and release the microphone. No take is made. */
+  const cancel = useCallback(() => {
+    generation.current++;
+    wanted.current = false;
+    try {
+      if (recorder.current && recorder.current.state !== "inactive") recorder.current.stop();
+    } catch {
+      // already stopped
+    }
+    chunks.current = [];
+    release();
+    reset();
+  }, [release, reset]);
+
+  return { state, seconds, take, shortBy, hitMax, overMax, level, start, stop, reset, cancel };
 }

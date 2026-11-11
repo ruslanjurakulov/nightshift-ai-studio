@@ -12,6 +12,7 @@ vi.mock("next/link", () => ({
   default: ({ href, children, onClick, ...rest }: { href: string; children: ReactNode; onClick?: () => void }) => (
     <a
       href={href}
+      data-next-link=""
       onClick={(e) => {
         e.preventDefault();
         onClick?.();
@@ -50,6 +51,7 @@ import { dictionaries, fmt, type Locale } from "@/lib/i18n";
 import { NotificationBell } from "@/components/shell/NotificationBell";
 import type { ChannelRow } from "@/lib/types";
 import { LOCALE_SYNC_KEY } from "@/lib/email-prefs";
+import { expectEditorLinksAreFullLoads } from "./support/editor-link-guard";
 
 const SB = "11111111-2222-4333-8444-555555555555";
 const now = () => new Date().toISOString();
@@ -158,6 +160,23 @@ describe("NotificationBell", () => {
     fireEvent.click(await screen.findByRole("link"));
     expect(rpc).toHaveBeenCalledWith("mark_notification_read", { p_id: "a" });
     expect(await screen.findByRole("button", { name: t.bell })).toBeTruthy();
+  });
+
+  it("an export-done one opens the editor's project page as a new document, and is still marked read", async () => {
+    count = { count: 1, error: null };
+    list = { data: [note("a", "editor_export_done", { project_id: SB }), note("b", "credits_low", { available: 3 }, now())], error: null };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: fmt(t.bellUnread, { n: 1 }) }));
+    const links = await screen.findAllByRole("link");
+    const project = links.find((a) => a.getAttribute("href") === `/chronos/editor/${SB}`)!;
+    expect(project).toBeTruthy();
+    // Judged by the href it resolved to, not by the source text: into a project is a plain anchor; others stay Links.
+    expectEditorLinksAreFullLoads();
+    expect(links.find((a) => a.getAttribute("href") === "/chronos/credits")?.hasAttribute("data-next-link")).toBe(true);
+    // The plain anchor still runs its own onClick: the notification is marked read.
+    project.addEventListener("click", (e) => e.preventDefault()); // jsdom cannot follow it
+    fireEvent.click(project);
+    expect(rpc).toHaveBeenCalledWith("mark_notification_read", { p_id: "a" });
   });
 
   it("an already-read one is not marked again", async () => {
