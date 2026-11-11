@@ -483,6 +483,11 @@ INTERP_SECONDS_PER_FRAME = 0.4
 #: 1080p60 project, so that ``1 + 9 k`` covers what a 10x clip measured per second (the numbers
 #: are in docs/editor-render-fields.md section 12). Slow and frozen clips cost nothing here.
 FAST_SECONDS_PER_SOURCE_S = 0.35
+#: The longest timeline an export renders (editor_export.EXPORT_MAX_S and lib/editor.ts EXPORT_MAX_S
+#: are the same number; a test pins them). Past it the export is refused for its length anyway, and the
+#: allowance has stopped growing (``RENDER_TIMEOUT_MAX_S`` from about 1760 s), so a fast-clip charge there
+#: would only refuse at SAVE documents that saved before it (a 45-minute draft at 4x): it is not charged.
+EXPORT_LENGTH_MAX_S = 1800.0
 
 
 def render_timeout_s(length_s: float) -> float:
@@ -814,9 +819,17 @@ def validate(doc: Any) -> List[str]:
         stab_est = sum(stabilize_seconds(c, fps, w, h) for t in counted if t.get("kind") == KIND_V
                        for c in t["clips"] if isinstance(c, dict) and c.get("stabilize") is True)
         interp_est = INTERP_SECONDS_PER_FRAME * total_interp if total_interp <= INTERP_MAX_FRAMES_DOC else 0.0
-        fast_est = fast_estimate(doc)
-        if interp_est + stab_est + fast_est > 0:
-            length = duration_s(doc)
+        fast_raw = _fast_sum(doc)
+        length = None
+        if interp_est + stab_est + fast_raw > 0:
+            try:
+                # The captions and overlays are checked further down: a time there can still be a number too
+                # big for a float, and that is their problem to report, not a crash of this estimate.
+                length = duration_s(doc)
+            except (OverflowError, ValueError):
+                length = None
+        fast_est = fast_raw if length is not None and length <= EXPORT_LENGTH_MAX_S + 1e-9 else 0.0
+        if length is not None and interp_est + stab_est + fast_est > 0:
             work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est + fast_est
             allowed = render_timeout_s(length)
             if work > allowed + 1e-9:
@@ -1418,7 +1431,16 @@ def fast_seconds(clip: dict) -> float:
 
 
 def fast_estimate(doc: dict) -> float:
-    """``fast_seconds`` over every V clip of the document, as ``validate`` charges it."""
+    """``fast_seconds`` over every V clip of the document, as ``validate`` charges it: nothing for a
+    timeline longer than the export renders (``EXPORT_LENGTH_MAX_S``), which the export refuses anyway.
+    For a structurally valid document (it measures the timeline)."""
+    raw = _fast_sum(doc)
+    if raw <= 0 or duration_s(doc) > EXPORT_LENGTH_MAX_S + 1e-9:
+        return 0.0
+    return raw
+
+
+def _fast_sum(doc: dict) -> float:
     return sum(fast_seconds(c) for t in doc.get("tracks") or [] if isinstance(t, dict) and t.get("kind") == KIND_V
                and isinstance(t.get("clips"), list) for c in t["clips"] if isinstance(c, dict))
 

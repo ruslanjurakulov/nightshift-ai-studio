@@ -207,6 +207,42 @@ class FastClipRenderTimeTestCase(unittest.TestCase):
         got = tl.validate(doc(10))
         self.assertTrue(any("the shapes would take about" in p for p in got), got)
 
+    def test_a_draft_longer_than_an_export_is_not_charged_for_speed(self):
+        # Past 1760 s the allowance stops growing (5400 s at most); charging there refused at SAVE documents
+        # that saved before the charge, though the export refuses them for their length anyway.
+        def doc(*parts):
+            clips, t = [], 0.0
+            for i, (length, speed) in enumerate(parts):
+                clips.append({"id": f"c{i + 1}", "asset_id": BASE, "start_s": t, "in_s": 0,
+                              "out_s": round(length * speed, 3), "speed": speed})
+                t = round(t + length, 3)
+            return {"version": 1, "width": 1920, "height": 1080, "fps": 30, "tracks": [{"id": "v1", "kind": "V", "clips": clips}]}
+        for parts in (((2700, 4),), ((4500, 2),), ((5400, 1), (10, 1.01))):
+            with self.subTest(parts):
+                d = doc(*parts)
+                self.assertGreater(tl.duration_s(d), tl.EXPORT_LENGTH_MAX_S)
+                self.assertEqual(tl.fast_estimate(d), 0.0)
+                self.assertEqual(tl.validate(d), [])
+        # up to the export's own length the charge stands
+        self.assertGreater(tl.fast_estimate(doc((1800, 4))), 0)
+        self.assertGreater(tl.fast_estimate(doc((1400, 10))), 0)
+        self.assertTrue(tl.validate(doc((1400, 10))))
+
+    def test_a_huge_caption_time_beside_a_fast_clip_is_a_problem_not_a_crash(self):
+        # The budget runs before the captions are checked; measuring the timeline then met an int too big for
+        # a float (OverflowError). The caption's own range problem is what must come back.
+        doc = self.doc(10, 2)
+        doc["captions"] = {"cues": [{"id": "q1", "start_s": 0, "end_s": 10 ** 400, "text": "hi"}]}
+        got = tl.validate(doc)
+        self.assertTrue(got)
+        self.assertTrue(any("end_s" in p for p in got), got)
+
+    def test_the_export_length_is_the_workers_and_the_editors(self):
+        from modules import editor_export
+        self.assertEqual(tl.EXPORT_LENGTH_MAX_S, editor_export.EXPORT_MAX_S)
+        ts = EDITOR_TS.read_text(encoding="utf-8")
+        self.assertEqual(float(re.search(r"export const EXPORT_MAX_S = ([\d.]+);", ts).group(1)), tl.EXPORT_LENGTH_MAX_S)
+
     def test_the_constant_is_the_editors(self):
         ts = EDITOR_TS.read_text(encoding="utf-8")
         self.assertEqual(float(re.search(r"export const FAST_SECONDS_PER_SOURCE_S = ([\d.]+);", ts).group(1)),

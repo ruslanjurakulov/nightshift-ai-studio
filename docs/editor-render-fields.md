@@ -828,7 +828,9 @@ Branch `claude/editor-parity-1`. Free: ffmpeg and the browser only, no model, no
 * In the final pass such an input gets the VIDEO decoder cap (`AudioTrack.video_source`, then
   `cap_inputs(video_inputs=...)`), like a video overlay; a sound file keeps the still cap. Only the input's
   `[n:a]` is used, and ffmpeg decodes only the streams a graph uses; the cap is there in case that changes.
-  (A V clip's own sound keeps the cap it always had, so older documents render the same argv.)
+  The cap list is by file path, so a file that is both a clip's own sound and a detached sound in one
+  document gets the video cap on both inputs; a document with no detached sound renders the same argv as
+  before.
 * The timeline does not draw a wave for a sound read from a video (`SoundWave` says "not drawn" instead):
   reading a whole video into the tab for it is not worth it. `loadPeaks` also stops a download at
   `MAX_WAVEFORM_BYTES` when the server sends no length, instead of reading the whole file.
@@ -864,9 +866,17 @@ Branch `claude/editor-parity-1`. Free: ffmpeg and the browser only, no model, no
     near the budget, where the fast part now counts too. The estimate is still under the measured cost of
     long 4x clips from noisy 60 fps footage in a 60 fps project (3.10 per second, already over the
     worker's 3 on `main`): charging that would refuse every long 4x timeline, so it is left as it was;
-  * the editor settles it like the other budgets (`lib/editorSettle.ts` step 4b, after smoothing and
-    steadying are switched off): the fastest constant-speed clip is slowed to the fastest speed (two
-    decimals) that fits, and the notice says "Clip N now plays at S×" (`t.editor.clipTools.settledSpeed`);
+  * a timeline longer than an export (`EXPORT_MAX_S`, 1800 s; `timeline.EXPORT_LENGTH_MAX_S`) is not
+    charged at all (`fast_estimate` / `fastCharged`): the export refuses it for its length anyway, and from
+    about 1760 s the allowance stops growing (5400 s), so a charge there only refused at SAVE long drafts
+    that saved before (45 minutes at 4x, 75 at 2x, 90 minutes with 10 s at 1.01x: shared cases);
+  * the editor settles it (`lib/editorSettle.ts`): when the timeline is over its allowance and it would fit
+    with every fast clip at 1x, the fast clips are slowed FIRST (step 2b, before any smoothing or steadying
+    is judged): the clip this edit made faster before the others, then the fastest, each to the fastest
+    speed (two decimals) that fits. So making clip 2 ten times faster no longer switches off clip 1's
+    steadying. When it would not fit even then, smoothing and steadying are settled first as before (steps
+    3 and 4) and the fast clips after them (4b). The notice says "Clip N now plays at S×"
+    (`t.editor.clipTools.settledSpeed`);
     the line under the toolbar names fast clips when they are the only cost (`renderBudgetFast`). The
     save route and the worker refuse what still does not fit, with the validator's sentence.
 * The database's `editor_doc_duration` (0054) divides by `speed` whatever it is, so the 30-minute check is

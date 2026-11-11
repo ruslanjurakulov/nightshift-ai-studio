@@ -742,6 +742,13 @@ export function fastSeconds(c: Record<string, unknown> | VideoClip): number {
   return FAST_SECONDS_PER_SOURCE_S * Math.max(0, range - mediaLength(r));
 }
 
+/** The fast-clip charge as the validators apply it (modules/timeline.py `fast_estimate`): nothing for a
+ *  timeline longer than the export renders (EXPORT_MAX_S), which the export refuses anyway and whose
+ *  allowance has stopped growing; charging there would refuse at save drafts that saved before. */
+export function fastCharged(fastEst: number, lengthS: number): number {
+  return lengthS > EXPORT_MAX_S + 1e-9 ? 0 : fastEst;
+}
+
 /** A speed curve that can be worked with (the validator has the strict rules). */
 function usableCurve(v: unknown): SpeedPoint[] | null {
   if (!Array.isArray(v) || v.length < RAMP_MIN_POINTS) return null;
@@ -1016,7 +1023,9 @@ export function validateTimeline(doc: unknown): string[] {
       `timeline: at most ${STABILIZE_MAX_DOC_S} s of video can be stabilised in all (got ${Math.round(stabS)} s)`,
     );
   if (!problems.length && isInt(doc.width) && isInt(doc.height) && fps) {
-    const { interp, interpEst, stabEst, fastEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
+    const est = interpStabEstimates(counted, fps, doc.width, doc.height);
+    const { interp, interpEst, stabEst } = est;
+    const fastEst = fastCharged(est.fastEst, docDuration(doc as unknown as TimelineDoc));
     if (interp > INTERP_MAX_FRAMES_DOC)
       problems.push(
         `timeline: interpolated slow motion would make about ${Math.round(interp)} frames (1080p equivalent) in all; at most ${INTERP_MAX_FRAMES_DOC} per timeline`,
@@ -1071,8 +1080,8 @@ export function validateTimeline(doc: unknown): string[] {
       else if (fps && !problems.length) {
         const length = docDuration(doc as unknown as TimelineDoc);
         const shapeEst = shapeWorkSeconds(doc.shapes as WorkShape[], fps, { width: doc.width, height: doc.height }, length);
-        const { interpEst, stabEst, fastEst } = interpStabEstimates(counted, fps, doc.width, doc.height);
-        const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + shapeEst;
+        const est = interpStabEstimates(counted, fps, doc.width, doc.height);
+        const work = RENDER_PLAIN_FACTOR * length + est.interpEst + est.stabEst + fastCharged(est.fastEst, length) + shapeEst;
         const allowed = renderTimeoutS(length);
         if (shapeEst > 0 && work > allowed + 1e-9)
           problems.push(

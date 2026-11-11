@@ -1680,8 +1680,9 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     # decodes only the streams a graph uses; the cap is there anyway, on every input, in
     # case that ever changes. No -xerror: a damaged audio frame is skipped, as it always
     # was. A video overlay and a sound read from a video file (a detached sound) are held
-    # to the video decoder cap, every other input to the still one. (A V clip's own sound
-    # keeps the cap it always had: older documents render byte for byte the same argv.)
+    # to the video decoder cap, every other input to the still one. The list is by path, so
+    # a file that is also a clip's own sound in the same document gets the video cap there
+    # too; a document without a detached sound renders byte for byte the argv it always did.
     return cap_inputs(cmd, out_pixels=spec.width * spec.height,
                       video_inputs=[o.path for o in spec.picture_overlays if o.kind == KIND_VIDEO]
                       + [t.path for t in spec.audio_tracks if t.video_source],

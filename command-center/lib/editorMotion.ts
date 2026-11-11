@@ -48,6 +48,7 @@ import {
   modelDuration,
   ms,
   partialOpacityMove,
+  fastCharged,
   fastSeconds,
   renderTimeoutS,
   reverseMaxSeconds,
@@ -647,7 +648,7 @@ export function renderWork(model: EditorModel): RenderWork {
       0,
     );
   const shapeEst = shapeWorkSeconds(model.shapes ?? [], model.fps, model, length);
-  const fastEst = model.clips.reduce((n, c) => n + fastSeconds(c), 0);
+  const fastEst = fastCharged(model.clips.reduce((n, c) => n + fastSeconds(c), 0), length);
   const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + shapeEst;
   const allowed = renderTimeoutS(length);
   return {

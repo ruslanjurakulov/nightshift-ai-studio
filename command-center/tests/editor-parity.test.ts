@@ -11,7 +11,12 @@
 import { describe, expect, it } from "vitest";
 import {
   CLIP_GAIN_DB_MAX,
+  EXPORT_MAX_S,
   FAST_SECONDS_PER_SOURCE_S,
+  clipLength,
+  fastCharged,
+  modelDuration,
+  ms,
   RENDER_TIMEOUT_BASE_S,
   RENDER_TIMEOUT_PER_S,
   fastSeconds,
@@ -146,6 +151,96 @@ describe("fast clips are charged in the export's time estimate", () => {
     expect(validateTimeline(toDoc(fast(90, 10)))).toEqual([]);
     expect(validateTimeline(doc(1))).toEqual([]);
     expect(validateTimeline(doc(10)).join(";")).toContain("the shapes would take about");
+  });
+
+  it("a curve is charged by its own length, not by its range over one speed", () => {
+    const curved = { ...c0(fast(10, 1)), in_s: 0, out_s: 4, speed: 1, speed_curve: [{ at: 0, speed: 1 }, { at: 1, speed: 4 }] };
+    const len = clipLength(curved);
+    expect(len).toBeLessThan(4);
+    expect(fastSeconds(curved)).toBeCloseTo(FAST_SECONDS_PER_SOURCE_S * (4 - len), 9);
+    // its scalar speed is 1: a charge of range / speed would be nothing
+    expect(fastSeconds(curved)).toBeGreaterThan(0);
+  });
+
+  it("a draft longer than an export is not charged for speed (the export refuses it for its length)", () => {
+    const draft = (...parts: [number, number][]): EditorModel => {
+      const m = toModel(newDocForAsset({ id: A, durationS: 30000, width: 1920, height: 1080 })!);
+      const clips = parts.map(([len, speed], i) => ({ ...c0(m), id: `c${i + 1}`, in_s: 0, out_s: ms(len * speed), speed }));
+      return { ...m, clips: layout(clips) };
+    };
+    for (const parts of [[[2700, 4]], [[4500, 2]], [[5400, 1], [10, 1.01]]] as [number, number][][]) {
+      const m = draft(...parts);
+      expect(modelDuration(m)).toBeGreaterThan(EXPORT_MAX_S);
+      expect(validateTimeline(toDoc(m)), JSON.stringify(parts)).toEqual([]);
+      expect(renderWork(m).fastEst).toBe(0);
+      expect(settleAll(m).model).toBe(m);
+    }
+    expect(fastCharged(10, EXPORT_MAX_S)).toBe(10);
+    expect(fastCharged(10, EXPORT_MAX_S + 0.001)).toBe(0);
+    expect(validateTimeline(toDoc(draft([1400, 10])))).not.toEqual([]);
+  });
+
+  it("the clip this edit made faster is slowed before a faster clip that was already there", () => {
+    const m = toModel(newDocForAsset({ id: A, durationS: 3000, width: 1920, height: 1080 })!);
+    const before: EditorModel = {
+      ...m,
+      fps: 60,
+      clips: layout([
+        { ...c0(m), id: "c1", in_s: 0, out_s: 800, speed: 10 },
+        { ...c0(m), id: "c2", in_s: 0, out_s: 2000, speed: 1 },
+      ]),
+    };
+    expect(renderWork(before).ok).toBe(true);
+    const raw = setSpeed(before, "c2", 8);
+    expect(renderWork(raw).ok).toBe(false);
+    const out = settleAll(raw, before);
+    expect(out.model.clips.find((c) => c.id === "c1")!.speed).toBe(10);
+    const c2 = out.model.clips.find((c) => c.id === "c2")!.speed;
+    expect(c2).toBeGreaterThan(1);
+    expect(c2).toBeLessThan(8);
+    expect(out.changes).toEqual([{ kind: "speed", clip: 2, max: c2 }]);
+    // without knowing the edit, the fastest goes first
+    expect(settleAll(raw).model.clips.find((c) => c.id === "c1")!.speed).toBeLessThan(10);
+  });
+
+  it("settling slows the fastest clip first, and leaves a slower fast clip alone when that suffices", () => {
+    const m = toModel(newDocForAsset({ id: A, durationS: 3000, width: 1920, height: 1080 })!);
+    const two: EditorModel = {
+      ...m,
+      fps: 60,
+      clips: layout([
+        { ...c0(m), id: "c1", in_s: 0, out_s: 300, speed: 3 },
+        { ...c0(m), id: "c2", in_s: 0, out_s: 2500, speed: 10 },
+      ]),
+    };
+    expect(renderWork(two).ok).toBe(false);
+    const out = settleAll(two);
+    expect(out.changes.map((c) => c.kind === "speed" && c.clip)).toEqual([2]);
+    expect(out.model.clips.find((c) => c.id === "c1")!.speed).toBe(3);
+    expect(out.model.clips.find((c) => c.id === "c2")!.speed).toBeLessThan(10);
+    expect(renderWork(out.model).ok).toBe(true);
+  });
+
+  it("a clip just made faster is slowed before anything else's steadying is switched off", () => {
+    // the reviewer's case: clip 1 is 100 s steadied at 1x, clip 2 600 s of source; clip 2 is set to 10x
+    const m = toModel(newDocForAsset({ id: A, durationS: 3000, width: 1920, height: 1080 })!);
+    const before: EditorModel = {
+      ...m,
+      clips: layout([
+        { ...c0(m), id: "c1", in_s: 0, out_s: 100, speed: 1, stabilize: true },
+        { ...c0(m), id: "c2", in_s: 0, out_s: 600, speed: 1 },
+      ]),
+    };
+    expect(validateTimeline(toDoc(before))).toEqual([]);
+    const raw = setSpeed(before, "c2", 10);
+    expect(renderWork(raw).ok).toBe(false);
+    const out = settleAll(raw, before);
+    expect(out.model.clips.find((c) => c.id === "c1")!.stabilize).toBe(true);
+    const c2 = out.model.clips.find((c) => c.id === "c2")!;
+    expect(c2.speed).toBeGreaterThan(1);
+    expect(c2.speed).toBeLessThan(10);
+    expect(out.changes).toEqual([{ kind: "speed", clip: 2, max: c2.speed }]);
+    expect(validateTimeline(toDoc(out.model))).toEqual([]);
   });
 
   it("settling slows the fastest clip to the fastest speed that fits, says so, and leaves a fitting one alone", () => {

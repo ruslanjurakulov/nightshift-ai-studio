@@ -261,6 +261,63 @@ describe("a fast clip on a long timeline", () => {
   });
 });
 
+describe("making a clip faster does not cost another clip its steadying", () => {
+  it("clip 2 set to 10x is slowed to fit, and clip 1 stays steadied", async () => {
+    const LONG: EditorAsset = { ...VIDEO, durationS: 3000 };
+    const doc = newDocForAsset(LONG)!;
+    const first = doc.tracks[0].clips[0];
+    Object.assign(first, { out_s: 100, stabilize: true });
+    doc.tracks[0].clips.push({ ...first, id: "c2", start_s: 100, out_s: 600, stabilize: undefined });
+    delete (doc.tracks[0].clips[1] as Record<string, unknown>).stabilize;
+    expect(validateTimeline(doc)).toEqual([]);
+    render(
+      <I18nProvider locale="en">
+        <TimelineEditor projectId={PID} title="Trip" rev={1} doc={doc} exports={[]}
+          assets={{ [A]: LONG }} videos={[LONG]} userId="user-1" />
+      </I18nProvider>,
+    );
+    const strip = screen.getAllByRole("button", { name: new RegExp(LONG.name ?? "beach") });
+    fireEvent.click(strip[strip.length - 1]);
+    expect(screen.getByRole("heading", { name: fmt(te.clipHeading, { n: 2 }) })).toBeTruthy();
+    fireEvent.click(within(screen.getByTestId("speed-chips")).getByRole("radio", { name: fmt(te.speedValue, { x: 10 }) }));
+    const saved = await save();
+    const [c1, c2] = vclips(saved);
+    expect(c1.stabilize).toBe(true);
+    expect(c2.speed as number).toBeGreaterThan(1);
+    expect(c2.speed as number).toBeLessThan(10);
+    expect(screen.getByTestId("settled").textContent).toContain(fmt(ct.settledSpeed, { n: 2, max: c2.speed as number }));
+    expect(validateTimeline(saved)).toEqual([]);
+  });
+});
+
+describe("the editor tells the settling which clip it just made faster", () => {
+  it("clip 2 set to 8x is the one slowed, not clip 1 that was already at 10x", async () => {
+    const LONG: EditorAsset = { ...VIDEO, durationS: 3000 };
+    const doc = newDocForAsset(LONG)!;
+    doc.fps = 60;
+    const first = doc.tracks[0].clips[0];
+    Object.assign(first, { out_s: 800, speed: 10 });
+    doc.tracks[0].clips.push({ ...first, id: "c2", start_s: 80, out_s: 2000, speed: 1 });
+    expect(validateTimeline(doc)).toEqual([]);
+    render(
+      <I18nProvider locale="en">
+        <TimelineEditor projectId={PID} title="Trip" rev={1} doc={doc} exports={[]}
+          assets={{ [A]: LONG }} videos={[LONG]} userId="user-1" />
+      </I18nProvider>,
+    );
+    const strip = screen.getAllByRole("button", { name: new RegExp(LONG.name ?? "beach") });
+    fireEvent.click(strip[strip.length - 1]);
+    expect(screen.getByRole("heading", { name: fmt(te.clipHeading, { n: 2 }) })).toBeTruthy();
+    const box = screen.getByRole("spinbutton", { name: fmt(te.fx.speed.custom, { min: 0.1, max: 10 }) });
+    fireEvent.change(box, { target: { value: "8" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    const [c1, c2] = vclips(await save());
+    expect(c1.speed).toBe(10);
+    expect(c2.speed as number).toBeGreaterThan(1);
+    expect(c2.speed as number).toBeLessThan(8);
+  });
+});
+
 describe("a saved document that does not fit only because of its fast clips", () => {
   it("says so under the toolbar with the numbers (not the slow-motion sentence)", () => {
     const LONG: EditorAsset = { ...VIDEO, durationS: 3000 };

@@ -100,7 +100,10 @@ class DocCasesTestCase(unittest.TestCase):
                 self.assertTrue(any(needle in p for p in problems), problems)
         for name in ("speed 10 (the fastest)", "speed 0.1 (the slowest)", "clip sound at +6 dB (200 %)",
                      "clip sound at -60 dB (0 %)", "a video's sound on a sound track (detached audio)",
-                     "30 s at 10x fits the export's time", "30 minutes at 4x fits the export's time"):
+                     "30 s at 10x fits the export's time", "30 minutes at 4x fits the export's time",
+                     "a 45-minute draft at 4x is not charged for speed (longer than an export)",
+                     "a 75-minute draft at 2x is not charged for speed (longer than an export)",
+                     "a 90-minute draft with a 10 s part at 1.01x is not charged for speed"):
             with self.subTest(name):
                 self.assertEqual(verdict(cases[name]), [])
 

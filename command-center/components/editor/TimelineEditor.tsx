@@ -456,7 +456,7 @@ export function TimelineEditor({
       if (raw === model) return;
       // Any edit can push a clip over a limit that depends on something else (the
       // frame shape, the timeline's length, a neighbour's cross-fade): settle it.
-      const fixed = settleAll(raw);
+      const fixed = settleAll(raw, model);
       const next = fixed.model;
       setSettled(fixed.changes);
       if (!group || gesture.current !== group) {
