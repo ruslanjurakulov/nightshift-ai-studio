@@ -4,8 +4,9 @@ SQL does not run in this suite; the security lab runs it (tests/security/test_se
 cannot see, or what must agree across files:
 
   * the four-argument request_editor_export() is 0129's three-argument body BYTE FOR BYTE except for the lines marked 0132: additions,
-    plus TWO replaced lines whose originals are written next to them (the unlocked first read, and the credit columns): no gate of 0054 /
-    0129 moved, and the project's row is locked only after the organization's advisory lock (0131's order);
+    plus ONE replaced line whose original is written next to it (the credit columns): no gate of 0054 / 0129 moved, and the locks are
+    taken in 0054's order (the project's row FOR UPDATE, then the organization's advisory lock), the same as the two older overloads,
+    so a paid and a free request of one project never deadlock;
   * the two- and three-argument functions are 0054's / 0129's bodies BYTE FOR BYTE plus only the marked lines that refuse above 1080p
     (hires_needs_paid_export); they are not dropped or re-granted here, and the rollback puts the old bodies back;
   * the charge is the price x the started minutes with NO job_minimum floor, the hold is the charge raised to job_minimum, and the
@@ -106,8 +107,6 @@ class TheOverloadIs0129sFunctionPlusTheHold(unittest.TestCase):
             "ref      text;   -- 0132",
             "held     jsonb;   -- 0132",
             "why      text;   -- 0132",
-            "select * into p from public.editor_projects where id = p_project;   "
-            "-- 0132 replaces: select * into p from public.editor_projects where id = p_project for update;",
             "if frame_w::bigint * frame_h <= 2073600 then   -- 0132",
             "raise exception 'invalid_frame' using errcode = 'NS400', detail = 'not a paid frame';   -- 0132",
             "end if;   -- 0132",
@@ -135,13 +134,6 @@ class TheOverloadIs0129sFunctionPlusTheHold(unittest.TestCase):
             "if hold_c is null or hold_c < price then   -- 0132",
             "raise exception '0132: the hold % is below the charge %', hold_c, price;   -- 0132",
             "end if;   -- 0132",
-            "select * into p from public.editor_projects where id = p_project for no key update;   -- 0132",
-            "if not found or p.deleted_at is not null then   -- 0132",
-            "raise exception 'not_found' using errcode = 'P0002';   -- 0132",
-            "end if;   -- 0132",
-            "if p.rev <> p_rev then   -- 0132",
-            "raise exception 'stale_revision' using errcode = 'NS409', detail = format('current=%s', p.rev);   -- 0132",
-            "end if;   -- 0132",
             "ref := 'ee:' || e.id::text;   -- 0132",
             "begin   -- 0132",
             "held := public.creative_platform_reserve(p.org_id, ref, hold_c);   -- 0132",
@@ -161,20 +153,20 @@ class TheOverloadIs0129sFunctionPlusTheHold(unittest.TestCase):
             "held_credits = case when ref is null then null else hold_c end, credit_ref = ref   "
             "-- 0132 replaces: set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h   -- 0129",
         ])
-        self.assertEqual(sum(REPLACES in ln for ln in marked), 2)
+        self.assertEqual(sum(REPLACES in ln for ln in marked), 1)
         for ln in marked:
             if ln not in code:
                 self.assertTrue(ln.startswith("-- 0132 "), ln)
 
     def test_the_gates_are_in_this_order(self):
         fn = " ".join(body(func(CODE, REQ4)).split())
-        gates = ["auth.uid() is null", "select * into p from public.editor_projects where id = p_project;",
+        gates = ["auth.uid() is null", "select * into p from public.editor_projects where id = p_project for update;",
                  "not public.is_org_member(p.org_id)", "public.editor_export_frame(p_frame)",
                  "raise exception 'invalid_frame' using errcode = 'NS400';", "frame_w::bigint * frame_h <= 2073600",
                  "public.is_org_member(p.org_id, 'editor')", "p_rev <> p.rev", "public.editor_doc_problem(p.org_id, p.doc)",
                  "total > 1800", "raise exception 'hires_speed_curve'", "raise exception 'hires_too_long'", "raise exception 'hires_fps'",
                  "raise exception 'not_on_sale'", "raise exception 'price_changed'", "hold_c < price",
-                 "pg_advisory_xact_lock", "for no key update", "p.rev <> p_rev", ">= 3", ">= 20", "insert into public.editor_exports",
+                 "pg_advisory_xact_lock", ">= 3", ">= 20", "insert into public.editor_exports",
                  "public.creative_platform_reserve(p.org_id, ref, hold_c)", "public.editor_export_money('start', ref, null)",
                  "update public.editor_exports set frame_preset = frame_id"]
         at = [fn.index(g) for g in gates]
@@ -190,10 +182,17 @@ class TheOverloadIs0129sFunctionPlusTheHold(unittest.TestCase):
         self.assertIn("price > p_max_credits", fn)
         self.assertNotIn("hold_c > p_max_credits", fn)
         self.assertNotRegex(fn, r"reserve\([^)]*(p_max_credits|price)")
-        # Lock order (0131): no row lock before the advisory lock; the row is locked and read again after it.
-        self.assertNotIn("for update", fn)
-        self.assertEqual(fn.count("for no key update"), 1)
-        self.assertLess(fn.index("pg_advisory_xact_lock"), fn.index("for no key update"))
+        # One lock order in all three overloads (0054's): the project's row, then the organization's advisory lock. A paid request
+        # that took them the other way round deadlocked against a free one of the same project (40P01, reproduced in review).
+        self.assertNotIn("for no key update", fn)
+        for head in (REQ2, REQ3, REQ4):
+            f = " ".join(body(func(CODE, head)).split())
+            self.assertEqual(f.count("from public.editor_projects where id = p_project for update;"), 1, head)
+            self.assertEqual(f.count("pg_advisory_xact_lock("), 1, head)
+            self.assertLess(f.index("for update;"), f.index("pg_advisory_xact_lock("), head)
+            # The revision is checked under the row lock (after it, before the advisory lock and the insert).
+            self.assertLess(f.index("for update;"), f.index("p_rev <> p.rev"), head)
+            self.assertLess(f.index("p_rev <> p.rev"), f.index("pg_advisory_xact_lock("), head)
 
     def test_the_overload_has_no_defaults_and_a_fixed_search_path(self):
         fn = func(CODE, REQ4)

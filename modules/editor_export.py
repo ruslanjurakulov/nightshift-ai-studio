@@ -405,7 +405,7 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
                 if paid and hires_export.has_speed_curve(norm):
                     raise ExportFailed("hires_speed_curve")
                 # The price is the database's minutes of the row's duration_s; a render that lasts longer is never given for that price.
-                if paid and hires_export.minutes_exceed(length, export.get("duration_s")):
+                if paid and hires_export.minutes_exceed(length, export.get("duration_s"), norm["fps"]):
                     raise ExportFailed("hires_length_mismatch")
                 # The library holds the export to the same decode budget as an upload
                 # when it stores it (store_generated). Check it here, before the

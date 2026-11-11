@@ -138,17 +138,23 @@ def started_minutes(length_s: Any) -> Optional[int]:
     return max(1, math.ceil(round(length, 3) / 60.0))
 
 
-#: How far the rendered length may be past the priced one before it counts as another minute: the database rounds the total to the
-#: millisecond, the timeline each clip's end.
+#: How far the rendered length may be past the priced one before it counts as another minute, at the least: the database rounds the
+#: total to the millisecond once, the timeline rounds each clip's in and out to the millisecond BEFORE dividing by its speed. At the
+#: slowest speed (0.1) that is up to 2 x 0.0005 / 0.1 = 0.01 s (in 0.00049 / out 6.00051 at 0.1: the database 60.000 s, the
+#: timeline 60.01 s). So the slack is ONE FRAME of the export (1/30 s at 30 fps, 1/60 s at 60 fps, both above that), never less
+#: than this floor: less than a frame is not a longer video.
 MINUTE_SLACK_S = 0.002
 
 
-def minutes_exceed(rendered_s: Any, priced_s: Any) -> bool:
-    """Does the rendered length start more minutes than the row's priced length (``duration_s``)? Also True when either is not a
-    number: a paid row is rendered only for the minutes it was priced at."""
+def minutes_exceed(rendered_s: Any, priced_s: Any, fps: Any = None) -> bool:
+    """Does the rendered length start more minutes than the row's priced length (``duration_s``), by more than one frame at ``fps``?
+    Also True when either length is not a number: a paid row is rendered only for the minutes it was priced at."""
     priced = started_minutes(priced_s)
+    slack = MINUTE_SLACK_S
+    if (_is_int(fps) or isinstance(fps, float)) and not isinstance(fps, bool) and math.isfinite(float(fps)) and fps > 0:
+        slack = max(slack, 1.0 / float(fps))
     try:
-        rendered = started_minutes(max(0.0, float(rendered_s) - MINUTE_SLACK_S))
+        rendered = started_minutes(max(0.0, float(rendered_s) - slack))
     except (TypeError, ValueError):
         rendered = None
     return priced is None or rendered is None or rendered > priced

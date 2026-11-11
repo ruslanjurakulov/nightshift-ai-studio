@@ -36,9 +36,9 @@
 --                                   authenticated. NEW overload, four arguments, none defaulted. 0129's three-argument body BYTE FOR BYTE except
 --                                   for the lines marked 0132 (a pin test takes them out and compares what is left with 0129's body). It sells
 --                                   ONLY a frame above 1080p: a free frame is refused here (invalid_frame) and keeps going through 0129's function.
---                                   Lock order (0131's rule: no row lock is held while waiting for an advisory lock): it reads the project
---                                   WITHOUT a lock, checks membership and every gate, takes the organization's advisory lock, and only then
---                                   locks the project row (FOR NO KEY UPDATE) and reads it again.
+--                                   Lock order: 0054's, as the two older overloads (the project's row FOR UPDATE, then the organization's
+--                                   advisory lock). All three take the two locks in the same order, so a paid and a free request of one
+--                                   project wait for each other and never deadlock; the revision is checked under the row lock.
 --
 -- WHAT IT REPLACES
 --   editor_export_frame(text)       0129's closed list plus four frames, value for value schemas/export_presets.json
@@ -111,10 +111,12 @@
 --   and none of this file's new names may exist yet (expected: no row):
 --     select to_regclass('public.editor_export_hires_prices'), to_regprocedure('public.request_editor_export(uuid, integer, text, numeric)');
 --
--- SETTING A PRICE (the owner, in the SQL editor; leaves a security_events row). Only once NIGHTSHIFT_HIRES_EXPORT is on in the media worker
--- (docs/HIRES_EXPORT.md): a price set while the worker's switch is off sells exports the worker then refuses (hires_off; the hold goes back).
---   update public.editor_export_hires_prices set credits_per_minute_1440p = <n>, credits_per_minute_2160p = <n>;
---   back to "not on sale": set them to null. The proposal (not applied) is in docs/HIRES_EXPORT.md.
+-- SETTING A PRICE (the owner, in the SQL editor; leaves a security_events row). The OWNER-APPROVED prices (2026-11-11) are 3 credits per
+-- started minute at 1440p and 5 at 4K; this file does NOT apply them (the seed stays NULL). They go live after the merge, and only once
+-- NIGHTSHIFT_HIRES_EXPORT is on in the media worker AND the web (docs/HIRES_EXPORT.md, "The switch and the roll-out"): a price set while
+-- the worker's switch is off sells exports the worker then refuses (hires_off; the hold goes back).
+--   update public.editor_export_hires_prices set credits_per_minute_1440p = 3, credits_per_minute_2160p = 5;
+--   back to "not on sale": set them to null.
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 set local lock_timeout = '5s';
@@ -168,7 +170,7 @@ begin
   end if;
   -- Every name this file creates: absent, or this file's own body.
   foreach pair slice 1 in array array[
-      ['public.request_editor_export(uuid, integer, text, numeric)', '9e073e6ea46645241b5b99a65b0a7f93'],
+      ['public.request_editor_export(uuid, integer, text, numeric)', '28e49bc98a7bd5811dffa9c09539a364'],
       ['public.quote_editor_export(uuid, integer, text)', '383185a2158b57dc695e4d3c26b147e7'],
       ['public.editor_export_hires_terms(integer, integer, numeric)', '31904d0cf1f8b53316c0641e89a964a4'],
       ['public.editor_export_money(text, text, numeric)', '0b9a881cd63807ef95fc726beb304a2e'],
@@ -540,9 +542,7 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  -- 0132 read WITHOUT a lock: the row is locked only after the organization's advisory lock below (0131's order: no row lock is held
-  -- 0132 while waiting for an advisory lock), and read again then.
-  select * into p from public.editor_projects where id = p_project;   -- 0132 replaces: select * into p from public.editor_projects where id = p_project for update;
+  select * into p from public.editor_projects where id = p_project for update;
   if not found or p.deleted_at is not null or not public.is_org_member(p.org_id) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
@@ -609,14 +609,6 @@ begin
 
   -- One request per organization at a time: the limits hold under parallel clicks.
   perform pg_advisory_xact_lock(hashtextextended('editor_exports:' || p.org_id::text, 0));
-  -- 0132 only now the project's row, and read again under the lock: a save or a delete in between is refused, never exported.
-  select * into p from public.editor_projects where id = p_project for no key update;   -- 0132
-  if not found or p.deleted_at is not null then   -- 0132
-    raise exception 'not_found' using errcode = 'P0002';   -- 0132
-  end if;   -- 0132
-  if p.rev <> p_rev then   -- 0132
-    raise exception 'stale_revision' using errcode = 'NS409', detail = format('current=%s', p.rev);   -- 0132
-  end if;   -- 0132
   -- 0129 one at a time per project PER FRAME SIZE: the same picture twice is refused, another size is another file. An export in
   -- 0129 flight without a frame is the size of the document it copied (jsonb compares numbers by value, and never raises on a doc
   -- 0129 whose width is not a number). The organization's three in flight and twenty a day below are 0054's lines, unchanged, and
@@ -846,7 +838,7 @@ declare
 begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req2) <> '7d27be2166d301cf392daee41dffd2e2'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req3) <> '7722885b3bf1d32c7b9de0d101a316ee'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req4) <> '9e073e6ea46645241b5b99a65b0a7f93'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = req4) <> '28e49bc98a7bd5811dffa9c09539a364'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = quote) <> '383185a2158b57dc695e4d3c26b147e7'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = lst) <> 'f44b57823aef5fb04c8be74912460c02'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = terms) <> '31904d0cf1f8b53316c0641e89a964a4'

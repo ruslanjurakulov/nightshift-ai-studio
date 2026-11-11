@@ -11,8 +11,9 @@ the person confirmed after quote_editor_export showed them. What must hold:
     back;
   * above 1080p is never free: the two-argument export of a project whose own frame is above 1920x1080 pixels and the three-argument export
     of a paid frame are refused (hires_needs_paid_export); a document with a speed curve is not sold (hires_speed_curve);
-  * the lock order: the paid request takes the organization's advisory lock before the project's row, and two requests at once see each
-    other's export under it (the three in flight hold);
+  * one lock order in all three overloads (0054's: the project's row, then the organization's advisory lock): a free and a paid request of
+    one project at once never deadlock, two paid requests at once see each other's export under the organization's lock (the three in
+    flight hold), and a stale revision is refused under the row lock;
   * the hold settles on every path that ends an export, exactly once: captured when done, released when failed (the worker, a timeout, a
     lost worker, a deleted project), and a hold that is gone when the worker takes the export ends it (credits_released) without a render;
   * the caps: 300 s at 1440p, 180 s at 4K, 4K at 30 fps, in the function and in the table's CHECK; each paid export is one of the three in
@@ -985,6 +986,67 @@ def test_two_paid_requests_at_once_see_each_other_under_the_organizations_lock(r
                        [race["org"]])
     assert sorted(o[0] for o in out) == ["NS409", "ok"], out
     assert busy == 3, busy
+
+
+@pytest.mark.parametrize("free", ["two-argument", "three-argument"])
+def test_a_free_and_a_paid_request_of_one_project_at_once_never_deadlock(race, free):
+    """The three overloads take the project's row and then the organization's lock, in that order. A paid request that took them the
+    other way round deadlocked against a free one of the same project (40P01, five times in forty rounds in review). Many rounds of the
+    two at once, each rolled back: none may end in a deadlock, and each ends as queued or as one of the export's own refusals."""
+    with as_superuser(race["conn"]) as s:
+        s.conn.execute("update public.editor_exports set status = 'failed', reason = 'test' where org_id = %s and status in ('queued', 'rendering')",
+                       [race["org"]])
+        s.value("select public.grant_credits(%s, 1000, 'race')", [race["org"]])
+        s.conn.execute("update public.editor_export_hires_prices set credits_per_minute_1440p = 1")
+    pid = race["projects"][0]
+    sql = (REQ2, [pid, 1]) if free == "two-argument" else (REQ3, [pid, 1, "square_1080"])
+    outcomes = []
+    for _ in range(60):
+        barrier = threading.Barrier(2)
+        out = [None, None]
+
+        def one(i, stmt, args):
+            c = _session(race["dsn"], race["who"])
+            try:
+                barrier.wait()
+                try:
+                    c.execute(stmt, args).fetchone()
+                    time.sleep(0.01)
+                    out[i] = "ok"
+                except psycopg.Error as e:
+                    out[i] = e.sqlstate
+                c.rollback()
+            finally:
+                c.close()
+
+        threads = [threading.Thread(target=one, args=(0, *sql)),
+                   threading.Thread(target=one, args=(1, REQ4, [pid, 1, "youtube_1440p", 100]))]
+        for t_ in threads:
+            t_.start()
+        for t_ in threads:
+            t_.join(30)
+        outcomes.extend(out)
+    assert "40P01" not in outcomes, outcomes
+    assert set(outcomes) <= {"ok", "NS409"}, outcomes
+    assert outcomes.count("ok") >= 60, outcomes                 # each round queued at least one of the two
+
+
+def test_a_paid_request_of_a_revision_saved_over_is_refused_under_the_row_lock(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org)
+        price(s, 1, 1)
+        pid = project_of_length(s, sc.bob, 6)
+        become(s, sc.bob.actor)
+        before = s.value("select rev from public.editor_projects where id = %s", [pid])
+        s.value("select public.save_editor_project(%s, %s, %s, %s::jsonb)",
+                [pid, before, "Saved again", json.dumps(s.value("select doc from public.editor_projects where id = %s", [pid]))])
+        stale = s.run(REQ4, [pid, before, "youtube_1440p", 100])
+        written = exports_of(s, sc.bob.org)
+        become(s, sc.bob.actor)
+        fresh = s.run(REQ4, [pid, before + 1, "youtube_1440p", 100])
+    assert refused(stale, "NS409", "stale_revision"), stale
+    assert written == 0
+    assert fresh.ok, fresh
 
 
 # ── the file ────────────────────────────────────────────────────────────────

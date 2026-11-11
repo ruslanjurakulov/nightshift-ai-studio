@@ -14,7 +14,7 @@ Under "Sizes to export", four more sizes, each marked "paid": YouTube wide 16:9 
 (1440 × 2560), YouTube wide 16:9 4K (3840 × 2160), Vertical 9:16 4K (2160 × 3840). Ticking one asks the server for its price
 (`GET /api/editor/projects/<id>/exports/quote`, the database's `quote_editor_export`) and shows, under the sizes:
 
-* "YouTube wide 16:9, 4K: 1 min × 4 credits = 4 credits charged, 30 held while it renders", the workspace's available credits, and
+* "YouTube wide 16:9, 4K: 1 min × 5 credits = 5 credits charged, 30 held while it renders", the workspace's available credits, and
   what the export holds and charges in all. The hold is the charge raised to the platform's `job_minimum` (`reserve_credits` refuses
   less); the rest is given back when the video is ready, all of it if the export fails;
 * a confirmation box, "Spend up to N credits on this export" (N is the CHARGE). **Export stays disabled until it is ticked.** Ticking
@@ -41,7 +41,7 @@ size picker, Export is disabled with the last of those.
 | The request takes the number the person confirmed and compares it with the **charge**; a higher charge, no number, NaN or an infinity is refused (`price_changed`, NS409), a lower charge holds the lower one. The browser never sends a price of its own | `request_editor_export(project, rev, frame, max_credits)` |
 | A document with a **speed curve** is not sold (`hires_speed_curve`): `editor_doc_duration` does not integrate a curve and the renderer does (a 45 s range at 0.25 × is 180 s on screen), so the price would be for the wrong length. The worker also refuses a paid row whose rendered length starts more minutes than the row's `duration_s` was priced at (`hires_length_mismatch`) | the overload, `quote_editor_export`, `editor_export.run_export` |
 | **Above 1080p is never free**: the two-argument request refuses a project whose own frame is above 1920 × 1080 pixels, the three-argument one a paid frame of the list (`hires_needs_paid_export`, NS400, before the organization's lock) | 0132's bodies of both (0054's / 0129's plus the marked lines), `editor_export.run_export` |
-| Lock order (0131's rule): the paid request reads the project without a lock, checks every gate, takes the organization's advisory lock, then locks the project row (`FOR NO KEY UPDATE`) and reads it again (a save or a delete in between is refused) | the overload |
+| **One lock order** in all three overloads, 0054's: the project's row `FOR UPDATE` (the revision is checked under it), then the organization's advisory lock. A paid and a free request of one project (two tabs, a double click with two sizes, two members) wait for each other and never deadlock | the overload; `tests/security/test_sec_editor_hires_export.py` races them |
 | Longest paid export: **300 s at 1440p, 180 s at 4K** (`hires_too_long`). Also a CHECK on `editor_exports` and the worker | 0132, `hires_export.MAX_S`, `HIRES_MAX_S` |
 | 4K is **at most 30 fps** (`hires_fps`). A 60 fps project is refused for 4K, never rendered at 30 in its place (CLAUDE.md rule 4). 1440p takes any rate | 0132, `hires_export.MAX_FPS`, `HIRES_MAX_FPS` |
 | Paying is an **editor's** (a viewer may still export free sizes). In the operator's exempt organization a platform admin's, and nothing is held | the four-argument overload |
@@ -107,33 +107,40 @@ clip of the OTHER orientation fills the frame (`cover`): 9:16 4K60 from a 16:9 4
 source's shape (the document names files, not sizes), so the rule is on the rate: a paid 4K export is at most 30 fps. 1440p passed
 every case at 60.
 
-## Pricing proposal (NOT applied: the owner sets the numbers)
+## Prices (owner-approved 2026-11-11; NOT applied by the migration, whose seed stays NULL)
 
-* **Server cost.** `docs/DEPLOY_AX42.md` gives no monthly figure. ASSUMPTION: the Hetzner AX42 costs about **$55 a month** (a list
-  price of roughly €46-49 a month before VAT, converted and rounded up). Owner: put the real invoice figure in the table below.
-  $55 / (30 × 86 400 s) = **$0.0000212 per second of the whole server**. Charging the whole server for every second the export
+**Approved by the owner on 2026-11-11: 1440p 3 credits per started minute, 4K 5 credits per started minute.** The migration still
+seeds both as NULL (not on sale): they go live when the owner writes them into the price row after the merge, in the order below. The
+reasoning they came from:
+
+* **Server cost.** The owner's figure (2026-11-11): the server costs **$69 a month**.
+  $69 / (30 × 86 400 s) = **$0.0000266 per second of the whole server**. Charging the whole server for every second the export
   worker spends is conservative: the export worker is one process on an 8-core box that also serves the site and the other workers.
 * **Credit value.** About **$0.01 per credit** retail (`docs/API.md`: Starter is 1,000 credits for $10).
 * **Worker seconds per output minute** (the dearest measured render of the tier above, on a 4-core box; the AX42 has 8 cores of a
   newer generation, so this overstates its time): 1440p 5.34 × 60 = **320 s**, 4K (30 fps) 9.82 × 60 = **589 s**.
 
-| Tier | Worker s per output min | Server cost per output min | In credits ($0.01) | × 3 (the site's margin on a finished minute: ~60 credits retail for ~$0.20 of cost) | Proposed price per started minute | A video at the cap |
+| Tier | Worker s per output min | Server cost per output min | In credits ($0.01) | × 3 (the site's margin on a finished minute: ~60 credits retail for ~$0.20 of cost) | Approved price per started minute | A video at the cap |
 | :-- | --: | --: | --: | --: | --: | :-- |
-| 1440p | 320 | $0.0068 | 0.68 | 2.04 | **2 credits** | 5:00 → 10 credits ($0.10) |
-| 4K (≤ 30 fps) | 589 | $0.0125 | 1.25 | 3.75 | **4 credits** | 3:00 → 12 credits ($0.12) |
+| 1440p | 320 | $0.0085 | 0.85 | 2.56 | **3 credits** | 5:00 → 15 credits ($0.15) |
+| 4K (≤ 30 fps) | 589 | $0.0157 | 1.57 | 4.70 | **5 credits** | 3:00 → 15 credits ($0.15) |
 
-The two prices keep the ratio of the render times (589 / 320 = 1.84; 4 / 2 = 2), which is what "in proportion to render time" asks.
+Each price is the × 3 column rounded up to a whole credit, so both stay in proportion to render time (589 / 320 = 1.84; 5 / 3 =
+1.67, the rounding), and a video at either cap costs the same 15 credits.
 For comparison: a 1080p HD download is 1.25 credits a minute (`credit_prices.download_1080p_minute`). The platform's `job_minimum`
-(30 credits on the live price list) raises only the HOLD: a 1-minute 4K export at 4 credits a minute holds 30 while it renders and
-is charged 4 (the other 26 go back when it is done). So a workspace needs 30 credits available to start any paid export. The price
+(30 credits on the live price list) raises only the HOLD: a 1-minute 4K export at 5 credits a minute holds 30 while it renders and
+is charged 5 (the other 25 go back when it is done). So a workspace needs 30 credits available to start any paid export. The price
 does not include the cost of the queue: a 4K export at its cap holds the one export worker for about 22 minutes. A higher price (for
-example 5 and 10) would also make that rarer.
+example 6 and 10) would also make that rarer.
 
-To apply (SQL editor; leaves a security event), **only once `NIGHTSHIFT_HIRES_EXPORT` is on in the media worker** (see the roll-out
-below; a price set while the worker's switch is off sells exports that the worker then refuses as `hires_off`, giving the hold back):
+To make them live: after the merge (0132 applied) and **only once `NIGHTSHIFT_HIRES_EXPORT` is on in the media worker AND the web**
+(the order in "The switch and the roll-out" below), the owner writes them into the price row. 0132 adds no function for this, on
+purpose: the row is closed to every API role, so it is the SQL editor's statement below, and it leaves a `security_events` row
+(`editor.export.hires_price`). A price set while the worker's switch is off would sell exports that the worker then refuses as
+`hires_off` (the hold goes back):
 
 ```sql
-update public.editor_export_hires_prices set credits_per_minute_1440p = 2, credits_per_minute_2160p = 4;
+update public.editor_export_hires_prices set credits_per_minute_1440p = 3, credits_per_minute_2160p = 5;
 ```
 
 To stop selling at once: set both to `null` (every request is then refused `not_on_sale`; exports already queued keep their hold and
@@ -152,9 +159,10 @@ settle as usual).
   read 0 on 2026-11-11, with one editor project in all).
 * Before 0132 the quote answers "not available" and nothing paid can be confirmed. A worker older than this change refuses a paid row
   (`invalid_frame`: its presets file has no such id) and the hold is released.
-* **Order of switching on:** (1) deploy the web and the worker with this version; (2) turn `NIGHTSHIFT_HIRES_EXPORT` on for the worker;
-  (3) turn it on for the web (the paid sizes appear and say "not on sale yet"); (4) only then set the prices. Stopping goes the other
-  way: prices to null first, then the switches off.
+* **Order of switching on:** (1) merge, so 0132 is applied (both prices NULL: nothing is sold); (2) deploy the web and the worker with
+  this version; (3) turn `NIGHTSHIFT_HIRES_EXPORT` on for the worker; (4) turn it on for the web (the paid sizes appear and say "not on
+  sale yet"); (5) only then write the approved prices, 3 and 5 credits per started minute (the statement in "Prices"). Stopping goes
+  the other way: prices to null first, then the switches off.
 
 ## Undo
 

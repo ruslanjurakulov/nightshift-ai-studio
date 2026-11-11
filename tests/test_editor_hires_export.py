@@ -301,6 +301,27 @@ class TheCapAndTheBudgetOnTheWorker(Base):
         self.assertTrue(hires_export.minutes_exceed(60.01, 60))
         self.assertTrue(hires_export.minutes_exceed(10, None))
         self.assertTrue(hires_export.minutes_exceed(None, 10))
+        # One frame of slack: less than a frame past the priced minute is not a longer video; a frame and more is.
+        self.assertFalse(hires_export.minutes_exceed(60.01, 60, 30))
+        self.assertFalse(hires_export.minutes_exceed(60.016, 60, 60))
+        self.assertTrue(hires_export.minutes_exceed(60.02, 60, 60))
+        self.assertTrue(hires_export.minutes_exceed(60.05, 60, 30))
+        for bad in (None, 0, -30, math.nan, math.inf, True, "30"):
+            self.assertTrue(hires_export.minutes_exceed(60.01, 60, bad), bad)   # no rate: the millisecond floor
+
+    def test_a_sub_millisecond_trim_at_the_slowest_speed_is_not_refused(self):
+        # The database prices 6.00002 s at 0.1x as 60.000 s (one minute); the timeline rounds in and out first and plays 60.01 s.
+        d = doc(6.0)
+        d["tracks"][0]["clips"][0].update({"in_s": 0.00049, "out_s": 6.00051, "speed": 0.1})
+        self.assertEqual(tl.validate(d), [])
+        self.assertAlmostEqual(tl.duration_s(tl.load(d)), 60.01, places=3)
+        for fps in (30, 60):
+            d["fps"] = fps
+            status, _, render, _ = self.run_export(framed("youtube_1440p", d, duration_s=60.0))
+            self.assertEqual(status, "done", fps)
+        # A real second minute is still refused.
+        d["tracks"][0]["clips"][0].update({"in_s": 0.0, "out_s": 6.01})
+        self.assert_refused(framed("youtube_1440p", d, duration_s=60.0), "hires_length_mismatch")
 
     def test_above_1080p_is_by_pixels_and_fails_closed(self):
         for w, h in ((1920, 1080), (1080, 1920), (1080, 1080), (16, 16)):

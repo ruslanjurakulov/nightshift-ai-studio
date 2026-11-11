@@ -39,7 +39,7 @@ declare
   pair text[];
 begin
   foreach pair slice 1 in array array[
-      ['public.request_editor_export(uuid, integer, text, numeric)', '9e073e6ea46645241b5b99a65b0a7f93'],
+      ['public.request_editor_export(uuid, integer, text, numeric)', '28e49bc98a7bd5811dffa9c09539a364'],
       ['public.quote_editor_export(uuid, integer, text)', '383185a2158b57dc695e4d3c26b147e7'],
       ['public.editor_export_frame(text)', 'f44b57823aef5fb04c8be74912460c02'],
       ['public.editor_export_hires_terms(integer, integer, numeric)', '31904d0cf1f8b53316c0641e89a964a4'],
