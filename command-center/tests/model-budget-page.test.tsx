@@ -75,7 +75,7 @@ const rowOf = (id: string, availability = "hidden") => {
   for (const [k, v] of Object.entries(e)) if (!COLUMNS.includes(k)) spec[k] = v;
   return { id: e.id, display_name: e.display_name, provider: e.provider, capabilities: e.capabilities, credit_unit: e.credit_unit, entitlement: e.entitlement, availability, spec };
 };
-const ROWS = [rowOf("minimax-h3-lite", "ga"), rowOf("recraft-v4.1"), rowOf("kling-v2.6"), rowOf("elevenlabs-flash-v2.5"), rowOf("veo-3.1", "beta")];
+const ROWS = [rowOf("minimax-h3-lite", "ga"), rowOf("recraft-v4.1"), rowOf("minimax-hailuo-2.3"), rowOf("elevenlabs-flash-v2.5"), rowOf("veo-3.1", "beta")];
 
 async function page(q: Record<string, string> = {}): Promise<string> {
   const mod = await import("../app/(app)/[channel]/models/page");
@@ -225,7 +225,7 @@ describe("the calculator under each model", () => {
 
   it("a model with no price has no field and says so", async () => {
     await board();
-    const r = within(row("kling-v2.6"));
+    const r = within(row("minimax-hailuo-2.3"));
     expect(r.getByTestId("budget-no-price").textContent).toBe(en.modelBudget.noPrice);
     expect(r.queryByTestId("budget-input")).toBeNull();
   });
