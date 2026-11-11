@@ -39,7 +39,14 @@
         "url": "https://developers.openai.com/api/docs/guides/image-generation",
         "checked_at": "2026-09-30",
         "source": "vendor_sdk",
-        "evidence": "openai/openai-python: types/image_model.py; POST /images/generations and multipart /images/edits (image[])"
+        "evidence": "openai/openai-python: types/image_model.py; POST /images/generations and multipart /images/edits (image[])",
+        "note": "OpenAI's deprecations page (read 2026-11-10): gpt-image-2 and its snapshot gpt-image-2-2026-04-21 are deprecated and leave the API on 2027-02-10; replacement named there: gpt-image-2.6-sunburst or gpt-image-2.6-flare. Not sold from that date"
+      },
+      "shutdown": {
+        "on": "2027-02-10",
+        "source_url": "https://developers.openai.com/api/docs/deprecations",
+        "as_of": "2026-11-10",
+        "replacement": "gpt-image-2.6-sunburst or gpt-image-2.6-flare"
       },
       "pricing": {
         "unit": "image",
@@ -1768,13 +1775,13 @@
         "checked_at": "2026-09-30",
         "source": "vendor_sdk",
         "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30; generate_videos → :predictLongRunning",
-        "note": "Google's deprecations page (read 2026-10-25) lists this id with shutdown 2026-10-22, the EARLIEST possible date, replacement gemini-omni-1.1-flash. Not sold from that date; verify with tools/probe_models.py"
+        "note": "Google's deprecations page (read 2026-11-10) lists this id as deprecated with shutdown 2026-10-22 (its dates are the EARLIEST possible), replacement gemini-omni-1.2-flash; its video page says it was shut down that day. Not sold from that date; verify with tools/probe_models.py"
       },
       "shutdown": {
         "on": "2026-10-22",
         "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
-        "as_of": "2026-10-25",
-        "replacement": "gemini-omni-1.1-flash"
+        "as_of": "2026-11-10",
+        "replacement": "gemini-omni-1.2-flash"
       },
       "pricing": {
         "unit": "second",
@@ -1856,13 +1863,13 @@
         "checked_at": "2026-09-30",
         "source": "vendor_docs_search",
         "evidence": "google-gemini/cookbook model selector and google-genai test constants",
-        "note": "Google's deprecations page (read 2026-10-25) lists this id with shutdown 2026-10-22, the EARLIEST possible date, replacement gemini-omni-1.1-flash. Not sold from that date; verify with tools/probe_models.py"
+        "note": "Google's deprecations page (read 2026-11-10) lists this id as deprecated with shutdown 2026-10-22 (its dates are the EARLIEST possible), replacement gemini-omni-1.2-flash; its video page says it was shut down that day. Not sold from that date; verify with tools/probe_models.py"
       },
       "shutdown": {
         "on": "2026-10-22",
         "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
-        "as_of": "2026-10-25",
-        "replacement": "gemini-omni-1.1-flash"
+        "as_of": "2026-11-10",
+        "replacement": "gemini-omni-1.2-flash"
       },
       "pricing": {
         "unit": "second",
@@ -1943,13 +1950,13 @@
         "checked_at": "2026-09-30",
         "source": "vendor_docs_search",
         "evidence": "google-gemini/cookbook model selector (Gemini API id; the -001 id is Vertex only)",
-        "note": "Google's deprecations page (read 2026-10-25) lists this id with shutdown 2026-10-22, the EARLIEST possible date, replacement gemini-omni-1.1-flash. Not sold from that date; verify with tools/probe_models.py"
+        "note": "Google's deprecations page (read 2026-11-10) lists this id as deprecated with shutdown 2026-10-22 (its dates are the EARLIEST possible), replacement gemini-omni-1.2-flash; its video page says it was shut down that day. Not sold from that date; verify with tools/probe_models.py"
       },
       "shutdown": {
         "on": "2026-10-22",
         "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
-        "as_of": "2026-10-25",
-        "replacement": "gemini-omni-1.1-flash"
+        "as_of": "2026-11-10",
+        "replacement": "gemini-omni-1.2-flash"
       },
       "pricing": {
         "unit": "second",
@@ -3137,7 +3144,14 @@
         "url": "https://docs.byteplus.com/en/docs/ModelArk/2168087",
         "checked_at": "2026-09-30",
         "source": "vendor_docs_search",
-        "evidence": "byteplus-python-sdk-v2 3.0.61 (endpoint, generate_audio); model id from search extracts of BytePlus pages"
+        "evidence": "byteplus-python-sdk-v2 3.0.61 (endpoint, generate_audio); model id from search extracts of BytePlus pages",
+        "note": "BytePlus 'Model deprecations' (read 2026-11-10): this id is shut down after 17:00 UTC+8 on 2026-11-11 and is NOT migrated automatically; recommended replacement dreamina-seedance-2-0-mini-260615 (no registry entry). Not sold from that date (UTC)"
+      },
+      "shutdown": {
+        "on": "2026-11-11",
+        "source_url": "https://docs.byteplus.com/en/docs/ModelArk/1350667",
+        "as_of": "2026-11-10",
+        "replacement": "dreamina-seedance-2-0-mini-260615"
       },
       "pricing": {
         "unit": "second",
@@ -5251,6 +5265,12 @@
         "source": "vendor_docs_search",
         "evidence": "ai.google.dev omni, models/gemini-omni-flash, background-execution, pricing and deprecations pages read in full 2026-10-25 (.md.txt), not search extracts. No real call made.",
         "note": "Interactions API (POST /v1beta/interactions). UNVERIFIED: background:true for Omni (the background page names other models; Omni's own page shows a sync call). No duration setting exists: 3-10 s, steered in the prompt."
+      },
+      "shutdown": {
+        "on": "2026-12-03",
+        "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
+        "as_of": "2026-11-10",
+        "replacement": "gemini-omni-1.2-flash"
       },
       "pricing": {
         "unit": "second",
