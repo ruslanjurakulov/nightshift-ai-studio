@@ -93,7 +93,8 @@ class SupervisorTests(unittest.TestCase):
         while time.monotonic() < deadline:
             try:
                 state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
-            except FileNotFoundError:
+            except (FileNotFoundError, ProcessLookupError):
+                # Gone before the open (ENOENT) or between the open and the read (ESRCH): either way not running.
                 return
             if state == "Z" and not reaped:
                 return
