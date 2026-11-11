@@ -254,7 +254,9 @@ describe("navigate(): the command palette and the switchers", () => {
 
   it.each([
     ["components/CommandPalette.tsx", 2],
-    ["components/shell/ContextSwitcher.tsx", 2],
+    ["components/shell/ContextSwitcher.tsx", 3],
+    ["components/navigation/NavigationProvider.tsx", 1],
+    ["components/SectionShell.tsx", 3],
   ] as const)("%s navigates only through navigate()", (file, uses) => {
     const src = readFileSync(join(__dirname, "..", file), "utf8");
     expect(src).not.toMatch(/router\.push\(/);

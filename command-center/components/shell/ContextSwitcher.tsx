@@ -1,14 +1,20 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { Check, ChevronDown, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { ALL_CHANNELS_SLUG, selectionSlug, type ChannelSelection } from "@/lib/channels";
-import { channelSwitchHref, rememberChannel, switchOrganization } from "@/lib/context-switch";
-import { navigate } from "@/lib/editor-nav";
+import {
+  applyPendingOrganizationSwitch,
+  channelSwitchHref,
+  deferOrganizationSwitch,
+  rememberChannel,
+  switchOrganization,
+} from "@/lib/context-switch";
+import { navigate, needsDocumentLoad } from "@/lib/editor-nav";
 import type { OrgSummary } from "@/lib/orgs";
 import type { ChannelRow } from "@/lib/types";
 
@@ -44,6 +50,17 @@ export function ContextSwitcher({
   const titleId = useId();
   useOverlay(open, { onClose: () => setOpen(false), container: sheetRef, opener: openerRef });
 
+  // A switch chosen on the editor's page is made here, once the new page has really loaded.
+  useEffect(() => {
+    let live = true;
+    void applyPendingOrganizationSwitch(window.location.pathname).then((ok) => {
+      if (ok && live) router.refresh();
+    });
+    return () => {
+      live = false;
+    };
+  }, [router]);
+
   const manyOrgs = orgs.length >= 2;
   const manyChannels = channels.length >= 2;
   if (!manyOrgs && !manyChannels) return null;
@@ -67,6 +84,15 @@ export function ContextSwitcher({
       return;
     }
     if (busy) return;
+    const home = `/${ALL_CHANNELS_SLUG}`;
+    if (needsDocumentLoad(home)) {
+      // Leaving the editor's page is a full load, which may be cancelled at its unsaved-changes prompt: the
+      // server switches only on the new page (applyPendingOrganizationSwitch), so a cancel leaves all as it was.
+      setOpen(false);
+      deferOrganizationSwitch(id, home);
+      navigate(home, router);
+      return;
+    }
     setBusy(true);
     setFailed(false);
     if (await switchOrganization(id)) {

@@ -3064,7 +3064,15 @@ function cutPoint(c: VideoClip, t: number): number {
   return ms(c.reverse ? c.out_s - (t - c.start_s) * c.speed : c.in_s + (t - c.start_s) * c.speed);
 }
 
-/** Can clip `id` be split at timeline time `t` (both halves at least MIN_CLIP_S of source)? */
+/** The shortest piece of SOURCE a split may leave of a clip: MIN_CLIP_S, or one frame of the timeline at the
+ *  clip's speed when that is longer (at 10x a frame at 30 fps is 0.333 s of source; a shorter piece would be
+ *  under one frame, which the validators refuse). */
+export function minPieceS(c: Pick<VideoClip, "speed">, fps: number): number {
+  const speed = c.speed > 0 ? c.speed : 1;
+  return Math.max(MIN_CLIP_S, fps > 0 ? speed / fps : 0);
+}
+
+/** Can clip `id` be split at timeline time `t` (both halves at least `minPieceS` of source)? */
 export function canSplit(model: EditorModel, id: string, t: number): boolean {
   if (model.clips.length >= MAX_EDITOR_CLIPS) return false;
   const c = layout(model.clips).find((x) => x.id === id);
@@ -3073,11 +3081,12 @@ export function canSplit(model: EditorModel, id: string, t: number): boolean {
   // need its own curve): remove the curve first, as the backend asks.
   if (c.speed_curve) return false;
   const cut = cutPoint(c, t);
+  const min = minPieceS(c, model.fps);
   return (
     t > c.start_s &&
     t < clipEnd(c) &&
-    cut - c.in_s >= MIN_CLIP_S &&
-    c.out_s - cut >= MIN_CLIP_S
+    cut - c.in_s >= min - 1e-9 &&
+    c.out_s - cut >= min - 1e-9
   );
 }
 

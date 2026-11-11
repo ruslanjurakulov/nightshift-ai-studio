@@ -247,7 +247,7 @@ export function ClipSilenceSection({
   const problem = silenceProblem(model, clip, asset?.kind);
   const cuts: Span[] =
     result && result !== "working" && result.status === "ready"
-      ? proposeCuts(clip, detectSilences(result.env, db, minS, result.blockS))
+      ? proposeCuts(clip, detectSilences(result.env, db, minS, result.blockS), model.fps)
       : [];
   const find = () => {
     if (!asset?.id || !asset.viewUrl) {

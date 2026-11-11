@@ -48,8 +48,13 @@ export function loadDocument(href: string): void {
  * when leaving the editor's project page or going to one, so neither page carries the other's Permissions-Policy;
  * the router's client-side transition everywhere else. Says which it did ("document" = no refresh is needed).
  */
+/** Would {@link navigate} open `href` as a new document from `here` (leaving or entering the editor's page)? */
+export function needsDocumentLoad(href: string, here: string = window.location.pathname): boolean {
+  return isEditorProjectPath(here) || isEditorProjectHref(href);
+}
+
 export function navigate(href: string, router: { push(href: string): void }, here: string = window.location.pathname): "document" | "client" {
-  if (isEditorProjectPath(here) || isEditorProjectHref(href)) {
+  if (needsDocumentLoad(href, here)) {
     loadDocument(href);
     return "document";
   }

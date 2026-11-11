@@ -19,6 +19,7 @@ import { readCappedBody, offlineDecoder, MAX_WAVEFORM_BYTES, MAX_WAVEFORM_SECOND
 import {
   MAX_EDITOR_CLIPS,
   MIN_CLIP_S,
+  minPieceS,
   layout,
   ms,
   removeClip,
@@ -121,16 +122,22 @@ export function silenceProblem(
  * `SILENCE_KEEP_S` at both ends, merged where what would be left between two is shorter than a clip may
  * be, and stretched to the clip's own end where what would be left there is (no sliver of a clip).
  */
-export function proposeCuts(c: Pick<VideoClip, "in_s" | "out_s">, silences: readonly Span[]): Span[] {
+export function proposeCuts(
+  c: Pick<VideoClip, "in_s" | "out_s"> & Partial<Pick<VideoClip, "speed">>,
+  silences: readonly Span[],
+  fps: number = 0,
+): Span[] {
+  // What may be left between or beside cuts: a clip, and at least one frame at the clip's speed.
+  const piece = minPieceS({ speed: c.speed ?? 1 }, fps);
   const cuts: Span[] = [];
   for (const [s, e] of silences) {
     let a = Math.max(c.in_s, s + (s <= c.in_s ? 0 : SILENCE_KEEP_S));
     let b = Math.min(c.out_s, e - (e >= c.out_s ? 0 : SILENCE_KEEP_S));
-    if (a - c.in_s < MIN_CLIP_S) a = c.in_s;
-    if (c.out_s - b < MIN_CLIP_S) b = c.out_s;
+    if (a - c.in_s < piece) a = c.in_s;
+    if (c.out_s - b < piece) b = c.out_s;
     if (!(b - a >= MIN_CLIP_S)) continue;
     const last = cuts[cuts.length - 1];
-    if (last && a - last[1] < MIN_CLIP_S) last[1] = ms(b);
+    if (last && a - last[1] < piece) last[1] = ms(b);
     else cuts.push([ms(a), ms(b)]);
   }
   // Cutting the whole clip is not a cut: it would delete the clip.
