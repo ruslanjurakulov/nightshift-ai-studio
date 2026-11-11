@@ -10,6 +10,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { adsFactoryEnabled } from "@/lib/adsFactory/flag";
+import { adsBrandScanEnabled } from "@/lib/adsFactory/scan";
 import { loadAdsWorkspace } from "@/lib/server/ads-factory";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ export default async function AdsPage() {
   return (
     <div className="rhythm ns-open stagger-enter">
       {header}
-      <AdsWorkspace orgId={org.current.id} canEdit={canEdit} initial={initial} libraryHref={path("/library")} />
+      <AdsWorkspace orgId={org.current.id} canEdit={canEdit} initial={initial} libraryHref={path("/library")} scan={adsBrandScanEnabled()} />
     </div>
   );
 }

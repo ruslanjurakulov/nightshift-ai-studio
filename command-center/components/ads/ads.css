@@ -67,3 +67,18 @@
 .ads-dl dd { margin: 0; }
 .ads-add { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
 .ads-add .ads-field { flex: 0 1 10rem; }
+
+/* The brand scan panel (components/ads/BrandScanPanel.tsx, NIGHTSHIFT_ADS_BRAND_SCAN). A three-column review that stacks at 320px. */
+.ads-scan { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ads-scan > button { align-self: flex-start; }
+.ads-self-start { align-self: flex-start; }
+.ads-code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.8125rem; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: var(--ns-r-key, 8px); background: var(--color-panel-2); color: var(--color-fg); overflow-wrap: anywhere; word-break: break-all; min-width: 0; }
+.ads-url { font-size: 0.8125rem; word-break: break-all; }
+.ads-scan-table { display: flex; flex-direction: column; min-width: 0; }
+.ads-scan-tr { display: grid; grid-template-columns: minmax(9rem, 1fr) minmax(0, 2fr) minmax(0, 1.5fr); gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--color-border); align-items: start; min-width: 0; }
+.ads-scan-th { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-muted); }
+.ads-scan-td { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+@media (max-width: 640px) {
+  .ads-scan-tr { grid-template-columns: minmax(0, 1fr); }
+  .ads-scan-th { display: none; }
+}

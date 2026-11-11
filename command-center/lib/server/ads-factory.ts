@@ -131,7 +131,17 @@ export async function loadAdsWorkspace(supabase: Client, orgId: string, opts: { 
   }
 }
 
-/** The live pictures among `ids` (RLS: same organization, not deleted), or null when a read failed. */
+/** The live pictures among `ids` (RLS: same organization, not deleted), or null when a read failed. Also what the brand scan's panel
+ *  shows a scanned logo or product picture with (lib/server/ads-brand-scan.ts): an asset of the organization's own library. */
+export async function loadAdsPictures(
+  supabase: Client,
+  orgId: string,
+  ids: string[],
+  opts: { urls?: boolean },
+): Promise<Map<string, { thumbUrl: string | null; name: string | null }> | null> {
+  return loadPictures(supabase, orgId, ids, opts);
+}
+
 async function loadPictures(
   supabase: Client,
   orgId: string,
