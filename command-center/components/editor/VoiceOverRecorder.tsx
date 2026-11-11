@@ -56,7 +56,8 @@ export interface VoiceOverRecorderProps {
  * "Record voice-over": the microphone is asked for only when Record is pressed (never on opening the panel), the take
  * can be heard, re-taken or thrown away, and "Add to timeline" sends it through the media library's ordinary upload and
  * places it once the server has registered it (lib/editor-voiceover.ts). Leaving the page, closing the panel or
- * hiding the page mid-take stops the recorder and releases the microphone.
+ * hiding the page mid-take stops the recorder and releases the microphone. Hidden (another tab, a minimised window,
+ * a locked phone) STOPS the take and keeps it to hear and add; left (pagehide, unmount) throws it away.
  */
 export function VoiceOverRecorder({ orgId, canAdd, position, onAdd, onClose, upload = uploadVoiceOver }: VoiceOverRecorderProps) {
   const { t } = useI18n();
@@ -75,6 +76,8 @@ export function VoiceOverRecorder({ orgId, canAdd, position, onAdd, onClose, upl
   const aborter = useRef<AbortController | null>(null);
   const cancelRef = useRef(rec.cancel);
   cancelRef.current = rec.cancel;
+  const stopRef = useRef(rec.stop);
+  stopRef.current = rec.stop;
   const onAddRef = useRef(onAdd);
   onAddRef.current = onAdd;
 
@@ -82,9 +85,16 @@ export function VoiceOverRecorder({ orgId, canAdd, position, onAdd, onClose, upl
   // hook's own clean-up). The wait for the server ends with the page; the upload, once sent, is the server's.
   useEffect(() => {
     const leave = () => cancelRef.current();
+    // A hidden page is not a recording anyone is watching: the take so far is kept and the microphone released.
+    // stop() does nothing unless a take is running.
+    const hidden = () => {
+      if (document.visibilityState === "hidden") stopRef.current();
+    };
     window.addEventListener("pagehide", leave);
+    document.addEventListener("visibilitychange", hidden);
     return () => {
       window.removeEventListener("pagehide", leave);
+      document.removeEventListener("visibilitychange", hidden);
       aborter.current?.abort();
     };
   }, []);

@@ -332,6 +332,15 @@ CADDY_HEADERS_ABSENT=(Server X-Powered-By)
 CADDY_FRAME_PLAIN=/login
 CADDY_FRAME_SELF=/login
 CADDY_FRAME_NEVER=(/auth/callback /api/account)
+# Permissions-Policy, by exact value (the microphone, owner decision 2026-11-11): the deny value on every path
+# but the timeline editor's project page, which alone gets microphone=(self). Checked in the adapted config (both
+# values must be there) and live: the deny value on CADDY_PP_DENY_PATHS, the (self) value on CADDY_PP_MIC_PATH
+# (any project id: Caddy decides by the path's shape, before the app). A restored older Caddyfile (baseline) is
+# held to the deny value only. These mirror deploy/Caddyfile (tests/test_deploy_self_host.py compares them).
+CADDY_PP_DENY='camera=(), microphone=(), geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()'
+CADDY_PP_MIC='camera=(), microphone=(self), geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()'
+CADDY_PP_DENY_PATHS=(/login /api/account)
+CADDY_PP_MIC_PATH=/c/editor/00000000-0000-4000-8000-000000000000
 
 # Run caddy inside the running caddy service (root, with the container's own
 # DOMAIN and ACME_EMAIL, which is what {$DOMAIN} in the Caddyfile reads).
@@ -349,6 +358,14 @@ caddy_fetch() {
   fi
   "$CURL" "${args[@]}" "${CADDY_VERIFY_SCHEME}://${host}:${CADDY_VERIFY_PORT}${path}" 2>/dev/null \
     | tr -d '\r' | tr '[:upper:]' '[:lower:]'
+}
+
+# Is the dump's Permissions-Policy exactly one line with exactly this value? (The dump is lower-cased.)
+#   pp_is <header dump> <expected value>
+pp_is() {
+  local got
+  got="$(grep '^permissions-policy:' <<<"$1" | sed 's/^[^:]*: *//' || true)"
+  [[ "$got" == "${2,,}" ]]
 }
 
 # Every X-Frame-Options value in a header dump, comma separated ("" if none).
@@ -382,7 +399,14 @@ caddy_check() {
   for name in "${CADDY_HEADERS_ABSENT[@]}"; do
     if grep -q -- "^${name,,}:" <<<"$h"; then echo "$name is sent"; rc=1; fi
   done
+  # What the value is is never printed (it would be what Caddy or the app said), only which rule it broke.
+  for p in "${CADDY_PP_DENY_PATHS[@]}"; do
+    [[ "$p" == "$CADDY_FRAME_PLAIN" ]] || { h="$(caddy_fetch "$host" "$p" 0)" || { echo "no answer from Caddy for $p"; return 2; }; }
+    pp_is "$h" "$CADDY_PP_DENY" || { echo "$p: Permissions-Policy is not exactly the deny value (microphone=())"; rc=1; }
+  done
   if [[ "$mode" == full ]]; then
+    h="$(caddy_fetch "$host" "$CADDY_PP_MIC_PATH" 0)" || { echo "no answer from Caddy for the editor page"; return 2; }
+    pp_is "$h" "$CADDY_PP_MIC" || { echo "the editor page: Permissions-Policy is not exactly the editor value (microphone=(self))"; rc=1; }
     h="$(caddy_fetch "$host" "$CADDY_FRAME_SELF" 1)" || { echo "no answer from Caddy for a framed request"; return 2; }
     x="$(xfo_values "$h")"
     [[ "$x" == sameorigin ]] || { echo "$CADDY_FRAME_SELF (same-origin iframe): X-Frame-Options is '${x:-missing}', expected exactly one SAMEORIGIN"; rc=1; }
@@ -426,6 +450,9 @@ caddy_dropped() {
   for name in "${CADDY_HEADERS_ABSENT[@]}"; do
     grep -Eq -- "\"delete\":\[[^]]*\"${name}\"" <<<"$json" || echo "-$name"
   done
+  # Both Permissions-Policy values, exactly (JSON escapes the quotes inside them).
+  [[ "$json" == *"\"Permissions-Policy\":[\"${CADDY_PP_DENY//\"/\\\"}\"]"* ]] || echo "Permissions-Policy (the deny value)"
+  [[ "$json" == *"\"Permissions-Policy\":[\"${CADDY_PP_MIC//\"/\\\"}\"]"* ]] || echo "Permissions-Policy (the editor value)"
   [[ "$json" == *'"X-Frame-Options":["DENY"]'* ]] || echo "X-Frame-Options"
   # Any other X-Frame-Options value (SAMEORIGIN, ALLOW-FROM) set by Caddy would
   # widen what the app decides per request.

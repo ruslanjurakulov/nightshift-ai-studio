@@ -273,6 +273,33 @@ describe("leaving releases the microphone", () => {
     expect(screen.getByRole("button", { name: tv().record })).toBeTruthy();
   });
 
+  it("the page being hidden (another tab, a locked phone) stops the take and KEEPS it; a visible page does nothing", async () => {
+    const setVisibility = (v: "hidden" | "visible") => Object.defineProperty(document, "visibilityState", { value: v, configurable: true });
+    mount();
+    vi.useFakeTimers();
+    await press(tv().record);
+    await advance(4000);
+    try {
+      setVisibility("visible");
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      expect(screen.getByRole("button", { name: tv().stop })).toBeTruthy();
+      expect(media.tracksStopped).toBe(0);
+      setVisibility("hidden");
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    } finally {
+      delete (document as { visibilityState?: unknown }).visibilityState;
+    }
+    expect(media.tracksStopped).toBe(1);
+    expect(media.contextsClosed).toBe(1);
+    expect(status()).toBe(fmt(tv().recorded, { length: "0:04" }));
+    expect(screen.getByLabelText(tv().preview)).toBeTruthy();
+    expect(screen.getByRole("button", { name: tv().add })).toBeTruthy();
+  });
+
   it("the close button closes the panel", async () => {
     const p = mount();
     await press(tv().close);

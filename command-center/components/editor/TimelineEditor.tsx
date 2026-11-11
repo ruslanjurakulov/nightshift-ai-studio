@@ -12,7 +12,6 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -37,6 +36,8 @@ import { useChannelPath } from "@/lib/channels-client";
 import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
 import { isImproveKind } from "@/lib/creative/improve";
 import { VoiceOverRecorder } from "@/components/editor/VoiceOverRecorder";
+import { useFullLoadLinks } from "@/components/editor/useFullLoadLinks";
+import { loadDocument } from "@/lib/editor-nav";
 import {
   GAIN_DB_MAX,
   GAIN_DB_MIN,
@@ -348,7 +349,10 @@ export function TimelineEditor({
   const { t, locale } = useI18n();
   const te = t.editor;
   const path = useChannelPath();
-  const router = useRouter();
+  // Leaving this page is a full document load, so no later page keeps its microphone=(self) (lib/editor-nav.ts).
+  useFullLoadLinks();
+  /** Set once the project is deleted: there is nothing left to warn about losing on the way out. */
+  const deleted = useRef(false);
   const ids = useId();
 
   const [model, setModel] = useState<EditorModel>(() => toModel(doc));
@@ -733,6 +737,7 @@ export function TimelineEditor({
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => {
+      if (deleted.current) return;
       e.preventDefault();
       e.returnValue = "";
     };
@@ -848,7 +853,8 @@ export function TimelineEditor({
       setError(out.error);
       return;
     }
-    router.push(path("/editor"));
+    deleted.current = true;
+    loadDocument(path("/editor"));
   }
 
   // ── tools ─────────────────────────────────────────────────────────────────

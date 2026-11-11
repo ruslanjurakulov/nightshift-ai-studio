@@ -323,6 +323,18 @@ class CaddyMicrophoneTests(unittest.TestCase):
         for v in values:
             self.assertNotIn("*", v)
 
+    def test_the_deploy_check_expects_the_same_two_values_and_an_editor_path(self):
+        script = (DEPLOY / "remote-deploy.sh").read_text(encoding="utf-8")
+        val = lambda name: re.search(rf"^{name}='(.*)'$", script, re.M).group(1)  # noqa: E731
+        self.assertEqual(val("CADDY_PP_DENY"), self.POLICY.format(mic="()"))
+        self.assertEqual(val("CADDY_PP_MIC"), self.POLICY.format(mic="(self)"))
+        mic_path = re.search(r"^CADDY_PP_MIC_PATH=(\S+)$", script, re.M).group(1)
+        self.assertEqual(self.policy_for(mic_path), self.POLICY.format(mic="(self)"))
+        deny = re.search(r"^CADDY_PP_DENY_PATHS=\((.*)\)$", script, re.M).group(1).split()
+        self.assertEqual(deny, ["/login", "/api/account"])
+        for path in deny:
+            self.assertEqual(self.policy_for(path), self.POLICY.format(mic="()"))
+
     def test_the_app_sends_the_same_two_values(self):
         # next.config.ts builds both from one template; the literal parts must be Caddy's.
         tpl = re.search(r"`(camera=\(\), microphone=\$\{microphone\}[^`]*)`", self.next_config)
@@ -499,7 +511,15 @@ class CaddyReloadStepTests(unittest.TestCase):
         self.assertIn("--resolve", fetch)
         self.assertNotIn("-k ", fetch)
         self.assertNotIn("--insecure", self.code)
-        self.assertNotRegex(self.code, r"https?://(?!localhost:2019/)[a-z]")
+        # The two Permissions-Policy values name Paddle's checkout origins: header text compared with what
+        # Caddy sent, never an address anything is fetched from. Only those two lines may carry a URL.
+        pp = [l for l in self.code.splitlines() if l.startswith(("CADDY_PP_DENY=", "CADDY_PP_MIC="))]
+        self.assertEqual(len(pp), 2)
+        for line in pp:
+            self.assertEqual(set(re.findall(r"https?://[^\"' ]+", line)),
+                             {"https://buy.paddle.com", "https://sandbox-buy.paddle.com"})
+        rest = "\n".join(l for l in self.code.splitlines() if l not in pp)
+        self.assertNotRegex(rest, r"https?://(?!localhost:2019/)[a-z]")
         self.assertNotIn("sudo", self.code)
         self.assertNotIn("set -x", self.code)
 

@@ -933,16 +933,23 @@ value on that path) and `deploy/Caddyfile` (two mutually exclusive matchers plus
 deferred `>Permissions-Policy`, so Caddy's value replaces the app's: on the self-hosted box Caddy's is the one the
 browser gets, docs/DEPLOY_AX42.md). `tests/security-headers.test.ts` and `tests/test_deploy_self_host.py`
 (`CaddyMicrophoneTests`) pin the split and that both layers send the same two values. The browser still asks the
-person every time, and the page asks only when Record is pressed. A policy is fixed per document: reaching the
-editor by an in-app link from a page that denies the microphone keeps that page's policy, so Chromium refuses
-the microphone there. The recorder detects it (`document.permissionsPolicy` / `featurePolicy`) and offers
-"Reload page" instead of calling it a refusal. The custom voice page (docs/CUSTOM_VOICE.md, V3-G1) is not
-opened by this.
+person every time, and the page asks only when Record is pressed. A policy is fixed per document, so the
+project page is entered and left by FULL document loads (`lib/editor-nav.ts`): links into it are plain `<a href>`
+(EditorHome, the Studio desk, "Back to project") and "create" / "Open in editor" use `loadDocument`; while the
+editor is open, every in-app link click becomes a full load (`useFullLoadLinks`, a capture listener ahead of
+Next's `<Link>`), so no later page, the custom voice page included, keeps `microphone=(self)`. The editor's
+`beforeunload` guard therefore also covers leaving by a link (it is skipped after the project is deleted). Should
+a client-side route in still happen, the recorder detects the inherited policy (`document.permissionsPolicy` /
+`featurePolicy`) and offers "Reload page" instead of calling it a refusal. The custom voice page
+(docs/CUSTOM_VOICE.md, V3-G1) is not opened by this. `deploy/remote-deploy.sh` checks both values exactly: in the
+adapted config, and live (the deny value on `/login` and `/api/account`, the `(self)` value on a
+`/c/editor/<uuid>` path; a restored older Caddyfile is held to the deny value only).
 
 **Recording** (`components/editor/VoiceOverRecorder.tsx`, the shared `components/voice/useVoiceRecorder.ts` with
 options): 1 s to 10 min (stopped at 10:00; a take that ran past it in a paused tab is discarded), 128 kbit/s
 asked of MediaRecorder, a level meter (Web Audio analyser, never connected to the speakers), preview, re-take,
-discard, cancel. Stop, Cancel, closing the panel, leaving the page and `pagehide` release the microphone.
+discard, cancel. Stop, Cancel, closing the panel, leaving the page and `pagehide` release the microphone; the
+page being hidden (`visibilitychange`) stops the take and keeps it.
 
 **Upload** (`lib/editor-voiceover.ts`): the media library's ordinary path, nothing new on the database side.
 POST `/api/media/uploads` (membership, type allowlist, size cap, quota) and the PUT, then the page polls the new
