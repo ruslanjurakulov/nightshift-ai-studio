@@ -55,7 +55,7 @@ from modules.capabilities.base import (
 _SAFE_URL = re.compile(r"[\x21-\x5b\x5d-\x7e]+")
 _HOSTNAME = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
 
-_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "video/mp4": ".mp4"}
+_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "video/mp4": ".mp4", "audio/mpeg": ".mp3"}
 
 #: An ``Output`` mime for a picture whose format the vendor does not name (FLUX 3 Image has no output-format
 #: field and its docs do not say what the link serves): the file's own first bytes decide what it is, and the
@@ -151,6 +151,11 @@ def _looks_like(mime: str, head: bytes) -> bool:
         return head.startswith(b"\xff\xd8")
     if mime == "image/webp":
         return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+    if mime == "audio/mpeg":
+        # An ID3 tag, or an MPEG audio frame: eleven sync bits and a layer that is not the reserved 00 (which is what an
+        # ADTS AAC stream carries there). A JPEG's FF D8 has no frame sync, so a picture is not taken for a track.
+        return head.startswith(b"ID3") or (len(head) >= 2 and head[0] == 0xFF and (head[1] & 0xE0) == 0xE0
+                                            and (head[1] & 0x06) != 0)
     return True
 
 

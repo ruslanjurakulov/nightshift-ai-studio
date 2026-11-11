@@ -328,6 +328,7 @@ jobs:
           WORKERENV_LTX_API_KEY: ${{ secrets.LTX_API_KEY }}
           WORKERENV_VIDU_API_KEY: ${{ secrets.VIDU_API_KEY }}
           WORKERENV_PIKA_API_KEY: ${{ secrets.PIKA_API_KEY }}
+          WORKERENV_SONILO_API_KEY: ${{ secrets.SONILO_API_KEY }}
           WORKERENV_ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
           WORKERENV_VIDEO_OPS_API_KEY: ${{ secrets.VIDEO_OPS_API_KEY }}
           WORKERENV_TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
