@@ -246,8 +246,8 @@ class SeedanceSubmitTests(VendorCase):
         body = req.json()
         self.assertEqual(body, {"model": V20, "content": [{"type": "text", "text": "a boat at dawn"}],
                                 "resolution": "720p", "ratio": "16:9", "duration": 5,
-                                "execution_expires_after": 3600, "safety_identifier": "a" * 32})
-        self.assertNotIn("watermark", body)                       # the vendor's own default
+                                "execution_expires_after": 3600, "watermark": True, "safety_identifier": "a" * 32})
+        self.assertIs(body["watermark"], True)                    # the maker's mark is kept (vendor default: off)
         self.assertNotEqual(body["duration"], -1)                 # "the model picks" would be a price we cannot quote
 
     def test_the_sound_flag_is_sent_only_when_the_job_names_it(self):
@@ -629,7 +629,7 @@ class SeedreamTests(VendorCase):
             self.assertEqual(body["size"], wh, ratio)
             self.assertEqual(body["response_format"], "b64_json")        # no 24-hour link to lose
             self.assertEqual(body["model"], PRO)
-            self.assertNotIn("watermark", body)
+            self.assertIs(body["watermark"], True)                       # the maker's "AI-generated" mark, never dropped
         self.assertEqual(self.sent().headers["authorization"], f"Bearer {KEY}")
 
     def test_defaults_are_the_one_size_that_is_offered(self):

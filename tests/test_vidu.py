@@ -258,8 +258,9 @@ class SubmitTests(Case):
         self.adapter().submit(req(aspect_ratio="9:16", duration_s=16, resolution="1080p"), "viduq3-turbo")
         body = self.sent().json()
         self.assertEqual((body["aspect_ratio"], body["duration"], body["resolution"]), ("9:16", 16, "1080p"))
-        for field in ("off_peak", "seed", "payload", "callback_url", "audio", "watermark", "meta_data", "voice_id", "bgm",
-                      "movement_amplitude", "is_rec"):
+        # ``meta_data`` would replace Vidu's own metadata label and ``wm_url`` its mark: neither is ever sent.
+        for field in ("off_peak", "seed", "payload", "callback_url", "audio", "watermark", "meta_data", "wm_url",
+                      "wm_position", "voice_id", "bgm", "movement_amplitude", "is_rec"):
             self.assertNotIn(field, body, field)
 
     def test_the_sound_flag_is_sent_only_when_the_job_names_it(self):
@@ -517,21 +518,23 @@ class PollTests(Case):
         self.assertEqual(r.headers["authorization"], f"Token {KEY}")
         self.assertEqual(self.vendor.seen("POST", ""), [])                # polling never submits
 
-    def test_success_hands_back_the_clip_link_not_the_cover_nor_the_marked_copy(self):
+    def test_success_hands_back_the_marked_copy_not_the_unmarked_clip_nor_the_cover(self):
+        # Vidu's Terms of Use clause 4: the AI-content sign must not be removed; Nightshift promised the makers
+        # (2026-11-11) to keep their watermarks. The marked file is the one stored.
         base = self.vendor.base_url
         res = self.status({"state": "success", "creations": [
             {"id": "c1", "url": f"{base}/clip.mp4", "cover_url": f"{base}/cover.jpg", "watermarked_url": f"{base}/marked.mp4"}]})
-        self.assertEqual((res.state, res.outputs[0].mime, res.outputs[0].url), (SUCCEEDED, "video/mp4", f"{base}/clip.mp4"))
+        self.assertEqual((res.state, res.outputs[0].mime, res.outputs[0].url), (SUCCEEDED, "video/mp4", f"{base}/marked.mp4"))
 
-    def test_the_watermarked_copy_is_one_constant_away(self):
+    def test_an_unmarked_clip_alone_is_never_stored_and_there_is_no_switch_for_it(self):
         base = self.vendor.base_url
-        self.vendor._routes.clear()
-        self.vendor.on("GET", "/ent/v2/tasks/t1000/creations", Resp(200, {"state": "success", "creations": [
-            {"url": f"{base}/clip.mp4", "watermarked_url": f"{base}/marked.mp4"}]}))
-        with mock.patch.object(vidu.ViduVideoAdapter, "STORE_WATERMARKED", True):
-            res = self.adapter().poll(ProviderTask("video.vidu", "viduq3-pro", "t1000"))
-        self.assertEqual(res.outputs[0].url, f"{base}/marked.mp4")
-        self.assertFalse(vidu.ViduVideoAdapter.STORE_WATERMARKED)         # shipped: the unmarked file
+        with self.assertRaises(AdapterError) as cm:
+            self.status({"state": "success", "creations": [{"url": f"{base}/clip.mp4", "cover_url": f"{base}/c.jpg"}]})
+        self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
+        self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), cm.exception.message)   # it billed
+        self.assertIn("watermark", cm.exception.message)
+        self.assertNotIn("clip.mp4", cm.exception.message)
+        self.assertFalse(hasattr(vidu.ViduVideoAdapter, "STORE_WATERMARKED"))
 
     def test_a_failed_task_carries_the_vendors_error_code_and_the_right_remedy(self):
         cases = (("TaskPromptPolicyViolation", E_POLICY), ("CreationPolicyViolation", E_POLICY), ("AuditFailed", E_POLICY),
@@ -633,7 +636,8 @@ class PollTests(Case):
         self.assertNotIn(KEY, res.error.message)
 
     def test_success_without_a_link_may_have_billed_and_says_so(self):
-        for creations in ([], [{}], [{"url": ""}], [{"url": 5}], [{"cover_url": "https://x/c.jpg"}], None, "x"):
+        for creations in ([], [{}], [{"watermarked_url": ""}], [{"watermarked_url": 5}], [{"url": "https://x/clip.mp4"}],
+                          [{"cover_url": "https://x/c.jpg"}], None, "x"):
             with self.assertRaises(AdapterError, msg=repr(creations)) as cm:
                 self.status({"state": "success", "creations": creations})
             self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
@@ -641,14 +645,14 @@ class PollTests(Case):
 
     def test_with_no_known_result_host_every_link_is_refused_and_names_the_host_it_saw(self):
         with self.assertRaises(AdapterError) as cm:
-            self.status({"state": "success", "creations": [{"url": "https://cdn.vidu.example/a/b.mp4?sig=1"}]}, hosts=None)
+            self.status({"state": "success", "creations": [{"watermarked_url": "https://cdn.vidu.example/a/b.mp4?sig=1"}]}, hosts=None)
         self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
         self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), cm.exception.message)
         self.assertIn("'cdn.vidu.example'", cm.exception.message)
         self.assertNotIn("sig=1", cm.exception.message)                  # the signed query is not echoed
 
     def test_a_link_that_is_not_plain_https_on_an_allowed_host_is_refused(self):
-        ok = self.status({"state": "success", "creations": [{"url": "https://clips.vidu.example/v.mp4?X=1"}]},
+        ok = self.status({"state": "success", "creations": [{"watermarked_url": "https://clips.vidu.example/v.mp4?X=1"}]},
                          hosts=("vidu.example",))
         self.assertEqual(ok.state, SUCCEEDED)
         for url in ("http://clips.vidu.example/v.mp4", "https://evilvidu.example/v.mp4",
@@ -656,7 +660,7 @@ class PollTests(Case):
                     "https://clips.vidu.example:8443/v.mp4", "https://127.0.0.1\\@clips.vidu.example/v.mp4",
                     "https://user:pw@clips.vidu.example/v.mp4", "//clips.vidu.example/v.mp4", ""):
             with self.assertRaises(AdapterError, msg=url) as cm:
-                self.status({"state": "success", "creations": [{"url": url}]}, hosts=("vidu.example",))
+                self.status({"state": "success", "creations": [{"watermarked_url": url}]}, hosts=("vidu.example",))
             self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), url)
 
     def test_a_task_id_that_could_steer_the_request_is_refused(self):
@@ -686,7 +690,7 @@ class RedirectAndDownloadTests(Case):
         super().setUp()
         self.attacker = FakeVendor()
         self.addCleanup(self.attacker.close)
-        self.attacker.on("GET", "/", Resp(200, {"state": "success", "creations": [{"url": "https://x/o.mp4"}]}))
+        self.attacker.on("GET", "/", Resp(200, {"state": "success", "creations": [{"watermarked_url": "https://x/o.mp4"}]}))
         self.attacker.on("POST", "/", Resp(200, {"task_id": "stolen"}))
 
     def test_the_adapter_says_it_follows_no_redirect(self):
@@ -771,7 +775,7 @@ class EndToEndTests(Case):
                              sleep=lambda s: clock.__setitem__("t", clock["t"] + s), clock=lambda: clock["t"])
 
     def test_the_probe_runs_the_whole_chain_and_stores_a_real_clip(self):
-        done = Resp(200, {"state": "success", "credits": 14, "creations": [{"url": f"{self.vendor.base_url}/clip.mp4"}]})
+        done = Resp(200, {"state": "success", "credits": 14, "creations": [{"watermarked_url": f"{self.vendor.base_url}/clip.mp4"}]})
         res = self.run_probe([Resp(200, {"state": "queueing"}), Resp(200, {"state": "processing"}), done])
         self.assertTrue(res.ok, res.message)
         self.assertEqual(res.output_bytes, len(MP4))
@@ -782,7 +786,7 @@ class EndToEndTests(Case):
         self.assertEqual(len(self.vendor.seen("POST", END_PATH)), 1)
 
     def test_the_q4_probe_goes_through_image_to_video_with_the_recommended_prompt_off(self):
-        done = Resp(200, {"state": "success", "creations": [{"url": f"{self.vendor.base_url}/clip.mp4"}]})
+        done = Resp(200, {"state": "success", "creations": [{"watermarked_url": f"{self.vendor.base_url}/clip.mp4"}]})
         res = self.run_probe([done], entry_id="vidu-q4-preview", path=I2V_PATH)
         self.assertTrue(res.ok, res.message)
         body = self.vendor.seen("POST", I2V_PATH)[0].json()
@@ -812,7 +816,7 @@ class EndToEndTests(Case):
 
     def test_an_expired_clip_link_is_not_an_auth_error_and_says_the_spend_may_have_happened(self):
         self.vendor.on("GET", "/expired.mp4", Resp(403, {"error": "expired"}))
-        res = self.run_probe([Resp(200, {"state": "success", "creations": [{"url": f"{self.vendor.base_url}/expired.mp4"}]})])
+        res = self.run_probe([Resp(200, {"state": "success", "creations": [{"watermarked_url": f"{self.vendor.base_url}/expired.mp4"}]})])
         self.assertEqual((res.ok, res.code), (False, E_NOT_FOUND))
         self.assertTrue(res.message.startswith(AFTER_COMPLETION), res.message)
 
@@ -821,7 +825,7 @@ class EndToEndTests(Case):
 
         self.vendor.on("POST", END_PATH, Resp(200, {"task_id": "job-9"}))
         self.vendor.on("GET", "/ent/v2/tasks/job-9/creations",
-                       Resp(200, {"state": "success", "creations": [{"url": f"{self.vendor.base_url}/clip.mp4"}]}))
+                       Resp(200, {"state": "success", "creations": [{"watermarked_url": f"{self.vendor.base_url}/clip.mp4"}]}))
         clock = {"t": 0.0}
         res = run_probe(reg.get("vidu-q3-turbo"), env={"VIDU_API_KEY": KEY, "VIDU_BASE_URL": self.vendor.base_url},
                         voice_id=None, workdir=self.tmp, timeout_s=600, poll_every_s=5, session=self.vendor.session(),

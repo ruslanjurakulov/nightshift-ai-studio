@@ -10,7 +10,8 @@ What would break without these tests:
 * Wan 2.7 / 3.0 sold with no gate although the Product Terms bar resale of Model Studio models;
 * a priced setting (resolution, duration, Z-Image prompt rewriting) left to the vendor, which bills
   the dearest resolution (1080P) or doubles the price for an omitted field;
-* the vendor's HappyHorse watermark silently on (or silently off with nobody having decided);
+* the makers' watermark turned off (HappyHorse's is on by default, Qwen's is asked for): Nightshift promised the
+  makers in writing on 2026-11-11 to keep it;
 * a result link on somebody else's Alibaba Cloud bucket being downloaded;
 * a submit whose answer was lost being treated as "nothing was bought";
 * a model whose resale Alibaba has not allowed becoming sellable.
@@ -299,21 +300,17 @@ class HappyHorseSubmitTests(VendorCase):
         self.assertEqual(req.headers["authorization"], f"Bearer {KEY}")
         self.assertEqual(req.headers["x-dashscope-async"], "enable")        # without it the API refuses
         self.assertEqual(req.json(), {"model": HH_T2V, "input": {"prompt": "a boat at dawn"},
-                                      "parameters": {"resolution": "480P", "duration": 3, "watermark": False,
+                                      "parameters": {"resolution": "480P", "duration": 3, "watermark": True,
                                                      "ratio": "16:9"}})
 
-    def test_the_watermark_is_always_sent_and_off_until_the_owner_decides_otherwise(self):
-        # Alibaba's default is ON ("HappyHorse" lower right). OFF is an owner decision not yet taken
-        # (Product Terms 4.48.1(h)(ii) labelling duty): this pins that it is explicit either way.
-        self.assertIs(alibaba.HappyHorseVideoAdapter.WATERMARK, False)
+    def test_the_makers_watermark_is_always_asked_for_and_there_is_no_switch_to_turn_it_off(self):
+        # Alibaba's default is ON ("HappyHorse" lower right); it is sent anyway, so a default change cannot drop it.
+        # Nightshift's letters to the makers (2026-11-11) promise to keep it. No constant or setting can flip it.
+        self.assertFalse(hasattr(alibaba.HappyHorseVideoAdapter, "WATERMARK"))
         for req in (t2v(), CapabilityRequest(I2V, "x", resolution="480p", duration_s=3, input_images=(self.frame(),))):
             self.vendor.requests.clear()
             self.video().submit(req, HH_T2V if req.capability == T2V else HH_I2V)
-            self.assertIs(self.sent().json()["parameters"]["watermark"], False)
-        self.vendor.requests.clear()
-        with mock.patch.object(alibaba.HappyHorseVideoAdapter, "WATERMARK", True):
-            self.video().submit(t2v(), HH_T2V)
-        self.assertIs(self.sent().json()["parameters"]["watermark"], True)     # the one-line switch works
+            self.assertIs(self.sent().json()["parameters"]["watermark"], True)
 
     def test_resolution_and_duration_are_sent_in_the_vendors_case_and_as_asked(self):
         for res, dur in (("480p", 3), ("720p", 7), ("1080p", 15)):
@@ -706,7 +703,7 @@ class HappyHorseEndToEndTests(VendorCase):
         self.assertEqual(res.output_bytes, len(MP4))
         body = self.vendor.seen("POST", SUBMIT)[0].json()
         self.assertEqual(body["model"], HH_T2V)
-        self.assertEqual(body["parameters"], {"resolution": "480P", "duration": 3, "watermark": False, "ratio": "16:9"})
+        self.assertEqual(body["parameters"], {"resolution": "480P", "duration": 3, "watermark": True, "ratio": "16:9"})
         self.assertEqual(len(self.vendor.seen("POST", SUBMIT)), 1)          # polling never re-submitted
 
     def test_a_job_that_never_finishes_ends_as_a_timeout_that_names_the_task(self):
@@ -743,7 +740,7 @@ class DashScopeImageTests(VendorCase):
         (req,) = self.vendor.seen("POST", GEN)
         return req
 
-    def test_qwen_text_to_image_sends_one_image_without_a_watermark_and_the_size_only_when_asked(self):
+    def test_qwen_text_to_image_sends_one_image_with_the_makers_watermark_and_the_size_only_when_asked(self):
         a = self.image()
         task = a.submit(t2i(), QWEN_PRO)
         self.assertIsNone(task.task_id)                                 # synchronous: finished inside submit
@@ -753,10 +750,10 @@ class DashScopeImageTests(VendorCase):
         self.assertEqual(req.json(), {"model": QWEN_PRO,
                                       "input": {"messages": [{"role": "user",
                                                               "content": [{"text": "a red apple on a white table"}]}]},
-                                      "parameters": {"n": 1, "watermark": False}})
+                                      "parameters": {"n": 1, "watermark": True}})
         self.vendor.requests.clear()
         a.submit(t2i(aspect_ratio="16:9"), QWEN_TURBO)
-        self.assertEqual(self.sent().json()["parameters"], {"n": 1, "watermark": False, "size": "2688*1536"})
+        self.assertEqual(self.sent().json()["parameters"], {"n": 1, "watermark": True, "size": "2688*1536"})
         (path,) = a.fetch(a.poll(task), self.tmp, stem="img")
         self.assertEqual(path.suffix, ".png")
         self.assertEqual(path.read_bytes(), png())
@@ -775,6 +772,7 @@ class DashScopeImageTests(VendorCase):
         self.assertTrue(content[0]["image"].startswith("data:image/png;base64,"))
         self.assertEqual(content[1], {"image": "https://example.invalid/b.png"})
         self.assertEqual(content[2], {"text": "make it red"})
+        self.assertIs(self.sent().json()["parameters"]["watermark"], True)     # an edit keeps the maker's mark too
 
     def test_a_setting_that_does_not_apply_is_refused_before_any_call(self):
         pic = self.frame()

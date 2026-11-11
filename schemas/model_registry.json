@@ -1596,7 +1596,7 @@
       "terms_notes": [
         "Customer Agreement (effective 2026-09-30) 6.2(1): unless BytePlus consents in writing in advance, you may not act as an OEM, SaaS, MaaS, service-bureau, reseller or distributor of the Services. Selling generations for credits very likely is one (our reading, not BytePlus's).",
         "Service Specific Terms 4.2 (video platform customers) is video-only and does not name images; Customer Agreement 6.2(1) and the Acceptable Use Policy ('sell or resell ... any of the services') are not limited to video, so image resale needs BytePlus's written consent too.",
-        "Acceptable Use Policy: AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedream puts an 'AI-generated' watermark on by default (watermark=true); this adapter leaves that default.",
+        "Acceptable Use Policy: AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedream puts an 'AI-generated' watermark on by default (watermark=true); this adapter sends watermark=true so the mark is kept.",
         "Read 2026-10-24 at docs.byteplus.com/en/docs/legal (docs-service-specific-terms, docs-customer-agreement, docs-acceptable-use-policy, AI-Services-terms). NOT seen: any order form or negotiated terms. Gate stays open until BytePlus authorises Nightshift in writing.",
         "General Terms for AI Services 2.1: as between you and BytePlus you own the Output to the extent the law allows; BytePlus claims none. 2.4: output may not be unique. Own-channel use is not what this gate blocks; selling it is.",
         "BytePlus International Availability (updated 2026-04-21) lists Uzbekistan; the Model Services are not available in the United States. Availability is decided at the point of purchase."
@@ -1666,7 +1666,7 @@
       "terms_notes": [
         "Customer Agreement (effective 2026-09-30) 6.2(1): unless BytePlus consents in writing in advance, you may not act as an OEM, SaaS, MaaS, service-bureau, reseller or distributor of the Services. Selling generations for credits very likely is one (our reading, not BytePlus's).",
         "Service Specific Terms 4.2 (video platform customers) is video-only and does not name images; Customer Agreement 6.2(1) and the Acceptable Use Policy ('sell or resell ... any of the services') are not limited to video, so image resale needs BytePlus's written consent too.",
-        "Acceptable Use Policy: AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedream puts an 'AI-generated' watermark on by default (watermark=true); this adapter leaves that default.",
+        "Acceptable Use Policy: AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedream puts an 'AI-generated' watermark on by default (watermark=true); this adapter sends watermark=true so the mark is kept.",
         "Read 2026-10-24 at docs.byteplus.com/en/docs/legal (docs-service-specific-terms, docs-customer-agreement, docs-acceptable-use-policy, AI-Services-terms). NOT seen: any order form or negotiated terms. Gate stays open until BytePlus authorises Nightshift in writing.",
         "General Terms for AI Services 2.1: as between you and BytePlus you own the Output to the extent the law allows; BytePlus claims none. 2.4: output may not be unique. Own-channel use is not what this gate blocks; selling it is.",
         "BytePlus International Availability (updated 2026-04-21) lists Uzbekistan; the Model Services are not available in the United States. Availability is decided at the point of purchase."
@@ -1736,7 +1736,7 @@
       "terms_notes": [
         "Customer Agreement (effective 2026-09-30) 6.2(1): unless BytePlus consents in writing in advance, you may not act as an OEM, SaaS, MaaS, service-bureau, reseller or distributor of the Services. Selling generations for credits very likely is one (our reading, not BytePlus's).",
         "Service Specific Terms 4.2 (video platform customers) is video-only and does not name images; Customer Agreement 6.2(1) and the Acceptable Use Policy ('sell or resell ... any of the services') are not limited to video, so image resale needs BytePlus's written consent too.",
-        "Acceptable Use Policy: AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedream puts an 'AI-generated' watermark on by default (watermark=true); this adapter leaves that default.",
+        "Acceptable Use Policy: AI-generated content must be labelled and watermarks/identifiers not removed; no real person's likeness without consent. Seedream puts an 'AI-generated' watermark on by default (watermark=true); this adapter sends watermark=true so the mark is kept.",
         "Read 2026-10-24 at docs.byteplus.com/en/docs/legal (docs-service-specific-terms, docs-customer-agreement, docs-acceptable-use-policy, AI-Services-terms). NOT seen: any order form or negotiated terms. Gate stays open until BytePlus authorises Nightshift in writing.",
         "General Terms for AI Services 2.1: as between you and BytePlus you own the Output to the extent the law allows; BytePlus claims none. 2.4: output may not be unique. Own-channel use is not what this gate blocks; selling it is.",
         "BytePlus International Availability (updated 2026-04-21) lists Uzbekistan; the Model Services are not available in the United States. Availability is decided at the point of purchase."
@@ -3625,7 +3625,7 @@
         "checked_at": "2026-10-25",
         "source": "vendor_docs_search",
         "evidence": "Model Studio pages read in full 2026-10-25 (not search extracts): HappyHorse text-to-video and image-to-video (first frame) API references (Oct 12, 2026), use-video-generation, model-pricing.",
-        "note": "Same video-synthesis task API as Wan. Sends watermark:false (vendor default is ON; owner decision pending). i2v keeps the picture's shape. Prompt cap 2500 = the Chinese-character limit; the vendor truncates silently. r2v and 1.0 not wired."
+        "note": "Same video-synthesis task API as Wan. Sends watermark:true, the vendor's default (the 'HappyHorse' mark is kept: Nightshift's letters to the makers, 2026-11-11). i2v keeps the picture's shape. Prompt cap 2500 = the Chinese-character limit; the vendor truncates silently. r2v and 1.0 not wired."
       },
       "pricing": {
         "unit": "second",
