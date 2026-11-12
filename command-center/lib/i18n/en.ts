@@ -3682,6 +3682,8 @@ export const en = {
     seconds: "{n} s",
     modelLabel: "Model",
     beta: "beta",
+    preview: "Preview",
+    previewHint: "Only you see this model. It is not offered to customers yet, and your organization is not charged for it.",
     noModels: "Nothing to pick yet: no model can make this right now.",
     generate: "Generate",
     generatePriced: "Generate · {n} credits",

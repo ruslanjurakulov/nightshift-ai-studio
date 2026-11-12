@@ -9,11 +9,12 @@ import { CreateStudio } from "@/components/create/CreateStudio";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
+import { isOperatorOrg } from "@/lib/channel-tokens";
 import { getOrgContext } from "@/lib/orgs-server";
-import { loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
+import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
-import { prefillFromQuery } from "@/lib/creative/studio";
+import { prefillFromQuery, withPreviews } from "@/lib/creative/studio";
 import { parseIdParam } from "@/lib/creative/improve";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { presetPrefill } from "@/lib/presets";
@@ -75,6 +76,10 @@ export default async function CreatePage({
   // Fills the form; Create still shows the price and asks before it runs.
   const runInitial = runPrefillFromQuery(q);
   const operator = await isOperator();
+  // 0139: the platform operator, in the operator's own organization only, may also try a hidden model marked operator_preview. The
+  // database answers no rows to anyone else; asking only here keeps every customer's page exactly as it was (one call fewer, too).
+  // Only the generate panel gets them: the Assistant's plans and the automatic pick stay on the models that are on sale.
+  const previews = operator && isOperatorOrg(genOrgId) && genOrgId ? await loadOperatorPreviewModels(genOrgId) : [];
   // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
   const user = await getUser();
   // "Use in Studio" from the Style Library (/create?tool=t2i&style=<kit>) picks that
@@ -158,7 +163,7 @@ export default async function CreatePage({
             key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}:${initial?.voiceId ?? ""}:${typeof q.template === "string" ? q.template : ""}`}
             desk={desk}
             orgId={genOrgId}
-            models={models}
+            models={withPreviews(models, previews)}
             // The owner's switch (0124): a model the form came with that is off is named as such, never swapped for another.
             unavailable={switchedOff}
             initial={initial}

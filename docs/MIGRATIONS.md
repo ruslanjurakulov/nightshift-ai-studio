@@ -807,3 +807,36 @@ is the day Nightshift stops selling the model unless a probe says otherwise.
   (`sec_db.take_off_0125`) wherever it replays 0124.
 - **Apply** after 0124, as one transaction. `tests/security/test_sec_model_shutdown.py` runs both functions on a real PostgreSQL at the boundary day and with unreadable
   dates, the drift guard, the rollback and the refusal without 0124.
+
+## Operator preview of a hidden model (0139)
+
+0139 (`0139_operator_preview.sql`) lets the platform operator try a hidden model in the site's own Studio before it is offered to anyone. It is
+**live on apply and dark until the registry says so**: it replaces ONE function (`creative_price`, on 0125's body plus six hunks) and adds two,
+and nothing changes for anyone until a registry entry carries `"operator_preview": true` and `tools/probe_models.py --sync` copies it.
+
+- **The rule** (`creative_operator_preview`, internal). A model that is not beta or ga is quoted ONLY when all hold: it is `hidden` (never
+  `disabled`), its spec says `"operator_preview": true` (the JSON value), the caller is a platform owner or admin, and the organization is the
+  credits-exempt one and the caller is its member. Every other check still runs in the same order: verified by a real probe, not past a
+  shutdown date (0125), not switched off (0124), capability and options listed. Everyone else gets today's answer, `model_not_sellable`.
+- **Money: the normal path.** `quote_creative_job` and `create_creative_job` are not replaced. The exempt organization already holds and pays
+  nothing (`reserve_credits` answers exempt, `credit_ref` stays NULL, the finish captures nothing), and only a platform admin may start a job
+  there. A preview with a `credit_prices` row is quoted at it; one without is quoted at the vendor's cost from the registry
+  (`pricing.provider_usd_per_unit` x 100, no margin, floored at `job_minimum` like every quote) as the job's record only. No price row is
+  written, so nothing goes on sale. A model priced by variant or with no stated cost stays `unpriced`. The quote carries `"preview": true`.
+  A plan entitlement (`models_image:basic` ...) is not asked of a preview: the exempt organization has no plan.
+- **The list.** `operator_preview_models(p_org)` (granted to `authenticated`) answers the same models with the public half of spec, and no
+  rows to anyone else. The create page asks for it only for the platform operator in the operator's organization and passes the result to
+  the generate panel alone, with a "Preview" badge (uz "Sinov", ru "Тест"). `sellable_models`, the API's model check and the router are
+  unchanged: a preview is never offered through the API, MCP, the Assistant or an automatic pick.
+- **Turning one on.** Set `"operator_preview": true` on the entry, sync, and probe it once by name (`tools/probe_models.py --model <id>`: a
+  hidden, terms-gated model is skipped by `--all`). Until a probe has succeeded the preview is refused like any unverified model.
+- **Drift guard and end state.** The live `creative_price` must be 0125's body (`e0c4a7806642086398558cf322c95a0d`) or 0139's
+  (`ae28b700503542701ee0ac63a67df36e`); the two new names must be 0139's if they exist (`creative_operator_preview`
+  `ca8654e202cf46029350aaa3111c4c5d`, `operator_preview_models` `525ba27b989bcb7d3d005f4a4972448f`). The last block asserts bodies, grants
+  and the pinned search_path. Apply as ONE transaction.
+- **Order.** 0139 sits on 0125's `creative_price` and refuses to apply without it. 0125's rollback refuses 0139's body: run
+  `docs/sql/rollback_0139_operator_preview.sql` first (it puts 0125's body back byte for byte and drops the two functions). The lab takes 0139
+  off wherever it replays or rolls back 0125 (`sec_db.take_off_0139`, `sec_db.ON_0125`).
+- **Tests.** `tests/test_operator_preview_migration.py` (the hunks, the hashes, the rollback, the grants), `tests/security/test_sec_operator_preview.py`
+  (a non-admin and an admin in a customer's organization are refused; the operator is quoted at cost and holds nothing; every other quote is
+  byte for byte 0125's; the drift guard, the rollback and the order), `command-center/tests/operator-preview.test.tsx` (the badge, the list).

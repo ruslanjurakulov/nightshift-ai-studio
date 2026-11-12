@@ -90,7 +90,9 @@ class Numbering(unittest.TestCase):
         # on this file's body (its own guard names 0133's hash; tests/test_brand_scan_followup_migration.py pins that), and nothing else.
         # 0138 (the operator's Customers page) was reviewed against these pins: three read-only functions over the credit ledger, the
         # workspaces and the generations; nothing of 0131's or 0133's.
-        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138")], [], "a later number needs its own review of this file's pins")
+        # 0139 (the operator preview of a hidden model: creative_price on 0125's body and two model-registry functions) was reviewed
+        # against these pins: nothing of 0131's or 0133's.
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139")], [], "a later number needs its own review of this file's pins")
         later = (MIG / "0134_brand_scan_followup.sql").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertIn(GUARD["brand_scan_fail_locked"], later)

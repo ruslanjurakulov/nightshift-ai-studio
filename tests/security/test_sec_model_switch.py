@@ -35,7 +35,8 @@ MIGRATION = REPO / "supabase" / "migrations" / "0124_model_switch.sql"
 ROLLBACK = REPO / "docs" / "sql" / "rollback_0124_model_switch.sql"
 #: 0125 (a model past its shutdown date is not sold) sits on 0124's bodies and refuses to apply without 0124: "the sequence before 0124"
 #: leaves it out too, and a replay of 0124 on the full chain takes it off first (its own rollback) and puts it back.
-BEFORE_0124_EXCLUDES = (MIGRATION.name, sec_db.MIGRATION_0125.name)
+#: 0139 (the operator preview) sits on 0125's creative_price the same way, so it is left out too.
+BEFORE_0124_EXCLUDES = (MIGRATION.name, sec_db.MIGRATION_0125.name, *sec_db.ON_0125)
 
 ORG_A = "aaaaaaaa-0000-0000-0000-000000000124"
 ORG_B = "bbbbbbbb-0000-0000-0000-000000000124"
@@ -1023,6 +1024,8 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
     enforce(db)
     off(db, "model", "img-z2", "other", "kept")
     # 0125 sits on 0124's bodies; 0124's drift guard refuses any other text, so take 0125 off for the replay and put it back.
+    # 0139 sits on 0125's creative_price, and 0125's rollback refuses any other body: it comes off first and goes back last.
+    db.su(sec_db.rollback_0139_body())
     db.su("\n".join(ln for ln in sec_db.ROLLBACK_0125.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;")))
     try:
         before = {s: md5_of(db, s) for s in REPLACED}
@@ -1030,6 +1033,7 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
         assert {s: md5_of(db, s) for s in REPLACED} == before
     finally:
         db.su(sec_db.MIGRATION_0125.read_text(encoding="utf-8"))
+        db.su(sec_db.MIGRATION_0139.read_text(encoding="utf-8"))
     assert db.su("select enforced from public.model_availability_settings") == [(True,)], "the seed row is on conflict do nothing"
     assert db.su("select enabled, reason, note from public.model_availability where target = 'img-z2'") == [(False, "other", "kept")]
 

@@ -733,11 +733,13 @@ def _build_in_order(order):
     name = f"ns_series_caps_order_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.create_database(admin, name)
     try:
-        late = tuple(f"{n}_" for n in order)
+        # 0139 sits on 0125's creative_price and refuses to apply without it: it goes on after the four, in every order.
+        late = tuple(f"{n}_" for n in order) + tuple(sec_db.ON_0125)
         sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(late)])
         by_num = {f.name[:4]: f for f in sec_db.migration_files()}
         for n in order:
             sec_db.apply_files(dsn, [by_num[n]])
+        sec_db.apply_files(dsn, [sec_db.MIGRATIONS / f for f in sec_db.ON_0125])
         with psycopg.connect(dsn, autocommit=True) as c:
             fns = {r[0]: (r[1], r[2]) for r in c.execute(
                 "select p.oid::regprocedure::text, md5(p.prosrc), coalesce(p.proacl::text, '') from pg_proc p where pronamespace = 'public'::regnamespace")}
