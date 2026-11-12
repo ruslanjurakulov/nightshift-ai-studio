@@ -22462,7 +22462,8 @@
       ]
      }
     ]
-   }
+   },
+   "sql": null
   },
   {
    "name": "editing core: a lift of a picture holds a still (no freeze) behind the inverted mask, in a 4K frame with cuts both sides",
@@ -22520,7 +22521,8 @@
       ]
      }
     ]
-   }
+   },
+   "sql": null
   },
   {
    "name": "editing core: an L cut, both sides' sounds detached and the first running 12 frames past the picture cut",
@@ -22593,7 +22595,8 @@
       ]
      }
     ]
-   }
+   },
+   "sql": null
   }
  ]
 }
