@@ -57,21 +57,7 @@
 .vt-frame svg { opacity: 0.6; }
 .vt-frame[data-format="short"] svg { display: none; }
 
-/* ── Studio: the desk bay is the overview's lit desk; its side notes are ruled ─ */
-.desk-bay { border-color: color-mix(in srgb, var(--ns-act) 34%, var(--ns-rule)); border-radius: var(--ns-r-sheet); box-shadow: var(--ns-lift), 0 36px 90px -44px var(--ns-lit-glow); position: relative; }
-.desk-bay::before {
-  content: "";
-  position: absolute;
-  inset: 0 24px auto 24px;
-  height: 1px;
-  z-index: 1;
-  background: linear-gradient(90deg, transparent, var(--ns-act) 24%, var(--ns-amber) 62%, transparent);
-  opacity: 0.85;
-  pointer-events: none;
-}
-.desk-bay-key:hover { background: var(--ns-act-soft); }
-.desk-bay-key:hover .desk-bay-go { color: var(--ns-act-ink); border-color: var(--ns-act-ink); }
-.desk-bay-name { font-size: 1.75rem; letter-spacing: -0.02em; }
+/* ── Studio: the credits and projects side notes are ruled ─────────────────── */
 .ns-open .ns-panel.desk-side,
 .ns-open .desk-log {
   border: 0;

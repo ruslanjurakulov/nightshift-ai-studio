@@ -1,3 +1,4 @@
+import { studioHomeUz } from "./studio-home/uz";
 import { improveUz } from "./improve/uz";
 import { notifyChannelsUz } from "./notify-channels/uz";
 import { aiLabelUz } from "./ai-label/uz";
@@ -50,6 +51,7 @@ export const uz: Dictionary = {
   ownerRpc: ownerRpcUz,
   marketing: marketingUz,
   modelSwitch: modelSwitchUz,
+  studioHome: studioHomeUz,
   modelBudget: modelBudgetUz,
   modelKeys: modelKeysUz,
   /** «Mijozlar» sahifasi (0138-migratsiya): ./operator-customers/uz.ts. */
@@ -4597,8 +4599,8 @@ export const uz: Dictionary = {
     moreOptions: "Qoʻshimcha sozlamalar",
   },
   desk: {
-    nav: "Studiya stollari",
-    names: { overview: "Umumiy koʻrinish", video: "Video", image: "Rasm", enhance: "Yaxshilash", voice: "Ovoz", youtube: "YouTube video" },
+    nav: "Studiya boʻlimlari",
+    names: { overview: "Umumiy koʻrinish", video: "Video", image: "Rasm", enhance: "Kuchaytirish", voice: "Ovoz", youtube: "YouTube video" },
     keySub: {
       overview: "Soʻnggi ishlar",
       video: "Soʻzdan yoki rasmdan",
@@ -4608,7 +4610,7 @@ export const uz: Dictionary = {
       youtube: "Gʻoyadan tasdiqqacha",
     },
     blurbs: {
-      overview: "Vazifaga mos stolni tanlang. Har bir stoldagi soʻnggi ishlar pastda.",
+      overview: "Nima kerakligini yozing, ish turini tanlang yoki misoldan boshlang. Narx boshlanishdan oldin tugmada koʻrinadi.",
       video: "Soʻzdan yoki rasmdan 5 yoki 10 soniyalik kliplar. Har birining narxi yaratilishidan oldin koʻrinadi.",
       image: "Yangi rasmlar, rasmingizga tahrir va rasmni qayta promptga oʻgirish.",
       enhance: "Rasm yoki videoni tiniqroq va kattaroq qilish yoki obyektni fonidan qirqib olish.",
@@ -4679,9 +4681,9 @@ export const uz: Dictionary = {
     since: "Oʻtdi",
     sinceSpoken: "Soʻralganidan beri {n} soniya",
     showOnStage: "Katta koʻrsatish",
-    stripLabel: "Bu stoldagi hamma narsa",
+    stripLabel: "Shu yerda qilingan hamma narsa",
     playTake: "{n}-dublni tinglash",
-    openOnDesk: "«{desk}» stolini ochish",
+    openOnDesk: "«{desk}»ni ochish",
     feedTitle: { video: "Kliplaringiz", image: "Rasmlaringiz", enhance: "Oldin va keyin", voice: "Ovoz yozuvlaringiz" },
     emptyTitle: {
       video: "Monitorda hali klip yoʻq",
@@ -4696,10 +4698,10 @@ export const uz: Dictionary = {
       voice: "Ssenariy yozib ovoz tanlang yoki ovozini almashtirish yoki dublyaj uchun yozuv tanlang. Har bir dublning shu yerda oʻz pleyeri bor.",
     },
     workingNow: "ishlanmoqda: {n}",
-    startTitle: "Stollar",
-    recentTitle: "Barcha stollardagi soʻnggi generatsiyalar",
+    startTitle: "Ish turlari",
+    recentTitle: "Soʻnggi generatsiyalar",
     recentEmptyTitle: "Hali hech narsa qilinmagan",
-    recentEmpty: "Yuqoridagi stolni oching va bitta narsa qiling. Har bir generatsiya, uning holati va kreditlari shu yerda.",
+    recentEmpty: "Yuqorida bitta narsa qiling. Har bir generatsiya, uning holati va kreditlari shu yerda.",
     noOrg: "Generatsiyalar uchun tashkilot kerak. Uni sozlamalarda yarating yoki oching.",
     sideLabel: "Kreditlar va loyihalar",
     creditsTitle: "Kreditlar",

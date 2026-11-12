@@ -1,3 +1,4 @@
+import { studioHomeEn } from "./studio-home/en";
 import { improveEn } from "./improve/en";
 import { notifyChannelsEn } from "./notify-channels/en";
 import { aiLabelEn } from "./ai-label/en";
@@ -58,6 +59,7 @@ export const en = {
   ownerRpc: ownerRpcEn,
   marketing: marketingEn,
   modelSwitch: modelSwitchEn,
+  studioHome: studioHomeEn,
   modelBudget: modelBudgetEn,
   modelKeys: modelKeysEn,
   /** The operator's Customers page (migration 0138): ./operator-customers/en.ts. */
@@ -4609,7 +4611,7 @@ export const en = {
     moreOptions: "More options",
   },
   desk: {
-    nav: "Studio desks",
+    nav: "Studio sections",
     names: { overview: "Overview", video: "Video", image: "Image", enhance: "Enhance", voice: "Voice", youtube: "YouTube video" },
     keySub: {
       overview: "Recent work",
@@ -4620,7 +4622,7 @@ export const en = {
       youtube: "Idea to approval",
     },
     blurbs: {
-      overview: "Pick a desk for the job in hand. Your latest work from every desk is listed below.",
+      overview: "Write what you want, pick a kind of work, or start from an example. The price is on the button before anything starts.",
       video: "Clips of 5 or 10 seconds, from words or from a picture. Each one shows its price before it is made.",
       image: "New pictures, edits to a picture you have, and a picture read back as a prompt.",
       enhance: "Make a picture or a video sharper and larger, or cut the subject out of its background.",
@@ -4691,9 +4693,9 @@ export const en = {
     since: "Elapsed",
     sinceSpoken: "{n} seconds since it was asked for",
     showOnStage: "Show it large",
-    stripLabel: "Everything on this desk",
+    stripLabel: "Everything made here",
     playTake: "Play take {n}",
-    openOnDesk: "Open the {desk} desk",
+    openOnDesk: "Open {desk}",
     feedTitle: { video: "Your clips", image: "Your pictures", enhance: "Before and after", voice: "Your voice-overs" },
     emptyTitle: {
       video: "No clip on the monitor yet",
@@ -4708,10 +4710,10 @@ export const en = {
       voice: "Write a script and pick a voice, or pick a recording to change or dub. Each take gets its own player here.",
     },
     workingNow: "{n} working now",
-    startTitle: "Desks",
-    recentTitle: "Recent generations, every desk",
+    startTitle: "Kinds of work",
+    recentTitle: "Recent generations",
     recentEmptyTitle: "Nothing made yet",
-    recentEmpty: "Open a desk above and make one thing. Every generation, its state and its credits are listed here.",
+    recentEmpty: "Make one thing above. Every generation, its state and its credits are listed here.",
     noOrg: "Generations need an organization. Create or open one in Settings.",
     sideLabel: "Credits and projects",
     creditsTitle: "Credits",

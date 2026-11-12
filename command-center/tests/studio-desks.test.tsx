@@ -30,7 +30,7 @@ import { dictionaries } from "@/lib/i18n";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { JobFeed, elapsedSeconds } from "@/components/studio/JobFeed";
-import { DeskBar, StudioOverview, YouTubeDesk } from "@/components/studio/Desks";
+import { DeskBar, StudioSide, YouTubeDesk } from "@/components/studio/Desks";
 import {
   DESKS,
   DESK_TOOLS,
@@ -383,12 +383,12 @@ describe("a desk's results", () => {
   it("the overview's log links each generation to its desk", async () => {
     feed = [job({ id: "a", capability: "upscale", params: { source_asset_id: PIC, factor: 2 } })];
     render(withI18n(<JobFeed orgId={ORG} variant="log" />));
-    const link = await screen.findByRole("link", { name: "Open the Enhance desk" });
+    const link = await screen.findByRole("link", { name: "Open Enhance" });
     expect(link.getAttribute("href")).toBe("/chronos/create?desk=enhance");
   });
 });
 
-describe("the desk switcher, the overview and the YouTube desk", () => {
+describe("the desk switcher, the credits and projects side, and the YouTube desk", () => {
   it("the switcher is a navigation of links with the current desk marked", () => {
     render(withI18n(<DeskBar current="voice" />));
     const nav = screen.getByRole("navigation", { name: t.desk.nav });
@@ -398,7 +398,7 @@ describe("the desk switcher, the overview and the YouTube desk", () => {
   });
 
   it("an unreadable balance is words, not a zero, and no meter is drawn", () => {
-    render(withI18n(<StudioOverview orgId={ORG} credits={{ state: "unknown" }} projects={{ state: "failed" }} />));
+    render(withI18n(<StudioSide credits={{ state: "unknown" }} projects={{ state: "failed" }} />));
     expect(screen.getByText(t.desk.creditsUnknown)).toBeTruthy();
     expect(screen.queryByRole("meter")).toBeNull();
     expect(screen.getByText(t.desk.projectsFailed)).toBeTruthy();
@@ -407,8 +407,7 @@ describe("the desk switcher, the overview and the YouTube desk", () => {
   it("a real balance is drawn as a meter with what is held", () => {
     render(
       withI18n(
-        <StudioOverview
-          orgId={ORG}
+        <StudioSide
           credits={{ state: "account", account: { balance: 130, reserved: 30, available: 100 } }}
           projects={{ state: "ok", projects: [{ id: "p1", title: "Cut two", updatedAt: null }] }}
         />,
@@ -422,7 +421,7 @@ describe("the desk switcher, the overview and the YouTube desk", () => {
   });
 
   it("the operator's own organization reads as not charged", () => {
-    render(withI18n(<StudioOverview orgId={ORG} credits={{ state: "exempt" }} projects={{ state: "ok", projects: [] }} />));
+    render(withI18n(<StudioSide credits={{ state: "exempt" }} projects={{ state: "ok", projects: [] }} />));
     expect(screen.getByText(t.desk.creditsExempt)).toBeTruthy();
     expect(screen.getByText(t.desk.projectsEmpty)).toBeTruthy();
   });
