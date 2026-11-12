@@ -32,7 +32,11 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     let path = "/";
     try {
       const ref = new URL(request.headers.get("referer") ?? "", origin);
-      if (ref.origin === new URL(origin).origin) path = ref.pathname + ref.search;
+      // Resolved against OUR origin and kept only if it stays there: a path such as //evil.example or /\evil
+      // would otherwise make the redirect leave the site.
+      const target = new URL(ref.pathname + ref.search, origin);
+      if (ref.origin === new URL(origin).origin && target.origin === new URL(origin).origin)
+        path = target.pathname + target.search;
     } catch {
       path = "/";
     }

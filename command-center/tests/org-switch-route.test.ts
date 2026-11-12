@@ -104,6 +104,15 @@ describe("the form-post organization switch", () => {
     expect(cookie(await post(`orgId=${ORGS[1].id}`), ORG_COOKIE)).toBeNull();
   });
 
+  it("a same-origin referer whose path would leave the site is not followed back (no open redirect)", async () => {
+    for (const path of ["//evil.example/steal", "/\\evil.example/steal", "/../..//evil.example/steal"]) {
+      const res = await post("orgId=nope", { referer: `${ORIGIN}${path}` });
+      const to = new URL(res.headers.get("location")!);
+      expect(to.origin, path).toBe(ORIGIN);
+      expect(to.host, path).not.toContain("evil");
+    }
+  });
+
   it("a foreign referer is not followed back", async () => {
     const res = await post("orgId=nope", { referer: "https://evil.example/steal" });
     expect(new URL(res.headers.get("location")!).origin).toBe(ORIGIN);
