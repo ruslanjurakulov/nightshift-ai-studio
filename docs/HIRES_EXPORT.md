@@ -1,7 +1,9 @@
-# 1440p and 4K editor exports, sold by the started minute
+# Editor exports sold by the started minute: up to 1080p, 1440p and 4K
 
-Owner decision (2026-11-11): offer 1440p and 4K; give the worker more render time for them; charge credits in proportion to render
-time. Exports up to 1080p stay free, and **nothing above 1080p is free**: a project whose own frame is bigger is exported in a paid size.
+Owner decisions (2026-11-11): offer 1440p and 4K; give the worker more render time for them; charge credits in proportion to render
+time; **nothing above 1080p is free** (a project whose own frame is bigger is exported in a paid size). Later the same day: **exports
+at 1080p and below are no longer free either**: 1 credit per started minute, the same money as the paid tiers (migration 0136,
+section "Up to 1080p" below). Until the owner sets that price (NULL), they stay free and unchanged.
 
 Behind `NIGHTSHIFT_HIRES_EXPORT` (web and media worker, one repository variable), **default off**, on top of
 `NIGHTSHIFT_MULTI_RATIO_EXPORT` (`docs/MULTI_RATIO_EXPORT.md`: a paid size is one of the "Sizes to export"). Migration
@@ -107,11 +109,13 @@ clip of the OTHER orientation fills the frame (`cover`): 9:16 4K60 from a 16:9 4
 source's shape (the document names files, not sizes), so the rule is on the rate: a paid 4K export is at most 30 fps. 1440p passed
 every case at 60.
 
-## Prices (owner-approved 2026-11-11; NOT applied by the migration, whose seed stays NULL)
+## Prices (owner-approved 2026-11-11; NOT applied by the migrations, whose seeds stay NULL)
 
-**Approved by the owner on 2026-11-11: 1440p 3 credits per started minute, 4K 5 credits per started minute.** The migration still
-seeds both as NULL (not on sale): they go live when the owner writes them into the price row after the merge, in the order below. The
-reasoning they came from:
+**Approved by the owner on 2026-11-11, credits per started minute of video: up to 1080p 1, 1440p 3, 4K 5.** The migrations seed all
+three as NULL (up to 1080p: free; 1440p and 4K: not on sale): they go live when the owner writes them into the price row, in the order
+in "The switch and the roll-out". **The 1080p price and the 1440p / 4K prices are independent**: each can be set, changed or put back
+to NULL on its own (one row, three columns). The reasoning the 1440p and 4K prices came from (1 credit up to 1080p is the owner's
+round number for the cheapest tier):
 
 * **Server cost.** The owner's figure (2026-11-11): the server costs **$69 a month**.
   $69 / (30 × 86 400 s) = **$0.0000266 per second of the whole server**. Charging the whole server for every second the export
@@ -140,11 +144,34 @@ purpose: the row is closed to every API role, so it is the SQL editor's statemen
 `hires_off` (the hold goes back):
 
 ```sql
-update public.editor_export_hires_prices set credits_per_minute_1440p = 3, credits_per_minute_2160p = 5;
+update public.editor_export_hires_prices set credits_per_minute_1440p = 3, credits_per_minute_2160p = 5;   -- 1440p and 4K (0132)
+update public.editor_export_hires_prices set credits_per_minute_1080p = 1;                                -- up to 1080p (0136)
 ```
 
-To stop selling at once: set both to `null` (every request is then refused `not_on_sale`; exports already queued keep their hold and
-settle as usual).
+To stop selling at once: set them to `null` (1440p / 4K: every request is refused `not_on_sale`; up to 1080p: free again, exactly as
+before 0136; exports already queued keep their hold and settle as usual).
+
+## Up to 1080p (migration 0136)
+
+0136 adds `credits_per_minute_1080p` to the same row, seeded NULL. **NULL = free and unchanged**: the two- and three-argument
+`request_editor_export` queue the export and touch no credit, the paid overload refuses a frame up to 1080p (`invalid_frame`), the quote
+says `paid=false`, the editor never asks a price. Once the owner sets it (approved: 1):
+
+* every export up to 1080p runs the paid tiers' flow: the quote (`credits` = the charge = credits_round_up(price × started minutes),
+  `hold` = greatest(charge, round_up(job_minimum)): "1 credit charged, 30 held while it renders" with the live job_minimum of 30),
+  the person's yes, the four-argument request (a free id of the list, or `project` for the project's own frame up to 1920 × 1080),
+  which compares the confirmed number with the CHARGE, holds the hold, and the settling trigger captures exactly the charge (29 of 30
+  go back) or releases all of it on a failure, a deleted project or a hold that is gone;
+* the two- and three-argument calls are **refused** (`export_needs_quote`, NS409) after every older gate and before anything is
+  locked or written. They hold nothing, so routing them into a sale would charge a number nobody confirmed; the editor reads the word
+  and moves to the quoted path (every ticked size is priced, the project's own included);
+* who: an editor or above. **A viewer can no longer export at all** while the price is set (a viewer may not spend the
+  organization's credits). In the operator's exempt organization only a platform admin, and nothing is held;
+* **a document with a speed curve cannot be exported at any size** while the price is set (`hires_speed_curve`, as for 1440p and
+  4K: `editor_doc_duration` does not integrate a curve, so its price would be for the wrong length). Integrating the curve in SQL
+  (exactly as `speed_ramp.out_length`) is a follow-up; until it lands, setting the 1080p price takes speed-curve exports away;
+* the worker charges nothing itself: a row up to 1080p with a quote gets the same two refusals as a paid one (a speed curve, more
+  minutes than priced) and keeps the free exports' time budget and caps.
 
 ## The switch and the roll-out
 
@@ -159,14 +186,19 @@ settle as usual).
   read 0 on 2026-11-11, with one editor project in all).
 * Before 0132 the quote answers "not available" and nothing paid can be confirmed. A worker older than this change refuses a paid row
   (`invalid_frame`: its presets file has no such id) and the hold is released.
-* **Order of switching on:** (1) merge, so 0132 is applied (both prices NULL: nothing is sold); (2) deploy the web and the worker with
-  this version; (3) turn `NIGHTSHIFT_HIRES_EXPORT` on for the worker; (4) turn it on for the web (the paid sizes appear and say "not on
-  sale yet"); (5) only then write the approved prices, 3 and 5 credits per started minute (the statement in "Prices"). Stopping goes
-  the other way: prices to null first, then the switches off.
+* **Order of switching on (go-live: deploy → flags → UPDATE prices):** (1) merge, so 0132 and 0136 are applied (all three prices
+  NULL: nothing is sold, everything up to 1080p is free as before); (2) deploy the web and the worker with this version; (3) turn
+  `NIGHTSHIFT_MULTI_RATIO_EXPORT` and `NIGHTSHIFT_HIRES_EXPORT` on for the worker; (4) turn them on for the web (the paid sizes appear
+  and say "not on sale yet"; the editor can now show a price for every size); (5) only then write the approved prices (the statements
+  in "Prices"): 3 and 5 for 1440p / 4K, and 1 up to 1080p, together or one after the other. **Never set the 1080p price while
+  either switch is off on the web**: the editor then cannot show a price, and every export is refused (`export_needs_quote`, the
+  page says the price cannot be shown yet). Stopping goes the other way: prices to null first, then the switches off.
 
 ## Undo
 
-Set the prices to null (stops sales) and turn the switch off. To take the migration out:
+Set the prices to null (stops sales; up to 1080p is free again) and turn the switch off. To take 0136 out:
+`docs/sql/rollback_0136_editor_export_paid_1080p.sql` (owner-applied; run it BEFORE 0132's rollback): it puts 0132's bodies back byte
+for byte and drops the 1080p price; a sold 1080p export still in flight settles through 0132's trigger as usual. To take 0132 out:
 `docs/sql/rollback_0132_editor_hires_export.sql` (owner-applied; run it before 0129's rollback). It refuses while a paid export is
 queued or rendering. Finished 1440p / 4K videos stay in the library, their rows keep their frame (0129's frame check is put back
 NOT VALID when such a row exists), and the credit ledger keeps every hold, charge and release.

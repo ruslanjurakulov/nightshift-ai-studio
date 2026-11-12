@@ -1110,3 +1110,6 @@ entries of the closed list (`schemas/export_presets.json`): `youtube_1440p` 2560
   clip with every colour and a mask is charged 4 s per second on top of its length, so it fits up to about 60 s).
 * **A speed curve** is not sold in a paid size (`hires_speed_curve`): the database prices the length without the
   curve.
+* **Up to 1080p** (migration 0136): sold the same way once the owner sets its price (1 credit per started minute, approved
+  2026-11-11); free and unchanged while it is NULL. The document does not change either: a sold export up to 1080p is a row with
+  the database's quote, with a frame of the list or none (the project's own frame). `docs/HIRES_EXPORT.md`, "Up to 1080p".

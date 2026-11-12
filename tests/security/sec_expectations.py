@@ -647,3 +647,8 @@ sec_editor_hires_0132.extend(TABLES, FUNCTIONS)
 import sec_brand_scan_0133  # noqa: E402
 
 sec_brand_scan_0133.extend(TABLES, FUNCTIONS)
+
+# Migration 0136 (exports up to 1080p sold by the started minute, the 1080p price on 0132's row): tests/security/sec_editor_export_paid_0136.py
+import sec_editor_export_paid_0136  # noqa: E402
+
+sec_editor_export_paid_0136.extend(TABLES, FUNCTIONS)

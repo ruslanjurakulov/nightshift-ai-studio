@@ -29,6 +29,9 @@ export const exportHiresEn = {
   ownTooBigOff: "This project is larger than 1080p, and exports above 1080p are paid and not offered here. Set the project to 1080p or smaller under “Export format” to export it.",
   failed: "The price of {name} could not be read.",
   retry: "Get the price again",
+  freeLine: "{name}: free",
+  introSold: "Every export costs credits for each started minute of video: up to 1080p, at 1440p and in 4K, each size at its own price. A 1440p video can be up to {max1440}, a 4K video up to {max2160}.",
+  soldNoQuote: "Exports now cost credits, and this page cannot show their price yet. Try again later.",
   saveFirst: "Save first: the price is for the saved version.",
 };
 

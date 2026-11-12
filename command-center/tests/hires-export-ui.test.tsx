@@ -23,7 +23,7 @@ import { ExportRatioPicker } from "@/components/editor/ExportRatioPicker";
 import { HiresExportQuote, type HiresConfirmation } from "@/components/editor/HiresExportQuote";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { newDocForAsset, type EditorAsset, type EditorError } from "@/lib/editor";
-import type { HiresPresetId, HiresQuote } from "@/lib/hiresExport/limits";
+import type { ExportQuote, HiresPresetId, HiresQuote, QuotableFrame } from "@/lib/hiresExport/limits";
 import type { EditorResult } from "@/components/editor/editorApi";
 
 const te = en.editor;
@@ -127,13 +127,16 @@ describe("the picker's paid sizes", () => {
 });
 
 describe("the price (HiresExportQuote)", () => {
-  type Load = (id: string, rev: number, frame: HiresPresetId) => Promise<EditorResult<HiresQuote>>;
+  type Load = (id: string, rev: number, frame: QuotableFrame) => Promise<EditorResult<ExportQuote>>;
   function quote(frames: HiresPresetId[], load: Load, dirty = false) {
     const seen: HiresConfirmation[] = [];
     const r = wrap(<HiresExportQuote projectId={PID} rev={4} dirty={dirty} frames={frames} onChange={(c) => seen.push(c)} load={load} />);
     return { ...r, seen, last: () => seen[seen.length - 1] };
   }
-  const ok = (over: Partial<HiresQuote> = {}): Load => async (_id, _rev, f) => ({ ok: true, value: QUOTE(f, over) });
+  const ok = (over: Partial<HiresQuote> = {}): Load => async (_id, _rev, f) => ({
+    ok: true,
+    value: { free: false, quote: QUOTE(f as HiresPresetId, over) },
+  });
 
   it("shows the server's numbers, and is ready only after the person ticks the yes", async () => {
     const load = vi.fn(ok());
@@ -169,7 +172,7 @@ describe("the price (HiresExportQuote)", () => {
 
   it("a read that failed says so and asks again on request; unsaved changes ask nothing", async () => {
     let fail = true;
-    const load = vi.fn<Load>(async (_id, _rev, f) => (fail ? { ok: false, error: "failed" as EditorError } : { ok: true, value: QUOTE(f) }));
+    const load = vi.fn<Load>(async (_id, _rev, f) => (fail ? { ok: false, error: "failed" as EditorError } : { ok: true, value: { free: false as const, quote: QUOTE(f as HiresPresetId) } }));
     quote(["vertical_1440p"], load);
     await waitFor(() => expect(screen.getByText(`${fmt(hx.failed, { name: hx.names.vertical_1440p })} ${te.errors.failed}`)).toBeTruthy());
     fail = false;

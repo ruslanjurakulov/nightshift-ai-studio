@@ -134,12 +134,36 @@ def has_0132(conn_or_session) -> bool:
     return bool(conn.execute("select to_regclass('public.editor_export_hires_prices') is not null").fetchone()[0])
 
 
+MIGRATION_0136 = MIGRATIONS / "0136_editor_export_paid_1080p.sql"
+ROLLBACK_0136 = REPO / "docs" / "sql" / "rollback_0136_editor_export_paid_1080p.sql"
+
+
+def has_0136(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.editor_export_price_1080p()') is not null").fetchone()[0])
+
+
+def take_off_0136(session) -> None:
+    """0136 replaces 0132's request functions, quote, terms and price trail, and 0132 (its replay and its rollback) refuses any other body.
+    A test that replays 0132 or applies its rollback on a database that has 0136 takes 0136 off first with its own rollback (inside the
+    test's transaction)."""
+    if not has_0136(session):
+        return
+    text = ROLLBACK_0136.read_text(encoding="utf-8")
+    session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0136(session) -> None:
+    session.conn.execute(MIGRATION_0136.read_text(encoding="utf-8"))
+
+
 def take_off_0132(session) -> None:
     """0132 replaces editor_export_frame() on 0129's body (and adds the paid overload), and 0129 (and its rollback) refuse any other
     list. A test that replays 0129 or applies its rollback on a database that has 0132 takes 0132 off first with its own rollback
     (inside the test's transaction), and puts it back with put_back_0132 where the chain goes on."""
     if not has_0132(session):
         return
+    take_off_0136(session)
     text = ROLLBACK_0132.read_text(encoding="utf-8")
     session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 

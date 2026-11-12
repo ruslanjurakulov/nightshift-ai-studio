@@ -27,5 +27,8 @@ export const exportHiresUz: ExportHiresDictionary = {
   ownTooBigOff: "Bu loyiha 1080p dan katta, 1080p dan katta eksport esa pullik va bu yerda taklif qilinmaydi. Eksport qilish uchun “Eksport formati” da loyihani 1080p yoki kichikroq qiling.",
   failed: "{name} narxini olib boʻlmadi.",
   retry: "Narxni qayta olish",
+  freeLine: "{name}: bepul",
+  introSold: "Har qanday eksport videoning har bir boshlangan daqiqasi uchun kredit turadi: 1080p gacha, 1440p va 4K da, har bir oʻlcham oʻz narxida. 1440p video {max1440} gacha, 4K video {max2160} gacha boʻlishi mumkin.",
+  soldNoQuote: "Endi eksport kredit turadi, bu sahifa esa hozircha narxni koʻrsata olmaydi. Keyinroq urinib koʻring.",
   saveFirst: "Avval saqlang: narx saqlangan versiya uchun hisoblanadi.",
 };

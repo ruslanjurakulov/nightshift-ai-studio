@@ -255,8 +255,8 @@ describe("GET .../exports/quote", () => {
     expect((await res.json()).quote).toEqual(parseHiresQuote(DBQUOTE));
   });
 
-  it("refuses a free frame, a made-up one, a bad revision and a stranger before the database", async () => {
-    for (const qs of ["rev=1&frame=square_1080", "rev=1&frame=youtube_4k", "rev=0&frame=youtube_2160p", "rev=x&frame=youtube_2160p",
+  it("refuses a made-up frame, a bad revision and a stranger before the database", async () => {
+    for (const qs of ["rev=1&frame=youtube_4k", "rev=1&frame=PROJECT", "rev=1&frame=3840x2160", "rev=0&frame=youtube_2160p", "rev=x&frame=youtube_2160p",
       "rev=1.5&frame=youtube_2160p", "frame=youtube_2160p", "rev=1"]) {
       const res = await getQuote(qs);
       expect(res.status, qs).toBe(400);
@@ -303,7 +303,7 @@ describe("POST .../exports with a paid frame", () => {
   it("sends the paid frame to the four-argument function with that number, and a free frame as always", async () => {
     let n = 0;
     h.rpc.request_editor_export = () => ({ data: E(++n), error: null });
-    const res = await post({ rev: 2, frames: ["youtube_2160p", "square_1080"], maxCredits: { youtube_2160p: 12.5, square_1080: 99 } });
+    const res = await post({ rev: 2, frames: ["youtube_2160p", "square_1080"], maxCredits: { youtube_2160p: 12.5 } });
     expect(res.status).toBe(201);
     expect(h.calls).toEqual([
       { name: "request_editor_export", args: { p_project: PID, p_rev: 2, p_frame: "square_1080" } },

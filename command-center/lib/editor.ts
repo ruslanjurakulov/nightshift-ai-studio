@@ -3766,6 +3766,9 @@ export const EDITOR_ERRORS = [
   "hires_fps",
   "hires_speed_curve",
   "hires_needs_paid_export",
+  // Exports up to 1080p are sold (migration 0136, the owner set their price): the plain request holds nothing, so it is
+  // refused and the editor asks the price and the person's yes first.
+  "export_needs_quote",
   "not_available",
   "network",
   "failed",
@@ -3790,6 +3793,8 @@ const DB_WORDS: Partial<Record<string, EditorError>> = {
   hires_fps: "hires_fps",
   hires_speed_curve: "hires_speed_curve",
   hires_needs_paid_export: "hires_needs_paid_export",
+  // 0136
+  export_needs_quote: "export_needs_quote",
 };
 
 /** A database refusal (SQLSTATE + machine word, migration 0054) → a word and an HTTP status. */

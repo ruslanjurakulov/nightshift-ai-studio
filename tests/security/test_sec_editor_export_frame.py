@@ -850,6 +850,7 @@ def test_the_worker_is_handed_the_frame_as_it_was_written_and_a_plain_export_has
 
 def test_the_two_argument_call_is_unchanged_and_writes_no_frame(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # 0132's body or 0054's: 0136 builds on 0132's and is taken off first
         clear(s, sc.bob.org)
         become(s, sc.bob.actor)
         eid = s.value(REQ2, [PROJECT["b"], 1])
@@ -913,6 +914,7 @@ def _pinned_0132(name: str) -> str:
 def test_the_live_bodies_are_the_ones_the_file_pins(conn):
     req3, lst = _pinned(MIGRATION.read_text(encoding="utf-8"))
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # 0136 builds on 0132's bodies and is taken off first
         # The list and the two request functions are 0132's while 0132 is applied (it replaced them), and 0129's / 0054's again once 0132
         # is taken off.
         on = sec_db.has_0132(s)

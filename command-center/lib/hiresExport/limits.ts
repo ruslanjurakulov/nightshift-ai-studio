@@ -11,6 +11,8 @@
  * `aboveFree`). A price is shown only when the server computed it (quote_editor_export); nothing here prices.
  */
 
+import { isExportPresetId, type ExportPresetId } from "@/lib/editorExportPresets";
+
 export const FREE_MAX_PX = 1920 * 1080;
 export const TIER_1440P_MAX_PX = 2560 * 1440;
 export const TIER_2160P_MAX_PX = 3840 * 2160;
@@ -92,10 +94,19 @@ export function overHiresFps(width: number, height: number, fps: number): boolea
   return !Number.isFinite(fps) || fps > HIRES_MAX_FPS[tier];
 }
 
-/** What the server quoted for one paid frame (quote_editor_export, 0132), as the quote route sends it on. */
+/** A frame the server can quote (0136): the project's own ("project"), a free format, or a paid one. Up to 1080p a frame
+ *  is free while its price is NULL (the quote then says so) and sold by the minute once the owner sets it. */
+export type QuotableFrame = "project" | ExportPresetId | HiresPresetId;
+export type QuoteTier = HiresTier | "1080p";
+
+export function isQuotableFrame(v: unknown): v is QuotableFrame {
+  return v === "project" || isExportPresetId(v) || isHiresPresetId(v);
+}
+
+/** What the server quoted for one sold frame (quote_editor_export, 0132 / 0136), as the quote route sends it on. */
 export interface HiresQuote {
-  frame: HiresPresetId;
-  tier: HiresTier;
+  frame: QuotableFrame;
+  tier: QuoteTier;
   durationS: number;
   minutes: number;
   maxS: number;
@@ -132,7 +143,9 @@ export function parseHiresQuote(raw: unknown): HiresQuote | null {
   const r = raw as Record<string, unknown>;
   const frame = r.frame;
   const tier = r.tier;
-  if (!isHiresPresetId(frame) || (tier !== "1440p" && tier !== "2160p")) return null;
+  if (!isQuotableFrame(frame) || (tier !== "1440p" && tier !== "2160p" && tier !== "1080p")) return null;
+  // A paid frame is never the 1080p tier, and a frame up to 1080p never a paid tier.
+  if (isHiresPresetId(frame) !== (tier !== "1080p")) return null;
   if (r.paid === false) return null;
   const durationS = num(r.duration_s ?? r.durationS);
   const minutes = num(r.minutes);
@@ -167,6 +180,18 @@ export function parseHiresQuote(raw: unknown): HiresQuote | null {
     exempt: Boolean(r.exempt),
     mayPay: Boolean(r.may_pay ?? r.mayPay),
   };
+}
+
+/** The quote route's answer: a sold frame's quote, or `free` (a frame up to 1080p while its price is NULL). null = not understood. */
+export type ExportQuote = { free: true; frame: QuotableFrame } | { free: false; quote: HiresQuote };
+
+export function parseExportQuote(raw: unknown, frame: QuotableFrame): ExportQuote | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as { free?: unknown; frame?: unknown; quote?: unknown };
+  // Only a frame up to 1080p can be free; a paid one is never.
+  if (r.free === true) return r.frame === frame && !isHiresPresetId(frame) ? { free: true, frame } : null;
+  const quote = parseHiresQuote(r.quote);
+  return quote && quote.frame === frame ? { free: false, quote } : null;
 }
 
 /** Why Export cannot spend on this quote now, or null when it can: the word the editor shows a sentence for. */

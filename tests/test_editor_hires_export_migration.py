@@ -382,8 +382,11 @@ class TheFile(unittest.TestCase):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0132"), 1)
         self.assertEqual(max(n for n in numbers if n < "0132"), "0131")
+        # 0136 (exports up to 1080p sold by the minute) is the one later file that builds on 0132 on purpose: it replaces the three request
+        # functions, the quote, the terms and the trail with 0132's bodies plus marked lines (tests/test_editor_export_paid_1080p_migration.py
+        # strips them and compares), and leaves the list and the settling trigger as they are.
         for p in sorted(MIG.glob("*.sql")):
-            if p.name[:4] > "0132":
+            if p.name[:4] > "0132" and not p.name.startswith("0136_"):
                 text = p.read_text(encoding="utf-8")
                 for name in ("request_editor_export(", "editor_export_frame(", "quote_editor_export(", "editor_export_settle("):
                     self.assertNotIn(f"function public.{name}", text, p.name)

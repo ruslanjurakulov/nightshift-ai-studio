@@ -5406,6 +5406,7 @@ export const en = {
       hires_fps: "4K exports are at most 30 frames per second. Set the frame rate to 30 or lower, or choose 1440p.",
       hires_speed_curve: "A video with a speed curve cannot be exported in 1440p or 4K yet. Remove the speed curve, or choose 1080p or smaller.",
       hires_needs_paid_export: "This project is larger than 1080p, and exports above 1080p are paid. Export it in a paid size, or set it to 1080p or smaller under “Export format”.",
+      export_needs_quote: "Exports now cost credits for each started minute of video. Check the price below, confirm it, then export.",
       clips_full: "This project already has the most clips it can hold. Remove one in the editor first.",
       sounds_full: "This project already has the most sounds it can hold. Remove one in the editor first.",
       no_duration: "This file's length is not known yet, so it can't be added. Try again in a moment.",

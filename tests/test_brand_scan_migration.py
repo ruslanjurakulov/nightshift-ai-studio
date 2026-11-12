@@ -82,7 +82,9 @@ class Numbering(unittest.TestCase):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0133"), 1)
         self.assertIn("0131", numbers)
-        self.assertEqual([n for n in numbers if n > "0133"], [], "a later number needs its own review of this file's pins")
+        # 0136 (exports up to 1080p sold by the minute) was reviewed against these pins: it touches the video editor's export functions and
+        # 0132's price row only, nothing of 0131's or 0133's.
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0136",)], [], "a later number needs its own review of this file's pins")
         self.assertIn("0132 is reserved by another open pull request", TEXT)
 
     def test_the_file_says_it_is_applied_as_one_transaction_and_what_to_verify(self):

@@ -554,6 +554,27 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
   frame; drops the overload, the list, the check and the three columns. Exported videos stay in the library.
 - **Review.** Needs the independent security review before merge, and a person reading the live two-argument `request_editor_export` hash first.
 
+## Exports up to 1080p, sold by the started minute (0136)
+
+0136 (`0136_editor_export_paid_1080p.sql`, `docs/HIRES_EXPORT.md` "Up to 1080p") is **live on apply and changes nothing until the owner
+sets the price**: it **adds** one nullable column, `credits_per_minute_1080p`, to 0132's price row (seeded NULL = free) and one internal
+function (`editor_export_price_1080p()`, nobody's), and **replaces** 0132's three `request_editor_export` bodies, `quote_editor_export`,
+`editor_export_hires_terms` and the price trail with 0132's bodies plus only marked `-- 0136` lines (a pin test strips them and compares).
+While the price is set: the two- and three-argument calls refuse `export_needs_quote` (NS409), and the four-argument one sells a free id
+or `project` (the project's own frame up to 1080p) with the paid tiers' quote, hold (charge raised to job_minimum) and capture of the
+charge. One lock order in every overload (0054's).
+
+- **Drift guard.** Refuses (changes nothing) if a function it replaces is neither 0132's body nor its own, or if 0132's money, settle,
+  guard or list is not 0132's. The last block asserts every body by md5, the grants and the column.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`.
+- **Undo.** `docs/sql/rollback_0136_editor_export_paid_1080p.sql` (owner-applied; before 0132's rollback): puts 0132's bodies back
+  byte for byte and drops the column. 0132's lab tests take 0136 off first where they test 0132's file (`sec_db.take_off_0136`).
+- **Tests.** `tests/test_editor_export_paid_1080p_migration.py` (the file, pinned), `tests/security/test_sec_editor_export_paid_1080p.py`
+  (NULL = free, price 1 with job_minimum 30: hold 30, capture 1, release 29; legacy refusals; races across every entry point; the file).
+- **Numbering.** 0134 and 0135 are reserved by other work; 0136 names nothing of theirs.
+- **Prices.** Owner-approved 2026-11-11: 1 up to 1080p (and 3 / 5 for 1440p / 4K). Set them only after the deploy and with both
+  export switches on in the web and the worker.
+
 ## 1440p and 4K exports, sold by the started minute (0132)
 
 0132 (`0132_editor_hires_export.sql`, `docs/HIRES_EXPORT.md`) is **live on apply and sells nothing**: both prices are seeded NULL ("not on sale").
