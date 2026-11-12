@@ -216,7 +216,7 @@ class BudgetTestCase(unittest.TestCase):
     def test_a_long_4k60_masked_timeline_is_refused_and_a_short_one_or_1080p_passes(self):
         long_ = vdoc(width=3840, height=2160, fps=60, out_s=600, mask={"shape": "rect"})
         got = tl.validate(long_)
-        self.assertTrue(any("colour and masks would take about" in p and "use fewer colour changes and masks" in p
+        self.assertTrue(any("colour, masks and effects would take about" in p and "use fewer colour changes, masks and effects" in p
                             for p in got), got)
         self.assertEqual(tl.validate(vdoc(width=3840, height=2160, fps=60, out_s=20, mask={"shape": "rect"})), [])
         self.assertEqual(tl.validate(vdoc(width=1920, height=1080, fps=30, out_s=600, mask={"shape": "rect"},
@@ -230,7 +230,7 @@ class BudgetTestCase(unittest.TestCase):
         self.assertEqual(tl.validate(vdoc(width=1920, height=1080, fps=60, out_s=1600, speed=4)), [])
         self.assertEqual(tl.validate(vdoc(width=1920, height=1080, fps=60, out_s=400, color={"curve": "matte", "hue": 5},
                                           mask={"shape": "rect"})), [])
-        self.assertTrue(any("playing clips faster than 1x and colour and masks" in p for p in got), got)
+        self.assertTrue(any("playing clips faster than 1x and colour, masks and effects" in p for p in got), got)
         d = vdoc(width=3840, height=2160, fps=60, out_s=120, mask={"shape": "rect"})
         d["shapes"] = [{"id": "s1", "kind": "circle", "start_s": 0, "end_s": 120}]
         self.assertTrue(tl.validate(d))

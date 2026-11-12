@@ -99,7 +99,7 @@ class ParityFuzzTestCase(unittest.TestCase):
         budget = 0
         for c in corpus():
             probs = tl.validate(c["doc"])
-            if any("colour and masks" in p for p in probs):
+            if any("colour, masks and effects" in p for p in probs):
                 budget += 1
         self.assertGreater(budget, 5)
 

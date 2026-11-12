@@ -215,7 +215,7 @@ export type EnvelopeResult =
 
 const recent: number[] = [];
 let inFlight = false;
-const cache = new Map<string, Promise<EnvelopeResult>>();
+const cache = new Map<string, Promise<unknown>>();
 
 /** May one more file be analysed now (`ANALYSES_PER_MINUTE`, one at a time)? `now` for tests. */
 export function analysisAllowed(now: number = Date.now()): boolean {
@@ -230,7 +230,15 @@ export function resetSilenceAnalysis(): void {
   inFlight = false;
 }
 
-async function loadEnvelope(url: string, knownDurationS: number | null): Promise<EnvelopeResult> {
+/** A library file's sound, decoded in the tab (the caps, the decoder and the reasons it may not be). */
+export interface DecodedSound {
+  channels: Float32Array[];
+  rate: number;
+  durationS: number;
+}
+export type FileProblem = { status: "too_large" | "unavailable" | "busy" | "no_sound" };
+
+async function decodeFile(url: string, knownDurationS: number | null): Promise<DecodedSound | FileProblem> {
   if (knownDurationS !== null && knownDurationS > MAX_WAVEFORM_SECONDS) return { status: "too_large" };
   let ctx: ReturnType<typeof offlineDecoder>;
   try {
@@ -253,11 +261,45 @@ async function loadEnvelope(url: string, knownDurationS: number | null): Promise
     const channels: Float32Array[] = [];
     for (let c = 0; c < audio.numberOfChannels; c += 1) channels.push(audio.getChannelData(c));
     const rate = (audio as { sampleRate?: number }).sampleRate ?? channels[0].length / audio.duration;
-    return { status: "ready", env: envelope(channels, rate), durationS: audio.duration, blockS: blockSeconds(rate) };
+    return { channels, rate, durationS: audio.duration };
   } catch {
     // A video whose file has no sound track does not decode as audio at all.
     return { status: "no_sound" };
   }
+}
+
+/**
+ * Decode a library file once per page under the shared limiter (one at a time, ANALYSES_PER_MINUTE new ones a
+ * minute) and keep what `make` makes of it under `key` (the silence envelope, the beats). An "unavailable"
+ * answer is forgotten, so a later try may succeed.
+ */
+export function analyseFile<R extends { status: string }>(
+  key: string,
+  url: string,
+  knownDurationS: number | null,
+  make: (d: DecodedSound) => R,
+  now: number = Date.now(),
+): Promise<R | FileProblem> {
+  const hit = cache.get(key) as Promise<R | FileProblem> | undefined;
+  if (hit) return hit;
+  if (!analysisAllowed(now)) return Promise.resolve({ status: "busy" });
+  recent.push(now);
+  inFlight = true;
+  const p = (async (): Promise<R | FileProblem> => {
+    try {
+      const d = await decodeFile(url, knownDurationS);
+      return "channels" in d ? make(d) : d;
+    } catch {
+      return { status: "unavailable" };
+    } finally {
+      inFlight = false;
+    }
+  })().then((r) => {
+    if (r.status === "unavailable") cache.delete(key);
+    return r;
+  });
+  cache.set(key, p as Promise<unknown>);
+  return p;
 }
 
 /** The loudness envelope of a library file, analysed at most once per page and rate-limited. */
@@ -267,23 +309,16 @@ export function silenceEnvelopeFor(
   knownDurationS: number | null,
   now: number = Date.now(),
 ): Promise<EnvelopeResult> {
-  const hit = cache.get(assetId);
-  if (hit) return hit;
-  if (!analysisAllowed(now)) return Promise.resolve({ status: "busy" });
-  recent.push(now);
-  inFlight = true;
-  const p = (async (): Promise<EnvelopeResult> => {
-    try {
-      return await loadEnvelope(url, knownDurationS);
-    } catch {
-      return { status: "unavailable" };
-    } finally {
-      inFlight = false;
-    }
-  })().then((r) => {
-    if (r.status === "unavailable") cache.delete(assetId);
-    return r;
-  });
-  cache.set(assetId, p);
-  return p;
+  return analyseFile(
+    assetId,
+    url,
+    knownDurationS,
+    (d): EnvelopeResult => ({
+      status: "ready",
+      env: envelope(d.channels, d.rate),
+      durationS: d.durationS,
+      blockS: blockSeconds(d.rate),
+    }),
+    now,
+  );
 }

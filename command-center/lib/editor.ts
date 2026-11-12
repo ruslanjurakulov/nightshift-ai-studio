@@ -367,6 +367,19 @@ export const COLOR_CHROMA_SECONDS_PER_S = 0.15;
 export const COLOR_HUE_SECONDS_PER_S = 0.2;
 export const COLOR_CURVE_SECONDS_PER_S = 0.35;
 export const MASK_SECONDS_PER_S = 0.3;
+/** Effects pack on a V clip (modules/timeline.py FX_*): each an intensity 0..100, 0 = off. */
+export const FX_NAMES = ["glitch", "shake", "rgb_split", "flash"] as const;
+export type FxName = (typeof FX_NAMES)[number];
+export const FX_MAX = 100;
+/** Seconds per second of a clip at 1080p30 (scaled like the colour's; measured, docs section 16). */
+export const FX_SECONDS_PER_S: Record<FxName, number> = { glitch: 0.35, shake: 0.2, rgb_split: 0.55, flash: 0.1 };
+/** Above 1440p a cross-faded clip takes at most this many effects of the pack (measured: out of memory). */
+export const FX_LARGE_XFADE_MAX = 1;
+/** A V clip's entrance / exit (modules/timeline.py V_ANIMS); each at most half the clip. */
+export const V_ANIMS = ["fade", "slide-up", "slide-down", "slide-left", "slide-right", "zoom"] as const;
+export type VideoAnim = (typeof V_ANIMS)[number];
+/** A slide or zoom lays the picture over black on every frame of the clip. */
+export const ANIM_MOVE_SECONDS_PER_S = 0.3;
 const EFFECT_KEYS = [
   "filter",
   "filter_strength",
@@ -435,6 +448,11 @@ const V_CLIP_KEYS = [
   "stabilize",
   "color",
   "mask",
+  "fx",
+  "anim_in",
+  "anim_out",
+  "anim_in_s",
+  "anim_out_s",
   "gain_db",
   ...EFFECT_KEYS,
 ];
@@ -611,6 +629,13 @@ export interface VideoClip {
   color?: ClipColor;
   /** A shape the picture is seen through, fixed in the frame (lib/editorLook.ts). */
   mask?: ClipMask;
+  /** The effects pack, each 0..FX_MAX (lib/editorFxPack.ts). */
+  fx?: Partial<Record<FxName, number>>;
+  /** Entrance / exit (V_ANIMS) and their seconds (ANIM_MIN_S..ANIM_MAX_S, at most half the clip). */
+  anim_in?: VideoAnim;
+  anim_out?: VideoAnim;
+  anim_in_s?: number;
+  anim_out_s?: number;
   /** Into this clip. The editor makes cross-fades; a dip_to_black from
    *  another tool is kept as it is. */
   transition?: Transition;
@@ -1107,7 +1132,7 @@ export function validateTimeline(doc: unknown): string[] {
           interpEst > 0 ? "interpolated slow motion" : "",
           stabEst > 0 ? "stabilising" : "",
           fastEst > 0 ? "playing clips faster than 1x" : "",
-          lookEst > 0 ? "colour and masks" : "",
+          lookEst > 0 ? "colour, masks and effects" : "",
         ]
           .filter(Boolean)
           .join(" and ");
@@ -1115,7 +1140,7 @@ export function validateTimeline(doc: unknown): string[] {
           interpEst > 0 ? "slow less of it" : "",
           stabEst > 0 ? "stabilise less of it" : "",
           fastEst > 0 ? "speed them up less" : "",
-          lookEst > 0 ? "use fewer colour changes and masks" : "",
+          lookEst > 0 ? "use fewer colour changes, masks and effects" : "",
         ]
           .filter(Boolean)
           .join(" and ");
@@ -1342,6 +1367,8 @@ function validateMediaClip(
     validateEffects(clip, where, problems);
     if ("color" in clip) validateColor(clip.color, where, problems);
     if ("mask" in clip) validateMask(clip.mask, where, problems);
+    if ("fx" in clip) validateFx(clip.fx, where, problems);
+    validateClipAnims(clip, where, problems);
     if ("move" in clip) validateClipMove(clip.move, where, problems);
     if ("crop" in clip) validateCrop(clip.crop, where, problems);
     numIn(clip, "angle", -ANGLE_MAX, ANGLE_MAX, where, problems);
@@ -1606,6 +1633,37 @@ function validateColor(color: unknown, where: string, problems: string[]) {
     problems.push(`${cw}: curve is not available`);
 }
 
+/** A V clip's `fx` (modules/timeline.py _validate_fx). */
+function validateFx(fx: unknown, where: string, problems: string[]) {
+  const fw = `${where} fx`;
+  if (!fields(fx, [...FX_NAMES], [], fw, problems)) return;
+  if (!Object.keys(fx).length) problems.push(`${fw}: give at least one of ${FX_NAMES.join(", ")}`);
+  for (const k of FX_NAMES) numIn(fx, k, 0, FX_MAX, fw, problems);
+}
+
+/** A V clip's entrance and exit (modules/timeline.py _validate_clip_anims). */
+function validateClipAnims(clip: Record<string, unknown>, where: string, problems: string[]) {
+  for (const side of ["in", "out"] as const) {
+    const name = `anim_${side}`;
+    const dur = `anim_${side}_s`;
+    if (name in clip && !(typeof clip[name] === "string" && (V_ANIMS as readonly string[]).includes(clip[name] as string)))
+      problems.push(`${where}: ${name} is not available`);
+    if (dur in clip) {
+      numIn(clip, dur, ANIM_MIN_S, ANIM_MAX_S, where, problems);
+      if (!(name in clip)) problems.push(`${where}: ${dur} needs ${name}`);
+    }
+    const fade = clip[`fade_${side}_s`];
+    if (name in clip && isNum(fade) && fade > 0)
+      problems.push(`${where}: ${name} and fade_${side}_s cannot both be set`);
+    if (name in clip && isNum(clip.in_s) && isNum(clip.out_s)) {
+      const d = dur in clip ? clip[dur] : ANIM_DEFAULT_S;
+      const length = mediaLength(clip);
+      if (Number.isFinite(length) && isNum(d) && d > length / 2 + 1e-9)
+        problems.push(`${where}: ${name} lasts more than half the clip`);
+    }
+  }
+}
+
 /** A V clip's `mask` (modules/timeline.py _validate_mask). */
 function validateMask(mask: unknown, where: string, problems: string[]) {
   const mw = `${where} mask`;
@@ -1638,6 +1696,10 @@ export function lookSeconds(
   if (color.hue) per += COLOR_HUE_SECONDS_PER_S;
   if (color.curve) per += COLOR_CURVE_SECONDS_PER_S;
   if (isObj(r.mask)) per += MASK_SECONDS_PER_S;
+  const fx = isObj(r.fx) ? r.fx : {};
+  for (const k of FX_NAMES) if (isNum(fx[k]) && fx[k] > 0) per += FX_SECONDS_PER_S[k];
+  const moves = ["slide-up", "slide-down", "slide-left", "slide-right", "zoom"];
+  if (moves.includes(r.anim_in as string) || moves.includes(r.anim_out as string)) per += ANIM_MOVE_SECONDS_PER_S;
   if (per <= 0 || !isNum(r.in_s) || !isNum(r.out_s)) return 0;
   const length = mediaLength(r);
   if (!Number.isFinite(length)) return 0;
@@ -2160,6 +2222,28 @@ function largeFrameMaskProblems(doc: TimelineDoc, track: TimelineTrack): string[
   return problems;
 }
 
+/** At most FX_LARGE_XFADE_MAX effects of the pack on a cross-faded clip above 1440p
+ *  (modules/timeline.py `_large_frame_fx_problems`). */
+function largeFrameFxProblems(doc: TimelineDoc, track: TimelineTrack): string[] {
+  const w = doc.width;
+  const h = doc.height;
+  if (!(isInt(w) && isInt(h) && w * h > LARGE_FRAME_PX)) return [];
+  const faded = new Map<string, Record<string, unknown>>();
+  for (const [prev, clip] of crossfades(track)) {
+    faded.set(String(prev.id), prev);
+    faded.set(String(clip.id), clip);
+  }
+  const problems: string[] = [];
+  for (const [id, c] of faded) {
+    const fx = isObj(c.fx) ? c.fx : {};
+    if (FX_NAMES.filter((k) => isNum(fx[k]) && fx[k] > 0).length > FX_LARGE_XFADE_MAX)
+      problems.push(
+        `track ${track.id} clip ${id}: a cross-faded clip takes at most ${FX_LARGE_XFADE_MAX} effect in a frame above 1440p (${w}x${h})`,
+      );
+  }
+  return problems;
+}
+
 function transitionProblems(doc: TimelineDoc): string[] {
   const problems: string[] = [];
   for (const track of doc.tracks) {
@@ -2167,6 +2251,7 @@ function transitionProblems(doc: TimelineDoc): string[] {
     problems.push(...crossfadeProblems(track));
     problems.push(...largeFrameCrossfadeProblems(doc, track));
     problems.push(...largeFrameMaskProblems(doc, track));
+    problems.push(...largeFrameFxProblems(doc, track));
     const clips = [...track.clips].sort(
       (a, b) =>
         ms(Number(a.start_s)) - ms(Number(b.start_s)) ||
@@ -2405,6 +2490,19 @@ function lookOf(c: Record<string, unknown>): Partial<VideoClip> {
     if (Object.keys(col).length) out.color = col as ClipColor;
   }
   if (isObj(c.mask) && typeof c.mask.shape === "string") out.mask = { ...(c.mask as unknown as ClipMask) };
+  if (isObj(c.fx)) {
+    const fx: Partial<Record<FxName, number>> = {};
+    for (const k of FX_NAMES) if (isNum(c.fx[k]) && c.fx[k] !== 0) fx[k] = c.fx[k];
+    if (Object.keys(fx).length) out.fx = fx;
+  }
+  for (const side of ["in", "out"] as const) {
+    const a = c[`anim_${side}`];
+    if (typeof a === "string" && (V_ANIMS as readonly string[]).includes(a)) {
+      out[`anim_${side}`] = a as VideoAnim;
+      const d = c[`anim_${side}_s`];
+      out[`anim_${side}_s`] = isNum(d) ? d : ANIM_DEFAULT_S;
+    }
+  }
   return out;
 }
 
@@ -3148,9 +3246,16 @@ function splitAt(
   );
   delete second.fade_in_s;
   // A piece keeps its side's fade only as long as the piece is (the validator's rule: fade in + fade out
-  // within the clip's length; modules/timeline.py split_clip does the same).
+  // within the clip's length; modules/timeline.py split_clip does the same). The way in stays with the first
+  // half and the way out with the second, each held to half its piece.
+  delete first.anim_out;
+  delete first.anim_out_s;
+  delete second.anim_in;
+  delete second.anim_in_s;
   fitPieceFades(first);
   fitPieceFades(second);
+  fitPieceAnims(first);
+  fitPieceAnims(second);
   if (second.audio && audioInputs(model) >= MAX_AUDIO_CLIPS)
     second.audio = false;
   if (c.move) {
@@ -3168,6 +3273,36 @@ function splitAt(
   }
   const next = [...clips.slice(0, i), first, second, ...clips.slice(i + 1)];
   return { model: { ...model, clips: layout(next) }, newId };
+}
+
+/** Hold a split piece's animation to half the piece; under ANIM_MIN_S it goes (modules/timeline.py
+ *  `_fit_piece_anims`). */
+/** A clip with its animations held to half its length (dropped under ANIM_MIN_S): the same clip when they fit.
+ *  For the editor's settle step after a trim or a speed change (lib/editorSettle.ts). */
+export function fitClipAnims(c: VideoClip): VideoClip {
+  if (!c.anim_in && !c.anim_out) return c;
+  const out = { ...c };
+  fitPieceAnims(out);
+  return out.anim_in === c.anim_in &&
+    out.anim_out === c.anim_out &&
+    out.anim_in_s === c.anim_in_s &&
+    out.anim_out_s === c.anim_out_s
+    ? c
+    : out;
+}
+
+function fitPieceAnims(c: VideoClip): void {
+  const half = Math.floor((clipLength(c) / 2) * 1000) / 1000;
+  for (const side of ["in", "out"] as const) {
+    const name = `anim_${side}` as const;
+    const dur = `anim_${side}_s` as const;
+    if (!c[name]) continue;
+    const d = Math.min(c[dur] ?? ANIM_DEFAULT_S, half);
+    if (d < ANIM_MIN_S) {
+      delete c[name];
+      delete c[dur];
+    } else c[dur] = ms(d);
+  }
 }
 
 /** Shorten a split piece's fades so fade in + fade out fit its length (the in-fade first gives way). */

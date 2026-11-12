@@ -530,6 +530,74 @@
               "default": false
             }
           }
+        },
+        "fx": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "description": "Effects pack (editor parity 2b): each an intensity 0..100 (0 = off, dropped by normalise), drawn on the fitted frame on the clip's own clock. Above 1440p a cross-faded clip takes at most one.",
+          "properties": {
+            "glitch": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 0
+            },
+            "shake": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 0
+            },
+            "rgb_split": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 0
+            },
+            "flash": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 0
+            }
+          }
+        },
+        "anim_in": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "zoom"
+          ],
+          "description": "The clip's entrance (editor parity 2b): a fade from black, a slide in from the frame's edge over black, or a zoom from 60 % over black. Not with fade_in_s."
+        },
+        "anim_out": {
+          "enum": [
+            "fade",
+            "slide-up",
+            "slide-down",
+            "slide-left",
+            "slide-right",
+            "zoom"
+          ],
+          "description": "The clip's exit, the same names; not with fade_out_s."
+        },
+        "anim_in_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2,
+          "default": 0.4,
+          "description": "Seconds; at most half the clip; only with anim_in."
+        },
+        "anim_out_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2,
+          "default": 0.4,
+          "description": "Seconds; at most half the clip; only with anim_out."
         }
       }
     },

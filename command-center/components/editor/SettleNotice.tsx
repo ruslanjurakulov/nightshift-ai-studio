@@ -37,6 +37,10 @@ export function SettleNotice({ changes }: { changes: readonly SettleChange[] }) 
         return fmt(t.editor.parity2.settledLook, { n: c.clip });
       case "mask":
         return fmt(t.editor.parity2.settledMask, { n: c.clip });
+      case "fxLarge":
+        return fmt(t.editor.parity2b.settledFx, { n: c.clip });
+      case "anim":
+        return fmt(t.editor.parity2b.settledAnim, { n: c.clip });
     }
   };
   return (
