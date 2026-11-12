@@ -659,6 +659,26 @@ refuses `not_on_sale`. The worker (`tools/brand_scan_worker.py`) does nothing un
 - **Tests.** `tests/test_brand_scan_migration.py` (the file, pinned), `tests/security/test_sec_brand_scan.py` (the lab: roles, the price,
   the domain rule, holds / captures / releases, idempotency, caps and races, the result checks, accepting, the rollback).
 
+## The brand scan's follow-up (0134)
+
+0134 (`0134_brand_scan_followup.sql`, `docs/ADS_FACTORY.md` "Known limits (Phase 2)") **replaces one function**, 0133's
+`brand_scan_fail_locked(uuid, text)`. A failed scan no longer deletes a picture that a brand kit (`brand_kits.logo_asset_id`) or a product
+(`brand_product_images.asset_id`) references. The scan's pictures are locked FOR UPDATE first, so a kit or product write that is still
+open is waited for, and the delete is a statement of its own, which reads the kits and products after that wait.
+- **Number.** 0134: 0132 is taken by an open pull request (the hi-res export), and 0135 is reserved for character studio.
+- **Guards.** The body must be 0133's (`67e8ee83bde9ec4512a3d6135c9c07ee`) or 0134's own (`fd10914ccff5aa66264ab96265e59c38`, a replay).
+  The columns of 0131's tables that reference `media_assets` must be exactly those two, or the file refuses. The end state checks the
+  body, that no API role can execute it, that it is SECURITY DEFINER with a pinned search_path and has no overload, and that 0133's three
+  callers still reach it.
+- **Lock order.** It takes no advisory lock (0131's rule). The picture row locks come after the scan row lock its callers hold, the same
+  order `accept_brand_scan_fields` uses.
+- **No price.** It does not touch `brand_scan_settings`. The price is set at go-live, after the worker runs.
+- **Undo.** `docs/sql/rollback_0134_brand_scan_followup.sql` puts 0133's body back, byte for byte. Run it BEFORE 0133's rollback, which
+  refuses any body but 0133's.
+- **Tests.** `tests/test_brand_scan_followup_migration.py` (the file, pinned) and `tests/security/test_sec_brand_scan_followup.py`
+  (the lab: every failure path, each filter, a real concurrent kit write, the guards, a replay, the rollback chain). Lab tests that
+  replay or roll back 0133 take 0134 off first (`sec_db.take_off_0134`).
+
 ## The owner's model switch (0124)
 
 0124 (`0124_model_switch.sql`, `docs/MODEL_SWITCH.md`) is **live on apply and dark**: it replaces five functions that exist on the live

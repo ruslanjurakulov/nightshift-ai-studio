@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """Append one small worker's own env to the deploy payload (.github/workflows/deploy_web.yml).
 
-    python3 deploy/build-service-env.py <notify|email|operator|marketing> <payload file>
+    python3 deploy/build-service-env.py <notify|email|operator|marketing|brandscan> <payload file>
 
 Runs on the GitHub runner, only while that worker's switch is `on`
 (NIGHTSHIFT_NOTIFY_WORKER, NIGHTSHIFT_EMAIL_WORKER, NIGHTSHIFT_OPERATOR_BOT,
-NIGHTSHIFT_MARKETING_WORKER).
+NIGHTSHIFT_MARKETING_WORKER, NIGHTSHIFT_ADS_BRAND_SCAN).
 Reads, from its own environment, ``NOTIFYENV_<KEY>`` / ``EMAILENV_<KEY>`` /
-``OPERATORENV_<KEY>`` / ``MARKETINGENV_<KEY>`` for every key in deploy/.env.notify.example /
-deploy/.env.email.example / deploy/.env.operator.example / deploy/.env.marketing.example, which the workflow maps
+``OPERATORENV_<KEY>`` / ``MARKETINGENV_<KEY>`` / ``BRANDSCANENV_<KEY>`` for every key in deploy/.env.notify.example /
+deploy/.env.email.example / deploy/.env.operator.example / deploy/.env.marketing.example / deploy/.env.brandscan.example,
+which the workflow maps
 from the repository secret or variable of the same name. Nothing else: no
 ``toJSON(secrets)`` (GitHub holds such a run for manual approval), and nothing
 of the pipeline worker's or the dashboard's environment.
 
 Appends a marker line (``NIGHTSHIFT_NOTIFY_ENV=on`` / ``NIGHTSHIFT_EMAIL_ENV=on`` /
-``NIGHTSHIFT_OPERATOR_ENV=on`` / ``NIGHTSHIFT_MARKETING_ENV=on``) and then one ``KEY=value`` line per key;
+``NIGHTSHIFT_OPERATOR_ENV=on`` / ``NIGHTSHIFT_MARKETING_ENV=on`` / ``NIGHTSHIFT_BRAND_SCAN_ENV=on``) and then one
+``KEY=value`` line per key;
 deploy/remote-deploy.sh splits the payload at the marker and writes that section
-to /opt/nightshift/.env.notify / .env.email / .env.operator / .env.marketing (600), checked
+to /opt/nightshift/.env.notify / .env.email / .env.operator / .env.marketing / .env.brandscan (600), checked
 against the same example file at the deployed commit.
 
 Every key of the notify and e-mail files is required: a worker that is switched
@@ -46,6 +48,12 @@ SERVICES: Dict[str, Tuple[str, str, str, str]] = {
     "email": ("NIGHTSHIFT_EMAIL_ENV=on", ".env.email.example", "EMAILENV_", "NIGHTSHIFT_EMAIL_WORKER"),
     "operator": ("NIGHTSHIFT_OPERATOR_ENV=on", ".env.operator.example", "OPERATORENV_", "NIGHTSHIFT_OPERATOR_BOT"),
     "marketing": ("NIGHTSHIFT_MARKETING_ENV=on", ".env.marketing.example", "MARKETINGENV_", "NIGHTSHIFT_MARKETING_WORKER"),
+    # The brand scan worker (Ads Factory, Phase 2): its deploy switch is the same variable as its own, so the key is always `on`.
+    "brandscan": ("NIGHTSHIFT_BRAND_SCAN_ENV=on", ".env.brandscan.example", "BRANDSCANENV_", "NIGHTSHIFT_ADS_BRAND_SCAN"),
+}
+# service -> {key: the only value it may have}. The brand scan worker's file is written only while its switch is `on`.
+EXACT: Dict[str, Dict[str, str]] = {
+    "brandscan": {"NIGHTSHIFT_ADS_BRAND_SCAN": "on"},
 }
 # service -> keys that may be empty (all others are required)
 OPTIONAL: Dict[str, frozenset] = {
@@ -113,7 +121,8 @@ def canonical_pause(raw: str) -> str:
 
 
 def build(env: Mapping[str, str], example_text: str, prefix: str, example_name: str,
-          optional: frozenset = frozenset(), gated: Mapping[str, str] = {}) -> Tuple[List[str], List[str]]:
+          optional: frozenset = frozenset(), gated: Mapping[str, str] = {},
+          exact: Mapping[str, str] = {}) -> Tuple[List[str], List[str]]:
     lines: List[str] = []
     errors: List[str] = []
     keys = example_keys(example_text)
@@ -129,6 +138,8 @@ def build(env: Mapping[str, str], example_text: str, prefix: str, example_name: 
             value, problems = clean(key, env[prefix + key], key in optional)
         if key in gated and env.get(prefix + gated[key], "").strip() != "on":
             value = ""
+        if key in exact and value and value != exact[key]:
+            errors.append(f"{key} must be exactly `{exact[key]}` here")
         errors.extend(problems)
         lines.append(f"{key}={value}")
     return lines, errors
@@ -140,7 +151,7 @@ def main(argv: List[str]) -> int:
         return 2
     marker, example_name, prefix, switch = SERVICES[argv[1]]
     lines, errors = build(os.environ, (HERE / example_name).read_text(encoding="utf-8"), prefix, example_name,
-                          OPTIONAL.get(argv[1], frozenset()), GATED.get(argv[1], {}))
+                          OPTIONAL.get(argv[1], frozenset()), GATED.get(argv[1], {}), EXACT.get(argv[1], {}))
     if errors:
         for e in errors:
             print(f"::error::{e}")

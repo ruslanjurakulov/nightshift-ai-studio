@@ -172,6 +172,10 @@ class ComposeConfigTests(unittest.TestCase):
         # Its profile is only ever activated by deploy/remote-deploy.sh, and only while a section is sent.
         self.assertNotIn("marketing-worker", self.config["services"])
 
+    def test_the_brand_scan_worker_is_off_unless_its_profile_is_active(self):
+        # Its profile is only ever activated by deploy/remote-deploy.sh, and only while NIGHTSHIFT_ADS_BRAND_SCAN is `on`.
+        self.assertNotIn("brand-scan-worker", self.config["services"])
+
     def test_the_app_port_is_never_published(self):
         # Docker-published ports bypass ufw; only Caddy faces the internet.
         self.assertFalse(self.config["services"]["web"].get("ports"))
@@ -713,6 +717,67 @@ class ComposeMarketingProfileTests(unittest.TestCase):
     def test_the_other_services_do_not_name_the_marketing_env_file(self):
         for name in ("web", "caddy"):
             self.assertNotIn(".env.marketing", json.dumps(self.config["services"][name]))
+
+
+@unittest.skipUnless(_docker_compose_available(), "docker compose not installed")
+class ComposeBrandScanProfileTests(unittest.TestCase):
+    """`docker compose config` with the brandscan profile active, as remote-deploy.sh runs it."""
+
+    @classmethod
+    def setUpClass(cls):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("NEXT_PUBLIC_")}
+        env.update(
+            DOMAIN="app.example.com",
+            ACME_EMAIL="admin@example.com",
+            NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co",
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
+            WEB_ENV_FILE=str(ENV_EXAMPLE),
+            BRANDSCAN_ENV_FILE="/nonexistent/.env.brandscan",
+        )
+        result = subprocess.run(
+            ["docker", "compose", "--profile", "brandscan", "-f", str(COMPOSE), "config", "--format", "json"],
+            capture_output=True, text=True, env=env, timeout=60,
+        )
+        if result.returncode != 0:
+            raise AssertionError(f"docker compose config failed:\n{result.stderr}")
+        cls.config = json.loads(result.stdout)
+
+    def test_the_profile_adds_exactly_the_brand_scan_worker(self):
+        self.assertEqual(set(self.config["services"]), {"web", "caddy", "brand-scan-worker"})
+
+    def test_it_is_unreachable_unprivileged_and_bounded(self):
+        w = self.config["services"]["brand-scan-worker"]
+        self.assertFalse(w.get("ports"))
+        self.assertFalse(w.get("expose"))
+        self.assertEqual(w["user"], "1000:1000")
+        self.assertEqual(w["cap_drop"], ["ALL"])
+        self.assertEqual(w["security_opt"], ["no-new-privileges:true"])
+        self.assertEqual(w["restart"], "unless-stopped")
+        self.assertNotIn("privileged", w)
+        self.assertNotIn("docker.sock", json.dumps(w))
+        # compose reports the limits in bytes / plain numbers
+        self.assertEqual(int(w["mem_limit"]), 1536 * 1024 * 1024)
+        self.assertEqual(int(w["cpu_shares"]), 128)
+        self.assertEqual(int(w["pids_limit"]), 256)
+        self.assertEqual(w["logging"]["options"]["max-size"], "10m")
+        published = {p["published"] for p in self.config["services"]["caddy"]["ports"]}
+        self.assertEqual(published, {"80", "443"})
+        caddyfile = (DEPLOY / "Caddyfile").read_text().lower()
+        for word in ("brand-scan", "brandscan", "brand_scan"):
+            self.assertNotIn(word, caddyfile)
+
+    def test_its_one_volume_is_the_media_library_and_the_switch_is_not_set_in_compose(self):
+        w = self.config["services"]["brand-scan-worker"]
+        self.assertEqual([(v["source"], v["target"]) for v in w["volumes"] if v["type"] == "volume"], [("media", "/app/media")])
+        self.assertEqual([v for v in w["volumes"] if v["type"] != "volume"], [])
+        self.assertEqual(w.get("env_file") or [], [])       # the file is optional and absent in this check
+        # Nothing here turns it on: the switch lives only in its env file, written while the repository variable is `on`.
+        self.assertEqual(w["environment"], {"HOME": "/tmp", "NIGHTSHIFT_MEDIA_DIR": "/app/media", "NIGHTSHIFT_WORKER_ID": "brand-scan-01"})
+        self.assertEqual(w["command"], ["python", "tools/brand_scan_worker.py"])
+
+    def test_the_other_services_do_not_name_its_env_file(self):
+        for name in ("web", "caddy"):
+            self.assertNotIn(".env.brandscan", json.dumps(self.config["services"][name]))
 
 
 if __name__ == "__main__":
