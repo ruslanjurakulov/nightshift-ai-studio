@@ -207,7 +207,7 @@ export const uz: LegalTexts = {
         id: "children",
         heading: "13. Bolalar",
         body: [
-          "Xizmat bolalarga moʻljallanmagan va undan 13 yoshdan kichiklar yoki oʻz mamlakatida YouTube kanalni boshqarish uchun talab qiladigan eng kam yoshga yetmaganlar foydalana olmaydi.",
+          "Xizmat bolalarga va 18 yoshga toʻlmaganlarga moʻljallanmagan. Undan faqat 18 yoshga toʻlganlar foydalanishi mumkin; agar oʻz mamlakatida YouTube kanalni boshqarish uchun talab qiladigan eng kam yosh bundan yuqori boʻlsa, oʻsha yoshga yetganlar. Akkaunt yaratayotganda, email manzili yoki Google orqali, siz 18 yoshga toʻlganingizni tasdiqlaysiz. Xizmatdan 18 yoshga toʻlmagan kishi foydalanayotgan deb hisoblasangiz, {contactEmail} manziliga yozing.",
         ],
       },
       {
@@ -254,6 +254,7 @@ export const uz: LegalTexts = {
         id: "accounts",
         heading: "3. Akkauntlar",
         body: [
+          "Akkaunt yaratish yoki Xizmatdan foydalanish uchun kamida 18 yoshda boʻlishingiz kerak; akkaunt yaratib, email manzili yoki Google orqali, buni tasdiqlaysiz. Xizmat 18 yoshga toʻlmaganlarga moʻljallanmagan.",
           "Hozircha kirish taklif orqali beriladi. Kirish maʼlumotlaringizni xavfsiz saqlang va ruxsatsiz foydalanishdan shubhalansangiz, darhol {contactEmail} manziliga xabar bering. Akkauntingizdagi harakatlar uchun siz javobgarsiz.",
         ],
       },

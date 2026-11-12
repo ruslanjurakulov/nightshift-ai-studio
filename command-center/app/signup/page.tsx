@@ -58,6 +58,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [consent, setConsent] = useState(false);
+  const [adult, setAdult] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<SignupFieldError | Exclude<SignupOutcome, "already_registered"> | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -69,6 +70,7 @@ export default function SignupPage() {
     password_long: t.signup.errPasswordLong,
     password_mismatch: t.signup.errMismatch,
     consent_required: t.signup.errConsent,
+    age_required: t.signup.errAge,
     weak_password: t.signup.errWeakPassword,
     rate_limited: t.signup.errRateLimited,
     signups_closed: t.signup.errSignupsClosed,
@@ -80,7 +82,7 @@ export default function SignupPage() {
     // A name still being checked is waited for (the button is disabled meanwhile), not refused.
     if (busy || handleStatus.kind === "checking") return;
     // The username is required; "could not check" may go on (the database decides when it is saved).
-    const invalid = validateSignup({ email, password, confirm, consent, handleOk: handleAllowsSubmit(handleStatus) });
+    const invalid = validateSignup({ email, password, confirm, consent, adult, handleOk: handleAllowsSubmit(handleStatus) });
     if (invalid) {
       setProblem(invalid);
       return;
@@ -240,6 +242,22 @@ export default function SignupPage() {
               </Link>
               {t.signup.consentPost}
             </span>
+          </label>
+          {/* Nothing records this box on the server (no consent or terms-version record exists for sign-up today): it is
+              the person's own statement, required before the form is sent, as the vendors' 18+ terms require. */}
+          <label className="mt-1 flex min-h-11 items-start gap-3 text-sm leading-snug text-[var(--ns-text-dim)]">
+            <input
+              type="checkbox"
+              required
+              data-age-confirm
+              checked={adult}
+              onChange={(e) => {
+                setAdult(e.target.checked);
+                if (problem === "age_required") setProblem(null);
+              }}
+              className="size-6 shrink-0 accent-[var(--st-act)]"
+            />
+            <span>{t.signup.ageConfirm}</span>
           </label>
           {shownProblem && (
             <AuthAlert tone="fail">

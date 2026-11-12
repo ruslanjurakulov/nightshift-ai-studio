@@ -19,7 +19,7 @@ describe("one password policy", () => {
     expect(validateNewPassword("ä".repeat(PASSWORD_MAX / 2 + 1), "ä".repeat(PASSWORD_MAX / 2 + 1))).toBe("password_long"); // bytes, not characters
     expect(validateNewPassword("longenough1", "longenough2")).toBe("password_mismatch");
     expect(validateNewPassword("longenough1", "longenough1")).toBeNull();
-    const base = { email: "a@b.co", password: "short", confirm: "short", consent: true };
+    const base = { email: "a@b.co", password: "short", confirm: "short", consent: true, adult: true };
     expect(validateSignup(base)).toBe(validateNewPassword("short", "short"));
   });
 

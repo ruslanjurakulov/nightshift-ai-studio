@@ -167,7 +167,7 @@ describe("the sign-up username field", () => {
     fireEvent.change(screen.getByLabelText(en.signup.email), { target: { value: "ana@example.com" } });
     fireEvent.change(screen.getByLabelText(new RegExp(`^${en.signup.password}`)), { target: { value: "longenough1" } });
     fireEvent.change(screen.getByLabelText(new RegExp(`^${en.signup.confirm}`)), { target: { value: "longenough1" } });
-    fireEvent.click(screen.getByRole("checkbox"));
+    for (const box of screen.getAllByRole("checkbox")) fireEvent.click(box);
   }
   const send = async () => {
     await act(async () => {
@@ -243,7 +243,7 @@ describe("sign-up does not confirm which addresses are registered (BR-S-022)", (
     const pw = document.querySelectorAll("input[type=password]");
     fireEvent.change(pw[0], { target: { value: "correct horse battery" } });
     fireEvent.change(pw[1], { target: { value: "correct horse battery" } });
-    fireEvent.click(document.querySelector("input[type=checkbox]") as HTMLInputElement);
+    document.querySelectorAll<HTMLInputElement>("input[type=checkbox]").forEach((box) => fireEvent.click(box));
     await act(async () => {
       fireEvent.submit(document.querySelector("form") as HTMLFormElement);
       await vi.advanceTimersByTimeAsync(10);

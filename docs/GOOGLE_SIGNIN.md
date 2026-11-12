@@ -45,7 +45,7 @@ https://<project-ref>.supabase.co/auth/v1/callback   (Supabase)
 /welcome (yangi hisob)  yoki  next (mavjud hisob)
 ```
 
-Tugma ostida **"Davom etish orqali siz Foydalanish shartlari va Maxfiylik siyosatiga rozilik bildirasiz"** qatori bor, `/login` va `/signup` ikkalasida ham: ro'yxatdan o'tish ochiq bo'lgani uchun hisobi yo'q Google manzili `/login` dan ham yangi hisob oladi, va u email formasidagi rozilik belgisidan o'tmaydi.
+Tugma ostida **"Davom etish orqali siz Foydalanish shartlari va Maxfiylik siyosatiga rozilik bildirasiz va 18 yoshga toʻlganingizni tasdiqlaysiz"** qatori bor, `/login` va `/signup` ikkalasida ham: ro'yxatdan o'tish ochiq bo'lgani uchun hisobi yo'q Google manzili `/login` dan ham yangi hisob oladi, va u email formasidagi rozilik belgisidan o'tmaydi.
 
 Xatolar `/login?error=<kod>` ko'rinishida qaytadi va qat'iy matn bilan
 ko'rsatiladi (en/ru/uz); Google yoki Supabase matni hech qachon ko'rsatilmaydi:

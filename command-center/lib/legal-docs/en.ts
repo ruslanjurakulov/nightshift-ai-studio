@@ -214,7 +214,7 @@ export const en: LegalTexts = {
         id: "children",
         heading: "13. Children",
         body: [
-          "The Service is not directed to children and may not be used by anyone under 13, or by anyone below the minimum age YouTube requires to manage a channel in their country.",
+          "The Service is not directed to children or to anyone under 18. It may be used only by people who are at least 18 years old, or older where the minimum age YouTube requires to manage a channel in their country is higher. When you create an account, with an email address or with Google, you confirm that you are 18 or older. If you believe someone under 18 is using the Service, write to {contactEmail}.",
         ],
       },
       {
@@ -261,6 +261,7 @@ export const en: LegalTexts = {
         id: "accounts",
         heading: "3. Accounts",
         body: [
+          "You must be at least 18 years old to create an account or use the Service, and by creating an account, with an email address or with Google, you confirm that you are. The Service is not intended for anyone under 18.",
           "Access is currently by invitation. Keep your sign-in details secure and tell us promptly at {contactEmail} if you suspect unauthorised use. You are responsible for activity under your account.",
         ],
       },

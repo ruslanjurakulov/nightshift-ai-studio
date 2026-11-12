@@ -6,7 +6,7 @@ The button on `/login` and `/signup` hides itself until Supabase reports the Goo
 
 **There is no env variable, GitHub variable or `deploy_web.yml` change for this, on purpose.** A `NEXT_PUBLIC_*` flag is inlined when the web image is built, so flipping it would need a rebuild and a deploy, and it could disagree with the provider (flag on, provider off: a dead button). The provider switch in Supabase is the single switch. If a flag is ever wanted anyway, it is a server-side `GOOGLE_SIGNIN_ENABLED` key added to `deploy/.env.web.example`, mapped in `deploy_web.yml`, and ANDed with the settings answer in `lib/server/google-enabled.ts`.
 
-The consent line ("By continuing you agree to the Terms of Service and Privacy Policy.", en/ru/uz) is under the button on both pages: with sign-ups open, a Google address that has no account yet gets one from `/login` as well, and neither page goes through the sign-up form's checkbox.
+The consent line ("By continuing you agree to the Terms of Service and Privacy Policy and confirm you are 18 or older.", en/ru/uz) is under the button on both pages: with sign-ups open, a Google address that has no account yet gets one from `/login` as well, and neither page goes through the sign-up form's checkbox.
 
 Values that come from the code:
 
