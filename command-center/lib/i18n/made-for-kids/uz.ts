@@ -1,0 +1,33 @@
+import type { MadeForKidsDictionary } from "./en";
+
+export const madeForKidsUz: MadeForKidsDictionary = {
+  label: "Bolalar uchun moʻljallangan (YouTube talabi)",
+  help: "Yoqilganda YouTube bu videoda izohlarni, shaxsiylashtirilgan reklamani, bildirishnomalarni va baʼzi boshqa imkoniyatlarni oʻchiradi.",
+  kidsNote: "Bu bolalar uchun kontent, shuning uchun yoqilgan. Oʻchirish uchun tasdiqlashingiz kerak.",
+  confirmTitle: "Bu video bolalar uchun moʻljallanmagan deb belgilansinmi?",
+  confirmBody:
+    "Bu bolalar uchun kontent. YouTube qoidalari va bolalar maʼlumotlarini himoya qilish qonuni (COPPA) bolalarga moʻljallangan videoni shunday belgilashni talab qiladi. Faqat video bolalarga qaratilmagan boʻlsa oʻchiring.",
+  confirmYes: "Ha, bolalar uchun emas",
+  confirmNo: "Yoqilgan qolsin",
+  saving: "Saqlanmoqda…",
+  saved: "Saqlandi.",
+  createNote: "Shu ishga tushirishdagi videoga tegishli. Bolalar uchun kontent bu yerda oʻchirilgan boʻlsa ham bolalar uchun deb belgilanadi.",
+  notRecorded: "Bu video uchun yozilmagan: u bu sozlama paydo boʻlishidan oldin yuklangan. Auditoriyasini YouTube Studio’da tekshiring.",
+  confirmedOff: "Bolalar uchun emas deb belgilangan; tasdiqlangan sana: {when}.",
+  blockers: {
+    already_public: "Video ommaviy: auditoriyani YouTube Studio’da oʻzgartiring.",
+    approval_live: "Shu holatda tasdiqlangan. Tasdiq muddati tugagach, auditoriyani oʻzgartirish mumkin.",
+    not_admin: "Faqat shu tashkilot administratori oʻzgartira oladi.",
+    not_member: "Faqat shu tashkilot aʼzosi oʻzgartira oladi.",
+  },
+  errors: {
+    bad_value: "Bu qiymatni saqlab boʻlmaydi.",
+    rate_limited: "Qisqa vaqtda juda koʻp oʻzgarish. Bir necha daqiqadan keyin qayta urinib koʻring.",
+    already_public: "Video ommaviy: auditoriyani YouTube Studio’da oʻzgartiring.",
+    approval_live: "Shu holatda tasdiqlangan. Tasdiq muddati tugagach, auditoriyani oʻzgartirish mumkin.",
+    confirm_required: "Oʻchirish uchun tasdiqlashingiz kerak.",
+    forbidden: "Faqat shu tashkilot administratori oʻzgartira oladi.",
+    not_found: "Video topilmadi.",
+    failed: "Saqlanmadi. Qayta urinib koʻring.",
+  },
+};

@@ -2,6 +2,7 @@ import { studioHomeUz } from "./studio-home/uz";
 import { improveUz } from "./improve/uz";
 import { notifyChannelsUz } from "./notify-channels/uz";
 import { aiLabelUz } from "./ai-label/uz";
+import { madeForKidsUz } from "./made-for-kids/uz";
 import { channelRiskUz } from "./channel-risk/uz";
 import { customVoiceUz } from "./custom-voice/uz";
 import { libraryUxUz } from "./library-ux/uz";
@@ -2413,6 +2414,7 @@ export const uz: Dictionary = {
       awaiting_two_person: "Rad etildi: bu kanalda avval ikkinchi shaxsning tasdigʻi kerak.",
       account_not_connected: "Rad etildi: akkaunt endi ulanmagan — qayta ulang.",
       already_on_channel: "Rad etildi: video bu kanalda allaqachon bor.",
+      made_for_kids_unconfirmed: "Rad etildi: bu bolalar uchun kontent, lekin bolalar uchun emas deb belgilangan va buni hech kim tasdiqlamagan. Videoni tekshirish sahifasida auditoriyani belgilang va qayta yuboring.",
       master_not_available: "Rad etildi: videoning toʻliq sifatli nusxasi workerʼda yoʻq.",
       unknown_duration: "Rad etildi: video uzunligini aniqlab boʻlmadi.",
       too_long: "Rad etildi: bu platforma uchun juda uzun.",
@@ -3126,6 +3128,7 @@ export const uz: Dictionary = {
   },
   notifyChannels: notifyChannelsUz,
   aiLabel: aiLabelUz,
+  madeForKids: madeForKidsUz,
   channelRisk: channelRiskUz,
   customVoice: customVoiceUz,
   accountSecurity: {

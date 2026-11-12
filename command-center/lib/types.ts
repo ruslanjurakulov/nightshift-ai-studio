@@ -76,6 +76,12 @@ export interface VideoRow {
   decided_by_email?: string | null;
   decided_at?: string | null;
   approval_expires_at?: string | null;
+  /** Migration 0140: YouTube's "made for kids" declaration (null = not recorded), whether the run found kids content, and who
+   *  confirmed "not made for kids" for kids content, when (lib/madeForKids.ts). Absent on a database without 0140. */
+  made_for_kids?: boolean | null;
+  kids_content?: boolean | null;
+  made_for_kids_off_by?: string | null;
+  made_for_kids_off_at?: string | null;
 }
 
 /** A reviewer's request, waiting for the next run to pick it up. */

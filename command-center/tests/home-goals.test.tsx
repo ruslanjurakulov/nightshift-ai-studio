@@ -88,7 +88,14 @@ describe("Home goal cards", () => {
       expect(url.hash).toBe("#run");
       // What the create page's own parser takes from the query: exactly the card's choices.
       const q = Object.fromEntries(url.searchParams);
-      expect(runPrefillFromQuery(q)).toEqual({ brief: t.home.formats[f.id].starter, duration: String(lengthSeconds(f.length)), language: defaultLanguage(locale) });
+      // The Kids story card also starts YouTube's "made for kids" on (lib/madeForKids.ts); no other card carries it.
+      expect(runPrefillFromQuery(q)).toEqual({
+        brief: t.home.formats[f.id].starter,
+        duration: String(lengthSeconds(f.length)),
+        language: defaultLanguage(locale),
+        ...(f.id === "kids" ? { madeForKids: true } : {}),
+      });
+      expect(url.searchParams.get("format")).toBe(f.id === "kids" ? "kids" : null);
     }
   });
 

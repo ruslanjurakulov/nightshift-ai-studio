@@ -1,0 +1,97 @@
+/**
+ * YouTube's "made for kids" declaration, the pure half (migration 0140, modules/made_for_kids.py).
+ *
+ * Every upload used to declare "not made for kids", while the product offers a Kids story format and kids looks: a children's
+ * video declared that way breaks YouTube's policy and COPPA. The pipeline now decides the declaration from the run (the kids
+ * format, a kids series, a kids look, a kids channel); a person sees it, and may change it, on the review panel. Kids content
+ * starts ON, and turning it off takes an explicit confirmation that the database records (set_video_made_for_kids).
+ *
+ * Pure and client-safe: the switch, the review panel, the Create form and the tests import it.
+ */
+import { STYLE_LIBRARY } from "@/lib/styles/library";
+import type { HomeFormatId } from "@/lib/home";
+
+/** The Kids story format of Home (lib/home.ts HOME_FORMATS). */
+export const KIDS_FORMAT = "kids" satisfies HomeFormatId;
+
+/** The Style Library looks tagged "kids". modules/made_for_kids.py KIDS_LIBRARY_STYLES must list the same ids (a test pins it). */
+export const KIDS_LIBRARY_STYLES: readonly string[] = STYLE_LIBRARY.filter((s) => s.tags.includes("kids")).map((s) => s.id);
+
+export function isKidsFormat(id: unknown): boolean {
+  return id === KIDS_FORMAT;
+}
+
+export function isKidsLook(libraryId: unknown): boolean {
+  return typeof libraryId === "string" && KIDS_LIBRARY_STYLES.includes(libraryId.trim().toLowerCase());
+}
+
+/** The videos columns of 0140, all optional: a row before 0140, or a database without it, simply has none. */
+export interface MadeForKidsFields {
+  made_for_kids?: boolean | null;
+  kids_content?: boolean | null;
+  made_for_kids_off_by?: string | null;
+  made_for_kids_off_at?: string | null;
+}
+
+export interface MadeForKidsView {
+  /** Something was recorded for this video (an upload since 0140, or a person's decision). */
+  recorded: boolean;
+  /** What the video declares; null when nothing was recorded (never shown as "off": an unknown is not a no). */
+  value: boolean | null;
+  /** Kids content: starts on, and turning it off needs a confirmation. */
+  kids: boolean;
+  /** A person confirmed "not made for kids" for kids content. */
+  confirmedOff: boolean;
+}
+
+export function madeForKidsView(v: MadeForKidsFields | null | undefined): MadeForKidsView {
+  const value = typeof v?.made_for_kids === "boolean" ? v.made_for_kids : null;
+  const kids = v?.kids_content === true;
+  return { recorded: value !== null, value, kids, confirmedOff: kids && value === false && !!v?.made_for_kids_off_by };
+}
+
+/** Turning the switch to `next` needs the "not made for kids" confirmation: kids content going off. */
+export function needsConfirm(view: Pick<MadeForKidsView, "kids">, next: boolean): boolean {
+  return view.kids && next === false;
+}
+
+export type MadeForKidsBlocker = "already_public" | "approval_live" | "not_admin" | "not_member";
+
+/**
+ * Why the review panel's switch cannot be changed now, in the order set_video_made_for_kids refuses, then the person's own
+ * standing; null when it may. Presentation only: the database function asks again.
+ */
+export function madeForKidsBlocker(
+  video: { privacy?: string | null },
+  opts: { approvalLive: boolean; access: "ok" | "not_admin" | "not_member" },
+): MadeForKidsBlocker | null {
+  if (video.privacy === "public") return "already_public";
+  if (opts.approvalLive) return "approval_live";
+  if (opts.access === "not_member") return "not_member";
+  if (opts.access === "not_admin") return "not_admin";
+  return null;
+}
+
+/** The words set_video_made_for_kids answers with ({ ok: false, error }), plus the two it raises. */
+export const MADE_FOR_KIDS_ERRORS = [
+  "bad_value",
+  "rate_limited",
+  "already_public",
+  "approval_live",
+  "confirm_required",
+  "forbidden",
+  "not_found",
+] as const;
+export type MadeForKidsError = (typeof MADE_FOR_KIDS_ERRORS)[number] | "failed";
+
+export function madeForKidsError(raw: unknown): MadeForKidsError {
+  return typeof raw === "string" && (MADE_FOR_KIDS_ERRORS as readonly string[]).includes(raw) ? (raw as MadeForKidsError) : "failed";
+}
+
+/** The word a PostgREST error carries for the two raised refusals (42501 forbidden, P0002 not found); anything else is "failed". */
+export function errorFromRpc(err: { code?: string; message?: string } | null | undefined): MadeForKidsError {
+  if (!err) return "failed";
+  if (err.code === "42501" || err.message === "forbidden") return "forbidden";
+  if (err.code === "P0002" || err.message === "not_found") return "not_found";
+  return "failed";
+}

@@ -134,7 +134,7 @@ function CurrentRows({ collapsed }: { collapsed: boolean }) {
   // On /create the row is the desk the page opens (lib/creative/desks), from the same query it reads.
   const onCreate = section === "/create" || section.startsWith("/create/");
   // The same validated read the page makes (lib/home), so a junk ?lang= never lights the YouTube desk.
-  const hasRunPrefill = onCreate && !!runPrefillFromQuery({ topic: q.get("topic") ?? undefined, length: q.get("length") ?? undefined, lang: q.get("lang") ?? undefined });
+  const hasRunPrefill = onCreate && !!runPrefillFromQuery({ topic: q.get("topic") ?? undefined, length: q.get("length") ?? undefined, lang: q.get("lang") ?? undefined, format: q.get("format") ?? undefined });
   const desk = onCreate ? deskFromQuery({ desk: q.get("desk"), tool, hasRunPrefill }) : null;
   const current = desk ? `desk:${desk}` : sidebarCurrent(section, tool);
   return <SidebarRows current={current} collapsed={collapsed} />;

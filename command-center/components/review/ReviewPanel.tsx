@@ -21,7 +21,8 @@ import {
   visibilityView,
   type VisibilityRequestRow,
 } from "@/lib/visibilityRequest";
-import { heldBeforeRender, heldFlagged, type EvidenceInfo } from "@/lib/heldVideos";
+import { heldBeforeRender, heldFlagged, isHeldVideo, type EvidenceInfo } from "@/lib/heldVideos";
+import { ReviewMadeForKids } from "@/components/review/MadeForKidsSwitch";
 import type { ReviewIntentRow, VideoRow } from "@/lib/types";
 
 /**
@@ -549,6 +550,11 @@ export function ReviewPanel({
           )}
           {vis.kind === "expired" && <p className="m-0 text-sm text-[var(--color-warn)]">{t.review.visibility.expired}</p>}
         </div>
+      )}
+
+      {/* ── who it is for: YouTube's "made for kids" (0140). Decided before approving: a live approval keeps it as it was. ── */}
+      {!isHeldVideo(video) && (
+        <ReviewMadeForKids video={video} access={access} approvalLive={state.view.kind === "approved"} />
       )}
 
       {/* ── the decision ───────────────────────────────────────────────── */}

@@ -40,6 +40,9 @@ export type RunOptions = {
   /** "Making this for:" (migration 0029) — which connected account the video
    *  is meant for. A hint recorded on the job; the pipeline never reads it. */
   publishHint?: string;
+  /** YouTube's "made for kids" for this run (the Kids story format, the Create form's switch; migration 0140). Only ever
+   *  true: a run can turn the declaration on, never off — kids content is made for kids whatever the run says. */
+  madeForKids?: boolean;
 };
 
 /** The workflow's choice lists (daily_video.yml); migration 0017 checks the same. */
@@ -67,11 +70,11 @@ export function buildRenderJobInsert(
 ): {
   channel_id: string;
   kind: "daily";
-  params: Record<string, string | number>;
+  params: Record<string, string | number | boolean>;
   requested_by: string;
   credit_ref?: string;
 } {
-  const params: Record<string, string | number> = {};
+  const params: Record<string, string | number | boolean> = {};
   const topic = opts.topic?.trim();
   const niche = opts.niche?.trim();
   const language = opts.language?.trim();
@@ -95,6 +98,8 @@ export function buildRenderJobInsert(
   if (voiceId && isVoiceId(voiceId)) params.voice_id = voiceId;
   const hint = parsePublishHint(opts.publishHint);
   if (hint) params.publish_hint = formatPublishHint(hint.platform, hint.id);
+  // Only `true` (the database's check refuses anything else, 0140); absent means "the channel, series and look decide".
+  if (opts.madeForKids === true) params.made_for_kids = true;
   // The credit hold that pays for this job (migration 0020) — a column, not a
   // param: the pipeline never sees it, the worker settles it. Only sent when a
   // hold exists, so a database without 0020 gets exactly the old insert.

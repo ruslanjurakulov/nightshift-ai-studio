@@ -161,6 +161,8 @@ export const PUBLISH_REASONS = [
   "awaiting_two_person",
   "account_not_connected",
   "already_on_channel",
+  // 0140: kids content declared "not made for kids" with nobody's confirmation is never cross-posted (modules/made_for_kids.py).
+  "made_for_kids_unconfirmed",
   "master_not_available",
   "unknown_duration",
   "too_long",

@@ -2,6 +2,7 @@ import { studioHomeEn } from "./studio-home/en";
 import { improveEn } from "./improve/en";
 import { notifyChannelsEn } from "./notify-channels/en";
 import { aiLabelEn } from "./ai-label/en";
+import { madeForKidsEn } from "./made-for-kids/en";
 import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
 import { libraryUxEn } from "./library-ux/en";
@@ -2425,6 +2426,7 @@ export const en = {
       awaiting_two_person: "Refused: this channel needs a second person's approval for this video first.",
       account_not_connected: "Refused: the account is not connected any more — reconnect it.",
       already_on_channel: "Refused: the video is already on this channel.",
+      made_for_kids_unconfirmed: "Refused: this is kids content declared not made for kids, and nobody confirmed it. Set the audience on the video's review page, then send again.",
       master_not_available: "Refused: the full-quality render is not on the worker.",
       unknown_duration: "Refused: the video's length could not be read.",
       too_long: "Refused: too long for this platform.",
@@ -3138,6 +3140,7 @@ export const en = {
   },
   notifyChannels: notifyChannelsEn,
   aiLabel: aiLabelEn,
+  madeForKids: madeForKidsEn,
   channelRisk: channelRiskEn,
   customVoice: customVoiceEn,
   accountSecurity: {

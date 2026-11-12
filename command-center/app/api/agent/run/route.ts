@@ -123,6 +123,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     tts_model?: unknown;
     voice_id?: unknown;
     publish_hint?: unknown;
+    made_for_kids?: unknown;
     idempotency_key?: unknown;
     max_credits?: unknown;
   };
@@ -189,6 +190,11 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // platform's, not theirs (the Create form hides the selects from them). The operator's own organization keeps it.
   if (customerRun && (videoProvider || imageProvider))
     return NextResponse.json({ error: "provider_not_allowed" }, { status: 403 });
+  // YouTube's "made for kids" (0140): true, or absent. Anything else is refused rather than read as "not for kids": a run
+  // can only turn the declaration on, and a false here would be a request this route cannot honour.
+  if (body.made_for_kids != null && body.made_for_kids !== true)
+    return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  const madeForKids = body.made_for_kids === true;
   const ttsModel = typeof body.tts_model === "string" ? body.tts_model.trim() : "";
   const voiceId = typeof body.voice_id === "string" ? body.voice_id.trim() : "";
 
@@ -225,6 +231,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     ttsModel,
     voiceId,
     ...(publishHint ? { publishHint } : {}),
+    ...(madeForKids ? { madeForKids } : {}),
   };
 
   // Pay first (enforced deployments only), then run. The hold's id travels
@@ -304,6 +311,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     if (ttsModel) detail.tts_model = ttsModel;
     if (voiceId) detail.voice_id = voiceId;
     if (publishHint) detail.publish_hint = publishHint;
+    if (madeForKids) detail.made_for_kids = true;
     if (creditRef) {
       detail.credit_ref = creditRef;
       detail.credits_reserved = creditsHeld;

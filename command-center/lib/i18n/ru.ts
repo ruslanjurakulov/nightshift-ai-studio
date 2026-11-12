@@ -2,6 +2,7 @@ import { studioHomeRu } from "./studio-home/ru";
 import { improveRu } from "./improve/ru";
 import { notifyChannelsRu } from "./notify-channels/ru";
 import { aiLabelRu } from "./ai-label/ru";
+import { madeForKidsRu } from "./made-for-kids/ru";
 import { channelRiskRu } from "./channel-risk/ru";
 import { customVoiceRu } from "./custom-voice/ru";
 import { libraryUxRu } from "./library-ux/ru";
@@ -2413,6 +2414,7 @@ export const ru: Dictionary = {
       awaiting_two_person: "Отказано: на этом канале сначала нужно одобрение второго человека.",
       account_not_connected: "Отказано: аккаунт больше не подключён — переподключите его.",
       already_on_channel: "Отказано: видео уже есть на этом канале.",
+      made_for_kids_unconfirmed: "Отказано: это детский контент, объявленный не для детей, и никто этого не подтвердил. Укажите аудиторию на странице проверки видео и отправьте снова.",
       master_not_available: "Отказано: полной версии видео нет на воркере.",
       unknown_duration: "Отказано: не удалось определить длительность видео.",
       too_long: "Отказано: слишком длинное для этой платформы.",
@@ -3126,6 +3128,7 @@ export const ru: Dictionary = {
   },
   notifyChannels: notifyChannelsRu,
   aiLabel: aiLabelRu,
+  madeForKids: madeForKidsRu,
   channelRisk: channelRiskRu,
   customVoice: customVoiceRu,
   accountSecurity: {
