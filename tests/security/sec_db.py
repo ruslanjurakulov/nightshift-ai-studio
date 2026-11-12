@@ -233,6 +233,13 @@ ROLLBACK_0139 = REPO / "docs" / "sql" / "rollback_0139_operator_preview.sql"
 ON_0125 = (MIGRATION_0139.name,)
 
 
+MIGRATION_0141 = MIGRATIONS / "0141_youtube_channel_one_org.sql"
+ROLLBACK_0141 = REPO / "docs" / "sql" / "rollback_0141_youtube_channel_one_org.sql"
+#: Migrations whose drift guard pins 0114's create_channel (0141 pins the channel write paths it was reviewed against): a sequence that
+#: leaves 0114 out leaves these out too, and a database compared function by function with such a sequence leaves them out as well.
+ON_0114 = (MIGRATION_0141.name,)
+
+
 def has_0139(conn_or_session) -> bool:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     return bool(conn.execute("select to_regprocedure('public.creative_operator_preview(uuid, text, jsonb)') is not null").fetchone()[0])

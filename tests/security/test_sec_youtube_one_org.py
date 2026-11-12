@@ -94,6 +94,20 @@ def _holders(conn, yt):
         " where r.vault_secret_id is not null and r.revoked_at is null and btrim(r.youtube_channel_id) = %s", [yt, yt]).fetchall())
 
 
+def _seed(conn, sc):
+    """Each tenant's own YouTube channel, connected (an active Vault row) and confirmed, as sec_scenario seeds it. Other lab files
+    revoke or delete the shared seed rows (test_sec_operator_channel_token.py empties channel_token_refs), so every test here puts them
+    back inside its own rolled-back transaction instead of trusting the order the suite runs in."""
+    for t, yt in ((sc.alice, "UCyta"), (sc.bob, "UCytb")):
+        conn.execute("insert into public.channel_token_refs (channel_id, vault_secret_id, youtube_channel_id, connected_at) "
+                     "values (%s, vault.create_secret(%s), %s, now()) on conflict (channel_id) do update set "
+                     "vault_secret_id = excluded.vault_secret_id, revoked_at = null, revoked_by = null, "
+                     "youtube_channel_id = excluded.youtube_channel_id", [t.channel, f"seed-token-{t.key}", yt])
+        conn.execute("update public.channels set credential_ref = coalesce(credential_ref, '{}'::jsonb) || jsonb_build_object("
+                     "'provider', 'youtube', 'ref', channel_id, 'youtube_channel_id', %s::text, "
+                     "'verified_at', '2026-01-01T00:00:00.000Z') where channel_id = %s", [yt, t.channel])
+
+
 def _refused(got, sc):
     """The stable refusal, and nothing in it that names the holder."""
     assert got[0] == "23P01", got
@@ -108,7 +122,9 @@ def _refused(got, sc):
 # ── the rule ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_the_lab_starts_with_each_tenant_holding_its_own_youtube_channel(conn, sc):
-    with as_superuser(conn, commit=False):
+    with conn.transaction(force_rollback=True):
+        _become(conn, None)
+        _seed(conn, sc)
         assert _holders(conn, "UCyta") == [(sc.alice.channel, sc.alice.org, "confirmed"), (sc.alice.channel, sc.alice.org, "vault_token")]
         assert _holders(conn, "UCytb") == [(sc.bob.channel, sc.bob.org, "confirmed"), (sc.bob.channel, sc.bob.org, "vault_token")]
 
@@ -116,6 +132,7 @@ def test_the_lab_starts_with_each_tenant_holding_its_own_youtube_channel(conn, s
 def test_a_reconnect_in_the_same_organization_and_a_second_channel_of_it_keep_working(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
+        _seed(conn, sc)
         _channel(conn, "chan-a2", sc.alice.org)
         got = _call(conn, sc.alice.actor, STORE, [sc.alice.channel, TOKEN, meta("UCyta")])
         assert got[0] == "ok" and got[1]["reconnected"] is True, got
@@ -133,6 +150,7 @@ def test_a_reconnect_in_the_same_organization_and_a_second_channel_of_it_keep_wo
 def test_a_second_organization_is_refused_with_the_stable_code_and_learns_nothing_about_the_holder(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
+        _seed(conn, sc)
         # Bob adds a channel to his organization and signs in with the Google account of Alice's YouTube channel.
         _channel(conn, "chan-bx", sc.bob.org)
         secrets = conn.execute("select count(*) from vault.secrets").fetchone()[0]
@@ -157,6 +175,7 @@ def test_a_second_organization_is_refused_with_the_stable_code_and_learns_nothin
 def test_the_operators_own_connect_stamp_and_create_are_held_to_it_too(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
+        _seed(conn, sc)
         # store_operator_channel_token (0115): the platform owner connects the default channel to a customer's YouTube channel
         _refused(_call(conn, sc.operator, OPERATOR_STORE, ["default", TOKEN, meta("UCyta")]), sc)
         # set_channel_credential with the stamp (0086): the operator's wizard confirms a channel against it
@@ -182,6 +201,7 @@ def test_the_operators_own_connect_stamp_and_create_are_held_to_it_too(conn, sc)
 def test_a_disconnect_frees_the_id_for_another_organization_and_the_first_cannot_take_it_back(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
+        _seed(conn, sc)
         assert _call(conn, sc.alice.actor, REVOKE, [sc.alice.channel]) == ("ok", True)
         assert _holders(conn, "UCyta") == [], "a revoked connection (and the confirmation it gave) holds nothing"
         # the YouTube id stays pinned on alice's row (without verified_at): that pin is not a connection
@@ -198,6 +218,7 @@ def test_a_disconnect_frees_the_id_for_another_organization_and_the_first_cannot
 def test_direct_table_writes_are_held_to_it_on_every_role(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
+        _seed(conn, sc)
         # A browser cannot write a connection or a confirmation at all (0022: no table privilege; 0086: no column privilege).
         assert _call(conn, sc.bob.actor, "update public.channels set credential_ref = %s::jsonb where channel_id = %s",
                      [json.dumps({"youtube_channel_id": "UCyta", "verified_at": "x"}), sc.bob.channel])[0] == "42501"
@@ -223,6 +244,7 @@ def test_direct_table_writes_are_held_to_it_on_every_role(conn, sc):
 def test_moving_a_channel_between_organizations_cannot_split_one_youtube_channel_across_two(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
+        _seed(conn, sc)
         # Alice administers org B too (the shape of the incident: one person, two workspaces). 0018 lets her move a channel.
         conn.execute("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, 'admin')",
                      [sc.bob.org, sc.alice.actor.uid, sc.alice.actor.email])
@@ -251,8 +273,10 @@ def test_repeatable_read_cannot_write_a_claim_against_a_stale_snapshot(conn, sc)
         _channel(conn, "chan-bx", sc.bob.org)
         got = _call(conn, sc.bob.actor, STORE, ["chan-bx", TOKEN, meta("UCrr-free")])
         assert got[0] == "0A000" and got[2] == "youtube_channel_isolation", got
-        # a write that claims nothing (a disconnect) is not checked, so it is not refused
-        assert _call(conn, sc.bob.actor, REVOKE, [sc.bob.channel]) == ("ok", True)
+        # a write that claims nothing (a connection row that is already revoked, a disconnect) is not checked, so it is not refused
+        assert _call(conn, None, "insert into public.channel_token_refs (channel_id, vault_secret_id, youtube_channel_id, revoked_at) "
+                     "values ('chan-bx', null, 'UCrr-free', now())")[0] == "ok"
+        assert _call(conn, sc.bob.actor, REVOKE, ["chan-bx"]) == ("ok", False)
 
 
 # ── the race: two sessions, both begin, both try, one commits first ─────────────────────────────────────────────────
@@ -455,6 +479,7 @@ def test_the_rollback_restores_the_catalogue_and_the_old_behaviour_and_the_file_
 def test_in_the_lab_the_rollback_brings_back_the_old_behaviour_and_the_pre_check_then_refuses_to_reapply(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
+        _seed(conn, sc)
         conn.execute(body_of(ROLLBACK))
         _channel(conn, "chan-bx", sc.bob.org)
         got = _call(conn, sc.bob.actor, STORE, ["chan-bx", TOKEN, meta("UCyta")])
