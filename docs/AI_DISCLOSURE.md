@@ -277,48 +277,46 @@ TikTok account private until the app is audited. The post is still requested as 
 
 ## Vendor watermarks and provenance (what we keep)
 
-Our letters to the model makers (sent 2026-11-11) say: "We keep vendor attribution and watermarks/C2PA". The code
-holds to that: where a maker offers its own mark we ask for it, where it hands back a marked and an unmarked copy we
-store the marked one (and fail rather than fall back), and no request turns a mark off. There is no setting, constant
-or argument that removes a vendor watermark. `tests/test_vendor_watermarks.py` fails on any watermark-off value in
-`modules/`, `tools/`, the dashboard, the migrations or the registry, and checks what every registry model's probe
-request actually sends. Vendor pages read 2026-11-11.
+Our letters to the model makers (sent 2026-11-11) say: "We keep vendor attribution and watermarks/C2PA". The rule
+(owner decision, 2026-11-12) is:
 
-| Vendor (adapter) | What the vendor offers | What we send / store | Before | Source |
+* **Required mark.** If a maker's terms or docs require its watermark, it stays on. None of the adapters below has
+  such a clause. Vidu's and BytePlus's terms forbid removing an AI-content sign but do not require the visible mark.
+* **Optional mark.** The vendor's default is used. A mark that is on by default is never sent off. A mark that is off
+  by default stays off (it is not sent).
+* **Invisible provenance** (C2PA, metadata labels, SynthID) is always kept. Nothing that replaces a maker's label or
+  mark is ever sent (`meta_data`, `wm_url`), and every vendor file is stored byte for byte.
+
+There is no setting, constant or argument that switches a vendor watermark. `tests/test_vendor_watermarks.py` checks
+what every registry model's probe request sends against the table below. It also checks that no code strips
+provenance and that storage keeps the bytes. Vendor pages were read 2026-11-11.
+
+| Vendor (adapter) | Mark required? | Vendor default | What we send / store | Source |
 | :-- | :-- | :-- | :-- | :-- |
-| Alibaba HappyHorse (`video.happyhorse`) | `watermark`, "Happy Horse" text lower right, default on | `watermark: true` | `false` | [t2v](https://www.alibabacloud.com/help/en/model-studio/happyhorse-text-to-video-api-reference), [i2v](https://www.alibabacloud.com/help/en/model-studio/happyhorse-image-to-video-api-reference) |
-| Alibaba Qwen-Image (`image.dashscope`) | `watermark`, default off | `watermark: true` | `false` | [reference](https://www.alibabacloud.com/help/en/model-studio/qwen-image-generation-and-editing-api-reference) |
-| Alibaba Z-Image (`image.dashscope`) | no watermark field | nothing to ask for; file stored as returned | same | [reference](https://www.alibabacloud.com/help/en/model-studio/z-image-api-reference) |
-| Alibaba Wan 2.7 / 3.0 (`video.wan`) | `watermark`, "AI Generated" lower right, default off | `watermark: true` | not sent (off) | [t2v](https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference), [i2v](https://www.alibabacloud.com/help/en/model-studio/image-to-video-general-api-reference), [3.0](https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference) |
-| Vidu (`video.vidu`) | `url` and `watermarked_url` on every creation; its own metadata label unless `meta_data` replaces it; Terms of Use clause 4: the deep-synthesis sign must not be removed | `watermarked_url` only (a success without it fails); `meta_data` and `wm_url` never sent | stored `url` (unmarked) | [task detail](https://platform.vidu.com/docs/api-reference/task-management/task-detail), [reference-to-video](https://platform.vidu.com/docs/api-reference/video-models/vidu-q3/reference-to-video), [terms](https://platform.vidu.com/docs/terms-and-policies/terms-of-use) |
-| Kling (`video.kling`) | `watermark_info.enabled` makes a marked copy, answered as `watermark_url` beside `url` | `watermark_info: {enabled: true}`; `watermark_url` only (a success without it fails) | not asked; stored `url` | [t2v](https://kling.ai/document-api/api/video/3-0-omni/text-to-video/legacy), [i2v](https://kling.ai/document-api/api/video/3-0-omni/image-to-video/legacy) |
-| BytePlus Seedance 1.x / 2.x (`video.seedance`, `video.seedance2`) | `watermark`, "AI Generated" lower right, default off; AUP: identifiers not removed | `watermark: true` | not sent (off) | [video API](https://docs.byteplus.com/en/docs/ModelArk/1520757) |
-| BytePlus Seedream (`image.seedream`) | `watermark`, "AI-generated" lower right, default on | `watermark: true` (pinned) | not sent (on by default) | [image API](https://docs.byteplus.com/en/docs/ModelArk/image-generation-api) |
-| Google Gemini Omni, Nano Banana (`video.gemini_omni`, `image.gemini_interactions`) | invisible SynthID on every output; no switch | nothing to send; bytes stored as returned | same | registry `terms_notes` |
-| MiniMax, Pika, LTX, xAI, Krea, Recraft, Runway, OpenAI, ElevenLabs (pages re-read 2026-11-11) | no watermark switch on the endpoints we call. MiniMax's current v1 / v2 pages list none; ElevenLabs' `watermark` belongs to the legacy video dub, not the audio-only project API we use | nothing to send; bytes stored as returned | same | the registry's `api_documented` page per model |
-| BFL FLUX, Ideogram, Luma, Veo, Sonilo, AssemblyAI (not re-read today) | no switch known; our adapters send no watermark field. Terms in the registry: BFL, never strip Content Credentials; Recraft, never remove its watermarks or metadata; Sonilo outputs carry "an inaudible provenance watermark" | nothing to send; bytes stored as returned | same | the registry's `api_documented` page per model |
+| Alibaba HappyHorse (`video.happyhorse`) | No. Product Terms §4.48.1(h)(ii): label "if required under applicable laws" | on ("Happy Horse", lower right) | `watermark: true` (the default; was `false` before 2026-11-11) | [t2v](https://www.alibabacloud.com/help/en/model-studio/happyhorse-text-to-video-api-reference), [i2v](https://www.alibabacloud.com/help/en/model-studio/happyhorse-image-to-video-api-reference) |
+| Alibaba Qwen-Image (`image.dashscope`) | No | off | not sent (was `false`) | [reference](https://www.alibabacloud.com/help/en/model-studio/qwen-image-generation-and-editing-api-reference) |
+| Alibaba Z-Image (`image.dashscope`) | No | no such field | nothing | [reference](https://www.alibabacloud.com/help/en/model-studio/z-image-api-reference) |
+| Alibaba Wan 2.7 / 3.0 (`video.wan`) | No | off ("AI Generated") | not sent | [t2v](https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference), [i2v](https://www.alibabacloud.com/help/en/model-studio/image-to-video-general-api-reference), [3.0](https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference) |
+| Vidu (`video.vidu`) | Visible mark: no. Terms of Use clause 4: "must not remove, falsify, cover the sign that can distinguish those output generated by using deep synthesis technology" | visible mark off ("no watermark is added by default"); Vidu's metadata label on | stores the default `url` with its metadata label; `meta_data` and `wm_url` are never sent | [task detail](https://platform.vidu.com/docs/api-reference/task-management/task-detail), [watermark fields](https://platform.vidu.com/docs/api-reference/video-models/vidu-q3/reference-to-video), [terms](https://platform.vidu.com/docs/terms-and-policies/terms-of-use) |
+| Kling (`video.kling`) | No clause found | off (`watermark_info` adds a second, marked copy) | not sent; stores the default `url` | [t2v](https://kling.ai/document-api/api/video/3-0-omni/text-to-video/legacy), [i2v](https://kling.ai/document-api/api/video/3-0-omni/image-to-video/legacy) |
+| BytePlus Seedance 1.x / 2.x (`video.seedance`, `video.seedance2`) | No. AUP: identifiers must not be removed | off ("AI Generated") | not sent | [video API](https://docs.byteplus.com/en/docs/ModelArk/1520757) |
+| BytePlus Seedream (`image.seedream`) | No. AUP as above | on ("AI-generated", lower right) | `watermark: true` (the default) | [image API](https://docs.byteplus.com/en/docs/ModelArk/image-generation-api) |
+| Google Gemini Omni, Nano Banana | No visible mark | invisible SynthID, always on | nothing to send; bytes stored as returned | registry `terms_notes` |
+| MiniMax, Pika, LTX, xAI, Krea, Recraft, Runway, OpenAI, ElevenLabs (re-read 2026-11-11) | No | no watermark switch on the endpoints we call | nothing to send; bytes stored as returned | registry `api_documented` |
+| BFL FLUX, Ideogram, Luma, Veo, Sonilo, AssemblyAI (not re-read) | none known (BFL: never strip Content Credentials; Recraft: never remove its watermarks or metadata; Sonilo: "an inaudible provenance watermark") | none known | nothing sent; bytes stored as returned | registry `api_documented` / `terms_notes` |
 
-**Storage keeps the bytes.** Every adapter writes the vendor's file exactly as it arrived (a download is streamed to
-disk; an inline answer is base64-decoded, never re-encoded), and `media_library.store_generated` copies it to
-`media/<aa>/<uuid>/original` byte for byte, hashing as it copies: a C2PA manifest, XMP, a `uuid` box or a visible
-mark survives exactly as the vendor made it. Nothing strips metadata from a vendor output.
+**Storage keeps the bytes.** Every adapter writes the vendor's file exactly as it arrived. A download is streamed to
+disk, and an inline answer is base64-decoded, never re-encoded. `media_library.store_generated` then copies the file
+to `media/<aa>/<uuid>/original` byte for byte. So a C2PA manifest, XMP, a `uuid` box, a metadata label or a visible
+mark survives exactly as the vendor made it.
 
-**Re-encodes we cannot avoid, and what they drop.** These make new files from a vendor file; a re-encode cannot keep a
-signed C2PA manifest valid, so the new file carries none (a visible mark stays, because it is in the pixels):
+**Re-encodes we cannot avoid.** These make new files from a vendor file. A re-encode cannot keep a signed C2PA
+manifest valid, so the new file carries none:
 
-* the library's thumbnail (`thumb.jpg`) and 480p review proxy (`proxy.mp4`), made next to the untouched original;
-  they are previews, never what is downloaded or exported as the generated file;
-* an editor export (`editor_export`, stored as source `render`) and the pipeline's own composite video: both are
-  new works that cut, scale and mix many sources. The platforms' AI label (above) is what discloses them;
-* HEIC / HEIF uploads get a JPEG display copy without EXIF / XMP (`heic_decode`): uploads only, never a vendor file.
-
-**Not yet verified, or not made watermark-keeping.** No vendor was called. Whether Kling's `watermark_url` downloads
-like `url` ("anti-leech format") and whether Vidu fills `watermarked_url` without the `watermark` request flag (which
-the Q3 / Q4 pages we call do not list, so it is not sent) are for the first probe; until then both fail closed rather
-than store an unmarked file. The pipeline's own video clients (`modules/video_providers.py`: Kling, Seedance, Wan,
-Higgsfield, Veo) send no watermark field, so those vendors' defaults apply there (no visible mark for Kling,
-Seedance and Wan) before the clips are composited; turning those marks on would put them into the channels'
-YouTube videos, which is an owner decision this change does not take.
+* the library's `thumb.jpg` and the 480p `proxy.mp4`, made next to the untouched original;
+* an editor export (stored as `render`) and the pipeline's composite video. Both are new works, and the platforms'
+  AI label (above) is what discloses them;
+* the JPEG display copy of a HEIC upload: uploads only, never a vendor file.
 
 ## NOT verified (no real platform call was made)
 

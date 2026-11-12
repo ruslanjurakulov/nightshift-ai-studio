@@ -22,15 +22,13 @@ Settings the price depends on are never left to the vendor: the resolution and t
 clip are required and sent as given (the vendor's own resolution default is 1080P, the dearest tier),
 and Z-Image's ``prompt_extend`` (it doubles the price) is always sent, ``false``.
 
-WATERMARK (read 2026-11-11): the maker's mark is always asked for, never turned off. Nightshift told the
-model makers in writing (2026-11-11) that it keeps their attribution and watermarks, and the Product Terms
-§4.48.1(h)(ii) put the labelling duty on the customer. HappyHorse: ``watermark`` "Adds a 'Happy Horse' text
-watermark to the bottom-right corner", default ``true`` (happyhorse-text-to-video-api-reference,
-happyhorse-image-to-video-api-reference); ``true`` is sent so the vendor's default cannot drift under us.
-Qwen-Image: ``watermark`` "Whether to add a watermark. Default: false"
-(qwen-image-generation-and-editing-api-reference); ``true`` is sent. Z-Image lists no watermark field
-(z-image-api-reference), so none is sent and its output is stored as the vendor returns it. There is no
-switch, constant or setting that turns any of this off (tests/test_vendor_watermarks.py fails on one).
+WATERMARK (read 2026-11-11): each maker's own default, never turned off. The Product Terms §4.48.1(h)(ii)
+put a labelling duty on the customer only "if required under applicable laws"; they do not require the
+visible mark. HappyHorse: ``watermark`` "Adds a 'Happy Horse' text watermark to the bottom-right corner",
+default ``true`` (happyhorse-text-to-video-api-reference, happyhorse-image-to-video-api-reference): ``true``
+is sent, its default, so the mark that is on by default is never turned off. Qwen-Image: ``watermark`` is
+optional, "Default: false" (qwen-image-generation-and-editing-api-reference): not sent, so it stays off.
+Z-Image lists no watermark field (z-image-api-reference). Outputs are stored byte for byte.
 
 RESULT LINKS: Alibaba's own FAQ says the storage domain "may change dynamically" and publishes no
 whitelist, and the Singapore bucket host is not shown on any page read (the examples are
@@ -221,7 +219,7 @@ class HappyHorseVideoAdapter(_DashScope):
         if request.capability == I2V:
             inp["media"] = [{"type": "first_frame",
                              "url": self._picture(str(request.input_images[0]), max_bytes=self.MAX_IMAGE_BYTES)}]
-        # The maker's "HappyHorse" mark stays on (its default; sent so a default change cannot drop it):
+        # The maker's "HappyHorse" mark stays on: it is the vendor's default, never sent off.
         # https://www.alibabacloud.com/help/en/model-studio/happyhorse-text-to-video-api-reference
         # https://www.alibabacloud.com/help/en/model-studio/happyhorse-image-to-video-api-reference
         params: dict = {"resolution": request.resolution.upper(), "duration": int(request.duration_s),
@@ -270,7 +268,7 @@ class HappyHorseVideoAdapter(_DashScope):
 class DashScopeImageAdapter(_DashScope):
     """Qwen-Image 2.1 (Pro, Turbo) and Z-Image Turbo: text-to-image, and for Qwen picture editing.
 
-    One image per call. Qwen's ``watermark`` is sent ``true`` (its default is false; see the module note);
+    One image per call. Qwen's ``watermark`` is not sent (optional, default off; see the module note);
     its ``prompt_extend`` is left to the vendor (default on, not priced apart). Z-Image's price
     doubles with ``prompt_extend`` (docs: "Enabling prompt_extend increases cost"), so it is always
     sent, ``false``. ``size`` is sent only when the job names an aspect ratio, from the table below;
@@ -340,13 +338,13 @@ class DashScopeImageAdapter(_DashScope):
             content += [{"image": self._picture(str(p), max_bytes=self.MAX_IMAGE_BYTES)} for p in request.input_images]
         content.append({"text": request.prompt.strip()})
         if spec["kind"] == "zimage":
-            # Z-Image documents no watermark field: there is nothing to ask for, and nothing is turned off.
+            # Z-Image documents no watermark field.
             # https://www.alibabacloud.com/help/en/model-studio/z-image-api-reference
             params: dict = {"prompt_extend": False}
         else:
-            # Qwen's mark is opt-in (default false): it is asked for, so the maker's attribution is kept.
+            # Qwen's mark is optional and off by default: not sent, so the vendor's default applies.
             # https://www.alibabacloud.com/help/en/model-studio/qwen-image-generation-and-editing-api-reference
-            params = {"n": 1, "watermark": True}
+            params = {"n": 1}
         if request.aspect_ratio:
             params["size"] = spec["sizes"][request.aspect_ratio]
         body = {"model": vendor_model, "input": {"messages": [{"role": "user", "content": content}]},

@@ -356,7 +356,6 @@ class KlingJwtTests(unittest.TestCase):
         method, url, kw = a.session.calls[0]
         self.assertTrue(url.startswith("https://api-singapore.klingai.com/"))
         self.assertEqual(kw["json"]["model_name"], "kling-v2-6")
-        self.assertEqual(kw["json"]["watermark_info"], {"enabled": True})   # the maker's marked copy is asked for
         self.assertEqual(task.task_id, "text2video/abc123")
 
 
@@ -373,7 +372,6 @@ class RequestShapeTests(unittest.TestCase):
                        resolution="480p", duration_s=5, audio=True), "seedance-1-5-pro-251215", FakeResp(200, {"id": "t1"}))
         self.assertEqual(kw["json"]["ratio"], "16:9")
         self.assertEqual(kw["json"]["generate_audio"], True)
-        self.assertIs(kw["json"]["watermark"], True)                    # the maker's "AI Generated" mark is kept
         self.assertNotIn("--", kw["json"]["content"][0]["text"])
 
     def test_luma_uses_the_agents_api_video_object(self):
@@ -390,7 +388,7 @@ class RequestShapeTests(unittest.TestCase):
         a.submit(CapabilityRequest("t2v", "boat", aspect_ratio="16:9", resolution="720p", duration_s=5), "wan2.7-t2v")
         method, url, kw = a.session.calls[0]
         self.assertTrue(url.startswith("https://ws-123.ap-southeast-1.maas.aliyuncs.com/"))
-        self.assertEqual(kw["json"]["parameters"], {"resolution": "720P", "ratio": "16:9", "duration": 5, "watermark": True})
+        self.assertEqual(kw["json"]["parameters"], {"resolution": "720P", "ratio": "16:9", "duration": 5})
         self.assertEqual(kw["headers"]["X-DashScope-Async"], "enable")
         bad = build_adapter("video.wan", env=dict(ENV, WAN_WORKSPACE_ID="evil.test/x"), session=FakeSession())
         self.assertEqual(bad.base_url, "https://dashscope-intl.aliyuncs.com")

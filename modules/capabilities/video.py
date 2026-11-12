@@ -217,12 +217,9 @@ class KlingAdapter(HttpAdapter):
       ``<access key>:<secret key>``) → a fresh HS256 JWT per request;
     * ``KLING_API_KEY`` without a colon → a console API key, sent as is.
 
-    Watermark (read 2026-11-11): ``watermark_info: {"enabled": true}`` asks Kling to "generate watermarked
-    results simultaneously", and the task then answers ``watermark_url`` ("Watermarked video download URL")
-    beside ``url``. Both are sent / taken: the marked file is the one stored, and a success without it fails
-    rather than storing the unmarked ``url`` (Nightshift's written promise of 2026-11-11 to keep the makers'
-    watermarks). https://kling.ai/document-api/api/video/3-0-omni/text-to-video/legacy and
-    https://kling.ai/document-api/api/video/3-0-omni/image-to-video/legacy"""
+    Watermark: ``watermark_info`` is optional and off by default (it adds a second, marked copy,
+    ``watermark_url``); nothing read requires it, so it is not sent and the vendor's default output
+    (``url``) is stored as returned. https://kling.ai/document-api/api/video/3-0-omni/text-to-video/legacy"""
 
     key = "video.kling"
     key_env = ("KLING_API_KEY", "KLING_ACCESS_KEY", "KLING_SECRET_KEY")
@@ -314,10 +311,8 @@ class KlingAdapter(HttpAdapter):
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
         kind = "image2video" if request.capability == I2V else "text2video"
-        # The maker's watermarked copy is always asked for (see the class note); never ``enabled: false``.
         body: dict = {"model_name": vendor_model, "prompt": request.prompt.strip(),
-                      "duration": str(int(request.duration_s or 5)), "mode": "std",
-                      "watermark_info": {"enabled": True}}
+                      "duration": str(int(request.duration_s or 5)), "mode": "std"}
         if request.negative_prompt:
             body["negative_prompt"] = request.negative_prompt
         if request.audio is not None:
@@ -344,11 +339,9 @@ class KlingAdapter(HttpAdapter):
         data = self._check(self.get(f"{self.base_url}/v1/videos/{tid}"))
         status = str(data.get("task_status") or "").lower()
         if status == "succeed":
-            # Only the watermarked copy is stored; the unmarked ``url`` is not a fallback (see the class note).
-            url = dig(data, "task_result", "videos", 0, "watermark_url")
+            url = dig(data, "task_result", "videos", 0, "url")
             if not url:
-                raise AdapterError(E_BAD_RESPONSE, "succeeded without task_result.videos[0].watermark_url: the "
-                                                   "clip without Kling's watermark is not stored")
+                raise AdapterError(E_BAD_RESPONSE, "succeeded without a video URL")
             return PollResult(SUCCEEDED, [Output("video/mp4", url=str(url))])
         if status == "failed":
             return _failed(self, data.get("task_status_msg") or "task failed")
@@ -696,11 +689,9 @@ class SeedanceAdapter(HttpAdapter):
     form byteplus-python-sdk-v2 sends and the docs recommend. International
     region (owner decision D5); ``SEEDANCE_BASE_URL`` overrides it.
 
-    ``watermark: true`` is always sent: "An AI Generated watermark will be
-    displayed in the lower right corner" (default ``false``; "all models
-    support" it in the body). The maker's mark is kept, as Nightshift promised
-    the makers in writing (2026-11-11), and the Acceptable Use Policy forbids
-    removing AI-content identifiers.
+    Watermark: ``watermark`` is optional, default ``false`` (an "AI Generated"
+    mark when true); the Acceptable Use Policy forbids removing identifiers but
+    does not require the mark, so it is not sent and the default applies.
     https://docs.byteplus.com/en/docs/ModelArk/1520757"""
 
     key = "video.seedance"
@@ -753,8 +744,6 @@ class SeedanceAdapter(HttpAdapter):
                       "ratio": request.aspect_ratio or "16:9",
                       "duration": int(request.duration_s or 5)}
         body["resolution"] = request.resolution or self.DEFAULT_RESOLUTION
-        # The maker's "AI Generated" mark (see the class note): https://docs.byteplus.com/en/docs/ModelArk/1520757
-        body["watermark"] = True
         if request.audio is not None:
             body["generate_audio"] = bool(request.audio)
         data = self.post(f"{self.base_url}/api/v3/contents/generations/tasks", body)
@@ -804,8 +793,7 @@ class SeedanceV2Adapter(SafeResultMixin, SeedanceAdapter):
     * the clip is fetched with ``SafeResultMixin`` (https, vendor hosts,
       no redirect, byte cap, atomic write).
 
-    Watermark: ``watermark: true`` is always sent, as for the 1.x models (the
-    vendor's default is off; see ``SeedanceAdapter``).
+    Watermark: left to the vendor's default (off for Seedance).
 
     TERMS: BytePlus's Service Specific Terms (Model Services §4.2.3) forbid
     integrating the video APIs into UGC platforms or AI content creation
@@ -889,10 +877,9 @@ class SeedanceV2Adapter(SafeResultMixin, SeedanceAdapter):
             ratio = "adaptive"
         else:
             ratio = request.aspect_ratio or ("adaptive" if request.capability == I2V else "16:9")
-        # ``watermark: true``: the maker's "AI Generated" mark is kept (https://docs.byteplus.com/en/docs/ModelArk/1520757).
         body: dict = {"model": vendor_model, "content": content, "resolution": request.resolution,
                       "ratio": ratio, "duration": int(request.duration_s),
-                      "execution_expires_after": self.EXPIRES_AFTER_S, "watermark": True}
+                      "execution_expires_after": self.EXPIRES_AFTER_S}
         if request.audio is not None:
             body["generate_audio"] = bool(request.audio)
         if request.end_user and _SAFETY_ID.fullmatch(request.end_user):
@@ -937,13 +924,9 @@ class WanAdapter(HttpAdapter):
     ``dashscope-intl.aliyuncs.com``, which Alibaba put in maintenance mode on
     2026-09-30 (still served, no new models).
 
-    ``parameters.watermark: true`` is always sent: Wan "Adds a watermark in the
-    lower-right corner with the text 'AI Generated'" (default ``false``) on
-    wan2.7-t2v, wan2.7-i2v and wan3.0-video alike. The maker's mark is kept, as
-    Nightshift promised the makers in writing (2026-11-11).
-    https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference
-    https://www.alibabacloud.com/help/en/model-studio/image-to-video-general-api-reference
-    https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference"""
+    Watermark: ``parameters.watermark`` is optional, default ``false`` ("AI
+    Generated" when true); nothing read requires it, so it is not sent.
+    https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference"""
 
     key = "video.wan"
     key_env = ("WAN_API_KEY", "DASHSCOPE_API_KEY")
@@ -990,8 +973,7 @@ class WanAdapter(HttpAdapter):
             inp["media"] = [{"type": "first_frame", "url": request.input_images[0]}]
         params: dict = {"resolution": (request.resolution or "720p").upper(),
                         "ratio": request.aspect_ratio or "16:9",
-                        "duration": int(request.duration_s or 5),
-                        "watermark": True}           # the maker's "AI Generated" mark (see the class note)
+                        "duration": int(request.duration_s or 5)}
         data = self.post(f"{self.base_url}/api/v1/services/aigc/video-generation/video-synthesis",
                          {"model": vendor_model, "input": inp, "parameters": params},
                          headers={"X-DashScope-Async": "enable"})
