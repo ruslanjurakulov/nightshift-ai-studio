@@ -66,8 +66,7 @@
 #      brand channel's approved posts; off unless its section is sent), and so
 #      does the brand-scan-worker (tools/brand_scan_worker.py: the Ads Factory's
 #      DNS checks and brand scans; no port, no Caddy route);
-#   7. last, loads deploy/Caddyfile into the running Caddy without a restart
-#      (a bind-mounted file that changes does not make compose recreate it),
+#   7. last, loads deploy/Caddyfile into the running Caddy without a restart,
 #      but ONLY the exact file whose sha256 is pinned in CADDYFILE_APPROVED_SHA256
 #      as the DEPLOYED commit's copy of this script has it (read from that
 #      commit, not from the copy now running): any other Caddyfile is refused and Caddy
@@ -131,6 +130,9 @@ CADDY_VERIFY_SCHEME="${NIGHTSHIFT_CADDY_VERIFY_SCHEME:-https}"
 CADDY_VERIFY_PORT="${NIGHTSHIFT_CADDY_VERIFY_PORT:-443}"
 CADDY_VERIFY_TIMEOUT="${NIGHTSHIFT_CADDY_VERIFY_TIMEOUT:-30}"
 CADDY_RETRY_SLEEP="${NIGHTSHIFT_CADDY_RETRY_SLEEP:-2}"
+# Set only for one `compose run` of caddy_prepare_mount (the candidate it checks); never taken from
+# the environment, so nothing outside this script can point the caddy mount anywhere else.
+CADDY_MOUNT=""
 
 MAX_INPUT_BYTES=262144
 SHA_KEY=NIGHTSHIFT_DEPLOY_SHA
@@ -216,6 +218,10 @@ compose() {
   # worker, notify, email, operator, marketing and brandscan profiles are always active so that
   # compose knows those services (and --remove-orphans never mistakes them for
   # orphans); services are named on every `up`.
+  # CADDYFILE_LOADED is the file the caddy service mounts as /etc/caddy/Caddyfile: the LAST
+  # VERIFIED Caddyfile (caddy_prepare_mount, caddy_apply), never the checkout's. CADDY_MOUNT
+  # points one `compose run` at a candidate instead (caddy_prepare_mount's checks only).
+  CADDYFILE_LOADED="${CADDY_MOUNT:-$CADDY_STATE_DIR/.caddyfile.loaded}" \
   WEB_ENV_FILE="$ENV_FILE" WORKER_ENV_FILE="$WORKER_ENV_FILE" \
     NOTIFY_ENV_FILE="$NOTIFY_ENV_FILE" EMAIL_ENV_FILE="$EMAIL_ENV_FILE" \
     OPERATOR_ENV_FILE="$OPERATOR_ENV_FILE" MARKETING_ENV_FILE="$MARKETING_ENV_FILE" BRANDSCAN_ENV_FILE="$BRANDSCAN_ENV_FILE" "$DOCKER" compose \
@@ -307,10 +313,19 @@ write_env() {
 }
 
 # ── Caddy: validate, reload, verify, roll back ──────────────────────────────
-# Caddy reads deploy/Caddyfile through a single-file bind mount, so a deploy
-# that only changes that file recreates nothing, and git replacing the file
-# (new inode) leaves the container looking at the old one. So the Caddyfile is
-# fed to Caddy on stdin from the checkout rather than read from the mount.
+# WHAT CADDY MOUNTS. The caddy service mounts $CADDY_STATE_DIR/.caddyfile.loaded
+# (deploy/docker-compose.yml, CADDYFILE_LOADED), never deploy/Caddyfile from the
+# checkout: that file is written only here, atomically, from a snapshot of the
+# deployed commit's blob that passed the pin, validate, the contract guard and
+# the live check. So step 6 (`compose up`, which recreates Caddy when its service
+# changes) and any later restart (a reboot, restart: unless-stopped) start Caddy
+# on the last VERIFIED file: never on a Caddyfile that was refused, never before
+# the check, and never on bytes a checkout rewrote (.gitattributes, eol). A
+# server that has no verified file yet gets one before step 6
+# (caddy_prepare_mount), by the same checks run in a one-off container.
+# A running Caddy is changed by a graceful reload with the snapshot on stdin; the
+# mount only matters when the container (re)starts, and the path is resolved
+# again on each start, so the atomic `mv` over it is what the next start reads.
 # (A relative `import` in the Caddyfile would not resolve from stdin: if one is
 # ever added, this step must change with it.)
 #
@@ -526,7 +541,14 @@ caddy_seed_previous() {
 caddy_rollback() {
   local host="$1" why="$2" dir="$CADDY_STATE_DIR" file="" kind=caddyfile
   printf 'ERROR: %s\n' "$why" >&2
-  if [[ -f "$dir/.caddyfile.loaded" ]]; then file="$dir/.caddyfile.loaded"
+  # First install only: nothing verified exists, so the file Caddy mounts is still the seed
+  # (pinned, validated, contract held, but not live-confirmed). Said, so a restart is no surprise.
+  if [[ -e "$dir/.caddyfile.seeded" ]]; then
+    printf 'ERROR: %s\n' "caddy: no Caddyfile has passed the live check on this server yet; until one does, a Caddy restart starts on this commit's seeded file (${dir}/.caddyfile.loaded)" >&2
+  fi
+  # The last VERIFIED file first; a seed no live check confirmed (.caddyfile.seeded)
+  # is not one, so it is skipped for what Caddy ran before.
+  if [[ -f "$dir/.caddyfile.loaded" && ! -e "$dir/.caddyfile.seeded" ]]; then file="$dir/.caddyfile.loaded"
   elif [[ -s "$dir/.caddy-running.json" ]]; then file="$dir/.caddy-running.json" kind=json
   elif [[ -f "$dir/.caddyfile.fallback" ]]; then file="$dir/.caddyfile.fallback"
   fi
@@ -535,6 +557,10 @@ caddy_rollback() {
   fi
   log "restoring the previous Caddy config (${file##*/})"
   if caddy_reload "$file" "$kind" && caddy_verify "$host" baseline; then
+    if [[ -e "$dir/.caddyfile.seeded" && "$kind" == json ]]; then
+      # A seed is mounted: if step 6 (re)started Caddy (a first install), what it ran before this step IS the seed.
+      die "the config Caddy ran before this step is back and passes the baseline check; if Caddy was (re)started in this deploy (a first install), that is this commit's seeded Caddyfile, which failed the full check above, so nothing verified is running yet. Fix deploy/Caddyfile and deploy again"
+    fi
     die "the previous config is back and passes the baseline check; deploy/Caddyfile was NOT applied. Fix it and deploy again"
   fi
   die "the previous config could not be verified either (see the lines above: is Caddy or the app answering on 127.0.0.1:${CADDY_VERIFY_PORT}?). On the server: dc ps, dc logs --tail 100 caddy"
@@ -552,38 +578,28 @@ caddy_pin_of() {
   return 0
 }
 
-# The step. Runs after the worker steps, so a worker that fails to start ends
-# the deploy before this point and the Caddyfile is not reloaded that time.
-# Never leaves Caddy without a working config: the pinned hash, validate and
-# the contract guard come before anything is loaded, reload is atomic (a config
-# that fails to load leaves the running one in place), and the check after it
-# decides whether the new file stays.
-#   caddy_apply <host> <deployed commit>
-caddy_apply() {
-  local host="$1" sha="$2" new="$APP_DIR/deploy/Caddyfile" dir="$CADDY_STATE_DIR" approved
-  local loaded="$dir/.caddyfile.loaded" marker="$dir/.caddyfile.loaded.sha256" running="$dir/.caddy-running.json"
-  local newsha oldsha=none adapted dropped n up=0 snap entry
-  # The Caddyfile is the deployed COMMIT's blob, like the pin (caddy_pin_of), never
-  # the working-tree file: no .gitattributes filter, eol conversion or server git
-  # setting can change the bytes between the commit and the hash. Its tree entry
-  # says what it is: none = nothing to load; a symlink (120000) could point
-  # anywhere and is refused; only a regular file (100644 / 100755) is read.
+# THE GATE, shared by both places a Caddyfile can come from (caddy_prepare_mount,
+# caddy_apply). Writes the deployed COMMIT's deploy/Caddyfile blob to <dest> and
+# checks it against the pin, never the working-tree file: no .gitattributes
+# filter, eol conversion or server git setting can change the bytes between the
+# commit and the hash. Its tree entry says what it is: none = nothing (returns
+# 3); a symlink (120000) could point anywhere and is refused; a directory
+# (040000), a submodule (160000) or anything else that is not a regular file
+# (100644 / 100755) is refused. On success the hash is in CADDY_BLOB_SHA.
+#   caddy_snapshot <commit> <dest>
+caddy_snapshot() {
+  local sha="$1" dest="$2" entry newsha approved
+  CADDY_BLOB_SHA=""
   entry="$(git -C "$APP_DIR" ls-tree "$sha" -- deploy/Caddyfile 2>/dev/null)" \
     || die "caddy: cannot read the tree of commit ${sha:0:12}; nothing was loaded"
-  if [[ -z "$entry" ]]; then log "caddy: this commit has no deploy/Caddyfile; nothing to load"; return 0; fi
+  if [[ -z "$entry" ]]; then return 3; fi
   case "${entry%% *}" in
     120000) die "caddy: deploy/Caddyfile is a symlink; refused, nothing was loaded" ;;
     100644 | 100755) ;;
-    *) die "caddy: deploy/Caddyfile is not a regular file in commit ${sha:0:12}; refused, nothing was loaded" ;;
+    *) die "caddy: deploy/Caddyfile is not a regular file in commit ${sha:0:12} (a directory or a submodule?); refused, nothing was loaded" ;;
   esac
-  # One copy, made once: the hash, validate, adapt, reload and the saved
-  # rollback copy all use these very bytes, so the file cannot change between
-  # being approved and being loaded.
-  snap="$(mktemp "$dir/.caddyfile.XXXXXX")" || die "caddy: cannot create a temporary file in $dir"
-  # shellcheck disable=SC2064  # expand $snap now
-  trap "rm -f '$snap'" EXIT
-  git -C "$APP_DIR" cat-file blob "${sha}:deploy/Caddyfile" >"$snap" || die "caddy: cannot read deploy/Caddyfile from commit ${sha:0:12}"
-  newsha="$(sha256sum "$snap" | cut -d' ' -f1)"
+  git -C "$APP_DIR" cat-file blob "${sha}:deploy/Caddyfile" >"$dest" || die "caddy: cannot read deploy/Caddyfile from commit ${sha:0:12}"
+  newsha="$(sha256sum "$dest" | cut -d' ' -f1)"
   # The deployed commit's own pin (see CADDYFILE_APPROVED_SHA256), unless the
   # environment override is set.
   if [[ -n "${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-}" ]]; then
@@ -597,6 +613,101 @@ caddy_apply() {
     die "caddy: deploy/Caddyfile of commit ${sha:0:12} is ${newsha:0:12}, but that commit's deploy/remote-deploy.sh approves ${approved:0:12}; NOT validated, NOT loaded, Caddy keeps its config. Review the Caddyfile, then put \`sha256sum deploy/Caddyfile\` into CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh, in the same commit; it takes effect on that commit's own deploy"
   fi
   log "caddy: the Caddyfile matches the hash commit ${sha:0:12} approves (${approved:0:12})"
+  CADDY_BLOB_SHA="$newsha"
+}
+
+# Before step 6: the file Caddy mounts must exist and be a verified one, because
+# `compose up` may (re)create Caddy on it. Normally it is the last verified
+# Caddyfile and nothing is done. On a server that has none yet (a first install,
+# or the file was removed), it is seeded from the deployed commit's pinned blob,
+# after the same gate, `caddy validate` and the contract guard, run in a one-off
+# container of the caddy service that mounts the candidate itself (no ports, no
+# dependencies). Never from the working tree. A refusal stops the deploy BEFORE
+# step 6: no Caddy is (re)created on a file nobody verified.
+#   caddy_prepare_mount <commit>
+caddy_prepare_mount() {
+  local sha="$1" dir="$CADDY_STATE_DIR" loaded="$CADDY_STATE_DIR/.caddyfile.loaded" seeded="$CADDY_STATE_DIR/.caddyfile.seeded"
+  local marker="$CADDY_STATE_DIR/.caddyfile.loaded.sha256" seed rc=0 adapted dropped recorded="" actual why=""
+  if [[ -L "$loaded" ]]; then die "caddy: $loaded is a symlink; refused (Caddy mounts that file). Remove it and deploy again"; fi
+  if [[ -e "$loaded" && ! -f "$loaded" ]]; then die "caddy: $loaded is not a regular file; refused (Caddy mounts that file). Remove it and deploy again"; fi
+  # A seed that no live check has confirmed yet (.caddyfile.seeded) is replaced by
+  # this commit's, checked the same way. A verified file is kept only if it still
+  # IS the verified file: not empty, and its bytes hash to what caddy_apply recorded
+  # when it verified them (.caddyfile.loaded.sha256). Anything else (emptied,
+  # edited, truncated, no record) is replaced by a fresh seed, checked as on a
+  # first install; if this commit has no Caddyfile to seed from, the deploy stops
+  # here, before step 6 could (re)create Caddy on it.
+  if [[ -f "$loaded" && ! -e "$seeded" ]]; then
+    if [[ -f "$marker" && ! -L "$marker" ]]; then recorded="$(head -c 64 "$marker")"; fi
+    actual="$(sha256sum "$loaded" | cut -d' ' -f1)"
+    if [[ ! -s "$loaded" ]]; then why="is empty"
+    elif [[ ! "$recorded" =~ ^[0-9a-f]{64}$ ]]; then why="has no recorded hash (.caddyfile.loaded.sha256)"
+    elif [[ "$actual" != "$recorded" ]]; then why="is ${actual:0:12}, not the ${recorded:0:12} that was verified"
+    fi
+    if [[ -z "$why" ]]; then
+      log "caddy: Caddy mounts the last verified Caddyfile (${loaded##*/}, ${actual:0:12})"
+      return 0
+    fi
+    log "caddy: ${loaded##*/} ${why}; replacing it with this commit's pinned Caddyfile, checked as on a first install"
+  fi
+  seed="$(mktemp "$dir/.caddyfile.XXXXXX")" || die "caddy: cannot create a temporary file in $dir"
+  # shellcheck disable=SC2064  # expand $seed now
+  trap "rm -f '$seed'" EXIT
+  caddy_snapshot "$sha" "$seed" || rc=$?
+  if (( rc == 3 )); then
+    rm -f "$seed"
+    trap - EXIT
+    # A file was there but is not the verified one: Caddy must not be (re)started on it.
+    if [[ -n "$why" ]]; then
+      die "caddy: ${loaded##*/} ${why}, and commit ${sha:0:12} has no deploy/Caddyfile to replace it from; stopped before docker compose up so Caddy is not (re)created on it"
+    fi
+    log "caddy: no verified Caddyfile here and none in this commit; nothing for Caddy to mount"
+    return 0
+  fi
+  # The one-off container mounts the candidate (the service's mount must exist); it only reads it.
+  local candidate="$seed"
+  CADDY_MOUNT="$candidate" compose run --rm --no-deps -T caddy caddy validate --config - --adapter caddyfile <"$seed" >/dev/null 2>&1 \
+    || die "caddy: no verified Caddyfile on this server yet, and validate refused this commit's; nothing was seeded and Caddy was not started on it"
+  adapted="$(CADDY_MOUNT="$candidate" compose run --rm --no-deps -T caddy caddy adapt --config - --adapter caddyfile <"$seed" 2>/dev/null)" \
+    || die "caddy: no verified Caddyfile on this server yet, and this commit's could not be adapted; nothing was seeded"
+  dropped="$(caddy_dropped "$adapted" | paste -sd, -)"
+  if [[ -n "$dropped" ]]; then
+    die "caddy: no verified Caddyfile on this server yet, and this commit's no longer sets: ${dropped}; nothing was seeded and Caddy was not started on it"
+  fi
+  # .caddyfile.seeded: checked but not yet live-verified. Not a rollback source
+  # (caddy_rollback skips it), and replaced by the next deploy's until caddy_apply
+  # confirms one (and removes this mark).
+  { printf '%s\n' "$CADDY_BLOB_SHA" >"$seeded" && mv -f "$seed" "$loaded"; } || die "caddy: could not write $loaded"
+  trap - EXIT
+  log "caddy: no verified Caddyfile on this server yet: seeded ${CADDY_BLOB_SHA:0:12} from commit ${sha:0:12} (pinned, validated, contract held) as the file Caddy mounts"
+}
+
+# The step. Runs after the worker steps, so a worker that fails to start ends
+# the deploy before this point and the Caddyfile is not reloaded that time.
+# Never leaves Caddy without a working config: the pinned hash, validate and
+# the contract guard come before anything is loaded, reload is atomic (a config
+# that fails to load leaves the running one in place), and the check after it
+# decides whether the new file stays.
+#   caddy_apply <host> <deployed commit>
+caddy_apply() {
+  local host="$1" sha="$2" dir="$CADDY_STATE_DIR"
+  local loaded="$dir/.caddyfile.loaded" marker="$dir/.caddyfile.loaded.sha256" running="$dir/.caddy-running.json"
+  local newsha oldsha=none adapted dropped n up=0 snap rc=0
+  # One copy, made once, of the deployed commit's blob (caddy_snapshot, THE GATE):
+  # the hash, validate, adapt, reload and the saved copy Caddy mounts all use
+  # these very bytes, so the file cannot change between being approved and being
+  # loaded.
+  snap="$(mktemp "$dir/.caddyfile.XXXXXX")" || die "caddy: cannot create a temporary file in $dir"
+  # shellcheck disable=SC2064  # expand $snap now
+  trap "rm -f '$snap'" EXIT
+  caddy_snapshot "$sha" "$snap" || rc=$?
+  if (( rc == 3 )); then
+    rm -f "$snap"
+    trap - EXIT
+    log "caddy: this commit has no deploy/Caddyfile; nothing to load"
+    return 0
+  fi
+  newsha="$CADDY_BLOB_SHA"
   if [[ -f "$marker" ]]; then oldsha="$(cat "$marker")"; fi
   # Reload is idempotent (Caddy answers "unchanged" for a config it already
   # runs) and the live check is the real test, so both always run; the hash
@@ -616,7 +727,7 @@ caddy_apply() {
   (( up )) || die "caddy: cannot run commands in the caddy service (stopped or restarting?); the Caddyfile was not checked or loaded. On the server: dc ps, dc logs --tail 100 caddy"
 
   caddy_exec validate --config - --adapter caddyfile <"$snap" >/dev/null 2>&1 \
-    || die "caddy: validate refused deploy/Caddyfile; nothing was loaded and Caddy keeps its config. On the server: dc exec -T caddy caddy validate --config - --adapter caddyfile < $new"
+    || die "caddy: validate refused deploy/Caddyfile; nothing was loaded and Caddy keeps its config. On the server: git -C $APP_DIR cat-file blob ${sha:0:12}:deploy/Caddyfile | dc exec -T caddy caddy validate --config - --adapter caddyfile"
   adapted="$(caddy_exec adapt --config - --adapter caddyfile <"$snap" 2>/dev/null)" \
     || die "caddy: could not adapt deploy/Caddyfile; nothing was loaded"
   dropped="$(caddy_dropped "$adapted" | paste -sd, -)"
@@ -624,9 +735,10 @@ caddy_apply() {
     die "caddy: deploy/Caddyfile no longer sets: ${dropped}. Refused before loading; Caddy keeps its config. The list in deploy/remote-deploy.sh (CADDY_HEADERS) is the contract: change it, and tests/test_deploy_self_host.py, in the same PR"
   fi
 
-  # What Caddy runs right now, for a rollback before anything verified exists.
+  # What Caddy runs right now, for a rollback before anything verified exists
+  # (no file, or only a seed no live check has confirmed).
   rm -f "$running"
-  if [[ ! -f "$loaded" ]]; then
+  if [[ ! -f "$loaded" || -e "$dir/.caddyfile.seeded" ]]; then
     if compose exec -T caddy wget -qO- http://localhost:2019/config/ </dev/null >"${running}.tmp" 2>/dev/null \
        && [[ -s "${running}.tmp" ]]; then
       mv -f "${running}.tmp" "$running"
@@ -641,10 +753,12 @@ caddy_apply() {
     caddy_rollback "$host" "caddy: the headers Caddy sends with the new Caddyfile are wrong (above)"
   fi
 
+  # Written over the file Caddy mounts only now, after the live check: the next
+  # restart starts Caddy on exactly this verified file.
   { mv -f "$snap" "$loaded" \
     && printf '%s\n' "$newsha" >"${marker}.tmp" && mv -f "${marker}.tmp" "$marker"; } \
     || die "caddy: the new Caddyfile is live and verified, but its copy in $dir could not be saved (disk? permissions?); a later rollback would use an older one"
-  rm -f "$running"
+  rm -f "$running" "$dir/.caddyfile.seeded"
   trap - EXIT
   log "caddy: loaded and verified (${newsha:0:12}): one DENY, one SAMEORIGIN for our own frame, /auth and /api DENY, baseline headers present"
 }
@@ -868,6 +982,9 @@ main() {
   git -c advice.detachedHead=false checkout --quiet -B main "$sha" \
     || die "git checkout $sha failed in $APP_DIR"
   log "checked out $sha"
+
+  # Before anything can (re)create Caddy: the file it mounts is a verified one.
+  caddy_prepare_mount "$sha"
 
   # ── 6. Build and start ─────────────────────────────────────────────────────
   log "docker compose up -d --build --remove-orphans web caddy"
