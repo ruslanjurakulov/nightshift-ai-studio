@@ -426,6 +426,7 @@ def test_applying_it_again_changes_nothing(conn):
     text = MIGRATION.read_text(encoding="utf-8")
     with as_superuser(conn, commit=False) as su:
         before = snapshot(su)
+        sec_db.take_off_0140(su)                                      # 0140 sits on 0117's audit list: off before 0112/0116 replay it, back with put_back_0121
         su.conn.execute(text)
         su.conn.execute(text)
         # 0112 alone puts back its own approve_video_publish and audit list; 0116 replaces both, so it goes on top again.
@@ -460,7 +461,7 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
     base_dsn = sec_db.create_database(admin, base)
     try:
         sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence()
-                                      if not f.name.startswith(("0112_", "0116_", "0117_", "0119_", "0121_"))])
+                                      if not f.name.startswith(("0112_", "0116_", "0117_", "0119_", "0121_", "0140_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace order by 1")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],

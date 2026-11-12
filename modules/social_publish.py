@@ -219,6 +219,20 @@ class PublishStore:
     def channel(self, channel_id: str) -> Optional[dict]:
         return self._select_one("channels", "channel_id,niche,status,agent_config", channel_id=channel_id)
 
+    def kids_record(self, video_id: str) -> dict:
+        """The video's "made for kids" record (migration 0140): made_for_kids, kids_content, made_for_kids_off_by. {} when
+        the database has no such columns (before 0140: nothing was recorded). Any other failure raises: a cross-post does
+        not guess a kids video's audience."""
+        r = self.http().get(f"{self.url}/rest/v1/videos", params={
+            "select": "video_id,made_for_kids,kids_content,made_for_kids_off_by", "video_id": f"eq.{video_id}",
+            "limit": "1"}, headers=self._h(), timeout=self._timeout)
+        if r.status_code == 400 and _pgrst_code(r) in ("42703", "PGRST204"):
+            return {}
+        if r.status_code >= 300:
+            raise RuntimeError(f"videos (made for kids): HTTP {r.status_code}")
+        rows = r.json() or []
+        return rows[0] if rows and isinstance(rows[0], dict) else {}
+
     def disclosure_events(self, video_id: str) -> list:
         """The video's recorded ``video.ai_disclosure`` events (newest first), or
         [] when they cannot be read: a missing record falls back to the manifest
@@ -699,6 +713,14 @@ def _yt_error(what: str, exc) -> PublishStop:
     return failed("platform_error", detail)
 
 
+def _pgrst_code(response) -> str:
+    try:
+        body = response.json()
+    except Exception:
+        return ""
+    return str(body.get("code") or "") if isinstance(body, dict) else ""
+
+
 class YoutubeAdapter:
     """Uploads the master to ANOTHER of the organization's YouTube channels,
     private, with the pipeline's own uploader.
@@ -723,8 +745,13 @@ class YoutubeAdapter:
         return YouTubeUploader.from_token_json
 
     def publish(self, channel_id: str, path: Path, meta: social_captions.YouTubeMeta,
-                decision: Optional[ai_disclosure.Decision] = None) -> dict:
+                decision: Optional[ai_disclosure.Decision] = None, kids_row: Optional[Mapping] = None) -> dict:
+        """``kids_row`` is the source video's "made for kids" record (``PublishStore.kids_record``): the copy declares
+        what the video declared, and kids content on a target channel whose default is made for kids. A kids video
+        declared "not for kids" with nobody's confirmation is refused (``made_for_kids_unconfirmed``) before the
+        upload."""
         from modules import channel_tokens  # noqa: PLC0415
+        from modules import made_for_kids as mfk  # noqa: PLC0415
 
         try:
             token_json, channel = self.credentials(channel_id)
@@ -743,6 +770,13 @@ class YoutubeAdapter:
         except Exception as e:
             raise _yt_error("sign-in", e) from None
 
+        kids = mfk.for_video(kids_row, channel)
+        if kids.refused:
+            raise refused(mfk.REFUSAL, "this video is kids content and nobody confirmed it is not made for kids; "
+                                       "confirm the audience on the video's review page, then send again")
+        logger.info("youtube cross-post: made for kids %s (%s)", "yes" if kids.value else "no",
+                    ",".join(kids.sources) or "no kids source")
+
         script = SimpleNamespace(title=meta.title, description=meta.description, tags=list(meta.tags),
                                  sections=None)
         done = threading.Event()
@@ -760,7 +794,7 @@ class YoutubeAdapter:
             # The decision rides along only when it labels the video: an unlabelled upload calls the
             # uploader exactly as before. The line is already in meta.description (youtube_metadata).
             extra = {"ai_disclosure": decision} if decision is not None and decision.label else {}
-            out = uploader.upload(path, script, privacy=YT_PRIVACY, **extra)
+            out = uploader.upload(path, script, privacy=YT_PRIVACY, made_for_kids=kids, **extra)
         except Exception as e:
             raise _yt_error("upload", e) from None
         finally:
@@ -962,8 +996,22 @@ class YoutubePublisher:
         self.ctx.youtube.heartbeat = self.ctx.heartbeat
         # PostSpec.ai_generated -> ``status.containsSyntheticMedia``: the uploader reads it from the decision, which is
         # handed over only when it labels the video (an unlabelled upload calls the uploader exactly as before).
-        result = self.ctx.youtube.publish(self.target, path, yt, decision if post.ai_generated else None)
+        result = self.ctx.youtube.publish(self.target, path, yt, decision if post.ai_generated else None,
+                                          kids_row=self._kids_row())
         return {**result, "privacy": YT_PRIVACY}
+
+    def _kids_row(self) -> dict:
+        """The video's "made for kids" record; for a Short with none of its own (the pipeline records the long video's),
+        the long video's, since the Short is cut from it."""
+        read = getattr(self.ctx.store, "kids_record", None)
+        if read is None:
+            return {}
+        video = self.ctx.video
+        row = read(str(video.get("video_id") or "")) or {}
+        parent = str(video.get("parent_video_id") or "")
+        if not isinstance(row.get("made_for_kids"), bool) and parent:
+            row = read(parent) or row
+        return row
 
     def describe(self) -> str:
         return f"uploaded privately to YouTube channel {self.target}"

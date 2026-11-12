@@ -98,6 +98,7 @@ from modules import title_formulas
 from modules.title_planner import plan_titles
 from modules.topic_manager import TopicManager, TopicSelectionError
 from modules.youtube_uploader import YouTubeUploader, reconcile_privacy
+from modules import made_for_kids as mfk
 from tools.generate_assets import ensure_assets
 
 logging.basicConfig(
@@ -264,6 +265,7 @@ def _publish_short(
     costs,
     ai_decision=None,
     ai_signals=None,
+    made_for_kids=None,
 ):
     """Cut and publish a vertical Short from the video that just went out.
 
@@ -311,6 +313,8 @@ def _publish_short(
                 script.title, parent_url, hook=getattr(script, "hook_sentence", "")),
             # The Short is cut from the long video's own frames: same media, same answer.
             ai_disclosure=ai_decision,
+            # The same video for the same audience: a kids video's Short is made for kids too.
+            made_for_kids=made_for_kids,
         )
         try:
             costs.add(UPLOAD_BYTES, float(short_path.stat().st_size), stage="short_upload")
@@ -752,6 +756,7 @@ def run(
     duration: int | None = None,
     language: str | None = None,
     visual_style: str | None = None,
+    made_for_kids: bool = False,
 ):
     """Run the pipeline once, for one channel.
 
@@ -771,6 +776,11 @@ def run(
     as before. `duration` is a target length in seconds; `language` is the script
     language; `visual_style` is a look directive (or a style-preset name) that
     wins over the series' and the channel's own style for this run only.
+
+    `made_for_kids` is the run's own "made for kids" (the Kids story format, the
+    Create form's switch: ``--made-for-kids``). It can only turn the declaration
+    ON: kids content from the series, the DNA look or the channel is made for kids
+    whatever the run says (modules/made_for_kids.py).
     """
     Path("logs").mkdir(exist_ok=True)
     ctx = channel if isinstance(channel, ChannelContext) else resolve_channel(channel)
@@ -992,6 +1002,20 @@ def run(
             raise
         if dna_look.character_names:
             ctx = _dc_replace(ctx, dna=_dc_replace(ctx.dna, character_names=dna_look.character_names))
+    # ── Stage 0e: YouTube's "made for kids" declaration, decided now (before anything is paid for) from what this run
+    # is: the run's own format, its series, its DNA look and the channel's default. A look that cannot be read stops
+    # the run here: a kids video must never upload "not made for kids" because a read failed.
+    try:
+        kids_style = mfk.style_kit_library_id(ctx)
+    except mfk.MadeForKidsUnknown as e:
+        logger.error("[channel: %s] The made-for-kids declaration cannot be decided: %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="made_for_kids", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": str(e), "stage": "preflight"})
+        raise
+    kids_decision = mfk.decide(ctx, series=series_obj, run_made_for_kids=made_for_kids, style_library_id=kids_style)
+    logger.info("[channel: %s] Made for kids: %s (%s)", channel_id, "yes" if kids_decision.value else "no",
+                ", ".join(kids_decision.sources) or "no kids source; the channel's default is off")
+
     events.emit(events.DNA_APPLIED, agent="dna_render", status=events.STATUS_COMPLETED,
                 channel_id=channel_id,
                 metadata={**render_fmt.to_metadata(), "pictures_generated": pictures,
@@ -1662,6 +1686,8 @@ def run(
         claims=section_claims,
         language=getattr(ctx.agent, "language", None),
         grounding=grounding_summary,
+        # Kids content declared "not for kids" with nobody's confirmation blocks, on every channel.
+        made_for_kids=kids_decision,
     )
 
     # Advisory pre-publish intelligence — a quality/prediction score for a human
@@ -1792,6 +1818,7 @@ def run(
                 auto_publish=False,
                 slug=slug,
                 gate_verdict=held_video.gate_verdict(gate_meta),
+                made_for_kids=kids_decision,
             )
         except Exception as e:
             logger.warning("Could not record the held run (%s: %s) — the run is unaffected",
@@ -1845,6 +1872,8 @@ def run(
                 # Run marker + attempt ledger: an ambiguous failure is looked up
                 # on the channel before any retry, never re-uploaded blindly.
                 attempt=upload_idempotency.begin(slug, channel_id),
+                # status.selfDeclaredMadeForKids: decided at Stage 0e, never a constant.
+                made_for_kids=kids_decision,
             )
             video_id, video_url = uploaded["id"], uploaded["url"]
             # What YouTube APPLIED, not what was asked for: an API project that has not passed the
@@ -2002,6 +2031,9 @@ def run(
                     # What the gate decided about THIS cut, stored with its hash: an approval binds to both
                     # (migration 0112). Uploads happen only when it allowed.
                     gate_verdict=held_video.gate_verdict(gate.to_metadata()),
+                    # What this upload declared, so the review panel shows it and a cross-post or the publish-when-approved
+                    # worker sends the same (migration 0140).
+                    made_for_kids=kids_decision,
                 )
             except Exception as e:
                 logger.warning("Could not record the review preview (%s: %s)",
@@ -2052,6 +2084,7 @@ def run(
                 costs=costs,
                 ai_decision=ai_decision,
                 ai_signals=ai_signals,
+                made_for_kids=kids_decision,
             )
     elif not gate.allowed:
         # Already reported above. The run is not uploaded, so it gets a held
@@ -2172,6 +2205,9 @@ if __name__ == "__main__":
     parser.add_argument("--visual-style", dest="visual_style", default=None,
                         help="Visual-style directive or style-preset name for THIS "
                              "run only (default: the channel's / series' style)")
+    parser.add_argument("--made-for-kids", dest="made_for_kids", action="store_true",
+                        help="Declare THIS run's video made for kids on YouTube (the Kids story format). "
+                             "It can only turn the declaration on: kids content is made for kids anyway.")
     # Targeted repair (modules/scene_repair.py): re-fetch and re-render only
     # these scenes of the channel's unfinished run, then hold the new cut for
     # review. It never uploads. Validated strictly; the run must already exist.
@@ -2216,6 +2252,7 @@ if __name__ == "__main__":
                 duration=args.duration,
                 language=args.language,
                 visual_style=args.visual_style,
+                made_for_kids=args.made_for_kids,
             )
         except storyboard_review.StoryboardPaused as paused:
             # Not a failure and not a finished video: the run waits for a

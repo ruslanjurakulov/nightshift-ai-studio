@@ -554,6 +554,38 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
   frame; drops the overload, the list, the check and the three columns. Exported videos stay in the library.
 - **Review.** Needs the independent security review before merge, and a person reading the live two-argument `request_editor_export` hash first.
 
+## YouTube's "made for kids" declaration (0140)
+
+0140 (`0140_made_for_kids.sql`, `modules/made_for_kids.py`) is **live on apply**. Every upload used to send
+`status.selfDeclaredMadeForKids: false`, while the product offers a Kids story format, kids looks and kids channels: a children's video
+declared "not made for kids" breaks YouTube's policy and COPPA. The pipeline now decides the declaration per run (the run's own
+`made_for_kids`, a series whose format names kids, a channel DNA look tagged kids in the Style Library, or the channel's
+`agent_config.made_for_kids`, which needs no migration); this file gives that decision a record and a person a way to change it.
+
+- **Adds** four nullable columns on `videos`: `made_for_kids`, `kids_content` (the pipeline's), `made_for_kids_off_by` and
+  `made_for_kids_off_at` (who confirmed "not made for kids" for kids content, and when), with `videos_made_for_kids_confirmed_check`:
+  kids content is declared not for kids only with a confirmation, and a confirmation exists only for that, for every writer.
+- **Adds** `set_video_made_for_kids(p_video_id, p_made_for_kids, p_confirm_off)` (signed-in users only; the approver's rule of 0112;
+  rate limited; refuses `already_public`, `approval_live`, `confirm_required`; audited as `video.made_for_kids`).
+- **Replaces** `render_job_params_valid` (0122's body plus `made_for_kids`, true only, never on a repair), `audit_action_allowed`
+  (0117's plus `video.made_for_kids`) and the `render_jobs_insert` policy (0076's plus the key), each its predecessor plus marked lines.
+- **Where the declaration goes.** The pipeline's upload and its Short (`modules/youtube_uploader.py`), a cross-post to another channel
+  (`modules/social_publish.py`, refused as `made_for_kids_unconfirmed`), and the publish-when-approved write (`modules/visibility_publish.py`,
+  which sends the recorded value instead of the one read back). The publish gate blocks `made_for_kids_unconfirmed` on every channel,
+  including one that turned the gate off. Instagram and TikTok have no such field in the APIs this repo uses, and are unchanged.
+- **Drift guard.** Refuses (changes nothing) if a replaced body is neither its predecessor's nor 0140's, or if
+  `set_video_made_for_kids` exists with another body; the last block asserts every body by md5, the grants, the columns, the check, the
+  policy and the validator's answers.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`.
+- **Undo.** `docs/sql/rollback_0140_made_for_kids.sql` (owner-applied): refuses a body that is not 0140's and a queued or running job that
+  carries `made_for_kids`; restores the three predecessors byte for byte and drops the function. It keeps the columns and their check:
+  the record of who confirmed what is not erased.
+- **Tests.** `tests/test_made_for_kids_migration.py` (the file, pinned), `tests/test_made_for_kids.py` (every upload body) and
+  `tests/security/test_sec_made_for_kids.py` (the lab). 0140 sits on 0122's and 0117's bodies, so the lab's `take_off_0121`,
+  `take_off_0122` and `take_off_0127` take it off first and their `put_back_*` put it back (`tests/security/sec_db.py`).
+- **Numbering.** 0140, after 0139 (the operator's preview, which replaces `creative_price` only and names nothing of this file's). The
+  numbering tests of 0127, 0131 and 0133 list it as reviewed.
+
 ## The operator's Customers page (0138)
 
 0138 (`0138_operator_customers.sql`, the Command Center's `/{channel}/customers`) is **live on apply and read-only**: it **adds three

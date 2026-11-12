@@ -38,9 +38,11 @@ from modules.series import validate_series_id
 #: param since migration 0120_series_tables.sql, which redefines ``render_job_params_valid`` with ``'series'`` in its ``allowed`` array
 #: and the series-id check (tests/test_queue_worker.py compares the two, and tests/test_series_dispatch.py pins the rest). Only a
 #: database function of that migration writes one into a job: the browser's insert policy does not list the key.
+#: ``made_for_kids`` (migration 0140): the Kids story format / the Create form's switch. Only ``true``: a run can turn
+#: YouTube's "made for kids" on, never off (modules/made_for_kids.py).
 ALLOWED_PARAMS = (
     "topic", "niche", "privacy", "duration", "language", "visual_style",
-    "video_provider", "image_provider", "tts_model", "voice_id", "resume", "repair_scenes", "series",
+    "video_provider", "image_provider", "tts_model", "voice_id", "resume", "repair_scenes", "series", "made_for_kids",
 )
 #: The workflow's choice lists (daily_video.yml `options:`).
 PRIVACY_CHOICES = ("private", "unlisted", "public")
@@ -147,6 +149,14 @@ def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
             raise InvalidRunRequest("publish_hint must be <platform>:<account id>")
         out["publish_hint"] = hint
 
+    if params.get("made_for_kids") is not None:
+        # The database holds the key to true (0140); false is refused rather than read as "not for kids".
+        if params["made_for_kids"] is not True:
+            raise InvalidRunRequest("made_for_kids may only be true")
+        if kind == "repair":
+            raise InvalidRunRequest("a repair job cannot set made_for_kids")
+        out["made_for_kids"] = True
+
     if params.get("resume") is not None:
         if not isinstance(params["resume"], bool):
             raise InvalidRunRequest("resume must be true or false")
@@ -182,6 +192,8 @@ def build_main_args(channel_id: str, params: Mapping) -> List[str]:
         args += ["--visual-style", params["visual_style"]]
     if params.get("series"):
         args += ["--series", validate_series_arg(params["series"])]
+    if params.get("made_for_kids") is True:
+        args += ["--made-for-kids"]
     if params.get("resume") is True:
         args += ["--resume"]
     if params.get("repair_scenes"):

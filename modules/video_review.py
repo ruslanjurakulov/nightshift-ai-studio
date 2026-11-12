@@ -64,6 +64,19 @@ KEEP_PER_CHANNEL = 5
 # a held video still awaiting review must not lose its only copy to newer holds. Ceiling: 5 uploaded + 5 held.
 KEEP_HELD_PER_CHANNEL = 5
 
+#: Migration 0140: the video's YouTube "made for kids" declaration and whether it is kids content (modules/made_for_kids.py).
+#: The person's confirmation (made_for_kids_off_by / _at) is only ever CLEARED here, with a new cut; only
+#: set_video_made_for_kids sets it.
+COLUMNS_0140 = ("made_for_kids", "kids_content", "made_for_kids_off_by", "made_for_kids_off_at")
+
+
+def made_for_kids_columns(decision) -> dict:
+    """The 0140 columns for a run's decision. A new cut is the run's declaration again: a person's earlier "not for kids"
+    was about a cut that is gone, so it is cleared with it (the database's constraint holds the pair together)."""
+    return {"made_for_kids": bool(decision.value), "kids_content": bool(decision.kids_content),
+            "made_for_kids_off_by": None, "made_for_kids_off_at": None}
+
+
 # Migration 0112: a person's approval (videos.approved_cut_sha256 and who/when/until) is for one cut. Recording a cut
 # clears it, whatever the review state is set to; the database function approve_video_publish is the only writer of it.
 NO_APPROVAL = {
@@ -385,6 +398,7 @@ class VideoReview:
         topic: str | None = None,
         slug: str | None = None,
         gate_verdict: dict | None = None,
+        made_for_kids=None,
     ) -> None:
         """Upload the preview and attach the script to the row.
 
@@ -430,6 +444,11 @@ class VideoReview:
         is a new cut being recorded, and it sets ``review_state`` back to pending for a channel that does not publish
         on its own. A verdict that is not known is sent as NULL, which reads "unknown", never "passed".
 
+        ``made_for_kids`` (a ``modules.made_for_kids.Decision``) is recorded as ``videos.made_for_kids`` and
+        ``videos.kids_content`` (migration 0140): what the run declared, and whether the video is kids content. The
+        review panel shows it, and a cross-post or the publish-when-approved worker sends the same. A database without
+        0140 takes the rest of the row (the two columns are dropped and the write retried, as the 0112 ones are).
+
         Idempotent (same key, same values), and never raises.
         """
         if not self.enabled:
@@ -457,6 +476,8 @@ class VideoReview:
             row["cut_sha256"] = held_video.cut_sha256(video_path)
             row["gate_verdict"] = gate_verdict if isinstance(gate_verdict, dict) else None
             row.update(NO_APPROVAL)
+            if made_for_kids is not None:
+                row.update(made_for_kids_columns(made_for_kids))
             if manifest:
                 from modules import video_ir
 
@@ -465,6 +486,10 @@ class VideoReview:
             if scenes:
                 row["scenes"] = scenes
             ok = self._upsert_video(row)
+            if not ok and any(k in row for k in COLUMNS_0140):
+                # A database without 0140: the declaration has nowhere to go, the rest of the row still does.
+                row = {k: v for k, v in row.items() if k not in COLUMNS_0140}
+                ok = self._upsert_video(row)
             if not ok:
                 # An un-migrated database (no `manifest` column, or no 0112 columns) rejects the whole
                 # write; retry without the missing columns so the preview/script still land.

@@ -1,0 +1,152 @@
+"""supabase/migrations/0140_made_for_kids.sql, read as text (the security lab runs it: tests/security/test_sec_made_for_kids.py).
+
+What would break without these:
+  * a replaced body that is not its predecessor plus the marked lines (a silent change riding along);
+  * a drift-guard or end-state hash that is not the md5 of the body it names (the file would refuse a correct database, or let a
+    wrong one through);
+  * the rollback restoring anything but the predecessors byte for byte, or dropping the record of who confirmed what;
+  * the run's made_for_kids accepted as anything but true, on a repair, or not at all by the browser's insert policy;
+  * the person's function callable by anon or the service key, or without the approver's rule and the confirmation.
+"""
+
+import hashlib
+import re
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+MIG = ROOT / "supabase" / "migrations"
+TEXT = (MIG / "0140_made_for_kids.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0140_made_for_kids.sql").read_text(encoding="utf-8")
+M0122 = (MIG / "0122_series_template_carrier.sql").read_text(encoding="utf-8")
+M0117 = (MIG / "0117_voice_profiles.sql").read_text(encoding="utf-8")
+M0076 = (MIG / "0076_scene_regenerate.sql").read_text(encoding="utf-8")
+
+RJPV = "create or replace function public.render_job_params_valid("
+AUD = "create or replace function public.audit_action_allowed("
+SET = "create or replace function public.set_video_made_for_kids("
+POLICY = "create policy render_jobs_insert on public.render_jobs"
+
+
+def code(sql: str) -> str:
+    return "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
+
+
+def body(sql: str, start: str) -> str:
+    i = sql.index(start)
+    a = sql.index("$$", i) + 2
+    return sql[a:sql.index("$$", a)]
+
+
+def policy(sql: str) -> str:
+    i = sql.index(POLICY)
+    return sql[i:sql.index(");", i) + 2]
+
+
+def h(b: str) -> str:
+    return hashlib.md5(re.sub(r"\s+", " ", b).encode()).hexdigest()
+
+
+def added_lines(old: str, new: str):
+    o, n = old.splitlines(), new.splitlines()
+    out, i = [], 0
+    for line in n:
+        if i < len(o) and line == o[i]:
+            i += 1
+        else:
+            out.append(line)
+    assert i == len(o), f"line {i + 1} of the old body was changed or removed: {o[i]!r}"
+    return out
+
+
+def migrations_before(number: str):
+    return sorted(p for p in MIG.glob("*.sql") if p.name[:4] < number)
+
+
+class WhatItReplaces(unittest.TestCase):
+    def test_the_old_bodies_are_the_latest_definitions_before_it(self):
+        for fn, want in (("render_job_params_valid", "0122_series_template_carrier.sql"), ("audit_action_allowed", "0117_voice_profiles.sql")):
+            defs = [p.name for p in migrations_before("0140") if re.search(rf"create or replace function public\.{fn}\(", p.read_text(encoding="utf-8"))]
+            self.assertEqual(defs[-1], want, fn)
+        pols = [p.name for p in migrations_before("0140") if POLICY in p.read_text(encoding="utf-8")]
+        self.assertEqual(pols[-1], "0076_scene_regenerate.sql")
+
+    def test_the_params_validator_is_0122s_plus_the_marked_block_and_one_key(self):
+        old, new = body(M0122, RJPV), body(TEXT, RJPV)
+        self.assertEqual(old.replace("'publish_hint','series','template'];", "'publish_hint','series','template','made_for_kids'];"),
+                         re.sub(r"  -- 0140:.*?\n  end if;\n", "", new, flags=re.S), "only the allowed list and the 0140 block differ")
+        block = "\n".join(added_lines(old.replace("'template'];", "'template','made_for_kids'];"), new))
+        self.assertIn("p ? 'made_for_kids' and (p -> 'made_for_kids' is distinct from 'true'::jsonb or p_kind = 'repair')", block)
+
+    def test_the_audit_list_is_0117s_plus_one_action(self):
+        added = added_lines(body(M0117, AUD), body(TEXT, AUD))
+        self.assertEqual([ln.strip() for ln in added if not ln.strip().startswith("--")], ["'video.made_for_kids',"])
+
+    def test_the_insert_policy_is_0076s_plus_one_key(self):
+        self.assertEqual(policy(M0076).replace("'publish_hint']", "'publish_hint','made_for_kids']"), policy(TEXT))
+
+    def test_the_hashes_in_the_file_are_the_md5_of_the_bodies_they_name(self):
+        header = TEXT.split("set local lock_timeout", 1)[0]
+        pins = {"render_job_params_valid": (h(body(M0122, RJPV)), h(body(TEXT, RJPV))),
+                "audit_action_allowed": (h(body(M0117, AUD)), h(body(TEXT, AUD)))}
+        for fn, (old, new) in pins.items():
+            self.assertRegex(header, rf"--     {fn}\s+{old}\n", fn)
+            self.assertRegex(header, rf"--     {fn}\s+{new}\n", fn)
+            guard = code(TEXT)
+            self.assertIn(f"array['{old}', '{new}']", guard, fn)
+        self.assertRegex(header, rf"--     set_video_made_for_kids\s+{h(body(TEXT, SET))}\n")
+        end = TEXT[TEXT.index("6. The end state"):]
+        for b in (body(TEXT, RJPV), body(TEXT, AUD), body(TEXT, SET)):
+            self.assertIn(h(b), end)
+
+    def test_the_sec_db_helper_pins_the_same_predecessors(self):
+        lab = (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8")
+        self.assertIn(f'"public.render_job_params_valid(jsonb, text)": "{h(body(M0122, RJPV))}"', lab)
+        self.assertIn(f'"public.audit_action_allowed(text)": "{h(body(M0117, AUD))}"', lab)
+
+
+class ThePersonsFunction(unittest.TestCase):
+    FN = body(TEXT, SET)
+
+    def test_it_asks_the_approvers_rule_and_holds_the_confirmation(self):
+        for needle in ("public.video_approve_access(p_video_id)", "take_web_rate('video_made_for_kids', 20, 600)",
+                       "for update", "'confirm_required'", "'already_public'", "'approval_live'",
+                       "p_confirm_off is distinct from true", "'video.made_for_kids'"):
+            self.assertIn(needle, self.FN, needle)
+
+    def test_only_signed_in_users_may_call_it(self):
+        c = code(TEXT)
+        self.assertIn("revoke all on function public.set_video_made_for_kids(text, boolean, boolean) from public, anon, authenticated, service_role;", c)
+        self.assertIn("grant execute on function public.set_video_made_for_kids(text, boolean, boolean) to authenticated;", c)
+        self.assertNotRegex(c, r"grant execute on function public\.set_video_made_for_kids\([^)]*\) to [^;]*(anon|service_role)")
+        self.assertIn("security definer set search_path = public, pg_temp", TEXT[TEXT.index(SET):])
+
+    def test_the_column_check_holds_every_writer_to_the_rule(self):
+        self.assertIn("(made_for_kids_off_by is null) = (not coalesce(kids_content is true and made_for_kids is false, false))", TEXT)
+        self.assertIn("(made_for_kids_off_by is null) = (made_for_kids_off_at is null)", TEXT)
+
+
+class WhatTheRollbackDoes(unittest.TestCase):
+    def test_it_restores_the_predecessors_byte_for_byte_and_guards_on_0140s(self):
+        self.assertEqual(body(ROLLBACK, RJPV), body(M0122, RJPV))
+        self.assertEqual(body(ROLLBACK, AUD), body(M0117, AUD))
+        self.assertEqual(policy(ROLLBACK), policy(M0076))
+        self.assertIn(h(body(TEXT, RJPV)), ROLLBACK)
+        self.assertIn(h(body(TEXT, AUD)), ROLLBACK)
+        self.assertIn("drop function if exists public.set_video_made_for_kids(text, boolean, boolean);", ROLLBACK)
+
+    def test_it_keeps_the_record(self):
+        c = code(ROLLBACK)
+        self.assertNotIn("drop column", c)
+        self.assertNotIn("videos_made_for_kids_confirmed_check", c)
+        self.assertRegex(ROLLBACK, r"(?m)^begin;$")
+        self.assertRegex(ROLLBACK, r"(?m)^commit;$")
+
+
+class TheNumber(unittest.TestCase):
+    def test_it_is_the_only_0140(self):
+        self.assertEqual([p.name for p in MIG.glob("0140_*.sql")], ["0140_made_for_kids.sql"])
+
+
+if __name__ == "__main__":
+    unittest.main()

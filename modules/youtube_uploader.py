@@ -598,6 +598,7 @@ class YouTubeUploader:
         description_suffix: str | None = None,
         attempt=None,
         ai_disclosure=None,
+        made_for_kids=None,
     ) -> dict:
         """Upload one video.
 
@@ -634,11 +635,22 @@ class YouTubeUploader:
         or None sends nothing at all: the body is exactly what it was before
         this parameter existed. Neither changes privacy or who may publish.
 
+        `made_for_kids` (a ``modules.made_for_kids.Decision``, or a bare bool) is
+        ``status.selfDeclaredMadeForKids``. It used to be a constant False, which
+        declared a Kids story "not made for kids". None (a caller that decided
+        nothing) is the channel's default, never a constant; a kids video declared
+        "not for kids" with nobody's confirmation raises ``MadeForKidsUnconfirmed``
+        BEFORE anything is sent (modules/made_for_kids.py).
+
         Quota: videos.insert is ~1600 units of the 10,000/day; a caption track
         adds ~400. Chapters are description text and cost nothing. A marker
         lookup is ~3 units.
         """
         privacy = privacy or YOUTUBE_PRIVACY
+        from modules import made_for_kids as mfk
+
+        # First, before a byte or a quota unit is spent: a declaration that may not be sent stops the upload here.
+        for_kids = mfk.declared(made_for_kids, self.channel)
         marker = getattr(attempt, "marker", "") or ""
         # The run marker goes first so trimming can never drop it.
         tags = self._trim_tags(([marker] if marker else [])
@@ -682,7 +694,7 @@ class YouTubeUploader:
             },
             "status": {
                 "privacyStatus": privacy,
-                "selfDeclaredMadeForKids": False,
+                "selfDeclaredMadeForKids": for_kids,
             },
         }
 

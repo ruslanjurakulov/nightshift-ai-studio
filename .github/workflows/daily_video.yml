@@ -101,6 +101,11 @@ on:
         description: "Series id to run this video under (empty = none; needs 'channel'). The series must be ACTIVE and belong to that channel, else the run stops before spending anything."
         required: false
         default: ""
+      made_for_kids:
+        description: "Declare this run's video made for kids on YouTube (the Kids story format). It can only turn the declaration on: kids content is made for kids anyway."
+        required: false
+        default: false
+        type: boolean
       credit_ref:
         description: "Credit reservation paying for this run (set by the Command Center when credits are enforced; leave empty)"
         required: false
@@ -593,6 +598,8 @@ jobs:
           # "true" only on a manual run with the resume box ticked; empty on a
           # schedule, so scheduled runs start a new video exactly as before.
           INPUT_RESUME: ${{ github.event.inputs.resume }}
+          # "true" only on a dispatch from the Kids story format or the Create form's switch (modules/made_for_kids.py).
+          INPUT_MADE_FOR_KIDS: ${{ github.event.inputs.made_for_kids }}
           # Non-empty only on a manual repair dispatch (validated in `resolve`,
           # and again strictly by main.py before anything is read or spent).
           INPUT_REPAIR_SCENES: ${{ github.event.inputs.repair_scenes }}
@@ -793,6 +800,9 @@ jobs:
             # (and so before anything is spent). The value never touches the shell text.
             python tools/validate_series_input.py || exit 1
             args+=(--series "$INPUT_SERIES")
+          fi
+          if [ "${INPUT_MADE_FOR_KIDS:-}" = "true" ]; then
+            args+=(--made-for-kids)
           fi
           if [ "${INPUT_RESUME:-}" = "true" ]; then
             args+=(--resume)

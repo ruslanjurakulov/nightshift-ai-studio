@@ -476,6 +476,7 @@ def test_applying_the_migration_again_changes_nothing_and_keeps_every_row(conn, 
                                      ("public.series_plans_terms_frozen()", "series_plans_terms_frozen")])
 def test_the_migration_refuses_to_replace_a_body_it_has_not_seen_and_replaces_nothing(conn, world, sig, word):
     s = world.su
+    sec_db.take_off_0140(s)   # 0140 sits on 0122's render_job_params_valid(): off, so the guard under test is the first to answer
     become(s, None)
     ddl = s.value("select pg_get_functiondef(%s::regprocedure)", [sig])
     marker = "begin\n" if "begin\n" in ddl else "BEGIN\n"
@@ -491,6 +492,7 @@ def test_the_migration_refuses_to_replace_a_body_it_has_not_seen_and_replaces_no
 
 def test_the_migration_refuses_an_eight_argument_function_that_is_not_its_own(conn, world):
     s = world.su
+    sec_db.take_off_0140(s)   # 0140 sits on 0122's render_job_params_valid(): off, so the guard under test is the first to answer
     become(s, None)
     ddl = s.value("select pg_get_functiondef(%s::regprocedure)", [NEW])
     changed = ddl.replace("begin\n", "begin\n  -- by hand\n", 1)
@@ -574,7 +576,7 @@ def test_the_rollback_restores_0120_byte_for_byte_and_0122_applies_again(conn, s
     base_dsn = sec_db.create_database(admin, base)
     sigs = [*FOUR[:3], OLD]
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0122_", "0127_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0122_", "0127_", "0140_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {x: (b.execute("select pg_get_functiondef(%s::regprocedure)", [x]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [x]).fetchone()[0]) for x in sigs}
@@ -659,6 +661,7 @@ def test_the_rollback_with_no_format_anywhere_succeeds_and_the_plain_plans_stay(
                                      (NEW, "request_series_plan")])
 def test_the_rollback_refuses_to_undo_a_later_change_to_any_of_the_four(conn, world, sig, word):
     s = world.su
+    sec_db.take_off_0140(s)   # 0140 sits on 0122's render_job_params_valid(): off, so the guard under test is the first to answer
     become(s, None)
     ddl = s.value("select pg_get_functiondef(%s::regprocedure)", [sig])
     changed = ddl.replace("begin\n", "begin\n  -- a later change, by hand\n", 1)
@@ -683,7 +686,7 @@ def test_a_plan_made_before_the_migration_still_replays_and_its_job_is_still_val
     name = f"ns_series_tpl_legacy_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0122_", "0127_"))])
+        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0122_", "0127_", "0140_"))])
         with psycopg.connect(dsn, autocommit=True) as c:
             who = sec_db.user("legacy-editor", "legacy@a.test")
             with as_superuser(c, commit=True) as su:

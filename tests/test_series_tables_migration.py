@@ -289,7 +289,9 @@ class Dormant(unittest.TestCase):
     def test_the_python_whitelist_matches_the_migrations_allowed_array(self):
         b = body(TEXT, RJPV)
         m = re.search(r"allowed text\[\] := array\[(.*?)\];", b, re.S)
-        self.assertEqual(set(re.findall(r"'([a-z_]+)'", m.group(1))), set(run_request.ALLOWED_PARAMS) | set(run_request.HINT_PARAMS))
+        # made_for_kids came later, with 0140 (tests/test_made_for_kids_migration.py pins it as 0122's body plus that one key).
+        self.assertEqual(set(re.findall(r"'([a-z_]+)'", m.group(1))),
+                         (set(run_request.ALLOWED_PARAMS) - {"made_for_kids"}) | set(run_request.HINT_PARAMS))
         self.assertIn("series", run_request.ALLOWED_PARAMS)
 
 
