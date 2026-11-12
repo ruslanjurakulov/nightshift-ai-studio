@@ -666,3 +666,8 @@ sec_character_swap_0137.extend(TABLES, FUNCTIONS)
 import sec_operator_customers_0138  # noqa: E402
 
 sec_operator_customers_0138.extend(TABLES, FUNCTIONS)
+
+# Migration 0141 (one YouTube channel is connected to at most one organization: two triggers and their check): tests/security/sec_youtube_one_org_0141.py
+import sec_youtube_one_org_0141  # noqa: E402
+
+sec_youtube_one_org_0141.extend(TABLES, FUNCTIONS)

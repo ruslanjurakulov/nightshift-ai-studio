@@ -840,3 +840,43 @@ and nothing changes for anyone until a registry entry carries `"operator_preview
 - **Tests.** `tests/test_operator_preview_migration.py` (the hunks, the hashes, the rollback, the grants), `tests/security/test_sec_operator_preview.py`
   (a non-admin and an admin in a customer's organization are refused; the operator is quoted at cost and holds nothing; every other quote is
   byte for byte 0125's; the drift guard, the rollback and the order), `command-center/tests/operator-preview.test.tsx` (the badge, the list).
+
+## One YouTube channel, one organization (0141)
+
+0141 (`0141_youtube_channel_one_org.sql`) makes the owner's decision (option B) a database rule: **a YouTube channel id (`UC...`) is connected
+to at most one organization (workspace) at a time.** Reconnecting or refreshing the token of the same channel inside the same organization
+works exactly as before, and several Nightshift channels of ONE organization may still name the same YouTube channel. It replaces no
+function and rewrites no row; it adds two BEFORE ROW triggers and the check they share.
+
+- **"Connected".** A channel holds id Y through an active Vault connection (`channel_token_refs`: `vault_secret_id` set, `revoked_at` null,
+  `btrim(youtube_channel_id) = Y`) or a confirmed row (`channels.credential_ref`: `verified_at` set, `btrim(youtube_channel_id) = Y`). A
+  disconnect (`revoke_channel_token`) ends both for a customer's channel, so Y is free at once; the id left pinned in `credential_ref`
+  without `verified_at` holds nothing. An operator channel keeps `verified_at` after a revoke (its GitHub-secret token may still be in use)
+  and keeps holding Y until its credential is rewritten. `channel_credentials.youtube_channel_id` is a status mirror, never a connection.
+- **Every write path.** `channel_token_refs_one_org` (BEFORE INSERT OR UPDATE ON `channel_token_refs`) and `channels_youtube_one_org`
+  (BEFORE INSERT OR UPDATE OF `credential_ref`, `org_id` ON `channels`) run for every role, so they hold for `store_channel_token` (0022),
+  `store_operator_channel_token` (0115), the stamp trigger (0086), `set_channel_credential` (0086), `create_channel` (0114), the service
+  key, the SQL editor, imports, and a direct `update channels set org_id` (the move 0018 allows an admin of both organizations).
+- **Race-safe.** Both call `youtube_channel_one_org_check`, which takes `pg_advisory_xact_lock(hashtextextended('nightshift.youtube_channel:' || Y, 0))`
+  and only then reads who holds Y (READ COMMITTED: a fresh snapshot after the wait). A claim written under REPEATABLE READ is refused
+  (`0A000`, hint `youtube_channel_isolation`); under SERIALIZABLE, SSI aborts the second of two concurrent claims (`40001`).
+- **The refusal.** SQLSTATE `23P01`, message `youtube_channel_in_use: ...`, hint `youtube_channel_in_use`; it names neither the other
+  organization nor its channel. The Command Center shows "This YouTube channel is already connected to another workspace. Disconnect it
+  there first." (uz, en, ru). Not `23505`: `create_channel` turns that into "that channel id is not available".
+- **Before you apply: duplicates.** Run `docs/sql/check_0141_youtube_channel_duplicates.sql` (read-only) on the live database. It lists
+  every YouTube id held in more than one organization (id, organization, channel, how it holds it, created / connected). 0141 locks both
+  tables and REFUSES to apply while any exist (counts only in the message); it never picks a winner. Decide, disconnect the others, rerun.
+- **Drift guard.** The file refuses unless the reviewed write paths hold the bodies the rule was checked against:
+  `store_channel_token` `c11d84201958b82a4aa30cfce9276538`, `store_operator_channel_token` `2c2aa8e7eac6858711d98a509669f192`,
+  `revoke_channel_token` `91dbbd036cdf8dcffe4e94970eecbd51`, `set_channel_credential` `b82f0812294901725665bcbe70da8015`,
+  `channel_credential_build` `372c60fef1af8f57e92ee53a58ca23f0`, `create_channel` `e40317157a054c8ae467a33772d6add6`,
+  `channel_stamp_from_connection` `c09022c704d5ad384815d063a0bdce67` (md5 of `prosrc` with white space runs read as one space). Its own
+  bodies, if present, must be 0141's: `youtube_channel_one_org_check` `8a63db3a3ba1c4d82913a73143ee7ac1`, `channel_token_refs_one_org`
+  `af871aaa21f80887949ffb58cb04e1ac`, `channels_youtube_one_org` `86f8bc74da482ad80177cf54484d0bd6`. The last block asserts bodies,
+  grants (none: revoked from every API role), definer flags, the pinned search_path and both triggers. Apply as ONE transaction.
+- **Undo.** `docs/sql/rollback_0141_youtube_channel_one_org.sql` (owner-applied; refuses a body that is not 0141's; drops the two triggers
+  and three functions; nothing else was changed, so nothing else needs restoring).
+- **Tests.** `tests/test_youtube_one_org_migration.py` (hashes recomputed from the files, order, grants, rollback),
+  `tests/security/test_sec_youtube_one_org.py` (same-org reconnect, second organization refused without a leak, disconnect frees, the
+  operator's paths, direct writes on every role, the move, a real two-session race under READ COMMITTED and SERIALIZABLE, REPEATABLE READ
+  refused, duplicates refused, drift guard, rollback), `command-center/tests/channel-tokens.test.ts` and `connect-picker` tests (the message).

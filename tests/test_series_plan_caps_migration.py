@@ -86,7 +86,9 @@ class Numbering(unittest.TestCase):
         # the same way: it replaces nothing and names none of the three words below.
         # 0139 (the operator preview of a hidden model: creative_price on 0125's body, creative_operator_preview, operator_preview_models)
         # was reviewed the same way: it names none of the three words below.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139")
+        # 0141 (one YouTube channel, one organization: two triggers on channels / channel_token_refs and their check) was reviewed the
+        # same way: it replaces nothing and names none of the three words below.
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0141")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")
