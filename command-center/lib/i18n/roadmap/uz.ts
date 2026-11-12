@@ -3,14 +3,14 @@ import type { RoadmapDictionary } from "./en";
 /**
  * Ommaviy /roadmap sahifasi («Kutilayotgan yangiliklar»). BU — ASOSIY MATN: egasi tasdiqlagan (2026-11-11). en.ts va
  * ru.ts shu matnning tarjimasi. Tasdiqlangan matndan faqat ikki farq bor, ikkalasi ham repo testlari uchun
- * (tests/roadmap-page.test.tsx ularni sanab chiqadi): «Eng kuchli» → «Zamonaviy» (taqiqlangan «eng kuchli» ustunlik
+ * (tests/roadmap-page.test.tsx ularni sanab chiqadi): «Eng kuchli» → «Kuchli va zamonaviy» (taqiqlangan «eng kuchli» ustunlik
  * darajasi) va API dan keyingi qoʻshimcha oddiy apostrof oʻrniga U+2019 bilan yozildi.
  */
 export const roadmapUz: RoadmapDictionary = {
   meta: {
     title: "Kutilayotgan yangiliklar · Nightshift",
     description:
-      "Professional video muharrir, zamonaviy video AI modellar, rasm, ovoz va musiqa, reklama fabrikasi va ijtimoiy tarmoqlarga joylash. Hammasi bitta studiyada.",
+      "Professional video muharrir, kuchli va zamonaviy video AI modellar, rasm, ovoz va musiqa, reklama fabrikasi va ijtimoiy tarmoqlarga joylash.",
   },
   title: "Kutilayotgan yangiliklar",
   items: [
@@ -21,7 +21,7 @@ export const roadmapUz: RoadmapDictionary = {
     },
     {
       id: "videoModels",
-      title: "Zamonaviy video AI modellar",
+      title: "Kuchli va zamonaviy video AI modellar",
       body: "matndan va rasmdan video, videoni tahrirlash, qahramonni almashtirish, har biri oʻz yaratuvchisining API’si orqali",
     },
     { id: "create", title: "Rasm, ovoz va musiqa yaratish" },

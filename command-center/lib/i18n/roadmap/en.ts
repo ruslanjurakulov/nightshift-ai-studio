@@ -11,7 +11,7 @@ export const roadmapEn = {
   meta: {
     title: "What’s coming · Nightshift",
     description:
-      "A professional video editor, modern video AI models, image, voice and music, an ads factory, a sample gallery and social posting. All in one studio.",
+      "A professional video editor, powerful, modern video AI models, image, voice and music, an ads factory, a sample gallery and social posting. All in one studio.",
   },
   title: "What’s coming",
   items: [
@@ -22,7 +22,7 @@ export const roadmapEn = {
     },
     {
       id: "videoModels",
-      title: "Modern video AI models",
+      title: "Powerful, modern video AI models",
       body: "video from text and from images, video editing, character swap, each through its own maker’s API",
     },
     { id: "create", title: "Image, voice and music generation" },

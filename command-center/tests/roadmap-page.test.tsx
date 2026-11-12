@@ -92,7 +92,7 @@ const APPROVED_UZ = {
   closing: ["Hammasi bitta studiyada.", "NIGHTSHIFT siz uchun hammasini bir joyga yigʻadi.", "Tez orada."],
 } as const;
 const WORDING_CHANGES: readonly [from: string, to: string, why: string][] = [
-  ["Eng kuchli", "Zamonaviy", "banned superlative: docs/news/banned-claims.json rule superlative, \\beng\\s+(yaxshi|zo'r|tez|arzon|kuchli)"],
+  ["Eng kuchli", "Kuchli va zamonaviy", "banned superlative: docs/news/banned-claims.json rule superlative, \\beng\\s+(yaxshi|zo'r|tez|arzon|kuchli)"],
   ["API'si", "API’si", "an ASCII apostrophe inside a word fails tests/uz-apostrophes.test.ts; a suffix after a Latin name takes U+2019"],
 ];
 const applyChanges = (s: string) => WORDING_CHANGES.reduce((acc, [from, to]) => acc.split(from).join(to), s);
