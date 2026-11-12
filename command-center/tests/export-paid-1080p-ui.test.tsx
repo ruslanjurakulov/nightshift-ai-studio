@@ -34,7 +34,7 @@ const VIDEO: EditorAsset = { id: A, kind: "video", name: "beach.mp4", durationS:
 
 const SOLD = (frame: QuotableFrame, over: Partial<HiresQuote> = {}): HiresQuote => ({
   frame, tier: "1080p", durationS: 10, minutes: 1, maxS: 1800, tooLong: false, maxFps: 60, tooFast: false, fps: 30, onSale: true,
-  creditsPerMinute: 1, credits: 1, hold: 30, speedCurve: false, available: 100, exempt: false, mayPay: true, ...over,
+  creditsPerMinute: 1, credits: 1, hold: 30, speedCurve: false, curveSold: true, available: 100, exempt: false, mayPay: true, ...over,
 });
 
 const json = (body: unknown, status = 200) =>

@@ -653,6 +653,7 @@ def test_a_1080p_project_is_still_exported_free_by_the_plain_request(conn, sc):
 
 def test_a_document_with_a_speed_curve_is_not_sold_and_its_free_export_is_unchanged(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # 0132's own rule: 0136 prices a curve at its rendered length instead
         clear(s, sc.bob.org)
         price(s, 1, 1)
         many_parallel_runs(s)
@@ -669,6 +670,7 @@ def test_a_document_with_a_speed_curve_is_not_sold_and_its_free_export_is_unchan
         free = s.run(REQ3, [pid, 1, "vertical_1080p"])
         after = account(s, sc.bob.org)
     assert q["speed_curve"] is True and q_plain["speed_curve"] is False, (q, q_plain)
+    assert "curve_sold" not in q, q   # 0132 alone does not sell a curve (the editor holds it back: hires_speed_curve)
     assert refused(out, "NS400", "hires_speed_curve"), out
     assert written == 0
     assert free.ok and after == before, free

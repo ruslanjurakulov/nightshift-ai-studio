@@ -62,7 +62,7 @@ const getQuote = (qs: string) => quoteRoute.GET(new Request(`http://localhost/ap
 
 const SOLD = (frame: string) => ({
   paid: true, tier: "1080p", max_s: 1800, max_fps: 60, fps: 30, too_fast: false, minutes: 1, credits_per_minute: 1, credits: 1, hold: 30,
-  speed_curve: false, frame, width: 1920, height: 1080, duration_s: 6, too_long: false, on_sale: true, may_pay: true, exempt: false,
+  speed_curve: false, curve_sold: true, frame, width: 1920, height: 1080, duration_s: 6, too_long: false, on_sale: true, may_pay: true, exempt: false,
   available: 100,
 });
 

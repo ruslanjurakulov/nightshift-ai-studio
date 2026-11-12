@@ -90,17 +90,18 @@ rendered at all.
 Above 1080p is never free: a row without a paid frame whose picture is above
 1920x1080 pixels (a project whose OWN frame is bigger, exported through the
 plain request) is refused (``hires_needs_paid_export``); the database refuses
-it first (0132). A paid row is not rendered when its document has a speed
-curve (``hires_speed_curve``: the database cannot price a curve) or when the
-length rendered here starts more minutes than the database priced from the
-row's ``duration_s`` (``hires_length_mismatch``): the price is for the
-minutes the person confirmed, never for more.
+it first (0132). A paid row is not rendered when the length rendered here
+starts more minutes than the database priced from the row's ``duration_s``
+(``hires_length_mismatch``, one frame of slack): the price is for the minutes
+the person confirmed, never for more. The database prices a speed curve at its
+rendered length (migration 0136 editor_doc_rendered_length, this module's
+timeline.duration_s to the millisecond), so a curve is no reason to refuse;
+this check is the backstop if the two ever disagree.
 
 Up to 1080p, sold too (migration 0136): once the owner sets the 1080p price a
 row up to 1080p carries its quote (with a frame of the list, or none for the
-project's own frame). Such a row gets the same two refusals as a paid one
-above (a speed curve, more minutes than priced); its budget and caps stay the
-free exports'. While the price is NULL the rows carry no quote and nothing
+project's own frame). Such a row gets the same minutes check as a paid one
+above; its budget and caps stay the free exports'. While the price is NULL the rows carry no quote and nothing
 here changes.
 
 What is logged: export / asset ids, reason words, a frame id of the closed list
@@ -412,8 +413,6 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
                 # database refuses such a request first). norm carries the frame the render will use.
                 if not paid and hires_export.above_free(norm["width"], norm["height"]):
                     raise ExportFailed("hires_needs_paid_export")
-                if priced and hires_export.has_speed_curve(norm):
-                    raise ExportFailed("hires_speed_curve")
                 # The price is the database's minutes of the row's duration_s; a render that lasts longer is never given for that price.
                 if priced and hires_export.minutes_exceed(length, export.get("duration_s"), norm["fps"]):
                     raise ExportFailed("hires_length_mismatch")

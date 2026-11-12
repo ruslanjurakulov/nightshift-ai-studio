@@ -37,7 +37,7 @@ const QUOTE = (frame: HiresPresetId, over: Partial<HiresQuote> = {}): HiresQuote
   frame, tier: frame.endsWith("2160p") ? "2160p" : "1440p", durationS: 10, minutes: 1, maxS: frame.endsWith("2160p") ? 180 : 300,
   tooLong: false, maxFps: frame.endsWith("2160p") ? 30 : 60, tooFast: false, fps: 30, onSale: true,
   creditsPerMinute: frame.endsWith("2160p") ? 12 : 6, credits: frame.endsWith("2160p") ? 12 : 6, hold: frame.endsWith("2160p") ? 12 : 6,
-  speedCurve: false, available: 100, exempt: false, mayPay: true,
+  speedCurve: false, curveSold: false, available: 100, exempt: false, mayPay: true,
   ...over,
 });
 
@@ -159,6 +159,7 @@ describe("the price (HiresExportQuote)", () => {
       [{ mayPay: false }, fmt(hx.notAllowed, { name: hx.names.youtube_2160p })],
       [{ available: 5 }, fmt(hx.short, { name: hx.names.youtube_2160p, hold: "12", available: "5" })],
       [{ credits: 4, hold: 30, available: 20 }, fmt(hx.short, { name: hx.names.youtube_2160p, hold: "30", available: "20" })],
+      // A database without 0136 does not sell a curve.
       [{ speedCurve: true }, fmt(hx.speedCurve, { name: hx.names.youtube_2160p })],
     ];
     for (const [over, sentence] of cases) {
@@ -236,15 +237,18 @@ describe("a project above 1080p and a speed curve in the editor", () => {
     expect(posts()).toEqual([{ rev: 1, frames: ["youtube_2160p"], maxCredits: { youtube_2160p: 12 } }]);
   });
 
-  it("a video with a speed curve cannot tick a paid size, and says why", () => {
+  it("a video with a speed curve ticks a paid size like any other: the quote prices it at its rendered length (0136)", async () => {
     const d = newDocForAsset(VIDEO)!;
     const v = (d.tracks as { clips: Record<string, unknown>[] }[]).find((tr) => tr.clips.some((c) => "asset_id" in c))!;
     v.clips[0].speed_curve = [{ at: 0, speed: 0.5 }, { at: 1, speed: 1 }];
+    quoteFor = (frame) => json({ quote: QUOTE(frame, { speedCurve: true, curveSold: true }) });
     editor({ multiRatio: true, hires: true, doc: d });
     ratios()!.setAttribute("open", "");
-    for (const n of [hx.names.youtube_1440p, hx.names.vertical_2160p]) expect(box(n).disabled).toBe(true);
-    expect(box(te.exportPreset.names.square_1080).disabled).toBe(false);
-    expect(screen.getByText(hx.speedCurveAll)).toBeTruthy();
+    for (const n of [hx.names.youtube_1440p, hx.names.vertical_2160p]) expect(box(n).disabled).toBe(false);
+    await press(box(hx.names.youtube_1440p));
+    await press(await screen.findByRole("checkbox", { name: fmt(hx.confirm, { credits: "6" }) }));
+    await waitFor(() => expect(exportButton().disabled).toBe(false));
+    expect(screen.queryByText(fmt(hx.speedCurve, { name: hx.names.youtube_1440p }))).toBeNull();
   });
 });
 

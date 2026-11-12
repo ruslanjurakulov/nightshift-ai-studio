@@ -33,6 +33,9 @@ QUOTE = "create or replace function public.quote_editor_export(p_project uuid, p
 TERMS = "create or replace function public.editor_export_hires_terms(p_width integer, p_height integer, p_duration numeric)"
 TRAIL = "create or replace function public.editor_export_hires_prices_trail() returns trigger"
 PRICE = "create or replace function public.editor_export_price_1080p() returns numeric"
+MS = "create or replace function public.editor_ms(p double precision) returns double precision"
+JNUM = "create or replace function public.editor_jnum(p jsonb) returns double precision"
+LENGTH = "create or replace function public.editor_doc_rendered_length(p_doc jsonb) returns numeric"
 MARK = "0136"
 REPLACES = "-- 0136 replaces: "
 NEEDS_QUOTE = [
@@ -108,6 +111,7 @@ class TheRequestFunctionsAre0132sPlusMarkedLines(unittest.TestCase):
             "elsif frame_id is null then   -- 0136 replaces: if frame_id is null then   -- 0129",
             "if frame_w::bigint * frame_h <= 2073600 and public.editor_export_price_1080p() is null then   -- 0136 replaces: "
             "if frame_w::bigint * frame_h <= 2073600 then   -- 0132",
+            "total := public.editor_doc_rendered_length(p.doc);   -- 0136 replaces: total := public.editor_doc_duration(p.doc);",
             "set frame_preset = frame_id, frame_width = case when own then null else frame_w end, frame_height = case when own then null "
             "else frame_h end, quoted_credits = price, held_credits = case when ref is null then null else hold_c end, credit_ref = ref   "
             "-- 0136 replaces: set frame_preset = frame_id, frame_width = frame_w, frame_height = frame_h, quoted_credits = price, "
@@ -115,6 +119,10 @@ class TheRequestFunctionsAre0132sPlusMarkedLines(unittest.TestCase):
             "frame_id, frame_width = frame_w, frame_height = frame_h   -- 0129",
         ])
         fn = " ".join(body(func(CODE, REQ4)).split())
+        # A speed curve is sold at its rendered length: 0132's refusal is gone from the code (kept, commented, for this pin test).
+        self.assertNotIn("hires_speed_curve", fn)
+        self.assertNotIn("editor_doc_duration", fn)
+        self.assertEqual(fn.count("public.editor_doc_rendered_length(p.doc)"), 1)
         # The caller's number is compared with the CHARGE; the hold is the database's (unchanged 0132 lines).
         self.assertIn("price > p_max_credits", fn)
         self.assertIn("public.creative_platform_reserve(p.org_id, ref, hold_c)", fn)
@@ -151,8 +159,11 @@ class ThePriceAndTheTerms(unittest.TestCase):
         old = " ".join(body(func(SQL132, TERMS)).split())
         self.assertIn(old.split("if px <= 3686400 then", 1)[1], terms.split("elsif px <= 3686400 then", 1)[1])
 
-    def test_the_quote_reads_the_own_frame_as_the_request_does(self):
+    def test_the_quote_reads_the_own_frame_and_the_length_as_the_request_does(self):
         q = " ".join(body(func(CODE, QUOTE)).split())
+        self.assertIn("total := public.editor_doc_rendered_length(p.doc);", q)
+        self.assertIn("'curve_sold', true,", q)
+        self.assertNotIn("editor_doc_duration", q)
         self.assertIn("own boolean := p_frame = 'project';", q)
         self.assertIn("frame_id := 'project';", q)
         self.assertIn("raise exception 'hires_needs_paid_export'", q)
@@ -164,8 +175,49 @@ class ThePriceAndTheTerms(unittest.TestCase):
             self.assertIn(f"'{col}', jsonb_build_array(old.{col}, new.{col})", trail)
 
 
+class TheRenderedLength(unittest.TestCase):
+    """The parity itself runs in the lab (tests/security/test_sec_editor_rendered_length.py, 2000+ seeded documents). Pinned here:
+    the pieces that must be the renderer's, written as the renderer writes them."""
+
+    def test_it_mirrors_speed_ramp_and_timeline_piece_for_piece(self):
+        ln = " ".join(body(func(CODE, LENGTH)).split())
+        for piece in (
+            "if abs(s1 - s0) <= 1e-7::double precision * least(s0, s1) then acc := acc + (t1 - t0) / s0;",   # speed_ramp._flat
+            "else acc := acc + (t1 - t0) / (s1 - s0) * ln(s1 / s0);",                                          # speed_ramp._piece_length
+            "t0 := public.editor_ms(ats[j]) * rng;", "s0 := public.editor_ms(sps[j]);",                           # normalise + absolute
+            "len := public.editor_ms(acc);",                                                                    # clip_length_s
+            "len := public.editor_ms(rng / sp);", "e := public.editor_ms(st + len);",                            # clip_end_s
+            "rng := o_ - i_;",
+        ):
+            self.assertIn(piece, ln)
+        from modules import speed_ramp
+        self.assertEqual(speed_ramp._FLAT, 1e-7)
+        ms = " ".join(body(func(CODE, MS)).split())
+        # Half to even on the exact value (Python's round(x, 3)), and back through text (correctly rounded).
+        self.assertIn("if r * 2 > d or (r * 2 = d and mod(q, 2) = 1) then q := q + 1; end if;", ms)
+        self.assertIn("::text::double precision", ms)
+
+    def test_the_renderers_curve_rules_are_the_refusal(self):
+        from modules import timeline as tl
+        ln = " ".join(body(func(CODE, LENGTH)).split())
+        self.assertEqual((tl.RAMP_MIN_POINTS, tl.RAMP_MAX_POINTS, tl.RAMP_MIN_GAP), (2, 6, 0.01))
+        self.assertEqual((tl.RAMP_SPEED_MIN, tl.RAMP_SPEED_MAX), (0.25, 4.0))
+        self.assertIn("not between 2 and 6", ln)
+        self.assertIn("s < 0.25 or s > 4.0", ln)
+        self.assertIn("< 0.01::double precision - 1e-12::double precision", ln)
+        self.assertGreaterEqual(ln.count("raise exception 'invalid_speed_curve' using errcode = 'NS400';"), 4)
+
+    def test_the_renderer_adds_the_pieces_left_to_right(self):
+        src = (ROOT / "modules" / "speed_ramp.py").read_text(encoding="utf-8")
+        fn = src.split("def out_length", 1)[1].split("\ndef ", 1)[0]
+        self.assertNotIn("sum(_piece_length", fn)
+        self.assertNotIn("return sum", fn)
+        self.assertIn("acc += _piece_length(a[0], a[1], b[0], b[1])", fn)
+
+
 class TheFile(unittest.TestCase):
-    HEADS = {"req2": REQ2, "req3": REQ3, "req4": REQ4, "quote": QUOTE, "terms": TERMS, "trail": TRAIL, "price": PRICE}
+    HEADS = {"req2": REQ2, "req3": REQ3, "req4": REQ4, "quote": QUOTE, "terms": TERMS, "trail": TRAIL, "price": PRICE, "ms": MS,
+             "jnum": JNUM, "length": LENGTH}
 
     def test_the_hashes_in_the_file_are_the_bodies_and_the_guard_knows_0132s(self):
         h = {k: md5_of_body(func(SQL, v)) for k, v in self.HEADS.items()}
@@ -175,7 +227,9 @@ class TheFile(unittest.TestCase):
         for k in ("req2", "req3", "req4", "quote", "terms", "trail"):
             self.assertIn(f"'{pinned_132(k)}', '{h[k]}']", guard, k)
             self.assertIn(f"'{h[k]}']", end, k)
-        self.assertIn(f"h <> '{h['price']}'", guard)
+        for k in ("price", "ms", "jnum", "length"):
+            self.assertIn(f"'{h[k]}', '']", guard, k)
+            self.assertIn(f"'{h[k]}']", end, k)
         for k in ("money", "settle", "guard", "lst"):
             self.assertIn(f"'{pinned_132(k)}', '']", guard, k)
             self.assertIn(f"'{pinned_132(k)}']", end, k)
@@ -189,6 +243,8 @@ class TheFile(unittest.TestCase):
         for k, head in self.HEADS.items():
             self.assertIn(f"'{md5_of_body(func(SQL, head))}']", guard, k)
         self.assertIn("drop function public.editor_export_price_1080p();", ROLLBACK)
+        for fn in ("editor_doc_rendered_length(jsonb)", "editor_jnum(jsonb)", "editor_ms(double precision)"):
+            self.assertIn(f"drop function public.{fn};", ROLLBACK)
         self.assertIn("drop column if exists credits_per_minute_1080p", ROLLBACK)
         self.assertRegex(ROLLBACK, r"(?m)^begin;$")
         self.assertEqual(len(re.findall(r"(?m)^commit;$", ROLLBACK)), 1)

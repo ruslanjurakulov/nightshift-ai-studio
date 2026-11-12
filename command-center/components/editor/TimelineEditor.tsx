@@ -156,7 +156,6 @@ import {
 } from "@/lib/multiRatioExport/frames";
 import {
   aboveFree,
-  hasSpeedCurve,
   isHiresPresetId,
   isQuotableFrame,
   overHiresCap,
@@ -452,8 +451,7 @@ export function TimelineEditor({
   // smaller), or after its frame is set to 1080p or smaller. Saving it stays allowed.
   const ownAboveFree = aboveFree(model.width, model.height);
   const ownBlocked = ownAboveFree ? (multiRatio && hires ? te.exportHires.ownTooBig : te.exportHires.ownTooBigOff) : null;
-  // A speed curve cannot be priced (the database's length leaves the curve out): no paid size is offered for it.
-  const speedCurve = useMemo(() => hires && hasSpeedCurve(toDoc(settledModel)), [hires, settledModel]);
+  // A speed curve is sold at its rendered length (migration 0136): the quote prices it, so nothing is held back for it here.
   const framesChosen = frames.filter(
     (c) =>
       (c === PROJECT_FRAME && !ownAboveFree) ||
@@ -461,8 +459,7 @@ export function TimelineEditor({
         frameChoices.includes(c) &&
         !frameBlocked.includes(c) &&
         !frameOverCap.includes(c) &&
-        !frameTooFast.includes(c) &&
-        !(speedCurve && isHiresPresetId(c))),
+        !frameTooFast.includes(c)),
   );
   // Sizes up to 1080p are sold (migration 0136: the owner set their price). Learnt from the server's own refusal of a plain
   // request (export_needs_quote): from then on every ticked size is priced, the project's own included. While that price
@@ -1352,7 +1349,6 @@ export function TimelineEditor({
             tooFast={frameTooFast}
             fps={model.fps}
             ownBlocked={ownBlocked}
-            speedCurve={speedCurve}
             onChange={setFrames}
           />
         ) : null}

@@ -12,7 +12,8 @@
 -- WHAT IT DOES, in one transaction:
 --   0. REFUSES (changes nothing) if a function of 0136 is not 0136's body (a later change would be undone).
 --   1. Puts 0132's request_editor_export (two, three and four arguments), quote_editor_export, editor_export_hires_terms and the price trail
---      back, byte for byte (create or replace: their grants stay), and drops editor_export_price_1080p().
+--      back, byte for byte (create or replace: their grants stay), and drops editor_export_price_1080p() and the rendered length
+--      (editor_doc_rendered_length, editor_ms, editor_jnum).
 --   2. Puts 0132's price check back and drops the column credits_per_minute_1080p.
 --   3. Asserts the end state: 0132's hashes.
 -- Run it BEFORE docs/sql/rollback_0132_editor_hires_export.sql (that one refuses bodies that are not 0132's).
@@ -28,11 +29,14 @@ begin
   foreach pair slice 1 in array array[
       ['public.request_editor_export(uuid, integer)', '53fa7e65b4e1146ead1fff54d8afdd7d'],
       ['public.request_editor_export(uuid, integer, text)', '4221d9ee9eea10b3d6803b684825e39f'],
-      ['public.request_editor_export(uuid, integer, text, numeric)', '8f9e7d0ac4d04e7ea2cc058e5f87a12b'],
-      ['public.quote_editor_export(uuid, integer, text)', '27054620fa27c240525dd2567c3ca1c9'],
+      ['public.request_editor_export(uuid, integer, text, numeric)', 'b6c3cdf6e63c02ce982b4f046df63c63'],
+      ['public.quote_editor_export(uuid, integer, text)', '99dbe6d55e35375de4864d9024db1f11'],
       ['public.editor_export_hires_terms(integer, integer, numeric)', '107d9c15687f718d8ea827c08b8dfd64'],
       ['public.editor_export_hires_prices_trail()', '859f4af3109f0bc5e4068b096c28d2dd'],
-      ['public.editor_export_price_1080p()', '8a8fd2479b6e65694f448ae241c8828d']] loop
+      ['public.editor_export_price_1080p()', '8a8fd2479b6e65694f448ae241c8828d'],
+      ['public.editor_ms(double precision)', '7f08c63d2b9d7b9260ba4c8261584416'],
+      ['public.editor_jnum(jsonb)', '82a3c34c4d82e944f572b01219713b5d'],
+      ['public.editor_doc_rendered_length(jsonb)', '136d69680620f9d60b565274ba49a30f']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(pair[1]);
     if h is distinct from pair[2] then
       raise exception 'rollback 0136: % is missing or is not 0136''s body (md5 %): a later change would be undone; read the live body first', pair[1], h;
@@ -424,6 +428,9 @@ end
 $$;
 
 drop function public.editor_export_price_1080p();
+drop function public.editor_doc_rendered_length(jsonb);
+drop function public.editor_jnum(jsonb);
+drop function public.editor_ms(double precision);
 
 -- 2. 0132's price check and the column.
 alter table public.editor_export_hires_prices drop constraint if exists editor_export_hires_prices_numbers;
@@ -451,6 +458,7 @@ begin
     end if;
   end loop;
   if to_regprocedure('public.editor_export_price_1080p()') is not null
+     or to_regprocedure('public.editor_doc_rendered_length(jsonb)') is not null or to_regprocedure('public.editor_ms(double precision)') is not null
      or exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'editor_export_hires_prices'
                  and column_name = 'credits_per_minute_1080p') then
     raise exception 'rollback 0136 end state: the 1080p price is still there';

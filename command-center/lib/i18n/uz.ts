@@ -5397,6 +5397,7 @@ export const uz: Dictionary = {
       hires_speed_curve: "Tezlik egri chizigʻi bor videoni hozircha 1440p yoki 4K da eksport qilib boʻlmaydi. Tezlik egri chizigʻini olib tashlang yoki 1080p yoki kichikroqni tanlang.",
       hires_needs_paid_export: "Bu loyiha 1080p dan katta, 1080p dan katta eksport esa pullik. Uni pullik oʻlchamda eksport qiling yoki “Eksport formati” da 1080p yoki kichikroq qiling.",
       export_needs_quote: "Endi eksport videoning har bir boshlangan daqiqasi uchun kredit turadi. Quyidagi narxni tekshiring, tasdiqlang va eksport qiling.",
+      invalid_speed_curve: "Bu videodagi tezlik egri chizigʻini yozilganidek ijro etib boʻlmaydi. Klipning tezlik egri chizigʻini oching, uni qaytadan oʻrnating, saqlang va eksport qiling.",
       clips_full: "Bu loyihada klip soni allaqachon eng koʻpi. Avval muharrirda bittasini oʻchiring.",
       sounds_full: "Bu loyihada ovozlar soni allaqachon eng koʻpi. Avval muharrirda bittasini oʻchiring.",
       no_duration: "Bu faylning uzunligi hali nomaʼlum, shuning uchun uni qoʻshib boʻlmaydi. Birozdan keyin qayta urinib koʻring.",

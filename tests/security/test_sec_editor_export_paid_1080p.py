@@ -9,6 +9,8 @@
     confirmed number is compared with the CHARGE; too few credits for the HOLD refuse it all;
   * the two- and three-argument requests are REFUSED while the price is set (export_needs_quote) and write nothing: they hold nothing, so
     they never sell; a paid frame through the three-argument call is still hires_needs_paid_export;
+  * a speed curve is sold at its RENDERED length (editor_doc_rendered_length; parity with the renderer in
+    test_sec_editor_rendered_length.py); a curve the renderer refuses is refused (invalid_speed_curve);
   * the 1080p price and the 1440p / 4K prices are independent; a change of the 1080p price leaves a security event;
   * one lock order everywhere: a legacy and a paid request of one project at once never deadlock, and two paid ones see each other's
     export under the organization's lock;
@@ -266,20 +268,44 @@ def test_the_own_frame_is_sold_only_up_to_1080p_and_only_as_two_whole_numbers(co
     assert r[2] is None and r[3] == 1.0, r
 
 
-def test_a_speed_curve_is_not_sold_up_to_1080p_either(conn, sc):
+def test_a_speed_curve_is_sold_at_its_rendered_length(conn, sc):
+    """45 s of source at a quarter of the speed is 180 s on screen: three started minutes, not the one editor_doc_duration would
+    count. The quote, the hold, the row's length and the capture all use it."""
+    with as_superuser(conn, commit=False) as s:
+        clear(s, sc.bob.org, sc.alice.org)
+        price_1080p(s, 1)
+        price(s, 1, 1)
+        many_parallel_runs(s)
+        d = doc(VIDEO["b"])
+        d["tracks"][0]["clips"][0].update({"in_s": 0, "out_s": 45, "speed_curve": [{"at": 0, "speed": 0.25}, {"at": 1, "speed": 0.25}]})
+        become(s, sc.bob.actor)
+        pid = str(s.value(CREATE, [sc.bob.org, "Curve", json.dumps(d)]))
+        q = s.value(QUOTE, [pid, 1, "project"])
+        q4 = s.value(QUOTE, [pid, 1, "youtube_1440p"])
+        eid = s.value(REQ4, [pid, 1, "project", q["credits"]])
+        legacy = s.run(REQ2, [pid, 1])
+        dur = float(s.value("select duration_s from public.editor_exports where id = %s", [eid]))
+        claim(s)
+        finish(s, eid, render_asset(s, sc.bob.org), None)
+        r = row(s, eid)
+    assert (float(q["duration_s"]), q["minutes"], float(q["credits"]), q["speed_curve"], q["curve_sold"]) == (180.0, 3, 3.0, True, True), q
+    assert (q4["minutes"], float(q4["credits"])) == (3, 3.0), q4
+    assert dur == 180.0 and r[0] == "done" and r[5] == 3.0, (dur, r)
+    assert refused(legacy, "NS409", "export_needs_quote"), legacy
+
+
+def test_a_curve_the_renderer_refuses_is_refused_by_the_quote_and_the_request(conn, sc):
     with as_superuser(conn, commit=False) as s:
         clear(s, sc.bob.org)
         price_1080p(s, 1)
         d = doc(VIDEO["b"])
-        d["tracks"][0]["clips"][0]["speed_curve"] = [{"at": 0, "speed": 0.25}, {"at": 1, "speed": 0.25}]
+        d["tracks"][0]["clips"][0]["speed_curve"] = [{"at": 0, "speed": 0.25}, {"at": 0.5, "speed": 9}, {"at": 1, "speed": 1}]
         become(s, sc.bob.actor)
-        pid = str(s.value(CREATE, [sc.bob.org, "Curve", json.dumps(d)]))
-        q = s.value(QUOTE, [pid, 1, "project"])
-        out = s.run(REQ4, [pid, 1, "project", 100])
-        legacy = s.run(REQ2, [pid, 1])
+        pid = str(s.value(CREATE, [sc.bob.org, "Bad curve", json.dumps(d)]))
+        outs = [s.run(QUOTE, [pid, 1, "project"]), s.run(REQ4, [pid, 1, "project", 100])]
         written = exports_of(s, sc.bob.org)
-    assert q["speed_curve"] is True, q
-    assert refused(out, "NS400", "hires_speed_curve") and refused(legacy, "NS409", "export_needs_quote"), (out, legacy)
+    for out in outs:
+        assert refused(out, "NS400", "invalid_speed_curve"), out
     assert written == 0
 
 

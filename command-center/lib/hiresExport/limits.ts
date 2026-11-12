@@ -70,16 +70,6 @@ export function aboveFree(width: unknown, height: unknown): boolean {
   return w * h > FREE_MAX_PX;
 }
 
-/** Does a clip of this saved document (`toDoc`) play on a speed curve? The database's own test (0132: any clip of any track
- *  with a `speed_curve`). A paid export of one is refused (hires_speed_curve): the database prices the length without
- *  the curve, and the renderer plays it with it. */
-export function hasSpeedCurve(doc: { tracks?: readonly unknown[] }): boolean {
-  return (doc.tracks ?? []).some((t) => {
-    const clips = typeof t === "object" && t !== null ? (t as { clips?: unknown }).clips : undefined;
-    return Array.isArray(clips) && clips.some((c) => typeof c === "object" && c !== null && "speed_curve" in c);
-  });
-}
-
 /** Is a video of `lengthS` seconds over the paid frame's cap? false for a free frame. */
 export function overHiresCap(width: number, height: number, lengthS: number): boolean {
   const tier = hiresTier(width, height);
@@ -125,8 +115,11 @@ export interface HiresQuote {
   /** What Export holds while the video waits and renders: the charge raised to the platform's job minimum. The rest is
    *  given back when the video is done, all of it if it fails. null = not on sale. */
   hold: number | null;
-  /** The saved version has a speed curve: not sold (its length cannot be priced). */
+  /** The saved version has a speed curve. */
   speedCurve: boolean;
+  /** The database sells a speed curve at its rendered length (0136, editor_doc_rendered_length). A database that says
+   *  nothing (0132 alone) does not: there, a curve is not sold (hires_speed_curve). */
+  curveSold: boolean;
   /** The organization's available credits; null in the operator's exempt organization (nothing is held there). */
   available: number | null;
   exempt: boolean;
@@ -176,6 +169,7 @@ export function parseHiresQuote(raw: unknown): HiresQuote | null {
     credits: onSale ? creditsN : null,
     hold: onSale ? holdN : null,
     speedCurve: Boolean(r.speed_curve ?? r.speedCurve),
+    curveSold: (r.curve_sold ?? r.curveSold) === true,
     available: available === null || available === undefined ? null : num(available),
     exempt: Boolean(r.exempt),
     mayPay: Boolean(r.may_pay ?? r.mayPay),
@@ -199,7 +193,7 @@ export function quoteBlocker(
   q: HiresQuote,
 ): "not_on_sale" | "hires_speed_curve" | "hires_too_long" | "hires_fps" | "forbidden" | "insufficient_credits" | null {
   if (!q.onSale) return "not_on_sale";
-  if (q.speedCurve) return "hires_speed_curve";
+  if (q.speedCurve && !q.curveSold) return "hires_speed_curve";
   if (q.tooLong) return "hires_too_long";
   if (q.tooFast) return "hires_fps";
   if (!q.mayPay) return "forbidden";

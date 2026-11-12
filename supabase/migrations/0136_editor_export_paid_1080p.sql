@@ -11,6 +11,13 @@
 --   editor_export_hires_prices.credits_per_minute_1080p   numeric(10,2), NULL (= free) or 0.01-10000, the same row, rules and trail as
 --                                   0132's two prices; a change leaves a security_events row (editor.export.hires_price).
 --   editor_export_price_1080p()     INTERNAL. That price, or null.
+--   editor_doc_rendered_length(doc) INTERNAL (with editor_ms and editor_jnum). The length the renderer gives the document, to the
+--                                   millisecond: modules/timeline.py duration_s on the normalised document, speed curves INTEGRATED
+--                                   (speed_ramp.out_length), the same IEEE doubles in the same order, Python's round(x, 3) exactly
+--                                   (half to even on the double's exact value). A lab test compares it with Python over 2000+
+--                                   seeded documents. The paid request and the quote price THIS length (editor_doc_duration, which
+--                                   leaves curves out, stays what the free requests read). A curve the renderer would refuse is
+--                                   refused: invalid_speed_curve (NS400).
 -- WHAT IT REPLACES (each is 0132's body, line for line, plus the lines marked 0136; a pin test takes them out and compares)
 --   editor_export_hires_terms(w, h, length)     a frame up to 1920x1080 pixels is the '1080p' tier while that price is set (1800 s at most,
 --                                   any rate, the same started minutes, charge and hold); free (paid=false) while it is NULL.
@@ -28,8 +35,9 @@
 --
 -- WHO MAY PAY. As 0132: an editor or above (a viewer may not spend the organization's credits, so while the 1080p price is set a viewer
 -- cannot export at all); in the operator's exempt organization a platform admin, and nothing is held.
--- SPEED CURVES. As 0132: a document with a speed_curve is not sold (hires_speed_curve): editor_doc_duration does not integrate a curve.
--- While the 1080p price is set, such a document cannot be exported at any size. docs/HIRES_EXPORT.md says so.
+-- SPEED CURVES. Sold at their rendered length (0132's hires_speed_curve refusal is gone): the paid request and the quote read
+-- editor_doc_rendered_length, the renderer's own length. The worker still refuses a paid render that starts more minutes than were
+-- priced (one frame of slack), so a disagreement could never be rendered for less.
 -- LOCKS. One order in every overload, 0054's: the project's row FOR UPDATE, then the organization's advisory lock.
 --
 -- ORDER AND ROLL-OUT (docs/HIRES_EXPORT.md): deploy the web and the worker, turn NIGHTSHIFT_MULTI_RATIO_EXPORT and NIGHTSHIFT_HIRES_EXPORT
@@ -42,7 +50,7 @@
 --    where proname in ('request_editor_export', 'quote_editor_export', 'editor_export_hires_terms', 'editor_export_hires_prices_trail');
 --   expected BEFORE (0132): req2 7d27be2166d301cf392daee41dffd2e2 · req3 7722885b3bf1d32c7b9de0d101a316ee · req4 28e49bc98a7bd5811dffa9c09539a364 · quote 383185a2158b57dc695e4d3c26b147e7 · terms 31904d0cf1f8b53316c0641e89a964a4 ·
 --                           trail fffbfc847cd35cbbf793c66d140dc747
---   expected AFTER:         req2 53fa7e65b4e1146ead1fff54d8afdd7d · req3 4221d9ee9eea10b3d6803b684825e39f · req4 8f9e7d0ac4d04e7ea2cc058e5f87a12b · quote 27054620fa27c240525dd2567c3ca1c9 · terms 107d9c15687f718d8ea827c08b8dfd64 · trail 859f4af3109f0bc5e4068b096c28d2dd
+--   expected AFTER:         req2 53fa7e65b4e1146ead1fff54d8afdd7d · req3 4221d9ee9eea10b3d6803b684825e39f · req4 b6c3cdf6e63c02ce982b4f046df63c63 · quote 99dbe6d55e35375de4864d9024db1f11 · terms 107d9c15687f718d8ea827c08b8dfd64 · trail 859f4af3109f0bc5e4068b096c28d2dd
 --
 -- SETTING THE PRICE (the owner, in the SQL editor, after the roll-out above; leaves a security_events row). Owner-approved 2026-11-11: 1.
 --   update public.editor_export_hires_prices set credits_per_minute_1080p = 1;
@@ -66,8 +74,8 @@ begin
   foreach trio slice 1 in array array[
       ['public.request_editor_export(uuid, integer)', '7d27be2166d301cf392daee41dffd2e2', '53fa7e65b4e1146ead1fff54d8afdd7d'],
       ['public.request_editor_export(uuid, integer, text)', '7722885b3bf1d32c7b9de0d101a316ee', '4221d9ee9eea10b3d6803b684825e39f'],
-      ['public.request_editor_export(uuid, integer, text, numeric)', '28e49bc98a7bd5811dffa9c09539a364', '8f9e7d0ac4d04e7ea2cc058e5f87a12b'],
-      ['public.quote_editor_export(uuid, integer, text)', '383185a2158b57dc695e4d3c26b147e7', '27054620fa27c240525dd2567c3ca1c9'],
+      ['public.request_editor_export(uuid, integer, text, numeric)', '28e49bc98a7bd5811dffa9c09539a364', 'b6c3cdf6e63c02ce982b4f046df63c63'],
+      ['public.quote_editor_export(uuid, integer, text)', '383185a2158b57dc695e4d3c26b147e7', '99dbe6d55e35375de4864d9024db1f11'],
       ['public.editor_export_hires_terms(integer, integer, numeric)', '31904d0cf1f8b53316c0641e89a964a4', '107d9c15687f718d8ea827c08b8dfd64'],
       ['public.editor_export_hires_prices_trail()', 'fffbfc847cd35cbbf793c66d140dc747', '859f4af3109f0bc5e4068b096c28d2dd']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(trio[1]);
@@ -86,10 +94,17 @@ begin
       raise exception '0136 found % with a body that is not 0132''s (md5 %): read the live body first', trio[1], h;
     end if;
   end loop;
-  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.editor_export_price_1080p()');
-  if h is not null and h <> '8a8fd2479b6e65694f448ae241c8828d' then
-    raise exception '0136 found editor_export_price_1080p() with a body that is not this file''s (md5 %): read the live body first', h;
-  end if;
+  -- Every name this file creates: absent, or this file's own body.
+  foreach trio slice 1 in array array[
+      ['public.editor_export_price_1080p()', '8a8fd2479b6e65694f448ae241c8828d', ''],
+      ['public.editor_ms(double precision)', '7f08c63d2b9d7b9260ba4c8261584416', ''],
+      ['public.editor_jnum(jsonb)', '82a3c34c4d82e944f572b01219713b5d', ''],
+      ['public.editor_doc_rendered_length(jsonb)', '136d69680620f9d60b565274ba49a30f', '']] loop
+    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(trio[1]);
+    if h is not null and h <> trio[2] then
+      raise exception '0136 found % with a body that is not this file''s (md5 %): read the live body first', trio[1], h;
+    end if;
+  end loop;
 end $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -131,6 +146,206 @@ $$;
 create or replace function public.editor_export_price_1080p() returns numeric
   language sql stable set search_path = public, pg_temp as $$
   select s.credits_per_minute_1080p from public.editor_export_hires_prices s where s.id
+$$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 1b. The rendered length: modules/timeline.py duration_s, to the millisecond
+-- ───────────────────────────────────────────────────────────────────────────
+
+-- Python's round(x, 3) on a double (timeline._ms): the EXACT binary value rounded half to even, then the nearest double. A plain
+-- numeric cast is not it (float8 -> numeric keeps 15 digits): the double's bits are read, its exact value m x 2^-k is written as an
+-- integer over 10^k, and the rounding is done on integers. Back to a double through text (strtod, correctly rounded, as Python's).
+create or replace function public.editor_ms(p double precision) returns double precision
+  language plpgsql immutable strict set search_path = public, pg_temp as $$
+declare
+  bits bigint;
+  ex   integer;
+  m    numeric;
+  k    integer;
+  n    numeric;
+  d    numeric;
+  q    numeric;
+  r    numeric;
+begin
+  if p = 0 or p = 'NaN'::double precision or p = 'Infinity'::double precision or p = '-Infinity'::double precision then
+    return p;
+  end if;
+  bits := ('x' || encode(float8send(p), 'hex'))::bit(64)::bigint;
+  ex := ((bits >> 52) & 2047)::integer;
+  m := (bits & 4503599627370495)::numeric;
+  if ex = 0 then
+    ex := 1;
+  else
+    m := m + 4503599627370496;
+  end if;
+  k := 1075 - ex;
+  if k <= 0 then
+    return p;   -- a whole number of at least 2^52: already whole milliseconds
+  end if;
+  n := m * 1000 * power(5::numeric, k);   -- exact: |p| x 1000 = n / 10^k
+  d := power(10::numeric, k);
+  q := div(n, d);
+  r := n - q * d;
+  if r * 2 > d or (r * 2 = d and mod(q, 2) = 1) then
+    q := q + 1;
+  end if;
+  return ((case when bits < 0 then -q else q end) / 1000)::text::double precision;
+end
+$$;
+
+-- A JSON number as Python's json reads it (the nearest double), or null.
+create or replace function public.editor_jnum(p jsonb) returns double precision
+  language plpgsql immutable set search_path = public, pg_temp as $$
+begin
+  if jsonb_typeof(p) is distinct from 'number' then
+    return null;
+  end if;
+  return (p #>> '{}')::double precision;
+exception when others then
+  return null;   -- out of a double's range: not a number a timeline can use
+end
+$$;
+
+-- Where the document's last clip, text or caption ends, exactly as the renderer computes it (timeline.duration_s on the normalised
+-- document: every time rounded to the millisecond, a clip lasting (out - in) / speed, or its speed curve integrated piece by piece
+-- (speed_ramp.out_length: a linear piece from (t0, s0) to (t1, s1) lasts (t1 - t0) / (s1 - s0) x ln(s1 / s0), or (t1 - t0) / s0
+-- when s0 and s1 differ by at most 1e-7 of the smaller), the same IEEE doubles in the same order. Null when a time is not a number.
+-- A speed curve that the renderer would refuse (timeline._validate_speed_curve) is refused here: invalid_speed_curve (NS400).
+create or replace function public.editor_doc_rendered_length(p_doc jsonb) returns numeric
+  language plpgsql immutable set search_path = public, pg_temp as $$
+declare
+  t     jsonb;
+  c     jsonb;
+  pt    jsonb;
+  kind  text;
+  total double precision := 0;
+  e     double precision;
+  st    double precision;
+  i_    double precision;
+  o_    double precision;
+  rng   double precision;
+  sp    double precision;
+  len   double precision;
+  acc   double precision;
+  n     integer;
+  j     integer;
+  ats   double precision[];
+  sps   double precision[];
+  a     double precision;
+  s     double precision;
+  t0    double precision;
+  t1    double precision;
+  s0    double precision;
+  s1    double precision;
+begin
+  if jsonb_typeof(p_doc -> 'tracks') is distinct from 'array' then
+    return null;
+  end if;
+  for t in select x from jsonb_array_elements(p_doc -> 'tracks') x loop
+    if jsonb_typeof(t) is distinct from 'object' or jsonb_typeof(t -> 'clips') is distinct from 'array' then
+      return null;
+    end if;
+    kind := t ->> 'kind';
+    for c in select x from jsonb_array_elements(t -> 'clips') x loop
+      if jsonb_typeof(c) is distinct from 'object' then
+        return null;
+      end if;
+      if c ? 'end_s' then
+        e := public.editor_ms(public.editor_jnum(c -> 'end_s'));
+      else
+        st := public.editor_ms(public.editor_jnum(c -> 'start_s'));
+        i_ := public.editor_ms(public.editor_jnum(c -> 'in_s'));
+        o_ := public.editor_ms(public.editor_jnum(c -> 'out_s'));
+        if st is null or i_ is null or o_ is null then
+          return null;
+        end if;
+        rng := o_ - i_;
+        if c ? 'speed_curve' then
+          -- The renderer's own refusals of a curve (timeline._validate_speed_curve), on the values as written.
+          if kind is distinct from 'V' or jsonb_typeof(c -> 'speed_curve') is distinct from 'array'
+             or jsonb_array_length(c -> 'speed_curve') not between 2 and 6
+             or (c ? 'speed' and (public.editor_jnum(c -> 'speed') is null or public.editor_jnum(c -> 'speed') <> 1))
+             or c -> 'reverse' = 'true'::jsonb or c -> 'freeze' = 'true'::jsonb then
+            raise exception 'invalid_speed_curve' using errcode = 'NS400';
+          end if;
+          ats := '{}';
+          sps := '{}';
+          for pt in select x from jsonb_array_elements(c -> 'speed_curve') x loop
+            if jsonb_typeof(pt) is distinct from 'object' or (select count(*) from jsonb_object_keys(pt)) <> 2
+               or not (pt ? 'at' and pt ? 'speed') then
+              raise exception 'invalid_speed_curve' using errcode = 'NS400';
+            end if;
+            a := public.editor_jnum(pt -> 'at');
+            s := public.editor_jnum(pt -> 'speed');
+            if a is null or s is null or a < 0 or a > 1 or s < 0.25 or s > 4.0 then
+              raise exception 'invalid_speed_curve' using errcode = 'NS400';
+            end if;
+            if cardinality(ats) > 0 and a - ats[cardinality(ats)] < 0.01::double precision - 1e-12::double precision then
+              raise exception 'invalid_speed_curve' using errcode = 'NS400';
+            end if;
+            ats := ats || a;
+            sps := sps || s;
+          end loop;
+          n := cardinality(ats);
+          if ats[1] <> 0 or ats[n] <> 1 then
+            raise exception 'invalid_speed_curve' using errcode = 'NS400';
+          end if;
+          -- speed_ramp.absolute and out_length on the normalised points (at and speed rounded to the millisecond).
+          acc := 0;
+          for j in 1 .. n - 1 loop
+            t0 := public.editor_ms(ats[j]) * rng;
+            s0 := public.editor_ms(sps[j]);
+            t1 := public.editor_ms(ats[j + 1]) * rng;
+            s1 := public.editor_ms(sps[j + 1]);
+            if abs(s1 - s0) <= 1e-7::double precision * least(s0, s1) then
+              acc := acc + (t1 - t0) / s0;
+            else
+              acc := acc + (t1 - t0) / (s1 - s0) * ln(s1 / s0);
+            end if;
+          end loop;
+          len := public.editor_ms(acc);
+        else
+          -- timeline.clip_speed: a V clip's speed is rounded to the millisecond (normalise), an A clip's is used as written.
+          if c ? 'speed' then
+            sp := public.editor_jnum(c -> 'speed');
+            if sp is null then
+              return null;
+            end if;
+            if kind = 'V' then
+              sp := public.editor_ms(sp);
+            end if;
+          else
+            sp := 1.0;
+          end if;
+          if not (sp > 0) then
+            sp := 1.0;
+          end if;
+          len := public.editor_ms(rng / sp);
+        end if;
+        e := public.editor_ms(st + len);
+      end if;
+      if e is null then
+        return null;
+      end if;
+      if e > total then
+        total := e;
+      end if;
+    end loop;
+  end loop;
+  if p_doc #> '{captions,cues}' is not null and jsonb_typeof(p_doc #> '{captions,cues}') <> 'array' then
+    return null;
+  end if;
+  for c in select x from jsonb_array_elements(coalesce(p_doc #> '{captions,cues}', '[]'::jsonb)) x loop
+    e := public.editor_ms(public.editor_jnum(c -> 'end_s'));
+    if e is null then
+      return null;
+    end if;
+    if e > total then
+      total := e;
+    end if;
+  end loop;
+  return round(total::numeric, 3);
+end
 $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -225,7 +440,7 @@ begin
   if p_rev is null or p_rev <> p.rev then
     raise exception 'stale_revision' using errcode = 'NS409', detail = format('current=%s', p.rev);
   end if;
-  total := public.editor_doc_duration(p.doc);
+  total := public.editor_doc_rendered_length(p.doc);
   if total is null then
     raise exception 'invalid_doc' using errcode = 'NS400';
   end if;
@@ -246,6 +461,7 @@ begin
     'fps', case when jsonb_typeof(p.doc -> 'fps') = 'number' then (p.doc ->> 'fps')::numeric end,
     'too_fast', jsonb_typeof(p.doc -> 'fps') = 'number' and (p.doc ->> 'fps')::numeric > (terms ->> 'max_fps')::numeric,
     'speed_curve', jsonb_path_exists(p.doc, 'lax $.tracks[*].clips[*].speed_curve'),
+    'curve_sold', true,   -- 0136 a curve is priced at its rendered length (an editor reading a 0132 quote, without this, holds it back)
     'on_sale', terms ->> 'credits' is not null,
     'may_pay', public.is_org_member(p.org_id, 'editor') and (not exempt or public.is_platform_admin()),
     'exempt', exempt,
@@ -315,7 +531,7 @@ begin
   if problem is not null then
     raise exception '%', problem using errcode = 'NS400';
   end if;
-  total := public.editor_doc_duration(p.doc);
+  total := public.editor_doc_rendered_length(p.doc);   -- 0136 replaces: total := public.editor_doc_duration(p.doc);
   if total is null then
     raise exception 'invalid_doc' using errcode = 'NS400';
   end if;
@@ -325,11 +541,12 @@ begin
   if total > 1800 then
     raise exception 'too_long' using errcode = 'NS400', detail = 'max_s=1800';
   end if;
-  -- 0132 a speed curve is not sold: editor_doc_duration does not integrate one and the renderer does, so the length priced here would not
-  -- 0132 be the length rendered (a 45 s range at a quarter of the speed is 180 s on screen).
-  if jsonb_path_exists(p.doc, 'lax $.tracks[*].clips[*].speed_curve') then   -- 0132
-    raise exception 'hires_speed_curve' using errcode = 'NS400';   -- 0132
-  end if;   -- 0132
+  -- 0136 a speed curve is sold at its RENDERED length (editor_doc_rendered_length integrates it, as the renderer does): 0132's refusal goes.
+  -- 0136 replaces: -- 0132 a speed curve is not sold: editor_doc_duration does not integrate one and the renderer does, so the length priced here would not
+  -- 0136 replaces: -- 0132 be the length rendered (a 45 s range at a quarter of the speed is 180 s on screen).
+  -- 0136 replaces: if jsonb_path_exists(p.doc, 'lax $.tracks[*].clips[*].speed_curve') then   -- 0132
+  -- 0136 replaces:   raise exception 'hires_speed_curve' using errcode = 'NS400';   -- 0132
+  -- 0136 replaces: end if;   -- 0132
   -- 0132 the tier's cap and price, before anything is locked or held. The length is the one the row will store (rounded to the ms).
   terms := public.editor_export_hires_terms(frame_w, frame_h, round(total, 3));   -- 0132
   if round(total, 3) > (terms ->> 'max_s')::numeric then   -- 0132
@@ -557,6 +774,9 @@ $$;
 -- ───────────────────────────────────────────────────────────────────────────
 
 revoke all on function public.editor_export_price_1080p() from public, anon, authenticated, service_role;
+revoke all on function public.editor_ms(double precision) from public, anon, authenticated, service_role;
+revoke all on function public.editor_jnum(jsonb) from public, anon, authenticated, service_role;
+revoke all on function public.editor_doc_rendered_length(jsonb) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 6. End state (raises, and so rolls the whole file back, if anything is not as written above)
@@ -571,11 +791,14 @@ begin
   foreach pair slice 1 in array array[
       ['public.request_editor_export(uuid, integer)', '53fa7e65b4e1146ead1fff54d8afdd7d'],
       ['public.request_editor_export(uuid, integer, text)', '4221d9ee9eea10b3d6803b684825e39f'],
-      ['public.request_editor_export(uuid, integer, text, numeric)', '8f9e7d0ac4d04e7ea2cc058e5f87a12b'],
-      ['public.quote_editor_export(uuid, integer, text)', '27054620fa27c240525dd2567c3ca1c9'],
+      ['public.request_editor_export(uuid, integer, text, numeric)', 'b6c3cdf6e63c02ce982b4f046df63c63'],
+      ['public.quote_editor_export(uuid, integer, text)', '99dbe6d55e35375de4864d9024db1f11'],
       ['public.editor_export_hires_terms(integer, integer, numeric)', '107d9c15687f718d8ea827c08b8dfd64'],
       ['public.editor_export_hires_prices_trail()', '859f4af3109f0bc5e4068b096c28d2dd'],
       ['public.editor_export_price_1080p()', '8a8fd2479b6e65694f448ae241c8828d'],
+      ['public.editor_ms(double precision)', '7f08c63d2b9d7b9260ba4c8261584416'],
+      ['public.editor_jnum(jsonb)', '82a3c34c4d82e944f572b01219713b5d'],
+      ['public.editor_doc_rendered_length(jsonb)', '136d69680620f9d60b565274ba49a30f'],
       ['public.editor_export_money(text, text, numeric)', '0b9a881cd63807ef95fc726beb304a2e'],
       ['public.editor_export_settle()', 'f0f8174e28911205b265d08adb0e1f46'],
       ['public.editor_export_hires_prices_guard()', '3ceae02b0246ce2a8ec627840561b424'],
@@ -597,6 +820,9 @@ begin
   end loop;
   foreach role_name in array array['anon', 'authenticated', 'service_role'] loop
     if has_function_privilege(role_name, 'public.editor_export_price_1080p()', 'EXECUTE')
+       or has_function_privilege(role_name, 'public.editor_ms(double precision)', 'EXECUTE')
+       or has_function_privilege(role_name, 'public.editor_jnum(jsonb)', 'EXECUTE')
+       or has_function_privilege(role_name, 'public.editor_doc_rendered_length(jsonb)', 'EXECUTE')
        or has_function_privilege(role_name, 'public.editor_export_hires_terms(integer, integer, numeric)', 'EXECUTE') then
       raise exception '0136 end state: % can call an internal function', role_name;
     end if;
@@ -606,10 +832,13 @@ begin
       end if;
     end loop;
   end loop;
-  if exists (select 1 from pg_proc p where p.oid = 'public.editor_export_price_1080p()'::regprocedure
+  if exists (select 1 from pg_proc p where p.oid in ('public.editor_export_price_1080p()'::regprocedure,
+                                                    'public.editor_ms(double precision)'::regprocedure,
+                                                    'public.editor_jnum(jsonb)'::regprocedure,
+                                                    'public.editor_doc_rendered_length(jsonb)'::regprocedure)
               and (p.prosecdef or p.proacl is null or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0)
                    or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=public, pg_temp'))) then
-    raise exception '0136 end state: editor_export_price_1080p() is public, SECURITY DEFINER or has no fixed search_path';
+    raise exception '0136 end state: an internal function of 0136 is public, SECURITY DEFINER or has no fixed search_path';
   end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'editor_export_hires_prices'
                   and column_name = 'credits_per_minute_1080p' and is_nullable = 'YES' and column_default is null
@@ -631,5 +860,5 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
 --   (select credits_per_minute_1080p is null from public.editor_export_hires_prices) as exports_up_to_1080p_still_free,
---   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) = '8f9e7d0ac4d04e7ea2cc058e5f87a12b'
+--   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) = 'b6c3cdf6e63c02ce982b4f046df63c63'
 --      from pg_proc where oid = 'public.request_editor_export(uuid, integer, text, numeric)'::regprocedure) as paid_overload_is_0136s;

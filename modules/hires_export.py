@@ -118,8 +118,8 @@ def above_free(width: Any, height: Any) -> bool:
 
 
 def has_speed_curve(doc: Mapping) -> bool:
-    """Does a clip of this document play on a speed curve? A paid export of one is refused: the database prices the length without
-    the curve (0132 hires_speed_curve)."""
+    """Does a clip of this document play on a speed curve? (Since migration 0136 a curve is priced at its rendered length and no
+    longer refused; kept for callers that report it.)"""
     for track in (doc.get("tracks") or []) if isinstance(doc, Mapping) else []:
         for clip in (track.get("clips") or []) if isinstance(track, Mapping) else []:
             if isinstance(clip, Mapping) and "speed_curve" in clip:

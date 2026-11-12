@@ -16,4 +16,8 @@ def extend(tables: dict, functions: dict) -> None:
     functions.update({
         # Internal: the 1080p price, read only inside the export functions.
         "editor_export_price_1080p": SERVICE,
+        # Internal: the renderer's length of a document (and its two helpers), read only inside the quote and the paid request.
+        "editor_doc_rendered_length": SERVICE,
+        "editor_ms": SERVICE,
+        "editor_jnum": SERVICE,
     })

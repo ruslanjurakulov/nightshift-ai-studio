@@ -21,8 +21,8 @@ Under "Sizes to export", four more sizes, each marked "paid": YouTube wide 16:9 
   less); the rest is given back when the video is ready, all of it if the export fails;
 * a confirmation box, "Spend up to N credits on this export" (N is the CHARGE). **Export stays disabled until it is ticked.** Ticking
   another size, saving a new version or a new price takes the confirmation back;
-* or, instead of a price, why it cannot be bought: not on sale yet; the video has a speed curve (its length cannot be priced: the
-  chips are disabled with that sentence); the video is longer than the size allows (5:00 at 1440p, 3:00 at 4K: the chip is disabled
+* or, instead of a price, why it cannot be bought: not on sale yet; the video has a speed curve and the database is 0132 alone
+  (0136 prices a curve at its rendered length and says so in the quote, `curve_sold`); the video is longer than the size allows (5:00 at 1440p, 3:00 at 4K: the chip is disabled
   with that sentence); 4K of a project faster than 30 fps; only an editor, admin or owner may spend the workspace's credits; not
   enough credits for the HOLD; the price could not be read ("Get the price again"); unsaved changes ("Save first").
 
@@ -41,7 +41,7 @@ size picker, Export is disabled with the last of those.
 | **Charge** = credits per **started** output minute of the tier × the minutes (61 s = 2 minutes), rounded up to the cent, **not** raised to `credit_prices.job_minimum`. **Hold** = the charge raised to `job_minimum` (0133's rule: `reserve_credits` refuses a hold below it). Both on the row (`quoted_credits`, `held_credits`) and in the quote (`credits`, `hold`) | `editor_export_hires_terms` |
 | The price is read from **one owner-edited row** (`editor_export_hires_prices`: `credits_per_minute_1440p`, `credits_per_minute_2160p`). NULL = not on sale (`not_on_sale`, NS403). RLS on, no policy, no privilege for anon / authenticated / service_role; a change leaves a `security_events` row (`editor.export.hires_price`); the row cannot be deleted or emptied | 0132 |
 | The request takes the number the person confirmed and compares it with the **charge**; a higher charge, no number, NaN or an infinity is refused (`price_changed`, NS409), a lower charge holds the lower one. The browser never sends a price of its own | `request_editor_export(project, rev, frame, max_credits)` |
-| A document with a **speed curve** is not sold (`hires_speed_curve`): `editor_doc_duration` does not integrate a curve and the renderer does (a 45 s range at 0.25 × is 180 s on screen), so the price would be for the wrong length. The worker also refuses a paid row whose rendered length starts more minutes than the row's `duration_s` was priced at (`hires_length_mismatch`) | the overload, `quote_editor_export`, `editor_export.run_export` |
+| A document with a **speed curve** is sold at its RENDERED length from 0136 on (`editor_doc_rendered_length`, "Speed curves" below: a 45 s range at 0.25 × is 180 s on screen and is priced as 3 minutes); 0132 alone refused it (`hires_speed_curve`). A curve the renderer would refuse is refused (`invalid_speed_curve`). The worker also refuses a paid row whose rendered length starts more minutes than the row's `duration_s` was priced at (`hires_length_mismatch`) | the overload, `quote_editor_export`, `editor_export.run_export` |
 | **Above 1080p is never free**: the two-argument request refuses a project whose own frame is above 1920 × 1080 pixels, the three-argument one a paid frame of the list (`hires_needs_paid_export`, NS400, before the organization's lock) | 0132's bodies of both (0054's / 0129's plus the marked lines), `editor_export.run_export` |
 | **One lock order** in all three overloads, 0054's: the project's row `FOR UPDATE` (the revision is checked under it), then the organization's advisory lock. A paid and a free request of one project (two tabs, a double click with two sizes, two members) wait for each other and never deadlock | the overload; `tests/security/test_sec_editor_hires_export.py` races them |
 | Longest paid export: **300 s at 1440p, 180 s at 4K** (`hires_too_long`). Also a CHECK on `editor_exports` and the worker | 0132, `hires_export.MAX_S`, `HIRES_MAX_S` |
@@ -167,11 +167,36 @@ says `paid=false`, the editor never asks a price. Once the owner sets it (approv
   and moves to the quoted path (every ticked size is priced, the project's own included);
 * who: an editor or above. **A viewer can no longer export at all** while the price is set (a viewer may not spend the
   organization's credits). In the operator's exempt organization only a platform admin, and nothing is held;
-* **a document with a speed curve cannot be exported at any size** while the price is set (`hires_speed_curve`, as for 1440p and
-  4K: `editor_doc_duration` does not integrate a curve, so its price would be for the wrong length). Integrating the curve in SQL
-  (exactly as `speed_ramp.out_length`) is a follow-up; until it lands, setting the 1080p price takes speed-curve exports away;
-* the worker charges nothing itself: a row up to 1080p with a quote gets the same two refusals as a paid one (a speed curve, more
-  minutes than priced) and keeps the free exports' time budget and caps.
+* **a document with a speed curve is sold at its rendered length** at every size (see "Speed curves"); one the renderer would refuse
+  is refused by the quote and the request (`invalid_speed_curve`);
+* the worker charges nothing itself: a row up to 1080p with a quote gets the same refusal as a paid one (a render that starts more
+  minutes than priced, `hires_length_mismatch`) and keeps the free exports' time budget and caps.
+
+### Speed curves (0136)
+
+The price is for the length the renderer renders. 0132 priced `editor_doc_duration`, which ignores `speed_curve`, so it refused curves.
+0136 adds `editor_doc_rendered_length(jsonb)`, used by the paid request and the quote for the length, the minutes and `duration_s`.
+It copies `timeline.duration_s(normalise(doc))` step by step:
+
+* the same double-precision steps in the same order: `_ms` is `round(x, 3)` (half to even on the exact binary value; `editor_ms` works
+  it out from the bits of the double in exact integer arithmetic), the points' `at`/`speed` rounded as `normalise` rounds them, each
+  linear piece integrated as `speed_ramp._piece_length` integrates it (flat below `_FLAT` = 1e-7, else `(t1 - t0) / (s1 - s0) * ln(s1 / s0)`),
+  the pieces added left to right (`speed_ramp.out_length` now adds them in a loop: Python 3.12's `sum` of floats is compensated and
+  would give a different last bit), the clip's length and end rounded as `clip_length_s` / `clip_end_s` round them, and the longest
+  track or caption end;
+* the renderer's own refusals of a curve (`timeline._validate_speed_curve`: 2 to 6 points, keys exactly `at` and `speed`, `at` from 0
+  to 1 starting at 0 and ending at 1, gaps of at least 0.01, speeds 0.25 to 4, not on an audio clip, not with a speed other than 1,
+  not with reverse or freeze) are `invalid_speed_curve` (NS400), before anything is held. Reverse, freeze, trims and plain speeds
+  are read as before.
+
+**Parity.** `tests/security/test_sec_editor_rendered_length.py` checks a seeded corpus of 2,260 documents (2,200 random: random pieces,
+speeds 0.1 to 10 on plain clips and 0.25 to 4 on curves, flat and nearly flat pieces, reverse, sub-millisecond trims, several clips,
+sounds, texts and captions; 60 placed within 2 ms of minutes 1 to 5 and 30). The SQL length equals Python's `duration_s` to the millisecond, and the started minutes are equal, for every one.
+`editor_ms` equals `round(x, 3)` on random doubles, ties and their neighbours. Since the match is exact, the price uses the exact length
+and NOT "ceil plus one frame". The one thing a lab cannot prove is that the database's `ln` gives the same last bit as the worker
+image's libm on every input. If it ever differs, the length moves by at most one ms. A ms that crosses a minute is caught by the worker's
+`hires_length_mismatch` check (rendered minutes over priced, one frame of slack): the export fails and the hold is released, so it is
+never underpriced.
 
 ## The switch and the roll-out
 
@@ -198,16 +223,13 @@ says `paid=false`, the editor never asks a price. Once the owner sets it (approv
 
 Set the prices to null (stops sales; up to 1080p is free again) and turn the switch off. To take 0136 out:
 `docs/sql/rollback_0136_editor_export_paid_1080p.sql` (owner-applied; run it BEFORE 0132's rollback): it puts 0132's bodies back byte
-for byte and drops the 1080p price; a sold 1080p export still in flight settles through 0132's trigger as usual. To take 0132 out:
+for byte and drops the 1080p price and the three length functions; a sold 1080p export still in flight settles through 0132's trigger as usual. To take 0132 out:
 `docs/sql/rollback_0132_editor_hires_export.sql` (owner-applied; run it before 0129's rollback). It refuses while a paid export is
 queued or rendering. Finished 1440p / 4K videos stay in the library, their rows keep their frame (0129's frame check is put back
 NOT VALID when such a row exists), and the credit ledger keeps every hold, charge and release.
 
 ## Not done here
 
-* Speed curves are refused for paid sizes rather than priced: pricing them would need the renderer's integration of a curve
-  (`speed_ramp.out_length`) in SQL, exactly equal to Python's at every millisecond and minute boundary. Refusing is exact; the worker's
-  `hires_length_mismatch` check is the second line if the two lengths ever disagree for another reason.
 * The render-time estimate of the validator (`timeline.py` `render_timeout_s`) is still the free exports' 3 × L + 120 for every frame:
   a document that just fits that at 1080p can time out at 4K (the hold is then released in full).
 * Not measured on the AX42 itself. The factors are the number to raise if a legitimate paid export is cut off (`timed_out`).

@@ -3942,6 +3942,9 @@ export const EDITOR_ERRORS = [
   // Exports up to 1080p are sold (migration 0136, the owner set their price): the plain request holds nothing, so it is
   // refused and the editor asks the price and the person's yes first.
   "export_needs_quote",
+  // A speed curve the renderer would refuse (0136 prices a curve at its rendered length, so a curve it cannot read is
+  // not priced at all): the quote and the paid request refuse it.
+  "invalid_speed_curve",
   "not_available",
   "network",
   "failed",
@@ -3968,6 +3971,7 @@ const DB_WORDS: Partial<Record<string, EditorError>> = {
   hires_needs_paid_export: "hires_needs_paid_export",
   // 0136
   export_needs_quote: "export_needs_quote",
+  invalid_speed_curve: "invalid_speed_curve",
 };
 
 /** A database refusal (SQLSTATE + machine word, migration 0054) → a word and an HTTP status. */

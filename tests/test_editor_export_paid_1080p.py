@@ -3,7 +3,8 @@
 The database holds and settles the money (0136 / 0132's trigger capture the row's quote); the worker never computes or sends an amount. What
 this pins: while the 1080p price is NULL the rows carry no quote and nothing changes (a speed curve and any length render as before); once a
 row up to 1080p carries a quote (a frame of the list, or none for the project's own frame) it gets the same two refusals as a paid frame
-above (a speed curve: hires_speed_curve; more minutes than priced: hires_length_mismatch), and keeps the free exports' budget and caps.
+above (more minutes than priced: hires_length_mismatch; a speed curve is priced at its rendered length, migration 0136), and keeps the
+free exports' budget and caps.
 """
 
 from __future__ import annotations
@@ -43,9 +44,12 @@ class OnceThePriceIsSet(Base):
             self.assertEqual((status, store.finished), ("done", [(STORED, None)]), row)
             self.assertEqual(render.call_args.kwargs["timeout_s"], editor_export.render_timeout_s(60.0))
 
-    def test_a_priced_row_with_a_speed_curve_is_refused(self):
-        self.assert_refused(own(curved(4.0), quoted=1, duration_s=4), "hires_speed_curve", hires=False)
-        self.assert_refused(framed("square_1080", curved(4.0), quoted=1, duration_s=4), "hires_speed_curve", hires=False)
+    def test_a_priced_row_with_a_speed_curve_renders_at_its_priced_length_and_not_past_it(self):
+        for row in (own(curved(4.0), quoted=1, duration_s=8), framed("square_1080", curved(4.0), quoted=1, duration_s=8)):
+            status, _, _, _ = self.run_export(row, hires=False)
+            self.assertEqual(status, "done", row)
+        # 40 s of source at half speed is 80 s (2 minutes); priced as 40 s (1 minute) it is refused.
+        self.assert_refused(own(curved(40.0), quoted=1, duration_s=40), "hires_length_mismatch", hires=False)
 
     def test_a_priced_row_that_starts_more_minutes_than_priced_is_refused(self):
         self.assert_refused(own(doc(61.0), quoted=1, duration_s=60), "hires_length_mismatch", hires=False)

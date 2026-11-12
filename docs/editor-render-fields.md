@@ -1112,8 +1112,9 @@ entries of the closed list (`schemas/export_presets.json`): `youtube_1440p` 2560
   `render_timeout_s(length)`, also for a paid frame. That is stricter than the paid render budget (7 or 12 s per
   second), so a paid size the estimate does not fit is shown as not exportable before any price is asked (a 4K30
   clip with every colour and a mask is charged 4 s per second on top of its length, so it fits up to about 60 s).
-* **A speed curve** is not sold in a paid size (`hires_speed_curve`): the database prices the length without the
-  curve.
+* **A speed curve** is sold at its rendered length from 0136 on (`editor_doc_rendered_length` follows `duration_s` and
+  `speed_ramp.out_length` to the millisecond). 0132 alone refused it (`hires_speed_curve`). A curve the renderer would refuse is
+  `invalid_speed_curve`.
 * **Up to 1080p** (migration 0136): sold the same way once the owner sets its price (1 credit per started minute, approved
   2026-11-11); free and unchanged while it is NULL. The document does not change either: a sold export up to 1080p is a row with
   the database's quote, with a frame of the list or none (the project's own frame). `docs/HIRES_EXPORT.md`, "Up to 1080p".
