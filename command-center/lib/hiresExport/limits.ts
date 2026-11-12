@@ -11,6 +11,8 @@
  * `aboveFree`). A price is shown only when the server computed it (quote_editor_export); nothing here prices.
  */
 
+import { isExportPresetId, type ExportPresetId } from "@/lib/editorExportPresets";
+
 export const FREE_MAX_PX = 1920 * 1080;
 export const TIER_1440P_MAX_PX = 2560 * 1440;
 export const TIER_2160P_MAX_PX = 3840 * 2160;
@@ -68,16 +70,6 @@ export function aboveFree(width: unknown, height: unknown): boolean {
   return w * h > FREE_MAX_PX;
 }
 
-/** Does a clip of this saved document (`toDoc`) play on a speed curve? The database's own test (0132: any clip of any track
- *  with a `speed_curve`). A paid export of one is refused (hires_speed_curve): the database prices the length without
- *  the curve, and the renderer plays it with it. */
-export function hasSpeedCurve(doc: { tracks?: readonly unknown[] }): boolean {
-  return (doc.tracks ?? []).some((t) => {
-    const clips = typeof t === "object" && t !== null ? (t as { clips?: unknown }).clips : undefined;
-    return Array.isArray(clips) && clips.some((c) => typeof c === "object" && c !== null && "speed_curve" in c);
-  });
-}
-
 /** Is a video of `lengthS` seconds over the paid frame's cap? false for a free frame. */
 export function overHiresCap(width: number, height: number, lengthS: number): boolean {
   const tier = hiresTier(width, height);
@@ -92,10 +84,19 @@ export function overHiresFps(width: number, height: number, fps: number): boolea
   return !Number.isFinite(fps) || fps > HIRES_MAX_FPS[tier];
 }
 
-/** What the server quoted for one paid frame (quote_editor_export, 0132), as the quote route sends it on. */
+/** A frame the server can quote (0136): the project's own ("project"), a free format, or a paid one. Up to 1080p a frame
+ *  is free while its price is NULL (the quote then says so) and sold by the minute once the owner sets it. */
+export type QuotableFrame = "project" | ExportPresetId | HiresPresetId;
+export type QuoteTier = HiresTier | "1080p";
+
+export function isQuotableFrame(v: unknown): v is QuotableFrame {
+  return v === "project" || isExportPresetId(v) || isHiresPresetId(v);
+}
+
+/** What the server quoted for one sold frame (quote_editor_export, 0132 / 0136), as the quote route sends it on. */
 export interface HiresQuote {
-  frame: HiresPresetId;
-  tier: HiresTier;
+  frame: QuotableFrame;
+  tier: QuoteTier;
   durationS: number;
   minutes: number;
   maxS: number;
@@ -114,8 +115,11 @@ export interface HiresQuote {
   /** What Export holds while the video waits and renders: the charge raised to the platform's job minimum. The rest is
    *  given back when the video is done, all of it if it fails. null = not on sale. */
   hold: number | null;
-  /** The saved version has a speed curve: not sold (its length cannot be priced). */
+  /** The saved version has a speed curve. */
   speedCurve: boolean;
+  /** The database sells a speed curve at its rendered length (0136, editor_doc_rendered_length). A database that says
+   *  nothing (0132 alone) does not: there, a curve is not sold (hires_speed_curve). */
+  curveSold: boolean;
   /** The organization's available credits; null in the operator's exempt organization (nothing is held there). */
   available: number | null;
   exempt: boolean;
@@ -132,7 +136,9 @@ export function parseHiresQuote(raw: unknown): HiresQuote | null {
   const r = raw as Record<string, unknown>;
   const frame = r.frame;
   const tier = r.tier;
-  if (!isHiresPresetId(frame) || (tier !== "1440p" && tier !== "2160p")) return null;
+  if (!isQuotableFrame(frame) || (tier !== "1440p" && tier !== "2160p" && tier !== "1080p")) return null;
+  // A paid frame is never the 1080p tier, and a frame up to 1080p never a paid tier.
+  if (isHiresPresetId(frame) !== (tier !== "1080p")) return null;
   if (r.paid === false) return null;
   const durationS = num(r.duration_s ?? r.durationS);
   const minutes = num(r.minutes);
@@ -163,10 +169,23 @@ export function parseHiresQuote(raw: unknown): HiresQuote | null {
     credits: onSale ? creditsN : null,
     hold: onSale ? holdN : null,
     speedCurve: Boolean(r.speed_curve ?? r.speedCurve),
+    curveSold: (r.curve_sold ?? r.curveSold) === true,
     available: available === null || available === undefined ? null : num(available),
     exempt: Boolean(r.exempt),
     mayPay: Boolean(r.may_pay ?? r.mayPay),
   };
+}
+
+/** The quote route's answer: a sold frame's quote, or `free` (a frame up to 1080p while its price is NULL). null = not understood. */
+export type ExportQuote = { free: true; frame: QuotableFrame } | { free: false; quote: HiresQuote };
+
+export function parseExportQuote(raw: unknown, frame: QuotableFrame): ExportQuote | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as { free?: unknown; frame?: unknown; quote?: unknown };
+  // Only a frame up to 1080p can be free; a paid one is never.
+  if (r.free === true) return r.frame === frame && !isHiresPresetId(frame) ? { free: true, frame } : null;
+  const quote = parseHiresQuote(r.quote);
+  return quote && quote.frame === frame ? { free: false, quote } : null;
 }
 
 /** Why Export cannot spend on this quote now, or null when it can: the word the editor shows a sentence for. */
@@ -174,7 +193,7 @@ export function quoteBlocker(
   q: HiresQuote,
 ): "not_on_sale" | "hires_speed_curve" | "hires_too_long" | "hires_fps" | "forbidden" | "insufficient_credits" | null {
   if (!q.onSale) return "not_on_sale";
-  if (q.speedCurve) return "hires_speed_curve";
+  if (q.speedCurve && !q.curveSold) return "hires_speed_curve";
   if (q.tooLong) return "hires_too_long";
   if (q.tooFast) return "hires_fps";
   if (!q.mayPay) return "forbidden";

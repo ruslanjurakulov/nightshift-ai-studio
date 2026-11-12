@@ -275,14 +275,18 @@ class TheCapAndTheBudgetOnTheWorker(Base):
         self.assertEqual(status, "done")
         self.assertEqual((render.call_args.args[0]["width"], render.call_args.args[0]["height"]), (1080, 1920))
 
-    def test_a_paid_export_of_a_document_with_a_speed_curve_is_refused(self):
-        d = doc(4.0)
+    def test_a_paid_export_of_a_speed_curve_is_rendered_at_its_priced_length_and_refused_past_it(self):
+        # Since 0136 the database prices a curve at its RENDERED length (40 s of source at half speed: 80 s on screen, 2 minutes).
+        d = doc(40.0)
         d["tracks"][0]["clips"][0]["speed_curve"] = [{"at": 0, "speed": 0.5}, {"at": 1, "speed": 0.5}]
         self.assertEqual(tl.validate(d), [])
+        self.assertEqual(tl.duration_s(tl.load(d)), 80.0)
         self.assertTrue(hires_export.has_speed_curve(d))
-        self.assertFalse(hires_export.has_speed_curve(doc(4.0)))
-        self.assert_refused(framed("youtube_1440p", d, duration_s=4), "hires_speed_curve")
-        status, _, _, _ = self.run_export(framed("vertical_1080p", d, quoted=None, duration_s=4))
+        status, _, _, _ = self.run_export(framed("youtube_1440p", d, duration_s=80))
+        self.assertEqual(status, "done")
+        # Priced as if the curve did not exist (40 s, one minute): the backstop refuses it.
+        self.assert_refused(framed("youtube_1440p", d, duration_s=40), "hires_length_mismatch")
+        status, _, _, _ = self.run_export(framed("vertical_1080p", d, quoted=None, duration_s=40))
         self.assertEqual(status, "done")
 
     def test_a_paid_render_that_starts_more_minutes_than_were_priced_is_refused(self):

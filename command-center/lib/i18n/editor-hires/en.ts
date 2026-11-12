@@ -24,11 +24,13 @@ export const exportHiresEn = {
   notAllowed: "{name}: only an editor, admin or owner of this workspace can spend its credits.",
   short: "{name} holds {hold} credits while it renders, and this workspace has {available}. Add credits or choose a smaller size.",
   speedCurve: "{name} cannot be exported for a video with a speed curve yet: its length cannot be priced. Remove the speed curve, or choose 1080p or smaller.",
-  speedCurveAll: "1440p and 4K cannot be exported for a video with a speed curve yet: its length cannot be priced. Remove the speed curve to choose them.",
   ownTooBig: "This project is larger than 1080p, and exports above 1080p are paid. Tick 1440p or 4K under “Sizes to export” and confirm the price, or set the project to 1080p or smaller under “Export format”.",
   ownTooBigOff: "This project is larger than 1080p, and exports above 1080p are paid and not offered here. Set the project to 1080p or smaller under “Export format” to export it.",
   failed: "The price of {name} could not be read.",
   retry: "Get the price again",
+  freeLine: "{name}: free",
+  introSold: "Every export costs credits for each started minute of video: up to 1080p, at 1440p and in 4K, each size at its own price. A 1440p video can be up to {max1440}, a 4K video up to {max2160}.",
+  soldNoQuote: "Exports now cost credits, and this page cannot show their price yet. Try again later.",
   saveFirst: "Save first: the price is for the saved version.",
 };
 

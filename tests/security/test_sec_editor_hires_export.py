@@ -653,6 +653,7 @@ def test_a_1080p_project_is_still_exported_free_by_the_plain_request(conn, sc):
 
 def test_a_document_with_a_speed_curve_is_not_sold_and_its_free_export_is_unchanged(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # 0132's own rule: 0136 prices a curve at its rendered length instead
         clear(s, sc.bob.org)
         price(s, 1, 1)
         many_parallel_runs(s)
@@ -669,6 +670,7 @@ def test_a_document_with_a_speed_curve_is_not_sold_and_its_free_export_is_unchan
         free = s.run(REQ3, [pid, 1, "vertical_1080p"])
         after = account(s, sc.bob.org)
     assert q["speed_curve"] is True and q_plain["speed_curve"] is False, (q, q_plain)
+    assert "curve_sold" not in q, q   # 0132 alone does not sell a curve (the editor holds it back: hires_speed_curve)
     assert refused(out, "NS400", "hires_speed_curve"), out
     assert written == 0
     assert free.ok and after == before, free
@@ -809,6 +811,7 @@ def test_no_api_role_reads_or_writes_the_prices(conn, sc, who_name):
 
 def test_a_price_change_leaves_a_security_event_and_the_row_cannot_be_removed(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # this file's own state: 0136 builds on these bodies and is taken off first
         n0 = s.value("select count(*) from public.security_events where kind = 'editor.export.hires_price'")
         price(s, 3, 9)
         price(s, 3, 9)                                   # no change, no event
@@ -833,6 +836,7 @@ def test_a_price_change_leaves_a_security_event_and_the_row_cannot_be_removed(co
 
 def test_the_free_functions_are_0132s_bodies_and_keep_their_answers_up_to_1080p(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # this file's own state: 0136 builds on these bodies and is taken off first
         hashes = s.rows("select pg_get_function_identity_arguments(oid), md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc "
                         "where proname = 'request_editor_export' and pronamespace = 'public'::regnamespace order by 1")
         clear(s, sc.bob.org)
@@ -1072,6 +1076,7 @@ def drift(s, sig: str, find: str, put: str) -> None:
 
 def test_the_live_bodies_are_the_ones_the_file_pins(conn):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # this file's own state: 0136 builds on these bodies and is taken off first
         assert _hash(s, REQ4_SIG) == _pinned("req4")
         assert _hash(s, QUOTE_SIG) == _pinned("quote")
         assert _hash(s, "public.request_editor_export(uuid, integer)") == _pinned("req2")
@@ -1083,6 +1088,7 @@ def test_the_live_bodies_are_the_ones_the_file_pins(conn):
 
 def test_the_file_applies_twice_and_keeps_the_owners_price(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # this file's own state: 0136 builds on these bodies and is taken off first
         clear(s, sc.bob.org)
         price(s, 3, 7)
         become(s, sc.bob.actor)
@@ -1107,6 +1113,7 @@ def test_the_file_applies_twice_and_keeps_the_owners_price(conn, sc):
 ])
 def test_the_file_refuses_a_body_it_has_not_seen_and_changes_nothing(conn, sig, find, put, says):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # this file's own state: 0136 builds on these bodies and is taken off first
         drift(s, sig, find, put)
         drifted = _hash(s, sig)
         out = s.run(MIGRATION.read_text(encoding="utf-8"))
@@ -1116,6 +1123,7 @@ def test_the_file_refuses_a_body_it_has_not_seen_and_changes_nothing(conn, sig, 
 
 def test_the_rollback_takes_it_out_and_the_file_applies_again(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # this file's own state: 0136 builds on these bodies and is taken off first
         clear(s, sc.bob.org, sc.alice.org)
         price(s, 3, 7)
         become(s, sc.bob.actor)
@@ -1154,6 +1162,7 @@ def test_the_rollback_takes_it_out_and_the_file_applies_again(conn, sc):
 @pytest.mark.parametrize("status", ["queued", "rendering"])
 def test_the_rollback_refuses_while_a_paid_export_is_in_flight(conn, sc, status):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # this file's own state: 0136 builds on these bodies and is taken off first
         clear(s, sc.bob.org, sc.alice.org)
         price(s, 3, 7)
         become(s, sc.bob.actor)
@@ -1179,6 +1188,7 @@ def test_the_rollback_refuses_while_a_paid_export_is_in_flight(conn, sc, status)
 ])
 def test_the_rollback_refuses_a_body_that_is_not_the_one_it_knows(conn, sig, find, put):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # this file's own state: 0136 builds on these bodies and is taken off first
         s.conn.execute("update public.editor_exports set status = 'failed', reason = 'test' where status in ('queued', 'rendering')")
         drift(s, sig, find, put)
         out = s.run(_rollback_text())

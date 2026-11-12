@@ -1,6 +1,6 @@
 import { coerceExports, editorErrorWord, type EditorAsset, type EditorError, type EditorExport, type TimelineDoc } from "@/lib/editor";
 import { PROJECT_FRAME, isExportFrameChoice, type ExportFrameChoice } from "@/lib/multiRatioExport/frames";
-import { parseHiresQuote, type HiresPresetId, type HiresQuote } from "@/lib/hiresExport/limits";
+import { parseExportQuote, type ExportQuote, type QuotableFrame } from "@/lib/hiresExport/limits";
 
 /**
  * The editor page's calls to its routes (migration 0054). Each resolves —
@@ -66,7 +66,7 @@ export async function requestExports(
   id: string,
   rev: number,
   frames: readonly ExportFrameChoice[],
-  maxCredits?: Readonly<Partial<Record<HiresPresetId, number>>>,
+  maxCredits?: Readonly<Partial<Record<QuotableFrame, number>>>,
 ): Promise<EditorResult<FrameOutcome[]>> {
   let res: Response;
   try {
@@ -104,14 +104,11 @@ export async function requestExports(
   };
 }
 
-/** The server's quote of a paid 1440p / 4K export of the saved revision `rev` (migration 0132). Never a number made up
- *  here: a quote the route did not send whole is "failed". */
-export function fetchHiresQuote(id: string, rev: number, frame: HiresPresetId): Promise<EditorResult<HiresQuote>> {
+/** The server's quote of an export of the saved revision `rev` in `frame` (migration 0132: 1440p / 4K; 0136: up to 1080p
+ *  too, "free" while its price is NULL). Never a number made up here: a quote the route did not send whole is "failed". */
+export function fetchHiresQuote(id: string, rev: number, frame: QuotableFrame): Promise<EditorResult<ExportQuote>> {
   const q = new URLSearchParams({ rev: String(rev), frame });
-  return call(`${base(id)}/exports/quote?${q.toString()}`, "GET", undefined, (b) => {
-    const quote = parseHiresQuote(b.quote);
-    return quote && quote.frame === frame ? quote : null;
-  });
+  return call(`${base(id)}/exports/quote?${q.toString()}`, "GET", undefined, (b) => parseExportQuote(b, frame));
 }
 
 export interface ProjectSnapshot {
