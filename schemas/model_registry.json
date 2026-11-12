@@ -4239,6 +4239,7 @@
         "confirmed": false,
         "note": "ESTIMATE from the vendor's page: a flat $0.01 per generated image, search included; failed or safety-filtered images not billed; n images billed n times. No credit price: not on sale."
       },
+      "operator_preview": true,
       "credit_unit": "model_grounded_image_1_0_image",
       "entitlement": "models_image:basic",
       "terms_gate": "terms_review_required",
