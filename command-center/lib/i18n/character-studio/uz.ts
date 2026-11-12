@@ -18,7 +18,7 @@ export const characterStudioUz: CharacterStudioDictionary = {
     heading: "Namunadan boshlang",
     sampleSoon: "Namuna tez orada",
     sampleOf: "{model} bilan yaratilgan",
-    try: "Sinab ko'rish",
+    try: "Sinab koʻrish",
     tryHint: "Studiyani shu namunaning matni bilan ochadi. Video va rasmlar — sizniki.",
     characters: "Qahramonlar: {n}",
   },

@@ -892,6 +892,8 @@ class RaceWorld:
         with as_superuser(conn) as su:
             su.conn.execute("update public.character_swap_jobs set status = 'failed', error_code = 'lab', finished_at = now() "
                             "where status in ('requested', 'running')")
+            # These transactions commit: job_minimum is put back as it was in purge(), so no other test of the lab sees ours.
+            self.job_minimum = su.rows("select credits_per_unit, margin, note from public.credit_prices where unit = 'job_minimum'")
             job_minimum(su, 30)
             for _ in range(n):
                 self.orgs.append(Org(su))
@@ -916,6 +918,10 @@ class RaceWorld:
                 su.conn.execute("delete from public.organizations where id = %s", [o.id])
             su.conn.execute("alter table public.character_swap_consents enable always trigger character_swap_consents_append_only")
             su.rows("update public.character_swap_models set credits_per_usd = null returning 1")
+            su.conn.execute("delete from public.credit_prices where unit = 'job_minimum'")
+            for rate, margin, note in self.job_minimum:
+                su.conn.execute("insert into public.credit_prices (unit, credits_per_unit, margin, note) values ('job_minimum', %s, %s, %s)",
+                                [rate, margin, note])
 
 
 def test_concurrent_presses_of_one_organization_hold_once(conn, sc):

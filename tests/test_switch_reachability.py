@@ -66,12 +66,12 @@ INTENTIONALLY_UNREACHABLE = {
                                 "Dockerfile step that installs them",
     "CHRONOS_REMOTION_TIMEOUT": "seconds per Remotion scene (default 600); only meaningful once the image can run Remotion",
     # -- owner decisions still pending (never enable from a test) ------------------
-    "NIGHTSHIFT_CHARACTER_STUDIO": "Character Studio (migration 0135, docs/CHARACTER_STUDIO.md) ships DARK: the worker and the web page "
-                                   "are off until the owner has Kling's and BytePlus's written answers, sets a price per model and adds "
-                                   "the worker service (the release steps there); then it goes into deploy/.env.worker.example and "
-                                   "deploy/.env.web.example and this entry is removed",
-    "NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN": "the Command Center's public https origin the Character Studio worker signs input links "
-                                                 "for; deployed with NIGHTSHIFT_CHARACTER_STUDIO in the same release step, same reason",
+    # NIGHTSHIFT_CHARACTER_STUDIO itself is reachable (deploy/.env.web.example, empty: the web page stays a 404). The worker that also
+    # reads it is not deployed: no service runs tools/character_swap_worker.py until the release steps of docs/CHARACTER_STUDIO.md.
+    "NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN": "the Command Center's public https origin the Character Studio worker (migration 0135) "
+                                                 "signs input links for; the worker ships DARK and undeployed until the owner has the "
+                                                 "vendors' written answers and sets a price (docs/CHARACTER_STUDIO.md, Releasing): it goes "
+                                                 "into deploy/.env.worker.example with the worker service, and this entry is removed",
     "NIGHTSHIFT_AVATAR": "a whole presenter config as JSON; the discrete NIGHTSHIFT_AVATAR_* variables, which are deployable, "
                          "override it and are the form to use",
 }

@@ -103,9 +103,9 @@ Nothing below is done by this change. In order, per model:
 ## Releasing (after a model is unlocked)
 
 1. Apply 0135 (merged = applied; it is dark on its own). Verify with the block at the end of the file.
-2. Add `NIGHTSHIFT_CHARACTER_STUDIO` to `deploy/.env.web.example` and `.github/workflows/deploy_web.yml`, and
-   `NIGHTSHIFT_CHARACTER_STUDIO` + `NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN` + `MEDIA_URL_SECRET` to `deploy/.env.worker.example`;
-   remove the two `INTENTIONALLY_UNREACHABLE` entries in `tests/test_switch_reachability.py`.
+2. The web switch is already plumbed and empty (`deploy/.env.web.example`, `.github/workflows/deploy_web.yml`). Add
+   `NIGHTSHIFT_CHARACTER_STUDIO` + `NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN` + `MEDIA_URL_SECRET` to `deploy/.env.worker.example`
+   and remove the `NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN` entry of `INTENTIONALLY_UNREACHABLE` in `tests/test_switch_reachability.py`.
 3. Add a `character-swap-worker` service to `deploy/docker-compose.yml` (the `media` volume read-write, the vendor keys from the
    worker env, no ports).
 4. Set the repository variable `NIGHTSHIFT_CHARACTER_STUDIO=on` and deploy. The page and the rail entry appear; nothing is on sale

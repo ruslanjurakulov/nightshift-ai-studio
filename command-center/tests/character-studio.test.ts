@@ -333,7 +333,7 @@ describe("the strings", () => {
   });
 
   it("every refusal the database or a route can give has words in every language", () => {
-    const words: model.SwapError[] = ["not_on_sale", "price_changed", "consent_required", "swap_hold_unavailable", "needs_own_generated_clip", "parallel_limit", "not_cancellable", "platform_busy"];
+    const words: import("../lib/characterStudio/model").SwapError[] = ["not_on_sale", "price_changed", "consent_required", "swap_hold_unavailable", "needs_own_generated_clip", "parallel_limit", "not_cancellable", "platform_busy"];
     for (const loc of ["en", "ru", "uz"]) {
       const t = characterStudioStrings(loc);
       for (const w of words) expect((t.errors as Record<string, string>)[w], `${loc}.${w}`).toBeTruthy();
@@ -342,7 +342,7 @@ describe("the strings", () => {
   });
 
   it("the Uzbek card says what the owner asked for", () => {
-    expect(CHARACTER_STUDIO_STRINGS.uz.gallery.try).toBe("Sinab ko'rish");
+    expect(CHARACTER_STUDIO_STRINGS.uz.gallery.try).toBe("Sinab koʻrish");
     expect(CHARACTER_STUDIO_STRINGS.uz.gallery.sampleSoon).toBe("Namuna tez orada");
   });
 });
