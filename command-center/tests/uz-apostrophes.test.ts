@@ -37,10 +37,11 @@ describe("Uzbek text spells its apostrophes one way", () => {
 
   it.each(FILES)("%s writes oʻ / gʻ with U+02BB, not the tutuq or a quote mark", (file) => {
     const text = readFileSync(join(__dirname, "..", file), "utf8");
-    // A turned comma after o/g is the letter; U+02BC or U+2019 there is a misspelling.
+    // A turned comma after o/g is the letter; U+02BC or U+2019 there is a misspelling. A Latin name that ends in o or g
+    // (Google, Dodo) takes its suffix after U+2019, like YouTube’da.
     const hits = [...text.matchAll(/\b\S*[oOgG][ʼ’\u2018](?=[a-z])\S*/g)]
       .map((m) => m[0])
-      .filter((w) => !/^(?:YouTube|Google|Studio|ID)/.test(w))
+      .filter((w) => !/^(?:YouTube|Google|Studio|ID|Dodo)/.test(w))
       .slice(0, 5);
     expect(hits).toEqual([]);
   });

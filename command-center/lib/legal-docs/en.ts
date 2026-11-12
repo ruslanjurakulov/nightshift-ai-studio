@@ -137,12 +137,13 @@ export const en: LegalTexts = {
                 ["Telegram, Slack (optional)", "Notifications to the operator", "Run status, video titles and links"],
                 ["E-mail delivery service (optional, chosen by the operator)", "Service e-mails: a finished video, and the weekly summary if you turn it on", "Your e-mail address, the name of the channel, counts of videos and the credits you have left; never a script, a prompt or a video title"],
                 ["Google Fonts, Amazon CloudFront", "Fonts and background media on these web pages", "Your IP address and browser details, as with any web request"],
-                ["Paddle (Paddle.com)", "Our online reseller and Merchant of Record for credit purchases: checkout, payment processing, tax, receipts and refunds", "The payment and billing details you enter in Paddle’s checkout, which Paddle handles itself; from us, your account email address (to fill in the checkout) and the ids of your organisation and user account"],
+                ["Dodo Payments (dodopayments.com)", "Our Merchant of Record and payment processor for credit and plan purchases: checkout page, payment processing, tax, receipts, refunds and chargebacks", "The payment and billing details you enter on Dodo’s checkout page, which Dodo handles itself under its own privacy policy; from us, your account email address (to fill in the checkout), the ids of your organisation and user account, and what you are buying"],
+                ["Paddle (Paddle.com), test checkout only", "A test checkout (sandbox) shown until Dodo’s checkout is switched on; it takes no real payment and is being removed", "Whatever you enter in the test checkout; from us, your account email address and the ids of your organisation and user account"],
               ],
             },
           },
           "Only Supabase, GitHub, Google and the notification services in this list receive Google user data, and only for the purposes above. We do not sell personal information to anyone.",
-          "Payments. Credits are sold through Paddle, our online reseller and Merchant of Record: when you buy credits, you enter your payment and billing details in Paddle’s own checkout, and Paddle processes them as the seller under the [Paddle Privacy Notice](https://www.paddle.com/legal/privacy). We never receive or store your card details or billing address. Paddle sends us only what we need to credit a purchase and to reverse it on a refund: the transaction and refund ids, the amount and currency paid, the credits bought, and the organisation (and, where known, the user) the purchase is for. We keep these records with your organisation’s credit history for as long as its account exists, or longer where tax or accounting law requires it.",
+          "Payments. Credits and plans are sold through Dodo Payments (“Dodo”), our Merchant of Record and payment processor: when you buy, you enter your payment and billing details on Dodo’s own checkout page, and Dodo processes them as the seller under the [Dodo Payments Privacy Policy](https://dodopayments.com/legal/privacy-policy). We never receive or store your card details or billing address. From Dodo we keep only what we need to credit a purchase and to reverse it on a refund or chargeback: the payment and refund ids, the amount and currency paid, what was bought, and the organisation (and, where known, the user) the purchase is for. We keep these records with your organisation’s credit history for as long as its account exists, or longer where tax or accounting law requires it. We are still setting up Dodo’s checkout: until it is switched on, any checkout shown in the Service is a Paddle test checkout (sandbox), which takes no real payment.",
         ],
       },
       {
@@ -184,7 +185,7 @@ export const en: LegalTexts = {
               ],
             },
           },
-          "Third parties. The Pricing page loads a price-preview script from Paddle, our payment provider, so that prices show in your currency. The script and any cookie it or Paddle’s content network sets (for example a bot-protection cookie) are Paddle’s; see the [Paddle Privacy Notice](https://www.paddle.com/legal/privacy). Checkout runs in Paddle’s own window. When you connect your YouTube account you are sent to Google. We load no other third-party scripts.",
+          "Third parties. While the Paddle test checkout described in section 7 is in place, the Pricing page and the pages where you buy credits load Paddle’s script (Paddle.js) to show prices and to open that test checkout. The script and any cookie it or Paddle’s content network sets (for example a bot-protection cookie) are Paddle’s; see the [Paddle Privacy Notice](https://www.paddle.com/legal/privacy). Dodo’s checkout, which replaces it, is a page on Dodo’s own website: we load no Dodo script on our pages, and any cookie set on Dodo’s page is Dodo’s, under the [Dodo Payments Cookie Policy](https://dodopayments.com/legal/cookie-policy). When you connect your YouTube account you are sent to Google. We load no other third-party scripts.",
           "Page statistics. To see which public pages are read, we count page views ourselves, on our own servers: for each public page and each day, how many views, from which referring website (its name only), on a phone-sized or a larger screen, and in which language. This uses no cookie and no local storage, and stores no IP address, user agent or identifier, so it cannot be tied to you or to your other visits. If your browser sends Do Not Track or Global Privacy Control, nothing is counted. No data goes to an analytics provider.",
           "You can delete cookies and local storage in your browser’s settings at any time. The Service then forgets your language, theme and view choices, and you are signed out.",
         ],
@@ -254,7 +255,7 @@ export const en: LegalTexts = {
         id: "service",
         heading: "2. The Service",
         body: [
-          "Nightshift helps you produce videos for YouTube channels you manage: it researches topics, writes and fact-checks scripts, narrates, renders, and uploads videos to your channel, and shows how they perform. Features may change, and parts of the Service may be offered as a preview.",
+          "Nightshift helps you produce videos for YouTube channels you manage: it researches topics, writes and fact-checks scripts, narrates, renders, and uploads videos to your channel, and shows how they perform. It also lets you generate and edit images, video clips and audio with AI models (the Studio), and edit your videos in a video editor. Features may change, and parts of the Service may be offered as a preview.",
         ],
       },
       {
@@ -308,22 +309,34 @@ export const en: LegalTexts = {
           // 6.2-6.5 (generated content) are read by the payment providers' reviewers. "The Service does not offer face-swap or
           // voice-cloning features" is true only while Character Studio (NIGHTSHIFT_CHARACTER_STUDIO, migration 0137) and custom voice
           // (CUSTOM_VOICE_ENABLED, NIGHTSHIFT_VOICE_CLONING, migration 0117) stay off: switching either on must change this text first.
-          // 6.4 restates 8.3: a refused request is a failed run, and a failed run's whole hold is returned.
+          // 6.4 restates 8.3: a refused request is a failed run or generation, and its whole hold is returned.
+          // Dubbing (registry capability `dub`, which keeps each speaker's own voice) and speech-to-speech (`voice_change`) are voice
+          // cloning in effect: they stay unsold only while every such registry entry carries a terms_gate (tests/legal-docs.test.ts).
+          // Selling dubbing or voice change must change the face-swap and voice-cloning sentence first.
           "6.2. Generated images, video and voice. The Service lets you generate and edit text, images, video, voice and other audio with AI models made by other companies (“model makers”). These rules apply to everything you generate or edit with the Service, whether or not you publish it. You must not use the Service to create, edit or share:",
           {
             list: [
               "sexual or sexually suggestive content of any kind, including nudity, and any content that sexualises or exploits minors;",
               "a realistic image, video or voice of a real, identifiable person without that person’s explicit consent — including face swaps, deepfakes, voice cloning and voice impersonation;",
               "content that impersonates a person or an organisation, or that is presented as real footage, a real photograph or a real recording of real events in order to deceive;",
-              "content that infringes copyright, trademarks or other rights, including content made by asking a model to copy a living artist’s protected work;",
+              "content that infringes copyright, trademarks or other rights, including content made by asking a model to copy someone else’s protected work;",
               "content that harasses or threatens anyone, incites hatred, promotes violence, promotes or encourages self-harm or suicide, or is otherwise illegal;",
               "anything obtained by getting around, or trying to get around, a model’s safety filters — for example by rewording a refused request to hide what it asks for.",
             ],
           },
           "The Service does not offer face-swap or voice-cloning features.",
           "6.3. Labels and provenance. Some model makers add a visible watermark or label, or provenance metadata, to what their models generate. You must not remove, hide or alter such a watermark or label, or strip or alter that metadata to hide that the content was generated. You must not present generated content as made by a person where the law or the platform you publish on requires you to disclose that it was generated or altered; section 5 also applies.",
-          "6.4. Safety filters. Model makers apply their own safety filters and may refuse a request. A request a model refuses is not charged: as with any run that fails, the whole hold is returned (section 8.3).",
-          "6.5. Reporting abuse. To report content made with the Service that breaks these rules — including content that shows you, or uses your voice, without your consent — write to {contactEmail} and tell us where you found it. We may remove content that breaks these rules and suspend or end the access of the account that made it, as described in section 13.",
+          "6.4. Safety filters. Model makers apply their own safety filters and may refuse a request. You are not charged for a request a model refuses: the credits held for it are returned, as for any run that fails (section 8.3).",
+          "6.5. Reporting abuse. To report content made with the Service that breaks these rules — including content that shows you, or uses your voice, without your consent — write to {contactEmail} and tell us where you found it. We may remove content that breaks these rules and suspend or end the access of the account that made it, as described in section 13. Child sexual abuse material is never allowed, in any circumstances: we remove it, end the access of the account that made it, and report it to the competent authorities, including the US National Center for Missing & Exploited Children (NCMEC) where applicable.",
+          "6.6. Copyright notices. If you believe content made with the Service infringes your copyright or another right of yours, write to {contactEmail}. We may remove content that a notice identifies, or disable access to it. Your notice must include:",
+          {
+            list: [
+              "the work or right you say is infringed;",
+              "where the content appears, for example a link, so that we can find it;",
+              "your name and contact details, including an email address;",
+              "a statement that you believe in good faith that the use is not authorised by the rights holder, its agent or the law, that the information in your notice is accurate, and that you are the rights holder or authorised to act for them.",
+            ],
+          },
         ],
       },
       {
@@ -341,16 +354,25 @@ export const en: LegalTexts = {
             note: "This section describes how prepaid credits work in the Service today. It is awaiting review by a qualified lawyer; any change will be published on this page with a new effective date.",
           },
           "8.1. What you buy. Some use of the Service is paid for with prepaid credits, sold in two ways at the prices shown on our [Pricing](/pricing) page and, finally, in the checkout before you pay: (a) monthly plans — a subscription that renews automatically every month until you cancel it and grants a set number of credits for each paid billing period; those credits can be used only during that period and expire at its end, without carrying over; you can cancel at any time, and the plan then stays active until the end of the period already paid for, with no further charge; and (b) credit packs — one-time payments that never renew. Credits are added to the balance of the organisation you buy them for, and can be used only for the Service, by that organisation. Plan credits are used before pack credits, and the credits that expire soonest are used first.",
-          "8.2. Who you buy from. Our order process is conducted by our online reseller Paddle.com (“Paddle”). Paddle is the Merchant of Record for all our orders: you buy credits from Paddle, under [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms). Paddle processes the payment, calculates and collects any applicable sales tax or VAT, issues your receipt or invoice, and handles payment questions and refund requests. Paddle handles your payment details under the [Paddle Privacy Notice](https://www.paddle.com/legal/privacy); we never receive or store your card details.",
-          "8.3. How credits are used. Credits are used when the Service produces a video for one of your organisation’s channels:",
+          "8.2. Who you buy from. Our order process is conducted by Dodo Payments (“Dodo”), our Merchant of Record and payment processor. Dodo is an authorised reseller of our credits and plans: you buy them from Dodo, under [Dodo’s Buyer Terms](https://dodopayments.com/legal/buyer-terms), and we provide the Service to you. Dodo processes the payment on its own checkout page, calculates and collects any applicable sales tax or VAT, sends your order confirmation and receipt by email, and handles payment questions, refund requests and chargebacks. Dodo handles your payment details under the [Dodo Payments Privacy Policy](https://dodopayments.com/legal/privacy-policy); we never receive or store your card details. We are still setting up Dodo’s checkout: until it is switched on, any checkout shown in the Service is a Paddle test checkout (sandbox) that takes no real payment.",
+          "8.3. How credits are used. Credits are used when the Service produces a video for one of your organisation’s channels (a “run”), when it generates or edits an image, a video clip or audio for you in the Studio (a “generation”), and for other paid work whose price the Service shows before you start it. For a run:",
           {
             list: [
               "Before a run starts, an estimated number of credits is put on hold. The estimate is the length of video requested multiplied by the per-minute rate in effect or, where no per-minute rate applies, is based on the cost of your channel’s recent runs; it is never less than the minimum per run. The estimate is shown in the Service before you start a run, and a run does not start if your available credits (your balance minus credits already on hold) do not cover it.",
               "When the run completes, the credits for the resources it actually used are charged, at the rates in effect, and never more than the hold. The unused part of the hold is returned to your available credits at the same time. If the resources a run used cannot all be measured and priced, the hold is charged in full.",
               "If a run fails or does not complete, the whole hold is returned and nothing is charged. A hold for a run that never starts, or never reports back, is returned automatically.",
-              "Every hold, charge and return is recorded in your organisation’s credit history in the Service.",
             ],
           },
+          "For a generation:",
+          {
+            list: [
+              "Before it starts, the Service shows its price, which you confirm. That price is put on hold, and the generation does not start if your available credits do not cover it.",
+              "When it completes, its price is charged, never more than the hold, and the rest of the hold is returned. Where you let the Service choose the model and the first model could not accept the request, the generation may be made by another model of the same kind; you are then charged no more than that model’s price.",
+              "An edit of several marked areas of one picture is charged only for the areas actually applied: each area’s share of the hold, rounded up to the nearest hundredth of a credit. If no area could be applied, nothing is charged.",
+              "If a generation fails, is refused by the model, is cancelled or is not finished in time, the whole hold is returned and nothing is charged.",
+            ],
+          },
+          "Any other paid work follows the same rule: credits are put on hold before it starts, it is charged no more than the hold when it completes, and the whole hold is returned if it fails. Every hold, charge and return is recorded in your organisation’s credit history in the Service.",
           "8.4. Nature of credits. Credits are a prepaid right to use the Service, not money or a deposit: they have no cash value, earn no interest, and cannot be exchanged for cash (except by a refund under section 8.6), transferred to another organisation or resold.",
           {
             creditExpiry: {
@@ -359,7 +381,7 @@ export const en: LegalTexts = {
               unknown: "8.5. Expiry. The expiry term for top-up credits is the one in force for packs when you buy them. It could not be shown here just now; for the current term, write to us at {contactEmail}.",
             },
           },
-          "8.6. Refunds. Because Paddle is the seller, refunds are handled by Paddle under [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. To ask for a refund, use the link in your Paddle receipt, or write to us at {contactEmail} and we will help. Our [Refund Policy](/refund) sets out these rules on one page.",
+          "8.6. Refunds. Because Dodo is the seller, refunds are decided by Dodo under [Dodo’s Buyer Terms](https://dodopayments.com/legal/buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. To ask for a refund, write to us at {contactEmail} and we will take it up with Dodo, or contact Dodo directly. Our [Refund Policy](/refund) sets out these rules on one page.",
           "8.7. Refunds and chargebacks remove credits. When a purchase is refunded or charged back, the credits it added are removed from your organisation’s balance — all of them for a full refund, and in proportion to the amount refunded for a partial one. Only available credits can be removed: credits already used, or on hold for a run in progress, cannot. Where a chargeback leaves credits used but unpaid, we may suspend the organisation’s access to paid features.",
           "8.8. Price changes. We may change the prices of credit packs and the rates at which credits are used. A change never reduces the credits already in your balance, and a run is never charged more than the hold taken when it started.",
         ],
@@ -432,7 +454,7 @@ export const en: LegalTexts = {
           {
             note: "This policy restates section 8 of our [Terms of Service](/terms#credits) in one place. That section is awaiting review by a qualified lawyer; any change will be published on both pages with a new effective date. If the two ever differ, the Terms of Service apply.",
           },
-          "Our order process is conducted by our online reseller Paddle.com (“Paddle”). Paddle is the Merchant of Record for all our orders: you buy credits and plans from Paddle, under [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms), and Paddle processes the payment, issues your receipt and handles refund requests.",
+          "Our order process is conducted by Dodo Payments (“Dodo”), our Merchant of Record and payment processor: you buy credits and plans from Dodo, under [Dodo’s Buyer Terms](https://dodopayments.com/legal/buyer-terms), and Dodo processes the payment, sends your receipt and handles refund requests and chargebacks. We are still setting up Dodo’s checkout: until it is switched on, any checkout shown in the Service is a Paddle test checkout (sandbox) that takes no real payment, so there is nothing to refund through it.",
         ],
       },
       {
@@ -442,9 +464,8 @@ export const en: LegalTexts = {
           "You can ask for a refund in any of these ways:",
           {
             list: [
-              "write to us at {contactEmail}, and we will help;",
-              "reply to the receipt email Paddle sent you after the purchase, or use the link in it;",
-              "find your purchase at [paddle.net](https://paddle.net) and contact Paddle there.",
+              "write to us at {contactEmail}, and we will take it up with Dodo;",
+              "contact Dodo Payments directly, giving the order number from your receipt and the email address you used for the purchase.",
             ],
           },
         ],
@@ -453,7 +474,7 @@ export const en: LegalTexts = {
         id: "when",
         heading: "3. When a refund is given",
         body: [
-          "Refunds are decided by Paddle in line with [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. We do not set a separate refund period of our own.",
+          "Refunds are decided by Dodo in line with [Dodo’s Buyer Terms](https://dodopayments.com/legal/buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. We do not set a separate refund period of our own.",
           "Nothing in this policy limits your statutory rights as a consumer.",
         ],
       },
@@ -470,7 +491,7 @@ export const en: LegalTexts = {
         id: "failed-runs",
         heading: "5. Failed generations",
         body: [
-          "You do not need to ask for anything when a generation fails. Before a run starts, its estimated cost is put on hold. If the run fails or does not complete, the whole hold is returned and nothing is charged; a hold for a run that never starts, or never reports back, is returned automatically. When a run completes, only what it actually used is charged, never more than the hold.",
+          "You do not need to ask for anything when a generation fails. Before a run starts, its estimated cost is put on hold. If the run fails or does not complete, the whole hold is returned and nothing is charged; a hold for a run that never starts, or never reports back, is returned automatically. When a run completes, only what it actually used is charged, never more than the hold. The same applies to a generation in the Studio: if it fails or the model refuses it, its whole hold is returned (section 8.3 of the Terms).",
           "Every hold, charge and return is recorded in your organisation’s credit history in the Service.",
         ],
       },
@@ -478,7 +499,7 @@ export const en: LegalTexts = {
         id: "subscriptions",
         heading: "6. Cancelling a monthly plan",
         body: [
-          "You can cancel a monthly plan at any time, in Manage subscription on the Credits page of the Service or at [paddle.net](https://paddle.net). The plan then stays active until the end of the period already paid for, with no further charge, and does not renew. Credits granted with a plan can be used only during the period they were granted for and expire at its end.",
+          "You can cancel a monthly plan at any time, in Manage subscription on the Credits page of the Service. The plan then stays active until the end of the period already paid for, with no further charge, and does not renew. Credits granted with a plan can be used only during the period they were granted for and expire at its end.",
           "Cancelling stops future renewals. To ask for a refund of a payment already made, see section 2.",
         ],
       },
