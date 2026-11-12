@@ -62,5 +62,6 @@ export const studioHomeUz: StudioHomeDictionary = {
     animate: "Bu rasmdan video qilish",
     enhance: "Bu rasmni kuchaytirish",
     download: "Yuklab olish",
+    downloadFailed: "Faylni tayyorlab boʻlmadi. Qaytadan urinib koʻring.",
   },
 };

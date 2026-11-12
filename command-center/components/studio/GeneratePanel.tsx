@@ -123,7 +123,10 @@ export function GeneratePanel({
   layout = "panel",
   onDraftChange,
   composerExtra = null,
+  autoFocusPrompt,
 }: {
+  /** Whether the words box takes focus when it mounts (default: when the form came filled). A mode picked by keyboard keeps focus on its chip. */
+  autoFocusPrompt?: boolean;
   /**
    * `composer` (the /create overview): the same form as one chat-style box —
    * the words first, then [+] to start from a file, the model, the settings
@@ -422,11 +425,20 @@ export function GeneratePanel({
 
   const edited = () => setNotice(null);
 
+  // One press at a time, even when two arrive before React re-renders (a double Enter, a double tap).
+  const pressing = useRef(false);
+  // The composer's one send per quote: the quote a job was created with is spent. Enter or the key
+  // sends again only after the words or a setting changed, which asks a fresh quote (a new object).
+  const [spent, setSpent] = useState<QuoteState | null>(null);
+  const quoteSpent = composer && spent !== null && spent === quote;
+
   async function generate() {
-    if (quote.status !== "ready" || submitting || !ready) return;
+    if (quote.status !== "ready" || submitting || !ready || quoteSpent || pressing.current) return;
     // Auto sends back the model its quote named; otherwise the picked model.
     const pressModel = routed ? quote.routed?.model : effectiveModel;
     if (!pressModel) return;
+    const pressed = quote;
+    pressing.current = true;
     setSubmitting(true);
     setNotice(null);
     try {
@@ -447,6 +459,7 @@ export function GeneratePanel({
       const body = (await res.json().catch(() => ({}))) as { error?: unknown };
       if (res.ok) {
         setNotice({ kind: "ok" });
+        if (composer) setSpent(pressed);
         onCreated?.();
       } else {
         const code = asCreativeError(body.error);
@@ -457,12 +470,13 @@ export function GeneratePanel({
     } catch {
       setNotice({ kind: "error", code: "failed" });
     } finally {
+      pressing.current = false;
       setSubmitting(false);
     }
   }
 
   const disabled =
-    submitting || quote.status !== "ready" || !ready || (routed ? !quote.routed : !effectiveModel);
+    submitting || quote.status !== "ready" || !ready || quoteSpent || (routed ? !quote.routed : !effectiveModel);
   const errorCode = notice?.kind === "error" ? notice.code : quote.status === "error" ? quote.code : null;
   const isVoice = capability === "tts";
   const sourced = needsSource(capability);
@@ -1458,11 +1472,13 @@ export function GeneratePanel({
                     // Enter is the send key (the same priced press); Shift+Enter is a new line, and an IME's Enter only picks a word.
                     if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
                     e.preventDefault();
+                    // A held Enter repeats: only the first keydown may press.
+                    if (e.repeat) return;
                     if (!disabled) void generate();
                   }}
                   rows={3}
                   maxLength={wordsMax(capability)}
-                  autoFocus={initial !== null}
+                  autoFocus={autoFocusPrompt ?? initial !== null}
                   placeholder={t.gen.promptPh[capability]}
                   aria-describedby="gen-status sc-enter-hint"
                   className="sc-input"
@@ -1472,11 +1488,13 @@ export function GeneratePanel({
             {takesStyle(capability) && words !== "none" && (
               <span className="sr-only">{t.gen.mentionHint}</span>
             )}
-            {settingsOpen && folded.length > 0 && (
-              <div id="gen-settings" className="sc-settings" data-testid="composer-settings">
-                {folded.map((node, i) => (
-                  <Fragment key={i}>{node}</Fragment>
-                ))}
+            {/* Always in the DOM (hidden when folded), so the settings key's aria-controls names a real element. */}
+            {folded.length > 0 && (
+              <div id="gen-settings" className="sc-settings" data-testid="composer-settings" hidden={!settingsOpen}>
+                {settingsOpen &&
+                  folded.map((node, i) => (
+                    <Fragment key={i}>{node}</Fragment>
+                  ))}
               </div>
             )}
           </>,

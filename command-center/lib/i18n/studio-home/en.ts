@@ -67,6 +67,7 @@ export const studioHomeEn = {
     animate: "Make a video from this image",
     enhance: "Enhance this image",
     download: "Download",
+    downloadFailed: "The file could not be prepared. Try again.",
   },
 };
 

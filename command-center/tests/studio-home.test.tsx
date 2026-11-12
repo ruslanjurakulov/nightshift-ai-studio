@@ -9,7 +9,7 @@
  * server did not quote, or a card that starts a job by itself.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ReactNode } from "react";
@@ -57,6 +57,8 @@ const PRICE: Record<string, number> = { pic: 4, "seedream-5.0-pro": 7, clip: 40,
 let fetchMock: ReturnType<typeof vi.fn>;
 let quotes: Array<{ model: string; capability: string; params: Record<string, unknown> }>;
 let feed: unknown[];
+/** A test's own answer to the create POST (a refusal, or a promise that never settles: a job still being started). */
+let jobPost: (() => Promise<Response>) | null;
 const creates = () =>
   fetchMock.mock.calls
     .filter(([u, init]) => u === "/api/creative/jobs" && (init as RequestInit | undefined)?.method === "POST")
@@ -94,6 +96,7 @@ const home = (over: Partial<Parameters<typeof StudioHome>[0]> = {}) => (
 beforeEach(() => {
   quotes = [];
   feed = [];
+  jobPost = null;
   push.mockClear();
   fetchMock = vi.fn((url: string, init?: RequestInit) => {
     if (url === "/api/creative/quote") {
@@ -101,8 +104,11 @@ beforeEach(() => {
       quotes.push(body);
       return json({ quote: { credits: PRICE[body.model] ?? 1 } });
     }
-    if (url.startsWith("/api/creative/jobs") && init?.method === "POST") return json({ job: { id: "new" } });
+    if (url.startsWith("/api/creative/jobs") && init?.method === "POST") return jobPost ? jobPost() : json({ job: { id: "new" } });
     if (url.startsWith("/api/creative/jobs")) return json({ jobs: feed });
+    // One asset, read as the member: freshly signed links, the original among them.
+    if (url === `/api/media/${OUT}`)
+      return json({ asset: { ...asset(OUT), name: "out.png" }, urls: { original: `/api/media/file/${OUT}/original?sig=fresh`, thumb: `/thumb/${OUT}` }, served: true });
     if (url.startsWith("/api/media")) return json({ available: true, assets: [asset(OUT)], uploads: [] });
     if (url.startsWith("/api/style-kits")) return json({ error: "not_available" }, 503);
     return json({}, 404);
@@ -362,9 +368,15 @@ describe("the recent work", () => {
     expect(chip(th.modes.enhance).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByTestId("composer").getAttribute("data-capability")).toBe("upscale");
     await waitFor(() => expect(quotes.at(-1)).toMatchObject({ capability: "upscale", params: { source_asset_id: OUT, factor: 2 } }), { timeout: 2000 });
-    const dl = await screen.findByRole("link", { name: th.actions.download });
-    expect(dl.getAttribute("href")).toBe(`/view/${OUT}`);
-    expect(dl.hasAttribute("download")).toBe(true);
+    // Download saves the ORIGINAL (not the view copy, a video's 480p proxy), signed when pressed.
+    const clicked: Array<{ href: string; download: string }> = [];
+    const spy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push({ href: this.getAttribute("href") ?? "", download: this.download });
+    });
+    fireEvent.click(await screen.findByRole("button", { name: th.actions.download }));
+    await waitFor(() => expect(clicked).toEqual([{ href: `/api/media/file/${OUT}/original?sig=fresh`, download: "out.png" }]));
+    expect(fetchMock.mock.calls.some(([u]) => u === `/api/media/${OUT}`)).toBe(true);
+    spy.mockRestore();
     expect(screen.getByRole("link", { name: th.recent.all }).getAttribute("href")).toBe("/chronos/library");
     expect(creates()).toHaveLength(0);
   });
@@ -388,6 +400,200 @@ describe("Advanced", () => {
       ]),
     );
     expect(within(section).getByText(t.desk.creditsUnknown)).toBeTruthy();
+  });
+});
+
+describe("one send per quote (review M1)", () => {
+  it("a held Enter (auto-repeat) sends once", async () => {
+    render(withI18n(home()));
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "a red kite" } });
+    await screen.findByRole("button", { name: "Generate · 4 credits" }, { timeout: 2000 });
+    fireEvent.keyDown(box, { key: "Enter" });
+    for (let i = 0; i < 5; i++) fireEvent.keyDown(box, { key: "Enter", repeat: true });
+    await waitFor(() => expect(creates()).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(creates()).toHaveLength(1);
+  });
+
+  it("two Enters before React re-renders send once", async () => {
+    render(withI18n(home()));
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "a red kite" } });
+    await screen.findByRole("button", { name: "Generate · 4 credits" }, { timeout: 2000 });
+    act(() => {
+      fireEvent.keyDown(box, { key: "Enter" });
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    await waitFor(() => expect(creates()).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(creates()).toHaveLength(1);
+  });
+
+  it("after a job started, neither Enter nor the key sends again until the words or a setting change (and a fresh quote comes)", async () => {
+    render(withI18n(home()));
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "a red kite" } });
+    const key = await screen.findByRole("button", { name: "Generate · 4 credits" }, { timeout: 2000 });
+    fireEvent.click(key);
+    await waitFor(() => expect(creates()).toHaveLength(1));
+    await waitFor(() => expect((screen.getByRole("button", { name: /^Generate/ }) as HTMLButtonElement).disabled).toBe(true));
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: /^Generate/ }));
+    await new Promise((r) => setTimeout(r, 650));
+    expect(creates()).toHaveLength(1);
+    // A change asks a fresh quote; that one can be spent once more.
+    fireEvent.change(box, { target: { value: "a red kite at dusk" } });
+    await waitFor(() => expect((screen.getByRole("button", { name: "Generate · 4 credits" }) as HTMLButtonElement).disabled).toBe(false), { timeout: 2000 });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(creates()).toHaveLength(2));
+    expect(creates()[1]).toMatchObject({ params: { prompt: "a red kite at dusk" } });
+    expect(creates()[1].idempotency_key).not.toBe(creates()[0].idempotency_key);
+  });
+});
+
+describe("a running plan is never orphaned (review M2)", () => {
+  const startKey = () => screen.getByRole("button", { name: /^Start/ });
+  async function startPlan() {
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "2 images about tea" } });
+    fireEvent.click(screen.getByTestId("composer-plan"));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: th.plan.goalLabel }), { key: "Enter" });
+    await waitFor(() => expect((startKey() as HTMLButtonElement).disabled).toBe(false), { timeout: 3000 });
+    await act(async () => fireEvent.click(startKey()));
+  }
+
+  it("leaving the Plan while it starts its items keeps the one run; coming back shows it, never a second loop", async () => {
+    // The first item's create never answers: the plan is mid-run.
+    jobPost = () => new Promise<Response>(() => {});
+    render(withI18n(home()));
+    await startPlan();
+    await waitFor(() => expect(creates()).toHaveLength(1));
+    // Every way off the Plan: a chip, an example, an action. The planner stays mounted, hidden.
+    fireEvent.click(chip(th.modes.video));
+    expect(screen.getByTestId("composer-plan-running")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: `Use this example: ${CREATIVE_EXAMPLES[0].prompt_en}` }));
+    fireEvent.click(screen.getByTestId("composer-plan"));
+    expect(screen.getByTestId("assistant-progress").textContent).toContain("0 of 2");
+    // Still running: no Continue to press, no second create.
+    expect(screen.queryByRole("button", { name: /^Continue/ })).toBeNull();
+    expect(screen.getAllByTestId("assistant")).toHaveLength(1);
+    expect(creates()).toHaveLength(1);
+  });
+
+  it("a plan stopped by a refusal is open again after a reload, with its Continue", async () => {
+    jobPost = () => json({ error: "insufficient_credits" }, 402);
+    const first = render(withI18n(home()));
+    await startPlan();
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(t.assistant.stopped));
+    first.unmount();
+    render(withI18n(home()));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByTestId("composer-plan").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: /^Continue/ })).toBeTruthy();
+    expect(creates()).toHaveLength(1);
+  });
+});
+
+describe("focus and the chips (review M4)", () => {
+  it("picking a mode with the arrow keys keeps focus on the chip, even with words typed", () => {
+    render(withI18n(home()));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "a lighthouse" } });
+    chip(th.modes.image).focus();
+    fireEvent.keyDown(chip(th.modes.image), { key: "ArrowRight" });
+    expect(chip(th.modes.video).getAttribute("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(chip(th.modes.video));
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("a lighthouse");
+  });
+
+  it("an example puts focus in the words, ready to edit", () => {
+    render(withI18n(home()));
+    fireEvent.click(screen.getByRole("button", { name: `Use this example: ${CREATIVE_EXAMPLES[0].prompt_en}` }));
+    expect(document.activeElement).toBe(screen.getByRole("textbox"));
+  });
+
+  it("the settings key controls an element that exists, folded or not", () => {
+    render(withI18n(home()));
+    const key = screen.getByTestId("composer-settings-key");
+    const id = key.getAttribute("aria-controls") as string;
+    expect(document.getElementById(id)).not.toBeNull();
+    expect(key.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(key);
+    expect(document.getElementById(id)?.hidden).toBe(false);
+  });
+});
+
+describe("the same request on every way into the box", () => {
+  async function pressBox(setup: () => void) {
+    render(withI18n(home()));
+    setup();
+    const key = await screen.findByRole("button", { name: /^Generate · \d+ credits$/ }, { timeout: 2000 });
+    fireEvent.click(key);
+    await waitFor(() => expect(creates().length).toBeGreaterThan(0));
+    const { idempotency_key: _k, ...rest } = creates().at(-1) as Record<string, unknown>;
+    cleanup();
+    fetchMock.mockClear();
+    return rest;
+  }
+  async function pressPanel(ui: ReactNode, setup: () => void) {
+    render(withI18n(ui));
+    setup();
+    const key = await screen.findByRole("button", { name: /^Generate · \d+ credits$/ }, { timeout: 2000 });
+    fireEvent.click(key);
+    await waitFor(() => expect(creates().length).toBeGreaterThan(0));
+    const { idempotency_key: _k, ...rest } = creates().at(-1) as Record<string, unknown>;
+    cleanup();
+    fetchMock.mockClear();
+    return rest;
+  }
+  const type = (v: string) => fireEvent.change(screen.getByRole("textbox"), { target: { value: v } });
+
+  it("after switching modes away and back", async () => {
+    const old = await pressPanel(<GeneratePanel orgId={ORG} models={MODELS} />, () => type("a lighthouse at dawn"));
+    const box = await pressBox(() => {
+      type("a lighthouse at dawn");
+      fireEvent.click(chip(th.modes.voice));
+      fireEvent.click(chip(th.modes.video));
+      fireEvent.click(chip(th.modes.image));
+    });
+    expect(box).toEqual(old);
+  });
+
+  it("after picking an example", async () => {
+    const e = CREATIVE_EXAMPLES.find((x) => x.id === "samarkand_dawn")!;
+    const old = await pressPanel(
+      <GeneratePanel
+        orgId={ORG}
+        models={MODELS}
+        initial={{ capability: "t2i", model: "seedream-5.0-pro", prompt: e.prompt_en, aspect: "16:9", duration: 5 }}
+      />,
+      () => {},
+    );
+    const box = await pressBox(() => fireEvent.click(screen.getByRole("button", { name: `Use this example: ${e.prompt_en}` })));
+    expect(box).toEqual(old);
+    expect(box).toMatchObject({ capability: "t2i", model: "seedream-5.0-pro", max_credits: 7 });
+  });
+
+  it("Animate sends the finished picture as the clip's source", async () => {
+    feed = [
+      {
+        id: "a",
+        capability: "t2i",
+        status: "completed",
+        requested_model: "pic",
+        params: { prompt: "p" },
+        quoted_credits: 4,
+        charged_credits: 4,
+        error_code: null,
+        result: null,
+        result_asset_ids: [OUT],
+        created_at: "2026-10-01T00:00:00Z",
+      },
+    ];
+    render(withI18n(home()));
+    fireEvent.click(await screen.findByRole("button", { name: th.actions.animate }));
+    fireEvent.click(await screen.findByRole("button", { name: "Generate · 40 credits" }, { timeout: 2000 }));
+    await waitFor(() => expect(creates()).toHaveLength(1));
+    expect(creates()[0]).toMatchObject({ capability: "i2v", model: "clip", max_credits: 40, params: { source_asset_id: OUT } });
   });
 });
 
@@ -417,8 +623,9 @@ describe("the examples and the words (pure)", () => {
   it("the page's words and the examples make no banned claim, name no provider, and never say desk", () => {
     const flat = (v: unknown): string[] => (typeof v === "string" ? [v] : v && typeof v === "object" ? Object.values(v).flatMap(flat) : []);
     for (const [lang, d] of Object.entries(dictionaries) as Array<["en" | "ru" | "uz", (typeof dictionaries)["en"]]>) {
+      // "Улучшение" (improvement, the Enhance section's name) is not a superlative; the list's лучш\w* catches it by its letters.
       const words = flat(d.studioHome).join("\n");
-      expect(bannedHits({ [lang]: words }), lang).toEqual([]);
+      expect(bannedHits({ [lang]: words.replace(/[Уу]лучш\w*/g, "") }), lang).toEqual([]);
       expect(words, lang).not.toMatch(/\bdesks?\b|стол|\bstol/i);
       // Not the words the owner ruled out in Uzbek either.
       expect(words.toLowerCase(), lang).not.toMatch(/eng (yaxshi|zoʻr|tez|arzon|kuchli)/);
@@ -441,5 +648,7 @@ describe("the examples and the words (pure)", () => {
     expect(dictionaries.uz.studioHome.recent.title).toBe("Soʻnggi ishlaringiz");
     expect(dictionaries.uz.studioHome.advanced.title).toBe("Kengaytirilgan");
     expect(STUDIO_MODES.map((m) => dictionaries.uz.studioHome.modes[m])).toEqual(["Rasm", "Video", "Ovoz", "Kuchaytirish", "YouTube video"]);
+    // One name for the Enhance section everywhere: the chip, the switcher and the sidebar.
+    for (const d of Object.values(dictionaries)) expect(d.studioHome.modes.enhance).toBe(d.desk.names.enhance);
   });
 });

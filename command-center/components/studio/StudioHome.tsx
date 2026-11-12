@@ -1,15 +1,15 @@
 "use client";
 
-import { useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUp, FolderOpen, LayoutTemplate, Sparkles } from "lucide-react";
+import { ArrowRight, ArrowUp, FolderOpen, LayoutTemplate, ListChecks } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { JobFeed } from "@/components/studio/JobFeed";
 import { StudioSide, type CreditsReading, type ProjectsReading } from "@/components/studio/Desks";
-import { AssistantPlanner, type AssistantPlannerProps } from "@/components/assistant/AssistantPlanner";
+import { AssistantPlanner, savedPlanPhase, type AssistantPlannerProps, type PlannerPhase } from "@/components/assistant/AssistantPlanner";
 import { DESK_ICONS } from "@/components/studio/deskIcons";
 import { DESK_TOOLS, deskFor, deskHref, type MediaDesk } from "@/lib/creative/desks";
 import {
@@ -96,6 +96,12 @@ export function StudioHome({
   const router = useRouter();
   const [mode, setMode] = useState<StudioMode>(initial && isStudioCapability(initial.capability) ? deskFor(initial.capability) : "image");
   const [planning, setPlanning] = useState(false);
+  // Once opened, the planner stays mounted (hidden while another mode is shown): a running plan's loop
+  // belongs to that one instance, so leaving the Plan never orphans it and coming back never starts a second.
+  const [planMounted, setPlanMounted] = useState(false);
+  const [planPhase, setPlanPhase] = useState<PlannerPhase>("plan");
+  // Whether the next box takes focus: yes when a card or an action filled it, no when a mode chip was picked.
+  const [focusBox, setFocusBox] = useState(initial !== null);
   // The words typed, carried across modes and into the Plan.
   const [draft, setDraft] = useState(initial?.prompt ?? "");
   const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill | null }>({ nonce: 0, value: initial });
@@ -105,6 +111,42 @@ export function StudioHome({
   const composerRef = useRef<HTMLDivElement>(null);
   const examplesRef = useRef<HTMLElement>(null);
   const chipRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const homeRef = useRef<HTMLDivElement>(null);
+
+  // A plan interrupted on this device (running when the tab closed, or stopped at a refusal) opens the Plan,
+  // so it is shown with its Continue as it was when the planner sat on this page. A finished one waits behind the toggle.
+  useEffect(() => {
+    if (!assistant) return;
+    const saved = savedPlanPhase(assistant.orgId);
+    if (saved === "running" || saved === "stopped") {
+      setPlanMounted(true);
+      setPlanning(true);
+    }
+    // Once, on load: later changes are the person's.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The pinned box on a phone: never taller than what is visible, and lifted above the on-screen keyboard
+  // (the visual viewport shrinks under it while the layout viewport, which sticky follows, does not).
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    const el = homeRef.current;
+    if (!vv || !el) return;
+    const dockPx = bottomBar ? 60 : 0;
+    const update = () => {
+      const keyboard = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      const open = keyboard > 80;
+      el.style.setProperty("--sh-kb", `${open ? keyboard : 0}px`);
+      el.style.setProperty("--sh-room", `${Math.max(160, Math.round(vv.height - (open ? 0 : dockPx) - 24))}px`);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, [bottomBar]);
 
   const toComposer = () => composerRef.current?.scrollIntoView?.({ behavior: scrollBehavior(), block: "nearest" });
 
@@ -122,6 +164,7 @@ export function StudioHome({
   /** A fresh box with these settings (a new mount: nothing typed before leaks into it). */
   const fill = (value: StudioPrefill | null, nextMode?: StudioMode) => {
     setPlanning(false);
+    setFocusBox(true);
     if (nextMode) setMode(nextMode);
     else if (value && isStudioCapability(value.capability)) setMode(deskFor(value.capability));
     setPrefill((p) => ({ nonce: p.nonce + 1, value }));
@@ -132,6 +175,7 @@ export function StudioHome({
   /** A fresh box for mode `m`, with the words typed so far where its first tool takes words (Enhance starts from a file). */
   const openMode = (m: StudioMode) => {
     setMode(m);
+    setFocusBox(false);
     if (m === "youtube") {
       setTopicNonce((n) => n + 1);
       return;
@@ -152,13 +196,17 @@ export function StudioHome({
     if (planning) {
       setPlanning(false);
       openMode(mode);
-    } else setPlanning(true);
+    } else {
+      setPlanMounted(true);
+      setPlanning(true);
+    }
   };
 
   const pickExample = (e: CreativeExample) => {
     const text = examplePrompt(e, locale);
     if (e.mode === "youtube" || !e.capability) {
       setPlanning(false);
+      setFocusBox(true);
       setMode("youtube");
       setDraft(text);
       setTopicNonce((n) => n + 1);
@@ -215,6 +263,7 @@ export function StudioHome({
     chipRefs.current[to]?.focus();
   }
 
+  const planRunning = planPhase === "running";
   const planToggle = assistant ? (
     <button
       type="button"
@@ -225,20 +274,41 @@ export function StudioHome({
       className="sc-pill tap press"
       data-testid="composer-plan"
     >
-      <Sparkles aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
+      <ListChecks aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
       <span className="sc-pill-label">{th.plan.toggle}</span>
+      {/* A plan still making its items while another mode is open: said here, never hidden. */}
+      {planRunning && !planning && (
+        <span data-testid="composer-plan-running">
+          <span aria-hidden className="ns-lamp" data-tone="run" data-live="true" />
+          <span className="sr-only">{t.assistant.status.creating}</span>
+        </span>
+      )}
     </button>
   ) : null;
 
   const desk: MediaDesk | null = mode === "youtube" ? null : mode;
-  let box: ReactNode;
+  const planner =
+    assistant && planMounted ? (
+      <div hidden={!planning} data-testid="plan-box">
+        <AssistantPlanner
+          {...assistant}
+          variant="composer"
+          initialGoal={draft}
+          onGoalChange={setDraft}
+          onPhaseChange={setPlanPhase}
+          composerExtra={planning ? planToggle : null}
+        />
+      </div>
+    ) : null;
+  let box: ReactNode = null;
   if (planning && assistant) {
-    box = <AssistantPlanner {...assistant} variant="composer" initialGoal={draft} onGoalChange={setDraft} composerExtra={planToggle} />;
+    box = null;
   } else if (mode === "youtube") {
     box = (
       <TopicComposer
         key={topicNonce}
         initial={draft}
+        autoFocus={focusBox}
         onDraft={setDraft}
         extra={planToggle}
         onGo={(topic) => router.push(path(`/create?desk=youtube&topic=${encodeURIComponent(topic)}`))}
@@ -258,6 +328,7 @@ export function StudioHome({
         plans={plans}
         unavailable={unavailable}
         onDraftChange={setDraft}
+        autoFocusPrompt={focusBox}
         composerExtra={planToggle}
         onCreated={() => setRefreshKey((k) => k + 1)}
       />
@@ -275,7 +346,7 @@ export function StudioHome({
   const dock = { "--studio-dock-offset": bottomBar ? "60px" : "0px" } as CSSProperties;
 
   return (
-    <div className="sh" style={dock} data-testid="studio-home">
+    <div ref={homeRef} className="sh" style={dock} data-testid="studio-home">
       <div className="sh-head">
         <h1 className="sh-title">{th.title}</h1>
         <p className="sh-lead">{th.lead}</p>
@@ -315,6 +386,7 @@ export function StudioHome({
       </div>
 
       <div ref={composerRef} className="sh-composer scroll-mt-24" data-sticky="mobile" data-testid="studio-composer" aria-label={th.composerLabel} role="group">
+        {planner}
         {box}
       </div>
 
@@ -415,7 +487,9 @@ function TopicComposer({
   onDraft,
   onGo,
   extra,
+  autoFocus = false,
 }: {
+  autoFocus?: boolean;
   initial: string;
   onDraft: (v: string) => void;
   onGo: (topic: string) => void;
@@ -450,10 +524,12 @@ function TopicComposer({
           onKeyDown={(e) => {
             if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
             e.preventDefault();
+            if (e.repeat) return;
             go();
           }}
           rows={3}
           maxLength={TOPIC_MAX}
+          autoFocus={autoFocus}
           placeholder={th.youtube.placeholder}
           aria-describedby="yt-topic-note sc-enter-hint-yt"
           className="sc-input"

@@ -377,9 +377,8 @@ export function JobFeed({
     const picture = kind === "image" && job.result_asset_ids[0] ? job.result_asset_ids[0] : null;
     const toAnimate = onAnimate ? picture : null;
     const toEnhance = onEnhance ? picture : null;
-    // Saved, not opened: the library's signed link (same origin) or the result's own link.
-    const preview = job.result_asset_ids[0] ? library.previews.get(job.result_asset_ids[0]) : undefined;
-    const saveHref = download ? (preview?.viewUrl ?? href) : null;
+    // Saved, not opened: the original file, signed when the key is pressed (see DownloadKey).
+    const saveId = download && job.result_asset_ids[0] ? job.result_asset_ids[0] : null;
     return (
       <div className={className}>
         {toDescribe && (
@@ -444,11 +443,7 @@ export function JobFeed({
         {isSendKind(kind) && job.result_asset_ids[0] && (
           <SendToEditor orgId={orgId} assetId={job.result_asset_ids[0]} kind={kind} variant="icon" className={onMedia} />
         )}
-        {saveHref && (
-          <a href={saveHref} download className={onMedia} aria-label={t.studioHome.actions.download} title={t.studioHome.actions.download} data-testid="result-download">
-            <Download aria-hidden className="size-4" />
-          </a>
-        )}
+        {saveId && <DownloadKey assetId={saveId} fallbackHref={href} className={onMedia} />}
         {href ? (
           <a href={href} target="_blank" rel="noopener noreferrer" className={onMedia} aria-label={t.gen.open} title={t.gen.open}>
             <ExternalLink aria-hidden className="size-4" />
@@ -805,5 +800,59 @@ export function JobFeed({
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Download one result: the ORIGINAL file, never the library's view copy (a video's view copy is the 480p
+ * proxy). Its signed link lives ten minutes, so it is asked for when the key is pressed (GET /api/media/{id},
+ * read as the member), not when the card was drawn. When the library cannot sign one, the result's own link
+ * opens in a new tab: the page, and whatever is typed in the composer, stay where they are.
+ */
+function DownloadKey({ assetId, fallbackHref, className }: { assetId: string; fallbackHref: string | null; className: string }) {
+  const { t } = useI18n();
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  async function save() {
+    if (state === "busy") return;
+    setState("busy");
+    let url: string | null = null;
+    let name = "";
+    try {
+      const res = await fetch(`/api/media/${encodeURIComponent(assetId)}`, { cache: "no-store" });
+      const body = (await res.json().catch(() => ({}))) as { urls?: Record<string, unknown>; asset?: { name?: unknown } };
+      const original = body.urls?.original;
+      // Only our own signed file route: a download never leaves the origin.
+      if (res.ok && typeof original === "string" && original.startsWith("/api/media/file/")) url = original;
+      if (typeof body.asset?.name === "string") name = body.asset.name;
+    } catch {
+      url = null;
+    }
+    if (url) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setState("idle");
+    } else if (fallbackHref) {
+      window.open(fallbackHref, "_blank", "noopener,noreferrer");
+      setState("idle");
+    } else setState("failed");
+  }
+  const label = state === "failed" ? t.studioHome.actions.downloadFailed : t.studioHome.actions.download;
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={() => void save()}
+      aria-label={label}
+      title={label}
+      aria-busy={state === "busy"}
+      data-testid="result-download"
+      data-state={state}
+    >
+      {state === "failed" ? <TriangleAlert aria-hidden className="size-4" /> : <Download aria-hidden className="size-4" />}
+    </button>
   );
 }

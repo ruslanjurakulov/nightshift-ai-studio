@@ -67,7 +67,8 @@ const KIND_ICON: Record<StepKind, LucideIcon> = {
 const QUOTE_DELAY_MS = 350;
 export const ASSISTANT_STORAGE_KEY = "nightshift.assistant.plan.v1";
 
-type Phase = "plan" | "running" | "stopped" | "done";
+export type PlannerPhase = "plan" | "running" | "stopped" | "done";
+type Phase = PlannerPhase;
 type ItemStatus = "pending" | "creating" | "done" | "failed" | "unknown";
 interface ItemState {
   status: ItemStatus;
@@ -96,6 +97,15 @@ function readSaved(orgId: string | null): Saved | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The phase of a plan this viewer confirmed and that is still on this device (running, stopped or done), or null.
+ * /create opens the Plan with it on load, so an interrupted plan is shown again (and its Continue) as before.
+ */
+export function savedPlanPhase(orgId: string | null): Exclude<PlannerPhase, "plan"> | null {
+  const v = readSaved(orgId);
+  return v && v.phase !== "plan" ? v.phase : null;
 }
 
 function writeSaved(v: Saved | null) {
@@ -202,6 +212,8 @@ export interface AssistantPlannerProps {
   onGoalChange?: (goal: string) => void;
   /** Composer only: a key the page adds to the box's bar (the Plan toggle that leads back). */
   composerExtra?: ReactNode;
+  /** Every phase change (a page that hides the planner keeps it mounted while a plan runs, and shows that it runs). */
+  onPhaseChange?: (phase: PlannerPhase) => void;
 }
 
 /**
@@ -223,6 +235,7 @@ export function AssistantPlanner({
   initialGoal = "",
   onGoalChange,
   composerExtra = null,
+  onPhaseChange,
 }: AssistantPlannerProps) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -234,6 +247,11 @@ export function AssistantPlanner({
   }, [goal]);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [phase, setPhase] = useState<Phase>("plan");
+  const phaseRef = useRef(onPhaseChange);
+  phaseRef.current = onPhaseChange;
+  useEffect(() => {
+    phaseRef.current?.(phase);
+  }, [phase]);
   const [items, setItems] = useState<Record<string, ItemState>>({});
   const [confirmed, setConfirmed] = useState<Confirmed>({});
   const [reloaded, setReloaded] = useState(false);
@@ -604,6 +622,7 @@ export function AssistantPlanner({
               // Enter makes the plan (it only asks prices); Shift+Enter is a new line; an IME's Enter only picks a word.
               if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || !editing) return;
               e.preventDefault();
+              if (e.repeat) return;
               makePlan();
             }}
             disabled={!editing}

@@ -811,6 +811,9 @@ option {
 @media (max-width: 1023px) {
   .scroll-top[data-dock="true"] { bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
   .app-shell:has(.studio-dock:not([data-at-top="true"])) .scroll-top[data-dock="true"] { bottom: calc(env(safe-area-inset-bottom) + 11rem); }
+  /* /create's composer is pinned above the bar for the whole page and is taller than any spot the button could take:
+     the button steps away there (the page's top is one swipe up, and the chips sit right under it). */
+  .app-shell:has(.sh-composer[data-sticky]) .scroll-top { visibility: hidden; }
 }
 /* A fixed bottom action bar (the library's selection bar) owns that strip: the button steps away rather than sit on its actions. */
 .app-shell:has([data-bottom-bar]) .scroll-top { visibility: hidden; }
@@ -838,6 +841,10 @@ option {
 .app-shell:has(.ns-tabbar) .install-hint { bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
 .app-shell:has(.studio-dock:not([data-at-top="true"])) .install-hint,
 .app-shell:has([data-bottom-bar]) .install-hint { display: none; }
+/* /create's pinned composer owns the bottom strip on a phone: the tip waits for another page. */
+@media (max-width: 1023.98px) {
+  .app-shell:has(.sh-composer[data-sticky]) .install-hint { display: none; }
+}
 .app-shell:has(.install-hint) .scroll-top { visibility: hidden; }
 .install-hint-body { display: flex; align-items: flex-start; gap: 0.75rem; }
 .install-hint-icon {

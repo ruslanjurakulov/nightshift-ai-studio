@@ -5,7 +5,7 @@ export const studioHomeRu: StudioHomeDictionary = {
   title: "Что создадим сегодня?",
   lead: "Напишите, что нужно. Цена видна на кнопке до того, как что-либо начнётся.",
   modesLabel: "Что создать",
-  modes: { image: "Изображение", video: "Видео", voice: "Голос", enhance: "Доработка", youtube: "Видео для YouTube" },
+  modes: { image: "Изображение", video: "Видео", voice: "Голос", enhance: "Улучшение", youtube: "Видео для YouTube" },
   attach: {
     image: "Добавить изображение",
     video: "Начать с изображения",
@@ -53,14 +53,15 @@ export const studioHomeRu: StudioHomeDictionary = {
       image: "Страница изображений",
       video: "Страница видео",
       voice: "Страница голоса",
-      enhance: "Страница доработки",
+      enhance: "Страница улучшения",
       youtube: "Страница видео для YouTube",
     },
     presets: "Пресеты",
   },
   actions: {
     animate: "Сделать видео из этого изображения",
-    enhance: "Доработать это изображение",
+    enhance: "Улучшить это изображение",
     download: "Скачать",
+    downloadFailed: "Не удалось подготовить файл. Попробуйте ещё раз.",
   },
 };

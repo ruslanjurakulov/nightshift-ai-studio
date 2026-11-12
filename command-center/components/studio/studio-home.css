@@ -155,6 +155,7 @@
   color: var(--color-muted);
 }
 .sc-detach:hover { color: var(--color-fg); border-color: var(--ns-rule-strong); }
+.sc-settings[hidden] { display: none; }
 .sc-settings {
   display: flex;
   flex-direction: column;
@@ -391,9 +392,15 @@
   .sh-composer[data-sticky="mobile"] {
     order: 10;
     position: sticky;
-    bottom: calc(env(safe-area-inset-bottom) + var(--studio-dock-offset, 60px) + 8px);
+    /* Above the tab bar; above the on-screen keyboard while it is up (--sh-kb, set from visualViewport). */
+    bottom: calc(max(env(safe-area-inset-bottom) + var(--studio-dock-offset, 60px), var(--sh-kb, 0px)) + 8px);
     z-index: 20;
     max-width: none;
+    /* Never taller than what is visible (--sh-room, from visualViewport): its top, the tools and the words stay reachable. */
+    max-height: var(--sh-room, calc(100dvh - var(--studio-dock-offset, 60px) - 24px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: var(--ns-r-sheet);
   }
   .sh-composer[data-sticky="mobile"] .sc-composer { box-shadow: var(--shadow-elevated, var(--ns-lift)); }
   .sc-input { min-height: 52px; max-height: 28dvh; }

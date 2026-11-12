@@ -4595,7 +4595,7 @@ export const uz: Dictionary = {
   },
   desk: {
     nav: "Studiya boʻlimlari",
-    names: { overview: "Umumiy koʻrinish", video: "Video", image: "Rasm", enhance: "Yaxshilash", voice: "Ovoz", youtube: "YouTube video" },
+    names: { overview: "Umumiy koʻrinish", video: "Video", image: "Rasm", enhance: "Kuchaytirish", voice: "Ovoz", youtube: "YouTube video" },
     keySub: {
       overview: "Soʻnggi ishlar",
       video: "Soʻzdan yoki rasmdan",
