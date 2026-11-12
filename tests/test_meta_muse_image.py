@@ -42,8 +42,11 @@ from modules.capabilities.base import (
     AdapterError,
     CapabilityRequest,
 )
-from modules.capabilities.meta import MAX_RATIO, MuseImageAdapter, ratio_size, real_person_problem
-from modules.capabilities.safe_fetch import UNCONFIRMED
+import os
+
+from modules.capabilities import meta as meta_mod
+from modules.capabilities.meta import MAX_RATIO, MAX_IMAGE_BYTES, MuseImageAdapter, ratio_size, real_person_problem
+from modules.capabilities.safe_fetch import AFTER_COMPLETION, UNCONFIRMED
 from tests.loopback_vendor import FakeVendor, Resp, cleanup_certificate
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -217,6 +220,54 @@ class RefusedBeforeAnyCallTests(VendorCase):
                      fragment="its bytes say otherwise")
         self.assertEqual(self.vendor.requests, [])
 
+    def test_a_path_that_is_not_a_regular_file_is_refused_and_never_read(self):
+        real = self.file("real.png")
+        link = self.tmp / "link.png"
+        os.symlink(real, link)                                            # even a link to a real picture
+        dev = self.tmp / "zero.png"
+        os.symlink("/dev/zero", dev)                                      # a device would read forever
+        fifo = self.tmp / "pipe.png"
+        os.mkfifo(fifo)                                                   # a FIFO would block the open
+        folder = self.tmp / "dir.png"
+        folder.mkdir()
+        for bad in (link, dev, fifo, folder):
+            self.refused(CapabilityRequest(EDIT, "x", input_images=(str(bad),)), fragment="not a regular file")
+            with self.assertRaises(AdapterError, msg=str(bad)) as cm:
+                meta_mod._picture_part(str(bad))
+            self.assertEqual(cm.exception.code, E_BAD_REQUEST)
+            self.assertTrue(cm.exception.not_accepted)
+            self.assertIn("not a regular file", cm.exception.message)
+        self.assertEqual(self.vendor.requests, [])
+
+    def test_the_read_is_capped_at_the_limit_even_when_the_file_is_bigger_than_its_check(self):
+        big = self.file("grown.png", picture() + b"\x00" * MAX_IMAGE_BYTES)
+        with self.assertRaises(AdapterError) as cm:
+            meta_mod._read_picture(big)
+        self.assertIn("over 15 MB", cm.exception.message)
+        reads = []
+        real_fdopen = os.fdopen
+
+        class Spy:
+            def __init__(self, fh):
+                self.fh = fh
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                self.fh.close()
+
+            def read(self, n=-1):
+                reads.append(n)
+                return self.fh.read(n)
+
+        from unittest import mock
+        with mock.patch.object(meta_mod.os, "fstat", lambda fd: os.stat_result((0o100644, 0, 0, 1, 0, 0, 10, 0, 0, 0))), \
+                mock.patch.object(meta_mod.os, "fdopen", lambda fd, mode: Spy(real_fdopen(fd, mode))):
+            with self.assertRaises(AdapterError):                         # the size said 10 bytes; the file has more
+                meta_mod._read_picture(big)
+        self.assertEqual(reads, [MAX_IMAGE_BYTES + 1])                     # never an unbounded read
+
     def test_a_picture_over_15_mb_or_pictures_over_36_mb_together_are_refused(self):
         big = self.file("big.png", picture() + b"\x00" * (15 * 1024 * 1024))
         self.refused(CapabilityRequest(EDIT, "x", input_images=(big,)), fragment="over 15 MB")
@@ -280,7 +331,56 @@ class AnswerTests(VendorCase):
                 self.adapter().submit(t2i(), VENDOR)
             self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
             self.assertFalse(cm.exception.not_accepted)
+            # No picture: the vendor may be billing it. A picture we could not read: it finished, and was billed.
+            self.assertTrue(cm.exception.message.startswith((UNCONFIRMED, AFTER_COMPLETION)), cm.exception.message)
+
+    def test_a_finished_picture_in_an_incomplete_or_failed_answer_is_kept_because_it_was_billed(self):
+        good = picture("WEBP")
+        for status in ("incomplete", "failed", "cancelled", "in_progress"):
+            body = answer(good, status=status)
+            body["error"] = {"code": "server_error", "message": "stopped"}
+            self.answers(Resp(200, body))
+            task = self.adapter().submit(t2i(), VENDOR)
+            self.assertEqual([o.data for o in task.outputs], [good], status)
+
+    def test_an_incomplete_answer_with_no_picture_says_the_spend_may_have_happened(self):
+        for status, err, code in (("incomplete", None, E_UNAVAILABLE),
+                                  ("incomplete", {"code": "server_error", "message": "cut"}, E_UNAVAILABLE),
+                                  ("failed", {"code": "image_content_policy_violation", "message": "no"}, E_POLICY)):
+            body = {"status": status, "output": [{"type": "reasoning", "summary": []}]}
+            if err:
+                body["error"] = err
+            self.answers(Resp(200, body))
+            with self.assertRaises(AdapterError, msg=status) as cm:
+                self.adapter().submit(t2i(), VENDOR)
+            self.assertEqual(cm.exception.code, code)
+            self.assertFalse(cm.exception.not_accepted)
             self.assertTrue(cm.exception.message.startswith(UNCONFIRMED), cm.exception.message)
+
+    def test_one_corrupt_picture_does_not_lose_the_good_billed_ones_and_is_reported(self):
+        good = picture("PNG")
+        body = answer(good, picture("WEBP", (9, 9, 9)))
+        body["output"].insert(2, {"type": "image_generation_call", "id": "ig_bad", "status": "completed",
+                                  "result": b64(b"<html>not a picture</html>")})
+        self.answers(Resp(200, body))
+        with self.assertLogs("modules.capabilities.meta", level="WARNING") as logs:
+            task = self.adapter().submit(t2i(), VENDOR)
+        self.assertEqual([o.mime for o in task.outputs], ["image/png", "image/webp"])
+        self.assertEqual(task.outputs[0].data, good)
+        self.assertIn("image 1 is not a PNG, JPEG or WebP file", "\n".join(logs.output))
+        self.assertIn("kept 2 image(s)", "\n".join(logs.output))
+
+    def test_only_corrupt_pictures_is_a_completed_billed_failure(self):
+        body = {"status": "completed", "output": [
+            {"type": "image_generation_call", "status": "completed", "result": b64(b"%PDF-1.7")},
+            {"type": "image_generation_call", "status": "completed", "result": b64(b"GIF89a....")}]}
+        self.answers(Resp(200, body))
+        with self.assertRaises(AdapterError) as cm:
+            self.adapter().submit(t2i(), VENDOR)
+        self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
+        self.assertTrue(cm.exception.message.startswith(AFTER_COMPLETION), cm.exception.message)
+        self.assertIn("image 1", cm.exception.message)
+        self.assertIn("image 2", cm.exception.message)
 
     def test_a_failed_response_carries_the_vendors_code_and_the_right_remedy(self):
         for code, ours in (("image_content_policy_violation", E_POLICY), ("rate_limit_exceeded", E_RATE_LIMITED),
@@ -334,6 +434,15 @@ class ErrorMappingTests(VendorCase):
             self.adapter().submit(t2i(), VENDOR)
         self.assertFalse(cm.exception.not_accepted)
         self.assertTrue(cm.exception.message.startswith(UNCONFIRMED))
+
+    def test_every_form_of_the_makers_name_is_replaced(self):
+        for text in ("MetaAI refused it", "metaai", "Meta AI said no", "Meta-AI", "META", "Meta's filter", "Meta\u2019s filter",
+                     "MetaAI's policy", "Muse Image", "MuseImage", "muse-image-1.0", "Muse", "Llama"):
+            out = meta_mod._debrand(text)
+            self.assertNotRegex(out, r"(?i)meta|muse|llama", text)
+            self.assertIn("the vendor", out, text)
+        for kept in ("metadata", "metamorphosis", "amused", "museum"):
+            self.assertEqual(meta_mod._debrand(kept), kept)
 
     def test_no_message_names_the_maker_and_the_key_is_scrubbed(self):
         e = self.error(400, {"code": "content_policy_violation",

@@ -46,14 +46,18 @@ Obligations this adapter carries (Model API ToS, AUP, Geographic Use Policy):
 from __future__ import annotations
 
 import base64
+import logging
 import math
+import os
 import re
+import stat
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from modules.capabilities.base import (
     E_AUTH,
     E_BAD_REQUEST,
+    E_BAD_RESPONSE,
     E_NOT_FOUND,
     E_POLICY,
     E_QUOTA,
@@ -69,11 +73,14 @@ from modules.capabilities.base import (
     is_url,
     json_body,
 )
-from modules.capabilities.safe_fetch import SafeResultMixin, sniff_image_mime, unconfirmed
+from modules.capabilities.safe_fetch import UNCONFIRMED, SafeResultMixin, after_completion, sniff_image_mime, unconfirmed
 from modules.character_swap import PROMPT_PATTERNS, normalize
 
-#: Mentions of the maker that must not reach a person (ToS 7). Case-insensitive, whole words.
-_VENDOR_WORDS = re.compile(r"(?i)\b(?:meta(?:'s)?|muse(?:[ -]image)?(?:-1\.0)?|llama)\b")
+logger = logging.getLogger(__name__)
+
+#: Mentions of the maker that must not reach a person (ToS 7). Case-insensitive, whole words, with the forms the vendor's
+#: own text uses: "Meta", "Meta's" / "Meta’s", "Meta AI" / "Meta-AI" / "MetaAI", "Muse Image" / "muse-image-1.0" / "MuseImage".
+_VENDOR_WORDS = re.compile(r"(?i)\b(?:meta(?:[ -]?ai)?|muse(?:[ -]?image)?(?:-1\.0)?|llama)(?:['’]s)?\b")
 #: The real-person / deepfake / child screen of Character Studio (0137), the same list in the same order.
 _REAL_PERSON = tuple(re.compile(p, re.IGNORECASE) for p in PROMPT_PATTERNS)
 #: ``safety_identifier``: "a string that uniquely identifies each user, up to 64 characters".
@@ -131,12 +138,51 @@ def _sniff_file(path: Path) -> Optional[str]:
         return None
 
 
-def _picture_part(ref: str) -> dict:
-    """A library picture as an ``input_image`` part, labelled with the type its BYTES say (the suffix is not trusted)."""
+def _not_regular(path: Path) -> bool:
+    """True when ``path`` exists but is not a plain file: a symlink (to a device such as /dev/zero, or anywhere else), a FIFO,
+    a socket, a device or a folder. ``lstat`` so a link is judged as the link, never as what it points at."""
     try:
-        data = Path(ref).read_bytes()
+        return not stat.S_ISREG(os.lstat(path).st_mode)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+
+
+def _read_picture(ref: str) -> bytes:
+    """The bytes of a library picture, at most ``MAX_IMAGE_BYTES``. Refused (nothing sent) unless the path itself is a regular
+    file: ``lstat`` first, then ONE descriptor opened with ``O_NOFOLLOW`` (a link swapped in after the check is not followed) and
+    ``O_NONBLOCK`` (a FIFO cannot block the open), ``fstat`` on that descriptor, and a read capped at the limit + 1 so a file
+    that grew after the check is still stopped."""
+    too_big = AdapterError(E_BAD_REQUEST, "a picture is over 15 MB; it was not sent", not_accepted=True)
+    not_file = AdapterError(E_BAD_REQUEST, "a picture is not a regular file; it was not sent", not_accepted=True)
+    fd = None
+    try:
+        if not stat.S_ISREG(os.lstat(ref).st_mode):
+            raise not_file
+        fd = os.open(ref, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+                     | getattr(os, "O_CLOEXEC", 0))
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise not_file
+        if info.st_size > MAX_IMAGE_BYTES:
+            raise too_big
+        with os.fdopen(fd, "rb") as fh:
+            fd = None
+            data = fh.read(MAX_IMAGE_BYTES + 1)
     except OSError:
         raise AdapterError(E_BAD_REQUEST, "the picture could not be read", not_accepted=True) from None
+    finally:
+        if fd is not None:
+            os.close(fd)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise too_big
+    return data
+
+
+def _picture_part(ref: str) -> dict:
+    """A library picture as an ``input_image`` part, labelled with the type its BYTES say (the suffix is not trusted)."""
+    data = _read_picture(ref)
     mime = sniff_image_mime(data[:16])
     if mime is None:
         raise AdapterError(E_BAD_REQUEST, "the file is not a PNG, JPEG or WebP picture (its bytes say otherwise); "
@@ -200,6 +246,9 @@ class MuseImageAdapter(SafeResultMixin, HttpAdapter):
                 break
             if path.suffix.lower() not in _PICTURE_SUFFIXES:
                 out.append("this model reads PNG, JPEG or WebP pictures")
+                break
+            if _not_regular(path):
+                out.append("a picture is not a regular file (a link, a device or a pipe); nothing was sent")
                 break
             if path.is_file():
                 size = path.stat().st_size
@@ -285,44 +334,56 @@ class MuseImageAdapter(SafeResultMixin, HttpAdapter):
             raise _plain(e) from None
 
     def _images(self, data) -> List[Output]:
+        """Every finished picture the answer carries, whatever its overall status: each one returned is billed, so a picture
+        in an ``incomplete`` response, or beside a corrupt one, is kept. Only when no usable picture is left is the status
+        read for a reason, and that failure says the spend may have happened (the vendor answered 2xx: it took the request)."""
         if not isinstance(data, dict):
             raise unconfirmed("the answer is not a JSON object")
         status = str(data.get("status") or "").lower()
-        if status in _FAILED:
-            err = data.get("error") if isinstance(data.get("error"), dict) else {}
-            code = str(err.get("code") or "").lower()
-            text = self.message(err.get("message") or code or f"the vendor reported the response {status}")
-            if code in _POLICY_CODES or "policy" in code:
-                raise AdapterError(E_POLICY, f"the vendor's safety filter refused it: {text}")
-            if code == "rate_limit_exceeded":
-                raise AdapterError(E_RATE_LIMITED, text)
-            if code.startswith(("invalid_image", "image_", "unsupported_image", "empty_image", "failed_to_download",
-                                "invalid_base64")):
-                raise AdapterError(E_BAD_REQUEST, text)
-            raise AdapterError(E_UNAVAILABLE, text)
         output = data.get("output")
         items = [o for o in output if isinstance(o, dict) and o.get("type") == "image_generation_call"] \
             if isinstance(output, list) else []
         outs: List[Output] = []
-        for item in items:
+        bad: List[str] = []
+        for n, item in enumerate(items):
             raw = item.get("result")
             if str(item.get("status") or "completed").lower() != "completed" or not isinstance(raw, str) or not raw:
                 continue
             if len(raw) * 3 // 4 > self.max_inline_bytes:
-                raise unconfirmed(f"an image is over the {self.max_inline_bytes} byte limit; not decoded")
+                bad.append(f"image {n + 1} is over the {self.max_inline_bytes} byte limit (not decoded)")
+                continue
             try:
                 blob = base64.b64decode(raw, validate=False)
             except (ValueError, TypeError):
                 blob = b""
             mime = sniff_image_mime(blob) if blob else None
             if mime is None:
-                raise unconfirmed("an image is not a PNG, JPEG or WebP file")
+                bad.append(f"image {n + 1} is not a PNG, JPEG or WebP file")
+                continue
             outs.append(Output(mime, data=blob))          # the bytes as decoded: never re-encoded
-        if not outs:
-            if status and status != "completed":
-                raise unconfirmed(f"the answer is not a finished response (status {self.message(status)})")
-            raise unconfirmed("the answer carries no image")
-        return outs
-
+        if outs:
+            if bad or status not in ("", "completed"):
+                # Reported, not hidden: the job keeps what is usable, and the log says what was paid for and lost.
+                logger.warning("image.meta: kept %d image(s) from an answer with status %s; unusable: %s", len(outs),
+                               self.message(status) or "(none)", "; ".join(bad) or "none")
+            return outs
+        if bad:
+            # The vendor finished and (by its own pricing page) billed these; we could not store any of them.
+            raise after_completion(AdapterError(E_BAD_RESPONSE, "; ".join(bad)))
+        if status in _FAILED:
+            err = data.get("error") if isinstance(data.get("error"), dict) else {}
+            code = str(err.get("code") or "").lower()
+            text = f"{UNCONFIRMED}. " + self.message(err.get("message") or code or f"the vendor reported the response {status}")
+            if code in _POLICY_CODES or "policy" in code:
+                raise AdapterError(E_POLICY, f"{text} (the vendor's safety filter refused it)")
+            if code == "rate_limit_exceeded":
+                raise AdapterError(E_RATE_LIMITED, text)
+            if code.startswith(("invalid_image", "image_", "unsupported_image", "empty_image", "failed_to_download",
+                                "invalid_base64")):
+                raise AdapterError(E_BAD_REQUEST, text)
+            raise AdapterError(E_UNAVAILABLE, text)
+        if status and status != "completed":
+            raise unconfirmed(f"the answer is not a finished response (status {self.message(status)})")
+        raise unconfirmed("the answer carries no image")
 
 ADAPTERS = (MuseImageAdapter,)
