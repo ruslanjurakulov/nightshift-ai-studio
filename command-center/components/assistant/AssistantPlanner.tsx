@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -14,6 +14,7 @@ import {
   Minus,
   Plus,
   RefreshCw,
+  ArrowUp,
   Sparkles,
   Trash2,
   type LucideIcon,
@@ -189,6 +190,18 @@ export interface AssistantPlannerProps {
   canRun: boolean;
   /** Run now is wired on this deployment. */
   runConfigured: boolean;
+  /**
+   * `composer`: the goal is written in the /create composer box (Enter makes
+   * the plan, Shift+Enter is a new line) and the plan opens under it. Only the
+   * look changes: the prices, the one confirm and every create are the same.
+   */
+  variant?: "section" | "composer";
+  /** The words already typed in the composer, carried into the goal. */
+  initialGoal?: string;
+  /** The goal as typed, for a page that carries it back to another mode. */
+  onGoalChange?: (goal: string) => void;
+  /** Composer only: a key the page adds to the box's bar (the Plan toggle that leads back). */
+  composerExtra?: ReactNode;
 }
 
 /**
@@ -199,10 +212,26 @@ export interface AssistantPlannerProps {
  * refusal before spending more. Videos land at the approval gate; nothing
  * here publishes, re-renders or touches the gate.
  */
-export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun, runConfigured }: AssistantPlannerProps) {
+export function AssistantPlanner({
+  orgId,
+  models,
+  channels,
+  currentSlug,
+  canRun,
+  runConfigured,
+  variant = "section",
+  initialGoal = "",
+  onGoalChange,
+  composerExtra = null,
+}: AssistantPlannerProps) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
-  const [goal, setGoal] = useState("");
+  const [goal, setGoal] = useState(initialGoal);
+  const goalRef = useRef(onGoalChange);
+  goalRef.current = onGoalChange;
+  useEffect(() => {
+    goalRef.current?.(goal);
+  }, [goal]);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [phase, setPhase] = useState<Phase>("plan");
   const [items, setItems] = useState<Record<string, ItemState>>({});
@@ -418,6 +447,190 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
   const chip =
     "pill min-h-9 border border-[var(--color-border)] bg-transparent px-3 text-sm text-[var(--color-fg)] outline-none focus-visible:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] disabled:opacity-60";
 
+  const planBlock = plan ? (
+    <div className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-4">
+      <h3 className="text-sm font-semibold text-[var(--color-fg)]">{t.assistant.planTitle}</h3>
+      {plan.guessed && <p className="text-xs text-[var(--color-warn)]">{t.assistant.guessed}</p>}
+      {plan.steps.length === 0 && <p className="text-sm text-[var(--color-muted)]">{t.assistant.noSteps}</p>}
+
+      <ol className="flex flex-col gap-2.5" aria-label={t.assistant.planTitle}>
+        {plan.steps.map((s, i) => (
+          <StepCard
+            key={s.id}
+            step={s}
+            index={i}
+            env={env}
+            editing={editing}
+            price={priceOf(s)}
+            items={allItems.filter((it) => it.step.id === s.id).map((it) => items[it.key])}
+            onEdit={(patch) => edit(s.id, patch)}
+            onRemove={() => setPlan((p) => (p && editing ? removeStep(p, s.id) : p))}
+            onRequote={() => requote(s)}
+            resultHref={isRunKind(s.kind) ? (s.channelSlug ? `/${encodeURIComponent(s.channelSlug)}/videos` : null) : path("/create")}
+            chip={chip}
+          />
+        ))}
+      </ol>
+
+      {editing && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2">
+            <span className="sr-only">{t.assistant.addStep}</span>
+            <select
+              value=""
+              disabled={plan.steps.length >= MAX_STEPS}
+              onChange={(e) => {
+                const k = e.target.value as StepKind;
+                if ((STEP_KINDS as readonly string[]).includes(k)) setPlan((p) => (p ? addStep(p, k, ctx) : p));
+              }}
+              className={chip}
+            >
+              <option value="">{t.assistant.addStepPick}</option>
+              {STEP_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {t.assistant.kinds[k]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {plan.steps.length >= MAX_STEPS && (
+            <span className="text-xs text-[var(--color-muted)]">{fmt(t.assistant.maxSteps, { n: MAX_STEPS })}</span>
+          )}
+        </div>
+      )}
+
+      {/* ── the total and the one confirm ─────────────────────────── */}
+      <div className="flex flex-col gap-2 rounded-[16px] bg-[var(--color-panel-2)] p-3">
+        {editing ? (
+          <>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-sm text-[var(--color-muted)]">{t.assistant.totalLabel}</span>
+              <span className="tnum text-[15px] font-semibold text-[var(--color-fg)]" data-testid="assistant-total" aria-live="polite">
+                {total.status === "ready"
+                  ? total.free
+                    ? t.assistant.noCharge
+                    : fmt(t.assistant.totalCredits, { n: formatCredits(total.total, locale) })
+                  : total.status === "pending"
+                    ? t.assistant.totalPending
+                    : "—"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={confirm}
+              disabled={total.status !== "ready"}
+              aria-describedby={blockedText ? "assistant-blocked" : "assistant-safety"}
+              className="cta-glass pill inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {startLabel}
+            </button>
+            {blockedText && (
+              <p id="assistant-blocked" role="status" className="text-xs text-[var(--color-warn)]">
+                {blockedText}
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="flex flex-col gap-2" aria-live="polite">
+            <p className="text-sm font-medium text-[var(--color-fg)]" data-testid="assistant-progress">
+              {fmt(t.assistant.progress, { done: doneCount, total: allItems.length })}
+            </p>
+            {phase === "running" && (
+              <p className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
+                <Loader2 aria-hidden className="size-3.5 animate-spin" />
+                {t.assistant.status.creating}
+              </p>
+            )}
+            {phase === "stopped" && (
+              <div role="alert" className="flex flex-col gap-1 text-xs">
+                {stoppedItem && items[stoppedItem.key]?.message && (
+                  <p className="text-[var(--color-fail)]">{items[stoppedItem.key]?.message}</p>
+                )}
+                <p className="text-[var(--color-muted)]">{reloaded ? t.assistant.reloaded : t.assistant.stopped}</p>
+              </div>
+            )}
+            {phase === "done" && <p className="text-xs text-[var(--color-ok)]">{t.assistant.done}</p>}
+            <div className="flex flex-wrap gap-2">
+              {phase === "stopped" && canContinue && (
+                <button
+                  type="button"
+                  onClick={resume}
+                  className="cta-glass pill inline-flex min-h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
+                >
+                  {remainingRounded > 0 ? fmt(t.assistant.continue, { n: formatCredits(remainingRounded, locale) }) : t.assistant.continueFree}
+                </button>
+              )}
+              {phase !== "running" && (
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="pill inline-flex min-h-11 items-center gap-1.5 border border-[var(--color-border)] px-4 text-sm text-[var(--color-fg)] hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]"
+                >
+                  {t.assistant.newPlan}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        <p id="assistant-safety" className="text-xs leading-relaxed text-[var(--color-muted)]">
+          {t.assistant.safety}
+        </p>
+      </div>
+    </div>
+  ) : null;
+
+  if (variant === "composer") {
+    const tc = t.studioHome.plan;
+    return (
+      <section aria-labelledby="assistant-title" className="studio-surface sc-composer" data-testid="assistant" data-variant="composer">
+        <h2 id="assistant-title" className="sr-only">
+          {t.assistant.title}
+        </h2>
+        <form
+          className="sc-body"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (editing) makePlan();
+          }}
+        >
+          <label htmlFor="assistant-goal" className="sr-only">
+            {tc.goalLabel}
+          </label>
+          <textarea
+            id="assistant-goal"
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter makes the plan (it only asks prices); Shift+Enter is a new line; an IME's Enter only picks a word.
+              if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || !editing) return;
+              e.preventDefault();
+              makePlan();
+            }}
+            disabled={!editing}
+            rows={3}
+            maxLength={GOAL_MAX}
+            placeholder={t.assistant.placeholder}
+            aria-describedby="assistant-plan-note"
+            className="sc-input"
+          />
+          <div className="sc-bar">
+            <div className="sc-bar-start">{composerExtra}</div>
+            <button type="submit" disabled={!editing || !goal.trim()} className="sc-plan-send press" data-testid="assistant-make-plan">
+              <ArrowUp aria-hidden className="size-4 shrink-0" strokeWidth={2.25} />
+              <span>{plan ? t.assistant.replan : tc.send}</span>
+            </button>
+          </div>
+          <div className="sc-foot">
+            <p id="assistant-plan-note" className="text-xs text-[var(--color-muted)]">
+              {tc.note}
+            </p>
+          </div>
+        </form>
+        {planBlock && <div className="sc-plan">{planBlock}</div>}
+      </section>
+    );
+  }
+
   return (
     <section aria-labelledby="assistant-title" className="flex flex-col gap-3" data-testid="assistant">
       <div className="flex flex-col gap-0.5">
@@ -469,137 +682,7 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
           </div>
         </form>
 
-        {plan && (
-          <div className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-4">
-            <h3 className="text-sm font-semibold text-[var(--color-fg)]">{t.assistant.planTitle}</h3>
-            {plan.guessed && <p className="text-xs text-[var(--color-warn)]">{t.assistant.guessed}</p>}
-            {plan.steps.length === 0 && <p className="text-sm text-[var(--color-muted)]">{t.assistant.noSteps}</p>}
-
-            <ol className="flex flex-col gap-2.5" aria-label={t.assistant.planTitle}>
-              {plan.steps.map((s, i) => (
-                <StepCard
-                  key={s.id}
-                  step={s}
-                  index={i}
-                  env={env}
-                  editing={editing}
-                  price={priceOf(s)}
-                  items={allItems.filter((it) => it.step.id === s.id).map((it) => items[it.key])}
-                  onEdit={(patch) => edit(s.id, patch)}
-                  onRemove={() => setPlan((p) => (p && editing ? removeStep(p, s.id) : p))}
-                  onRequote={() => requote(s)}
-                  resultHref={isRunKind(s.kind) ? (s.channelSlug ? `/${encodeURIComponent(s.channelSlug)}/videos` : null) : path("/create")}
-                  chip={chip}
-                />
-              ))}
-            </ol>
-
-            {editing && (
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2">
-                  <span className="sr-only">{t.assistant.addStep}</span>
-                  <select
-                    value=""
-                    disabled={plan.steps.length >= MAX_STEPS}
-                    onChange={(e) => {
-                      const k = e.target.value as StepKind;
-                      if ((STEP_KINDS as readonly string[]).includes(k)) setPlan((p) => (p ? addStep(p, k, ctx) : p));
-                    }}
-                    className={chip}
-                  >
-                    <option value="">{t.assistant.addStepPick}</option>
-                    {STEP_KINDS.map((k) => (
-                      <option key={k} value={k}>
-                        {t.assistant.kinds[k]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {plan.steps.length >= MAX_STEPS && (
-                  <span className="text-xs text-[var(--color-muted)]">{fmt(t.assistant.maxSteps, { n: MAX_STEPS })}</span>
-                )}
-              </div>
-            )}
-
-            {/* ── the total and the one confirm ─────────────────────────── */}
-            <div className="flex flex-col gap-2 rounded-[16px] bg-[var(--color-panel-2)] p-3">
-              {editing ? (
-                <>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-sm text-[var(--color-muted)]">{t.assistant.totalLabel}</span>
-                    <span className="tnum text-[15px] font-semibold text-[var(--color-fg)]" data-testid="assistant-total" aria-live="polite">
-                      {total.status === "ready"
-                        ? total.free
-                          ? t.assistant.noCharge
-                          : fmt(t.assistant.totalCredits, { n: formatCredits(total.total, locale) })
-                        : total.status === "pending"
-                          ? t.assistant.totalPending
-                          : "—"}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={confirm}
-                    disabled={total.status !== "ready"}
-                    aria-describedby={blockedText ? "assistant-blocked" : "assistant-safety"}
-                    className="cta-glass pill inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {startLabel}
-                  </button>
-                  {blockedText && (
-                    <p id="assistant-blocked" role="status" className="text-xs text-[var(--color-warn)]">
-                      {blockedText}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <div className="flex flex-col gap-2" aria-live="polite">
-                  <p className="text-sm font-medium text-[var(--color-fg)]" data-testid="assistant-progress">
-                    {fmt(t.assistant.progress, { done: doneCount, total: allItems.length })}
-                  </p>
-                  {phase === "running" && (
-                    <p className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
-                      <Loader2 aria-hidden className="size-3.5 animate-spin" />
-                      {t.assistant.status.creating}
-                    </p>
-                  )}
-                  {phase === "stopped" && (
-                    <div role="alert" className="flex flex-col gap-1 text-xs">
-                      {stoppedItem && items[stoppedItem.key]?.message && (
-                        <p className="text-[var(--color-fail)]">{items[stoppedItem.key]?.message}</p>
-                      )}
-                      <p className="text-[var(--color-muted)]">{reloaded ? t.assistant.reloaded : t.assistant.stopped}</p>
-                    </div>
-                  )}
-                  {phase === "done" && <p className="text-xs text-[var(--color-ok)]">{t.assistant.done}</p>}
-                  <div className="flex flex-wrap gap-2">
-                    {phase === "stopped" && canContinue && (
-                      <button
-                        type="button"
-                        onClick={resume}
-                        className="cta-glass pill inline-flex min-h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
-                      >
-                        {remainingRounded > 0 ? fmt(t.assistant.continue, { n: formatCredits(remainingRounded, locale) }) : t.assistant.continueFree}
-                      </button>
-                    )}
-                    {phase !== "running" && (
-                      <button
-                        type="button"
-                        onClick={reset}
-                        className="pill inline-flex min-h-11 items-center gap-1.5 border border-[var(--color-border)] px-4 text-sm text-[var(--color-fg)] hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]"
-                      >
-                        {t.assistant.newPlan}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-              <p id="assistant-safety" className="text-xs leading-relaxed text-[var(--color-muted)]">
-                {t.assistant.safety}
-              </p>
-            </div>
-          </div>
-        )}
+        {planBlock}
       </div>
     </section>
   );

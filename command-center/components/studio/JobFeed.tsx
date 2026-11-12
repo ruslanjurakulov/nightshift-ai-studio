@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight, AudioLines, Check, Clapperboard, Copy, CopyPlus, ExternalLink, FolderOpen, ImagePlus, Play, ScanText, TriangleAlert, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, AudioLines, Check, Clapperboard, Copy, CopyPlus, Download, ExternalLink, Film, FolderOpen, ImagePlus, Play, ScanText, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Timecode } from "@/components/ui/Timecode";
 import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
@@ -100,7 +100,22 @@ export function JobFeed({
   limit = FEED_SHOWN,
   onLoaded,
   project = null,
+  onAnimate,
+  onEnhance,
+  download = false,
+  emptyAction,
+  headerAction,
 }: {
+  /** Beside the heading: a link (the composer page's "Open the library"). */
+  headerAction?: ReactNode;
+  /** A finished picture's library id, for the composer's "make a video from it" (fills the form; the press there is priced). */
+  onAnimate?: (assetId: string) => void;
+  /** A finished picture's library id, for the composer's upscale (fills the form; the press there is priced). */
+  onEnhance?: (assetId: string) => void;
+  /** A finished file gets a Download key: the same signed link it is opened with, saved instead of opened. */
+  download?: boolean;
+  /** Under the empty state's words: one way to start (the composer page's "Pick an example"). */
+  emptyAction?: ReactNode;
   /** Every read that succeeds hands its jobs up (the overview lights the desks that are working). */
   onLoaded?: (jobs: StudioJob[]) => void;
   orgId: string;
@@ -358,6 +373,13 @@ export function JobFeed({
     if (!done || kind === "text") return null;
     const asSource = onUseAsSource ? sourceFromJob(job) : null;
     const toDescribe = onDescribe ? sourceFromJob(job) : null;
+    // Animate and Enhance start from the finished picture itself, not from what it was made from.
+    const picture = kind === "image" && job.result_asset_ids[0] ? job.result_asset_ids[0] : null;
+    const toAnimate = onAnimate ? picture : null;
+    const toEnhance = onEnhance ? picture : null;
+    // Saved, not opened: the library's signed link (same origin) or the result's own link.
+    const preview = job.result_asset_ids[0] ? library.previews.get(job.result_asset_ids[0]) : undefined;
+    const saveHref = download ? (preview?.viewUrl ?? href) : null;
     return (
       <div className={className}>
         {toDescribe && (
@@ -382,6 +404,30 @@ export function JobFeed({
             <ImagePlus aria-hidden className="size-4" />
           </button>
         )}
+        {toAnimate && (
+          <button
+            type="button"
+            className={onMedia}
+            aria-label={t.studioHome.actions.animate}
+            title={t.studioHome.actions.animate}
+            data-testid="result-animate"
+            onClick={() => onAnimate?.(toAnimate)}
+          >
+            <Film aria-hidden className="size-4" />
+          </button>
+        )}
+        {toEnhance && (
+          <button
+            type="button"
+            className={onMedia}
+            aria-label={t.studioHome.actions.enhance}
+            title={t.studioHome.actions.enhance}
+            data-testid="result-enhance"
+            onClick={() => onEnhance?.(toEnhance)}
+          >
+            <Sparkles aria-hidden className="size-4" />
+          </button>
+        )}
         {project && isSendKind(kind) && job.result_asset_ids[0] && editorAddHref(project, job.result_asset_ids[0]) && (
           // A full load into the editor's project page: it must get its own Permissions-Policy (lib/editor-nav.ts).
           <a
@@ -397,6 +443,11 @@ export function JobFeed({
         )}
         {isSendKind(kind) && job.result_asset_ids[0] && (
           <SendToEditor orgId={orgId} assetId={job.result_asset_ids[0]} kind={kind} variant="icon" className={onMedia} />
+        )}
+        {saveHref && (
+          <a href={saveHref} download className={onMedia} aria-label={t.studioHome.actions.download} title={t.studioHome.actions.download} data-testid="result-download">
+            <Download aria-hidden className="size-4" />
+          </a>
         )}
         {href ? (
           <a href={href} target="_blank" rel="noopener noreferrer" className={onMedia} aria-label={t.gen.open} title={t.gen.open}>
@@ -683,11 +734,14 @@ export function JobFeed({
         <h2 id="gen-feed-title" className="ns-eyebrow">
           {heading}
         </h2>
-        {active && (
-          <span className="text-xs text-[var(--color-muted)]" aria-live="polite">
-            {t.gen.working}
-          </span>
-        )}
+        <span className="flex shrink-0 items-baseline gap-3">
+          {active && (
+            <span className="text-xs text-[var(--color-muted)]" aria-live="polite">
+              {t.gen.working}
+            </span>
+          )}
+          {headerAction}
+        </span>
       </div>
 
       {state === "unavailable" ? (
@@ -718,6 +772,7 @@ export function JobFeed({
               </span>
               <p className="text-[15px] font-semibold text-[var(--color-fg)]">{emptyTitle ?? t.gen.emptyTitle}</p>
               <p className="max-w-[52ch] text-sm text-[var(--color-muted)]">{emptyBody ?? t.gen.empty}</p>
+              {emptyAction}
             </div>
           )}
           {shown.length > 0 && variant === "sheet" && (

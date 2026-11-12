@@ -1,3 +1,4 @@
+import { studioHomeRu } from "./studio-home/ru";
 import { improveRu } from "./improve/ru";
 import { notifyChannelsRu } from "./notify-channels/ru";
 import { aiLabelRu } from "./ai-label/ru";
@@ -50,6 +51,7 @@ export const ru: Dictionary = {
   ownerRpc: ownerRpcRu,
   marketing: marketingRu,
   modelSwitch: modelSwitchRu,
+  studioHome: studioHomeRu,
   modelBudget: modelBudgetRu,
   modelKeys: modelKeysRu,
   /** The operator's Customers page (migration 0138): ./operator-customers/ru.ts. */
@@ -4592,7 +4594,7 @@ export const ru: Dictionary = {
     moreOptions: "Дополнительно",
   },
   desk: {
-    nav: "Столы студии",
+    nav: "Разделы студии",
     names: { overview: "Обзор", video: "Видео", image: "Картинка", enhance: "Улучшение", voice: "Голос", youtube: "Видео для YouTube" },
     keySub: {
       overview: "Последние работы",
@@ -4603,7 +4605,7 @@ export const ru: Dictionary = {
       youtube: "От идеи до одобрения",
     },
     blurbs: {
-      overview: "Выберите стол под задачу. Ниже — последние работы со всех столов.",
+      overview: "Напишите, что нужно, выберите вид работы или начните с примера. Цена видна на кнопке до начала.",
       video: "Клипы на 5 или 10 секунд из слов или из картинки. Цена видна до того, как клип сделан.",
       image: "Новые картинки, правки вашей картинки и картинка, прочитанная обратно в промпт.",
       enhance: "Сделать картинку или видео чётче и больше или вырезать объект из фона.",
@@ -4674,9 +4676,9 @@ export const ru: Dictionary = {
     since: "Прошло",
     sinceSpoken: "{n} секунд с момента запроса",
     showOnStage: "Показать крупно",
-    stripLabel: "Всё на этом столе",
+    stripLabel: "Всё, что сделано здесь",
     playTake: "Прослушать дубль {n}",
-    openOnDesk: "Открыть стол «{desk}»",
+    openOnDesk: "Открыть «{desk}»",
     feedTitle: { video: "Ваши клипы", image: "Ваши картинки", enhance: "До и после", voice: "Ваши озвучки" },
     emptyTitle: {
       video: "На мониторе пока нет клипа",
@@ -4691,10 +4693,10 @@ export const ru: Dictionary = {
       voice: "Напишите сценарий и выберите голос или выберите запись, чтобы сменить голос или сделать дубляж. У каждого дубля здесь свой плеер.",
     },
     workingNow: "в работе: {n}",
-    startTitle: "Столы",
-    recentTitle: "Последние генерации со всех столов",
+    startTitle: "Виды работ",
+    recentTitle: "Последние генерации",
     recentEmptyTitle: "Пока ничего не сделано",
-    recentEmpty: "Откройте стол выше и сделайте что-нибудь одно. Здесь будет каждая генерация, её состояние и кредиты.",
+    recentEmpty: "Сделайте что-нибудь одно выше. Здесь будет каждая генерация, её состояние и кредиты.",
     noOrg: "Для генераций нужна организация. Создайте или откройте её в настройках.",
     sideLabel: "Кредиты и проекты",
     creditsTitle: "Кредиты",

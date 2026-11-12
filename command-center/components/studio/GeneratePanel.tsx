@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { AtSign, Clock, Languages, Maximize2, RectangleHorizontal, type LucideIcon } from "lucide-react";
+import { ArrowUp, AtSign, ChevronDown, Clock, Languages, Maximize2, Plus, RectangleHorizontal, Settings2, X, type LucideIcon } from "lucide-react";
 import { DESK_TOOLS, pictureToolFor, type MediaDesk } from "@/lib/creative/desks";
 import { Timecode } from "@/components/ui/Timecode";
 import { useI18n } from "@/lib/i18n/context";
@@ -120,7 +120,22 @@ export function GeneratePanel({
   onCreated,
   desk = null,
   unavailable = [],
+  layout = "panel",
+  onDraftChange,
+  composerExtra = null,
 }: {
+  /**
+   * `composer` (the /create overview): the same form as one chat-style box —
+   * the words first, then [+] to start from a file, the model, the settings
+   * folded behind one key, and the price key that sends. Only the arrangement
+   * changes: the tools (`desk`), the quote, the hold and the create request are
+   * exactly the panel's (tests/studio-home.test.tsx compares the two).
+   */
+  layout?: "panel" | "composer";
+  /** The words as typed, for a page that carries them to another mode. */
+  onDraftChange?: (prompt: string) => void;
+  /** Composer only: a key the page adds to the box's bar (the Assistant's Plan toggle). */
+  composerExtra?: ReactNode;
   /**
    * The workspace this composer sits on (lib/creative/desks): it offers only
    * that desk's tools and arranges the fields around the desk's job. Absent:
@@ -160,11 +175,20 @@ export function GeneratePanel({
   const path = useChannelPath();
   // The tools this composer offers: its desk's, or every one.
   const tools: readonly StudioCapability[] = desk ? DESK_TOOLS[desk] : PANEL_CAPABILITIES;
+  // `desk` picks the tools; `arrange` is the desk's own look, which the composer does not use.
+  const composer = layout === "composer";
+  const arrange: MediaDesk | null = composer ? null : desk;
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [capability, setCapability] = useState<StudioCapability>(
     initial?.capability ?? tools.find((c) => modelsFor(models, c).length > 0) ?? tools[0] ?? "t2i",
   );
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
+  const draftRef = useRef(onDraftChange);
+  draftRef.current = onDraftChange;
+  useEffect(() => {
+    draftRef.current?.(prompt);
+  }, [prompt]);
   const [aspect, setAspect] = useState<AspectRatio>(initial?.aspect ?? dna?.aspect ?? "16:9");
   const [duration, setDuration] = useState<VideoDuration>(initial?.duration ?? 5);
   const [model, setModel] = useState(initial?.model ?? "");
@@ -500,10 +524,12 @@ export function GeneratePanel({
         tabIndex={on || (!rowTools.includes(capability) && c === rowTools[0]) ? 0 : -1}
         onClick={() => pick(c)}
         onKeyDown={(e) => onTabKey(e, c)}
-        className={desk ? "desk-tool" : "studio-tab"}
+        className={composer ? "sc-tool" : arrange ? "desk-tool" : "studio-tab"}
       >
-        <Icon aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
-        {desk ? (
+        <Icon aria-hidden className={composer ? "size-4 shrink-0" : "size-[18px] shrink-0"} strokeWidth={1.75} />
+        {composer ? (
+          <span className="truncate">{t.desk.tools[c]}</span>
+        ) : arrange ? (
           <span className="flex min-w-0 flex-col text-left">
             <span className="truncate">{t.desk.tools[c]}</span>
             <span className="desk-tool-from truncate">{t.desk.toolFrom[c]}</span>
@@ -555,7 +581,7 @@ export function GeneratePanel({
   // On a desk the keys say more than the bare value: the shape drawn, the
   // length as a counter. Same values, same buttons, same group names.
   const aspectText = (a: AspectRatio | ExpandAspect): ReactNode =>
-    desk ? (
+    arrange ? (
       <span className="inline-flex items-center gap-1.5">
         <span aria-hidden className="desk-shape" data-shape={a} />
         {a}
@@ -564,11 +590,11 @@ export function GeneratePanel({
       a
     );
   const durationText = (d: VideoDuration): ReactNode =>
-    desk ? <Timecode value={d} format="duration" label={fmt(t.gen.seconds, { n: d })} /> : fmt(t.gen.seconds, { n: d });
+    arrange ? <Timecode value={d} format="duration" label={fmt(t.gen.seconds, { n: d })} /> : fmt(t.gen.seconds, { n: d });
   const settings = hasSettings ? (
     <div className="flex flex-wrap items-center gap-2">
       {(capability === "t2i" || capability === "t2v") &&
-        seg(t.gen.aspectLabel, desk ? null : RectangleHorizontal, ASPECT_RATIOS, aspect, setAspect, aspectText, true)}
+        seg(t.gen.aspectLabel, arrange ? null : RectangleHorizontal, ASPECT_RATIOS, aspect, setAspect, aspectText, true)}
       {(capability === "t2v" || capability === "i2v") &&
         seg(t.gen.durationLabel, Clock, VIDEO_DURATIONS, duration, setDuration, durationText)}
       {capability === "upscale" &&
@@ -580,7 +606,7 @@ export function GeneratePanel({
         effectiveShape &&
         seg(
           capability === "video_reframe" ? t.gen.reframeLabel : t.gen.shapeLabel,
-          desk ? null : RectangleHorizontal,
+          arrange ? null : RectangleHorizontal,
           shapes,
           effectiveShape,
           setShape,
@@ -593,7 +619,14 @@ export function GeneratePanel({
 
   // ── the blocks: one of each field, arranged per desk below ─────────────────
 
-  const tabsBlock = desk ? (
+  const tabsBlock = composer ? (
+    // The mode's tools as one quiet row (the mode itself is the page's choice above the box).
+    tools.length > 1 ? (
+      <div role="tablist" aria-label={t.gen.kindLabel} className="sc-tools" data-testid="composer-tools">
+        {tools.map(tab)}
+      </div>
+    ) : null
+  ) : arrange ? (
     <div role="tablist" aria-label={t.gen.kindLabel} className="desk-tools" data-count={tools.length}>
       {tools.map(tab)}
     </div>
@@ -711,10 +744,10 @@ export function GeneratePanel({
   );
 
   // Image and Enhance lay the picture on the table, large; elsewhere it is a thumbnail.
-  const wellPicture = desk === "image" || desk === "enhance";
+  const wellPicture = arrange === "image" || arrange === "enhance";
   const sourceBlock = sourced ? (
     <div className="flex flex-col gap-2">
-      <span className="studio-label">{desk === "video" ? t.desk.startFrame : t.gen.sourceLabel}</span>
+      <span className="studio-label">{arrange === "video" ? t.desk.startFrame : t.gen.sourceLabel}</span>
       <SourcePicker
         orgId={orgId}
         value={sourceId}
@@ -901,7 +934,7 @@ export function GeneratePanel({
   }
   const voiceBlock =
     capability === "voice_change" || capability === "tts" ? (
-      desk === "voice" ? (
+      arrange === "voice" ? (
         // The booth's cast: every voice as a row, one picked (the same ids the select offers).
         <div className="flex flex-col gap-2">
           <span className="studio-label" id="gen-voice-label">
@@ -984,18 +1017,18 @@ export function GeneratePanel({
     ) : null;
 
   // The words, with the settings that ride under them (or, on Enhance, set apart above).
-  const settingsInField = desk !== "enhance";
+  const settingsInField = arrange !== "enhance";
   const promptBlock =
     words !== "none" ? (
       <div className="flex flex-col gap-2">
         <label htmlFor="gen-prompt" className="studio-label">
           {isVoice
-            ? desk === "voice"
+            ? arrange === "voice"
               ? t.desk.script
               : t.gen.voiceTextLabel
             : isAiEdit(capability)
               ? (t.gen.opWords as Record<string, string>)[capability]
-              : desk === "video"
+              : arrange === "video"
                 ? t.desk.shot
                 : t.gen.promptLabel}
           {words === "optional" && <span> · {t.gen.optional}</span>}
@@ -1008,14 +1041,14 @@ export function GeneratePanel({
               setPrompt(e.target.value);
               edited();
             }}
-            rows={isVoice ? (desk === "voice" ? 10 : 6) : isAiEdit(capability) ? 2 : 4}
+            rows={isVoice ? (arrange === "voice" ? 10 : 6) : isAiEdit(capability) ? 2 : 4}
             maxLength={wordsMax(capability)}
             autoFocus={initial !== null}
             placeholder={t.gen.promptPh[capability]}
-            className={`${desk === "voice" && isVoice ? "desk-script " : ""}${isVoice ? "" : "studio-shot "}min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-base leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]`}
+            className={`${arrange === "voice" && isVoice ? "desk-script " : ""}${isVoice ? "" : "studio-shot "}min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-base leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]`}
           />
           {settings && settingsInField && <div className="px-2 pb-2">{settings}</div>}
-          {desk === "voice" && isVoice && (
+          {arrange === "voice" && isVoice && (
             // Speech is priced by its characters: the count is the meter that matters here.
             <div className="flex items-center justify-between gap-2 px-3 pb-2 text-xs text-[var(--color-muted)]">
               <span>{t.desk.scriptNote}</span>
@@ -1183,6 +1216,46 @@ export function GeneratePanel({
       </div>
     ) : null;
 
+  // What the press will do, or why it cannot: the same words under the panel's key and the composer's.
+  const status = (
+    <p id="gen-status" className={`min-h-[18px] text-xs${arrange || composer ? "" : " text-center"}`} aria-live="polite">
+      {notice?.kind === "ok" ? (
+        <span className="text-[var(--color-ok)]">{t.gen.started}</span>
+      ) : errorCode ? (
+        <span className="text-[var(--color-fail)]">
+          {apiErrorMessage(t, errorCode)}
+          {errorAction(errorCode) === "credits" && (
+            <>
+              {" "}
+              <Link href={path("/credits")} className="tap-link text-[var(--color-primary)] underline">
+                {t.gen.addCredits}
+              </Link>
+            </>
+          )}
+          {plans && isUpsellCode(errorCode) && errorAction(errorCode) === "plans" && (
+            <>
+              {" "}
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                onClick={() =>
+                  setUpsell((u) => ({ refusal: u?.refusal.code === errorCode ? u.refusal : refusalFrom(errorCode, null), open: true }))
+                }
+                className="tap-link text-[var(--color-primary)] underline"
+              >
+                {t.upsell.seePlans}
+              </button>
+            </>
+          )}
+        </span>
+      ) : blockedText ? (
+        <span className="text-[var(--color-muted)]">{blockedText}</span>
+      ) : (
+        <span className="text-[var(--color-muted)]">{routed ? t.gen.router.note : t.gen.holdNote}</span>
+      )}
+    </p>
+  );
+
   const dockBlock = (
     <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock" data-at-top={dockAtTop ? "true" : undefined}>
       {/* The price key (components/ui/PriceButton): the action and the
@@ -1208,42 +1281,7 @@ export function GeneratePanel({
         locale={locale}
         icon={<span aria-hidden className={`ns-rec${quote.status === "quoting" || submitting ? " pulse" : ""}`} />}
       />
-      <p id="gen-status" className={`min-h-[18px] text-xs${desk ? "" : " text-center"}`} aria-live="polite">
-        {notice?.kind === "ok" ? (
-          <span className="text-[var(--color-ok)]">{t.gen.started}</span>
-        ) : errorCode ? (
-          <span className="text-[var(--color-fail)]">
-            {apiErrorMessage(t, errorCode)}
-            {errorAction(errorCode) === "credits" && (
-              <>
-                {" "}
-                <Link href={path("/credits")} className="tap-link text-[var(--color-primary)] underline">
-                  {t.gen.addCredits}
-                </Link>
-              </>
-            )}
-            {plans && isUpsellCode(errorCode) && errorAction(errorCode) === "plans" && (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  aria-haspopup="dialog"
-                  onClick={() =>
-                    setUpsell((u) => ({ refusal: u?.refusal.code === errorCode ? u.refusal : refusalFrom(errorCode, null), open: true }))
-                  }
-                  className="tap-link text-[var(--color-primary)] underline"
-                >
-                  {t.upsell.seePlans}
-                </button>
-              </>
-            )}
-          </span>
-        ) : blockedText ? (
-          <span className="text-[var(--color-muted)]">{blockedText}</span>
-        ) : (
-          <span className="text-[var(--color-muted)]">{routed ? t.gen.router.note : t.gen.holdNote}</span>
-        )}
-      </p>
+      {status}
     </div>
   );
 
@@ -1292,6 +1330,230 @@ export function GeneratePanel({
   );
 
   // ── the arrangements ───────────────────────────────────────────────────────
+
+  if (composer) {
+    const th = t.studioHome;
+    // The mode's tool that starts from nothing (Image's new picture, Video's clip from words, Voice's speech), if it has one.
+    const textTool = tools.find((c) => startsFrom(c) === null) ?? null;
+    const from = startsFrom(capability);
+    // [+] starts from a file: this mode's first picture tool, else its first tool that takes a file.
+    const attachTool =
+      from !== null ? null : (tools.find((c) => startsFrom(c) === "picture") ?? tools.find((c) => startsFrom(c) !== null) ?? null);
+    const attachment = sourceBlock ?? videoSourceBlock ?? recordingBlock;
+    const detach = () => {
+      if (!textTool) return;
+      setSourceId(null);
+      setEndFrameId(null);
+      setCapability(textTool);
+      edited();
+    };
+    // The settings key's own words: what is set now (the shape, the length, the size), never a price.
+    const summary = [
+      capability === "t2i" || capability === "t2v" ? aspect : null,
+      capability === "t2v" || capability === "i2v" ? fmt(t.gen.seconds, { n: duration }) : null,
+      capability === "upscale" ? fmt(t.gen.factor, { n: factor }) : null,
+      effectiveTarget ? effectiveTarget.replace(/k$/, "K") : null,
+      effectiveShape,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const modelName = routed
+      ? autoLine
+        ? autoLine.picked
+        : quote.status === "quoting"
+          ? t.gen.router.picking
+          : t.gen.router.auto
+      : pickedOff
+        ? t.modelSwitch.studio.offTitle
+        : (current?.displayName ?? th.modelNone);
+    // The model's facts and Auto, folded with the settings (the bar's model key changes the model).
+    const modelFacts = current ? (
+      <div className="flex flex-col gap-2" data-testid="composer-model-facts">
+        <span className="studio-label">{t.gen.modelLabel}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold text-[var(--color-fg)]">{routed ? modelName : current.displayName}</span>
+          {current.beta && !routed && (
+            <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-xs font-medium text-[var(--color-muted)]">
+              {t.gen.beta}
+            </span>
+          )}
+          {!routed && <TierMarks speed={current.speedTier ?? null} quality={current.qualityTier ?? null} />}
+          {autoOffered && (
+            <button
+              type="button"
+              aria-pressed={routed}
+              aria-label={t.gen.router.autoLabel}
+              title={routed ? t.gen.router.autoOff : t.gen.router.autoLabel}
+              data-testid="gen-auto"
+              onClick={() => {
+                setAuto((a) => !a);
+                edited();
+              }}
+              className="studio-chip tap press font-medium"
+            >
+              {t.gen.router.auto}
+            </button>
+          )}
+        </div>
+        {autoLine?.why && <span className="text-xs text-[var(--color-muted)]">{autoLine.why}</span>}
+      </div>
+    ) : null;
+    const folded = [
+      settings && (
+        <div key="settings" className="flex flex-col gap-2">
+          <span className="studio-label">{th.settings}</span>
+          {settings}
+        </div>
+      ),
+      describeLangBlock,
+      endFrameBlock,
+      qualityBlock,
+      soundBlock,
+      styleBlock,
+      modelFacts,
+      dnaBlock,
+    ].filter(Boolean);
+    const sendLabel = submitting
+      ? t.gen.starting
+      : quote.status === "quoting"
+        ? t.gen.quoting
+        : capability === "describe"
+          ? t.gen.describe
+          : t.gen.generate;
+
+    return (
+      <section className="studio-surface sc-composer" aria-labelledby="gen-title" data-testid="composer" data-capability={capability}>
+        {title}
+        {tabsBlock}
+        {panel(
+          "sc-body",
+          <>
+            {attachment && (
+              <div className="sc-attach" data-testid="composer-attachment">
+                {attachment}
+                {textTool && (
+                  <button type="button" onClick={detach} className="sc-detach tap-icon press" aria-label={th.attachRemove} title={th.attachRemove}>
+                    <X aria-hidden className="size-4" />
+                  </button>
+                )}
+              </div>
+            )}
+            {voiceBlock}
+            {dubLangBlock}
+            {lookBlock}
+            {words !== "none" && (
+              <>
+                <label htmlFor="gen-prompt" className="sr-only">
+                  {isVoice ? t.gen.voiceTextLabel : isAiEdit(capability) ? (t.gen.opWords as Record<string, string>)[capability] : t.gen.promptLabel}
+                  {words === "optional" ? ` · ${t.gen.optional}` : ""}
+                </label>
+                <textarea
+                  id="gen-prompt"
+                  value={prompt}
+                  onChange={(e) => {
+                    setPrompt(e.target.value);
+                    edited();
+                  }}
+                  onKeyDown={(e) => {
+                    // Enter is the send key (the same priced press); Shift+Enter is a new line, and an IME's Enter only picks a word.
+                    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+                    e.preventDefault();
+                    if (!disabled) void generate();
+                  }}
+                  rows={3}
+                  maxLength={wordsMax(capability)}
+                  autoFocus={initial !== null}
+                  placeholder={t.gen.promptPh[capability]}
+                  aria-describedby="gen-status sc-enter-hint"
+                  className="sc-input"
+                />
+              </>
+            )}
+            {takesStyle(capability) && words !== "none" && (
+              <span className="sr-only">{t.gen.mentionHint}</span>
+            )}
+            {settingsOpen && folded.length > 0 && (
+              <div id="gen-settings" className="sc-settings" data-testid="composer-settings">
+                {folded.map((node, i) => (
+                  <Fragment key={i}>{node}</Fragment>
+                ))}
+              </div>
+            )}
+          </>,
+        )}
+        <div className="sc-bar">
+          <div className="sc-bar-start">
+            {attachTool && (
+              <button
+                type="button"
+                className="sc-key tap-icon press"
+                aria-label={th.attach[desk ?? "image"]}
+                title={th.attach[desk ?? "image"]}
+                data-testid="composer-attach"
+                onClick={() => pick(attachTool)}
+              >
+                <Plus aria-hidden className="size-[18px]" />
+              </button>
+            )}
+            <button
+              type="button"
+              ref={changeRef}
+              aria-haspopup="dialog"
+              aria-expanded={sheetOpen}
+              aria-label={fmt(th.modelButton, { name: modelName })}
+              disabled={available.length === 0}
+              onClick={() => setSheetOpen(true)}
+              className="sc-pill tap press"
+              data-testid="composer-model"
+              data-off={pickedOff ? "true" : undefined}
+            >
+              <ToolIcon aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
+              <span className="min-w-0 truncate">{modelName}</span>
+              <ChevronDown aria-hidden className="size-3.5 shrink-0 opacity-70" />
+            </button>
+            {folded.length > 0 && (
+              <button
+                type="button"
+                aria-expanded={settingsOpen}
+                aria-controls="gen-settings"
+                aria-label={settingsOpen ? th.settingsClose : summary ? fmt(th.settingsFor, { summary }) : th.settings}
+                title={th.settings}
+                onClick={() => setSettingsOpen((o) => !o)}
+                className="sc-pill tap press"
+                data-testid="composer-settings-key"
+              >
+                <Settings2 aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
+                {summary && <span className="sc-pill-sub tnum">{summary}</span>}
+              </button>
+            )}
+            {composerExtra}
+          </div>
+          <PriceButton
+            ref={generateRef}
+            disabled={disabled}
+            onClick={generate}
+            aria-busy={submitting || quote.status === "quoting"}
+            aria-describedby="gen-status"
+            aria-label={submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}
+            label={<span className="sc-send-word">{sendLabel}</span>}
+            credits={!submitting && quote.status === "ready" ? quote.credits : null}
+            unit={quote.status === "ready" ? creditUnit(quote.credits, locale, t.shell.creditUnit) : undefined}
+            locale={locale}
+            size="md"
+            className="sc-send"
+            icon={<ArrowUp aria-hidden className="size-4 shrink-0" strokeWidth={2.25} />}
+          />
+        </div>
+        <div className="sc-foot">
+          {status}
+          <span id="sc-enter-hint" className="sc-hint">
+            {th.enterHint}
+          </span>
+        </div>
+        {dialogs}
+      </section>
+    );
+  }
 
   if (desk === "video") {
     // A column beside the monitor: the desk's two ways in, the frames side by

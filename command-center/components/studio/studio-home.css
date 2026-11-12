@@ -1,0 +1,429 @@
+/* ── /create, composer first (components/studio/StudioHome.tsx, GeneratePanel layout="composer")
+   One question, the five kinds as chips, one box to write in, then examples,
+   recent work and the full pages. Theme tokens only (light and dark follow
+   globals.css); motion is added only under prefers-reduced-motion:
+   no-preference. Every key is at least 40 px tall, 44 px where there is no hover. */
+
+.sh {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+}
+
+/* ── the question ─────────────────────────────────────────────────────────── */
+.sh-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  text-align: center;
+  padding-top: 12px;
+}
+.sh-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3.4vw, 40px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--color-fg);
+  text-wrap: balance;
+}
+.sh-lead {
+  margin: 0;
+  max-width: 56ch;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-muted);
+  text-wrap: pretty;
+}
+
+/* ── the five kinds ───────────────────────────────────────────────────────── */
+.sh-modes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: -12px;
+}
+.sh-mode {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel);
+  font-size: var(--ns-t-ui);
+  font-weight: 500;
+  color: var(--color-muted);
+  white-space: nowrap;
+  transition: border-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
+}
+.sh-mode:hover { color: var(--color-fg); border-color: var(--ns-rule-strong); }
+.sh-mode[aria-checked="true"] {
+  color: var(--color-fg);
+  border-color: var(--ns-amber-ink);
+  background: var(--ns-select);
+}
+.sh-mode[aria-checked="true"] svg { color: var(--ns-amber-ink); }
+.sh-mode-live { display: inline-flex; margin-left: 2px; }
+
+/* ── the box ──────────────────────────────────────────────────────────────── */
+.sh-composer {
+  width: 100%;
+  max-width: 860px;
+  margin-inline: auto;
+  min-width: 0;
+}
+.sc-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 10px;
+  border-radius: var(--ns-r-sheet);
+  transition: border-color var(--ns-dur-1) var(--ns-ease), box-shadow var(--ns-dur-1) var(--ns-ease);
+}
+.sc-composer:focus-within {
+  border-color: var(--ns-focus);
+  box-shadow: var(--ns-lift), 0 0 0 1px var(--ns-focus);
+}
+.sc-tools {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.sc-tools::-webkit-scrollbar { display: none; }
+.sc-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: var(--ns-t-small);
+  color: var(--color-muted);
+  white-space: nowrap;
+  transition: background-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease);
+}
+.sc-tool:hover { color: var(--color-fg); background: var(--color-hover); }
+.sc-tool[aria-selected="true"] {
+  color: var(--color-fg);
+  background: var(--studio-field);
+  border-color: var(--color-border);
+}
+.sc-tool[aria-selected="true"] svg { color: var(--ns-amber-ink); }
+.sc-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sc-input {
+  width: 100%;
+  min-height: 84px;
+  max-height: 40dvh;
+  padding: 8px 6px 4px;
+  resize: none;
+  border: 0;
+  background: transparent;
+  /* 16px: iOS zooms the page into any smaller text field. */
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--color-fg);
+  outline: none;
+  field-sizing: content;
+}
+.sc-input::placeholder { color: var(--color-muted); }
+/* The box draws the focus ring (above); the text area must not draw a second one inside it. */
+.sc-input:focus-visible { outline: none; }
+.sc-input:disabled { opacity: 0.7; }
+.sc-attach { position: relative; min-width: 0; }
+.sc-detach {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel);
+  color: var(--color-muted);
+}
+.sc-detach:hover { color: var(--color-fg); border-color: var(--ns-rule-strong); }
+.sc-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 4px 4px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* The bar: [+] · model · settings · plan, and the price key that sends. */
+.sc-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.sc-bar-start {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.sc-key {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  color: var(--color-fg);
+  transition: background-color var(--ns-dur-1) var(--ns-ease), border-color var(--ns-dur-1) var(--ns-ease);
+}
+.sc-key:hover { background: var(--color-hover); border-color: var(--ns-rule-strong); }
+.sc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 260px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  font-size: var(--ns-t-small);
+  font-weight: 500;
+  color: var(--color-fg);
+  white-space: nowrap;
+  transition: background-color var(--ns-dur-1) var(--ns-ease), border-color var(--ns-dur-1) var(--ns-ease);
+}
+.sc-pill:hover:not(:disabled) { background: var(--color-hover); border-color: var(--ns-rule-strong); }
+.sc-pill:disabled { opacity: 0.55; cursor: not-allowed; }
+.sc-pill[aria-pressed="true"],
+.sc-pill[aria-expanded="true"] {
+  border-color: var(--ns-amber-ink);
+  background: var(--ns-select);
+}
+.sc-pill[data-off="true"] { border-color: var(--color-warn); }
+.sc-pill-sub { color: var(--color-muted); font-weight: 400; }
+.sc-send { flex-shrink: 0; width: auto; border-radius: 999px; }
+.sc-send .ns-price-label { padding: 0 14px; gap: 6px; }
+.sc-send .ns-price-tag { padding: 0 14px 0 12px; font-size: 14px; }
+.sc-plan-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 16px 0 14px;
+  border-radius: 999px;
+  font-size: var(--ns-t-ui);
+  font-weight: 600;
+  color: var(--studio-cta-fg);
+  background: var(--studio-cta-bg);
+  transition: filter var(--ns-dur-1) var(--ns-ease);
+}
+.sc-plan-send:hover:not(:disabled) { filter: brightness(1.06); }
+.sc-plan-send:disabled { opacity: 0.5; cursor: not-allowed; }
+.sc-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+  min-width: 0;
+}
+.sc-foot > p { margin: 0; min-width: 0; }
+.sc-hint { flex-shrink: 0; font-size: 12px; color: var(--color-muted); }
+@media (hover: none) {
+  /* A phone has no Enter key in sight: the hint would only take room. */
+  .sc-hint { display: none; }
+}
+.sc-plan { padding-top: 12px; border-top: 1px solid var(--color-border); }
+
+/* ── sections under the box ───────────────────────────────────────────────── */
+.sh-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sh-section:focus { outline: none; }
+.sh-section-head { display: flex; flex-direction: column; gap: 2px; }
+.sh-h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-fg);
+}
+.sh-section-lead { margin: 0; font-size: var(--ns-t-ui); color: var(--color-muted); max-width: 70ch; }
+
+/* The examples: the prompt set in type over its two colours (no stock picture). */
+.sh-examples {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 14px;
+}
+.sh-ex {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  border-radius: 16px;
+  background: transparent;
+}
+.sh-ex:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 3px; }
+.sh-ex-art {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  padding: 14px;
+  border-radius: 14px;
+  background: linear-gradient(140deg, var(--ex-a), var(--ex-b));
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+/* A dark scrim under the words: white text reads on any pair of colours, in either theme. */
+.sh-ex-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgb(7 9 12 / 0.72), rgb(7 9 12 / 0.18) 75%);
+  pointer-events: none;
+}
+.sh-ex-art[data-media="true"]::after { background: linear-gradient(to top, rgb(7 9 12 / 0.35), transparent 50%); }
+.sh-ex-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.sh-ex-quote {
+  position: relative;
+  z-index: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ns-on-film);
+  text-wrap: pretty;
+}
+.sh-ex-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 2px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.sh-ex:hover .sh-ex-meta { color: var(--color-fg); }
+.sh-ex-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  padding: 0 2px;
+  font-size: var(--ns-t-small);
+  color: var(--color-fg);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sh-ex-art { transition: transform var(--ns-dur-2) var(--ns-ease), box-shadow var(--ns-dur-2) var(--ns-ease); }
+  .sh-ex:hover .sh-ex-art { transform: translateY(-2px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1), var(--ns-lift); }
+}
+
+/* Advanced: the full pages, then the credits and the edit projects. */
+.sh-advanced { padding-top: 20px; border-top: 1px solid var(--color-border); }
+.sh-pages {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.sh-page {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: var(--ns-r-key);
+  border: 1px solid var(--color-border);
+  background: var(--color-panel);
+  font-size: var(--ns-t-ui);
+  font-weight: 500;
+  color: var(--color-fg);
+  transition: border-color var(--ns-dur-1) var(--ns-ease);
+}
+.sh-page:hover { border-color: var(--color-primary); }
+.sh-side { display: grid; gap: 16px; }
+@media (min-width: 768px) {
+  .sh-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── a phone: the box is pinned above the tab bar, the page scrolls under it ── */
+@media (max-width: 1023.98px) {
+  .sh { gap: 24px; }
+  .sh-head { align-items: flex-start; text-align: left; padding-top: 0; }
+  .sh-title { font-size: 26px; }
+  .sh-lead { font-size: 14px; }
+  /* One row that scrolls sideways, bleeding to the screen edge. */
+  .sh-modes {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-top: -8px;
+    margin-inline: calc(-1 * clamp(0.75rem, 3vw, 56px));
+    padding-inline: clamp(0.75rem, 3vw, 56px);
+  }
+  .sh-modes::-webkit-scrollbar { display: none; }
+  .sh-mode { min-height: 44px; flex-shrink: 0; }
+  /* Last in the column, sticky at the bottom: it rests above the tab bar while
+     everything else scrolls, and settles into place at the end of the page. */
+  .sh-composer[data-sticky="mobile"] {
+    order: 10;
+    position: sticky;
+    bottom: calc(env(safe-area-inset-bottom) + var(--studio-dock-offset, 60px) + 8px);
+    z-index: 20;
+    max-width: none;
+  }
+  .sh-composer[data-sticky="mobile"] .sc-composer { box-shadow: var(--shadow-elevated, var(--ns-lift)); }
+  .sc-input { min-height: 52px; max-height: 28dvh; }
+  .sc-settings { max-height: 36dvh; overflow-y: auto; }
+  .sc-plan { max-height: 44dvh; overflow-y: auto; }
+  .sc-composer [data-testid="source-well"] img,
+  .sc-attach img { max-height: 22dvh; }
+  .sc-key, .sc-pill, .sc-plan-send { min-height: 44px; }
+  .sc-key { width: 44px; height: 44px; }
+  /* The bar's keys on one row, the price key under them at full width (the composer dock's own convention on a phone). */
+  .sc-bar { flex-wrap: wrap; }
+  .sc-bar-start { flex: 1 1 100%; }
+  .sc-send,
+  .sc-plan-send { flex: 1 1 100%; justify-content: center; }
+  .sc-pill { max-width: none; flex: 0 1 auto; }
+  .sc-pill-sub,
+  .sc-pill-label { display: none; }
+  .sc-pill { padding: 0 11px; }
+  /* The examples: one strip that scrolls sideways. */
+  .sh-examples {
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    grid-auto-columns: minmax(200px, 64%);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * clamp(0.75rem, 3vw, 56px));
+    padding-inline: clamp(0.75rem, 3vw, 56px);
+    padding-bottom: 4px;
+  }
+  .sh-examples::-webkit-scrollbar { display: none; }
+  .sh-examples > li { scroll-snap-align: start; }
+}
