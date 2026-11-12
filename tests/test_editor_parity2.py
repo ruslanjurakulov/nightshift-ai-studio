@@ -110,33 +110,46 @@ class SplitFadesTestCase(unittest.TestCase):
         self.assertEqual(d["tracks"][0]["clips"][0]["fade_in_s"], 0.2)
         self.assertEqual(tl.validate(d), [])
 
-    def test_random_splits_of_faded_clips_at_1x_and_2x_always_validate(self):
+    def test_random_splits_of_faded_clips_at_every_speed_always_validate(self):
+        """Fades, a reversed range, a move and a mask, at every speed 0.1-10, with a clip right after: the halves
+        abut exactly (no 1 ms overlap at 0.25x / 0.5x) and nothing runs into the next clip."""
         import random
         rng = random.Random(675)
         done = 0
-        for _ in range(1500):
-            rng_ = rng.choice([1.0, 2.5, 6.0, 12.0])
-            # Speeds whose source cut lands on the millisecond: at 0.25, 0.5 or 3 split_clip's own rounding can
-            # leave the halves overlapping by 1 ms with no fade at all (on origin/main too; a separate issue).
-            speed = rng.choice([1.0, 2.0])
-            length = rng_ / speed
+        speeds = (0.1, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0)
+        for _ in range(3000):
+            speed = rng.choice(speeds)
+            rng_ = rng.choice([1.0, 2.5, 6.0, 12.0, 30.0])
+            reverse = rng.random() < 0.2
+            if reverse:
+                rng_ = min(rng_, 5.0)
+            length = tl._ms(rng_ / speed)
             clip = {"fade_in_s": round(rng.uniform(0, length / 2), 3), "fade_out_s": round(rng.uniform(0, length / 2), 3),
-                    "speed": speed, "audio": rng.random() < 0.5}
+                    "speed": speed, "audio": rng.random() < 0.5, "reverse": reverse}
             if rng.random() < 0.3:
                 clip["move"] = {"from": {"zoom": 1.5}, "to": {"zoom": 1, "x": 0.2}}
             if rng.random() < 0.3:
                 clip["mask"] = {"shape": "ellipse", "feather": 0.2}
-            d = tl.normalise(vdoc(out_s=rng_, **clip))
+            d = vdoc(out_s=rng_, **clip)
+            d["tracks"][0]["clips"].append({"id": "c9", "asset_id": B, "start_s": tl.clip_end_s(d["tracks"][0]["clips"][0]),
+                                             "in_s": 0, "out_s": 1})
+            d = tl.normalise(d)
             if tl.validate(d):
                 continue
-            at = round(rng.uniform(0.1, length - 0.1), 3)   # pieces of at least a clip (the editor's MIN_CLIP_S)
+            # pieces of at least a clip and one frame (lib/editor.ts minPieceS: max(MIN_CLIP_S, speed / fps) of source)
+            lo = max(0.1 / speed, 1 / d["fps"]) + 0.002
+            if length - lo <= lo:
+                continue
+            at = round(rng.uniform(lo, length - lo), 3)
             try:
                 d2 = tl.split_clip(d, "c1", at, "c2")
             except tl.TimelineError:
                 continue
+            a, b = d2["tracks"][0]["clips"][:2]
+            self.assertEqual(tl.clip_end_s(a), b["start_s"], (clip, at))
             self.assertEqual(tl.validate(d2), [], (clip, at))
             done += 1
-        self.assertGreater(done, 1000)
+        self.assertGreater(done, 2000)
 
 
 class TwinsTestCase(unittest.TestCase):

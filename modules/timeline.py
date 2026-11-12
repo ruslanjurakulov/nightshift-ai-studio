@@ -2236,6 +2236,16 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
                 second.update(id=new_id, start_s=at, in_s=cut, fade_in_s=0.0)
                 clip.update(out_s=cut, fade_out_s=0.0)
             second.pop("transition", None)
+            # The halves abut: the second starts where the first ends, rounded up to the millisecond as
+            # lib/editor.ts layout() places a clip after the one before it (a 1 ms overlap otherwise, at 0.25x).
+            second["start_s"] = _next_start(clip_end_s(clip))
+            # When the two rounded halves come to a millisecond more than the clip did, the second half gives up a
+            # source millisecond or two at its far end rather than run into the clip after it.
+            far = "in_s" if clip.get("reverse") else "out_s"
+            for _ in range(5):
+                if clip.get("freeze") or clip_end_s(second) <= end:
+                    break
+                second[far] = _ms(second[far] + (0.001 if far == "in_s" else -0.001))
             # A piece keeps its side's fade only as long as the piece is (the validator's rule: fade in +
             # fade out within the clip's length; lib/editor.ts splitClip does the same).
             # The way in stays with the first half and the way out with the second (as the fades do).
@@ -2249,6 +2259,11 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
             track["clips"].insert(i + 1, second)
             return out
     raise TimelineError([f"no clip {clip_id!r} in this timeline"])
+
+
+def _next_start(prev_end: float) -> float:
+    """Where a clip that follows one ending at ``prev_end`` starts (lib/editor.ts ``nextStart``)."""
+    return math.ceil(prev_end * 1000 - 1e-6) / 1000
 
 
 def _fit_piece_anims(c: dict) -> None:

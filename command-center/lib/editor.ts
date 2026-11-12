@@ -3162,7 +3162,15 @@ function cutPoint(c: VideoClip, t: number): number {
   return ms(c.reverse ? c.out_s - (t - c.start_s) * c.speed : c.in_s + (t - c.start_s) * c.speed);
 }
 
-/** Can clip `id` be split at timeline time `t` (both halves at least MIN_CLIP_S of source)? */
+/** The shortest piece of SOURCE a split may leave of a clip: MIN_CLIP_S, or one frame of the timeline at the
+ *  clip's speed when that is longer (at 10x a frame at 30 fps is 0.333 s of source; a shorter piece would be
+ *  under one frame, which the validators refuse). */
+export function minPieceS(c: Pick<VideoClip, "speed">, fps: number): number {
+  const speed = c.speed > 0 ? c.speed : 1;
+  return Math.max(MIN_CLIP_S, fps > 0 ? speed / fps : 0);
+}
+
+/** Can clip `id` be split at timeline time `t` (both halves at least `minPieceS` of source)? */
 export function canSplit(model: EditorModel, id: string, t: number): boolean {
   if (model.clips.length >= MAX_EDITOR_CLIPS) return false;
   const c = layout(model.clips).find((x) => x.id === id);
@@ -3171,11 +3179,12 @@ export function canSplit(model: EditorModel, id: string, t: number): boolean {
   // need its own curve): remove the curve first, as the backend asks.
   if (c.speed_curve) return false;
   const cut = cutPoint(c, t);
+  const min = minPieceS(c, model.fps);
   return (
     t > c.start_s &&
     t < clipEnd(c) &&
-    cut - c.in_s >= MIN_CLIP_S &&
-    c.out_s - cut >= MIN_CLIP_S
+    cut - c.in_s >= min - 1e-9 &&
+    c.out_s - cut >= min - 1e-9
   );
 }
 
@@ -3187,10 +3196,38 @@ export function splitClip(
   t: number,
 ): { model: EditorModel; newId: string } | null {
   if (!canSplit(model, id, t)) return null;
+  const c = layout(model.clips).find((x) => x.id === id)!;
+  return splitAt(model, id, t, cutPoint(c, ms(t)));
+}
+
+/**
+ * Split a forward clip at SOURCE time `cut` (the silence cuts are source times: converting them to a timeline
+ * time rounded to the millisecond and back drifts by up to speed x 0.5 ms, which put a piece of exactly
+ * `minPieceS` just under it at 6x). The same pieces and the same rules as {@link splitClip}.
+ */
+export function splitClipAtSource(
+  model: EditorModel,
+  id: string,
+  cut: number,
+): { model: EditorModel; newId: string } | null {
+  if (model.clips.length >= MAX_EDITOR_CLIPS) return null;
+  const c = layout(model.clips).find((x) => x.id === id);
+  if (!c || c.speed_curve || c.reverse || c.freeze) return null;
+  const at = ms(cut);
+  const min = minPieceS(c, model.fps);
+  if (!(at - c.in_s >= min - 1e-9 && c.out_s - at >= min - 1e-9)) return null;
+  return splitAt(model, id, c.start_s + (at - c.in_s) / c.speed, at);
+}
+
+function splitAt(
+  model: EditorModel,
+  id: string,
+  t: number,
+  cut: number,
+): { model: EditorModel; newId: string } {
   const clips = layout(model.clips);
   const i = clips.findIndex((x) => x.id === id);
   const c = clips[i];
-  const cut = cutPoint(c, ms(t));
   const newId = freshId(model, "c");
   // modules/timeline.py split_clip: the first half keeps the way in (its
   // transition and fade in), the second the way out (its fade out).

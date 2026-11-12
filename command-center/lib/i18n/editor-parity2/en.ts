@@ -57,6 +57,7 @@ export const parity2En = {
     apply: { one: "Cut {n} silent part", few: "Cut {n} silent parts", many: "Cut {n} silent parts" },
     applied: { one: "{n} silent part cut ({s} s shorter). Undo brings it back.", few: "{n} silent parts cut ({s} s shorter). Undo brings them back.", many: "{n} silent parts cut ({s} s shorter). Undo brings them back." },
     partial: "{n} of {total} silent parts cut: the picture can hold at most {max} clips.",
+    partialPiece: "{n} of {total} silent parts cut: what would be left of the clip next to the others is shorter than a clip may be.",
     keepTimes: "Only the picture moves up: texts, captions, sounds and overlays stay at their times.",
     cut: "{a} – {b}",
     too_large: "This file is too long or too big to listen to in the browser.",

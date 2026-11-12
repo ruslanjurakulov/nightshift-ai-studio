@@ -18,11 +18,11 @@
 import { readCappedBody, offlineDecoder, MAX_WAVEFORM_BYTES, MAX_WAVEFORM_SECONDS } from "@/lib/waveform";
 import {
   MAX_EDITOR_CLIPS,
-  MIN_CLIP_S,
+  minPieceS,
   layout,
   ms,
   removeClip,
-  splitClip,
+  splitClipAtSource,
   type EditorModel,
   type VideoClip,
 } from "@/lib/editor";
@@ -121,25 +121,27 @@ export function silenceProblem(
  * `SILENCE_KEEP_S` at both ends, merged where what would be left between two is shorter than a clip may
  * be, and stretched to the clip's own end where what would be left there is (no sliver of a clip).
  */
-export function proposeCuts(c: Pick<VideoClip, "in_s" | "out_s">, silences: readonly Span[]): Span[] {
+export function proposeCuts(
+  c: Pick<VideoClip, "in_s" | "out_s"> & Partial<Pick<VideoClip, "speed">>,
+  silences: readonly Span[],
+  fps: number = 0,
+): Span[] {
+  // What may be left between or beside cuts: a clip, and at least one frame at the clip's speed.
+  const piece = minPieceS({ speed: c.speed ?? 1 }, fps);
   const cuts: Span[] = [];
   for (const [s, e] of silences) {
     let a = Math.max(c.in_s, s + (s <= c.in_s ? 0 : SILENCE_KEEP_S));
     let b = Math.min(c.out_s, e - (e >= c.out_s ? 0 : SILENCE_KEEP_S));
-    if (a - c.in_s < MIN_CLIP_S) a = c.in_s;
-    if (c.out_s - b < MIN_CLIP_S) b = c.out_s;
-    if (!(b - a >= MIN_CLIP_S)) continue;
+    if (a - c.in_s < piece) a = c.in_s;
+    if (c.out_s - b < piece) b = c.out_s;
+    // The part cut out is a piece of the clip until it is deleted, so it too must be a clip and one frame long.
+    if (!(b - a >= piece)) continue;
     const last = cuts[cuts.length - 1];
-    if (last && a - last[1] < MIN_CLIP_S) last[1] = ms(b);
+    if (last && a - last[1] < piece) last[1] = ms(b);
     else cuts.push([ms(a), ms(b)]);
   }
   // Cutting the whole clip is not a cut: it would delete the clip.
   return cuts.filter(([a, b]) => !(a <= c.in_s && b >= c.out_s));
-}
-
-/** Where source time `src` of a constant-speed, forward clip plays on the timeline. */
-function timeOf(c: VideoClip, src: number): number {
-  return ms(c.start_s + (src - c.in_s) / c.speed);
 }
 
 /**
@@ -152,24 +154,26 @@ export function applyCuts(
   model: EditorModel,
   id: string,
   cuts: readonly Span[],
-): { model: EditorModel; applied: number } {
+): { model: EditorModel; applied: number; stopped: "full" | "piece" | null } {
   let m: EditorModel = { ...model, clips: layout(model.clips) };
   let applied = 0;
+  // Why it stopped early, when it did: the picture's clip limit, or a piece the rules refuse.
+  const why = (x: EditorModel): "full" | "piece" => (x.clips.length >= MAX_EDITOR_CLIPS ? "full" : "piece");
   for (let i = cuts.length - 1; i >= 0; i -= 1) {
     const c = m.clips.find((x) => x.id === id);
     if (!c) break;
     const [a, b] = cuts[i];
     let next = m;
     let middle = id;
+    // Split at the SOURCE times themselves (no round trip through the timeline's milliseconds).
     if (b < c.out_s - 1e-9) {
-      const r = splitClip(next, id, timeOf(c, b));
-      if (!r) break;
+      const r = splitClipAtSource(next, id, b);
+      if (!r) return { model: m, applied, stopped: why(next) };
       next = r.model;
     }
     if (a > c.in_s + 1e-9) {
-      const left = next.clips.find((x) => x.id === id)!;
-      const r = splitClip(next, id, timeOf(left, a));
-      if (!r) break;
+      const r = splitClipAtSource(next, id, a);
+      if (!r) return { model: m, applied, stopped: why(next) };
       next = r.model;
       middle = r.newId;
     }
@@ -179,7 +183,7 @@ export function applyCuts(
     applied += 1;
     if (middle === id) break; // the head of the clip went: nothing is left of it to the left
   }
-  return { model: m, applied };
+  return { model: m, applied, stopped: null };
 }
 
 /** The cuts (source seconds) as the timeline times the person sees, for the list shown before applying. */
