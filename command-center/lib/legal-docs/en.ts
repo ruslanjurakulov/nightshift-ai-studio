@@ -294,7 +294,7 @@ export const en: LegalTexts = {
         id: "acceptable-use",
         heading: "6. Acceptable use",
         body: [
-          "You must not use the Service to:",
+          "6.1. All use. You must not use the Service to:",
           {
             list: [
               "publish spam, or mass-produced, repetitive or low-value content made mainly to game YouTube’s systems, or anything that violates YouTube’s [spam, deceptive practices and scams policies](https://support.google.com/youtube/answer/2801973);",
@@ -305,6 +305,25 @@ export const en: LegalTexts = {
               "resell or share access to the Service without our written permission.",
             ],
           },
+          // 6.2-6.5 (generated content) are read by the payment providers' reviewers. "The Service does not offer face-swap or
+          // voice-cloning features" is true only while Character Studio (NIGHTSHIFT_CHARACTER_STUDIO, migration 0137) and custom voice
+          // (CUSTOM_VOICE_ENABLED, NIGHTSHIFT_VOICE_CLONING, migration 0117) stay off: switching either on must change this text first.
+          // 6.4 restates 8.3: a refused request is a failed run, and a failed run's whole hold is returned.
+          "6.2. Generated images, video and voice. The Service lets you generate and edit text, images, video, voice and other audio with AI models made by other companies (“model makers”). These rules apply to everything you generate or edit with the Service, whether or not you publish it. You must not use the Service to create, edit or share:",
+          {
+            list: [
+              "sexual or sexually suggestive content of any kind, including nudity, and any content that sexualises or exploits minors;",
+              "a realistic image, video or voice of a real, identifiable person without that person’s explicit consent — including face swaps, deepfakes, voice cloning and voice impersonation;",
+              "content that impersonates a person or an organisation, or that is presented as real footage, a real photograph or a real recording of real events in order to deceive;",
+              "content that infringes copyright, trademarks or other rights, including content made by asking a model to copy a living artist’s protected work;",
+              "content that harasses or threatens anyone, incites hatred, promotes violence, promotes or encourages self-harm or suicide, or is otherwise illegal;",
+              "anything obtained by getting around, or trying to get around, a model’s safety filters — for example by rewording a refused request to hide what it asks for.",
+            ],
+          },
+          "The Service does not offer face-swap or voice-cloning features.",
+          "6.3. Labels and provenance. Some model makers add a visible watermark or label, or provenance metadata, to what their models generate. You must not remove, hide or alter such a watermark or label, or strip or alter that metadata to hide that the content was generated. You must not present generated content as made by a person where the law or the platform you publish on requires you to disclose that it was generated or altered; section 5 also applies.",
+          "6.4. Safety filters. Model makers apply their own safety filters and may refuse a request. A request a model refuses is not charged: as with any run that fails, the whole hold is returned (section 8.3).",
+          "6.5. Reporting abuse. To report content made with the Service that breaks these rules — including content that shows you, or uses your voice, without your consent — write to {contactEmail} and tell us where you found it. We may remove content that breaks these rules and suspend or end the access of the account that made it, as described in section 13.",
         ],
       },
       {

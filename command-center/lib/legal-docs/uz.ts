@@ -287,7 +287,7 @@ export const uz: LegalTexts = {
         id: "acceptable-use",
         heading: "6. Maqbul foydalanish",
         body: [
-          "Xizmatdan quyidagilar uchun foydalanish taqiqlanadi:",
+          "6.1. Har qanday foydalanish. Xizmatdan quyidagilar uchun foydalanish taqiqlanadi:",
           {
             list: [
               "spam yoki asosan YouTube tizimlarini aldash uchun yaratilgan ommaviy, takroriy yoki past qiymatli kontentni, yoxud YouTube’ning [spam, aldov va firibgarlik qoidalari](https://support.google.com/youtube/answer/2801973)ni buzadigan har qanday narsani nashr qilish;",
@@ -298,6 +298,21 @@ export const uz: LegalTexts = {
               "yozma ruxsatimizsiz Xizmatga kirish huquqini qayta sotish yoki boshqalarga berish.",
             ],
           },
+          "6.2. Generatsiya qilingan rasm, video va ovoz. Xizmat boshqa kompaniyalar yaratgan sunʼiy intellekt modellari («model ishlab chiqaruvchilari») yordamida matn, rasm, video, ovoz va boshqa audio yaratish hamda tahrirlash imkonini beradi. Bu qoidalar Xizmatda yaratgan yoki tahrirlagan hamma narsangizga, uni nashr qilasizmi-yoʻqmi, bundan qatʼi nazar, tegishli. Xizmat yordamida quyidagilarni yaratish, tahrirlash yoki tarqatish taqiqlanadi:",
+          {
+            list: [
+              "har qanday turdagi jinsiy yoki jinsiy ishorali kontent, jumladan yalangʻochlik, shuningdek voyaga yetmaganlarni jinsiylashtiradigan yoki ekspluatatsiya qiladigan har qanday kontent;",
+              "real, tanib boʻladigan insonning uning aniq roziligisiz yaratilgan realistik rasmi, videosi yoki ovozi — jumladan yuz almashtirish, dipfeyklar, ovozni klonlash va birovning ovoziga taqlid qilish;",
+              "biror shaxs yoki tashkilot sifatida oʻzini koʻrsatadigan, yoxud aldash maqsadida real voqealarning haqiqiy tasvirga olinishi, haqiqiy surati yoki haqiqiy yozuvi sifatida taqdim etiladigan kontent;",
+              "mualliflik huquqi, tovar belgilari yoki boshqa huquqlarni buzadigan kontent, jumladan modeldan hayot boʻlgan muallifning himoyalangan asarini koʻchirishni soʻrab yaratilgan kontent;",
+              "kimnidir taʼqib qiladigan yoki unga tahdid qiladigan, nafratga undaydigan, zoʻravonlikni targʻib qiladigan, oʻziga zarar yetkazish yoki oʻz joniga qasd qilishni targʻib qiladigan yoxud boshqacha tarzda noqonuniy kontent;",
+              "model xavfsizlik filtrlarini chetlab oʻtib yoki chetlab oʻtishga urinib olingan har qanday narsa — masalan, rad etilgan soʻrovni uning mazmunini yashirish uchun boshqa soʻzlar bilan qayta yozish orqali.",
+            ],
+          },
+          "Xizmat yuz almashtirish yoki ovozni klonlash funksiyalarini taklif qilmaydi.",
+          "6.3. Belgilar va kelib chiqish maʼlumotlari. Baʼzi model ishlab chiqaruvchilari oʻz modellari yaratgan kontentga koʻrinadigan suv belgisi yoki yorliq, yoxud kelib chiqish metamaʼlumotlarini qoʻshadi. Bunday suv belgisi yoki yorliqni olib tashlash, yashirish yoki oʻzgartirish, shuningdek kontent generatsiya qilinganini yashirish uchun bu metamaʼlumotlarni oʻchirish yoki oʻzgartirish taqiqlanadi. Qonun yoki siz nashr qiladigan platforma kontent generatsiya qilingani yoki oʻzgartirilganini bildirishni talab qilgan joyda generatsiya qilingan kontentni inson yaratgan deb koʻrsatish taqiqlanadi; 5-boʻlim ham qoʻllaniladi.",
+          "6.4. Xavfsizlik filtrlari. Model ishlab chiqaruvchilari oʻz xavfsizlik filtrlarini qoʻllaydi va soʻrovni rad etishi mumkin. Model rad etgan soʻrov uchun haq olinmaydi: har qanday muvaffaqiyatsiz ishga tushirishdagidek, band toʻliq qaytariladi (8.3-boʻlim).",
+          "6.5. Qoidabuzarlik haqida xabar berish. Xizmat yordamida yaratilgan va bu qoidalarni buzadigan kontent haqida — jumladan, roziligingizsiz sizni koʻrsatadigan yoki ovozingizdan foydalanadigan kontent haqida — xabar berish uchun {contactEmail} manziliga yozing va uni qayerda topganingizni ayting. Biz bu qoidalarni buzadigan kontentni olib tashlashimiz hamda uni yaratgan akkauntning kirishini 13-boʻlimda aytilganidek toʻxtatib turishimiz yoki tugatishimiz mumkin.",
         ],
       },
       {
