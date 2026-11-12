@@ -32,7 +32,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 describe("the closed set of vendors", () => {
   it("is exactly the ids the page lists, with no database list behind it", () => {
     expect(MODEL_KEY_PROVIDERS.map((p) => p.id).sort()).toEqual([...MODEL_KEY_PROVIDER_IDS].sort());
-    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(19);
+    expect(MODEL_KEY_PROVIDER_IDS).toHaveLength(20);
   });
 
   it("covers every provider of the model registry (but the placeholder), so no model has a vendor without a key page", () => {
@@ -70,6 +70,7 @@ describe("what a verify request is allowed to be", () => {
     luma: "GET https://agents.lumalabs.ai/v1/files?limit=1",
     krea: "GET https://api.krea.ai/jobs?limit=1",
     sonilo: "GET https://api.sonilo.com/v1/account/services",
+    meta: "GET https://api.meta.ai/v1/models",
     alibaba: "GET https://dashscope-intl.aliyuncs.com/api/v1/models?page_size=1",
   };
   const FORMAT_ONLY = ["bytedance", "kling", "lightricks", "pika", "vidu"];
@@ -100,6 +101,7 @@ describe("what a verify request is allowed to be", () => {
       luma: [401, 403],
       krea: [401],
       sonilo: [401],
+      meta: [401],
       alibaba: [401, 403],
     });
   });
@@ -125,6 +127,7 @@ describe("what a verify request is allowed to be", () => {
       luma: 'Authorization:bearer|{}|{"kind":"object"}',
       krea: 'Authorization:bearer|{}|{"kind":"field","name":"items","type":"array"}',
       sonilo: 'Authorization:bearer|{}|{"kind":"field","name":"available_services","type":"array"}',
+      meta: 'Authorization:bearer|{}|{"kind":"field","name":"data","type":"array"}',
       alibaba: 'Authorization:bearer|{}|{"kind":"field","name":"output","type":"object"}',
     });
   });
@@ -257,6 +260,7 @@ describe("key source: which key a run uses", () => {
     expect(by.vidu).toBe("VIDU_API_KEY");
     expect(by.pika).toBe("PIKA_API_KEY");
     expect(by.sonilo).toBe("SONILO_API_KEY");
+    expect(by.meta).toBe("META_API_KEY");
     expect(envNamesText(getModelKeyProvider("bytedance") as ModelKeyProvider)).toBe("SEEDANCE_API_KEY");
   });
 });

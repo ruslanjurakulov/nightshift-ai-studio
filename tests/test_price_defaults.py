@@ -175,6 +175,7 @@ UNPRICED_ON_PURPOSE = {
     "model_seedance_2_5_edit_second": "registry: ByteDance first-party, registry-only (Character Studio sells it through migration 0137's own price table, never credit_prices) and terms-gated (written_consent_required); unpriced until BytePlus authorises resale in writing",
     "model_sonilo_music_second": "registry: Sonilo first-party, registry-only (the database has no music capability yet) and terms-gated (terms_review_required: ToS 4 bars a competing product, 12.2 needs written consent for uses not expressly allowed, and uploads train Sonilo's models with no opt-out) and unpriced; the owner prices it only after Sonilo has answered in writing",
     "model_sonilo_video_music_second": "registry: Sonilo first-party, registry-only (the database has no music capability yet) and terms-gated (terms_review_required: ToS 4 bars a competing product, 12.2 needs written consent for uses not expressly allowed, and uploads train Sonilo's models with no opt-out) and unpriced; the owner prices it only after Sonilo has answered in writing",
+    "model_grounded_image_1_0_image": "registry: Meta Muse Image first-party, terms-gated (terms_review_required: no requester-country signal for the Geographic Use Policy, the 18+ gate first, ToS 7 bars Meta names) and unpriced; not on sale",
     "usd": "pricing a ledger unit changes run settlement (metered vs hold): owner policy",
     "gemini_input_tokens": "ledger unit: owner policy",
     "gemini_output_tokens": "ledger unit: owner policy",
