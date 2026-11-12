@@ -1114,6 +1114,69 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         self.assertEqual(self.up_mounts(), [self.approved[good]], "the seed was replaced before `up`")
         self.assertFalse((self.state / ".caddyfile.seeded").exists())
 
+    def test_a_verified_file_is_kept_only_while_it_still_hashes_to_what_was_verified(self):
+        v1 = self.push("v1")
+        self.assertEqual(self.deploy_caddy(v1).returncode, 0)
+        loaded = self.state / ".caddyfile.loaded"
+        marker = self.state / ".caddyfile.loaded.sha256"
+        # Intact: kept as it is, no seeding.
+        self.docker_log.unlink()
+        self.assertEqual(self.deploy_caddy(v1).returncode, 0)
+        self.assertFalse([l for l in self.docker_calls() if l.startswith("ONEOFF ")])
+        self.assertEqual(self.up_mounts(), [self.approved[v1]])
+        for label, damage, expect in (
+            ("edited", lambda: loaded.write_text(loaded.read_text() + "\n# edited on the server\n"), "that was verified"),
+            ("emptied", lambda: loaded.write_bytes(b""), "is empty"),
+            ("no record", lambda: marker.unlink(), "has no recorded hash"),
+            ("bad record", lambda: marker.write_text("not a hash\n"), "has no recorded hash"),
+        ):
+            with self.subTest(label):
+                damage()
+                damaged = hashlib.sha256(loaded.read_bytes()).hexdigest()
+                v = self.push(f"v-{label}")
+                self.docker_log.unlink()
+                proc = self.deploy_caddy(v)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn(expect, proc.stdout)
+                self.assertIn("replacing it with this commit's pinned Caddyfile", proc.stdout)
+                # Re-seeded with the first-install checks, before `up`; `up` never mounted the damaged bytes.
+                self.assertEqual([l.split()[1] for l in self.docker_calls() if l.startswith("ONEOFF ")], ["validate", "adapt"])
+                self.assertEqual(self.up_mounts(), [self.approved[v]])
+                self.assertNotIn(damaged, self.up_mounts())
+                self.assertEqual(self.mounted(), self.approved[v])
+                self.assertEqual(marker.read_text().strip(), self.approved[v])
+
+    def test_a_damaged_verified_file_with_nothing_to_reseed_from_stops_before_up(self):
+        v1 = self.push("v1")
+        self.assertEqual(self.deploy_caddy(v1).returncode, 0)
+        (self.state / ".caddyfile.loaded").write_text("# tampered\n")
+        self.clear_entry()
+        up = self.tmp / "upstream"
+        self.git(up, "commit", "-q", "-m", "no Caddyfile")
+        sha = self.git(up, "rev-parse", "HEAD")
+        self.docker_log.unlink()
+        proc = self.deploy_caddy(sha, approved="0" * 64)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("has no deploy/Caddyfile to replace it from; stopped before docker compose up", proc.stderr)
+        self.assertEqual(self.up_mounts(), [], "nothing may (re)create Caddy on the tampered file")
+
+    def test_the_environment_cannot_point_the_caddy_mount_elsewhere(self):
+        other = self.tmp / "elsewhere"
+        other.write_text("# not verified\n")
+        bad = hashlib.sha256(other.read_bytes()).hexdigest()
+        # First install (seeding) and a later deploy, both with CADDY_MOUNT in the environment.
+        v1 = self.push("v1")
+        proc = self.deploy_caddy(v1, CADDY_MOUNT=str(other))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        oneoff = [l for l in self.docker_calls() if l.startswith("ONEOFF ")]
+        self.assertTrue(oneoff)
+        self.assertTrue(all(l.split("mount=")[1] == self.approved[v1] for l in oneoff), "the candidate, not the injected file")
+        self.assertEqual(self.up_mounts(), [self.approved[v1]])
+        self.docker_log.unlink()
+        self.assertEqual(self.deploy_caddy(v1, CADDY_MOUNT=str(other)).returncode, 0)
+        self.assertEqual(self.up_mounts(), [self.approved[v1]])
+        self.assertNotIn(bad, self.up_mounts())
+
     def test_a_symlink_or_directory_where_the_mounted_file_lives_is_refused_before_up(self):
         target = self.state / ".caddyfile.loaded"
         for kind in ("symlink", "directory"):
@@ -1216,7 +1279,9 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         self.live.write_text("# running-before\n")
         proc = self.deploy_caddy(sha)
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("previous config is back", proc.stderr)
+        # The running config is restored; with a seed mounted, the message does not claim it is a verified one.
+        self.assertIn("the config Caddy ran before this step is back", proc.stderr)
+        self.assertIn("nothing verified is running yet", proc.stderr)
         self.assertEqual(self.live.read_text().strip(), "# running-before")
         self.assertIn(".caddy-running.json", proc.stdout)
         self.assertFalse((self.state / ".caddyfile.loaded.sha256").exists())
@@ -1409,7 +1474,8 @@ class RemoteDeployRealCaddyTests(_RemoteDeployFixture):
         self.git(self.app, "checkout", "-q", "-B", "main", sha)
         proc = self.deploy_real(sha)
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("previous config is back", proc.stderr)
+        # A seed was mounted (first run of this step): the restored running config is named for what it is.
+        self.assertIn("the config Caddy ran before this step is back", proc.stderr)
         self.assertIn(".caddy-running.json", proc.stdout)
         self.assertEqual(self.xfo("/login", framed=True), ["SAMEORIGIN"])
         self.assertEqual(self.xfo("/login"), ["DENY"])

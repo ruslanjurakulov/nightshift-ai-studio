@@ -122,6 +122,16 @@ worker xato bersa reload bo'lmaydi) yetkaziladi, **restart qilmasdan**:
    tushirilmaydi. Jonli tekshiruv tasdiqlamaguncha fayl "seed" deb belgilanadi
    (`.caddyfile.seeded`): u qaytarish manbai emas va keyingi deploy uni o'z
    commit'iniki bilan almashtiradi. Hech qachon ishchi papkadagi fayldan emas.
+   Mavjud tasdiqlangan fayl ham har deploy'da tekshiriladi: bo'sh bo'lsa yoki
+   uning sha256 qiymati tasdiqlanganda yozilgan `.caddyfile.loaded.sha256`ga mos
+   kelmasa (serverda tahrirlangan, kesilgan, yozuvi yo'q), u xuddi birinchi
+   o'rnatishdagidek commit'ning qulflangan fayli bilan almashtiriladi; commit'da
+   Caddyfile bo'lmasa deploy 6-qadamdan oldin to'xtaydi.
+
+   **#688'dan oldingi commit'ga qaytish** eski ulanishni ham qaytaradi: u
+   commit'ning `docker-compose.yml`i yana checkout'dagi `./Caddyfile`ni ulaydi va
+   yuqorida tuzatilgan muammolar (tekshiruvdan oldin qayta yaratish, rad etilgan
+   faylning reboot'da yuklanishi) o'sha commit bilan qaytadi.
 1. `caddy validate` (konteyner ichida, fayl `main`dagi commit'dan stdin orqali
    beriladi). Konteyner umuman ishlamayotgan bo'lsa (to'xtagan/restart loop)
    alohida xabar chiqadi — fayl ayblanmaydi.
@@ -585,7 +595,9 @@ cd /opt/nightshift/app
 git cat-file blob HEAD:deploy/Caddyfile > /tmp/Caddyfile.verified
 sha256sum /tmp/Caddyfile.verified
 grep '^CADDYFILE_APPROVED_SHA256=' deploy/remote-deploy.sh   # ikkala hash bir xil bo'lsin
-install -m 600 /tmp/Caddyfile.verified /opt/nightshift/.caddyfile.loaded && rm /tmp/Caddyfile.verified
+install -m 600 /tmp/Caddyfile.verified /opt/nightshift/.caddyfile.loaded
+sha256sum /opt/nightshift/.caddyfile.loaded | cut -d' ' -f1 > /opt/nightshift/.caddyfile.loaded.sha256
+chmod 600 /opt/nightshift/.caddyfile.loaded.sha256 && rm /tmp/Caddyfile.verified
 ```
 
 (Avtomatik deploy ishlatilsa bu qadam shart emas: fayl yo'q bo'lsa deploy uni
@@ -823,6 +835,7 @@ buzilgan serverdan emas — backup'ni serverdan **tashqarida** ham saqlang
 
 | Belgisi | Sababi / yechimi |
 |---|---|
+| `dc up`: "bind source path does not exist: /opt/nightshift/.caddyfile.loaded" | Caddy ulaydigan tasdiqlangan Caddyfile hali yo'q (yangi server yoki fayl o'chirilgan). 4-bo'limdagi buyruqlar bilan yozing (`git cat-file blob HEAD:deploy/Caddyfile`, hash'ni `CADDYFILE_APPROVED_SHA256` bilan solishtiring, `install -m 600 …`), yoki **Deploy web**ni ishga tushiring — deploy uni o'zi tekshirib yaratadi |
 | `dc up` "set DOMAIN in the env file" deydi | `.env.web` da `DOMAIN` (yoki boshqa majburiy qiymat) bo'sh |
 | Sayt "NOT CONFIGURED" ko'rsatadi | `NEXT_PUBLIC_SUPABASE_*` bo'sh bo'lgan holda build qilingan. To'ldiring va `dc up -d --build` |
 | Cloudflare 526 | SSL rejimi Full (strict), lekin Caddy hali sertifikat olmagan: proxy'ni vaqtincha DNS only qiling, `dc logs caddy` |

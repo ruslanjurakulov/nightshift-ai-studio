@@ -495,6 +495,15 @@ class CaddyReloadStepTests(unittest.TestCase):
         self.assertIn('CADDY_STATE_DIR="${NIGHTSHIFT_CADDY_STATE_DIR:-$(dirname "$ENV_FILE")}"', self.code)
         self.assertIn('loaded="$dir/.caddyfile.loaded"', self.body("caddy_apply"))
 
+    def test_caddy_mount_is_reset_at_the_top_and_never_read_from_the_environment(self):
+        top = self.code[: self.code.index("\nmain() {")]
+        self.assertRegex(top, r'(?m)^CADDY_MOUNT=""$')
+        self.assertLess(self.code.index('CADDY_MOUNT=""'), self.code.index("compose() {"))
+        self.assertNotIn("${CADDY_MOUNT:-}", self.code.replace("${CADDY_MOUNT:-$CADDY_STATE_DIR", ""))
+        prep = self.body("caddy_prepare_mount")
+        self.assertIn('.caddyfile.loaded.sha256', prep)
+        self.assertIn('[[ ! -s "$loaded" ]]', prep)
+
     def test_compose_is_always_pointed_at_the_verified_file_and_it_is_ready_before_step_6(self):
         self.assertIn('CADDYFILE_LOADED="${CADDY_MOUNT:-$CADDY_STATE_DIR/.caddyfile.loaded}"', self.body("compose"))
         main = self.body("main")

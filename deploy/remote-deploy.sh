@@ -130,6 +130,9 @@ CADDY_VERIFY_SCHEME="${NIGHTSHIFT_CADDY_VERIFY_SCHEME:-https}"
 CADDY_VERIFY_PORT="${NIGHTSHIFT_CADDY_VERIFY_PORT:-443}"
 CADDY_VERIFY_TIMEOUT="${NIGHTSHIFT_CADDY_VERIFY_TIMEOUT:-30}"
 CADDY_RETRY_SLEEP="${NIGHTSHIFT_CADDY_RETRY_SLEEP:-2}"
+# Set only for one `compose run` of caddy_prepare_mount (the candidate it checks); never taken from
+# the environment, so nothing outside this script can point the caddy mount anywhere else.
+CADDY_MOUNT=""
 
 MAX_INPUT_BYTES=262144
 SHA_KEY=NIGHTSHIFT_DEPLOY_SHA
@@ -554,6 +557,10 @@ caddy_rollback() {
   fi
   log "restoring the previous Caddy config (${file##*/})"
   if caddy_reload "$file" "$kind" && caddy_verify "$host" baseline; then
+    if [[ -e "$dir/.caddyfile.seeded" && "$kind" == json ]]; then
+      # A seed is mounted: if step 6 (re)started Caddy (a first install), what it ran before this step IS the seed.
+      die "the config Caddy ran before this step is back and passes the baseline check; if Caddy was (re)started in this deploy (a first install), that is this commit's seeded Caddyfile, which failed the full check above, so nothing verified is running yet. Fix deploy/Caddyfile and deploy again"
+    fi
     die "the previous config is back and passes the baseline check; deploy/Caddyfile was NOT applied. Fix it and deploy again"
   fi
   die "the previous config could not be verified either (see the lines above: is Caddy or the app answering on 127.0.0.1:${CADDY_VERIFY_PORT}?). On the server: dc ps, dc logs --tail 100 caddy"
@@ -620,14 +627,28 @@ caddy_snapshot() {
 #   caddy_prepare_mount <commit>
 caddy_prepare_mount() {
   local sha="$1" dir="$CADDY_STATE_DIR" loaded="$CADDY_STATE_DIR/.caddyfile.loaded" seeded="$CADDY_STATE_DIR/.caddyfile.seeded"
-  local seed rc=0 adapted dropped
+  local marker="$CADDY_STATE_DIR/.caddyfile.loaded.sha256" seed rc=0 adapted dropped recorded="" actual why=""
   if [[ -L "$loaded" ]]; then die "caddy: $loaded is a symlink; refused (Caddy mounts that file). Remove it and deploy again"; fi
   if [[ -e "$loaded" && ! -f "$loaded" ]]; then die "caddy: $loaded is not a regular file; refused (Caddy mounts that file). Remove it and deploy again"; fi
   # A seed that no live check has confirmed yet (.caddyfile.seeded) is replaced by
-  # this commit's, checked the same way; a verified file is kept as it is.
+  # this commit's, checked the same way. A verified file is kept only if it still
+  # IS the verified file: not empty, and its bytes hash to what caddy_apply recorded
+  # when it verified them (.caddyfile.loaded.sha256). Anything else (emptied,
+  # edited, truncated, no record) is replaced by a fresh seed, checked as on a
+  # first install; if this commit has no Caddyfile to seed from, the deploy stops
+  # here, before step 6 could (re)create Caddy on it.
   if [[ -f "$loaded" && ! -e "$seeded" ]]; then
-    log "caddy: Caddy mounts the last verified Caddyfile (${loaded##*/})"
-    return 0
+    if [[ -f "$marker" && ! -L "$marker" ]]; then recorded="$(head -c 64 "$marker")"; fi
+    actual="$(sha256sum "$loaded" | cut -d' ' -f1)"
+    if [[ ! -s "$loaded" ]]; then why="is empty"
+    elif [[ ! "$recorded" =~ ^[0-9a-f]{64}$ ]]; then why="has no recorded hash (.caddyfile.loaded.sha256)"
+    elif [[ "$actual" != "$recorded" ]]; then why="is ${actual:0:12}, not the ${recorded:0:12} that was verified"
+    fi
+    if [[ -z "$why" ]]; then
+      log "caddy: Caddy mounts the last verified Caddyfile (${loaded##*/}, ${actual:0:12})"
+      return 0
+    fi
+    log "caddy: ${loaded##*/} ${why}; replacing it with this commit's pinned Caddyfile, checked as on a first install"
   fi
   seed="$(mktemp "$dir/.caddyfile.XXXXXX")" || die "caddy: cannot create a temporary file in $dir"
   # shellcheck disable=SC2064  # expand $seed now
@@ -636,6 +657,10 @@ caddy_prepare_mount() {
   if (( rc == 3 )); then
     rm -f "$seed"
     trap - EXIT
+    # A file was there but is not the verified one: Caddy must not be (re)started on it.
+    if [[ -n "$why" ]]; then
+      die "caddy: ${loaded##*/} ${why}, and commit ${sha:0:12} has no deploy/Caddyfile to replace it from; stopped before docker compose up so Caddy is not (re)created on it"
+    fi
     log "caddy: no verified Caddyfile here and none in this commit; nothing for Caddy to mount"
     return 0
   fi
