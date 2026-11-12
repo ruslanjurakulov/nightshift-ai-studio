@@ -45,6 +45,6 @@
   ],
   "provider_names": {
     "why": "A model or provider may be named only after a real call through its adapter has succeeded (CLAUDE.md, Definition of Done). Until a human removes a name from this list in the same pull request that announces it, none may appear in a public text.",
-    "names": ["openai", "chatgpt", "gpt", "sora", "veo", "kling", "runway", "luma", "pika", "elevenlabs", "eleven labs", "midjourney", "flux", "seedance", "seedream", "hailuo", "minimax", "gemini", "imagen", "claude", "anthropic", "wan", "higgsfield", "krea", "stable diffusion", "stability ai", "dall-e", "dalle", "whisper", "suno", "udio", "heygen", "synthesia", "pexels", "pixabay"]
+    "names": ["openai", "chatgpt", "gpt", "sora", "veo", "kling", "runway", "luma", "pika", "elevenlabs", "eleven labs", "midjourney", "flux", "seedance", "seedream", "hailuo", "minimax", "gemini", "imagen", "claude", "anthropic", "wan", "higgsfield", "krea", "stable diffusion", "stability ai", "dall-e", "dalle", "whisper", "suno", "udio", "heygen", "synthesia", "pexels", "pixabay", "meta", "muse image"]
   }
 }

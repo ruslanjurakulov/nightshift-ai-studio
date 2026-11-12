@@ -103,6 +103,8 @@ export const BANNED_PROVIDER_NAMES: readonly string[] = [
   "openai", "chatgpt", "gpt", "sora", "veo", "kling", "runway", "luma", "pika", "elevenlabs", "eleven labs", "midjourney", "flux",
   "seedance", "seedream", "hailuo", "minimax", "gemini", "imagen", "claude", "anthropic", "wan", "higgsfield", "krea",
   "stable diffusion", "stability ai", "dall-e", "dalle", "whisper", "suno", "udio", "heygen", "synthesia", "pexels", "pixabay",
+  // Meta Model API ToS 7: no Meta name or mark may be used in connection with the service (registry entry grounded-image-1.0).
+  "meta", "muse image",
 ];
 
 // Python's \b, \w and \s are Unicode-aware; JavaScript's \b and \w are ASCII-only, so a Cyrillic word would never match a `\b…\b`
