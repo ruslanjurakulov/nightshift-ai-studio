@@ -34,7 +34,7 @@ Do these in order. Steps 1 and 2 are one time per deployment; 3-6 are per transc
 
 ### 1. The database must have captions (migration 0072)
 
-Migrations are applied by hand. Captions need `0072_captions.sql` (and the ones it is built on: 0035, 0036, 0038,
+A migration is applied to the live database when it merges to `main` (`docs/MIGRATIONS.md`). Captions need `0072_captions.sql` (and the ones it is built on: 0035, 0036, 0038,
 0050, 0052, 0055, 0060, 0070; 0084 and later keep its lines). Check in the Supabase SQL editor:
 
 ```sql
