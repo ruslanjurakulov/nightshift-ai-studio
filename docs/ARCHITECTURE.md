@@ -58,7 +58,7 @@ database function and stops. A worker carries the request out after the database
 | What a person is offered | `sellable_models()`: beta or ga, verified, a positive `credit_prices` row, no open terms gate | `supabase/migrations/0035_model_registry.sql`, current body in `0125_model_shutdown.sql:93`, `command-center/lib/creative/registry.ts` |
 | Owner's switch | Per-model and per-provider on/off (`model_is_available`) | `0124_model_switch.sql`, `docs/MODEL_SWITCH.md`, flag `NIGHTSHIFT_MODEL_SWITCH` |
 | Shutdown dates | A model past its announced shutdown is not quoted | `0125_model_shutdown.sql` |
-| Operator preview | A platform admin may try a `hidden` model with `"operator_preview": true` in the operator's own credits-exempt organization. No registry entry carries the flag in #694 | `0139_operator_preview.sql` |
+| Operator preview | A platform admin may try a `hidden` model with `"operator_preview": true` in the operator's own credits-exempt organization. Today one registry entry carries it: `grounded-image-1.0` (`schemas/model_registry.json`), whose vendor-terms gate is still set | `0139_operator_preview.sql` |
 | Adapters | One class per vendor API: `submit` (the one paid call) and `poll` | `modules/capabilities/*.py`, `modules/capabilities/base.py` |
 
 The base URLs in `modules/capabilities/*.py` are the makers' own API hosts. The older pipeline has
@@ -117,7 +117,7 @@ A worker renders it with ffmpeg.
 Both validators run the same documents from `samples/timeline_doc_cases.json`, so a change to one that
 the other does not make fails CI. The database function `editor_doc_problem` checks shape, size and
 `asset_id` values: an object with a tracks array of at most 32 tracks, and asset ids that are the
-organization's own live files (`0054_editor_projects.sql:177-189`). Every render field, its limits and
+organization's own live files (`0054_editor_projects.sql:177-209`). Every render field, its limits and
 its default are listed in [editor-render-fields.md](editor-render-fields.md).
 
 Render path: `request_editor_export` → the media worker's export thread (`tools/media_worker.py`) →
@@ -151,7 +151,7 @@ Publishing applies to **pipeline videos** (the `videos` table). Every layer belo
 | Privacy default | `YOUTUBE_PRIVACY` defaults to `private` (`config.py`), and so do the scheduled run and the manual dispatch input (`daily_video.yml`) | `config.py`, `modules/run_request.py` |
 | Early hold | A fact-check that would block the gate stops the run before the voice and the render are paid for | `main.py` (`publish_gate.evaluate_fact_check`, `HeldBeforeRender`) |
 | Publish gate | Runs on every finished video before any upload: QC report (`modules/video_qc.py`), fact-check results, grounding, claims, title. A blocked video is kept on disk with a `videos` row and a `publish.blocked` event | `modules/publish_gate.py`, `main.py` (around "Pre-publish gate") |
-| Auto publish | Two per-channel settings on top of the gate. `agent_config.auto_publish` (a missing key reads as on, `modules/channels.py:353`) decides whether an allowed video uploads now or is held on disk. The `channels.auto_publish` column (0004, `default false`), the Command Center's Auto publish switch, only limits privacy: unless it is exactly true, the run uploads as `private` whatever it asked for (`effective_privacy`, `main.py:780`) | `modules/channels.py`, `main.py` |
+| Auto publish | Two per-channel settings on top of the gate. `agent_config.auto_publish` (a missing key reads as on, `modules/channels.py:353`) decides whether an allowed video uploads now or is held on disk. The `channels.auto_publish` column (0004, `default false`), the Command Center's Auto publish switch, only limits privacy: unless it is exactly true, the run uploads as `private` whatever it asked for (`_effective_privacy`, called at `main.py:780`) | `modules/channels.py`, `main.py` |
 | Two-person rule | A channel with `require_two_person_publish` needs a second admin's approval before a public upload | `modules/publish_approval.py`, migration 0009 |
 | Approval of one cut | `approve_video_publish` records who approved which exact file (sha256), until when (24 h), with what acknowledgement. It does not change privacy | migration 0112 |
 | Publish when approved | A second per-channel switch, off by default, that only a workspace admin can turn on through an audited function. The approval then queues one request, which the queue worker carries out only after asking the database again. The worker switch `NIGHTSHIFT_VISIBILITY_PUBLISH` defaults to `off` (`modules/visibility_publish.py:607`) | migration 0116, `modules/visibility_publish.py`, `docs/APPROVE_PUBLISH_1B.md` |
@@ -245,7 +245,7 @@ Whether the poll returns data on the live channel: **not verified**.
   configured outside the repository (not verified from code). `tests/test_migration_prerequisites.py`
   checks the guards. See [MIGRATIONS.md](MIGRATIONS.md).
 - **Web.** CSP ships report-only by default (`CSP_MODE`, [security/CSP.md](security/CSP.md)). The Paddle
-  webhook verifies the signature on a size-capped body.
+  webhook (sandbox) verifies the signature on a size-capped body.
 
 ## 9. Deploy: what runs where
 
