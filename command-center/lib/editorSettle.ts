@@ -135,13 +135,18 @@ export function settleAll(
   const number = (id: string) => m.clips.findIndex((c) => c.id === id) + 1;
 
   // 0. an entrance or exit longer than half its clip (after a trim or a speed change) is held to half of it, and
-  //    dropped under ANIM_MIN_S (lib/editor.ts fitClipAnims, as a split does)
-  for (const c of [...m.clips]) {
-    const fitted = fitClipAnims(c);
-    if (fitted === c) continue;
-    m = put(m, c.id, fitted);
-    changes.push({ kind: "anim", clip: number(c.id) });
-  }
+  //    dropped under ANIM_MIN_S (lib/editor.ts fitClipAnims, as a split does); again at the end (step 6), since
+  //    step 1 can shorten a backwards clip
+  const fitAnims = () => {
+    for (const c of [...m.clips]) {
+      const fitted = fitClipAnims(c);
+      if (fitted === c) continue;
+      m = put(m, c.id, fitted);
+      if (!changes.some((x) => x.kind === "anim" && x.clip === number(c.id)))
+        changes.push({ kind: "anim", clip: number(c.id) });
+    }
+  };
+  fitAnims();
 
   // 1. a backwards part is shortened to what the frame size lets it hold
   for (const c of [...m.clips]) {
@@ -289,6 +294,9 @@ export function settleAll(
     changes.push({ kind: "shapeRemoved", shape: list.length });
     void gone;
   }
+
+  // 6. what steps 1-5 shortened keeps its animations inside it
+  fitAnims();
 
   return changes.length ? { model: m, changes } : { model, changes: [] };
 }

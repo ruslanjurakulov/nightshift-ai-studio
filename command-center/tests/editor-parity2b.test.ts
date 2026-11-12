@@ -173,6 +173,30 @@ describe("settling a clip's animations after a trim or a speed change", () => {
     expect(validateTimeline(toDoc(tiny))).toEqual([]);
   });
 
+  it("a backwards clip shortened to the reverse cap keeps its animation inside it (the review's case)", () => {
+    const m0 = model({ reverse: true, out_s: 4, anim_in: "zoom", anim_in_s: 2 }, 10);
+    expect(validateTimeline(toDoc(m0))).toEqual([]);
+    const { model: out } = settleAll({ ...m0, width: 3840, height: 2160 }, m0);
+    expect(c0(out).out_s).toBeLessThan(4);
+    expect(c0(out).anim_in_s).toBeLessThanOrEqual(c0(out).out_s / 2);
+    expect(validateTimeline(toDoc(out))).toEqual([]);
+  });
+
+  it("reversed clips with animations settle to a valid document in every frame", () => {
+    let seed = 680;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    const frames: [number, number, number][] = [[1280, 720, 30], [1920, 1080, 30], [1920, 1080, 60], [2560, 1440, 60], [3840, 2160, 30], [3840, 2160, 60], [1080, 1920, 25]];
+    for (let i = 0; i < 120; i += 1) {
+      const range = Math.round((0.3 + rnd() * 5) * 1000) / 1000;
+      const sides = { anim_in: "zoom" as const, anim_in_s: Math.min(2, range / 2), anim_out: "slide-left" as const, anim_out_s: Math.min(2, range / 2) };
+      const m0 = model({ reverse: true, out_s: range, ...sides }, 10);
+      if (validateTimeline(toDoc(m0)).length) continue;
+      const [width, height, fps] = frames[Math.floor(rnd() * frames.length)];
+      const { model: out } = settleAll({ ...m0, width, height, fps }, m0);
+      expect(validateTimeline(toDoc(out)), `case ${i} ${width}x${height}@${fps}`).toEqual([]);
+    }
+  });
+
   it("over the export's time a fade stays: it costs nothing", () => {
     const m0 = model({ fx: { rgb_split: 100 }, anim_in: "fade", anim_in_s: 0.4, anim_out: "zoom", anim_out_s: 0.4 }, 600);
     const { model: out } = settleAll({ ...m0, width: 3840, height: 2160, fps: 60 }, m0);
