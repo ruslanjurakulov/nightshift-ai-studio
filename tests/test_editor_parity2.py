@@ -111,11 +111,14 @@ class SplitFadesTestCase(unittest.TestCase):
         self.assertEqual(tl.validate(d), [])
 
     def test_a_piece_on_a_half_millisecond_takes_the_fade_both_validators_accept(self):
-        """The editor's head piece of 1.69 s at 4x is 0.4225 s: TypeScript's ms() rounds it up and _ms down, so a fade
-        of 0.423 (fitted to the TypeScript length) is refused here. Both now fit the floored exact length, 0.422."""
+        """The editor's head piece of 1.69 s at 4x is 0.4225 s. TypeScript's ms() rounded it up and _ms (round()) down,
+        so a fade of 0.423 fitted to the TypeScript length was refused here; both fit the floored exact length, 0.422.
+        Since the editing core both round half up the same way (``floor(v * 1000 + 0.5)``), so the length is 0.423 on
+        both sides and the 0.423 fade is accepted by both; the floored fit still gives 0.422, which both accept too."""
         piece = {"in_s": 0, "out_s": 1.69, "speed": 4, "fade_in_s": 0.5}
-        self.assertEqual(tl.clip_length_s(piece), 0.422)
-        self.assertTrue(problems(out_s=1.69, speed=4, audio=True, fade_in_s=0.423))
+        self.assertEqual(tl.clip_length_s(piece), 0.423)
+        self.assertEqual(problems(out_s=1.69, speed=4, audio=True, fade_in_s=0.423), [])
+        self.assertTrue(problems(out_s=1.69, speed=4, audio=True, fade_in_s=0.424))
         tl._fit_piece_fades(piece)
         self.assertEqual(piece["fade_in_s"], 0.422)
         self.assertEqual(problems(out_s=1.69, speed=4, audio=True, fade_in_s=piece["fade_in_s"]), [])

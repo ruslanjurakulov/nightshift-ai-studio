@@ -713,7 +713,9 @@ def _ms(v: float) -> float:
     see the same number. ``round(v, 3)`` was not: it rounds the exact binary value half to even, so 0.7745 (stored as
     0.77449999...) gave 0.774 here and 0.775 in the editor, and a rolled clip the editor laid out and saved was refused
     here as an overlap (tests/test_editor_core_fuzz.py holds the editor's edits to this)."""
-    return math.floor(float(v) * 1000 + 0.5) / 1000
+    x = float(v) * 1000 + 0.5
+    # inf and nan pass through as in JavaScript (Math.floor(Infinity) is Infinity); the validators refuse them anyway.
+    return math.floor(x) / 1000 if math.isfinite(x) else x / 1000
 
 
 def _where(track: dict, clip: Optional[dict] = None) -> str:
