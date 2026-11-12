@@ -110,6 +110,27 @@ class SplitFadesTestCase(unittest.TestCase):
         self.assertEqual(d["tracks"][0]["clips"][0]["fade_in_s"], 0.2)
         self.assertEqual(tl.validate(d), [])
 
+    def test_a_piece_on_a_half_millisecond_takes_the_fade_both_validators_accept(self):
+        """The editor's head piece of 1.69 s at 4x is 0.4225 s: TypeScript's ms() rounds it up and _ms down, so a fade
+        of 0.423 (fitted to the TypeScript length) is refused here. Both now fit the floored exact length, 0.422."""
+        piece = {"in_s": 0, "out_s": 1.69, "speed": 4, "fade_in_s": 0.5}
+        self.assertEqual(tl.clip_length_s(piece), 0.422)
+        self.assertTrue(problems(out_s=1.69, speed=4, audio=True, fade_in_s=0.423))
+        tl._fit_piece_fades(piece)
+        self.assertEqual(piece["fade_in_s"], 0.422)
+        self.assertEqual(problems(out_s=1.69, speed=4, audio=True, fade_in_s=piece["fade_in_s"]), [])
+        import math
+        import random
+        rng = random.Random(2026)
+        for _ in range(2000):
+            speed = rng.choice([0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 10])
+            p = {"in_s": 0, "out_s": round(rng.uniform(0.1, 20), 3), "speed": speed,
+                 "fade_in_s": round(rng.uniform(0, 3), 3), "fade_out_s": round(rng.uniform(0, 3), 3)}
+            tl._fit_piece_fades(p)
+            floor = math.floor((p["out_s"] - p["in_s"]) / speed * 1000 + 1e-7) / 1000
+            self.assertLessEqual(p["fade_in_s"] + p["fade_out_s"], floor + 1e-9, p)
+            self.assertLessEqual(p["fade_in_s"] + p["fade_out_s"], tl.clip_length_s(p) + 1e-9, p)
+
     def test_random_splits_of_faded_clips_at_every_speed_always_validate(self):
         """Fades, a reversed range, a move and a mask, at every speed 0.1-10, with a clip right after: the halves
         abut exactly (no 1 ms overlap at 0.25x / 0.5x) and nothing runs into the next clip."""

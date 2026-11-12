@@ -3307,13 +3307,14 @@ function fitPieceAnims(c: VideoClip): void {
 
 /** Shorten a split piece's fades so fade in + fade out fit its length (the in-fade first gives way). */
 function fitPieceFades(c: VideoClip): void {
-  const length = clipLength(c);
-  const fo = Math.min(c.fade_out_s ?? 0, length);
-  const fi = Math.min(c.fade_in_s ?? 0, length - fo);
+  // The cap is the EXACT length floored to the millisecond: a length on a half millisecond (0.4225) rounds up here
+  // (ms) and down in Python (_ms), so a fade fitted to either rounding could be refused by the other validator.
+  const exact = c.speed_curve ? clipLength(c) : (c.out_s - c.in_s) / (c.speed > 0 ? c.speed : 1);
+  const cap = Math.max(0, Math.floor(exact * 1000 + 1e-7) / 1000);
+  const fo = Math.min(c.fade_out_s ?? 0, cap);
+  const fi = Math.max(0, Math.min(c.fade_in_s ?? 0, Math.floor((cap - fo) * 1000 + 1e-7) / 1000));
   if (c.fade_out_s !== undefined) c.fade_out_s = ms(fo);
   if (c.fade_in_s !== undefined) c.fade_in_s = ms(fi);
-  if ((c.fade_in_s ?? 0) + (c.fade_out_s ?? 0) > length + 1e-9 && c.fade_in_s !== undefined)
-    c.fade_in_s = Math.max(0, Math.floor((length - (c.fade_out_s ?? 0)) * 1000) / 1000);
 }
 
 export function setSpeed(

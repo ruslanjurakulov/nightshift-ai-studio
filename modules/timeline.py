@@ -2285,15 +2285,17 @@ def _fit_piece_anims(c: dict) -> None:
 
 def _fit_piece_fades(c: dict) -> None:
     """Shorten a split piece's fades so ``fade_in_s + fade_out_s`` fits its length (the in-fade gives way)."""
-    length = clip_length_s(c)
-    fo = min(float(c.get("fade_out_s", 0) or 0), length)
-    fi = min(float(c.get("fade_in_s", 0) or 0), length - fo)
+    # The cap is the EXACT length floored to the millisecond (lib/editor.ts fitPieceFades): a length on a half
+    # millisecond rounds down here and up in TypeScript, so a fade fitted to either rounding could fail the other.
+    pts = clip_ramp_points(c)
+    exact = speed_ramp.out_length(pts) if pts is not None else (_ms(c["out_s"]) - _ms(c["in_s"])) / clip_speed(c)
+    cap = max(0.0, math.floor(exact * 1000 + 1e-7) / 1000)
+    fo = min(float(c.get("fade_out_s", 0) or 0), cap)
+    fi = max(0.0, min(float(c.get("fade_in_s", 0) or 0), math.floor((cap - fo) * 1000 + 1e-7) / 1000))
     if "fade_out_s" in c:
         c["fade_out_s"] = _ms(fo)
     if "fade_in_s" in c:
         c["fade_in_s"] = _ms(fi)
-        if c["fade_in_s"] + c.get("fade_out_s", 0) > length + 1e-9:
-            c["fade_in_s"] = max(0.0, math.floor((length - c.get("fade_out_s", 0)) * 1000) / 1000)
 
 
 # ── assets ──────────────────────────────────────────────────────────────────

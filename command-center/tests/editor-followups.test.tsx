@@ -31,6 +31,7 @@ import {
   newDocForAsset,
   setSpeed,
   splitClip,
+  splitClipAtSource,
   toDoc,
   toModel,
   validateTimeline,
@@ -124,6 +125,36 @@ describe("every proposed cut is applied, at every speed", () => {
       total += cuts.length;
     }
     expect(total).toBeGreaterThan(1000);
+  });
+
+  it("fades fit the EXACT piece length floored to the millisecond, so Python's rounding accepts them too", () => {
+    // the review's case: 20 s at 4x, 30 fps, faded in 0.5: the head piece is 1.69 s of source, 0.4225 s on the
+    // timeline; ms() rounds that up (0.423) and Python's _ms down (0.422): the fade must be 0.422
+    const m0 = model(4, 20);
+    const m = { ...m0, clips: m0.clips.map((c) => ({ ...c, fade_in_s: 0.5 })) };
+    const c = m.clips[0];
+    const out = applyCuts(m, c.id, proposeCuts(c, [[1.59, 5]], 30));
+    expect(out.model.clips.map((x) => [x.in_s, x.out_s, x.fade_in_s])).toEqual([[0, 1.69, 0.422], [4.9, 20, undefined]]);
+    // a seeded property: every piece's fades fit its exact length floored to the millisecond
+    let seed = 2026;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    let pieces = 0;
+    for (let i = 0; i < 400; i += 1) {
+      const speed = SPEEDS[Math.floor(rnd() * SPEEDS.length)];
+      const base = model(speed, 5 + Math.floor(rnd() * 30));
+      const k = base.clips[0];
+      const faded = { ...base, clips: [{ ...k, fade_in_s: Math.round(rnd() * 2000) / 1000, fade_out_s: Math.round(rnd() * 2000) / 1000 }] };
+      if (validateTimeline(toDoc(faded)).length) continue;
+      const at = Math.round((k.in_s + rnd() * (k.out_s - k.in_s)) * 1000) / 1000;
+      const r = splitClipAtSource(faded, k.id, at);
+      if (!r) continue;
+      for (const p of r.model.clips) {
+        const floor = Math.floor(((p.out_s - p.in_s) / p.speed) * 1000 + 1e-7) / 1000;
+        expect((p.fade_in_s ?? 0) + (p.fade_out_s ?? 0), `case ${i}`).toBeLessThanOrEqual(floor + 1e-9);
+        pieces += 1;
+      }
+    }
+    expect(pieces).toBeGreaterThan(400);
   });
 
   it("says why it stopped: the clip limit, or a piece the rules refuse", () => {
