@@ -489,7 +489,12 @@ def test_seedance_takes_only_an_own_generated_bytedance_clip_of_the_last_thirty_
     become(s, None)
     s.rows("update public.media_assets set created_at = now() - interval '31 days' where id = %s returning 1", [young])
     assert refused(swap(s, o, model=SEEDANCE, video=young, consent_id=c), "NS400", "needs_own_generated_clip")
+    upload = asset(s, o.id, "video", source="pipeline", provenance={"provider": "bytedance"})
+    assert refused(consent(s, o, model=SEEDANCE, video=upload), "NS400", "needs_own_generated_clip"), "a provenance that says so is not enough"
     own = asset(s, o.id, "video", source="generated", provenance={"provider": "bytedance"})
+    # A consent declared for the other model does not cover this one.
+    kling_consent = consent(s, o, model=KLING, video=own).rows[0][0]["id"]
+    assert refused(swap(s, o, model=SEEDANCE, video=own, consent_id=kling_consent), "NS409", "consent_required")
     jid = started(s, o, model=SEEDANCE, video=own)
     assert job(s, jid, "model_id", "charge_credits") == (SEEDANCE, Decimal("27.6"))
     # The quote says so per model, before anything is asked.
@@ -599,6 +604,13 @@ def test_a_confirmed_price_that_is_not_a_number_in_range_is_refused_before_anyth
     before = counts(s)
     assert refused(swap(s, w.org, max_credits=ceiling), "NS409", "price_changed")
     assert counts(s)["character_swap_jobs"] == before["character_swap_jobs"] and counts(s)["holds"] == before["holds"]
+
+
+def test_a_request_without_a_confirmed_price_is_refused(conn, w):
+    s = w.su
+    before = counts(s)
+    assert refused(swap(s, w.org, max_credits=None), "NS409", "price_changed"), "no ceiling is never 'any price'"
+    assert counts(s)["character_swap_jobs"] == before["character_swap_jobs"] and w.org.account() == (100, 0)
 
 
 def test_without_the_hold_available_the_refusal_names_the_hold_and_the_charge(conn, w):
