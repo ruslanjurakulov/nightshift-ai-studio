@@ -9,11 +9,11 @@
 --   0. REFUSES (changes nothing) if a live body is not 0140's (a later change would be undone), or if a render_jobs row that has not
 --      finished carries a `made_for_kids` param (0122's validator would refuse the row on its next UPDATE: a CHECK is evaluated again on
 --      every update, and the worker updates a job it runs).
---   1. Puts render_job_params_valid() back to 0122's body and audit_action_allowed() back to 0117's, byte for byte, and render_jobs_insert
---      back to 0076's policy.
+--   1. Puts render_job_params_valid() back to 0122's body, audit_action_allowed() back to 0117's and approve_video_publish() back to
+--      0116's, byte for byte, and render_jobs_insert back to 0076's policy. Approving then no longer asks for the audience answer.
 --   2. Drops set_video_made_for_kids().
 --
--- WHAT IT KEEPS, on purpose: the four videos columns and their check. They are a record of what each video declared and of who confirmed
+-- WHAT IT KEEPS, on purpose: the six videos columns and their checks. They are a record of what each video declared and of who confirmed
 -- "not made for kids" for a kids video; a rollback does not erase that. Nothing writes the person's columns once the function is gone.
 --
 -- CHECK BEFORE YOU RUN IT: compare the live bodies with this file's (the only differences should be the lines marked 0140):
@@ -29,6 +29,7 @@ do $$
 declare
   v text;
   a text;
+  p text;
 begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into v
     from pg_proc p where p.oid = to_regprocedure('public.render_job_params_valid(jsonb, text)');
@@ -39,6 +40,11 @@ begin
   end if;
   if a is distinct from 'cb71f41c2a8fe645508c757f4c6f3af7' then
     raise exception 'rollback 0140: audit_action_allowed() is not 0140''s body (md5 %): read the live body first', a;
+  end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into p
+    from pg_proc p where p.oid = to_regprocedure('public.approve_video_publish(text, text, jsonb)');
+  if p is distinct from '2bda8e98641addcdb253943f50c2e075' then
+    raise exception 'rollback 0140: approve_video_publish() is not 0140''s body (md5 %): read the live body first', p;
   end if;
   if exists (select 1 from public.render_jobs where params ? 'made_for_kids' and status in ('queued', 'running')) then
     raise exception 'rollback 0140: a queued or running job carries made_for_kids; let it finish (or cancel it) first';
@@ -210,6 +216,117 @@ create or replace function public.audit_action_allowed(p_action text) returns bo
 $$;
 
 revoke all on function public.audit_action_allowed(text) from public, anon, authenticated, service_role;
+
+-- 0116's approve_video_publish, byte for byte (create or replace keeps its grants: authenticated only).
+create or replace function public.approve_video_publish(p_video_id text, p_cut_sha256 text, p_ack jsonb) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  uid    uuid := auth.uid();
+  v      public.videos;
+  access text;
+  why    text;
+  v_exp  timestamptz := now() + interval '24 hours';
+  v_mail text;
+  i      public.review_intents;
+  v_switch boolean;   -- 0116
+  v_req    bigint;    -- 0116
+  v_out    jsonb;     -- 0116
+begin
+  if uid is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  if p_video_id is null or p_video_id !~ '^[A-Za-z0-9_-]{1,64}$' then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  -- The channel, and with it the organization, come from the VIDEO row. A caller who cannot see the video gets the answer a
+  -- missing one gets; a member who is not an administrator, or a platform admin who is not a real member of a customer's
+  -- organization, is refused.
+  access := public.video_approve_access(p_video_id);
+  if access = 'not_found' then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  if access = 'not_member' then
+    raise exception 'forbidden' using errcode = '42501',
+      detail = 'a video is approved by a member of the channel''s organization';
+  end if;
+  if access <> 'ok' then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  if not public.take_web_rate('video_approve', 20, 600) then
+    return jsonb_build_object('ok', false, 'error', 'rate_limited');
+  end if;
+  if p_cut_sha256 is null or p_cut_sha256 !~ '^[0-9a-f]{64}$' then
+    return jsonb_build_object('ok', false, 'error', 'bad_hash');
+  end if;
+  if jsonb_typeof(p_ack) is distinct from 'object' or (p_ack -> 'rights_and_labels') is distinct from 'true'::jsonb then
+    return jsonb_build_object('ok', false, 'error', 'ack_required');
+  end if;
+
+  -- Locked only once the caller is known to be allowed; the decision below is read under the lock.
+  select * into v from public.videos where video_id = p_video_id for update;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+
+  -- Replay: the same cut, approved and not yet expired. Nothing is written twice.
+  if v.review_state = 'approved' and v.approved_cut_sha256 is not distinct from p_cut_sha256
+     and v.cut_sha256 is not distinct from p_cut_sha256 and v.approval_expires_at > now() then
+    return jsonb_build_object('ok', true, 'already', true, 'video_id', v.video_id, 'cut_sha256', p_cut_sha256,
+                              'decided_at', v.decided_at, 'expires_at', v.approval_expires_at);
+  end if;
+
+  why := public.video_approve_refusal(p_video_id, p_cut_sha256);
+  if why is not null then
+    return jsonb_build_object('ok', false, 'error', why);
+  end if;
+  -- Approved with no person behind it: the channel publishes on its own (video_review.record writes 'approved' when
+  -- auto publish is on). There is nothing to record, and a human approval must not be forged over it.
+  if v.review_state = 'approved' and v.approved_cut_sha256 is null then
+    return jsonb_build_object('ok', false, 'error', 'already_approved');
+  end if;
+
+  v_mail := public.my_confirmed_email();
+  update public.videos
+     set review_state = 'approved', approved_cut_sha256 = p_cut_sha256, decided_by = uid, decided_by_email = v_mail,
+         decided_at = now(), approval_expires_at = v_exp
+   where video_id = v.video_id;
+  -- The stuck rows of the old button (filed, never read) are closed; the new approval is the decision of record.
+  update public.review_intents set consumed_at = now(), outcome = 'superseded_by_approval'
+   where video_id = v.video_id and action = 'approve' and consumed_at is null;
+  insert into public.review_intents (channel_id, video_id, action, created_by, approved_cut_sha256, consumed_at, outcome)
+  values (v.channel_id, v.video_id, 'approve', uid, p_cut_sha256, now(), 'recorded')
+  returning * into i;
+  insert into public.app_audit_log (actor_user_id, action, target, detail, channel_id)
+  values (uid, 'video.approve', v.video_id,
+          jsonb_build_object('video_id', v.video_id, 'cut_sha256', p_cut_sha256, 'gate_allowed', true,
+                             'rights_and_labels', true, 'expires_at', v_exp, 'intent_id', i.id),
+          v.channel_id);
+
+  -- 0116: on a channel whose "publish when approved" switch is ON, this approval act is queued for the worker, once (the key is
+  -- the act: video, cut and the decision's own time). With the switch off nothing below runs and the answer is 0112's.
+  select c.publish_on_approve into v_switch from public.channels c where c.channel_id = v.channel_id;
+  if v_switch is true then
+    insert into public.video_visibility_requests
+      (org_id, channel_id, video_id, intent_id, approved_cut_sha256, decided_by, decided_at, expires_at)
+    values (public.channel_org(v.channel_id), v.channel_id, v.video_id, i.id, p_cut_sha256, uid, now(), v_exp)
+    on conflict (video_id, approved_cut_sha256, decided_at) do nothing
+    returning id into v_req;
+    if v_req is not null then
+      insert into public.app_audit_log (actor_user_id, action, target, detail, channel_id)
+      values (uid, 'video.publish_queued', v.video_id,
+              jsonb_build_object('video_id', v.video_id, 'cut_sha256', p_cut_sha256, 'request_id', v_req, 'expires_at', v_exp),
+              v.channel_id);
+    end if;
+  end if;
+  v_out := jsonb_build_object('ok', true, 'already', false, 'video_id', v.video_id, 'cut_sha256', p_cut_sha256,
+                              'decided_at', now(), 'expires_at', v_exp, 'intent_id', i.id);
+  if v_req is not null then
+    v_out := v_out || jsonb_build_object('queued', true, 'request_id', v_req);
+  end if;
+  return v_out;
+end
+$$;
+
 drop function if exists public.set_video_made_for_kids(text, boolean, boolean);
 
 commit;

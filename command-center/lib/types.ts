@@ -82,6 +82,9 @@ export interface VideoRow {
   kids_content?: boolean | null;
   made_for_kids_off_by?: string | null;
   made_for_kids_off_at?: string | null;
+  /** Migration 0140: who answered "is this made for kids?" on the review page, and when. NULL = nobody yet. */
+  made_for_kids_answered_by?: string | null;
+  made_for_kids_answered_at?: string | null;
 }
 
 /** A reviewer's request, waiting for the next run to pick it up. */

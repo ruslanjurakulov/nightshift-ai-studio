@@ -234,6 +234,8 @@ describe("when the key is dead, it says why", () => {
     ["no stored verdict", { gate_verdict: null } as Partial<VideoRow>, { gate: null }, "gate_unknown"],
     ["no preview", { preview_path: null } as Partial<VideoRow>, {}, "no_preview"],
     ["recorded before approvals", { cut_sha256: null } as Partial<VideoRow>, {}, "cut_unknown"],
+    // 0140: nobody has answered "is this made for kids?" yet (the detection alone is not an answer).
+    ["nobody answered who it is for", { made_for_kids: true, kids_content: true, made_for_kids_answered_by: null } as Partial<VideoRow>, {}, "audience_unanswered"],
     ["a viewer or editor", {}, { access: "not_admin" }, "not_admin"],
     ["a platform admin on a customer's channel", {}, { access: "not_member" }, "not_member"],
     ["rejected", { review_state: "rejected" }, {}, "rejected"],

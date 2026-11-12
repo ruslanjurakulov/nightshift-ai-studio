@@ -26,6 +26,7 @@ import { MadeForKidsSwitch, ReviewMadeForKids } from "@/components/review/MadeFo
 import {
   KIDS_LIBRARY_STYLES,
   KIDS_TAGGED_NOT_KIDS_ONLY,
+  audienceUnanswered,
   errorFromRpc,
   isKidsFormat,
   isKidsLook,
@@ -35,6 +36,7 @@ import {
   needsConfirm,
 } from "@/lib/madeForKids";
 import { runHandoffHref, runPrefillFromQuery } from "@/lib/home";
+import { APPROVE_REASONS, approvalState, canPressApprove } from "@/lib/videoApproval";
 import { buildRenderJobInsert } from "@/lib/runBackend";
 import { STYLE_LIBRARY, libraryStyleById } from "@/lib/styles/library";
 
@@ -88,8 +90,14 @@ describe("what is kids content", () => {
   });
 
   it("an unknown is never read as off", () => {
-    expect(madeForKidsView({})).toEqual({ recorded: false, value: null, kids: false, confirmedOff: false });
-    expect(madeForKidsView({ made_for_kids: true, kids_content: true })).toEqual({ recorded: true, value: true, kids: true, confirmedOff: false });
+    expect(madeForKidsView({})).toEqual({ recorded: false, value: null, kids: false, confirmedOff: false, answered: false });
+    expect(madeForKidsView({ made_for_kids: true, kids_content: true })).toEqual({
+      recorded: true,
+      value: true,
+      kids: true,
+      confirmedOff: false,
+      answered: false,
+    });
     expect(madeForKidsView({ made_for_kids: false, kids_content: true, made_for_kids_off_by: "u" }).confirmedOff).toBe(true);
   });
 
@@ -191,54 +199,157 @@ describe("the switch", () => {
   });
 });
 
-describe("the review panel's switch", () => {
-  const VIDEO = { video_id: "Kd5aBc7dEfG", privacy: "private", made_for_kids: true, kids_content: true };
+describe("the review panel's audience question", () => {
+  // As the pipeline leaves a kids video: detected and declared made for kids, nobody's answer yet.
+  const DETECTED = {
+    video_id: "Kd5aBc7dEfG",
+    privacy: "private",
+    made_for_kids: true,
+    kids_content: true,
+    made_for_kids_answered_by: null,
+    made_for_kids_answered_at: null,
+  };
+  const radios = () => screen.getAllByRole("radio") as HTMLButtonElement[];
 
-  it("saves through set_video_made_for_kids, with the confirmation the person gave", async () => {
-    h.rpc.mockResolvedValue({ data: { ok: true, already: false }, error: null });
-    wrap(<ReviewMadeForKids video={VIDEO} access="ok" approvalLive={false} />);
-    fireEvent.click(screen.getByRole("switch"));
+  it("asks the question with two answers and pre-selects neither: the detection is a hint", () => {
+    wrap(<ReviewMadeForKids video={DETECTED} access="ok" approvalLive={false} />);
+    expect(screen.getByRole("radiogroup").getAttribute("aria-required")).toBe("true");
+    expect(screen.getByText(en.question)).toBeTruthy();
+    expect(radios().map((r) => [r.textContent, r.getAttribute("aria-checked")])).toEqual([
+      [en.yes, "false"],
+      [en.no, "false"],
+    ]);
+    expect(screen.getByTestId("made-for-kids-hint").textContent).toContain(en.hintKids);
+    expect(screen.getByTestId("made-for-kids-note").textContent).toBe(en.unanswered);
     expect(h.rpc).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: en.confirmYes }));
+  });
+
+  it("the hint says what the system guessed either way, and nothing when nothing was recorded", () => {
+    wrap(<ReviewMadeForKids video={{ ...DETECTED, made_for_kids: false, kids_content: false }} access="ok" approvalLive={false} />);
+    expect(screen.getByTestId("made-for-kids-hint").textContent).toContain(en.hintNotKids);
+    expect(radios().every((r) => r.getAttribute("aria-checked") === "false")).toBe(true);
+    cleanup();
+    wrap(<ReviewMadeForKids video={{ video_id: "Old0ld0ld01", privacy: "private", made_for_kids_answered_by: null }} access="ok" approvalLive={false} />);
+    expect(screen.getByTestId("made-for-kids-hint").textContent).toContain(en.hintUnknown);
+  });
+
+  it("Yes is recorded at once, through set_video_made_for_kids, even when it agrees with the guess", async () => {
+    h.rpc.mockResolvedValue({ data: { ok: true, already: false }, error: null });
+    wrap(<ReviewMadeForKids video={DETECTED} access="ok" approvalLive={false} />);
+    fireEvent.click(screen.getByRole("radio", { name: en.yes }));
     await waitFor(() => expect(h.rpc).toHaveBeenCalledTimes(1));
-    expect(h.rpc).toHaveBeenCalledWith("set_video_made_for_kids", {
-      p_video_id: "Kd5aBc7dEfG",
-      p_made_for_kids: false,
-      p_confirm_off: true,
-    });
-    await waitFor(() => expect(screen.getByTestId("made-for-kids-message").textContent).toBe(en.saved));
-    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    expect(h.rpc).toHaveBeenCalledWith("set_video_made_for_kids", { p_video_id: "Kd5aBc7dEfG", p_made_for_kids: true, p_confirm_off: false });
+    await waitFor(() => expect(screen.getByRole("radio", { name: en.yes }).getAttribute("aria-checked")).toBe("true"));
+    expect(screen.getByRole("radio", { name: en.no }).getAttribute("aria-checked")).toBe("false");
     expect(h.refresh).toHaveBeenCalled();
   });
 
-  it("a refusal is said in words and the switch stays as it was", async () => {
+  it("No on what the system takes for kids content asks first; going back records nothing", async () => {
+    h.rpc.mockResolvedValue({ data: { ok: true, already: false }, error: null });
+    wrap(<ReviewMadeForKids video={DETECTED} access="ok" approvalLive={false} />);
+    fireEvent.click(screen.getByRole("radio", { name: en.no }));
+    expect(h.rpc).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog").textContent).toContain(en.confirmTitle);
+    const back = screen.getByRole("button", { name: en.confirmBack });
+    expect(document.activeElement).toBe(back);
+    fireEvent.click(back);
+    expect(h.rpc).not.toHaveBeenCalled();
+    expect(radios().every((r) => r.getAttribute("aria-checked") === "false")).toBe(true);
+    fireEvent.click(screen.getByRole("radio", { name: en.no }));
+    fireEvent.click(screen.getByRole("button", { name: en.confirmYes }));
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledTimes(1));
+    expect(h.rpc).toHaveBeenCalledWith("set_video_made_for_kids", { p_video_id: "Kd5aBc7dEfG", p_made_for_kids: false, p_confirm_off: true });
+    await waitFor(() => expect(screen.getByRole("radio", { name: en.no }).getAttribute("aria-checked")).toBe("true"));
+  });
+
+  it("No on a video the system does not take for kids content is recorded at once", async () => {
+    h.rpc.mockResolvedValue({ data: { ok: true, already: false }, error: null });
+    wrap(<ReviewMadeForKids video={{ ...DETECTED, made_for_kids: false, kids_content: false }} access="ok" approvalLive={false} />);
+    fireEvent.click(screen.getByRole("radio", { name: en.no }));
+    await waitFor(() => expect(h.rpc).toHaveBeenCalledWith("set_video_made_for_kids", {
+      p_video_id: "Kd5aBc7dEfG",
+      p_made_for_kids: false,
+      p_confirm_off: false,
+    }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("a person's earlier answer is shown as chosen, with its date", () => {
+    wrap(
+      <ReviewMadeForKids
+        video={{ ...DETECTED, made_for_kids_answered_by: "u-1", made_for_kids_answered_at: "2026-11-12T10:00:00Z" }}
+        access="ok"
+        approvalLive={false}
+      />,
+    );
+    expect(screen.getByRole("radio", { name: en.yes }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("made-for-kids-note").textContent).toBe(dictionaries.en.madeForKids.answeredOn.replace("{when}", "2026-11-12"));
+  });
+
+  it("a refusal is said in words and nothing is chosen", async () => {
     h.rpc.mockResolvedValue({ data: { ok: false, error: "rate_limited" }, error: null });
-    wrap(<ReviewMadeForKids video={{ ...VIDEO, kids_content: false }} access="ok" approvalLive={false} />);
-    fireEvent.click(screen.getByRole("switch"));
+    wrap(<ReviewMadeForKids video={DETECTED} access="ok" approvalLive={false} />);
+    fireEvent.click(screen.getByRole("radio", { name: en.yes }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(en.errors.rate_limited));
-    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("true");
+    expect(radios().every((r) => r.getAttribute("aria-checked") === "false")).toBe(true);
   });
 
   it("a public video, a live approval and a non-administrator are locked, and say why", () => {
     for (const [video, access, live, why] of [
-      [{ ...VIDEO, privacy: "public" }, "ok", false, en.blockers.already_public],
-      [VIDEO, "ok", true, en.blockers.approval_live],
-      [VIDEO, "not_admin", false, en.blockers.not_admin],
+      [{ ...DETECTED, privacy: "public" }, "ok", false, en.blockers.already_public],
+      [DETECTED, "ok", true, en.blockers.approval_live],
+      [DETECTED, "not_admin", false, en.blockers.not_admin],
     ] as const) {
       wrap(<ReviewMadeForKids video={video} access={access} approvalLive={live} />);
-      const button = screen.getByRole("switch") as HTMLButtonElement;
-      expect(button.disabled).toBe(true);
+      for (const r of radios()) expect(r.disabled).toBe(true);
       expect(screen.getByTestId("made-for-kids-note").textContent).toBe(why);
-      fireEvent.click(button);
+      fireEvent.click(radios()[0]);
       expect(h.rpc).not.toHaveBeenCalled();
       cleanup();
     }
   });
 
-  it("a video uploaded before 0140 says nothing was recorded", () => {
-    wrap(<ReviewMadeForKids video={{ video_id: "Old0ld0ld01", privacy: "private" }} access="ok" approvalLive={false} />);
-    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("mixed");
-    expect(screen.getByTestId("made-for-kids-note").textContent).toBe(en.notRecorded);
+  it("speaks Uzbek with the right letters", () => {
+    wrap(<ReviewMadeForKids video={DETECTED} access="ok" approvalLive={false} />, "uz");
+    expect(screen.getByText("Bu video bolalar uchun moʻljallanganmi? (YouTube talabi)")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Ha" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Yoʻq" })).toBeTruthy();
+    expect(screen.getByTestId("made-for-kids-hint").textContent).toContain("Tizim taxmini: bolalar uchun");
+  });
+});
+
+describe("approving waits for the answer", () => {
+  const ROW = {
+    review_state: "pending",
+    privacy: "private",
+    publish_state: "uploaded",
+    published_at: "2026-10-19T10:00:00Z",
+    preview_path: "c/x.mp4",
+    cut_sha256: "c0ffee".repeat(10) + "abcd",
+    gate_verdict: { allowed: true, blocks: [], warnings: [], checks_run: [] },
+  };
+
+  it("an unanswered video cannot be approved; an answer, either answer, opens it", () => {
+    const now = { autoPublish: false, access: "ok" as const, nowMs: Date.parse("2026-11-12T10:00:00Z") };
+    const unanswered = approvalState({ ...ROW, made_for_kids_answered_by: null }, now);
+    expect(unanswered.blocker).toBe("audience_unanswered");
+    expect(canPressApprove(unanswered)).toBe(false);
+    for (const answered of [{ made_for_kids: true }, { made_for_kids: false }]) {
+      const s = approvalState({ ...ROW, ...answered, made_for_kids_answered_by: "u-1" }, now);
+      expect(s.blocker).toBeNull();
+      expect(canPressApprove(s)).toBe(true);
+    }
+    // A database before 0140 has no such column and does not ask: nothing to wait for there.
+    expect(approvalState(ROW, now).blocker).toBeNull();
+    expect(audienceUnanswered({})).toBe(false);
+  });
+
+  it("the database's refusal and the blocker are said in all three languages", () => {
+    expect(APPROVE_REASONS).toContain("audience_unanswered");
+    for (const loc of ["en", "ru", "uz"] as const) {
+      expect(dictionaries[loc].review.blocker.audience_unanswered.length).toBeGreaterThan(20);
+      expect(dictionaries[loc].review.reasons.audience_unanswered.length).toBeGreaterThan(20);
+    }
   });
 });
 

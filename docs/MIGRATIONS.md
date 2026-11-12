@@ -562,13 +562,21 @@ declared "not made for kids" breaks YouTube's policy and COPPA. The pipeline now
 `made_for_kids`, a series whose format names kids, a channel DNA look of the Style Library that is made for children only (an explicit list, not the `kids` browsing tag), or the channel's
 `agent_config.made_for_kids`, which needs no migration); this file gives that decision a record and a person a way to change it.
 
-- **Adds** four nullable columns on `videos`: `made_for_kids`, `kids_content` (the pipeline's), `made_for_kids_off_by` and
+- **Adds** six nullable columns on `videos`: `made_for_kids`, `kids_content` (the pipeline's), `made_for_kids_off_by` and
   `made_for_kids_off_at` (who confirmed "not made for kids" for kids content, and when), with `videos_made_for_kids_confirmed_check`:
   kids content is declared not for kids only with a confirmation, and a confirmation exists only for that, for every writer.
+- **The audience is a person's answer** (the owner's decision on PR #699). `made_for_kids_answered_by` / `_at` record who answered
+  "is this video made for kids?" on the review page, and when; the pipeline's detection is shown there as a hint only, never as a
+  chosen answer. `approve_video_publish` (0116's body plus one block) refuses `audience_unanswered` until a person has answered, so
+  nothing is approved, or queued to go public, on the detection alone. The private upload still carries the detection (the field is
+  set at insert); the publish-when-approved write sends the answer, correcting YouTube when the two differ, and refuses a video with
+  no answer. A run with auto publish on uploads private until then (`made_for_kids.privacy_until_answered`, and the publish gate's
+  `audience_unanswered` block as the backstop). A new cut clears the answer.
 - **Adds** `set_video_made_for_kids(p_video_id, p_made_for_kids, p_confirm_off)` (signed-in users only; the approver's rule of 0112;
   rate limited; refuses `already_public`, `approval_live`, `confirm_required`; audited as `video.made_for_kids`).
 - **Replaces** `render_job_params_valid` (0122's body plus `made_for_kids`, true only, never on a repair), `audit_action_allowed`
-  (0117's plus `video.made_for_kids`) and the `render_jobs_insert` policy (0076's plus the key), each its predecessor plus marked lines.
+  (0117's plus `video.made_for_kids`), `approve_video_publish` (0116's plus the answer check) and the `render_jobs_insert` policy
+  (0076's plus the key), each its predecessor plus marked lines.
 - **Where the declaration goes.** The pipeline's upload and its Short (`modules/youtube_uploader.py`), a cross-post to another channel
   (`modules/social_publish.py`, refused as `made_for_kids_unconfirmed`), and the publish-when-approved write (`modules/visibility_publish.py`,
   which sends the recorded value instead of the one read back). The publish gate blocks `made_for_kids_unconfirmed` on every channel,

@@ -98,10 +98,11 @@ def put_back_0122(session) -> None:
 
 MIGRATION_0140 = MIGRATIONS / "0140_made_for_kids.sql"
 ROLLBACK_0140 = REPO / "docs" / "sql" / "rollback_0140_made_for_kids.sql"
-#: The bodies 0140 replaces, as 0122 and 0117 left them: 0140 goes back on only on top of both (tests/test_made_for_kids_migration.py
+#: The bodies 0140 replaces, as 0122, 0117 and 0116 left them: 0140 goes back on only on top of all three (tests/test_made_for_kids_migration.py
 #: pins the same two hashes in the file's drift guard).
 _BEFORE_0140 = {"public.render_job_params_valid(jsonb, text)": "a9367e46ea79e8d57ce1c876333b5508",
-                "public.audit_action_allowed(text)": "d622e052a695fef125d3b2b621cdda27"}
+                "public.audit_action_allowed(text)": "d622e052a695fef125d3b2b621cdda27",
+                "public.approve_video_publish(text, text, jsonb)": "0e9a1608120a5fb7b48eab1c6cb08ee0"}
 
 
 def _live_md5(session, signature: str):
@@ -111,7 +112,7 @@ def _live_md5(session, signature: str):
 
 
 def take_off_0140(session) -> None:
-    """0140 replaces render_job_params_valid() on 0122's body, audit_action_allowed() on 0117's and 0076's render_jobs_insert policy, and
+    """0140 replaces render_job_params_valid() on 0122's body, audit_action_allowed() on 0117's, approve_video_publish() on 0116's and 0076's render_jobs_insert policy, and
     adds set_video_made_for_kids(); 0122, 0117 and their rollbacks refuse any other body. Taken off with its own rollback when it is there
     (the columns stay, as the rollback keeps them); put back with put_back_0140."""
     if session.conn.execute("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean)') is not null").fetchone()[0]:

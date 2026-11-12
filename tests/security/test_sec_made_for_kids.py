@@ -1,6 +1,8 @@
 """Migration 0140: a video's YouTube "made for kids" declaration, attacked in a real database.
 
 What would break without these:
+  * a video approved (and so queued to go public) on the pipeline's detection alone, with nobody's answer to "is this made for
+    kids?"; an answer that agrees with the detection not being recorded as an answer; an answer without who or when;
 
   * kids content recorded as "not made for kids" with nobody's confirmation (by the function, or by any writer: the column check);
   * a member who is not an administrator (editor, viewer), another organization's member, anon or the service key changes the
@@ -21,7 +23,7 @@ from contextlib import contextmanager
 
 import sec_db
 from sec_db import ANON, SERVICE, acting as _acting, as_superuser
-from test_sec_approve_video import member, uploaded
+from test_sec_approve_video import approve, member, uploaded
 
 SET = "select public.set_video_made_for_kids(%s, %s, %s)"
 VID = "Kd5aBc7dEfG"
@@ -39,14 +41,21 @@ def acting(conn, who):
 
 
 def kids_video(su, channel, vid=VID, **over):
+    """A kids video as the pipeline leaves it: detected kids content, declared made for kids, and nobody's answer yet."""
     uploaded(su, channel, vid, cut_sha256=CUT, **over)
-    su.rows("update public.videos set made_for_kids = true, kids_content = true where video_id = %s returning 1", [vid])
+    su.rows("update public.videos set made_for_kids = true, kids_content = true, made_for_kids_answered_by = null, "
+            "made_for_kids_answered_at = null where video_id = %s returning 1", [vid])
     return vid
 
 
 def record(su, vid=VID):
     return su.rows("select made_for_kids, kids_content, made_for_kids_off_by, made_for_kids_off_at is not null "
                    "from public.videos where video_id = %s", [vid])[0]
+
+
+def answered(su, vid=VID):
+    by, at = su.rows("select made_for_kids_answered_by, made_for_kids_answered_at from public.videos where video_id = %s", [vid])[0]
+    return (str(by) if by else None), at is not None
 
 
 def audits(su, vid=VID):
@@ -75,9 +84,11 @@ def test_kids_content_is_never_declared_not_for_kids_without_the_words(conn, sc)
         assert out["ok"] is True and out["confirmed_off"] is True and out["kids_content"] is True
         made, kids, by, at = record(su)
         assert (made, kids, str(by), at) == (False, True, bob.actor.uid, True)
+        assert answered(su) == (bob.actor.uid, True)
         [(actor, detail)] = audits(su)
         assert str(actor) == bob.actor.uid
-        assert detail == {"video_id": VID, "made_for_kids": False, "was": True, "kids_content": True, "confirmed_off": True}
+        assert detail == {"video_id": VID, "made_for_kids": False, "was": True, "kids_content": True, "confirmed_off": True,
+                          "answer": True, "answered_before": False}
         # Back on: the confirmation goes with it, and one more audit row.
         with acting(conn, bob.actor) as s:
             again = answer(s.run(SET, [VID, True, False]))
@@ -95,6 +106,62 @@ def test_a_video_that_is_not_kids_content_is_switched_freely_and_a_replay_writes
             assert answer(s.run(SET, [VID, True, False]))["already"] is True
             assert answer(s.run(SET, [VID, False, False]))["ok"] is True
         assert record(su) == (False, False, None, False) and len(audits(su)) == 2
+        assert answered(su) == (bob.actor.uid, True)
+
+
+# ── the audience question: a person's answer, before approving ──────────────
+
+def test_a_video_nobody_has_answered_for_cannot_be_approved_and_one_answer_opens_it(conn, sc):
+    bob = sc.bob
+    with as_superuser(conn, commit=False) as su:
+        kids_video(su, bob.channel)
+        with acting(conn, bob.actor) as s:
+            refused = answer(approve(s, VID, CUT))
+        assert refused == {"ok": False, "error": "audience_unanswered"}
+        assert su.value("select review_state from public.videos where video_id = %s", [VID]) == "pending"
+        assert su.value("select count(*) from public.app_audit_log where action = 'video.approve' and target = %s", [VID]) == 0
+        with acting(conn, bob.actor) as s:
+            answer(s.run(SET, [VID, True, False]))
+            ok = answer(approve(s, VID, CUT))
+        assert ok["ok"] is True, ok
+
+
+def test_agreeing_with_the_detection_is_an_answer_and_is_recorded(conn, sc):
+    bob = sc.bob
+    with as_superuser(conn, commit=False) as su:
+        kids_video(su, bob.channel)                     # detected: made for kids, value true
+        assert answered(su) == (None, False)
+        with acting(conn, bob.actor) as s:
+            out = answer(s.run(SET, [VID, True, False]))
+        assert out["already"] is False, "the detection is not an answer: saying yes to it is one"
+        assert answered(su) == (bob.actor.uid, True) and record(su) == (True, True, None, False)
+        [(_, detail)] = audits(su)
+        assert detail["answer"] is True and detail["answered_before"] is False and detail["made_for_kids"] is True
+
+
+def test_each_answer_is_recorded_with_who_and_when_and_no_needs_the_words_on_kids_content(conn, sc):
+    bob = sc.bob
+    for value, confirm, want in ((True, False, (True, True, None, False)), (False, True, (False, True, bob.actor.uid, True))):
+        with as_superuser(conn, commit=False) as su:
+            kids_video(su, bob.channel)
+            with acting(conn, bob.actor) as s:
+                if value is False:
+                    assert answer(s.run(SET, [VID, False, False]))["error"] == "confirm_required"
+                    assert answered(su) == (None, False), "a refused 'no' is not an answer"
+                assert answer(s.run(SET, [VID, value, confirm]))["ok"] is True
+            made, kids, by, at = record(su)
+            assert (made, kids, str(by) if by else None, at) == want
+            assert answered(su) == (bob.actor.uid, True)
+
+
+def test_an_answer_is_who_when_and_what_or_nothing(conn, sc):
+    for patch in ("made_for_kids_answered_by = gen_random_uuid()",                      # who, not when
+                  "made_for_kids_answered_at = now()",                                    # when, not who
+                  "made_for_kids_answered_by = gen_random_uuid(), made_for_kids_answered_at = now(), made_for_kids = null"):
+        with as_superuser(conn, commit=False) as su:
+            kids_video(su, sc.bob.channel)
+            out = su.run(f"update public.videos set {patch} where video_id = %s", [VID])
+            assert not out.ok and out.sqlstate == "23514", (patch, out)
 
 
 def test_no_writer_can_store_kids_content_as_not_for_kids_unconfirmed(conn, sc):
@@ -229,7 +296,8 @@ def test_the_rollback_restores_what_0140_replaced_and_the_migration_applies_agai
 
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {sig: b.execute("select pg_get_functiondef(%s::regprocedure)", [sig]).fetchone()[0]
-                    for sig in ("public.render_job_params_valid(jsonb, text)", "public.audit_action_allowed(text)")}
+                    for sig in ("public.render_job_params_valid(jsonb, text)", "public.audit_action_allowed(text)",
+                                "public.approve_video_publish(text, text, jsonb)")}
             policy = b.execute("select cmd, qual, with_check from pg_policies where tablename = 'render_jobs' "
                                "and policyname = 'render_jobs_insert'").fetchone()
     finally:
@@ -244,6 +312,6 @@ def test_the_rollback_restores_what_0140_replaced_and_the_migration_applies_agai
         assert su.value("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean)')") is None
         # The record stays: what each video declared and who confirmed it.
         assert su.value("select count(*) from information_schema.columns where table_name = 'videos' "
-                        "and column_name like 'made_for_kids%'") == 3
+                        "and column_name like 'made_for_kids%'") == 5
         sec_db.put_back_0140(su)
         assert snapshot(su) == after

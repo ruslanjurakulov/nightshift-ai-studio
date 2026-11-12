@@ -45,6 +45,8 @@ export interface MadeForKidsFields {
   kids_content?: boolean | null;
   made_for_kids_off_by?: string | null;
   made_for_kids_off_at?: string | null;
+  made_for_kids_answered_by?: string | null;
+  made_for_kids_answered_at?: string | null;
 }
 
 export interface MadeForKidsView {
@@ -56,12 +58,29 @@ export interface MadeForKidsView {
   kids: boolean;
   /** A person confirmed "not made for kids" for kids content. */
   confirmedOff: boolean;
+  /** A person answered "is this made for kids?". Until then `value` is the pipeline's detection: a hint, never an answer. */
+  answered: boolean;
 }
 
 export function madeForKidsView(v: MadeForKidsFields | null | undefined): MadeForKidsView {
   const value = typeof v?.made_for_kids === "boolean" ? v.made_for_kids : null;
   const kids = v?.kids_content === true;
-  return { recorded: value !== null, value, kids, confirmedOff: kids && value === false && !!v?.made_for_kids_off_by };
+  return {
+    recorded: value !== null,
+    value,
+    kids,
+    confirmedOff: kids && value === false && !!v?.made_for_kids_off_by,
+    answered: !!v?.made_for_kids_answered_by,
+  };
+}
+
+/**
+ * The video's row carries 0140's answer column and nobody has answered (the owner's decision on PR #699: who a video is for is a
+ * person's explicit choice, asked before approving, as YouTube Studio asks before publishing). A row without the column (a
+ * database before 0140) asks nothing: approve_video_publish there does not ask either.
+ */
+export function audienceUnanswered(v: MadeForKidsFields | null | undefined): boolean {
+  return !!v && "made_for_kids_answered_by" in v && !v.made_for_kids_answered_by;
 }
 
 /** Turning the switch to `next` needs the "not made for kids" confirmation: kids content going off. */

@@ -67,6 +67,13 @@ def uploaded(su, channel, vid=VID, **over):
     row = {"video_id": vid, "channel_id": channel, "title": "Up", "slug": f"sl-{vid}", "review_state": "pending",
            "publish_state": "uploaded", "published_at": "2026-10-01T10:00:00Z", "privacy": "private",
            "preview_path": f"{channel}/{vid}.mp4", "cut_sha256": CUT, "gate_verdict": json.dumps(ALLOWED)}
+    # 0140: approving needs a person's answer to "is this made for kids?". A video here has one (a stand-in person, answered
+    # "no"), so these tests keep testing what they test; test_sec_made_for_kids.py proves the refusal without one. Only where the
+    # columns exist: a base database built without 0140 has none.
+    if su.value("select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'videos' "
+                "and column_name = 'made_for_kids_answered_by'"):
+        row = {"made_for_kids": False, "kids_content": False, "made_for_kids_answered_by": str(uuid.uuid4()),
+               "made_for_kids_answered_at": "2026-10-01T10:05:00Z", **row}
     row.update(over)
     cols = ", ".join(row)
     marks = ", ".join("%s::jsonb" if k == "gate_verdict" else "%s" for k in row)

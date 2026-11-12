@@ -1,4 +1,5 @@
 import { isHeldVideo } from "@/lib/heldVideos";
+import { audienceUnanswered } from "@/lib/madeForKids";
 
 /**
  * "Approve" on the review panel (migration 0112, approve_video_publish).
@@ -29,6 +30,8 @@ export const APPROVE_REASONS = [
   "no_preview",
   "cut_unknown",
   "cut_changed",
+  // 0140: nobody has answered who the video is for (lib/madeForKids.ts).
+  "audience_unanswered",
   "forbidden",
   "not_found",
 ] as const;
@@ -51,6 +54,8 @@ export interface ApprovalFields {
   decided_by_email?: string | null;
   decided_at?: string | null;
   approval_expires_at?: string | null;
+  /** Migration 0140: a person's answer to "is this made for kids?" (who; NULL = nobody yet). Absent before 0140. */
+  made_for_kids_answered_by?: string | null;
 }
 
 export type ApprovalBlocker =
@@ -61,6 +66,7 @@ export type ApprovalBlocker =
   | "gate_unknown"
   | "no_preview"
   | "cut_unknown"
+  | "audience_unanswered"
   | "not_admin"
   | "not_member";
 
@@ -142,6 +148,7 @@ export function approvalState(
   else if (!gate) blocker = "gate_unknown";
   else if (!video.preview_path) blocker = "no_preview";
   else if (!cut) blocker = "cut_unknown";
+  else if (audienceUnanswered(video)) blocker = "audience_unanswered";
   else if (opts.access === "not_member") blocker = "not_member";
   else if (opts.access === "not_admin") blocker = "not_admin";
   return { view, blocker };

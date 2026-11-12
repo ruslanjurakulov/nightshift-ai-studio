@@ -202,6 +202,8 @@ def evaluate(
     language=None,
     grounding: Optional[dict] = None,
     made_for_kids=None,
+    visibility: Optional[str] = None,
+    audience_answered: bool = False,
 ) -> GateDecision:
     """Decide whether this video may be uploaded.
 
@@ -228,9 +230,15 @@ def evaluate(
     kids" with nobody's confirmation blocks (``made_for_kids_unconfirmed``). That check runs even on a channel that turned
     the gate off: it is YouTube's and the law's requirement, not one of our quality checks, and no channel setting may
     send it. It can only ever block; None (no decision passed) runs nothing, as before.
+
+    ``visibility`` is the privacy the upload will ask for. Public or unlisted with no person's answer to "is this made for
+    kids?" (``audience_answered``) blocks (``audience_unanswered``): a video a viewer can watch is declared by a person, never
+    by the detection alone. main.py uploads private until then (made_for_kids.privacy_until_answered), so this is the backstop
+    that holds a path which forgot to; like the check above it runs on every channel. None runs nothing.
     """
     decision = GateDecision()
     _check_made_for_kids(decision, made_for_kids)
+    _check_audience_answered(decision, visibility, audience_answered)
     config = GateConfig.from_channel(channel)
     if not config.enabled:
         decision.warnings.append("gate_disabled_for_channel")
@@ -261,6 +269,15 @@ def _check_made_for_kids(decision: GateDecision, made_for_kids) -> None:
         logger.error("Publish gate: this video is kids content (%s) and is declared NOT made for kids without a "
                      "person's confirmation — blocked", ", ".join(made_for_kids.sources) or "unknown source")
         decision.blocks.append("made_for_kids_unconfirmed")
+
+
+def _check_audience_answered(decision: GateDecision, visibility, answered: bool) -> None:
+    if visibility is None:
+        return
+    decision.checks_run.append("audience_answered")
+    if str(visibility).strip().lower() != "private" and answered is not True:
+        logger.error("Publish gate: this upload would be %s before a person answered who the video is for — blocked", visibility)
+        decision.blocks.append("audience_unanswered")
 
 
 def evaluate_fact_check(*, script, fact_results, channel=None,

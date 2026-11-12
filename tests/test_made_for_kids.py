@@ -345,11 +345,12 @@ class TheRunCarrier(unittest.TestCase):
 
 
 class TheReviewRecord(unittest.TestCase):
-    def test_a_runs_decision_is_its_two_columns_and_clears_a_person_s_old_confirmation(self):
+    def test_a_runs_decision_is_its_two_columns_and_clears_a_person_s_old_confirmation_and_answer(self):
         from modules import video_review
 
         self.assertEqual(video_review.made_for_kids_columns(KIDS_RUN),
-                         {"made_for_kids": True, "kids_content": True, "made_for_kids_off_by": None, "made_for_kids_off_at": None})
+                         {"made_for_kids": True, "kids_content": True, "made_for_kids_off_by": None, "made_for_kids_off_at": None,
+                          "made_for_kids_answered_by": None, "made_for_kids_answered_at": None})
         self.assertEqual(set(video_review.COLUMNS_0140), set(video_review.made_for_kids_columns(PLAIN)))
 
     def test_the_decision_lands_on_the_row_and_a_database_without_0140_keeps_the_rest(self):
@@ -379,3 +380,72 @@ class TheReviewRecord(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheAudienceAnswer(unittest.TestCase):
+    """The owner's decision on PR #699: who a video is for is a person's explicit answer, asked before it goes public.
+
+    The private upload carries the detection (selfDeclaredMadeForKids is set at insert); the answer is what counts before anything
+    is watchable, and the publish-when-approved write corrects YouTube when the two differ."""
+
+    def test_nothing_watchable_goes_up_before_a_person_answered(self):
+        for asked in ("public", "unlisted", "PUBLIC"):
+            self.assertEqual(mfk.privacy_until_answered(asked), "private", asked)
+            self.assertEqual(mfk.privacy_until_answered(asked, answered=True), asked, asked)
+        self.assertEqual(mfk.privacy_until_answered("private"), "private")
+
+    def test_autopilot_holds_main_clamps_a_public_request_to_private(self):
+        import main
+        from modules.channels import ChannelContext
+
+        ctx = ChannelContext.from_dict({"channel_id": "kids", "name": "Kids", "auto_publish": True})
+        self.assertIs(ctx.ui_auto_publish, True)
+        with self.assertLogs("chronos", "WARNING") as logs:
+            self.assertEqual(main._effective_privacy(ctx, "public"), "private")
+        self.assertIn("until a person answers who the video is for", "\n".join(logs.output))
+        self.assertEqual(main._effective_privacy(ctx, "private"), "private")
+
+    def test_the_gate_holds_anything_watchable_without_an_answer_on_every_channel(self):
+        for config in ({}, {"enabled": False}):
+            ch = SimpleNamespace(agent=SimpleNamespace(publish_gate=config, made_for_kids=False))
+            for visibility in ("public", "unlisted"):
+                g = publish_gate.evaluate(script=script("x"), channel=ch, visibility=visibility)
+                self.assertIn("audience_unanswered", g.blocks, (config, visibility))
+            ok = publish_gate.evaluate(script=script("x"), channel=ch, visibility="private")
+            self.assertNotIn("audience_unanswered", ok.blocks)
+            answered = publish_gate.evaluate(script=script("x"), channel=ch, visibility="public", audience_answered=True)
+            self.assertNotIn("audience_unanswered", answered.blocks)
+        text = (ROOT / "main.py").read_text(encoding="utf-8")
+        self.assertIn("visibility=privacy,\n        audience_answered=False,", text)
+
+    def test_a_new_cut_is_a_new_question(self):
+        from modules import video_review
+
+        cols = video_review.made_for_kids_columns(KIDS_RUN)
+        self.assertEqual((cols["made_for_kids_answered_by"], cols["made_for_kids_answered_at"]), (None, None))
+
+    def _publish(self, row, read_value):
+        from tests import test_visibility_publish as tv
+
+        store = tv.MemoryStore()
+        store.kids_record = lambda vid: row
+        yt = tv.wrap(status_extra={"selfDeclaredMadeForKids": read_value})
+        out, _ = tv.run(store, yt)
+        return out, yt, store
+
+    def test_the_answer_corrects_youtube_when_it_differs_from_the_upload(self):
+        # Uploaded with the detection (made for kids); the person answered "no" with the confirmation: the write sends "no".
+        row = {"made_for_kids": False, "kids_content": True, "made_for_kids_off_by": "u-1", "made_for_kids_answered_by": "u-1"}
+        out, yt, _ = self._publish(row, True)
+        self.assertEqual(out, "applied")
+        self.assertEqual(yt.updates[0]["body"]["status"]["selfDeclaredMadeForKids"], False)
+        self.assertEqual(yt.updates[0]["body"]["status"]["privacyStatus"], "public")
+        # And the other way: uploaded "not for kids", answered "yes".
+        out, yt, _ = self._publish({"made_for_kids": True, "kids_content": False, "made_for_kids_answered_by": "u-2"}, False)
+        self.assertEqual((out, yt.updates[0]["body"]["status"]["selfDeclaredMadeForKids"]), ("applied", True))
+
+    def test_a_video_nobody_answered_for_does_not_go_public(self):
+        out, yt, store = self._publish({"made_for_kids": True, "kids_content": True, "made_for_kids_answered_by": None}, True)
+        self.assertEqual(out, "refused")
+        self.assertEqual(yt.updates, [])
+        self.assertEqual(store.finishes[-1][:2], ("refused", "gate_blocked"))

@@ -21,10 +21,12 @@ ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0140_made_for_kids.sql").read_text
 M0122 = (MIG / "0122_series_template_carrier.sql").read_text(encoding="utf-8")
 M0117 = (MIG / "0117_voice_profiles.sql").read_text(encoding="utf-8")
 M0076 = (MIG / "0076_scene_regenerate.sql").read_text(encoding="utf-8")
+M0116 = (MIG / "0116_visibility_requests.sql").read_text(encoding="utf-8")
 
 RJPV = "create or replace function public.render_job_params_valid("
 AUD = "create or replace function public.audit_action_allowed("
 SET = "create or replace function public.set_video_made_for_kids("
+APV = "create or replace function public.approve_video_publish("
 POLICY = "create policy render_jobs_insert on public.render_jobs"
 
 
@@ -65,7 +67,8 @@ def migrations_before(number: str):
 
 class WhatItReplaces(unittest.TestCase):
     def test_the_old_bodies_are_the_latest_definitions_before_it(self):
-        for fn, want in (("render_job_params_valid", "0122_series_template_carrier.sql"), ("audit_action_allowed", "0117_voice_profiles.sql")):
+        for fn, want in (("render_job_params_valid", "0122_series_template_carrier.sql"), ("audit_action_allowed", "0117_voice_profiles.sql"),
+                         ("approve_video_publish", "0116_visibility_requests.sql")):
             defs = [p.name for p in migrations_before("0140") if re.search(rf"create or replace function public\.{fn}\(", p.read_text(encoding="utf-8"))]
             self.assertEqual(defs[-1], want, fn)
         pols = [p.name for p in migrations_before("0140") if POLICY in p.read_text(encoding="utf-8")]
@@ -82,13 +85,24 @@ class WhatItReplaces(unittest.TestCase):
         added = added_lines(body(M0117, AUD), body(TEXT, AUD))
         self.assertEqual([ln.strip() for ln in added if not ln.strip().startswith("--")], ["'video.made_for_kids',"])
 
+    def test_approving_is_0116s_body_plus_the_audience_block_and_nothing_else(self):
+        added = [ln.strip() for ln in added_lines(body(M0116, APV), body(TEXT, APV)) if not ln.strip().startswith("--")]
+        self.assertEqual(added, ["if v.made_for_kids_answered_by is null then",
+                                 "return jsonb_build_object('ok', false, 'error', 'audience_unanswered');", "end if;"])
+        # after the row is locked and the refusals are asked, before anything is written
+        b = body(TEXT, APV)
+        self.assertLess(b.index("for update"), b.index("audience_unanswered"))
+        self.assertLess(b.index("video_approve_refusal"), b.index("audience_unanswered"))
+        self.assertLess(b.index("audience_unanswered"), b.index("update public.videos"))
+
     def test_the_insert_policy_is_0076s_plus_one_key(self):
         self.assertEqual(policy(M0076).replace("'publish_hint']", "'publish_hint','made_for_kids']"), policy(TEXT))
 
     def test_the_hashes_in_the_file_are_the_md5_of_the_bodies_they_name(self):
         header = TEXT.split("set local lock_timeout", 1)[0]
         pins = {"render_job_params_valid": (h(body(M0122, RJPV)), h(body(TEXT, RJPV))),
-                "audit_action_allowed": (h(body(M0117, AUD)), h(body(TEXT, AUD)))}
+                "audit_action_allowed": (h(body(M0117, AUD)), h(body(TEXT, AUD))),
+                "approve_video_publish": (h(body(M0116, APV)), h(body(TEXT, APV)))}
         for fn, (old, new) in pins.items():
             self.assertRegex(header, rf"--     {fn}\s+{old}\n", fn)
             self.assertRegex(header, rf"--     {fn}\s+{new}\n", fn)
@@ -96,13 +110,14 @@ class WhatItReplaces(unittest.TestCase):
             self.assertIn(f"array['{old}', '{new}']", guard, fn)
         self.assertRegex(header, rf"--     set_video_made_for_kids\s+{h(body(TEXT, SET))}\n")
         end = TEXT[TEXT.index("6. The end state"):]
-        for b in (body(TEXT, RJPV), body(TEXT, AUD), body(TEXT, SET)):
+        for b in (body(TEXT, RJPV), body(TEXT, AUD), body(TEXT, SET), body(TEXT, APV)):
             self.assertIn(h(b), end)
 
     def test_the_sec_db_helper_pins_the_same_predecessors(self):
         lab = (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8")
         self.assertIn(f'"public.render_job_params_valid(jsonb, text)": "{h(body(M0122, RJPV))}"', lab)
         self.assertIn(f'"public.audit_action_allowed(text)": "{h(body(M0117, AUD))}"', lab)
+        self.assertIn(f'"public.approve_video_publish(text, text, jsonb)": "{h(body(M0116, APV))}"', lab)
 
 
 class ThePersonsFunction(unittest.TestCase):
@@ -113,6 +128,14 @@ class ThePersonsFunction(unittest.TestCase):
                        "for update", "'confirm_required'", "'already_public'", "'approval_live'",
                        "p_confirm_off is distinct from true", "'video.made_for_kids'"):
             self.assertIn(needle, self.FN, needle)
+
+    def test_every_call_is_an_answer_recorded_with_who_and_when(self):
+        self.assertIn("made_for_kids_answered_by = uid,", self.FN)
+        self.assertIn("made_for_kids_answered_at = now()", self.FN)
+        # the pipeline's own value is not an answer: agreeing with it writes
+        self.assertIn("if v.made_for_kids_answered_by is not null and v.made_for_kids is not distinct from p_made_for_kids", self.FN)
+        self.assertIn("(made_for_kids_answered_by is null) = (made_for_kids_answered_at is null)", TEXT)
+        self.assertIn("(made_for_kids_answered_by is null or made_for_kids is not null)", TEXT)
 
     def test_only_signed_in_users_may_call_it(self):
         c = code(TEXT)
@@ -130,6 +153,8 @@ class WhatTheRollbackDoes(unittest.TestCase):
     def test_it_restores_the_predecessors_byte_for_byte_and_guards_on_0140s(self):
         self.assertEqual(body(ROLLBACK, RJPV), body(M0122, RJPV))
         self.assertEqual(body(ROLLBACK, AUD), body(M0117, AUD))
+        self.assertEqual(body(ROLLBACK, APV), body(M0116, APV))
+        self.assertIn(h(body(TEXT, APV)), ROLLBACK)
         self.assertEqual(policy(ROLLBACK), policy(M0076))
         self.assertIn(h(body(TEXT, RJPV)), ROLLBACK)
         self.assertIn(h(body(TEXT, AUD)), ROLLBACK)

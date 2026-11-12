@@ -17,6 +17,13 @@ The rule (the owner's, PR "YouTube made for kids"):
   A kids video declared "not for kids" WITHOUT that confirmation is never sent: the publish gate blocks it
   (``made_for_kids_unconfirmed``), the cross-post refuses it, and the uploader raises rather than send it.
 
+THE ANSWER (the owner's decision on PR #699): before a video is watchable, a PERSON answers "is this video made for kids?" on
+its review page, as YouTube Studio asks before publishing. The decision above is the detection: it goes on the private upload
+(``selfDeclaredMadeForKids`` is set at insert) and is shown to the person as a hint, never as a chosen answer. Approving needs the
+answer (approve_video_publish refuses ``audience_unanswered``, migration 0140); the publish-when-approved write sends it and so
+corrects YouTube when it differs; and no run uploads public or unlisted before it (``privacy_until_answered``, the publish gate's
+``audience_unanswered``), so auto publish holds the video private until a person has answered.
+
 Declaring made for kids turns off comments, personalised ads, notifications and some other features on that video
 (YouTube's rule, not ours); that is why a person may switch it off, and why switching it off on kids content takes a
 confirmation and is audited. Nothing here changes privacy, who may publish, or when.
@@ -61,6 +68,20 @@ SOURCE_RECORDED = "recorded"
 
 #: The publish gate's block, the cross-post's refusal word and the uploader's error all use this one word.
 REFUSAL = "made_for_kids_unconfirmed"
+#: The publish gate's block for a video that would be watchable before a person answered who it is for.
+UNANSWERED = "audience_unanswered"
+#: What a viewer can watch: going there needs a person's answer first.
+WATCHABLE = ("public", "unlisted")
+
+
+def privacy_until_answered(privacy, answered: bool = False):
+    """The privacy an upload may have before a person has answered "is this made for kids?" (the owner's decision on PR #699:
+    a person's explicit choice, asked as YouTube Studio asks, not an inferred default). Public and unlisted become private until
+    then; the detection still goes on the private upload (``selfDeclaredMadeForKids`` is set at insert), the person answers on
+    the review page, and the video goes public only through an approval, which needs the answer (approve_video_publish, 0140)."""
+    if not answered and str(privacy or "").strip().lower() in WATCHABLE:
+        return "private"
+    return privacy
 
 
 class MadeForKidsUnconfirmed(ValueError):

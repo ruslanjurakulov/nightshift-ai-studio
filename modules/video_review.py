@@ -65,16 +65,19 @@ KEEP_PER_CHANNEL = 5
 KEEP_HELD_PER_CHANNEL = 5
 
 #: Migration 0140: the video's YouTube "made for kids" declaration and whether it is kids content (modules/made_for_kids.py).
-#: The person's confirmation (made_for_kids_off_by / _at) is only ever CLEARED here, with a new cut; only
-#: set_video_made_for_kids sets it.
-COLUMNS_0140 = ("made_for_kids", "kids_content", "made_for_kids_off_by", "made_for_kids_off_at")
+#: A person's confirmation (made_for_kids_off_by / _at) and answer (made_for_kids_answered_by / _at) are only ever CLEARED here,
+#: with a new cut: it is a new video to answer for. Only set_video_made_for_kids sets them.
+COLUMNS_0140 = ("made_for_kids", "kids_content", "made_for_kids_off_by", "made_for_kids_off_at",
+                "made_for_kids_answered_by", "made_for_kids_answered_at")
 
 
 def made_for_kids_columns(decision) -> dict:
-    """The 0140 columns for a run's decision. A new cut is the run's declaration again: a person's earlier "not for kids"
-    was about a cut that is gone, so it is cleared with it (the database's constraint holds the pair together)."""
+    """The 0140 columns for a run's decision. A new cut is the run's detection again, not anybody's answer: a person's
+    earlier answer and "not for kids" were about a cut that is gone, so both are cleared with it (the review panel asks again,
+    and approve_video_publish refuses until it is answered)."""
     return {"made_for_kids": bool(decision.value), "kids_content": bool(decision.kids_content),
-            "made_for_kids_off_by": None, "made_for_kids_off_at": None}
+            "made_for_kids_off_by": None, "made_for_kids_off_at": None,
+            "made_for_kids_answered_by": None, "made_for_kids_answered_at": None}
 
 
 # Migration 0112: a person's approval (videos.approved_cut_sha256 and who/when/until) is for one cut. Recording a cut

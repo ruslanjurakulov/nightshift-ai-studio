@@ -27,8 +27,8 @@ the one change this feature exists for: ``videos.update`` with ``status.privacyS
    read did not contain ``selfDeclaredMadeForKids`` and a ``privacyStatus`` the call is not made (``status_unreadable``):
    a status object without them would reset them. One field is not simply sent back: ``selfDeclaredMadeForKids`` is the
    declaration RECORDED for the video (migration 0140: what its upload declared, or what a person decided on the review
-   page) when there is one, and the one read otherwise; kids content recorded "not made for kids" with nobody's
-   confirmation is refused (``gate_blocked``) and a record that cannot be read is retried, never guessed
+   page) when there is one, and the one read otherwise; a video nobody has answered for, and kids content recorded "not made
+   for kids" with nobody's confirmation, are refused (``gate_blocked``) and a record that cannot be read is retried, never guessed
    (``declared_for_kids``, modules/made_for_kids.py). The request is marked ``submitting`` in the database right before, by
    the function that makes the last check.
 6. THE ANSWER IS NOT BELIEVED: the privacy is READ BACK. ``applied`` only when YouTube then says ``public``. A call that
@@ -193,7 +193,7 @@ class VisibilityStore:
         """The video's "made for kids" record (migration 0140), {} on a database without those columns. Any other failure
         raises: the declaration a video goes public with is never guessed."""
         r = self.http().get(f"{self.url}/rest/v1/videos",
-                            params={"select": "video_id,made_for_kids,kids_content,made_for_kids_off_by",
+                            params={"select": "video_id,made_for_kids,kids_content,made_for_kids_off_by,made_for_kids_answered_by",
                                     "video_id": f"eq.{video_id}", "limit": "1"},
                             headers={"apikey": self._key, "Authorization": f"Bearer {self._key}"}, timeout=self._timeout)
         if r.status_code == 400:
@@ -316,6 +316,11 @@ def declared_for_kids(store, video_id: str, channel) -> Optional[bool]:
     except Exception as e:
         logger.info("visibility: the made-for-kids record could not be read (%s)", type(e).__name__)
         raise Retry("worker_error") from None
+    if "made_for_kids_answered_by" in row and not row.get("made_for_kids_answered_by"):
+        # 0140: approving needs a person's answer, so an approval without one is one that predates it or was forged. The
+        # detection is not an answer: nothing goes public on it.
+        logger.warning("visibility: video %s goes public only with a person's answer to who it is for; it has none", video_id)
+        raise refused("gate_blocked")
     decision = mfk.for_video(row, channel)
     if decision.refused:
         logger.warning("visibility: video %s is kids content declared not made for kids without a confirmation (%s)",

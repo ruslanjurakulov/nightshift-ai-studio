@@ -653,7 +653,15 @@ def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
             logger.warning(
                 "[channel: %s] Auto publish is not ON for this channel: %r requested, uploading "
                 "private instead (the switch means never public)", ctx.channel_id, privacy)
-    return allowed
+    # Nobody has answered "is this video made for kids?" for a video that does not exist yet: it uploads private, with the
+    # detected declaration, and goes public only through an approval, which needs a person's answer (modules/made_for_kids.py,
+    # migration 0140; the owner's decision on PR #699). Auto publish ON holds here rather than going public on its own.
+    held = mfk.privacy_until_answered(allowed, answered=False)
+    if held != allowed:
+        logger.warning(
+            "[channel: %s] %r requested: uploading private until a person answers who the video is for (YouTube's "
+            "'made for kids'); approve it on its review page to publish", ctx.channel_id, allowed)
+    return held
 
 
 def _voice_record(mixer) -> dict:
@@ -1688,6 +1696,9 @@ def run(
         grounding=grounding_summary,
         # Kids content declared "not for kids" with nobody's confirmation blocks, on every channel.
         made_for_kids=kids_decision,
+        # And nothing a viewer can watch goes up before a person answered who it is for (the clamp above makes this private).
+        visibility=privacy,
+        audience_answered=False,
     )
 
     # Advisory pre-publish intelligence — a quality/prediction score for a human
