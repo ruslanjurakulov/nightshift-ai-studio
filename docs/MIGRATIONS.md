@@ -554,6 +554,35 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
   frame; drops the overload, the list, the check and the three columns. Exported videos stay in the library.
 - **Review.** Needs the independent security review before merge, and a person reading the live two-argument `request_editor_export` hash first.
 
+## The operator's Customers page (0138)
+
+0138 (`0138_operator_customers.sql`, the Command Center's `/{channel}/customers`) is **live on apply and read-only**: it **adds three
+functions** and nothing else (no table, column, index, policy or trigger; it **replaces nothing**). `operator_customer_totals()` (people,
+workspaces, active workspaces, credits spent / bought / granted, paid in USD with other currencies counted apart, outstanding balances),
+`operator_customer_daily(p_days)` (1-90 UTC days: new workspaces, credits spent, workspaces that spent) and
+`operator_customer_accounts(p_search, p_sort, p_limit, p_offset)` (one page of at most 100 workspaces, searched as plain text, sorted
+and paged in the database, `total_count` on every row). Each is a stable SECURITY DEFINER with `search_path = public, pg_temp` that
+refuses anyone but a signed-in platform owner/admin (42501 "not available") before it reads anything or looks at an argument;
+granted to `authenticated` only, revoked from public, anon and service_role. The operator's own workspace (`default_org_id()`) is in
+none of the numbers.
+
+- **What "spent" means.** Ledger `capture` rows less positive `refund` rows (a failed paid download given back, 0030). A `reserve` is a
+  hold and a `release` gives it back: neither is a spend, and an open hold is `reserved`, not spent. A negative `refund` takes back a
+  refunded purchase and is not a spend either.
+- **Drift guard.** Refuses (changes nothing) if one of the three names exists with a body that is not this file's; the last block
+  asserts each body by md5, the grants, definer, stability and the fixed search_path. Pins: totals `938bff459e8a932a7ffc9d078f0d6137`,
+  daily `e80c9c92cf7a1625f02bc585ed549660`, accounts `ed07a54a29c3110fcf03531c79c47984`.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`. Takes no lock on any table beyond reading the catalog.
+- **Undo.** `docs/sql/rollback_0138_operator_customers.sql` (owner-applied): refuses a body that is not 0138's, drops the three functions.
+  Nothing else is touched by either file.
+- **Tests.** `tests/test_operator_customers_migration.py` (the file, pinned) and `tests/security/test_sec_operator_customers.py` (the lab:
+  every customer, anon and the service role refused, refused before argument checks, the exact figures of a seeded world — captures
+  counted, released and open holds not, a refunded download subtracted, a retried webhook one payment, EUR never dollars, the operator's
+  workspace left out — search as plain text, sorting and paging, bad arguments, read-only, a replay, the rollback, the drift guards).
+  The lab's `auth.users` stand-in gained GoTrue's `last_sign_in_at` column.
+- **Numbering.** 0136 is applied live and 0137 is reserved by other work (#686); 0138 names nothing of theirs. The numbering tests of
+  0127, 0131 and 0133 list it as reviewed.
+
 ## Exports up to 1080p, sold by the started minute (0136)
 
 0136 (`0136_editor_export_paid_1080p.sql`, `docs/HIRES_EXPORT.md` "Up to 1080p") is **live on apply and changes nothing until the owner

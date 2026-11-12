@@ -12,6 +12,7 @@ import { marketingEn } from "./marketing/en";
 import { modelSwitchEn } from "./model-switch/en";
 import { modelBudgetEn } from "./model-budget/en";
 import { modelKeysEn } from "./model-keys/en";
+import { operatorCustomersEn } from "./operator-customers/en";
 import { seriesPlanEn } from "./series-plan/en";
 import { ownerTruthEn } from "./owner-truth/en";
 import { connectPickerEn } from "./connect-picker/en";
@@ -59,6 +60,8 @@ export const en = {
   modelSwitch: modelSwitchEn,
   modelBudget: modelBudgetEn,
   modelKeys: modelKeysEn,
+  /** The operator's Customers page (migration 0138): ./operator-customers/en.ts. */
+  customers: operatorCustomersEn,
   seriesPlan: seriesPlanEn,
   ownerTruth: ownerTruthEn,
   connectPicker: connectPickerEn,
@@ -113,6 +116,7 @@ export const en = {
     providers: "Providers",
     models: "Models",
     margin: "Margin",
+    customers: "Customers",
     billing: "Billing",
     studio: "Studio",
     library: "Library",
