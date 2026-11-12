@@ -812,6 +812,14 @@ def test_a_failure_code_is_a_closed_word(conn, w, code, stored):
     assert job(s, jid, "error_code") == (stored,)
 
 
+def test_a_viewer_of_the_same_organization_cannot_cancel(conn, w):
+    s = w.su
+    jid = started(s, w.org)
+    become(s, w.org.viewer)
+    assert not_found(s.run(CANCEL, [jid])), "a viewer is told what a stranger is told"
+    assert job(s, jid, "status") == ("requested",) and w.org.account() == (100, 30), "nothing changed, the hold is still open"
+
+
 def test_a_running_job_cannot_be_cancelled_and_a_final_one_answers_as_it_is(conn, w):
     s = w.su
     jid = started(s, w.org)

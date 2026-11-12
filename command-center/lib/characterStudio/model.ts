@@ -6,9 +6,12 @@
  * (CLAUDE.md #5). Every refusal the database can give is a closed word here; anything else is "failed".
  */
 
-/** NIGHTSHIFT_CHARACTER_STUDIO (server-side only; never a NEXT_PUBLIC value): off = the page and every route is a 404. */
+/**
+ * NIGHTSHIFT_CHARACTER_STUDIO (server-side only; never a NEXT_PUBLIC value): off = the page and every route is a 404. Exactly "on" (any
+ * case, trimmed), the worker's own rule (tools/character_swap_worker.py), so the two can never disagree about whether it is on.
+ */
 export function characterStudioEnabled(raw: string | undefined = process.env.NIGHTSHIFT_CHARACTER_STUDIO): boolean {
-  return ["on", "1", "true", "yes"].includes(String(raw ?? "").trim().toLowerCase());
+  return String(raw ?? "").trim().toLowerCase() === "on";
 }
 
 export const MODEL_IDS = ["kling-4.0-omni-edit", "seedance-2.5-edit"] as const;

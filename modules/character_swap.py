@@ -42,8 +42,6 @@ from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence
 from urllib.parse import urlencode
 
-import requests
-
 logger = logging.getLogger(__name__)
 
 FLAG = "NIGHTSHIFT_CHARACTER_STUDIO"
@@ -135,8 +133,17 @@ class Limits:
                       int(sw["input_max_pixels"]), bool(sw["keeps_original_audio"]))
 
 
-def input_problems(video: Mapping, n_refs: int, limits: Limits, fps: Optional[float]) -> List[str]:
-    """Closed words for what the vendor would refuse in this video, read from the library's record and ffprobe. Empty = send it."""
+#: How far ffprobe's length of the real file may be from the library's record (one frame, plus this), before the job is refused.
+LENGTH_TOLERANCE_S = 0.1
+
+
+def input_problems(video: Mapping, n_refs: int, limits: Limits, fps: Optional[float],
+                   measured_s: Optional[float] = None) -> List[str]:
+    """Closed words for what the vendor would refuse in this video, read from the library's record and ffprobe. Empty = send it.
+
+    ``measured_s`` is ffprobe's length of the file itself. The price was quoted from the library's record, so a file whose header said
+    less than it plays (a crafted MP4) would be sold below cost and past the vendor's limit: a length that differs from the record by more
+    than one frame (plus LENGTH_TOLERANCE_S) is input_length_mismatch, and an unmeasurable one input_unmeasured."""
     out: List[str] = []
     try:
         secs, w, h, nbytes = float(video["duration_s"]), int(video["width"]), int(video["height"]), int(video["bytes"])
@@ -154,14 +161,18 @@ def input_problems(video: Mapping, n_refs: int, limits: Limits, fps: Optional[fl
         out.append("input_fps")
     if not 1 <= n_refs <= limits.references_max:
         out.append("references_count")
+    if measured_s is None:
+        out.append("input_unmeasured")
+    elif fps and abs(measured_s - secs) > 1.0 / fps + LENGTH_TOLERANCE_S:
+        out.append("input_length_mismatch")
     return out
 
 
 def probe(ffprobe: str, path: Path, *, timeout_s: float = 30) -> Dict:
-    """ffprobe's streams of a local file (the frame rate and whether there is a sound track): never raises."""
+    """ffprobe's streams of a local file (the frame rate, the video's length, whether there is a sound track): never raises."""
     try:
-        done = subprocess.run([ffprobe, "-v", "error", "-show_streams", "-of", "json", str(path)], capture_output=True, timeout=timeout_s,
-                              check=False)
+        done = subprocess.run([ffprobe, "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)], capture_output=True,
+                              timeout=timeout_s, check=False)
         data = json.loads(done.stdout or b"{}")
     except (OSError, subprocess.SubprocessError, ValueError):
         return {}
@@ -174,7 +185,21 @@ def probe(ffprobe: str, path: Path, *, timeout_s: float = 30) -> Dict:
             fps = float(num) / float(den) if float(den) else None
         except ValueError:
             fps = None
-    return {"fps": fps, "audio": any(isinstance(s, dict) and s.get("codec_type") == "audio" for s in streams or [])}
+    def number(v) -> Optional[float]:
+        try:
+            n = float(v)
+        except (TypeError, ValueError):
+            return None
+        return n if n > 0 and n == n and n != float("inf") else None
+
+    # The video stream's own length; else its frame count over the rate; else the container's. Never the library's record.
+    seconds = number((video or {}).get("duration"))
+    if seconds is None and fps and number((video or {}).get("nb_frames")):
+        seconds = number((video or {}).get("nb_frames")) / fps
+    if seconds is None:
+        seconds = number((data.get("format") or {}).get("duration") if isinstance(data.get("format"), dict) else None)
+    return {"fps": fps, "seconds": seconds,
+            "audio": any(isinstance(s, dict) and s.get("codec_type") == "audio" for s in streams or [])}
 
 
 # ── the database (0135's worker functions, the service key) ─────────────────────────────────────────────────────────────────
@@ -186,10 +211,17 @@ class SwapStore:
     def __init__(self, url: str, service_key: str, *, session=None, timeout: float = 30.0):
         self.url = url.rstrip("/")
         self._key = service_key
-        self.session = session or requests.Session()
+        if session is None:
+            # Imported here, not at the top: the security lab imports this module (prompt_problem) with only psycopg and pytest installed.
+            import requests  # noqa: PLC0415
+
+            session = requests.Session()
+        self.session = session
         self.timeout = timeout
 
     def _rpc(self, name: str, payload: dict):
+        import requests  # noqa: PLC0415
+
         try:
             r = self.session.post(f"{self.url}/rest/v1/rpc/{name}", json=payload, timeout=self.timeout,
                                   headers={"apikey": self._key, "Authorization": f"Bearer {self._key}", "Content-Type": "application/json"})
@@ -307,7 +339,11 @@ class CharacterSwapWorker:
                 try:
                     task = adapter.submit(request, vendor_model, external_id=jid)
                 except AdapterError as e:
-                    # A proven refusal cost nothing; anything else may have started a billable task we never heard of.
+                    # A proven refusal cost nothing; anything else may have started a billable task we never heard of. That one is
+                    # logged for recovery (the vendor's usage page, or Kling's external_task_id = this job id); the person is not charged.
+                    if not e.not_accepted:
+                        logger.error("character swap %s: POSSIBLE UNCONFIRMED VENDOR SPEND on %s (%s): the submit's answer was lost; "
+                                     "check the vendor's usage for this job before anything is run again", jid, entry.id, vendor_model)
                     self._fail(jid, e.code if e.not_accepted else "submit_unconfirmed")
                     return
                 # BEFORE the first poll: a crash from here on polls this task, it never pays for a second one.
@@ -354,7 +390,8 @@ class CharacterSwapWorker:
             return "input_unavailable"
         tools = self.library.tools
         info = probe(tools.ffprobe, source) if tools else {}
-        problems = input_problems(job.get("input") or {}, len(job.get("references") or ()), Limits.of(entry), info.get("fps"))
+        problems = input_problems(job.get("input") or {}, len(job.get("references") or ()), Limits.of(entry), info.get("fps"),
+                                  info.get("seconds"))
         return problems[0] if problems else None
 
     def _request(self, job: Mapping):

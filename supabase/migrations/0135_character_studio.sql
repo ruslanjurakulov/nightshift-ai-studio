@@ -73,10 +73,13 @@
 -- number. Then, under one platform lock taken AFTER the organization's (0127's order): platform_in_flight (`platform_busy`) and
 -- platform_daily_jobs (`platform_busy`), no number. 100 consents per organization per 24 hours (fixed).
 --
--- LOCK ORDER (0131). No function holds a row lock while it waits for an advisory lock. request_character_swap / record_character_swap_consent
--- / cancel_character_swap read without a lock, check sign-in and the role, take the organization's lock ('character_swap:' || org), then
--- the platform's where it counts a cap, and only then lock rows: the input and the pictures FOR SHARE (read again under the lock, so a
--- delete cannot slip between the check and the insert), a job FOR NO KEY UPDATE (read again), the credit account inside reserve_credits.
+-- LOCK ORDER (0131). No function holds a row lock while it waits for the ORGANIZATION's advisory lock. request_character_swap /
+-- record_character_swap_consent / cancel_character_swap read without a lock, check sign-in and the role, take the organization's lock
+-- ('character_swap:' || org), and only then lock rows: the input and the pictures FOR SHARE (read again under the lock, so a delete cannot
+-- slip between the check and the insert), a job FOR NO KEY UPDATE (read again). request_character_swap then waits on the PLATFORM's lock
+-- ('character_swap_global') while it still holds those FOR SHARE locks on the organization's own media_assets rows: a media delete of
+-- those rows waits for it, and nothing waits the other way (no holder of the platform lock waits on a media row), so it cannot
+-- deadlock. The credit account is locked last, inside reserve_credits.
 -- The worker's functions take no advisory lock: a job row, then the credit account (capture / release lock the account).
 --
 -- STALE. A job nobody took within 2 hours is failed `expired`. A running job whose worker went quiet for 15 minutes BEFORE it recorded a

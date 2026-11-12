@@ -15,6 +15,8 @@ import base64
 import hashlib
 import hmac
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -112,7 +114,7 @@ class Patched(unittest.TestCase):
         src = Path(tempfile.mkdtemp()) / "source.mp4"
         src.write_bytes(b"\x00\x00\x00\x18ftypmp42")
         self.stored = []
-        self.probe = {"fps": 30.0, "audio": True}
+        self.probe = {"fps": 30.0, "seconds": 10.0, "audio": True}
         patches = [mock.patch("modules.media_library.copy_source", lambda *a, **k: src),
                    mock.patch.object(cs, "probe", lambda *a, **k: dict(self.probe)),
                    mock.patch("modules.media_library.store_generated", lambda path, **kw: self.stored.append((path, kw)) or {"id": kw["asset_id"]})]
@@ -156,7 +158,9 @@ class Flow(Patched):
     def test_a_lost_submit_fails_the_job_unconfirmed_and_is_never_retried(self):
         a = Adapter(submit_error=AdapterError("unavailable", "UNCONFIRMED SPEND: lost"))
         w, st, _ = worker(claimed(), a)
-        w.run_once()
+        with self.assertLogs("modules.character_swap", level="ERROR") as logs:
+            w.run_once()
+        self.assertTrue(any("POSSIBLE UNCONFIRMED VENDOR SPEND" in m and JOB in m and "kling-4.0-omni-edit" in m for m in logs.output), logs.output)
         self.assertEqual([c for c in st.calls if c[0] != "claim"], [("fail", "submit_unconfirmed")])
         self.assertEqual([c[0] for c in a.calls].count("submit"), 1)
 
@@ -201,10 +205,24 @@ class RefusedBeforeAnyPaidCall(Patched):
         self._refused(claimed(input={**claimed()["input"], "bytes": 301 * 1024 * 1024}), "input_bytes")
         self._refused(claimed(input={**claimed()["input"], "duration_s": None}), "input_unmeasured")
         self._refused(claimed(references=[claimed()["references"][0]] * 11), "references_count")
-        self.probe = {"fps": 15.0, "audio": True}
+        self.probe = {"fps": 15.0, "seconds": 10.0, "audio": True}
         self._refused(claimed(), "input_fps")
         self.probe = {"fps": None}
         self._refused(claimed(), "input_unmeasured")
+
+    def test_a_file_longer_than_its_record_is_refused_and_one_frame_of_difference_is_not(self):
+        # A crafted MP4 whose header understates its length would be priced (and sent) as the short clip it claims to be.
+        self.probe = {"fps": 30.0, "seconds": 25.0, "audio": True}
+        self._refused(claimed(), "input_length_mismatch")
+        self.probe = {"fps": 30.0, "seconds": 9.0, "audio": True}
+        self._refused(claimed(), "input_length_mismatch")
+        self.probe = {"fps": 30.0, "seconds": None, "audio": True}
+        self._refused(claimed(), "input_unmeasured")
+        self.probe = {"fps": 30.0, "seconds": 10.0 + 1 / 30 + 0.05, "audio": True}
+        a = Adapter(polls=[done()])
+        w, st, _ = worker(claimed(), a)
+        w.run_once()
+        self.assertEqual(st.calls[-1][0], "finish")
 
     def test_seedance_limits_are_its_own(self):
         self._refused(claimed(model="seedance-2.5-edit", input={**claimed()["input"], "duration_s": 3.5}), "input_length")
@@ -219,6 +237,21 @@ class RefusedBeforeAnyPaidCall(Patched):
         self._refused(claimed(model="kling-v3"), "model_unknown")
         with mock.patch("modules.media_library.copy_source", side_effect=__import__("modules.media_library").media_library.SourceUnavailable("x")):
             self._refused(claimed(), "input_unavailable")
+
+
+class Probe(unittest.TestCase):
+    def test_the_length_is_the_files_own_never_the_records(self):
+        def run(stdout):
+            with mock.patch.object(cs.subprocess, "run", return_value=mock.Mock(stdout=stdout)):
+                return cs.probe("ffprobe", Path("x"))
+        stream = b'{"streams": [{"codec_type": "video", "avg_frame_rate": "24/1", "duration": "12.5", "nb_frames": "600"}], "format": {"duration": "9.9"}}'
+        self.assertEqual(run(stream)["seconds"], 12.5, "the video stream's own length first")
+        frames = b'{"streams": [{"codec_type": "video", "avg_frame_rate": "24/1", "nb_frames": "600"}], "format": {"duration": "9.9"}}'
+        self.assertEqual(run(frames)["seconds"], 25.0, "else its frames over its rate")
+        fmt = b'{"streams": [{"codec_type": "video", "avg_frame_rate": "24/1"}], "format": {"duration": "9.9"}}'
+        self.assertEqual(run(fmt)["seconds"], 9.9)
+        self.assertIsNone(run(b'{"streams": [{"codec_type": "video", "duration": "nan"}]}').get("seconds"))
+        self.assertEqual(run(b"not json"), {})
 
 
 class VendorFileKept(Patched):
@@ -291,6 +324,25 @@ class Switch(unittest.TestCase):
             self.assertEqual(cli.main([], env=env), 2)
         self.assertIsInstance(cli.build_worker(base), cs.CharacterSwapWorker)
         self.assertEqual(os.path.basename(str(cli.build_worker(base).scratch)), ".character-swap")
+
+
+class NoVendorPackageForThePureParts(unittest.TestCase):
+    def test_the_screen_and_the_links_import_without_requests_or_the_adapters(self):
+        # The security lab (tests/security/requirements.txt: psycopg, pytest) imports prompt_problem to compare it with the database's:
+        # nothing that needs requests (modules.capabilities included) may be imported at module level.
+        root = Path(__file__).resolve().parent.parent
+        code = subprocess.run(
+            [sys.executable, "-c", "import sys, builtins; real = builtins.__import__\n"
+             "def guard(name, *a, **k):\n"
+             "    if name == 'requests' or name.startswith('requests.') or name.startswith('modules.capabilities'):\n"
+             "        raise ImportError(name)\n"
+             "    return real(name, *a, **k)\n"
+             "builtins.__import__ = guard\n"
+             "import modules.character_swap as cs\n"
+             "assert cs.prompt_problem('Replace the person with @Image 1') is None\n"
+             "cs.signed_link('https://studio.example.com', b's' * 40, '11111111-1111-1111-1111-111111111111', 'video/mp4')\n"],
+            cwd=str(root), capture_output=True, text=True, timeout=60)
+        self.assertEqual(code.returncode, 0, code.stderr[-500:])
 
 
 class Screen(unittest.TestCase):

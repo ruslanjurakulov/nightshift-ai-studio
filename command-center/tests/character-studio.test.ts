@@ -112,11 +112,11 @@ afterEach(() => {
 });
 
 describe("the switch", () => {
-  it("is off unless explicitly on", () => {
+  it("is on for exactly \"on\", the worker's rule, and off for anything else", () => {
     delete process.env.NIGHTSHIFT_CHARACTER_STUDIO;
     expect(model.characterStudioEnabled()).toBe(false);
-    for (const v of ["", "off", "0", "false", "no", "enabled"]) expect(model.characterStudioEnabled(v), v).toBe(false);
-    for (const v of ["on", "1", "true", "yes", " ON "]) expect(model.characterStudioEnabled(v), v).toBe(true);
+    for (const v of ["", "off", "0", "false", "no", "enabled", "1", "true", "yes", "onn"]) expect(model.characterStudioEnabled(v), v).toBe(false);
+    for (const v of ["on", " ON ", "On"]) expect(model.characterStudioEnabled(v), v).toBe(true);
   });
 
   it.each(EVERY)("%s is a 404 while the switch is off, before the origin, the session or the database is looked at", async (_n, call) => {

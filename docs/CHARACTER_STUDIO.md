@@ -53,7 +53,13 @@ item field names are confirmed by the first probe the owner approves; `tests/tes
   other inputs is `idempotency_conflict`.
 - **One paid task per job**: the worker records the vendor's task id (`record_character_swap_task`) before its first poll; a crash
   then polls that task (the next claim resumes it) and never submits again. A submit whose answer was lost is UNCONFIRMED SPEND:
-  the job fails, the person is not charged, nobody retries it. A finish without a recorded task is refused.
+  the job fails, the person is not charged, nobody retries it, and the worker logs "POSSIBLE UNCONFIRMED VENDOR SPEND" with the job
+  id and the model so it can be checked on the vendor's usage page (Kling also carries the job id as `external_task_id`). A finish
+  without a recorded task is refused.
+- **The length that was priced is the file's.** The quote reads the library's recorded length; before any paid call the worker
+  measures the file itself with ffprobe (the video stream's length, else its frames over its rate, else the container's) and refuses
+  the job (`input_length_mismatch`, hold released) if the two differ by more than one frame plus 0.1 s, so a file whose header
+  understates its length is never sold below cost or past the vendor's limit.
 - **Caps** (`character_swap_settings`, safety defaults, not yet owner-approved): one job in flight per organization (unique index),
   10 per organization per 24 h, 200 per platform per 24 h, 20 in flight on the platform; 100 consents per organization per 24 h.
 - The exempt (operator's) organization is not charged, and only a platform admin may start a swap there.
