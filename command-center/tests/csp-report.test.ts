@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import {
   CSP_REPORT_LIMIT,
   CSP_REPORT_MAX_BYTES,
@@ -125,7 +125,7 @@ describe("the per-process ceiling", () => {
 });
 
 describe("POST /api/csp-report", () => {
-  let warn: ReturnType<typeof vi.spyOn>;
+  let warn: MockInstance<typeof console.warn>;
   const env = { ...process.env };
   beforeEach(() => {
     resetCspReportLimit();
