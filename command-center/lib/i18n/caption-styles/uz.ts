@@ -30,7 +30,7 @@ export const captionStylesUz: typeof captionStylesEn = {
     typewriter: "Yozuv mashinkasi",
     line_slide: "Pastdan siljish",
     clean: "Toza",
-    single_word: "Bittadan so'z",
+    single_word: "Bittadan soʻz",
   },
   notes: {
     karaoke: "Har bir soʻz aytilayotganda ajratish rangi bilan toʻladi",
@@ -43,6 +43,6 @@ export const captionStylesUz: typeof captionStylesEn = {
     typewriter: "Harflar birin-ketin paydo boʻladi",
     line_slide: "Har bir subtitr pastdan siljib, sekin paydo boʻladi",
     clean: "Ingichka, oq matn va yumshoq soya",
-    single_word: "Bir vaqtda bitta so'z, markazda katta",
+    single_word: "Bir vaqtda bitta soʻz, markazda katta",
   },
 };
