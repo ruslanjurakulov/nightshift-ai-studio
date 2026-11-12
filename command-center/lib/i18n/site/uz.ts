@@ -1,5 +1,6 @@
 import type { SiteDictionary } from "./en";
 import { studioPageUz } from "../studio-page/uz";
+import { roadmapUz } from "../roadmap/uz";
 
 /** Ommaviy sayt: bosh sahifa, «Yechimlar», kirish, 404. Manba — ./en.ts. */
 export const siteUz: SiteDictionary = {
@@ -445,6 +446,8 @@ export const siteUz: SiteDictionary = {
   },
   /** The public /studio page (lib/i18n/studio-page). */
   studioPage: studioPageUz,
+  /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
+  roadmap: roadmapUz,
   final: {
     title: "Navbatdagi videongizni tungi smenaga qoʻying.",
     lead: "Bepul boshlang. Narxni har bir ishdan oldin koʻrasiz, har bir video siz ommaviy qilmaguningizcha shaxsiy qoladi.",

@@ -1,0 +1,48 @@
+/* /roadmap ("Kutilayotgan yangiliklar"): the list of what is coming. Tokens only: the page keeps the site's colours,
+   type and corners (components/site/site-next.css) and adds no decoration of its own. */
+
+.rm-main { padding-block: 48px var(--nx-sec); background: var(--ns-ground); }
+@media (min-width: 1024px) { .rm-main { padding-top: 88px; } }
+.rm-main .st-h1-page { max-width: 16em; margin: 0 0 36px; overflow-wrap: anywhere; }
+@media (min-width: 1024px) { .rm-main .st-h1-page { margin-bottom: 48px; } }
+/* One column on a phone, two from 760 px, three from 1100 px; cards in the solutions pages' shape. */
+.rm-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+@media (min-width: 760px) { .rm-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .rm-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.rm-item {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--ns-rule);
+  border-radius: 22px;
+  background: var(--ns-console);
+}
+@media (min-width: 960px) { .rm-item { padding: 28px; } }
+.rm-item-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.rm-item-body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ns-text-dim);
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+/* The approved copy starts each description in lower case (it followed a colon); the card shows it as a sentence
+   without changing a word of the text. */
+.rm-item-body::first-letter { text-transform: uppercase; }
+.rm-item-names { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
+
+.rm-closing .nx-final { padding-block: 56px; }
+.rm-soon { margin: 20px 0 0; font-family: var(--font-display); font-size: 21px; font-weight: 600; color: var(--nx-stage-text); }
+/* Not .nx-sub: the landing hides that line inside .nx-final on a phone, and here it is half of the closing words. */
+.rm-closing-body { max-width: 46ch; margin: 16px auto 0; font-size: 18px; line-height: 1.55; color: var(--nx-stage-dim); text-wrap: pretty; }

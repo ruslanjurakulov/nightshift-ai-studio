@@ -80,6 +80,14 @@ export const UNSUBSCRIBE_API_PATH = "/api/email/unsubscribe";
  */
 export const STUDIO_PAGE_PATH = "/studio";
 
+/**
+ * The public /roadmap page ("Kutilayotgan yangiliklar", app/roadmap/page.tsx): what is coming. Always public, like
+ * /pricing. It is listed in the sitemap and llms.txt (lib/site-pages.ts UNCOUNTED_PAGE_PATHS) but NOT in SITEMAP_PATHS,
+ * because SITEMAP_PATHS must equal the page-view counter's closed list in SQL (migration 0104, site_page_path_ok), and
+ * adding a path there needs a migration. So a visit to /roadmap is not counted.
+ */
+export const ROADMAP_PATH = "/roadmap";
+
 /** Always public: the crawler files (app/robots.ts, app/sitemap.ts, app/llms.txt/route.ts). */
 export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml", "/llms.txt"] as const;
 
@@ -202,6 +210,7 @@ export const ALWAYS_PUBLIC_PATHS = [
   ...CRAWLER_PATHS,
   INVITE_NOTICE_PATH,
   UNSUBSCRIBE_PATH,
+  ROADMAP_PATH,
 ] as const;
 
 /** The pages the sitemap lists: every public page a visitor reads, not the
@@ -287,6 +296,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   "atelier",
   // The Agent Builder page (/agent-builder) and its draft routes (migration 0130): a channel of that id would be shadowed by it.
   "agent-builder",
+  // The public /roadmap page (ROADMAP_PATH): a channel of that id would be shadowed by it.
+  "roadmap",
 ] as const;
 
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */
