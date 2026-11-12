@@ -1,5 +1,6 @@
 import type { SiteDictionary } from "./en";
 import { studioPageRu } from "../studio-page/ru";
+import { roadmapRu } from "../roadmap/ru";
 
 /** Публичный сайт: главная, «Решения», вход, 404. Источник — ./en.ts. */
 export const siteRu: SiteDictionary = {
@@ -445,6 +446,8 @@ export const siteRu: SiteDictionary = {
   },
   /** The public /studio page (lib/i18n/studio-page). */
   studioPage: studioPageRu,
+  /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
+  roadmap: roadmapRu,
   final: {
     title: "Поставьте следующее видео в ночную смену.",
     lead: "Начните бесплатно. Цена — до каждого запуска, а каждое видео приватно, пока вы не сделаете его публичным.",
