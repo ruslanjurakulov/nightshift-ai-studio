@@ -357,7 +357,7 @@ write_env() {
 # NIGHTSHIFT_CADDYFILE_APPROVED_SHA256 still wins when set (tests); sshd does not
 # pass client environment, so the key holder cannot set it.
 # shellcheck disable=SC2034  # data, not read here: caddy_pin_of reads this line from the deployed commit
-CADDYFILE_APPROVED_SHA256="${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-37fdde60fd271dee054c02b6bfa5f6ff18847646deee0d308f63c2fa9080dd13}"
+CADDYFILE_APPROVED_SHA256="${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-e3af03c2bd87c145939dae4ab78e85a6d00ccfe96a9259bbd0dcc1c5bc0d0246}"
 
 # This is the CONTRACT: what Caddy must keep sending. It mirrors the `header`
 # blocks of deploy/Caddyfile (tests/test_deploy_self_host.py compares the two).

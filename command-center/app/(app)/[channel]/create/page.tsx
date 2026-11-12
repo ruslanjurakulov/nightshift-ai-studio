@@ -27,6 +27,7 @@ import { DeskBar, StudioOverview, YouTubeDesk, type CreditsReading, type Project
 import { createClient, getUser } from "@/lib/supabase/server";
 import { readCreditAccount } from "@/lib/server/credits";
 import { loadEditorProjects } from "@/lib/server/editor";
+import { BLOCKED_COUNTRIES } from "@/lib/geo/blocked";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -176,6 +177,15 @@ export default async function CreatePage({
           <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>
         ))}
       {desk === "youtube" && <YouTubeDesk run={run} />}
+      {/* The picker above is filtered by the request's country once a model has a country list (docs/GEO_BLOCK.md): the
+          DB-IP licence asks for this credit on a page that uses its data. */}
+      {isMediaDesk(desk) && Object.keys(BLOCKED_COUNTRIES).length > 0 && (
+        <p className="text-xs text-[var(--color-muted)]" data-testid="geo-attribution">
+          <a href="https://db-ip.com" target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:underline">
+            {t.create.geoAttribution}
+          </a>
+        </p>
+      )}
     </div>
   );
 }

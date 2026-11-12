@@ -620,6 +620,10 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             if u in seen_units:
                 errors.append(_err(mid, f"credit unit {u} collides with another model"))
             seen_units.add(u)
+        if m.get("blocked_countries") and m["api_exposure"] != "web_only":
+            # The country is read from the visitor's address (docs/GEO_BLOCK.md). The API and MCP sell to a server, whose
+            # address says nothing about the person behind it, so a model sold by country is never offered there.
+            errors.append(_err(mid, "blocked_countries needs api_exposure web_only"))
         ent = m["entitlement"]
         if ent and ent.split(":")[0] != f"models_{m['output']}":
             errors.append(_err(mid, "entitlement category must match the output"))
