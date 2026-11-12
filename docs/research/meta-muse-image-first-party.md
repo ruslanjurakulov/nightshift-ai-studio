@@ -170,14 +170,16 @@ carries `"operator_preview": true`:
 
 - **Who.** Only a platform owner or admin, in the operator's own credits-exempt organization. Every other caller is
   answered `model_not_sellable`, as before. The model is not offered through the API, MCP, the Assistant or an
-  automatic pick, and `sellable_models` does not list it.
+  automatic pick, and `sellable_models` does not list it. The rule lives in `creative_price`, so the operator's own
+  signed-in requests elsewhere (a workflow step or a creative job naming the model) are accepted too, in the exempt
+  organization only; a step that runs without the operator's sign-in is refused.
 - **Money.** The exempt organization holds and pays nothing. With no `credit_prices` row the job is recorded at the
   vendor's cost ($0.01 an image, an estimate from the vendor's page). The vendor bills the owner's key for every
   picture.
 - **Before the first picture.** The entry must be synced and verified by one real probe: Actions, then "Probe
-  models", naming `grounded-image-1.0` (one paid call, about $0.01). `--all` skips it because the terms gate is open.
+  models", naming `grounded-image-1.0` (one paid call, about $0.01). `--all` skips it because its terms gate is still set (not cleared).
   Until a probe has succeeded the preview is refused like any unverified model.
-- **What stays closed.** `availability` is `hidden`, the terms gate is open and there is no credit price: no
+- **What stays closed.** `availability` is `hidden`, the terms gate is still set and there is no credit price: no
   customer can see, quote or run the model. The gate's conditions in `terms_notes` are unchanged.
 
 ## Open questions
