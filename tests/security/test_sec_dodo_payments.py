@@ -135,6 +135,25 @@ def test_a_dodo_plan_period_is_granted_once_per_payment_and_per_period(conn):
     assert consistent(conn, org)
 
 
+def test_a_renewal_grants_the_next_periods_allowance_once_and_a_period_already_over_grants_nothing(conn):
+    org = new_org(conn)
+    sub = "sub_RenewalLab000000001"
+    svc(conn, "select public.upsert_subscription_for('dodo', %s, %s, 'cus_TV52uJWWXt2yIoBBxpjaa', 'creator', 'pdt_PlusPlan0000000001', 'active', "
+              "now() - interval '1 day', now() + interval '29 days', false, null, now())", [org, sub])
+    grant = ("select public.grant_subscription_credits_for('dodo', %s, %s, 'creator', %s::timestamptz, %s::timestamptz, %s, 'n', null, "
+             "'pdt_PlusPlan0000000001', 1)")
+    first = jval(svc(conn, grant, [org, sub, "2026-11-01T00:00:00Z", "2099-01-01T00:00:00Z", "pay_RenewLab0001"]))
+    # The renewal (charge_type renewal): the next period, its own payment id, the full allowance again.
+    renewal = jval(svc(conn, grant, [org, sub, "2099-01-01T00:00:00Z", "2099-02-01T00:00:00Z", "pay_RenewLab0002"]))
+    replay = jval(svc(conn, grant, [org, sub, "2099-01-01T00:00:00Z", "2099-02-01T00:00:00Z", "pay_RenewLab0002"]))
+    # A payment for a period that has already ended (a very late delivery) adds no credits that would expire at once.
+    late = jval(svc(conn, grant, [org, sub, "2020-01-01T00:00:00Z", "2020-02-01T00:00:00Z", "pay_RenewLab0003"]))
+    assert (first["granted"], renewal["granted"], replay["duplicate"], late["granted"], late.get("reason")) == (2000, 2000, True, 0, "period_over")
+    assert [(src, amt, plan) for src, amt, _rem, _held, plan in lots(conn, org)] == [("subscription", "2000.00", "creator")] * 2
+    assert [(k, e) for k, _a, e in ledger(conn, org)] == [("subscription", "pay_RenewLab0001"), ("subscription", "pay_RenewLab0002")]
+    assert consistent(conn, org)
+
+
 def test_a_cancellation_at_period_end_keeps_the_plan_live_until_dodo_ends_it(conn):
     org = new_org(conn)
     sub = "sub_CancelAtEnd000001"
