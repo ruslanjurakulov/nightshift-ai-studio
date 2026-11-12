@@ -164,6 +164,9 @@ jobs:
           WEBENV_TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           WEBENV_SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           WEBENV_MEDIA_URL_SECRET: ${{ secrets.MEDIA_URL_SECRET }}
+          # The content policy (docs/security/CSP.md): empty = report-only, today's behaviour. `enforce` enforces it,
+          # `both` enforces it and also reports a stricter one, `off` sends none. Back to empty (or `report-only`) and a
+          # redeploy undoes either; no code change.
           WEBENV_CSP_MODE: ${{ vars.CSP_MODE }}
           WEBENV_CSP_REPORT_URI: ${{ vars.CSP_REPORT_URI }}
           WEBENV_NIGHTSHIFT_ADMIN_MFA: ${{ vars.NIGHTSHIFT_ADMIN_MFA }}
