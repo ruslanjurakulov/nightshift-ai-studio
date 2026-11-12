@@ -214,6 +214,9 @@ jobs:
           # variable is on (and NIGHTSHIFT_ADS_FACTORY too). The SAME variable starts the brand-scan-worker (step "Build the brand-scan env"),
           # so one switch controls both. Setting nothing leaves it dark; this change does not set it.
           WEBENV_NIGHTSHIFT_ADS_BRAND_SCAN: ${{ vars.NIGHTSHIFT_ADS_BRAND_SCAN }}
+          # Character Studio (docs/CHARACTER_STUDIO.md, migration 0137): the page and /api/character-studio/*, off unless this repository
+          # variable is exactly on. Setting nothing leaves it dark; this change does not set it. The worker is not deployed yet (a release step).
+          WEBENV_NIGHTSHIFT_CHARACTER_STUDIO: ${{ vars.NIGHTSHIFT_CHARACTER_STUDIO }}
           WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
           WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}

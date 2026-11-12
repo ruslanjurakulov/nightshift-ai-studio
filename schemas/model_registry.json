@@ -6169,6 +6169,186 @@
         "prompt": "score this clip",
         "input_video": "generated"
       }
+    },
+    {
+      "id": "kling-4.0-omni-edit",
+      "display_name": "Kling 4.0 Omni (video edit)",
+      "provider": "kling",
+      "adapter": "video.kling_omni",
+      "vendor_model": "kling-4.0",
+      "capabilities": [
+        "video_character_swap"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 10
+      },
+      "aspect_ratios": [],
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "durations_s": [],
+      "character_swap": {
+        "input_seconds": [
+          3,
+          30
+        ],
+        "reference_images_max": 10,
+        "keeps_original_audio": true,
+        "duration_follows_input": true,
+        "mask_source": "none",
+        "real_people": "consent_declared",
+        "billing": "output_x2",
+        "input_max_bytes": 314572800,
+        "input_fps": [
+          24,
+          60
+        ],
+        "input_min_side_px": 700,
+        "input_max_side_px": 4553,
+        "input_min_pixels": 490000,
+        "input_max_pixels": 8294400
+      },
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://kling.ai/document-api/api/video/4-0/omni-video",
+        "checked_at": "2026-11-11",
+        "source": "vendor_docs_search",
+        "evidence": "Kling's own markdown API pages read 2026-11-11 (character-swap research): POST /omni-video/kling-4.0, contents[] with prompt, refer_image and base_video, settings.audio original, Bearer API key.",
+        "note": "REGISTRY-ONLY (0137 sells it, not creative_jobs). Poll GET /tasks?task_ids=... (statuses submitted, processing, succeeded, failed; data[].outputs[].url). Item field names are confirmed by the first owner-approved probe."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.188,
+        "source_url": "https://kling.ai/document-api/pricing/base/video",
+        "as_of": "2026-11-11",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.188,
+            "1080p": 0.282
+          }
+        },
+        "note": "Per second of the clip, read 2026-11-11: with a video input no longer than the output, unit price x output seconds x 2. A 10 s edit: $1.88 at 720p, $2.82 at 1080p (1 unit = $0.157 on 4.0 rows)."
+      },
+      "credit_unit": "model_kling_4_0_omni_edit_second",
+      "entitlement": "models_video:ultra",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Kling Terms of API Paid Service (effective 2026-04-21, read 2026-11-11) 3.3: a 'non-exclusive, non-transferable or sublicensable' licence. The written answer on offering it to our users is pending (letter sent 2026-11-11). So web_only.",
+        "Same terms 3.7: we warrant that uploaded data is authorised; 8.2.6 / 8.2.7: nothing infringing third parties' rights, nothing endangering minors; 12.1: under 13 barred. Hence 0137's consent step before any upload.",
+        "Same terms 5.1: 'We will not use, or authorize any person or entity to use, your data to train, retrain, or otherwise improve the Services'.",
+        "Gate stays open until the owner has Kling's written answer and has bought a video resource package; no credit price (0137 character_swap_models.credits_per_usd) may be set before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1,
+        "max_source_seconds": 30
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "video_character_swap",
+        "prompt": "replace the person with @Image 1",
+        "resolution": "720p",
+        "input_video": "generated",
+        "input_image": "generated"
+      }
+    },
+    {
+      "id": "seedance-2.5-edit",
+      "display_name": "Seedance 2.5 (video edit)",
+      "provider": "bytedance",
+      "adapter": "video.seedance2_edit",
+      "vendor_model": "dreamina-seedance-2-5-260628",
+      "capabilities": [
+        "video_character_swap"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 30
+      },
+      "aspect_ratios": [],
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "durations_s": [],
+      "character_swap": {
+        "input_seconds": [
+          4,
+          30
+        ],
+        "reference_images_max": 30,
+        "keeps_original_audio": false,
+        "duration_follows_input": true,
+        "mask_source": "none",
+        "real_people": "own_generated_clip_only",
+        "billing": "input_plus_output",
+        "input_max_bytes": 209715200,
+        "input_fps": [
+          24,
+          60
+        ],
+        "input_min_side_px": 480,
+        "input_max_side_px": 4096,
+        "input_min_pixels": 407696,
+        "input_max_pixels": 8847360
+      },
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.byteplus.com/en/docs/ModelArk/2607688",
+        "checked_at": "2026-11-11",
+        "source": "vendor_docs_search",
+        "evidence": "BytePlus Seedance 2.5 tutorial and create-video-generation-task API (JSON embedded in the pages, decoded 2026-11-11): omni_reference_task_type edit, reference_video + reference_image roles, ratio adaptive, duration -1.",
+        "note": "REGISTRY-ONLY (0137 sells it). Edit input 4-30 s, 1-30 pictures; output = input length, at most 0.4 s shorter. Real faces are refused unless the clip is our own ModelArk output of the last 30 days."
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.276,
+        "source_url": "https://docs.byteplus.com/en/docs/ModelArk/1544106",
+        "as_of": "2026-11-11",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.276,
+            "1080p": 0.68
+          }
+        },
+        "note": "ESTIMATE per clip second, 'Input with video' rates: tokens = (in + out) s x W x H x fps / 1024 at $6.40 (720p) / $7.00 (1080p) per 1M, 24 fps. 10 s: $2.76 at 720p, $6.80 at 1080p. Minimum-token table not read."
+      },
+      "credit_unit": "model_seedance_2_5_edit_second",
+      "entitlement": "models_video:ultra",
+      "terms_gate": "written_consent_required",
+      "terms_notes": [
+        "Customer Agreement 6.2(1): no OEM, SaaS, MaaS or reseller use without BytePlus's written consent; Model Services 4.2.3: no re-integrating the video APIs into UGC platforms or 'AI content creation tools'. Letter sent 2026-11-11.",
+        "Model Services 4.2.2: the platform verifies end-user identity and keeps a takedown process; 4.2.4(b): liquidated damages for unauthorised resale.",
+        "Seedance 2.x refuses reference images or videos with real human faces unless each performer is verified through BytePlus's real-person asset library (asset:// ids) or the clip is an original ModelArk output of the same account within 30 days.",
+        "Gate stays open until BytePlus authorises Nightshift in writing and 2.5 is activated; no credit price (0137 character_swap_models.credits_per_usd) may be set before that."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1,
+        "max_source_seconds": 30
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "video_character_swap",
+        "prompt": "replace the person with @Image 1",
+        "resolution": "720p",
+        "input_video": "generated",
+        "input_image": "generated"
+      }
     }
   ]
 }

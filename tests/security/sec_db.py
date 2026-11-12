@@ -190,6 +190,23 @@ def put_back_0132(session) -> None:
     session.conn.execute(MIGRATION_0132.read_text(encoding="utf-8"))
 
 
+MIGRATION_0137 = MIGRATIONS / "0137_character_studio.sql"
+ROLLBACK_0137 = REPO / "docs" / "sql" / "rollback_0137_character_studio.sql"
+
+
+def take_off_0137(session) -> None:
+    """0137 names only objects of 0018 / 0020 / 0036 / 0038 / 0054 / 0107, so nothing earlier waits for its rollback; a test that needs the
+    database without 0137 (the rollback and re-apply in test_sec_character_swap.py) takes it off with its own rollback inside a transaction
+    that is rolled back (its rows go too)."""
+    session.conn.execute("set local nightshift.character_swap_rollback_delete_rows = 'yes'")
+    text = ROLLBACK_0137.read_text(encoding="utf-8")
+    session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0137(session) -> None:
+    session.conn.execute(MIGRATION_0137.read_text(encoding="utf-8"))
+
+
 MIGRATION_0125 = MIGRATIONS / "0125_model_shutdown.sql"
 ROLLBACK_0125 = REPO / "docs" / "sql" / "rollback_0125_model_shutdown.sql"
 

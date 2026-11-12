@@ -39,7 +39,8 @@
 -- REQUIRES 0018 (organizations, org_members, is_platform_admin, default_org_id), 0020 (credit_accounts, credit_transactions),
 -- 0021 (payment_events), 0034 (plans, subscriptions) and 0036 (creative_jobs). Additive and idempotent: create-or-replace of three
 -- functions that did not exist; a replay changes nothing. Undo: docs/sql/rollback_0138_operator_customers.sql (owner-applied).
--- NUMBER. 0138: 0136 is applied live; 0137 is reserved by other work (#686). This file names nothing of theirs.
+-- NUMBER. 0138, after 0136 (applied live) and 0137 (Character Studio, #686). This file names nothing of theirs, and neither of them
+-- names anything of this file's (0137 alters no table these functions read and replaces none of the credit functions).
 --
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 set local lock_timeout = '5s';
