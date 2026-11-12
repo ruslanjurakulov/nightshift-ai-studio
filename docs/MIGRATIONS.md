@@ -690,7 +690,7 @@ refuses `not_on_sale`. The worker (`tools/brand_scan_worker.py`) does nothing un
 `brand_scan_fail_locked(uuid, text)`. A failed scan no longer deletes a picture that a brand kit (`brand_kits.logo_asset_id`) or a product
 (`brand_product_images.asset_id`) references. The scan's pictures are locked FOR UPDATE first, so a kit or product write that is still
 open is waited for, and the delete is a statement of its own, which reads the kits and products after that wait.
-- **Number.** 0134: 0132 is taken by an open pull request (the hi-res export), and 0135 is reserved for character studio.
+- **Number.** 0134: 0132 is taken by an open pull request (the hi-res export), and 0137 is reserved for character studio.
 - **Guards.** The body must be 0133's (`67e8ee83bde9ec4512a3d6135c9c07ee`) or 0134's own (`fd10914ccff5aa66264ab96265e59c38`, a replay).
   The columns of 0131's tables that reference `media_assets` must be exactly those two, or the file refuses. The end state checks the
   body, that no API role can execute it, that it is SECURITY DEFINER with a pinned search_path and has no overload, and that 0133's three
@@ -703,17 +703,18 @@ open is waited for, and the delete is a statement of its own, which reads the ki
 - **Tests.** `tests/test_brand_scan_followup_migration.py` (the file, pinned) and `tests/security/test_sec_brand_scan_followup.py`
   (the lab: every failure path, each filter, a real concurrent kit write, the guards, a replay, the rollback chain). Lab tests that
   replay or roll back 0133 take 0134 off first (`sec_db.take_off_0134`).
-## Character Studio: priced character swaps, the consent trail, the gallery (0135)
+## Character Studio: priced character swaps, the consent trail, the gallery (0137)
 
-0135 (`0135_character_studio.sql`, `docs/CHARACTER_STUDIO.md`) is **live on apply and dark**: it **adds six tables** (`character_swap_models`,
+0137 (`0137_character_studio.sql`, `docs/CHARACTER_STUDIO.md`) is **live on apply and dark**: it **adds six tables** (`character_swap_models`,
 `character_swap_settings`, `character_swap_consents`, `character_swap_jobs`, `character_swap_templates`, `character_swap_template_samples`), twelve
 internal functions, four member functions and four worker functions. It **replaces nothing** and names no object of the Ads Factory or of
 `creative_jobs`. Nothing is **on sale** until the owner sets `character_swap_models.credits_per_usd` per model (seeded NULL): `request_character_swap`
 refuses `not_on_sale`. The worker (`tools/character_swap_worker.py`) does nothing unless `NIGHTSHIFT_CHARACTER_STUDIO=on`; the page and the routes are a 404.
 
-- **Number.** 0135, after 0132 (the hi-res export) and 0134 (the brand-scan follow-up): none of them names anything 0135 adds, and 0135 names nothing
-  of theirs (tests/test_character_studio_migration.py checks it). The numbering tests of 0127, 0131 and 0133 list 0135 as reviewed; 0135's own does
-  not forbid later numbers.
+- **Number.** 0137, after 0136 (#685, applied live). It was first numbered 0135 (0134's and 0136's headers still say 0135 is reserved for it) and
+  renumbered with the same body, so it applies after 0136 instead of out of order; 0135 stays unused. None of 0132-0136 names anything 0137 adds, and
+  0137 names nothing of theirs (tests/test_character_studio_migration.py checks it). The numbering tests of 0127, 0131 and 0133 list 0137 as
+  reviewed; 0137's own does not forbid later numbers.
 - **Who may do what.** Members (viewer and up) read their organization's jobs and consents; any signed-in person reads the gallery; the models and the
   settings are closed to every API role. Four SECURITY DEFINER member functions to `authenticated` (quote any member; consent, request and cancel an
   editor), four worker functions to `service_role` only, the helpers to nobody. The samples script's service key may insert and update a sample row.
@@ -731,7 +732,7 @@ refuses `not_on_sale`. The worker (`tools/character_swap_worker.py`) does nothin
 - **Drift guard.** Refuses a function of its names with another body; the last block asserts the end state (bodies, grants, RLS, policies, checks, the
   index, the triggers and their ENABLE ALWAYS, the seeded rows).
 - **Apply as ONE transaction.** `set local lock_timeout = '5s'`.
-- **Undo.** `docs/sql/rollback_0135_character_studio.sql` (owner-applied): refuses a body that is not 0135's, a job in flight, and rows people made
+- **Undo.** `docs/sql/rollback_0137_character_studio.sql` (owner-applied): refuses a body that is not 0137's, a job in flight, and rows people made
   unless `set local nightshift.character_swap_rollback_delete_rows = 'yes'`. Outputs stay in the library.
 - **Tests.** `tests/test_character_studio_migration.py` (the file, pinned), `tests/security/test_sec_character_swap.py` (the lab: grants, cross-org,
   consent, the money ledger at job_minimum 30, caps, the worker's task rule, races, the rollback and re-apply, touching nothing else).

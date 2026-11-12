@@ -84,11 +84,11 @@ class Numbering(unittest.TestCase):
         self.assertIn("0131", numbers)
         # 0136 (exports up to 1080p sold by the minute) was reviewed against these pins: it touches the video editor's export functions and
         # 0132's price row only, nothing of 0131's or 0133's.
-        # 0135 (Character Studio) was reviewed against these pins: it names no object of 0133 (tests/test_character_studio_migration.py
+        # 0137 (Character Studio) was reviewed against these pins: it names no object of 0133 (tests/test_character_studio_migration.py
         # checks that it names no brand_* object), replaces nothing, and 0133's rollback does not wait for it.
         # 0134 (the follow-up) was reviewed against these pins: it replaces exactly one of this file's functions, brand_scan_fail_locked,
         # on this file's body (its own guard names 0133's hash; tests/test_brand_scan_followup_migration.py pins that), and nothing else.
-        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0135", "0136")], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137")], [], "a later number needs its own review of this file's pins")
         later = (MIG / "0134_brand_scan_followup.sql").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertIn(GUARD["brand_scan_fail_locked"], later)

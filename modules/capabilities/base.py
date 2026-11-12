@@ -69,8 +69,8 @@ VIDEO_OPS = (VIDEO_EDIT, VIDEO_REFRAME, VIDEO_REMOVE_BG)
 #: Music (no migration yet, see REGISTRY_ONLY_CAPABILITIES): a track made from words, or scored to a library video.
 MUSIC = "music"              # text → music, CapabilityRequest.duration_s seconds long
 VIDEO_MUSIC = "video_music"  # video → music that follows it; the output is the audio alone, the video is not changed
-#: Character Studio (0135, docs/CHARACTER_STUDIO.md): a video and 1..N character pictures (CapabilityRequest.input_media and
-#: input_images) + words that say who becomes whom → the same scene with those people replaced. Sold through 0135's own tables,
+#: Character Studio (0137, docs/CHARACTER_STUDIO.md): a video and 1..N character pictures (CapabilityRequest.input_media and
+#: input_images) + words that say who becomes whom → the same scene with those people replaced. Sold through 0137's own tables,
 #: never through creative_jobs, so the registry entries that list it are registry-only.
 VIDEO_CHARACTER_SWAP = "video_character_swap"
 CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE,
@@ -81,7 +81,7 @@ CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE,
 #: is left out of the sync (``model_registry.sync_rows``), no probe of it is run (it could not be recorded), and with no
 #: row in the database nothing can price, sell or start a job on it. tests/test_sonilo.py compares this set with the
 #: migrations, so the migration that teaches the database a capability is also the change that takes it out of here.
-#: A character swap is not a creative job at all (0135 prices, holds and runs it in its own tables), so it stays here for good:
+#: A character swap is not a creative job at all (0137 prices, holds and runs it in its own tables), so it stays here for good:
 #: the creative system must never be able to sell it.
 REGISTRY_ONLY_CAPABILITIES = frozenset({MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP})
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",

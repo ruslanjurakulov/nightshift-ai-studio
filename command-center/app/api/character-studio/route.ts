@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Character Studio's state (migration 0135; NIGHTSHIFT_CHARACTER_STUDIO, default off: 404 before anything is read).
+ * Character Studio's state (migration 0137; NIGHTSHIFT_CHARACTER_STUDIO, default off: 404 before anything is read).
  *
  * GET `?org=<id>`: the gallery's cards with each model's sample (or none yet), the organization's latest swaps, and the library's videos
  * and pictures the studio can pick, read under the member's own session (RLS). Nothing is priced here: the quote is its own call.

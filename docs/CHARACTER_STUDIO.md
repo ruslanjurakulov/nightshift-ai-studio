@@ -8,7 +8,7 @@ model's maker, stores the result in the library (labelled AI-made), and the cred
 
 | Piece | Where | Off by |
 |---|---|---|
-| Database | `supabase/migrations/0135_character_studio.sql` | both models' `credits_per_usd` seeded NULL: `not_on_sale` |
+| Database | `supabase/migrations/0137_character_studio.sql` | both models' `credits_per_usd` seeded NULL: `not_on_sale` |
 | Worker | `tools/character_swap_worker.py`, `modules/character_swap.py` | `NIGHTSHIFT_CHARACTER_STUDIO` unset; not in docker-compose |
 | Adapters | `modules/capabilities/character_swap.py` (`video.kling_omni`, `video.seedance2_edit`) | registry-only, terms-gated |
 | Web | `/{channel}/character-studio`, `/api/character-studio/*` | `NIGHTSHIFT_CHARACTER_STUDIO` unset: 404, no rail entry |
@@ -35,7 +35,7 @@ Both are their makers' own first-party APIs, and both stay terms-gated in `schem
 Read 2026-11-11 (research note `character-swap.md`; Kling's 4.0 pages: `docs/research/monitoring-claims-2026-11-10.md` §5). Kling's
 item field names are confirmed by the first probe the owner approves; `tests/test_character_swap_adapters.py` pins what we send.
 
-## Money (0135, the 0133 pattern)
+## Money (0137, the 0133 pattern)
 
 - **The charge** is computed in the database, never by a client: `credits_round_up(ceil(input seconds) × the vendor's USD per second
   at the resolution × the model's credits_per_usd)` (`character_swap_charge`). Each model shows its own charge for the person's clip
@@ -76,7 +76,7 @@ item field names are confirmed by the first probe the owner approves; `tests/tes
   (`prompt_real_person`); hidden and control characters are refused; the words must name a picture (`@Image 1`). KEYWORD-WEAK BY
   DESIGN: it stops casual attempts and says so; the consent and the vendor's own refusals stand behind it.
 - **Seedance and real faces.** BytePlus refuses real human faces unless each performer is verified through its real-person asset flow
-  (a QR invitation, verification on the performer's own phone, an `asset://` id). 0135 does not take such ids yet, so Seedance is sold
+  (a QR invitation, verification on the performer's own phone, an `asset://` id). 0137 does not take such ids yet, so Seedance is sold
   ONLY for a video that is the organization's own generated clip: `source = 'generated'`, a BytePlus model's output per its
   provenance, at most 30 days old (ModelArk's own "trusted model outputs" rule: the same account, within 30 days, unedited). Anything
   else is `needs_own_generated_clip`, and the quote says so per model before anything is asked. Taking performer asset ids is a
@@ -108,7 +108,7 @@ Nothing below is done by this change. In order, per model:
 
 ## Releasing (after a model is unlocked)
 
-1. Apply 0135 (merged = applied; it is dark on its own). Verify with the block at the end of the file.
+1. Apply 0137 (merged = applied; it is dark on its own). Verify with the block at the end of the file.
 2. The web switch is already plumbed and empty (`deploy/.env.web.example`, `.github/workflows/deploy_web.yml`). Add
    `NIGHTSHIFT_CHARACTER_STUDIO` + `NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN` + `MEDIA_URL_SECRET` to `deploy/.env.worker.example`
    and remove the `NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN` entry of `INTENTIONALLY_UNREACHABLE` in `tests/test_switch_reachability.py`.

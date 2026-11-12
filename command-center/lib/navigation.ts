@@ -67,7 +67,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/styles", key: "styles" },
       // Brand kits, campaigns and ad concepts (migration 0131). Listed only while NIGHTSHIFT_ADS_FACTORY is on: see FEATURE_GATED below.
       { href: "/ads", key: "ads" },
-      // Character Studio (migration 0135). Listed only while NIGHTSHIFT_CHARACTER_STUDIO is on: see FEATURE_GATED below.
+      // Character Studio (migration 0137). Listed only while NIGHTSHIFT_CHARACTER_STUDIO is on: see FEATURE_GATED below.
       { href: "/character-studio", key: "characterStudio" },
       { href: "/library", key: "library" },
       { href: "/editor", key: "editor" },
@@ -248,7 +248,7 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
     { href: "/series", key: "series" },
     // Brand kits, campaigns and ad concepts (migration 0131); a tab only while NIGHTSHIFT_ADS_FACTORY is on.
     { href: "/ads", key: "ads" },
-    // Character Studio (migration 0135); a tab only while NIGHTSHIFT_CHARACTER_STUDIO is on.
+    // Character Studio (migration 0137); a tab only while NIGHTSHIFT_CHARACTER_STUDIO is on.
     { href: "/character-studio", key: "characterStudio" },
     // Comments on the channel's videos, with replies a person approves (migration 0081).
     { href: "/inbox", key: "inbox" },

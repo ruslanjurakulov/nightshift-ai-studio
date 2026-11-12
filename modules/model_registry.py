@@ -529,7 +529,7 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                 errors.append(_err(mid, "a registry-only entry stays dark: terms_gate set, api_exposure web_only, price unconfirmed"))
         swap = m.get("character_swap")
         if (VIDEO_CHARACTER_SWAP in caps) != bool(swap):
-            # 0135 quotes the input's seconds against these limits, and the worker refuses an input outside them before it pays.
+            # 0137 quotes the input's seconds against these limits, and the worker refuses an input outside them before it pays.
             errors.append(_err(mid, "character_swap is required with video_character_swap and only with it"))
         elif swap:
             lo, hi = swap["input_seconds"]
@@ -538,7 +538,7 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             if swap["reference_images_max"] != m["inputs"]["image_refs_max"]:
                 errors.append(_err(mid, "character_swap.reference_images_max must equal inputs.image_refs_max"))
             if sorted(((m["pricing"].get("variants") or {}).get("prices") or {})) != sorted(m["resolutions"]) or not m["resolutions"]:
-                # Each resolution the person can pick is shown its own price (0135 character_swap_models): none may be missing.
+                # Each resolution the person can pick is shown its own price (0137 character_swap_models): none may be missing.
                 errors.append(_err(mid, "a character swap is priced per resolution: one price for each listed resolution"))
             if swap["real_people"] == "own_generated_clip_only" and m["provider"] != "bytedance":
                 errors.append(_err(mid, "own_generated_clip_only is BytePlus's 30-day rule"))

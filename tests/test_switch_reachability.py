@@ -68,7 +68,7 @@ INTENTIONALLY_UNREACHABLE = {
     # -- owner decisions still pending (never enable from a test) ------------------
     # NIGHTSHIFT_CHARACTER_STUDIO itself is reachable (deploy/.env.web.example, empty: the web page stays a 404). The worker that also
     # reads it is not deployed: no service runs tools/character_swap_worker.py until the release steps of docs/CHARACTER_STUDIO.md.
-    "NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN": "the Command Center's public https origin the Character Studio worker (migration 0135) "
+    "NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN": "the Command Center's public https origin the Character Studio worker (migration 0137) "
                                                  "signs input links for; the worker ships DARK and undeployed until the owner has the "
                                                  "vendors' written answers and sets a price (docs/CHARACTER_STUDIO.md, Releasing): it goes "
                                                  "into deploy/.env.worker.example with the worker service, and this entry is removed",

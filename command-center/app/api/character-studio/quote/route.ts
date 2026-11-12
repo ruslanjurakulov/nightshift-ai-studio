@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * What a swap of one library video would cost, per model (migration 0135's quote_character_swap; NIGHTSHIFT_CHARACTER_STUDIO, default off:
+ * What a swap of one library video would cost, per model (migration 0137's quote_character_swap; NIGHTSHIFT_CHARACTER_STUDIO, default off:
  * 404). GET `?org=<id>&input=<video id>&resolution=720p|1080p`. The database computes each model's charge from that vendor's own price
  * for the clip's length and the resolution; the browser shows it and never computes one. A model with no price reads `on_sale: false`.
  */

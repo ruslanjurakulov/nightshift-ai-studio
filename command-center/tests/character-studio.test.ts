@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Character Studio's routes, model and strings (migration 0135, NIGHTSHIFT_CHARACTER_STUDIO).
+ * Character Studio's routes, model and strings (migration 0137, NIGHTSHIFT_CHARACTER_STUDIO).
  *
  * What would break without these: a route answering while the switch is off (or telling a signed-out visitor it exists, or answering a
  * cross-site page), the browser choosing the price (only the database does) or a swap started with no price ceiling, the consent sent

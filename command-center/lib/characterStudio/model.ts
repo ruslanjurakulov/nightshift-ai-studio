@@ -1,8 +1,8 @@
 /**
- * Character Studio ("Qahramon studiyasi", migration 0135, docs/CHARACTER_STUDIO.md): the shapes the page and the routes share.
+ * Character Studio ("Qahramon studiyasi", migration 0137, docs/CHARACTER_STUDIO.md): the shapes the page and the routes share.
  *
  * Pure: no React, no fetch, no environment except the switch. The browser never prices anything: every number shown comes from
- * 0135's quote_character_swap for the person's own clip, per model, and a missing number reads as "not on sale", never as 0
+ * 0137's quote_character_swap for the person's own clip, per model, and a missing number reads as "not on sale", never as 0
  * (CLAUDE.md #5). Every refusal the database can give is a closed word here; anything else is "failed".
  */
 
@@ -25,7 +25,7 @@ export const MODEL_FACTS: Record<ModelId, { name: string; maker: string; keepsSo
   "seedance-2.5-edit": { name: "Seedance 2.5", maker: "BytePlus", keepsSound: false, ownClipsOnly: true, maxPictures: 30 },
 };
 
-/** The consent text the person read (0135 accepts v1 only). Raise it together with the wording and the database. */
+/** The consent text the person read (0137 accepts v1 only). Raise it together with the wording and the database. */
 export const CONSENT_VERSION = "v1";
 export const DECLARATIONS = ["rights_to_video", "performers_consented", "no_minors", "references_owned_or_licensed", "data_to_provider"] as const;
 export type Declaration = (typeof DECLARATIONS)[number];
@@ -81,7 +81,7 @@ function word(v: unknown): string | null {
   return typeof v === "string" && /^[a-z0-9_]{1,64}$/.test(v) ? v : null;
 }
 
-/** 0135's quote, or null when it is not one. A model on sale with no number is not on sale: no price is invented. */
+/** 0137's quote, or null when it is not one. A model on sale with no number is not on sale: no price is invented. */
 export function coerceQuote(data: unknown): SwapQuote | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
@@ -182,7 +182,7 @@ export interface MappedError {
   hold?: number;
 }
 
-/** A Supabase / PostgREST error from one of 0135's functions, as a closed word. Nothing of the database's own text passes through. */
+/** A Supabase / PostgREST error from one of 0137's functions, as a closed word. Nothing of the database's own text passes through. */
 export function mapSwapError(error: { code?: string; message?: string; details?: string } | null | undefined): MappedError {
   const code = error?.code ?? "";
   const message = (error?.message ?? "").trim();
@@ -263,7 +263,7 @@ export interface SwapTemplate {
 export const TEMPLATE_COLUMNS = "id, slug, position, title_en, title_ru, title_uz, prompt, characters";
 export const SAMPLE_COLUMNS = "template_id, model_id, web_url, poster_url";
 
-/** A sample's link is shown only when it is a plain https URL (0135 checks the same shape); anything else is an empty slot. */
+/** A sample's link is shown only when it is a plain https URL (0137 checks the same shape); anything else is an empty slot. */
 const SAMPLE_URL = /^https:\/\/[a-z0-9.-]+\/[A-Za-z0-9._~/-]+$/;
 
 export function coerceTemplates(templates: unknown, samples: unknown): SwapTemplate[] {

@@ -25,7 +25,7 @@ import {
 } from "@/lib/characterStudio/model";
 
 /**
- * Character Studio ("Qahramon studiyasi", docs/CHARACTER_STUDIO.md; migration 0135). Drawn only with NIGHTSHIFT_CHARACTER_STUDIO on: the
+ * Character Studio ("Qahramon studiyasi", docs/CHARACTER_STUDIO.md; migration 0137). Drawn only with NIGHTSHIFT_CHARACTER_STUDIO on: the
  * page decides on the server, and `enabled` is passed down so the component draws nothing if it is ever mounted with the switch off.
  *
  * Layout, the owner's: the COST of the chosen model for the person's clip at the top, the MODEL picker below it; switching the model

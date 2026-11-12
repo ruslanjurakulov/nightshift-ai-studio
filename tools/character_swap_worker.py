@@ -1,4 +1,4 @@
-"""Character Studio worker — migration 0135, ``modules/character_swap.py`` (docs/CHARACTER_STUDIO.md).
+"""Character Studio worker — migration 0137, ``modules/character_swap.py`` (docs/CHARACTER_STUDIO.md).
 
 DARK. It does nothing unless ``NIGHTSHIFT_CHARACTER_STUDIO=on``: with the switch off (the default) it says so and exits 0 without connecting
 to anything. It is not in deploy/docker-compose.yml yet: adding a service for it is a release step (docs/CHARACTER_STUDIO.md, "Releasing"),
@@ -10,7 +10,7 @@ result in the media library (source 'generated') and finishes the job, which cap
 
 Environment:
   NIGHTSHIFT_CHARACTER_STUDIO                 on, or the worker exits at once
-  SUPABASE_URL, SUPABASE_SERVICE_KEY          0135's worker functions and register_asset (service key)
+  SUPABASE_URL, SUPABASE_SERVICE_KEY          0137's worker functions and register_asset (service key)
   NIGHTSHIFT_MEDIA_DIR                        absolute; the `media` volume (rw): the inputs are read and the result is stored there
   NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN   the Command Center's public https origin: the vendors fetch the inputs from it
   MEDIA_URL_SECRET                            the web app's signing key (the same value): the input links are signed with it

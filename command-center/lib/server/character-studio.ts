@@ -20,8 +20,8 @@ import {
 } from "@/lib/characterStudio/model";
 
 /**
- * Character Studio's server side (migration 0135; docs/CHARACTER_STUDIO.md). Every call is the signed-in member's own Supabase client
- * (anon key + session): RLS reads and 0135's four member functions, never the service key, never a vendor. Behind
+ * Character Studio's server side (migration 0137; docs/CHARACTER_STUDIO.md). Every call is the signed-in member's own Supabase client
+ * (anon key + session): RLS reads and 0137's four member functions, never the service key, never a vendor. Behind
  * NIGHTSHIFT_CHARACTER_STUDIO: off = 404 before the session is read, so a switched-off route does not tell a visitor whether they are
  * signed in.
  */

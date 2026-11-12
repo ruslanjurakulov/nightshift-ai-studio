@@ -1,4 +1,4 @@
-"""Character Studio's worker side (migration 0135, docs/CHARACTER_STUDIO.md): claim a priced swap, refuse what the vendor would refuse
+"""Character Studio's worker side (migration 0137, docs/CHARACTER_STUDIO.md): claim a priced swap, refuse what the vendor would refuse
 before anything is paid, submit it to the model the person chose, record the vendor's task BEFORE polling, store the result in the media
 library (source 'generated': labelled AI-made), and finish or fail it so the hold is captured or released.
 
@@ -20,7 +20,7 @@ The rules this module keeps, each learned elsewhere in the repository:
 * **The vendor's file is kept as it came** (docs/AI_DISCLOSURE.md, "Vendor watermarks and provenance"): neither adapter sends a
   watermark field (both makers' marks are off by default and no clause requires one), and the result is stored byte for byte. A model
   that does not keep the clip's sound (Seedance) says so in the picker before anything is asked; its sound is not re-muxed here.
-* **The prompt screen is the database's.** ``prompt_problem`` answers what 0135's ``character_swap_prompt_problem`` answers
+* **The prompt screen is the database's.** ``prompt_problem`` answers what 0137's ``character_swap_prompt_problem`` answers
   (tests/security/test_sec_character_swap.py runs both on one corpus); the worker asks again before it sends the words anywhere.
 """
 
@@ -54,7 +54,7 @@ LINK_TTL_S = 3600
 CAPABILITY = "video_character_swap"
 MODELS = ("kling-4.0-omni-edit", "seedance-2.5-edit")
 
-# ── the prompt screen (0135's character_swap_prompt_patterns, the same list in the same order) ───────────────────────────────
+# ── the prompt screen (0137's character_swap_prompt_patterns, the same list in the same order) ───────────────────────────────
 PROMPT_PATTERNS = (
     " real (person|people|human|humans) ", " public figures? ", " celebrit(y|ies) ", " famous ", " politicians? ", " presidents? ",
     " prime minister ", " senators? ", " actors? ", " actress(es)? ", " singers? ", " rappers? ", " footballers? ", " streamers? ",
@@ -73,12 +73,12 @@ PROMPT_MAX = 2000
 
 
 def normalize(text: str) -> str:
-    """0135's character_swap_norm: NFKC, lower case, every run of other characters one space, a space at both ends."""
+    """0137's character_swap_norm: NFKC, lower case, every run of other characters one space, a space at both ends."""
     return " " + _OTHER.sub(" ", unicodedata.normalize("NFKC", text or "").lower()).strip(" ") + " "
 
 
 def prompt_problem(text) -> Optional[str]:
-    """None for words that may be sent, else 0135's closed word. KEYWORD-WEAK BY DESIGN (see the migration's header)."""
+    """None for words that may be sent, else 0137's closed word. KEYWORD-WEAK BY DESIGN (see the migration's header)."""
     if not isinstance(text, str) or len(text) > PROMPT_MAX or not text.strip(" \n"):
         return "prompt_length"
     if _CONTROL.search(text) or _INVISIBLE.search(text):
@@ -202,7 +202,7 @@ def probe(ffprobe: str, path: Path, *, timeout_s: float = 30) -> Dict:
             "audio": any(isinstance(s, dict) and s.get("codec_type") == "audio" for s in streams or [])}
 
 
-# ── the database (0135's worker functions, the service key) ─────────────────────────────────────────────────────────────────
+# ── the database (0137's worker functions, the service key) ─────────────────────────────────────────────────────────────────
 class StoreUnavailable(Exception):
     """The database is out of reach: nothing is decided, the job stays as it is for the next claim."""
 

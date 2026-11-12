@@ -1,4 +1,4 @@
-"""Migration 0135 (Character Studio), pinned from the file: what the security lab cannot see by running it.
+"""Migration 0137 (Character Studio), pinned from the file: what the security lab cannot see by running it.
 
 * every function body hashes to the value the drift guard, the end state and the rollback name (the three lists agree);
 * it replaces nothing and touches no object it did not add: no `create or replace` of an older name, no `alter table` of an older table, no
@@ -8,7 +8,7 @@
 * the money path: a hold only after the caps and under the platform lock taken after the organization's; a capture of exactly the charge
   only in finish; a release in every ending;
 * the rollback is one transaction and drops exactly what was added.
-Later migration numbers are allowed: nothing here pins that 0135 is the highest.
+Later migration numbers are allowed: nothing here pins that 0137 is the highest.
 """
 
 import hashlib
@@ -21,9 +21,9 @@ from modules import character_swap as cs
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-FILE = MIG / "0135_character_studio.sql"
+FILE = MIG / "0137_character_studio.sql"
 TEXT = FILE.read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0135_character_studio.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0137_character_studio.sql").read_text(encoding="utf-8")
 REGISTRY = json.loads((ROOT / "schemas" / "model_registry.json").read_text(encoding="utf-8"))
 
 TABLES = ["character_swap_models", "character_swap_settings", "character_swap_consents", "character_swap_jobs", "character_swap_templates",
@@ -82,15 +82,16 @@ RB = pins(ROLLBACK, "begin;", "-- 1. The functions an API role could call.")
 
 
 class Numbering(unittest.TestCase):
-    def test_the_number_is_unique_after_0134_and_names_nothing_of_0132_to_0134(self):
+    def test_the_number_is_unique_after_0136_and_names_nothing_of_0132_to_0136(self):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
-        self.assertEqual(numbers.count("0135"), 1)
-        for earlier in ("0132", "0133", "0134"):
+        self.assertEqual(numbers.count("0137"), 1)
+        self.assertNotIn("0135", numbers, "0135 was this file's first number; it stays unused so nothing applies out of order")
+        for earlier in ("0132", "0133", "0134", "0136"):
             self.assertIn(earlier, numbers)
             later = code(next(MIG.glob(f"{earlier}_*.sql")).read_text(encoding="utf-8")).lower()
             for name in set(re.findall(r"create (?:or replace function|table if not exists) public\.(\w+)", later)):
-                self.assertNotRegex(code(TEXT).lower(), rf"\b{name}\b", f"0135 names {name} of {earlier}")
-        self.assertIn("the highest on main is 0134", TEXT)
+                self.assertNotRegex(code(TEXT).lower(), rf"\b{name}\b", f"0137 names {name} of {earlier}")
+        self.assertIn("the highest on main is 0136", TEXT)
 
     def test_the_file_says_it_is_applied_as_one_transaction_and_what_to_verify(self):
         for needle in ("APPLY AS ONE TRANSACTION", "WHAT TO VERIFY BEFORE YOU APPLY", "LIVE ON APPLY"):

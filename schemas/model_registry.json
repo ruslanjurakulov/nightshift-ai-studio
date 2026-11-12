@@ -6217,7 +6217,7 @@
         "checked_at": "2026-11-11",
         "source": "vendor_docs_search",
         "evidence": "Kling's own markdown API pages read 2026-11-11 (character-swap research): POST /omni-video/kling-4.0, contents[] with prompt, refer_image and base_video, settings.audio original, Bearer API key.",
-        "note": "REGISTRY-ONLY (0135 sells it, not creative_jobs). Poll GET /tasks?task_ids=... (statuses submitted, processing, succeeded, failed; data[].outputs[].url). Item field names are confirmed by the first owner-approved probe."
+        "note": "REGISTRY-ONLY (0137 sells it, not creative_jobs). Poll GET /tasks?task_ids=... (statuses submitted, processing, succeeded, failed; data[].outputs[].url). Item field names are confirmed by the first owner-approved probe."
       },
       "pricing": {
         "unit": "second",
@@ -6239,9 +6239,9 @@
       "terms_gate": "terms_review_required",
       "terms_notes": [
         "Kling Terms of API Paid Service (effective 2026-04-21, read 2026-11-11) 3.3: a 'non-exclusive, non-transferable or sublicensable' licence. The written answer on offering it to our users is pending (letter sent 2026-11-11). So web_only.",
-        "Same terms 3.7: we warrant that uploaded data is authorised; 8.2.6 / 8.2.7: nothing infringing third parties' rights, nothing endangering minors; 12.1: under 13 barred. Hence 0135's consent step before any upload.",
+        "Same terms 3.7: we warrant that uploaded data is authorised; 8.2.6 / 8.2.7: nothing infringing third parties' rights, nothing endangering minors; 12.1: under 13 barred. Hence 0137's consent step before any upload.",
         "Same terms 5.1: 'We will not use, or authorize any person or entity to use, your data to train, retrain, or otherwise improve the Services'.",
-        "Gate stays open until the owner has Kling's written answer and has bought a video resource package; no credit price (0135 character_swap_models.credits_per_usd) may be set before that."
+        "Gate stays open until the owner has Kling's written answer and has bought a video resource package; no credit price (0137 character_swap_models.credits_per_usd) may be set before that."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -6307,7 +6307,7 @@
         "checked_at": "2026-11-11",
         "source": "vendor_docs_search",
         "evidence": "BytePlus Seedance 2.5 tutorial and create-video-generation-task API (JSON embedded in the pages, decoded 2026-11-11): omni_reference_task_type edit, reference_video + reference_image roles, ratio adaptive, duration -1.",
-        "note": "REGISTRY-ONLY (0135 sells it). Edit input 4-30 s, 1-30 pictures; output = input length, at most 0.4 s shorter. Real faces are refused unless the clip is our own ModelArk output of the last 30 days."
+        "note": "REGISTRY-ONLY (0137 sells it). Edit input 4-30 s, 1-30 pictures; output = input length, at most 0.4 s shorter. Real faces are refused unless the clip is our own ModelArk output of the last 30 days."
       },
       "pricing": {
         "unit": "second",
@@ -6331,7 +6331,7 @@
         "Customer Agreement 6.2(1): no OEM, SaaS, MaaS or reseller use without BytePlus's written consent; Model Services 4.2.3: no re-integrating the video APIs into UGC platforms or 'AI content creation tools'. Letter sent 2026-11-11.",
         "Model Services 4.2.2: the platform verifies end-user identity and keeps a takedown process; 4.2.4(b): liquidated damages for unauthorised resale.",
         "Seedance 2.x refuses reference images or videos with real human faces unless each performer is verified through BytePlus's real-person asset library (asset:// ids) or the clip is an original ModelArk output of the same account within 30 days.",
-        "Gate stays open until BytePlus authorises Nightshift in writing and 2.5 is activated; no credit price (0135 character_swap_models.credits_per_usd) may be set before that."
+        "Gate stays open until BytePlus authorises Nightshift in writing and 2.5 is activated; no credit price (0137 character_swap_models.credits_per_usd) may be set before that."
       ],
       "attribution": null,
       "api_exposure": "web_only",

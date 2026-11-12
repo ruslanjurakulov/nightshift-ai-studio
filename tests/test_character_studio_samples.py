@@ -1,5 +1,5 @@
 """tools/character_studio_samples.py makes a PAID vendor call, which the owner has not approved: it must do nothing by default, refuse a
-run without the owner's approval of that very model, and write only paths 0135's sample row accepts. Nothing here reaches a network."""
+run without the owner's approval of that very model, and write only paths 0137's sample row accepts. Nothing here reaches a network."""
 
 import contextlib
 import io
@@ -12,7 +12,7 @@ from unittest import mock
 from tools import character_studio_samples as cli
 
 ROOT = Path(__file__).resolve().parent.parent
-MIGRATION = (ROOT / "supabase" / "migrations" / "0135_character_studio.sql").read_text(encoding="utf-8")
+MIGRATION = (ROOT / "supabase" / "migrations" / "0137_character_studio.sql").read_text(encoding="utf-8")
 ARGS = ["--card", "two-characters", "--model", "kling-4.0-omni-edit", "--video", "clip.mp4", "--image", "a.png",
         "--cdn-base", "https://cdn.example.com/character-samples"]
 
@@ -45,7 +45,7 @@ class Samples(unittest.TestCase):
         bad[-1] = "http://cdn.example.com"
         self.assertEqual(run(bad)[0], 2)
 
-    def test_the_paths_are_what_0135_accepts(self):
+    def test_the_paths_are_what_0137_accepts(self):
         check = re.search(r"original_object ~ '([^']+)'", MIGRATION).group(1)
         web = re.search(r"check \(web_url ~ '([^']+)'", MIGRATION).group(1)
         for card in ("two-characters", "one-character"):

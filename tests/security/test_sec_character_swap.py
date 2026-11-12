@@ -1,4 +1,4 @@
-"""Migration 0135 (Character Studio): priced character swaps on a model the person chooses, the consent trail, the gallery's cards.
+"""Migration 0137 (Character Studio): priced character swaps on a model the person chooses, the consent trail, the gallery's cards.
 
 The table-by-table isolation tests already prove that Bob (org B) cannot read, change, delete, move or insert Alice's (org A) jobs and
 consents, and that nobody reads the models or the settings. These prove the paths where the rule lives in plpgsql, a check or an index:
@@ -14,8 +14,8 @@ consents, and that nobody reads the models or the settings. These prove the path
   * the worker: the vendor task is recorded before a finish is possible, one job is one task, a quiet worker's task is resumed (never
     submitted again), an output must be this job's own generated video;
   * races: concurrent presses hold once, concurrent cancels and claims never deadlock;
-  * pins: a replay, a hand-changed body, the rollback (refuses while rows exist or a job is in flight, removes everything, 0135 applies again),
-    and that 0135 touches no object it did not add.
+  * pins: a replay, a hand-changed body, the rollback (refuses while rows exist or a job is in flight, removes everything, 0137 applies again),
+    and that 0137 touches no object it did not add.
 
 Everything runs inside transactions that are rolled back, except the races (real concurrent transactions that clean up after themselves)
 and the test that needs a database of its own. Nothing calls a vendor.
@@ -33,13 +33,13 @@ import psycopg
 import pytest
 
 import sec_db
-from sec_character_swap_0135 import (CANCEL, CONSENT, CONSENT_FN, DECLARATIONS, JOB, KLING, OUTPUT, PICTURE, PROMPT, QUOTE, REQUEST, SEEDANCE,
+from sec_character_swap_0137 import (CANCEL, CONSENT, CONSENT_FN, DECLARATIONS, JOB, KLING, OUTPUT, PICTURE, PROMPT, QUOTE, REQUEST, SEEDANCE,
                                      VIDEO, WORKER, asset, output)
 from sec_db import ANON, SERVICE, Outcome, as_superuser, user
 from test_sec_series_tables import _dsn, become, denied, forbidden, not_found
 
-MIGRATION = sec_db.MIGRATION_0135
-ROLLBACK = sec_db.ROLLBACK_0135
+MIGRATION = sec_db.MIGRATION_0137
+ROLLBACK = sec_db.ROLLBACK_0137
 
 CONTENT = ("character_swap_jobs", "character_swap_consents")
 CLOSED = ("character_swap_models", "character_swap_settings")
@@ -1050,10 +1050,10 @@ def test_the_file_refuses_a_function_of_its_name_that_somebody_changed_by_hand(c
     s.conn.execute(definition.replace(marker, marker + " /* changed by hand */", 1))
     before = fingerprint(s, True)
     out = s.run(migration_body())
-    assert not out.ok and "is not 0135's body" in out.error and name in out.error, out
+    assert not out.ok and "is not 0137's body" in out.error and name in out.error, out
     assert fingerprint(s, True) == before
     out = s.run(rollback_body())
-    assert not out.ok and "rollback 0135" in out.error and "is not 0135's body" in out.error
+    assert not out.ok and "rollback 0137" in out.error and "is not 0137's body" in out.error
 
 
 def test_the_rollback_refuses_while_people_have_rows_or_a_job_is_in_flight(conn, w):
@@ -1070,7 +1070,7 @@ def test_the_rollback_refuses_while_people_have_rows_or_a_job_is_in_flight(conn,
     assert fingerprint(s, True) == before[0]
 
 
-def test_the_rollback_removes_exactly_what_0135_added_and_0135_applies_again(conn, sc):
+def test_the_rollback_removes_exactly_what_0137_added_and_0137_applies_again(conn, sc):
     rollback = ROLLBACK.read_text(encoding="utf-8")
     assert re.search(r"(?m)^begin;$", rollback) and len(re.findall(r"(?m)^commit;$", rollback)) == 1
     with as_superuser(conn, commit=False) as su:
@@ -1078,22 +1078,22 @@ def test_the_rollback_removes_exactly_what_0135_added_and_0135_applies_again(con
                         "where status in ('requested', 'running')")
         ours, others = fingerprint(su, True), fingerprint(su, False)
         assets = su.value("select count(*) from public.media_assets")
-        sec_db.take_off_0135(su)
+        sec_db.take_off_0137(su)
         assert all(v == [] for v in fingerprint(su, True).values())
-        assert fingerprint(su, False) == others, "nothing that 0135 did not add was touched"
+        assert fingerprint(su, False) == others, "nothing that 0137 did not add was touched"
         assert su.value("select count(*) from public.media_assets") == assets, "the outputs stay in the library"
         su.conn.execute(rollback_body())
-        sec_db.put_back_0135(su)
-        assert fingerprint(su, True) == ours, "0135 applies again on top, to exactly what it was"
+        sec_db.put_back_0137(su)
+        assert fingerprint(su, True) == ours, "0137 applies again on top, to exactly what it was"
         assert su.rows("select credits_per_usd from public.character_swap_models") == [(None,), (None,)]
 
 
-def test_0135_touches_no_object_it_did_not_add(conn, sc):
+def test_0137_touches_no_object_it_did_not_add(conn, sc):
     admin = sec_db.admin_dsn()
     name = f"ns_swap_base_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0135_")])
+        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0137_")])
         with psycopg.connect(dsn, autocommit=True) as c:
             s = sec_db.Session(c)
             assert all(v == [] for v in fingerprint(s, True).values())

@@ -1,7 +1,7 @@
-"""Character Studio adapters (migration 0135, docs/CHARACTER_STUDIO.md): swap the people in a video for the characters in pictures.
+"""Character Studio adapters (migration 0137, docs/CHARACTER_STUDIO.md): swap the people in a video for the characters in pictures.
 
 Two first-party APIs, both chosen by the person, both terms-gated in the registry (nothing is sold until the owner clears the
-terms and sets a credit price in 0135's ``character_swap_models``):
+terms and sets a credit price in 0137's ``character_swap_models``):
 
 * ``video.kling_omni`` — Kling 4.0 Omni, ``POST /omni-video/kling-4.0`` with the clip as ``base_video`` and each character as a
   ``refer_image``, ``settings.audio: "original"`` (the clip keeps its own sound). Polled with ``GET /tasks?task_ids=<id>``.
@@ -9,8 +9,8 @@ terms and sets a credit price in 0135's ``character_swap_models``):
   legacy version design standards", so a ``KLING_API_KEY`` written as ``<access>:<secret>`` is refused here as not configured.
 * ``video.seedance2_edit`` — BytePlus ModelArk Seedance 2.5 in edit mode: the same task API as the 2.x adapter, with the clip as a
   ``reference_video``, each character as a ``reference_image`` and ``omni_reference_task_type: "edit"``. The output follows the
-  input's length (``duration: -1``, ``ratio: "adaptive"``); 0135 prices the input's seconds, so the vendor's length rule is what is
-  quoted. Seedance 2.x refuses real human faces unless the performer is a verified BytePlus asset: 0135 sells it only for the
+  input's length (``duration: -1``, ``ratio: "adaptive"``); 0137 prices the input's seconds, so the vendor's length rule is what is
+  quoted. Seedance 2.x refuses real human faces unless the performer is a verified BytePlus asset: 0137 sells it only for the
   organization's own generated clips (the ModelArk 30-day rule), and the vendor's own refusal stays the last word (``policy``).
 
 The person writes ``@Image 1`` ... ``@Image N`` for the characters and ``@Video 1`` for the clip (BytePlus's own spelling). The
@@ -23,7 +23,7 @@ default is what is made, and the file is stored as it arrives.
 
 Both submit through ``SafeResultMixin.submit_json`` (an answer that never arrived is UNCONFIRMED SPEND, never a refusal), validate
 task ids before they go into a URL, fetch the result only from the maker's own hosts with no redirect and a byte cap, and raise
-``AdapterError`` with a closed code. The caller persists ``ProviderTask.task_id`` BEFORE polling (0135's
+``AdapterError`` with a closed code. The caller persists ``ProviderTask.task_id`` BEFORE polling (0137's
 ``record_character_swap_task``), so a crash polls the paid task instead of paying again.
 
 Field names of Kling's 4.0 Omni items are from Kling's markdown API pages as read for the research note
@@ -229,7 +229,7 @@ class SeedanceEditAdapter(SeedanceV2Adapter):
         content += [{"type": "image_url", "image_url": {"url": str(u)}, "role": "reference_image"} for u in request.input_images]
         body: Dict = {"model": vendor_model, "content": content, "omni_reference_task_type": "edit",
                       "resolution": request.resolution, "ratio": "adaptive",
-                      # The output follows the input's length: what 0135 quoted is the input's seconds.
+                      # The output follows the input's length: what 0137 quoted is the input's seconds.
                       "duration": -1,
                       # No new soundtrack is made (or billed); the picker tells the person this model does not keep the clip's sound.
                       "generate_audio": False,

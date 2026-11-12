@@ -1,4 +1,4 @@
--- 0135_character_studio.sql — Character Studio ("Qahramon studiyasi", docs/CHARACTER_STUDIO.md): swap the people in a member's video for
+-- 0137_character_studio.sql — Character Studio ("Qahramon studiyasi", docs/CHARACTER_STUDIO.md): swap the people in a member's video for
 -- the characters in their pictures, with a model the member chooses (Kling 4.0 Omni or BytePlus Seedance 2.5, each through its maker's own
 -- API), priced per model from that vendor's own price table for the clip's length and resolution, held, run by a worker, captured or released.
 --
@@ -18,9 +18,9 @@
 -- to a vendor. creative_jobs, reserve_credits, job_minimum and every other shared function are untouched: a character swap is not a creative
 -- job (the registry lists video_character_swap as registry-only, so the creative system can never sell it).
 --
--- NUMBER. 0135: the highest on main is 0134. 0132 (the hi-res export, #677) and 0134 (the brand-scan follow-up) merged while this was
--- written; this file names nothing either of them (or 0133) adds: it names only 0018 / 0020 / 0036 / 0038 / 0054 / 0107 objects, so it
--- applies after them in any order relative to each other.
+-- NUMBER. 0137: the highest on main is 0136 (#685, applied live). This file was first numbered 0135 (0134's and 0136's headers still
+-- say 0135 is reserved for it); it was renumbered with the same body so that it applies after 0136 rather than out of order. 0135 is
+-- left unused. It names nothing 0132, 0133, 0134 or 0136 adds: only 0018 / 0020 / 0036 / 0038 / 0054 / 0107 objects.
 --
 -- APPLY AS ONE TRANSACTION: the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1. `set local lock_timeout`
 -- assumes it, and the last block asserts the end state, so a half-applied file cannot be left behind.
@@ -99,7 +99,7 @@
 --
 -- Additive and idempotent: create table if not exists, drop constraint then add, create or replace, drop trigger / policy then create, revoke
 -- then grant, seeds `on conflict do nothing` (a replay never undoes the owner's price). An applied migration is never edited.
--- Rollback: docs/sql/rollback_0135_character_studio.sql (drops exactly what this file added; refuses while a job is in flight, and while
+-- Rollback: docs/sql/rollback_0137_character_studio.sql (drops exactly what this file added; refuses while a job is in flight, and while
 -- rows exist unless told they may go).
 -- REQUIRES 0018 (organizations, is_org_member, accessible_org_ids, is_platform_admin), 0020 / 0034 / 0094 (credits), 0036
 -- (creative_platform_reserve / creative_platform_release), 0038 (media_assets), 0054 (editor_projects) and 0107 (security_event_log).
@@ -110,25 +110,25 @@ do $$
 begin
   if to_regprocedure('public.is_org_member(uuid, text)') is null or to_regprocedure('public.accessible_org_ids(text)') is null
      or to_regprocedure('public.is_platform_admin()') is null then
-    raise exception '0135 needs 0018_organizations.sql: apply it first';
+    raise exception '0137 needs 0018_organizations.sql: apply it first';
   end if;
   if to_regprocedure('public.capture_credits(text, numeric, boolean)') is null or to_regprocedure('public.release_credits(text)') is null
      or to_regprocedure('public.start_credit_reservation(text, uuid)') is null or to_regprocedure('public.credits_exempt(uuid)') is null
      or to_regprocedure('public.credits_trusted_caller()') is null or to_regprocedure('public.credits_round_up(numeric)') is null then
-    raise exception '0135 needs 0020_credits.sql: apply it first';
+    raise exception '0137 needs 0020_credits.sql: apply it first';
   end if;
   if to_regprocedure('public.creative_platform_reserve(uuid, text, numeric)') is null
      or to_regprocedure('public.creative_platform_release(text)') is null then
-    raise exception '0135 needs 0036_creative_jobs.sql (creative_platform_reserve / creative_platform_release): apply it first';
+    raise exception '0137 needs 0036_creative_jobs.sql (creative_platform_reserve / creative_platform_release): apply it first';
   end if;
   if to_regclass('public.media_assets') is null then
-    raise exception '0135 needs 0038_media_assets.sql: apply it first';
+    raise exception '0137 needs 0038_media_assets.sql: apply it first';
   end if;
   if to_regclass('public.editor_projects') is null then
-    raise exception '0135 needs 0054_editor_projects.sql: apply it first';
+    raise exception '0137 needs 0054_editor_projects.sql: apply it first';
   end if;
   if to_regprocedure('public.security_event_log(text, text, text, jsonb)') is null then
-    raise exception '0135 needs 0107_owner_safety.sql (security_event_log): apply it first';
+    raise exception '0137 needs 0107_owner_safety.sql (security_event_log): apply it first';
   end if;
 end $$;
 
@@ -165,7 +165,7 @@ begin
   loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = to_regprocedure(r.sig);
     if got is not null and got <> r.want then
-      raise exception '0135 found a % that is not 0135''s body (md5 %): read the live body first', r.sig, got;
+      raise exception '0137 found a % that is not 0137''s body (md5 %): read the live body first', r.sig, got;
     end if;
   end loop;
 end $$;
@@ -282,7 +282,7 @@ alter table public.character_swap_models add constraint character_swap_models_sh
          and source_url ~ '^https://[a-z0-9.-]+(/[\x21-\x7e]*)?$' and char_length(source_url) <= 300);
 
 comment on table public.character_swap_models is
-  'The models a person can choose in Character Studio (migration 0135): credits_per_usd (NULL = not on sale, the seed) and the vendor''s own USD per clip second at 720p / 1080p (source_url), the input length, the picture limit and the real-people rule. Changed in the SQL editor only; a trigger leaves a mark in security_events.';
+  'The models a person can choose in Character Studio (migration 0137): credits_per_usd (NULL = not on sale, the seed) and the vendor''s own USD per clip second at 720p / 1080p (source_url), the input length, the picture limit and the real-people rule. Changed in the SQL editor only; a trigger leaves a mark in security_events.';
 
 -- The vendors' list prices, read 2026-11-11 (schemas/model_registry.json carries the same, tests pin them equal):
 --   Kling 4.0 Omni with a video input: unit price x output seconds x 2 = $0.188/s at 720p, $0.282/s at 1080p (a 10 s clip $1.88 / $2.82).
@@ -309,7 +309,7 @@ alter table public.character_swap_settings add constraint character_swap_setting
   check (org_daily_jobs between 0 and 10000 and platform_daily_jobs between 0 and 100000 and platform_in_flight between 0 and 10000);
 
 comment on table public.character_swap_settings is
-  'One row (migration 0135): org_daily_jobs (10) per organization per 24 hours, platform_daily_jobs (200) per 24 hours and platform_in_flight (20) at once. 0 refuses all. Safety defaults, not yet owner-approved. Changed in the SQL editor only; a trigger leaves a mark in security_events.';
+  'One row (migration 0137): org_daily_jobs (10) per organization per 24 hours, platform_daily_jobs (200) per 24 hours and platform_in_flight (20) at once. 0 refuses all. Safety defaults, not yet owner-approved. Changed in the SQL editor only; a trigger leaves a mark in security_events.';
 
 insert into public.character_swap_settings (id) values (true) on conflict (id) do nothing;
 
@@ -334,7 +334,7 @@ alter table public.character_swap_consents add constraint character_swap_consent
          and consent_text_version ~ '^v[0-9]{1,3}$');
 
 comment on table public.character_swap_consents is
-  'The consent trail of Character Studio (migration 0135): who declared, for which organization, model, video and pictures, the five declarations and the consent text version. APPEND-ONLY for every role (as 0117''s voice_consents); no foreign key on purpose, so the trail outlives what it is about.';
+  'The consent trail of Character Studio (migration 0137): who declared, for which organization, model, video and pictures, the five declarations and the consent text version. APPEND-ONLY for every role (as 0117''s voice_consents); no foreign key on purpose, so the trail outlives what it is about.';
 
 create index if not exists character_swap_consents_org_idx on public.character_swap_consents (org_id, created_at desc);
 
@@ -374,7 +374,7 @@ create table if not exists public.character_swap_jobs (
 );
 
 comment on table public.character_swap_jobs is
-  'One priced character swap (migration 0135): the inputs, the model and resolution the person chose, the charge and the hold, the status, the vendor task id (recorded before polling), the stored output. Written only by request / cancel_character_swap and the worker (claim / record_character_swap_task / finish / fail); members read.';
+  'One priced character swap (migration 0137): the inputs, the model and resolution the person chose, the charge and the hold, the status, the vendor task id (recorded before polling), the stored output. Written only by request / cancel_character_swap and the worker (claim / record_character_swap_task / finish / fail); members read.';
 
 alter table public.character_swap_jobs drop constraint if exists character_swap_jobs_shape_check;
 alter table public.character_swap_jobs add constraint character_swap_jobs_shape_check
@@ -429,7 +429,7 @@ alter table public.character_swap_templates add constraint character_swap_templa
          and public.character_swap_prompt_problem(prompt) is null and characters between 1 and 10);
 
 comment on table public.character_swap_templates is
-  'The Character Studio gallery''s cards (migration 0135): a title in en / ru / uz and the prompt "Sinab ko''rish" fills in. Platform content: any signed-in person reads it; only the SQL editor or the service key writes it.';
+  'The Character Studio gallery''s cards (migration 0137): a title in en / ru / uz and the prompt "Sinab ko''rish" fills in. Platform content: any signed-in person reads it; only the SQL editor or the service key writes it.';
 
 create table if not exists public.character_swap_template_samples (
   template_id     uuid not null references public.character_swap_templates (id) on delete cascade,
@@ -448,7 +448,7 @@ alter table public.character_swap_template_samples add constraint character_swap
          and original_object ~ '^[a-z0-9][a-z0-9-]{1,47}/[a-z0-9.-]{1,64}/[A-Za-z0-9._-]{1,128}$');
 
 comment on table public.character_swap_template_samples is
-  'One sample per gallery card and model (migration 0135): the web copy''s public CDN link, an optional poster, and the original''s object path in the PRIVATE samples bucket (a path, never a link). A missing row is an empty slot ("Namuna tez orada"). Written only by tools/character_studio_samples.py with the service key.';
+  'One sample per gallery card and model (migration 0137): the web copy''s public CDN link, an optional poster, and the original''s object path in the PRIVATE samples bucket (a path, never a link). A missing row is an empty slot ("Namuna tez orada"). Written only by tools/character_studio_samples.py with the service key.';
 
 -- Two cards, no samples (making one is a paid call the owner has not approved yet: docs/CHARACTER_STUDIO.md, "Samples").
 insert into public.character_swap_templates (slug, position, title_en, title_ru, title_uz, prompt, characters)
@@ -1194,11 +1194,11 @@ begin
   loop
     fn := to_regprocedure(r.sig);
     if fn is null then
-      raise exception '0135 end state: % does not exist', r.sig;
+      raise exception '0137 end state: % does not exist', r.sig;
     end if;
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = fn;
     if got <> r.want then
-      raise exception '0135 end state: % does not hold this file''s body (md5 %)', r.sig, got;
+      raise exception '0137 end state: % does not hold this file''s body (md5 %)', r.sig, got;
     end if;
     -- Exactly one API role, or none, may call it. A NULL ACL would mean "default privileges", and the default includes public.
     if exists (select 1 from pg_proc p
@@ -1209,64 +1209,64 @@ begin
                                       or a.grantee in (select o.oid from pg_roles o
                                                         where o.rolname in ('anon', 'authenticated', 'service_role')
                                                           and o.rolname <> r.grantee)))) then
-      raise exception '0135 end state: % is executable by a role that must not call it', r.sig;
+      raise exception '0137 end state: % is executable by a role that must not call it', r.sig;
     end if;
     if r.grantee <> '' and not has_function_privilege(r.grantee, fn, 'execute') then
-      raise exception '0135 end state: % is not executable by %', r.sig, r.grantee;
+      raise exception '0137 end state: % is not executable by %', r.sig, r.grantee;
     end if;
     if not exists (select 1 from pg_proc p where p.oid = fn and p.proconfig @> array['search_path=public, pg_temp']) then
-      raise exception '0135 end state: % has no pinned search_path', r.sig;
+      raise exception '0137 end state: % has no pinned search_path', r.sig;
     end if;
   end loop;
   if (select count(*) from pg_proc p where p.pronamespace = 'public'::regnamespace
         and p.proname in ('quote_character_swap', 'record_character_swap_consent', 'request_character_swap', 'cancel_character_swap',
                           'claim_character_swap', 'record_character_swap_task', 'finish_character_swap', 'fail_character_swap')) <> 8 then
-    raise exception '0135 end state: a callable function has an overload';
+    raise exception '0137 end state: a callable function has an overload';
   end if;
 
   foreach t in array array['character_swap_models', 'character_swap_settings', 'character_swap_consents', 'character_swap_jobs',
                            'character_swap_templates', 'character_swap_template_samples'] loop
     if not exists (select 1 from pg_class where oid = ('public.' || t)::regclass and relrowsecurity) then
-      raise exception '0135 end state: % has no row level security', t;
+      raise exception '0137 end state: % has no row level security', t;
     end if;
     foreach role_name in array array['anon', 'authenticated', 'service_role'] loop
       foreach priv in array array['insert', 'update', 'delete', 'truncate', 'references', 'trigger'] loop
         if has_table_privilege(role_name, 'public.' || t, priv)
            and not (t = 'character_swap_template_samples' and role_name = 'service_role' and priv in ('insert', 'update')) then
-          raise exception '0135 end state: % holds % on %', role_name, priv, t;
+          raise exception '0137 end state: % holds % on %', role_name, priv, t;
         end if;
       end loop;
     end loop;
     if has_table_privilege('anon', 'public.' || t, 'select') then
-      raise exception '0135 end state: anon reads %', t;
+      raise exception '0137 end state: anon reads %', t;
     end if;
     if t in ('character_swap_models', 'character_swap_settings') then
       if exists (select 1 from pg_policy where polrelid = ('public.' || t)::regclass)
          or has_table_privilege('authenticated', 'public.' || t, 'select') or has_table_privilege('service_role', 'public.' || t, 'select') then
-        raise exception '0135 end state: % is readable by an API role or has a policy', t;
+        raise exception '0137 end state: % is readable by an API role or has a policy', t;
       end if;
     elsif (select count(*) from pg_policy where polrelid = ('public.' || t)::regclass) <> 1
           or not exists (select 1 from pg_policy where polrelid = ('public.' || t)::regclass and polname = t || '_select' and polcmd = 'r'
                             and polroles = array[(select oid from pg_roles where rolname = 'authenticated')]) then
-      raise exception '0135 end state: % does not have exactly its one SELECT policy for authenticated', t;
+      raise exception '0137 end state: % does not have exactly its one SELECT policy for authenticated', t;
     end if;
   end loop;
 
   if (select count(*) from public.character_swap_settings) <> 1 then
-    raise exception '0135 end state: character_swap_settings does not hold exactly one row';
+    raise exception '0137 end state: character_swap_settings does not hold exactly one row';
   end if;
   if (select count(*) from public.character_swap_models) <> 2 then
-    raise exception '0135 end state: character_swap_models does not hold exactly its two models';
+    raise exception '0137 end state: character_swap_models does not hold exactly its two models';
   end if;
   if (select count(*) from pg_constraint
        where contype = 'c' and convalidated
          and conname in ('character_swap_models_shape_check', 'character_swap_settings_one_row', 'character_swap_settings_numbers',
                          'character_swap_consents_shape_check', 'character_swap_jobs_shape_check', 'character_swap_templates_shape_check',
                          'character_swap_template_samples_shape_check')) <> 7 then
-    raise exception '0135 end state: a check is missing or not validated';
+    raise exception '0137 end state: a check is missing or not validated';
   end if;
   if to_regclass('public.character_swap_jobs_one_in_flight') is null then
-    raise exception '0135 end state: the one-job-in-flight index is missing';
+    raise exception '0137 end state: the one-job-in-flight index is missing';
   end if;
   if (select count(*) from pg_trigger where not tgisinternal
         and (tgrelid, tgname) in (('public.character_swap_models'::regclass, 'character_swap_models_guard'),
@@ -1277,10 +1277,10 @@ begin
                                   ('public.character_swap_settings'::regclass, 'character_swap_settings_trail'),
                                   ('public.character_swap_consents'::regclass, 'character_swap_consents_append_only'),
                                   ('public.character_swap_consents'::regclass, 'character_swap_consents_no_truncate'))) <> 8 then
-    raise exception '0135 end state: a trigger is missing';
+    raise exception '0137 end state: a trigger is missing';
   end if;
   if exists (select 1 from pg_trigger where tgrelid = 'public.character_swap_consents'::regclass and not tgisinternal and tgenabled <> 'A') then
-    raise exception '0135 end state: the consent trail''s triggers are not ENABLE ALWAYS';
+    raise exception '0137 end state: the consent trail''s triggers are not ENABLE ALWAYS';
   end if;
 end $$;
 

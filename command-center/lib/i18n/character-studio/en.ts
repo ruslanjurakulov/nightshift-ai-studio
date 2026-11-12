@@ -1,5 +1,5 @@
 /**
- * Character Studio (components/character-studio/*; docs/CHARACTER_STUDIO.md; migration 0135). English is the source: ru.ts and uz.ts are
+ * Character Studio (components/character-studio/*; docs/CHARACTER_STUDIO.md; migration 0137). English is the source: ru.ts and uz.ts are
  * typed `CharacterStudioDictionary`, so they carry exactly these keys (tests/character-studio.test.ts also pins the {fillers}).
  * Behind NIGHTSHIFT_CHARACTER_STUDIO, default off.
  *

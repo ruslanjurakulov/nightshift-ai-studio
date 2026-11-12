@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Ask for one swap (migration 0135's request_character_swap; NIGHTSHIFT_CHARACTER_STUDIO, default off: 404 first, then the same origin,
+ * Ask for one swap (migration 0137's request_character_swap; NIGHTSHIFT_CHARACTER_STUDIO, default off: 404 first, then the same origin,
  * then the session). POST `{ org_id?, project_id?, input, references, prompt, model, resolution, consent_id, max_credits, idem }`.
  * The database checks the editor role, the consent, the prompt's screen, the vendor's input limits, the price (`not_on_sale` while it is
  * NULL; `price_changed` above max_credits, which is compared with the charge), the caps, and holds the credits. This route calls no vendor

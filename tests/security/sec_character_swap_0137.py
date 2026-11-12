@@ -1,11 +1,11 @@
-"""Security-lab contract for migration 0135 (Character Studio: swap the people in a video for the characters in pictures).
+"""Security-lab contract for migration 0137 (Character Studio: swap the people in a video for the characters in pictures).
 
 Wired in like the other per-migration files:
 
   * sec_expectations.py, at the bottom:
-        import sec_character_swap_0135; sec_character_swap_0135.extend(TABLES, FUNCTIONS)
+        import sec_character_swap_0137; sec_character_swap_0137.extend(TABLES, FUNCTIONS)
   * sec_scenario.build_scenario(), after 0133's seed:
-        sec_character_swap_0135.seed(conn, sc)
+        sec_character_swap_0137.seed(conn, sc)
 
 The jobs and the consent trail are Org(): a member reads the rows of THEIR organization, and no API role writes either directly. The models
 and the settings are Service(): no API role reads or writes them (the price is the owner's, in the SQL editor). The gallery's cards and

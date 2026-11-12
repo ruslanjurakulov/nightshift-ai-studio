@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * The consent step (migration 0135's record_character_swap_consent; NIGHTSHIFT_CHARACTER_STUDIO, default off: 404 first, then the same
+ * The consent step (migration 0137's record_character_swap_consent; NIGHTSHIFT_CHARACTER_STUDIO, default off: 404 first, then the same
  * origin, then the session). POST `{ org_id?, model, input, references: [ids, in order], declarations: {five keys: true} }`.
  * The database records the five declarations for THIS video, THESE pictures and THIS model, append-only, as the consent text version
  * this page shows (CONSENT_VERSION); the request that follows must name the consent it returns.

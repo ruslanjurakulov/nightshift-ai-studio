@@ -66,7 +66,7 @@
         "end_frame": {"type": "boolean"},
         "relight_looks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relight_look"}},
         "character_swap": {
-          "description": "The vendor's own input limits for a video_character_swap entry (migration 0135, docs/CHARACTER_STUDIO.md). The worker refuses an input outside them before any paid call; the database refuses a length outside input_seconds when it quotes.",
+          "description": "The vendor's own input limits for a video_character_swap entry (migration 0137, docs/CHARACTER_STUDIO.md). The worker refuses an input outside them before any paid call; the database refuses a length outside input_seconds when it quotes.",
           "type": "object",
           "required": ["input_seconds", "reference_images_max", "keeps_original_audio", "duration_follows_input", "mask_source",
                        "real_people", "billing", "input_max_bytes", "input_fps", "input_min_side_px", "input_max_side_px", "input_max_pixels",

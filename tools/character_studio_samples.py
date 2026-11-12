@@ -13,10 +13,10 @@ What a run does, in order:
   2. submits once, prints the vendor's task id before polling (if the script dies, poll that id: never run it again blindly), polls;
   3. downloads the result, keeps the ORIGINAL in the private bucket (``<private bucket>/<card>/<model>.mp4``), makes a 720p H.264 web
      copy with ffmpeg and puts it in the PUBLIC bucket that the CDN serves (``<public bucket>/<card>/<model>.mp4``);
-  4. writes the card's sample row (0135 character_swap_template_samples: the CDN link, the private object path) with the service key.
+  4. writes the card's sample row (0137 character_swap_template_samples: the CDN link, the private object path) with the service key.
 
 The inputs are the owner's own: a clip with no real person in it, or (for Seedance) the account's own ModelArk output of the last 30 days,
-and pictures the owner made or licensed. The consent declarations of 0135 apply to them as to any person's.
+and pictures the owner made or licensed. The consent declarations of 0137 apply to them as to any person's.
 
 Usage (from the repository root):
   python tools/character_studio_samples.py --card two-characters --model kling-4.0-omni-edit --video clip.mp4 --image a.png --image b.png \\
@@ -52,7 +52,7 @@ _CDN = re.compile(r"^https://[a-z0-9.-]+(/[A-Za-z0-9._~-]+)*$")
 
 
 def object_paths(card: str, model: str) -> dict:
-    """Where the original and the web copy go. The private path is what 0135 stores (never a link); the public one is behind the CDN."""
+    """Where the original and the web copy go. The private path is what 0137 stores (never a link); the public one is behind the CDN."""
     if not _SLUG.fullmatch(card) or model not in cs.MODELS:
         raise ValueError("not a card slug or not a Character Studio model")
     return {"original": f"{PRIVATE_BUCKET}/{card}/{model}.mp4", "web": f"{card}/{model}.mp4"}
@@ -98,7 +98,7 @@ class Storage:
         r = self.s.get(f"{self.url}/rest/v1/character_swap_templates", params={"slug": f"eq.{card}", "select": "id"}, timeout=30, headers=self._h())
         rows = r.json() if r.status_code < 300 else []
         if not rows:
-            raise SystemExit(f"no card {card!r} in character_swap_templates (0135 applied?)")
+            raise SystemExit(f"no card {card!r} in character_swap_templates (0137 applied?)")
         r = self.s.post(f"{self.url}/rest/v1/character_swap_template_samples", params={"on_conflict": "template_id,model_id"}, timeout=30,
                         json={"template_id": rows[0]["id"], "model_id": model, "web_url": web_url, "original_object": original,
                               "made_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
@@ -162,7 +162,7 @@ def main(argv: Optional[Sequence[str]] = None, env=os.environ) -> int:
     ap.add_argument("--model", required=True, choices=cs.MODELS)
     ap.add_argument("--video", required=True, type=Path)
     ap.add_argument("--image", required=True, type=Path, action="append")
-    ap.add_argument("--prompt", help="defaults to the card's own prompt; must pass 0135's screen")
+    ap.add_argument("--prompt", help="defaults to the card's own prompt; must pass 0137's screen")
     ap.add_argument("--resolution", default="720p", choices=("720p", "1080p"))
     ap.add_argument("--cdn-base", required=True)
     ap.add_argument("--run", action="store_true", help="make the PAID call (with --approve-paid-call)")

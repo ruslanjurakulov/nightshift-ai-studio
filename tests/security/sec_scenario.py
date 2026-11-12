@@ -435,9 +435,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Ads Factory, Phase 2 (0133): tests/security/sec_brand_scan_0133.py — one verified domain and one ready scan per tenant.
     import sec_brand_scan_0133
     sec_brand_scan_0133.seed(conn, sc)
-    # Character Studio (0135): tests/security/sec_character_swap_0135.py — one consent and one ready swap per tenant, one sample.
-    import sec_character_swap_0135
-    sec_character_swap_0135.seed(conn, sc)
+    # Character Studio (0137): tests/security/sec_character_swap_0137.py — one consent and one ready swap per tenant, one sample.
+    import sec_character_swap_0137
+    sec_character_swap_0137.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
