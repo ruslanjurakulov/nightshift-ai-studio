@@ -304,7 +304,8 @@ describe("POST /api/billing/dodo/checkout", () => {
       cancel_url: "https://nightshift.example/all-channels/credits?dodo=cancelled&item=pack",
       feature_flags: { allow_discount_code: false, allow_currency_selection: false },
     });
-    expect(h.audit).toEqual([{ action: "billing.checkout", target: h.orgId, detail: { provider: "dodo", kind: "pack", item: "starter" } }]);
+    // No audit row: the database would refuse an action it does not list (tests/test_audit_actions.py).
+    expect(h.audit).toEqual([]);
   });
 
   it("a plan gets no trial, whatever the product says", async () => {

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { getOrgContext } from "@/lib/orgs-server";
-import { logAudit } from "@/lib/server/audit";
 import { isCreditExempt } from "@/lib/credits";
 import { RETURN_PATH_RE, parseCheckoutItem } from "@/lib/dodo";
 import { createDodoCheckout, dodoServer } from "@/lib/server/dodo-api";
@@ -88,6 +87,8 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     console.error(`[dodo-checkout] Dodo refused the checkout session (HTTP ${res.status})`);
     return NextResponse.json({ error: "checkout_failed" }, { status: 502 });
   }
-  await logAudit({ action: "billing.checkout", target: orgId, detail: { provider: "dodo", kind: item.kind, item: item.id } });
+  // No audit row here: `billing.checkout` is not in audit_action_allowed (0087/0117), so the database would refuse it and
+  // logAudit would drop it silently (tests/test_audit_actions.py). Paddle's checkout writes none either. Who paid is in the
+  // payment's own record: the webhook stores the payment with the org and the user_id from this session's metadata.
   return NextResponse.json({ url: res.url }, { headers: { "Cache-Control": "no-store" } });
 });
