@@ -115,7 +115,7 @@ export function CreateStudio({
   const [customVoice, setCustomVoice] = useState("");
   // "platform:id" of the account this video is for, or "" (none chosen).
   const [target, setTarget] = useState("");
-  // YouTube's "made for kids" for this run (0140). On when the form came from the Kids story format; turning it off then
+  // YouTube's "made for kids" for this run (0141). On when the form came from the Kids story format; turning it off then
   // asks first. Off sends nothing: the channel, its series and its look still make kids content made for kids.
   const kidsFormat = initial?.madeForKids === true;
   const [madeForKids, setMadeForKids] = useState(kidsFormat);

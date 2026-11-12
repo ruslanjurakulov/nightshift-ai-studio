@@ -164,7 +164,7 @@ describe("what the review panel says is what the code does", () => {
 });
 
 describe("the reasons and blockers exist in all three languages", () => {
-  // audience_unanswered: 0140, nobody has answered who the video is for (lib/madeForKids.ts).
+  // audience_unanswered: 0141, nobody has answered who the video is for (lib/madeForKids.ts).
   const blockers: ApprovalBlocker[] = ["held", "rejected", "already_public", "gate_blocked", "gate_unknown", "no_preview", "cut_unknown", "audience_unanswered", "not_admin", "not_member"];
 
   it.each(["en", "ru", "uz"] as const)("%s has a sentence for every blocker and every reason word the database can answer", (loc) => {

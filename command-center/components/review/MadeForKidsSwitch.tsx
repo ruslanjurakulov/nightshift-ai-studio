@@ -15,7 +15,7 @@ import {
 } from "@/lib/madeForKids";
 
 /**
- * YouTube's "made for kids" switch (migration 0140, lib/madeForKids.ts). Controlled: the caller owns the value and decides
+ * YouTube's "made for kids" switch (migration 0141, lib/madeForKids.ts). Controlled: the caller owns the value and decides
  * what a change does (the Create form keeps it for the run; the review panel saves it, below).
  *
  * Kids content starts ON. Turning it OFF does not happen on the first press: the switch asks, in words, and only an explicit
@@ -135,7 +135,7 @@ export function MadeForKidsSwitch({
  * a video goes public (the owner's decision on PR #699). Nothing is pre-selected until a person has answered: the pipeline's
  * detection (videos.made_for_kids before anyone answered) is shown as a hint beside the question, never as a chosen option.
  * Approving waits for the answer (lib/videoApproval.ts, and approve_video_publish refuses `audience_unanswered`). "No" on
- * detected kids content asks for the confirmation first. Each answer is saved through set_video_made_for_kids (migration 0140),
+ * detected kids content asks for the confirmation first. Each answer is saved through set_video_made_for_kids (migration 0141),
  * which records who answered and when; the database decides again (who may, the confirmation, a public video, a live approval).
  */
 export function ReviewMadeForKids({

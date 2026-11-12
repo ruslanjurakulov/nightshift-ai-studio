@@ -1,4 +1,4 @@
-"""Migration 0140: a video's YouTube "made for kids" declaration, attacked in a real database.
+"""Migration 0141: a video's YouTube "made for kids" declaration, attacked in a real database.
 
 What would break without these:
   * a video approved (and so queued to go public) on the pipeline's detection alone, with nobody's answer to "is this made for
@@ -271,8 +271,8 @@ def snapshot(su):
 def test_applying_it_again_changes_nothing(conn):
     with as_superuser(conn, commit=False) as su:
         before = snapshot(su)
-        su.conn.execute(sec_db.MIGRATION_0140.read_text(encoding="utf-8"))
-        su.conn.execute(sec_db.MIGRATION_0140.read_text(encoding="utf-8"))
+        su.conn.execute(sec_db.MIGRATION_0141.read_text(encoding="utf-8"))
+        su.conn.execute(sec_db.MIGRATION_0141.read_text(encoding="utf-8"))
         assert snapshot(su) == before
 
 
@@ -280,18 +280,18 @@ def test_the_drift_guard_refuses_a_body_it_has_not_seen(conn):
     with as_superuser(conn, commit=False) as su:
         su.conn.execute("create or replace function public.audit_action_allowed(p_action text) returns boolean "
                         "language sql immutable set search_path = public, pg_temp as $$ select true $$")
-        out = su.run(sec_db.MIGRATION_0140.read_text(encoding="utf-8"))
-        assert not out.ok and "neither 0117's body nor 0140's" in (out.error or ""), out
+        out = su.run(sec_db.MIGRATION_0141.read_text(encoding="utf-8"))
+        assert not out.ok and "neither 0117's body nor 0141's" in (out.error or ""), out
 
 
-def test_the_rollback_restores_what_0140_replaced_and_the_migration_applies_again(conn):
-    rollback = sec_db.ROLLBACK_0140.read_text(encoding="utf-8")
+def test_the_rollback_restores_what_0141_replaced_and_the_migration_applies_again(conn):
+    rollback = sec_db.ROLLBACK_0141.read_text(encoding="utf-8")
     assert re.search(r"(?m)^begin;$", rollback) and re.search(r"(?m)^commit;$", rollback)
     admin = sec_db.admin_dsn()
     base = f"ns_mfk_base_{uuid.uuid4().hex[:8]}"
     base_dsn = sec_db.create_database(admin, base)
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0140_")])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0141_")])
         import psycopg
 
         with psycopg.connect(base_dsn, autocommit=True) as b:
@@ -304,7 +304,7 @@ def test_the_rollback_restores_what_0140_replaced_and_the_migration_applies_agai
         sec_db.drop_database(admin, base)
     with as_superuser(conn, commit=False) as su:
         after = snapshot(su)
-        sec_db.take_off_0140(su)
+        sec_db.take_off_0141(su)
         for sig, definition in want.items():
             assert su.value("select pg_get_functiondef(%s::regprocedure)", [sig]) == definition, sig
         assert su.rows("select cmd, qual, with_check from pg_policies where tablename = 'render_jobs' "
@@ -313,5 +313,5 @@ def test_the_rollback_restores_what_0140_replaced_and_the_migration_applies_agai
         # The record stays: what each video declared and who confirmed it.
         assert su.value("select count(*) from information_schema.columns where table_name = 'videos' "
                         "and column_name like 'made_for_kids%'") == 5
-        sec_db.put_back_0140(su)
+        sec_db.put_back_0141(su)
         assert snapshot(su) == after

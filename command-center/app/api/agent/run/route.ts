@@ -190,7 +190,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // platform's, not theirs (the Create form hides the selects from them). The operator's own organization keeps it.
   if (customerRun && (videoProvider || imageProvider))
     return NextResponse.json({ error: "provider_not_allowed" }, { status: 403 });
-  // YouTube's "made for kids" (0140): true, or absent. Anything else is refused rather than read as "not for kids": a run
+  // YouTube's "made for kids" (0141): true, or absent. Anything else is refused rather than read as "not for kids": a run
   // can only turn the declaration on, and a false here would be a request this route cannot honour.
   if (body.made_for_kids != null && body.made_for_kids !== true)
     return NextResponse.json({ error: "bad_request" }, { status: 400 });

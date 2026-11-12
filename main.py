@@ -655,7 +655,7 @@ def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
                 "private instead (the switch means never public)", ctx.channel_id, privacy)
     # Nobody has answered "is this video made for kids?" for a video that does not exist yet: it uploads private, with the
     # detected declaration, and goes public only through an approval, which needs a person's answer (modules/made_for_kids.py,
-    # migration 0140; the owner's decision on PR #699). Auto publish ON holds here rather than going public on its own.
+    # migration 0141; the owner's decision on PR #699). Auto publish ON holds here rather than going public on its own.
     held = mfk.privacy_until_answered(allowed, answered=False)
     if held != allowed:
         logger.warning(
@@ -2043,7 +2043,7 @@ def run(
                     # (migration 0112). Uploads happen only when it allowed.
                     gate_verdict=held_video.gate_verdict(gate.to_metadata()),
                     # What this upload declared, so the review panel shows it and a cross-post or the publish-when-approved
-                    # worker sends the same (migration 0140).
+                    # worker sends the same (migration 0141).
                     made_for_kids=kids_decision,
                 )
             except Exception as e:

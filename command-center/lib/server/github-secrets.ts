@@ -217,7 +217,7 @@ export async function dispatchDailyVideo(
      *  an approved storyboard (migration 0057) renders this way. Only with a
      *  topic: a bare resume would pick whichever run is newest. */
     resume?: boolean;
-    /** YouTube's "made for kids" for this run (the workflow's `made_for_kids` input, 0140). Only true is forwarded. */
+    /** YouTube's "made for kids" for this run (the workflow's `made_for_kids` input, 0141). Only true is forwarded. */
     madeForKids?: boolean;
   } = {},
 ): Promise<void> {

@@ -64,15 +64,15 @@ KEEP_PER_CHANNEL = 5
 # a held video still awaiting review must not lose its only copy to newer holds. Ceiling: 5 uploaded + 5 held.
 KEEP_HELD_PER_CHANNEL = 5
 
-#: Migration 0140: the video's YouTube "made for kids" declaration and whether it is kids content (modules/made_for_kids.py).
+#: Migration 0141: the video's YouTube "made for kids" declaration and whether it is kids content (modules/made_for_kids.py).
 #: A person's confirmation (made_for_kids_off_by / _at) and answer (made_for_kids_answered_by / _at) are only ever CLEARED here,
 #: with a new cut: it is a new video to answer for. Only set_video_made_for_kids sets them.
-COLUMNS_0140 = ("made_for_kids", "kids_content", "made_for_kids_off_by", "made_for_kids_off_at",
+COLUMNS_0141 = ("made_for_kids", "kids_content", "made_for_kids_off_by", "made_for_kids_off_at",
                 "made_for_kids_answered_by", "made_for_kids_answered_at")
 
 
 def made_for_kids_columns(decision) -> dict:
-    """The 0140 columns for a run's decision. A new cut is the run's detection again, not anybody's answer: a person's
+    """The 0141 columns for a run's decision. A new cut is the run's detection again, not anybody's answer: a person's
     earlier answer and "not for kids" were about a cut that is gone, so both are cleared with it (the review panel asks again,
     and approve_video_publish refuses until it is answered)."""
     return {"made_for_kids": bool(decision.value), "kids_content": bool(decision.kids_content),
@@ -448,9 +448,9 @@ class VideoReview:
         on its own. A verdict that is not known is sent as NULL, which reads "unknown", never "passed".
 
         ``made_for_kids`` (a ``modules.made_for_kids.Decision``) is recorded as ``videos.made_for_kids`` and
-        ``videos.kids_content`` (migration 0140): what the run declared, and whether the video is kids content. The
+        ``videos.kids_content`` (migration 0141): what the run declared, and whether the video is kids content. The
         review panel shows it, and a cross-post or the publish-when-approved worker sends the same. A database without
-        0140 takes the rest of the row (the two columns are dropped and the write retried, as the 0112 ones are).
+        0141 takes the rest of the row (the two columns are dropped and the write retried, as the 0112 ones are).
 
         Idempotent (same key, same values), and never raises.
         """
@@ -489,9 +489,9 @@ class VideoReview:
             if scenes:
                 row["scenes"] = scenes
             ok = self._upsert_video(row)
-            if not ok and any(k in row for k in COLUMNS_0140):
-                # A database without 0140: the declaration has nowhere to go, the rest of the row still does.
-                row = {k: v for k, v in row.items() if k not in COLUMNS_0140}
+            if not ok and any(k in row for k in COLUMNS_0141):
+                # A database without 0141: the declaration has nowhere to go, the rest of the row still does.
+                row = {k: v for k, v in row.items() if k not in COLUMNS_0141}
                 ok = self._upsert_video(row)
             if not ok:
                 # An un-migrated database (no `manifest` column, or no 0112 columns) rejects the whole

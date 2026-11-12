@@ -123,9 +123,9 @@ class Numbering(unittest.TestCase):
         # workspaces and the generations; it reads, replaces and alters nothing of 0131's.
         # 0139 (the operator preview of a hidden model) was reviewed the same way: it replaces creative_price on 0125's body and adds two
         # model-registry functions; it reads, replaces and alters nothing of 0131's.
-        # 0140 (YouTube's "made for kids") was reviewed the same way: videos columns, one function, the run params validator and the
+        # 0141 (YouTube's "made for kids") was reviewed the same way: videos columns, one function, the run params validator and the
         # audit list; nothing of 0131's.
-        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0140")], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0141")], [], "a later number needs its own review of this file's pins")
         later = next(MIG.glob("0134_*.sql")).read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertNotRegex(code(later), r"\balter table\b")

@@ -26,7 +26,7 @@ the one change this feature exists for: ``videos.update`` with ``status.privacyS
    (the call replaces every field of the part it names, so the rest is sent back as read; never ``snippet``). If the fresh
    read did not contain ``selfDeclaredMadeForKids`` and a ``privacyStatus`` the call is not made (``status_unreadable``):
    a status object without them would reset them. One field is not simply sent back: ``selfDeclaredMadeForKids`` is the
-   declaration RECORDED for the video (migration 0140: what its upload declared, or what a person decided on the review
+   declaration RECORDED for the video (migration 0141: what its upload declared, or what a person decided on the review
    page) when there is one, and the one read otherwise; a video nobody has answered for, and kids content recorded "not made
    for kids" with nobody's confirmation, are refused (``gate_blocked``) and a record that cannot be read is retried, never guessed
    (``declared_for_kids``, modules/made_for_kids.py). The request is marked ``submitting`` in the database right before, by
@@ -190,7 +190,7 @@ class VisibilityStore:
         return r.json()
 
     def kids_record(self, video_id: str) -> dict:
-        """The video's "made for kids" record (migration 0140), {} on a database without those columns. Any other failure
+        """The video's "made for kids" record (migration 0141), {} on a database without those columns. Any other failure
         raises: the declaration a video goes public with is never guessed."""
         r = self.http().get(f"{self.url}/rest/v1/videos",
                             params={"select": "video_id,made_for_kids,kids_content,made_for_kids_off_by,made_for_kids_answered_by",
@@ -267,7 +267,7 @@ def writable_status(current: Optional[Mapping], privacy: str = "public", made_fo
     """The ``status`` object videos.update gets: what was read (writable fields only), privacy set, ``publishAt`` never.
     Never built from a read that lacked the made-for-kids declaration or the privacy (ValueError).
 
-    ``made_for_kids`` is the video's recorded declaration (migration 0140: what the upload declared, or what a person
+    ``made_for_kids`` is the video's recorded declaration (migration 0141: what the upload declared, or what a person
     decided on the review page). A boolean replaces the one read; None sends back what was read, as before."""
     if not status_readable(current):
         raise ValueError("the video's status was not read in full")
@@ -306,7 +306,7 @@ class YouTubeVisibility:
 
 def declared_for_kids(store, video_id: str, channel) -> Optional[bool]:
     """What the video goes public declaring (modules/made_for_kids.py), or None to send back what YouTube holds (a video
-    recorded before 0140 on a channel whose default is off). Raises ``Stop`` (gate_blocked) for kids content declared "not
+    recorded before 0141 on a channel whose default is off). Raises ``Stop`` (gate_blocked) for kids content declared "not
     for kids" with nobody's confirmation, and ``Retry`` when the record cannot be read: never a guess."""
     from modules import made_for_kids as mfk  # noqa: PLC0415
 
@@ -317,7 +317,7 @@ def declared_for_kids(store, video_id: str, channel) -> Optional[bool]:
         logger.info("visibility: the made-for-kids record could not be read (%s)", type(e).__name__)
         raise Retry("worker_error") from None
     if "made_for_kids_answered_by" in row and not row.get("made_for_kids_answered_by"):
-        # 0140: approving needs a person's answer, so an approval without one is one that predates it or was forged. The
+        # 0141: approving needs a person's answer, so an approval without one is one that predates it or was forged. The
         # detection is not an answer: nothing goes public on it.
         logger.warning("visibility: video %s goes public only with a person's answer to who it is for; it has none", video_id)
         raise refused("gate_blocked")

@@ -552,7 +552,7 @@ export function ReviewPanel({
         </div>
       )}
 
-      {/* ── who it is for: YouTube's "made for kids" (0140). Decided before approving: a live approval keeps it as it was. ── */}
+      {/* ── who it is for: YouTube's "made for kids" (0141). Decided before approving: a live approval keeps it as it was. ── */}
       {!isHeldVideo(video) && (
         <ReviewMadeForKids video={video} access={access} approvalLive={state.view.kind === "approved"} />
       )}

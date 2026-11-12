@@ -1,4 +1,4 @@
-"""supabase/migrations/0140_made_for_kids.sql, read as text (the security lab runs it: tests/security/test_sec_made_for_kids.py).
+"""supabase/migrations/0141_made_for_kids.sql, read as text (the security lab runs it: tests/security/test_sec_made_for_kids.py).
 
 What would break without these:
   * a replaced body that is not its predecessor plus the marked lines (a silent change riding along);
@@ -16,8 +16,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-TEXT = (MIG / "0140_made_for_kids.sql").read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0140_made_for_kids.sql").read_text(encoding="utf-8")
+TEXT = (MIG / "0141_made_for_kids.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0141_made_for_kids.sql").read_text(encoding="utf-8")
 M0122 = (MIG / "0122_series_template_carrier.sql").read_text(encoding="utf-8")
 M0117 = (MIG / "0117_voice_profiles.sql").read_text(encoding="utf-8")
 M0076 = (MIG / "0076_scene_regenerate.sql").read_text(encoding="utf-8")
@@ -69,15 +69,15 @@ class WhatItReplaces(unittest.TestCase):
     def test_the_old_bodies_are_the_latest_definitions_before_it(self):
         for fn, want in (("render_job_params_valid", "0122_series_template_carrier.sql"), ("audit_action_allowed", "0117_voice_profiles.sql"),
                          ("approve_video_publish", "0116_visibility_requests.sql")):
-            defs = [p.name for p in migrations_before("0140") if re.search(rf"create or replace function public\.{fn}\(", p.read_text(encoding="utf-8"))]
+            defs = [p.name for p in migrations_before("0141") if re.search(rf"create or replace function public\.{fn}\(", p.read_text(encoding="utf-8"))]
             self.assertEqual(defs[-1], want, fn)
-        pols = [p.name for p in migrations_before("0140") if POLICY in p.read_text(encoding="utf-8")]
+        pols = [p.name for p in migrations_before("0141") if POLICY in p.read_text(encoding="utf-8")]
         self.assertEqual(pols[-1], "0076_scene_regenerate.sql")
 
     def test_the_params_validator_is_0122s_plus_the_marked_block_and_one_key(self):
         old, new = body(M0122, RJPV), body(TEXT, RJPV)
         self.assertEqual(old.replace("'publish_hint','series','template'];", "'publish_hint','series','template','made_for_kids'];"),
-                         re.sub(r"  -- 0140:.*?\n  end if;\n", "", new, flags=re.S), "only the allowed list and the 0140 block differ")
+                         re.sub(r"  -- 0141:.*?\n  end if;\n", "", new, flags=re.S), "only the allowed list and the 0141 block differ")
         block = "\n".join(added_lines(old.replace("'template'];", "'template','made_for_kids'];"), new))
         self.assertIn("p ? 'made_for_kids' and (p -> 'made_for_kids' is distinct from 'true'::jsonb or p_kind = 'repair')", block)
 
@@ -150,7 +150,7 @@ class ThePersonsFunction(unittest.TestCase):
 
 
 class WhatTheRollbackDoes(unittest.TestCase):
-    def test_it_restores_the_predecessors_byte_for_byte_and_guards_on_0140s(self):
+    def test_it_restores_the_predecessors_byte_for_byte_and_guards_on_0141s(self):
         self.assertEqual(body(ROLLBACK, RJPV), body(M0122, RJPV))
         self.assertEqual(body(ROLLBACK, AUD), body(M0117, AUD))
         self.assertEqual(body(ROLLBACK, APV), body(M0116, APV))
@@ -169,8 +169,8 @@ class WhatTheRollbackDoes(unittest.TestCase):
 
 
 class TheNumber(unittest.TestCase):
-    def test_it_is_the_only_0140(self):
-        self.assertEqual([p.name for p in MIG.glob("0140_*.sql")], ["0140_made_for_kids.sql"])
+    def test_it_is_the_only_0141(self):
+        self.assertEqual([p.name for p in MIG.glob("0141_*.sql")], ["0141_made_for_kids.sql"])
 
 
 if __name__ == "__main__":

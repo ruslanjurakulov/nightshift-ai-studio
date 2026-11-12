@@ -38,7 +38,7 @@ from modules.series import validate_series_id
 #: param since migration 0120_series_tables.sql, which redefines ``render_job_params_valid`` with ``'series'`` in its ``allowed`` array
 #: and the series-id check (tests/test_queue_worker.py compares the two, and tests/test_series_dispatch.py pins the rest). Only a
 #: database function of that migration writes one into a job: the browser's insert policy does not list the key.
-#: ``made_for_kids`` (migration 0140): the Kids story format / the Create form's switch. Only ``true``: a run can turn
+#: ``made_for_kids`` (migration 0141): the Kids story format / the Create form's switch. Only ``true``: a run can turn
 #: YouTube's "made for kids" on, never off (modules/made_for_kids.py).
 ALLOWED_PARAMS = (
     "topic", "niche", "privacy", "duration", "language", "visual_style",
@@ -150,7 +150,7 @@ def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
         out["publish_hint"] = hint
 
     if params.get("made_for_kids") is not None:
-        # The database holds the key to true (0140); false is refused rather than read as "not for kids".
+        # The database holds the key to true (0141); false is refused rather than read as "not for kids".
         if params["made_for_kids"] is not True:
             raise InvalidRunRequest("made_for_kids may only be true")
         if kind == "repair":

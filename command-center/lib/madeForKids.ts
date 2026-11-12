@@ -1,5 +1,5 @@
 /**
- * YouTube's "made for kids" declaration, the pure half (migration 0140, modules/made_for_kids.py).
+ * YouTube's "made for kids" declaration, the pure half (migration 0141, modules/made_for_kids.py).
  *
  * Every upload used to declare "not made for kids", while the product offers a Kids story format and kids looks: a children's
  * video declared that way breaks YouTube's policy and COPPA. The pipeline now decides the declaration from the run (the kids
@@ -39,7 +39,7 @@ export function isKidsLook(libraryId: unknown): boolean {
   return typeof libraryId === "string" && KIDS_LIBRARY_STYLES.includes(libraryId.trim().toLowerCase());
 }
 
-/** The videos columns of 0140, all optional: a row before 0140, or a database without it, simply has none. */
+/** The videos columns of 0141, all optional: a row before 0141, or a database without it, simply has none. */
 export interface MadeForKidsFields {
   made_for_kids?: boolean | null;
   kids_content?: boolean | null;
@@ -50,7 +50,7 @@ export interface MadeForKidsFields {
 }
 
 export interface MadeForKidsView {
-  /** Something was recorded for this video (an upload since 0140, or a person's decision). */
+  /** Something was recorded for this video (an upload since 0141, or a person's decision). */
   recorded: boolean;
   /** What the video declares; null when nothing was recorded (never shown as "off": an unknown is not a no). */
   value: boolean | null;
@@ -75,9 +75,9 @@ export function madeForKidsView(v: MadeForKidsFields | null | undefined): MadeFo
 }
 
 /**
- * The video's row carries 0140's answer column and nobody has answered (the owner's decision on PR #699: who a video is for is a
+ * The video's row carries 0141's answer column and nobody has answered (the owner's decision on PR #699: who a video is for is a
  * person's explicit choice, asked before approving, as YouTube Studio asks before publishing). A row without the column (a
- * database before 0140) asks nothing: approve_video_publish there does not ask either.
+ * database before 0141) asks nothing: approve_video_publish there does not ask either.
  */
 export function audienceUnanswered(v: MadeForKidsFields | null | undefined): boolean {
   return !!v && "made_for_kids_answered_by" in v && !v.made_for_kids_answered_by;

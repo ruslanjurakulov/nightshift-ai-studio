@@ -1,4 +1,4 @@
--- rollback_0140_made_for_kids.sql — takes migration 0140 out again. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs
+-- rollback_0141_made_for_kids.sql — takes migration 0141 out again. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs
 -- it.
 --
 -- WHEN YOU NEED IT. If the per-video "made for kids" switch or the run's made_for_kids must be withdrawn. The pipeline keeps declaring the
@@ -6,7 +6,7 @@
 -- loses the record), so withdrawing this never makes an upload declare a kids video "not for kids".
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if a live body is not 0140's (a later change would be undone), or if a render_jobs row that has not
+--   0. REFUSES (changes nothing) if a live body is not 0141's (a later change would be undone), or if a render_jobs row that has not
 --      finished carries a `made_for_kids` param (0122's validator would refuse the row on its next UPDATE: a CHECK is evaluated again on
 --      every update, and the worker updates a job it runs).
 --   1. Puts render_job_params_valid() back to 0122's body, audit_action_allowed() back to 0117's and approve_video_publish() back to
@@ -16,11 +16,11 @@
 -- WHAT IT KEEPS, on purpose: the six videos columns and their checks. They are a record of what each video declared and of who confirmed
 -- "not made for kids" for a kids video; a rollback does not erase that. Nothing writes the person's columns once the function is gone.
 --
--- CHECK BEFORE YOU RUN IT: compare the live bodies with this file's (the only differences should be the lines marked 0140):
+-- CHECK BEFORE YOU RUN IT: compare the live bodies with this file's (the only differences should be the lines marked 0141):
 --     select pg_get_functiondef('public.render_job_params_valid(jsonb,text)'::regprocedure);
 --     select pg_get_functiondef('public.audit_action_allowed(text)'::regprocedure);
 --
--- tests/security/test_sec_made_for_kids.py applies this file to the lab database and re-applies 0140.
+-- tests/security/test_sec_made_for_kids.py applies this file to the lab database and re-applies 0141.
 
 begin;
 set local lock_timeout = '5s';
@@ -35,19 +35,19 @@ begin
     from pg_proc p where p.oid = to_regprocedure('public.render_job_params_valid(jsonb, text)');
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into a
     from pg_proc p where p.oid = to_regprocedure('public.audit_action_allowed(text)');
-  if v is distinct from '641805f6dfa3ff6764a56f257ef91ade' then
-    raise exception 'rollback 0140: render_job_params_valid() is not 0140''s body (md5 %): read the live body first', v;
+  if v is distinct from '21af20e5fa3fa89b9e109d521e8c5c51' then
+    raise exception 'rollback 0141: render_job_params_valid() is not 0141''s body (md5 %): read the live body first', v;
   end if;
-  if a is distinct from 'cb71f41c2a8fe645508c757f4c6f3af7' then
-    raise exception 'rollback 0140: audit_action_allowed() is not 0140''s body (md5 %): read the live body first', a;
+  if a is distinct from 'c4251078a230dcb73c0aaacf2eb128fb' then
+    raise exception 'rollback 0141: audit_action_allowed() is not 0141''s body (md5 %): read the live body first', a;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into p
     from pg_proc p where p.oid = to_regprocedure('public.approve_video_publish(text, text, jsonb)');
-  if p is distinct from '2bda8e98641addcdb253943f50c2e075' then
-    raise exception 'rollback 0140: approve_video_publish() is not 0140''s body (md5 %): read the live body first', p;
+  if p is distinct from 'a852d22f8816d4bd3f4fc37ddcb34328' then
+    raise exception 'rollback 0141: approve_video_publish() is not 0141''s body (md5 %): read the live body first', p;
   end if;
   if exists (select 1 from public.render_jobs where params ? 'made_for_kids' and status in ('queued', 'running')) then
-    raise exception 'rollback 0140: a queued or running job carries made_for_kids; let it finish (or cancel it) first';
+    raise exception 'rollback 0141: a queued or running job carries made_for_kids; let it finish (or cancel it) first';
   end if;
 end $$;
 

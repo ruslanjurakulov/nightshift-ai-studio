@@ -106,7 +106,7 @@ export interface RunHandoff {
   seconds: number;
   language: HomeLanguage;
   /** The format card it came from. Only the Kids story format travels (`format=kids`): it pre-ticks YouTube's "made for
-   *  kids" on the form (lib/madeForKids.ts, migration 0140). The other formats are a length and a starter, as before. */
+   *  kids" on the form (lib/madeForKids.ts, migration 0141). The other formats are a length and a starter, as before. */
   format?: HomeFormatId;
 }
 

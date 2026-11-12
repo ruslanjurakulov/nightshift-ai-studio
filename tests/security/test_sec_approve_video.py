@@ -67,9 +67,9 @@ def uploaded(su, channel, vid=VID, **over):
     row = {"video_id": vid, "channel_id": channel, "title": "Up", "slug": f"sl-{vid}", "review_state": "pending",
            "publish_state": "uploaded", "published_at": "2026-10-01T10:00:00Z", "privacy": "private",
            "preview_path": f"{channel}/{vid}.mp4", "cut_sha256": CUT, "gate_verdict": json.dumps(ALLOWED)}
-    # 0140: approving needs a person's answer to "is this made for kids?". A video here has one (a stand-in person, answered
+    # 0141: approving needs a person's answer to "is this made for kids?". A video here has one (a stand-in person, answered
     # "no"), so these tests keep testing what they test; test_sec_made_for_kids.py proves the refusal without one. Only where the
-    # columns exist: a base database built without 0140 has none.
+    # columns exist: a base database built without 0141 has none.
     if su.value("select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'videos' "
                 "and column_name = 'made_for_kids_answered_by'"):
         row = {"made_for_kids": False, "kids_content": False, "made_for_kids_answered_by": str(uuid.uuid4()),
@@ -433,7 +433,7 @@ def test_applying_it_again_changes_nothing(conn):
     text = MIGRATION.read_text(encoding="utf-8")
     with as_superuser(conn, commit=False) as su:
         before = snapshot(su)
-        sec_db.take_off_0140(su)                                      # 0140 sits on 0117's audit list: off before 0112/0116 replay it, back with put_back_0121
+        sec_db.take_off_0141(su)                                      # 0141 sits on 0117's audit list: off before 0112/0116 replay it, back with put_back_0121
         su.conn.execute(text)
         su.conn.execute(text)
         # 0112 alone puts back its own approve_video_publish and audit list; 0116 replaces both, so it goes on top again.
@@ -468,7 +468,7 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
     base_dsn = sec_db.create_database(admin, base)
     try:
         sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence()
-                                      if not f.name.startswith(("0112_", "0116_", "0117_", "0119_", "0121_", "0140_"))])
+                                      if not f.name.startswith(("0112_", "0116_", "0117_", "0119_", "0121_", "0141_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace order by 1")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],

@@ -1,8 +1,8 @@
-"""Security-lab contract for migration 0140 (YouTube's "made for kids" declaration, per video).
+"""Security-lab contract for migration 0141 (YouTube's "made for kids" declaration, per video).
 
 Wired in at the bottom of sec_expectations.py, like the other per-migration files:
 
-    import sec_made_for_kids_0140; sec_made_for_kids_0140.extend(TABLES, FUNCTIONS)
+    import sec_made_for_kids_0141; sec_made_for_kids_0141.extend(TABLES, FUNCTIONS)
 
 No new table: four columns on videos (covered row by row by the videos entry of TABLES). One new function:
 

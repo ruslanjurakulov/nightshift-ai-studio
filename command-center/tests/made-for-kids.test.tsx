@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * YouTube's "made for kids" switch (migration 0140, lib/madeForKids.ts, components/review/MadeForKidsSwitch.tsx).
+ * YouTube's "made for kids" switch (migration 0141, lib/madeForKids.ts, components/review/MadeForKidsSwitch.tsx).
  *
  * What would break: a Kids story reaching the run without its declaration, kids content switched off with one tap (no
  * confirmation), the confirmation's safe answer not being the one that keeps it on, a review panel offering a change the
@@ -339,7 +339,7 @@ describe("approving waits for the answer", () => {
       expect(s.blocker).toBeNull();
       expect(canPressApprove(s)).toBe(true);
     }
-    // A database before 0140 has no such column and does not ask: nothing to wait for there.
+    // A database before 0141 has no such column and does not ask: nothing to wait for there.
     expect(approvalState(ROW, now).blocker).toBeNull();
     expect(audienceUnanswered({})).toBe(false);
   });
