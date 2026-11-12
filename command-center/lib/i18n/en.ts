@@ -27,6 +27,7 @@ import { exportHiresEn } from "./editor-hires/en";
 import { clipToolsEn } from "./editor-clip-tools/en";
 import { parity2En } from "./editor-parity2/en";
 import { parity2bEn } from "./editor-parity2b/en";
+import { parity4En } from "./editor-parity4/en";
 import { coreEn } from "./editor-core/en";
 import { voiceOverEn } from "./editor-voiceover/en";
 import { looksEn } from "./editor-looks/en";
@@ -5162,6 +5163,8 @@ export const en = {
     parity2: parity2En,
     /** Effects pack, clip animations, apply to all cuts, beats: ./editor-parity2b/en.ts. */
     parity2b: parity2bEn,
+    /** Talking-head pack: clean voice, bleeps, text properties: ./editor-parity4/en.ts. */
+    parity4: parity4En,
     /** Timeline tools, marks, J / L cut, shuttle and guides: ./editor-core/en.ts. */
     core: coreEn,
     fx: fxEn,

@@ -123,7 +123,8 @@ export function setChromaAmount(
 
 export type CleanKey = "denoise" | "loudnorm";
 
-/** Turn a clean-up on or off for a video clip's own sound. */
+/** Turn a clean-up on or off for a video clip's own sound. Not while "clean voice" is on: it already does both
+ *  (the validators refuse the pair, so a voice is never normalised twice). */
 export function setClipClean(
   model: EditorModel,
   id: string,
@@ -131,7 +132,7 @@ export function setClipClean(
   on: boolean,
 ): EditorModel {
   const at = model.clips.find((c) => c.id === id);
-  if (!at || Boolean(at[key]) === on) return model;
+  if (!at || Boolean(at[key]) === on || (on && at.voice)) return model;
   const next: VideoClip = { ...at };
   if (on) next[key] = true;
   else delete next[key];
@@ -146,10 +147,52 @@ export function setSoundClean(
   on: boolean,
 ): EditorModel {
   const at = model.sounds.find((x) => x.id === id);
-  if (!at || Boolean(at[key]) === on) return model;
+  if (!at || Boolean(at[key]) === on || (on && at.voice)) return model;
   const next: SoundClip = { ...at };
   if (on) next[key] = true;
   else delete next[key];
+  return { ...model, sounds: model.sounds.map((x) => (x.id === id ? next : x)) };
+}
+
+// ── clean voice ─────────────────────────────────────────────────────────────
+
+export type VoiceCheck = { ok: true; render: RenderWork } | { ok: false; reason: "render_time"; render: RenderWork };
+
+/** Can this clip's own sound (`kind` "V") or this sound ("A") have "clean voice"? Judged as if it were on: the
+ *  export's time allowance with its charge (VOICE_SECONDS_PER_S per second of sound) added. */
+export function voiceCheck(model: EditorModel, kind: "V" | "A", id: string): VoiceCheck {
+  const on = kind === "V"
+    ? { ...model, clips: model.clips.map((c) => (c.id === id ? { ...c, voice: "clean" as const } : c)) }
+    : { ...model, sounds: model.sounds.map((x) => (x.id === id ? { ...x, voice: "clean" as const } : x)) };
+  const render = renderWork(on);
+  return render.ok ? { ok: true, render } : { ok: false, reason: "render_time", render };
+}
+
+/** "Clean voice" on (replacing denoise and loudnorm, which it includes) or off. Refused when it would not fit
+ *  the export's time allowance; the same model back when nothing changes. */
+export function setClipVoice(model: EditorModel, id: string, on: boolean): EditorModel {
+  const at = model.clips.find((c) => c.id === id);
+  if (!at || Boolean(at.voice) === on) return model;
+  if (on && !voiceCheck(model, "V", id).ok) return model;
+  const { denoise: _d, loudnorm: _l, voice: _v, ...rest } = at;
+  void _d;
+  void _l;
+  void _v;
+  const next: VideoClip = on ? { ...rest, voice: "clean" } : { ...at };
+  if (!on) delete next.voice;
+  return { ...model, clips: model.clips.map((c) => (c.id === id ? next : c)) };
+}
+
+export function setSoundVoice(model: EditorModel, id: string, on: boolean): EditorModel {
+  const at = model.sounds.find((x) => x.id === id);
+  if (!at || Boolean(at.voice) === on) return model;
+  if (on && !voiceCheck(model, "A", id).ok) return model;
+  const { denoise: _d, loudnorm: _l, voice: _v, ...rest } = at;
+  void _d;
+  void _l;
+  void _v;
+  const next: SoundClip = on ? { ...rest, voice: "clean" } : { ...at };
+  if (!on) delete next.voice;
   return { ...model, sounds: model.sounds.map((x) => (x.id === id ? next : x)) };
 }
 

@@ -4,9 +4,11 @@ import { useEffect, useRef } from "react";
 import {
   duckGainAt,
   soundLength,
+  type Bleep,
   type EditorAsset,
   type SoundClip,
 } from "@/lib/editor";
+import { bleepAt } from "@/lib/editorBleeps";
 
 /** dB → the 0..1 an <audio> element takes (it cannot go louder than 1).
  *  `duckGain` (linear, 0..1) is the ducking envelope's value at this moment. */
@@ -29,6 +31,7 @@ export function SoundPreview({
   playhead,
   playing,
   speech = NO_SPEECH,
+  bleeps,
 }: {
   sounds: readonly SoundClip[];
   assets: Record<string, EditorAsset>;
@@ -36,6 +39,8 @@ export function SoundPreview({
   playing: boolean;
   /** Where speech plays (editor.ts speechSpans): what a ducked sound is lowered under. */
   speech?: readonly (readonly [number, number])[];
+  /** The document's bleeps: every sound is silent inside one (the export also plays the tone there). */
+  bleeps?: readonly Bleep[];
 }) {
   const refs = useRef(new Map<string, HTMLAudioElement>());
 
@@ -53,6 +58,7 @@ export function SoundPreview({
         x.gain_db,
         x.duck ? duckGainAt(x.duck, speech, playhead) : 1,
       );
+      el.muted = bleepAt(bleeps, playhead);
       const want = x.in_s + into;
       // Seek only when it drifted: re-seeking every frame would stutter.
       if (el.paused || Math.abs((el.currentTime || 0) - want) > 0.3) {
@@ -64,7 +70,7 @@ export function SoundPreview({
       }
       if (el.paused) void el.play?.()?.catch?.(() => {});
     }
-  }, [sounds, playhead, playing, speech]);
+  }, [sounds, playhead, playing, speech, bleeps]);
 
   return (
     <div hidden>

@@ -66,6 +66,14 @@
       "items": {
         "$ref": "#/$defs/shape"
       }
+    },
+    "bleeps": {
+      "type": "array",
+      "maxItems": 100,
+      "description": "Ranges of the final mix made silent (mode mute) or silent with a 1 kHz tone over them (mode tone), in timeline seconds: in order of start_s and apart (a bleep may start where the one before ends), each 0.05 to 10 s long (in milliseconds), at most 100 (checked in modules/timeline.py). The export applies them on a 10 ms grid, widened outward, after the whole mix (ducking and every sound included). Absent or empty = none, and the render is the one a document without the field gets.",
+      "items": {
+        "$ref": "#/$defs/bleep"
+      }
     }
   },
   "$defs": {
@@ -363,6 +371,12 @@
           "type": "boolean",
           "default": false,
           "description": "Single-pass loudness normalisation (loudnorm: -16 LUFS, true peak -1.5 dB, range 11 LU) after denoise, before gain. Approximate on a very short clip."
+        },
+        "voice": {
+          "enum": [
+            "clean"
+          ],
+          "description": "The clean-voice preset of the clip's own sound (only matters with audio: true): highpass 80 Hz, FFT noise reduction (as denoise), a de-esser, a gentle compressor (3:1 above -18 dBFS) and single-pass loudness normalisation (as loudnorm, -16 LUFS), before the gain and fades. Not together with denoise or loudnorm (refused: it already holds both, so a voice is never normalised twice). Render time: 0.1 s per second of sound is charged to the budget (modules/timeline.py VOICE_SECONDS_PER_S)."
         },
         "crop": {
           "type": "object",
@@ -685,6 +699,12 @@
           "type": "boolean",
           "default": false,
           "description": "Single-pass loudness normalisation (loudnorm: -16 LUFS, true peak -1.5 dB, range 11 LU) after denoise, before gain. Approximate on a very short clip."
+        },
+        "voice": {
+          "enum": [
+            "clean"
+          ],
+          "description": "The clean-voice preset of this sound: highpass 80 Hz, FFT noise reduction (as denoise), a de-esser, a gentle compressor (3:1 above -18 dBFS) and single-pass loudness normalisation (as loudnorm, -16 LUFS), before the gain and fades. Not together with denoise or loudnorm (refused: it already holds both, so a voice is never normalised twice). Render time: 0.1 s per second of sound is charged to the budget (modules/timeline.py VOICE_SECONDS_PER_S)."
         }
       }
     },
@@ -836,6 +856,26 @@
           "maximum": 2.0,
           "default": 0.4,
           "description": "Length of the exit; needs anim_out. In + out never exceed the time the item is shown."
+        },
+        "tracking": {
+          "type": "integer",
+          "minimum": -100,
+          "maximum": 500,
+          "default": 0,
+          "description": "Letter tracking in thousandths of the size (the ASS style's Spacing: size x tracking / 1000 extra pixels between letters). 0 = none (dropped by normalise); a whole number (50.0 is read as 50)."
+        },
+        "italic": {
+          "type": "boolean",
+          "default": false,
+          "description": "Italic (the ASS style's Italic). false is dropped by normalise."
+        },
+        "align": {
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
+          "description": "How the lines of a text of several lines line up (libass Justify, set per style on the burn filter). Absent = as the anchor puts them, the behaviour of every older document. One line is placed by its anchor either way."
         }
       }
     },
@@ -969,7 +1009,8 @@
                 "neon",
                 "typewriter",
                 "line_slide",
-                "clean"
+                "clean",
+                "single_word"
               ],
               "description": "A ready-made animated caption style from this closed list; the export draws it with libass tags (modules/caption_styles.py, modules/ass_captions.py). Absent = the plain caption every older document has. A style supplies the font, size, colours and position the document leaves out."
             },
@@ -1395,6 +1436,29 @@
               }
             }
           }
+        }
+      }
+    },
+    "bleep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_s",
+        "end_s",
+        "mode"
+      ],
+      "properties": {
+        "start_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "end_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "mode": {
+          "enum": [
+            "mute",
+            "tone"
+          ]
         }
       }
     }

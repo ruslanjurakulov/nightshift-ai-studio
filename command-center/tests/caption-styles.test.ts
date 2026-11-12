@@ -79,8 +79,8 @@ describe("the closed list is the export's list", () => {
     expect([MAX_STYLED_WORDS, MAX_TYPE_STEPS]).toEqual([SAMPLE.max_styled_words, SAMPLE.max_type_steps]);
   });
 
-  it("has ten styles with generic names", () => {
-    expect(CAPTION_STYLE_IDS).toHaveLength(10);
+  it("has eleven styles with generic names", () => {
+    expect(CAPTION_STYLE_IDS).toHaveLength(11);
     for (const id of CAPTION_STYLE_IDS) expect(id).toMatch(/^[a-z_]+$/);
   });
 
@@ -478,8 +478,9 @@ describe("the preview follows the export's timings", () => {
 
   it("line slide rises into place; every style fades in and out inside the cue", () => {
     expect(String(previewStyledCaption({ ...base("line_slide"), t: 1.0 })!.box.transform)).toContain("translateY(");
-    // (A typewriter has no fade: its letters are the entrance.)
-    for (const id of CAPTION_STYLE_IDS.filter((x) => x !== "typewriter")) {
+    // (A typewriter has no fade: its letters are the entrance; nor has one word at a time: each word pops in,
+    // as the export's events do, tested in tests/editor-parity4.test.ts.)
+    for (const id of CAPTION_STYLE_IDS.filter((x) => x !== "typewriter" && x !== "single_word")) {
       const o = (t: number) => Number(previewStyledCaption({ ...base(id), t })!.box.opacity);
       expect(o(1.0), id).toBeLessThan(1);
       expect(o(2.5), id).toBe(1);
@@ -535,7 +536,7 @@ describe("the words people read", () => {
   it("names every style and gives each a note, in every language", () => {
     for (const d of Object.values(dictionaries)) {
       const names = CAPTION_STYLE_IDS.map((id) => d.captions.animated.styles[id]);
-      expect(new Set(names).size).toBe(10);
+      expect(new Set(names).size).toBe(11);
       for (const id of CAPTION_STYLE_IDS) expect(d.captions.animated.notes[id].trim()).not.toBe("");
     }
   });

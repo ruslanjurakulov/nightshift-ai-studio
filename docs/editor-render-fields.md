@@ -38,6 +38,7 @@ into one commit) and #484 (group 11); group 12 is the editor-parity change that 
 | 14 | `claude/editor-parity-2` | V clip `color` (temperature, tint, hue, curve), `mask`; silence removal (no field) | on main (#675, section 14) |
 | 16 | `claude/editor-parity-2b` | V clip `fx` (glitch, shake, rgb_split, flash), `anim_in` / `anim_out`; apply a cross-fade to all cuts, beat markers (no field) | added by this branch (section 16) |
 | 17 | `claude/editor-parity-b1` | none: rolling, slip and slide edits, in / out marks with ripple delete, lift and insert, J / L cut, the key map, preview guides | added by this branch (section 17) |
+| 18 | `claude/editor-parity-4-talking-head` | sound and V clip `voice` ("clean"); top-level `bleeps`; T clip `tracking`, `italic`, `align`; caption style `single_word` | added by this branch (section 18) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -1303,3 +1304,147 @@ corpus; `tools/ms_round_table.py`), and `tests/editor-ms-round.test.ts` holds `m
 A document whose picture has a gap (a clip starting after the one before it ended; another tool can write one) used to
 be closed up when the editor opened it, so the editor showed something other than what the export rendered. It now
 opens with the gap, black in the preview and in the strip, as the export renders it; "Close gap" closes it.
+
+## 18. Talking-head pack: clean voice, bleeps, text properties, one-word captions (editor parity 4)
+
+Branch `claude/editor-parity-4-talking-head`. Free: ffmpeg and the browser only, no model, no migration, no new route, no
+new dependency. Putting auto-transcription on sale is an owner / ops step (`docs/AUTO_CAPTIONS_SETUP.md`) and is not in
+this change; everything here works with typed, imported or transcribed captions alike.
+
+Verified with the ffmpeg the worker renders with: imageio-ffmpeg 0.6.0's static **7.0.2** (`render_backend.resolve_ffmpeg`;
+`ffmpeg -filters` lists `highpass`, `afftdn`, `deesser`, `acompressor`, `loudnorm`, `sine`, `anullsrc`, `asetnsamples`,
+`volume`, `amix` and `subtitles`, and `subtitles`' `force_style` sets libass's `Justify`). The image's Debian ffmpeg is
+not the one `resolve_ffmpeg` picks; the 6.1.1 of the build box lists the same filters.
+
+### `voice` on an A clip and on a V clip (its own sound)
+
+```json
+{ "id": "s1", "asset_id": "...", "start_s": 0, "in_s": 0, "out_s": 30, "voice": "clean" }
+```
+
+* One closed value, `"clean"` (`VOICES`); anything else is refused. On a V clip it matters only with `audio: true` (accepted
+  without it, as `denoise` is). Absent = the chain the sound always had.
+* The chain (`render_spec.VOICE_CLEAN_FILTERS`), in place of `denoise` / `loudnorm` and where they sit (after speed /
+  reverse, before `gain_db`, the fades, the ducking envelope and the mix): `highpass=f=80` (rumble, mains hum),
+  `afftdn=nr=12:nf=-40:tn=1:tr=1` (the `denoise` filter), `deesser=i=0.5:m=0.5:f=0.5:s=o` (ffmpeg's de-esser does nothing
+  at its default intensity 0), `acompressor=threshold=0.125:ratio=3:attack=10:release=200` (3:1 above -18 dBFS),
+  `loudnorm=I=-16:TP=-1.5:LRA=11` (the `loudnorm` filter).
+* **No double loudnorm:** `voice` beside `denoise: true` or `loudnorm: true` on the same clip is refused by both validators
+  and by `render_spec.validate` ("already reduces noise and evens the loudness"); the editor turns them off when the
+  preset goes on and disables them while it is on (with "Clean voice already includes this."). Ducking is unchanged: a
+  clean-voiced speech sound still lowers a ducked music track, and a ducked music track with the preset is normalised
+  before it is ducked (measured: an 18 dB duck under a clean voice comes out 18 dB, `test_music_still_ducks_under_a_clean_voice`).
+* Measured on a speech-like recording through the export's render call (`tests/speech_sample.py`, the repository has no
+  voice recording; `CleanVoiceRenderTestCase`): the recording at -25 LUFS comes out at -16 LUFS (within 1 LU); the 50 Hz
+  hum is 12 dB or more further under the voice and the 5-9 kHz sibilance 3 dB or more (the test's floors; the scratch
+  measurement of the same chain: hum 19 dB, sibilance 6 dB, the pauses' noise 4 dB). On a very short clip loudnorm's window
+  is short, so the level is approximate, as for `loudnorm`.
+* A detached sound ("Detach audio") takes the clip's preset with it; a split keeps it on both halves; a held frame drops it.
+* **Render budget:** `VOICE_SECONDS_PER_S` = 0.1 s per second of clean-voiced sound (a sound's range; a V clip's length when
+  its own sound plays), not scaled by the frame, in the work estimate with interpolation, steadying, fast clips and colour
+  (`voice_seconds` / `voiceSeconds`; charged only on a timeline an export renders, like the others). The sentence names
+  "cleaning voices" / "clean fewer voices". One voice never comes near the limit (0.1 against 3 s per second); 31 full-length
+  clean sounds on a 120 s timeline are 12 s over and are refused. The switch is disabled with the numbers where it would not
+  fit (`voiceCheck`), and settle step 4d takes the preset off the last clean-voiced sound (then clip) while a timeline is
+  still over after steps 1-4c ("Sound N: clean voice was taken off..."). KNOWN, not changed here: `denoise` / `loudnorm`
+  alone are still not charged (they were not before this change); their cost is of the same order (below).
+* Cost, measured through the export's render call (`timeline_render.render(..., jobs=1, timeout_s=...)`, as
+  `run_export` calls it), the pinned ffmpeg 7.0.2, a 60 s 640x360@30 talking-head source (H.264 + AAC, the speech-like
+  recording as its sound), best of two. The box was shared with other builders' suites (load 22-28 on 4 cores), so wall
+  times were noisy (102-141 s for every case); CPU time of the render's children is the steady number and the one used:
+
+  | case | CPU s (per s of video) | peak child RSS |
+  | :-- | :-- | :-- |
+  | clip's own sound, plain | 60.2 (1.003) | 101 MB |
+  | the same, `voice: "clean"` | 62.2 (1.037): **+0.034 s per s** | 179 MB (+78) |
+  | the same, `denoise` + `loudnorm` | 60.9 (1.015): +0.012 | 177 MB |
+  | the same, 100 bleeps (half tones) | 59.1 (0.985): none measurable | 101 MB |
+  | a speech sound (A track), plain | 60.2 (1.004) | 99 MB |
+  | the same, `voice: "clean"` | 61.2 (1.021): +0.017 | 177 MB |
+
+  The audio cost does not grow with the frame (it is sound); the extra memory is loudnorm's 192 kHz working buffer, far inside
+  the export's 2 GiB. An isolated filter run (300 s of the recording through `-f null`, same box) put the whole chain at
+  0.056-0.081 s per second against 0.04-0.07 for denoise + loudnorm. `VOICE_SECONDS_PER_S` = 0.1 covers the dearest of
+  these (0.081) with room for a loaded worker; it is not scaled by pixels.
+* Preview: the browser plays the sound as recorded; the panel says the export applies clean voice.
+
+### `bleeps` (top-level)
+
+```json
+"bleeps": [ { "start_s": 12.34, "end_s": 12.71, "mode": "tone" }, { "start_s": 20.0, "end_s": 20.4, "mode": "mute" } ]
+```
+
+* Each `{start_s, end_s, mode}`, all three required, no other field; `mode` is `mute` (silence) or `tone` (silence with a
+  1 kHz sine over it, ffmpeg's default amplitude 1/8: -18 dBFS peak, about -21 dBFS RMS). Times are timeline seconds,
+  rounded to milliseconds by `normalise`; each lasts `BLEEP_MIN_S`..`BLEEP_MAX_S` (0.05..10 s, in milliseconds).
+* **Order and overlap:** in order of `start_s` and apart: a bleep may start exactly where the one before ends (the editor
+  joins neighbouring words that way), never before. At most `MAX_BLEEPS` (100). An empty list is no field. A bleep past the
+  picture's end is cut there; one wholly past it renders nothing (the command is the one without it). Bleeps never lengthen
+  the timeline.
+* Export (`render_spec.bleep_filters`), after the whole mix (every sound, ducking, the cut to the picture's length): the mix
+  is cut into 10 ms frames (`asetnsamples=n=480`) and `volume=0` is enabled on every bleep's frames; a tone bleep adds a
+  `sine` source gated the other way, mixed in (`amix ... normalize=0`). Each bleep is widened OUTWARD to the 10 ms grid (its
+  start down, its end up), so all of an asked range is silent and at most 10 ms more on each side. A timeline with no sound
+  at all and a tone bleep gets a silent track with the tone (`anullsrc`); mute-only bleeps on a silent timeline change
+  nothing. (`aeval`, a per-sample expression, was exact but cost 0.17-0.2 s per second of sound with 100 bleeps; the frame
+  gate measured 0.004.)
+* Measured through the export's render call (`BleepRenderTestCase`): inside a mute range (30 ms from each edge, the AAC
+  frame around a hard cut) the sound is under -70 dBFS; inside a tone range the 1 kHz tone is at its level within 1 dB and the
+  440 Hz under it is under -60 dB; every window outside is the plain render's level within 0.2 dB with no tone in it; 30 ms
+  before and after a bleep the sound is back.
+* The editor ("Mute or bleep words", in the captions panel): every caption's words are buttons (`aria-pressed`, 44 px); a
+  press adds a bleep over the word in the chosen mode (beep by default), a second press removes it; a short word grows to
+  0.05 s, a long one is cut to 10 s, a new bleep never crosses a neighbour (it is held to the gap, refused when the gap is
+  under 0.05 s); the list shows each bleep's times, its mode and Remove. **A word's time is its caption's time spread over
+  the caption's words by length** (`wordSpansMs`, the rule the word-by-word styles use): a cue has one start and one end,
+  so a bleep is as close to the spoken word as the caption's timing is, and the panel says to move the caption's times if a
+  bleep misses. Preview: the picture's and the sounds' elements are muted inside a bleep (both modes); the beep itself is
+  heard in the export (the panel says so).
+
+### `tracking`, `italic`, `align` on a T clip
+
+* `tracking`: letter spacing in thousandths of the text's `size`, a whole number `TRACKING_MIN`..`TRACKING_MAX` (-100..500;
+  50.0 is read as 50, as `rotate` is); the export writes ASS `Spacing` = `size x tracking / 1000` pixels. 0 is no field.
+* `italic`: the ASS style's `Italic`. false is no field.
+* `align`: `left`, `center` or `right`: how the lines of a text of SEVERAL lines line up inside its box. libass cannot read
+  this from an ASS file (no Style field carries `Justify`), so the burn filter gets `force_style='O<i>.Justify=<1|2|3>'` for
+  the texts that have one (`render_spec.overlay_subtitles_filter`); absent = as the anchor puts them, which is every older
+  document's behaviour. A one-line text is placed by its anchor either way.
+* Text clips only (the captions' look is their style's; a caption style with `tracking` is refused). Measured on the real
+  burn (`TextPropsRenderTestCase`): tracking 300 widens a 60 px word by its three gaps, italic changes the glyphs, left /
+  right move the shorter line to the longer line's edge.
+* Preview: CSS `letter-spacing` (the same pixels), `font-style: italic`, `text-align`; the panel says the spacing is close,
+  not exact. **Emoji are not drawn** (plan row #16): the export's fonts have none and a colour emoji needs a bundled font
+  (Noto Color Emoji) drawn with Pillow; the panel says so. Left for a later change.
+
+### Caption style `single_word` (the eleventh)
+
+* One word on screen at a time: each word of a cue alone, for its share of the cue (`word_spans_ms`, the same integer rule
+  as the lit styles and the preview), back to back, with an 80 ms grow from 85 %. DejaVu Sans bold, 10 % of the frame's short
+  side, centred at 62 % of the height; colour, size and position are the person's (`uses` = colour, size, y). A cue past the
+  word budget (`MAX_STYLED_WORDS` per cue, `WORD_BUDGET` per document) is written whole, as the lit styles write theirs.
+* Pinned: `samples/caption_styles.json` (both tables), the style's tags in `tests/test_caption_styles.py` GOLDEN, and a whole
+  ASS file with it beside texts with the new properties in `samples/caption_single_word_golden.ass`.
+
+### Old documents
+
+A document without any of these fields builds exactly the commands and writes exactly the ASS file origin/main (06be5521,
+#690) built: `samples/parity4_argv_golden.json` (sounds with denoise / loudnorm, a ducked music track under speech, a clip's
+own sound with a gain, cross-faded sounding clips, a detached sound of a silent video, texts with looks, animations and
+fades, styled and plain captions), made on main before any of this existed. The new graphs are pinned in
+`samples/parity4_new_argv_golden.json`. `samples/timeline_parity4_fuzz.json` (400 seeded documents) and 27 named shared
+cases hold the two validators to the same verdicts.
+
+### Strings
+
+`lib/i18n/editor-parity4/{en,ru,uz}.ts` (`t.editor.parity4`) and the style's name and note in
+`lib/i18n/caption-styles/{en,ru,uz}.ts`; ru and uz are drafts for a native read.
+
+### Rollout
+
+As section 12: older validators refuse `voice`, `bleeps`, `tracking`, `italic`, `align` ("is not a known field") and the
+`single_word` preset ("preset must be one of"), so a document using them fails closed on an older worker
+(`invalid_timeline`, nothing rendered wrongly). Merge as ONE commit (both halves deploy in the same run of
+`deploy_web.yml`: web first, then the worker image), and use the new controls only after that run has rebuilt the worker
+(step 2); if the worker was off for that run, run the workflow again with it on. There is no flag: the order of the one
+deploy is the gate, as for sections 12, 14 and 16.

@@ -41,6 +41,10 @@ export function SettleNotice({ changes }: { changes: readonly SettleChange[] }) 
         return fmt(t.editor.parity2b.settledFx, { n: c.clip });
       case "anim":
         return fmt(t.editor.parity2b.settledAnim, { n: c.clip });
+      case "voiceClip":
+        return fmt(t.editor.parity4.settledVoiceClip, { n: c.clip });
+      case "voiceSound":
+        return fmt(t.editor.parity4.settledVoiceSound, { n: c.sound });
     }
   };
   return (

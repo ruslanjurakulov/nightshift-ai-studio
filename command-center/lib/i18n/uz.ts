@@ -28,6 +28,7 @@ import { exportHiresUz } from "./editor-hires/uz";
 import { clipToolsUz } from "./editor-clip-tools/uz";
 import { parity2Uz } from "./editor-parity2/uz";
 import { parity2bUz } from "./editor-parity2b/uz";
+import { parity4Uz } from "./editor-parity4/uz";
 import { coreUz } from "./editor-core/uz";
 import { voiceOverUz } from "./editor-voiceover/uz";
 import { looksUz } from "./editor-looks/uz";
@@ -5149,6 +5150,8 @@ export const uz: Dictionary = {
     parity2: parity2Uz,
     /** Effects pack, clip animations, apply to all cuts, beats: ./editor-parity2b/uz.ts. */
     parity2b: parity2bUz,
+    /** Talking-head pack: clean voice, bleeps, text properties: ./editor-parity4/uz.ts. */
+    parity4: parity4Uz,
     /** Timeline tools, marks, J / L cut, shuttle and guides: ./editor-core/uz.ts. */
     core: coreUz,
     fx: fxUz,

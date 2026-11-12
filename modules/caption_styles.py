@@ -29,7 +29,7 @@ from typing import Dict, List, Tuple
 
 #: The closed list. A document naming anything else is refused by both validators.
 STYLE_IDS = ("karaoke", "pop_in", "boxed", "big_centre", "lower_third",
-             "outlined", "neon", "typewriter", "line_slide", "clean")
+             "outlined", "neon", "typewriter", "line_slide", "clean", "single_word")
 
 #: What a person may change on a style: the tweak names, in the order the
 #: editor lists them. ``uses`` on a style says which of them it draws.
@@ -90,6 +90,9 @@ STYLES: Dict[str, StyleDef] = {s.id: s for s in (
     _s("typewriter", "DejaVu Sans", True, 0.058, "#FFFFFF", "#FFD400", "#000000", 3, 0.5, 0.80, "bottom", _PLAIN),
     _s("line_slide", "DejaVu Sans", True, 0.06, "#FFFFFF", "#FFD400", "#000000", 4, 0.5, 0.85, "bottom", _PLAIN),
     _s("clean", "Liberation Sans", False, 0.05, "#FFFFFF", "#FFD400", "#000000", 0, 0.5, 0.92, "bottom", _PLAIN),
+    # One word on screen at a time (the short-form look): each word of the cue alone, for its share of the cue
+    # (word_spans_ms, the same rule the lit styles use), with a short pop as it comes in.
+    _s("single_word", "DejaVu Sans", True, 0.1, "#FFFFFF", "#FFD400", "#000000", 6, 0.5, 0.62, "center", _PLAIN),
 )}
 assert tuple(STYLES) == STYLE_IDS
 

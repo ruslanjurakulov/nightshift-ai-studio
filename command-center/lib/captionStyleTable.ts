@@ -25,6 +25,7 @@ export const CAPTION_STYLE_IDS = [
   "typewriter",
   "line_slide",
   "clean",
+  "single_word",
 ] as const;
 export type CaptionStyleId = (typeof CAPTION_STYLE_IDS)[number];
 
@@ -75,6 +76,7 @@ export const CAPTION_STYLES: readonly CaptionStyleDef[] = [
   { id: "typewriter", font: "DejaVu Sans", bold: true, size_frac: 0.058, color: "#FFFFFF", highlight_color: "#FFD400", outline_color: "#000000", outline_width: 3, x: 0.5, y: 0.8, anchor: "bottom", uses: PLAIN },
   { id: "line_slide", font: "DejaVu Sans", bold: true, size_frac: 0.06, color: "#FFFFFF", highlight_color: "#FFD400", outline_color: "#000000", outline_width: 4, x: 0.5, y: 0.85, anchor: "bottom", uses: PLAIN },
   { id: "clean", font: "Liberation Sans", bold: false, size_frac: 0.05, color: "#FFFFFF", highlight_color: "#FFD400", outline_color: "#000000", outline_width: 0, x: 0.5, y: 0.92, anchor: "bottom", uses: PLAIN },
+  { id: "single_word", font: "DejaVu Sans", bold: true, size_frac: 0.1, color: "#FFFFFF", highlight_color: "#FFD400", outline_color: "#000000", outline_width: 6, x: 0.5, y: 0.62, anchor: "center", uses: PLAIN },
 ];
 
 export function styleDef(id: CaptionStyleId): CaptionStyleDef {

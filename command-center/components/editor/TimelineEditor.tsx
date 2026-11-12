@@ -231,6 +231,8 @@ import { settleAll, type SettleChange } from "@/lib/editorSettle";
 import { SettleNotice } from "./SettleNotice";
 import { TransitionStylePicker } from "./TransitionStylePicker";
 import { TextLookPicker } from "./TextLookPicker";
+import { TextPropsSection } from "./TalkingHeadSections";
+import { bleepAt } from "@/lib/editorBleeps";
 import { applyTextLook } from "@/lib/editorTextLook";
 import { previewBoxStyle, previewTextStyle } from "@/lib/editorTextLookPreview";
 import {
@@ -320,6 +322,10 @@ function textBoxStyle(
     fontSize: `${(x.size / width) * 100}cqw`,
     fontWeight: x.bold === false ? 400 : 700,
     color: x.color ?? TEXT_COLOR,
+    // Text properties: the export's ASS Spacing is tracking thousandths of the size, in output pixels.
+    ...(x.tracking ? { letterSpacing: `${((x.size * x.tracking) / 1000 / width) * 100}cqw` } : {}),
+    ...(x.italic ? { fontStyle: "italic" as const } : {}),
+    ...(x.align ? { textAlign: x.align } : {}),
     // Outline, shadow and box of a text look; a text without any keeps the outline it had.
     ...previewTextStyle(
       x,
@@ -734,6 +740,14 @@ export function TimelineEditor({
         void v.play?.()?.catch?.(() => setPlaying(false));
     }
   }, [at, playing, src, shuttle, shownShuttle]);
+
+  // A bleep silences the picture's own sound in the preview (the export also plays the tone). After the effect
+  // above, which sets the element's sound for the clip, so it has the last word inside a bleep.
+  const bleeping = bleepAt(model.bleeps, playhead);
+  useEffect(() => {
+    const v = video.current;
+    if (v && at && playsNatively(at.clip) && shuttle >= 0) v.muted = !at.clip.audio || shuttle !== 1 || bleeping;
+  }, [at, bleeping, shuttle]);
 
   const playheadRef = useRef(playhead);
   playheadRef.current = playhead;
@@ -1826,6 +1840,7 @@ export function TimelineEditor({
             playhead={playhead}
             playing={playing && shuttle === 1}
             speech={speech}
+            bleeps={model.bleeps}
           />
 
           {/* transport */}
@@ -2412,6 +2427,7 @@ export function TimelineEditor({
               onChange={(patch) => apply(updateText(model, text.id, patch))}
               onLook={(look) => apply(applyTextLook(model, text.id, look))}
               anim={<TextAnimSection model={model} text={text} apply={apply} />}
+              props={<TextPropsSection model={model} text={text} apply={apply} />}
               onDelete={() => apply(removeText(model, text.id))}
             />
           ) : (
@@ -2853,6 +2869,7 @@ function TextInspector({
   onChange,
   onLook,
   anim,
+  props,
   onDelete,
 }: {
   text: TextClip;
@@ -2861,6 +2878,8 @@ function TextInspector({
   onLook: (lookId: string) => void;
   /** The entrance / exit section (TextAnimSection). */
   anim?: ReactNode;
+  /** Letter spacing, italic, line alignment (TextPropsSection). */
+  props?: ReactNode;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -2950,6 +2969,7 @@ function TextInspector({
           ))}
         </div>
       </fieldset>
+      {props}
       {anim}
       <button
         type="button"

@@ -51,6 +51,7 @@ import {
   fastCharged,
   fastSeconds,
   lookSeconds,
+  voiceSeconds,
   renderTimeoutS,
   reverseMaxSeconds,
   setSpeed,
@@ -456,6 +457,7 @@ export function freezeAtPlayhead(
       "move",
       "denoise",
       "loudnorm",
+      "voice",
       // a gap before the clip stays before its first half; the held frame follows that half with no gap of its own
       "gap_s",
     ),
@@ -633,6 +635,8 @@ export interface RenderWork {
   fastEst: number;
   /** What advanced colour and masks add (lib/editor.ts `lookSeconds`). */
   lookEst: number;
+  /** What clean-voiced sounds add (lib/editor.ts `voiceSeconds`). */
+  voiceEst: number;
   work: number;
   allowed: number;
   ok: boolean;
@@ -658,7 +662,12 @@ export function renderWork(model: EditorModel): RenderWork {
     model.clips.reduce((n, c) => n + lookSeconds(c, model.fps, model.width, model.height), 0),
     length,
   );
-  const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + lookEst + shapeEst;
+  const voiceEst = fastCharged(
+    model.clips.reduce((n, c) => n + voiceSeconds(c, "V"), 0) +
+      model.sounds.reduce((n, x) => n + voiceSeconds(x, "A"), 0),
+    length,
+  );
+  const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + lookEst + voiceEst + shapeEst;
   const allowed = renderTimeoutS(length);
   return {
     length,
@@ -667,9 +676,10 @@ export function renderWork(model: EditorModel): RenderWork {
     shapeEst,
     fastEst,
     lookEst,
+    voiceEst,
     work,
     allowed,
-    ok: interpEst + stabEst + shapeEst + fastEst + lookEst <= 0 || work <= allowed + 1e-9,
+    ok: interpEst + stabEst + shapeEst + fastEst + lookEst + voiceEst <= 0 || work <= allowed + 1e-9,
   };
 }
 

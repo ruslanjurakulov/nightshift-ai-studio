@@ -106,11 +106,11 @@ const ta = en.captions.animated;
 const radio = (name: string) => screen.getByRole("radio", { name: new RegExp(`^${name}`) }) as HTMLButtonElement;
 
 describe("the style picker", () => {
-  it("is there with no transcription set up, and offers plain plus the ten styles", () => {
+  it("is there with no transcription set up, and offers plain plus the eleven styles", () => {
     render(<Host />);
     const group = screen.getByRole("radiogroup", { name: ta.heading });
     const names = within(group).getAllByRole("radio").map((r) => r.textContent);
-    expect(names).toHaveLength(11);
+    expect(names).toHaveLength(12);
     for (const id of CAPTION_STYLE_IDS) {
       expect(within(group).getByRole("radio", { name: new RegExp(ta.styles[id]) })).toBeTruthy();
       expect(screen.getByText(ta.notes[id])).toBeTruthy();
@@ -327,9 +327,15 @@ describe("the preview component", () => {
         <CaptionPreview cue={{ id: "k", start_s: 0, end_s: 3, text: "<b>hi</b> there" }} style={style(id)} playhead={2.5} frameWidth={1080} />,
       );
       expect(container.querySelector("b"), id).toBeNull();
-      expect(container.textContent?.replace(/\s+/g, " ").trim(), id).toBe("<b>hi</b> there");
+      // One word at a time shows the word the playhead is in (2.5 s of 3: "there"), as text too.
+      expect(container.textContent?.replace(/\s+/g, " ").trim(), id).toBe(id === "single_word" ? "there" : "<b>hi</b> there");
       unmount();
     }
+    const { container } = render(
+      <CaptionPreview cue={{ id: "k", start_s: 0, end_s: 3, text: "<b>hi</b> there" }} style={style("single_word")} playhead={0.2} frameWidth={1080} />,
+    );
+    expect(container.querySelector("b")).toBeNull();
+    expect(container.textContent?.trim()).toBe("<b>hi</b>");
   });
 
   it("draws nothing for a caption without a style", () => {

@@ -32,6 +32,7 @@ export const captionStylesEn = {
     typewriter: "Typewriter",
     line_slide: "Slide up",
     clean: "Soft light",
+    single_word: "One word",
   },
   notes: {
     karaoke: "Each word fills with the highlight colour as it is spoken",
@@ -44,5 +45,6 @@ export const captionStylesEn = {
     typewriter: "Letters appear one after another",
     line_slide: "Each caption slides up and fades in",
     clean: "Slim, light text with a soft shadow",
+    single_word: "One word at a time, big in the middle",
   },
 };

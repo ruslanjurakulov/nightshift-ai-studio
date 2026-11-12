@@ -284,6 +284,17 @@ MOVE_ZOOM_MIN, MOVE_ZOOM_MAX = 1.0, 4.0
 ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
            "bottom-left", "bottom", "bottom-right")
 
+#: Talking-head pack (modules/timeline.py holds the same lists and numbers; a test pins them). A sound's
+#: ``voice``: the one preset, a closed name, so no filter text reaches the graph from a document.
+VOICES = ("clean",)
+#: Muted / bleeped ranges of the final mix: what each does, how many, how short and how long.
+BLEEP_MODES = ("mute", "tone")
+MAX_BLEEPS = 100
+BLEEP_MIN_S, BLEEP_MAX_S = 0.05, 10.0
+#: A text's letter tracking (thousandths of its size) and line alignment.
+TRACKING_MIN, TRACKING_MAX = -100, 500
+ALIGNS = ("left", "center", "right")
+
 #: Playback speed bounds (modules/timeline.py offers exactly this range). A sound
 #: outside 0.5-2 goes through chained ``atempo`` stages, each within it.
 SPEED_MIN, SPEED_MAX = 0.1, 10.0
@@ -789,6 +800,9 @@ class AudioTrack:
     #: The file is a VIDEO (an A clip that plays a video's sound, the editor's
     #: "detach audio"): its input gets the video decoder cap in the final pass.
     video_source: bool = False
+    #: A voice preset (VOICES) in place of ``denoise`` / ``loudnorm`` (never with them): see
+    #: VOICE_CLEAN_FILTERS. None = the chain the track always had.
+    voice: Optional[str] = None
 
     @property
     def output_s(self) -> float:
@@ -807,6 +821,7 @@ class AudioTrack:
         _put_if(d, "denoise", self.denoise, False)
         _put_if(d, "loudnorm", self.loudnorm, False)
         _put_if(d, "video_source", self.video_source, False)
+        _put_if(d, "voice", self.voice, None)
         if self.tempos:
             d["tempos"] = list(self.tempos)
         if self.duck_spans:
@@ -836,6 +851,7 @@ class AudioTrack:
             denoise=bool(d.get("denoise", False)), loudnorm=bool(d.get("loudnorm", False)),
             tempos=tuple(float(t) for t in (d.get("tempos") or [])),
             video_source=bool(d.get("video_source", False)),
+            voice=(str(d["voice"]) if d.get("voice") is not None else None),
         )
 
 
@@ -876,6 +892,12 @@ class TextOverlay:
     #: tags instead of the plain overlay. None = the plain overlay it always was.
     caption_style: Optional[str] = None
     highlight_color: Optional[str] = None
+    #: Text properties (a T clip's; defaults = the style line it always had): letter ``tracking`` in
+    #: thousandths of ``size`` (ASS Spacing), ``italic``, and ``align``, how the lines of a text of
+    #: several lines line up (libass Justify; None = as the anchor puts them, the old behaviour).
+    tracking: int = 0
+    italic: bool = False
+    align: Optional[str] = None
 
     def to_dict(self) -> dict:
         d = {"start_s": self.start_s, "end_s": self.end_s, "text": self.text,
@@ -890,6 +912,9 @@ class TextOverlay:
         _anims_to_dict(self, d)
         _put_if(d, "caption_style", self.caption_style, None)
         _put_if(d, "highlight_color", self.highlight_color, None)
+        _put_if(d, "tracking", self.tracking, 0)
+        _put_if(d, "italic", self.italic, False)
+        _put_if(d, "align", self.align, None)
         return d
 
     @staticmethod
@@ -919,6 +944,9 @@ class TextOverlay:
             caption_style=(str(d["caption_style"]) if d.get("caption_style") is not None else None),
             highlight_color=(str(d["highlight_color"]) if d.get("highlight_color") is not None
                              else None),
+            tracking=int(d.get("tracking") or 0),
+            italic=bool(d.get("italic", False)),
+            align=(str(d["align"]) if d.get("align") is not None else None),
         )
 
 
@@ -1025,6 +1053,10 @@ class RenderSpec:
     overlays: List[TextOverlay] = field(default_factory=list)
     #: Pictures / videos laid over the picture (see PictureOverlay).
     picture_overlays: List[PictureOverlay] = field(default_factory=list)
+    #: Ranges of the final mix that are silenced, ``(start_s, end_s, mode)`` on the output's clock, in
+    #: order and not overlapping; ``tone`` also plays BLEEP_TONE there (see bleep_filters). Empty = the
+    #: mix it always was.
+    bleeps: Tuple[Tuple[float, float, str], ...] = ()
 
     @property
     def total_duration(self) -> float:
@@ -1055,6 +1087,8 @@ class RenderSpec:
             d["overlays"] = [o.to_dict() for o in self.overlays]
         if self.picture_overlays:
             d["picture_overlays"] = [o.to_dict() for o in self.picture_overlays]
+        if self.bleeps:
+            d["bleeps"] = [[a, b, m] for a, b, m in self.bleeps]
         return d
 
     @staticmethod
@@ -1072,13 +1106,14 @@ class RenderSpec:
             overlays=[TextOverlay.from_dict(o) for o in (d.get("overlays") or [])],
             picture_overlays=[PictureOverlay.from_dict(o)
                               for o in (d.get("picture_overlays") or [])],
+            bleeps=tuple((float(a), float(b), str(m)) for a, b, m in (d.get("bleeps") or [])),
         )
 
     @property
     def uses_timeline_features(self) -> bool:
         """True when the final pass needs the filter-graph command (several
         audio tracks and/or text overlays) rather than the original one."""
-        return bool(self.audio_tracks or self.overlays or self.picture_overlays)
+        return bool(self.audio_tracks or self.overlays or self.picture_overlays or self.bleeps)
 
 
 def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
@@ -1191,6 +1226,29 @@ def _duck_problems(i: int, t: AudioTrack) -> List[str]:
     elif not all(len(sp) == 2 and all(_finite(x) for x in sp) and 0 <= sp[0] < sp[1]
                  for sp in t.duck_spans):
         problems.append(f"audio track {i} duck spans must be finite (start, end) pairs, end after start")
+    return problems
+
+
+def _bleep_problems(bleeps) -> List[str]:
+    """The mix's silenced ranges: a closed mode, finite times, each BLEEP_MIN_S..BLEEP_MAX_S long, in
+    order and apart (one may start where the one before ends), at most MAX_BLEEPS."""
+    problems: List[str] = []
+    if len(bleeps) > MAX_BLEEPS:
+        return [f"at most {MAX_BLEEPS} bleeps"]
+    prev_end = 0.0
+    for i, b in enumerate(bleeps):
+        if not (isinstance(b, tuple) and len(b) == 3):
+            problems.append(f"bleep {i} must be (start_s, end_s, mode)")
+            continue
+        a, e, mode = b
+        if mode not in BLEEP_MODES:
+            problems.append(f"bleep {i} mode must be one of {list(BLEEP_MODES)}")
+        if not (_finite(a) and _finite(e)) or a < 0 or not (BLEEP_MIN_S - 1e-9 <= e - a <= BLEEP_MAX_S + 1e-9):
+            problems.append(f"bleep {i} must last {BLEEP_MIN_S:g} to {BLEEP_MAX_S:g} s from a start of 0 or more")
+            continue
+        if a < prev_end - 1e-9:
+            problems.append(f"bleep {i} starts before the one before it ends (keep them in order, apart)")
+        prev_end = e
     return problems
 
 
@@ -1307,6 +1365,11 @@ def validate(spec: RenderSpec) -> List[str]:
                     _finite(prev.output_s) and t.crossfade_s > prev.output_s + 1e-9):
                 problems.append(f"audio track {i} cross-fade is longer than a track it joins")
         problems.extend(_duck_problems(i, t))
+        if t.voice is not None and t.voice not in VOICES:
+            problems.append(f"audio track {i} voice must be one of {list(VOICES)}")
+        elif t.voice is not None and (t.denoise or t.loudnorm):
+            problems.append(f"audio track {i} voice already cleans and evens the sound: not with denoise or loudnorm")
+    problems.extend(_bleep_problems(spec.bleeps))
     for i, o in enumerate(spec.overlays):
         if not str(o.text or "").strip():
             problems.append(f"overlay {i} has no text")
@@ -1334,6 +1397,13 @@ def validate(spec: RenderSpec) -> List[str]:
         if o.highlight_color is not None and not (isinstance(o.highlight_color, str)
                                                   and _HEX.fullmatch(o.highlight_color)):
             problems.append(f"overlay {i} highlight_color must be a #RRGGBB colour")
+        if not (isinstance(o.tracking, int) and not isinstance(o.tracking, bool)
+                and TRACKING_MIN <= o.tracking <= TRACKING_MAX):
+            problems.append(f"overlay {i} tracking must be an integer from {TRACKING_MIN} to {TRACKING_MAX}")
+        if not isinstance(o.italic, bool):
+            problems.append(f"overlay {i} italic must be true or false")
+        if o.align is not None and o.align not in ALIGNS:
+            problems.append(f"overlay {i} align must be one of {list(ALIGNS)}")
     problems.extend(_picture_overlay_problems(spec))
     return problems
 
@@ -1423,6 +1493,24 @@ def _t(x: float) -> str:
 #: -16 LUFS, true peak -1.5 dB, range 11 LU).
 DENOISE_FILTER = "afftdn=nr=12:nf=-40:tn=1:tr=1"
 LOUDNORM_FILTER = "loudnorm=I=-16:TP=-1.5:LRA=11"
+#: The "clean voice" preset (``voice: "clean"``), in this order: a high-pass at 80 Hz takes rumble and
+#: mains hum away under a voice; the same FFT noise reduction as ``denoise``; a de-esser softens the
+#: hiss of "s" and "sh" (ffmpeg's deesser does nothing at its default intensity 0, so it is set); a gentle
+#: compressor (3:1 above -18 dBFS) evens loud and quiet words; then the same single-pass loudness
+#: normalisation as ``loudnorm`` (-16 LUFS). It REPLACES denoise / loudnorm, which the validators refuse
+#: beside it, so a voice is never normalised twice. Every filter is in the pinned ffmpeg (imageio-ffmpeg
+#: 0.6.0's static 7.0.2; checked with ``ffmpeg -filters``). Measured on a speech-like sample
+#: (tests/test_editor_parity4.py): mains hum 19 dB further under the voice, sibilance 6 dB, the pauses'
+#: noise 4 dB, and the result at -16 LUFS within 1 LU.
+VOICE_CLEAN_FILTERS = ("highpass=f=80", DENOISE_FILTER, "deesser=i=0.5:m=0.5:f=0.5:s=o",
+                       "acompressor=threshold=0.125:ratio=3:attack=10:release=200", LOUDNORM_FILTER)
+#: The bleep: a 1 kHz sine at ffmpeg's default amplitude (1/8: -18 dBFS peak, about -21 dBFS RMS).
+BLEEP_TONE = "sine=frequency=1000:sample_rate=48000"
+#: The mix is cut into 10 ms frames (480 samples at 48 kHz) before a bleep: ``volume``'s ``enable`` is
+#: judged once a frame, so this is how close to its asked times a bleep starts and ends (an expression
+#: per sample, ``aeval``, was exact but cost 0.17 s per second of sound with 100 bleeps; this 0.004).
+BLEEP_GRAIN_SAMPLES = 480
+BLEEP_GRAIN_S = BLEEP_GRAIN_SAMPLES / 48000
 
 
 def tempo_chain(speed: float) -> str:
@@ -1472,6 +1560,9 @@ def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
         ramp = (f"[{input_index}:a]" + ";".join(parts) + ";"
                 + "".join(f"[{label}o{j}]" for j in range(n)) + f"concat=n={n}:v=0:a=1")
         chain = []
+    if track.voice == "clean":
+        # In place of denoise / loudnorm (never beside them: the spec refuses both), at the same place.
+        chain.extend(VOICE_CLEAN_FILTERS)
     if track.denoise:
         chain.append(DENOISE_FILTER)
     if track.loudnorm:
@@ -1553,6 +1644,60 @@ def audio_run_filters(tracks: List[AudioTrack], run: List[int], label: str) -> L
     out.append(f"[{prev}]" + (f"adelay=delays={delay_ms}:all=1" if delay_ms > 0 else "anull")
                + f"[{label}]")
     return out
+
+
+def bleep_windows(bleeps, length_s: float) -> List[Tuple[int, int, str]]:
+    """The bleeps as 10 ms frame ranges ``[first, last)`` of the mix, cut at the picture's end: each
+    widened OUT to the grain (its start down, its end up), so all of an asked range is covered and at
+    most one grain more on each side. A bleep that starts at or after the end is left out."""
+    end = int(math.floor(length_s / BLEEP_GRAIN_S + 1e-6))
+    out = []
+    for a, b, mode in bleeps:
+        first = int(math.floor(a / BLEEP_GRAIN_S + 1e-6))
+        last = min(end, int(math.ceil(b / BLEEP_GRAIN_S - 1e-6)))
+        if last > first:
+            out.append((first, last, mode))
+    return out
+
+
+def _bleep_expr(windows) -> str:
+    """``between`` terms that are true exactly on the frames of the windows: a frame's ``t`` is its
+    first sample's time, k x 10 ms, and the bounds sit 2 ms inside the grain so no rounding moves one."""
+    g = BLEEP_GRAIN_S
+    return "+".join(f"between(t,{first * g - 0.002:.3f},{(last - 1) * g + 0.002:.3f})"
+                    for first, last, _m in windows)
+
+
+def bleep_filters(spec: "RenderSpec", source: str, label: str) -> List[str]:
+    """The final mix ``[source]`` with its bleeps, as ``[label]``: the mix is silent on every bleep's
+    frames (``volume=0`` where ``enable`` is true, untouched elsewhere); a ``tone`` bleep adds a 1 kHz
+    sine that sounds only on its own frames. Empty when nothing of a bleep is inside the picture."""
+    windows = bleep_windows(spec.bleeps, spec.video_length_s)
+    if not windows:
+        return []
+    grain = f"asetnsamples=n={BLEEP_GRAIN_SAMPLES}:p=0"
+    tones = [w for w in windows if w[2] == "tone"]
+    muted = f"[{source}]{grain},volume=volume=0:enable='{_bleep_expr(windows)}'"
+    if not tones:
+        return [muted + f"[{label}]"]
+    return [muted + f"[{label}m]",
+            f"{BLEEP_TONE}:duration={spec.video_length_s:.6f},"
+            "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+            f"{grain},volume=volume=0:enable='not({_bleep_expr(tones)})'[{label}t]",
+            f"[{label}m][{label}t]amix=inputs=2:duration=first:normalize=0[{label}]"]
+
+
+def overlay_subtitles_filter(spec: "RenderSpec", overlay_path: str) -> str:
+    """The ``subtitles`` filter that burns the text overlays. A text's ``align`` is libass's Justify, which
+    an ASS file cannot carry (libass reads it from no Style field), so it is set per style with
+    ``force_style`` (style names are ``O{i}``, ass_captions.build_overlay_ass). A spec without one burns
+    the filter it always did."""
+    base = "subtitles=" + _quote_filter_path(overlay_path)
+    justify = {"left": 1, "center": 2, "right": 3}
+    forced = [f"O{i}.Justify={justify[o.align]}" for i, o in enumerate(spec.overlays) if o.align in justify]
+    if not forced:
+        return base
+    return base + ":force_style='" + ",".join(forced) + "'"
 
 
 def picture_overlay_inputs(spec: RenderSpec) -> List[str]:
@@ -1756,7 +1901,7 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     if spec.subtitle_path:
         burn.append("subtitles=" + _quote_filter_path(spec.subtitle_path))
     if spec.overlays:
-        burn.append("subtitles=" + _quote_filter_path(overlay_path))
+        burn.append(overlay_subtitles_filter(spec, overlay_path))
     video_out = "0:v"
     picture = "[0:v]"
     if spec.picture_overlays:
@@ -1768,6 +1913,7 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
         graph.append(picture + ",".join(burn) + "[vout]")
         video_out = "[vout]"
     labels = []
+    bleeping = bool(bleep_windows(spec.bleeps, spec.video_length_s))
     for run in audio_runs(spec.audio_tracks):
         label = f"a{run[0]}"
         graph.extend(audio_run_filters(spec.audio_tracks, run, label))
@@ -1777,9 +1923,17 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
             label = f"{label}d"
         labels.append(f"[{label}]")
     if labels:
+        mixed = "amix" if bleeping else "aout"
         graph.append("".join(labels)
                      + f"amix=inputs={len(labels)}:duration=longest:normalize=0,"
-                     + f"apad,atrim=end={spec.video_length_s:.6f}[aout]")
+                     + f"apad,atrim=end={spec.video_length_s:.6f}[{mixed}]")
+        if bleeping:
+            graph.extend(bleep_filters(spec, mixed, "aout"))
+    elif bleeping and any(m == "tone" for _a, _b, m in spec.bleeps):
+        # No sound at all, but a bleep to hear: the tone over silence of the picture's length.
+        graph.append(f"anullsrc=r=48000:cl=stereo,atrim=end={spec.video_length_s:.6f}[amix]")
+        graph.extend(bleep_filters(spec, "amix", "aout"))
+        labels = ["[amix]"]
 
     if graph:
         cmd += ["-filter_complex", ";".join(graph)]

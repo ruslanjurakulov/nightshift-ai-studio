@@ -30,6 +30,7 @@ export const captionStylesRu: typeof captionStylesEn = {
     typewriter: "Печатная машинка",
     line_slide: "Выезд снизу",
     clean: "Мягкий свет",
+    single_word: "По одному слову",
   },
   notes: {
     karaoke: "Каждое слово заполняется цветом выделения, пока его произносят",
@@ -42,5 +43,6 @@ export const captionStylesRu: typeof captionStylesEn = {
     typewriter: "Буквы появляются одна за другой",
     line_slide: "Каждый субтитр выезжает снизу и проявляется",
     clean: "Лёгкий светлый текст с мягкой тенью",
+    single_word: "По одному слову за раз, крупно в центре",
   },
 };

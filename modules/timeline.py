@@ -16,13 +16,14 @@ not a project dependency — tests keep the two in sync)::
                               highlight_color?: "#RRGGBB"},
                    cues: [ { id, start_s, end_s, text } ] },
       overlays?: [ { id, asset_id, start_s, end_s, x?, y?, w?, opacity? } ],
-      shapes?: [ { id, kind, start_s, end_s, color?, opacity?, ... } ] }
+      shapes?: [ { id, kind, start_s, end_s, color?, opacity?, ... } ],
+      bleeps?: [ { start_s, end_s, mode: "mute"|"tone" } ] }
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s,
                              style?: <one of XFADE_STYLES, crossfade only> },
               speed?: 0.1..10, audio?: bool, gain_db?: -60..6, reverse?: bool, freeze?: bool,
-              denoise?: bool, loudnorm?: bool,
+              denoise?: bool, loudnorm?: bool, voice?: "clean",
               crop?: {x?, y?, w?, h?}, angle?: -180..180,
               speed_curve?: [ {at: 0..1, speed: 0.25..4}, ... 2-6 points ], interpolate?: bool,
               stabilize?: bool,
@@ -34,11 +35,12 @@ not a project dependency — tests keep the two in sync)::
               mask?: { shape: "rect"|"ellipse"|"rounded", x?, y?, w?, h?, feather?: 0..0.5, radius?, invert? } }
     A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s?,
-              denoise?: bool, loudnorm?: bool }
+              denoise?: bool, loudnorm?: bool, voice?: "clean" }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
               outline_width?, bold?, shadow?, box_color?, box_opacity?, x?, y?,
               anchor?, fade_in_s?, fade_out_s?,
-              anim_in?, anim_out?, anim_in_s?, anim_out_s? }
+              anim_in?, anim_out?, anim_in_s?, anim_out_s?,
+              tracking?: -100..500, italic?: bool, align?: "left"|"center"|"right" }
     overlay: { id, asset_id, start_s, end_s, x?: 0..1, y?: 0..1, w?: 0.05..1,
                opacity?: 0..1, anim_in?, anim_out?, anim_in_s?, anim_out_s?,
                move?: { to: {x?, y?, w?, opacity?} },
@@ -218,6 +220,17 @@ Rules this module keeps:
   so it is approximate). Denoise runs first, then loudness, then the clip's
   ``gain_db`` / fades; ducking and the mix are unchanged. Both are
   dropped when false.
+* **Clean voice, bleeps and text properties are closed** (the talking-head pack,
+  docs/editor-render-fields.md section 18). A sound, and a V clip's own sound, may carry
+  ``voice: "clean"`` (``VOICES``): highpass, the ``denoise`` filter, a de-esser, a compressor
+  and the ``loudnorm`` filter, in their place; never beside ``denoise`` / ``loudnorm`` (a voice
+  would be normalised twice), and charged ``VOICE_SECONDS_PER_S`` per second to the render
+  budget. ``bleeps`` is a top-level list of at most ``MAX_BLEEPS`` ranges ``{start_s, end_s,
+  mode}`` of the final mix, ``BLEEP_MIN_S``-``BLEEP_MAX_S`` long, in order and apart (touching
+  is apart): ``mute`` silences it, ``tone`` silences it under a 1 kHz tone. A T clip may carry
+  ``tracking`` (a whole number of thousandths of its size, ``TRACKING_MIN``-``TRACKING_MAX``),
+  ``italic`` and ``align`` (``ALIGNS``: how the lines of a text of several lines line up). Off
+  values are dropped by ``normalise``, so a document without them is the one it always was.
 * **Overlays are a layer above the picture, not a second picture lane.**
   ``overlays`` is a top-level list (so "one V track" stays true): each one is
   a picture or a video (``asset_id``) shown from ``start_s`` to ``end_s`` over
@@ -476,6 +489,22 @@ FX_LARGE_XFADE_MAX = 1
 
 #: A clip's move (render_spec.MOVE_* are the same; a test pins them).
 MOVE_ZOOM_MIN, MOVE_ZOOM_MAX = 1.0, 4.0
+#: Talking-head pack (docs/editor-render-fields.md section 18; render_spec holds the same, a test pins them).
+#: ``voice`` on a sound or a clip's own sound: one closed preset (render_spec.VOICE_CLEAN_FILTERS).
+VOICES = ("clean",)
+#: Render seconds charged per second of a clean-voiced sound, on top of the timeline (not scaled by the
+#: frame: it is sound). Measured through the export path, section 18.
+VOICE_SECONDS_PER_S = 0.1
+#: ``bleeps``: ranges of the final mix made silent (``mute``) or replaced by a 1 kHz tone (``tone``).
+BLEEP_MODES = ("mute", "tone")
+MAX_BLEEPS = 100
+BLEEP_MIN_S = 0.05
+BLEEP_MAX_S = 10.0
+#: A text's letter tracking, in thousandths of its size (ASS Spacing), and how its lines line up.
+TRACKING_MIN = -100
+TRACKING_MAX = 500
+ALIGNS = ("left", "center", "right")
+
 MOVE_POINT_DEFAULTS = {"zoom": 1.0, "x": 0.5, "y": 0.5}
 _MOVE_POINT_KEYS = tuple(MOVE_POINT_DEFAULTS)
 #: What an overlay's ``move.to`` may change.
@@ -596,7 +625,7 @@ _HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 # Field lists — the schema's "required"/"properties" (tests pin them together).
 _DOC_REQUIRED = ("version", "width", "height", "fps", "tracks")
-_DOC_KEYS = _DOC_REQUIRED + ("captions", "overlays", "shapes")
+_DOC_KEYS = _DOC_REQUIRED + ("captions", "overlays", "shapes", "bleeps")
 _TRACK_REQUIRED = ("id", "kind", "clips")
 _TRACK_KEYS = _TRACK_REQUIRED + ("name",)
 _A_TRACK_KEYS = _TRACK_KEYS + ("role", "duck")
@@ -604,18 +633,21 @@ _DUCK_REQUIRED = ("amount_db",)
 _DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio",
-                                  "grade", "move", "reverse", "freeze", "denoise", "loudnorm", "crop", "angle", "speed_curve",
+                                  "grade", "move", "reverse", "freeze", "denoise", "loudnorm", "voice", "crop", "angle", "speed_curve",
                                   "interpolate", "stabilize", "gain_db", "color", "mask", "fx",
                                   "anim_in", "anim_out", "anim_in_s", "anim_out_s") + _EFFECT_KEYS
 _GRADE_KEYS = tuple(GRADE_RANGES)
-_A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s", "denoise", "loudnorm")
+_A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s", "denoise", "loudnorm", "voice")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
 _TEXT_STYLE_KEYS = ("font", "size", "color", "outline_color", "outline_width", "bold")
 #: Looks only a text clip has (the captions' style has none: it stays as it is).
 _TEXT_LOOK_KEYS = ("shadow", "box_color", "box_opacity")
 _ANIM_KEYS = ("anim_in", "anim_out", "anim_in_s", "anim_out_s")
+#: A text's properties (a T clip only: the captions' look is their style's).
+_TEXT_PROP_KEYS = ("tracking", "italic", "align")
 _T_CLIP_KEYS = (_T_REQUIRED + _TEXT_STYLE_KEYS + _TEXT_LOOK_KEYS
-                + ("x", "y", "anchor", "fade_in_s", "fade_out_s") + _ANIM_KEYS)
+                + ("x", "y", "anchor", "fade_in_s", "fade_out_s") + _ANIM_KEYS + _TEXT_PROP_KEYS)
+_BLEEP_KEYS = ("start_s", "end_s", "mode")
 _TRANSITION_KEYS = ("type", "duration_s")
 _TRANSITION_ALLOWED = _TRANSITION_KEYS + ("style",)
 _CAPTIONS_KEYS = ("style", "cues")
@@ -870,8 +902,9 @@ def validate(doc: Any) -> List[str]:
         interp_est = INTERP_SECONDS_PER_FRAME * total_interp if total_interp <= INTERP_MAX_FRAMES_DOC else 0.0
         fast_raw = _fast_sum(doc)
         look_raw = _look_sum(doc, fps, w, h)
+        voice_raw = _voice_sum(doc)
         length = None
-        if interp_est + stab_est + fast_raw + look_raw > 0:
+        if interp_est + stab_est + fast_raw + look_raw + voice_raw > 0:
             try:
                 # The captions and overlays are checked further down: a time there can still be a number too
                 # big for a float, and that is their problem to report, not a crash of this estimate. The captions
@@ -883,18 +916,21 @@ def validate(doc: Any) -> List[str]:
         in_export = length is not None and length <= EXPORT_LENGTH_MAX_S + 1e-9
         fast_est = fast_raw if in_export else 0.0
         look_est = look_raw if in_export else 0.0
-        if length is not None and interp_est + stab_est + fast_est + look_est > 0:
-            work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est + fast_est + look_est
+        voice_est = voice_raw if in_export else 0.0
+        if length is not None and interp_est + stab_est + fast_est + look_est + voice_est > 0:
+            work = RENDER_PLAIN_FACTOR * length + interp_est + stab_est + fast_est + look_est + voice_est
             allowed = render_timeout_s(length)
             if work > allowed + 1e-9:
                 what = " and ".join(n for n, v in (("interpolated slow motion", interp_est),
                                                    ("stabilising", stab_est),
                                                    ("playing clips faster than 1x", fast_est),
-                                                   ("colour, masks and effects", look_est)) if v > 0)
+                                                   ("colour, masks and effects", look_est),
+                                                   ("cleaning voices", voice_est)) if v > 0)
                 fix = " and ".join(n for n, v in (("slow less of it", interp_est),
                                                   ("stabilise less of it", stab_est),
                                                   ("speed them up less", fast_est),
-                                                  ("use fewer colour changes, masks and effects", look_est)) if v > 0)
+                                                  ("use fewer colour changes, masks and effects", look_est),
+                                                  ("clean fewer voices", voice_est)) if v > 0)
                 problems.append(f"timeline: {what} would take about {work:.0f} s to render, but a {length:.0f} s "
                                 f"timeline is allowed {allowed:.0f} s — {fix} or make the timeline longer")
 
@@ -910,6 +946,8 @@ def validate(doc: Any) -> List[str]:
         _validate_captions(captions, problems, claim)
     if "overlays" in doc:
         _validate_overlays(doc["overlays"], fps, problems, claim)
+    if "bleeps" in doc:
+        _validate_bleeps(doc["bleeps"], problems)
     if "shapes" in doc:
         before = len(problems)
         _validate_shapes(doc["shapes"], fps, problems, claim)
@@ -928,7 +966,7 @@ def validate(doc: Any) -> List[str]:
                 shape_est = shape_art.work_seconds(doc["shapes"], fps, w, h, length)
                 interp_est, stab_est = _interp_stab_estimates(doc, fps, w, h)
                 work = (RENDER_PLAIN_FACTOR * length + interp_est + stab_est + fast_estimate(doc) + look_estimate(doc)
-                        + shape_est)
+                        + voice_estimate(doc) + shape_est)
                 allowed = render_timeout_s(length)
                 if shape_est > 0 and work > allowed + 1e-9:
                     problems.append(f"timeline: the shapes would take about {shape_est:.0f} s to render (about {work:.0f} s "
@@ -1013,6 +1051,13 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
     for k in ("denoise", "loudnorm"):
         if k in clip and not isinstance(clip[k], bool):
             problems.append(f"{where}: {k} must be true or false")
+    if "voice" in clip:
+        if not (isinstance(clip["voice"], str) and clip["voice"] in VOICES):
+            problems.append(f"{where}: voice must be one of {list(VOICES)}")
+        elif clip.get("denoise") is True or clip.get("loudnorm") is True:
+            # The preset already holds both: either would run twice (two loudness passes fight each other).
+            problems.append(f"{where}: voice \"clean\" already reduces noise and evens the loudness — "
+                            "turn denoise and loudnorm off")
     if kind == KIND_V:
         for k in ("reverse", "freeze"):
             if k in clip and not isinstance(clip[k], bool):
@@ -1329,6 +1374,36 @@ def look_estimate(doc: dict) -> float:
     return raw
 
 
+def voice_seconds(clip: dict, kind: str) -> float:
+    """The estimated render seconds a clean-voiced sound adds: VOICE_SECONDS_PER_S per second it sounds
+    (an A clip's range; a V clip's length on the timeline, when it plays its own sound). 0 without the
+    preset or for a range that is not a usable number."""
+    if clip.get("voice") != "clean" or (kind == KIND_V and clip.get("audio") is not True):
+        return 0.0
+    if not (_in_range(clip.get("in_s")) and _in_range(clip.get("out_s"))):
+        return 0.0
+    try:
+        length = clip_length_s(clip) if kind == KIND_V else _ms(clip["out_s"]) - _ms(clip["in_s"])
+    except (OverflowError, ValueError, ZeroDivisionError, TypeError):
+        return 0.0
+    return VOICE_SECONDS_PER_S * max(0.0, length)
+
+
+def _voice_sum(doc: dict) -> float:
+    return sum(voice_seconds(c, t.get("kind")) for t in doc.get("tracks") or []
+               if isinstance(t, dict) and t.get("kind") in (KIND_V, KIND_A) and isinstance(t.get("clips"), list)
+               for c in t["clips"] if isinstance(c, dict))
+
+
+def voice_estimate(doc: dict) -> float:
+    """``voice_seconds`` over every clip, as ``validate`` charges it: nothing for a timeline longer than an
+    export renders (refused for its length anyway). For a structurally valid document."""
+    raw = _voice_sum(doc)
+    if raw <= 0 or duration_s(doc) > EXPORT_LENGTH_MAX_S + 1e-9:
+        return 0.0
+    return raw
+
+
 def _validate_timed_text(obj, where, problems) -> None:
     for k in ("start_s", "end_s"):
         _num_in(obj, k, 0, MAX_DURATION_S, where, problems)
@@ -1373,6 +1448,15 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
         problems.append(f"{where}: box_opacity needs a box_color")
     if "anchor" in clip and clip["anchor"] not in ANCHORS:
         problems.append(f"{where}: anchor must be one of {list(ANCHORS)}")
+    # A whole number; 50.0 is 50 (the editor cannot tell them apart after JSON.parse), as for rotate.
+    if "tracking" in clip and not (_is_num(clip["tracking"]) and clip["tracking"] == int(clip["tracking"])
+                                   and TRACKING_MIN <= clip["tracking"] <= TRACKING_MAX):
+        problems.append(f"{where}: tracking must be an integer from {TRACKING_MIN} to {TRACKING_MAX} "
+                        "(thousandths of the size)")
+    if "italic" in clip and not isinstance(clip["italic"], bool):
+        problems.append(f"{where}: italic must be true or false")
+    if "align" in clip and not (isinstance(clip["align"], str) and clip["align"] in ALIGNS):
+        problems.append(f"{where}: align must be one of {list(ALIGNS)}")
     for k in ("fade_in_s", "fade_out_s"):
         _num_in(clip, k, 0, MAX_DURATION_S, where, problems)
     _validate_anims(clip, where, problems, text=True)
@@ -1393,6 +1477,40 @@ def _validate_text_clip(clip, where, problems, claim) -> None:
                 and sum(mixed) + other > _ms(e) - _ms(s) + 1e-9):
             problems.append(f"{where}: the animation ({sum(mixed):g} s) and {side} ({other:g} s) "
                             f"are longer than the text is shown")
+
+
+def _validate_bleeps(bleeps, problems) -> None:
+    """``bleeps``: at most MAX_BLEEPS ranges ``{start_s, end_s, mode}`` of the timeline, each
+    BLEEP_MIN_S..BLEEP_MAX_S long, in order of start and apart (one may begin where the one before ends:
+    the editor joins neighbouring words that way). Times are the timeline's, compared in milliseconds."""
+    if not isinstance(bleeps, list):
+        problems.append("bleeps must be a list")
+        return
+    if len(bleeps) > MAX_BLEEPS:
+        problems.append(f"bleeps: at most {MAX_BLEEPS} (got {len(bleeps)})")
+        return
+    prev_end = None
+    for i, b in enumerate(bleeps):
+        where = f"bleeps[{i}]"
+        if not _fields(b, _BLEEP_KEYS, _BLEEP_KEYS, where, problems):
+            prev_end = None
+            continue
+        if not (isinstance(b.get("mode"), str) and b["mode"] in BLEEP_MODES):
+            problems.append(f"{where}: mode must be one of {list(BLEEP_MODES)}")
+        for k in ("start_s", "end_s"):
+            _num_in(b, k, 0, MAX_DURATION_S, where, problems)
+        s, e = b.get("start_s"), b.get("end_s")
+        if not (_in_range(s) and _in_range(e)):
+            prev_end = None
+            continue
+        length = _ms(_ms(e) - _ms(s))
+        if not (BLEEP_MIN_S <= length <= BLEEP_MAX_S):
+            problems.append(f"{where}: a bleep lasts {BLEEP_MIN_S:g} to {BLEEP_MAX_S:g} s "
+                            f"(got {length:.3f} s from {_ms(s):.3f} to {_ms(e):.3f})")
+        if prev_end is not None and _ms(s) < prev_end:
+            problems.append(f"{where}: starts at {_ms(s):.3f} s, before the bleep before it ends ({prev_end:.3f} s) "
+                            "— keep bleeps in order and apart")
+        prev_end = _ms(e)
 
 
 def _validate_chroma(chroma, where, problems) -> None:
@@ -1975,6 +2093,13 @@ def normalise(doc: dict) -> dict:
                         del c["shadow"]
                 if "box_color" in c:
                     c["box_opacity"] = _ms(c.get("box_opacity", BOX_OPACITY_DEFAULT))
+                # Text properties off are no field: the text it was before they existed.
+                if "tracking" in c:
+                    c["tracking"] = int(c["tracking"])
+                    if c["tracking"] == 0:
+                        del c["tracking"]
+                if c.get("italic") is False:
+                    del c["italic"]
                 _normalise_anims(c)
             else:
                 defaults = V_DEFAULTS if kind == KIND_V else A_DEFAULTS
@@ -2066,6 +2191,10 @@ def normalise(doc: dict) -> dict:
     if doc.get("shapes"):
         # List order is the layering, as for overlays; an empty list is the document without the field.
         out["shapes"] = [_normalise_shape(sh) for sh in doc["shapes"]]
+    if doc.get("bleeps"):
+        # Already in order (validate): kept as given, times in milliseconds; an empty list is no field.
+        out["bleeps"] = [{"start_s": _ms(b["start_s"]), "end_s": _ms(b["end_s"]), "mode": b["mode"]}
+                         for b in doc["bleeps"]]
     return out
 
 

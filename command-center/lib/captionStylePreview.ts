@@ -78,6 +78,9 @@ function fade(eMs: number, durMs: number, inMs: number, outMs: number): number {
   return Math.min(fin, fout);
 }
 
+/** One word's pop (modules/ass_captions.py SINGLE_WORD_POP): 85 % → 100 % over its first 80 ms. */
+export const SINGLE_WORD_POP: readonly [number, number] = [85, 80];
+
 /** The pop's scale: 60 % → 118 % in 130 ms, back to 100 % by 250 ms. */
 export function popScale(eMs: number): number {
   if (eMs < 130) return 0.6 + 0.58 * (eMs / 130);
@@ -207,6 +210,22 @@ export function previewStyledCaption(inp: PreviewInput): StyledPreview | null {
           return row;
         });
         return { box, lines: rows };
+      }
+      case "single_word": {
+        if (!styled) {
+          // Past the word budget the export writes the cue whole (and fades it like the lit styles).
+          box.opacity = fade(eMs, durMs, 60, 60);
+          return { box, lines: plain() };
+        }
+        // The word whose share of the cue the playhead is in, alone (the last one holds to the cue's end).
+        let k = spans.findIndex(([a, b]) => eMs >= a && eMs < b);
+        if (k < 0) k = words.length - 1;
+        const into = eMs - spans[k][0];
+        const [from, grow] = SINGLE_WORD_POP;
+        const scale = into >= grow ? 1 : (from + ((100 - from) * into) / grow) / 100;
+        box.transform = `${anchorShift} scale(${scale.toFixed(3)})`;
+        box.transformOrigin = "50% 50%";
+        return { box, lines: [[{ text: words[k] }]] };
       }
       case "line_slide": {
         const p = clamp01(eMs / Math.min(260, durMs));

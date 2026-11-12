@@ -98,6 +98,13 @@ GOLDEN = {
         'Style: O0,Liberation Sans,27,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,0,2,2,22,22,0,1',
         'Dialogue: 0,0:00:01.00,0:00:03.00,O0,,0,0,0,,{\\pos(270,883)\\fad(150,150)}Go big now',
     ),
+    # One event per word, back to back: "Go" (3 of 11 shares of 2000 ms) to 1.545 s, "big" to 2.273 s, "now" to the end.
+    'single_word': (
+        'Style: O0,DejaVu Sans,54,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,5,22,22,0,1',
+        'Dialogue: 0,0:00:01.00,0:00:01.54,O0,,0,0,0,,{\\pos(270,595)\\fscx85\\fscy85\\t(0,80,\\fscx100\\fscy100)}Go',
+        'Dialogue: 0,0:00:01.54,0:00:02.27,O0,,0,0,0,,{\\pos(270,595)\\fscx85\\fscy85\\t(0,80,\\fscx100\\fscy100)}big',
+        'Dialogue: 0,0:00:02.27,0:00:03.00,O0,,0,0,0,,{\\pos(270,595)\\fscx85\\fscy85\\t(0,80,\\fscx100\\fscy100)}now',
+    ),
 }
 
 
@@ -126,8 +133,8 @@ class TableTestCase(unittest.TestCase):
             self.assertTrue(cs.HEX.fullmatch(s.color) and cs.HEX.fullmatch(s.highlight_color), sid)
             self.assertTrue(0 <= s.x <= 1 and 0 <= s.y <= 1, sid)
 
-    def test_ten_styles_with_generic_names(self):
-        self.assertEqual(len(cs.STYLE_IDS), 10)
+    def test_eleven_styles_with_generic_names(self):
+        self.assertEqual(len(cs.STYLE_IDS), 11)
         for sid in cs.STYLE_IDS:
             self.assertRegex(sid, r"^[a-z_]+$")
 
@@ -251,8 +258,25 @@ class AssStringTestCase(unittest.TestCase):
 
     def test_line_breaks_are_kept_in_every_style(self):
         for sid in cs.STYLE_IDS:
+            if sid == "single_word":
+                continue    # one word on screen: no line to break (pinned just below)
             ass = ass_of(overlay(sid, text="first line\nsecond line"))
             self.assertIn(r"\N", [ln for ln in ass.splitlines() if ln.startswith("Dialogue")][0], sid)
+
+    def test_single_word_shows_each_word_of_every_line_alone_back_to_back(self):
+        events = pinned(ass_of(overlay("single_word", text="first line\nsecond line", start=0.0, end=4.0)))[1:]
+        bodies = [re.sub(r"\{[^{}]*\}", "", ev.split(",,0,0,0,,", 1)[1]) for ev in events]
+        self.assertEqual(bodies, ["first", "line", "second", "line"])
+        times = [ev.split(",")[1:3] for ev in events]
+        self.assertEqual(times[0][0], "0:00:00.00")
+        self.assertEqual(times[-1][1], "0:00:04.00")
+        for (_s, e), (s2, _e2) in zip(times, times[1:]):
+            self.assertEqual(e, s2)     # no gap, no overlap: exactly one word at any moment
+
+    def test_single_word_past_the_budget_writes_the_cue_whole(self):
+        line = pinned(ass_of(overlay("single_word", text=" ".join(["w"] * (cs.MAX_STYLED_WORDS + 1)))))[1:]
+        self.assertEqual(len(line), 1)
+        self.assertTrue(line[0].endswith(" ".join(["w"] * (cs.MAX_STYLED_WORDS + 1))))
 
     def test_fades_never_exceed_a_short_cue(self):
         for sid in ("karaoke", "pop_in", "boxed", "big_centre", "lower_third", "outlined", "neon",

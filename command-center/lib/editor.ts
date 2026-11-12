@@ -393,6 +393,23 @@ const EFFECT_KEYS = [
 ];
 /** A text's drop shadow, in output pixels (modules/timeline.py SHADOW_MAX). */
 export const SHADOW_MAX = 20;
+/** Talking-head pack (modules/timeline.py, docs/editor-render-fields.md section 18). A sound's `voice`: one
+ *  closed preset (highpass, noise reduction, de-esser, compressor, loudness), never with denoise / loudnorm. */
+export const VOICES = ["clean"] as const;
+export type Voice = (typeof VOICES)[number];
+/** Render seconds charged per second of a clean-voiced sound (sound: not scaled by the frame). */
+export const VOICE_SECONDS_PER_S = 0.1;
+/** `bleeps`: ranges of the final mix made silent or replaced by a 1 kHz tone. */
+export const BLEEP_MODES = ["mute", "tone"] as const;
+export type BleepMode = (typeof BLEEP_MODES)[number];
+export const MAX_BLEEPS = 100;
+export const BLEEP_MIN_S = 0.05;
+export const BLEEP_MAX_S = 10;
+/** A text's letter tracking in thousandths of its size, and how its lines line up. */
+export const TRACKING_MIN = -100;
+export const TRACKING_MAX = 500;
+export const ALIGNS = ["left", "center", "right"] as const;
+export type TextAlign = (typeof ALIGNS)[number];
 /** A text box's opacity when its colour is set without one. */
 export const BOX_OPACITY_DEFAULT = 0.7;
 export const ANCHORS = [
@@ -420,7 +437,8 @@ const UUID_RE =
 export const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 const DOC_REQUIRED = ["version", "width", "height", "fps", "tracks"];
-const DOC_KEYS = [...DOC_REQUIRED, "captions", "overlays", "shapes"];
+const DOC_KEYS = [...DOC_REQUIRED, "captions", "overlays", "shapes", "bleeps"];
+const BLEEP_KEYS = ["start_s", "end_s", "mode"];
 const TRACK_REQUIRED = ["id", "kind", "clips"];
 const TRACK_KEYS = [...TRACK_REQUIRED, "name"];
 const A_TRACK_KEYS = [...TRACK_KEYS, "role", "duck"];
@@ -441,6 +459,7 @@ const V_CLIP_KEYS = [
   "freeze",
   "denoise",
   "loudnorm",
+  "voice",
   "crop",
   "angle",
   "speed_curve",
@@ -463,6 +482,7 @@ const A_CLIP_KEYS = [
   "fade_out_s",
   "denoise",
   "loudnorm",
+  "voice",
 ];
 const T_REQUIRED = ["id", "start_s", "end_s", "text"];
 const TEXT_STYLE_KEYS = [
@@ -486,6 +506,9 @@ const T_CLIP_KEYS = [
   "fade_in_s",
   "fade_out_s",
   ...ANIM_KEYS,
+  "tracking",
+  "italic",
+  "align",
 ];
 const TRANSITION_KEYS = ["type", "duration_s"];
 const TRANSITION_ALLOWED = [...TRANSITION_KEYS, "style"];
@@ -620,6 +643,8 @@ export interface VideoClip {
    *  normalisation (-16 LUFS). Only matters with `audio: true`. */
   denoise?: boolean;
   loudnorm?: boolean;
+  /** The "clean voice" preset of the clip's own sound, in place of denoise / loudnorm (never with them). */
+  voice?: Voice;
   /** Keep a rectangle of the source before the fit. */
   crop?: ClipCrop;
   /** Degrees clockwise (-180..180) the fitted picture is turned in the frame. */
@@ -678,6 +703,15 @@ export interface SoundClip {
   /** FFT noise reduction / loudness normalisation (-16 LUFS) of this sound. */
   denoise?: boolean;
   loudnorm?: boolean;
+  /** The "clean voice" preset, in place of denoise / loudnorm (never with them). */
+  voice?: Voice;
+}
+
+/** A range of the final mix made silent (`mute`) or a 1 kHz tone (`tone`), in timeline seconds. */
+export interface Bleep {
+  start_s: number;
+  end_s: number;
+  mode: BleepMode;
 }
 
 export interface TextClip {
@@ -705,6 +739,11 @@ export interface TextClip {
   anim_out?: AnimOut;
   anim_in_s?: number;
   anim_out_s?: number;
+  /** Letter tracking in thousandths of the size (TRACKING_MIN..TRACKING_MAX); none / 0 = none. */
+  tracking?: number;
+  italic?: boolean;
+  /** How the lines of a text of several lines line up; none = as the anchor puts them. */
+  align?: TextAlign;
 }
 
 export interface TimelineTrack {
@@ -759,6 +798,8 @@ export interface TimelineDoc {
   overlays?: unknown[];
   /** Drawn stickers (modules/timeline.py `shapes`; lib/editorShapes.ts). */
   shapes?: unknown[];
+  /** Muted / bleeped ranges of the final mix (lib/editorBleeps.ts). */
+  bleeps?: unknown[];
 }
 
 /** What the editor works on: the picture laid end to end, text on top, and
@@ -777,6 +818,8 @@ export interface EditorModel {
   /** Tracks this editor does not edit, kept verbatim. */
   keep: TimelineTrack[];
   captions?: unknown;
+  /** Muted / bleeped ranges, in order and apart; none = the field is absent. */
+  bleeps?: Bleep[];
 }
 
 // ── small helpers ───────────────────────────────────────────────────────────
@@ -859,6 +902,26 @@ export function fastSeconds(c: Record<string, unknown> | VideoClip): number {
  *  allowance has stopped growing; charging there would refuse at save drafts that saved before. */
 export function fastCharged(fastEst: number, lengthS: number): number {
   return lengthS > EXPORT_MAX_S + 1e-9 ? 0 : fastEst;
+}
+
+/** The estimated render seconds a clean-voiced sound adds (modules/timeline.py `voice_seconds`):
+ *  VOICE_SECONDS_PER_S per second it sounds (a sound's range; a V clip's length when its own sound plays). */
+export function voiceSeconds(c: Record<string, unknown> | VideoClip | SoundClip, kind: "V" | "A"): number {
+  const r = c as Record<string, unknown>;
+  if (r.voice !== "clean" || (kind === "V" && r.audio !== true)) return 0;
+  if (!isNum(r.in_s) || !isNum(r.out_s)) return 0;
+  const length = kind === "V" ? mediaLength(r) : ms(r.out_s) - ms(r.in_s);
+  if (!Number.isFinite(length)) return 0;
+  return VOICE_SECONDS_PER_S * Math.max(0, length);
+}
+
+/** `voiceSeconds` over a document's V and A tracks. */
+function voiceSum(tracks: readonly unknown[]): number {
+  let n = 0;
+  for (const t of tracks)
+    if (isObj(t) && (t.kind === "V" || t.kind === "A") && Array.isArray(t.clips))
+      for (const c of t.clips) if (isObj(c)) n += voiceSeconds(c, t.kind);
+  return n;
 }
 
 /** A speed curve that can be worked with (the validator has the strict rules). */
@@ -1147,13 +1210,14 @@ export function validateTimeline(doc: unknown): string[] {
     const { interp, interpEst, stabEst } = est;
     const fastEst = fastCharged(est.fastEst, docDuration(doc as unknown as TimelineDoc));
     const lookEst = fastCharged(est.lookEst, docDuration(doc as unknown as TimelineDoc));
+    const voiceEst = fastCharged(voiceSum(counted), docDuration(doc as unknown as TimelineDoc));
     if (interp > INTERP_MAX_FRAMES_DOC)
       problems.push(
         `timeline: interpolated slow motion would make about ${Math.round(interp)} frames (1080p equivalent) in all; at most ${INTERP_MAX_FRAMES_DOC} per timeline`,
       );
-    if (interpEst + stabEst + fastEst + lookEst > 0) {
+    if (interpEst + stabEst + fastEst + lookEst + voiceEst > 0) {
       const length = docDuration(doc as unknown as TimelineDoc);
-      const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + lookEst;
+      const work = RENDER_PLAIN_FACTOR * length + interpEst + stabEst + fastEst + lookEst + voiceEst;
       const allowed = renderTimeoutS(length);
       if (work > allowed + 1e-9) {
         const what = [
@@ -1161,6 +1225,7 @@ export function validateTimeline(doc: unknown): string[] {
           stabEst > 0 ? "stabilising" : "",
           fastEst > 0 ? "playing clips faster than 1x" : "",
           lookEst > 0 ? "colour, masks and effects" : "",
+          voiceEst > 0 ? "cleaning voices" : "",
         ]
           .filter(Boolean)
           .join(" and ");
@@ -1169,6 +1234,7 @@ export function validateTimeline(doc: unknown): string[] {
           stabEst > 0 ? "stabilise less of it" : "",
           fastEst > 0 ? "speed them up less" : "",
           lookEst > 0 ? "use fewer colour changes, masks and effects" : "",
+          voiceEst > 0 ? "clean fewer voices" : "",
         ]
           .filter(Boolean)
           .join(" and ");
@@ -1183,6 +1249,7 @@ export function validateTimeline(doc: unknown): string[] {
     validateCaptions(doc.captions, problems, claim);
   else if (doc.captions === null) problems.push("captions must be an object");
   if ("overlays" in doc) validateOverlays(doc.overlays, fps, problems, claim);
+  if ("bleeps" in doc) validateBleeps(doc.bleeps, problems);
   if ("shapes" in doc) {
     const before = problems.length;
     validateShapes(doc.shapes, fps, problems, claim);
@@ -1210,6 +1277,7 @@ export function validateTimeline(doc: unknown): string[] {
           est.stabEst +
           fastCharged(est.fastEst, length) +
           fastCharged(est.lookEst, length) +
+          fastCharged(voiceSum(counted), length) +
           shapeEst;
         const allowed = renderTimeoutS(length);
         if (shapeEst > 0 && work > allowed + 1e-9)
@@ -1326,6 +1394,12 @@ function validateMediaClip(
   for (const k of ["denoise", "loudnorm"])
     if (k in clip && typeof clip[k] !== "boolean")
       problems.push(`${where}: ${k} must be true or false`);
+  if ("voice" in clip) {
+    if (!(VOICES as readonly unknown[]).includes(clip.voice))
+      problems.push(`${where}: voice must be one of ${VOICES.join(", ")}`);
+    else if (clip.denoise === true || clip.loudnorm === true)
+      problems.push(`${where}: voice "clean" already reduces noise and evens the loudness — turn denoise and loudnorm off`);
+  }
   if (kind === "V") {
     for (const k of ["reverse", "freeze"])
       if (k in clip && typeof clip[k] !== "boolean")
@@ -1809,6 +1883,12 @@ function validateTextClip(
     !(ANCHORS as readonly unknown[]).includes(clip.anchor)
   )
     problems.push(`${where}: anchor is not known`);
+  if ("tracking" in clip && !(isInt(clip.tracking) && clip.tracking >= TRACKING_MIN && clip.tracking <= TRACKING_MAX))
+    problems.push(`${where}: tracking must be an integer from ${TRACKING_MIN} to ${TRACKING_MAX}`);
+  if ("italic" in clip && typeof clip.italic !== "boolean")
+    problems.push(`${where}: italic must be true or false`);
+  if ("align" in clip && !(ALIGNS as readonly unknown[]).includes(clip.align))
+    problems.push(`${where}: align must be one of ${ALIGNS.join(", ")}`);
   numIn(clip, "fade_in_s", 0, MAX_DURATION_S, where, problems);
   numIn(clip, "fade_out_s", 0, MAX_DURATION_S, where, problems);
   validateAnims(clip, where, problems, true);
@@ -1992,6 +2072,43 @@ export function partialOpacityMove(ov: unknown): boolean {
   const start = ov.opacity ?? 1;
   const end = isObj(to) ? to.opacity : undefined;
   return isNum(start) && isNum(end) && start > 0 && end > 0 && start !== end;
+}
+
+/** The twin of modules/timeline.py `_validate_bleeps`: at most MAX_BLEEPS ranges, each BLEEP_MIN_S..BLEEP_MAX_S
+ *  long (in milliseconds), in order of start and apart (one may begin where the one before ends). */
+function validateBleeps(bleeps: unknown, problems: string[]) {
+  if (!Array.isArray(bleeps)) {
+    problems.push("bleeps must be a list");
+    return;
+  }
+  if (bleeps.length > MAX_BLEEPS) {
+    problems.push(`bleeps: at most ${MAX_BLEEPS} (got ${bleeps.length})`);
+    return;
+  }
+  let prevEnd: number | null = null;
+  bleeps.forEach((b, i) => {
+    const where = `bleeps[${i}]`;
+    if (!fields(b, BLEEP_KEYS, BLEEP_KEYS, where, problems)) {
+      prevEnd = null;
+      return;
+    }
+    if (!(typeof b.mode === "string" && (BLEEP_MODES as readonly string[]).includes(b.mode)))
+      problems.push(`${where}: mode must be one of ${BLEEP_MODES.join(", ")}`);
+    numIn(b, "start_s", 0, MAX_DURATION_S, where, problems);
+    numIn(b, "end_s", 0, MAX_DURATION_S, where, problems);
+    const s = b.start_s;
+    const e = b.end_s;
+    if (!(isNum(s) && isNum(e) && s >= 0 && e >= 0 && s <= MAX_DURATION_S && e <= MAX_DURATION_S)) {
+      prevEnd = null;
+      return;
+    }
+    const length = ms(ms(e) - ms(s));
+    if (!(length >= BLEEP_MIN_S && length <= BLEEP_MAX_S))
+      problems.push(`${where}: a bleep lasts ${BLEEP_MIN_S} to ${BLEEP_MAX_S} s`);
+    if (prevEnd !== null && ms(s) < prevEnd)
+      problems.push(`${where}: starts before the bleep before it ends — keep bleeps in order and apart`);
+    prevEnd = ms(e);
+  });
 }
 
 function validateCaptions(
@@ -2753,6 +2870,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
       ...(c.freeze === true ? { freeze: true } : {}),
       ...(c.denoise === true ? { denoise: true } : {}),
       ...(c.loudnorm === true ? { loudnorm: true } : {}),
+      ...(c.voice === "clean" ? { voice: "clean" as const } : {}),
       ...(isObj(c.crop) ? { crop: c.crop as ClipCrop } : {}),
       ...(isNum(c.angle) && c.angle !== 0 ? { angle: c.angle } : {}),
       ...(usableCurve(c.speed_curve) ? { speed_curve: c.speed_curve as SpeedPoint[] } : {}),
@@ -2793,6 +2911,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
         ...(duckOf(t.duck) ? { duck: duckOf(t.duck) as Duck } : {}),
         ...(c.denoise === true ? { denoise: true } : {}),
         ...(c.loudnorm === true ? { loudnorm: true } : {}),
+        ...(c.voice === "clean" ? { voice: "clean" as const } : {}),
       })),
     );
   // Every text track's texts, in track order (later ones draw on top).
@@ -2821,6 +2940,7 @@ export function toModel(doc: TimelineDoc): EditorModel {
     ...(shapes.length ? { shapes } : {}),
     keep: doc.tracks.filter((t) => t !== v && t.kind !== "T" && t.kind !== "A"),
     ...(doc.captions !== undefined ? { captions: doc.captions } : {}),
+    ...(bleepsOf(doc.bleeps).length ? { bleeps: bleepsOf(doc.bleeps) } : {}),
   };
 }
 
@@ -2887,6 +3007,7 @@ export function toDoc(model: EditorModel): TimelineDoc {
           fade_out_s: ms(x.fade_out_s),
           ...(x.denoise ? { denoise: true } : {}),
           ...(x.loudnorm ? { loudnorm: true } : {}),
+          ...(x.voice ? { voice: x.voice } : {}),
         },
       ],
     });
@@ -2937,7 +3058,18 @@ export function toDoc(model: EditorModel): TimelineDoc {
         }
       : {}),
     ...(model.shapes?.length ? { shapes: model.shapes.map(shapeToDoc) } : {}),
+    ...(model.bleeps?.length
+      ? { bleeps: model.bleeps.map((b) => ({ start_s: ms(b.start_s), end_s: ms(b.end_s), mode: b.mode })) }
+      : {}),
   };
+}
+
+/** A document's bleeps as the model keeps them (each one as written; the validator judges them). */
+function bleepsOf(v: unknown): Bleep[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((b): b is Record<string, unknown> => isObj(b))
+    .map((b) => ({ start_s: Number(b.start_s), end_s: Number(b.end_s), mode: b.mode as BleepMode }));
 }
 
 /** The model's length in seconds (picture and text; overlays never lengthen it). */
@@ -3759,16 +3891,18 @@ export function detachClipAudio(
     role: "speech",
     ...(c.denoise ? { denoise: true } : {}),
     ...(c.loudnorm ? { loudnorm: true } : {}),
+    ...(c.voice ? { voice: c.voice } : {}),
   };
   return {
     model: {
       ...model,
       clips: model.clips.map((x) => {
         if (x.id !== id) return x;
-        const { gain_db: _g, denoise: _d, loudnorm: _l, ...rest } = x;
+        const { gain_db: _g, denoise: _d, loudnorm: _l, voice: _v, ...rest } = x;
         void _g;
         void _d;
         void _l;
+        void _v;
         return { ...rest, audio: false };
       }),
       sounds: [...model.sounds, sound],

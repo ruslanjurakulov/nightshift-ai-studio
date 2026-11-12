@@ -309,9 +309,13 @@ def build_overlay_ass(overlays: Sequence, *, width: int, height: int) -> str:
             opacity = float(getattr(o, "box_opacity", 0.7))
             outline = _with_alpha(ass_colour(box_color, "&H00000000"), round((1 - opacity) * 255))
             border, width = 3, str(max(2, int(round(int(o.size) * BOX_PADDING))))
+        # Text properties: Italic, and Spacing (extra pixels between letters) from the tracking in
+        # thousandths of the size; 0 and 0 are the line every text without them always had.
+        italic = -1 if getattr(o, "italic", False) else 0
+        spacing = f"{round(int(o.size) * int(getattr(o, 'tracking', 0) or 0) / 1000, 2):g}"
         lines.append(
             f"Style: O{i},{family},{int(o.size)},{primary},{primary},{outline},{back},"
-            f"{-1 if o.bold else 0},0,0,0,100,100,0,0,{border},{width},{shadow},"
+            f"{-1 if o.bold else 0},{italic},0,0,100,100,{spacing},0,{border},{width},{shadow},"
             f"{ANCHOR_AN.get(o.anchor, 5)},{margin},{margin},0,1")
     lines += ["", "[Events]",
               "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
@@ -562,6 +566,30 @@ def _typewriter(lines: List[List[str]], dur_ms: int) -> str:
     return "".join(parts)
 
 
+#: A single word grows from this share of its size to all of it over the first ms of its own event.
+SINGLE_WORD_POP = (85, 80)
+
+
+def _single_words(i: int, o, lines: List[List[str]], ms: int, pos: str, lit: bool) -> List[str]:
+    """One event per word, each alone at the style's place for its share of the cue (word_spans_ms), back
+    to back so exactly one word is on screen at any moment of the cue. Past the word budget (``lit``
+    False) the cue is written whole, like every word-by-word style's."""
+    words = [w for ln in lines for w in ln]
+    if not lit or not words:
+        return [f"Dialogue: {i},{ass_time(o.start_s)},{ass_time(o.end_s)},O{i},,0,0,0,,"
+                + "{" + pos + _fad(ms, 60, 60) + "}" + _plain(lines)]
+    scale, grow = SINGLE_WORD_POP
+    start = float(o.start_s)
+    events = []
+    for w, (a, b) in zip(words, caption_styles.word_spans_ms(words, ms)):
+        t0, t1 = start + a / 1000, start + b / 1000
+        if round(t1 * 100) <= round(t0 * 100):
+            continue    # shorter than a centisecond: libass could not show it
+        events.append(f"Dialogue: {i},{ass_time(t0)},{ass_time(t1)},O{i},,0,0,0,,"
+                      + "{" + pos + f"\\fscx{scale}\\fscy{scale}\\t(0,{grow},\\fscx100\\fscy100)" + "}" + w)
+    return events
+
+
 def styled_events(i: int, o, width: int, height: int, lit: bool = True) -> List[str]:
     """The ``Dialogue:`` line(s) of a styled caption cue: one, or two for the
     glow (the soft halo first, the sharp text over it in the same layer).
@@ -599,6 +627,8 @@ def styled_events(i: int, o, width: int, height: int, lit: bool = True) -> List[
         return [head + "{" + halo + "}" + _plain(lines), head + "{" + sharp + "}" + _plain(lines)]
     if sid == "typewriter":
         return [head + "{" + pos + "}" + _typewriter(lines, ms)]
+    if sid == "single_word":
+        return _single_words(i, o, lines, ms, pos, lit)
     if sid == "line_slide":
         move = f"\\move({x},{y + int(round(size * 0.6))},{x},{y},0,{min(260, ms)})"
         return [head + "{" + move + _fad(ms, 180, 140) + "}" + _plain(lines)]

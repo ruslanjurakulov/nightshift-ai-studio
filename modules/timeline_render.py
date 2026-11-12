@@ -81,7 +81,12 @@ How a timeline maps onto the spec:
   the overlay's ASS style (a drop shadow; an opaque or translucent box instead of
   the outline); a text without them is written as it always was.
 * **Text** — T clips in track order, then the captions on top, become text
-  overlays burnt from one ASS file.
+  overlays burnt from one ASS file. A T clip's ``tracking`` / ``italic`` are its ASS
+  style's Spacing / Italic; its ``align`` is libass's Justify, set on the burn filter.
+* **Voice and bleeps** — a sound's ``voice: "clean"`` becomes the track's ``voice``
+  (``render_spec.VOICE_CLEAN_FILTERS`` in place of denoise / loudnorm); the document's
+  ``bleeps`` become the spec's, applied to the final mix
+  (``render_spec.bleep_filters``). Without them the spec is the one it always was.
 
 Pure and deterministic: the same document and the same resolver answers give
 the same spec, and so the same ffmpeg argv (tests/test_timeline_render.py pins
@@ -281,6 +286,11 @@ def _tempos(clip: dict) -> dict:
     return {"tempos": tuple(round(t, 6) for t in speed_ramp.slice_tempos(pts, pts[-1][0], n))}
 
 
+def _voice(clip: dict) -> dict:
+    """A sound's voice preset as a track field ({} without one: the track it always was)."""
+    return {"voice": clip["voice"]} if "voice" in clip else {}
+
+
 def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
     tracks: List[AudioTrack] = []
     for track in doc["tracks"]:
@@ -313,6 +323,7 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 gain_db=clip.get("gain_db", 0.0),
                 reverse=bool(clip.get("reverse")),
                 denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
+                **_voice(clip),
                 **_tempos(clip),
                 fade_in_s=d_in if d_in > 0 and not joined else 0.0,
                 fade_out_s=d_out if d_out > 0 and not sounding(i + 1) else 0.0,
@@ -355,6 +366,7 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 fade_in_s=clip["fade_in_s"],
                 fade_out_s=clip["fade_out_s"],
                 denoise=bool(clip.get("denoise")), loudnorm=bool(clip.get("loudnorm")),
+                **_voice(clip),
                 video_source=assets[clip["asset_id"]].kind == tl.ASSET_VIDEO,
                 **extra,
             ))
@@ -371,6 +383,12 @@ def _text_looks(c: dict) -> dict:
         out["box_color"] = c["box_color"]
         out["box_opacity"] = c["box_opacity"]
     return out
+
+
+def _text_props(c: dict) -> dict:
+    """A text's tracking, italic and alignment as TextOverlay fields ({} without them: normalise()
+    has dropped a zero tracking and a false italic, so the overlay is the one it always was)."""
+    return {k: c[k] for k in ("tracking", "italic", "align") if k in c}
 
 
 def _anims(c: dict) -> dict:
@@ -406,7 +424,7 @@ def _text(doc: dict) -> List[TextOverlay]:
                 size=c["size"], color=c["color"], outline_color=c["outline_color"],
                 outline_width=c["outline_width"], bold=c["bold"], x=c["x"], y=c["y"],
                 anchor=c["anchor"], fade_in_s=c["fade_in_s"], fade_out_s=c["fade_out_s"],
-                **_text_looks(c), **_anims(c),
+                **_text_looks(c), **_anims(c), **_text_props(c),
             ))
     captions = doc.get("captions")
     if captions:
@@ -493,6 +511,7 @@ def to_render_spec(doc: Union[str, bytes, dict], resolver: tl.AssetResolver,
         audio_tracks=_sound(norm, assets),
         overlays=_text(norm),
         picture_overlays=_pictures(norm, assets, total_frames) + _shapes(norm, total_frames),
+        bleeps=tuple((b["start_s"], b["end_s"], b["mode"]) for b in norm.get("bleeps") or []),
     )
 
 

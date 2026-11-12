@@ -54,7 +54,9 @@ export type SettleChange =
   | { kind: "look"; clip: number }
   | { kind: "mask"; clip: number }
   | { kind: "fxLarge"; clip: number }
-  | { kind: "anim"; clip: number };
+  | { kind: "anim"; clip: number }
+  | { kind: "voiceClip"; clip: number }
+  | { kind: "voiceSound"; sound: number };
 
 function drop(c: VideoClip, ...keys: (keyof VideoClip)[]): VideoClip {
   const out = { ...c };
@@ -125,8 +127,10 @@ export function settleAll(
 ): { model: EditorModel; changes: SettleChange[] } {
   const hasLimits =
     model.clips.some(
-      (c) => c.reverse || c.interpolate || c.stabilize || c.speed > 1 || c.color || c.mask || c.fx || c.anim_in || c.anim_out,
+      (c) =>
+        c.reverse || c.interpolate || c.stabilize || c.speed > 1 || c.color || c.mask || c.fx || c.anim_in || c.anim_out || c.voice,
     ) ||
+    model.sounds.some((x) => x.voice) ||
     Boolean(model.shapes?.length);
   const large = isLargeFrame(model);
   if (!hasLimits && !large) return { model, changes: [] };
@@ -272,6 +276,23 @@ export function settleAll(
       x[`anim_${s}`] && x[`anim_${s}`] !== "fade" ? ([`anim_${s}`, `anim_${s}_s`] as const) : [],
     );
     m = put(m, worst.id, drop(x, "color", "mask", "fx", ...moves));
+  }
+
+  // 4d. what is still over is clean voice (sound: 0.1 s per second, so only a timeline already at its limit):
+  //     the last clean-voiced sound first, then the clips' own sounds from the last
+  for (let guard = 0; guard < 128 && !fitsWithoutShapes(m); guard += 1) {
+    const si = m.sounds.map((x) => Boolean(x.voice)).lastIndexOf(true);
+    if (si >= 0) {
+      const { voice: _v, ...rest } = m.sounds[si];
+      void _v;
+      m = { ...m, sounds: m.sounds.map((x, i) => (i === si ? rest : x)) };
+      changes.push({ kind: "voiceSound", sound: si + 1 });
+      continue;
+    }
+    const c = [...m.clips].reverse().find((x) => x.voice);
+    if (!c) break;
+    m = put(m, c.id, drop(c, "voice"));
+    changes.push({ kind: "voiceClip", clip: number(c.id) });
   }
 
   // 5. shapes that no longer fit the export's memory or time (another frame size, a shorter timeline) are made

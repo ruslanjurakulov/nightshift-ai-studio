@@ -26,10 +26,13 @@ import {
   setChromaColor,
   setClipClean,
   setClipStabilize,
+  setClipVoice,
   setOverlayChroma,
   setSoundClean,
+  setSoundVoice,
   stabilizeCheck,
   startChroma,
+  voiceCheck,
   type CleanKey,
 } from "@/lib/editorClean";
 import { Disclosure, RadioChips, SliderRow, ToggleRow } from "./FxControls";
@@ -197,32 +200,75 @@ export function OverlayChromaSection({
 function CleanToggles({
   denoise,
   loudnorm,
+  voice,
+  voiceBlocked,
   onChange,
+  onVoice,
 }: {
   denoise: boolean;
   loudnorm: boolean;
+  /** "Clean voice" is on: it includes both, so they are shown off and cannot be turned on. */
+  voice: boolean;
+  /** Why "clean voice" cannot be turned on now (the export's time allowance), or null. */
+  voiceBlocked: string | null;
   onChange: (key: CleanKey, on: boolean) => void;
+  onVoice: (on: boolean) => void;
 }) {
   const { t } = useI18n();
   const k = t.editor.fx.clean;
+  const v = t.editor.parity4.voice;
   return (
     <>
       <ToggleRow
+        label={v.toggle}
+        checked={voice}
+        disabled={!voice && voiceBlocked !== null}
+        onChange={onVoice}
+        testId="voice-clean"
+        hint={
+          <>
+            {v.hint}
+            {!voice && voiceBlocked ? (
+              <span className="mt-1 block text-[var(--color-warn)]">{voiceBlocked}</span>
+            ) : null}
+          </>
+        }
+      />
+      <ToggleRow
         label={k.denoise}
         checked={denoise}
+        disabled={voice}
         onChange={(on) => onChange("denoise", on)}
-        hint={k.denoiseHint}
+        hint={voice ? v.included : k.denoiseHint}
         testId="denoise"
       />
       <ToggleRow
         label={k.loudnorm}
         checked={loudnorm}
+        disabled={voice}
         onChange={(on) => onChange("loudnorm", on)}
-        hint={k.loudnormHint}
+        hint={voice ? v.included : k.loudnormHint}
         testId="loudnorm"
       />
+      {voice ? (
+        <p className={note} data-testid="voice-preview-note">
+          {v.previewNote}
+        </p>
+      ) : null}
     </>
   );
+}
+
+/** The sentence that says why "clean voice" does not fit, or null when it does. */
+function useVoiceBlocked(model: EditorModel, kind: "V" | "A", id: string): string | null {
+  const { t } = useI18n();
+  const check = voiceCheck(model, kind, id);
+  if (check.ok) return null;
+  return fmt(t.editor.parity4.voice.renderTime, {
+    work: Math.round(check.render.work),
+    length: Math.round(check.render.length),
+    allowed: Math.round(check.render.allowed),
+  });
 }
 
 /** Clean-up of a music or sound-effect clip. */
@@ -237,16 +283,20 @@ export function SoundCleanSection({
 }) {
   const { t } = useI18n();
   const k = t.editor.fx.clean;
+  const voiceBlocked = useVoiceBlocked(model, "A", sound.id);
   return (
     <Disclosure
       title={k.soundTitle}
-      active={Boolean(sound.denoise || sound.loudnorm)}
+      active={Boolean(sound.denoise || sound.loudnorm || sound.voice)}
       testId="sound-clean"
     >
       <CleanToggles
         denoise={Boolean(sound.denoise)}
         loudnorm={Boolean(sound.loudnorm)}
+        voice={Boolean(sound.voice)}
+        voiceBlocked={voiceBlocked}
         onChange={(key, on) => apply(setSoundClean(model, sound.id, key, on))}
+        onVoice={(on) => apply(setSoundVoice(model, sound.id, on))}
       />
       <p className={note} data-testid="clean-preview-note">
         {k.previewNote}
@@ -270,6 +320,7 @@ export function ClipCleanSection({
 }) {
   const { t } = useI18n();
   const k = t.editor.fx.clean;
+  const voiceBlocked = useVoiceBlocked(model, "V", clip.id);
   const check = stabilizeCheck(model, clip);
   const why = still
     ? k.stabilizePhoto
@@ -289,7 +340,7 @@ export function ClipCleanSection({
   return (
     <Disclosure
       title={k.title}
-      active={Boolean(clip.stabilize || clip.denoise || clip.loudnorm)}
+      active={Boolean(clip.stabilize || clip.denoise || clip.loudnorm || clip.voice)}
       testId="clip-clean"
     >
       <ToggleRow
@@ -322,7 +373,10 @@ export function ClipCleanSection({
           <CleanToggles
             denoise={Boolean(clip.denoise)}
             loudnorm={Boolean(clip.loudnorm)}
+            voice={Boolean(clip.voice)}
+            voiceBlocked={voiceBlocked}
             onChange={(key, on) => apply(setClipClean(model, clip.id, key, on))}
+            onVoice={(on) => apply(setClipVoice(model, clip.id, on))}
           />
           {clip.audio ? null : <p className={note}>{k.soundOff}</p>}
           <p className={note} data-testid="clean-preview-note">

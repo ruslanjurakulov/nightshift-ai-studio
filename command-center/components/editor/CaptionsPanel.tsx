@@ -42,6 +42,7 @@ import {
 import { IMPORT_MAX_BYTES, addCue, captionsFromImport, parseCaptionFile } from "@/lib/captionCues";
 import { isCaptionStyleId } from "@/lib/captionStyleTable";
 import { CaptionStylesPicker } from "./CaptionStylesPicker";
+import { BleepPanel } from "./TalkingHeadSections";
 import {
   apiErrorMessage,
   asCreativeError,
@@ -1003,6 +1004,7 @@ export function CaptionsPanel({
                 +{Math.min(CUES_SHOWN, cues.length - shown)}
               </button>
             ) : null}
+            <BleepPanel model={model} cues={cues} onChange={onChange} />
             <div className="flex flex-col gap-1.5">
               <h3 className="m-0 text-sm font-semibold">{tc.downloadHeading}</h3>
               <p className="m-0 text-xs text-[var(--color-muted)]">{tc.downloadNote}</p>

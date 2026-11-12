@@ -190,6 +190,24 @@
     "size",
     "y"
    ]
+  },
+  {
+   "id": "single_word",
+   "font": "DejaVu Sans",
+   "bold": true,
+   "size_frac": 0.1,
+   "color": "#FFFFFF",
+   "highlight_color": "#FFD400",
+   "outline_color": "#000000",
+   "outline_width": 6,
+   "x": 0.5,
+   "y": 0.62,
+   "anchor": "center",
+   "uses": [
+    "color",
+    "size",
+    "y"
+   ]
   }
  ],
  "word_spans": [
