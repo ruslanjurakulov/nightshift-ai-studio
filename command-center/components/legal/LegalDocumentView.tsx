@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { Mail } from "lucide-react";
 import type { Dictionary, Locale } from "@/lib/i18n";
 import type { LegalBlock, LegalDocument } from "@/lib/legal-docs";
 import { tokenizeInline, type LegalVar } from "@/lib/legal-docs/inline";
-import { CREDIT_EXPIRY_MONTHS, LEGAL, missingLegalFields, type LegalConfig } from "@/lib/legal";
+import { CONTACT_BLOCK_ID, CREDIT_EXPIRY_MONTHS, LEGAL, missingLegalFields, type LegalConfig } from "@/lib/legal";
 import { packExpiry, type PackExpiry } from "@/lib/plans";
 
 /** An operator detail, or a plain "not published yet" in the reader's
@@ -23,6 +24,26 @@ function Var({ name, t, inline = true }: { name: LegalVar; t: Dictionary; inline
     );
   }
   if (name === "contactEmail") {
+    // In the facts card the address is a quiet key: a bare address read as an
+    // afterthought there. The address itself stays the label, as text, so a
+    // reader (and a payment provider's reviewer) sees it without clicking.
+    // On a 320px phone it is wider than the card, so it may wrap: at the @
+    // first (the domain is one unbreakable box until it alone is too wide),
+    // where a break mid-word read "support@nightshift-ai.stu / dio". That box
+    // is why the link is named outright: a name computed from the two pieces
+    // comes out as "support@ nightshift-ai.studio", with a space no address has.
+    if (!inline) {
+      const at = value.indexOf("@") + 1;
+      return (
+        <a href={`mailto:${value}`} aria-label={value} className="st-key max-w-full" data-tone="quiet" data-size="sm">
+          <Mail aria-hidden="true" />
+          <span className="min-w-0 select-text whitespace-normal py-2 text-left leading-snug [overflow-wrap:anywhere]">
+            {value.slice(0, at)}
+            <span className="inline-block max-w-full">{value.slice(at)}</span>
+          </span>
+        </a>
+      );
+    }
     return (
       <a href={`mailto:${value}`} className="text-[var(--color-primary)] underline underline-offset-4">
         {value}
@@ -172,7 +193,11 @@ export function LegalDocumentView({
       <h1 className="t-hero">{doc.title}</h1>
       <p className="t-lead mt-4">{doc.summary}</p>
 
-      <dl className="glass-card mt-8 grid gap-x-6 gap-y-3 rounded-2xl border border-[var(--color-border)] p-5 text-sm sm:grid-cols-2">
+      {/* The public footer's Contact link lands here (lib/legal.ts CONTACT_HREF). */}
+      <dl
+        id={CONTACT_BLOCK_ID}
+        className="glass-card mt-8 grid scroll-mt-6 gap-x-6 gap-y-3 rounded-2xl border border-[var(--color-border)] p-5 text-sm sm:grid-cols-2"
+      >
         {facts.map((f) => (
           <div key={f.name} className="flex flex-col gap-1">
             <dt className="t-label">{f.label}</dt>
