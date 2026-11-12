@@ -145,7 +145,7 @@ def deploy_paths() -> dict:
     for example in sorted((ROOT / "deploy").glob(".env.*.example")):
         if example.name != ".env.worker.example":
             others |= _example_keys(example)
-    places["the other deploy/.env.*.example files (web, notify, email, operator, marketing)"] = others
+    places["the other deploy/.env.*.example files (web, notify, email, operator, marketing, brandscan)"] = others
     flows: set = set()
     for flow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
         if flow.name not in CI_ONLY_WORKFLOWS:
@@ -366,6 +366,41 @@ class TheAdsFactorySwitchIsWebOnlyAndDeployable(unittest.TestCase):
         self.assertIn(f'"{self.NAME}"', flag)
         self.assertIn(f"process.env.{self.NAME}", flag)
         self.assertNotIn("NEXT_PUBLIC", flag.split("*/", 1)[1], "a NEXT_PUBLIC value would be compiled into the browser")
+
+
+
+class TheBrandScanSwitchStartsItsOwnWorker(unittest.TestCase):
+    """NIGHTSHIFT_ADS_BRAND_SCAN (docs/ADS_FACTORY.md, Phase 2) is ONE switch for two things: the Command Center's "Scan my site"
+    panel and the brand scan worker (tools/brand_scan_worker.py, which exits at once unless it reads `on`). Both halves must be
+    settable from GitHub: the web example and WEBENV_ mapping for the panel, and the worker's own env file, written by the deploy
+    step "Build the brand-scan env" while the same repository variable is `on`. It must never ride in the pipeline worker's file."""
+
+    NAME = "NIGHTSHIFT_ADS_BRAND_SCAN"
+
+    def test_the_worker_reads_it(self):
+        self.assertTrue(any(w.startswith("modules/brand_scan.py:") for w in names_read_by_the_code()[self.NAME]))
+        self.assertNotIn(self.NAME, INTENTIONALLY_UNREACHABLE)
+
+    def test_the_panel_half_is_a_web_key_with_no_value_and_a_workflow_mapping(self):
+        web = (ROOT / "deploy" / ".env.web.example").read_text(encoding="utf-8")
+        self.assertRegex(web, rf"(?m)^{self.NAME}=$", "empty must mean off")
+        flow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
+        self.assertIn(f"WEBENV_{self.NAME}: ${{{{ vars.{self.NAME} }}}}", flow)
+
+    def test_the_worker_half_is_its_own_env_file_written_only_while_the_same_variable_is_on(self):
+        self.assertIn(self.NAME, _example_keys(ROOT / "deploy" / ".env.brandscan.example"))
+        self.assertNotIn(self.NAME, _example_keys(ROOT / "deploy" / ".env.worker.example"))
+        flow = (ROOT / ".github" / "workflows" / "deploy_web.yml").read_text(encoding="utf-8")
+        self.assertIn(f"BRANDSCANENV_{self.NAME}: ${{{{ vars.{self.NAME} }}}}", flow)
+        self.assertIn(f"if: steps.payload.outputs.run == 'true' && vars.{self.NAME} == 'on'", flow)
+        self.assertNotIn(f"WORKERENV_{self.NAME}", flow)
+        remote = (ROOT / "deploy" / "remote-deploy.sh").read_text(encoding="utf-8")
+        self.assertIn(f'start_sender brand-scan-worker "$brandscan" "$BRANDSCAN_ENV_FILE" {self.NAME}', remote)
+        import yaml
+
+        svc = yaml.safe_load((ROOT / "deploy" / "docker-compose.yml").read_text(encoding="utf-8"))["services"]["brand-scan-worker"]
+        self.assertEqual(svc["profiles"], ["brandscan"])
+        self.assertNotIn(self.NAME, svc.get("environment", {}), "compose never turns it on: only its env file does")
 
 
 if __name__ == "__main__":

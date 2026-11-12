@@ -12,6 +12,9 @@
  * What a frame changes is the picture's width and height and nothing else: the frame rate, the clips, the texts and
  * every clip's own fit stay as saved. A clip whose shape is not the new frame's is fitted the way that clip already
  * says: "contain" (bars) unless the person chose "cover" or "blur" for it.
+ *
+ * 1440p and 4K (migration 0132, NIGHTSHIFT_HIRES_EXPORT): four more ids of the same closed list, PAID and capped in
+ * length (lib/hiresExport/limits.ts). They are choices here only when the caller says the switch is on (`hires`).
  */
 import {
   toDoc,
@@ -26,17 +29,30 @@ import {
   isExportPresetId,
   type ExportPresetId,
 } from "@/lib/editorExportPresets";
+import {
+  HIRES_EXPORT_PRESETS,
+  hiresPresetById,
+  isHiresPresetId,
+  type HiresPresetId,
+} from "@/lib/hiresExport/limits";
 
 /** The choice that means "the project's own frame": the plain export, as before 0129. Not a preset id (ids are [a-z0-9_]). */
 export const PROJECT_FRAME = "project";
-export type ExportFrameChoice = typeof PROJECT_FRAME | ExportPresetId;
+/** A format of the closed list: a free one (the format picker's) or a paid one (0132). */
+export type FramePresetId = ExportPresetId | HiresPresetId;
+export type ExportFrameChoice = typeof PROJECT_FRAME | FramePresetId;
+
+/** The format for an id of either list, or null. */
+export function framePresetById(v: unknown): { id: FramePresetId; width: number; height: number; fps: number; maxDurationS: number } | null {
+  return exportPresetById(v) ?? hiresPresetById(v);
+}
 
 /** The most frames one request may name: the organization's in-flight cap (0054 / 0129: three waiting or rendering).
  *  A fourth could only be refused. tests/test_editor_export_frame_migration.py compares this with the SQL. */
 export const MAX_EXPORT_FRAMES = 3;
 
 export function isExportFrameChoice(v: unknown): v is ExportFrameChoice {
-  return v === PROJECT_FRAME || isExportPresetId(v);
+  return v === PROJECT_FRAME || isExportPresetId(v) || isHiresPresetId(v);
 }
 
 /**
@@ -44,23 +60,28 @@ export function isExportFrameChoice(v: unknown): v is ExportFrameChoice {
  * different choices, each exactly "project" or a preset id (no trimming, no case folding, no numbers, no objects).
  * Anything else is refused whole (null): a request that is half understood is not carried out by half.
  * The project's own frame comes FIRST in the answer: the plain request refuses while any export of the project is in
- * flight, so it has to be asked before the others.
+ * flight, so it has to be asked before the others. A paid frame (0132) is a choice only with `hires` (the switch is on
+ * here); without it, it is an unknown word and refuses the whole request like one.
  */
-export function parseExportFrames(raw: unknown): ExportFrameChoice[] | null {
+export function parseExportFrames(raw: unknown, opts: { hires?: boolean } = {}): ExportFrameChoice[] | null {
   if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_EXPORT_FRAMES) return null;
   const seen = new Set<ExportFrameChoice>();
   for (const v of raw) {
     if (!isExportFrameChoice(v) || seen.has(v)) return null;
+    if (isHiresPresetId(v) && !opts.hires) return null;
     seen.add(v);
   }
-  const order: ExportFrameChoice[] = [PROJECT_FRAME, ...EXPORT_PRESETS.map((p) => p.id)];
+  const order: ExportFrameChoice[] = [PROJECT_FRAME, ...EXPORT_PRESETS.map((p) => p.id), ...HIRES_EXPORT_PRESETS.map((p) => p.id)];
   return order.filter((c) => seen.has(c));
 }
 
-/** The formats the picker offers beside the project's own frame: every format whose size is NOT the project's (that
- *  one would be the same picture twice). */
-export function otherFrames(model: Pick<EditorModel, "width" | "height">): ExportPresetId[] {
-  return EXPORT_PRESETS.filter((p) => p.width !== model.width || p.height !== model.height).map((p) => p.id);
+/** The formats the picker offers beside the project's own frame: every free format whose size is NOT the project's (that
+ *  one would be the same picture twice), and the paid ones (0132) only with `hires`. Every paid one, its own size included:
+ *  a project whose frame is above 1080p cannot export its own size free, so the paid format of that size is its way. */
+export function otherFrames(model: Pick<EditorModel, "width" | "height">, opts: { hires?: boolean } = {}): FramePresetId[] {
+  const free: FramePresetId[] = EXPORT_PRESETS.filter((p) => p.width !== model.width || p.height !== model.height).map((p) => p.id);
+  if (!opts.hires) return free;
+  return [...free, ...HIRES_EXPORT_PRESETS.map((p) => p.id)];
 }
 
 /**
@@ -69,8 +90,8 @@ export function otherFrames(model: Pick<EditorModel, "width" | "height">): Expor
  * frame's size (backwards play, smoothing, steadying, a blur under a cross-fade), so an edit that is fine in its own
  * frame can be over one in another. Empty = fine. The worker decides in the end; this only saves a wasted export.
  */
-export function frameProblems(model: EditorModel, id: ExportPresetId): string[] {
-  const p = exportPresetById(id);
+export function frameProblems(model: EditorModel, id: FramePresetId): string[] {
+  const p = framePresetById(id);
   if (!p) return ["not an export format"];
   return validateTimeline(toDoc({ ...model, width: p.width, height: p.height }));
 }

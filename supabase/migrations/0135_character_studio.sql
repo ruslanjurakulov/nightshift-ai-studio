@@ -18,9 +18,9 @@
 -- to a vendor. creative_jobs, reserve_credits, job_minimum and every other shared function are untouched: a character swap is not a creative
 -- job (the registry lists video_character_swap as registry-only, so the creative system can never sell it).
 --
--- NUMBER. 0135: the highest on main is 0133 (the brand scan). 0132 is reserved by open pull request #677 (the hi-res export) and 0134 by
--- the brand-scan follow-up; neither is taken here. This file names nothing either of them adds (it names only 0018 / 0020 / 0036 / 0038 /
--- 0054 / 0107 objects), so they apply in any order.
+-- NUMBER. 0135: the highest on main is 0134. 0132 (the hi-res export, #677) and 0134 (the brand-scan follow-up) merged while this was
+-- written; this file names nothing either of them (or 0133) adds: it names only 0018 / 0020 / 0036 / 0038 / 0054 / 0107 objects, so it
+-- applies after them in any order relative to each other.
 --
 -- APPLY AS ONE TRANSACTION: the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1. `set local lock_timeout`
 -- assumes it, and the last block asserts the end state, so a half-applied file cannot be left behind.

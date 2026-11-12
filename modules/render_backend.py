@@ -464,6 +464,86 @@ def _fit_for(seg: Segment):
     return _scale_pad
 
 
+_SLIDE_IN = {"slide-left": (1, 0), "slide-right": (-1, 0), "slide-up": (0, 1), "slide-down": (0, -1)}
+#: A zoom entrance starts at (an exit ends at) this share of the frame.
+ANIM_ZOOM_FROM = 0.6
+
+
+def fx_filters(fx, width: int, height: int) -> List[str]:
+    """The effects pack (``ClipEffects.glitch`` / ``shake`` / ``rgb_split`` / ``flash``, 0..100) on the fitted
+    frame, on the clip's own clock ``t``: RGB split, glitch bursts, flashes, then the shake (it crops a moving
+    window and scales it back to the frame). Only formatted numbers are written; the burst and flash rhythms are
+    fixed, so the same document is the same video."""
+    out: List[str] = []
+    if fx is None:
+        return out
+    if fx.rgb_split > 0:
+        n = max(1, round(fx.rgb_split / 100 * 0.0125 * width))
+        out.append(f"rgbashift=rh=-{n}:bh={n}:edge=smear,format=yuv420p")
+    if fx.glitch > 0:
+        k = fx.glitch / 100
+        g = max(2, round(k * 0.01 * width))
+        burst = f"lt(mod(t,0.9),{0.04 + 0.10 * k:.3f})"
+        out.append(f"rgbashift=rh=-{g}:bv={max(1, g // 2)}:edge=smear:enable='{burst}',"
+                   f"noise=alls={int(round(10 + 40 * k))}:allf=t:all_seed=1234:enable='{burst}',format=yuv420p")
+    if fx.flash > 0:
+        out.append(f"eq=brightness='{0.6 * fx.flash / 100:.3f}*max(0,1-mod(t,0.8)/0.2)':eval=frame")
+    if fx.shake > 0:
+        m = max(2, int(round(fx.shake / 100 * 0.03 * min(width, height) / 2)) * 2)
+        out.append(f"crop=w=iw-{2 * m}:h=ih-{2 * m}:x='{m}+{m}*sin(t*41)':y='{m}+{m}*cos(t*29)',"
+                   f"scale={int(width)}:{int(height)},setsar=1")
+    return out
+
+
+def anim_filters(seg: Segment, length_s: float, width: int, height: int, fps: int, tag: str = "") -> str:
+    """``,...`` for a clip's slide / zoom entrance and exit ('' without one): the picture laid over black at a
+    per-frame place and size, over the whole clip (the piece's trim comes after). A fade is a plain fade
+    (:func:`_fade_filters`)."""
+    moves = [a for a in (seg.anim_in, seg.anim_out) if a and a != "fade"]
+    if not moves:
+        return ""
+    di, do = seg.anim_in_s, seg.anim_out_s
+    start_out = max(0.0, length_s - do)
+    p_in = f"min(1,t/{di:.3f})" if seg.anim_in else "1"
+    p_out = f"min(1,max(0,(t-{start_out:.3f})/{do:.3f}))" if seg.anim_out else "0"
+    scale = []
+    if seg.anim_in == "zoom":
+        scale.append(f"({ANIM_ZOOM_FROM}+{1 - ANIM_ZOOM_FROM:.1f}*{p_in})")
+    if seg.anim_out == "zoom":
+        scale.append(f"(1-{1 - ANIM_ZOOM_FROM:.1f}*{p_out})")
+    dx, dy = [], []
+    if seg.anim_in in _SLIDE_IN:
+        sx, sy = _SLIDE_IN[seg.anim_in]
+        if sx:
+            dx.append(f"{sx * width}*(1-{p_in})")
+        if sy:
+            dy.append(f"{sy * height}*(1-{p_in})")
+    if seg.anim_out in _SLIDE_IN:
+        sx, sy = _SLIDE_IN[seg.anim_out]
+        if sx:
+            dx.append(f"{-sx * width}*{p_out}")
+        if sy:
+            dy.append(f"{-sy * height}*{p_out}")
+    w, h = int(width), int(height)
+    size = "*".join(scale)
+    first = (f"scale=w='max(2,trunc({w}*{size}/2)*2)':h='max(2,trunc({h}*{size}/2)*2)':eval=frame"
+             if scale else "null")
+    x = "(main_w-overlay_w)/2" + "".join("+" + d for d in dx)
+    y = "(main_h-overlay_h)/2" + "".join("+" + d for d in dy)
+    q, b = f"aq{tag}", f"ab{tag}"
+    return (f",{first}[{q}];color=c=black:s={w}x{h}:r={int(fps)}[{b}];"
+            f"[{b}][{q}]overlay=x='{x}':y='{y}':shortest=1:format=auto,format=yuv420p")
+
+
+def _clip_tail(seg: Segment, length_s: float, width: int, height: int, fps: int, tag: str = "") -> str:
+    """What runs on a clip's fitted frame over its whole length, before a piece is cut from it: the effects
+    pack, the entrance / exit moves, then the fades. Without the pack or a move it is :func:`_fade_filters`
+    exactly, so an older document's chain is the one it was."""
+    fx = seg.effects.moving if seg.effects is not None else False
+    pack = "".join("," + f for f in fx_filters(seg.effects, width, height)) if fx else ""
+    return pack + anim_filters(seg, length_s, width, height, fps, tag) + _fade_filters(seg, length_s)
+
+
 def _fade_filters(seg: Segment, length_s: float) -> str:
     """``,fade=...`` for a segment's fades from/to black ('' when it has none,
     so a pipeline segment's filter is unchanged). ``length_s`` is the clip's
@@ -471,8 +551,12 @@ def _fade_filters(seg: Segment, length_s: float) -> str:
     out = ""
     if seg.fade_in_s > 0:
         out += f",fade=t=in:st=0:d={seg.fade_in_s:.3f}"
+    if seg.anim_in == "fade":
+        out += f",fade=t=in:st=0:d={seg.anim_in_s:.3f}"
     if seg.fade_out_s > 0:
         out += f",fade=t=out:st={max(0.0, length_s - seg.fade_out_s):.3f}:d={seg.fade_out_s:.3f}"
+    if seg.anim_out == "fade":
+        out += f",fade=t=out:st={max(0.0, length_s - seg.anim_out_s):.3f}:d={seg.anim_out_s:.3f}"
     return out
 
 
@@ -605,7 +689,7 @@ def segment_commands(
         # A mask needs frame_exact (render_spec.validate): the tail is the fades and the piece's trim.
         frames = segment_frames(seg.duration, fps)
         full = segment_frames(seg.clip_s, fps) if seg.clip_s > 0 else frames
-        tail = _fade_filters(seg, full / fps) + _piece_trim(seg, fps)
+        tail = _clip_tail(seg, full / fps, width, height, fps) + _piece_trim(seg, fps)
         masked = []
         for c in cmds:
             vf = c[c.index("-vf") + 1]
@@ -635,7 +719,7 @@ def _segment_commands(
     # clip's last frame, a still's move spans the clip), then trimmed.
     full = segment_frames(seg.clip_s, fps) if frame_exact and seg.clip_s > 0 else frames
     length_s = full / fps if frame_exact else float(dur)
-    fades = _fade_filters(seg, length_s) + (_piece_trim(seg, fps) if frame_exact else "")
+    fades = _clip_tail(seg, length_s, width, height, fps) + (_piece_trim(seg, fps) if frame_exact else "")
 
     if seg.kind == KIND_COLOR or not seg.path:
         # A black placeholder needs no fade: it already is black.
@@ -801,12 +885,12 @@ def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
     that differ in any of them (a still's pan reaches it at the still's own
     rate otherwise)."""
     inputs, body = _xfade_side_body(seg, width, height, fps, seed, hold, tag, stab)
-    return inputs, body + _xfade_tail(seg, fps)
+    return inputs, body + _xfade_tail(seg, fps, width, height, tag)
 
 
-def _xfade_tail(seg: Segment, fps: int) -> str:
+def _xfade_tail(seg: Segment, fps: int, width: int = 0, height: int = 0, tag: str = "") -> str:
     full = segment_frames(seg.full_s, fps)
-    return (_fade_filters(seg, full / fps) + _piece_trim(seg, fps)
+    return (_clip_tail(seg, full / fps, width, height, fps, tag) + _piece_trim(seg, fps)
             + f",settb=1/{fps},fps={fps},format=yuv420p")
 
 
@@ -870,7 +954,7 @@ def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, heigh
             inp, body = _xfade_side_body(s_, width, height, fps, seed_, hold, tag,
                                          stab_filter(ffmpeg, s_, out_path.parent))
             extra.append(inp)
-            tail = _xfade_tail(s_, fps)
+            tail = _xfade_tail(s_, fps, width, height, tag)
             if s_.mask is None:
                 parts.append(f"[{i}:v]{body}{tail}[x{tag}];")
                 continue

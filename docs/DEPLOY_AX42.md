@@ -75,14 +75,37 @@ konfigda qolardi. Deploy'ning oxirgi qadami (`remote-deploy.sh`, "caddy: ...";
 worker qadamlaridan keyin, shuning uchun worker xato bersa reload bo'lmaydi)
 shuni tuzatadi, **restart qilmasdan**:
 
-0. **Qulf (asosiy nazorat).** Skriptda `CADDYFILE_APPROVED_SHA256` — tasdiqlangan
-   `deploy/Caddyfile`ning sha256 qiymati (baytma-bayt, normalizatsiyasiz: CRLF,
-   BOM, bo'sh qator ham "boshqa fayl"). Fayl o'zgargan bo'lsa deploy uni
-   tekshirmaydi ham, yuklamaydi ham, Caddy eski konfigda qoladi va qadam
-   **qizil** bo'ladi (logda faqat 12 belgili hash'lar). Caddyfile'ni o'zgartirgan
-   PR shu qiymatni ham yangilaydi (`sha256sum deploy/Caddyfile`) — tekshiruvchi
-   Caddyfile'ni ko'radi; CI (`tests.test_deploy_self_host`) ikkalasi mos
-   kelmasa yiqiladi.
+0. **Qulf (asosiy nazorat).** `deploy/remote-deploy.sh`da `CADDYFILE_APPROVED_SHA256` —
+   tasdiqlangan `deploy/Caddyfile`ning sha256 qiymati (baytma-bayt,
+   normalizatsiyasiz: CRLF, BOM, bo'sh qator ham "boshqa fayl"). Qiymat
+   **deploy qilinayotgan commit'ning o'zidagi** `remote-deploy.sh`dan o'qiladi
+   (`git show <sha>:deploy/remote-deploy.sh`, aynan shu qator, aynan bir marta) —
+   serverda ishlab turgan eski nusxadan emas. Caddyfile hash'i qiymatga mos
+   kelmasa deploy faylni tekshirmaydi ham, yuklamaydi ham, Caddy eski konfigda
+   qoladi va qadam **qizil** bo'ladi (logda faqat commit va 12 belgili hash'lar).
+   Caddyfile'ni o'zgartirgan PR shu qiymatni **o'sha commit'ning o'zida**
+   yangilaydi (`sha256sum deploy/Caddyfile`); yangi Caddyfile o'sha commit'ning
+   birinchi deploy'idayoq yuklanadi. CI (`tests.test_deploy_self_host`) ikkalasi
+   mos kelmasa yiqiladi.
+
+   **Bu nima uchun xavfsiz.** Commit `origin/main`da ekanligi oldin tekshiriladi
+   (2-qadam), hash qilinadigan Caddyfile ham, qiymat ham — aynan shu commit'niki.
+   Hash sir emas: u Caddyfile o'zgarishini ko'rib chiqilmagan holda o'tkazib
+   bo'lmasligi uchun "tripwire". Yomon niyatli Caddyfile o'z qiymati bilan birga
+   o'zgartirilsa, ikkala qator ham **bitta PR diff'ida** ko'rinadi — avval ham
+   shunday edi (faqat bir deploy kechroq yuklanardi). Demak haqiqiy nazorat — PR'ni
+   ko'rib chiqish: Caddyfile o'zgargan PR'da qiymat qatori ham o'zgargan bo'lsa,
+   tekshiruvchi Caddyfile diff'ini to'liq o'qiydi. Muhit o'zgaruvchisi
+   `NIGHTSHIFT_CADDYFILE_APPROVED_SHA256` (faqat testlar uchun) berilsa, u ustun;
+   sshd mijoz yuborgan muhitni qabul qilmaydi, shuning uchun deploy kaliti egasi
+   uni o'rnata olmaydi.
+
+   Caddyfile ham ishchi papkadagi fayldan emas, commit'ning o'zidan
+   (`git cat-file blob <sha>:deploy/Caddyfile`) o'qiladi, shuning uchun
+   `.gitattributes` yoki serverdagi git sozlamalari baytlarni o'zgartira olmaydi.
+   Eski deploy'ni qayta ishga tushirish (ilovani orqaga qaytarish kabi) endi o'sha
+   commit'ning Caddyfile'ini yuklaydi — agar u header shartnomasidan (2-band va
+   jonli tekshiruv) o'tsa.
 1. `caddy validate` (konteyner ichida, fayl `main`dagi commit'dan stdin orqali
    beriladi). Konteyner umuman ishlamayotgan bo'lsa (to'xtagan/restart loop)
    alohida xabar chiqadi — fayl ayblanmaydi.
@@ -101,7 +124,9 @@ shuni tuzatadi, **restart qilmasdan**:
    → oldingi commit'dagi fayl (`.caddyfile.fallback`, oxirgi chora).
 
 **Nimalar TEKSHIRILMAYDI.** Himoya ro'yxati va jonli tekshiruv faqat yuqoridagi
-headerlarni va 4 ta yo'lni ko'radi. Permissions-Policy qiymati, CSP, CORS,
+headerlarni va yo'llarni ko'radi (Permissions-Policy aniq qiymati bilan:
+`/login` va `/api/account`da `microphone=()`, `/c/editor/<uuid>`da
+`microphone=(self)`). CSP, CORS,
 routing, upstream, TLS sozlamalari va cross-site iframe tekshirilmaydi. Haqiqiy
 nazorat — qulf (0-band) va PR'ni ko'rib chiqish.
 
@@ -121,15 +146,20 @@ bloki o'zgarishlarini ham Caddyfile o'zgarishi kabi ko'rib chiqing. (Qadam
 faylni bir marta nusxalaydi va hash, validate, reload hamda saqlangan zaxira
 aynan shu nusxadan olinadi; symlink rad etiladi.)
 
-**Qulfni yangilovchi PR: birinchi deploy qizil bo'ladi.** SSH majburiy buyrug'i
+**Qulfni yangilovchi PR: endi bitta deploy yetadi.** SSH majburiy buyrug'i
 serverdagi *hozirgi* checkout'dagi `remote-deploy.sh`ni ishga tushiradi (u yangi
-commit'ni checkout qilishdan oldin). Ya'ni N-deploy skriptning N-1 versiyasini
-(ESKI hash bilan) YANGI Caddyfile'ga qarshi ishlatadi. Caddyfile va uning
-hash'ini birga o'zgartirgan har bir PR'ning merge-deploy'i bir marta
-**qizil** bo'ladi ("deploy/Caddyfile changed…"; Caddy tegilmaydi, eski konfig
-ishlaydi). Shundan keyin skript allaqachon yangi hash bilan checkout qilingan,
-shuning uchun **Actions → Deploy web → Run workflow**ni yana bir marta qo'lda
-ishga tushiring — o'tadi va Caddyfile yuklanadi.
+commit'ni checkout qilishdan oldin), ya'ni N-deploy skriptning N-1 versiyasi
+bilan ishlaydi. Avval qulf qiymati ham shu eski nusxadan olinardi, shuning uchun
+Caddyfile va hash'ni birga o'zgartirgan PR'ning merge-deploy'i bir marta
+**qizil** bo'lib, faqat keyingi deploy'da yuklanardi (#673: 558b28e4 qizil,
+84a166e7 yukladi). Endi qiymat deploy qilinayotgan commit'dan o'qiladi (0-band),
+shuning uchun bunday PR **birinchi deploy'dayoq** yuklanadi. Istisno — shu
+o'zgarishning (`claude/deploy-caddy-pin`) o'z merge-deploy'i: u hali eski
+skript bilan ishlaydi, lekin Caddyfile'ni o'zgartirmaydi, shuning uchun yashil.
+Xato xabari endi commit'ni va u tasdiqlagan hash'ni aytadi ("deploy/Caddyfile
+of commit … is …, but that commit's deploy/remote-deploy.sh approves …"): bu
+haqiqatan mos kelmaslik — Caddyfile o'zgargan, qiymat esa o'sha commit'da
+yangilanmagan.
 
 Shu (#427) PR uchun: uning merge-deploy'i ishlayotgan skript hali eski
 (Caddy qadami yo'q), shuning uchun Caddy'ga tegilmaydi. Merge'dan keyin
@@ -368,6 +398,13 @@ nosozliklar: `docs/operator-bot.md`, "Always on, on the server".
 Standart — o'chiq; o'chiq paytda hech qanday sir kerak emas. Konteyner bor bo'lsa
 ham, `NIGHTSHIFT_MARKETING_POSTS` = `on` bo'lmaguncha u hech narsa qoralamaydi va
 yubormaydi. Qadamlar va nomlar: `docs/MARKETING_POSTS.md`.
+
+**Brend skaneri** (`brand-scan-worker`, Ads Factory 2-bosqich): switch
+`NIGHTSHIFT_ADS_BRAND_SCAN` = aynan `on` (repository variable; xuddi shu variable
+"Scan my site" panelini ham ko'rsatadi) → **Deploy web** → **Run workflow**. O'z env
+fayli `.env.brandscan` (faqat `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` va switch),
+`media` volume, portsiz, Caddy marshrutisiz. Standart — o'chiq. Narx bazada qo'yilmaguncha
+skanerlash sotilmaydi; tartib: `docs/ADS_FACTORY.md`, "Releasing Phase 2".
 
 ---
 

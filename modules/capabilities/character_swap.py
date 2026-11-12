@@ -17,6 +17,10 @@ The person writes ``@Image 1`` ... ``@Image N`` for the characters and ``@Video 
 Kling builder renames them to the ids it gives the items. Inputs reach both vendors as short-lived signed https links the worker
 makes (modules/character_swap.py): neither vendor is sent a file from disk, and nothing on a job row is ever fetched.
 
+Watermarks (docs/AI_DISCLOSURE.md, "Vendor watermarks and provenance"): neither builder sends a watermark field. Kling's optional mark
+(``options.watermark_info``) and Seedance's (``watermark``) are off by default and no clause found requires them, so each maker's
+default is what is made, and the file is stored as it arrives.
+
 Both submit through ``SafeResultMixin.submit_json`` (an answer that never arrived is UNCONFIRMED SPEND, never a refusal), validate
 task ids before they go into a URL, fetch the result only from the maker's own hosts with no redirect and a byte cap, and raise
 ``AdapterError`` with a closed code. The caller persists ``ProviderTask.task_id`` BEFORE polling (0135's
@@ -227,7 +231,7 @@ class SeedanceEditAdapter(SeedanceV2Adapter):
                       "resolution": request.resolution, "ratio": "adaptive",
                       # The output follows the input's length: what 0135 quoted is the input's seconds.
                       "duration": -1,
-                      # The clip's own sound is put back by the worker (ffmpeg, the source track): never a new one billed here.
+                      # No new soundtrack is made (or billed); the picker tells the person this model does not keep the clip's sound.
                       "generate_audio": False,
                       "execution_expires_after": self.EXPIRES_AFTER_S}
         if request.end_user and _SAFETY_ID.fullmatch(request.end_user):

@@ -41,7 +41,7 @@ export const characterStudioUz: CharacterStudioDictionary = {
     heading: "Model",
     hint: "Har bir modelning rolikingiz uchun oʻz narxi bor. Almashtirsangiz, yuqoridagi narx oʻzgaradi.",
     keepsSound: "Rolikingizning oʻz ovozini saqlaydi.",
-    soundPutBack: "Rolikingizning oʻz ovozi keyin qaytarib qoʻyiladi.",
+    noSound: "Ovozsiz: bu model rolikingizning oʻz ovozini saqlamaydi.",
     ownClipsOnly: "Faqat shu yerda oxirgi 30 kunda yaratilgan roliklar uchun: bu model haqiqiy odamlarning yuzini qabul qilmaydi.",
     pictures: "{n} tagacha rasm.",
     notOnSale: "Hali sotuvda emas",

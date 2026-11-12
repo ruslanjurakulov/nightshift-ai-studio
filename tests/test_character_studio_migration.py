@@ -82,14 +82,15 @@ RB = pins(ROLLBACK, "begin;", "-- 1. The functions an API role could call.")
 
 
 class Numbering(unittest.TestCase):
-    def test_the_number_is_unique_and_0132_and_0134_are_left_to_their_own_pull_requests(self):
+    def test_the_number_is_unique_after_0134_and_names_nothing_of_0132_to_0134(self):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0135"), 1)
-        self.assertIn("0133", numbers)
-        for taken in ("0132", "0134"):
-            self.assertNotIn(f"{taken}_character", " ".join(p.name for p in MIG.glob("*.sql")))
-        self.assertIn("0132 is reserved by open pull request #677", TEXT)
-        self.assertIn("0134 by\n-- the brand-scan follow-up", TEXT)
+        for earlier in ("0132", "0133", "0134"):
+            self.assertIn(earlier, numbers)
+            later = code(next(MIG.glob(f"{earlier}_*.sql")).read_text(encoding="utf-8")).lower()
+            for name in set(re.findall(r"create (?:or replace function|table if not exists) public\.(\w+)", later)):
+                self.assertNotRegex(code(TEXT).lower(), rf"\b{name}\b", f"0135 names {name} of {earlier}")
+        self.assertIn("the highest on main is 0134", TEXT)
 
     def test_the_file_says_it_is_applied_as_one_transaction_and_what_to_verify(self):
         for needle in ("APPLY AS ONE TRANSACTION", "WHAT TO VERIFY BEFORE YOU APPLY", "LIVE ON APPLY"):

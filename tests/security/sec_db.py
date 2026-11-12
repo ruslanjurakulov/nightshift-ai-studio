@@ -117,12 +117,53 @@ MIGRATION_0133 = MIGRATIONS / "0133_brand_scan.sql"
 ROLLBACK_0133 = REPO / "docs" / "sql" / "rollback_0133_brand_scan.sql"
 
 
+MIGRATION_0134 = MIGRATIONS / "0134_brand_scan_followup.sql"
+ROLLBACK_0134 = REPO / "docs" / "sql" / "rollback_0134_brand_scan_followup.sql"
+
+
+def take_off_0134(session) -> None:
+    """0134 replaces brand_scan_fail_locked() on 0133's body, and 0133 (and its rollback) refuse any other body. A test that replays 0133
+    or applies its rollback on a database that has 0134 takes 0134 off first with its own rollback, and puts it back with put_back_0134
+    where the chain goes on."""
+    text = ROLLBACK_0134.read_text(encoding="utf-8")
+    session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0134(session) -> None:
+    session.conn.execute(MIGRATION_0134.read_text(encoding="utf-8"))
+
+
 def take_off_0133(session) -> None:
     """0133's checks use 0131's text rules, so 0131's rollback refuses while 0133 is in place. A test that rolls back 0131 takes 0133 off
-    first with its own rollback (its rows go too: the test runs in a transaction that is rolled back)."""
+    first with its own rollback (its rows go too: the test runs in a transaction that is rolled back). 0134 sits on 0133's body: it comes
+    off before."""
+    take_off_0134(session)
     session.conn.execute("set local nightshift.brand_scan_rollback_delete_rows = 'yes'")
     text = ROLLBACK_0133.read_text(encoding="utf-8")
     session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+MIGRATION_0132 = MIGRATIONS / "0132_editor_hires_export.sql"
+ROLLBACK_0132 = REPO / "docs" / "sql" / "rollback_0132_editor_hires_export.sql"
+
+
+def has_0132(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regclass('public.editor_export_hires_prices') is not null").fetchone()[0])
+
+
+def take_off_0132(session) -> None:
+    """0132 replaces editor_export_frame() on 0129's body (and adds the paid overload), and 0129 (and its rollback) refuse any other
+    list. A test that replays 0129 or applies its rollback on a database that has 0132 takes 0132 off first with its own rollback
+    (inside the test's transaction), and puts it back with put_back_0132 where the chain goes on."""
+    if not has_0132(session):
+        return
+    text = ROLLBACK_0132.read_text(encoding="utf-8")
+    session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0132(session) -> None:
+    session.conn.execute(MIGRATION_0132.read_text(encoding="utf-8"))
 
 
 MIGRATION_0135 = MIGRATIONS / "0135_character_studio.sql"

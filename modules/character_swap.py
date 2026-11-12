@@ -17,6 +17,9 @@ The rules this module keeps, each learned elsewhere in the repository:
   Center's own ``/api/media/file/<id>/original`` with the same HMAC the web app signs (``lib/server/media.ts``: ``nightshift-media-v1``),
   valid for at most an hour. Nothing on a job row is fetched or trusted as a path.
 * **No key in a message.** Adapter errors are already scrubbed; this module stores only closed codes.
+* **The vendor's file is kept as it came** (docs/AI_DISCLOSURE.md, "Vendor watermarks and provenance"): neither adapter sends a
+  watermark field (both makers' marks are off by default and no clause requires one), and the result is stored byte for byte. A model
+  that does not keep the clip's sound (Seedance) says so in the picker before anything is asked; its sound is not re-muxed here.
 * **The prompt screen is the database's.** ``prompt_problem`` answers what 0135's ``character_swap_prompt_problem`` answers
   (tests/security/test_sec_character_swap.py runs both on one corpus); the worker asks again before it sends the words anywhere.
 """
@@ -174,13 +177,6 @@ def probe(ffprobe: str, path: Path, *, timeout_s: float = 30) -> Dict:
     return {"fps": fps, "audio": any(isinstance(s, dict) and s.get("codec_type") == "audio" for s in streams or [])}
 
 
-def remux_command(ffmpeg: str, edited: Path, source: Path, dest: Path) -> List[str]:
-    """The edited picture with the SOURCE clip's own sound (a model that does not keep it): no re-encode of either, and the shorter of
-    the two decides the length (Seedance's output can be up to 0.4 s shorter than its input)."""
-    return [ffmpeg, "-v", "error", "-y", "-i", str(edited), "-i", str(source), "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-shortest",
-            str(dest)]
-
-
 # ── the database (0135's worker functions, the service key) ─────────────────────────────────────────────────────────────────
 class StoreUnavailable(Exception):
     """The database is out of reach: nothing is decided, the job stays as it is for the next claim."""
@@ -250,7 +246,6 @@ class CharacterSwapWorker:
     heartbeat_every_s: float = 60.0
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
-    runner: Callable[..., subprocess.CompletedProcess] = subprocess.run
 
     def _entry(self, model: str):
         if not self.registry:
@@ -332,11 +327,9 @@ class CharacterSwapWorker:
                 # The vendor finished (and may bill); the link lives a while: leave it for the next claim's resume.
                 logger.warning("character swap %s: the result could not be downloaded yet; left for the next claim", jid)
                 return
-            final = self._with_source_sound(entry, files[0], source, work)
-            if final is None:
-                self._fail(jid, "audio_remux_failed")
-                return
-            out_id = self._store(job, entry, final, task)
+            # The vendor's file is stored byte for byte (docs/AI_DISCLOSURE.md, "Vendor watermarks and provenance"): no re-mux, no
+            # re-encode, so its C2PA box, metadata label and any mark stay as the maker made them.
+            out_id = self._store(job, entry, files[0], task)
             if out_id is None:
                 self._fail(jid, "store_failed")
                 return
@@ -394,21 +387,6 @@ class CharacterSwapWorker:
                 self.store.record_task(jid, self.worker_id, str(task.task_id))   # the same id: a heartbeat
                 last_beat = self.clock()
             self.sleep(self.poll_every_s)
-
-    def _with_source_sound(self, entry, edited: Path, source: Optional[Path], work: Path) -> Optional[Path]:
-        if Limits.of(entry).keeps_original_audio or source is None:
-            return edited
-        tools = self.library.tools
-        if not tools:
-            return None
-        if not probe(tools.ffprobe, source).get("audio"):
-            return edited
-        dest = work / "with_sound.mp4"
-        try:
-            done = self.runner(remux_command(tools.ffmpeg, edited, source, dest), capture_output=True, timeout=300, check=False)
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return dest if done.returncode == 0 and dest.is_file() and dest.stat().st_size > 0 else None
 
     def _store(self, job: Mapping, entry, path: Path, task) -> Optional[str]:
         from modules import media_library  # noqa: PLC0415

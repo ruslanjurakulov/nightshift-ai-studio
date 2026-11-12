@@ -22,8 +22,10 @@ import { overlayRu } from "./overlay/ru";
 import { shapesRu } from "./shapes/ru";
 import { exportPresetRu } from "./editor-presets/ru";
 import { exportRatiosRu } from "./editor-ratios/ru";
+import { exportHiresRu } from "./editor-hires/ru";
 import { clipToolsRu } from "./editor-clip-tools/ru";
 import { parity2Ru } from "./editor-parity2/ru";
+import { parity2bRu } from "./editor-parity2b/ru";
 import { voiceOverRu } from "./editor-voiceover/ru";
 import { looksRu } from "./editor-looks/ru";
 import { fxRu } from "./editor-fx/ru";
@@ -5124,6 +5126,7 @@ export const ru: Dictionary = {
     /** Export format picker: ./editor-presets/ru.ts. */
     exportPreset: exportPresetRu,
     exportRatios: exportRatiosRu,
+    exportHires: exportHiresRu,
     /** Frame rate, clip volume, detach audio, duplicate / copy / paste: ./editor-clip-tools/ru.ts. */
     clipTools: clipToolsRu,
     /** Voice-over recorded in the editor: ./editor-voiceover/ru.ts. */
@@ -5132,6 +5135,8 @@ export const ru: Dictionary = {
     looks: looksRu,
     /** Advanced colour, masks and silence removal: ./editor-parity2/ru.ts. */
     parity2: parity2Ru,
+    /** Effects pack, clip animations, apply to all cuts, beats: ./editor-parity2b/ru.ts. */
+    parity2b: parity2bRu,
     fx: fxRu,
     title: "Редактор",
     subtitle: "Обрезайте, делите, ускоряйте и замедляйте видео и добавляйте на них текст.",
@@ -5332,6 +5337,12 @@ export const ru: Dictionary = {
       project_deleted: "Проект удалён до начала этого экспорта.",
       invalid_frame: "Этого размера нет среди форматов экспорта, поэтому ничего не отрендерено. Выберите размер заново и экспортируйте.",
       frame_off: "Экспорт в других размерах отключён на сервере, поэтому ничего не отрендерено. Экспортируйте в размере проекта или попробуйте позже.",
+      hires_off: "Экспорт в 1440p и 4K отключён на сервере, поэтому ничего не отрендерено, а кредиты возвращены.",
+      credits_released: "Кредиты, зарезервированные для этого экспорта, вернулись до его начала, поэтому ничего не отрендерено. Экспортируйте снова, чтобы зарезервировать их заново.",
+      hires_fps: "Экспорт в 4K возможен не больше чем с 30 кадрами в секунду, а эта версия быстрее, поэтому ничего не отрендерено, а кредиты возвращены.",
+      hires_needs_paid_export: "Этот проект больше 1080p, а экспорт больше 1080p платный, поэтому ничего не отрендерено. Экспортируйте его в платном размере или установите 1080p или меньше.",
+      hires_speed_curve: "Видео с кривой скорости пока нельзя экспортировать в 1440p или 4K, поэтому ничего не отрендерено, а кредиты возвращены.",
+      hires_length_mismatch: "Видео получилось длиннее оплаченных минут, поэтому ничего не отрендерено, а кредиты возвращены. Экспортируйте ещё раз, чтобы получить новую цену.",
       other: "Экспорт не удался.",
     },
     exportRev: "Версия {rev}",
@@ -5377,6 +5388,15 @@ export const ru: Dictionary = {
       export_in_progress: "Экспорт уже выполняется. Дождитесь его окончания.",
       limit_reached: "Достигнуто максимальное число проектов в организации. Удалите один, чтобы начать новый.",
       daily_limit: "Достигнут дневной лимит бесплатных экспортов. Попробуйте завтра.",
+      not_on_sale: "Этот размер пока не продаётся. Выберите другой размер.",
+      price_changed: "Цена изменилась после вашего подтверждения. Проверьте новую цену и подтвердите снова.",
+      insufficient_credits: "Для этого экспорта не хватает кредитов. Пополните кредиты или выберите размер поменьше.",
+      hires_too_long: "Видео длиннее, чем допускает этот размер: 5 минут в 1440p, 3 минуты в 4K.",
+      quote_required: "Сначала подтвердите цену, затем экспортируйте.",
+      parallel_runs: "Все параллельные запуски вашего тарифа заняты. Дождитесь окончания одного из них или повысьте тариф.",
+      hires_fps: "Экспорт в 4K возможен не больше чем с 30 кадрами в секунду. Установите частоту 30 или ниже либо выберите 1440p.",
+      hires_speed_curve: "Видео с кривой скорости пока нельзя экспортировать в 1440p или 4K. Уберите кривую скорости или выберите 1080p или меньше.",
+      hires_needs_paid_export: "Этот проект больше 1080p, а экспорт больше 1080p платный. Экспортируйте его в платном размере или установите 1080p или меньше в «Формат экспорта».",
       clips_full: "В этом проекте уже максимум клипов. Сначала удалите один в редакторе.",
       sounds_full: "В этом проекте уже максимум звуков. Сначала удалите один в редакторе.",
       no_duration: "Длина этого файла пока неизвестна, поэтому добавить его нельзя. Попробуйте чуть позже.",

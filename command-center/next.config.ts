@@ -54,6 +54,8 @@ export const PUBLIC_PAGE_PATHS = [
   "/",
   "/studio",
   "/pricing",
+  // What is coming (lib/public-paths.ts ROADMAP_PATH).
+  "/roadmap",
   "/solutions",
   "/solutions/youtube-channels",
   "/solutions/creative-studio",

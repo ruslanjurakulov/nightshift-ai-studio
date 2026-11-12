@@ -43,7 +43,7 @@ export const characterStudioEn = {
     heading: "Model",
     hint: "Each model has its own price for your clip. Switching changes the cost above.",
     keepsSound: "Keeps your clip's own sound.",
-    soundPutBack: "Your clip's own sound is put back afterwards.",
+    noSound: "No sound: this model does not keep your clip's own sound.",
     ownClipsOnly: "Only for clips you made here in the last 30 days: this model refuses real people's faces.",
     pictures: "Up to {n} pictures.",
     notOnSale: "Not on sale yet",

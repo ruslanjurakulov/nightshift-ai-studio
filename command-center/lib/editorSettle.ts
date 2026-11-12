@@ -17,8 +17,11 @@
  * touches a clip that fits.
  */
 import {
+  FX_LARGE_XFADE_MAX,
+  FX_NAMES,
   INTERP_SECONDS_PER_FRAME,
   XFADE_LARGE_ZOOM_MAX,
+  fitClipAnims,
   layout,
   lookSeconds,
   ms,
@@ -49,7 +52,9 @@ export type SettleChange =
   | { kind: "zoom"; clip: number; max: number }
   | { kind: "speed"; clip: number; max: number }
   | { kind: "look"; clip: number }
-  | { kind: "mask"; clip: number };
+  | { kind: "mask"; clip: number }
+  | { kind: "fxLarge"; clip: number }
+  | { kind: "anim"; clip: number };
 
 function drop(c: VideoClip, ...keys: (keyof VideoClip)[]): VideoClip {
   const out = { ...c };
@@ -119,13 +124,29 @@ export function settleAll(
   previous?: EditorModel,
 ): { model: EditorModel; changes: SettleChange[] } {
   const hasLimits =
-    model.clips.some((c) => c.reverse || c.interpolate || c.stabilize || c.speed > 1 || c.color || c.mask) ||
+    model.clips.some(
+      (c) => c.reverse || c.interpolate || c.stabilize || c.speed > 1 || c.color || c.mask || c.fx || c.anim_in || c.anim_out,
+    ) ||
     Boolean(model.shapes?.length);
   const large = isLargeFrame(model);
   if (!hasLimits && !large) return { model, changes: [] };
   const changes: SettleChange[] = [];
   let m = model;
   const number = (id: string) => m.clips.findIndex((c) => c.id === id) + 1;
+
+  // 0. an entrance or exit longer than half its clip (after a trim or a speed change) is held to half of it, and
+  //    dropped under ANIM_MIN_S (lib/editor.ts fitClipAnims, as a split does); again at the end (step 6), since
+  //    step 1 can shorten a backwards clip
+  const fitAnims = () => {
+    for (const c of [...m.clips]) {
+      const fitted = fitClipAnims(c);
+      if (fitted === c) continue;
+      m = put(m, c.id, fitted);
+      if (!changes.some((x) => x.kind === "anim" && x.clip === number(c.id)))
+        changes.push({ kind: "anim", clip: number(c.id) });
+    }
+  };
+  fitAnims();
 
   // 1. a backwards part is shortened to what the frame size lets it hold
   for (const c of [...m.clips]) {
@@ -156,7 +177,15 @@ export function settleAll(
   // 2a. in such a frame a mask is not offered on a cross-faded clip, and a masked clip zooms at most the cap
   if (large)
     for (const c of [...m.clips]) {
-      const x = m.clips.find((k) => k.id === c.id)!;
+      let x = m.clips.find((k) => k.id === c.id)!;
+      // ... and at most FX_LARGE_XFADE_MAX effects of the pack: the strongest stays
+      const on = FX_NAMES.filter((k) => (x.fx?.[k] ?? 0) > 0);
+      if (on.length > FX_LARGE_XFADE_MAX && isCrossfaded(m, c.id)) {
+        const keep = [...on].sort((a, b) => (x.fx![b] ?? 0) - (x.fx![a] ?? 0)).slice(0, FX_LARGE_XFADE_MAX);
+        m = put(m, c.id, { ...x, fx: Object.fromEntries(keep.map((k) => [k, x.fx![k]])) });
+        changes.push({ kind: "fxLarge", clip: number(c.id) });
+        x = m.clips.find((k) => k.id === c.id)!;
+      }
       if (!x.mask) continue;
       if (isCrossfaded(m, c.id)) {
         m = put(m, c.id, drop(x, "mask"));
@@ -238,7 +267,11 @@ export function settleAll(
     if (!worst) break;
     const x = m.clips.find((k) => k.id === worst!.id)!;
     changes.push({ kind: "look", clip: number(worst.id) });
-    m = put(m, worst.id, drop(x, "color", "mask"));
+    // a fade costs nothing: only a slide or a zoom goes with the colour, mask and effects
+    const moves = (["in", "out"] as const).flatMap((s) =>
+      x[`anim_${s}`] && x[`anim_${s}`] !== "fade" ? ([`anim_${s}`, `anim_${s}_s`] as const) : [],
+    );
+    m = put(m, worst.id, drop(x, "color", "mask", "fx", ...moves));
   }
 
   // 5. shapes that no longer fit the export's memory or time (another frame size, a shorter timeline) are made
@@ -261,6 +294,9 @@ export function settleAll(
     changes.push({ kind: "shapeRemoved", shape: list.length });
     void gone;
   }
+
+  // 6. what steps 1-5 shortened keeps its animations inside it
+  fitAnims();
 
   return changes.length ? { model: m, changes } : { model, changes: [] };
 }

@@ -316,7 +316,7 @@ export function CharacterStudio({
                         {f.name} <span className="cs-small">({f.maker})</span>
                       </span>
                       {line ? <span className="cs-small" data-testid={`cs-price-${m}`}>{line}</span> : null}
-                      <span className="cs-small">{f.keepsSound ? t.model.keepsSound : t.model.soundPutBack}</span>
+                      <span className="cs-small">{f.keepsSound ? t.model.keepsSound : t.model.noSound}</span>
                       {f.ownClipsOnly ? <span className="cs-small">{t.model.ownClipsOnly}</span> : null}
                       <span className="cs-small">{fmt(t.model.pictures, { n: f.maxPictures })}</span>
                     </span>

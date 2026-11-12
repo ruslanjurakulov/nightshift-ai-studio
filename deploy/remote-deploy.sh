@@ -28,6 +28,9 @@
 #   NIGHTSHIFT_MARKETING_ENV=on   optional, own section for the brand-channel poster
 #   KEY=value                     (variable NIGHTSHIFT_MARKETING_WORKER): one line per
 #   ...                           key in deploy/.env.marketing.example
+#   NIGHTSHIFT_BRAND_SCAN_ENV=on  optional, own section for the brand scan worker
+#   KEY=value                     (variable NIGHTSHIFT_ADS_BRAND_SCAN): one line per
+#   ...                           key in deploy/.env.brandscan.example
 #   (sections may come in any order after the web lines; each marker once)
 #
 # What it does, and refuses:
@@ -43,8 +46,9 @@
 #      (600) — without one, that file is deleted. The notify and e-mail
 #      sections are checked the same way and go to /opt/nightshift/.env.notify
 #      and .env.email (600), each its own file, never the worker's; so does the
-#      operator-bot section (/opt/nightshift/.env.operator) and the marketing
-#      poster's (/opt/nightshift/.env.marketing);
+#      operator-bot section (/opt/nightshift/.env.operator), the marketing
+#      poster's (/opt/nightshift/.env.marketing) and the brand scan worker's
+#      (/opt/nightshift/.env.brandscan);
 #   5. checks out exactly that commit on the local `main` branch, runs
 #      `docker compose up -d --build --remove-orphans web caddy`, and waits for
 #      `web` to report healthy;
@@ -59,11 +63,14 @@
 #      does the operator-bot (tools/operator_bot_service.py: it long-polls
 #      Telegram and runs the alert pass, no port, no Caddy route), and so does
 #      the marketing-worker (tools/marketing_worker.py: drafts and sends the
-#      brand channel's approved posts; off unless its section is sent);
+#      brand channel's approved posts; off unless its section is sent), and so
+#      does the brand-scan-worker (tools/brand_scan_worker.py: the Ads Factory's
+#      DNS checks and brand scans; no port, no Caddy route);
 #   7. last, loads deploy/Caddyfile into the running Caddy without a restart
 #      (a bind-mounted file that changes does not make compose recreate it),
-#      but ONLY the exact file whose sha256 is pinned below
-#      (CADDYFILE_APPROVED_SHA256): any other Caddyfile is refused and Caddy
+#      but ONLY the exact file whose sha256 is pinned in CADDYFILE_APPROVED_SHA256
+#      as the DEPLOYED commit's copy of this script has it (read from that
+#      commit, not from the copy now running): any other Caddyfile is refused and Caddy
 #      keeps its config. Then it checks the headers Caddy really sends and puts
 #      the previous config back if anything is off (see "Caddy" below and
 #      docs/DEPLOY_AX42.md).
@@ -82,6 +89,7 @@
 #   NIGHTSHIFT_EMAIL_ENV_FILE  the e-mail worker's     (/opt/nightshift/.env.email)
 #   NIGHTSHIFT_OPERATOR_ENV_FILE the operator bot's    (/opt/nightshift/.env.operator)
 #   NIGHTSHIFT_MARKETING_ENV_FILE the marketing poster's (/opt/nightshift/.env.marketing)
+#   NIGHTSHIFT_BRANDSCAN_ENV_FILE the brand scan worker's (/opt/nightshift/.env.brandscan)
 #   NIGHTSHIFT_LOCK_FILE      one deploy at a time     (/opt/nightshift/.deploy.lock)
 #   NIGHTSHIFT_DOCKER         docker binary            (docker)
 #   NIGHTSHIFT_HEALTH_TIMEOUT seconds to wait for web  (420)
@@ -111,6 +119,7 @@ NOTIFY_ENV_FILE="${NIGHTSHIFT_NOTIFY_ENV_FILE:-/opt/nightshift/.env.notify}"
 EMAIL_ENV_FILE="${NIGHTSHIFT_EMAIL_ENV_FILE:-/opt/nightshift/.env.email}"
 OPERATOR_ENV_FILE="${NIGHTSHIFT_OPERATOR_ENV_FILE:-/opt/nightshift/.env.operator}"
 MARKETING_ENV_FILE="${NIGHTSHIFT_MARKETING_ENV_FILE:-/opt/nightshift/.env.marketing}"
+BRANDSCAN_ENV_FILE="${NIGHTSHIFT_BRANDSCAN_ENV_FILE:-/opt/nightshift/.env.brandscan}"
 LOCK_FILE="${NIGHTSHIFT_LOCK_FILE:-/opt/nightshift/.deploy.lock}"
 DOCKER="${NIGHTSHIFT_DOCKER:-docker}"
 HEALTH_TIMEOUT="${NIGHTSHIFT_HEALTH_TIMEOUT:-420}"
@@ -130,6 +139,7 @@ NOTIFY_MARKER=NIGHTSHIFT_NOTIFY_ENV=on
 EMAIL_MARKER=NIGHTSHIFT_EMAIL_ENV=on
 OPERATOR_MARKER=NIGHTSHIFT_OPERATOR_ENV=on
 MARKETING_MARKER=NIGHTSHIFT_MARKETING_ENV=on
+BRANDSCAN_MARKER=NIGHTSHIFT_BRAND_SCAN_ENV=on
 # The per-channel YouTube tokens: the one family of worker keys that is not
 # listed in .env.worker.example, because each channel brings its own name.
 WORKER_TOKEN_KEY='^CHRONOS_YT_TOKEN_[A-Z0-9_]+$'
@@ -142,6 +152,8 @@ EMAIL_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY RESEND_API_KEY NIGHTSHIFT
 OPERATOR_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID)
 # The marketing poster's file also lists a key that may be empty (NIGHTSHIFT_MARKETING_POSTS: empty = the worker idles).
 MARKETING_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY TELEGRAM_CHANNEL_BOT_TOKEN MARKETING_TELEGRAM_CHAT NOTIFY_APP_ORIGIN)
+# The brand scan worker's switch travels in its own file and is the reason the section exists: it must say `on`.
+BRANDSCAN_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY NIGHTSHIFT_ADS_BRAND_SCAN)
 # Mirrors the ${VAR:?} guards in docker-compose.yml: without these the stack
 # either refuses to start or builds a dashboard that reads "NOT CONFIGURED".
 REQUIRED_KEYS=(DOMAIN ACME_EMAIL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY)
@@ -200,14 +212,15 @@ compose() {
   # the interpolation reads, including under a test override; WORKER_ENV_FILE
   # does the same for the worker's, NOTIFY_ENV_FILE and EMAIL_ENV_FILE for the
   # notify and e-mail workers', OPERATOR_ENV_FILE for the operator bot,
-  # MARKETING_ENV_FILE for the marketing poster. The
-  # worker, notify, email, operator and marketing profiles are always active so that
+  # MARKETING_ENV_FILE for the marketing poster, BRANDSCAN_ENV_FILE for the brand scan worker. The
+  # worker, notify, email, operator, marketing and brandscan profiles are always active so that
   # compose knows those services (and --remove-orphans never mistakes them for
   # orphans); services are named on every `up`.
   WEB_ENV_FILE="$ENV_FILE" WORKER_ENV_FILE="$WORKER_ENV_FILE" \
     NOTIFY_ENV_FILE="$NOTIFY_ENV_FILE" EMAIL_ENV_FILE="$EMAIL_ENV_FILE" \
-    OPERATOR_ENV_FILE="$OPERATOR_ENV_FILE" MARKETING_ENV_FILE="$MARKETING_ENV_FILE" "$DOCKER" compose \
-    --profile worker --profile notify --profile email --profile operator --profile marketing --env-file "$ENV_FILE" -f "$APP_DIR/deploy/docker-compose.yml" "$@"
+    OPERATOR_ENV_FILE="$OPERATOR_ENV_FILE" MARKETING_ENV_FILE="$MARKETING_ENV_FILE" BRANDSCAN_ENV_FILE="$BRANDSCAN_ENV_FILE" "$DOCKER" compose \
+    --profile worker --profile notify --profile email --profile operator --profile marketing --profile brandscan \
+    --env-file "$ENV_FILE" -f "$APP_DIR/deploy/docker-compose.yml" "$@"
 }
 
 # Checks the lines of one section against the KEY= lines of an example file.
@@ -310,8 +323,25 @@ write_env() {
 # a matcher that skips a path. A person reviewing the Caddyfile does, and
 # updates this hash in the same PR:
 #     sha256sum deploy/Caddyfile
-# tests/test_deploy_self_host.py fails until the two agree. The environment
-# override is for the tests; sshd does not pass client environment.
+# tests/test_deploy_self_host.py fails until the two agree.
+#
+# WHICH COPY OF THIS LINE COUNTS. bash runs the copy of this script that was on
+# the server BEFORE the checkout (main() is parsed whole first), so the value
+# below, as the running copy has it, is the PREVIOUS commit's pin: a PR that
+# changed the Caddyfile and this line together used to fail its first deploy and
+# load on the next one. So caddy_apply reads the pin from the deployed commit's
+# own deploy/remote-deploy.sh (`git show <sha>:deploy/remote-deploy.sh`, this
+# exact line, exactly once), never from the running copy, and the new Caddyfile
+# loads in the same run. That is no weaker: the commit is already proven to be on
+# origin/main (step 2), the Caddyfile hashed is that commit's, and the pin and the
+# Caddyfile change in the same reviewed diff. The pin was never a secret; it is a
+# tripwire that makes a Caddyfile change impossible to land without a reviewer
+# seeing both lines change together. A malicious Caddyfile with its own pin edit
+# passes the gate exactly as it did before (a deploy later), so the review of the
+# PR is the control, not this hash. The environment override
+# NIGHTSHIFT_CADDYFILE_APPROVED_SHA256 still wins when set (tests); sshd does not
+# pass client environment, so the key holder cannot set it.
+# shellcheck disable=SC2034  # data, not read here: caddy_pin_of reads this line from the deployed commit
 CADDYFILE_APPROVED_SHA256="${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-37fdde60fd271dee054c02b6bfa5f6ff18847646deee0d308f63c2fa9080dd13}"
 
 # This is the CONTRACT: what Caddy must keep sending. It mirrors the `header`
@@ -510,30 +540,63 @@ caddy_rollback() {
   die "the previous config could not be verified either (see the lines above: is Caddy or the app answering on 127.0.0.1:${CADDY_VERIFY_PORT}?). On the server: dc ps, dc logs --tail 100 caddy"
 }
 
+# The pin the deployed commit carries: its deploy/remote-deploy.sh's
+# CADDYFILE_APPROVED_SHA256 line, exactly that shape, exactly once. Prints the
+# 64 hex characters, or nothing (no such file, no such line, or more than one).
+#   caddy_pin_of <commit>
+caddy_pin_of() {
+  local sha="$1" text pins
+  text="$(git -C "$APP_DIR" show "${sha}:deploy/remote-deploy.sh" 2>/dev/null)" || return 0
+  pins="$(sed -nE 's/^CADDYFILE_APPROVED_SHA256="\$\{NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-([0-9a-f]{64})\}"$/\1/p' <<<"$text")"
+  [[ "$pins" =~ ^[0-9a-f]{64}$ ]] && printf '%s' "$pins"
+  return 0
+}
+
 # The step. Runs after the worker steps, so a worker that fails to start ends
 # the deploy before this point and the Caddyfile is not reloaded that time.
 # Never leaves Caddy without a working config: the pinned hash, validate and
 # the contract guard come before anything is loaded, reload is atomic (a config
 # that fails to load leaves the running one in place), and the check after it
 # decides whether the new file stays.
-#   caddy_apply <host>
+#   caddy_apply <host> <deployed commit>
 caddy_apply() {
-  local host="$1" new="$APP_DIR/deploy/Caddyfile" dir="$CADDY_STATE_DIR"
+  local host="$1" sha="$2" new="$APP_DIR/deploy/Caddyfile" dir="$CADDY_STATE_DIR" approved
   local loaded="$dir/.caddyfile.loaded" marker="$dir/.caddyfile.loaded.sha256" running="$dir/.caddy-running.json"
-  local newsha oldsha=none adapted dropped n up=0 snap
-  if [[ -L "$new" ]]; then die "caddy: deploy/Caddyfile is a symlink; refused, nothing was loaded"; fi
-  if [[ ! -f "$new" ]]; then log "caddy: this commit has no deploy/Caddyfile; nothing to load"; return 0; fi
+  local newsha oldsha=none adapted dropped n up=0 snap entry
+  # The Caddyfile is the deployed COMMIT's blob, like the pin (caddy_pin_of), never
+  # the working-tree file: no .gitattributes filter, eol conversion or server git
+  # setting can change the bytes between the commit and the hash. Its tree entry
+  # says what it is: none = nothing to load; a symlink (120000) could point
+  # anywhere and is refused; only a regular file (100644 / 100755) is read.
+  entry="$(git -C "$APP_DIR" ls-tree "$sha" -- deploy/Caddyfile 2>/dev/null)" \
+    || die "caddy: cannot read the tree of commit ${sha:0:12}; nothing was loaded"
+  if [[ -z "$entry" ]]; then log "caddy: this commit has no deploy/Caddyfile; nothing to load"; return 0; fi
+  case "${entry%% *}" in
+    120000) die "caddy: deploy/Caddyfile is a symlink; refused, nothing was loaded" ;;
+    100644 | 100755) ;;
+    *) die "caddy: deploy/Caddyfile is not a regular file in commit ${sha:0:12}; refused, nothing was loaded" ;;
+  esac
   # One copy, made once: the hash, validate, adapt, reload and the saved
   # rollback copy all use these very bytes, so the file cannot change between
-  # being approved and being loaded. A symlink could point anywhere: refused.
+  # being approved and being loaded.
   snap="$(mktemp "$dir/.caddyfile.XXXXXX")" || die "caddy: cannot create a temporary file in $dir"
   # shellcheck disable=SC2064  # expand $snap now
   trap "rm -f '$snap'" EXIT
-  cp "$new" "$snap" || die "caddy: cannot copy deploy/Caddyfile"
+  git -C "$APP_DIR" cat-file blob "${sha}:deploy/Caddyfile" >"$snap" || die "caddy: cannot read deploy/Caddyfile from commit ${sha:0:12}"
   newsha="$(sha256sum "$snap" | cut -d' ' -f1)"
-  if [[ "$newsha" != "$CADDYFILE_APPROVED_SHA256" ]]; then
-    die "caddy: deploy/Caddyfile changed (${newsha:0:12}, approved ${CADDYFILE_APPROVED_SHA256:0:12}); NOT validated, NOT loaded, Caddy keeps its config. Review it, then update CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh in the same PR"
+  # The deployed commit's own pin (see CADDYFILE_APPROVED_SHA256), unless the
+  # environment override is set.
+  if [[ -n "${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-}" ]]; then
+    approved="$NIGHTSHIFT_CADDYFILE_APPROVED_SHA256"
+  else
+    approved="$(caddy_pin_of "$sha")"
+    [[ -n "$approved" ]] \
+      || die "caddy: commit ${sha:0:12} has no single CADDYFILE_APPROVED_SHA256 line in deploy/remote-deploy.sh; the Caddyfile was NOT validated or loaded and Caddy keeps its config"
   fi
+  if [[ "$newsha" != "$approved" ]]; then
+    die "caddy: deploy/Caddyfile of commit ${sha:0:12} is ${newsha:0:12}, but that commit's deploy/remote-deploy.sh approves ${approved:0:12}; NOT validated, NOT loaded, Caddy keeps its config. Review the Caddyfile, then put \`sha256sum deploy/Caddyfile\` into CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh, in the same commit; it takes effect on that commit's own deploy"
+  fi
+  log "caddy: the Caddyfile matches the hash commit ${sha:0:12} approves (${approved:0:12})"
   if [[ -f "$marker" ]]; then oldsha="$(cat "$marker")"; fi
   # Reload is idempotent (Caddy answers "unchanged" for a config it already
   # runs) and the live check is the real test, so both always run; the hash
@@ -586,7 +649,7 @@ caddy_apply() {
   log "caddy: loaded and verified (${newsha:0:12}): one DENY, one SAMEORIGIN for our own frame, /auth and /api DENY, baseline headers present"
 }
 
-# One of the small services (notify-worker, email-worker, operator-bot, marketing-worker), switched by
+# One of the small services (notify-worker, email-worker, operator-bot, marketing-worker, brand-scan-worker), switched by
 # the presence of its section in the payload. Prints a state line as numbers
 # only, and the names of known phrases found in its log, never the log text.
 #   start_sender <service> <on|off> <env file> <GitHub variable> <words>
@@ -651,10 +714,10 @@ main() {
   # ── 3. Validate the env against the examples AT THAT COMMIT ────────────────
   # Read from git, not the working tree: a key added in the commit being
   # deployed is known before it is checked out.
-  # The payload is the web lines, then up to four sections, each opened by its
+  # The payload is the web lines, then up to six sections, each opened by its
   # marker line (once; a repeated marker is an unknown key and refused below).
-  local -a web_lines=() worker_lines=() notify_lines=() email_lines=() operator_lines=() marketing_lines=()
-  local worker=off notify=off email=off operator=off marketing=off line cur=web
+  local -a web_lines=() worker_lines=() notify_lines=() email_lines=() operator_lines=() marketing_lines=() brandscan_lines=()
+  local worker=off notify=off email=off operator=off marketing=off brandscan=off line cur=web
   for line in "${lines[@]}"; do
     if [[ "$worker" == off && "$line" == "$WORKER_MARKER" ]]; then
       worker=on cur=worker
@@ -676,12 +739,17 @@ main() {
       marketing=on cur=marketing
       continue
     fi
+    if [[ "$brandscan" == off && "$line" == "$BRANDSCAN_MARKER" ]]; then
+      brandscan=on cur=brandscan
+      continue
+    fi
     case "$cur" in
       worker) worker_lines+=("$line") ;;
       notify) notify_lines+=("$line") ;;
       email) email_lines+=("$line") ;;
       operator) operator_lines+=("$line") ;;
       marketing) marketing_lines+=("$line") ;;
+      brandscan) brandscan_lines+=("$line") ;;
       *) web_lines+=("$line") ;;
     esac
   done
@@ -690,7 +758,7 @@ main() {
   example="$(git show "${sha}:deploy/.env.web.example")" \
     || die "deploy/.env.web.example is missing at $sha"
   local -a problems=()
-  local nkeys=0 web_keys=0 worker_keys=0 notify_keys=0 email_keys=0 operator_keys=0 marketing_keys=0
+  local nkeys=0 web_keys=0 worker_keys=0 notify_keys=0 email_keys=0 operator_keys=0 marketing_keys=0 brandscan_keys=0
   local label="deploy/.env.web.example" section=web
   check_section "$example" "" "${REQUIRED_KEYS[*]}" "${web_lines[@]}"
   web_keys=$nkeys
@@ -729,6 +797,19 @@ main() {
     check_section "$example" "" "${MARKETING_REQUIRED_KEYS[*]}" "${marketing_lines[@]}"
     marketing_keys=$nkeys
   fi
+  if [[ "$brandscan" == on ]]; then
+    example="$(git show "${sha}:deploy/.env.brandscan.example" 2>/dev/null)" \
+      || die "a brand scan env was sent, but deploy/.env.brandscan.example is missing at $sha"
+    label="deploy/.env.brandscan.example" section=brandscan nkeys=0
+    check_section "$example" "" "${BRANDSCAN_REQUIRED_KEYS[*]}" "${brandscan_lines[@]}"
+    brandscan_keys=$nkeys
+    # The section exists only while the switch is `on`; any other value in it is a mistake, never a quiet "off".
+    for line in "${brandscan_lines[@]}"; do
+      if [[ "$line" == NIGHTSHIFT_ADS_BRAND_SCAN=* && "$line" != NIGHTSHIFT_ADS_BRAND_SCAN=on ]]; then
+        problems+=("NIGHTSHIFT_ADS_BRAND_SCAN must be exactly 'on' in the brand scan section")
+      fi
+    done
+  fi
   # The creative worker's switch is one of the worker keys (the repository
   # variable NIGHTSHIFT_CREATIVE_WORKER): exactly `on` starts it, anything
   # else (empty, off, a typo) leaves it off. No worker, no creative worker.
@@ -766,6 +847,10 @@ main() {
   if [[ "$marketing" == on ]]; then
     write_env "$MARKETING_ENV_FILE" "# Written by deploy/remote-deploy.sh from GitHub Actions (commit $sha)." "${marketing_lines[@]}"
     log "wrote $MARKETING_ENV_FILE ($marketing_keys keys, mode 600)"
+  fi
+  if [[ "$brandscan" == on ]]; then
+    write_env "$BRANDSCAN_ENV_FILE" "# Written by deploy/remote-deploy.sh from GitHub Actions (commit $sha)." "${brandscan_lines[@]}"
+    log "wrote $BRANDSCAN_ENV_FILE ($brandscan_keys keys, mode 600)"
   fi
 
   # ── 5. Check out exactly that commit ───────────────────────────────────────
@@ -895,6 +980,9 @@ main() {
   # The brand channel's poster. Present = the container exists (it still does nothing until
   # NIGHTSHIFT_MARKETING_POSTS is `on` in its own file); absent = removed, with its bot token.
   start_sender marketing-worker "$marketing" "$MARKETING_ENV_FILE" NIGHTSHIFT_MARKETING_WORKER "the marketing worker"
+  # The brand scan worker (Ads Factory, Phase 2). Present = it claims DNS checks and scans (a scan is sold only once the
+  # owner has set a price in the database); absent = removed, with its copy of the service key.
+  start_sender brand-scan-worker "$brandscan" "$BRANDSCAN_ENV_FILE" NIGHTSHIFT_ADS_BRAND_SCAN "the brand scan worker"
 
   # ── 9. Caddy ───────────────────────────────────────────────────────────────
   # Last, so a proxy problem never holds back the worker; it still fails the
@@ -903,13 +991,13 @@ main() {
   for line in "${web_lines[@]}"; do
     if [[ "$line" == DOMAIN=* ]]; then domain="${line#DOMAIN=}"; fi
   done
-  caddy_apply "${CADDY_VERIFY_HOST:-$domain}"
+  caddy_apply "${CADDY_VERIFY_HOST:-$domain}" "$sha"
 
   # Each build leaves the previous image dangling; a few of these a week fill
   # a disk. Only dangling images: nothing a container still uses.
   "$DOCKER" image prune -f >/dev/null 2>&1 || true
 
-  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; notify-worker $notify; email-worker $email; operator-bot $operator; marketing-worker $marketing"
+  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; notify-worker $notify; email-worker $email; operator-bot $operator; marketing-worker $marketing; brand-scan-worker $brandscan"
 }
 
 main "$@"

@@ -215,7 +215,11 @@ class KlingAdapter(HttpAdapter):
 
     * ``KLING_ACCESS_KEY`` + ``KLING_SECRET_KEY`` (or ``KLING_API_KEY`` as
       ``<access key>:<secret key>``) → a fresh HS256 JWT per request;
-    * ``KLING_API_KEY`` without a colon → a console API key, sent as is."""
+    * ``KLING_API_KEY`` without a colon → a console API key, sent as is.
+
+    Watermark: ``watermark_info`` is optional and off by default (it adds a second, marked copy,
+    ``watermark_url``); nothing read requires it, so it is not sent and the vendor's default output
+    (``url``) is stored as returned. https://kling.ai/document-api/api/video/3-0-omni/text-to-video/legacy"""
 
     key = "video.kling"
     key_env = ("KLING_API_KEY", "KLING_ACCESS_KEY", "KLING_SECRET_KEY")
@@ -683,7 +687,12 @@ class SeedanceAdapter(HttpAdapter):
     → ``status`` and ``content.video_url``. Settings ride as top-level body
     fields (``ratio``, ``duration``, ``resolution``, ``generate_audio``), the
     form byteplus-python-sdk-v2 sends and the docs recommend. International
-    region (owner decision D5); ``SEEDANCE_BASE_URL`` overrides it."""
+    region (owner decision D5); ``SEEDANCE_BASE_URL`` overrides it.
+
+    Watermark: ``watermark`` is optional, default ``false`` (an "AI Generated"
+    mark when true); the Acceptable Use Policy forbids removing identifiers but
+    does not require the mark, so it is not sent and the default applies.
+    https://docs.byteplus.com/en/docs/ModelArk/1520757"""
 
     key = "video.seedance"
     key_env = ("SEEDANCE_API_KEY", "ARK_API_KEY")
@@ -913,7 +922,11 @@ class WanAdapter(HttpAdapter):
     Host: the workspace host ``https://{WAN_WORKSPACE_ID}.ap-southeast-1.maas.aliyuncs.com``
     when ``WAN_WORKSPACE_ID`` is set; otherwise the shared
     ``dashscope-intl.aliyuncs.com``, which Alibaba put in maintenance mode on
-    2026-09-30 (still served, no new models)."""
+    2026-09-30 (still served, no new models).
+
+    Watermark: ``parameters.watermark`` is optional, default ``false`` ("AI
+    Generated" when true); nothing read requires it, so it is not sent.
+    https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference"""
 
     key = "video.wan"
     key_env = ("WAN_API_KEY", "DASHSCOPE_API_KEY")

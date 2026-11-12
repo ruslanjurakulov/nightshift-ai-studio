@@ -272,6 +272,26 @@ class SeedanceEdit(unittest.TestCase):
             a.poll(ProviderTask("video.seedance2_edit", "m", "cgt-1"))
 
 
+class Watermarks(unittest.TestCase):
+    """docs/AI_DISCLOSURE.md, "Vendor watermarks and provenance": both makers' optional marks are off by default and no clause requires
+    one, so nothing that switches a mark, and nothing that replaces a maker's label, is ever sent."""
+
+    def test_neither_body_switches_a_mark_or_replaces_a_label(self):
+        from tests.test_vendor_watermarks import provenance_offences, watermark_fields
+        a, s = kling([("POST", "/omni-video/", Resp(200, {"code": 0, "data": {"task_id": "T-1"}}))])
+        a.submit(req(), "kling-4.0", external_id="0b8f2c51-6f7c-4f1e-9a43-111111111111")
+        b, t = seedance([("POST", "/tasks", Resp(200, {"id": "cgt-1"}))])
+        b.submit(req(), "dreamina-seedance-2-5-260628")
+        for body in (s.calls[0][2]["json"], t.calls[0][2]["json"]):
+            self.assertEqual(list(watermark_fields(body)), [])
+            self.assertEqual(list(provenance_offences(body)), [])
+
+    def test_the_policy_table_names_both_adapters(self):
+        doc = (reg.SCHEMAS.parent / "docs" / "AI_DISCLOSURE.md").read_text(encoding="utf-8")
+        self.assertIn("`video.kling_omni`", doc)
+        self.assertIn("`video.seedance2_edit`", doc)
+
+
 class EveryAdapter(unittest.TestCase):
     def test_both_are_registered_and_serve_only_the_character_swap(self):
         for key in ("video.kling_omni", "video.seedance2_edit"):

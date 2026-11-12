@@ -25,7 +25,8 @@ Both are their makers' own first-party APIs, and both stay terms-gated in `schem
 | Poll | `GET /tasks?task_ids=<id>` | `GET …/tasks/<id>` |
 | Input | 3–30 s, 700–4553 px a side, ≤ 8,294,400 px, 24–60 fps, ≤ 300 MB | 4–30 s, ≥ 407,696 px, 24–60 fps, ≤ 200 MB |
 | Pictures | up to 10 | up to 30 |
-| Sound | keeps the clip's own (`audio: original`) | the worker puts the clip's own track back (ffmpeg, no re-encode); a failed re-mux fails the job |
+| Sound | keeps the clip's own (`audio: original`) | not kept: `generate_audio: false`, and the picker says "No sound" before anything is asked. The worker does not re-mux the source's track, because the vendor's file is stored byte for byte (its provenance and any mark stay: `docs/AI_DISCLOSURE.md`); adding the sound back as an editor track is a follow-up |
+| Watermark | optional mark off by default, no clause requires it: not sent (`docs/AI_DISCLOSURE.md`) | optional mark off by default, AUP forbids removing identifiers: not sent, file stored as it came |
 | Vendor price (per clip second) | $0.188 at 720p, $0.282 at 1080p (10 s: $1.88 / $2.82); output × 2 with a video input | $0.276 at 720p, $0.68 at 1080p (10 s: $2.76 / $6.80); (in + out) s × W × H × 24 / 1024 tokens, ESTIMATE (the minimum-token table was not read) |
 | Source | kling.ai/document-api/pricing/base/video | docs.byteplus.com/en/docs/ModelArk/1544106 |
 | Gate | `terms_review_required` (Terms of API Paid Service 3.3) | `written_consent_required` (Customer Agreement 6.2(1), Model Services 4.2.3) |
@@ -142,6 +143,7 @@ person, or for Seedance the account's own ModelArk output).
 - Performer verification for Seedance (BytePlus `asset://` ids), person detection to pick targets on a frame, the 480p draft
   preview, splitting clips longer than 30 s, Kling 4.0 Flash.
 - The docker-compose service and the deploy variables (release steps above).
+- Seedance results have no sound: putting the source's sound back as a separate editor track (never by rewriting the vendor's file).
 - Reading a library clip's `ai_label` provenance into a run's AI-disclosure signals (see "Consent and real people").
 
 ## Strings that need a native read

@@ -6,8 +6,8 @@ What would break:
 * no paid call on an input the vendor refuses (length, size, frame rate, too many pictures) or on words the screen refuses;
 * one job, one paid task: the task id is recorded BEFORE the first poll, a resumed job polls and never submits, a lost submit is never
   retried and the person is not charged;
-* the result goes into the library as 'generated' with the job in its provenance (the database's finish checks exactly that), with the
-  clip's own sound put back for a model that does not keep it (and the job fails rather than ship a silent clip);
+* the result goes into the library as 'generated' with the job in its provenance (the database's finish checks exactly that), stored as
+  the vendor made it (no re-mux or re-encode: its provenance and any mark stay, docs/AI_DISCLOSURE.md);
 * the signed input link is the web app's own (lib/server/media.ts): the same payload, the same HMAC, at most an hour.
 """
 
@@ -15,7 +15,6 @@ import base64
 import hashlib
 import hmac
 import os
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -93,12 +92,12 @@ class Tools:
     ffmpeg, ffprobe = "ffmpeg", "ffprobe"
 
 
-def worker(job, adapter, *, tools=Tools(), runner=None, store=None):
+def worker(job, adapter, *, tools=Tools(), store=None):
     tmp = Path(tempfile.mkdtemp())
     st = store or Store(job)
     w = cs.CharacterSwapWorker(st, worker_id="w-1", library=cs.Library(store=object(), media_root=tmp, tools=tools), scratch=tmp / "s",
                                origin=ORIGIN, secret=SECRET, registry=reg.registry(), build_adapter=lambda key: adapter,
-                               sleep=lambda s: None, runner=runner or (lambda *a, **k: subprocess.CompletedProcess(a, 0)))
+                               sleep=lambda s: None)
     return w, st, tmp
 
 
@@ -222,42 +221,22 @@ class RefusedBeforeAnyPaidCall(Patched):
             self._refused(claimed(), "input_unavailable")
 
 
-class Sound(Patched):
-    def test_seedance_gets_the_clips_own_sound_back_and_fails_rather_than_ship_a_silent_clip(self):
-        seen = []
+class VendorFileKept(Patched):
+    def test_the_vendors_file_is_stored_as_it_came_for_both_models(self):
+        """docs/AI_DISCLOSURE.md: no re-mux, no re-encode; the file the adapter fetched is the file the library stores."""
+        for model in ("kling-4.0-omni-edit", "seedance-2.5-edit"):
+            self.stored.clear()
+            a = Adapter(polls=[done()])
+            w, st, _ = worker(claimed(model=model, prompt="Replace the person with @Image 1"), a)
+            w.run_once()
+            self.assertEqual(st.calls[-1][0], "finish", model)
+            self.assertEqual(self.stored[0][0].name, "edited_0.mp4", model)
 
-        def runner(argv, **kw):
-            seen.append(argv)
-            Path(argv[-1]).write_bytes(b"\x00\x00\x00\x18ftypmp42")
-            return subprocess.CompletedProcess(argv, 0)
-
-        a = Adapter(polls=[done()])
-        w, st, _ = worker(claimed(model="seedance-2.5-edit", prompt="Replace the person with @Image 1"), a, runner=runner)
-        w.run_once()
-        self.assertEqual(st.calls[-1][0], "finish")
-        self.assertEqual(seen[0][seen[0].index("-map") + 1: seen[0].index("-map") + 4], ["0:v:0", "-map", "1:a:0"])
-        self.assertIn("-shortest", seen[0])
-        self.assertEqual(self.stored[0][0].name, "with_sound.mp4")
-
-        a = Adapter(polls=[done()])
-        w, st, _ = worker(claimed(model="seedance-2.5-edit", prompt="Replace the person with @Image 1"), a,
-                          runner=lambda argv, **kw: subprocess.CompletedProcess(argv, 1))
-        w.run_once()
-        self.assertEqual(st.calls[-1], ("fail", "audio_remux_failed"))
-
-    def test_kling_keeps_its_own_sound_and_a_silent_source_needs_nothing(self):
-        ran = []
-        a = Adapter(polls=[done()])
-        w, st, _ = worker(claimed(), a, runner=lambda argv, **kw: ran.append(argv))
-        w.run_once()
-        self.assertEqual(ran, [])
-        self.probe = {"fps": 30.0, "audio": False}
-        a = Adapter(polls=[done()])
-        w, st, _ = worker(claimed(model="seedance-2.5-edit", prompt="Replace the person with @Image 1"), a,
-                          runner=lambda argv, **kw: ran.append(argv))
-        w.run_once()
-        self.assertEqual(ran, [])
-        self.assertEqual(st.calls[-1][0], "finish")
+    def test_no_code_path_rewrites_the_vendors_file(self):
+        import inspect
+        src = inspect.getsource(cs)
+        for word in ("ffmpeg", "-c copy", "map_metadata", "remux"):
+            self.assertNotIn(word, src.split('"""', 2)[2], word)
 
 
 class DatabaseOutOfReach(Patched):

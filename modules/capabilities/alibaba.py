@@ -22,11 +22,13 @@ Settings the price depends on are never left to the vendor: the resolution and t
 clip are required and sent as given (the vendor's own resolution default is 1080P, the dearest tier),
 and Z-Image's ``prompt_extend`` (it doubles the price) is always sent, ``false``.
 
-WATERMARK: the vendor's default for HappyHorse is ON (a "HappyHorse" mark, lower right). The adapter
-sends ``watermark: false`` (``WATERMARK`` below), which is a vendor option the docs list. It is an
-owner decision that has not been taken: Model Studio's Product Terms §4.48.1(h)(ii) make the customer
-label outputs "if required under applicable laws", and removing the vendor's mark moves that duty onto
-Nightshift's own disclosure (modules/ai_disclosure). Flip ``WATERMARK`` to restore the vendor's mark.
+WATERMARK (read 2026-11-11): each maker's own default, never turned off. The Product Terms §4.48.1(h)(ii)
+put a labelling duty on the customer only "if required under applicable laws"; they do not require the
+visible mark. HappyHorse: ``watermark`` "Adds a 'Happy Horse' text watermark to the bottom-right corner",
+default ``true`` (happyhorse-text-to-video-api-reference, happyhorse-image-to-video-api-reference): ``true``
+is sent, its default, so the mark that is on by default is never turned off. Qwen-Image: ``watermark`` is
+optional, "Default: false" (qwen-image-generation-and-editing-api-reference): not sent, so it stays off.
+Z-Image lists no watermark field (z-image-api-reference). Outputs are stored byte for byte.
 
 RESULT LINKS: Alibaba's own FAQ says the storage domain "may change dynamically" and publishes no
 whitelist, and the Singapore bucket host is not shown on any page read (the examples are
@@ -150,7 +152,7 @@ class HappyHorseVideoAdapter(_DashScope):
     """HappyHorse 1.1 text-to-video and first-frame image-to-video.
 
     Sent every time: ``resolution`` (``480P`` | ``720P`` | ``1080P``), ``duration`` (3-15 whole
-    seconds), ``watermark`` (see the module note) and, for text-to-video, ``ratio``. A clip that
+    seconds), ``watermark: true`` (see the module note) and, for text-to-video, ``ratio``. A clip that
     names no resolution or duration is refused, because the vendor's defaults (1080P, 5 s) are
     priced differently from what the person was quoted. In image-to-video the clip keeps the
     picture's own shape ("preserving the input image's aspect ratio"), so a job that names a ratio
@@ -161,8 +163,6 @@ class HappyHorseVideoAdapter(_DashScope):
     key = "video.happyhorse"
     capabilities = (T2V, I2V)
     resolution_capabilities = (T2V, I2V)        # always sent
-    #: See the module note: an owner decision, recorded here so it is one line to change.
-    WATERMARK = False
     #: A picture goes inline as base64 when it is a local file; the docs cap a picture at 20 MB.
     MAX_IMAGE_BYTES = 15 * 1024 * 1024
     _RESOLUTIONS = ("480p", "720p", "1080p")
@@ -219,8 +219,11 @@ class HappyHorseVideoAdapter(_DashScope):
         if request.capability == I2V:
             inp["media"] = [{"type": "first_frame",
                              "url": self._picture(str(request.input_images[0]), max_bytes=self.MAX_IMAGE_BYTES)}]
+        # The maker's "HappyHorse" mark stays on: it is the vendor's default, never sent off.
+        # https://www.alibabacloud.com/help/en/model-studio/happyhorse-text-to-video-api-reference
+        # https://www.alibabacloud.com/help/en/model-studio/happyhorse-image-to-video-api-reference
         params: dict = {"resolution": request.resolution.upper(), "duration": int(request.duration_s),
-                        "watermark": bool(self.WATERMARK)}
+                        "watermark": True}
         if request.capability == T2V:
             params["ratio"] = request.aspect_ratio or "16:9"
         data = self.submit_json(f"{self.base_url}/api/v1/services/aigc/video-generation/video-synthesis",
@@ -265,7 +268,7 @@ class HappyHorseVideoAdapter(_DashScope):
 class DashScopeImageAdapter(_DashScope):
     """Qwen-Image 2.1 (Pro, Turbo) and Z-Image Turbo: text-to-image, and for Qwen picture editing.
 
-    One image per call. Qwen's ``watermark`` is sent ``false`` (its default; see the module note);
+    One image per call. Qwen's ``watermark`` is not sent (optional, default off; see the module note);
     its ``prompt_extend`` is left to the vendor (default on, not priced apart). Z-Image's price
     doubles with ``prompt_extend`` (docs: "Enabling prompt_extend increases cost"), so it is always
     sent, ``false``. ``size`` is sent only when the job names an aspect ratio, from the table below;
@@ -289,7 +292,6 @@ class DashScopeImageAdapter(_DashScope):
         "qwen-image-2.1-turbo": {"kind": "qwen", "sizes": QWEN_SIZES, "max_refs": 10},
         "z-image-turbo": {"kind": "zimage", "sizes": ZIMAGE_SIZES, "max_refs": 0},
     }
-    WATERMARK = False
 
     def _spec_problems(self, request: CapabilityRequest, vendor_model: str) -> List[str]:
         spec = self.SPECS.get(vendor_model)
@@ -336,9 +338,13 @@ class DashScopeImageAdapter(_DashScope):
             content += [{"image": self._picture(str(p), max_bytes=self.MAX_IMAGE_BYTES)} for p in request.input_images]
         content.append({"text": request.prompt.strip()})
         if spec["kind"] == "zimage":
+            # Z-Image documents no watermark field.
+            # https://www.alibabacloud.com/help/en/model-studio/z-image-api-reference
             params: dict = {"prompt_extend": False}
         else:
-            params = {"n": 1, "watermark": bool(self.WATERMARK)}
+            # Qwen's mark is optional and off by default: not sent, so the vendor's default applies.
+            # https://www.alibabacloud.com/help/en/model-studio/qwen-image-generation-and-editing-api-reference
+            params = {"n": 1}
         if request.aspect_ratio:
             params["size"] = spec["sizes"][request.aspect_ratio]
         body = {"model": vendor_model, "input": {"messages": [{"role": "user", "content": content}]},

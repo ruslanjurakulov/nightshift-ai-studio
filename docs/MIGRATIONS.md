@@ -554,6 +554,39 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
   frame; drops the overload, the list, the check and the three columns. Exported videos stay in the library.
 - **Review.** Needs the independent security review before merge, and a person reading the live two-argument `request_editor_export` hash first.
 
+## 1440p and 4K exports, sold by the started minute (0132)
+
+0132 (`0132_editor_hires_export.sql`, `docs/HIRES_EXPORT.md`) is **live on apply and sells nothing**: both prices are seeded NULL ("not on sale").
+It **adds** four nullable columns to `editor_exports` (`quoted_credits` = the charge, `held_credits` = the hold, `credit_ref`, `charged_credits`) and one
+CHECK (`editor_exports_hires_terms`: a frame above 1080p carries its quote, the hold is never below the charge, 300 s / 180 s at most, 4K at most
+30 fps), **replaces** 0129's CHECK `editor_exports_frame_shape` (ceiling
+2560x1440 → 3840x2160) and 0129's list `editor_export_frame(text)` (its five rows plus four paid ones, value for value `schemas/export_presets.json`),
+and **adds** one table (`editor_export_hires_prices`, one row, closed to every API role, changed in the SQL editor only, a change leaves a
+`security_events` row), a settling trigger on `editor_exports`, three internal functions, `quote_editor_export` and the four-argument
+`request_editor_export` (both granted to `authenticated` only). It **replaces** the two- and three-argument `request_editor_export` with 0054's /
+0129's bodies plus only the marked lines that refuse above 1080p (`hires_needs_paid_export`: a project whose own frame is bigger, or a paid frame
+of the list); an export up to 1080p is free and what it was. **Not behind the switch**: from apply, a project whose own frame is above 1080p is
+not exported free (0 such projects on 2026-11-11).
+
+- **The money.** The charge is the price per started minute × the minutes, with no `job_minimum` floor; the hold is the charge raised to
+  `job_minimum` (0133's rule). Hold at request (after every limit) via `creative_platform_reserve`, started at once; capture the charge when done
+  (the rest of the hold goes back), release when failed,
+  on every path that ends an export (one BEFORE UPDATE OF status trigger), once. A hold that is gone when the worker claims the export fails it
+  (`credits_released`) before any render. A held paid export takes one of the plan's parallel runs (`parallel_runs`).
+- **Drift guard.** Refuses (changes nothing) if the two- or three-argument `request_editor_export` is neither 0054's / 0129's body nor its own, if the list is
+  neither 0129's nor its own, or if any name it creates exists with another body. The last block asserts every body by md5, every grant, the
+  checks, the trigger, RLS and the price row.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'` (two constraints are dropped and added on `editor_exports`).
+- **Undo.** `docs/sql/rollback_0132_editor_hires_export.sql` (owner-applied; before 0129's rollback): refuses a body that is not 0132's and refuses
+  while a paid export is queued or rendering; puts 0129's list, 0054's and 0129's request bodies back byte for byte and 0129's frame check (NOT
+  VALID while a finished 4K row exists).
+- **Prices.** Set them only once `NIGHTSHIFT_HIRES_EXPORT` is on in the media worker (`docs/HIRES_EXPORT.md`, "The switch and the roll-out").
+- **Tests.** `tests/test_editor_hires_export_migration.py` (the file, pinned; the caps of SQL, Python and TypeScript compared),
+  `tests/security/test_sec_editor_hires_export.py` (the lab: grants, refusals, hold / capture / release, idempotency, NULL price, caps, a race,
+  the rollback). 0129's lab tests take 0132 off first where they replay 0129 (`sec_db.take_off_0132`).
+- **Numbering.** 0133 (the brand scan, #674) was merged while 0132 was in review; neither names anything of the other, and the two numbering
+  tests (`tests/test_ads_factory_migration.py`, `tests/test_series_plan_caps_migration.py`) list both.
+
 ## Saved agent plans (0130)
 
 0130 (`0130_agent_workflow_drafts.sql`, `docs/product/AGENT_NODE_BUILDER.md`) is **live on apply and dark**: it adds two tables
@@ -626,6 +659,25 @@ refuses `not_on_sale`. The worker (`tools/brand_scan_worker.py`) does nothing un
 - **Tests.** `tests/test_brand_scan_migration.py` (the file, pinned), `tests/security/test_sec_brand_scan.py` (the lab: roles, the price,
   the domain rule, holds / captures / releases, idempotency, caps and races, the result checks, accepting, the rollback).
 
+## The brand scan's follow-up (0134)
+
+0134 (`0134_brand_scan_followup.sql`, `docs/ADS_FACTORY.md` "Known limits (Phase 2)") **replaces one function**, 0133's
+`brand_scan_fail_locked(uuid, text)`. A failed scan no longer deletes a picture that a brand kit (`brand_kits.logo_asset_id`) or a product
+(`brand_product_images.asset_id`) references. The scan's pictures are locked FOR UPDATE first, so a kit or product write that is still
+open is waited for, and the delete is a statement of its own, which reads the kits and products after that wait.
+- **Number.** 0134: 0132 is taken by an open pull request (the hi-res export), and 0135 is reserved for character studio.
+- **Guards.** The body must be 0133's (`67e8ee83bde9ec4512a3d6135c9c07ee`) or 0134's own (`fd10914ccff5aa66264ab96265e59c38`, a replay).
+  The columns of 0131's tables that reference `media_assets` must be exactly those two, or the file refuses. The end state checks the
+  body, that no API role can execute it, that it is SECURITY DEFINER with a pinned search_path and has no overload, and that 0133's three
+  callers still reach it.
+- **Lock order.** It takes no advisory lock (0131's rule). The picture row locks come after the scan row lock its callers hold, the same
+  order `accept_brand_scan_fields` uses.
+- **No price.** It does not touch `brand_scan_settings`. The price is set at go-live, after the worker runs.
+- **Undo.** `docs/sql/rollback_0134_brand_scan_followup.sql` puts 0133's body back, byte for byte. Run it BEFORE 0133's rollback, which
+  refuses any body but 0133's.
+- **Tests.** `tests/test_brand_scan_followup_migration.py` (the file, pinned) and `tests/security/test_sec_brand_scan_followup.py`
+  (the lab: every failure path, each filter, a real concurrent kit write, the guards, a replay, the rollback chain). Lab tests that
+  replay or roll back 0133 take 0134 off first (`sec_db.take_off_0134`).
 ## Character Studio: priced character swaps, the consent trail, the gallery (0135)
 
 0135 (`0135_character_studio.sql`, `docs/CHARACTER_STUDIO.md`) is **live on apply and dark**: it **adds six tables** (`character_swap_models`,
@@ -634,8 +686,9 @@ internal functions, four member functions and four worker functions. It **replac
 `creative_jobs`. Nothing is **on sale** until the owner sets `character_swap_models.credits_per_usd` per model (seeded NULL): `request_character_swap`
 refuses `not_on_sale`. The worker (`tools/character_swap_worker.py`) does nothing unless `NIGHTSHIFT_CHARACTER_STUDIO=on`; the page and the routes are a 404.
 
-- **Number.** 0135: 0132 is reserved by open pull request #677 (the hi-res export) and 0134 by the brand-scan follow-up; none of them names anything
-  0135 adds, and 0135 names nothing of theirs. The numbering tests of 0127, 0131 and 0133 list 0135 as reviewed; 0135's own does not forbid later numbers.
+- **Number.** 0135, after 0132 (the hi-res export) and 0134 (the brand-scan follow-up): none of them names anything 0135 adds, and 0135 names nothing
+  of theirs (tests/test_character_studio_migration.py checks it). The numbering tests of 0127, 0131 and 0133 list 0135 as reviewed; 0135's own does
+  not forbid later numbers.
 - **Who may do what.** Members (viewer and up) read their organization's jobs and consents; any signed-in person reads the gallery; the models and the
   settings are closed to every API role. Four SECURITY DEFINER member functions to `authenticated` (quote any member; consent, request and cancel an
   editor), four worker functions to `service_role` only, the helpers to nobody. The samples script's service key may insert and update a sample row.

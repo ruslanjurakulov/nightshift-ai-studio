@@ -446,6 +446,54 @@ services:
     mem_limit: 256m
     logging: *default-logging
 
+  # Ads Factory, Phase 2, the brand scan (migrations 0133 and 0134, docs/ADS_FACTORY.md "Releasing Phase 2"):
+  # tools/brand_scan_worker.py claims the DNS TXT checks people asked for ("Check now") and the brand scans they paid
+  # for, reads the customer's own site (modules/brand_fetch.py: public addresses only, robots.txt, byte and time caps)
+  # and stores the logo and product pictures in the organization's media library.
+  # Its own profile, `brandscan`, started by deploy/remote-deploy.sh on every deploy while the GitHub variable
+  # NIGHTSHIFT_ADS_BRAND_SCAN is `on` (the SAME variable that shows the "Scan my site" panel), removed (with its env
+  # file) otherwise. With it running, nothing is sold until the owner sets brand_scan_settings.price_credits.
+  # Its OWN env file (/opt/nightshift/.env.brandscan, mode 600) holds exactly the names in
+  # deploy/.env.brandscan.example: the Supabase URL and service key (0133's worker functions) and its switch. Never a
+  # provider key or a bot token. It listens on no port and Caddy does not know it: it only calls out (customer sites
+  # over HTTPS, cloudflare-dns.com for the TXT record, Supabase). It shares the `media` volume with media-worker and
+  # creative-worker, as the same uid (1000), which owns it.
+  # Limits: one scan at a time, 30 s each; the logo's palette is read in a child process capped at 768 MB of address
+  # space (modules/brand_extract.py PALETTE_MEM_BYTES), so 1.5 GB leaves the worker itself room, and a small CPU weight
+  # keeps it behind the dashboard and the renders.
+  brand-scan-worker:
+    profiles: ["brandscan"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/brand_scan_worker.py"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${BRANDSCAN_ENV_FILE:-/opt/nightshift/.env.brandscan}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: brand-scan-01
+      NIGHTSHIFT_MEDIA_DIR: /app/media
+      HOME: /tmp
+    # A scan has a 30-second budget; on stop the loop ends after the one in flight (an unfinished one is failed by the
+    # next claim's sweep, and its hold released).
+    stop_grace_period: 45s
+    volumes:
+      - media:/app/media
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 128
+    mem_limit: 1536m
+    pids_limit: 256
+    logging: *default-logging
+
 volumes:
   caddy_data:
   caddy_config:

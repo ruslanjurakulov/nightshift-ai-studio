@@ -263,9 +263,11 @@ describe("BR-L-132: a public page has no .rsc form either", () => {
     const { default: nextConfig, PUBLIC_PAGE_PATHS } = await import("../next.config");
     const { SITEMAP_PATHS, LOGIN_PATH, SIGNUP_PATH, FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH, INVITE_NOTICE_PATH } = await import("@/lib/public-paths");
     const { DEV_PAGE_PATHS } = await import("@/lib/dev-pages");
+    const { UNCOUNTED_PAGE_PATHS } = await import("@/lib/site-pages");
     // The literal list in next.config.ts is exactly the public pages, plus the
-    // two flag-gated developer pages (which are in no sitemap while off).
-    expect([...PUBLIC_PAGE_PATHS].sort()).toEqual([...SITEMAP_PATHS, ...DEV_PAGE_PATHS, LOGIN_PATH, SIGNUP_PATH, FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH, INVITE_NOTICE_PATH].sort());
+    // two flag-gated developer pages (which are in no sitemap while off) and the
+    // listed pages the page-view counter does not count (/roadmap).
+    expect([...PUBLIC_PAGE_PATHS].sort()).toEqual([...SITEMAP_PATHS, ...UNCOUNTED_PAGE_PATHS, ...DEV_PAGE_PATHS, LOGIN_PATH, SIGNUP_PATH, FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH, INVITE_NOTICE_PATH].sort());
     const redirects = (await nextConfig.redirects?.()) ?? [];
     for (const path of PUBLIC_PAGE_PATHS) {
       const source = path === "/" ? "/index.rsc" : `${path}.rsc`;
