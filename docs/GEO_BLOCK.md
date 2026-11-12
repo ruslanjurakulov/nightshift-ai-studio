@@ -1,9 +1,11 @@
 # Blocking a model by country
 
 Some vendors forbid their model in some countries. A registry entry can say so with `blocked_countries`, and the
-Command Center then neither offers nor quotes nor starts that model for a request that comes from one of them. No
-migration: the database does not know where a request comes from, so the check lives in the web process, in front of
-every call that prices, holds or queues anything.
+Command Center then neither offers nor quotes nor starts that model, through its own routes, for a request that comes
+from one of them. The database does not know where a request comes from, so the check lives in the web process, in the
+routes and pickers listed below. **It is not in front of every call that prices, holds or queues anything:** a signed-in
+user can call the database functions directly and skip it (see "What it cannot do"). So a model with a list is kept off
+sale in the database itself (migration 0143) until the database refuses by country too.
 
 ## How a request's country is known
 
@@ -24,8 +26,9 @@ every call that prices, holds or queues anything.
 2. **Caddy -> web.** The `web` container publishes no port (`deploy/docker-compose.yml`), so Caddy is the only way in.
    `command-center/lib/geo/client-ip.ts` reads `X-Nightshift-Client-IP` and nothing else. On a Vercel deploy (the platform sets
    `VERCEL=1`) there is no Caddy and a visitor could send that header, so there the platform's own `x-vercel-forwarded-for` is read
-   instead. The two per-address rate limits that used to believe a client's `cf-connecting-ip` (the sign-up handle check and the
-   MCP client registration, ledger BR-L-192) read the same address now.
+   instead. The three per-address rate limits that used to believe a header a client can send (the sign-up handle check and the
+   MCP client registration, `cf-connecting-ip`; the friend-invite link's visit limit, `x-vercel-forwarded-for` then
+   `x-forwarded-for`; ledger BR-L-192) read the same address now.
 3. **Address -> country.** `command-center/data/geoip/country.bin.gz` is DB-IP's free "IP to Country Lite" database in a
    compact form (below). A private, local, shared, documentation or reserved address has no country.
 
@@ -37,7 +40,7 @@ every call that prices, holds or queues anything.
 | `POST /api/creative/quote`, `POST /api/creative/jobs` (a named model) | 451 `country_blocked`, before any database call |
 | the same routes, automatic choice (`auto`, `cheap`, `fast`, `quality`) | see below |
 | `POST /api/region-edit/quote`, `/run` | the model is not among the ones it may pick (`loadStudioModels`) |
-| `POST /api/workflows/[id]/quote`, `/run` | 451 `country_blocked` if ANY step names such a model, before the database prices or holds anything |
+| `POST /api/workflows/[id]/quote`, `/run` | 451 `country_blocked` if ANY step names such a model, before the database prices or holds anything. `/run` checks the steps of the version the body names: if the workflow reads as another version it answers 409 `workflow_changed` (an edit after the check raises the version, and the database then refuses the run, 0073); one it cannot read is refused, never passed on unchecked |
 | API and MCP | never offered: a model with a list must be `web_only` |
 
 **Automatic choice and failover.** The database picks a model (`route_model`, 0075) and keeps a failover list (0088) without
@@ -59,14 +62,38 @@ Everyone else (an unknown country included) takes the database's path untouched.
 price were confirmed at the start. Series and channel runs name no registry model in any request (they run the channel's configured
 pipeline), so there is nothing to check by country there. Character Studio has its own two models and its own table.
 
-## Unknown is allowed, and logged
+## Unknown: allowed for a visitor, refused for a broken setup
 
-No trusted address (local development, a request that did not come through Caddy), a private address, an address the
-table has no country for, or a table that cannot be read: the country is **unknown**, the model is offered and sold as
-usual, and the server logs `geo: the country is unknown (<reason>)`. The address itself is never logged. Refusing on
-unknown would refuse every visitor the day the table failed to load; that is a decision for the owner, not a default.
+The country can be unknown for four reasons, and they are not alike (`lib/server/geo.ts`, `unknownRefuses`):
+
+| Reason | What it means | Production (self-hosted) | Development, tests, Vercel |
+| :-- | :-- | :-- | :-- |
+| `not_in_table` | a public address DB-IP has no country for | allowed, logged | allowed, logged |
+| `no_address` | no `X-Nightshift-Client-IP`: the request did not come through Caddy, or Caddy did not write it | **refused and hidden** | allowed, logged |
+| `not_public` | a private or local peer: the same | **refused and hidden** | allowed, logged |
+| `no_table` | `data/geoip/country.bin.gz` cannot be read | **refused and hidden** | allowed, logged |
+
+"Refused and hidden" applies only to a model with a country list: it is left out of every picker, a named quote or create
+answers 451 `country_blocked`, a workflow with such a step is refused, and the automatic choice treats it as forbidden and
+chooses among the rest. Every other model is untouched. Production means `NODE_ENV=production` without `VERCEL=1`
+(`GEO_STRICT`). The server logs `geo: the country is unknown (<reason>)` either way, as an error when it refuses; the
+address itself is never logged.
+
+**At start.** `command-center/instrumentation.ts` runs `checkGeoTableAtStartup()` once when the server starts: when a model
+has a country list and the table cannot be read, it logs `GEO TABLE MISSING ...` as an error, so a broken image shows in the
+deploy's logs before the first visitor. The container's health check (`/login`) is not changed by it: the rest of the site
+works, and the listed models fail closed.
 
 ## What it cannot do
+
+- **The database does not check the country.** `create_creative_job` (0075), `start_workflow_run` (0073) and
+  `advance_workflow_run` (0074) are granted to `authenticated`, and the browser holds the anon key, the project URL and the
+  session (the cookie is readable by the page). A signed-in user can therefore call `supabase.rpc('create_creative_job', ...)`
+  directly and skip every check on this page. What stops that from mattering today: a model with a country list cannot be on
+  sale. The registry validator refuses `blocked_countries` without a `terms_gate` (which 0035 keeps off sale), and migration
+  0143 refuses `beta`/`ga` for such a row in the database (a CHECK, so the platform admin, the service role and a sync are all
+  refused). The fix that lets such a model be sold comes in a follow-up: either pass a server-attested country into these
+  functions, or revoke them from `authenticated` behind a server-only wrapper that the web calls after its check.
 
 - **A VPN, a proxy, Tor, a corporate network, or a roaming SIM** reads as the country it exits in. A person in a blocked
   country with a VPN abroad is let through; a person abroad on an exit in a blocked country is refused. Blocking by
@@ -90,11 +117,13 @@ list". `command-center/lib/geo/blocked.ts` carries the same lists as `BLOCKED_CO
 ### The row that carries a list today
 
 One registry row has a list: the hidden, terms-gated image model added by pull request #691. Its vendor's Geographic Use
-Policy (updated 2026-10-12) makes that model unavailable in India (section 2.2) and the vendor's whole service unavailable in
-its Restricted Territories (section 3). The row and `BLOCKED_COUNTRIES` carry the same 23 codes:
+Policy (<https://dev.meta.ai/legal/geographic-use-policy>, last updated 2026-11-09, read 2026-11-12) makes the vendor's
+whole service unavailable in its Restricted Territories (section 3). Its model-specific list (section 2.2) now names only two
+other models, in South Korea; India, barred for this model by the 2026-10-12 version, is no longer listed. The row and
+`BLOCKED_COUNTRIES` carry the same 22 codes:
 
 ```json
-"blocked_countries": ["AF", "BY", "CN", "CU", "EH", "ER", "ET", "HK", "HT", "IN", "IQ", "IR", "KH", "KP", "LY", "MM",
+"blocked_countries": ["AF", "BY", "CN", "CU", "EH", "ER", "ET", "HK", "HT", "IQ", "IR", "KH", "KP", "LY", "MM",
                       "MO", "NI", "PK", "RU", "SO", "SY", "VE"]
 ```
 
@@ -103,7 +132,6 @@ terms is the owner's decision (the row's terms note says what it cannot do).
 
 | Code | Territory | Why |
 | :-- | :-- | :-- |
-| IN | India | §2.2: the model is unavailable there |
 | AF BY KH CU ER ET HT IR IQ LY MM NI KP PK RU SO SY VE EH | Afghanistan, Belarus, Cambodia, Cuba, Eritrea, Ethiopia, Haiti, Iran, Iraq, Libya, Myanmar, Nicaragua, North Korea, Pakistan, Russia, Somalia, Syria, Venezuela, Western Sahara | §3 Restricted Territories |
 | CN HK MO | China, Hong Kong, Macau | §3 ("China/HK/Macau") |
 | (none) | Crimea, Donetsk, Luhansk | §3, but a country-level table cannot tell them from the rest of Ukraine (see the limits) |

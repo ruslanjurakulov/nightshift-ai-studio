@@ -4,8 +4,9 @@
  * On the self-hosted box nothing is in front of Caddy (the domain's A record points straight at the server), so the visitor is the
  * peer of Caddy's connection, and deploy/Caddyfile writes that address into ONE header on EVERY request it proxies, replacing
  * whatever the client sent: `X-Nightshift-Client-IP {remote_host}`. `web` publishes no port (deploy/docker-compose.yml), so Caddy is
- * the only way in. X-Forwarded-For, X-Real-IP, CF-Connecting-IP and True-Client-IP are NEVER read: a client can send any of them, and
- * Caddy passes them on (ledger BR-L-192).
+ * the only way in. X-Forwarded-For, X-Real-IP, CF-Connecting-IP and True-Client-IP are NEVER read. Caddy replaces X-Forwarded-For
+ * from a peer it does not trust (no trusted_proxies here, so every peer) with its own, so that header is not the client's; but a
+ * client can send the other three and Caddy passes them on unchanged (ledger BR-L-192). Only the one header Caddy writes is believed.
  *
  * On a Vercel deployment (the platform sets VERCEL=1) there is no Caddy: a client could send our header there, so it is not read,
  * and the platform's own `x-vercel-forwarded-for` is (Vercel sets it and a visitor cannot).

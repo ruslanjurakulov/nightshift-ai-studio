@@ -4,14 +4,16 @@
  * BLOCKED_COUNTRIES is the TWIN of `blocked_countries` in schemas/model_registry.json (the web image is built from command-center/
  * only and cannot read that file): tests/geo-block.test.ts fails when the two differ. The codes are ISO 3166-1 alpha-2, upper case.
  *
- * An unknown country (no trusted address, a private one, not in the table, no table) is NOT blocked: the caller logs it and allows.
- * That is the documented limit of blocking by address (a VPN, a proxy or a traveller's roaming SIM reads as another country).
+ * Here an unknown country (null) blocks nothing. The server decides what an unknown country means (lib/server/geo.ts): an address the
+ * table has no country for is allowed and logged; a broken setup (no trusted address, a private one, no table) refuses and hides
+ * every listed model in production. A VPN, a proxy or a traveller's roaming SIM reads as another country (the documented limit).
  */
 
 export const BLOCKED_COUNTRIES: Readonly<Record<string, readonly string[]>> = {
-  // Its vendor's Geographic Use Policy (updated 2026-10-12): India for this model (section 2.2), and the Restricted Territories of
-  // section 3. Crimea, Donetsk and Luhansk are on that list too, but a country-level table cannot tell them from the rest of Ukraine.
-  "grounded-image-1.0": ["AF", "BY", "CN", "CU", "EH", "ER", "ET", "HK", "HT", "IN", "IQ", "IR", "KH", "KP", "LY", "MM", "MO", "NI", "PK", "RU", "SO", "SY", "VE"],
+  // Its vendor's Geographic Use Policy (dev.meta.ai/legal/geographic-use-policy, updated 2026-11-09): the Restricted Territories of
+  // section 3 (section 2.2 no longer names this model; India was dropped). Crimea, Donetsk and Luhansk are on that list too, but a
+  // country-level table cannot tell them from the rest of Ukraine.
+  "grounded-image-1.0": ["AF", "BY", "CN", "CU", "EH", "ER", "ET", "HK", "HT", "IQ", "IR", "KH", "KP", "LY", "MM", "MO", "NI", "PK", "RU", "SO", "SY", "VE"],
 };
 
 export type BlockedMap = Readonly<Record<string, readonly string[]>>;

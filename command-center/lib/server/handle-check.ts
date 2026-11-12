@@ -51,9 +51,9 @@ export function handleCheckSize(): number {
 /**
  * The address a request came from, for this limit only (never stored, never
  * logged): the one header our own proxy writes on every request, or the
- * platform's own on a Vercel deploy (lib/geo/client-ip.ts). A header a visitor
- * can send (cf-connecting-ip, x-forwarded-for, x-real-ip) is never read: on the
- * self-hosted box Caddy passes those on as sent (ledger BR-L-192).
+ * platform's own on a Vercel deploy (lib/geo/client-ip.ts). Nothing else is
+ * read: a visitor can send cf-connecting-ip or x-real-ip and Caddy passes them on
+ * as sent; x-forwarded-for is Caddy's, but is not the header we rely on (BR-L-192).
  */
 export function handleCheckKey(headers: Headers, onVercel: boolean = ON_VERCEL): string {
   return clientAddressKey(headers, onVercel).slice(0, 64);

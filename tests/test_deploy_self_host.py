@@ -35,7 +35,8 @@ BUILD_ONLY = {"NEXT_OUTPUT", "NODE_ENV"}
 # intended state, not a gap.
 # VERCEL is "1" on Vercel's own deploys only: command-center/lib/geo/client-ip.ts reads it to know that no Caddy is in
 # front there (so the header Caddy writes is not believed, and the platform's own is). Unset on the box is the intended state.
-PLATFORM_PROVIDED = {"VERCEL_PROJECT_PRODUCTION_URL", "VERCEL"}
+# NEXT_RUNTIME is set by Next.js itself ("nodejs" or "edge") when it runs instrumentation.ts, on every host.
+PLATFORM_PROVIDED = {"VERCEL_PROJECT_PRODUCTION_URL", "VERCEL", "NEXT_RUNTIME"}
 
 DOT_ACCESS = re.compile(r"process\.env\.([A-Z][A-Z0-9_]*)")
 BRACKET_ACCESS = re.compile(r"""process\.env\[\s*["']([A-Z][A-Z0-9_]*)["']\s*\]""")

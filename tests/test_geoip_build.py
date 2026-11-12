@@ -153,7 +153,22 @@ class RegistryField(unittest.TestCase):
 
     def test_a_web_only_model_takes_a_list_of_codes(self):
         self.web_only["blocked_countries"] = ["IN", "PK"]
+        self.web_only["terms_gate"] = "terms_review_required"
         self.assertEqual(self.reg.validate(self.doc), [])
+
+    def test_a_model_with_a_country_list_needs_a_terms_gate(self):
+        # The database cannot check the country yet (docs/GEO_BLOCK.md): such a model must stay off sale.
+        self.web_only["blocked_countries"] = ["PK"]
+        self.web_only["terms_gate"] = None
+        self.assertTrue(any("blocked_countries needs a terms_gate" in e for e in self.reg.validate(self.doc)))
+
+    def test_every_model_in_the_file_with_a_country_list_is_kept_off_sale(self):
+        listed = [m for m in self.doc["models"] if m.get("blocked_countries")]
+        self.assertTrue(listed)
+        for m in listed:
+            self.assertTrue(m.get("terms_gate"), m["id"])      # 0035's terms_before_sale keeps it hidden
+        mig = (ROOT / "supabase" / "migrations" / "0143_country_block_before_sale.sql").read_text(encoding="utf-8")
+        self.assertIn("add constraint model_registry_countries_before_sale", mig)   # and 0143 refuses beta/ga for it
 
     def test_a_model_the_api_sells_cannot_be_blocked_by_country(self):
         self.any["blocked_countries"] = ["IN"]

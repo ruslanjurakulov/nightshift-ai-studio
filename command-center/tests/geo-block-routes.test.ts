@@ -233,6 +233,31 @@ describe("a workflow", () => {
   });
 });
 
+describe("a workflow run checks the version that will run", () => {
+  it("refuses when the version read is not the one the body names, before the database is called (an edit in between)", async () => {
+    // The body confirms version 1; the workflow now reads as version 2 with a blocked step. Checking version 2's steps and passing
+    // version 1 on would be safe (the database refuses it), but checking version 1's steps and starting version 2 must never happen.
+    h.workflow = { ...workflow(["pic-other", "pic-third"]), version: 2 };
+    const res = await wfRun({ "x-nightshift-client-ip": US });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "workflow_changed" });
+    expect(calls("start_workflow_run")).toBe(0);
+  });
+
+  it("passes the version it checked to the database, which starts only that one", async () => {
+    h.workflow = workflow(["pic-other", "pic-third"]);
+    await wfRun({ "x-nightshift-client-ip": IN });
+    expect(lastArgs("start_workflow_run")).toMatchObject({ p_version: 1, p_workflow: WF });
+  });
+
+  it("refuses a workflow it cannot read instead of passing it on unchecked", async () => {
+    h.workflow = null;
+    const res = await wfRun({ "x-nightshift-client-ip": US });
+    expect(res.status).toBe(404);
+    expect(calls("start_workflow_run")).toBe(0);
+  });
+});
+
 describe("the Studio's picker", () => {
   it("hides the model where it is refused, and shows it elsewhere or when the country is unknown", async () => {
     h.headers = new Headers({ "x-nightshift-client-ip": IN });

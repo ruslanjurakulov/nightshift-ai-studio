@@ -20,7 +20,10 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 import { isPublicIp, lookupCountry, parseGeoTable, parseIp } from "@/lib/geo/table";
 import { CLIENT_IP_HEADER, clientAddressKey, trustedClientIp } from "@/lib/geo/client-ip";
 import { BLOCKED_COUNTRIES, blockedCountriesOf, isBlockedIn, withoutBlocked } from "@/lib/geo/blocked";
-import { GEO_TABLE_PATH, geoRefusal, hideBlockedModels, loadGeoTable, readCountry } from "@/lib/server/geo";
+import {
+  GEO_STRICT, GEO_TABLE_PATH, blockedModelsHere, checkGeoTableAtStartup, geoRefusal, geoRefusalAny, hideBlockedModels, loadGeoTable,
+  readCountry, unknownRefuses,
+} from "@/lib/server/geo";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
 import { uz } from "@/lib/i18n/uz";
@@ -168,6 +171,72 @@ describe("the refusal and the picker", () => {
     expect(uz.creative.errors.country_blocked).toContain("Roʻyxatdan");
     expect(uz.creative.errors.country_blocked).not.toMatch(/['‘’`]/);
     expect(en.creative.errors.country_blocked).not.toMatch(/'/);
+  });
+});
+
+describe("a broken setup in production fails closed", () => {
+  // Each reason, as readCountry gives it: no_address (no trusted header), not_public (a private peer: not through Caddy),
+  // no_table (the image lost its table), not_in_table (a public address DB-IP has no country for: a visitor, not the setup).
+  const cases: Array<[string, Record<string, string>, () => typeof TABLE | null]> = [
+    ["no_address", {}, () => TABLE],
+    ["no_address", { "x-forwarded-for": "6.1.2.3", "cf-connecting-ip": "6.1.2.3" }, () => TABLE],
+    ["not_public", { [CLIENT_IP_HEADER]: "10.0.0.5" }, () => TABLE],
+    ["no_table", { [CLIENT_IP_HEADER]: "6.1.2.3" }, () => null],
+    ["not_in_table", { [CLIENT_IP_HEADER]: "11.0.0.1" }, () => TABLE],
+  ];
+  const REFUSED = { status: 451, body: { error: "country_blocked" } };
+
+  it("reads each reason the way the table says", () => {
+    for (const [why, hd, load] of cases) expect(readCountry(h(hd), load)).toEqual({ country: null, why });
+  });
+
+  it("refuses and hides a listed model for no_address, not_public and no_table; allows and logs not_in_table", () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const models = [{ id: "pic-geo" }, { id: "pic-other" }];
+    for (const [why, hd, load] of cases) {
+      const broken = why !== "not_in_table";
+      expect([why, unknownRefuses(why as never, true)]).toEqual([why, broken]);
+      expect([why, geoRefusal("pic-geo", h(hd), MAP, load, true)]).toEqual([why, broken ? REFUSED : null]);
+      expect([why, geoRefusalAny(["pic-other", "pic-geo"], h(hd), MAP, load, true)]).toEqual([why, broken ? REFUSED : null]);
+      expect([why, hideBlockedModels(models, h(hd), MAP, load, true).map((m) => m.id)])
+        .toEqual([why, broken ? ["pic-other"] : ["pic-geo", "pic-other"]]);
+      const here = blockedModelsHere(h(hd), MAP, load, true);
+      expect([why, here?.("pic-geo") ?? false, here?.("pic-other") ?? false]).toEqual([why, broken, false]);
+      // A model with no list is never touched, whatever the setup.
+      expect(geoRefusal("pic-other", h(hd), MAP, load, true)).toBeNull();
+    }
+    expect(err).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    for (const call of [...err.mock.calls, ...warn.mock.calls]) expect(call.join(" ")).not.toMatch(/6\.1\.2\.3|10\.0\.0\.5|11\.0\.0\.1/);
+  });
+
+  it("allows and logs every reason outside production (development, tests, Vercel)", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(GEO_STRICT).toBe(false);
+    for (const [why, hd, load] of cases) {
+      expect([why, unknownRefuses(why as never, false)]).toEqual([why, false]);
+      expect([why, geoRefusal("pic-geo", h(hd), MAP, load, false)]).toEqual([why, null]);
+      expect([why, blockedModelsHere(h(hd), MAP, load, false)]).toEqual([why, null]);
+    }
+  });
+
+  it("production means the self-hosted box: NODE_ENV production and not Vercel", () => {
+    const src = readFileSync(join(__dirname, "..", "lib", "server", "geo.ts"), "utf8");
+    expect(src).toContain('export const GEO_STRICT = process.env.NODE_ENV === "production" && !ON_VERCEL;');
+  });
+
+  it("the startup check logs loudly when a model has a list and the table does not load, and is quiet otherwise", () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(checkGeoTableAtStartup({}, () => null, true)).toBe("no_list");
+    expect(checkGeoTableAtStartup(MAP, () => TABLE, true)).toBe("ok");
+    expect(err).not.toHaveBeenCalled();
+    expect(checkGeoTableAtStartup(MAP, () => null, true)).toBe("no_table");
+    expect(err).toHaveBeenCalledTimes(1);
+    expect(err.mock.calls[0].join(" ")).toMatch(/GEO TABLE MISSING.*refused and hidden/);
+    const inst = readFileSync(join(__dirname, "..", "instrumentation.ts"), "utf8");
+    expect(inst).toContain('if (process.env.NEXT_RUNTIME === "nodejs") {\n    await import("./instrumentation-node");');
+    expect(readFileSync(join(__dirname, "..", "instrumentation-node.ts"), "utf8")).toContain("\ncheckGeoTableAtStartup();");
   });
 });
 
