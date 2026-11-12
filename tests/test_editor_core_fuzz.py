@@ -3,14 +3,15 @@ range delete, lift, insert, J / L cut) held to THIS validator, not only to its T
 
 samples/editor_core_fuzz_docs.json.gz holds every state of a seeded run of 15,000 edits as the editor saves them
 (written by command-center/tests/editor-core-fuzz.test.ts, which fails when the operations stop making exactly these
-documents). Seeds 7 and 99 are the ones that, before the two validators rounded to the millisecond the same way,
-gave documents the editor laid out and saved and this validator refused ("clips overlap", "cross-fade must start"):
-a 0.7745 s clip was 0.775 there and 0.774 here. Every document must pass `validate` and `resolve_assets`.
+documents). Seeds 7 and 99 are the ones that, while the editor rounded milliseconds with Math.round, gave documents
+the editor laid out and saved and this validator refused ("clips overlap", "cross-fade must start"): a 0.7745 s clip
+was 0.775 there and 0.774 here. The editor's ``ms`` is now Python's ``round(v, 3)`` bit for bit
+(command-center/tests/editor-ms-round.test.ts, against samples/ms_round_cases.json.gz), and ``_ms`` here is unchanged
+(the database's editor_ms, migration 0136, copies it). Every document must pass ``validate`` and ``resolve_assets``.
 """
 
 import gzip
 import json
-import math
 import unittest
 from pathlib import Path
 
@@ -63,13 +64,14 @@ class EditorCoreFuzzTests(unittest.TestCase):
                 refused.append((i, problems[:2]))
         self.assertEqual(refused[:5], [], f"{len(refused)} refused")
 
-    def test_milliseconds_round_half_up_exactly_as_the_editor_does(self):
-        # lib/editor.ts ms: Math.floor(v * 1000 + 0.5) / 1000
-        for v, want in ((0.7745, 0.775), (1.0005, 1.001), (2.675, 2.675), (0.0005, 0.001), (1.549 / 2, 0.775), (-0.0004, 0.0)):
-            self.assertEqual(tl._ms(v), want, v)
-        for k in range(20000):
-            v = k / 7919.0
-            self.assertEqual(tl._ms(v), math.floor(v * 1000 + 0.5) / 1000)
+    def test_ms_here_is_still_round_to_three_places_and_the_table_is_its_answers(self):
+        # The editor follows this rounding, not the other way round: the database's editor_ms (0136) copies it.
+        self.assertEqual(tl._ms(0.7745), 0.774)
+        self.assertEqual(tl._ms(0.0625), 0.062)
+        table = json.loads(gzip.decompress((FILE.parent / "ms_round_cases.json.gz").read_bytes()).decode("utf-8"))
+        self.assertGreater(len(table["x"]), 100000)
+        bad = [(x, y) for x, y in zip(table["x"], table["y"]) if repr(round(x, 3)) != repr(y) or repr(tl._ms(x)) != repr(y)]
+        self.assertEqual(bad[:5], [])
 
 
 if __name__ == "__main__":

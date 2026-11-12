@@ -456,6 +456,8 @@ export function freezeAtPlayhead(
       "move",
       "denoise",
       "loudnorm",
+      // a gap before the clip stays before its first half; the held frame follows that half with no gap of its own
+      "gap_s",
     ),
     id: newId,
     start_s: 0,

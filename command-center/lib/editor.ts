@@ -788,12 +788,31 @@ const isNum = (v: unknown): v is number =>
 const isInt = (v: unknown): v is number =>
   typeof v === "number" && Number.isInteger(v);
 
-/** Milliseconds, the document's resolution, rounded half up. The same three double operations as modules/timeline.py
- *  `_ms` (`floor(v * 1000 + 0.5) / 1000`), so both validators see the same number: Python's `round(v, 3)` rounds the
- *  exact binary value half to even and `Math.round` treats a few values near a half differently, and a 0.7745 s clip
- *  once laid out at 0.775 here was 0.774 there (an "overlap" the worker refused). */
+/**
+ * Milliseconds, the document's resolution: EXACTLY Python's `round(v, 3)` (modules/timeline.py `_ms`, and the
+ * database's `editor_ms`, migration 0136, which prices paid exports and caps lengths with it). Python rounds the
+ * double's exact binary value to three places, half to even; `Math.round(v * 1000) / 1000` did not (it rounds the
+ * product, and a tie up), so a 0.7745 s clip (0.77449999... in binary) was 0.775 here and 0.774 in the worker, and a
+ * rolled clip the editor saved could be refused as an overlap.
+ *
+ * `toFixed(3)` is the exact value correctly rounded to three places (ECMA-262), with a tie taken to the larger
+ * magnitude. The only exact ties are the doubles that are an odd number of sixteenths (v * 1000 = odd * 62.5; every
+ * other k + 0.5 thousandths is not a binary fraction), and there the even neighbour is taken, as Python does. The
+ * decimal is then read back as the nearest double, as Python does. Zero keeps its sign; inf and nan pass through.
+ * tests/editor-ms-round.test.ts holds this to a table of Python's own answers (samples/ms_round_cases.json.gz).
+ */
 export function ms(v: number): number {
-  return Math.floor(v * 1000 + 0.5) / 1000;
+  if (v === 0 || !Number.isFinite(v)) return v;
+  const a = Math.abs(v);
+  // From 2^52 on, a double is a whole number (and toFixed would switch to an exponent at 1e21): nothing to round.
+  if (a >= 4503599627370496) return v;
+  const sixteenths = a * 16;
+  if (Number.isInteger(sixteenths) && sixteenths % 2 === 1) {
+    const n = Math.floor(a * 1000);
+    const even = n % 2 === 0 ? n : n + 1;
+    return (v < 0 ? -even : even) / 1000;
+  }
+  return Number(v.toFixed(3));
 }
 
 export function clamp(v: number, lo: number, hi: number): number {
@@ -3812,18 +3831,25 @@ export function removeClip(model: EditorModel, id: string): EditorModel {
   return { ...model, clips: layout(rest) };
 }
 
-/** Move a clip one place earlier (-1) or later (+1). */
+/** Move a clip one place earlier (-1) or later (+1). A gap stays where it is on the timeline: it belongs to the place
+ *  (before the i-th clip), not to the clip, so the two clips swap and each place keeps the black it had. */
 export function moveClip(
   model: EditorModel,
   id: string,
   by: -1 | 1,
 ): EditorModel {
-  const clips = [...model.clips];
+  const clips = layout(model.clips);
   const i = clips.findIndex((c) => c.id === id);
   const j = i + by;
   if (i < 0 || j < 0 || j >= clips.length) return model;
+  const gaps = clips.map(gapOf);
   [clips[i], clips[j]] = [clips[j], clips[i]];
-  return { ...model, clips: layout(clips) };
+  const placed = clips.map((c, k) => {
+    const out = { ...c };
+    delete out.gap_s;
+    return gaps[k] > 0 ? { ...out, gap_s: gaps[k] } : out;
+  });
+  return { ...model, clips: layout(placed) };
 }
 
 /** Three positions a person picks from; each is a point and an anchor. */

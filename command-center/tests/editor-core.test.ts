@@ -50,10 +50,12 @@ import {
   closeGap,
   gapOf,
   gapsOf,
+  moveClip,
   ms,
   removeClip,
   withStarts,
 } from "@/lib/editor";
+import { freezeAtPlayhead } from "@/lib/editorMotion";
 import { settleAll } from "@/lib/editorSettle";
 import { fuzzAssets, runFuzz } from "./editor-core-fuzz";
 import {
@@ -524,6 +526,37 @@ describe("gaps on the picture lane (what a lift leaves)", () => {
     valid(out.model);
   });
 
+  it("a freeze frame after a gap does not repeat the gap (one black, then the first half, then the held frame)", () => {
+    const m = gapped();
+    const after = layout(m.clips)[1].id; // [6, 8] after the gap [2, 6]
+    const out = freezeAtPlayhead(m, after, 7, 1)!;
+    expect(gapsOf(out.model)).toEqual([{ before: after, start: 2, end: 6 }]);
+    const held = byId(out.model, out.newId);
+    expect([held.start_s, gapOf(held), held.freeze]).toEqual([7, 0, true]);
+    expect(modelDuration(out.model)).toBe(11);
+    valid(out.model);
+  });
+
+  it("moving a clip leaves a gap where it is on the timeline: forwards past the next clip, and to the front", () => {
+    // c1 [0, 2], gap [2, 6], X [6, 8], c3 [8, 10]
+    const m = gapped();
+    const x = layout(m.clips)[1].id;
+    const fwd = moveClip(m, x, 1);
+    expect(layout(fwd.clips).map((c) => [c.id, c.start_s])).toEqual([["c1", 0], ["c3", 6], [x, 8]]);
+    expect(gapsOf(fwd).map((g) => [g.start, g.end])).toEqual([[2, 6]]);
+    valid(fwd);
+    const front = moveClip(m, x, -1);
+    expect(layout(front.clips).map((c) => [c.id, c.start_s])).toEqual([[x, 0], ["c1", 6], ["c3", 8]]);
+    expect(gapsOf(front).map((g) => [g.start, g.end])).toEqual([[2, 6]]);
+    valid(front);
+    // the first clip after a leading gap moved later: the black stays at the start
+    const lead = toModel({ version: 1, width: 1920, height: 1080, fps: 30, tracks: [{ id: "v1", kind: "V", clips: [
+      { id: "c1", asset_id: A, start_s: 1, in_s: 0, out_s: 2, speed: 1, audio: true },
+      { id: "c2", asset_id: A, start_s: 3, in_s: 2, out_s: 3, speed: 1, audio: true }] }] });
+    const moved = moveClip(lead, "c1", 1);
+    expect(layout(moved.clips).map((c) => [c.id, c.start_s])).toEqual([["c2", 1], ["c1", 2]]);
+  });
+
   it("there is no roll or slide across a gap, no cross-fade into one, and a copy does not take the gap with it", () => {
     const m = gapped();
     const after = layout(m.clips)[1].id;
@@ -814,9 +847,10 @@ describe("review fixes", () => {
     expect(resolveShortcut({ key: ";" }, "text")).toBeNull();
   });
 
-  it("rounds to the millisecond half up, as modules/timeline.py _ms does, on the values that once disagreed", () => {
-    // Python's round(0.7745, 3) is 0.774 (the double is 0.77449999...); both validators now use floor(v * 1000 + 0.5).
-    for (const [v, want] of [[0.7745, 0.775], [1.0005, 1.001], [2.675, 2.675], [0.0005, 0.001], [1.549 / 2, 0.775], [-0.0004, 0]] as const)
+  it("rounds to the millisecond as Python's round(v, 3) does, on the values that once disagreed", () => {
+    // 0.7745 is 0.77449999... in binary: Python (and the database) say 0.774, and so does the editor now
+    // (the full table is tests/editor-ms-round.test.ts).
+    for (const [v, want] of [[0.7745, 0.774], [1.0005, 1], [2.675, 2.675], [0.0625, 0.062], [1.549 / 2, 0.774], [1.69 / 4, 0.422]] as const)
       expect(ms(v), String(v)).toBe(want);
   });
 });

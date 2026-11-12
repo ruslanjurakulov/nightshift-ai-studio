@@ -1287,9 +1287,19 @@ Nothing to order: no field, no migration; older workers render what this saves.
 
 ### Milliseconds, the same on both sides
 
-`ms` (lib/editor.ts) and `_ms` (modules/timeline.py) are now both `floor(v * 1000 + 0.5) / 1000`: the same three
-double operations, so the two validators see the same numbers. Python's `round(v, 3)` rounded the exact binary value
-half to even (0.7745 is 0.77449999...: 0.774 there, 0.775 in the editor), and a rolled clip laid out by the editor was
-refused by the worker as an overlap. `samples/editor_core_fuzz_docs.json.gz` (every state of 15,000 seeded edits,
-1080p to 4K, 24 to 60 fps, written by `tests/editor-core-fuzz.test.ts`) is held to the Python validator by
-`tests/test_editor_core_fuzz.py`; with the old rounding it refuses 8 of them.
+The editor's `ms` (lib/editor.ts) is now Python's `round(v, 3)` bit for bit: the exact binary value rounded to three
+places, half to even (`toFixed(3)` is exact and takes a tie up; the only exact ties are odd sixteenths, where the even
+neighbour is taken). Python's `_ms` and the database's `editor_ms` (0136, which prices paid exports and caps lengths)
+are unchanged. `Math.round(v * 1000) / 1000` had disagreed: 0.7745 (0.77449999... in binary) was 0.775 in the editor
+and 0.774 in the worker, and a rolled clip the editor saved was refused as an overlap.
+`samples/ms_round_cases.json.gz` holds Python's answers for 104,678 values (random, every k/16, k/32 and k/1000 with
+their neighbours, the database test's ties, and the 46,538 values the renderer rounds while measuring that test's
+corpus; `tools/ms_round_table.py`), and `tests/editor-ms-round.test.ts` holds `ms` to every one.
+`samples/editor_core_fuzz_docs.json.gz` (every state of 15,000 seeded edits, 1080p to 4K, 24 to 60 fps, written by
+`tests/editor-core-fuzz.test.ts`) is held to the Python validator by `tests/test_editor_core_fuzz.py`.
+
+### Older documents with gaps
+
+A document whose picture has a gap (a clip starting after the one before it ended; another tool can write one) used to
+be closed up when the editor opened it, so the editor showed something other than what the export rendered. It now
+opens with the gap, black in the preview and in the strip, as the export renders it; "Close gap" closes it.
