@@ -148,6 +148,14 @@ export function applyRipple(model: EditorModel, r: Ripple, locks: SyncLocks, ski
  * back when the edit moved nothing after it, or every lane is locked.
  */
 export function syncLock(before: EditorModel, after: EditorModel, locks: SyncLocks, skip: readonly SyncLane[] = []): EditorModel {
+  // Nothing on a lane that follows: no need to read the picture lane at all (a silence run of dozens of cuts).
+  const on = (l: SyncLane) => !locks[l] && !skip.includes(l);
+  const any =
+    (on("texts") && after.texts.length > 0) ||
+    (on("sounds") && after.sounds.length > 0) ||
+    (on("overlays") && (after.overlays?.length ?? 0) > 0) ||
+    (on("shapes") && (after.shapes?.length ?? 0) > 0);
+  if (!any) return after;
   const r = rippleOf(before, after);
   return r ? applyRipple(after, r, locks, skip) : after;
 }
