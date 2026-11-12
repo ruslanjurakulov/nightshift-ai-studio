@@ -488,3 +488,48 @@ describe("look presets kept in this browser", () => {
 });
 
 void clipEnd;
+
+describe("thousands of seeded multi-edits (the Python validator sees the same documents: editor-look-fuzz)", () => {
+  it("every one keeps validateTimeline clean, nothing before 0, locked lanes still, and undo / redo identical", async () => {
+    const { runLookFuzz, lookAssets, LOOK_OPS } = await import("./editor-look-fuzz");
+    const { docAssetProblems } = await import("@/lib/editor");
+    const { settleAll } = await import("@/lib/editorSettle");
+    let settledAgain = 0;
+    const run = runLookFuzz(20261114, 200, 25, (m, where) => {
+      const doc = toDoc(m);
+      const why = [...validateTimeline(doc), ...docAssetProblems(doc, lookAssets)];
+      if (why.length) throw new Error(`${where}: ${why.join("; ")}`);
+      // settling is done once: a settled state settles to itself (the same model, no change said)
+      const again = settleAll(m);
+      if (again.model !== m || again.changes.length) throw new Error(`${where}: settling again changed it`);
+      settledAgain += 1;
+    });
+    expect(settledAgain).toBeGreaterThan(2500);
+    expect(run.edits).toBe(5000);
+    // every operation really ran, many times
+    expect(run.byOp.length).toBe(LOOK_OPS);
+    for (let op = 0; op < LOOK_OPS; op += 1) if (op !== 13) expect(run.byOp[op], `op ${op}`).toBeGreaterThan(20);
+    expect(run.undone).toBeGreaterThan(2000);
+  }, 300_000);
+});
+
+describe("the selection keys, as a pure decision", () => {
+  it("Alt + arrows nudge (Shift: five frames), never in a text field, on a slider, in a radio group, or with Ctrl", async () => {
+    const { resolveNudgeShortcut, resolvePasteAttributes, resolveShortcut } = await import("@/lib/editor-shortcuts");
+    expect(resolveNudgeShortcut({ key: "ArrowLeft", altKey: true }, "other")).toEqual({ frames: -1 });
+    expect(resolveNudgeShortcut({ key: "ArrowRight", altKey: true, shiftKey: true }, "control")).toEqual({ frames: 5 });
+    for (const f of ["text", "slider", "choice"] as const) expect(resolveNudgeShortcut({ key: "ArrowLeft", altKey: true }, f)).toBeNull();
+    expect(resolveNudgeShortcut({ key: "ArrowLeft", altKey: true, ctrlKey: true }, "other")).toBeNull();
+    expect(resolveNudgeShortcut({ key: "ArrowUp", altKey: true }, "other")).toBeNull();
+    // the plain arrows are still the playhead's, as before
+    expect(resolveShortcut({ key: "ArrowLeft" }, "other")).toBe("left");
+    expect(resolveShortcut({ key: "ArrowLeft", altKey: true }, "other")).toBeNull();
+    // Ctrl / Cmd + Alt + V, by the physical key on a Cyrillic layout; never with Shift, held, in a field or on a slider
+    expect(resolvePasteAttributes({ key: "v", ctrlKey: true, altKey: true }, "other")).toBe(true);
+    expect(resolvePasteAttributes({ key: "м", code: "KeyV", metaKey: true, altKey: true }, "control")).toBe(true);
+    expect(resolvePasteAttributes({ key: "v", ctrlKey: true }, "other")).toBe(false);
+    expect(resolvePasteAttributes({ key: "v", ctrlKey: true, altKey: true, shiftKey: true }, "other")).toBe(false);
+    expect(resolvePasteAttributes({ key: "v", ctrlKey: true, altKey: true, repeat: true }, "other")).toBe(false);
+    for (const f of ["text", "slider"] as const) expect(resolvePasteAttributes({ key: "v", ctrlKey: true, altKey: true }, f)).toBe(false);
+  });
+});
