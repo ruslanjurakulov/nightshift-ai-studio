@@ -35,6 +35,7 @@ export const en: LegalTexts = {
               "Google user data you authorise us to access, described in section 3.",
               "E-mail preferences: whether you want an e-mail when a video is ready or a weekly summary, and the language you use the app in, so the e-mails are written in it. “Video ready” e-mails are service messages about work you started: they are on until you turn them off in Settings or with the link in any of them. The weekly summary is off unless you turn it on. We send no marketing e-mail.",
               "Technical data: our hosting and database providers record standard request logs (such as IP address, browser type and time of request) to operate and secure the Service. We do not use analytics, advertising or tracking tools.",
+              "Country of your request, for some models only: where the provider of a model does not allow it in certain countries, our server looks up the country of the IP address your request came from, to decide whether to offer you that model. The lookup is made on our own server, against a copy of the DB-IP database kept there ([IP Geolocation by DB-IP](https://db-ip.com)); your address is sent to no one for it, and this check stores neither the address nor the country. It reads the address your connection comes from, so with a VPN or a proxy it reads that service’s country.",
             ],
           },
         ],

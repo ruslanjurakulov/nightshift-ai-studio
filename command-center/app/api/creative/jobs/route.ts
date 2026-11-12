@@ -4,7 +4,8 @@ import { creativeSession } from "@/lib/server/creative";
 import { logAudit } from "@/lib/server/audit";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
-import { geoRefusal } from "@/lib/server/geo";
+import { blockedModelsHere, geoRefusal } from "@/lib/server/geo";
+import { sellableFor } from "@/lib/creative/route-around";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,16 +50,27 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // A routed create names the model its quote picked (0075), so this one check covers every mode.
   const blocked = parsed.input.model ? geoRefusal(parsed.input.model, request.headers) : null;
   if (blocked) return NextResponse.json(blocked.body, { status: blocked.status });
-  const out = await createGeneration(session.db, parsed.input);
+  let input = parsed.input;
+  if (input.mode !== "exact") {
+    // A routed job can fail over to another model (0088), chosen by the database, which does not know the country. Where this
+    // country forbids a model that could make this, the job runs the model the person confirmed and nothing else: `exact`
+    // never fails over. A list that cannot be read takes the same, safe side.
+    const forbidden = blockedModelsHere(request.headers);
+    if (forbidden) {
+      const sellable = await sellableFor(session.db, input.capability);
+      if (!sellable || sellable.some((m) => forbidden(m.id))) input = { ...input, mode: "exact" };
+    }
+  }
+  const out = await createGeneration(session.db, input);
   if (out.status === 201) {
     const job = out.body.job as { id?: string; quoted_credits?: number };
     await logAudit({
       action: "creative.generate",
       target: job.id,
-      detail: { org_id: parsed.input.orgId, capability: parsed.input.capability, model: parsed.input.model,
+      detail: { org_id: input.orgId, capability: input.capability, model: input.model,
                 quoted_credits: job.quoted_credits ?? null,
-                source_asset_id: typeof parsed.input.params.source_asset_id === "string"
-                  ? parsed.input.params.source_asset_id : null },
+                source_asset_id: typeof input.params.source_asset_id === "string"
+                  ? input.params.source_asset_id : null },
     });
   }
   return NextResponse.json(out.body, { status: out.status });

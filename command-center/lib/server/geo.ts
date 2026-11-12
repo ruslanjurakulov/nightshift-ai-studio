@@ -8,7 +8,7 @@ import { trustedClientIp } from "@/lib/geo/client-ip";
 import { BLOCKED_COUNTRIES, blockedCountriesOf, withoutBlocked, type BlockedMap } from "@/lib/geo/blocked";
 
 /**
- * The request's country, from the address Caddy vouches for (lib/geo/client-ip) and the DB-IP table shipped in the image
+ * The request's country, from the address our own proxy vouches for (lib/geo/client-ip) and the DB-IP table shipped in the image
  * (data/geoip/country.bin.gz, docs/GEO_BLOCK.md). Server only: the table is read from disk once per process, and only when a
  * model with a country list is asked about, so a deployment where no model has one never reads it.
  *
@@ -69,6 +69,37 @@ export function geoRefusal(
     return null;
   }
   return list.includes(reading.country) ? { status: 451, body: { error: "country_blocked" } } : null;
+}
+
+/** The same for several models at once (a workflow's steps): the first refusal, or null. Each model is asked once. */
+export function geoRefusalAny(
+  models: readonly string[],
+  h: Pick<Headers, "get">,
+  map: BlockedMap = BLOCKED_COUNTRIES,
+  load: () => GeoTable | null = () => loadGeoTable(),
+): { status: 451; body: { error: "country_blocked" } } | null {
+  for (const m of new Set(models)) {
+    const refusal = geoRefusal(m, h, map, load);
+    if (refusal) return refusal;
+  }
+  return null;
+}
+
+/**
+ * Which models this request's country forbids, as a test of a model id; null when the country is unknown or forbids none (the
+ * automatic choice then takes the database's own path, lib/creative/route-around.ts).
+ */
+export function blockedModelsHere(
+  h: Pick<Headers, "get">,
+  map: BlockedMap = BLOCKED_COUNTRIES,
+  load: () => GeoTable | null = () => loadGeoTable(),
+): ((model: string) => boolean) | null {
+  if (Object.keys(map).length === 0) return null;
+  const reading = readCountry(h, load);
+  if (reading.country === null) return null;
+  const here = reading.country;
+  const ids = new Set(Object.keys(map).filter((m) => blockedCountriesOf(m, map).includes(here)));
+  return ids.size > 0 ? (model) => ids.has(model) : null;
 }
 
 /** The picker's models without those blocked where this request comes from. Reads nothing while no listed model has a country list. */

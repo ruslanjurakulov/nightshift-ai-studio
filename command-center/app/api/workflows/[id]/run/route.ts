@@ -4,6 +4,10 @@ import { workflowSession } from "@/lib/server/workflows";
 import { logAudit } from "@/lib/server/audit";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
+import { geoRefusalAny } from "@/lib/server/geo";
+import { coerceWorkflow } from "@/lib/workflows";
+import { isUuid } from "@/lib/creative/operations";
+import { BLOCKED_COUNTRIES } from "@/lib/geo/blocked";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +37,13 @@ export const POST = requireSameOrigin(async function POST(request: Request, { pa
   const parsed = parseRunInput(body);
   if (!parsed.ok) return NextResponse.json(parsed.result.body, { status: parsed.result.status });
   const { id } = await params;
+  // A step whose model this request's country forbids (docs/GEO_BLOCK.md): refused before the database prices or holds anything.
+  // The workflow is read only once a model has a country list; one that cannot be read is the database's to refuse below.
+  if (Object.keys(BLOCKED_COUNTRIES).length > 0 && isUuid(id)) {
+    const wf = coerceWorkflow((await session.db.readWorkflow(id)).data);
+    const blocked = wf ? geoRefusalAny(wf.steps.map((s) => s.model), request.headers) : null;
+    if (blocked) return NextResponse.json(blocked.body, { status: blocked.status });
+  }
   const out = await startRun(session.db, id, parsed.input);
   if (out.status === 201)
     await logAudit({ action: "workflow.run", target: parsed.input.runId, detail: { workflow_id: id, max_credits: parsed.input.maxCredits } });

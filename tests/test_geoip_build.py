@@ -94,6 +94,23 @@ class Build(unittest.TestCase):
 
 
 class Shipped(unittest.TestCase):
+    def test_the_table_and_its_manifest_are_in_the_repository_not_ignored(self):
+        # The root .gitignore ignores every *.json: the manifest was once left out of the commit that way, and this file's other
+        # test then failed only on a clean checkout. Git itself is asked, so an ignore rule cannot hide either file again.
+        import subprocess
+        try:
+            inside = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=ROOT, capture_output=True, text=True)
+        except FileNotFoundError:
+            self.skipTest("git is not installed")
+        if inside.returncode != 0:
+            self.skipTest("not a git checkout")
+        for name in ("country.bin.gz", "manifest.json"):
+            rel = f"command-center/data/geoip/{name}"
+            ignored = subprocess.run(["git", "check-ignore", "-q", rel], cwd=ROOT)
+            self.assertNotEqual(ignored.returncode, 0, f"{rel} is ignored by a .gitignore rule")
+            tracked = subprocess.run(["git", "ls-files", "--error-unmatch", rel], cwd=ROOT, capture_output=True)
+            self.assertEqual(tracked.returncode, 0, f"{rel} is not committed")
+
     def test_the_shipped_table_matches_its_manifest_and_reads(self):
         m = json.loads((DATA / "manifest.json").read_text(encoding="utf-8"))
         table = (DATA / m["table"]).read_bytes()

@@ -97,7 +97,8 @@ export async function loadOperatorPreviewModels(orgId: string): Promise<StudioMo
     if (!supabase) return [];
     const { data, error } = await supabase.rpc("operator_preview_models", { p_org: orgId });
     if (error) return [];
-    return coercePreviewModels(data);
+    // A preview is hidden where its vendor forbids it, like a model on sale (docs/GEO_BLOCK.md); the routes refuse it too.
+    return await hideBlockedModelsHere(coercePreviewModels(data));
   } catch {
     return [];
   }

@@ -117,6 +117,7 @@ export function isPublicIp(ip: ParsedIp): boolean {
   if ((top16 & 0xffc0) === 0xfe80) return false;                                        // fe80::/10 link-local
   if ((top16 & 0xff00) === 0xff00) return false;                                        // ff00::/8 multicast
   if (a === 0x20010db8) return false;                                                   // 2001:db8::/32 documentation
+  if ((a >>> 12) === 0x3fff0) return false;                                             // 3fff::/20 documentation (RFC 9637)
   if (a === 0x0064ff9b && b === 0) return false;                                        // 64:ff9b::/96 NAT64 (the v4 is inside)
   if ((a >>> 16) === 0x2002) return false;                                              // 2002::/16 6to4 relay
   return (top16 & 0xe000) === 0x2000;                                                   // only 2000::/3 is global unicast

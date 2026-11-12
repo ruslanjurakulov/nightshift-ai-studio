@@ -8,7 +8,11 @@
  * That is the documented limit of blocking by address (a VPN, a proxy or a traveller's roaming SIM reads as another country).
  */
 
-export const BLOCKED_COUNTRIES: Readonly<Record<string, readonly string[]>> = {};
+export const BLOCKED_COUNTRIES: Readonly<Record<string, readonly string[]>> = {
+  // Its vendor's Geographic Use Policy (updated 2026-10-12): India for this model (section 2.2), and the Restricted Territories of
+  // section 3. Crimea, Donetsk and Luhansk are on that list too, but a country-level table cannot tell them from the rest of Ukraine.
+  "grounded-image-1.0": ["AF", "BY", "CN", "CU", "EH", "ER", "ET", "HK", "HT", "IN", "IQ", "IR", "KH", "KP", "LY", "MM", "MO", "NI", "PK", "RU", "SO", "SY", "VE"],
+};
 
 export type BlockedMap = Readonly<Record<string, readonly string[]>>;
 

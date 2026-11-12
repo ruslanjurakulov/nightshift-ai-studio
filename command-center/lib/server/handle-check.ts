@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/config";
 import { checkHandleFormat, isReservedHandle, normalizeHandleInput } from "@/lib/handles";
+import { ON_VERCEL, clientAddressKey } from "@/lib/geo/client-ip";
 
 /**
  * The sign-up form's "is this @username free?" for a visitor with no account.
@@ -49,12 +50,13 @@ export function handleCheckSize(): number {
 
 /**
  * The address a request came from, for this limit only (never stored, never
- * logged): Vercel's own header first (set by the platform, not by the
- * visitor), then Cloudflare's, then the first forwarded address.
+ * logged): the one header our own proxy writes on every request, or the
+ * platform's own on a Vercel deploy (lib/geo/client-ip.ts). A header a visitor
+ * can send (cf-connecting-ip, x-forwarded-for, x-real-ip) is never read: on the
+ * self-hosted box Caddy passes those on as sent (ledger BR-L-192).
  */
-export function handleCheckKey(headers: Headers): string {
-  const pick = (name: string) => headers.get(name)?.split(",")[0]?.trim();
-  return (pick("x-vercel-forwarded-for") || pick("cf-connecting-ip") || pick("x-forwarded-for") || "unknown").slice(0, 64);
+export function handleCheckKey(headers: Headers, onVercel: boolean = ON_VERCEL): string {
+  return clientAddressKey(headers, onVercel).slice(0, 64);
 }
 
 /** For tests. */

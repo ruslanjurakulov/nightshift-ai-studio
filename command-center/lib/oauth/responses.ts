@@ -5,6 +5,8 @@
  * origin exposes nothing a caller could not already fetch with curl.
  */
 
+import { clientAddressKey } from "@/lib/geo/client-ip";
+
 export const NO_STORE = { "cache-control": "no-store", pragma: "no-cache" } as const;
 
 const CORS = {
@@ -33,14 +35,11 @@ export function metadataJson(body: unknown): Response {
   });
 }
 
-/** The client's address for a best-effort per-address limit: Cloudflare's
- *  header, else the first forwarded address. Spoofable where neither is set by
- *  our own proxy — the global caps in the database are the backstop. */
+/** The client's address for a per-address limit: the one header our own proxy writes on every request
+ *  (lib/geo/client-ip.ts, ledger BR-L-192). cf-connecting-ip and x-forwarded-for are not read: a client can
+ *  send either. No address ("unknown") shares one bucket; the global caps in the database are the backstop. */
 export function clientIp(request: Request): string {
-  const cf = request.headers.get("cf-connecting-ip")?.trim();
-  if (cf) return cf.slice(0, 64);
-  const xff = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return (xff || "unknown").slice(0, 64);
+  return clientAddressKey(request.headers).slice(0, 64);
 }
 
 /** A request body of at most `max` bytes, or null. */

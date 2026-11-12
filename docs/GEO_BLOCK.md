@@ -7,20 +7,57 @@ every call that prices, holds or queues anything.
 
 ## How a request's country is known
 
-1. **Cloudflare -> Caddy.** The site's DNS record is proxied by Cloudflare, so Caddy's peer is a Cloudflare edge, and
-   the visitor's address is in Cloudflare's `CF-Connecting-IP`. `deploy/Caddyfile` writes ONE header on every request it
-   proxies, `X-Nightshift-Client-IP`, replacing whatever the client sent:
-   - from `CF-Connecting-IP` when the connection came from one of Cloudflare's published ranges
-     (<https://www.cloudflare.com/ips-v4>, <https://www.cloudflare.com/ips-v6>, read 2026-11-12; matcher `@viaCloudflare`);
-   - from the peer's own address (`{remote_host}`) otherwise (matcher `@notViaCloudflare`): someone who reaches the origin
-     directly, bypassing Cloudflare, cannot choose their country by sending a `CF-Connecting-IP` of their own.
-   Nothing else Caddy forwards changes: `X-Forwarded-For` is still Caddy's own, so the rate limits that read it see what
-   they saw before.
+1. **Visitor -> Caddy.** Nothing is in front of the server: the domain's nameservers are Porkbun's, its one `A` record points
+   straight at the box, and there is no `AAAA` (read 2026-11-12). So the peer of every connection Caddy accepts is the visitor
+   (or their VPN). `deploy/Caddyfile` writes that address into ONE header on every request it proxies, replacing whatever the
+   client sent:
+
+   ```
+   request_header X-Nightshift-Client-IP {remote_host}
+   ```
+
+   No header is believed to name another address. `CF-Connecting-IP`, `X-Real-IP` and `X-Forwarded-For` from a client change
+   nothing: with no proxy in front, anything that honoured `CF-Connecting-IP` from "Cloudflare's ranges" could be driven by a
+   visitor whose own connection comes from one (WARP, a Worker). `X-Forwarded-For` is still Caddy's own, as before.
+   **If a proxy or CDN is ever put in front**, this line must change in the same change (the peer would then be the proxy), and
+   only that proxy's addresses may be trusted to name the visitor.
 2. **Caddy -> web.** The `web` container publishes no port (`deploy/docker-compose.yml`), so Caddy is the only way in.
-   `command-center/lib/geo/client-ip.ts` reads `X-Nightshift-Client-IP` and nothing else. `X-Forwarded-For`,
-   `X-Real-IP`, `CF-Connecting-IP` and `True-Client-IP` are never believed for this, whoever sends them.
+   `command-center/lib/geo/client-ip.ts` reads `X-Nightshift-Client-IP` and nothing else. On a Vercel deploy (the platform sets
+   `VERCEL=1`) there is no Caddy and a visitor could send that header, so there the platform's own `x-vercel-forwarded-for` is read
+   instead. The two per-address rate limits that used to believe a client's `cf-connecting-ip` (the sign-up handle check and the
+   MCP client registration, ledger BR-L-192) read the same address now.
 3. **Address -> country.** `command-center/data/geoip/country.bin.gz` is DB-IP's free "IP to Country Lite" database in a
-   compact form (below). A private, local, shared or reserved address has no country.
+   compact form (below). A private, local, shared, documentation or reserved address has no country.
+
+## Where it is enforced
+
+| Path | What happens for a country on the model's list |
+| :-- | :-- |
+| Studio picker, Home's assistant, Workflows, region editor (`loadStudioModels`), the operator's preview list | the model is not listed |
+| `POST /api/creative/quote`, `POST /api/creative/jobs` (a named model) | 451 `country_blocked`, before any database call |
+| the same routes, automatic choice (`auto`, `cheap`, `fast`, `quality`) | see below |
+| `POST /api/region-edit/quote`, `/run` | the model is not among the ones it may pick (`loadStudioModels`) |
+| `POST /api/workflows/[id]/quote`, `/run` | 451 `country_blocked` if ANY step names such a model, before the database prices or holds anything |
+| API and MCP | never offered: a model with a list must be `web_only` |
+
+**Automatic choice and failover.** The database picks a model (`route_model`, 0075) and keeps a failover list (0088) without
+knowing where the request comes from, and every sellable model is a candidate: nothing in the registry file can take a model out of
+routing (availability and price live in the database), so a validator rule cannot do it. Without a migration, the web does it
+(`command-center/lib/creative/route-around.ts`), and only for a visitor whose country is known and forbids a model that could make
+the thing asked for:
+
+- **Quote.** If the database's pick is forbidden here, the same choice is made among the models that remain: each is priced by
+  the database's own exact quote, and they are ranked by `route_model`'s own rules (a test pins the port against the SQL text).
+  The automatic choice is therefore never a dead end; `country_blocked` is answered only when no remaining model can make it.
+- **Create.** The job is started in `exact` mode with the model the quote named. An exact job never fails over, so no later step
+  can move it onto a forbidden model, and the database does not refuse a pick that is not its own. The cost: such a job is not
+  retried on another model when its vendor is down.
+
+Everyone else (an unknown country included) takes the database's path untouched.
+
+**Not checked.** A workflow run that was started elsewhere and is carried on (`/advance`) from a blocked country: the run and its
+price were confirmed at the start. Series and channel runs name no registry model in any request (they run the channel's configured
+pipeline), so there is nothing to check by country there. Character Studio has its own two models and its own table.
 
 ## Unknown is allowed, and logged
 
@@ -43,7 +80,6 @@ unknown would refuse every visitor the day the table failed to load; that is a d
 - **The API and MCP** sell to a server, whose address says nothing about the person behind it. A model with
   `blocked_countries` must therefore be `api_exposure: web_only` (the registry validator refuses anything else), so it is
   never offered there.
-- **Workflows** (operator-only) are not checked by country; their steps are priced by the database.
 
 ## The registry field
 
@@ -51,16 +87,19 @@ unknown would refuse every visitor the day the table failed to load; that is a d
 list". `command-center/lib/geo/blocked.ts` carries the same lists as `BLOCKED_COUNTRIES` (the web image is built from
 `command-center/` only and cannot read the registry); `command-center/tests/geo-block.test.ts` fails when the two differ.
 
-### The row this was built for (not in the registry yet)
+### The row that carries a list today
 
-The model added by pull request #691 is unavailable in India for that model, and its vendor's whole service is
-unavailable in its listed Restricted Territories (the vendor's Geographic Use Policy, sections 2.2 and 3, updated
-2026-10-12). When that row is merged, add to it, and to `BLOCKED_COUNTRIES`:
+One registry row has a list: the hidden, terms-gated image model added by pull request #691. Its vendor's Geographic Use
+Policy (updated 2026-10-12) makes that model unavailable in India (section 2.2) and the vendor's whole service unavailable in
+its Restricted Territories (section 3). The row and `BLOCKED_COUNTRIES` carry the same 23 codes:
 
 ```json
-"blocked_countries": ["AF", "BY", "CN", "CU", "ER", "ET", "HK", "HT", "IN", "IQ", "IR", "KH", "KP", "LY", "MM",
-                      "MO", "NI", "PK", "RU", "SO", "SY", "VE", "EH"]
+"blocked_countries": ["AF", "BY", "CN", "CU", "EH", "ER", "ET", "HK", "HT", "IN", "IQ", "IR", "KH", "KP", "LY", "MM",
+                      "MO", "NI", "PK", "RU", "SO", "SY", "VE"]
 ```
+
+The model stays hidden and terms-gated: the list does not open it. Whether blocking by address is enough for that vendor's
+terms is the owner's decision (the row's terms note says what it cannot do).
 
 | Code | Territory | Why |
 | :-- | :-- | :-- |
@@ -77,11 +116,16 @@ Uzbekistan is on no list.
   `command-center/data/geoip/manifest.json` (2026-11: 732,796 ranges; DB-IP's published MD5 of the CSV
   `93c945395f0bc2ceefea7dd55750417a`, checked by the tool before it writes anything).
 - **Licence:** Creative Commons Attribution 4.0. DB-IP asks a web application to link back to DB-IP.com on pages that
-  display or use results from the database: the Studio's media desks (where a model is hidden or refused by country) carry
-  "IP Geolocation by DB-IP" (uz "IP geolokatsiyasi: DB-IP", ru "IP-геолокация: DB-IP") linked to db-ip.com, shown once
-  any model has a country list (`t.create.geoAttribution`). The manifest records that the conversion changed the format
-  only. The Privacy Policy does not yet say that a request's address is looked up for its country; that text is the
-  owner's to add (it is legal copy in three languages).
+  display or use results from the database. Every page whose model picker is filtered by country carries
+  "IP Geolocation by DB-IP" (uz "IP geolokatsiyasi: DB-IP", ru "IP-геолокация: DB-IP") linked to db-ip.com: the Studio's
+  media desks, Home, Workflows and the region editor (`components/legal/GeoAttribution.tsx`, shown once any model has a
+  country list). The Privacy Policy carries the same linked credit. The manifest records that the conversion changed the
+  format only.
+- **Privacy Policy.** Section 2 says, in uz, ru and en, what is looked up (the country of the request's IP address, for
+  some models only), why, that it is done on our own server and sent to no one, that this check stores neither the address
+  nor the country, and that a VPN reads as its exit. **Release day:** set the repository variable
+  `NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE` to the new date and redeploy web (the date is not in the code; `/privacy` reads it
+  from that variable), as for every change of the legal texts.
 - **Why committed, and why not the CSV.** DB-IP's download server keeps only the current and the previous month, so a
   Docker build that fetched a pinned URL would start failing about two months later. The compact table is 2.2 MB
   gzipped (the CSV is 4.6 MB), costs nothing to parse (the web process gunzips it once, when a model with a list is first

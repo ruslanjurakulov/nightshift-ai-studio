@@ -9,6 +9,9 @@ import { heldOnly, uploadedOnly } from "@/lib/heldVideos";
 import { buildHomeChannels, countByChannel, lastVideoByChannel, recentVideos, runnableChannels, type HomeVideo } from "@/lib/home";
 import { HomeHub } from "@/components/home/HomeHub";
 import { loadStudioModels } from "@/lib/server/creative";
+import { GeoAttribution } from "@/components/legal/GeoAttribution";
+import { BLOCKED_COUNTRIES } from "@/lib/geo/blocked";
+import { getDictionary } from "@/lib/i18n/server";
 import { isRunNowConfigured, runBackend } from "@/lib/server/run-backend";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
@@ -113,23 +116,29 @@ export default async function HomePage() {
     );
   }
 
+  // The assistant's models are filtered by the request's country once a model has a country list (docs/GEO_BLOCK.md), and a page
+  // that uses DB-IP's data carries its credit. The dictionary is read only then.
+  const geoLabel = Object.keys(BLOCKED_COUNTRIES).length > 0 ? (await getDictionary()).t.create.geoAttribution : null;
   return (
-    <HomeHub
-      channels={homeChannels}
-      currentSlug={makeFor ? channelSlug(makeFor, channels) : scoped ? channelSlug(scoped, channels) : null}
-      run={run}
-      videos={videos}
-      storyboards={
-        boards === null
-          ? null
-          : boards.flatMap((b) => {
-              const slug = slugById.get(b.channelId);
-              return slug ? [{ channelSlug: slug }] : [];
-            })
-      }
-      orgId={orgId}
-      allPrivate={connected.length > 0 && connected.every((c) => !c.autoPublish)}
-      assistant={{ models, canRun: atLeast(role, "admin"), runConfigured: isRunNowConfigured }}
-    />
+    <>
+      <HomeHub
+        channels={homeChannels}
+        currentSlug={makeFor ? channelSlug(makeFor, channels) : scoped ? channelSlug(scoped, channels) : null}
+        run={run}
+        videos={videos}
+        storyboards={
+          boards === null
+            ? null
+            : boards.flatMap((b) => {
+                const slug = slugById.get(b.channelId);
+                return slug ? [{ channelSlug: slug }] : [];
+              })
+        }
+        orgId={orgId}
+        allPrivate={connected.length > 0 && connected.every((c) => !c.autoPublish)}
+        assistant={{ models, canRun: atLeast(role, "admin"), runConfigured: isRunNowConfigured }}
+      />
+      {geoLabel && <GeoAttribution label={geoLabel} />}
+    </>
   );
 }

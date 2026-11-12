@@ -4,13 +4,14 @@
 # docker-compose.yml, which interpolates them from /opt/nightshift/.env.web
 # (production: DOMAIN=nightshift-ai.studio).
 #
-# Cloudflare: the A record is Proxied (orange cloud) and SSL/TLS mode is
-# "Full (strict)". Caddy holds a real Let's Encrypt certificate for {$DOMAIN},
-# which is what "strict" verifies. "Flexible" would make Cloudflare talk plain
-# HTTP to this server, and Caddy's HTTP->HTTPS redirect would then loop.
-# Keep Cloudflare's "Always Use HTTPS" off: Caddy redirects to HTTPS itself and
-# leaves /.well-known/acme-challenge/ reachable over HTTP, which is how the
-# certificate is issued and renewed through the proxy.
+# No proxy is in front of this server: the domain's A record points straight at
+# it (read 2026-11-12: Porkbun nameservers, one A record, no AAAA). Caddy holds
+# a real Let's Encrypt certificate for {$DOMAIN}, redirects HTTP to HTTPS itself
+# and leaves /.well-known/acme-challenge/ reachable over HTTP, which is how the
+# certificate is issued and renewed. So the peer of every connection is the
+# visitor (or their VPN), and X-Nightshift-Client-IP below is that address.
+# If a proxy or CDN is ever put in front, that line must change with it
+# (docs/GEO_BLOCK.md): the peer would then be the proxy, not the visitor.
 
 {
 	email {$ACME_EMAIL}
@@ -67,17 +68,12 @@
 
 	# Whose address a request came from (docs/GEO_BLOCK.md: a model whose vendor
 	# forbids some countries), in ONE header the app reads and no client can
-	# choose: request_header replaces whatever the client sent. Cloudflare proxies
-	# the site, so when Cloudflare connected (its published ranges,
-	# https://www.cloudflare.com/ips-v4 and /ips-v6, read 2026-11-12) the visitor
-	# is Cloudflare's CF-Connecting-IP; anyone who reaches this box directly is
-	# their own address, whatever CF-Connecting-IP they send. The two matchers are
-	# each other's negation, so exactly one line runs on every request. Nothing
-	# else changes: X-Forwarded-For is still Caddy's own, as before.
-	@viaCloudflare remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
-	@notViaCloudflare not remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
-	request_header @viaCloudflare X-Nightshift-Client-IP {http.request.header.CF-Connecting-IP}
-	request_header @notViaCloudflare X-Nightshift-Client-IP {remote_host}
+	# choose: request_header replaces whatever the client sent with the address
+	# of the peer that opened this connection. Nothing in front of Caddy is
+	# trusted to name another address (there is nothing in front), so
+	# CF-Connecting-IP, X-Real-IP and X-Forwarded-For from a client change
+	# nothing here. X-Forwarded-For is still Caddy's own, as before.
+	request_header X-Nightshift-Client-IP {remote_host}
 
 	# `web` is reachable only on the compose network; it publishes no port of
 	# its own, so this is the only way in. Caddy passes the original Host and
