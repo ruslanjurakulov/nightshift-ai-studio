@@ -12,6 +12,7 @@ import { marketingRu } from "./marketing/ru";
 import { modelSwitchRu } from "./model-switch/ru";
 import { modelBudgetRu } from "./model-budget/ru";
 import { modelKeysRu } from "./model-keys/ru";
+import { operatorCustomersRu } from "./operator-customers/ru";
 import { seriesPlanRu } from "./series-plan/ru";
 import { ownerTruthRu } from "./owner-truth/ru";
 import { connectPickerRu } from "./connect-picker/ru";
@@ -51,6 +52,8 @@ export const ru: Dictionary = {
   modelSwitch: modelSwitchRu,
   modelBudget: modelBudgetRu,
   modelKeys: modelKeysRu,
+  /** The operator's Customers page (migration 0138): ./operator-customers/ru.ts. */
+  customers: operatorCustomersRu,
   seriesPlan: seriesPlanRu,
   ownerTruth: ownerTruthRu,
   connectPicker: connectPickerRu,
@@ -105,6 +108,7 @@ export const ru: Dictionary = {
     providers: "Провайдеры",
     models: "Модели",
     margin: "Маржа",
+    customers: "Клиенты",
     billing: "Оплата",
     studio: "Студия",
     library: "Медиатека",

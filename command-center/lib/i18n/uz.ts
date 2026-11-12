@@ -12,6 +12,7 @@ import { marketingUz } from "./marketing/uz";
 import { modelSwitchUz } from "./model-switch/uz";
 import { modelBudgetUz } from "./model-budget/uz";
 import { modelKeysUz } from "./model-keys/uz";
+import { operatorCustomersUz } from "./operator-customers/uz";
 import { seriesPlanUz } from "./series-plan/uz";
 import { ownerTruthUz } from "./owner-truth/uz";
 import { connectPickerUz } from "./connect-picker/uz";
@@ -51,6 +52,8 @@ export const uz: Dictionary = {
   modelSwitch: modelSwitchUz,
   modelBudget: modelBudgetUz,
   modelKeys: modelKeysUz,
+  /** «Mijozlar» sahifasi (0138-migratsiya): ./operator-customers/uz.ts. */
+  customers: operatorCustomersUz,
   seriesPlan: seriesPlanUz,
   ownerTruth: ownerTruthUz,
   connectPicker: connectPickerUz,
@@ -105,6 +108,7 @@ export const uz: Dictionary = {
     providers: "Provayderlar",
     models: "Modellar",
     margin: "Marja",
+    customers: "Mijozlar",
     billing: "Toʻlovlar",
     studio: "Studiya",
     library: "Mediateka",

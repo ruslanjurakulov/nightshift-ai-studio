@@ -81,6 +81,8 @@ export const SECTIONS = [
   "providers",
   "models",
   "margin",
+  // The operator's Customers page (migration 0138): a section name, so no channel may take it as a slug.
+  "customers",
   "billing",
   "credits",
   "usage",

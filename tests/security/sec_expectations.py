@@ -657,3 +657,8 @@ sec_editor_export_paid_0136.extend(TABLES, FUNCTIONS)
 import sec_character_swap_0137  # noqa: E402
 
 sec_character_swap_0137.extend(TABLES, FUNCTIONS)
+
+# Migration 0138 (the operator's Customers page: people, workspaces, credits spent and bought, read-only): tests/security/sec_operator_customers_0138.py
+import sec_operator_customers_0138  # noqa: E402
+
+sec_operator_customers_0138.extend(TABLES, FUNCTIONS)

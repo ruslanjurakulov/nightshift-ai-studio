@@ -119,7 +119,9 @@ class Numbering(unittest.TestCase):
         # 0137 (Character Studio) was reviewed against these pins: it names no object of 0131 (tests/test_character_studio_migration.py
         # checks that it names no brand_*, ad_* or ads_* object), so it applies with or without 0131 and 0131's rollback does not wait for it.
         # 0134 (the brand scan's follow-up) replaces one of 0133's functions and none of 0131's, and alters no table; it reads 0131's tables.
-        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137")], [], "a later number needs its own review of this file's pins")
+        # 0138 (the operator's Customers page) was reviewed the same way: three read-only functions over the credit ledger, the
+        # workspaces and the generations; it reads, replaces and alters nothing of 0131's.
+        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138")], [], "a later number needs its own review of this file's pins")
         later = next(MIG.glob("0134_*.sql")).read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertNotRegex(code(later), r"\balter table\b")

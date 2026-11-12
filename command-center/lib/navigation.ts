@@ -85,6 +85,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/providers", key: "providers" },
       { href: "/models", key: "models" },
       { href: "/margin", key: "margin" },
+      // People, workspaces and the credits each spent and bought (migration 0138). Operator-only: not in CUSTOMER_NAV_KEYS.
+      { href: "/customers", key: "customers" },
       { href: "/billing", key: "billing" },
       { href: "/credits", key: "credits" },
       // The plan's allowance and the extra-credits switch (migration 0094): reached from Credits and the account menu.
