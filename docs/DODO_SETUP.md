@@ -79,7 +79,8 @@ Narxni o'zgartirmoqchi bo'lsangiz: avval kod (ikkala katalog, PR), keyin Dodo'da
 
 1. **Huquqiy matn.** `/terms` (8-bo'lim), `/privacy` (provayderlar jadvali) va `/refund` hozir
    **Paddle**ni Merchant of Record deb ataydi. Bu PR ularni o'zgartirmaydi (yurist ko'radigan
-   matn). `PAYMENTS_PROVIDER=dodo` qilishdan oldin ular Dodo'ni nomlashi kerak — alohida PR.
+   matn). `PAYMENTS_PROVIDER=dodo` qilishdan oldin ular Dodo'ni nomlashi kerak — alohida PR
+   (#700, Terms 6, shu nomlashni ham ko'rib chiqmoqda).
    `/pricing`, landing FAQ va Credits sahifasi Dodo yoqilganda o'zi Dodo'ni nomlaydi.
 2. **Marja hisoboti (0063) va operatorning Customers sahifasi (0138)** to'langan summani faqat
    Paddle qatorlaridan o'qiydi: Dodo to'lovi u yerda "noma'lum / hisoblanmagan" bo'lib turadi,
