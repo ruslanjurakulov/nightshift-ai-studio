@@ -1,8 +1,8 @@
 # Nightshift
 
-Nightshift is a web studio for making images, video, voice and music with several generative models,
-editing video in the browser, and publishing. Automated YouTube channel production, the project's
-original purpose, is one path inside it.
+Nightshift is a web studio for generating images and video with several generative models, editing video
+in the browser, and publishing. Automated YouTube channel production, the project's original purpose, is
+one path inside it.
 
 Live site: <https://nightshift-ai.studio>. Accounts are for people aged 18 or older.
 
@@ -13,7 +13,7 @@ truth, and where this page and the code disagree, the code is right.
 
 | Area | What it is | Where |
 | :-- | :-- | :-- |
-| Generate | Images, video, speech, sound effects and music. Models are integrated through each maker's own API. A model is offered only after a real probe call through its adapter has succeeded, its vendor terms are cleared and it has a credit price | `schemas/model_registry.json`, `modules/capabilities/`, migration 0035 |
+| Generate | Images and video. Speech, sound-effect and music models are in the registry, but each still has an open vendor-terms gate, so none can be offered yet. Models are integrated through each maker's own API. A model is offered only after a real probe call through its adapter has succeeded, its vendor terms are cleared and it has a credit price | `schemas/model_registry.json`, `modules/capabilities/`, migration 0035 |
 | Edit | A browser video editor: timeline, trims, roll, slip and slide edits, speed and speed curves, colour, masks, overlays and shapes, captions, voice-over, effects and transitions, export in other frame shapes and higher resolutions. The edit is a document that TypeScript and Python validate on the same shared cases, and the server renders it with ffmpeg | `command-center/lib/editor.ts`, `modules/timeline.py`, [`docs/editor-render-fields.md`](docs/editor-render-fields.md) |
 | Publish | YouTube upload of pipeline videos, private by default, behind the publish gate, with per-channel approval rules | `modules/publish_gate.py`, `modules/publish_approval.py` |
 | Channel pipeline | Topic, research, script, fact-check, narration, media, captions, thumbnails, render, quality check, upload or hold, plus an analytics and comments loop that feeds the next topic | `main.py`, `modules/`, [`docs/INTELLIGENCE.md`](docs/INTELLIGENCE.md) |
@@ -22,7 +22,7 @@ truth, and where this page and the code disagree, the code is right.
 ## What works today and what is dark
 
 Many features are merged but switched off. A feature is off until its switch is set. The switches are
-GitHub repository variables, read at deploy time (`.github/workflows/deploy_web.yml`). Their values on
+GitHub Actions variables (repository or `production` environment), read at deploy time (`.github/workflows/deploy_web.yml`). Their values on
 the live site are not recorded in this repository, so this page does not claim which ones are on.
 
 | Status in code | Features |
@@ -35,7 +35,9 @@ the live site are not recorded in this repository, so this page does not claim w
 
 ## Money
 
-Plans give monthly credits, and credit packs top up. Payments go through Paddle. Every paid job is
+Plans give monthly credits, and credit packs top up (not on sale while payments are not live). Checkout
+integration in code: Paddle Billing (sandbox). Payments are not live, and the production provider is not
+decided. Every paid job is
 quoted by the server, held, then captured on success or released on failure, in the database
 (migrations 0020, 0036). An unpriced unit is refused, never charged at a guessed rate. See
 [`docs/BILLING_PLANS.md`](docs/BILLING_PLANS.md) and [`docs/PADDLE_SETUP.md`](docs/PADDLE_SETUP.md).
@@ -49,7 +51,7 @@ quoted by the server, held, then captured on success or released on failure, in 
 | Workers | Python 3.11 services in one Docker image (`Dockerfile.worker`): pipeline queue, creative jobs, media and editor exports, notifications, e-mail, operator bot, marketing, brand scan |
 | Rendering | ffmpeg (editor exports and the declarative pipeline path), MoviePy (pipeline default), optional Remotion (`video-engine/`) |
 | Hosting | Docker Compose behind Caddy on a dedicated server; GitHub Actions for the pipeline schedule, probes, alerts and CI |
-| Payments | Paddle, webhook as a Supabase Edge Function |
+| Payments | Checkout integration: Paddle Billing (sandbox), webhook as a Supabase Edge Function; production provider not decided |
 
 ## Repository layout
 
@@ -60,7 +62,7 @@ main.py                  the pipeline, one run for one channel
 tools/                   worker entry points and scripts the workflows call
 schemas/                 model registry and the timeline document schema
 supabase/migrations/     Postgres schema, RLS and SQL functions; additive, applied on merge
-supabase/functions/      Edge Functions (Paddle webhook, Telegram webhook)
+supabase/functions/      Edge Functions (Paddle sandbox webhook, Telegram webhook)
 docs/sql/                owner-run scripts: one-time clean-ups and rollbacks, never migrations
 packages/cli/            @nightshift/cli, a command-line client for the public API (not published)
 skills/                  Agent Skills that teach an AI agent to use the CLI and MCP
@@ -84,7 +86,7 @@ npx tsc --noEmit && npx next lint && npx vitest run && npx next build
 `test_compositor_readers` and `test_compositor_subtitles` need `moviepy`. The security lab
 (`tests/security`) needs a Postgres it may create databases in (`NIGHTSHIFT_SECURITY_PG`) and is skipped
 without one. CI runs it in `.github/workflows/security.yml`. Every user-visible string lives in all three
-of `command-center/lib/i18n/{en,ru,uz}.ts`.
+languages (`command-center/lib/i18n/{en,ru,uz}.ts` and the per-feature folders `lib/i18n/<feature>/`).
 
 To run the pipeline locally, copy `.env.example` to `.env` and `channels.example.json` to
 `channels.json`, put ffmpeg and ImageMagick on `PATH`, run `python tools/setup_check.py`, then
@@ -107,7 +109,7 @@ quality fallback; an unknown is never shown as a number; fail early and name the
 - [`docs/editor-render-fields.md`](docs/editor-render-fields.md): every field the editor's export understands
 - [`docs/research/premiere-parity.md`](docs/research/premiere-parity.md): the editor parity plan
 - [`docs/API.md`](docs/API.md), [`docs/MCP.md`](docs/MCP.md), [`docs/CLI.md`](docs/CLI.md), [`skills/README.md`](skills/README.md): the ways in
-- [`docs/BILLING_PLANS.md`](docs/BILLING_PLANS.md), [`docs/PADDLE_SETUP.md`](docs/PADDLE_SETUP.md): plans, credits, payments
+- [`docs/BILLING_PLANS.md`](docs/BILLING_PLANS.md), [`docs/PADDLE_SETUP.md`](docs/PADDLE_SETUP.md): plans, credits, the Paddle sandbox integration
 - [`docs/AI_DISCLOSURE.md`](docs/AI_DISCLOSURE.md): how AI-made media is labelled
 - [`docs/DEPLOY_AX42.md`](docs/DEPLOY_AX42.md), [`docs/WORKER_VPS.md`](docs/WORKER_VPS.md): running it (partly in Uzbek)
 

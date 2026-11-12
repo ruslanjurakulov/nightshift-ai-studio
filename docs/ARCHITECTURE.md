@@ -7,8 +7,10 @@ values, what the live database holds, whether a scheduled workflow is producing 
 
 Nightshift is a multi-model creative studio with a video pipeline attached:
 
-- **Studio.** A signed-in person generates images, video, speech, sound and music with models that the
-  model registry lists, edits video in a browser editor, and keeps the results in a media library.
+- **Studio.** A signed-in person generates images and video with models that the model registry lists,
+  edits video in a browser editor, and keeps the results in a media library. Speech, sound-effect and
+  music models are in the registry, but each still has an open vendor-terms gate, so none can be offered
+  yet. Which models are live on the database: **not verified**.
   Every paid job is quoted, held, then captured or refunded.
 - **Pipeline.** The original autonomous YouTube channel operator: pick a topic, research, write,
   fact-check, narrate, render, check, upload as private, learn from the results.
@@ -25,7 +27,7 @@ flowchart LR
     B["Browser<br/>(anon key + user session)"] --> W["Next.js Command Center<br/>command-center/ (server routes)"]
     API["Public API /api/v1, MCP /api/mcp,<br/>CLI packages/cli"] --> W
     W -->|"RPC (security-definer SQL),<br/>RLS-scoped reads"| DB[("Supabase Postgres<br/>RLS, migrations")]
-    PW["Paddle webhook<br/>supabase/functions/paddle-webhook"] --> DB
+    PW["Paddle webhook (sandbox)<br/>supabase/functions/paddle-webhook"] --> DB
     DB <-->|"claim / heartbeat / finish<br/>(service key)"| WK["Workers on the server<br/>queue, creative, media, notify, e-mail,<br/>operator bot, marketing, brand scan"]
     WK -->|"each maker's own API"| V["Model vendors"]
     WK --> YT["YouTube Data API<br/>(private upload)"]
@@ -36,7 +38,7 @@ flowchart LR
 
 | Layer | What runs | Where to look |
 | :-- | :-- | :-- |
-| Browser | React pages; Supabase **anon key** and the person's session only. No service key reaches the web app: the only `SUPABASE_SERVICE_KEY` mention under `command-center/` is a comment in `lib/server/github-secrets.ts` | `command-center/lib/supabase/client.ts` |
+| Browser | React pages; Supabase **anon key** and the person's session only. No service key reaches the web app: the only `SUPABASE_SERVICE_KEY` mention in the app code (`lib/`, `app/`) is a comment in `lib/server/github-secrets.ts` | `command-center/lib/supabase/client.ts` |
 | Web server | Next.js App Router. Server routes validate input, then call a database function under the caller's own session. The channel travels in the URL (`/{channel}/{section}`), and `middleware.ts` puts it into request headers | `command-center/app/api/`, `command-center/lib/server/`, `command-center/middleware.ts` |
 | Database | Supabase Postgres: tables under RLS, `security definer` functions that do every write that matters, append-only logs | `supabase/schema.sql`, `supabase/migrations/` (0001-0139, 122 files) |
 | Workers | Python, one Docker image (`Dockerfile.worker`), one compose service per job type, each claiming rows from the database with the service key | `tools/*_worker.py`, `deploy/docker-compose.yml` |
@@ -53,7 +55,7 @@ database function and stops. A worker carries the request out after the database
 | Registry file | Static facts per model: capabilities, inputs, sizes, durations, adapter, vendor model string, documentation quality, `credit_unit`, entitlement, `terms_gate`, limits, probe call. 85 entries today, over 21 capabilities (`t2i`, `edit`, `t2v`, `i2v`, `tts`, `sfx`, `music`, `upscale`, `captions`, `dub`, ...) | `schemas/model_registry.json`, validated against `schemas/model_registry.schema.json` by `modules/model_registry.py` |
 | Database half | `model_registry.availability` (`hidden`, `beta`, `ga`, `disabled`), `verified_at`, `model_probe_runs`. CHECK constraints refuse `beta` or `ga` without `verified_at`, with an open `terms_gate`, or without a `credit_unit` | `supabase/migrations/0035_model_registry.sql` (lines 97-124) |
 | Probe | One cheapest real call per model with the owner's key. A success sets `verified_at`. `--sync` copies the file's static facts into the database. `--all` skips terms-gated models | `tools/probe_models.py`, `.github/workflows/probe_models.yml` (manual dispatch only) |
-| What a person is offered | `sellable_models()`: beta or ga, verified, a positive `credit_prices` row, no open terms gate | `supabase/migrations/0035_model_registry.sql`, `command-center/lib/creative/registry.ts` |
+| What a person is offered | `sellable_models()`: beta or ga, verified, a positive `credit_prices` row, no open terms gate | `supabase/migrations/0035_model_registry.sql`, current body in `0125_model_shutdown.sql:93`, `command-center/lib/creative/registry.ts` |
 | Owner's switch | Per-model and per-provider on/off (`model_is_available`) | `0124_model_switch.sql`, `docs/MODEL_SWITCH.md`, flag `NIGHTSHIFT_MODEL_SWITCH` |
 | Shutdown dates | A model past its announced shutdown is not quoted | `0125_model_shutdown.sql` |
 | Operator preview | A platform admin may try a `hidden` model with `"operator_preview": true` in the operator's own credits-exempt organization. No registry entry carries the flag in #694 | `0139_operator_preview.sql` |
@@ -89,13 +91,15 @@ nothing, and never to a dearer one than the hold. Server entry points: `app/api/
 
 The same quote, hold, capture and release shape is used by pipeline runs (`render_jobs`, 0017, 0020, 0041),
 paid editor exports (0132, 0136, below), brand scans (0133) and the public API's own cent balance
-(`api_ledger`, 0031). `NIGHTSHIFT_CREDITS_ENFORCE` decides whether the worker requires a hold for a
-customer's pipeline run. The operator's default organization is credits-exempt.
+(`api_ledger`, 0031). `NIGHTSHIFT_CREDITS_ENFORCE` (off unless set, `modules/credits.py:79`) decides whether the
+creative worker refuses a job whose hold it cannot confirm. The queue worker refuses a customer's
+pipeline run without an open hold whatever the flag says (`tools/queue_worker.py:1301`). The operator's default organization is credits-exempt.
 
 Plans and packs: plans, entitlements and their keys are data (0034, `command-center/lib/plans.ts`).
-Payments arrive through the Paddle webhook, a Supabase Edge Function (`supabase/functions/paddle-webhook`).
-The launch checklist records the pricing page on Paddle's sandbox (`docs/LAUNCH_CHECKLIST.md`, owner item 3).
-Whether that is still the case: **not verified**.
+The checkout integration in code is Paddle Billing; its webhook is a Supabase Edge Function
+(`supabase/functions/paddle-webhook`), and `NEXT_PUBLIC_PADDLE_ENV` defaults to `sandbox`
+(`deploy/.env.web.example:46`). Paddle declined the account on 2026-11-12, so payments are not live and
+the production provider is not decided.
 
 ## 4. The editor: document, parity and render
 
@@ -111,8 +115,9 @@ A worker renders it with ffmpeg.
 | Speed curves | `lib/editorSpeedRamp.ts` | `modules/speed_ramp.py` |
 
 Both validators run the same documents from `samples/timeline_doc_cases.json`, so a change to one that
-the other does not make fails CI. The database function `editor_doc_problem` checks only `asset_id`
-values (they must be the organization's own live files) and size. Every render field, its limits and
+the other does not make fails CI. The database function `editor_doc_problem` checks shape, size and
+`asset_id` values: an object with a tracks array of at most 32 tracks, and asset ids that are the
+organization's own live files (`0054_editor_projects.sql:177-189`). Every render field, its limits and
 its default are listed in [editor-render-fields.md](editor-render-fields.md).
 
 Render path: `request_editor_export` → the media worker's export thread (`tools/media_worker.py`) →
@@ -146,15 +151,16 @@ Publishing applies to **pipeline videos** (the `videos` table). Every layer belo
 | Privacy default | `YOUTUBE_PRIVACY` defaults to `private` (`config.py`), and so do the scheduled run and the manual dispatch input (`daily_video.yml`) | `config.py`, `modules/run_request.py` |
 | Early hold | A fact-check that would block the gate stops the run before the voice and the render are paid for | `main.py` (`publish_gate.evaluate_fact_check`, `HeldBeforeRender`) |
 | Publish gate | Runs on every finished video before any upload: QC report (`modules/video_qc.py`), fact-check results, grounding, claims, title. A blocked video is kept on disk with a `videos` row and a `publish.blocked` event | `modules/publish_gate.py`, `main.py` (around "Pre-publish gate") |
-| Auto publish | Per-channel switch on top of the gate: an allowed video is uploaded now, or held for a person | `channels.auto_publish` (0004, `default false`); see the note below |
+| Auto publish | Two per-channel settings on top of the gate. `agent_config.auto_publish` (a missing key reads as on, `modules/channels.py:353`) decides whether an allowed video uploads now or is held on disk. The `channels.auto_publish` column (0004, `default false`), the Command Center's Auto publish switch, only limits privacy: unless it is exactly true, the run uploads as `private` whatever it asked for (`effective_privacy`, `main.py:780`) | `modules/channels.py`, `main.py` |
 | Two-person rule | A channel with `require_two_person_publish` needs a second admin's approval before a public upload | `modules/publish_approval.py`, migration 0009 |
 | Approval of one cut | `approve_video_publish` records who approved which exact file (sha256), until when (24 h), with what acknowledgement. It does not change privacy | migration 0112 |
 | Publish when approved | A second per-channel switch, off by default, that only a workspace admin can turn on through an audited function. The approval then queues one request, which the queue worker carries out only after asking the database again. The worker switch `NIGHTSHIFT_VISIBILITY_PUBLISH` defaults to `off` (`modules/visibility_publish.py:607`) | migration 0116, `modules/visibility_publish.py`, `docs/APPROVE_PUBLISH_1B.md` |
 | Cross-posting | "Publish to platforms" writes `publish_requests` rows. The queue worker re-asks `publish_request_refusal` (gate passed, approved, two-person rule met) and posts the master render only | migration 0029, `modules/social_publish.py` |
 
-Note on the auto publish default: the database column defaults to `false`, but `ChannelContext` reads a
-**missing** key as `true` (`modules/channels.py:231`, `:353`). For a channel defined in `channels.json`
-without the key, an allowed video is uploaded (as private unless the run asks otherwise).
+A channel whose agent_config has no `auto_publish` key (every `channels.json` channel, and any database
+row that never set it) uploads an allowed video. It uploads as private unless the channel's
+`channels.auto_publish` column is exactly true. A `channels.json` channel has no column, so its uploads
+are always private.
 
 `modules/pipeline_stages.py` (`PipelineStateMachine`) and `tools/approve_run.py` are an audit trail only.
 Nothing in the upload path reads them.
@@ -253,7 +259,7 @@ Whether the poll returns data on the live channel: **not verified**.
 | Database, auth, Edge Functions | Supabase | Migrations on merge; functions under `supabase/functions/` |
 | Pipeline (default backend), intelligence poll, probes, alerts, CI | GitHub Actions | `.github/workflows/` |
 
-**Feature flags are repository variables read at deploy time.** `deploy_web.yml` copies `vars.*` and
+**Feature flags are GitHub Actions variables (repository or `production` environment) read at deploy time.** `deploy_web.yml` copies `vars.*` and
 `secrets.*` of the GitHub Environment `production` into the server's env files on every run, so a flag
 changes on the next deploy. The web app's flags (defaults empty, which means off, in
 `deploy/.env.web.example`) include `NIGHTSHIFT_MULTI_RATIO_EXPORT`, `NIGHTSHIFT_HIRES_EXPORT`,

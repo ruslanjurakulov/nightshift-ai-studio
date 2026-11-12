@@ -1,8 +1,9 @@
 > Status (2026-11-12): phase 1 merged in PR #690; phases 2 and 4 are in progress.
+> Registry line numbers in this plan refer to commit 413432e.
 
 # Premiere parity plan: Adobe Premiere 27.0 vs the NIGHTSHIFT web editor (2026-11-12)
 
-Research and code audit only. Nothing in the repository was changed and no PR was opened. Nothing was bought, and no
+Research and code audit only. The audit itself changed nothing; this file was added later by PR #697. Nothing was bought, and no
 account was logged into. Adobe's pages were read as data.
 
 - **Benchmark.** Adobe Premiere on desktop **27.0** (November 2026). Adobe now calls the product "Adobe Premiere", and its
@@ -10,7 +11,6 @@ account was logged into. Adobe's pages were read as data.
   redirects into the new tree.
 - **Our editor.** `ruslanjurakulov/nightshift-ai-studio`, `main` at `413432e` (re-fetched 2026-11-12 after #680, #683, #685, #686 and #687 merged). It was a shallow clone, deleted afterwards.
   `cc/` below means `command-center/`.
-- **Companion file.** `premiere-parity.json` holds section B in machine-readable form (316 rows) and sits next to this one.
 
 ---
 
@@ -48,7 +48,7 @@ contents or release notes.
 - `schemas/timeline.schema.json`, `schemas/export_presets.json`, `schemas/model_registry.json`.
 - Migrations 0049, 0054, 0129, 0132, 0136 and 0137.
 - `docs/editor-render-fields.md` §1–16 and `docs/HIRES_EXPORT.md`.
-- The earlier CapCut/InShot report: `scratchpad/editor-parity.md`. Since that report, parity 1, 2a, 2b, voice-over, the
+- The earlier CapCut/InShot report: `scratchpad/editor-parity.md` (not in the repository). Since that report, parity 1, 2a, 2b, voice-over, the
   follow-ups and paid export have landed, and its rows were re-checked against `413432e`.
 
 **Merged since the first pass, re-checked before any gap was marked:**
@@ -153,7 +153,7 @@ contents or release notes.
 - **Premiere 27.0 has moved hard into AI.** It now ships an AI Assistant, a Generative Media Tool on the timeline,
   generated music, SFX and soundscapes, object masks with tracking, Generative Extend and caption translation. Our
   first-party model registry and hold-and-capture credits could match most of these. Today none of our AI editing
-  operations is sellable (see `editor-parity.md`), and auto-captions, the key to text-based editing, are built but dark.
+  operations is sellable (see `editor-parity.md`, not in the repository), and auto-captions, the key to text-based editing, are built but dark.
 
 ### 1.3 Top 20 gaps, ranked by user value divided by build effort
 
@@ -880,7 +880,7 @@ One row per item in A, in the same order. "Evidence" cites our code at `413432e`
 | CA03 | Speech-to-text languages | **partial** | uz, ru, en only (cc/lib/creative/operations.ts:136) | first-party AI API | S | none | P1 | Widen CAPTION_LANGUAGES to what the chosen model was probed for. |
 | CA04 | Caption styles | **have** | 10 animated styles with highlight colour (modules/caption_styles.py:31) | server ffmpeg | S | none | P3 | Keep; brand-kit styles (C6). |
 | CA05 | Single-word captions | **partial** | Word-highlight styles (karaoke, pop_in) (modules/caption_styles.py:31; modules/ass_captions.py) | server ffmpeg | S | none | P1 | A "one word" style: cues split per word from word timings. |
-| CA06 | Translate captions | **missing** | No translation capability (docs: editor-parity.md X10) | first-party AI API | M | none | P0 | New `caption_translate` capability on a first-party LLM (Google Gemini or OpenAI), timings kept, uz/ru/en first. |
+| CA06 | Translate captions | **missing** | No translation capability (docs: editor-parity.md X10, not in the repository) | first-party AI API | M | none | P0 | New `caption_translate` capability on a first-party LLM (Google Gemini or OpenAI), timings kept, uz/ru/en first. |
 | CA07 | Import caption files | **have** | SRT/VTT parse (cc/lib/captionCues.ts:75) | browser | S | none | P3 | Keep. |
 | CA08 | Caption file formats | **partial** | SRT and VTT (cc/lib/captions.ts:672-696) | browser | S | none | P3 | TTML/ASS export if asked. |
 | CA09 | Several caption tracks (languages) | **missing** | One `captions` object per document (modules/timeline.py:15-17) | browser + server ffmpeg | M | none | P1 | `captions` becomes a list of tracks with `language` and `burn` flag; one burned in, others sidecar. |
@@ -952,7 +952,7 @@ One row per item in A, in the same order. "Evidence" cites our code at `413432e`
 | AI03 | Generative Media Tool | **partial** | Generation happens in Studio; results come in with "Add to project" (cc/components/editor/SendToEditor.tsx) | first-party AI API | L | none | P0 | Section C2: a "Generate here" region on the timeline creates a pending clip; the job runs on the maker's API with hold/capture; the clip fills in when done. |
 | AI04 | Generate music | **partial** | sonilo-music registered, terms-gated, no UI (schemas/model_registry.json:6033) | first-party AI API | M | none | P1 | Editor panel on the registered maker's API; lands on a music track. |
 | AI05 | Generate sound effects | **partial** | elevenlabs-sfx registered, plan gate, no UI (schemas/model_registry.json:4410) | first-party AI API | M | none | P1 | Same panel; lands at the playhead. |
-| AI06 | Generate soundscape from video | **partial** | Video-to-music model registered (editor-parity.md A3), no DB capability or UI | first-party AI API | M | none | P2 | Needs `video_music` capability migration first. |
+| AI06 | Generate soundscape from video | **partial** | Video-to-music model registered (editor-parity.md A3, not in the repository), no DB capability or UI | first-party AI API | M | none | P2 | Needs `video_music` capability migration first. |
 | AI07 | Morph Cut | **missing** | none | first-party AI API | L | med | P2 | First-party frame-interpolation (i2v with first+last frame) between the two frames; or a short zoom-punch-in as the free alternative. |
 | AI08 | Auto Reframe (Sensei) | **partial** | See SQ17 / MO10 | server ffmpeg + first-party AI API | L | med | P0 | See SQ17. |
 | AI09 | Scene Edit Detection (Sensei) | **missing** | See SQ16 | server ffmpeg | M | low | P1 | See SQ16. |
