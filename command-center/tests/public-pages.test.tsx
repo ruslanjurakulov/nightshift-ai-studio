@@ -447,12 +447,13 @@ describe("public pricing page", () => {
 });
 
 describe("public footer", () => {
-  it("links Pricing, Privacy, Terms and Contact", () => {
+  it("links Pricing, Privacy, Terms, the Refund Policy and Contact", () => {
     const t = dictionaries.en;
     render(<PublicFooter t={t} />);
     expect(screen.getAllByRole("link", { name: t.legal.pricing })[0].getAttribute("href")).toBe("/pricing");
     expect(screen.getByRole("link", { name: t.legal.privacy }).getAttribute("href")).toBe("/privacy");
     expect(screen.getByRole("link", { name: t.legal.terms }).getAttribute("href")).toBe("/terms");
+    expect(screen.getByRole("link", { name: t.legal.refund }).getAttribute("href")).toBe("/refund");
     const contact = screen.getByRole("link", { name: t.landing.footer.contact }).getAttribute("href") ?? "";
     expect(contact === "/terms#contact" || contact.startsWith("mailto:")).toBe(true);
   });

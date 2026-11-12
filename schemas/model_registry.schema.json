@@ -143,6 +143,10 @@
           "uniqueItems": true,
           "items": {"type": "string", "pattern": "^[A-Z]{2}$"}
         },
+        "operator_preview": {
+          "description": "true lets the platform operator use this model in the operator's own credits-exempt organization while it is still hidden (migration 0139): a platform admin only, never a customer, never through the API. The model must still be verified by a real probe, and a terms gate or a missing credit price does not block the preview (an unpriced preview is recorded at the vendor cost in pricing.provider_usd_per_unit and charged to nobody). Absent or false: nothing changes.",
+          "type": "boolean"
+        },
         "credit_unit": {"type": "string", "pattern": "^model_[a-z0-9_]{1,40}_(image|second|character|request)$", "maxLength": 63},
         "entitlement": {
           "type": ["string", "null"],

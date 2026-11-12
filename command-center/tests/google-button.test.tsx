@@ -124,7 +124,7 @@ describe("GoogleButton", () => {
   it.each(["signin", "signup"] as const)("%s: the consent line with the Terms and Privacy links sits under the button", async (mode) => {
     const { container } = render(<GoogleButton mode={mode} />);
     await screen.findByRole("button", { name: "Continue with Google" });
-    expect(container.textContent).toContain("By continuing you agree to the Terms of Service and Privacy Policy.");
+    expect(container.textContent).toContain("By continuing you agree to the Terms of Service and Privacy Policy and confirm you are 18 or older.");
     expect(screen.getByRole("link", { name: "Terms of Service" }).getAttribute("href")).toBe("/terms");
     expect(screen.getByRole("link", { name: "Privacy Policy" }).getAttribute("href")).toBe("/privacy");
     const order = [...container.querySelectorAll("button, p.ns-google-consent, .ns-google-or")].map((n) => n.className || n.tagName);
@@ -133,8 +133,8 @@ describe("GoogleButton", () => {
   });
 
   it.each([
-    ["ru", "Продолжая, вы принимаете Условия использования и Политику конфиденциальности."],
-    ["uz", "Davom etish orqali siz Foydalanish shartlari va Maxfiylik siyosatiga rozilik bildirasiz."],
+    ["ru", "Продолжая, вы принимаете Условия использования и Политику конфиденциальности и подтверждаете, что вам исполнилось 18 лет."],
+    ["uz", "Davom etish orqali siz Foydalanish shartlari va Maxfiylik siyosatiga rozilik bildirasiz va 18 yoshga toʻlganingizni tasdiqlaysiz."],
   ] as const)("the consent line on sign-in is translated (%s)", async (locale, line) => {
     h.locale = locale;
     const { container } = render(<GoogleButton mode="signin" />);

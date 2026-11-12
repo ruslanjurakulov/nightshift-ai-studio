@@ -1,3 +1,4 @@
+import { studioHomeEn } from "./studio-home/en";
 import { improveEn } from "./improve/en";
 import { notifyChannelsEn } from "./notify-channels/en";
 import { aiLabelEn } from "./ai-label/en";
@@ -26,6 +27,7 @@ import { exportHiresEn } from "./editor-hires/en";
 import { clipToolsEn } from "./editor-clip-tools/en";
 import { parity2En } from "./editor-parity2/en";
 import { parity2bEn } from "./editor-parity2b/en";
+import { coreEn } from "./editor-core/en";
 import { voiceOverEn } from "./editor-voiceover/en";
 import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
@@ -58,6 +60,7 @@ export const en = {
   ownerRpc: ownerRpcEn,
   marketing: marketingEn,
   modelSwitch: modelSwitchEn,
+  studioHome: studioHomeEn,
   modelBudget: modelBudgetEn,
   modelKeys: modelKeysEn,
   /** The operator's Customers page (migration 0138): ./operator-customers/en.ts. */
@@ -327,6 +330,7 @@ export const en = {
     terms: "Terms of Service",
     privacy: "Privacy Policy",
     consentPost: ".",
+    ageConfirm: "I confirm I am 18 or older.",
     submit: "Create account",
     submitting: "Creating account…",
     haveAccount: "Already have an account?",
@@ -336,6 +340,7 @@ export const en = {
     errPasswordLong: "That password is too long — use at most 72 characters.",
     errMismatch: "The two passwords don't match.",
     errConsent: "Accept the Terms of Service and the Privacy Policy to continue.",
+    errAge: "Confirm that you are 18 or older to create an account.",
     errWeakPassword: "That password is too easy to guess. Try a longer one that mixes letters, numbers and symbols.",
     errRateLimited: "Too many attempts just now. Wait a few minutes, then try again.",
     errEmailRejected: "This email address can't be used. Check it, or use another one.",
@@ -3683,6 +3688,8 @@ export const en = {
     seconds: "{n} s",
     modelLabel: "Model",
     beta: "beta",
+    preview: "Preview",
+    previewHint: "Only you see this model. It is not offered to customers yet, and your organization is not charged for it.",
     noModels: "Nothing to pick yet: no model can make this right now.",
     generate: "Generate",
     generatePriced: "Generate · {n} credits",
@@ -4052,6 +4059,7 @@ export const en = {
   legal: {
     privacy: "Privacy Policy",
     terms: "Terms of Service",
+    refund: "Refund Policy",
     contact: "Contact",
     home: "Home",
     operator: "Operator",
@@ -4607,7 +4615,7 @@ export const en = {
     moreOptions: "More options",
   },
   desk: {
-    nav: "Studio desks",
+    nav: "Studio sections",
     names: { overview: "Overview", video: "Video", image: "Image", enhance: "Enhance", voice: "Voice", youtube: "YouTube video" },
     keySub: {
       overview: "Recent work",
@@ -4618,7 +4626,7 @@ export const en = {
       youtube: "Idea to approval",
     },
     blurbs: {
-      overview: "Pick a desk for the job in hand. Your latest work from every desk is listed below.",
+      overview: "Write what you want, pick a kind of work, or start from an example. The price is on the button before anything starts.",
       video: "Clips of 5 or 10 seconds, from words or from a picture. Each one shows its price before it is made.",
       image: "New pictures, edits to a picture you have, and a picture read back as a prompt.",
       enhance: "Make a picture or a video sharper and larger, or cut the subject out of its background.",
@@ -4689,9 +4697,9 @@ export const en = {
     since: "Elapsed",
     sinceSpoken: "{n} seconds since it was asked for",
     showOnStage: "Show it large",
-    stripLabel: "Everything on this desk",
+    stripLabel: "Everything made here",
     playTake: "Play take {n}",
-    openOnDesk: "Open the {desk} desk",
+    openOnDesk: "Open {desk}",
     feedTitle: { video: "Your clips", image: "Your pictures", enhance: "Before and after", voice: "Your voice-overs" },
     emptyTitle: {
       video: "No clip on the monitor yet",
@@ -4706,10 +4714,10 @@ export const en = {
       voice: "Write a script and pick a voice, or pick a recording to change or dub. Each take gets its own player here.",
     },
     workingNow: "{n} working now",
-    startTitle: "Desks",
-    recentTitle: "Recent generations, every desk",
+    startTitle: "Kinds of work",
+    recentTitle: "Recent generations",
     recentEmptyTitle: "Nothing made yet",
-    recentEmpty: "Open a desk above and make one thing. Every generation, its state and its credits are listed here.",
+    recentEmpty: "Make one thing above. Every generation, its state and its credits are listed here.",
     noOrg: "Generations need an organization. Create or open one in Settings.",
     sideLabel: "Credits and projects",
     creditsTitle: "Credits",
@@ -5157,6 +5165,8 @@ export const en = {
     parity2: parity2En,
     /** Effects pack, clip animations, apply to all cuts, beats: ./editor-parity2b/en.ts. */
     parity2b: parity2bEn,
+    /** Timeline tools, marks, J / L cut, shuttle and guides: ./editor-core/en.ts. */
+    core: coreEn,
     fx: fxEn,
     title: "Editor",
     subtitle: "Trim, split, speed up or slow down your videos and put text on them.",

@@ -10,7 +10,7 @@ import {
   validateSignup,
 } from "@/lib/signup";
 
-const ok = { email: "new@example.com", password: "correct horse", confirm: "correct horse", consent: true };
+const ok = { email: "new@example.com", password: "correct horse", confirm: "correct horse", consent: true, adult: true };
 
 describe("validateSignup", () => {
   it("accepts a complete form", () => {
@@ -42,6 +42,13 @@ describe("validateSignup", () => {
 
   it("requires consent to the Terms and Privacy Policy", () => {
     expect(validateSignup({ ...ok, consent: false })).toBe("consent_required");
+  });
+
+  // The vendors' terms (Meta's Model API ToS 10.1 among them) require every end user to be 18 or older: a form that
+  // agrees to the Terms but does not confirm the age is not a complete one.
+  it("requires the 18-or-older confirmation, on its own and after the Terms", () => {
+    expect(validateSignup({ ...ok, adult: false })).toBe("age_required");
+    expect(validateSignup({ ...ok, consent: false, adult: false })).toBe("consent_required");
   });
 });
 

@@ -33,6 +33,7 @@ export const MODEL_KEY_PROVIDER_IDS = [
   "krea",
   "lightricks",
   "luma",
+  "meta",
   "minimax",
   "openai",
   "pika",
@@ -110,7 +111,7 @@ const json = (rest: { auth: VerifyStrategyHttp["auth"] } & Partial<VerifyStrateg
 type VerifyStrategyHttp = Extract<VerifyStrategy, { kind: "http" }>;
 
 /**
- * Every vendor, in display order. Each `docUrl` and `keyUrlSource` below was opened and read on 2026-10-25 (Sonilo's on 2026-11-10); the request shapes are the
+ * Every vendor, in display order. Each `docUrl` and `keyUrlSource` below was opened and read on 2026-10-25 (Sonilo's on 2026-11-10, Meta's on 2026-11-12); the request shapes are the
  * vendors' own examples. Nothing here was CALLED with a key (no key was used in building this).
  */
 export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
@@ -371,6 +372,28 @@ export const MODEL_KEY_PROVIDERS: readonly ModelKeyProvider[] = [
       rejectStatuses: [401],
       expect: { kind: "field", name: "available_services", type: "array" },
       docUrl: "https://platform.sonilo.com/docs/api/list-services",
+    }),
+  },
+  {
+    id: "meta",
+    // Owner-only page. The Model API terms (section 7) bar using Meta's name or marks in connection with the service, so the
+    // vendor is named here, where the owner pastes the key, and on no page a customer sees (the model's display name is neutral).
+    name: "Meta (Model API)",
+    // "Create and manage keys in the Model API dashboard: log in and open the API keys tab" (the authentication page).
+    keyUrl: "https://dev.meta.ai/",
+    keyUrlSource: "https://dev.meta.ai/docs/authentication",
+    envSets: [["META_API_KEY"]],
+    scopedKeys: true,
+    strategy: json({
+      origin: "https://api.meta.ai",
+      // List models: a GET that makes nothing. The pricing page bills images, tokens, audio and segmentation, never a model list.
+      // The answer must hold a `data` array (ListModelsResponse). 401 is "missing, invalid, or revoked"; a 403 is a key without
+      // permission for a resource, which is not a rejected key.
+      path: "/v1/models",
+      auth: { header: "Authorization", scheme: "bearer" },
+      rejectStatuses: [401],
+      expect: { kind: "field", name: "data", type: "array" },
+      docUrl: "https://dev.meta.ai/docs/api-reference/models/list-models",
     }),
   },
   {

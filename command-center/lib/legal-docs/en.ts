@@ -214,7 +214,7 @@ export const en: LegalTexts = {
         id: "children",
         heading: "13. Children",
         body: [
-          "The Service is not directed to children and may not be used by anyone under 13, or by anyone below the minimum age YouTube requires to manage a channel in their country.",
+          "The Service is not directed to children or to anyone under 18. It may be used only by people who are at least 18 years old, or older where the minimum age YouTube requires to manage a channel in their country is higher. When you create an account, with an email address or with Google, you confirm that you are 18 or older. If you believe someone under 18 is using the Service, write to {contactEmail}.",
         ],
       },
       {
@@ -261,6 +261,7 @@ export const en: LegalTexts = {
         id: "accounts",
         heading: "3. Accounts",
         body: [
+          "You must be at least 18 years old to create an account or use the Service, and by creating an account, with an email address or with Google, you confirm that you are. The Service is not intended for anyone under 18.",
           "Access is currently by invitation. Keep your sign-in details secure and tell us promptly at {contactEmail} if you suspect unauthorised use. You are responsible for activity under your account.",
         ],
       },
@@ -339,7 +340,7 @@ export const en: LegalTexts = {
               unknown: "8.5. Expiry. The expiry term for top-up credits is the one in force for packs when you buy them. It could not be shown here just now; for the current term, write to us at {contactEmail}.",
             },
           },
-          "8.6. Refunds. Because Paddle is the seller, refunds are handled by Paddle under [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. To ask for a refund, use the link in your Paddle receipt, or write to us at {contactEmail} and we will help.",
+          "8.6. Refunds. Because Paddle is the seller, refunds are handled by Paddle under [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. To ask for a refund, use the link in your Paddle receipt, or write to us at {contactEmail} and we will help. Our [Refund Policy](/refund) sets out these rules on one page.",
           "8.7. Refunds and chargebacks remove credits. When a purchase is refunded or charged back, the credits it added are removed from your organisation’s balance — all of them for a full refund, and in proportion to the amount refunded for a partial one. Only available credits can be removed: credits already used, or on hold for a run in progress, cannot. Where a chargeback leaves credits used but unpaid, we may suspend the organisation’s access to paid features.",
           "8.8. Price changes. We may change the prices of credit packs and the rates at which credits are used. A change never reduces the credits already in your balance, and a run is never charged more than the hold taken when it started.",
         ],
@@ -397,6 +398,75 @@ export const en: LegalTexts = {
         id: "contact",
         heading: "16. Contact",
         body: ["{legalName}, {country}. Email: {contactEmail}."],
+      },
+    ],
+  },
+  refund: {
+    title: "Refund Policy",
+    summary:
+      "How refunds work for Nightshift credits and plans: how to ask for one, what happens to your credits, and how to cancel a monthly plan.",
+    sections: [
+      {
+        id: "seller",
+        heading: "1. Who handles refunds",
+        body: [
+          {
+            note: "This policy restates section 8 of our [Terms of Service](/terms#credits) in one place. That section is awaiting review by a qualified lawyer; any change will be published on both pages with a new effective date. If the two ever differ, the Terms of Service apply.",
+          },
+          "Our order process is conducted by our online reseller Paddle.com (“Paddle”). Paddle is the Merchant of Record for all our orders: you buy credits and plans from Paddle, under [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms), and Paddle processes the payment, issues your receipt and handles refund requests.",
+        ],
+      },
+      {
+        id: "how-to-ask",
+        heading: "2. How to ask for a refund",
+        body: [
+          "You can ask for a refund in any of these ways:",
+          {
+            list: [
+              "write to us at {contactEmail}, and we will help;",
+              "reply to the receipt email Paddle sent you after the purchase, or use the link in it;",
+              "find your purchase at [paddle.net](https://paddle.net) and contact Paddle there.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "when",
+        heading: "3. When a refund is given",
+        body: [
+          "Refunds are decided by Paddle in line with [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. We do not set a separate refund period of our own.",
+          "Nothing in this policy limits your statutory rights as a consumer.",
+        ],
+      },
+      {
+        id: "credits",
+        heading: "4. What happens to your credits",
+        body: [
+          "When a purchase is refunded or charged back, the credits it added are removed from your organisation’s balance — all of them for a full refund, and in proportion to the amount refunded for a partial one.",
+          "Only available credits can be removed: credits already used, or on hold for a run in progress, cannot. Where a chargeback leaves credits used but unpaid, we may suspend the organisation’s access to paid features.",
+          "Credits have no cash value and cannot be exchanged for cash except by a refund as described here.",
+        ],
+      },
+      {
+        id: "failed-runs",
+        heading: "5. Failed generations",
+        body: [
+          "You do not need to ask for anything when a generation fails. Before a run starts, its estimated cost is put on hold. If the run fails or does not complete, the whole hold is returned and nothing is charged; a hold for a run that never starts, or never reports back, is returned automatically. When a run completes, only what it actually used is charged, never more than the hold.",
+          "Every hold, charge and return is recorded in your organisation’s credit history in the Service.",
+        ],
+      },
+      {
+        id: "subscriptions",
+        heading: "6. Cancelling a monthly plan",
+        body: [
+          "You can cancel a monthly plan at any time, in Manage subscription on the Credits page of the Service or at [paddle.net](https://paddle.net). The plan then stays active until the end of the period already paid for, with no further charge, and does not renew. Credits granted with a plan can be used only during the period they were granted for and expire at its end.",
+          "Cancelling stops future renewals. To ask for a refund of a payment already made, see section 2.",
+        ],
+      },
+      {
+        id: "contact",
+        heading: "7. Contact",
+        body: ["{legalName}, {country}. Email: {contactEmail}. See also our [Terms of Service](/terms) and [Privacy Policy](/privacy)."],
       },
     ],
   },

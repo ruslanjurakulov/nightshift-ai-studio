@@ -62,6 +62,7 @@ function descriptions(locale: Locale): [string, string][] {
     ["signup", t.signup.sub],
     ["privacy", legal.privacy.summary],
     ["terms (meta)", t.site.legalMeta.terms],
+    ["refund", legal.refund.summary],
     ["api", dev.api.meta.description],
     ["mcp", dev.mcp.meta.description],
     ["mcp (sign-in off)", dev.mcp.signinOff.description],
@@ -110,6 +111,10 @@ describe("search-result descriptions", () => {
       expect(src).toContain("shareMetadata(");
       expect(src).toContain(`path: "/${name}"`);
     }
+    // /refund names its path through REFUND_PATH; the rendered canonical is checked in tests/refund-page.test.tsx.
+    const refund = readFileSync(join(process.cwd(), "app", "refund", "page.tsx"), "utf8");
+    expect(refund).toContain("shareMetadata(");
+    expect(refund).toContain("path: REFUND_PATH");
   });
 });
 

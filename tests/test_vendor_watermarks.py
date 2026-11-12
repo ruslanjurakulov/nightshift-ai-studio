@@ -388,6 +388,23 @@ class StorePathTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), VENDOR_PNG)
         self.assertIs(session.calls[0][2]["json"]["watermark"], True)
 
+    def test_a_muse_image_picture_keeps_whatever_meta_put_in_it_byte_for_byte(self):
+        # Meta's AUP bars removing or altering "any watermark, label, metadata, or other provenance signal". The docs do not
+        # say whether one is applied, so the answer's base64 is decoded and stored as is, and nothing that could switch or
+        # replace a mark is sent (docs/AI_DISCLOSURE.md row `image.meta`).
+        session = FakeSession([("POST", "/responses", FakeResp(200, {"status": "completed", "output": [
+            {"type": "image_generation_call", "id": "ig_1", "status": "completed",
+             "result": base64.b64encode(VENDOR_PNG).decode()}]}))])
+        a = build_adapter("image.meta", env=ENV, session=session)
+        task = a.submit(CapabilityRequest(T2I, "an apple", aspect_ratio="1:1"), "muse-image-1.0")
+        (path,) = a.fetch(a.poll(task), self.tmp / "out", stem="img")
+        self.assertEqual(path.read_bytes(), VENDOR_PNG)
+        self.assertIn(b"caBX", path.read_bytes())
+        body = session.calls[0][2]["json"]
+        self.assertEqual(list(provenance_offences(body)), [])
+        self.assertEqual(list(watermark_fields(body)), [])
+        self.assertIs(body["store"], False)
+
     def test_a_downloaded_result_is_written_as_the_vendor_sent_it(self):
         # The plain download path (Kling, Wan, Runway, ...): bytes in, the same bytes out.
         class Download(FakeResp):

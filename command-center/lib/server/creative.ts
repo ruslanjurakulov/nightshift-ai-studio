@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { JOB_COLUMNS, type CreativeDb, type CreativeResult } from "@/lib/creative/operations";
-import { coerceModels, onlySellable, withTiers, type StudioModel } from "@/lib/creative/studio";
+import { coerceModels, coercePreviewModels, onlySellable, withTiers, type StudioModel } from "@/lib/creative/studio";
 import { withoutSwitchedOff } from "@/lib/model-switch";
 import { readSwitchedOffIds } from "@/lib/server/model-switch";
 import { hideBlockedModelsHere } from "@/lib/server/geo";
@@ -81,6 +81,23 @@ export async function loadStudioModels(): Promise<StudioModel[]> {
     // A model whose vendor forbids the country this request comes from is not offered (docs/GEO_BLOCK.md); the quote and the
     // create routes refuse it too. Reads nothing while no model has a country list.
     return await hideBlockedModelsHere(offered);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The hidden models the platform operator may try in this organization (migration 0139), marked `preview`. The database decides who
+ * sees any: operator_preview_models() answers rows only to a platform admin in the credits-exempt organization, and no rows to
+ * everyone else. Without the migration, or on any error: none (never a crash, never a guess).
+ */
+export async function loadOperatorPreviewModels(orgId: string): Promise<StudioModel[]> {
+  try {
+    const supabase = await createClient();
+    if (!supabase) return [];
+    const { data, error } = await supabase.rpc("operator_preview_models", { p_org: orgId });
+    if (error) return [];
+    return coercePreviewModels(data);
   } catch {
     return [];
   }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
 import { LEGAL } from "@/lib/legal";
-import { ROADMAP_PATH } from "@/lib/public-paths";
+import { REFUND_PATH, ROADMAP_PATH } from "@/lib/public-paths";
 import { SOLUTION_IDS, solutionHref } from "@/lib/solutions";
 import { Wordmark } from "@/components/site/Wordmark";
 import { devFor } from "@/lib/i18n/dev";
@@ -17,7 +17,7 @@ type FooterLink = { href: string; label: string; external?: boolean };
 /**
  * The public pages' footer: Product, Solutions, Company and Legal columns.
  * Every link resolves — section anchors point at sections the homepage always
- * renders. Pricing, Privacy, Terms and Contact are always there: Contact mails
+ * renders. Pricing, Privacy, Terms, Refunds and Contact are always there: Contact mails
  * the operator's configured address, or opens the Terms' contact section when
  * none is set. Google's verification checks that the homepage links the
  * Privacy Policy; Paddle's that pricing is one click away.
@@ -76,6 +76,8 @@ export function PublicFooter({ t }: { t: Dictionary }) {
       links: [
         { href: "/privacy", label: t.legal.privacy },
         { href: "/terms", label: t.legal.terms },
+        // Paddle's seller verification asks for a Refund Policy page of its own, beside the Terms and the Privacy Policy.
+        { href: REFUND_PATH, label: t.legal.refund },
         // The "Cookies and local storage" section of the Privacy Policy (id "cookies"): what the site stores, and that nothing is a tracker.
         { href: "/privacy#cookies", label: f.cookies },
       ],

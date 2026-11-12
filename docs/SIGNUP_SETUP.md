@@ -171,3 +171,29 @@ backend bilan tekshirilgan.
 Eslatma: ikki bosqichli tekshiruv (TOTP) yoqilgan hisob parolini faqat xat havolasi
 orqali tiklay olmaydi (Supabase bunda aal2 talab qiladi); ular kirib, Sozlamalardan
 o'zgartiradi.
+
+## 8. Eng kam yosh: 18
+
+Model sotuvchilarining shartlari har bir foydalanuvchi 18 yoshdan katta boʻlishini talab qiladi
+(masalan, Meta Model API ToS 10.1: "You and your End Users must be at least 18"), va sotuvchilarga
+yozgan xatlarimizda ham 18+ cheklovini vaʼda qilganmiz. Shuning uchun:
+
+- `/signup` formasida alohida, majburiy **"Men 18 yoshga toʻlganimni tasdiqlayman."** belgisi bor
+  (Foydalanish shartlari belgisidan alohida). Belgilanmasa, forma yuborilmaydi (`lib/signup.ts`,
+  `age_required`).
+- Google tugmasi ostidagi qator endi "... rozilik bildirasiz va 18 yoshga toʻlganingizni
+  tasdiqlaysiz" deydi (`/login` va `/signup` ikkalasida ham).
+- Maxfiylik siyosatining 13-boʻlimi va Foydalanish shartlarining 3-boʻlimi uch tilda 18 yosh deydi.
+
+**Serverda yozuv yoʻq.** Roʻyxatdan oʻtishda rozilik ham, shartlar versiyasi ham hech qayerda saqlanmaydi
+(`terms_version` faqat Developer API faollashtirishida bor, `api_settings`, 0031). Shuning uchun yosh
+tasdigʻi ham saqlanmaydi: bu shaxsning oʻz bayonoti, forma yuborilishidan oldin talab qilinadi. Yangi
+sxema qoʻshilmadi; uni qayd etish kerak boʻlsa, bu alohida qaror va alohida migratsiya.
+
+**Mavjud hisoblar bloklanmaydi.** Hech kim tizimdan chiqarilmaydi va hech qanday yangi tekshiruv
+eski hisoblarga qoʻyilmaydi. Shartlarning 14-boʻlimiga koʻra, yangi matn kuchga kirgandan keyin
+Xizmatdan foydalanishda davom etish uni qabul qilish demakdir.
+
+**Release kuni:** `NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE` ni yangi sanaga oʻzgartiring va webni qayta
+deploy qiling (sana kodda yoʻq; `/privacy` va `/terms` shu oʻzgaruvchidan oʻqiydi). Bu jiddiy
+oʻzgarish: Shartlar 14-boʻlimi va Siyosat 15-boʻlimi boʻyicha foydalanuvchilarga Xizmatda xabar bering.

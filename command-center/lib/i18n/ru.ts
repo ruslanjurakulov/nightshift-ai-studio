@@ -1,3 +1,4 @@
+import { studioHomeRu } from "./studio-home/ru";
 import { improveRu } from "./improve/ru";
 import { notifyChannelsRu } from "./notify-channels/ru";
 import { aiLabelRu } from "./ai-label/ru";
@@ -27,6 +28,7 @@ import { exportHiresRu } from "./editor-hires/ru";
 import { clipToolsRu } from "./editor-clip-tools/ru";
 import { parity2Ru } from "./editor-parity2/ru";
 import { parity2bRu } from "./editor-parity2b/ru";
+import { coreRu } from "./editor-core/ru";
 import { voiceOverRu } from "./editor-voiceover/ru";
 import { looksRu } from "./editor-looks/ru";
 import { fxRu } from "./editor-fx/ru";
@@ -50,6 +52,7 @@ export const ru: Dictionary = {
   ownerRpc: ownerRpcRu,
   marketing: marketingRu,
   modelSwitch: modelSwitchRu,
+  studioHome: studioHomeRu,
   modelBudget: modelBudgetRu,
   modelKeys: modelKeysRu,
   /** The operator's Customers page (migration 0138): ./operator-customers/ru.ts. */
@@ -316,6 +319,7 @@ export const ru: Dictionary = {
     terms: "Условия использования",
     privacy: "Политику конфиденциальности",
     consentPost: ".",
+    ageConfirm: "Подтверждаю, что мне исполнилось 18 лет.",
     submit: "Создать аккаунт",
     submitting: "Создаём аккаунт…",
     haveAccount: "Уже есть аккаунт?",
@@ -325,6 +329,7 @@ export const ru: Dictionary = {
     errPasswordLong: "Пароль слишком длинный — не больше 72 символов.",
     errMismatch: "Пароли не совпадают.",
     errConsent: "Чтобы продолжить, примите Условия использования и Политику конфиденциальности.",
+    errAge: "Чтобы создать аккаунт, подтвердите, что вам исполнилось 18 лет.",
     errWeakPassword: "Этот пароль слишком легко угадать. Возьмите длиннее и смешайте буквы, цифры и символы.",
     errRateLimited: "Слишком много попыток. Подождите несколько минут и попробуйте снова.",
     errEmailRejected: "Этот адрес использовать нельзя. Проверьте его или укажите другой.",
@@ -3671,6 +3676,8 @@ export const ru: Dictionary = {
     seconds: "{n} с",
     modelLabel: "Модель",
     beta: "бета",
+    preview: "Тест",
+    previewHint: "Эту модель видите только вы. Клиентам она пока не предлагается, и с вашей организации за неё не списывается плата.",
     noModels: "Пока выбрать нечего: сейчас ни одна модель не умеет это делать.",
     generate: "Создать",
     generatePriced: "Создать · {n} кредитов",
@@ -4040,6 +4047,7 @@ export const ru: Dictionary = {
   legal: {
     privacy: "Политика конфиденциальности",
     terms: "Условия использования",
+    refund: "Политика возвратов",
     contact: "Контакты",
     home: "Главная",
     operator: "Оператор",
@@ -4595,7 +4603,7 @@ export const ru: Dictionary = {
     moreOptions: "Дополнительно",
   },
   desk: {
-    nav: "Столы студии",
+    nav: "Разделы студии",
     names: { overview: "Обзор", video: "Видео", image: "Картинка", enhance: "Улучшение", voice: "Голос", youtube: "Видео для YouTube" },
     keySub: {
       overview: "Последние работы",
@@ -4606,7 +4614,7 @@ export const ru: Dictionary = {
       youtube: "От идеи до одобрения",
     },
     blurbs: {
-      overview: "Выберите стол под задачу. Ниже — последние работы со всех столов.",
+      overview: "Напишите, что нужно, выберите вид работы или начните с примера. Цена видна на кнопке до начала.",
       video: "Клипы на 5 или 10 секунд из слов или из картинки. Цена видна до того, как клип сделан.",
       image: "Новые картинки, правки вашей картинки и картинка, прочитанная обратно в промпт.",
       enhance: "Сделать картинку или видео чётче и больше или вырезать объект из фона.",
@@ -4677,9 +4685,9 @@ export const ru: Dictionary = {
     since: "Прошло",
     sinceSpoken: "{n} секунд с момента запроса",
     showOnStage: "Показать крупно",
-    stripLabel: "Всё на этом столе",
+    stripLabel: "Всё, что сделано здесь",
     playTake: "Прослушать дубль {n}",
-    openOnDesk: "Открыть стол «{desk}»",
+    openOnDesk: "Открыть «{desk}»",
     feedTitle: { video: "Ваши клипы", image: "Ваши картинки", enhance: "До и после", voice: "Ваши озвучки" },
     emptyTitle: {
       video: "На мониторе пока нет клипа",
@@ -4694,10 +4702,10 @@ export const ru: Dictionary = {
       voice: "Напишите сценарий и выберите голос или выберите запись, чтобы сменить голос или сделать дубляж. У каждого дубля здесь свой плеер.",
     },
     workingNow: "в работе: {n}",
-    startTitle: "Столы",
-    recentTitle: "Последние генерации со всех столов",
+    startTitle: "Виды работ",
+    recentTitle: "Последние генерации",
     recentEmptyTitle: "Пока ничего не сделано",
-    recentEmpty: "Откройте стол выше и сделайте что-нибудь одно. Здесь будет каждая генерация, её состояние и кредиты.",
+    recentEmpty: "Сделайте что-нибудь одно выше. Здесь будет каждая генерация, её состояние и кредиты.",
     noOrg: "Для генераций нужна организация. Создайте или откройте её в настройках.",
     sideLabel: "Кредиты и проекты",
     creditsTitle: "Кредиты",
@@ -5144,6 +5152,8 @@ export const ru: Dictionary = {
     parity2: parity2Ru,
     /** Effects pack, clip animations, apply to all cuts, beats: ./editor-parity2b/ru.ts. */
     parity2b: parity2bRu,
+    /** Timeline tools, marks, J / L cut, shuttle and guides: ./editor-core/ru.ts. */
+    core: coreRu,
     fx: fxRu,
     title: "Редактор",
     subtitle: "Обрезайте, делите, ускоряйте и замедляйте видео и добавляйте на них текст.",

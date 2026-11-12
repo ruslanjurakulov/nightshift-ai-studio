@@ -66,6 +66,8 @@ export const PUBLIC_PAGE_PATHS = [
   "/docs/skills",
   "/privacy",
   "/terms",
+  // The Refund Policy (lib/public-paths.ts REFUND_PATH).
+  "/refund",
   "/login",
   "/signup",
   // Password recovery (lib/public-paths.ts): the request page and the page a reset link ends on.

@@ -17,7 +17,29 @@ export type ShortcutAction =
   | "rightBig"
   | "zoomIn"
   | "zoomOut"
-  | "zoomFit";
+  | "zoomFit"
+  /** J / K / L: play backwards (faster on each press), stop, play forwards (faster on each press). */
+  | "shuttleBack"
+  | "shuttleStop"
+  | "shuttleForward"
+  /** I / O: the in and out marks at the playhead. */
+  | "markIn"
+  | "markOut"
+  /** Q / W: ripple trim the clip under the playhead up to it (its start) or from it (its end). */
+  | "rippleHead"
+  | "rippleTail"
+  /** Up / Down: the playhead to the previous / next cut. */
+  | "prevEdit"
+  | "nextEdit"
+  /** ; lift and ' ripple delete (extract) between the marks; , insert the copied clip at the playhead. */
+  | "lift"
+  | "extract"
+  | "insert"
+  /** V, N, Y, U: the timeline's tool (trim, roll, slip, slide). */
+  | "toolTrim"
+  | "toolRoll"
+  | "toolSlip"
+  | "toolSlide";
 
 /** What has focus: a text field keeps every key; a "control" keeps the keys it uses itself. */
 export type FocusKind =
@@ -101,7 +123,88 @@ export function resolveShortcut(e: KeyLike, focus: FocusKind): ShortcutAction | 
   if (key === "+" || key === "=") return "zoomIn";
   if (key === "-" || key === "_") return "zoomOut";
   if (isZero) return "zoomFit";
+  if (key === "ArrowUp" || key === "ArrowDown") {
+    // A radio group moves with Up / Down too; Shift is left for later (a range select).
+    if (focus === "choice" || e.shiftKey) return null;
+    return key === "ArrowUp" ? "prevEdit" : "nextEdit";
+  }
+  // The keys below act once per press: a held J must not run the shuttle up to its top speed by itself.
+  if (e.repeat) return null;
+  // ; ' and , by the character typed, Shift or not: on many layouts (German, French, Turkish ...) typing them needs
+  // Shift, and the character is what the key means. On US keys Shift turns them into : " < , which are not mapped.
+  if (e.key in PUNCTUATION_ACTIONS) return PUNCTUATION_ACTIONS[e.key];
+  // Letters and the physical-key forms are left alone with Shift (kept for later variants).
+  if (e.shiftKey) return null;
+  const letter = latinLetter(e);
+  if (letter && letter in LETTER_ACTIONS) return LETTER_ACTIONS[letter];
+  const mark = punctuation(e);
+  if (mark && mark in PUNCTUATION_ACTIONS) return PUNCTUATION_ACTIONS[mark];
   return null;
+}
+
+/** The single letters, by the Latin letter of the key (the physical key on other layouts). */
+const LETTER_ACTIONS: Record<string, ShortcutAction> = {
+  j: "shuttleBack",
+  k: "shuttleStop",
+  l: "shuttleForward",
+  i: "markIn",
+  o: "markOut",
+  q: "rippleHead",
+  w: "rippleTail",
+  v: "toolTrim",
+  n: "toolRoll",
+  y: "toolSlip",
+  u: "toolSlide",
+};
+const PUNCTUATION_ACTIONS: Record<string, ShortcutAction> = { ";": "lift", "'": "extract", ",": "insert" };
+const PUNCTUATION_CODES: Record<string, string> = { Semicolon: ";", Quote: "'", Comma: "," };
+
+/** The Latin letter a key press means: its `key` on a Latin layout, else its physical key (Cyrillic "о" is KeyJ). */
+function latinLetter(e: KeyLike): string | null {
+  if (/^[a-z]$/i.test(e.key)) return e.key.toLowerCase();
+  if (e.key.length !== 1 || e.key.charCodeAt(0) < 128) return null;
+  const m = /^Key([A-Z])$/.exec(e.code ?? "");
+  return m ? m[1].toLowerCase() : null;
+}
+
+/** ; ' or , by the key, or by the physical key on a layout where it types a letter (Cyrillic "ж", "э", "б"). */
+function punctuation(e: KeyLike): string | null {
+  if (e.key in PUNCTUATION_ACTIONS) return e.key;
+  if (e.key.length !== 1 || e.key.charCodeAt(0) < 128) return null;
+  return PUNCTUATION_CODES[e.code ?? ""] ?? null;
+}
+
+/**
+ * Ctrl / Cmd + K: split at the playhead (the "add edit" of other editors), the same action as S. Never in a text
+ * field or on a slider, never with Alt or Shift, never a held-down repeat. It is also the app's command palette:
+ * useEditorShortcuts takes it only while the timeline has focus, so everywhere else it still opens the palette.
+ */
+export function resolveModShortcut(e: KeyLike, focus: FocusKind): "split" | null {
+  if (e.defaultPrevented || e.repeat) return null;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return null;
+  if (focus === "text" || focus === "slider") return null;
+  const letter = /^[a-z]$/i.test(e.key) ? e.key.toLowerCase() : (e.code ?? "").replace(/^Key/, "").toLowerCase();
+  return letter === "k" ? "split" : null;
+}
+
+/** The preview's shuttle: playing or not, and at which rate (negative = backwards). */
+export interface Shuttle {
+  playing: boolean;
+  rate: number;
+}
+/** The fastest the shuttle goes either way. */
+export const SHUTTLE_MAX = 8;
+
+/**
+ * J / K / L as other editors have them: L plays forwards, and each further L while it plays doubles the rate up to
+ * {@link SHUTTLE_MAX}; J does the same backwards; K stops. Turning round (J while playing forwards) starts again
+ * at 1x the other way.
+ */
+export function nextShuttle(now: Shuttle, key: "shuttleBack" | "shuttleStop" | "shuttleForward"): Shuttle {
+  if (key === "shuttleStop") return { playing: false, rate: 1 };
+  const dir = key === "shuttleForward" ? 1 : -1;
+  if (!now.playing || Math.sign(now.rate) !== dir) return { playing: true, rate: dir };
+  return { playing: true, rate: dir * Math.min(SHUTTLE_MAX, Math.abs(now.rate) * 2) };
 }
 
 /** The clip clipboard: Ctrl / Cmd + D, C or V on the editor (never in a text field or on a slider, never
@@ -126,18 +229,34 @@ export function resolveClipShortcut(
 
 /** One row of the shortcuts help. `keys` are literal key names; `labelKey` names the dictionary entry. */
 export interface ShortcutHelpRow {
-  action: ShortcutAction | ClipShortcut | "undo" | "redo" | "save";
+  action: ShortcutAction | ClipShortcut | "splitMod" | "undo" | "redo" | "save";
   keys: string[][];
 }
 
 export const SHORTCUT_HELP: readonly ShortcutHelpRow[] = [
   { action: "play", keys: [["Space"]] },
   { action: "split", keys: [["S"]] },
+  { action: "splitMod", keys: [["Ctrl", "K"]] },
   { action: "remove", keys: [["Delete"], ["Backspace"]] },
   { action: "left", keys: [["←"], ["→"]] },
   { action: "leftBig", keys: [["Shift", "←"], ["Shift", "→"]] },
   { action: "zoomIn", keys: [["+"], ["-"]] },
   { action: "zoomFit", keys: [["0"]] },
+  { action: "shuttleBack", keys: [["J"]] },
+  { action: "shuttleStop", keys: [["K"]] },
+  { action: "shuttleForward", keys: [["L"]] },
+  { action: "prevEdit", keys: [["↑"], ["↓"]] },
+  { action: "markIn", keys: [["I"]] },
+  { action: "markOut", keys: [["O"]] },
+  { action: "extract", keys: [["'"]] },
+  { action: "lift", keys: [[";"]] },
+  { action: "insert", keys: [[","]] },
+  { action: "rippleHead", keys: [["Q"]] },
+  { action: "rippleTail", keys: [["W"]] },
+  { action: "toolTrim", keys: [["V"]] },
+  { action: "toolRoll", keys: [["N"]] },
+  { action: "toolSlip", keys: [["Y"]] },
+  { action: "toolSlide", keys: [["U"]] },
   { action: "duplicate", keys: [["Ctrl", "D"]] },
   { action: "copy", keys: [["Ctrl", "C"]] },
   { action: "paste", keys: [["Ctrl", "V"]] },

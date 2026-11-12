@@ -128,7 +128,8 @@ def _scratch(files):
 
 
 def test_it_refuses_to_apply_before_0124_and_leaves_nothing_behind():
-    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name not in (M0124.name, MIGRATION.name)])
+    # 0139 sits on 0125's creative_price and refuses to apply without it: left out with it.
+    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name not in (M0124.name, MIGRATION.name, *sec_db.ON_0125)])
     try:
         with pytest.raises(Exception) as cm:
             d.su(MIGRATION.read_text(encoding="utf-8"))
@@ -139,7 +140,8 @@ def test_it_refuses_to_apply_before_0124_and_leaves_nothing_behind():
 
 
 def test_the_drift_guard_refuses_a_body_edited_by_hand_and_a_replay_changes_nothing():
-    admin, name, d = _scratch(sec_db.build_sequence())
+    # The chain up to this file: 0139 replaces creative_price on 0125's body, and this file's guard accepts only 0124's or its own.
+    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name not in sec_db.ON_0125])
     try:
         before = {f: _md5(d, f) for f in FUNCS}
         d.su(MIGRATION.read_text(encoding="utf-8"))                       # the replay
@@ -155,7 +157,7 @@ def test_the_drift_guard_refuses_a_body_edited_by_hand_and_a_replay_changes_noth
 
 
 def test_the_rollback_puts_0124s_two_bodies_back_byte_for_byte_and_the_file_applies_again():
-    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name != MIGRATION.name])
+    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name not in (MIGRATION.name, *sec_db.ON_0125)])
     try:
         pre = {f: _md5(d, f) for f in FUNCS}
         d.su(MIGRATION.read_text(encoding="utf-8"))

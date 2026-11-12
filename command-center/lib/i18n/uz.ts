@@ -1,3 +1,4 @@
+import { studioHomeUz } from "./studio-home/uz";
 import { improveUz } from "./improve/uz";
 import { notifyChannelsUz } from "./notify-channels/uz";
 import { aiLabelUz } from "./ai-label/uz";
@@ -27,6 +28,7 @@ import { exportHiresUz } from "./editor-hires/uz";
 import { clipToolsUz } from "./editor-clip-tools/uz";
 import { parity2Uz } from "./editor-parity2/uz";
 import { parity2bUz } from "./editor-parity2b/uz";
+import { coreUz } from "./editor-core/uz";
 import { voiceOverUz } from "./editor-voiceover/uz";
 import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
@@ -50,6 +52,7 @@ export const uz: Dictionary = {
   ownerRpc: ownerRpcUz,
   marketing: marketingUz,
   modelSwitch: modelSwitchUz,
+  studioHome: studioHomeUz,
   modelBudget: modelBudgetUz,
   modelKeys: modelKeysUz,
   /** «Mijozlar» sahifasi (0138-migratsiya): ./operator-customers/uz.ts. */
@@ -316,6 +319,7 @@ export const uz: Dictionary = {
     terms: "Foydalanish shartlari",
     privacy: "Maxfiylik siyosati",
     consentPost: "ga roziman.",
+    ageConfirm: "Men 18 yoshga toʻlganimni tasdiqlayman.",
     submit: "Hisob yaratish",
     submitting: "Hisob yaratilmoqda…",
     haveAccount: "Hisobingiz bormi?",
@@ -325,6 +329,7 @@ export const uz: Dictionary = {
     errPasswordLong: "Parol juda uzun — koʻpi bilan 72 ta belgi.",
     errMismatch: "Ikki parol bir xil emas.",
     errConsent: "Davom etish uchun Foydalanish shartlari va Maxfiylik siyosatini qabul qiling.",
+    errAge: "Hisob yaratish uchun 18 yoshga toʻlganingizni tasdiqlang.",
     errWeakPassword: "Bu parolni topish juda oson. Uzunroq, harf, raqam va belgilar aralash parol tanlang.",
     errRateLimited: "Hozir urinishlar juda koʻp. Bir necha daqiqa kutib, qayta urinib koʻring.",
     errEmailRejected: "Bu email manzilidan foydalanib boʻlmaydi. Tekshiring yoki boshqasini kiriting.",
@@ -3671,6 +3676,8 @@ export const uz: Dictionary = {
     seconds: "{n} s",
     modelLabel: "Model",
     beta: "beta",
+    preview: "Sinov",
+    previewHint: "Bu modelni faqat siz koʻrasiz. U mijozlarga hali taklif qilinmagan va tashkilotingizdan buning uchun haq olinmaydi.",
     noModels: "Hozircha tanlash uchun hech narsa yoʻq: hech bir model buni hozir qila olmaydi.",
     generate: "Yaratish",
     generatePriced: "Yaratish · {n} kredit",
@@ -4040,6 +4047,7 @@ export const uz: Dictionary = {
   legal: {
     privacy: "Maxfiylik siyosati",
     terms: "Foydalanish shartlari",
+    refund: "Qaytarish siyosati",
     contact: "Aloqa",
     home: "Bosh sahifa",
     operator: "Operator",
@@ -4595,8 +4603,8 @@ export const uz: Dictionary = {
     moreOptions: "Qoʻshimcha sozlamalar",
   },
   desk: {
-    nav: "Studiya stollari",
-    names: { overview: "Umumiy koʻrinish", video: "Video", image: "Rasm", enhance: "Yaxshilash", voice: "Ovoz", youtube: "YouTube video" },
+    nav: "Studiya boʻlimlari",
+    names: { overview: "Umumiy koʻrinish", video: "Video", image: "Rasm", enhance: "Kuchaytirish", voice: "Ovoz", youtube: "YouTube video" },
     keySub: {
       overview: "Soʻnggi ishlar",
       video: "Soʻzdan yoki rasmdan",
@@ -4606,7 +4614,7 @@ export const uz: Dictionary = {
       youtube: "Gʻoyadan tasdiqqacha",
     },
     blurbs: {
-      overview: "Vazifaga mos stolni tanlang. Har bir stoldagi soʻnggi ishlar pastda.",
+      overview: "Nima kerakligini yozing, ish turini tanlang yoki misoldan boshlang. Narx boshlanishdan oldin tugmada koʻrinadi.",
       video: "Soʻzdan yoki rasmdan 5 yoki 10 soniyalik kliplar. Har birining narxi yaratilishidan oldin koʻrinadi.",
       image: "Yangi rasmlar, rasmingizga tahrir va rasmni qayta promptga oʻgirish.",
       enhance: "Rasm yoki videoni tiniqroq va kattaroq qilish yoki obyektni fonidan qirqib olish.",
@@ -4677,9 +4685,9 @@ export const uz: Dictionary = {
     since: "Oʻtdi",
     sinceSpoken: "Soʻralganidan beri {n} soniya",
     showOnStage: "Katta koʻrsatish",
-    stripLabel: "Bu stoldagi hamma narsa",
+    stripLabel: "Shu yerda qilingan hamma narsa",
     playTake: "{n}-dublni tinglash",
-    openOnDesk: "«{desk}» stolini ochish",
+    openOnDesk: "«{desk}»ni ochish",
     feedTitle: { video: "Kliplaringiz", image: "Rasmlaringiz", enhance: "Oldin va keyin", voice: "Ovoz yozuvlaringiz" },
     emptyTitle: {
       video: "Monitorda hali klip yoʻq",
@@ -4694,10 +4702,10 @@ export const uz: Dictionary = {
       voice: "Ssenariy yozib ovoz tanlang yoki ovozini almashtirish yoki dublyaj uchun yozuv tanlang. Har bir dublning shu yerda oʻz pleyeri bor.",
     },
     workingNow: "ishlanmoqda: {n}",
-    startTitle: "Stollar",
-    recentTitle: "Barcha stollardagi soʻnggi generatsiyalar",
+    startTitle: "Ish turlari",
+    recentTitle: "Soʻnggi generatsiyalar",
     recentEmptyTitle: "Hali hech narsa qilinmagan",
-    recentEmpty: "Yuqoridagi stolni oching va bitta narsa qiling. Har bir generatsiya, uning holati va kreditlari shu yerda.",
+    recentEmpty: "Yuqorida bitta narsa qiling. Har bir generatsiya, uning holati va kreditlari shu yerda.",
     noOrg: "Generatsiyalar uchun tashkilot kerak. Uni sozlamalarda yarating yoki oching.",
     sideLabel: "Kreditlar va loyihalar",
     creditsTitle: "Kreditlar",
@@ -5144,6 +5152,8 @@ export const uz: Dictionary = {
     parity2: parity2Uz,
     /** Effects pack, clip animations, apply to all cuts, beats: ./editor-parity2b/uz.ts. */
     parity2b: parity2bUz,
+    /** Timeline tools, marks, J / L cut, shuttle and guides: ./editor-core/uz.ts. */
+    core: coreUz,
     fx: fxUz,
     title: "Muharrir",
     subtitle: "Videolaringizni qirqing, boʻling, tezlashtiring yoki sekinlashtiring va ustiga matn qoʻying.",

@@ -9,21 +9,22 @@ import { CreateStudio } from "@/components/create/CreateStudio";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
+import { isOperatorOrg } from "@/lib/channel-tokens";
 import { getOrgContext } from "@/lib/orgs-server";
-import { loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
+import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
-import { prefillFromQuery } from "@/lib/creative/studio";
+import { prefillFromQuery, withPreviews } from "@/lib/creative/studio";
 import { parseIdParam } from "@/lib/creative/improve";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { presetPrefill } from "@/lib/presets";
-import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
+import { StudioHome, type AssistantData } from "@/components/studio/StudioHome";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
 import { parseStyleId } from "@/lib/style-kits";
 import { prefillModel } from "@/lib/models-discovery";
 import { deskFromQuery, isMediaDesk } from "@/lib/creative/desks";
-import { DeskBar, StudioOverview, YouTubeDesk, type CreditsReading, type ProjectsReading } from "@/components/studio/Desks";
+import { DeskBar, YouTubeDesk, type CreditsReading, type ProjectsReading } from "@/components/studio/Desks";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { readCreditAccount } from "@/lib/server/credits";
 import { loadEditorProjects } from "@/lib/server/editor";
@@ -76,6 +77,10 @@ export default async function CreatePage({
   // Fills the form; Create still shows the price and asks before it runs.
   const runInitial = runPrefillFromQuery(q);
   const operator = await isOperator();
+  // 0139: the platform operator, in the operator's own organization only, may also try a hidden model marked operator_preview. The
+  // database answers no rows to anyone else; asking only here keeps every customer's page exactly as it was (one call fewer, too).
+  // Only the generate panel gets them: the Assistant's plans and the automatic pick stay on the models that are on sale.
+  const previews = operator && isOperatorOrg(genOrgId) && genOrgId ? await loadOperatorPreviewModels(genOrgId) : [];
   // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
   const user = await getUser();
   // "Use in Studio" from the Style Library (/create?tool=t2i&style=<kit>) picks that
@@ -102,23 +107,21 @@ export default async function CreatePage({
   );
 
   // The Assistant: one goal → a priced plan → one confirm, built on the two
-  // halves of this page (Run now and the generate panel). Opened with a
-  // prefill (a tool, a picture, a topic), what was asked for comes first.
-  const assistant = (
-    <AssistantPlanner
-      orgId={genOrgId}
-      models={models}
-      channels={runnableChannels(channels).map((c) => ({
-        id: c.channel_id,
-        slug: channelSlug(c, channels),
-        name: c.name || c.channel_id,
-        language: typeof c.agent_config?.language === "string" ? c.agent_config.language : "",
-      }))}
-      currentSlug={scopedChannel ? channelSlug(scopedChannel, channels) : null}
-      canRun={canRun}
-      runConfigured={isRunNowConfigured}
-    />
-  );
+  // halves of this page (Run now and the generate panel). On the overview it is
+  // the composer's Plan toggle; the client renders it from this data.
+  const assistant: AssistantData = {
+    orgId: genOrgId,
+    models,
+    channels: runnableChannels(channels).map((c) => ({
+      id: c.channel_id,
+      slug: channelSlug(c, channels),
+      name: c.name || c.channel_id,
+      language: typeof c.agent_config?.language === "string" ? c.agent_config.language : "",
+    })),
+    currentSlug: scopedChannel ? channelSlug(scopedChannel, channels) : null,
+    canRun,
+    runConfigured: isRunNowConfigured,
+  };
   // Which desk (lib/creative/desks): ?desk= when it names one, else the tool's
   // desk, else the YouTube run when Home handed over a topic, else the overview.
   // A desk only arranges the page: every price, hold and create call is the same.
@@ -146,10 +149,24 @@ export default async function CreatePage({
 
   return (
     <div className="rhythm stagger-enter ns-open">
-      <PageHeader icon="studio" title={t.create.title} subtitle={t.desk.blurbs[desk]} />
-      {/* On the overview the desks themselves are the way in; elsewhere this row switches between them. */}
+      {/* The overview opens on its own question and the box to write in; the full pages keep their header and switcher. */}
+      {desk !== "overview" && <PageHeader icon="studio" title={t.create.title} subtitle={t.desk.blurbs[desk]} />}
       {desk !== "overview" && <DeskBar current={desk} />}
-      {desk === "overview" && <StudioOverview orgId={genOrgId} credits={credits} projects={projects} assistant={assistant} />}
+      {desk === "overview" && (
+        <StudioHome
+          orgId={genOrgId}
+          models={models}
+          unavailable={switchedOff}
+          plans={plans}
+          defaultStyleKitId={startKit}
+          dna={dna.studio}
+          bottomBar={!operator}
+          initial={initial}
+          credits={credits}
+          projects={projects}
+          assistant={assistant}
+        />
+      )}
       {isMediaDesk(desk) &&
         (genOrgId ? (
           // Keyed by the desk and the link's tool and picture: moving between the
@@ -159,7 +176,7 @@ export default async function CreatePage({
             key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}:${initial?.voiceId ?? ""}:${typeof q.template === "string" ? q.template : ""}`}
             desk={desk}
             orgId={genOrgId}
-            models={models}
+            models={withPreviews(models, previews)}
             // The owner's switch (0124): a model the form came with that is off is named as such, never swapped for another.
             unavailable={switchedOff}
             initial={initial}

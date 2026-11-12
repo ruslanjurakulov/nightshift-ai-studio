@@ -41,7 +41,7 @@ beforeEach(() => {
 });
 
 describe("signed-out visitors (what Google's reviewer sees)", () => {
-  it.each(["/", "/privacy", "/terms", "/pricing"])("can open %s without being sent to /login", async (path) => {
+  it.each(["/", "/privacy", "/terms", "/refund", "/pricing"])("can open %s without being sent to /login", async (path) => {
     expect((await visit(path, false)).redirect).toBeNull();
   });
 
@@ -78,7 +78,7 @@ describe("signed-out visitors (what Google's reviewer sees)", () => {
 
   // Prefix matching would have published a channel's screens: the router reads
   // /privacy/videos as the Videos page of a channel whose segment is "privacy".
-  it.each(["/privacy/videos", "/terms/command-center", "/pricing/credits"])(
+  it.each(["/privacy/videos", "/terms/command-center", "/refund/credits", "/pricing/credits"])(
     "do not get %s just because it starts like a public page",
     async (path) => {
       expect((await visit(path, false)).redirect).toBe("/login");
@@ -86,7 +86,7 @@ describe("signed-out visitors (what Google's reviewer sees)", () => {
   );
 
   // …and a one-segment look-alike is not a page at all: it gets the 404.
-  it.each(["/signupx", "/privacy-policy", "/termsx", "/pricing-old"])(
+  it.each(["/signupx", "/privacy-policy", "/termsx", "/refunds", "/refund-policy", "/pricing-old"])(
     "do not get %s just because it starts like a public page (404)",
     async (path) => {
       const { redirect, res } = await visit(path, false);
@@ -316,7 +316,7 @@ describe("the public pages' font files", () => {
 });
 
 describe("channel ids", () => {
-  it.each(["privacy", "terms", "pricing", "login", "api", "signup", "auth", "welcome", "solutions", "docs", "fonts"])(
+  it.each(["privacy", "terms", "refund", "pricing", "login", "api", "signup", "auth", "welcome", "solutions", "docs", "fonts"])(
     "cannot be %s, which would be shadowed by a page at the root",
     (id) => {
       expect(isValidChannelId(id)).toBe(false);

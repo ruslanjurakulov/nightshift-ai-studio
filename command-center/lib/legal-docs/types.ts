@@ -1,11 +1,11 @@
 /**
- * The shape of the Privacy Policy and Terms of Service, in every language.
+ * The shape of the Privacy Policy, Terms of Service and Refund Policy, in every language.
  *
  * They live outside `lib/i18n/{en,ru,uz}.ts` on purpose. Those dictionaries are
  * imported by the client-side I18nProvider, so every string in them ships in
  * the JavaScript of every dashboard screen; two full legal documents in three
  * languages would have been dead weight on all of them. These modules are read
- * only by the Server Components that render /privacy and /terms, and the
+ * only by the Server Components that render /privacy, /terms and /refund, and the
  * `LegalTexts` type keeps the three languages key-for-key in step exactly as
  * `Dictionary` does for the dictionaries.
  *
@@ -44,4 +44,10 @@ export interface LegalDocument {
 export interface LegalTexts {
   privacy: LegalDocument;
   terms: LegalDocument;
+  /**
+   * The Refund Policy (/refund). Paddle's seller verification asks for one as
+   * its own public page; it restates Terms section 8 (8.1, 8.3, 8.4, 8.6, 8.7)
+   * and adds no promise the Terms do not make.
+   */
+  refund: LegalDocument;
 }

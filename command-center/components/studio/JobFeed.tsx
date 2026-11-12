@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight, AudioLines, Check, Clapperboard, Copy, CopyPlus, ExternalLink, FolderOpen, ImagePlus, Play, ScanText, TriangleAlert, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, AudioLines, Check, Clapperboard, Copy, CopyPlus, Download, ExternalLink, Film, FolderOpen, ImagePlus, Play, ScanText, Sparkles, TriangleAlert, type LucideIcon } from "lucide-react";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Timecode } from "@/components/ui/Timecode";
 import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
@@ -100,7 +100,22 @@ export function JobFeed({
   limit = FEED_SHOWN,
   onLoaded,
   project = null,
+  onAnimate,
+  onEnhance,
+  download = false,
+  emptyAction,
+  headerAction,
 }: {
+  /** Beside the heading: a link (the composer page's "Open the library"). */
+  headerAction?: ReactNode;
+  /** A finished picture's library id, for the composer's "make a video from it" (fills the form; the press there is priced). */
+  onAnimate?: (assetId: string) => void;
+  /** A finished picture's library id, for the composer's upscale (fills the form; the press there is priced). */
+  onEnhance?: (assetId: string) => void;
+  /** A finished file gets a Download key: the same signed link it is opened with, saved instead of opened. */
+  download?: boolean;
+  /** Under the empty state's words: one way to start (the composer page's "Pick an example"). */
+  emptyAction?: ReactNode;
   /** Every read that succeeds hands its jobs up (the overview lights the desks that are working). */
   onLoaded?: (jobs: StudioJob[]) => void;
   orgId: string;
@@ -358,6 +373,12 @@ export function JobFeed({
     if (!done || kind === "text") return null;
     const asSource = onUseAsSource ? sourceFromJob(job) : null;
     const toDescribe = onDescribe ? sourceFromJob(job) : null;
+    // Animate and Enhance start from the finished picture itself, not from what it was made from.
+    const picture = kind === "image" && job.result_asset_ids[0] ? job.result_asset_ids[0] : null;
+    const toAnimate = onAnimate ? picture : null;
+    const toEnhance = onEnhance ? picture : null;
+    // Saved, not opened: the original file, signed when the key is pressed (see DownloadKey).
+    const saveId = download && job.result_asset_ids[0] ? job.result_asset_ids[0] : null;
     return (
       <div className={className}>
         {toDescribe && (
@@ -382,6 +403,30 @@ export function JobFeed({
             <ImagePlus aria-hidden className="size-4" />
           </button>
         )}
+        {toAnimate && (
+          <button
+            type="button"
+            className={onMedia}
+            aria-label={t.studioHome.actions.animate}
+            title={t.studioHome.actions.animate}
+            data-testid="result-animate"
+            onClick={() => onAnimate?.(toAnimate)}
+          >
+            <Film aria-hidden className="size-4" />
+          </button>
+        )}
+        {toEnhance && (
+          <button
+            type="button"
+            className={onMedia}
+            aria-label={t.studioHome.actions.enhance}
+            title={t.studioHome.actions.enhance}
+            data-testid="result-enhance"
+            onClick={() => onEnhance?.(toEnhance)}
+          >
+            <Sparkles aria-hidden className="size-4" />
+          </button>
+        )}
         {project && isSendKind(kind) && job.result_asset_ids[0] && editorAddHref(project, job.result_asset_ids[0]) && (
           // A full load into the editor's project page: it must get its own Permissions-Policy (lib/editor-nav.ts).
           <a
@@ -398,6 +443,7 @@ export function JobFeed({
         {isSendKind(kind) && job.result_asset_ids[0] && (
           <SendToEditor orgId={orgId} assetId={job.result_asset_ids[0]} kind={kind} variant="icon" className={onMedia} />
         )}
+        {saveId && <DownloadKey assetId={saveId} fallbackHref={href} className={onMedia} />}
         {href ? (
           <a href={href} target="_blank" rel="noopener noreferrer" className={onMedia} aria-label={t.gen.open} title={t.gen.open}>
             <ExternalLink aria-hidden className="size-4" />
@@ -683,11 +729,14 @@ export function JobFeed({
         <h2 id="gen-feed-title" className="ns-eyebrow">
           {heading}
         </h2>
-        {active && (
-          <span className="text-xs text-[var(--color-muted)]" aria-live="polite">
-            {t.gen.working}
-          </span>
-        )}
+        <span className="flex shrink-0 items-baseline gap-3">
+          {active && (
+            <span className="text-xs text-[var(--color-muted)]" aria-live="polite">
+              {t.gen.working}
+            </span>
+          )}
+          {headerAction}
+        </span>
       </div>
 
       {state === "unavailable" ? (
@@ -718,6 +767,7 @@ export function JobFeed({
               </span>
               <p className="text-[15px] font-semibold text-[var(--color-fg)]">{emptyTitle ?? t.gen.emptyTitle}</p>
               <p className="max-w-[52ch] text-sm text-[var(--color-muted)]">{emptyBody ?? t.gen.empty}</p>
+              {emptyAction}
             </div>
           )}
           {shown.length > 0 && variant === "sheet" && (
@@ -750,5 +800,59 @@ export function JobFeed({
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Download one result: the ORIGINAL file, never the library's view copy (a video's view copy is the 480p
+ * proxy). Its signed link lives ten minutes, so it is asked for when the key is pressed (GET /api/media/{id},
+ * read as the member), not when the card was drawn. When the library cannot sign one, the result's own link
+ * opens in a new tab: the page, and whatever is typed in the composer, stay where they are.
+ */
+function DownloadKey({ assetId, fallbackHref, className }: { assetId: string; fallbackHref: string | null; className: string }) {
+  const { t } = useI18n();
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  async function save() {
+    if (state === "busy") return;
+    setState("busy");
+    let url: string | null = null;
+    let name = "";
+    try {
+      const res = await fetch(`/api/media/${encodeURIComponent(assetId)}`, { cache: "no-store" });
+      const body = (await res.json().catch(() => ({}))) as { urls?: Record<string, unknown>; asset?: { name?: unknown } };
+      const original = body.urls?.original;
+      // Only our own signed file route: a download never leaves the origin.
+      if (res.ok && typeof original === "string" && original.startsWith("/api/media/file/")) url = original;
+      if (typeof body.asset?.name === "string") name = body.asset.name;
+    } catch {
+      url = null;
+    }
+    if (url) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setState("idle");
+    } else if (fallbackHref) {
+      window.open(fallbackHref, "_blank", "noopener,noreferrer");
+      setState("idle");
+    } else setState("failed");
+  }
+  const label = state === "failed" ? t.studioHome.actions.downloadFailed : t.studioHome.actions.download;
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={() => void save()}
+      aria-label={label}
+      title={label}
+      aria-busy={state === "busy"}
+      data-testid="result-download"
+      data-state={state}
+    >
+      {state === "failed" ? <TriangleAlert aria-hidden className="size-4" /> : <Download aria-hidden className="size-4" />}
+    </button>
   );
 }

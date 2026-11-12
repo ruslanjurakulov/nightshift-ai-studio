@@ -4194,6 +4194,80 @@
       }
     },
     {
+      "id": "grounded-image-1.0",
+      "display_name": "Grounded Image 1.0",
+      "provider": "meta",
+      "adapter": "image.meta",
+      "vendor_model": "muse-image-1.0",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 10
+      },
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "21:9",
+        "9:21",
+        "4:5",
+        "5:4"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://dev.meta.ai/docs/image-generation",
+        "checked_at": "2026-11-12",
+        "source": "vendor_docs_search",
+        "evidence": "dev.meta.ai image-generation, Responses and Images API schemas, error-handling, pricing-rate-limits, models and authentication pages read in full 2026-11-12 as markdown, not search extracts. No endpoint was called (no key).",
+        "note": "Called on POST /v1/responses with store false (a Responses-only field; the images endpoints reject unknown fields). The pixel resolution is not documented, so no image size is offered."
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.01,
+        "source_url": "https://dev.meta.ai/docs/pricing-rate-limits",
+        "as_of": "2026-11-12",
+        "confirmed": false,
+        "note": "ESTIMATE from the vendor's page: a flat $0.01 per generated image, search included; failed or safety-filtered images not billed; n images billed n times. No credit price: not on sale."
+      },
+      "credit_unit": "model_grounded_image_1_0_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Model API ToS (dev.meta.ai/legal/terms-of-service, updated 2026-10-09) read 2026-11-12. Section 1 allows Integrated Products for End Users; 10.1(i) bars resale, a proxy, a gateway or raw API access.",
+        "ToS 10.1: users must be at least 18 and the product may not target minors. The sign-up age gate (PR #689) must be merged and live before this gate opens.",
+        "ToS 7: no Meta name or mark may be used. The id and display name here are neutral, the adapter strips vendor names from errors, and the names are on the banned lists for public pages.",
+        "AUP: never remove or alter a watermark, label, metadata or provenance signal, never claim outputs are human-made. Files are stored byte for byte (docs/AI_DISCLOSURE.md).",
+        "AUP: no likeness of a real, identifiable person without consent and no deepfakes. The adapter refuses prompts that read as one (Character Studio's 0137 keyword screen); pictures are not screened.",
+        "Geographic Use Policy (updated 2026-10-12) 2.2: unavailable in India; 3 lists Restricted Territories. The repository has no requester-country signal, so nothing can block them. The gate stays closed until it can.",
+        "Before beta or ga: hide provider and adapter from customers for this row. 0035 lets a customer select those columns, and sellable_models returns provider, so the maker's name would reach them (ToS 7).",
+        "ToS 5.1: Standard Services content is not used for training; 4.4 Meta keeps content for safety review. store false is always sent so no response is persisted for retrieval. Zero Data Retention needs Meta's approval.",
+        "ToS 10.1(ix): outputs may not train a competing model. 3.1: the key may not be shared. Not verified: whether Uzbekistan can sign up and be billed; the native pixel resolution; any watermark or C2PA in the output."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
       "id": "elevenlabs-v4",
       "display_name": "ElevenLabs v4",
       "provider": "elevenlabs",

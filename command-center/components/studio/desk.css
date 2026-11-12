@@ -349,81 +349,7 @@
 .desk-take-side .studio-on-media { background: var(--ns-key); color: var(--color-fg); }
 
 /* ── The overview ─────────────────────────────────────────────────────────── */
-/* The five desks as one patch bay: one object, cells split by hairlines. */
-.desk-bay {
-  display: grid;
-  grid-template-columns: 1fr;
-  border: 1px solid var(--ns-rule-strong);
-  border-radius: var(--ns-r-panel);
-  background: var(--color-panel);
-  overflow: hidden;
-}
-.desk-bay-cell + .desk-bay-cell { border-top: 1px solid var(--ns-rule); }
-@media (min-width: 640px) {
-  .desk-bay { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .desk-bay-cell + .desk-bay-cell { border-top: 0; }
-  .desk-bay-cell:nth-child(n + 3) { border-top: 1px solid var(--ns-rule); }
-  .desk-bay-cell:nth-child(even) { border-left: 1px solid var(--ns-rule); }
-  .desk-bay-cell:last-child:nth-child(odd) { grid-column: 1 / -1; }
-}
-@media (min-width: 1180px) {
-  .desk-bay { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .desk-bay-cell:nth-child(n) { border-top: 0; border-left: 1px solid var(--ns-rule); }
-  .desk-bay-cell:first-child { border-left: 0; }
-  .desk-bay-cell:last-child:nth-child(odd) { grid-column: auto; }
-}
-.desk-bay-key {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  height: 100%;
-  min-height: 150px;
-  padding: 16px 16px 44px;
-  color: var(--color-fg);
-  transition: background-color var(--ns-dur-1) var(--ns-ease);
-}
-.desk-bay-key:hover { background: var(--color-hover); }
-.desk-bay-top { display: flex; align-items: center; justify-content: space-between; color: var(--color-muted); }
-.desk-bay-no { font-size: 13px; color: var(--ns-amber-ink); }
-.desk-bay-name {
-  font-family: var(--font-display);
-  font-size: var(--ns-t-h2);
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 1.2;
-  text-transform: none;
-}
-.desk-bay-blurb { font-size: var(--ns-t-ui); line-height: 1.45; color: var(--color-muted); max-width: 40ch; }
-.desk-bay-tools {
-  margin-top: auto;
-  font-family: var(--font-display);
-  font-size: var(--ns-t-label);
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--color-muted);
-}
-.desk-bay-live { font-size: var(--ns-t-small); }
-.desk-bay-go {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--ns-rule-strong);
-  border-radius: var(--ns-r-key);
-  color: var(--color-muted);
-  transition: color var(--ns-dur-1) var(--ns-ease), border-color var(--ns-dur-1) var(--ns-ease);
-}
-.desk-bay-key:hover .desk-bay-go { color: var(--ns-amber-ink); border-color: var(--ns-amber-ink); }
-
-.desk-overview-grid { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
-@media (min-width: 1024px) {
-  .desk-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
-}
+/* The credits and the edit projects (StudioSide, under /create's Advanced). */
 .desk-side { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
 .desk-figure { font-size: var(--ns-t-h1); line-height: 1; color: var(--color-fg); }
 .desk-project {
@@ -568,16 +494,6 @@ li:last-child > .desk-project { border-bottom: 0; }
   .desk-cast-row { min-height: 48px; }
   .desk-composer .studio-chip,
   .desk-composer .studio-seg > button { min-height: 44px; }
-}
-
-/* Phones: the bay reads as a short list — name, its tools and the key; the
-   longer line about each desk is on the desk itself. */
-@media (max-width: 639.98px) {
-  .desk-bay-blurb { display: none; }
-  .desk-bay-key { min-height: 0; padding: 14px 64px 14px 16px; gap: 4px; }
-  .desk-bay-top { justify-content: flex-start; gap: 10px; }
-  .desk-bay-name { font-size: var(--ns-t-h3); }
-  .desk-bay-go { top: 50%; bottom: auto; transform: translateY(-50%); width: 44px; height: 44px; }
 }
 
 /* Below lg the booth's and the bench's columns stack: they step aside

@@ -18,6 +18,12 @@ export interface SignupInput {
   password: string;
   confirm: string;
   consent: boolean;
+  /**
+   * The "I confirm I am 18 or older" box. Its own box, not a clause of the Terms one: the model vendors' terms (Meta's Model
+   * API ToS 10.1 among them) require every end user to be 18 or older, and a confirmation folded into another agreement is
+   * not one a person can be said to have given on its own.
+   */
+  adult: boolean;
   /** The username field's verdict (lib/handles.ts handleAllowsSubmit). Left out, it is not checked. */
   handleOk?: boolean;
 }
@@ -28,7 +34,8 @@ export type SignupFieldError =
   | "password_short"
   | "password_long"
   | "password_mismatch"
-  | "consent_required";
+  | "consent_required"
+  | "age_required";
 
 /** A loose shape check — the confirmation email is the real proof. */
 export function isPlausibleSignupEmail(email: string): boolean {
@@ -56,6 +63,7 @@ export function validateSignup(input: SignupInput): SignupFieldError | null {
   const password = validateNewPassword(input.password, input.confirm);
   if (password) return password;
   if (!input.consent) return "consent_required";
+  if (!input.adult) return "age_required";
   return null;
 }
 

@@ -625,7 +625,7 @@ export const siteEn = {
       terms: "Terms of Service",
       consentAnd: "and",
       privacy: "Privacy Policy",
-      consentPost: ".",
+      consentPost: " and confirm you are 18 or older.",
       errDenied: "Google sign-in was cancelled. Nothing was changed. You can try again, or use your email below.",
       errUnverified: "Google has not confirmed that email address, so we did not sign you in. Confirm it with Google, or use your email and a password.",
       errFailed: "Couldn't sign you in with Google. Please try again, or use your email below.",

@@ -23,7 +23,7 @@ import { LEGAL_TEXTS } from "@/lib/legal-docs";
 describe("public legal pages with the operator's details unset", () => {
   it.each(["en", "ru", "uz"] as Locale[])("name no env var and no marker (%s)", (locale) => {
     const t = dictionaries[locale];
-    for (const doc of [LEGAL_TEXTS[locale].terms, LEGAL_TEXTS[locale].privacy]) {
+    for (const doc of [LEGAL_TEXTS[locale].terms, LEGAL_TEXTS[locale].privacy, LEGAL_TEXTS[locale].refund]) {
       const html = renderToStaticMarkup(<LegalDocumentView doc={doc} t={t} locale={locale} />);
       expect(html).not.toMatch(/NEXT_PUBLIC_|NOT CONFIGURED|НЕ НАСТРОЕНО|SOZLANMAGAN/);
       expect(html).toContain(t.legal.pending);

@@ -396,6 +396,26 @@
    "hits": [
     "endorsement"
    ]
+  },
+  {
+   "text": "Pictures made with Meta's image model",
+   "hits": [
+    "provider:meta"
+   ]
+  },
+  {
+   "text": "Now on Muse Image",
+   "hits": [
+    "provider:muse image"
+   ]
+  },
+  {
+   "text": "Your files keep their metadata",
+   "hits": []
+  },
+  {
+   "text": "a meta-analysis of thumbnails",
+   "hits": []
   }
  ]
 }

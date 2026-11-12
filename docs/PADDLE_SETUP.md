@@ -308,8 +308,10 @@ tekshiradi. Odatda so'raladi:
 - **Ishlab turgan sayt** (`https://nightshift-ai.studio`): mahsulot nima qilishi
   aniq yozilgan, **narxlar ochiq ko'rinadi** (kirishsiz), aloqa uchun email.
 - **Terms of Service**, **Privacy Policy** va **Refund Policy** — shu domenda,
-  kirishsiz ochiladi. `/terms`, `/privacy` va `/pricing` jonli; refund siyosati —
-  `/terms#credits` (8.6–8.7).
+  kirishsiz ochiladi. `/terms`, `/privacy`, `/refund` va `/pricing` jonli; refund
+  siyosati — alohida `/refund` sahifasi (Terms 8-bo'limini, ayniqsa 8.6–8.7 ni bir
+  joyda takrorlaydi; yangi va'da qo'shmaydi, qaytarish muddatini Paddle Buyer Terms
+  va qonunga qoldiradi).
 - Mahsulot Paddle'ning Acceptable Use Policy'siga mos bo'lishi.
 
 **Kod tomonidan tayyor (bu PR):**
@@ -337,7 +339,7 @@ tekshiradi. Odatda so'raladi:
 - [ ] Shartlar (ayniqsa 8-bo'lim) va Maxfiylik siyosatini yurist ko'rib chiqsin; o'zgarsa
       `NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE` ni yangilang.
 - [ ] Paddle arizasida: Pricing URL `https://nightshift-ai.studio/pricing`, Terms
-      `…/terms`, Privacy `…/privacy`, Refund policy `…/terms#credits`.
+      `…/terms`, Privacy `…/privacy`, Refund policy `…/refund`.
 
 Sandbox uchun bularning hech biri shart emas.
 

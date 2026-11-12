@@ -214,13 +214,45 @@ ROLLBACK_0125 = REPO / "docs" / "sql" / "rollback_0125_model_shutdown.sql"
 def take_off_0125(session) -> None:
     """0125 replaces sellable_models() and creative_price() on 0124's bodies, and 0124 (and its rollback) refuse any other body. A test that
     replays 0124 or applies its rollback on a database that has 0125 takes 0125 off first with its own rollback, and puts it back with
-    put_back_0125 where the chain goes on."""
+    put_back_0125 where the chain goes on. 0139 sits on 0125's creative_price(), and 0125's rollback refuses any other body, so 0139
+    comes off first when it is there."""
+    if has_0139(session):
+        take_off_0139(session)
     text = ROLLBACK_0125.read_text(encoding="utf-8")
     session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
 def put_back_0125(session) -> None:
     session.conn.execute(MIGRATION_0125.read_text(encoding="utf-8"))
+    put_back_0139(session)
+
+
+MIGRATION_0139 = MIGRATIONS / "0139_operator_preview.sql"
+ROLLBACK_0139 = REPO / "docs" / "sql" / "rollback_0139_operator_preview.sql"
+#: Migrations written on 0125's bodies, which refuse to apply without it: a sequence that leaves 0125 out leaves these out too.
+ON_0125 = (MIGRATION_0139.name,)
+
+
+def has_0139(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.creative_operator_preview(uuid, text, jsonb)') is not null").fetchone()[0])
+
+
+def rollback_0139_body() -> str:
+    """0139's rollback without its own begin / commit, to run inside a test's transaction (or as one statement on a scratch database)."""
+    text = ROLLBACK_0139.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def take_off_0139(session) -> None:
+    """0139 replaces creative_price() on 0125's body (and adds creative_operator_preview / operator_preview_models), and 0125 (its replay
+    and its rollback) refuses any other body. A test that replays 0125 or applies its rollback on a database that has 0139 takes 0139 off
+    first with its own rollback, and puts it back with put_back_0139 where the chain goes on."""
+    session.conn.execute(rollback_0139_body())
+
+
+def put_back_0139(session) -> None:
+    session.conn.execute(MIGRATION_0139.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:

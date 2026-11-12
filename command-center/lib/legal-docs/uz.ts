@@ -207,7 +207,7 @@ export const uz: LegalTexts = {
         id: "children",
         heading: "13. Bolalar",
         body: [
-          "Xizmat bolalarga moʻljallanmagan va undan 13 yoshdan kichiklar yoki oʻz mamlakatida YouTube kanalni boshqarish uchun talab qiladigan eng kam yoshga yetmaganlar foydalana olmaydi.",
+          "Xizmat bolalarga va 18 yoshga toʻlmaganlarga moʻljallanmagan. Undan faqat 18 yoshga toʻlganlar foydalanishi mumkin; agar oʻz mamlakatida YouTube kanalni boshqarish uchun talab qiladigan eng kam yosh bundan yuqori boʻlsa, oʻsha yoshga yetganlar. Akkaunt yaratayotganda, email manzili yoki Google orqali, siz 18 yoshga toʻlganingizni tasdiqlaysiz. Xizmatdan 18 yoshga toʻlmagan kishi foydalanayotgan deb hisoblasangiz, {contactEmail} manziliga yozing.",
         ],
       },
       {
@@ -254,6 +254,7 @@ export const uz: LegalTexts = {
         id: "accounts",
         heading: "3. Akkauntlar",
         body: [
+          "Akkaunt yaratish yoki Xizmatdan foydalanish uchun kamida 18 yoshda boʻlishingiz kerak; akkaunt yaratib, email manzili yoki Google orqali, buni tasdiqlaysiz. Xizmat 18 yoshga toʻlmaganlarga moʻljallanmagan.",
           "Hozircha kirish taklif orqali beriladi. Kirish maʼlumotlaringizni xavfsiz saqlang va ruxsatsiz foydalanishdan shubhalansangiz, darhol {contactEmail} manziliga xabar bering. Akkauntingizdagi harakatlar uchun siz javobgarsiz.",
         ],
       },
@@ -332,7 +333,7 @@ export const uz: LegalTexts = {
               unknown: "8.5. Amal qilish muddati. Toʻldirish kreditlari uchun sotib olish paytida paketlarga belgilangan muddat amal qiladi. Hozir uni bu sahifada koʻrsatib boʻlmadi; joriy muddatni bilish uchun bizga {contactEmail} manziliga yozing.",
             },
           },
-          "8.6. Qaytarish. Sotuvchi Paddle boʻlgani uchun qaytarishni Paddle [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) va amaldagi qonunchilik asosida amalga oshiradi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Qaytarishni soʻrash uchun Paddle chekidagi havoladan foydalaning yoki {contactEmail} manziliga yozing — yordam beramiz.",
+          "8.6. Qaytarish. Sotuvchi Paddle boʻlgani uchun qaytarishni Paddle [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) va amaldagi qonunchilik asosida amalga oshiradi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Qaytarishni soʻrash uchun Paddle chekidagi havoladan foydalaning yoki {contactEmail} manziliga yozing — yordam beramiz. [Qaytarish siyosati](/refund) bu qoidalarni bitta sahifada jamlaydi.",
           "8.7. Qaytarish va chargeback kreditlarni olib qoʻyadi. Xarid qaytarilsa yoki bank orqali eʼtiroz qilinsa (chargeback), u qoʻshgan kreditlar tashkilot balansidan olinadi: toʻliq qaytarishda — hammasi, qisman qaytarishda — qaytarilgan summaga mutanosib qismi. Faqat mavjud kreditlarni olish mumkin: allaqachon sarflangan yoki ishlab turgan ishga tushirish uchun band qilinganlarini olib boʻlmaydi. Chargeback’dan keyin sarflangan, lekin toʻlanmagan kreditlar qolsa, tashkilotning pullik funksiyalardan foydalanishini toʻxtatib turishimiz mumkin.",
           "8.8. Narxlarning oʻzgarishi. Kredit paketlari narxlarini va kreditlar sarflanish stavkalarini oʻzgartirishimiz mumkin. Oʻzgarish balansingizdagi kreditlarni hech qachon kamaytirmaydi va ishga tushirish uchun u boshlanganda qoʻyilgan banddan koʻp hech qachon yechilmaydi.",
         ],
@@ -390,6 +391,75 @@ export const uz: LegalTexts = {
         id: "contact",
         heading: "16. Aloqa",
         body: ["{legalName}, {country}. Elektron pochta: {contactEmail}."],
+      },
+    ],
+  },
+  refund: {
+    title: "Qaytarish siyosati",
+    summary:
+      "Nightshift kreditlari va tariflari uchun qaytarish qanday ishlaydi: uni qanday soʻrash, kreditlaringiz nima boʻladi va oylik tarifni qanday bekor qilish.",
+    sections: [
+      {
+        id: "seller",
+        heading: "1. Qaytarishni kim amalga oshiradi",
+        body: [
+          {
+            note: "Ushbu siyosat [Foydalanish shartlari](/terms#credits) 8-boʻlimining mazmunini bir joyda bayon qiladi. U boʻlim malakali yurist koʻrib chiqishini kutmoqda; har qanday oʻzgarish ikkala sahifada yangi kuchga kirish sanasi bilan eʼlon qilinadi. Agar matnlar bir-biridan farq qilsa, Foydalanish shartlari amal qiladi.",
+          },
+          "Buyurtma jarayonini bizning onlayn qayta sotuvchimiz (reseller) Paddle.com («Paddle») amalga oshiradi. Paddle barcha buyurtmalarimiz boʻyicha sotuvchi (Merchant of Record) hisoblanadi: kreditlar va tariflarni siz Paddle’dan [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) asosida sotib olasiz, Paddle esa toʻlovni qayta ishlaydi, chek beradi va qaytarish soʻrovlarini koʻrib chiqadi.",
+        ],
+      },
+      {
+        id: "how-to-ask",
+        heading: "2. Qaytarishni qanday soʻrash mumkin",
+        body: [
+          "Qaytarishni quyidagi usullardan biri bilan soʻrashingiz mumkin:",
+          {
+            list: [
+              "bizga {contactEmail} manziliga yozing — yordam beramiz;",
+              "xariddan keyin Paddle yuborgan chek xatiga javob yozing yoki undagi havoladan foydalaning;",
+              "xaridingizni [paddle.net](https://paddle.net) saytida toping va u yerda Paddle’ga murojaat qiling.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "when",
+        heading: "3. Qaytarish qachon beriladi",
+        body: [
+          "Qaytarish haqidagi qarorni Paddle [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) va amaldagi qonunchilik asosida qabul qiladi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Biz qaytarish uchun alohida muddat belgilamaymiz.",
+          "Ushbu siyosatdagi hech narsa qonun bilan berilgan isteʼmolchi huquqlaringizni cheklamaydi.",
+        ],
+      },
+      {
+        id: "credits",
+        heading: "4. Kreditlaringiz nima boʻladi",
+        body: [
+          "Xarid qaytarilsa yoki bank orqali eʼtiroz qilinsa (chargeback), u qoʻshgan kreditlar tashkilot balansidan olinadi: toʻliq qaytarishda — hammasi, qisman qaytarishda — qaytarilgan summaga mutanosib qismi.",
+          "Faqat mavjud kreditlarni olish mumkin: allaqachon sarflangan yoki ishlab turgan ishga tushirish uchun band qilinganlarini olib boʻlmaydi. Chargeback’dan keyin sarflangan, lekin toʻlanmagan kreditlar qolsa, tashkilotning pullik funksiyalardan foydalanishini toʻxtatib turishimiz mumkin.",
+          "Kreditlarning pul qiymati yoʻq va ularni bu yerda tavsiflangan qaytarishdan tashqari pulga almashtirib boʻlmaydi.",
+        ],
+      },
+      {
+        id: "failed-runs",
+        heading: "5. Muvaffaqiyatsiz generatsiyalar",
+        body: [
+          "Generatsiya muvaffaqiyatsiz tugasa, hech narsa soʻrashingiz shart emas. Ishga tushirishdan oldin uning taxminiy narxi band qilinadi. Ishga tushirish muvaffaqiyatsiz tugasa yoki oxiriga yetmasa, band toʻliq qaytariladi va hech narsa yechilmaydi; hech qachon boshlanmagan yoki natijasini xabar qilmagan ishga tushirishning bandi avtomatik qaytariladi. Ishga tushirish tugagach, faqat u haqiqatda ishlatgan resurslar uchun yechiladi — hech qachon banddan koʻp emas.",
+          "Har bir band, yechish va qaytarish Xizmatdagi tashkilotingizning kredit tarixiga yoziladi.",
+        ],
+      },
+      {
+        id: "subscriptions",
+        heading: "6. Oylik tarifni bekor qilish",
+        body: [
+          "Oylik tarifni istalgan vaqtda bekor qilishingiz mumkin — Xizmatdagi Kreditlar sahifasidagi «Obunani boshqarish» orqali yoki [paddle.net](https://paddle.net) saytida. Shundan keyin tarif allaqachon toʻlangan davr oxirigacha qoʻshimcha toʻlovsiz amal qiladi va yangilanmaydi. Tarif bilan berilgan kreditlar faqat ular berilgan davr ichida ishlatiladi va uning oxirida yonadi.",
+          "Bekor qilish keyingi yangilanishlarni toʻxtatadi. Allaqachon amalga oshirilgan toʻlovni qaytarishni soʻrash uchun 2-boʻlimga qarang.",
+        ],
+      },
+      {
+        id: "contact",
+        heading: "7. Aloqa",
+        body: ["{legalName}, {country}. Elektron pochta: {contactEmail}. Shuningdek, [Foydalanish shartlari](/terms) va [Maxfiylik siyosati](/privacy) bilan tanishing."],
       },
     ],
   },
