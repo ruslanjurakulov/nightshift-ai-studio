@@ -66,6 +66,8 @@ export const SECTIONS = [
   "styles",
   // The Ads workspace (NIGHTSHIFT_ADS_FACTORY): a section like any other; its page is a 404 while the switch is off.
   "ads",
+  // Character Studio (NIGHTSHIFT_CHARACTER_STUDIO): its page is a 404 while the switch is off.
+  "character-studio",
   // Presets & looks: the gallery of ready starting points, opened from Studio and Home.
   "presets",
   "library",

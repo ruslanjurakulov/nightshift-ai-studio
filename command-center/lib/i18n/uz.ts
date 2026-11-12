@@ -114,6 +114,7 @@ export const uz: Dictionary = {
     workflows: "Ssenariylar",
     series: "Seriyalar",
     ads: "Reklama",
+    characterStudio: "Qahramon studiyasi",
     members: "Jamoa",
     organization: "Sozlamalar",
     credits: "Kreditlar",

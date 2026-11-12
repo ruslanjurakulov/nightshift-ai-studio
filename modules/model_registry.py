@@ -52,6 +52,7 @@ from modules.capabilities.base import (
     RELIGHT,
     RELIGHT_LOOKS,
     UPSCALE,
+    VIDEO_CHARACTER_SWAP,
     VIDEO_EDIT,
     VIDEO_INPUT,
     VIDEO_MUSIC,
@@ -399,7 +400,8 @@ class ModelEntry:
         # A description takes no words of ours either: the picture is the input.
         # An expand is asked by its shape, and a relight by its look when the
         # probe names one (the database sends exactly one of look / prompt).
-        wordless = (speech or (cap in VIDEO_INPUT and cap != VIDEO_EDIT) or cap == DESCRIBE or cap == EXPAND
+        # A video edit and a character swap are asked by their words; the other video tools take none.
+        wordless = (speech or (cap in VIDEO_INPUT and cap not in (VIDEO_EDIT, VIDEO_CHARACTER_SWAP)) or cap == DESCRIBE or cap == EXPAND
                     or (cap == RELIGHT and p.get("look")))
         return CapabilityRequest(capability=cap, prompt="" if wordless else p["prompt"],
                                  look=p.get("look"),
@@ -525,6 +527,21 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                 errors.append(_err(mid, "a capability the database does not know yet is never listed beside one it knows"))
             if not m["terms_gate"] or m["api_exposure"] != "web_only" or m["pricing"]["confirmed"]:
                 errors.append(_err(mid, "a registry-only entry stays dark: terms_gate set, api_exposure web_only, price unconfirmed"))
+        swap = m.get("character_swap")
+        if (VIDEO_CHARACTER_SWAP in caps) != bool(swap):
+            # 0137 quotes the input's seconds against these limits, and the worker refuses an input outside them before it pays.
+            errors.append(_err(mid, "character_swap is required with video_character_swap and only with it"))
+        elif swap:
+            lo, hi = swap["input_seconds"]
+            if not lo <= hi or hi > (m["limits"].get("max_source_seconds") or 0):
+                errors.append(_err(mid, "character_swap.input_seconds must be a range within limits.max_source_seconds"))
+            if swap["reference_images_max"] != m["inputs"]["image_refs_max"]:
+                errors.append(_err(mid, "character_swap.reference_images_max must equal inputs.image_refs_max"))
+            if sorted(((m["pricing"].get("variants") or {}).get("prices") or {})) != sorted(m["resolutions"]) or not m["resolutions"]:
+                # Each resolution the person can pick is shown its own price (0137 character_swap_models): none may be missing.
+                errors.append(_err(mid, "a character swap is priced per resolution: one price for each listed resolution"))
+            if swap["real_people"] == "own_generated_clip_only" and m["provider"] != "bytedance":
+                errors.append(_err(mid, "own_generated_clip_only is BytePlus's 30-day rule"))
         if m.get("end_frame"):
             if I2V not in caps:
                 errors.append(_err(mid, "end_frame is for a model that animates a picture (i2v)"))

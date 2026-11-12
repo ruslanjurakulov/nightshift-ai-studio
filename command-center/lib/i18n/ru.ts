@@ -114,6 +114,7 @@ export const ru: Dictionary = {
     workflows: "Сценарии",
     series: "Серии",
     ads: "Реклама",
+    characterStudio: "Студия героев",
     members: "Команда",
     organization: "Настройки",
     credits: "Кредиты",
