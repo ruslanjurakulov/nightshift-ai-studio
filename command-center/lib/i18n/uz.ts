@@ -4013,6 +4013,7 @@ export const uz: Dictionary = {
         { id: "control", q: "U mensiz biror narsani nashr qila oladimi?", a: "Faqat siz ruxsat bersangiz. Yuklamalar sukut boʻyicha yopiq va har bir video avval nashr tekshiruvidan oʻtadi. Avto-nashr kanal uchun siz yoqmaguningizcha oʻchiq. “Tasdiqdan keyin nashr qilish” ham sukut boʻyicha oʻchiq: ish maydoningizni boshqaradigan kishi uni har bir kanal uchun alohida yoqadi, shundan keyin ilovada aynan shu videoni tasdiqlash YouTube’dan uni ommaviy qilishni soʻraydi. Qolgan hollarda videoni ommaviy qilishni oʻzingiz bajarasiz, YouTube’da." },
         { id: "data", q: "Maʼlumotlarim bilan nima qilasiz?", a: "Google maʼlumotlaringiz faqat siz ulagan kanalga yuklash va oʻsha kanal analitikasini sizga koʻrsatish uchun ishlatiladi — hech qachon reklama uchun emas. Kirish tokenlari shifrlangan va brauzerga chiqmaydi, ruxsatni istalgan vaqtda bekor qilishingiz mumkin." },
       ],
+      refundDodo: "Toʻlovlar bilan Merchant of Record sifatida Dodo Payments shugʻullanadi: qaytarish soʻrovlarini u oʻz shartlari va amaldagi qonunchilik asosida koʻrib chiqadi. Xarid qaytarilsa, u qoʻshgan kreditlar hali sarflanmagan qismida olib qoʻyiladi. Muvaffaqiyatsiz ish uchun band qilingan kreditlar esa oʻzi qaytadi.",
       privacyLink: "Maxfiylik siyosatini oʻqish",
       pricingLink: "Narxlarni koʻrish",
       termsLink: "Shartlar: kreditlar va qaytarish",
@@ -4108,7 +4109,7 @@ export const uz: Dictionary = {
     linkTerms: "Shartlar: kreditlar va qaytarish",
     linkBuyerTerms: "Paddle xaridorlar shartlari",
     dodo: {
-      taxNote: "Koʻrsatilgan narx soliqsiz. Yashash joyingizda amal qiladigan soliq toʻlashdan oldin Dodo Payments toʻlov oynasida qoʻshiladi.",
+      taxNote: "Yashash joyingizda amal qiladigan soliq toʻlashdan oldin Dodo Payments toʻlov oynasida koʻrsatiladi.",
       paymentsBody: "Toʻlovlarni barcha buyurtmalar uchun Merchant of Record sifatida Dodo Payments qayta ishlaydi: toʻlovni oʻtkazadi, soliq, chek va qaytarishlarni oʻzi yuritadi. Karta maʼlumotlaringiz Dodo Payments’ga boradi, bizga hech qachon kelmaydi.",
       refundsBody: "Qaytarishlarni Dodo Payments oʻz shartlari va amaldagi qonun boʻyicha amalga oshiradi. Xarid qaytarilsa yoki chargeback boʻlsa, u qoʻshgan kreditlar hali sarflanmagan qismi doirasida olib qoʻyiladi.",
       faqCard: "Yoʻq. Akkaunt email bilan ochiladi. Faqat tarif yoki kredit paketini tanlaganingizda, Dodo Payments toʻlov oynasida toʻlaysiz.",

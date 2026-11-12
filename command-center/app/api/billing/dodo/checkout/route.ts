@@ -80,8 +80,9 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     userId: user.id,
     email: user.email ?? null,
     item,
+    // `item` tells the page which panel waits for the webhook (lib/dodo-client.ts takeDodoReturn); it decides no amount.
     returnUrl: `${origin}${returnPath}?dodo=return&item=${item.kind}`,
-    cancelUrl: `${origin}${returnPath}?dodo=cancelled`,
+    cancelUrl: `${origin}${returnPath}?dodo=cancelled&item=${item.kind}`,
   });
   if (!res.ok) {
     console.error(`[dodo-checkout] Dodo refused the checkout session (HTTP ${res.status})`);

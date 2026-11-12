@@ -70,6 +70,10 @@ export interface Pricing {
   packs: PricingPack[];
   /** What the browser needs for a price preview — public by design. */
   paddle: { environment: PaddleEnvironment; clientToken: string } | null;
+  /** Set only when this deployment sells through Dodo Payments (lib/payments.ts dodoPricing), whether or not any pack
+   *  is on sale: the seller the page names, and its mode for the test badge. Absent on every Paddle answer, so
+   *  resolvePricing's result is what it always was. */
+  dodo?: { environment: "test" | "live" };
 }
 
 /**

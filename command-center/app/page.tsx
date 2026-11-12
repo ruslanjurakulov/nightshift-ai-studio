@@ -23,7 +23,7 @@ import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { readPublicCreditRates } from "@/lib/server/public-rates";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { Landing } from "@/components/landing/Landing";
-import { faqForSale } from "@/components/landing/Faq";
+import { faqForSale, landingFaqItems } from "@/components/landing/Faq";
 import { faqPageJsonLd } from "@/lib/studio-page";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -67,7 +67,7 @@ export default async function Home() {
   ]);
   // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
   const catalog = planValue(catalogRead);
-  const resolved = sitePricing(locale);
+  const resolved = sitePricing();
   const pricing = pricingTeaser(resolved, sitePlanMatrix(catalog, locale));
   const anchor = moneyAnchor(resolved, apiPrices, siteRates);
   const jsonLd = softwareApplicationJsonLd({
@@ -78,7 +78,8 @@ export default async function Home() {
 
   // The questions the page itself shows (Faq.tsx), as the same plain text, so the structured answer cannot differ from the visible one.
   const expiry = packExpiry(catalogRead, CREDIT_EXPIRY_MONTHS);
-  const faqLd = faqPageJsonLd(faqForSale(t.landing.faq.items, pricing.kind === "plans", t.site.packsOnly, expiry));
+  const dodo = Boolean(resolved.dodo);
+  const faqLd = faqPageJsonLd(faqForSale(landingFaqItems(t.landing.faq, dodo), pricing.kind === "plans", t.site.packsOnly, expiry));
   const graphLd = siteGraphJsonLd({ name: t.brand.name, origin: runtimeSiteOrigin() });
 
   return (
@@ -93,6 +94,7 @@ export default async function Home() {
         anchor={anchor}
         showcase={visibleShowcase(SHOWCASE)}
         expiry={expiry}
+        dodo={dodo}
       />
     </PublicShell>
   );

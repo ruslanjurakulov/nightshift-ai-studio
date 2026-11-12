@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { fmt } from "@/lib/i18n";
 import { dodoPriceText, type DodoView } from "@/lib/dodo";
-import { dodoReturnState, openDodoCheckout, takeBalanceBefore } from "@/lib/dodo-client";
+import { openDodoCheckout, takeBalanceBefore, takeDodoReturn } from "@/lib/dodo-client";
 import { purchaseArrived } from "@/lib/paddle";
 import type { GenerationRates } from "@/lib/plans";
 import { Equivalents } from "@/components/credits/Equivalents";
@@ -60,9 +60,9 @@ export function DodoBuyCredits({
 
   // Back from Dodo: the query says which message to show while the webhook credits the payment.
   useEffect(() => {
-    const state = dodoReturnState(window.location.search);
+    const state = takeDodoReturn("pack");
     if (state === "cancelled") go("cancelled");
-    else if (state === "return" && new URLSearchParams(window.location.search).get("item") === "pack") {
+    else if (state === "return") {
       before.current = takeBalanceBefore();
       tries.current = 0;
       go("paid");

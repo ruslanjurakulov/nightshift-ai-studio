@@ -32,6 +32,11 @@ export function dodoServer(): DodoServerConfig | null {
   });
 }
 
+/** The mode DODO_PAYMENTS_ENV names (test unless it says live), for the badge even while nothing is configured. */
+export function dodoEnvironment(): "test" | "live" {
+  return (process.env.DODO_PAYMENTS_ENV ?? "").trim().toLowerCase() === "live" ? "live" : "test";
+}
+
 /** What a page may show about Dodo (no key, no product id), or null when it is not configured. */
 export function dodoPageView(): DodoView | null {
   return dodoView(dodoServer());
@@ -57,8 +62,10 @@ async function dodo(cfg: DodoServerConfig, path: string, init: RequestInit, doFe
 /**
  * POST /checkouts (docs: api-reference/checkout-sessions/create): one product,
  * quantity 1, our ids in metadata, discount codes and currency switching OFF
- * (the webhook credits only the catalog price in USD), a return and a cancel
- * URL on our own Credits page. Returns Dodo's hosted checkout_url, or null.
+ * (the webhook credits only the catalog price in USD), no trial on a plan, a
+ * return and a cancel URL on our own Credits page. Returns Dodo's hosted
+ * checkout_url, or the HTTP status Dodo answered (never its body: it is not
+ * logged).
  */
 export async function createDodoCheckout(
   cfg: DodoServerConfig,
@@ -72,6 +79,10 @@ export async function createDodoCheckout(
     return_url: args.returnUrl,
     cancel_url: args.cancelUrl,
     feature_flags: { allow_discount_code: false, allow_currency_selection: false },
+    // No trial, whatever the product in Dodo says: "trial_period_days ... overrides the trial period set in the product's
+    // price" (checkout-sessions/create). A trial would give a plan's entitlements before anything was paid; credits come
+    // only from a paid period (the webhook), so the owner's catalog has no trials (docs/BILLING_PLANS.md 3.2).
+    ...(args.item.kind === "plan" ? { subscription_data: { trial_period_days: 0 } } : {}),
   };
   const { status, json } = await dodo(cfg, "/checkouts", { method: "POST", body: JSON.stringify(body) }, doFetch);
   const url = dodoHostedUrl((json as { checkout_url?: unknown } | null)?.checkout_url);

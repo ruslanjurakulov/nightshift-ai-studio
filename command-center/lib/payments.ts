@@ -14,7 +14,7 @@
  */
 
 import { CREDIT_PACKS } from "@/lib/paddle";
-import { dodoPriceText, type DodoView } from "@/lib/dodo";
+import { dodoPriceText, type DodoEnvironment, type DodoView } from "@/lib/dodo";
 import type { PlanMatrix } from "@/lib/plans";
 import type { Pricing } from "@/lib/pricing";
 
@@ -24,17 +24,25 @@ export function resolvePaymentsProvider(raw: string | undefined | null): Payment
   return (raw ?? "").trim().toLowerCase() === "dodo" ? "dodo" : "paddle";
 }
 
+/** A catalog price written the way an owner's display price is ("$10", "$12.50"), so every page formats it the same way. */
+export function dodoDisplayPrice(usdCents: number): string {
+  return "$" + (usdCents / 100).toFixed(usdCents % 100 === 0 ? 0 : 2);
+}
+
 /**
  * /pricing (and the landing teaser) when Dodo sells: the packs on sale here,
  * at the catalog price the webhook checks (lib/dodo.ts). No preview call:
- * Dodo's price is ours, so the page can say it, and the checkout adds the tax
- * where it applies. Nothing on sale is "none", never an invented price.
+ * Dodo's price is ours, so the page can say it, and the checkout shows the tax
+ * where it applies. The price is written like an owner's display price ("$10")
+ * so the pages localize it exactly as they localize one (displayPriceText).
+ * Nothing on sale is "none", never an invented price; the seller is Dodo
+ * either way (`dodo`), so the page never names Paddle while Dodo sells.
  */
-export function dodoPricing(view: DodoView | null, locale: string): Pricing {
-  const packs = (view?.packs ?? []).map((p) => ({ id: p.id, credits: p.credits, displayPrice: dodoPriceText(p.usdCents, locale), priceId: null }));
+export function dodoPricing(view: DodoView | null, environment: DodoEnvironment = "test"): Pricing {
+  const packs = (view?.packs ?? []).map((p) => ({ id: p.id, credits: p.credits, displayPrice: dodoDisplayPrice(p.usdCents), priceId: null }));
   // The order and credits of the packs are Paddle's (a test pins DODO_CATALOG_PACKS to CREDIT_PACKS).
   packs.sort((a, b) => CREDIT_PACKS.findIndex((c) => c.id === a.id) - CREDIT_PACKS.findIndex((c) => c.id === b.id));
-  return { source: packs.length > 0 ? "dodo" : "none", packs, paddle: null };
+  return { source: packs.length > 0 ? "dodo" : "none", packs, paddle: null, dodo: { environment: view?.environment ?? environment } };
 }
 
 /**

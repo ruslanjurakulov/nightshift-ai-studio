@@ -98,7 +98,9 @@ export function PricingView({
   const expiryAt = showPlans ? 3 : 1;
   const terms = [...saleTerms.slice(0, expiryAt), expiryLine, ...saleTerms.slice(expiryAt)];
   // Sold through Dodo Payments (PAYMENTS_PROVIDER=dodo): the seller named in the copy is Dodo, not Paddle.
-  const dodo = pricing.source === "dodo";
+  const dodo = Boolean(pricing.dodo);
+  // Dodo's test mode gets the same badge as Paddle's sandbox: nothing bought there is real.
+  const dodoTest = pricing.dodo?.environment === "test";
   const faqItems = dodo
     ? p.faq.map((f) => (f.id === "card" ? { ...f, a: p.dodo.faqCard } : f.id === "refund" ? { ...f, a: p.dodo.faqRefund } : f))
     : p.faq;
@@ -202,6 +204,7 @@ export function PricingView({
                 matrix={plans}
                 perMinute={rates?.perMinute ?? null}
                 rates={generationRates}
+                testMode={dodoTest}
                 signedIn={signedIn}
                 subscribeHref={`${credits}#plans`}
               />
@@ -254,7 +257,7 @@ export function PricingView({
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                <PackCards packs={pricing.packs} paddle={pricing.paddle} perMinute={rates?.perMinute ?? null} rates={generationRates} />
+                <PackCards packs={pricing.packs} paddle={pricing.paddle} perMinute={rates?.perMinute ?? null} rates={generationRates} testMode={dodoTest} />
                 <p className="st-small">
                   {pricing.source === "paddle" ? p.taxNote : dodo ? p.dodo.taxNote : p.checkoutClosed} {expiryLine}
                 </p>

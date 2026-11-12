@@ -54,7 +54,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function PricingPage() {
   const { t, locale } = await getDictionary();
   // PAYMENTS_PROVIDER: Paddle (the default) exactly as before, or Dodo's catalog prices (lib/server/payments.ts).
-  const pricing = sitePricing(locale);
+  const pricing = sitePricing();
   // The money a signed-out visitor can be shown: published pack prices, the
   // live API price list (public by 0031) and the two public credit rates
   // (per minute and the smallest hold, 0089). Read alongside the rest.

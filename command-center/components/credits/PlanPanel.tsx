@@ -18,7 +18,7 @@ import { PriceButton } from "@/components/ui/PriceButton";
 import { Timecode } from "@/components/ui/Timecode";
 import { assignTop } from "@/components/view-mode/frame-nav";
 import { useChannelPath } from "@/lib/channels-client";
-import { dodoReturnState, openDodoCheckout } from "@/lib/dodo-client";
+import { openDodoCheckout, takeDodoReturn } from "@/lib/dodo-client";
 import type { DodoView } from "@/lib/dodo";
 
 /** A "{n} credits a month" line with its figure in the counter face. */
@@ -163,9 +163,9 @@ export function PlanPanel({
   // Back from a Dodo checkout: wait for the webhook's subscription the same way as after Paddle's overlay.
   useEffect(() => {
     if (!dodo) return;
-    const state = dodoReturnState(window.location.search);
+    const state = takeDodoReturn("plan");
     if (state === "cancelled") go("cancelled");
-    else if (state === "return" && new URLSearchParams(window.location.search).get("item") === "plan") {
+    else if (state === "return") {
       tries.current = 0;
       go("paid");
     }

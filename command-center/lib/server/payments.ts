@@ -5,7 +5,7 @@ import { DODO_CATALOG_PLAN_PRICES, dodoBuyAccess } from "@/lib/dodo";
 import { dodoPricing, resolvePaymentsProvider, withDodoPlans, type PaymentsProvider } from "@/lib/payments";
 import { PLAN_ENV, planMatrix, type PlanCatalog, type PlanMatrix } from "@/lib/plans";
 import { PRICING_ENV, resolvePricing, type Pricing } from "@/lib/pricing";
-import { dodoPageView } from "@/lib/server/dodo-api";
+import { dodoEnvironment, dodoPageView } from "@/lib/server/dodo-api";
 
 /**
  * PAYMENTS_PROVIDER, read per request (a restart of the web container is
@@ -23,8 +23,8 @@ export function paymentsProvider(): PaymentsProvider {
  * before this switch existed (resolvePricing / planMatrix / buyAccess on the
  * Paddle settings), so the Paddle pages cannot change by being routed here.
  */
-export function sitePricing(locale: string): Pricing {
-  return paymentsProvider() === "dodo" ? dodoPricing(dodoPageView(), locale) : resolvePricing(PRICING_ENV, paddleConfig);
+export function sitePricing(): Pricing {
+  return paymentsProvider() === "dodo" ? dodoPricing(dodoPageView(), dodoEnvironment()) : resolvePricing(PRICING_ENV, paddleConfig);
 }
 
 export function sitePlanMatrix(catalog: PlanCatalog | null, locale: string): PlanMatrix | null {

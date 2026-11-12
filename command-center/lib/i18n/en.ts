@@ -4025,6 +4025,8 @@ export const en = {
         { id: "control", q: "Can it publish something without me?", a: "Only if you let it. Uploads are private by default and every video passes a publish check first. Auto-publish is off unless you turn it on for a channel. “Publish when approved” is also off by default: someone who manages your workspace switches it on per channel, and then approving that exact video in the app asks YouTube to make it public. Otherwise you make a video public yourself, on YouTube." },
         { id: "data", q: "What do you do with my data?", a: "Your Google data is used only to upload to the channel you connect and to show that channel's analytics to you — never for advertising. Access tokens are encrypted and never reach the browser, and you can revoke access at any time." },
       ],
+      // The refund answer above when Dodo Payments sells (PAYMENTS_PROVIDER=dodo): the seller it names.
+      refundDodo: "Payments are handled by Dodo Payments, our Merchant of Record, which processes refund requests under its terms and applicable law. When a purchase is refunded, the credits it added are removed as far as they are still unused. Credits held for a failed run come back on their own.",
       privacyLink: "Read the Privacy Policy",
       pricingLink: "See pricing",
       termsLink: "Terms: credits and refunds",
@@ -4121,7 +4123,7 @@ export const en = {
     linkBuyerTerms: "Paddle Buyer Terms",
     // Dodo Payments as the seller (PAYMENTS_PROVIDER=dodo, docs/DODO_SETUP.md): the lines above that name Paddle, for that case.
     dodo: {
-      taxNote: "The price shown is before tax. Any tax that applies where you live is added in the Dodo Payments checkout before you pay.",
+      taxNote: "Any tax that applies where you live is shown in the Dodo Payments checkout before you pay.",
       paymentsBody: "Payments are processed by Dodo Payments, our Merchant of Record for all orders: it processes the payment and handles tax, receipts and refunds. Your card details go to Dodo Payments, never to us.",
       refundsBody: "Refunds are handled by Dodo Payments under its terms and applicable law. When a purchase is refunded or charged back, the credits it added are removed, as far as they are still unused.",
       faqCard: "No. You create an account with your email. You pay only when you choose a plan or a credit pack, in the Dodo Payments checkout.",
