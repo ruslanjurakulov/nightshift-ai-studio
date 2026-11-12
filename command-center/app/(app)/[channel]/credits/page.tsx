@@ -6,6 +6,7 @@ import { BalanceHero } from "@/components/credits/BalanceHero";
 import { GrantCreditsForm } from "@/components/credits/GrantCreditsForm";
 import { CreditPricesEditor } from "@/components/credits/CreditPricesEditor";
 import { BuyCredits, BuyCreditsAdminOnly } from "@/components/credits/BuyCredits";
+import { DodoBuyCredits } from "@/components/credits/DodoBuyCredits";
 import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -13,6 +14,10 @@ import { UNIT_USD, chargePerUnit, coerceTransactions, inviteCardShown, isCreditE
 import { creditsEnforced, readCreditAccount, readCreditPriceList, readCreditPrices } from "@/lib/server/credits";
 import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, balanceSplit, generationRates, planMatrix, subscribeAccess } from "@/lib/plans";
+import { DODO_CATALOG_PLAN_PRICES, dodoBuyAccess } from "@/lib/dodo";
+import { withDodoPlans } from "@/lib/payments";
+import { paymentsProvider } from "@/lib/server/payments";
+import { dodoPageView } from "@/lib/server/dodo-api";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { readSellableModels } from "@/lib/creative/registry";
 import { planValue, readBillingSummary, readCreditLots, readPlanCatalog } from "@/lib/server/plans";
@@ -58,7 +63,7 @@ export const revalidate = 0;
  */
 export default async function CreditsPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const [org, supabase] = await Promise.all([getOrgContext(), createClient()]);
   const header = <PageHeader icon="credits" title={t.credits.title} subtitle={t.credits.subtitle} />;
   const note = (text: string) => (
@@ -124,14 +129,20 @@ export default async function CreditsPage() {
   const balanceUnknown = acct.failed || account === null;
   const ledgerFailed = readFailed(txns);
   const user = userRes.data.user;
-  const buy = buyAccess(orgId, org.current.role, paddleConfig);
+  // PAYMENTS_PROVIDER (lib/payments.ts): `paddle` (empty, the default) reads exactly what it always read; `dodo` sells
+  // the same packs and plans through Dodo's checkout instead, and Paddle's checkout is not offered at all.
+  const dodoMode = paymentsProvider() === "dodo";
+  const dodo = dodoMode ? dodoPageView() : null;
+  const buy = dodoMode ? dodoBuyAccess(orgId, org.current.role, dodo) : buyAccess(orgId, org.current.role, paddleConfig);
   const catalog = planValue(catalogRead);
   const summary = planValue(summaryRead);
   const lots = planValue(lotsRead);
   const catalogFailed = catalogRead.state === "failed";
   const summaryFailed = summaryRead.state === "failed";
   const lotsFailed = lotsRead.state === "failed";
-  const matrix = planMatrix(catalog, PLAN_ENV, paddleClient);
+  const matrix = dodoMode
+    ? withDodoPlans(planMatrix(catalog, PLAN_ENV, null), dodo, DODO_CATALOG_PLAN_PRICES, locale)
+    : planMatrix(catalog, PLAN_ENV, paddleClient);
   // Whether the organization already has a live subscription is unknown when
   // its summary could not be read: offering a second checkout then could
   // double-charge, so nothing is offered until it reads.
@@ -150,7 +161,7 @@ export default async function CreditsPage() {
       : catalogRead.state === "unsupported"
         ? CREDIT_EXPIRY_MONTHS
         : undefined;
-  const offersPacks = buy === "allowed" && Boolean(paddleConfig) && Boolean(account);
+  const offersPacks = buy === "allowed" && (dodoMode ? Boolean(dodo) : Boolean(paddleConfig)) && Boolean(account);
   const offersPlans = !exempt && Boolean(summary) && planAccess === "allowed";
   // Unknown (an unread summary, or 0094 not applied) is not "off": nothing is claimed then.
   const extraOff = usageRead.state === "ok" && !usageRead.value.extraEnabled;
@@ -195,10 +206,14 @@ export default async function CreditsPage() {
           email={user?.email ?? null}
           plansUnread={catalogFailed}
           rates={rates}
+          dodo={dodo}
         />
       )}
 
-      {offersPacks && paddleConfig && account && (
+      {offersPacks && dodoMode && dodo && account && (
+        <DodoBuyCredits view={dodo} balance={account.balance} rates={rates} packValidMonths={packValidMonths} extraOff={extraOff} />
+      )}
+      {offersPacks && !dodoMode && paddleConfig && account && (
         <BuyCredits
           config={paddleConfig}
           orgId={orgId}
@@ -250,7 +265,9 @@ export default async function CreditsPage() {
           <p className="tnum text-xs text-[var(--color-muted)]">
             {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
           </p>
-          {!paddleConfig && !exempt && <p className="tnum text-xs text-[var(--color-muted)]">{t.credits.buy.notConfigured}</p>}
+          {!(dodoMode ? dodo : paddleConfig) && !exempt && (
+            <p className="tnum text-xs text-[var(--color-muted)]">{dodoMode ? t.credits.buy.notConfiguredDodo : t.credits.buy.notConfigured}</p>
+          )}
           {rpcActive ? (
             <>
               <OwnerGrantForm

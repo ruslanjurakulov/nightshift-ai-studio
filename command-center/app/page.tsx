@@ -3,11 +3,10 @@ import { redirect } from "next/navigation";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
-import { paddleClient, paddleConfig } from "@/lib/paddle";
-import { PLAN_ENV, packExpiry, planMatrix } from "@/lib/plans";
+import { packExpiry } from "@/lib/plans";
+import { sitePlanMatrix, sitePricing } from "@/lib/server/payments";
 import { planValue } from "@/lib/server/plans";
 import { readPublicPlanCatalog } from "@/lib/server/public-catalog";
-import { PRICING_ENV, resolvePricing } from "@/lib/pricing";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import {
   SHOWCASE,
@@ -68,8 +67,8 @@ export default async function Home() {
   ]);
   // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
   const catalog = planValue(catalogRead);
-  const resolved = resolvePricing(PRICING_ENV, paddleConfig);
-  const pricing = pricingTeaser(resolved, planMatrix(catalog, PLAN_ENV, paddleClient));
+  const resolved = sitePricing(locale);
+  const pricing = pricingTeaser(resolved, sitePlanMatrix(catalog, locale));
   const anchor = moneyAnchor(resolved, apiPrices, siteRates);
   const jsonLd = softwareApplicationJsonLd({
     name: t.brand.name,

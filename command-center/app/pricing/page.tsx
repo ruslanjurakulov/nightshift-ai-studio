@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { getDictionary } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 import { readCreditPrices } from "@/lib/server/credits";
-import { paddleClient, paddleConfig } from "@/lib/paddle";
-import { PRICING_ENV, creditRates, resolvePricing, type CreditRates } from "@/lib/pricing";
-import { PLAN_ENV, packExpiry, planMatrix } from "@/lib/plans";
+import { creditRates, type CreditRates } from "@/lib/pricing";
+import { packExpiry } from "@/lib/plans";
+import { sitePlanMatrix, sitePricing } from "@/lib/server/payments";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { readPublicPlanCatalog } from "@/lib/server/public-catalog";
 import { planValue, readPlanCatalog, type PlanRead } from "@/lib/server/plans";
@@ -53,7 +53,8 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 export default async function PricingPage() {
   const { t, locale } = await getDictionary();
-  const pricing = resolvePricing(PRICING_ENV, paddleConfig);
+  // PAYMENTS_PROVIDER: Paddle (the default) exactly as before, or Dodo's catalog prices (lib/server/payments.ts).
+  const pricing = sitePricing(locale);
   // The money a signed-out visitor can be shown: published pack prices, the
   // live API price list (public by 0031) and the two public credit rates
   // (per minute and the smallest hold, 0089). Read alongside the rest.
@@ -93,7 +94,7 @@ export default async function PricingPage() {
   if (!rates && !ratesFailed) rates = publicRates;
   const catalogRead = await catalogPending;
   const catalog = planValue(catalogRead);
-  const plans = planMatrix(catalog, PLAN_ENV, paddleClient);
+  const plans = sitePlanMatrix(catalog, locale);
 
   return (
     <PublicShell t={t} fresh>

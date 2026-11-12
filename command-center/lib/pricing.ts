@@ -64,8 +64,9 @@ export interface PricingPack {
 }
 
 export interface Pricing {
-  /** "paddle": sold through Paddle's checkout; "display": prices published, no checkout here yet; "none": nothing to show. */
-  source: "paddle" | "display" | "none";
+  /** "paddle": sold through Paddle's checkout; "dodo": sold through Dodo's checkout at the catalog price (lib/payments.ts
+   *  dodoPricing); "display": prices published, no checkout here yet; "none": nothing to show. */
+  source: "paddle" | "dodo" | "display" | "none";
   packs: PricingPack[];
   /** What the browser needs for a price preview — public by design. */
   paddle: { environment: PaddleEnvironment; clientToken: string } | null;

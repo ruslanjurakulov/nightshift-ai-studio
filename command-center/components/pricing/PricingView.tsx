@@ -97,7 +97,12 @@ export function PricingView({
   const saleTerms = showPlans ? p.terms : p.terms.slice(2);
   const expiryAt = showPlans ? 3 : 1;
   const terms = [...saleTerms.slice(0, expiryAt), expiryLine, ...saleTerms.slice(expiryAt)];
-  const faq = faqForSale(p.faq, showPlans, t.site.packsOnly, expiryState);
+  // Sold through Dodo Payments (PAYMENTS_PROVIDER=dodo): the seller named in the copy is Dodo, not Paddle.
+  const dodo = pricing.source === "dodo";
+  const faqItems = dodo
+    ? p.faq.map((f) => (f.id === "card" ? { ...f, a: p.dodo.faqCard } : f.id === "refund" ? { ...f, a: p.dodo.faqRefund } : f))
+    : p.faq;
+  const faq = faqForSale(faqItems, showPlans, t.site.packsOnly, expiryState);
   const faqLink = (id: string) => (id === "cancel" || id === "refund" ? { href: "/terms#credits", label: p.linkTerms } : null);
 
   const pp = t.site.pricingPage;
@@ -251,9 +256,9 @@ export function PricingView({
               <div className="flex flex-col gap-4">
                 <PackCards packs={pricing.packs} paddle={pricing.paddle} perMinute={rates?.perMinute ?? null} rates={generationRates} />
                 <p className="st-small">
-                  {pricing.source === "paddle" ? p.taxNote : p.checkoutClosed} {expiryLine}
+                  {pricing.source === "paddle" ? p.taxNote : dodo ? p.dodo.taxNote : p.checkoutClosed} {expiryLine}
                 </p>
-                {pricing.source === "paddle" && (
+                {(pricing.source === "paddle" || dodo) && (
                   <Link href={signedIn ? credits : "/login"} className="st-key self-start" data-tone="quiet">
                     {signedIn ? p.buySignedIn : p.buySignedOut}
                   </Link>
@@ -357,16 +362,19 @@ export function PricingView({
               {p.paymentsTitle}
             </h2>
             <div className="flex flex-col gap-4">
-              <p className="st-body">{p.paymentsBody}</p>
-              <p className="st-body">{p.refundsBody}</p>
+              <p className="st-body">{dodo ? p.dodo.paymentsBody : p.paymentsBody}</p>
+              <p className="st-body">{dodo ? p.dodo.refundsBody : p.refundsBody}</p>
               <div className="flex flex-wrap gap-x-6">
                 <Link href="/terms#credits" className="st-link">
                   {p.linkTerms}
                 </Link>
-                <a href={PADDLE_BUYER_TERMS} target="_blank" rel="noopener noreferrer" className="st-link">
-                  {p.linkBuyerTerms}
-                  <ArrowUpRight aria-hidden />
-                </a>
+                {/* Dodo's buyer terms have no URL in its documentation (open question in docs/DODO_SETUP.md): no link is better than a guessed one. */}
+                {!dodo && (
+                  <a href={PADDLE_BUYER_TERMS} target="_blank" rel="noopener noreferrer" className="st-link">
+                    {p.linkBuyerTerms}
+                    <ArrowUpRight aria-hidden />
+                  </a>
+                )}
                 <Link href="/privacy#processors" className="st-link">
                   {p.linkPrivacy}
                 </Link>
