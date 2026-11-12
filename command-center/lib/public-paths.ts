@@ -19,8 +19,18 @@ import { OAUTH_PUBLIC_PATHS, WELL_KNOWN_PATHS } from "@/lib/oauth/config";
  * that screen to anyone.
  */
 
-/** Always public: the legal pages Google's reviewers and users must be able to read. */
-export const LEGAL_PATHS = ["/privacy", "/terms"] as const;
+/**
+ * The Refund Policy (app/refund/page.tsx). Paddle's seller verification asks for
+ * "publicly accessible Terms of Service, Privacy Policy, and Refund Policy pages".
+ * It is listed in the sitemap and llms.txt (lib/site-pages.ts UNCOUNTED_PAGE_PATHS)
+ * but NOT in SITEMAP_PATHS, for the same reason as /roadmap: SITEMAP_PATHS must
+ * equal the page-view counter's closed SQL list (migration 0104), and widening it
+ * needs a migration. So a visit to /refund is not counted.
+ */
+export const REFUND_PATH = "/refund";
+
+/** Always public: the legal pages Google's and Paddle's reviewers and users must be able to read. */
+export const LEGAL_PATHS = ["/privacy", "/terms", REFUND_PATH] as const;
 
 /** Always public: what a credit pack costs. Paddle's reviewers read it signed
  *  out, and a signed-in user sees the same page (plus the live credit rates).
@@ -298,6 +308,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   "agent-builder",
   // The public /roadmap page (ROADMAP_PATH): a channel of that id would be shadowed by it.
   "roadmap",
+  // The Refund Policy (REFUND_PATH): a channel of that id would be shadowed by it.
+  "refund",
 ] as const;
 
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */

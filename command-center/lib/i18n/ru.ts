@@ -4037,6 +4037,7 @@ export const ru: Dictionary = {
   legal: {
     privacy: "Политика конфиденциальности",
     terms: "Условия использования",
+    refund: "Политика возвратов",
     contact: "Контакты",
     home: "Главная",
     operator: "Оператор",

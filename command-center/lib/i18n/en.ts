@@ -4049,6 +4049,7 @@ export const en = {
   legal: {
     privacy: "Privacy Policy",
     terms: "Terms of Service",
+    refund: "Refund Policy",
     contact: "Contact",
     home: "Home",
     operator: "Operator",
