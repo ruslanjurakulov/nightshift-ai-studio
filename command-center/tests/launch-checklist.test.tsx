@@ -47,6 +47,7 @@ import { PublicI18nProvider } from "@/lib/i18n/public-context";
 import { LEGAL_TEXTS, type LegalBlock } from "@/lib/legal-docs";
 import { DEV_PAGE_PATHS } from "@/lib/dev-pages";
 import { SITEMAP_PATHS, SOLUTION_PATHS, gateDecision, isPublicFontPath } from "@/lib/public-paths";
+import { listedPagePaths } from "@/lib/site-pages";
 import { llmsEntries, llmsTxt, OPENAPI_PATH } from "@/lib/llms";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import robots from "@/app/robots";
@@ -70,6 +71,8 @@ const PAGES: PageSpec[] = [
   { path: "/", module: "@/app/page", props: {}, indexed: true },
   { path: "/studio", module: "@/app/studio/page", props: {}, indexed: true },
   { path: "/pricing", module: "@/app/pricing/page", props: {}, indexed: true },
+  // Listed in the sitemap and llms.txt, though not counted by the page-view beacon (lib/site-pages.ts UNCOUNTED_PAGE_PATHS).
+  { path: "/roadmap", module: "@/app/roadmap/page", props: {}, indexed: true },
   { path: "/solutions", module: "@/app/solutions/page", props: {}, indexed: true },
   { path: "/solutions/youtube-channels", module: "@/app/solutions/[slug]/page", props: slug("youtube-channels"), indexed: true },
   { path: "/solutions/creative-studio", module: "@/app/solutions/[slug]/page", props: slug("creative-studio"), indexed: true },
@@ -206,7 +209,7 @@ describe("12 sitemap.xml", () => {
       .flatMap((r) => (r === "solutions/[slug]" ? SOLUTION_PATHS.slice(1) : ["/" + r]))
       .filter((r) => !unindexed.has(r))
       .map((r) => (r === "/" || r === "" ? "/" : r));
-    const listed = new Set<string>(SITEMAP_PATHS);
+    const listed = new Set<string>(listedPagePaths(false));
     const forms = new Set(FORM_PAGES.map((p) => p.path));
     for (const route of found) expect(listed.has(route) || forms.has(route), `${route} is public but neither in the sitemap, a form page nor in NOINDEX_PUBLIC`).toBe(true);
     // A page on the unindexed list has a page file (the list cannot go stale).
@@ -264,7 +267,7 @@ describe("20 llms.txt", () => {
   it("links every listed page and the OpenAPI spec, and nothing else: each URL is a real public route", () => {
     const txt = llmsTxt(ORIGIN, false);
     const paths = [...txt.matchAll(/\]\((https:\/\/nightshift\.example)([^)\s]*)\)/g)].map((m) => m[2] || "/");
-    expect(paths.sort()).toEqual([...SITEMAP_PATHS, OPENAPI_PATH].sort());
+    expect(paths.sort()).toEqual([...listedPagePaths(false), OPENAPI_PATH].sort());
     for (const p of paths) expect(gateDecision(p, false), p).toBe("pass");
   });
 

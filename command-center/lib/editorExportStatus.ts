@@ -66,6 +66,15 @@ const NOT_RETRYABLE: readonly (ExportReason | "other")[] = [
   // request would end the same way and only spend one of the day's exports.
   "invalid_frame",
   "frame_off",
+  // A paid 1440p / 4K export (0132): its switch is off on the worker, its credits were given back before it started, or
+  // the version is too fast for 4K. Exporting again goes through the price and the confirmation, never a quiet retry.
+  "hires_off",
+  "credits_released",
+  "hires_fps",
+  // Above 1080p is never free, a speed curve cannot be priced, and a render longer than its price: the same request ends the same way.
+  "hires_needs_paid_export",
+  "hires_speed_curve",
+  "hires_length_mismatch",
 ];
 
 export function canRetry(reason: EditorExport["reason"]): boolean {

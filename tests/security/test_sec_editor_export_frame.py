@@ -17,6 +17,10 @@ can be exported 16:9, 9:16, 1:1 and 4:5 without a copy of the project. What must
   * the file adds an overload and replaces nothing, applies twice, refuses a body it has not seen, and its rollback takes it out
     (refusing while an export in flight carries a frame) and can be followed by the migration again.
 
+0132 (1440p and 4K, sold by the minute) builds on this file: it replaces the list with nine formats and adds a fourth overload. The
+tests that replay 0129 or apply its rollback take 0132 off first (sec_db.take_off_0132, inside their own rolled-back transaction); the
+race database is built without it. The paid frames are tested in test_sec_editor_hires_export.py.
+
 Every flow runs in one transaction that is rolled back, switching between the member's session and the worker's (service role) the way
 PostgREST would serve each of them.
 """
@@ -42,6 +46,7 @@ from test_sec_upload_folder import back_to_owner, become
 MIGRATION = sec_db.MIGRATIONS / "0129_editor_export_frame.sql"
 ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0129_editor_export_frame.sql"
 PRESETS = json.loads((sec_db.REPO / "schemas" / "export_presets.json").read_text(encoding="utf-8"))["presets"]
+FREE = [p for p in PRESETS if p["width"] * p["height"] <= 1920 * 1080]
 REQ2_SIG = "public.request_editor_export(uuid, integer)"
 REQ3_SIG = "public.request_editor_export(uuid, integer, text)"
 LIST_SIG = "public.editor_export_frame(text)"
@@ -91,18 +96,29 @@ def test_a_member_exports_the_saved_revision_in_a_frame_of_the_list(conn, sc):
 
 
 def test_every_format_of_the_presets_file_is_accepted_with_exactly_its_size(conn, sc):
-    assert [p["id"] for p in PRESETS] == ["youtube_1080p", "youtube_720p", "vertical_1080p", "square_1080", "feed_4x5_1080"]
+    # The five free formats; the four paid ones after them (0132) cannot be queued through this overload (0132 refuses them), see below.
+    assert [p["id"] for p in FREE] == ["youtube_1080p", "youtube_720p", "vertical_1080p", "square_1080", "feed_4x5_1080"]
     with as_superuser(conn, commit=False) as s:
-        for p in PRESETS:
+        for p in FREE:
             clear(s, sc.bob.org)
             become(s, sc.bob.actor)
             eid = s.value(REQ3, [PROJECT["b"], 1, p["id"]])
             back_to_owner(s)
             assert s.rows(FRAME_ROW, [eid]) == [(p["id"], p["width"], p["height"])], p
-        # The list answers for those five and nothing else, in the file's order.
+        # The list answers for the file's formats and nothing else, in the file's order.
         listed = s.rows("select f.id, f.width, f.height from unnest(%s::text[]) with ordinality as i(id, n), "
                         "public.editor_export_frame(i.id) f order by i.n", [[p["id"] for p in PRESETS]])
+        # A paid frame through THIS overload: 0132's body refuses it as hires_needs_paid_export (and its CHECK would refuse a row without a
+        # quote), and nothing is written.
+        paid = []
+        for p in PRESETS[5:]:
+            clear(s, sc.bob.org)
+            become(s, sc.bob.actor)
+            paid.append(s.run(REQ3, [PROJECT["b"], 1, p["id"]]))
+            paid[-1] = (paid[-1], exports_of(s, sc.bob.org))
     assert listed == [(p["id"], p["width"], p["height"]) for p in PRESETS]
+    for out, written in paid:
+        assert refused(out, "NS400", "hires_needs_paid_export") and written == 0, out
 
 
 BAD_FRAMES = [
@@ -155,7 +171,9 @@ def test_there_is_no_way_to_pass_a_size(conn, sc):
                 s.run("select public.request_editor_export(p_project => %s, p_rev => 1, p_frame => 'vertical_1080p', p_width => 8192)", [PROJECT["b"]]),
                 s.run("select public.request_editor_export(p_project => %s, p_rev => 1, p_width => 8192, p_height => 8192)", [PROJECT["b"]])]
         written = exports_of(s, sc.bob.org)
-    assert args == ["p_project uuid, p_rev integer", "p_project uuid, p_rev integer, p_frame text"]
+    # 0132's paid overload takes a number of credits the person confirmed, never a size.
+    assert args == ["p_project uuid, p_rev integer", "p_project uuid, p_rev integer, p_frame text",
+                    "p_project uuid, p_rev integer, p_frame text, p_max_credits numeric"]
     for out in outs:
         assert refused(out, "42883"), out
     assert written == 0
@@ -187,15 +205,19 @@ def test_the_table_cannot_hold_a_frame_outside_the_limits_or_half_of_one(conn, s
 
 
 def test_the_largest_frame_the_table_takes_is_1440p(conn, sc):
+    """0129 stopped a frame at 2560x1440. Since 0132 a row WITHOUT a quote stops at 1080p pixels, and one with a quote at 4K."""
     with as_superuser(conn, commit=False) as s:
         clear(s, sc.bob.org)
         become(s, sc.bob.actor)
         eid = s.value(REQ3, [PROJECT["b"], 1, "square_1080"])
         back_to_owner(s)
-        ok = s.run("update public.editor_exports set frame_width = 2560, frame_height = 1440 where id = %s", [eid])
-        over = s.run("update public.editor_exports set frame_width = 2560, frame_height = 1442 where id = %s", [eid])
+        free_top = s.run("update public.editor_exports set frame_width = 1080, frame_height = 1920 where id = %s", [eid])
+        unpaid = s.run("update public.editor_exports set frame_width = 2560, frame_height = 1440 where id = %s", [eid])
         low = s.run("update public.editor_exports set frame_width = 16, frame_height = 16 where id = %s", [eid])
-    assert ok.ok and low.ok and refused(over, "23514"), (ok, over, low)
+        paid = s.run("update public.editor_exports set frame_width = 3840, frame_height = 2160, quoted_credits = 1 where id = %s", [eid])
+        over = s.run("update public.editor_exports set frame_width = 3840, frame_height = 2162, quoted_credits = 1 where id = %s", [eid])
+    assert free_top.ok and low.ok and paid.ok, (free_top, low, paid)
+    assert refused(unpaid, "23514") and refused(over, "23514"), (unpaid, over)
 
 
 @pytest.mark.parametrize("who_name", ["bob", "alice", "stranger", "anon", "service"])
@@ -611,6 +633,9 @@ def race():
         _signup(c, who)
         org = _create_org(c, who, "Race org")
         video = register(c, org, "race-video")
+        # The races are 0129's and its rollback's; 0132 (which replaces 0129's list) is taken off in this database for good.
+        with as_superuser(c) as s:
+            sec_db.take_off_0132(s)
         projects = []
         with acting(c, who, commit=True) as s:
             for i in range(4):
@@ -825,6 +850,7 @@ def test_the_worker_is_handed_the_frame_as_it_was_written_and_a_plain_export_has
 
 def test_the_two_argument_call_is_unchanged_and_writes_no_frame(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # 0132's body or 0054's: 0136 builds on 0132's and is taken off first
         clear(s, sc.bob.org)
         become(s, sc.bob.actor)
         eid = s.value(REQ2, [PROJECT["b"], 1])
@@ -834,7 +860,8 @@ def test_the_two_argument_call_is_unchanged_and_writes_no_frame(conn, sc):
         body = s.value(f"select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc where oid = '{REQ2_SIG}'::regprocedure")
     assert row == [(None, None, None)]
     assert refused(busy, "NS409", "export_in_progress")
-    assert body == BEFORE_HASH
+    # 0054's body, or 0132's (0054's plus its refusal of a project above 1080p) while 0132 is applied.
+    assert body in (BEFORE_HASH, _pinned_0132("req2"))
 
 
 def test_the_api_roles_reach_the_overloads_they_should(conn):
@@ -848,7 +875,8 @@ def test_the_api_roles_reach_the_overloads_they_should(conn):
             "select p.prosecdef, p.proconfig::text, has_function_privilege('authenticated', p.oid, 'EXECUTE'), "
             "has_function_privilege('anon', p.oid, 'EXECUTE'), has_function_privilege('service_role', p.oid, 'EXECUTE'), "
             f"has_function_privilege('public', p.oid, 'EXECUTE') from pg_proc p where p.oid = '{LIST_SIG}'::regprocedure")
-    assert [r[0] for r in rows] == ["p_project uuid, p_rev integer", "p_project uuid, p_rev integer, p_frame text"], rows
+    assert [r[0] for r in rows] == ["p_project uuid, p_rev integer", "p_project uuid, p_rev integer, p_frame text",
+                                    "p_project uuid, p_rev integer, p_frame text, p_max_credits numeric"], rows
     for args, secdef, config, authed, anon, service, public in rows:
         assert (secdef, authed, anon, service, public) == (True, True, False, False, False), (args, rows)
         assert "search_path=public, pg_temp" in config, config
@@ -879,14 +907,26 @@ def drift(s, sig: str, find: str, put: str) -> None:
     s.conn.execute(src.replace(find, put))
 
 
+def _pinned_0132(name: str) -> str:
+    return re.search(rf"oid = {name}\) <> '([0-9a-f]{{32}})'", sec_db.MIGRATION_0132.read_text(encoding="utf-8")).group(1)
+
+
 def test_the_live_bodies_are_the_ones_the_file_pins(conn):
     req3, lst = _pinned(MIGRATION.read_text(encoding="utf-8"))
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0136(s)   # 0136 builds on 0132's bodies and is taken off first
+        # The list and the two request functions are 0132's while 0132 is applied (it replaced them), and 0129's / 0054's again once 0132
+        # is taken off.
+        on = sec_db.has_0132(s)
+        assert (_hash(s, REQ2_SIG), _hash(s, REQ3_SIG)) == ((_pinned_0132("req2"), _pinned_0132("req3")) if on else (BEFORE_HASH, req3))
+        assert _hash(s, LIST_SIG) == (_pinned_0132("lst") if on else lst)
+        sec_db.take_off_0132(s)
         assert (_hash(s, REQ2_SIG), _hash(s, REQ3_SIG), _hash(s, LIST_SIG)) == (BEFORE_HASH, req3, lst)
 
 
 def test_the_file_applies_twice_and_changes_nothing(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0132(s)
         clear(s, sc.bob.org)
         become(s, sc.bob.actor)
         eid = s.value(REQ3, [PROJECT["b"], 1, "square_1080"])
@@ -908,6 +948,7 @@ def test_the_file_applies_twice_and_changes_nothing(conn, sc):
 ])
 def test_the_file_refuses_a_body_it_has_not_seen_and_changes_nothing(conn, sig, find, put, says):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0132(s)
         drift(s, sig, find, put)
         drifted = _hash(s, sig)
         out = s.run(MIGRATION.read_text(encoding="utf-8"))
@@ -917,6 +958,7 @@ def test_the_file_refuses_a_body_it_has_not_seen_and_changes_nothing(conn, sig, 
 
 def test_the_file_refuses_without_0054(conn):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0132(s)
         s.conn.execute(_rollback_text())
         s.conn.execute("drop function public.request_editor_export(uuid, integer)")
         out = s.run(MIGRATION.read_text(encoding="utf-8"))
@@ -926,6 +968,7 @@ def test_the_file_refuses_without_0054(conn):
 def test_the_rollback_takes_it_out_and_the_file_applies_again(conn, sc):
     req3, lst = _pinned(MIGRATION.read_text(encoding="utf-8"))
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0132(s)
         clear(s, sc.bob.org)
         become(s, sc.bob.actor)
         done = s.value(REQ3, [PROJECT["b"], 1, "square_1080"])
@@ -959,6 +1002,7 @@ def test_the_rollback_takes_it_out_and_the_file_applies_again(conn, sc):
 @pytest.mark.parametrize("status", ["queued", "rendering"])
 def test_the_rollback_refuses_while_an_export_in_flight_carries_a_frame(conn, sc, status):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0132(s)
         clear(s, sc.bob.org)
         become(s, sc.bob.actor)
         eid = s.value(REQ3, [PROJECT["b"], 1, "square_1080"])
@@ -984,6 +1028,7 @@ def test_the_rollback_refuses_while_an_export_in_flight_carries_a_frame(conn, sc
 def test_the_rollback_refuses_a_body_that_is_not_the_one_it_knows(conn, sig, find, put, says):
     with as_superuser(conn, commit=False) as s:
         s.conn.execute("update public.editor_exports set status = 'failed', reason = 'test' where status in ('queued', 'rendering')")
+        sec_db.take_off_0132(s)
         drift(s, sig, find, put)
         out = s.run(_rollback_text())
         assert _hash(s, REQ3_SIG) is not None and _hash(s, LIST_SIG) is not None

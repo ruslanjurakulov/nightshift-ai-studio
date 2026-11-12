@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
 import { LEGAL } from "@/lib/legal";
+import { ROADMAP_PATH } from "@/lib/public-paths";
 import { SOLUTION_IDS, solutionHref } from "@/lib/solutions";
 import { Wordmark } from "@/components/site/Wordmark";
 import { devFor } from "@/lib/i18n/dev";
@@ -39,6 +40,8 @@ export function PublicFooter({ t }: { t: Dictionary }) {
         { href: "/studio", label: f.studio },
         { href: "/pricing", label: f.pricing },
         { href: "/#faq", label: f.faq },
+        // What is coming (app/roadmap). Footer only: the header bar holds five links so a phone's bar stays one row.
+        { href: ROADMAP_PATH, label: t.site.roadmap.footer },
       ],
     },
     {

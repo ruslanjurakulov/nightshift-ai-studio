@@ -42,6 +42,12 @@ name: Deploy web
 # marketing env") exists, and it still drafts and sends nothing until
 # NIGHTSHIFT_MARKETING_POSTS is `on` too. Anything but `on` removes the container
 # and its file, so no secret has to exist for a deploy while it is off.
+# The brand scan worker (Ads Factory, Phase 2, migrations 0133 and 0134) is the same
+# shape and OFF by default: while NIGHTSHIFT_ADS_BRAND_SCAN is `on` (the same variable
+# that shows the "Scan my site" panel) the brand-scan-worker (its own
+# /opt/nightshift/.env.brandscan, step "Build the brand-scan env") exists. It sells
+# nothing until the owner sets the price in the database. Anything but `on` removes
+# the container and its file.
 
 
 on:
@@ -197,12 +203,20 @@ jobs:
           # true or yes). Empty = no size picker in the editor and the export route ignores `frames`. Setting nothing leaves it dark; this
           # change does not set it. The media worker reads the same variable (WORKERENV_ below).
           WEBENV_NIGHTSHIFT_MULTI_RATIO_EXPORT: ${{ vars.NIGHTSHIFT_MULTI_RATIO_EXPORT }}
+          # 1440p and 4K exports, sold by the minute (docs/HIRES_EXPORT.md, migration 0132): off unless this repository variable is on (on, 1,
+          # true or yes), on top of the one above. Empty = no paid size in the editor. Setting nothing leaves it dark; this change does not set
+          # it. The media worker reads the same variable (WORKERENV_ below).
+          WEBENV_NIGHTSHIFT_HIRES_EXPORT: ${{ vars.NIGHTSHIFT_HIRES_EXPORT }}
           # Ads Factory, Phase 1 (docs/ADS_FACTORY.md): off unless this repository variable is on (on, 1, true or yes). Empty = the page, /api/ads/*
           # and the navigation entry are gone (404). Web only: there is no worker side in Phase 1. Setting nothing leaves it dark; this change does not set it.
           WEBENV_NIGHTSHIFT_ADS_FACTORY: ${{ vars.NIGHTSHIFT_ADS_FACTORY }}
           # Ads Factory, Phase 2 (docs/ADS_FACTORY.md, migration 0133): the "Scan my site" panel and /api/ads/scan/*, off unless this repository
-          # variable is on (and NIGHTSHIFT_ADS_FACTORY too). Setting nothing leaves it dark; this change does not set it.
+          # variable is on (and NIGHTSHIFT_ADS_FACTORY too). The SAME variable starts the brand-scan-worker (step "Build the brand-scan env"),
+          # so one switch controls both. Setting nothing leaves it dark; this change does not set it.
           WEBENV_NIGHTSHIFT_ADS_BRAND_SCAN: ${{ vars.NIGHTSHIFT_ADS_BRAND_SCAN }}
+          # Character Studio (docs/CHARACTER_STUDIO.md, migration 0137): the page and /api/character-studio/*, off unless this repository
+          # variable is exactly on. Setting nothing leaves it dark; this change does not set it. The worker is not deployed yet (a release step).
+          WEBENV_NIGHTSHIFT_CHARACTER_STUDIO: ${{ vars.NIGHTSHIFT_CHARACTER_STUDIO }}
           WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
           WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
@@ -458,6 +472,9 @@ jobs:
           # One edit, several frame sizes, the media worker's side (docs/MULTI_RATIO_EXPORT.md): the same repository variable as the web's.
           # Empty = off, and an export that carries a frame override is failed at once (frame_off). This change does not set it.
           WORKERENV_NIGHTSHIFT_MULTI_RATIO_EXPORT: ${{ vars.NIGHTSHIFT_MULTI_RATIO_EXPORT }}
+          # 1440p and 4K exports, the media worker's side (docs/HIRES_EXPORT.md): the same repository variable as the web's. Empty = off, and
+          # a paid export that reaches the worker is failed at once (hires_off) with its credits released. This change does not set it.
+          WORKERENV_NIGHTSHIFT_HIRES_EXPORT: ${{ vars.NIGHTSHIFT_HIRES_EXPORT }}
           WORKERENV_NIGHTSHIFT_VOICE_GATE_STRICT: ${{ vars.NIGHTSHIFT_VOICE_GATE_STRICT }}
           WORKERENV_NIGHTSHIFT_SERIES_PLANNER: ${{ vars.NIGHTSHIFT_SERIES_PLANNER }}
           # The owner's model switch (migration 0124, docs/MODEL_SWITCH.md): the SAME repository variable the Command Center reads
@@ -566,6 +583,21 @@ jobs:
           MARKETINGENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN || format('https://{0}', vars.DOMAIN || 'new.nightshift-ai.studio') }}
           MARKETINGENV_NIGHTSHIFT_MARKETING_POSTS: ${{ vars.NIGHTSHIFT_MARKETING_POSTS }}
         run: python3 deploy/build-service-env.py marketing "$PAYLOAD"
+
+      # The brand scan worker (docs/ADS_FACTORY.md, "Releasing Phase 2"), only while
+      # NIGHTSHIFT_ADS_BRAND_SCAN is `on` (default: unset = off, and then NO secret
+      # below is read): its OWN env, three names, after a marker line, to
+      # /opt/nightshift/.env.brandscan (600). The Supabase service key and nothing
+      # else: no provider key, no bot token. Named secrets only, as above;
+      # deploy/build-service-env.py prints key names, never values.
+      - name: Build the brand-scan env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_ADS_BRAND_SCAN == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          BRANDSCANENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          BRANDSCANENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          BRANDSCANENV_NIGHTSHIFT_ADS_BRAND_SCAN: ${{ vars.NIGHTSHIFT_ADS_BRAND_SCAN }}
+        run: python3 deploy/build-service-env.py brandscan "$PAYLOAD"
 
       - name: Deploy over SSH
         if: steps.payload.outputs.run == 'true'

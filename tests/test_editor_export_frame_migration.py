@@ -150,9 +150,11 @@ class TheClosedList(unittest.TestCase):
         return [(i, int(w), int(h)) for i, w, h in re.findall(r"\('([a-z0-9_]+)', (\d+), (\d+)\)", body(fn))]
 
     def test_it_is_the_presets_file_id_for_id_and_pixel_for_pixel(self):
+        # 0129's list was the whole file when it was written. 0132 replaced the list with the file's nine (the paid 1440p and 4K
+        # frames after these five): its own pin test compares that one with the whole file.
         data = json.loads((ROOT / "schemas" / "export_presets.json").read_text(encoding="utf-8"))
-        self.assertEqual(self.rows(), [(p["id"], p["width"], p["height"]) for p in data["presets"]])
-        self.assertEqual(self.rows(), [(p.id, p.width, p.height) for p in export_presets.load().values()])
+        self.assertEqual(self.rows(), [(p["id"], p["width"], p["height"]) for p in data["presets"]][:5])
+        self.assertEqual(self.rows(), [(p.id, p.width, p.height) for p in export_presets.free().values()])
         self.assertEqual(len(self.rows()), 5)
 
     def test_it_matches_exactly_and_is_internal(self):
@@ -238,13 +240,19 @@ class TheFile(unittest.TestCase):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0129"), 1)
         self.assertEqual(max(n for n in numbers if n < "0129"), "0128")
+        # 0132 (1440p and 4K) is the one later file that builds on 0129 on purpose: it replaces the list, adds a fourth overload, and
+        # replaces this file's three-argument body with the same body plus only the marked lines that refuse a paid frame
+        # (tests/test_editor_hires_export_migration.py strips them and compares the rest with this file's body). 0136 (exports up to 1080p
+        # sold by the minute) replaces 0132's request bodies the same way and writes no frame of its own (the list stays 0132's).
         for p in sorted(MIG.glob("*.sql")):
-            if p.name[:4] > "0054" and not p.name.startswith("0129_"):
+            if p.name[:4] > "0054" and not p.name.startswith(("0129_", "0132_", "0136_")):
                 text = p.read_text(encoding="utf-8")
                 self.assertNotIn("function public.request_editor_export(", text, p.name)
                 self.assertNotIn("function public.editor_export_frame(", text, p.name)
-            if p.name[:4] > "0129":
+            if p.name[:4] > "0129" and not p.name.startswith(("0132_", "0136_")):
                 self.assertNotIn("frame_preset", p.read_text(encoding="utf-8"), p.name)
+        later = (MIG / "0132_editor_hires_export.sql").read_text(encoding="utf-8")
+        self.assertEqual(later.count(REQ3), 1)
 
     def test_the_rollback_refuses_before_it_changes_anything_and_is_one_transaction(self):
         self.assertRegex(ROLLBACK, r"(?m)^begin;$")
@@ -311,10 +319,12 @@ class TheThreeHalvesAgree(unittest.TestCase):
     def test_the_command_center_never_sends_a_size(self):
         route = self.ts("app/api/editor/projects/[id]/exports/route.ts")
         calls = re.findall(r'rpc\(\s*"request_editor_export",\s*\{(.*?)\}\s*,?\s*\)', route, re.S)
-        # The plain export (switch off, or no `frames`), the project's own frame among several, and ONE call that names a frame.
-        self.assertEqual(len(calls), 3)
+        # The plain export (switch off, or no `frames`), the project's own frame among several, ONE call that names a free frame,
+        # and (0132) one that names a paid frame with the number of credits the person confirmed.
+        self.assertEqual(len(calls), 4)
         names = [sorted(re.findall(r"\b(p_[a-z_]+)\b", c)) for c in calls]
-        self.assertEqual(sorted(names), [["p_frame", "p_project", "p_rev"], ["p_project", "p_rev"], ["p_project", "p_rev"]])
+        self.assertEqual(sorted(names), [["p_frame", "p_max_credits", "p_project", "p_rev"], ["p_frame", "p_project", "p_rev"],
+                                         ["p_project", "p_rev"], ["p_project", "p_rev"]])
         self.assertNotRegex(route, r"p_(width|height|w|h)\b")
 
 

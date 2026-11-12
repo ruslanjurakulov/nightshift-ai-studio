@@ -247,7 +247,7 @@ export function ClipSilenceSection({
   const problem = silenceProblem(model, clip, asset?.kind);
   const cuts: Span[] =
     result && result !== "working" && result.status === "ready"
-      ? proposeCuts(clip, detectSilences(result.env, db, minS, result.blockS))
+      ? proposeCuts(clip, detectSilences(result.env, db, minS, result.blockS), model.fps)
       : [];
   const find = () => {
     if (!asset?.id || !asset.viewUrl) {
@@ -325,7 +325,7 @@ export function ClipSilenceSection({
               setResult(null);
               setDone(
                 r.applied < cuts.length
-                  ? fmt(s.partial, { n: r.applied, total: cuts.length, max: MAX_EDITOR_CLIPS })
+                  ? fmt(r.stopped === "piece" ? s.partialPiece : s.partial, { n: r.applied, total: cuts.length, max: MAX_EDITOR_CLIPS })
                   : fmt(s.applied[countForm(r.applied, locale)], { n: r.applied, s: cutSeconds(clip, applied).toFixed(1) }),
               );
             }}

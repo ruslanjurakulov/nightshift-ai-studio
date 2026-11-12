@@ -141,17 +141,29 @@ import {
 import { FitPicker, FramePicker } from "./FrameFitControls";
 import { ExportPresetPicker } from "./ExportPresetPicker";
 import { ExportRatioPicker } from "./ExportRatioPicker";
+import { HiresExportQuote, type HiresConfirmation } from "./HiresExportQuote";
 import {
   PROJECT_FRAME,
   exportFrameChoice,
   frameMismatch,
+  framePresetById,
   frameProblems,
   isExportFrameChoice,
   latestPerFrame,
   otherFrames,
   type ExportFrameChoice,
+  type FramePresetId,
 } from "@/lib/multiRatioExport/frames";
-import { applyExportPreset, exportPresetById, setExportFps, type ExportPresetId } from "@/lib/editorExportPresets";
+import {
+  aboveFree,
+  isHiresPresetId,
+  isQuotableFrame,
+  overHiresCap,
+  overHiresFps,
+  type HiresPresetId,
+  type QuotableFrame,
+} from "@/lib/hiresExport/limits";
+import { applyExportPreset, isExportPresetId, setExportFps } from "@/lib/editorExportPresets";
 import {
   addOverlay,
   canAddOverlay,
@@ -185,6 +197,10 @@ import { MAX_SHAPES, type ShapeKind } from "@/lib/editorShapes";
 import { ClipGradePanel, GradeFilterDefs } from "./ClipGradePanel";
 import { ClipPicture, LookFilterDefs } from "./ClipPicture";
 import { ClipFxSections } from "./ClipFxSections";
+import { SoundBeatsSection } from "./ClipFxPackSections";
+import { beatTimes } from "@/lib/editorBeats";
+import { applyCrossfadeToAll } from "@/lib/editorFxPack";
+import { countForm } from "@/lib/editorSilence";
 import { ClipSpeedSection, OverlayMoveSection, RenderBudgetNotice } from "./ClipMotionSections";
 import { OverlayChromaSection, SoundCleanSection } from "./CleanSections";
 import { ClipCopyTools, ClipVolumeDetach } from "./ClipSoundTools";
@@ -316,6 +332,7 @@ export function TimelineEditor({
   offerAssetId = null,
   focusPanel = null,
   multiRatio = false,
+  hires = false,
 }: {
   projectId: string;
   title: string;
@@ -345,6 +362,8 @@ export function TimelineEditor({
   /** May one export be asked in several frame sizes here (NIGHTSHIFT_MULTI_RATIO_EXPORT on AND migration 0129 applied,
    *  as the server read them)? Default off: no size picker, and Export is the one plain export it always was. */
   multiRatio?: boolean;
+  /** Are the paid 1440p / 4K sizes offered in that picker (NIGHTSHIFT_HIRES_EXPORT on, migration 0132)? Default off. */
+  hires?: boolean;
 }) {
   const { t, locale } = useI18n();
   const te = t.editor;
@@ -362,6 +381,9 @@ export function TimelineEditor({
   const [title, setTitle] = useState(initialTitle);
   const [savedTitle, setSavedTitle] = useState(initialTitle);
   const [rev, setRev] = useState(initialRev);
+  // Beat markers found for a sound (file seconds, by sound id): the editor's, never the document's.
+  const [beatsBySound, setBeatsBySound] = useState<Record<string, number[]>>({});
+  const [crossfadeAllNote, setCrossfadeAllNote] = useState<string | null>(null);
   const [selected, setSelected] = useState<Selection>(() => {
     const first = toModel(doc).clips[0];
     return first ? { kind: "clip", id: first.id } : null;
@@ -405,18 +427,60 @@ export function TimelineEditor({
   const active = exportActive(exports);
   // Whether the edit fits each other size is the whole validator run once per size: kept off the typing / dragging path.
   const settledModel = useDeferredValue(model);
-  const frameChoices = useMemo<ExportPresetId[]>(
-    () => (multiRatio ? otherFrames(settledModel) : []),
-    [multiRatio, settledModel],
+  const frameChoices = useMemo<FramePresetId[]>(
+    () => (multiRatio ? otherFrames(settledModel, { hires }) : []),
+    [multiRatio, hires, settledModel],
   );
   const frameBlocked = useMemo(
     () => frameChoices.filter((c) => frameProblems(settledModel, c).length > 0),
     [frameChoices, settledModel],
   );
   // What Export would ask for now: a size that is no longer offered (the project took that size) or no longer fits is dropped.
+  // A paid size the video is too long for (0132's cap) is not offered either.
+  const frameOverCap = frameChoices.filter((c) => {
+    const p = isHiresPresetId(c) ? framePresetById(c) : null;
+    return p !== null && overHiresCap(p.width, p.height, total);
+  });
+  // Nor one this project's frame rate is too fast for (4K: 30 at most; never rendered at a lower rate in its place).
+  const frameTooFast = frameChoices.filter((c) => {
+    const p = isHiresPresetId(c) ? framePresetById(c) : null;
+    return p !== null && overHiresFps(p.width, p.height, model.fps);
+  });
+  // Above 1080p is never free (0132): a project whose own frame is bigger is not exported in its own size by the free
+  // request (the server refuses it: hires_needs_paid_export). It is exported in a paid size, or in a free one (1080p or
+  // smaller), or after its frame is set to 1080p or smaller. Saving it stays allowed.
+  const ownAboveFree = aboveFree(model.width, model.height);
+  const ownBlocked = ownAboveFree ? (multiRatio && hires ? te.exportHires.ownTooBig : te.exportHires.ownTooBigOff) : null;
+  // A speed curve is sold at its rendered length (migration 0136): the quote prices it, so nothing is held back for it here.
   const framesChosen = frames.filter(
-    (c) => c === PROJECT_FRAME || (frameChoices.includes(c) && !frameBlocked.includes(c)),
+    (c) =>
+      (c === PROJECT_FRAME && !ownAboveFree) ||
+      (c !== PROJECT_FRAME &&
+        frameChoices.includes(c) &&
+        !frameBlocked.includes(c) &&
+        !frameOverCap.includes(c) &&
+        !frameTooFast.includes(c)),
   );
+  // Sizes up to 1080p are sold (migration 0136: the owner set their price). Learnt from the server's own refusal of a plain
+  // request (export_needs_quote): from then on every ticked size is priced, the project's own included. While that price
+  // is NULL the server never says it, and Export is the free request it always was.
+  const [soldUpTo1080, setSoldUpTo1080] = useState(false);
+  const quoted = multiRatio && hires;
+  const paidChosen: QuotableFrame[] = soldUpTo1080
+    ? framesChosen.filter((c): c is QuotableFrame => isQuotableFrame(c))
+    : framesChosen.filter((c): c is HiresPresetId => isHiresPresetId(c));
+  // The person's yes to the server's quote of the paid sizes (HiresExportQuote): Export spends only with it.
+  const [paidOk, setPaidOk] = useState<HiresConfirmation>({ ready: false, key: "", maxCredits: {} });
+  // A yes counts only for the sizes and the saved version it was given for (a stale one is never sent), and is dropped
+  // when no paid size is ticked any more: ticking the same size again asks for a new one.
+  const paidReady = paidOk.ready && paidOk.key === `${rev}|${paidChosen.join(",")}`;
+  const anyPaid = paidChosen.length > 0;
+  // The "applied to all cuts" note belongs to the clip it was given on.
+  useEffect(() => setCrossfadeAllNote(null), [selected]);
+
+  useEffect(() => {
+    if (!anyPaid) setPaidOk((c) => (c.ready ? { ready: false, key: "", maxCredits: {} } : c));
+  }, [anyPaid]);
   const warnings = textWarnings(model);
   const soundWarns = soundWarnings(model);
   const speech = useMemo(() => speechSpans(model), [model]);
@@ -783,9 +847,18 @@ export function TimelineEditor({
     setStarting(true);
     setError(null);
     setFrameRefusals([]);
-    const out = await requestExports(projectId, rev, want);
+    const priced = want.filter((c): c is QuotableFrame => isQuotableFrame(c) && paidOk.maxCredits[c] !== undefined);
+    // A paid size goes only with the number the person confirmed (the route refuses it without one: quote_required), and a
+    // sold size up to 1080p (0136) with its own; a free one goes without, as always.
+    const out = await requestExports(
+      projectId,
+      rev,
+      want,
+      priced.length && paidReady ? Object.fromEntries(priced.map((c) => [c, paidOk.maxCredits[c] as number])) : undefined,
+    );
     setStarting(false);
     if (!out.ok) {
+      if (out.error === "export_needs_quote") setSoldUpTo1080(true);
       setError(out.error);
       return out.error;
     }
@@ -797,7 +870,7 @@ export function TimelineEditor({
         refused.push(o);
         continue;
       }
-      const p = o.frame === PROJECT_FRAME ? null : exportPresetById(o.frame);
+      const p = o.frame === PROJECT_FRAME ? null : framePresetById(o.frame);
       queued.push({
         id: o.id,
         rev,
@@ -811,14 +884,16 @@ export function TimelineEditor({
       });
     }
     setFrameRefusals(refused);
+    if (refused.some((r) => r.error === "export_needs_quote")) setSoldUpTo1080(true);
     // Newest first, like the server's list.
     if (queued.length) setExports((e) => [...queued.reverse(), ...e]);
     return refused[0]?.error ?? null;
   }
 
   async function startExport(): Promise<EditorError | null> {
-    // Only the project's own size (always, without `multiRatio`): the request it always was, byte for byte.
-    if (multiRatio && !(framesChosen.length === 1 && framesChosen[0] === PROJECT_FRAME))
+    // Only the project's own size (always, without `multiRatio`): the request it always was, byte for byte. Once sizes up
+    // to 1080p are sold (0136), the project's own size too goes with its confirmed number.
+    if (multiRatio && (soldUpTo1080 || !(framesChosen.length === 1 && framesChosen[0] === PROJECT_FRAME)))
       return startFrameExports(framesChosen);
     if (dirty || active || starting) return null;
     setStarting(true);
@@ -827,6 +902,7 @@ export function TimelineEditor({
     const out = await requestExport(projectId, rev);
     setStarting(false);
     if (!out.ok) {
+      if (out.error === "export_needs_quote") setSoldUpTo1080(true);
       setError(out.error);
       return out.error;
     }
@@ -1079,12 +1155,22 @@ export function TimelineEditor({
     ? te.exportNeedsSave
     : active
       ? te.exportBusy
-      : multiRatio && framesChosen.length === 0
-        ? te.exportRatios.none
-        : null;
+      : soldUpTo1080 && !quoted
+        ? te.exportHires.soldNoQuote
+        : !multiRatio && ownBlocked
+          ? ownBlocked
+          : multiRatio && framesChosen.length === 0
+            ? (ownBlocked ?? te.exportRatios.none)
+            : paidChosen.length > 0 && !paidReady
+              ? te.errors.quote_required
+              : null;
   /** A size's name for a sentence: the format's, or "this project's size". */
   const frameName = (c: string) =>
-    isExportFrameChoice(c) && c !== PROJECT_FRAME ? te.exportPreset.names[c] : te.exportRatios.own;
+    isHiresPresetId(c)
+      ? te.exportHires.names[c]
+      : isExportPresetId(c)
+        ? te.exportPreset.names[c]
+        : te.exportRatios.own;
   const when = (iso: string | null) => {
     if (!iso) return "";
     const d = new Date(iso);
@@ -1259,8 +1345,15 @@ export function TimelineEditor({
             choices={frameChoices}
             selected={framesChosen}
             blocked={frameBlocked}
+            overCap={frameOverCap}
+            tooFast={frameTooFast}
+            fps={model.fps}
+            ownBlocked={ownBlocked}
             onChange={setFrames}
           />
+        ) : null}
+        {quoted && paidChosen.length > 0 ? (
+          <HiresExportQuote projectId={projectId} rev={rev} dirty={dirty} frames={paidChosen} onChange={setPaidOk} />
         ) : null}
         {frameRefusals.length ? (
           <div role="alert" className="flex flex-col gap-1 text-sm text-[var(--color-fail)]">
@@ -1591,6 +1684,7 @@ export function TimelineEditor({
             onSelect={setSelected}
             onTrim={onTrim}
             onTrimEnd={onTrimEnd}
+            beats={model.sounds.flatMap((x) => (beatsBySound[x.id] ? beatTimes(x, beatsBySound[x.id]) : []))}
           />
 
           <div className="flex flex-wrap gap-2">
@@ -1967,7 +2061,24 @@ export function TimelineEditor({
                 )
               }
               onFit={() => apply(fitSoundToPicture(model, sound.id))}
-              clean={<SoundCleanSection model={model} sound={sound} apply={apply} />}
+              clean={
+                <>
+                  <SoundCleanSection model={model} sound={sound} apply={apply} />
+                  <SoundBeatsSection
+                    sound={sound}
+                    asset={assets[sound.asset_id]}
+                    shown={beatsBySound[sound.id] ?? null}
+                    onBeats={(id, beats) =>
+                      setBeatsBySound((b) => {
+                        const next = { ...b };
+                        if (beats) next[id] = beats;
+                        else delete next[id];
+                        return next;
+                      })
+                    }
+                  />
+                </>
+              }
               onDelete={() => apply(removeSound(model, sound.id))}
             />
           ) : clip ? (
@@ -2048,6 +2159,13 @@ export function TimelineEditor({
               onCrossfadeStyle={(s) =>
                 apply(setCrossfadeStyle(model, clip.id, s))
               }
+              onCrossfadeAll={() => {
+                const r = applyCrossfadeToAll(model, clip.id);
+                const ta = t.editor.parity2b.transitionAll;
+                if (r.changed) apply(r.model);
+                setCrossfadeAllNote(r.changed ? fmt(ta.done[countForm(r.changed, locale)], { n: r.changed }) : ta.none);
+              }}
+              crossfadeAllNote={crossfadeAllNote}
               onSplit={onSplit}
               onMove={(by) => apply(moveClip(model, clip.id, by))}
               onDelete={() => apply(removeClip(model, clip.id))}
@@ -2265,6 +2383,8 @@ function ClipInspector({
   onCrossfade,
   crossfadeStyle,
   onCrossfadeStyle,
+  onCrossfadeAll,
+  crossfadeAllNote,
   onSplit,
   onMove,
   onDelete,
@@ -2303,6 +2423,9 @@ function ClipInspector({
   /** How the previous clip blends into this one (`fade` = the plain blend). */
   crossfadeStyle: XfadeStyle;
   onCrossfadeStyle: (style: XfadeStyle) => void;
+  /** Give every cut this cross-fade (lib/editorFxPack.ts applyCrossfadeToAll). */
+  onCrossfadeAll?: () => void;
+  crossfadeAllNote?: string | null;
   onSplit: () => void;
   onMove: (by: -1 | 1) => void;
   onDelete: () => void;
@@ -2405,6 +2528,21 @@ function ClipInspector({
             value={crossfadeStyle}
             onChange={onCrossfadeStyle}
           />
+        ) : null}
+        {crossfade > 0 && onCrossfadeAll ? (
+          <button
+            type="button"
+            onClick={onCrossfadeAll}
+            data-testid="crossfade-all"
+            className="btn-quiet inline-flex min-h-11 items-center self-start px-3 py-1.5 text-xs"
+          >
+            {t.editor.parity2b.transitionAll.button}
+          </button>
+        ) : null}
+        {crossfadeAllNote ? (
+          <p role="status" className="m-0 text-xs" data-testid="crossfade-all-note">
+            {crossfadeAllNote}
+          </p>
         ) : null}
         <p id={`${id}-xf`} className="m-0 text-xs text-[var(--color-muted)]">
           {first

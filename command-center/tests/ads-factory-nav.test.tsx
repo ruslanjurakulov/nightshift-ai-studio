@@ -11,13 +11,13 @@ import { CUSTOMER_SECTIONS, NO_NAV_FEATURES, SECTION_TABS, navGroupsFor, navShow
 import { isSection } from "../lib/channels";
 import { ICONS } from "../components/navigation/navIcons";
 
-const ON = { adsFactory: true };
+const ON = { adsFactory: true, characterStudio: false };
 const keys = (operator: boolean, features = NO_NAV_FEATURES) => navGroupsFor(operator, features).flatMap((g) => g.items.map((i) => i.key));
 
 describe("navigation", () => {
   it("lists Ads for the operator only while the switch is on, and never by default", () => {
     expect(keys(true)).not.toContain("ads");
-    expect(keys(true, { adsFactory: false })).not.toContain("ads");
+    expect(keys(true, { adsFactory: false, characterStudio: false })).not.toContain("ads");
     expect(keys(true, ON)).toContain("ads");
     expect(keys(true, ON).filter((k) => k !== "ads")).toEqual(keys(true));
   });
@@ -47,8 +47,10 @@ describe("navigation", () => {
   it("the switch is read on the server, in the layout and the sections page, and never as a NEXT_PUBLIC value", () => {
     const root = join(__dirname, "..");
     const layout = readFileSync(join(root, "app", "(app)", "layout.tsx"), "utf8");
-    expect(layout).toContain("features={{ adsFactory: adsFactoryEnabled() }}");
-    expect(readFileSync(join(root, "app", "(app)", "[channel]", "sections", "page.tsx"), "utf8")).toContain("navGroupsFor(true, { adsFactory: adsFactoryEnabled() })");
+    expect(layout).toContain("features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled() }}");
+    expect(readFileSync(join(root, "app", "(app)", "[channel]", "sections", "page.tsx"), "utf8")).toContain(
+      "navGroupsFor(true, { adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled() })",
+    );
     for (const f of ["components/SideNav.tsx", "components/navigation/SectionTabs.tsx", "lib/adsFactory/flag.ts", "components/shell/ShellContext.tsx"]) {
       expect(readFileSync(join(root, f), "utf8"), f).not.toMatch(/NEXT_PUBLIC_[A-Z_]*ADS/);
     }

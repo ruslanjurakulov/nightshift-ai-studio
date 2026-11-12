@@ -629,7 +629,7 @@ class SeedreamTests(VendorCase):
             self.assertEqual(body["size"], wh, ratio)
             self.assertEqual(body["response_format"], "b64_json")        # no 24-hour link to lose
             self.assertEqual(body["model"], PRO)
-            self.assertNotIn("watermark", body)
+            self.assertIs(body["watermark"], True)                       # the vendor's default (on), never off
         self.assertEqual(self.sent().headers["authorization"], f"Bearer {KEY}")
 
     def test_defaults_are_the_one_size_that_is_offered(self):

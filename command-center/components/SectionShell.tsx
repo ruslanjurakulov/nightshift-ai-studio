@@ -9,6 +9,7 @@ import { PageNav } from "@/components/navigation/PageNav";
 import { SectionTabs } from "@/components/navigation/SectionTabs";
 import { useShell } from "@/components/shell/ShellContext";
 import { PageTransition } from "@/components/motion/PageTransition";
+import { navigate } from "@/lib/editor-nav";
 
 export { HOME };
 
@@ -57,7 +58,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
       // An open dialog (account menu, notifications, drawer, palette) owns
       // Escape: closing it must not also eject the reader from the page.
       if (document.querySelector('[role="dialog"]')) return;
-      router.push(home);
+      navigate(home, router);
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -97,7 +98,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
         type="button"
         tabIndex={-1}
         aria-hidden="true"
-        onClick={() => router.push(home)}
+        onClick={() => navigate(home, router)}
         className="scrim-enter section-scrim fixed inset-0 z-0 cursor-default"
       />
       <PageTransition className="relative z-10 mx-auto w-full max-w-[1100px]">
@@ -109,7 +110,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
             <PageNav />
             <button
               type="button"
-              onClick={() => router.push(home)}
+              onClick={() => navigate(home, router)}
               aria-label={t.ops.shortcutsClose}
               title={t.ops.shortcutsClose}
               className="sheet-close section-close shrink-0"

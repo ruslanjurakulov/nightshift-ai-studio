@@ -20,7 +20,7 @@
 --     setting, as PostgREST sets it per request. The tests set it with
 --     set_config(..., true) inside a transaction and SET LOCAL ROLE.
 --   * auth.users with the columns our SQL reads (id, email,
---     email_confirmed_at).
+--     email_confirmed_at, created_at, last_sign_in_at).
 --   * storage.buckets / storage.objects (RLS on, as on Supabase) and
 --     storage.foldername().
 --   * vault.secrets, vault.decrypted_secrets, vault.create_secret(),
@@ -43,6 +43,8 @@ create table if not exists auth.users (
   email_confirmed_at timestamptz,
   created_at         timestamptz not null default now()
 );
+-- GoTrue's last sign-in time (0138: the operator's Customers page shows it). The same column on Supabase.
+alter table auth.users add column if not exists last_sign_in_at timestamptz;
 
 -- GoTrue's second-factor table, with the columns our SQL reads (0107: admin_aal_ok and
 -- enable_admin_mfa ask "does this account have a VERIFIED factor"). Supabase's real one has more

@@ -255,6 +255,10 @@ MASK_SHAPES = ("rect", "ellipse", "rounded")
 MASK_MIN = 0.05
 MASK_FEATHER_MAX = 0.5
 MASK_RADIUS_MAX = 0.5
+#: Effects pack and a clip's entrance / exit (modules/timeline.py holds the same; a test pins them).
+FX_NAMES = ("glitch", "shake", "rgb_split", "flash")
+FX_MAX = 100.0
+V_ANIMS = ("fade", "slide-up", "slide-down", "slide-left", "slide-right", "zoom")
 
 #: A speed curve / interpolated slow motion (modules/timeline.py holds the same
 #: numbers; a test pins them).
@@ -371,6 +375,17 @@ class ClipEffects:
     tint: float = 0.0
     hue: float = 0.0
     curve: Optional[str] = None
+    #: Effects pack (the document's ``fx``), 0..100 each. They run on the fitted frame with the clip's own
+    #: clock, after the colour (render_backend.clip_tail), not in this filter chain.
+    glitch: float = 0.0
+    shake: float = 0.0
+    rgb_split: float = 0.0
+    flash: float = 0.0
+
+    @property
+    def moving(self) -> bool:
+        """Has an effect of the pack (drawn in the clip's tail)."""
+        return bool(self.glitch or self.shake or self.rgb_split or self.flash)
 
     @property
     def active(self) -> bool:
@@ -384,7 +399,8 @@ class ClipEffects:
         d: dict = {}
         base = ClipEffects()
         for key in ("filter", "filter_strength", "vignette", "blur", "sharpen", "grain",
-                    "flip_h", "flip_v", "rotate", "temperature", "tint", "hue", "curve"):
+                    "flip_h", "flip_v", "rotate", "temperature", "tint", "hue", "curve",
+                    "glitch", "shake", "rgb_split", "flash"):
             _put_if(d, key, getattr(self, key), getattr(base, key))
         return d
 
@@ -402,6 +418,8 @@ class ClipEffects:
             temperature=float(d.get("temperature") or 0.0), tint=float(d.get("tint") or 0.0),
             hue=float(d.get("hue") or 0.0),
             curve=(str(d["curve"]) if d.get("curve") is not None else None),
+            glitch=float(d.get("glitch") or 0.0), shake=float(d.get("shake") or 0.0),
+            rgb_split=float(d.get("rgb_split") or 0.0), flash=float(d.get("flash") or 0.0),
         )
 
 
@@ -471,6 +489,10 @@ def _effects_problems(name: str, fx: ClipEffects) -> List[str]:
             problems.append(f"{name} {key} must be from {-hi:g} to {hi:g} (got {v})")
     if fx.curve is not None and fx.curve not in COLOR_CURVES:
         problems.append(f"{name} has unknown curve {fx.curve!r}")
+    for key in FX_NAMES:
+        v = getattr(fx, key)
+        if not (_finite(v) and 0 <= v <= FX_MAX):
+            problems.append(f"{name} {key} must be from 0 to {FX_MAX:g} (got {v})")
     return problems
 
 
@@ -644,6 +666,11 @@ class Segment:
     stabilize: bool = False
     #: A shape the picture is seen through (None = the whole frame, the chain it always was).
     mask: Optional[ClipMask] = None
+    #: The clip's entrance / exit (V_ANIMS; None = none) and their lengths, over the whole clip.
+    anim_in: Optional[str] = None
+    anim_out: Optional[str] = None
+    anim_in_s: float = 0.0
+    anim_out_s: float = 0.0
 
     @property
     def graded(self) -> bool:
@@ -678,6 +705,10 @@ class Segment:
         _put_if(d, "stabilize", self.stabilize, False)
         if self.mask is not None:
             d["mask"] = self.mask.to_dict()
+        for key in ("anim_in", "anim_out"):
+            if getattr(self, key) is not None:
+                d[key] = getattr(self, key)
+                d[key + "_s"] = getattr(self, key + "_s")
         if self.xfade is not None:
             d["xfade"] = self.xfade.to_dict()
         _put_if(d, "xfade_style", self.xfade_style, XFADE_DEFAULT_STYLE)
@@ -709,6 +740,9 @@ class Segment:
             curve=(SpeedCurve.from_dict(d["curve"]) if isinstance(d.get("curve"), dict) else None),
             interpolate=bool(d.get("interpolate", False)), stabilize=bool(d.get("stabilize", False)),
             mask=(ClipMask.from_dict(d["mask"]) if isinstance(d.get("mask"), dict) else None),
+            anim_in=(str(d["anim_in"]) if d.get("anim_in") else None),
+            anim_out=(str(d["anim_out"]) if d.get("anim_out") else None),
+            anim_in_s=float(d.get("anim_in_s") or 0.0), anim_out_s=float(d.get("anim_out_s") or 0.0),
             xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
             xfade_style=str(d.get("xfade_style") or XFADE_DEFAULT_STYLE),
         )
@@ -1088,6 +1122,14 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
         problems.append(f"{name} stabilize is for moving video (not a picture or a frozen frame)")
     if seg.crop is not None:
         problems.extend(_crop_problems(name, seg.crop))
+    for key in ("anim_in", "anim_out"):
+        a, d = getattr(seg, key), getattr(seg, key + "_s")
+        if a is not None and a not in V_ANIMS:
+            problems.append(f"{name} has unknown {key} {a!r}")
+        if a is not None and not (_finite(d) and ANIM_MIN_S <= d <= ANIM_MAX_S):
+            problems.append(f"{name} {key}_s must be from {ANIM_MIN_S:g} to {ANIM_MAX_S:g} (got {d})")
+        if a is not None and not frame_exact:
+            problems.append(f"{name} has {key}, which needs frame_exact")
     if seg.mask is not None:
         problems.extend(_mask_problems(name, seg.mask))
         if not frame_exact:

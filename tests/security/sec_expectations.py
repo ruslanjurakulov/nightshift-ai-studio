@@ -638,7 +638,27 @@ import sec_ads_factory_0131  # noqa: E402
 
 sec_ads_factory_0131.extend(TABLES, FUNCTIONS)
 
+# Migration 0132 (1440p and 4K editor exports, sold by the started minute; the owner's price row): tests/security/sec_editor_hires_0132.py
+import sec_editor_hires_0132  # noqa: E402
+
+sec_editor_hires_0132.extend(TABLES, FUNCTIONS)
+
 # Migration 0133 (Ads Factory, Phase 2: the brand scan, domains proven by DNS TXT, priced scans): tests/security/sec_brand_scan_0133.py
 import sec_brand_scan_0133  # noqa: E402
 
 sec_brand_scan_0133.extend(TABLES, FUNCTIONS)
+
+# Migration 0136 (exports up to 1080p sold by the started minute, the 1080p price on 0132's row): tests/security/sec_editor_export_paid_0136.py
+import sec_editor_export_paid_0136  # noqa: E402
+
+sec_editor_export_paid_0136.extend(TABLES, FUNCTIONS)
+
+# Migration 0137 (Character Studio: priced character swaps, the consent trail, the gallery's cards and samples): tests/security/sec_character_swap_0137.py
+import sec_character_swap_0137  # noqa: E402
+
+sec_character_swap_0137.extend(TABLES, FUNCTIONS)
+
+# Migration 0138 (the operator's Customers page: people, workspaces, credits spent and bought, read-only): tests/security/sec_operator_customers_0138.py
+import sec_operator_customers_0138  # noqa: E402
+
+sec_operator_customers_0138.extend(TABLES, FUNCTIONS)

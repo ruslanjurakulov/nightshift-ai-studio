@@ -385,9 +385,12 @@ class ExportWorkerTestCase(unittest.TestCase):
 
     def test_nothing_here_reaches_a_provider_credits_or_publishing(self):
         src = Path(editor_export.__file__).read_text(encoding="utf-8")
+        # A paid 1440p / 4K export (0132) is held and settled by the DATABASE; the worker only checks that the row carries its quote
+        # (`quoted_credits`) and knows the reason word the database writes (`credits_released`). Nothing else may name a credit.
+        body = src.split('"""', 2)[2].replace('"quoted_credits"', "").replace('"credits_released"', "")
         for word in ("creative_adapters", "credit", "publish_request", "youtube",
                      "requests.post", "social_publish"):
-            self.assertNotIn(word, src.split('"""', 2)[2], word)
+            self.assertNotIn(word, body, word)
 
     def test_audio_probe_is_forced_to_the_recorded_type_and_local_files(self):
         argv = editor_export.audio_probe_command("ffprobe", Path("/m/x/original"), "video/quicktime")

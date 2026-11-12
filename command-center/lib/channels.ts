@@ -66,6 +66,8 @@ export const SECTIONS = [
   "styles",
   // The Ads workspace (NIGHTSHIFT_ADS_FACTORY): a section like any other; its page is a 404 while the switch is off.
   "ads",
+  // Character Studio (NIGHTSHIFT_CHARACTER_STUDIO): its page is a 404 while the switch is off.
+  "character-studio",
   // Presets & looks: the gallery of ready starting points, opened from Studio and Home.
   "presets",
   "library",
@@ -79,6 +81,8 @@ export const SECTIONS = [
   "providers",
   "models",
   "margin",
+  // The operator's Customers page (migration 0138): a section name, so no channel may take it as a slug.
+  "customers",
   "billing",
   "credits",
   "usage",

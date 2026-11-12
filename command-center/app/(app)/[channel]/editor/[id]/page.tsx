@@ -99,6 +99,7 @@ export default async function EditorProjectPage({
         offerAssetId={parseIdParam(q.add)}
         focusPanel={focus === "captions" ? "captions" : null}
         multiRatio={p.multiRatio}
+        hires={p.hires}
       />
     </div>
   );

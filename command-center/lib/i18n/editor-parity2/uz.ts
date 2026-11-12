@@ -57,6 +57,7 @@ export const parity2Uz: Parity2Dictionary = {
     apply: { one: "{n} ta jim joyni kesish", few: "{n} ta jim joyni kesish", many: "{n} ta jim joyni kesish" },
     applied: { one: "{n} ta jim joy kesildi ({s} s qisqardi). Bekor qilish uni qaytaradi.", few: "{n} ta jim joy kesildi ({s} s qisqardi). Bekor qilish ularni qaytaradi.", many: "{n} ta jim joy kesildi ({s} s qisqardi). Bekor qilish ularni qaytaradi." },
     partial: "{total} tadan {n} tasi kesildi: tasvirda koʻpi bilan {max} ta klip boʻlishi mumkin.",
+    partialPiece: "{total} tadan {n} tasi kesildi: qolganlari yonida klipdan qoladigan qism klip boʻlishi mumkin boʻlganidan qisqa.",
     keepTimes: "Faqat tasvir suriladi: matnlar, subtitrlar, tovushlar va qoplamalar oʻz vaqtida qoladi.",
     cut: "{a} – {b}",
     too_large: "Bu fayl brauzerda tinglash uchun juda uzun yoki katta.",
@@ -68,6 +69,6 @@ export const parity2Uz: Parity2Dictionary = {
     no_audio: "Bu klipning oʻz ovozi oʻchirilgan (oʻchirilgan yoki alohida tovushga ajratilgan). Avval uni yoqing: faqat tasvirni kesish ajratilgan tovushni tasvirdan ajratib qoʻyadi.",
     full: "Tasvirda allaqachon {max} ta klip bor.",
   },
-  settledLook: "Klip {n}: rang va niqob olib tashlandi: ular bilan eksport ruxsat etilganidan uzoqroq davom etardi.",
+  settledLook: "Klip {n}: rang, niqob, effektlar va animatsiyalar olib tashlandi: ular bilan eksport ruxsat etilganidan uzoqroq davom etardi.",
   settledMask: "Klip {n}: niqob olib tashlandi: 1440p dan katta kadrda oʻtishli klipda niqob boʻlolmaydi (eksportga xotira yetmaydi).",
 };

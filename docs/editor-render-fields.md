@@ -35,7 +35,8 @@ into one commit) and #484 (group 11); group 12 is the editor-parity change that 
 | 10 | `claude/render-stabilise` | V clip `stabilize` | on main (#480) |
 | 11 | `claude/editor-shapes` | top-level `shapes` (stickers, shapes, progress bar) | on main (#484) |
 | 12 | `claude/editor-parity-1` | V clip `gain_db`; a video on an A track (detached sound); `speed` 0.1-10; export frame rate | added by this branch (section 12) |
-| 14 | `claude/editor-parity-2` | V clip `color` (temperature, tint, hue, curve), `mask`; silence removal (no field) | added by this branch (section 14) |
+| 14 | `claude/editor-parity-2` | V clip `color` (temperature, tint, hue, curve), `mask`; silence removal (no field) | on main (#675, section 14) |
+| 16 | `claude/editor-parity-2b` | V clip `fx` (glitch, shake, rgb_split, flash), `anim_in` / `anim_out`; apply a cross-fade to all cuts, beat markers (no field) | added by this branch (section 16) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -669,6 +670,9 @@ project keeps exactly its document.
 | clip `color` | "Colour balance" section: temperature, tint, hue sliders and a tone-curve radio group (`ClipColorSection` in `ClipLookSections.tsx`) | 14 |
 | clip `mask` | "Mask" section: shape radios, centre / size / soft edge / corner sliders, invert (`ClipMaskSection`) | 14 |
 | (no field) | "Remove silences" section: threshold and length sliders, find, the proposed cuts, apply (`ClipSilenceSection`) | 14 |
+| clip `fx` | "Effects" section: four 0-100 sliders (`ClipFxPackSection` in `ClipFxPackSections.tsx`) | 16 |
+| clip `anim_in`, `anim_out` | "Animation" section: Entrance and Exit radio groups and a length slider each (`ClipAnimSection`) | 16 |
+| (no field) | "Apply this cross-fade to all cuts" under the cross-fade style (`ClipInspector`); "Beats" on a sound (`SoundBeatsSection`), markers on the clips' lane | 16 |
 
 Export formats (P): `schemas/export_presets.json` is the list (YouTube wide 1080p and 720p, vertical
 1080x1920 for Shorts / Reels / TikTok, square, 4:5), `modules/export_presets.py` loads it and refuses an
@@ -798,12 +802,11 @@ Branch `claude/editor-parity-1`. Free: ffmpeg and the browser only, no model, no
 * Measured with the bundled ffmpeg 7.0.2 on a 4-core box (one clip, H.264 source at the project's rate):
   1080p30 0.53 s of render per second of video, 1080p60 0.99, 1440p60 1.72, 4K60 3.95. The worker allows
   `3 x length + 120` s.
-* NOT added: a 1440p or a 4K format. A new format is a new migration on purpose (0129's
-  `editor_export_frame` keeps its own copy of the list for the multi-ratio export, and
-  `tests/test_editor_export_frame_migration.py` compares them id for id). 4K would also put every export
-  in the large-frame regime (no blur and no zoom past 2 on a cross-faded clip, no interpolation, a 0.7 s
-  reverse at 4K60, the 2 GiB address-space notes above) and measured 3.95 s per second at 4K60, past the
-  worker's 3 s per second. Both stay later items; the document already accepts those sizes from another tool.
+* NOT added here: a 1440p or a 4K format. They came later as PAID sizes of "Sizes to export" (migration
+  0132, `docs/HIRES_EXPORT.md`, behind `NIGHTSHIFT_HIRES_EXPORT`): sold by the started minute, 300 s / 180 s
+  at most, 4K at 30 fps at most, with their own time budget (7 and 12 s per second). They are never in the
+  format picker, and nothing above 1080p is free: a project whose own frame is bigger is exported in a paid
+  size (section 15).
 
 ### `gain_db` on a V clip (its own sound's level)
 
@@ -923,7 +926,7 @@ native read.
 ### Next
 
 * Voice-over recording in the editor: section 13.
-* A 1440p format (a migration replacing 0129's `editor_export_frame` list) and, later, 4K.
+* 1440p and 4K: done as paid sizes (migration 0132, `docs/HIRES_EXPORT.md`): section 15.
 
 ## 13. Voice-over recorded in the editor (no new field)
 
@@ -1083,3 +1086,114 @@ mask still fits (1 + 1.0 = 2.0 s per second); at 4K60 (x8) a masked clip longer 
 
 As section 12: older validators refuse `color` and `mask` ("is not a known field"), so merge as one commit and use
 the new controls only after the worker has been rebuilt by the deploy.
+
+## 15. 1440p and 4K, sold by the started minute (no new field)
+
+Migration 0132, behind `NIGHTSHIFT_HIRES_EXPORT` (default off) on top of `NIGHTSHIFT_MULTI_RATIO_EXPORT`; the whole
+design, the measurements and the price proposal are in `docs/HIRES_EXPORT.md`. The document does not change: a paid
+size is a FRAME of the export row (0129's `frame_preset` / `frame_width` / `frame_height`), chosen from four more
+entries of the closed list (`schemas/export_presets.json`): `youtube_1440p` 2560x1440, `vertical_1440p` 1440x2560,
+`youtube_2160p` 3840x2160, `vertical_2160p` 2160x3840.
+
+* **Tiers by pixels:** up to 1920x1080 free; up to 2560x1440 the 1440p tier (300 s at most, any rate); above it the
+  4K tier (180 s at most, 30 fps at most: a cross-faded 9:16 4K60 render ran out of the 2 GiB limit, measured).
+  `modules/hires_export.py`, `lib/hiresExport/limits.ts` and 0132 hold the same numbers (a parity test).
+* **Nothing above 1080p is free.** The plain export of a project whose OWN frame is above 1920x1080 pixels is refused
+  (`hires_needs_paid_export`), by the database and by the worker; the document may still be saved at that size.
+* **The large-frame rules apply to the paid frame.** The worker validates the document in the frame it renders
+  (`framed_doc`), and the editor checks each size the same way (`frameProblems`), so the 4K tier, which is the only
+  tier above `LARGE_FRAME_PX` (2560x1440), carries every rule of a large frame: no blur and no zoom past 2 on a
+  cross-faded clip, no interpolation, the reverse cap, and section 14's mask rules (no mask on a cross-faded clip, a
+  masked clip zooms at most `XFADE_LARGE_ZOOM_MAX`). The 1440p tier is not a large frame (section 14 measured every
+  mask combination passing at 2560x1440@60). The 4K tier's 30 fps cap is on top: it removes the 4K60 cases section 14
+  measured and leaves its rules standing.
+* **The render-time estimate** of `validate` (section 14's colour and mask charges, interpolation, steadying, fast
+  clips, shapes) is scaled by the frame's pixels and rate as before and checked against the FREE budget
+  `render_timeout_s(length)`, also for a paid frame. That is stricter than the paid render budget (7 or 12 s per
+  second), so a paid size the estimate does not fit is shown as not exportable before any price is asked (a 4K30
+  clip with every colour and a mask is charged 4 s per second on top of its length, so it fits up to about 60 s).
+* **A speed curve** is sold at its rendered length from 0136 on (`editor_doc_rendered_length` follows `duration_s` and
+  `speed_ramp.out_length` to the millisecond). 0132 alone refused it (`hires_speed_curve`). A curve the renderer would refuse is
+  `invalid_speed_curve`.
+* **Up to 1080p** (migration 0136): sold the same way once the owner sets its price (1 credit per started minute, approved
+  2026-11-11); free and unchanged while it is NULL. The document does not change either: a sold export up to 1080p is a row with
+  the database's quote, with a frame of the list or none (the project's own frame). `docs/HIRES_EXPORT.md`, "Up to 1080p".
+
+## 16. Effects pack, clip animations, apply to all cuts, beat markers (editor parity 2b)
+
+Branch `claude/editor-parity-2b`. Free: ffmpeg and the browser only, no model, no migration, no new route.
+
+### `fx` on a V clip (effects pack)
+
+```json
+"fx": { "glitch": 60, "shake": 25, "rgb_split": 40, "flash": 80 }
+```
+
+* closed names (`FX_NAMES`), each an intensity 0..100; 0 is off (dropped by `normalise`), an empty object is refused.
+  Vignette and grain stay the existing `vignette` / `grain` (section 3): no second field for them.
+* export (`render_backend.fx_filters`), on the fitted frame after the colour, mask and effects of section 3, over the
+  whole clip on its own clock (so a piece of a cross-faded clip glitches where the whole clip would), in this order:
+  `rgb_split` = `rgbashift` red left / blue right by up to 1.25 % of the frame width; `glitch` = bursts every 0.9 s
+  (0.04-0.14 s long) of an RGB shift and noise (`enable=`, fixed seed); `flash` = `eq` brightness pulse every 0.8 s
+  (up to +0.6); `shake` = a `crop` window moving on two sines (up to 3 % of the short side) scaled back to the frame.
+* preview: none (the panel says the export shows them).
+
+### `anim_in` / `anim_out` on a V clip
+
+* names `fade`, `slide-up`, `slide-down`, `slide-left`, `slide-right`, `zoom` (`V_ANIMS`; the text-only `pop` and
+  `typewriter` are refused); `anim_in_s` / `anim_out_s` 0.1..2 s (0.4 filled by `normalise`), each at most half the
+  clip; not with the clip's own fade on the same side. A slide moves the whole picture in from (out to) the frame's
+  edge over black, by the direction it moves (`slide-up` enters from below); `zoom` grows it from 60 % (an exit
+  shrinks it to 60 %) over black; `fade` is a fade from (to) black. Linear.
+* export (`render_backend.anim_filters`): the picture scaled per frame (`scale ... eval=frame`, zoom only) and laid
+  over a black `color` source with per-frame `overlay` x / y, before the fades and the piece's trim; label names are
+  tagged per side so both sides of a cross-fade can move.
+* a split keeps the way in on the first half and the way out on the second, each held to half its piece (dropped
+  under 0.1 s): `splitClip` and `timeline.split_clip` alike.
+
+### Apply this cross-fade to all cuts (no field)
+
+A button under the cross-fade style of a clip that has one: every other cut gets the same length (held to what its
+two clips allow, `maxCrossfade`) and style, in one undo step; a cut with no room for 0.2 s keeps what it had. The
+editor then settles it like any edit (in a frame above 1440p a newly cross-faded clip loses its blur, mask, extra
+effects or big zoom, each with a notice).
+
+### Beat markers (no field)
+
+"Beats" on a sound: the file is decoded in the browser exactly as for silence removal (the same signed link, caps and
+limiter: `editorSilence.analyseFile`), and an energy onset detector (10 ms RMS in dB; a block's rise over the 100 ms
+before it; a local peak within 50 ms, at least 6 dB and the strength's mean + 1.5 deviations, louder than -50 dB, at
+least 0.15 s after the last) marks the beats. They are drawn on the clips' lane where the sound plays them (its trim)
+and clip edges snap to them (`snapTargets` `beats`). Nothing is stored with the project. Tested on click tracks,
+kicks and an uneven snare pattern at 44.1, 48 and 22.05 kHz (within 20 ms, nothing extra) and on a steady tone.
+
+### Render budget and memory
+
+Costs (seconds per second of the clip at 1080p30, scaled by pixels x rate, in the same "colour, masks and effects"
+term as section 14; `FX_SECONDS_PER_S`, `ANIM_MOVE_SECONDS_PER_S`): `rgb_split` 0.55, `glitch` 0.35, `shake` 0.2,
+`flash` 0.1, a slide or zoom 0.3 (a fade 0). They are half of what each measured at 1080p60 (pure-filter marginal
+cost, bundled ffmpeg 7.0.2, phone-like 1080p60 source: rgbashift 1.06, glitch bursts 0.67, crop-expression shake 0.32,
+`eq` flash 0.14 s per second), rounded up. Settle step 4c now takes the dearest clip's colour, mask, effects and
+moving animations off together ("Clip N: its colour, mask, effects and animations were taken off").
+
+Memory, measured through the export path under the 2 GiB limit at 4K60 (3840x2160): a single clip took all four
+effects, a slide and a zoom, with a zoom move to 2; a cross-fade took any one effect on both sides, all four on one
+side, and slides / zooms on both sides; it ran out of memory with all four on both sides, and with all four plus a
+zoom entrance on both. So above 1440p a cross-faded clip takes at most one effect (`FX_LARGE_XFADE_MAX`); both
+validators refuse more, the panel disables the other sliders and says why, and settle step 2a keeps its strongest
+effect with "Clip N keeps only its strongest effect".
+
+### Old documents
+
+A document without these fields builds exactly the argv origin/main (#675) built: `samples/parity2b_argv_golden.json`
+(documents with colour, masks, a cross-fade, a still, a move, fades, speed and the blur fit) and the older
+`samples/parity2_argv_golden.json`. The budget sentence now reads "colour, masks and effects".
+
+### Strings
+
+`lib/i18n/editor-parity2b/{en,ru,uz}.ts` (`t.editor.parity2b`); ru and uz are drafts for a native read.
+
+### Rollout
+
+As section 12: older validators refuse `fx` and a V clip's `anim_*`, so merge as one commit and use the new controls
+only after the worker has been rebuilt by the deploy.

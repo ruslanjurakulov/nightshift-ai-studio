@@ -74,9 +74,17 @@ class Numbering(unittest.TestCase):
         # 0131 (Ads Factory, Phase 1: brand_kits, brand_products, ad_campaigns, ad_concepts, ads_factory_cap_settings and their functions) was
         # reviewed the same way: it adds its own tables and functions only, replaces nothing, and names none of the three words below (its
         # caps live in their own table). The loop under this line checks exactly that for every reviewed number.
+        # 0132 (1440p and 4K editor exports, sold by the minute: editor_exports' credit columns, editor_export_hires_prices, the four-argument
+        # request_editor_export) was reviewed the same way: the video editor's export table and functions only, none of the three words.
         # 0133 (Ads Factory, Phase 2: brand_domains, brand_domain_checks, brand_scans, brand_scan_settings and their functions) was
         # reviewed the same way: its own tables and functions, plus writes into 0131's kits and products; none of the three words below.
-        reviewed = ("0128", "0129", "0130", "0131", "0133")
+        # 0136 (exports up to 1080p sold by the minute: a column of 0132's price row and 0132's export functions) was reviewed the same way.
+        # 0134 (the brand scan's follow-up: brand_scan_fail_locked only) was reviewed the same way.
+        # 0137 (Character Studio: character_swap_* tables and functions) was reviewed the same way: its own tables and functions only,
+        # replaces nothing, and names none of the three words below.
+        # 0138 (the operator's Customers page: three read-only functions over the credit ledger, workspaces and generations) was reviewed
+        # the same way: it replaces nothing and names none of the three words below.
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

@@ -7,9 +7,11 @@ import { parseMediaId } from "@/lib/media";
 import { mapEditorError, type EditorError } from "@/lib/editor";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { multiRatioExportEnabled } from "@/lib/multiRatioExport/flag";
-import { exportPresetById } from "@/lib/editorExportPresets";
+import { hiresExportEnabled } from "@/lib/hiresExport/flag";
+import { isHiresPresetId } from "@/lib/hiresExport/limits";
 import {
   PROJECT_FRAME,
+  framePresetById,
   parseExportFrames,
   type ExportFrameChoice,
 } from "@/lib/multiRatioExport/frames";
@@ -35,6 +37,19 @@ export const dynamic = "force-dynamic";
  * frame by frame, which were queued and which were refused and why. Before 0129 is applied the three-argument function
  * does not exist: that frame is answered "not_available" and NOTHING is rendered in its place (an export in the wrong
  * frame would be a quiet substitute); the project's own frame still goes through.
+ *
+ * 1440p and 4K (migration 0132, NIGHTSHIFT_HIRES_EXPORT on top of the switch above, default off). Off, a paid frame id
+ * is an unknown word and refuses the request like one. On, a paid frame needs `maxCredits[frame]`: the number of
+ * credits the person confirmed after the server quoted it (GET .../exports/quote). It goes to the four-argument
+ * request_editor_export, which computes the price again, refuses a higher one (price_changed), holds it and queues the
+ * export, all in the database; this route sends no price of its own and touches no credit. A paid frame without a
+ * confirmed number refuses the whole request (quote_required) before the database is asked.
+ *
+ * Up to 1080p, sold too (migration 0136, once the owner sets its price): the two- and three-argument functions then refuse
+ * (export_needs_quote) and the editor asks the price of every size, the project's own included. A frame up to 1080p that
+ * comes WITH a confirmed number (`maxCredits[frame]`, while NIGHTSHIFT_HIRES_EXPORT is on) goes to the four-argument
+ * function: a format of the list by its id, the project's own frame as "project". Without one it is the free call it
+ * always was. The number is only compared by the database; this route sends no price of its own.
  */
 export const POST = requireSameOrigin(async function POST(
   request: Request,
@@ -68,9 +83,22 @@ export const POST = requireSameOrigin(async function POST(
       ? (body as { frames?: unknown }).frames
       : undefined;
   if (asked !== undefined) {
-    const frames = parseExportFrames(asked);
+    const frames = parseExportFrames(asked, { hires: hiresExportEnabled() });
     if (!frames)
       return NextResponse.json({ error: "bad_request" }, { status: 400 });
+    // The confirmed number of every paid frame (0132), read only for paid frames and only while their switch is on. A frame
+    // up to 1080p (0136) may carry one too: then it is the sold export, and a number that is not one refuses the request.
+    const confirmed = new Map<ExportFrameChoice, number>();
+    const raw = (body as { maxCredits?: unknown }).maxCredits;
+    const given = hiresExportEnabled() && raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+    for (const f of frames) {
+      const required = isHiresPresetId(f);
+      const v = given && Object.prototype.hasOwnProperty.call(given, f) ? given[f] : undefined;
+      if (v === undefined && !required) continue;
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 100_000_000)
+        return NextResponse.json({ error: "quote_required" }, { status: 400 });
+      confirmed.set(f, v);
+    }
     // "This project's size" and a format of that same size are the same picture twice: one export of the day for nothing.
     // Refused whole, like any request that is not understood. The project's size is read under the caller's own session
     // (RLS); if it cannot be read the request goes on and the database refuses the second one itself (0129: a format of
@@ -85,7 +113,7 @@ export const POST = requireSameOrigin(async function POST(
       if (
         size &&
         frames.some((f) => {
-          const p = f === PROJECT_FRAME ? null : exportPresetById(f);
+          const p = f === PROJECT_FRAME ? null : framePresetById(f);
           return p !== null && p.width === size.width && p.height === size.height;
         })
       )
@@ -97,18 +125,28 @@ export const POST = requireSameOrigin(async function POST(
     )[] = [];
     let firstRefusal: { error: EditorError; status: number } | null = null;
     for (const frame of frames) {
-      // Two calls on purpose: the project's own frame is the two-argument function, untouched by 0129.
+      // Three calls on purpose: the project's own frame is the two-argument function, untouched by 0129; a free frame the
+      // three-argument one, untouched by 0132; a paid frame (and, 0136, a sold one up to 1080p, "project" included) the
+      // four-argument one with the number the person confirmed.
+      const max = confirmed.get(frame);
       const { data, error } =
-        frame === PROJECT_FRAME
+        frame === PROJECT_FRAME && max === undefined
           ? await supabase.rpc("request_editor_export", {
               p_project: id,
               p_rev: rev,
             })
-          : await supabase.rpc("request_editor_export", {
-              p_project: id,
-              p_rev: rev,
-              p_frame: frame,
-            });
+          : max === undefined
+            ? await supabase.rpc("request_editor_export", {
+                p_project: id,
+                p_rev: rev,
+                p_frame: frame,
+              })
+            : await supabase.rpc("request_editor_export", {
+                p_project: id,
+                p_rev: rev,
+                p_frame: frame,
+                p_max_credits: max,
+              });
       const exportId = error ? null : parseMediaId(data);
       if (error || !exportId) {
         const mapped = error
@@ -122,9 +160,11 @@ export const POST = requireSameOrigin(async function POST(
         action: "editor.export_request",
         target: exportId,
         detail:
-          frame === PROJECT_FRAME
+          frame === PROJECT_FRAME && max === undefined
             ? { project: id, rev }
-            : { project: id, rev, frame },
+            : max === undefined
+              ? { project: id, rev, frame }
+              : { project: id, rev, frame, maxCredits: max },
       });
       results.push({ frame, id: exportId, status: "queued" });
     }

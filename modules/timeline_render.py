@@ -143,9 +143,14 @@ def _effects(clip: dict) -> dict:
     value that means "off")."""
     given = {k: clip[k] for k in tl._EFFECT_KEYS if k in clip}
     given.update(clip.get("color") or {})     # advanced colour rides on the same effects (render_backend)
+    given.update(clip.get("fx") or {})        # and so does the effects pack (drawn in the clip's tail)
     out = {"effects": ClipEffects(**given)} if given else {}
     if "mask" in clip:
         out["mask"] = ClipMask(**clip["mask"])
+    for side in ("in", "out"):
+        if clip.get(f"anim_{side}"):
+            out[f"anim_{side}"] = clip[f"anim_{side}"]
+            out[f"anim_{side}_s"] = clip[f"anim_{side}_s"]
     return out
 
 

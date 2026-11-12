@@ -100,6 +100,7 @@ export function TimelineStrip({
   onTrim,
   onTrimEnd,
   view,
+  beats = [],
 }: {
   clips: readonly VideoClip[];
   texts: readonly TextClip[];
@@ -125,6 +126,8 @@ export function TimelineStrip({
   onTrimEnd: () => void;
   /** Zoom and snap (useTimelineView). Without it the strip fits the window and does not snap. */
   view?: TimelineView;
+  /** Beat markers (timeline seconds): drawn over the clips' lane, and trims snap to them. */
+  beats?: readonly number[];
 }) {
   const { t } = useI18n();
   const te = t.editor;
@@ -205,7 +208,7 @@ export function TimelineStrip({
       speed: c.speed,
       // The clip's end is what moves on the timeline for either handle (the in handle shrinks the clip from its end side); clips after this one ripple, so they are no target.
       baseTime: clipEnd(c),
-      targets: snapTargets({ clips, texts, sounds, playhead, skipClipsAfter: c.id }),
+      targets: snapTargets({ clips, texts, sounds, playhead, skipClipsAfter: c.id, beats }),
       touch: e.pointerType === "touch",
     };
   }
@@ -271,6 +274,15 @@ export function TimelineStrip({
           aria-label={te.clipsTrack}
           role="list"
         >
+          {beats.map((b, i) => (
+            <span
+              key={`beat-${i}-${b}`}
+              aria-hidden
+              data-testid="beat-marker"
+              className="pointer-events-none absolute -top-1 z-10 h-2 w-px bg-[var(--ns-amber)]"
+              style={{ left: pct(b) }}
+            />
+          ))}
           {clips.map((c, i) => {
             const len = clipLength(c);
             const on = selected?.kind === "clip" && selected.id === c.id;

@@ -554,6 +554,93 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
   frame; drops the overload, the list, the check and the three columns. Exported videos stay in the library.
 - **Review.** Needs the independent security review before merge, and a person reading the live two-argument `request_editor_export` hash first.
 
+## The operator's Customers page (0138)
+
+0138 (`0138_operator_customers.sql`, the Command Center's `/{channel}/customers`) is **live on apply and read-only**: it **adds three
+functions** and nothing else (no table, column, index, policy or trigger; it **replaces nothing**). `operator_customer_totals()` (people,
+workspaces, active workspaces, credits spent / bought / granted, paid in USD with other currencies counted apart, outstanding balances),
+`operator_customer_daily(p_days)` (1-90 UTC days: new workspaces, credits spent, workspaces that spent) and
+`operator_customer_accounts(p_search, p_sort, p_limit, p_offset)` (one page of at most 100 workspaces, searched as plain text, sorted
+and paged in the database, `total_count` on every row). Each is a stable SECURITY DEFINER with `search_path = public, pg_temp` that
+refuses anyone but a signed-in platform owner/admin (42501 "not available") before it reads anything or looks at an argument;
+granted to `authenticated` only, revoked from public, anon and service_role. The operator's own workspace (`default_org_id()`) is in
+none of the numbers.
+
+- **What "spent" means.** Ledger `capture` rows less positive `refund` rows (a failed paid download given back, 0030). A `reserve` is a
+  hold and a `release` gives it back: neither is a spend, and an open hold is `reserved`, not spent. A negative `refund` takes back a
+  refunded purchase and is not a spend either.
+- **Drift guard.** Refuses (changes nothing) if one of the three names exists with a body that is not this file's; the last block
+  asserts each body by md5, the grants, definer, stability and the fixed search_path. Pins: totals `938bff459e8a932a7ffc9d078f0d6137`,
+  daily `e80c9c92cf7a1625f02bc585ed549660`, accounts `ed07a54a29c3110fcf03531c79c47984`.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`. Takes no lock on any table beyond reading the catalog.
+- **Undo.** `docs/sql/rollback_0138_operator_customers.sql` (owner-applied): refuses a body that is not 0138's, drops the three functions.
+  Nothing else is touched by either file.
+- **Tests.** `tests/test_operator_customers_migration.py` (the file, pinned) and `tests/security/test_sec_operator_customers.py` (the lab:
+  every customer, anon and the service role refused, refused before argument checks, the exact figures of a seeded world — captures
+  counted, released and open holds not, a refunded download subtracted, a retried webhook one payment, EUR never dollars, the operator's
+  workspace left out — search as plain text, sorting and paging, bad arguments, read-only, a replay, the rollback, the drift guards).
+  The lab's `auth.users` stand-in gained GoTrue's `last_sign_in_at` column.
+- **Numbering.** 0138, after 0136 (applied live) and 0137 (Character Studio, #686): it names nothing of theirs, and 0137 alters no table
+  these functions read. The numbering tests of 0127, 0131 and 0133 list both 0137 and 0138 as reviewed.
+
+## Exports up to 1080p, sold by the started minute (0136)
+
+0136 (`0136_editor_export_paid_1080p.sql`, `docs/HIRES_EXPORT.md` "Up to 1080p") is **live on apply and changes nothing until the owner
+sets the price**: it **adds** one nullable column, `credits_per_minute_1080p`, to 0132's price row (seeded NULL = free) and one internal
+function (`editor_export_price_1080p()`, nobody's), and **replaces** 0132's three `request_editor_export` bodies, `quote_editor_export`,
+`editor_export_hires_terms` and the price trail with 0132's bodies plus only marked `-- 0136` lines (a pin test strips them and compares).
+While the price is set: the two- and three-argument calls refuse `export_needs_quote` (NS409), and the four-argument one sells a free id
+or `project` (the project's own frame up to 1080p) with the paid tiers' quote, hold (charge raised to job_minimum) and capture of the
+charge. One lock order in every overload (0054's). It also **adds** `editor_doc_rendered_length(jsonb)` with its helpers
+`editor_ms(double precision)` and `editor_jnum(jsonb)` (nobody's). These give the length the renderer renders, speed curves included,
+to the millisecond. The paid request and the quote use it for the length and the minutes, so 0132's `hires_speed_curve` refusal goes. A
+curve the renderer would refuse is `invalid_speed_curve`. The quote says `curve_sold: true`.
+
+- **Drift guard.** Refuses (changes nothing) if a function it replaces is neither 0132's body nor its own, or if 0132's money, settle,
+  guard or list is not 0132's. The last block asserts every body by md5, the grants and the column.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`.
+- **Undo.** `docs/sql/rollback_0136_editor_export_paid_1080p.sql` (owner-applied; before 0132's rollback): puts 0132's bodies back
+  byte for byte, drops the column and the three length functions. 0132's lab tests take 0136 off first where they test 0132's file (`sec_db.take_off_0136`).
+- **Tests.** `tests/test_editor_export_paid_1080p_migration.py` (the file, pinned), `tests/security/test_sec_editor_export_paid_1080p.py`
+  (NULL = free, price 1 with job_minimum 30: hold 30, capture 1, release 29; legacy refusals; races across every entry point; the file),
+  `tests/security/test_sec_editor_rendered_length.py` (2,260 seeded documents: SQL length = Python `duration_s` to the ms, the same minutes).
+- **Numbering.** 0134 and 0135 are reserved by other work; 0136 names nothing of theirs.
+- **Prices.** Owner-approved 2026-11-11: 1 up to 1080p (and 3 / 5 for 1440p / 4K). Set them only after the deploy and with both
+  export switches on in the web and the worker.
+
+## 1440p and 4K exports, sold by the started minute (0132)
+
+0132 (`0132_editor_hires_export.sql`, `docs/HIRES_EXPORT.md`) is **live on apply and sells nothing**: both prices are seeded NULL ("not on sale").
+It **adds** four nullable columns to `editor_exports` (`quoted_credits` = the charge, `held_credits` = the hold, `credit_ref`, `charged_credits`) and one
+CHECK (`editor_exports_hires_terms`: a frame above 1080p carries its quote, the hold is never below the charge, 300 s / 180 s at most, 4K at most
+30 fps), **replaces** 0129's CHECK `editor_exports_frame_shape` (ceiling
+2560x1440 → 3840x2160) and 0129's list `editor_export_frame(text)` (its five rows plus four paid ones, value for value `schemas/export_presets.json`),
+and **adds** one table (`editor_export_hires_prices`, one row, closed to every API role, changed in the SQL editor only, a change leaves a
+`security_events` row), a settling trigger on `editor_exports`, three internal functions, `quote_editor_export` and the four-argument
+`request_editor_export` (both granted to `authenticated` only). It **replaces** the two- and three-argument `request_editor_export` with 0054's /
+0129's bodies plus only the marked lines that refuse above 1080p (`hires_needs_paid_export`: a project whose own frame is bigger, or a paid frame
+of the list); an export up to 1080p is free and what it was. **Not behind the switch**: from apply, a project whose own frame is above 1080p is
+not exported free (0 such projects on 2026-11-11).
+
+- **The money.** The charge is the price per started minute × the minutes, with no `job_minimum` floor; the hold is the charge raised to
+  `job_minimum` (0133's rule). Hold at request (after every limit) via `creative_platform_reserve`, started at once; capture the charge when done
+  (the rest of the hold goes back), release when failed,
+  on every path that ends an export (one BEFORE UPDATE OF status trigger), once. A hold that is gone when the worker claims the export fails it
+  (`credits_released`) before any render. A held paid export takes one of the plan's parallel runs (`parallel_runs`).
+- **Drift guard.** Refuses (changes nothing) if the two- or three-argument `request_editor_export` is neither 0054's / 0129's body nor its own, if the list is
+  neither 0129's nor its own, or if any name it creates exists with another body. The last block asserts every body by md5, every grant, the
+  checks, the trigger, RLS and the price row.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'` (two constraints are dropped and added on `editor_exports`).
+- **Undo.** `docs/sql/rollback_0132_editor_hires_export.sql` (owner-applied; before 0129's rollback): refuses a body that is not 0132's and refuses
+  while a paid export is queued or rendering; puts 0129's list, 0054's and 0129's request bodies back byte for byte and 0129's frame check (NOT
+  VALID while a finished 4K row exists).
+- **Prices.** Set them only once `NIGHTSHIFT_HIRES_EXPORT` is on in the media worker (`docs/HIRES_EXPORT.md`, "The switch and the roll-out").
+- **Tests.** `tests/test_editor_hires_export_migration.py` (the file, pinned; the caps of SQL, Python and TypeScript compared),
+  `tests/security/test_sec_editor_hires_export.py` (the lab: grants, refusals, hold / capture / release, idempotency, NULL price, caps, a race,
+  the rollback). 0129's lab tests take 0132 off first where they replay 0129 (`sec_db.take_off_0132`).
+- **Numbering.** 0133 (the brand scan, #674) was merged while 0132 was in review; neither names anything of the other, and the two numbering
+  tests (`tests/test_ads_factory_migration.py`, `tests/test_series_plan_caps_migration.py`) list both.
+
 ## Saved agent plans (0130)
 
 0130 (`0130_agent_workflow_drafts.sql`, `docs/product/AGENT_NODE_BUILDER.md`) is **live on apply and dark**: it adds two tables
@@ -625,6 +712,59 @@ refuses `not_on_sale`. The worker (`tools/brand_scan_worker.py`) does nothing un
   flight, and rows unless `set local nightshift.brand_scan_rollback_delete_rows = 'yes'`. Kits and products accepted from a scan stay.
 - **Tests.** `tests/test_brand_scan_migration.py` (the file, pinned), `tests/security/test_sec_brand_scan.py` (the lab: roles, the price,
   the domain rule, holds / captures / releases, idempotency, caps and races, the result checks, accepting, the rollback).
+
+## The brand scan's follow-up (0134)
+
+0134 (`0134_brand_scan_followup.sql`, `docs/ADS_FACTORY.md` "Known limits (Phase 2)") **replaces one function**, 0133's
+`brand_scan_fail_locked(uuid, text)`. A failed scan no longer deletes a picture that a brand kit (`brand_kits.logo_asset_id`) or a product
+(`brand_product_images.asset_id`) references. The scan's pictures are locked FOR UPDATE first, so a kit or product write that is still
+open is waited for, and the delete is a statement of its own, which reads the kits and products after that wait.
+- **Number.** 0134: 0132 is taken by an open pull request (the hi-res export), and 0137 is reserved for character studio.
+- **Guards.** The body must be 0133's (`67e8ee83bde9ec4512a3d6135c9c07ee`) or 0134's own (`fd10914ccff5aa66264ab96265e59c38`, a replay).
+  The columns of 0131's tables that reference `media_assets` must be exactly those two, or the file refuses. The end state checks the
+  body, that no API role can execute it, that it is SECURITY DEFINER with a pinned search_path and has no overload, and that 0133's three
+  callers still reach it.
+- **Lock order.** It takes no advisory lock (0131's rule). The picture row locks come after the scan row lock its callers hold, the same
+  order `accept_brand_scan_fields` uses.
+- **No price.** It does not touch `brand_scan_settings`. The price is set at go-live, after the worker runs.
+- **Undo.** `docs/sql/rollback_0134_brand_scan_followup.sql` puts 0133's body back, byte for byte. Run it BEFORE 0133's rollback, which
+  refuses any body but 0133's.
+- **Tests.** `tests/test_brand_scan_followup_migration.py` (the file, pinned) and `tests/security/test_sec_brand_scan_followup.py`
+  (the lab: every failure path, each filter, a real concurrent kit write, the guards, a replay, the rollback chain). Lab tests that
+  replay or roll back 0133 take 0134 off first (`sec_db.take_off_0134`).
+## Character Studio: priced character swaps, the consent trail, the gallery (0137)
+
+0137 (`0137_character_studio.sql`, `docs/CHARACTER_STUDIO.md`) is **live on apply and dark**: it **adds six tables** (`character_swap_models`,
+`character_swap_settings`, `character_swap_consents`, `character_swap_jobs`, `character_swap_templates`, `character_swap_template_samples`), twelve
+internal functions, four member functions and four worker functions. It **replaces nothing** and names no object of the Ads Factory or of
+`creative_jobs`. Nothing is **on sale** until the owner sets `character_swap_models.credits_per_usd` per model (seeded NULL): `request_character_swap`
+refuses `not_on_sale`. The worker (`tools/character_swap_worker.py`) does nothing unless `NIGHTSHIFT_CHARACTER_STUDIO=on`; the page and the routes are a 404.
+
+- **Number.** 0137, after 0136 (#685, applied live). It was first numbered 0135 (0134's and 0136's headers still say 0135 is reserved for it) and
+  renumbered with the same body, so it applies after 0136 instead of out of order; 0135 stays unused. None of 0132-0136 names anything 0137 adds, and
+  0137 names nothing of theirs (tests/test_character_studio_migration.py checks it). The numbering tests of 0127, 0131 and 0133 list 0137 as
+  reviewed; 0137's own does not forbid later numbers.
+- **Who may do what.** Members (viewer and up) read their organization's jobs and consents; any signed-in person reads the gallery; the models and the
+  settings are closed to every API role. Four SECURITY DEFINER member functions to `authenticated` (quote any member; consent, request and cancel an
+  editor), four worker functions to `service_role` only, the helpers to nobody. The samples script's service key may insert and update a sample row.
+- **Money.** The charge is the database's (the vendor's USD per clip second at the resolution x whole seconds x credits_per_usd, rounded up to the cent);
+  a request holds `greatest(charge, credits_round_up(job_minimum))` (`reserve_credits` and `job_minimum` unchanged), the finish captures exactly the
+  charge (`capture_credits(ref, charge, false)`), every failure, a cancel and the stale sweeps release it; `p_max_credits` is compared with the charge and
+  refuses NaN and the infinities; an idempotent replay holds nothing twice. The vendor task id is recorded before polling; a finish without one is refused.
+- **Consent.** Append-only trail (ENABLE ALWAYS triggers, no foreign key), five declarations, one consent per job, within the hour, of the same person,
+  model, video and pictures. A keyword screen on the prompt (real or public people, minors). Seedance only for the organization's own generated
+  BytePlus clip of the last 30 days.
+- **Caps.** One job in flight per organization (unique index); 10 per organization and 200 per platform per 24 hours; 20 in flight on the platform;
+  100 consents per organization per day. Counted under the organization's lock, then the platform's (0127's order).
+- **Locks (0131).** Read unlocked, check the role, take the organization's advisory lock, then lock rows (the inputs FOR SHARE, a job FOR NO KEY UPDATE)
+  and read them again.
+- **Drift guard.** Refuses a function of its names with another body; the last block asserts the end state (bodies, grants, RLS, policies, checks, the
+  index, the triggers and their ENABLE ALWAYS, the seeded rows).
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`.
+- **Undo.** `docs/sql/rollback_0137_character_studio.sql` (owner-applied): refuses a body that is not 0137's, a job in flight, and rows people made
+  unless `set local nightshift.character_swap_rollback_delete_rows = 'yes'`. Outputs stay in the library.
+- **Tests.** `tests/test_character_studio_migration.py` (the file, pinned), `tests/security/test_sec_character_swap.py` (the lab: grants, cross-org,
+  consent, the money ledger at job_minimum 30, caps, the worker's task rule, races, the rollback and re-apply, touching nothing else).
 
 ## The owner's model switch (0124)
 

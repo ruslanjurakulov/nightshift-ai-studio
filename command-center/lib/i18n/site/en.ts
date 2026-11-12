@@ -1,4 +1,5 @@
 import { studioPageEn } from "../studio-page/en";
+import { roadmapEn } from "../roadmap/en";
 
 /**
  * The public site's copy (landing, Solutions, the sign-in shell, 404), kept
@@ -456,6 +457,8 @@ export const siteEn = {
   },
   /** The public /studio page (lib/i18n/studio-page). */
   studioPage: studioPageEn,
+  /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
+  roadmap: roadmapEn,
   final: {
     title: "Put your next video on the night shift.",
     lead: "Start free. See the price before every run, and every video stays private until you make it public.",

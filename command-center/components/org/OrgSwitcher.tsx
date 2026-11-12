@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
-import { switchOrganization } from "@/lib/context-switch";
+import { submitOrganizationSwitch, switchOrganization } from "@/lib/context-switch";
+import { navigate, needsDocumentLoad } from "@/lib/editor-nav";
 import type { OrgSummary } from "@/lib/orgs";
 
 /**
@@ -48,12 +49,18 @@ export function OrgSwitcher({ orgs, currentId }: { orgs: OrgSummary[]; currentId
   async function choose(id: string) {
     setOpen(false);
     if (id === currentId || busy) return;
+    const home = `/${ALL_CHANNELS_SLUG}`;
+    if (needsDocumentLoad(home)) {
+      // Out of the editor's page: the switch is a form-post navigation, so its unsaved-changes prompt comes first
+      // and a cancel sends nothing (lib/context-switch.ts submitOrganizationSwitch).
+      submitOrganizationSwitch(id);
+      return;
+    }
     setBusy(true);
     setError(false);
     if (await switchOrganization(id)) {
       // The bare segment lands on the first channel (app/(app)/[channel]/page.tsx).
-      router.push(`/${ALL_CHANNELS_SLUG}`);
-      router.refresh();
+      if (navigate(home, router) === "client") router.refresh();
     } else {
       setError(true);
     }

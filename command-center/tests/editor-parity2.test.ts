@@ -150,7 +150,7 @@ describe("the export's time allowance", () => {
     const masked = setClipMaskShape(big, id, "rect");
     expect(renderWork(masked).lookEst).toBeGreaterThan(0);
     expect(lookCheck(masked).ok).toBe(false);
-    expect(validateTimeline(toDoc(masked)).join(" ")).toContain("colour and masks");
+    expect(validateTimeline(toDoc(masked)).join(" ")).toContain("colour, masks and effects");
     // the same at 1080p30 fits
     const small = setClipMaskShape(model({}, 600), c0(model({}, 600)).id, "rect");
     expect(lookCheck(small).ok).toBe(true);
