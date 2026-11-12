@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { NextRequest } from "next/server";
 import {
+  BACKDROP_IMG_ORIGIN,
+  BACKDROP_MEDIA_ORIGIN,
+  CSP_REPORT_PATH,
   NO_FLASH_SCRIPT_HASH,
   buildCsp,
+  cspEnforces,
   cspHeaderName,
+  cspHeaders,
   cspMode,
   makeNonce,
   reportUri,
@@ -49,6 +56,35 @@ const EXPECTED =
   "base-uri 'self'; " +
   "form-action 'self'; " +
   "frame-ancestors 'none'";
+
+/**
+ * The header the site sent before the CSP_MODE switch had more than report-only/enforce/off, frozen as a literal
+ * (live on https://nightshift-ai.studio on 2026-11-12, with the project's Supabase host): the default mode must keep
+ * sending exactly this, so merging the switch changes nothing until the owner sets the variable.
+ */
+const TODAY_REPORT_ONLY =
+  "default-src 'self'; script-src 'self' 'nonce-AAAAAAAAAAAAAAAAAAAAAA==' 'strict-dynamic' 'sha256-0sat8E4VTcOjmj9b0kR7WSmpelpaTP7qCVYbsdetoNY=' " +
+  "https://cdn.paddle.com https://public.profitwell.com; style-src 'self' 'unsafe-inline' https://cdn.paddle.com https://sandbox-cdn.paddle.com; " +
+  "img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' " +
+  "https://project.supabase.test wss://project.supabase.test https://api.paddle.com https://sandbox-api.paddle.com " +
+  "https://www2.profitwell.com https://retain-api.profitwell.com https://api.profitwell-events.com https://retain-widgets-api.paddle.com " +
+  "https://sandbox-retain-widgets-api.paddle.com; frame-src https://buy.paddle.com https://sandbox-buy.paddle.com " +
+  "https://retain-widgets.paddle.com https://sandbox-retain-widgets.paddle.com; worker-src 'self' blob:; manifest-src 'self'; " +
+  "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+/** enforce (and the enforcing half of both), served over https, no outside collector configured. */
+const EXPECTED_ENFORCE = `${EXPECTED}; upgrade-insecure-requests; report-uri /api/csp-report`;
+
+/** The stricter report-only policy `both` adds: img-src and media-src narrowed, everything else identical. */
+const EXPECTED_STRICT = EXPECTED.replace(
+  "img-src 'self' data: blob: https:; media-src 'self' data: blob: https:",
+  "img-src 'self' data: blob: https://project.supabase.test https://cdn.paddle.com https://sandbox-cdn.paddle.com " +
+    "https://d2ol7oe51mr4n9.cloudfront.net; " +
+    "media-src 'self' data: blob: https://project.supabase.test https://cdn.paddle.com https://sandbox-cdn.paddle.com " +
+    "https://d8j0ntlcm91z4.cloudfront.net",
+) + "; report-uri /api/csp-report";
+
+const OPTS = { nonce: NONCE, supabaseUrl: "https://project.supabase.test" };
 
 function directive(policy: string, name: string): string[] {
   const d = policy.split("; ").find((p) => p.startsWith(name + " "));
@@ -112,16 +148,27 @@ describe("the switches", () => {
   it("defaults to report-only, and a typo never turns the policy off", () => {
     expect(cspMode(undefined)).toBe("report-only");
     expect(cspMode("")).toBe("report-only");
+    expect(cspMode("report")).toBe("report-only");
+    expect(cspMode("report-only")).toBe("report-only");
     expect(cspMode("enforced")).toBe("report-only");
+    expect(cspMode("bothh")).toBe("report-only");
     expect(cspMode("0")).toBe("report-only");
     expect(cspMode(" Enforce ")).toBe("enforce");
+    expect(cspMode("BOTH")).toBe("both");
     expect(cspMode("off")).toBe("off");
   });
 
   it("maps each mode to its header", () => {
     expect(cspHeaderName("report-only")).toBe("Content-Security-Policy-Report-Only");
     expect(cspHeaderName("enforce")).toBe("Content-Security-Policy");
+    expect(cspHeaderName("both")).toBe("Content-Security-Policy");
     expect(cspHeaderName("off")).toBeNull();
+    expect([cspEnforces("report-only"), cspEnforces("enforce"), cspEnforces("both"), cspEnforces("off")]).toEqual([
+      false,
+      true,
+      true,
+      false,
+    ]);
   });
 
   it("accepts only an absolute https collector with nothing that could split the policy", () => {
@@ -139,6 +186,88 @@ describe("the switches", () => {
     expect(a).not.toBe(b);
     expect(Buffer.from(a, "base64")).toHaveLength(16);
     expect(a).toMatch(/^[A-Za-z0-9+/]{22}==$/);
+  });
+});
+
+describe("the header set for each mode (cspHeaders)", () => {
+  it("default mode: byte-identical to the header sent before the switch", () => {
+    expect(EXPECTED).toBe(TODAY_REPORT_ONLY);
+    const set = cspHeaders(cspMode(undefined), { ...OPTS, https: true });
+    expect(set).toEqual({
+      response: [{ name: "Content-Security-Policy-Report-Only", value: TODAY_REPORT_ONLY }],
+      reportingEndpoints: null,
+    });
+    // `report` is the same mode, and https changes nothing in it (no upgrade-insecure-requests, no own report-uri).
+    expect(cspHeaders(cspMode("report"), { ...OPTS, https: false })).toEqual(set);
+  });
+
+  it("enforce: one enforcing header, upgrade-insecure-requests on https, reports to our own endpoint", () => {
+    const set = cspHeaders("enforce", { ...OPTS, https: true });
+    expect(set).toEqual({ response: [{ name: "Content-Security-Policy", value: EXPECTED_ENFORCE }], reportingEndpoints: null });
+    expect(CSP_REPORT_PATH).toBe("/api/csp-report");
+  });
+
+  it("enforce over plain http (a local next start) leaves upgrade-insecure-requests out", () => {
+    const set = cspHeaders("enforce", { ...OPTS, https: false });
+    expect(set.response).toEqual([{ name: "Content-Security-Policy", value: `${EXPECTED}; report-uri /api/csp-report` }]);
+  });
+
+  it("enforce with an outside collector: report-uri and report-to name it, Reporting-Endpoints too, no own path", () => {
+    const set = cspHeaders("enforce", { ...OPTS, https: true, reportUri: "https://csp.example.com/r" });
+    expect(set.response).toEqual([
+      {
+        name: "Content-Security-Policy",
+        value: `${EXPECTED}; upgrade-insecure-requests; report-uri https://csp.example.com/r; report-to csp`,
+      },
+    ]);
+    expect(set.reportingEndpoints).toBe('csp="https://csp.example.com/r"');
+  });
+
+  it("both: the enforcing policy, plus the stricter one as report-only, with one nonce", () => {
+    const set = cspHeaders("both", { ...OPTS, https: true });
+    expect(set.response).toEqual([
+      { name: "Content-Security-Policy", value: EXPECTED_ENFORCE },
+      { name: "Content-Security-Policy-Report-Only", value: EXPECTED_STRICT },
+    ]);
+    expect(set.reportingEndpoints).toBeNull();
+    // Strict narrows only img-src and media-src; it never names any-https, and adds no upgrade (ignored in report-only).
+    expect(directive(EXPECTED_STRICT, "img-src")).not.toContain("https:");
+    expect(directive(EXPECTED_STRICT, "media-src")).not.toContain("https:");
+    expect(EXPECTED_STRICT).not.toContain("upgrade-insecure-requests");
+  });
+
+  it("the strict policy names the backdrop's hosts exactly as components/NeuralBackdrop.tsx loads them", () => {
+    const src = readFileSync(join(__dirname, "..", "components", "NeuralBackdrop.tsx"), "utf8");
+    const poster = src.match(/const POSTER =\s*"([^"]+)"/)?.[1];
+    const video = src.match(/const SRC =\s*"([^"]+)"/)?.[1];
+    expect(poster && new URL(poster).origin).toBe(BACKDROP_IMG_ORIGIN);
+    expect(video && new URL(video).origin).toBe(BACKDROP_MEDIA_ORIGIN);
+  });
+
+  it("off: no policy header at all", () => {
+    expect(cspHeaders("off", { ...OPTS, https: true })).toEqual({ response: [], reportingEndpoints: null });
+  });
+
+  it.each(["report-only", "enforce", "both"] as const)("every policy %s sends keeps the script and plugin rules", (mode) => {
+    for (const { value } of cspHeaders(mode, { ...OPTS, https: true }).response) {
+      const script = directive(value, "script-src");
+      expect(script).toContain(`'nonce-${NONCE}'`);
+      expect(script).toContain("'strict-dynamic'");
+      expect(script).not.toContain("'unsafe-inline'");
+      expect(value).not.toContain("'unsafe-eval'");
+      expect(script.some((s) => s === "https:" || s.includes("*"))).toBe(false);
+      expect(directive(value, "object-src")).toEqual(["'none'"]);
+      expect(directive(value, "base-uri")).toEqual(["'self'"]);
+      expect(directive(value, "form-action")).toEqual(["'self'"]);
+      expect(directive(value, "frame-ancestors")).toEqual(["'none'"]);
+      expect(directive(value, "connect-src")).not.toContain("https:");
+    }
+  });
+
+  it("a self-framed response keeps frame-ancestors 'self' in both policies of `both`", () => {
+    for (const { value } of cspHeaders("both", { ...OPTS, https: true, framedBySelf: true }).response) {
+      expect(directive(value, "frame-ancestors")).toEqual(["'self'"]);
+    }
   });
 });
 
@@ -205,6 +334,49 @@ describe("the middleware", () => {
     expect(res.headers.get("content-security-policy")).toContain("'strict-dynamic'");
     expect(res.headers.get("content-security-policy-report-only")).toBeNull();
     expect(res.headers.get("x-middleware-request-content-security-policy")).toBe(res.headers.get("content-security-policy"));
+  });
+
+  it("default (CSP_MODE unset): exactly one policy header, report-only, equal to today's with this response's nonce", async () => {
+    const res = await run("/pricing");
+    const sent = res.headers.get("content-security-policy-report-only");
+    expect(res.headers.get("content-security-policy")).toBeNull();
+    expect(res.headers.get("reporting-endpoints")).toBeNull();
+    expect(sent?.replace(/'nonce-[^']+'/, `'nonce-${NONCE}'`)).toBe(TODAY_REPORT_ONLY);
+  });
+
+  it("enforce over https (Caddy's X-Forwarded-Proto) adds upgrade-insecure-requests and the own report-uri", async () => {
+    process.env.CSP_MODE = "enforce";
+    const res = await middleware(
+      new NextRequest(new URL("/pricing", "http://0.0.0.0:3000"), { headers: { "x-forwarded-proto": "https" } }),
+    );
+    const sent = res.headers.get("content-security-policy");
+    expect(sent?.replace(/'nonce-[^']+'/, `'nonce-${NONCE}'`)).toBe(EXPECTED_ENFORCE);
+    expect(res.headers.get("x-middleware-request-content-security-policy")).toBe(sent);
+  });
+
+  it("enforce over plain http leaves upgrade-insecure-requests out", async () => {
+    process.env.CSP_MODE = "enforce";
+    const res = await middleware(new NextRequest(new URL("/pricing", "http://127.0.0.1:3000")));
+    expect(res.headers.get("content-security-policy")).not.toContain("upgrade-insecure-requests");
+  });
+
+  it("both: an enforcing and a stricter report-only header with the same nonce; the render gets the enforcing one", async () => {
+    process.env.CSP_MODE = "both";
+    const res = await run("/pricing");
+    const enforced = res.headers.get("content-security-policy");
+    const reported = res.headers.get("content-security-policy-report-only");
+    expect(enforced?.replace(/'nonce-[^']+'/, `'nonce-${NONCE}'`)).toBe(EXPECTED_ENFORCE);
+    expect(reported?.replace(/'nonce-[^']+'/, `'nonce-${NONCE}'`)).toBe(EXPECTED_STRICT);
+    expect(nonceOf(enforced)).toBe(nonceOf(reported));
+    expect(res.headers.get("x-middleware-request-content-security-policy")).toBe(enforced);
+  });
+
+  it("lets a CSP report through the cookie gate: no redirect to /login", async () => {
+    process.env.CSP_MODE = "enforce";
+    const res = await run("/api/csp-report", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("x-middleware-next")).toBe("1");
   });
 
   it("sends nothing when CSP_MODE=off", async () => {

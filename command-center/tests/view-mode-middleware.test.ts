@@ -76,6 +76,15 @@ describe("the middleware", () => {
     expect(res.headers.get("content-security-policy")).toContain("default-src 'self'");
   });
 
+  it("in both mode the full enforcing policy carries 'self' (it is not replaced by a bare frame-ancestors)", async () => {
+    process.env.CSP_MODE = "both";
+    const res = await run("/pricing", IFRAME);
+    expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'self'");
+    expect(res.headers.get("content-security-policy")).toContain("'strict-dynamic'");
+    expect(res.headers.get("content-security-policy-report-only")).toContain("frame-ancestors 'self'");
+  });
+
   it("with the policy off it still states frame-ancestors, so the config's 'none' does not win", async () => {
     process.env.CSP_MODE = "off";
     const res = await run("/pricing", IFRAME);

@@ -28,7 +28,7 @@ import { devPageDecision, devPagesEnabled } from "@/lib/dev-pages";
 import { customVoiceDecision, customVoiceEnabled } from "@/lib/custom-voice";
 import { ENROL_PATH, MFA_VERIFY_PATH, isEnrolOnlyPath, parseAdminMfaMode } from "@/lib/security/admin-mfa";
 import { mfaMiddlewareAction, type MfaMiddlewareClient } from "@/lib/security/mfa-middleware";
-import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
+import { cspEnforces, cspHeaders, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
 import {
   FRAME_SRC_HEADER,
   VIEW_COOKIE,
@@ -105,9 +105,9 @@ export async function middleware(request: NextRequest) {
     // Our own page, framing itself: the one case the static DENY (next.config.ts) is lifted. A page on another
     // site sends Sec-Fetch-Site: cross-site and keeps DENY; so does everything the browser did not mark as a frame.
     response.headers.set("X-Frame-Options", "SAMEORIGIN");
-    // The enforcing mode carries frame-ancestors in its full policy (buildCsp); in any other mode only the
-    // config's `frame-ancestors 'none'` is enforced, so it is replaced by the same directive with 'self'.
-    if (cspHeaderName(cspMode(process.env.CSP_MODE)) !== "Content-Security-Policy") {
+    // The enforcing modes (enforce, both) carry frame-ancestors in their full policy (buildCsp); in any other mode
+    // only the config's `frame-ancestors 'none'` is enforced, so it is replaced by the same directive with 'self'.
+    if (!cspEnforces(cspMode(process.env.CSP_MODE))) {
       response.headers.set("Content-Security-Policy", "frame-ancestors 'self'");
     }
   }
@@ -116,22 +116,35 @@ export async function middleware(request: NextRequest) {
 
 async function respond(request: NextRequest, frame: { frameSelf: boolean; framedBySelf: boolean }) {
   if (request.nextUrl.pathname.startsWith(SIGNED_MEDIA_PREFIX)) return gate(request);
-  const header = cspHeaderName(cspMode(process.env.CSP_MODE));
-  if (!header) return gate(request);
-  const report = reportUri(process.env.CSP_REPORT_URI);
-  const policy = buildCsp({
+  const headers = cspHeaders(cspMode(process.env.CSP_MODE), {
     nonce: makeNonce(),
     supabaseUrl: SUPABASE_URL,
     dev: process.env.NODE_ENV === "development",
-    reportUri: report,
+    reportUri: reportUri(process.env.CSP_REPORT_URI),
     frameSelf: frame.frameSelf,
     framedBySelf: frame.framedBySelf,
+    https: servedOverHttps(request),
   });
-  request.headers.set(header, policy);
+  if (headers.response.length === 0) return gate(request);
+  // Next reads the nonce from the request's policy header (the enforcing one first): the first header of the set.
+  const first = headers.response[0];
+  request.headers.set(first.name, first.value);
   const response = await gate(request);
-  response.headers.set(header, policy);
-  if (report) response.headers.set("Reporting-Endpoints", `csp="${report}"`);
+  for (const h of headers.response) response.headers.set(h.name, h.value);
+  if (headers.reportingEndpoints) response.headers.set("Reporting-Endpoints", headers.reportingEndpoints);
   return response;
+}
+
+/**
+ * Whether the browser reached us over https, so an enforcing policy may add `upgrade-insecure-requests`. Behind
+ * Caddy the request URL is the container's own http address; Caddy terminates TLS and sets X-Forwarded-Proto, and
+ * compose sets APP_ORIGIN from the domain. A client forging the header can only make its own page stricter, never
+ * looser, and a plain-http `next start` (a local check) stays without the directive so its scripts still load.
+ */
+function servedOverHttps(request: NextRequest): boolean {
+  if (request.nextUrl.protocol === "https:") return true;
+  if ((request.headers.get("x-forwarded-proto") ?? "").split(",")[0].trim().toLowerCase() === "https") return true;
+  return /^https:\/\//i.test(process.env.APP_ORIGIN?.trim() ?? "");
 }
 
 /**

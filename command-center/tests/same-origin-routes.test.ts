@@ -33,6 +33,8 @@ const MACHINE_TO_MACHINE: Record<string, string> = {
   "oauth/register/route.ts": "OAuth dynamic client registration: public by RFC 7591, called by AI apps",
   "oauth/revoke/route.ts": "OAuth revocation (RFC 7009): called server-to-server with the token itself",
   "oauth/decision/route.ts": "OAuth consent: has its own, stronger check (Origin + Sec-Fetch-Site + JSON + single-use secret)",
+  "api/csp-report/route.ts":
+    "CSP violation reports: the browser posts them with no session and often no Origin; reads no cookie, changes no state, writes one capped, reduced log line",
   "api/email/unsubscribe/route.ts": "one-click unsubscribe (RFC 8058): a mail program posts it with no Origin; the 64-hex token is the authority and it can only switch mail off",
 };
 

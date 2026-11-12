@@ -1,5 +1,6 @@
 import { SOLUTIONS_PATH, SOLUTION_IDS, solutionHref } from "@/lib/solutions";
 import { OAUTH_PUBLIC_PATHS, WELL_KNOWN_PATHS } from "@/lib/oauth/config";
+import { CSP_REPORT_PATH } from "@/lib/security/csp";
 
 /**
  * Which URLs a signed-out visitor may see, and what the auth gate does with
@@ -125,6 +126,13 @@ export const PAGE_VIEW_PATH = "/api/pv";
 export const MCP_PATH = "/api/mcp";
 
 /**
+ * Where an enforcing Content-Security-Policy reports violations (app/api/csp-report, lib/security/csp.ts). The
+ * browser posts it with no session, so, like the page count, the cookie gate must neither redirect it to /login (the
+ * report would be lost) nor spend a Supabase round trip on it. Exactly this path.
+ */
+export { CSP_REPORT_PATH };
+
+/**
  * The server-to-server half of MCP over OAuth (migration 0093): the discovery
  * documents and the registration, token and revocation endpoints. An AI app's
  * backend calls them with no browser session, and each authenticates by what
@@ -142,6 +150,7 @@ export function isOAuthPublicPath(pathname: string): boolean {
 export function isPublicApiPath(pathname: string): boolean {
   return (
     pathname === PAGE_VIEW_PATH ||
+    pathname === CSP_REPORT_PATH ||
     pathname === PUBLIC_API_PREFIX ||
     pathname.startsWith(PUBLIC_API_PREFIX + "/") ||
     pathname === MCP_PATH ||
