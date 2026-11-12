@@ -4264,8 +4264,7 @@
       "speed_tier": 3,
       "probe": {
         "capability": "t2i",
-        "prompt": "a red apple on a white table",
-        "aspect_ratio": "1:1"
+        "prompt": "a red apple on a white table"
       }
     },
     {

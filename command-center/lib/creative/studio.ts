@@ -932,6 +932,8 @@ export function isUnsuccessful(status: string): boolean {
 const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   policy: "policy",
   bad_request: "bad_request",
+  // The vendor refused an option sent through its tool (the aspect ratio): the person changes the settings (0140).
+  vendor_tool_unsupported: "bad_request",
   rate_limited: "busy",
   unavailable: "busy",
   provider_timeout: "busy",

@@ -840,3 +840,20 @@ and nothing changes for anyone until a registry entry carries `"operator_preview
 - **Tests.** `tests/test_operator_preview_migration.py` (the hunks, the hashes, the rollback, the grants), `tests/security/test_sec_operator_preview.py`
   (a non-admin and an admin in a customer's organization are refused; the operator is quoted at cost and holds nothing; every other quote is
   byte for byte 0125's; the drift guard, the rollback and the order), `command-center/tests/operator-preview.test.tsx` (the badge, the list).
+
+## The probe log names a refused vendor tool (0140)
+
+0140 (`0140_probe_error_vendor_tool.sql`) is **live on apply**: it replaces ONE check constraint, `model_probe_runs_error_code_check` (0035),
+with the same rule plus one word, `vendor_tool_unsupported`. No table, column, row, function or grant changes.
+
+- **Why.** The first probe of `grounded-image-1.0` (run 43286239903, 2026-11-12) was answered HTTP 400 "Unsupported tool type:
+  'image_generation'" with `param: "tools"`. The adapter now raises a typed code for that answer (`E_VENDOR_TOOL_UNSUPPORTED` in
+  `modules/capabilities/base.py` `ERROR_CODES`), and `record_model_probe` inserts the code as given: without 0140 such a probe could not be
+  recorded at all. Job rows (0036) already take any `^[a-z0-9_]{1,64}$` word; the Studio shows it as "These settings were not accepted".
+- **Safe to apply.** The new rule accepts every row the old one did. Apply as ONE transaction (`set local lock_timeout`); the last block
+  asserts the constraint accepts the word.
+- **Undo.** `docs/sql/rollback_0140_probe_error_vendor_tool.sql` (owner-applied): refuses while the log holds a `vendor_tool_unsupported`
+  row, then puts 0035's words back.
+- **Numbering.** 0140, after 0139. It names nothing of 0139's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Tests.** `tests/test_probe_error_vendor_tool_migration.py` (the newest check lists exactly `ERROR_CODES` and `timeout`; nothing else
+  changes; the rollback).

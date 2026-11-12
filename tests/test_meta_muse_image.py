@@ -36,6 +36,7 @@ from modules.capabilities.base import (
     E_QUOTA,
     E_RATE_LIMITED,
     E_UNAVAILABLE,
+    E_VENDOR_TOOL_UNSUPPORTED,
     EDIT,
     SUCCEEDED,
     T2I,
@@ -45,7 +46,8 @@ from modules.capabilities.base import (
 import os
 
 from modules.capabilities import meta as meta_mod
-from modules.capabilities.meta import MAX_RATIO, MAX_IMAGE_BYTES, MuseImageAdapter, ratio_size, real_person_problem
+from modules.capabilities.meta import (MAX_RATIO, MAX_IMAGE_BYTES, TOOL_REFUSED, MuseImageAdapter, ratio_size,
+                                       real_person_problem)
 from modules.capabilities.safe_fetch import AFTER_COMPLETION, UNCONFIRMED
 from tests.loopback_vendor import FakeVendor, Resp, cleanup_certificate
 
@@ -417,6 +419,36 @@ class ErrorMappingTests(VendorCase):
             self.assertEqual(e.not_accepted, proof, (status, err))       # only an outright refusal proves nothing was bought
             self.assertEqual(e.http_status, status)
 
+    def test_the_vendor_refusing_the_image_tool_has_its_own_code_a_clear_message_and_no_retry(self):
+        # The first real probe's answer, byte for byte (Actions run 43286239903, 2026-11-12).
+        refused = {"code": None, "message": "Unsupported tool type: 'image_generation'", "param": "tools",
+                   "type": "invalid_request_error"}
+        self.answers(Resp(400, {"error": refused}))
+        with self.assertRaises(AdapterError) as cm:
+            self.adapter().submit(t2i(aspect_ratio="16:9"), VENDOR)
+        e = cm.exception
+        self.assertEqual((e.code, e.http_status), (E_VENDOR_TOOL_UNSUPPORTED, 400))
+        self.assertTrue(e.message.startswith(TOOL_REFUSED), e.message)    # the reason first, for the Studio and the log
+        self.assertIn("nothing was charged", e.message)
+        self.assertIn("Unsupported tool type: 'image_generation'", e.message)   # the vendor's words, for the operator
+        self.assertNotRegex(e.message, BRAND)
+        self.assertNotIn(KEY, e.message)
+        self.assertFalse(e.retryable)
+        self.assertFalse(e.not_accepted)                                  # a 400 is never taken as proof (as above)
+        (only,) = self.vendor.seen("POST", RESPONSES)                     # exactly one call: no silent retry without the tool
+        self.assertEqual(only.json()["tools"], [{"type": "image_generation", "size": "1024x576"}])
+
+    def test_only_a_400_naming_the_tools_param_is_the_tool_refusal(self):
+        for status, err, code in (
+                (400, {"type": "invalid_request_error", "param": "size", "code": None, "message": "ratio"}, E_BAD_REQUEST),
+                (400, {"type": "invalid_request_error", "param": None, "code": None, "message": "bad"}, E_BAD_REQUEST),
+                (400, {"type": "invalid_request_error", "param": "tools", "code": "content_policy_violation",
+                       "message": "blocked"}, E_POLICY),
+                (400, {"type": "invalid_request_error", "param": "TOOLS", "code": None, "message": "x"},
+                 E_VENDOR_TOOL_UNSUPPORTED),
+                (422, {"type": "invalid_request_error", "param": "tools", "code": None, "message": "x"}, E_BAD_REQUEST)):
+            self.assertEqual(self.error(status, err).code, code, (status, err))
+
     def test_a_404_with_an_empty_body_is_not_found(self):
         self.assertEqual(self.error(404, raw=b"").code, E_NOT_FOUND)
 
@@ -516,8 +548,11 @@ class RegistryEntryTests(unittest.TestCase):
     def test_the_registry_and_the_adapter_refuse_the_same_and_the_probe_is_servable(self):
         a = MuseImageAdapter(env={"META_API_KEY": KEY})
         probe = self.e.probe_request()
-        self.assertEqual((probe.capability, probe.aspect_ratio, probe.image_size), (T2I, "1:1", None))
+        # No aspect ratio: the cheapest valid call, with no tool (the first probe's tool was refused, 2026-11-12).
+        self.assertEqual((probe.capability, probe.aspect_ratio, probe.image_size), (T2I, None, None))
+        self.assertEqual(probe.prompt, "a red apple on a white table")
         self.assertEqual(a.problems(probe, self.e), [])
+        self.assertEqual(a.problems(t2i(aspect_ratio="1:1"), self.e), [])   # a ratio is still offered and accepted
         for bad in (t2i(image_size="1K"), t2i(aspect_ratio="17:1"), t2i(quality="low"),
                     t2i(prompt="a famous singer on stage")):
             self.assertTrue(a.problems(bad, self.e), bad)
@@ -542,8 +577,20 @@ class ProbeTests(VendorCase):
         res = run_probe(reg.get(MID), env=self.env, voice_id=None, workdir=self.tmp, session=self.vendor.session(),
                         sleep=lambda s: None)
         self.assertTrue(res.ok, res.message)
-        body = self.sent()
-        self.assertEqual((body["store"], body["tools"]), (False, [{"type": "image_generation", "size": "1024x1024"}]))
+        # The whole probe body: no aspect ratio, so no `tools`; the vendor's plain text-to-image call.
+        self.assertEqual(self.sent(), {"model": VENDOR, "store": False, "input": "a red apple on a white table"})
+
+    def test_a_refused_tool_is_named_by_its_own_code_in_the_probe_result(self):
+        from tools.probe_models import BRIEF_CODES, run_probe
+
+        self.answers(Resp(400, {"error": {"code": None, "message": "Unsupported tool type: 'image_generation'",
+                                          "param": "tools", "type": "invalid_request_error"}}))
+        res = run_probe(reg.get(MID), env=self.env, voice_id=None, workdir=self.tmp, session=self.vendor.session(),
+                        sleep=lambda s: None)
+        self.assertFalse(res.ok)
+        self.assertEqual(res.code, E_VENDOR_TOOL_UNSUPPORTED)
+        self.assertIn(E_VENDOR_TOOL_UNSUPPORTED, BRIEF_CODES)              # the public --brief log prints the word
+        self.assertNotRegex(res.message, BRAND)
 
 
 class WiringTests(unittest.TestCase):

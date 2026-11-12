@@ -82,6 +82,7 @@ Sources: `/docs/image-generation`, `/docs/api-reference/responses/schemas`, `/do
 | 402 `billing_error` | `quota` |
 | 403 | `auth` (the key lacks the model) |
 | 404 `model_not_found`, or a 404 with an empty body | `not_found` |
+| 400 with `param: "tools"` (the first probe: "Unsupported tool type: 'image_generation'") | `vendor_tool_unsupported` |
 | 413 `payload_too_large`, 415 `unsupported_media_type` | `bad_request` |
 | 429 `rate_limit_exceeded` | `rate_limited` |
 | 500 and 503 (`service_overloaded`, `backend_unavailable`, `server_shutting_down`) | `unavailable` |
@@ -186,7 +187,22 @@ carries `"operator_preview": true`:
 
 1. **Responses API vs. the images endpoints.** The adapter uses `/v1/responses` because of `store: false`. The
    Responses reference schema (`/docs/api-reference/responses/schemas`) does not list the `image_generation` tool or
-   the `image_generation_call` item. Only the image-generation guide shows them. Confirm with the first probe.
+   the `image_generation_call` item. Only the image-generation guide shows them.
+   - **First probe, 2026-11-12 19:05Z** (Actions "Probe models", run 43286239903): it sent
+     `{"model": "muse-image-1.0", "store": false, "input": "a red apple on a white table", "tools": [{"type":
+     "image_generation", "size": "1024x1024"}]}` (the probe named `aspect_ratio: "1:1"`). Answer, after 450 ms: HTTP 400
+     `{"error": {"code": null, "message": "Unsupported tool type: 'image_generation'", "param": "tools", "type":
+     "invalid_request_error"}}`. A 400 is not billed (pricing page). The guide and the Responses reference read the same
+     day still show exactly this tool shape, and do not explain the error.
+   - **What changed.** The adapter now answers a 400 naming `param: "tools"` as `vendor_tool_unsupported`, with a
+     message that says the size / aspect ratio option was refused and nothing was charged. It does NOT retry without the
+     tool: that would return a picture in the vendor's default shape, not the one the person asked for. The probe no
+     longer names an aspect ratio, so it sends no `tools` (migration 0140 lets the probe log store the new code).
+   - **What the next probe tests.** The cheapest valid call, with no tool: `{"model": "muse-image-1.0", "store":
+     false, "input": "a red apple on a white table"}`, the plain text-to-image request the guide shows. If it succeeds,
+     the endpoint, the key, `store: false` and the `image_generation_call` answer are confirmed, and only the tool is in
+     question: a job that names an aspect ratio will fail with `vendor_tool_unsupported` until the vendor accepts the
+     tool or documents another way to set the shape. If it fails too, the error says what else is wrong.
 2. How many `input_image` parts the Responses API takes for Muse Image (10 is the images-edit bound).
 3. Whether the answer can carry several images for one prompt (nothing sets `n` there), and whether each is billed.
 4. The native pixel resolution. It is not documented, so no image size is offered or priced.
