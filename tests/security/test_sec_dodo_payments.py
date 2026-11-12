@@ -1,12 +1,12 @@
-"""Migration 0142 (Dodo Payments next to Paddle) on a real PostgreSQL.
+"""Migration 0143 (Dodo Payments next to Paddle) on a real PostgreSQL.
 
 What would break, and what each test proves:
   * a customer or anon calling the provider-aware twins to mint plan credits (refused, 42501);
   * the Dodo money path not going through the SAME ledger functions as Paddle's (a Dodo pack, plan period, replay and
     refund here use add_purchased_credits, grant_subscription_credits_for and refund_purchased_credits, and the ledger
     agrees with the lots after each);
-  * Paddle behaving differently once 0142 is applied: one Paddle scenario is run on a scratch database with 0142, then
-    again after 0142's own rollback (0034's bodies), and every answer, error code, ledger row and lot must be equal;
+  * Paddle behaving differently once 0143 is applied: one Paddle scenario is run on a scratch database with 0143, then
+    again after 0143's own rollback (0034's bodies), and every answer, error code, ledger row and lot must be equal;
   * a Paddle row admitting a shape 0034 refused, or a provider nobody configured;
   * a Paddle call reaching a Dodo subscription (or the reverse) because they share an id string;
   * the drift guard, the rollback's refusals, and rollback-then-reapply.
@@ -25,8 +25,8 @@ sec_db = pytest.importorskip("sec_db")  # the lab's own harness (tests/security/
 from sec_db import ANON, SERVICE, acting, as_superuser  # noqa: E402
 
 REPO = sec_db.REPO
-MIGRATION = REPO / "supabase" / "migrations" / "0142_dodo_payments.sql"
-ROLLBACK = REPO / "docs" / "sql" / "rollback_0142_dodo_payments.sql"
+MIGRATION = REPO / "supabase" / "migrations" / "0143_dodo_payments.sql"
+ROLLBACK = REPO / "docs" / "sql" / "rollback_0143_dodo_payments.sql"
 
 UPSERT_FOR = "public.upsert_subscription_for(text, uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, timestamptz, timestamptz)"
 GRANT_FOR = "public.grant_subscription_credits_for(text, uuid, text, text, timestamptz, timestamptz, text, text, text, text, numeric)"
@@ -199,7 +199,7 @@ def test_the_same_id_string_under_two_providers_is_two_subscriptions(conn):
             ("dodo", dodo_org, "active"), ("paddle", paddle_org, "canceled")]
 
 
-# ── Paddle, with and without 0142: the same answers ─────────────────────────
+# ── Paddle, with and without 0143: the same answers ─────────────────────────
 
 @contextmanager
 def scratch_db():
@@ -260,28 +260,28 @@ def paddle_scenario(c) -> list:
     return out
 
 
-def test_the_paddle_path_answers_the_same_with_and_without_0142():
+def test_the_paddle_path_answers_the_same_with_and_without_0143():
     if not sec_db.admin_dsn():
         pytest.skip("no lab database")
     with scratch_db() as c:
-        with_0142 = paddle_scenario(c)
+        with_0143 = paddle_scenario(c)
         apply(c, ROLLBACK)  # 0034's bodies and checks, byte for byte
         with as_superuser(c, commit=False) as s:
             assert s.value("select to_regprocedure(%s) is null", [GRANT_FOR])
         without = paddle_scenario(c)
         apply(c, MIGRATION)
         again = paddle_scenario(c)
-    assert with_0142 == without == again
+    assert with_0143 == without == again
     # The scenario is not vacuous: it grants, replays, scales, refuses and refunds.
-    kinds = [x[0] for x in with_0142[:11]]
-    assert kinds.count("error") == 3 and with_0142[1][1]["granted"] == 2000 and with_0142[2][1]["duplicate"] is True
+    kinds = [x[0] for x in with_0143[:11]]
+    assert kinds.count("error") == 3 and with_0143[1][1]["granted"] == 2000 and with_0143[2][1]["duplicate"] is True
 
 
 def test_drift_guard_rollback_refusals_and_reapply():
     if not sec_db.admin_dsn():
         pytest.skip("no lab database")
     with scratch_db() as c:
-        # A replay of 0142 on itself is fine.
+        # A replay of 0143 on itself is fine.
         apply(c, MIGRATION)
         # A Dodo row makes the rollback refuse, changing nothing.
         org = new_org(c)
@@ -294,13 +294,13 @@ def test_drift_guard_rollback_refusals_and_reapply():
         with as_superuser(c) as s:
             s.value("delete from public.subscriptions where provider = 'dodo' returning 1")
         apply(c, ROLLBACK)
-        # A live body that is neither 0034's nor 0142's: 0142 refuses to replace it.
+        # A live body that is neither 0034's nor 0143's: 0143 refuses to replace it.
         with c.transaction():
             c.execute("create or replace function public.grant_subscription_credits(p_org uuid, p_subscription_id text, p_plan text, "
                       "p_period_start timestamptz, p_period_end timestamptz, p_external_id text, p_note text default null, "
                       "p_customer_id text default null, p_price_id text default null, p_paid_share numeric default 1) returns jsonb "
                       "language plpgsql volatile security definer set search_path = public, pg_temp as $$ begin return '{}'::jsonb; end $$")
-        with pytest.raises(psycopg.Error, match="neither 0034''?s nor 0142''?s|neither 0034's nor 0142's"):
+        with pytest.raises(psycopg.Error, match="neither 0034''?s nor 0143''?s|neither 0034's nor 0143's"):
             apply(c, MIGRATION)
         with as_superuser(c, commit=False) as s:
             assert s.value("select to_regprocedure(%s) is null", [GRANT_FOR])  # nothing half-applied

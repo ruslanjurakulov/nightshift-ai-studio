@@ -28,7 +28,7 @@
  *     catalog's price for that product, in USD, before anything is granted.
  *   - Every grant goes through the same database functions as Paddle's:
  *     add_purchased_credits (packs), grant_subscription_credits_for (plan
- *     periods, 0142: 0034's body under a provider) and refund_purchased_credits
+ *     periods, 0143: 0034's body under a provider) and refund_purchased_credits
  *     (refunds and lost disputes). The Dodo payment id is the external id, so
  *     a payment delivered twice, under two webhook ids, still credits once.
  *   - Idempotency by event: the Standard Webhooks `webhook-id` is the
@@ -95,7 +95,7 @@ export const DODO_PLAN_PRICES: Readonly<Record<string, number>> = {
 
 /** Dodo's documented examples: pdt_0NVbdIG3JNg9Yc8ey5JHW, pay_gr4RizvMOXFJ6xca3y2tU, sub_Iuaq622bbmmfOGrVTqdXv,
  *  cus_TV52uJWWXt2yIoBBxpjaa. The docs promise no length, so these accept 3-64 ASCII letters and digits after
- *  the prefix (0142's subscription checks say the same). */
+ *  the prefix (0143's subscription checks say the same). */
 export const DODO_PRODUCT_ID_RE = /^pdt_[A-Za-z0-9]{3,64}$/;
 const PAYMENT_ID_RE = /^pay_[A-Za-z0-9]{3,64}$/;
 const SUBSCRIPTION_ID_RE = /^sub_[A-Za-z0-9]{3,64}$/;
