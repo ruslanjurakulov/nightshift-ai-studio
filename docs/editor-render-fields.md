@@ -37,6 +37,7 @@ into one commit) and #484 (group 11); group 12 is the editor-parity change that 
 | 12 | `claude/editor-parity-1` | V clip `gain_db`; a video on an A track (detached sound); `speed` 0.1-10; export frame rate | added by this branch (section 12) |
 | 14 | `claude/editor-parity-2` | V clip `color` (temperature, tint, hue, curve), `mask`; silence removal (no field) | on main (#675, section 14) |
 | 16 | `claude/editor-parity-2b` | V clip `fx` (glitch, shake, rgb_split, flash), `anim_in` / `anim_out`; apply a cross-fade to all cuts, beat markers (no field) | added by this branch (section 16) |
+| 17 | `claude/editor-parity-b1` | none: rolling, slip and slide edits, in / out marks with ripple delete, lift and insert, J / L cut, the key map, preview guides | added by this branch (section 17) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -1197,3 +1198,108 @@ A document without these fields builds exactly the argv origin/main (#675) built
 
 As section 12: older validators refuse `fx` and a V clip's `anim_*`, so merge as one commit and use the new controls
 only after the worker has been rebuilt by the deploy.
+
+## 17. Editing core: roll, slip, slide, marks, J / L cut, keys, guides (no new field)
+
+Branch `claude/editor-parity-b1` (Premiere parity batch 1). Browser only: no document field, no render change, no
+migration, no new route. Every operation changes fields the document already has, is laid out by `layout` like a
+trim, settles through `settleAll` like any edit (`apply`; a drag settles when it ends) and is one undo step.
+
+### Timeline tools (`lib/editor.ts`, next to `trimClip`)
+
+* A still (a picture) has no time inside it: it grows or shrinks either way by its hold (`out_s`) and is never
+  "out of file" for a roll or a slide; it cannot slip.
+* **Roll** (`rollEdit`, `rollRange`): the cut into a clip moves; the clip before ends later by as much as this one
+  starts later, so nothing else moves and the length is kept. A fast clip gives its source at its speed, a reversed
+  clip grows by playing more of its range's start, a frozen clip changes only its hold. Held to the file (its
+  length when known), to `minPieceS` and to every cross-fade the two clips have (`crossfadeNeed`: a roll never
+  shortens a clip under the cross-fades it carries, which `layout` would otherwise drop, changing the length).
+  Not across a speed curve (as a split).
+* **Slip** (`slipClip`, `slipRange`): the same place and length, another part of the file (source seconds). Needs
+  the file's length: a still, or a length never read, is not slipped (never guessed). A curve slips with its range.
+* **Slide** (`slideClip`, `slideRange`): the clip moves between its neighbours, which give and take; not the first or
+  the last clip.
+* **Ripple trim to the playhead** (`rippleTrimTo`, Q / W): the clip under the playhead loses what plays before it
+  (its start) or from it (its end) and the clips after it close up; a move goes on from where it had reached.
+* `TimelineStrip` has a tool picker (Trim, the default, Roll, Slip, Slide; keys V, N, Y, U). Roll draws a handle at
+  each cut of the selected clip, Slip and Slide one over it; each is a slider (arrow = one frame on the frame grid,
+  Shift + arrow = one second; a run of arrows is one undo step) and can be dragged (one undo step per drag).
+
+### Marks and range edits (`lib/editorRange.ts`)
+
+* In / out marks are editor state (never saved); an in mark alone runs to the end, an out mark alone from the start.
+  They are drawn over every lane.
+* A cut at a mark (`cutAt`) is an existing plain cut, a split, or, inside a cross-fade, the end of the cross-fade
+  (a split inside the overlap would shorten it and with it the timeline); a mark within one shortest piece of a
+  plain edge is that edge. So both ends of a marked range are plain cuts and its length is what it covers.
+* **Ripple delete** (`extractRange`, key '): the picture between the marks goes and the clips after it close up;
+  every sound is cut there too and the later ones move up with the picture, so a detached sound stays with its
+  picture. Texts, overlays and shapes keep their times (sync lock is batch 2c). A gap inside the range closes.
+  Refused for the whole picture, a curve under a mark, a full lane, a sliver against a cross-fade, or a sound that
+  would have to be cut in two with the mix full.
+* **Lift** (`liftRange`, key ;): the range becomes a **gap** and every sound is cut out of it, so it is black and
+  silent; nothing after it moves. A gap is not a clip: the document simply has no clip there (the clips after it
+  keep their `start_s`), which both validators accept and the export renders as a black colour segment
+  (`timeline_render._picture`): nothing is decoded, nothing is charged to the render budget, no frame-size rule
+  applies, so no settle step can touch it. In the editor's model it is `gap_s` on the clip after it (editor only:
+  `toDoc` drops it, `toModel` reads it back from the starts, `layout` places the clip after it). A clip after a gap
+  has no cross-fade in; a split keeps the gap before its first half; a copy does not take it; deleting the clip
+  after it leaves the gap; roll and slide do not cross it. The strip draws it with a "Close gap" button (a ripple
+  delete of the black). `tests/test_editor_lift_gap.py` renders one at 1920x1080, 1080x1920 and 3840x2160: black in
+  the corners and the middle, silent, and the clips after it at their times.
+* **Insert at the playhead** (`insertAt`, key ,): a copy of the clipboard's clip at the playhead: the clip there is
+  split and everything after it moves later; inside a cross-fade it goes in at that cut, in a gap at the playhead.
+
+### J / L cut (`splitEdit`)
+
+On the cut into the selected clip: each side's own sound is detached (`detachClipAudio`), then the sound's cut moves
+6, 12 or 24 frames past the picture's cut (L: the first sound ends later and the second starts later; J: the other
+way), held to what the files have. Offered on every clip after the first; refused (with the reason) where neither
+side has its own sound, a side is a picture or retimed, or the mix is full.
+
+### Keys (`lib/editor-shortcuts.ts`)
+
+J / K / L shuttle (L plays, each further L doubles up to 8x; J backwards; K stops; fast and backwards play has no
+sound in the preview and backwards is stepped), I / O, Q / W, Up / Down (previous / next cut), ' ; , and the tool
+letters, all once per press (no repeat; Up / Down repeat), never in a text field, on a slider, or with Ctrl, Alt or
+Shift (; ' and , by the character typed, Shift or not, since some layouts need Shift for them); on a non-Latin
+layout by the physical key. Ctrl / Cmd + K splits like S only while the timeline (the strip, its tools and marks) has
+focus, taken in the capture phase before the command palette sees it; anywhere else, the editor's inspector and an
+idle page included, it opens the palette as everywhere in the app. The shuttle is held to 16x on the element (a fast
+clip's 2x shuttle would ask more), and the transport shows the rate the element really plays at.
+**M (add marker) is not mapped:** the document has no marker to keep (beats are drawn, not stored, section 16);
+stored markers are batch 3a.
+
+### Guides (`lib/editorGuides.ts`, `PreviewGuides`)
+
+An SVG over the preview box (aria-hidden, no pointer events), never in the document or the export: the app interface
+areas on a 9:16 frame (YouTube Shorts, TikTok, Reels: approximate, from each platform's vertical ad template, and the
+UI says so), title and action safe (SMPTE ST 2046-1: 90 % and 93 %), centre and thirds. The choice is kept in this
+browser only.
+
+### Strings
+
+`lib/i18n/editor-core/{en,ru,uz}.ts` (`t.editor.core`); ru and uz are drafts for a native read.
+
+### Rollout
+
+Nothing to order: no field, no migration; older workers render what this saves.
+
+### Milliseconds, the same on both sides
+
+The editor's `ms` (lib/editor.ts) is now Python's `round(v, 3)` bit for bit: the exact binary value rounded to three
+places, half to even (`toFixed(3)` is exact and takes a tie up; the only exact ties are odd sixteenths, where the even
+neighbour is taken). Python's `_ms` and the database's `editor_ms` (0136, which prices paid exports and caps lengths)
+are unchanged. `Math.round(v * 1000) / 1000` had disagreed: 0.7745 (0.77449999... in binary) was 0.775 in the editor
+and 0.774 in the worker, and a rolled clip the editor saved was refused as an overlap.
+`samples/ms_round_cases.json.gz` holds Python's answers for 104,678 values (random, every k/16, k/32 and k/1000 with
+their neighbours, the database test's ties, and the 46,538 values the renderer rounds while measuring that test's
+corpus; `tools/ms_round_table.py`), and `tests/editor-ms-round.test.ts` holds `ms` to every one.
+`samples/editor_core_fuzz_docs.json.gz` (every state of 15,000 seeded edits, 1080p to 4K, 24 to 60 fps, written by
+`tests/editor-core-fuzz.test.ts`) is held to the Python validator by `tests/test_editor_core_fuzz.py`.
+
+### Older documents with gaps
+
+A document whose picture has a gap (a clip starting after the one before it ended; another tool can write one) used to
+be closed up when the editor opened it, so the editor showed something other than what the export rendered. It now
+opens with the gap, black in the preview and in the strip, as the export renders it; "Close gap" closes it.
