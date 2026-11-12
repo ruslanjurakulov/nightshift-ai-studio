@@ -289,6 +289,21 @@ FAKE_DOCKER = textwrap.dedent(
       # markers in its text. A reload makes it the "live" config the fake curl reads.
       *" exec -T caddy true"*) exit "${FAKE_CADDY_EXEC_RC:-0}" ;;
       *" exec -T caddy wget "*) [[ -s "$FAKE_CADDY_LIVE" ]] && cat "$FAKE_CADDY_LIVE"; exit 0 ;;
+      # A one-off container of the caddy service (caddy_prepare_mount seeding a first verified file):
+      # validate and adapt like exec, never a reload; it records what it mounted.
+      *" run --rm --no-deps -T caddy caddy "*)
+        all="$*"; sub="${all##* -T caddy caddy }"; sub="${sub%% *}"
+        cat >"$FAKE_DOCKER_LOG.stdin"; body="$(cat "$FAKE_DOCKER_LOG.stdin")"
+        echo "ONEOFF $sub $(sha256sum <"$FAKE_DOCKER_LOG.stdin" | cut -d' ' -f1) mount=$(sha256sum <"$CADDYFILE_LOADED" | cut -d' ' -f1)" >>"$FAKE_DOCKER_LOG"
+        case "$sub" in
+          validate) [[ "$body" == *SYNTAX* ]] && exit 1; exit 0 ;;
+          adapt)
+            j='{"X-Frame-Options":["DENY"],"set":{"Permissions-Policy":["camera=(), microphone=(), geolocation=(), payment=(\\"https://buy.paddle.com\\" \\"https://sandbox-buy.paddle.com\\"), usb=()"]},"X-Content-Type-Options":["nosniff"],"Referrer-Policy":["strict-origin-when-cross-origin"],"delete":["Server","X-Powered-By"]'
+            j="$j"',"set2":{"Permissions-Policy":["camera=(), microphone=(self), geolocation=(), payment=(\\"https://buy.paddle.com\\" \\"https://sandbox-buy.paddle.com\\"), usb=()"]}'
+            [[ "$body" == *NO_HSTS_STATIC* ]] || j="$j,\\"Strict-Transport-Security\\":[\\"max-age=31536000\\"]"
+            echo "$j}"; exit 0 ;;
+        esac
+        exit 1 ;;
       *" exec -T caddy caddy "*)
         all="$*"; sub="${all##* exec -T caddy caddy }"; sub="${sub%% *}"
         cat >"$FAKE_DOCKER_LOG.stdin"; body="$(cat "$FAKE_DOCKER_LOG.stdin")"
@@ -310,7 +325,11 @@ FAKE_DOCKER = textwrap.dedent(
       *" up "*email-worker) exit "${FAKE_EMAIL_UP_RC:-0}" ;;
       *" up "*operator-bot) exit "${FAKE_OPERATOR_UP_RC:-0}" ;;
       *" up "*worker) exit "${FAKE_WORKER_UP_RC:-0}" ;;
-      *" up "*) exit "${FAKE_UP_RC:-0}" ;;
+      # What the caddy service would mount if `up` (re)created it now: its hash, or "missing".
+      *" up "*)
+        if [[ -f "${CADDYFILE_LOADED:-}" ]]; then echo "UP mount=$(sha256sum <"$CADDYFILE_LOADED" | cut -d' ' -f1)" >>"$FAKE_DOCKER_LOG"
+        else echo "UP mount=missing" >>"$FAKE_DOCKER_LOG"; fi
+        exit "${FAKE_UP_RC:-0}" ;;
       *" ps -q web"|*" ps -aq web") echo cid123 ;;
       *" ps -q worker"|*" ps -q media-worker"|*" ps -q creative-worker"|*" ps -q notify-worker"|*" ps -q email-worker"|*" ps -q operator-bot"|*" ps -q marketing-worker") echo cidw ;;
       inspect*) echo "${FAKE_HEALTH:-healthy}" ;;
@@ -782,8 +801,11 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         proc = self.deploy_caddy(self.push("NO_SAMEORIGIN"))
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("no earlier config", proc.stderr)
-        self.assertFalse((self.state / ".caddyfile.loaded").exists())
+        # Nothing was ever verified: the file Caddy mounts is the seed (pinned, validated, contract
+        # held) and stays marked unconfirmed, never counted as loaded; the log says a restart uses it.
+        self.assertTrue((self.state / ".caddyfile.seeded").exists())
         self.assertFalse((self.state / ".caddyfile.loaded.sha256").exists())
+        self.assertIn("a Caddy restart starts on this commit's seeded file", proc.stderr)
 
     def test_the_commit_before_is_the_fallback_copy_on_the_first_run(self):
         # The server already runs commit X (with a Caddyfile) when this script first handles a Caddyfile.
@@ -930,6 +952,178 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         fed = {line.split()[2] for line in self.docker_calls() if line.startswith("STDIN ")}
         self.assertEqual(fed, {committed}, "validate, adapt and reload were fed the committed bytes")
 
+    # ── what Caddy mounts: the last verified file, never the checkout ───────
+    # deploy/docker-compose.yml mounts CADDYFILE_LOADED ($CADDY_STATE_DIR/.caddyfile.loaded). Step 6
+    # (`compose up`, which recreates Caddy when its service changed) runs BEFORE caddy_apply, and a
+    # restart (reboot, restart: unless-stopped) can come at any time: both must find a verified file.
+    # The fake docker records, at `up`, the hash of the file the caddy service would mount.
+
+    def up_mounts(self):
+        return [l.split("mount=", 1)[1] for l in self.docker_calls() if l.startswith("UP mount=")]
+
+    def mounted(self):
+        return hashlib.sha256((self.state / ".caddyfile.loaded").read_bytes()).hexdigest()
+
+    def test_compose_mounts_the_verified_file_the_script_points_it_at(self):
+        compose = (ROOT / "deploy" / "docker-compose.yml").read_text()
+        self.assertIn("source: ${CADDYFILE_LOADED:-/opt/nightshift/.caddyfile.loaded}", compose)
+        self.assertIn("create_host_path: false", compose)
+        self.assertNotIn("./Caddyfile:/etc/caddy/Caddyfile", compose)
+        v1 = self.push("v1")
+        self.assertEqual(self.deploy_caddy(v1).returncode, 0)
+        self.assertEqual(self.mounted(), self.approved[v1])
+
+    def test_a_recreate_in_step_6_happens_on_the_verified_file_not_the_unchecked_one(self):
+        v1 = self.push("v1")
+        self.assertEqual(self.deploy_caddy(v1).returncode, 0)
+        self.docker_log.unlink()
+        # A commit with a Caddyfile nobody pinned (as if its caddy service changed too, so `up`
+        # recreates Caddy): `up` runs before the gate, and must mount v1, the verified file.
+        bad = self.push("UNREVIEWED")
+        proc = self.deploy_caddy(bad, approved="0" * 64)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("NOT validated, NOT loaded", proc.stderr)
+        self.assertEqual(self.up_mounts(), [self.approved[v1]])
+        self.assertNotIn(self.approved[bad], self.up_mounts())
+
+    def test_after_a_refused_file_a_restart_still_starts_caddy_on_the_verified_one(self):
+        v1 = self.push("v1")
+        self.assertEqual(self.deploy_caddy(v1).returncode, 0)
+        for bad, approved in (("UNREVIEWED", "0" * 64), ("NO_SAMEORIGIN", None)):  # the gate; the live check
+            with self.subTest(bad):
+                proc = self.deploy_caddy(self.push(bad), approved=approved)
+                self.assertNotEqual(proc.returncode, 0)
+                # The refused file is in the checkout; what a restart mounts is still v1.
+                self.assertIn(bad, (self.app / "deploy" / "Caddyfile").read_text())
+                self.assertEqual(self.mounted(), self.approved[v1])
+                self.assertNotIn(bad, (self.state / ".caddyfile.loaded").read_text())
+                # and the next `up` (which a restart amounts to) mounts it too
+                self.docker_log.unlink(missing_ok=True)
+                self.assertNotEqual(self.deploy_caddy(self.push(bad + "2"), approved="1" * 64).returncode, 0)
+                self.assertEqual(self.up_mounts(), [self.approved[v1]])
+
+    def test_the_mounted_bytes_are_the_committed_blob_whatever_gitattributes_say(self):
+        up = self.tmp / "upstream"
+        (up / ".gitattributes").write_text("deploy/Caddyfile text eol=crlf\n")
+        sha = self.push("eol")
+        self.assertEqual(self.deploy_caddy(sha).returncode, 0)
+        self.assertIn(b"\r\n", (self.app / "deploy" / "Caddyfile").read_bytes())
+        self.assertNotIn(b"\r", (self.state / ".caddyfile.loaded").read_bytes())
+        self.assertEqual(self.mounted(), self.approved[sha])
+        self.docker_log.unlink()
+        self.assertEqual(self.deploy_caddy(sha).returncode, 0)
+        self.assertEqual(self.up_mounts(), [self.approved[sha]])
+
+    def clear_entry(self):
+        up = self.tmp / "upstream"
+        target = up / "deploy" / "Caddyfile"
+        if self.git(up, "ls-files", "-s", "--", "deploy/Caddyfile"):
+            self.git(up, "rm", "-q", "-r", "--cached", "deploy/Caddyfile")
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
+        elif target.exists() or target.is_symlink():
+            target.unlink()
+
+    def commit_entry(self, label, kind):
+        """A commit whose deploy/Caddyfile is a directory or a submodule entry, not a file."""
+        up = self.tmp / "upstream"
+        target = up / "deploy" / "Caddyfile"
+        self.clear_entry()
+        if kind == "directory":
+            target.mkdir()
+            (target / "Caddyfile").write_text(self.caddyfile)
+            self.git(up, "add", "-A")
+        else:
+            other = self.git(up, "rev-parse", "HEAD")
+            self.git(up, "update-index", "--add", "--cacheinfo", f"160000,{other},deploy/Caddyfile")
+        self.git(up, "commit", "-q", "-m", label)
+        return self.git(up, "rev-parse", "HEAD")
+
+    def test_a_directory_or_submodule_where_the_caddyfile_should_be_is_refused(self):
+        for kind in ("directory", "submodule"):
+            with self.subTest(kind):
+                # On a server with nothing verified yet: refused before `up`, nothing seeded or started.
+                for f in (".caddyfile.loaded", ".caddyfile.seeded", ".caddyfile.loaded.sha256"):
+                    (self.state / f).unlink(missing_ok=True)
+                self.docker_log.unlink(missing_ok=True)
+                proc = self.deploy_caddy(self.commit_entry(kind, kind), approved="0" * 64)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("is not a regular file in commit", proc.stderr)
+                self.assertEqual(self.up_mounts(), [], "nothing may (re)create Caddy")
+                self.assertFalse((self.state / ".caddyfile.loaded").exists())
+                # With a verified file: Caddy keeps mounting it, and the step refuses the entry.
+                self.clear_entry()
+                v1 = self.push("v1")
+                self.assertEqual(self.deploy_caddy(v1).returncode, 0)
+                self.docker_log.unlink()
+                proc = self.deploy_caddy(self.commit_entry(kind + " again", kind), approved="0" * 64)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("is not a regular file in commit", proc.stderr)
+                self.assertEqual(self.up_mounts(), [self.approved[v1]])
+                self.assertEqual(self.mounted(), self.approved[v1])
+
+    def test_a_first_install_is_seeded_from_the_pinned_blob_after_the_same_checks_before_up(self):
+        sha = self.push("v1")
+        self.assertFalse((self.state / ".caddyfile.loaded").exists())
+        proc = self.deploy_caddy(sha)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        calls = self.docker_calls()
+        oneoff = [i for i, l in enumerate(calls) if l.startswith("ONEOFF ")]
+        up = next(i for i, l in enumerate(calls) if l.startswith("UP mount="))
+        self.assertEqual([calls[i].split()[1] for i in oneoff], ["validate", "adapt"])
+        self.assertTrue(all(i < up for i in oneoff), "checked before anything can start Caddy")
+        # The one-off container was given the candidate itself, the exact pinned bytes.
+        for i in oneoff:
+            self.assertEqual(calls[i].split()[2], self.approved[sha])
+            self.assertEqual(calls[i].split("mount=")[1], self.approved[sha])
+        self.assertEqual(self.up_mounts(), [self.approved[sha]])
+        self.assertIn("seeded", proc.stdout)
+        # Confirmed by the live check: no longer a seed, now the verified file.
+        self.assertFalse((self.state / ".caddyfile.seeded").exists())
+        self.assertEqual((self.state / ".caddyfile.loaded.sha256").read_text().strip(), self.approved[sha])
+        self.assertEqual(stat.S_IMODE((self.state / ".caddyfile.loaded").stat().st_mode), 0o600)
+
+    def test_a_first_install_with_a_file_that_fails_any_check_starts_nothing(self):
+        for label, approved, expect in (
+            ("UNPINNED", "0" * 64, "NOT validated, NOT loaded"),
+            ("SYNTAX", None, "validate refused this commit's; nothing was seeded"),
+            ("NO_HSTS_STATIC", None, "no longer sets: Strict-Transport-Security; nothing was seeded"),
+        ):
+            with self.subTest(label):
+                self.docker_log.unlink(missing_ok=True)
+                proc = self.deploy_caddy(self.push(label), approved=approved)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn(expect, proc.stderr)
+                self.assertEqual(self.up_mounts(), [], "no `up`: nothing may start Caddy on it")
+                self.assertFalse((self.state / ".caddyfile.loaded").exists())
+                self.assertNoTemp()
+
+    def test_an_unconfirmed_seed_is_replaced_by_the_next_commits_and_never_a_rollback_source(self):
+        bad = self.push("NO_SAMEORIGIN")
+        self.assertNotEqual(self.deploy_caddy(bad).returncode, 0)  # seeded, then failed the live check
+        self.assertTrue((self.state / ".caddyfile.seeded").exists())
+        good = self.push("v2")
+        self.docker_log.unlink()
+        proc = self.deploy_caddy(good)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.up_mounts(), [self.approved[good]], "the seed was replaced before `up`")
+        self.assertFalse((self.state / ".caddyfile.seeded").exists())
+
+    def test_a_symlink_or_directory_where_the_mounted_file_lives_is_refused_before_up(self):
+        target = self.state / ".caddyfile.loaded"
+        for kind in ("symlink", "directory"):
+            with self.subTest(kind):
+                if kind == "symlink":
+                    target.symlink_to("/etc/hostname")
+                else:
+                    target.mkdir()
+                self.docker_log.unlink(missing_ok=True)
+                proc = self.deploy_caddy(self.push(kind))
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("Caddy mounts that file", proc.stderr)
+                self.assertEqual(self.up_mounts(), [])
+                target.unlink() if kind == "symlink" else target.rmdir()
+
     def test_the_environment_override_still_wins_over_the_commits_pin(self):
         sha = self.push_with_script("v2", None)
         good = self.approved[sha]
@@ -1057,6 +1251,10 @@ FAKE_DOCKER_REAL_CADDY = textwrap.dedent(
       *" exec -T caddy caddy "*)
         # shellcheck disable=SC2086
         DOMAIN="http://example.test:$SIM_PORT" ACME_EMAIL=ops@example.com exec "$SIM_CADDY" ${all##* exec -T caddy caddy } ;;
+      # caddy_prepare_mount's one-off container: the same binary, the candidate on stdin.
+      *" run --rm --no-deps -T caddy caddy "*)
+        # shellcheck disable=SC2086
+        DOMAIN="http://example.test:$SIM_PORT" ACME_EMAIL=ops@example.com exec "$SIM_CADDY" ${all##* -T caddy caddy } ;;
       *" ps -q web"|*" ps -aq web") echo cid123 ;;
       inspect*) echo healthy ;;
     esac

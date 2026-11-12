@@ -69,11 +69,18 @@ Xavfsizlik:
 
 ### Caddyfile o'zgarsa (avtomatik reload)
 
-`deploy/Caddyfile` konteynerga bitta fayl sifatida ulangan, shuning uchun faqat
-shu fayl o'zgarsa `docker compose up` Caddy'ni qayta yaratmaydi va u eski
-konfigda qolardi. Deploy'ning oxirgi qadami (`remote-deploy.sh`, "caddy: ...";
-worker qadamlaridan keyin, shuning uchun worker xato bersa reload bo'lmaydi)
-shuni tuzatadi, **restart qilmasdan**:
+Caddy konteyneri checkout'dagi `deploy/Caddyfile`ni **emas**, oxirgi
+**tasdiqlangan** faylni ulaydi: `/opt/nightshift/.caddyfile.loaded`
+(`docker-compose.yml`, `CADDYFILE_LOADED`). Bu faylni faqat deploy yozadi —
+qulf, `validate`, himoya ro'yxati va jonli tekshiruvdan **keyin**, commit'ning
+o'zidan olingan nusxadan, atomar (`mv`). Shuning uchun `docker compose up`
+(6-qadam, tekshiruvdan oldin ishlaydi va `caddy` servisi o'zgarsa Caddy'ni qayta
+yaratadi), server reboot'i yoki `restart: unless-stopped` Caddy'ni hech qachon rad
+etilgan, hali tekshirilmagan yoki `.gitattributes` o'zgartirgan baytlar bilan
+ishga tushirmaydi. Fayl yo'q bo'lsa compose xato beradi (o'rniga bo'sh papka
+yaratmaydi). Ishlab turgan Caddy'ga yangi fayl esa deploy'ning oxirgi qadamida
+(`remote-deploy.sh`, "caddy: ..."; worker qadamlaridan keyin, shuning uchun
+worker xato bersa reload bo'lmaydi) yetkaziladi, **restart qilmasdan**:
 
 0. **Qulf (asosiy nazorat).** `deploy/remote-deploy.sh`da `CADDYFILE_APPROVED_SHA256` —
    tasdiqlangan `deploy/Caddyfile`ning sha256 qiymati (baytma-bayt,
@@ -106,6 +113,15 @@ shuni tuzatadi, **restart qilmasdan**:
    Eski deploy'ni qayta ishga tushirish (ilovani orqaga qaytarish kabi) endi o'sha
    commit'ning Caddyfile'ini yuklaydi — agar u header shartnomasidan (2-band va
    jonli tekshiruv) o'tsa.
+
+   **Birinchi o'rnatish (tasdiqlangan fayl hali yo'q).** 6-qadamdan **oldin**
+   deploy uni commit'ning qulflangan blob'idan yaratadi ("seeded"): xuddi shu
+   qulf, so'ng `caddy validate` va himoya ro'yxati — `caddy` servisining bir
+   martalik konteynerida (`compose run --rm --no-deps`, port ochmaydi). Biror
+   tekshiruv o'tmasa deploy 6-qadamdan oldin to'xtaydi va Caddy ishga
+   tushirilmaydi. Jonli tekshiruv tasdiqlamaguncha fayl "seed" deb belgilanadi
+   (`.caddyfile.seeded`): u qaytarish manbai emas va keyingi deploy uni o'z
+   commit'iniki bilan almashtiradi. Hech qachon ishchi papkadagi fayldan emas.
 1. `caddy validate` (konteyner ichida, fayl `main`dagi commit'dan stdin orqali
    beriladi). Konteyner umuman ishlamayotgan bo'lsa (to'xtagan/restart loop)
    alohida xabar chiqadi — fayl ayblanmaydi.
@@ -119,7 +135,8 @@ shuni tuzatadi, **restart qilmasdan**:
 4. Biror narsa noto'g'ri bo'lsa — oldingi konfig qayta yuklanadi, deploy
    **qizil** bo'ladi va logda sababi (header nomi, yo'l) ko'rinadi. Qaytarish
    manbai (yaxshidan yomonga): oxirgi tasdiqlangan Caddyfile
-   (`/opt/nightshift/.caddyfile.loaded`) → reload oldidan olingan ishlayotgan
+   (`/opt/nightshift/.caddyfile.loaded`; "seed" bo'lsa o'tkazib yuboriladi) →
+   reload oldidan olingan ishlayotgan
    konfig (`.caddy-running.json`, Caddy admin API'dan; birinchi ishga tushishda)
    → oldingi commit'dagi fayl (`.caddyfile.fallback`, oxirgi chora).
 
@@ -135,16 +152,17 @@ sertifikati bilan ishlaydi; Cloudflare Origin CA sertifikati bilan noto'g'ri
 "qizil" berardi; `DOMAIN` o'zgargandan keyin yangi sertifikat 30 soniyadan
 uzoq olinishi mumkin (qayta deploy xavfsiz).
 
-**Qulf faqat reload qadamini qo'riqlaydi.** `docker compose up -d --build`
-undan **oldin** ishlaydi va `./Caddyfile`ni ulaydi: shuning uchun `docker-compose.yml`dagi
-`caddy` servisini tahrirlash, yoki keyinroq Caddy'ning qayta ishga tushishi/qayta
-yaratilishi (masalan server reboot'i) Caddy'ni hozir checkout qilingan
-Caddyfile bilan ishga tushiradi. Rad etilgan deploy'dan keyin tasdiqlanmagan
-fayl serverda checkout qilingan holda qoladi (Caddy esa eski konfigda ishlashda
-davom etadi, reboot'gacha). Shuning uchun `docker-compose.yml`dagi `caddy`
-bloki o'zgarishlarini ham Caddyfile o'zgarishi kabi ko'rib chiqing. (Qadam
-faylni bir marta nusxalaydi va hash, validate, reload hamda saqlangan zaxira
-aynan shu nusxadan olinadi; symlink rad etiladi.)
+**Qayta yaratish va reboot ham faqat tasdiqlangan faylni ko'radi.** Avval
+Caddy checkout'dagi `./Caddyfile`ni ulardi: 6-qadam (`compose up`) qulfdan
+**oldin** ishlagani uchun `caddy` servisi o'zgargan commit Caddy'ni
+tekshirilmagan fayl bilan qayta yaratishi, rad etilgan fayl esa keyingi
+reboot'da yuklanishi mumkin edi. Endi ulangan fayl —
+`/opt/nightshift/.caddyfile.loaded`, u faqat tekshiruvdan keyin yoziladi, va
+6-qadamdan oldin mavjudligi ta'minlanadi. `docker-compose.yml`dagi `caddy`
+blokining boshqa o'zgarishlari (masalan image digest'i) oddiy kod kabi PR'da ko'rib
+chiqiladi. (Qadam commit'dagi faylni bir marta nusxalaydi va hash, validate,
+reload hamda saqlangan, ulanadigan nusxa aynan shu baytlardan olinadi; symlink,
+papka va submodule rad etiladi.)
 
 **Qulfni yangilovchi PR: endi bitta deploy yetadi.** SSH majburiy buyrug'i
 serverdagi *hozirgi* checkout'dagi `remote-deploy.sh`ni ishga tushiradi (u yangi
@@ -550,6 +568,21 @@ EOF
 chmod 600 ~/.ssh/config
 git clone git@github.com:ruslanjurakulov/nightshift-ai-studio.git /opt/nightshift/app
 ```
+
+Caddy ulaydigan tasdiqlangan Caddyfile (yangi serverda birinchi `dc up`dan
+oldin, bir marta; keyin uni faqat deploy yozadi). Hash skriptdagi qiymatga
+mos kelishini tekshiring, mos kelmasa davom etmang:
+
+```bash
+cd /opt/nightshift/app
+git cat-file blob HEAD:deploy/Caddyfile > /tmp/Caddyfile.verified
+sha256sum /tmp/Caddyfile.verified
+grep '^CADDYFILE_APPROVED_SHA256=' deploy/remote-deploy.sh   # ikkala hash bir xil bo'lsin
+install -m 600 /tmp/Caddyfile.verified /opt/nightshift/.caddyfile.loaded && rm /tmp/Caddyfile.verified
+```
+
+(Avtomatik deploy ishlatilsa bu qadam shart emas: fayl yo'q bo'lsa deploy uni
+xuddi shu tekshiruvlar bilan o'zi yaratadi.)
 
 Qulaylik uchun qisqa buyruq (`dc`) qo'shamiz — keyingi barcha qadamlar shuni ishlatadi:
 

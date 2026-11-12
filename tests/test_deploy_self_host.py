@@ -191,6 +191,28 @@ class ComposeConfigTests(unittest.TestCase):
         targets = {v["target"] for v in self.config["services"]["caddy"]["volumes"]}
         self.assertIn("/data", targets)
 
+    def test_caddy_mounts_the_last_verified_caddyfile_never_the_checkout(self):
+        # deploy/remote-deploy.sh writes that file only after the pin, validate, the contract and the live
+        # check; `up` (step 6, before the check), a reboot or a restart must never find the checkout's.
+        [mount] = [v for v in self.config["services"]["caddy"]["volumes"] if v["target"] == "/etc/caddy/Caddyfile"]
+        self.assertEqual(mount["type"], "bind")
+        self.assertEqual(mount["source"], "/opt/nightshift/.caddyfile.loaded")
+        self.assertTrue(mount["read_only"])
+        # A missing file is an error, never an empty directory created in its place.
+        self.assertFalse(mount["bind"]["create_host_path"])
+        sources = [v.get("source", "") for v in self.config["services"]["caddy"]["volumes"]]
+        self.assertFalse([x for x in sources if x.endswith("deploy/Caddyfile")], sources)
+
+    def test_the_deploy_points_the_mount_at_its_own_state_directory(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("NEXT_PUBLIC_")}
+        env.update(DOMAIN="app.example.com", ACME_EMAIL="admin@example.com",
+                   NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
+                   WEB_ENV_FILE=str(ENV_EXAMPLE), CADDYFILE_LOADED="/srv/state/.caddyfile.loaded")
+        out = subprocess.run(["docker", "compose", "-f", str(COMPOSE), "config", "--format", "json"],
+                             capture_output=True, text=True, env=env, timeout=60, check=True).stdout
+        [mount] = [v for v in json.loads(out)["services"]["caddy"]["volumes"] if v["target"] == "/etc/caddy/Caddyfile"]
+        self.assertEqual(mount["source"], "/srv/state/.caddyfile.loaded")
+
     def test_missing_domain_fails_loudly_instead_of_serving_a_blank_site(self):
         # Only DOMAIN is missing: compose reports the first unset required
         # variable it meets, in no fixed order, so every other one is set.
@@ -348,9 +370,10 @@ class CaddyMicrophoneTests(unittest.TestCase):
 class CaddyReloadStepTests(unittest.TestCase):
     """deploy/remote-deploy.sh makes a Caddyfile change take effect, and only a safe one.
 
-    The Caddyfile is bind-mounted, so `compose up` does not reload Caddy when only
-    that file changed (PR #426's framing rule sat unapplied on the server). The
-    deploy now validates, guards, reloads, verifies and rolls back. Behaviour is
+    A bind-mounted Caddyfile does not reload Caddy when only that file changed (PR
+    #426's framing rule sat unapplied on the server), so the deploy validates,
+    guards, reloads, verifies and rolls back; and Caddy mounts only the last
+    VERIFIED file ($CADDY_STATE_DIR/.caddyfile.loaded), never the checkout's. Behaviour is
     exercised in tests/test_deploy_gha.py; these pin the structure and the contract.
     """
 
@@ -441,24 +464,53 @@ class CaddyReloadStepTests(unittest.TestCase):
             "CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh in the same PR",
         )
         apply_ = self.body("caddy_apply")
-        gate = apply_.index('"$newsha" != "$approved"')
+        snap = self.body("caddy_snapshot")
+        gate = snap.index('"$newsha" != "$approved"')
+        self.assertIn("die ", snap[gate : gate + 400])
+        # The gate (caddy_snapshot) runs before anything reaches Caddy, in both places a file comes from.
+        call = apply_.index('caddy_snapshot "$sha" "$snap"')
         for later in ("compose exec", "caddy_exec", "caddy_reload"):
-            self.assertLess(gate, apply_.index(later), later)
-        self.assertIn("die ", apply_[gate : gate + 400])
+            self.assertLess(call, apply_.index(later), later)
+        prep = self.body("caddy_prepare_mount")
+        self.assertLess(prep.index('caddy_snapshot "$sha" "$seed"'), prep.index("compose run"))
+        self.assertLess(prep.index('caddy_snapshot "$sha" "$seed"'), prep.index('mv -f "$seed" "$loaded"'))
         # Names and short hashes only.
-        self.assertIn("${newsha:0:12}", apply_)
-        self.assertNotIn('${newsha}', apply_)
+        self.assertIn("${newsha:0:12}", snap)
+        self.assertNotIn('${newsha}', snap + apply_)
         # The service is checked before the file is judged by it.
         self.assertLess(apply_.index("caddy true"), apply_.index("caddy_exec validate"))
+
+    def test_the_compose_default_is_where_every_deployed_script_keeps_the_verified_file(self):
+        # Rollout: this change's own merge deploy runs the PREVIOUS script, which does not set
+        # CADDYFILE_LOADED. Compose then falls back to its default, and that must be the very file the
+        # previous scripts already write after each verified load ($CADDY_STATE_DIR = the env file's
+        # directory, /opt/nightshift), so the recreate that the new mount causes starts Caddy on it.
+        compose = (DEPLOY / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("${CADDYFILE_LOADED:-/opt/nightshift/.caddyfile.loaded}", compose)
+        self.assertIn('ENV_FILE="${NIGHTSHIFT_ENV_FILE:-/opt/nightshift/.env.web}"', self.code)
+        self.assertIn('CADDY_STATE_DIR="${NIGHTSHIFT_CADDY_STATE_DIR:-$(dirname "$ENV_FILE")}"', self.code)
+        self.assertIn('loaded="$dir/.caddyfile.loaded"', self.body("caddy_apply"))
+
+    def test_compose_is_always_pointed_at_the_verified_file_and_it_is_ready_before_step_6(self):
+        self.assertIn('CADDYFILE_LOADED="${CADDY_MOUNT:-$CADDY_STATE_DIR/.caddyfile.loaded}"', self.body("compose"))
+        main = self.body("main")
+        self.assertLess(main.index("checkout --quiet -B main"), main.index('caddy_prepare_mount "$sha"'))
+        self.assertLess(main.index('caddy_prepare_mount "$sha"'), main.index("compose up -d --build --remove-orphans web caddy"))
+        # The verified file is written over the mounted path only after the live check.
+        apply_ = self.body("caddy_apply")
+        self.assertLess(apply_.index('caddy_verify "$host" full'), apply_.index('mv -f "$snap" "$loaded"'))
+        # Rollback never uses a seed that no live check confirmed.
+        self.assertIn('! -e "$dir/.caddyfile.seeded"', self.body("caddy_rollback"))
 
     def test_the_pin_is_the_deployed_commits_not_the_running_copys(self):
         # bash runs the pre-checkout copy of this script, so its own CADDYFILE_APPROVED_SHA256 is the
         # previous commit's. The gate must take the deployed commit's line (or the env override).
-        apply_ = self.body("caddy_apply")
+        apply_ = self.body("caddy_snapshot")
         pin_of = self.body("caddy_pin_of")
         self.assertIn('git -C "$APP_DIR" show "${sha}:deploy/remote-deploy.sh"', pin_of)
         self.assertIn('[[ "$pins" =~ ^[0-9a-f]{64}$ ]]', pin_of)  # exactly one line, exactly 64 hex
-        self.assertNotIn("$CADDYFILE_APPROVED_SHA256", apply_, "the running copy's value must not be the gate")
+        for name in ("caddy_snapshot", "caddy_apply", "caddy_prepare_mount"):
+            self.assertNotIn("$CADDYFILE_APPROVED_SHA256", self.body(name), f"{name}: the running copy's value must not be the gate")
         override = apply_.index('-n "${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-}"')
         self.assertLess(override, apply_.index('approved="$(caddy_pin_of "$sha")"'))
         self.assertLess(apply_.index('approved="$(caddy_pin_of "$sha")"'), apply_.index('"$newsha" != "$approved"'))
@@ -529,14 +581,19 @@ class CaddyReloadStepTests(unittest.TestCase):
 
     def test_the_file_is_copied_once_and_that_copy_is_hashed_fed_and_kept(self):
         apply_ = self.body("caddy_apply")
+        snap = self.body("caddy_snapshot")
         # The copy is the deployed commit's blob, never the working-tree file (no .gitattributes filter
-        # or eol conversion between the commit and the hash); a symlink entry is refused before it.
-        read = 'git -C "$APP_DIR" cat-file blob "${sha}:deploy/Caddyfile" >"$snap"'
-        self.assertIn('ls-tree "$sha" -- deploy/Caddyfile', apply_)
-        self.assertLess(apply_.index("120000) die"), apply_.index(read))
-        self.assertLess(apply_.index(read), apply_.index('sha256sum "$snap"'))
-        # The working-tree path is never read for the gate or fed to Caddy.
-        self.assertNotRegex(apply_, r'<\s*"\$new"|sha256sum "\$new"|cp "\$new"|caddy_reload "\$new"')
+        # or eol conversion between the commit and the hash); a symlink entry is refused before it,
+        # and so is anything that is not a regular file (a directory, a submodule).
+        read = 'git -C "$APP_DIR" cat-file blob "${sha}:deploy/Caddyfile" >"$dest"'
+        self.assertIn('ls-tree "$sha" -- deploy/Caddyfile', snap)
+        self.assertLess(snap.index("120000) die"), snap.index(read))
+        self.assertLess(snap.index("100644 | 100755) ;;"), snap.index("*) die"))
+        self.assertLess(snap.index(read), snap.index('sha256sum "$dest"'))
+        # The working-tree path is never read for the gate, fed to Caddy, or mounted.
+        for body in (apply_, snap, self.body("caddy_prepare_mount")):
+            self.assertNotIn("deploy/Caddyfile\"", body.replace('${sha}:deploy/Caddyfile"', ""))
+            self.assertNotRegex(body, r'<\s*"\$new"|sha256sum "\$new"|cp "\$new"|caddy_reload "\$new"')
         for fed in ('validate --config - --adapter caddyfile <"$snap"', 'adapt --config - --adapter caddyfile <"$snap"', 'caddy_reload "$snap"', 'mv -f "$snap" "$loaded"'):
             self.assertIn(fed, apply_)
         # The temporary copy is removed on every way out and the trap does not touch the exit code.

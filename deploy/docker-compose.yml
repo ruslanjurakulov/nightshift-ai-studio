@@ -122,7 +122,19 @@ services:
       DOMAIN: ${DOMAIN:?set DOMAIN in the env file}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in the env file}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The LAST VERIFIED Caddyfile, never deploy/Caddyfile from the checkout:
+      # deploy/remote-deploy.sh writes this file only after the pinned hash,
+      # validate, the header contract and the live check passed (and seeds it
+      # the same way on a server that has none). So `up` recreating Caddy, a
+      # reboot or a restart never starts it on a Caddyfile that was refused or
+      # not yet checked, or on bytes a checkout rewrote. A missing file is an
+      # error, never an empty directory created in its place.
+      - type: bind
+        source: ${CADDYFILE_LOADED:-/opt/nightshift/.caddyfile.loaded}
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
       # Certificates and ACME account. Losing this means re-issuing, and
       # re-issuing too often hits Let's Encrypt rate limits — back it up.
       - caddy_data:/data
