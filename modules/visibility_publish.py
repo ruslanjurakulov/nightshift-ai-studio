@@ -25,7 +25,11 @@ the one change this feature exists for: ``videos.update`` with ``status.privacyS
 5. ``videos.update(part="status")`` ONCE, with the video's current writable status fields and ``privacyStatus`` public
    (the call replaces every field of the part it names, so the rest is sent back as read; never ``snippet``). If the fresh
    read did not contain ``selfDeclaredMadeForKids`` and a ``privacyStatus`` the call is not made (``status_unreadable``):
-   a status object without them would reset them. The request is marked ``submitting`` in the database right before, by
+   a status object without them would reset them. One field is not simply sent back: ``selfDeclaredMadeForKids`` is the
+   declaration RECORDED for the video (migration 0140: what its upload declared, or what a person decided on the review
+   page) when there is one, and the one read otherwise; kids content recorded "not made for kids" with nobody's
+   confirmation is refused (``gate_blocked``) and a record that cannot be read is retried, never guessed
+   (``declared_for_kids``, modules/made_for_kids.py). The request is marked ``submitting`` in the database right before, by
    the function that makes the last check.
 6. THE ANSWER IS NOT BELIEVED: the privacy is READ BACK. ``applied`` only when YouTube then says ``public``. A call that
    succeeded while the video stays private (an API project that has not passed YouTube's compliance audit gets its videos
