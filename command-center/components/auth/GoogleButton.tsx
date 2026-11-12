@@ -51,8 +51,8 @@ function GoogleG() {
  * components/auth/GoogleEnabled.tsx; isGoogleEnabled is the browser fallback); until the owner switches it on, the page is the
  * plain email form. A failure that comes back in the URL is still explained.
  *
- * The line under the button carries the same consent the sign-up form's
- * checkbox does, on /login as well as /signup: with sign-up open, a Google
+ * The line under the button carries the same consent (Terms, Privacy and the 18-or-older confirmation) the sign-up form's
+ * checkboxes do, on /login as well as /signup: with sign-up open, a Google
  * address that has no account yet gets one from either page, and neither goes
  * through that form.
  */
