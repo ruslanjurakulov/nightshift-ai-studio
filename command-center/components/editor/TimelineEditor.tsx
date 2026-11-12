@@ -133,8 +133,6 @@ import { TimelineStrip, pictureEnd, type Selection, type ToolOp } from "./Timeli
 import { GuidesControls, MarksBar, PreviewGuides, SplitEditTools, ToolPicker, type EditTool } from "./EditCore";
 import {
   NO_MARKS,
-  extractRange,
-  insertAt,
   liftRange,
   markedRange,
   setMark,
@@ -246,6 +244,33 @@ import { useExportPoll } from "./useExportPoll";
 import { TimelineViewBar } from "./TimelineViewBar";
 import { useTimelineView } from "./useTimelineView";
 import { useEditorShortcuts } from "./useEditorShortcuts";
+import { LookTools, PasteLookDialog, SelectionBar, SyncLockBar } from "./ReuseControls";
+import { SyncLocksContext } from "./syncLockContext";
+import { NO_LOCKS, extractInSync, insertInSync, loadLocks, saveLocks, syncLock, type SyncLocks } from "@/lib/editorSync";
+import {
+  clipboardSize,
+  copyItems,
+  existing,
+  hasItem,
+  moveClips,
+  nudgeItems,
+  pasteItems,
+  removeItems,
+  selectFrom,
+  toggleItem,
+  type Item,
+  type ItemsClipboard,
+} from "@/lib/editorSelection";
+import {
+  copyLook,
+  loadPresets,
+  pasteLook,
+  savePresets,
+  withPreset,
+  type Look,
+  type LookGroup,
+  type LookPreset,
+} from "@/lib/editorPasteLook";
 import { usePlayheadScrub } from "./usePlayheadScrub";
 import { useStickyOffsets } from "./useStickyOffsets";
 import { formatDayTime } from "@/lib/date-format";
@@ -414,6 +439,27 @@ export function TimelineEditor({
     const first = toModel(doc).clips[0];
     return first ? { kind: "clip", id: first.id } : null;
   });
+  // Several selected items (editor state, never saved): empty = just `selected`, the one the inspector shows.
+  const [multi, setMulti] = useState<Item[]>([]);
+  // Select mode: the touch way to build a selection (a tap adds or takes out); a long press on an item turns it on.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selStatus, setSelStatus] = useState<string | null>(null);
+  // A copied selection of several items (Ctrl + V pastes it), and a copied look (paste attributes), both this tab's.
+  const [itemsBoard, setItemsBoard] = useState<ItemsClipboard | null>(null);
+  const [lookBoard, setLookBoard] = useState<{ look: Look; from: number | null } | null>(null);
+  const [lookOpen, setLookOpen] = useState(false);
+  const [presets, setPresets] = useState<LookPreset[]>([]);
+  // Sync lock per lane (lib/editorSync.ts): nothing locked unless this browser remembers otherwise.
+  const [locks, setLocksState] = useState<SyncLocks>(NO_LOCKS);
+  const setLocks = (l: SyncLocks) => {
+    setLocksState(l);
+    saveLocks(l);
+  };
+  // Read after the first render: the server has no browser storage, and a differing first render would not hydrate.
+  useEffect(() => {
+    setLocksState(loadLocks());
+    setPresets(loadPresets(userId));
+  }, [userId]);
   const [playhead, setPlayhead] = useState(0);
   // The editor's own clipboard: one picture clip of this project (copy / paste), never the system's.
   const [clipboard, setClipboard] = useState<VideoClip | null>(null);
@@ -588,6 +634,12 @@ export function TimelineEditor({
     setModel(past[past.length - 1]);
     setPast(past.slice(0, -1));
   }, [model, past, future]);
+  // A ripple edit of the picture (a clip removed, a trim, a gap closed, a paste): the lanes that follow it move in
+  // step (sync lock), in the same undo step.
+  const ripple = useCallback(
+    (raw: EditorModel, group?: string) => apply(syncLock(model, raw, locks), group),
+    [apply, model, locks],
+  );
   const redo = useCallback(() => {
     if (!future.length) return;
     gesture.current = null;
@@ -671,6 +723,18 @@ export function TimelineEditor({
     )
       setSelected(null);
   }, [model, selected]);
+
+  // Selected items the model no longer has (undo, delete) are no longer selected; a click on one item alone ends a
+  // selection of several.
+  useEffect(() => {
+    if (!multi.length) return;
+    const kept = existing(model, multi);
+    if (kept.length < 2) setMulti([]);
+    else if (kept.length !== multi.length) setMulti(kept);
+  }, [model, multi]);
+  useEffect(() => {
+    if (multi.length && (!selected || !hasItem(multi, selected))) setMulti([]);
+  }, [selected, multi]);
 
   useEffect(() => {
     if (playhead > total) setPlayhead(total);
@@ -806,7 +870,11 @@ export function TimelineEditor({
 
   // Timeline zoom and snapping, the single-key shortcuts, the playhead slider's snapping.
   const view = useTimelineView({ total, playhead });
-  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; }, onShapeRemoved: () => { shapeFocus.current = "add"; }, clipboard, setClipboard, onClipInserted: (id) => setSelected({ kind: "clip", id }), onCore: (a) => onCore(a) });
+  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, ripple, view, onOverlayRemoved: () => { overlayFocus.current = "add"; }, onShapeRemoved: () => { shapeFocus.current = "add"; }, clipboard, setClipboard: (c) => onCopyClip(c), onClipInserted: (id) => setSelected({ kind: "clip", id }), onCore: (a) => onCore(a), onRemoveMany: () => onRemoveSelection(), onCopyMany: () => onCopySelection(), onPasteMany: () => onPasteSelection(), onNudge: (f) => {
+    if (!selection.some((x) => x.kind !== "clip")) return false;
+    onNudgeSelection(f);
+    return true;
+  }, onPasteAttributes: () => setLookOpen(true) });
   const scrub = usePlayheadScrub({ clips, model, view, setPlayhead, setPlaying });
 
   async function refreshLinks() {
@@ -1036,10 +1104,12 @@ export function TimelineEditor({
     if (!commit) {
       // While dragging: change what is shown, keep one history step for the whole drag.
       if (!dragBase.current) dragBase.current = model;
-      setModel(trimLimited(model, id, edge, value, srcLen(c)));
+      // Measured from where the drag started, so the lanes that follow (sync lock) move by the whole drag once.
+      const base = dragBase.current;
+      setModel(syncLock(base, trimLimited(base, id, edge, value, srcLen(c)), locks));
       return;
     }
-    apply(trimLimited(model, id, edge, value, srcLen(c)));
+    ripple(trimLimited(model, id, edge, value, srcLen(c)));
   }
 
   function onTrimEnd() {
@@ -1106,7 +1176,7 @@ export function TimelineEditor({
         : core.marks.problem[p];
   function onExtract() {
     if (!range) return setCoreStatus(core.marks.problem.no_range);
-    const out = extractRange(model, range[0], range[1]);
+    const out = extractInSync(model, range[0], range[1], locks);
     if ("problem" in out) return setCoreStatus(rangeProblem(out.problem));
     setPlaying(false);
     apply(out.model);
@@ -1123,7 +1193,7 @@ export function TimelineEditor({
   }
   function onInsert() {
     if (!clipboard) return setCoreStatus(core.marks.noClipboard);
-    const out = insertAt(model, clipboard, playhead);
+    const out = insertInSync(model, clipboard, playhead, locks);
     if ("problem" in out) return setCoreStatus(rangeProblem(out.problem));
     apply(out.model);
     setSelected({ kind: "clip", id: out.id });
@@ -1154,7 +1224,7 @@ export function TimelineEditor({
         const out = rippleTrimTo(model, playhead, action === "rippleHead" ? "head" : "tail");
         if (!out) return setCoreStatus(core.ripple.none);
         setPlaying(false);
-        apply(out.model);
+        ripple(out.model);
         setPlayhead(out.playhead);
         setCoreStatus(null);
         return;
@@ -1174,6 +1244,138 @@ export function TimelineEditor({
       case "toolSlide":
         return setTool("slide");
     }
+  }
+
+  // ── several selected items: what the selection bar, the keys and the paste-attributes dialog do ──
+  const rs = te.reuse.select;
+  const lk = te.reuse.look;
+  const selection: Item[] = multi.length ? multi : selected ? [selected] : [];
+  const clipNumber = (id: string) => clips.findIndex((c) => c.id === id) + 1;
+  /** A selection made of `list`, the inspector showing `primary` (or the one it shows already, or the last). */
+  function setSelection(list: Item[], primary: Item | null = null) {
+    if (list.length <= 1) {
+      setMulti([]);
+      setSelected(list[0] ?? null);
+      return;
+    }
+    setMulti(list);
+    setSelected(
+      primary && hasItem(list, primary) ? primary : selected && hasItem(list, selected) ? selected : list[list.length - 1],
+    );
+  }
+  function onSelectOne(s: Selection) {
+    setSelected(s);
+    setMulti([]);
+  }
+  function onToggleItem(x: Item, via?: "hold") {
+    if (via === "hold") {
+      // A long press starts a selection of its own (not with the clip that was selected by default), or adds to the
+      // one being made; it never takes the pressed item out.
+      if (!selectMode && !multi.length) setSelection([x], x);
+      else if (!hasItem(selection, x)) setSelection([...selection, x], x);
+      setSelStatus(null);
+      return;
+    }
+    const next = toggleItem(selection, x);
+    setSelection(next, hasItem(next, x) ? x : null);
+    setSelStatus(null);
+  }
+  function onMarqueeItems(items: Item[], add: boolean) {
+    const next = add ? [...selection, ...items.filter((x) => !hasItem(selection, x))] : items;
+    setSelection(next, items[0] ?? null);
+    setSelStatus(null);
+  }
+  function onSelectForward() {
+    setSelection(selectFrom(model, playhead));
+    setSelStatus(null);
+  }
+  function onRemoveSelection(): boolean {
+    if (selection.length < 2) return false;
+    const out = removeItems(model, selection, locks);
+    if (!out.removed) return true;
+    apply(out.model);
+    const kept = out.keptClip;
+    setSelection(kept ? [{ kind: "clip", id: kept }] : []);
+    setSelStatus(
+      fmt(rs.removed[countForm(out.removed, locale)], { n: out.removed }) +
+        (kept ? ` ${fmt(rs.keptClip, { n: layout(out.model.clips).findIndex((c) => c.id === kept) + 1 })}` : ""),
+    );
+    return true;
+  }
+  function onMoveSelection(by: -1 | 1) {
+    const next = moveClips(model, selection, by);
+    if (next === model) return setSelStatus(rs.movedNone);
+    apply(next);
+    setSelStatus(null);
+  }
+  function onNudgeSelection(frames: number) {
+    const r = nudgeItems(model, selection, frames / model.fps);
+    if (!r.moved || !r.by) return setSelStatus(rs.nudgeNone);
+    apply(r.model);
+    setSelStatus(fmt(rs.nudged, { s: (r.by > 0 ? "+" : "") + r.by.toFixed(3) }));
+  }
+  /** Copy of one clip (the clipboard it always had) also copies its look, and ends a copied selection. */
+  function onCopyClip(c: VideoClip) {
+    setClipboard(c);
+    setItemsBoard(null);
+    setLookBoard({ look: copyLook(c), from: clipNumber(c.id) || null });
+  }
+  function onCopySelection(): boolean {
+    if (selection.length < 2) return false;
+    const board = copyItems(model, selection);
+    const n = clipboardSize(board);
+    setItemsBoard(board);
+    if (board.clips[0]) {
+      setClipboard(board.clips[0]);
+      setLookBoard({ look: copyLook(board.clips[0]), from: clipNumber(board.clips[0].id) || null });
+    }
+    setSelStatus(fmt(rs.copied[countForm(n, locale)], { n }));
+    return true;
+  }
+  function onPasteSelection(): boolean {
+    if (!itemsBoard || clipboardSize(itemsBoard) < 2) return false;
+    const after = selected?.kind === "clip" ? selected.id : (clips[clips.length - 1]?.id ?? null);
+    const out = pasteItems(model, itemsBoard, after, playhead, { locks, isVideoAsset });
+    if (out.items.length) {
+      apply(out.model);
+      setSelection(out.items, out.items[0]);
+    }
+    setSelStatus(
+      [
+        out.items.length ? fmt(rs.pasted[countForm(out.items.length, locale)], { n: out.items.length }) : "",
+        out.skipped ? fmt(rs.pasteSkipped, { n: out.skipped }) : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+    return true;
+  }
+  const lookTargets = selection.filter((x) => x.kind === "clip").map((x) => x.id);
+  function onPasteLook(look: Look, groups: LookGroup[]) {
+    const out = pasteLook(model, lookTargets, look, groups, kindOf);
+    if (out.changed) apply(out.model);
+    const skip = out.skipped
+      .map((k) => fmt(k.why === "kind" ? lk.skipKind : lk.skipInvalid, { n: clipNumber(k.clip), group: lk.group[k.group] }))
+      .join("; ");
+    setSelStatus(
+      (out.changed ? fmt(lk.done[countForm(out.changed, locale)], { n: out.changed }) : lk.nothing) +
+        (skip ? ` ${fmt(lk.skipped, { list: skip })}` : ""),
+    );
+    setLookOpen(false);
+  }
+  function onSavePreset(name: string): string {
+    if (!lookBoard) return lk.noSource;
+    const r = withPreset(presets, name, lookBoard.look);
+    if ("problem" in r) return lk.problem[r.problem];
+    if (!savePresets(r.list, userId)) return lk.problem.storage;
+    setPresets(r.list);
+    return fmt(lk.saved, { name: r.list[r.list.length - 1].name });
+  }
+  function onDeletePreset(name: string): string {
+    const list = presets.filter((p) => p.name !== name);
+    savePresets(list, userId);
+    setPresets(list);
+    return fmt(lk.deleted, { name });
   }
 
   function onSplit() {
@@ -1875,7 +2077,7 @@ export function TimelineEditor({
             marks={marks}
             onToolEdit={onToolEdit}
             onToolEditEnd={onToolEditEnd}
-            onCloseGap={(id) => apply(closeGap(model, id))}
+            onCloseGap={(id) => ripple(closeGap(model, id))}
             view={view}
             clips={clips}
             texts={model.texts}
@@ -1886,11 +2088,47 @@ export function TimelineEditor({
             fps={model.fps}
             playhead={playhead}
             selected={selected}
+            multi={multi}
+            onToggle={onToggleItem}
+            onMarquee={onMarqueeItems}
+            selectMode={selectMode}
+            onSelectMode={setSelectMode}
             assets={assets}
-            onSelect={setSelected}
+            onSelect={onSelectOne}
             onTrim={onTrim}
             onTrimEnd={onTrimEnd}
             beats={model.sounds.flatMap((x) => (beatsBySound[x.id] ? beatTimes(x, beatsBySound[x.id]) : []))}
+          />
+          <SelectionBar
+            count={selection.length}
+            selectMode={selectMode}
+            onSelectMode={setSelectMode}
+            onForward={onSelectForward}
+            onClear={() => {
+              setSelection(selected ? [selected] : []);
+              setSelectMode(false);
+              setSelStatus(null);
+            }}
+            onRemove={() => void onRemoveSelection()}
+            onMove={onMoveSelection}
+            onNudge={onNudgeSelection}
+            onCopy={() => void onCopySelection()}
+            onPasteLook={() => setLookOpen(true)}
+            canMove={selection.some((x) => x.kind === "clip")}
+            canNudge={selection.some((x) => x.kind !== "clip")}
+            status={selStatus}
+          />
+          <SyncLockBar locks={locks} onLocks={setLocks} />
+          <PasteLookDialog
+            open={lookOpen}
+            onClose={() => setLookOpen(false)}
+            copied={lookBoard?.look ?? null}
+            copiedFrom={lookBoard?.from ?? null}
+            presets={presets}
+            targets={lookTargets.length}
+            onPaste={onPasteLook}
+            onSavePreset={onSavePreset}
+            onDeletePreset={onDeletePreset}
           />
           <MarksBar
             range={range}
@@ -2313,10 +2551,10 @@ export function TimelineEditor({
               first={clipIndex === 0}
               last={clipIndex === clips.length - 1}
               onIn={(v) =>
-                apply(trimLimited(model, clip.id, "in", v, srcLen(clip)))
+                ripple(trimLimited(model, clip.id, "in", v, srcLen(clip)))
               }
               onOut={(v) =>
-                apply(trimLimited(model, clip.id, "out", v, srcLen(clip)))
+                ripple(trimLimited(model, clip.id, "out", v, srcLen(clip)))
               }
               speed={
                 <ClipSpeedSection
@@ -2342,14 +2580,16 @@ export function TimelineEditor({
                 showClip(clip.id);
               }}
               fx={
-                <ClipFxSections
-                  model={model}
-                  clip={clip}
-                  source={assets[clip.asset_id] ?? null}
-                  still={assets[clip.asset_id]?.kind === "image"}
-                  apply={apply}
-                  showClip={showClip}
-                />
+                <SyncLocksContext.Provider value={locks}>
+                  <ClipFxSections
+                    model={model}
+                    clip={clip}
+                    source={assets[clip.asset_id] ?? null}
+                    still={assets[clip.asset_id]?.kind === "image"}
+                    apply={apply}
+                    showClip={showClip}
+                  />
+                </SyncLocksContext.Provider>
               }
               onAudio={(a) => apply(setClipAudio(model, clip.id, a))}
               audioLocked={(!clip.audio && audioFull) || Boolean(clip.freeze)}
@@ -2368,9 +2608,16 @@ export function TimelineEditor({
                     model={model}
                     clip={clip}
                     clipboard={clipboard}
-                    onCopy={setClipboard}
-                    apply={apply}
+                    onCopy={onCopyClip}
+                    apply={ripple}
                     onInserted={(newId) => setSelected({ kind: "clip", id: newId })}
+                  />
+                  <LookTools
+                    onCopy={() => {
+                      setLookBoard({ look: copyLook(clip), from: clipIndex + 1 });
+                      setSelStatus(fmt(lk.copiedFrom, { n: clipIndex + 1 }));
+                    }}
+                    onPaste={() => setLookOpen(true)}
                   />
                   {clipIndex > 0 ? (
                     <SplitEditTools
@@ -2400,7 +2647,7 @@ export function TimelineEditor({
               crossfadeAllNote={crossfadeAllNote}
               onSplit={onSplit}
               onMove={(by) => apply(moveClip(model, clip.id, by))}
-              onDelete={() => apply(removeClip(model, clip.id))}
+              onDelete={() => ripple(removeClip(model, clip.id))}
             />
             {improveFor(clip.asset_id, true)}
             </>

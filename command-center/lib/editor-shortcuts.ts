@@ -187,6 +187,32 @@ export function resolveModShortcut(e: KeyLike, focus: FocusKind): "split" | null
   return letter === "k" ? "split" : null;
 }
 
+/**
+ * Alt + Left / Right: nudge the selected texts, sounds, overlays and shapes one frame (with Shift five), as other
+ * editors do. Never in a text field (Alt + arrow moves by words there on a Mac) or on a slider, never with Ctrl /
+ * Cmd, and not in a radio group (the arrows are its own).
+ */
+export function resolveNudgeShortcut(e: KeyLike, focus: FocusKind): { frames: number } | null {
+  if (e.defaultPrevented || !e.altKey || e.ctrlKey || e.metaKey) return null;
+  if (focus === "text" || focus === "slider" || focus === "choice") return null;
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return null;
+  const n = e.shiftKey ? 5 : 1;
+  return { frames: e.key === "ArrowLeft" ? -n : n };
+}
+
+/**
+ * Ctrl / Cmd + Alt + V: paste attributes (the copied clip's look onto the selected clips, in a dialog that asks which
+ * groups). Never in a text field or on a slider, never with Shift, never a held-down repeat; the physical key on a
+ * layout whose V is not a Latin letter.
+ */
+export function resolvePasteAttributes(e: KeyLike, focus: FocusKind): boolean {
+  if (e.defaultPrevented || e.repeat) return false;
+  if (!(e.ctrlKey || e.metaKey) || !e.altKey || e.shiftKey) return false;
+  if (focus === "text" || focus === "slider") return false;
+  const letter = /^[a-z]$/i.test(e.key) ? e.key.toLowerCase() : (e.code ?? "").replace(/^Key/, "").toLowerCase();
+  return letter === "v";
+}
+
 /** The preview's shuttle: playing or not, and at which rate (negative = backwards). */
 export interface Shuttle {
   playing: boolean;
@@ -229,7 +255,7 @@ export function resolveClipShortcut(
 
 /** One row of the shortcuts help. `keys` are literal key names; `labelKey` names the dictionary entry. */
 export interface ShortcutHelpRow {
-  action: ShortcutAction | ClipShortcut | "splitMod" | "undo" | "redo" | "save";
+  action: ShortcutAction | ClipShortcut | "splitMod" | "undo" | "redo" | "save" | "multiSelect" | "nudgeSel" | "nudgeSelBig" | "pasteAttributes";
   keys: string[][];
 }
 
@@ -260,6 +286,10 @@ export const SHORTCUT_HELP: readonly ShortcutHelpRow[] = [
   { action: "duplicate", keys: [["Ctrl", "D"]] },
   { action: "copy", keys: [["Ctrl", "C"]] },
   { action: "paste", keys: [["Ctrl", "V"]] },
+  { action: "multiSelect", keys: [["Shift", "Click"], ["Ctrl", "Click"]] },
+  { action: "nudgeSel", keys: [["Alt", "←"], ["Alt", "→"]] },
+  { action: "nudgeSelBig", keys: [["Alt", "Shift", "←"], ["Alt", "Shift", "→"]] },
+  { action: "pasteAttributes", keys: [["Ctrl", "Alt", "V"]] },
   { action: "undo", keys: [["Ctrl", "Z"]] },
   { action: "redo", keys: [["Ctrl", "Shift", "Z"]] },
   { action: "save", keys: [["Ctrl", "S"]] },

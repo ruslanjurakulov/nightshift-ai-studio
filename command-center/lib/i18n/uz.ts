@@ -29,6 +29,7 @@ import { clipToolsUz } from "./editor-clip-tools/uz";
 import { parity2Uz } from "./editor-parity2/uz";
 import { parity2bUz } from "./editor-parity2b/uz";
 import { coreUz } from "./editor-core/uz";
+import { reuseUz } from "./editor-reuse/uz";
 import { voiceOverUz } from "./editor-voiceover/uz";
 import { looksUz } from "./editor-looks/uz";
 import { fxUz } from "./editor-fx/uz";
@@ -5151,6 +5152,8 @@ export const uz: Dictionary = {
     parity2b: parity2bUz,
     /** Timeline tools, marks, J / L cut, shuttle and guides: ./editor-core/uz.ts. */
     core: coreUz,
+    /** Multi-select, sync lock, paste attributes and look presets: ./editor-reuse/uz.ts. */
+    reuse: reuseUz,
     fx: fxUz,
     title: "Muharrir",
     subtitle: "Videolaringizni qirqing, boʻling, tezlashtiring yoki sekinlashtiring va ustiga matn qoʻying.",

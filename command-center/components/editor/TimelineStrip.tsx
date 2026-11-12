@@ -10,6 +10,7 @@ import type { TimelineView } from "./useTimelineView";
 import type { ShapeLayer } from "@/lib/editorShapes";
 import type { Marks } from "@/lib/editorRange";
 import type { EditTool } from "./EditCore";
+import { hasItem, marqueeHits, sameItem, type Box, type Item } from "@/lib/editorSelection";
 import {
   clipEnd,
   clipLength,
@@ -114,6 +115,11 @@ export function TimelineStrip({
   onToolEdit,
   onToolEditEnd,
   onCloseGap,
+  multi = [],
+  onToggle,
+  onMarquee,
+  selectMode = false,
+  onSelectMode,
 }: {
   clips: readonly VideoClip[];
   texts: readonly TextClip[];
@@ -151,6 +157,17 @@ export function TimelineStrip({
   onToolEditEnd?: () => void;
   /** Close the gap before clip `id` (a ripple delete of the black a lift left). */
   onCloseGap?: (id: string) => void;
+  /** Every selected item when there are several (`selected` is the one the inspector shows); empty = just `selected`. */
+  multi?: readonly Item[];
+  /** Shift / Ctrl / Cmd + click or a tap in select mode: the item added to the selection or taken out. A long press
+   *  (`via` "hold") turns select mode on and never takes the item out. */
+  onToggle?: (item: Item, via?: "hold") => void;
+  /** A marquee drag on an empty part of the strip ended: the items its box touched (`add`: Shift / Ctrl / Cmd held). */
+  onMarquee?: (items: Item[], add: boolean) => void;
+  /** Select mode (the touch way): a tap adds or takes out instead of selecting just that item. */
+  selectMode?: boolean;
+  /** A long press on an item turns select mode on. */
+  onSelectMode?: (on: boolean) => void;
 }) {
   const { t } = useI18n();
   const te = t.editor;
@@ -194,6 +211,96 @@ export function TimelineStrip({
     return () => ro.disconnect();
   }, []);
   const ticks = rulerTicks(total, width);
+
+  // ── selecting several: Shift / Ctrl / Cmd + click, a tap in select mode, a long press, a marquee ──
+  const isLit = (x: Item) => sameItem(selected, x) || hasItem(multi, x);
+  /** The key of the item a long press just toggled: the click that follows the press must not select it alone. */
+  const pressed = useRef<string | null>(null);
+  const hold = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  const endHold = () => {
+    if (hold.current) clearTimeout(hold.current.timer);
+    hold.current = null;
+  };
+  useEffect(() => endHold, []);
+  /** What every item button of every lane gets: the click (one, or added / taken out) and the touch long press. */
+  const itemProps = (x: Item) => ({
+    "data-item-kind": x.kind,
+    "data-item-id": x.id,
+    onClick: (e: React.MouseEvent<HTMLElement>) => {
+      if (pressed.current === `${x.kind}:${x.id}`) {
+        pressed.current = null;
+        return;
+      }
+      if (onToggle && (e.shiftKey || e.ctrlKey || e.metaKey || selectMode)) onToggle(x);
+      else onSelect(x);
+    },
+    onPointerDown: (e: PointerEvent<HTMLElement>) => {
+      if (e.pointerType !== "touch" || !onToggle) return;
+      endHold();
+      // Half a second held still: select mode, with this item added (a phone has no Shift key).
+      hold.current = {
+        x: e.clientX,
+        y: e.clientY,
+        timer: setTimeout(() => {
+          hold.current = null;
+          pressed.current = `${x.kind}:${x.id}`;
+          onSelectMode?.(true);
+          onToggle(x, "hold");
+        }, 500),
+      };
+    },
+    onPointerMove: (e: PointerEvent<HTMLElement>) => {
+      const h = hold.current;
+      // moving is scrolling the timeline, not holding
+      if (h && Math.hypot(e.clientX - h.x, e.clientY - h.y) > 10) endHold();
+    },
+    onPointerUp: endHold,
+    onPointerCancel: endHold,
+    onContextMenu: (e: React.MouseEvent<HTMLElement>) => {
+      // the phone's own long-press menu would cover the timeline
+      if (hold.current || pressed.current) e.preventDefault();
+    },
+  });
+  const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const boxStart = useRef<{ x0: number; y0: number; add: boolean; id: number } | null>(null);
+  function onLanesDown(e: PointerEvent<HTMLDivElement>) {
+    // A mouse or pen drag on an empty part of the strip (not a clip, a handle or a button); a finger scrolls.
+    if (!onMarquee || e.pointerType === "touch" || e.button !== 0) return;
+    if ((e.target as Element).closest("button, [role=slider], input, a")) return;
+    const r = strip.current?.getBoundingClientRect();
+    if (!r) return;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    boxStart.current = { x0: e.clientX - r.left, y0: e.clientY - r.top, add: e.shiftKey || e.ctrlKey || e.metaKey, id: e.pointerId };
+  }
+  function onLanesMove(e: PointerEvent<HTMLDivElement>) {
+    const b = boxStart.current;
+    const r = strip.current?.getBoundingClientRect();
+    if (!b || !r) return;
+    const x1 = e.clientX - r.left;
+    const y1 = e.clientY - r.top;
+    if (!box && Math.hypot(x1 - b.x0, y1 - b.y0) < 4) return;
+    setBox({ x0: b.x0, y0: b.y0, x1, y1 });
+  }
+  function onLanesUp() {
+    const b = boxStart.current;
+    boxStart.current = null;
+    const drawn = box;
+    setBox(null);
+    const el = strip.current;
+    if (!b || !drawn || !el || !onMarquee) return;
+    const r = el.getBoundingClientRect();
+    const boxes: Box[] = Array.from(el.querySelectorAll<HTMLElement>("[data-item-kind]")).map((n) => {
+      const k = n.getBoundingClientRect();
+      return {
+        item: { kind: n.dataset.itemKind as Item["kind"], id: n.dataset.itemId ?? "" },
+        left: k.left - r.left,
+        right: k.right - r.left,
+        top: k.top - r.top,
+        bottom: k.bottom - r.top,
+      };
+    });
+    onMarquee(marqueeHits(boxes, drawn.x0, drawn.y0, drawn.x1, drawn.y1), b.add);
+  }
 
   function onHandleKey(
     e: KeyboardEvent<HTMLElement>,
@@ -308,6 +415,13 @@ export function TimelineStrip({
     >
       <div
         ref={strip}
+        onPointerDown={onLanesDown}
+        onPointerMove={onLanesMove}
+        onPointerUp={onLanesUp}
+        onPointerCancel={() => {
+          boxStart.current = null;
+          setBox(null);
+        }}
         className="ns-lanes-root relative flex flex-col gap-1.5"
         style={{ minWidth: `max(${(view?.zoom ?? 1) * 100}%, ${clips.length * 122}px)` }}
       >
@@ -367,6 +481,7 @@ export function TimelineStrip({
           {clips.map((c, i) => {
             const len = clipLength(c);
             const on = selected?.kind === "clip" && selected.id === c.id;
+            const hi = on || hasItem(multi, { kind: "clip", id: c.id });
             const name = assets[c.asset_id]?.name ?? te.untitledVideo;
             const src = assets[c.asset_id]?.durationS ?? undefined;
             const x = crossfadeOf(c);
@@ -384,15 +499,15 @@ export function TimelineStrip({
               >
                 <button
                   type="button"
-                  onClick={() => onSelect({ kind: "clip", id: c.id })}
-                  aria-pressed={on}
+                  {...itemProps({ kind: "clip", id: c.id })}
+                  aria-pressed={hi}
                   aria-label={
                     x > 0
                       ? `${label}, ${fmt(te.clipCrossfade, { s: x })}`
                       : label
                   }
-                  className={`relative flex size-full min-w-0 flex-col justify-between overflow-hidden rounded-[var(--ns-r-key)] border px-1.5 py-1 text-left text-xs ${
-                    on
+                  className={`relative flex size-full min-w-0 select-none flex-col justify-between overflow-hidden rounded-[var(--ns-r-key)] border px-1.5 py-1 text-left text-xs [-webkit-touch-callout:none] ${
+                    hi
                       ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                       : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
                   }`}
@@ -473,7 +588,7 @@ export function TimelineStrip({
             role="list"
           >
             {overlays.map((o, i) => {
-              const on = selected?.kind === "overlay" && selected.id === o.id;
+              const on = isLit({ kind: "overlay", id: o.id });
               const name = assets[o.asset_id]?.name ?? te.overlay.untitled;
               return (
                 <div
@@ -488,7 +603,7 @@ export function TimelineStrip({
                 >
                   <button
                     type="button"
-                    onClick={() => onSelect({ kind: "overlay", id: o.id })}
+                    {...itemProps({ kind: "overlay", id: o.id })}
                     aria-pressed={on}
                     aria-label={fmt(te.overlay.clipLabel, {
                       n: i + 1,
@@ -496,7 +611,7 @@ export function TimelineStrip({
                       from: formatTime(o.start_s),
                       to: formatTime(o.end_s),
                     })}
-                    className={`size-full truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs ${
+                    className={`size-full select-none truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs [-webkit-touch-callout:none] ${
                       on
                         ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                         : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
@@ -517,7 +632,7 @@ export function TimelineStrip({
             role="list"
           >
             {shapes.map((h, i) => {
-              const on = selected?.kind === "shape" && selected.id === h.id;
+              const on = isLit({ kind: "shape", id: h.id });
               const kind = te.shapes.kinds[h.kind];
               return (
                 <div
@@ -532,7 +647,7 @@ export function TimelineStrip({
                 >
                   <button
                     type="button"
-                    onClick={() => onSelect({ kind: "shape", id: h.id })}
+                    {...itemProps({ kind: "shape", id: h.id })}
                     aria-pressed={on}
                     aria-label={fmt(te.shapes.clipLabel, {
                       n: i + 1,
@@ -540,7 +655,7 @@ export function TimelineStrip({
                       from: formatTime(h.start_s),
                       to: formatTime(h.end_s),
                     })}
-                    className={`size-full truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs ${
+                    className={`size-full select-none truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs [-webkit-touch-callout:none] ${
                       on
                         ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                         : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
@@ -561,7 +676,7 @@ export function TimelineStrip({
             role="list"
           >
             {sounds.map((x) => {
-              const on = selected?.kind === "sound" && selected.id === x.id;
+              const on = isLit({ kind: "sound", id: x.id });
               const end = x.start_s + soundLength(x);
               const name = assets[x.asset_id]?.name ?? te.untitledSound;
               return (
@@ -577,7 +692,7 @@ export function TimelineStrip({
                 >
                   <button
                     type="button"
-                    onClick={() => onSelect({ kind: "sound", id: x.id })}
+                    {...itemProps({ kind: "sound", id: x.id })}
                     aria-pressed={on}
                     aria-label={
                       fmt(te.soundClipLabel, {
@@ -590,7 +705,7 @@ export function TimelineStrip({
                         ? `, ${fmt(te.duckLabel, { db: x.duck.amount_db })}`
                         : "")
                     }
-                    className={`relative size-full overflow-hidden truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs ${
+                    className={`relative size-full select-none overflow-hidden truncate rounded-[var(--ns-r-chip)] [-webkit-touch-callout:none] border px-1.5 text-left text-xs ${
                       on
                         ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                         : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
@@ -617,7 +732,7 @@ export function TimelineStrip({
           role="list"
         >
           {texts.map((x) => {
-            const on = selected?.kind === "text" && selected.id === x.id;
+            const on = isLit({ kind: "text", id: x.id });
             return (
               <div
                 key={x.id}
@@ -631,14 +746,14 @@ export function TimelineStrip({
               >
                 <button
                   type="button"
-                  onClick={() => onSelect({ kind: "text", id: x.id })}
+                  {...itemProps({ kind: "text", id: x.id })}
                   aria-pressed={on}
                   aria-label={fmt(te.textClipLabel, {
                     text: x.text || "…",
                     from: formatTime(x.start_s),
                     to: formatTime(x.end_s),
                   })}
-                  className={`size-full truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs ${
+                  className={`size-full select-none truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs [-webkit-touch-callout:none] ${
                     on
                       ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                       : "border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-muted)]"
@@ -680,6 +795,20 @@ export function TimelineStrip({
           className="pointer-events-none absolute top-0 z-20 h-full w-0.5 -translate-x-1/2 bg-[var(--color-fg)]"
           style={{ left: pct(Math.min(playhead, span)) }}
         />
+        {box ? (
+          // The marquee: what it touches is selected when the drag ends.
+          <span
+            aria-hidden
+            data-testid="marquee"
+            className="pointer-events-none absolute z-30 rounded-[2px] border border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)]"
+            style={{
+              left: Math.min(box.x0, box.x1),
+              top: Math.min(box.y0, box.y1),
+              width: Math.abs(box.x1 - box.x0),
+              height: Math.abs(box.y1 - box.y0),
+            }}
+          />
+        ) : null}
         {guide !== null ? (
           // Where the trim has snapped to: held while the drag stays on the target.
           <span

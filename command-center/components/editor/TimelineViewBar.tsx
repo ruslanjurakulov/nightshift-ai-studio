@@ -133,6 +133,7 @@ export function ShortcutsHelp() {
     save: tv.scSave,
     ...t.editor.core.keys,
     prevEdit: t.editor.core.keys.edits,
+    ...t.editor.reuse.keys,
   };
   const keyName: Record<string, string> = {
     Space: tv.keySpace,
@@ -140,6 +141,8 @@ export function ShortcutsHelp() {
     Backspace: tv.keyBackspace,
     Shift: tv.keyShift,
     Ctrl: tv.keyCtrl,
+    Alt: t.editor.reuse.keyAlt,
+    Click: t.editor.reuse.keyClick,
   };
 
   /** Focus must never fall to <body> inside the modal (a click on plain text): Escape and Tab live on the dialog. */

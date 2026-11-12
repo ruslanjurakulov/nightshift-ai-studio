@@ -29,6 +29,7 @@ import { clipToolsRu } from "./editor-clip-tools/ru";
 import { parity2Ru } from "./editor-parity2/ru";
 import { parity2bRu } from "./editor-parity2b/ru";
 import { coreRu } from "./editor-core/ru";
+import { reuseRu } from "./editor-reuse/ru";
 import { voiceOverRu } from "./editor-voiceover/ru";
 import { looksRu } from "./editor-looks/ru";
 import { fxRu } from "./editor-fx/ru";
@@ -5151,6 +5152,8 @@ export const ru: Dictionary = {
     parity2b: parity2bRu,
     /** Timeline tools, marks, J / L cut, shuttle and guides: ./editor-core/ru.ts. */
     core: coreRu,
+    /** Multi-select, sync lock, paste attributes and look presets: ./editor-reuse/ru.ts. */
+    reuse: reuseRu,
     fx: fxRu,
     title: "Редактор",
     subtitle: "Обрезайте, делите, ускоряйте и замедляйте видео и добавляйте на них текст.",

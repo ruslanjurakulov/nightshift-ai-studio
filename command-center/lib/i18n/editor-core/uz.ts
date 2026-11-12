@@ -38,7 +38,7 @@ export const coreUz: CoreDictionary = {
     extract: "Surib oʻchirish",
     lift: "Koʻtarish",
     insert: "Nusxalangan klipni kursorga qoʻyish",
-    extractHint: "Surib oʻchirish belgilangan qismni olib tashlaydi va boʻshliqni yopadi. Tovushlar, ajratilgan tovush ham, oʻsha joyda kesiladi va tasvir bilan birga oldinga suriladi. Matnlar, qoplamalar va shakllar oʻz vaqtida qoladi.",
+    extractHint: "Surib oʻchirish belgilangan qismni olib tashlaydi va boʻshliqni yopadi. Tovushlar, ajratilgan tovush ham, oʻsha joyda kesiladi va tasvir bilan birga oldinga suriladi. Sinxron qulf bilan undan keyingi matnlar, qoplamalar va shakllar ham suriladi; qulflangan yoʻlak oʻz vaqtida qoladi.",
     liftHint: "Koʻtarish boʻshliq qoldiradi: belgilangan qism qora boʻladi va undan har bir tovush kesib olinadi, shuning uchun u yerda jimlik. Undan keyingi hech narsa siljimaydi. Boʻshliqni taymlaynda yopish mumkin.",
     insertHint: "Avval klipni nusxalang (Ctrl + C yoki «Nusxalash»). U kursor joyiga qoʻyiladi va undan keyingi hamma narsa keyinroqqa suriladi.",
     extracted: { one: "{n} ta qism olib tashlandi.", few: "{n} ta qism olib tashlandi.", many: "{n} ta qism olib tashlandi." },

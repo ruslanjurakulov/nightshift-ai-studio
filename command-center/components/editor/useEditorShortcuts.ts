@@ -20,6 +20,8 @@ import {
   focusKind,
   resolveClipShortcut,
   resolveModShortcut,
+  resolveNudgeShortcut,
+  resolvePasteAttributes,
   resolveShortcut,
   type ShortcutAction,
 } from "@/lib/editor-shortcuts";
@@ -49,6 +51,8 @@ export function useEditorShortcuts(p: {
   setPlayhead: (t: number) => void;
   setPlaying: (on: boolean) => void;
   apply: (next: EditorModel) => void;
+  /** A ripple edit of the picture (a clip deleted, pasted or duplicated): `apply` with sync lock. Default `apply`. */
+  ripple?: (next: EditorModel) => void;
   /** Called after Delete removed an overlay: its frame is gone, so focus belongs on "Add overlay", not <body>. */
   onOverlayRemoved?: () => void;
   /** Called after Delete removed a shape: focus belongs on "Add shape", not <body>. */
@@ -61,6 +65,16 @@ export function useEditorShortcuts(p: {
   onClipInserted?: (id: string) => void;
   /** Runs a key of the editing core (lib/editor-shortcuts.ts); without it those keys are left alone. */
   onCore?: (action: CoreAction) => void;
+  /** Several items selected: Delete, Ctrl + C and Ctrl + V act on all of them. Each returns false when it does not
+   *  apply (one item or none, nothing copied), and the single-item key does what it always did. */
+  onRemoveMany?: () => boolean;
+  onCopyMany?: () => boolean;
+  onPasteMany?: () => boolean;
+  /** Alt + Left / Right (Shift: five frames): nudge the selected texts, sounds, overlays and shapes; false when
+   *  none is selected (the key is then left to the browser). */
+  onNudge?: (frames: number) => boolean;
+  /** Ctrl / Cmd + Alt + V: the paste-attributes dialog. */
+  onPasteAttributes?: () => void;
 }) {
   const ref = useRef(p);
   ref.current = p;
@@ -111,9 +125,24 @@ export function useEditorShortcuts(p: {
       const r = read(e);
       if (!r) return;
       const { keyLike, focus } = r;
+      if (resolvePasteAttributes(keyLike, focus)) {
+        if (!ref.current.onPasteAttributes) return;
+        e.preventDefault();
+        ref.current.onPasteAttributes();
+        return;
+      }
+      const nudge = resolveNudgeShortcut(keyLike, focus);
+      // Only with something to nudge: otherwise Alt + Left stays the browser's Back.
+      if (nudge && ref.current.onNudge?.(nudge.frames)) {
+        e.preventDefault();
+        return;
+      }
       const clipKey = resolveClipShortcut(keyLike, focus, Boolean(window.getSelection()?.toString()));
       if (clipKey) {
         const s = ref.current;
+        // Several items selected (or a copy of several): the whole list is copied or pasted.
+        if (clipKey === "copy" && s.onCopyMany?.()) return void e.preventDefault();
+        if (clipKey === "paste" && s.onPasteMany?.()) return void e.preventDefault();
         const sel = s.selected?.kind === "clip" ? s.model.clips.find((c) => c.id === s.selected?.id) : undefined;
         if (!sel) return;            // nothing of the editor's is selected: the browser keeps its key
         e.preventDefault();
@@ -128,7 +157,7 @@ export function useEditorShortcuts(p: {
               ? insertClipCopy(s.model, s.clipboard, sel.id)
               : null;
         if (!out) return;
-        s.apply(out.model);
+        (s.ripple ?? s.apply)(out.model);
         s.onClipInserted?.(out.id);
         return;
       }
@@ -144,6 +173,7 @@ export function useEditorShortcuts(p: {
           split();
           break;
         case "remove": {
+          if (s.onRemoveMany?.()) break;
           const sel = s.selected;
           if (!sel) return;
           const next =
@@ -159,7 +189,7 @@ export function useEditorShortcuts(p: {
           if (next === s.model) return;
           if (sel.kind === "overlay") s.onOverlayRemoved?.();
           if (sel.kind === "shape") s.onShapeRemoved?.();
-          s.apply(next);
+          (sel.kind === "clip" ? (s.ripple ?? s.apply) : s.apply)(next);
           break;
         }
         case "left":

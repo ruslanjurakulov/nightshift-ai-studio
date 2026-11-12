@@ -28,6 +28,7 @@ import { clipToolsEn } from "./editor-clip-tools/en";
 import { parity2En } from "./editor-parity2/en";
 import { parity2bEn } from "./editor-parity2b/en";
 import { coreEn } from "./editor-core/en";
+import { reuseEn } from "./editor-reuse/en";
 import { voiceOverEn } from "./editor-voiceover/en";
 import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
@@ -5164,6 +5165,8 @@ export const en = {
     parity2b: parity2bEn,
     /** Timeline tools, marks, J / L cut, shuttle and guides: ./editor-core/en.ts. */
     core: coreEn,
+    /** Multi-select, sync lock, paste attributes and look presets: ./editor-reuse/en.ts. */
+    reuse: reuseEn,
     fx: fxEn,
     title: "Editor",
     subtitle: "Trim, split, speed up or slow down your videos and put text on them.",

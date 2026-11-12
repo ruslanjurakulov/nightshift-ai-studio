@@ -37,7 +37,7 @@ export const coreEn = {
     extract: "Ripple delete",
     lift: "Lift",
     insert: "Insert copied clip at playhead",
-    extractHint: "Ripple delete takes the marked part out and closes the gap. Sounds, a detached sound too, are cut there and move up with the picture. Texts, overlays and shapes keep their times.",
+    extractHint: "Ripple delete takes the marked part out and closes the gap. Sounds, a detached sound too, are cut there and move up with the picture. With sync lock, texts, overlays and shapes after it move up too; a locked lane keeps its times.",
     liftHint: "Lift leaves a gap: the marked part becomes black, and every sound is cut out of it, so it is silent. Nothing after it moves. Close the gap from the timeline when you want.",
     insertHint: "Copy a clip first (Ctrl + C or Copy). It goes in at the playhead and everything after it moves later.",
     extracted: { one: "{n} part was taken out.", few: "{n} parts were taken out.", many: "{n} parts were taken out." },

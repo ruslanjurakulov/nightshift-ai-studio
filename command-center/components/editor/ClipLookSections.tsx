@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
+import { SyncLocksContext } from "./syncLockContext";
 import {
   COLOR_CURVES,
   MASK_SHAPES,
@@ -236,6 +237,8 @@ export function ClipSilenceSection({
 }) {
   const { t, locale } = useI18n();
   const s = t.editor.parity2.silence;
+  // Sync lock: each cut moves the lanes that follow it (a locked lane keeps its times).
+  const locks = useContext(SyncLocksContext);
   const [db, setDb] = useState(SILENCE_DB_DEFAULT);
   const [minS, setMinS] = useState(SILENCE_MIN_S_DEFAULT);
   const [result, setResult] = useState<EnvelopeResult | "working" | null>(null);
@@ -318,7 +321,7 @@ export function ClipSilenceSection({
             type="button"
             className="btn-primary inline-flex min-h-11 items-center self-start px-3 py-1.5 text-xs"
             onClick={() => {
-              const r = applyCuts(model, clip.id, cuts);
+              const r = applyCuts(model, clip.id, cuts, locks);
               if (!r.applied) return;
               const applied = cuts.slice(cuts.length - r.applied);
               apply(r.model);
