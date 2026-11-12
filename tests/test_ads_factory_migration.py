@@ -112,7 +112,9 @@ class Numbering(unittest.TestCase):
         # 0129 (#661) and 0130 (#652) are merged before this file: 0131 names nothing they add, so it applies after them or without them.
         # 0133 (the brand scan, Phase 2) was reviewed against these pins: it replaces none of 0131's functions and alters none of its
         # tables (tests/test_brand_scan_migration.py pins that), and 0131's rollback must wait for 0133's (its checks use 0131's rules).
-        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0133",)], [], "a later number needs its own review of this file's pins")
+        # 0135 (Character Studio) was reviewed against these pins: it names no object of 0131 (tests/test_character_studio_migration.py
+        # checks that it names no brand_*, ad_* or ads_* object), so it applies with or without 0131 and 0131's rollback does not wait for it.
+        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0133", "0135")], [], "a later number needs its own review of this file's pins")
 
     def test_the_file_says_it_is_applied_as_one_transaction_and_what_to_verify(self):
         self.assertIn("APPLY AS ONE TRANSACTION", TEXT)

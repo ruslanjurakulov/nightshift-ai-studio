@@ -161,7 +161,8 @@ class CapabilityTests(unittest.TestCase):
         # nothing may be called registry-only that the database already knows.
         for constraint in ("model_registry_capabilities_check", "model_probe_runs_capability_check"):
             self.assertEqual(set(CAPABILITIES) - REGISTRY_ONLY_CAPABILITIES, _db_capabilities(constraint), constraint)
-        self.assertEqual(REGISTRY_ONLY_CAPABILITIES, {"music", "video_music"})
+        # video_character_swap (0135) is sold through its own tables, never as a creative job: registry-only for good.
+        self.assertEqual(REGISTRY_ONLY_CAPABILITIES, {"music", "video_music", "video_character_swap"})
 
     def test_no_migration_here_adds_them(self):
         for path in (ROOT / "supabase" / "migrations").glob("*.sql"):
@@ -207,8 +208,10 @@ class RegistryEntryTests(unittest.TestCase):
         self.assertFalse({row["id"] for row in rows} & set(IDS))
         for row in rows:      # one row outside the constraint would fail the sync of every model
             self.assertLessEqual(set(row["capabilities"]), known, row["id"])
-        self.assertEqual(len(rows), len(self.r) - 2)
-        self.assertEqual({e.id for e in self.r.values() if e.registry_only}, set(IDS))
+        # The two Character Studio entries (0135) are registry-only too: tests/test_character_swap_adapters.py holds them.
+        swap = {"kling-4.0-omni-edit", "seedance-2.5-edit"}
+        self.assertEqual(len(rows), len(self.r) - 2 - len(swap))
+        self.assertEqual({e.id for e in self.r.values() if e.registry_only}, set(IDS) | swap)
 
     def test_the_gate_is_terms_review_and_nothing_can_be_sold(self):
         for mid in IDS:

@@ -626,6 +626,38 @@ refuses `not_on_sale`. The worker (`tools/brand_scan_worker.py`) does nothing un
 - **Tests.** `tests/test_brand_scan_migration.py` (the file, pinned), `tests/security/test_sec_brand_scan.py` (the lab: roles, the price,
   the domain rule, holds / captures / releases, idempotency, caps and races, the result checks, accepting, the rollback).
 
+## Character Studio: priced character swaps, the consent trail, the gallery (0135)
+
+0135 (`0135_character_studio.sql`, `docs/CHARACTER_STUDIO.md`) is **live on apply and dark**: it **adds six tables** (`character_swap_models`,
+`character_swap_settings`, `character_swap_consents`, `character_swap_jobs`, `character_swap_templates`, `character_swap_template_samples`), twelve
+internal functions, four member functions and four worker functions. It **replaces nothing** and names no object of the Ads Factory or of
+`creative_jobs`. Nothing is **on sale** until the owner sets `character_swap_models.credits_per_usd` per model (seeded NULL): `request_character_swap`
+refuses `not_on_sale`. The worker (`tools/character_swap_worker.py`) does nothing unless `NIGHTSHIFT_CHARACTER_STUDIO=on`; the page and the routes are a 404.
+
+- **Number.** 0135: 0132 is reserved by open pull request #677 (the hi-res export) and 0134 by the brand-scan follow-up; none of them names anything
+  0135 adds, and 0135 names nothing of theirs. The numbering tests of 0127, 0131 and 0133 list 0135 as reviewed; 0135's own does not forbid later numbers.
+- **Who may do what.** Members (viewer and up) read their organization's jobs and consents; any signed-in person reads the gallery; the models and the
+  settings are closed to every API role. Four SECURITY DEFINER member functions to `authenticated` (quote any member; consent, request and cancel an
+  editor), four worker functions to `service_role` only, the helpers to nobody. The samples script's service key may insert and update a sample row.
+- **Money.** The charge is the database's (the vendor's USD per clip second at the resolution x whole seconds x credits_per_usd, rounded up to the cent);
+  a request holds `greatest(charge, credits_round_up(job_minimum))` (`reserve_credits` and `job_minimum` unchanged), the finish captures exactly the
+  charge (`capture_credits(ref, charge, false)`), every failure, a cancel and the stale sweeps release it; `p_max_credits` is compared with the charge and
+  refuses NaN and the infinities; an idempotent replay holds nothing twice. The vendor task id is recorded before polling; a finish without one is refused.
+- **Consent.** Append-only trail (ENABLE ALWAYS triggers, no foreign key), five declarations, one consent per job, within the hour, of the same person,
+  model, video and pictures. A keyword screen on the prompt (real or public people, minors). Seedance only for the organization's own generated
+  BytePlus clip of the last 30 days.
+- **Caps.** One job in flight per organization (unique index); 10 per organization and 200 per platform per 24 hours; 20 in flight on the platform;
+  100 consents per organization per day. Counted under the organization's lock, then the platform's (0127's order).
+- **Locks (0131).** Read unlocked, check the role, take the organization's advisory lock, then lock rows (the inputs FOR SHARE, a job FOR NO KEY UPDATE)
+  and read them again.
+- **Drift guard.** Refuses a function of its names with another body; the last block asserts the end state (bodies, grants, RLS, policies, checks, the
+  index, the triggers and their ENABLE ALWAYS, the seeded rows).
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`.
+- **Undo.** `docs/sql/rollback_0135_character_studio.sql` (owner-applied): refuses a body that is not 0135's, a job in flight, and rows people made
+  unless `set local nightshift.character_swap_rollback_delete_rows = 'yes'`. Outputs stay in the library.
+- **Tests.** `tests/test_character_studio_migration.py` (the file, pinned), `tests/security/test_sec_character_swap.py` (the lab: grants, cross-org,
+  consent, the money ledger at job_minimum 30, caps, the worker's task rule, races, the rollback and re-apply, touching nothing else).
+
 ## The owner's model switch (0124)
 
 0124 (`0124_model_switch.sql`, `docs/MODEL_SWITCH.md`) is **live on apply and dark**: it replaces five functions that exist on the live

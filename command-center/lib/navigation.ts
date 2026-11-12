@@ -67,6 +67,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/styles", key: "styles" },
       // Brand kits, campaigns and ad concepts (migration 0131). Listed only while NIGHTSHIFT_ADS_FACTORY is on: see FEATURE_GATED below.
       { href: "/ads", key: "ads" },
+      // Character Studio (migration 0135). Listed only while NIGHTSHIFT_CHARACTER_STUDIO is on: see FEATURE_GATED below.
+      { href: "/character-studio", key: "characterStudio" },
       { href: "/library", key: "library" },
       { href: "/editor", key: "editor" },
       { href: "/workflows", key: "workflows" },
@@ -140,12 +142,14 @@ export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 export interface NavFeatures {
   /** NIGHTSHIFT_ADS_FACTORY (lib/adsFactory/flag.ts): the Ads workspace. */
   adsFactory: boolean;
+  /** NIGHTSHIFT_CHARACTER_STUDIO (lib/characterStudio/model.ts): Character Studio. */
+  characterStudio: boolean;
 }
 
-export const NO_NAV_FEATURES: NavFeatures = { adsFactory: false };
+export const NO_NAV_FEATURES: NavFeatures = { adsFactory: false, characterStudio: false };
 
 /** A section that exists only while its switch is on. Off: no rail entry, no tab, and its page answers 404 on its own. */
-const FEATURE_GATED: Partial<Record<SectionKey, keyof NavFeatures>> = { ads: "adsFactory" };
+const FEATURE_GATED: Partial<Record<SectionKey, keyof NavFeatures>> = { ads: "adsFactory", characterStudio: "characterStudio" };
 
 /** Is this section listed for a request with these switches? Hiding is presentation; the page and its routes check the switch themselves. */
 export function navShown(key: SectionKey, features: NavFeatures = NO_NAV_FEATURES): boolean {
@@ -203,6 +207,8 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "series",
   // The Ads workspace: a customer's own brand kits and campaigns (shown only while its switch is on).
   "ads",
+  // Character Studio: swap the people in a customer's own video (shown only while its switch is on).
+  "characterStudio",
   "organization",
   "developers",
 ];
@@ -242,6 +248,8 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
     { href: "/series", key: "series" },
     // Brand kits, campaigns and ad concepts (migration 0131); a tab only while NIGHTSHIFT_ADS_FACTORY is on.
     { href: "/ads", key: "ads" },
+    // Character Studio (migration 0135); a tab only while NIGHTSHIFT_CHARACTER_STUDIO is on.
+    { href: "/character-studio", key: "characterStudio" },
     // Comments on the channel's videos, with replies a person approves (migration 0081).
     { href: "/inbox", key: "inbox" },
     // The catalog of models a customer may use (sellable_models()), by task.

@@ -66,6 +66,12 @@ INTENTIONALLY_UNREACHABLE = {
                                 "Dockerfile step that installs them",
     "CHRONOS_REMOTION_TIMEOUT": "seconds per Remotion scene (default 600); only meaningful once the image can run Remotion",
     # -- owner decisions still pending (never enable from a test) ------------------
+    "NIGHTSHIFT_CHARACTER_STUDIO": "Character Studio (migration 0135, docs/CHARACTER_STUDIO.md) ships DARK: the worker and the web page "
+                                   "are off until the owner has Kling's and BytePlus's written answers, sets a price per model and adds "
+                                   "the worker service (the release steps there); then it goes into deploy/.env.worker.example and "
+                                   "deploy/.env.web.example and this entry is removed",
+    "NIGHTSHIFT_CHARACTER_STUDIO_PUBLIC_ORIGIN": "the Command Center's public https origin the Character Studio worker signs input links "
+                                                 "for; deployed with NIGHTSHIFT_CHARACTER_STUDIO in the same release step, same reason",
     "NIGHTSHIFT_AVATAR": "a whole presenter config as JSON; the discrete NIGHTSHIFT_AVATAR_* variables, which are deployable, "
                          "override it and are the form to use",
 }

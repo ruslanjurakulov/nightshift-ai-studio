@@ -13,7 +13,7 @@
     "models": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/model"}}
   },
   "$defs": {
-    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions", "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg", "music", "video_music"]},
+    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions", "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg", "music", "video_music", "video_character_swap"]},
     "relight_look": {"enum": ["soft", "warm", "cool", "golden_hour", "dramatic", "studio"]},
     "upscale_target": {"enum": ["720p", "1k", "2k", "4k"]},
     "language": {"type": "string", "pattern": "^[a-z]{2,3}$"},
@@ -47,7 +47,7 @@
           "type": "object",
           "required": ["image_refs_max"],
           "additionalProperties": false,
-          "properties": {"image_refs_max": {"type": "integer", "minimum": 0, "maximum": 16}}
+          "properties": {"image_refs_max": {"type": "integer", "minimum": 0, "maximum": 30}}
         },
         "aspect_ratios": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/aspect"}},
         "aspect_ratios_by_capability": {
@@ -65,6 +65,29 @@
         "upscale_targets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/upscale_target"}},
         "end_frame": {"type": "boolean"},
         "relight_looks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relight_look"}},
+        "character_swap": {
+          "description": "The vendor's own input limits for a video_character_swap entry (migration 0135, docs/CHARACTER_STUDIO.md). The worker refuses an input outside them before any paid call; the database refuses a length outside input_seconds when it quotes.",
+          "type": "object",
+          "required": ["input_seconds", "reference_images_max", "keeps_original_audio", "duration_follows_input", "mask_source",
+                       "real_people", "billing", "input_max_bytes", "input_fps", "input_min_side_px", "input_max_side_px", "input_max_pixels",
+                       "input_min_pixels"],
+          "additionalProperties": false,
+          "properties": {
+            "input_seconds": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 1, "maximum": 120}},
+            "reference_images_max": {"type": "integer", "minimum": 1, "maximum": 30},
+            "keeps_original_audio": {"type": "boolean"},
+            "duration_follows_input": {"type": "boolean"},
+            "mask_source": {"enum": ["none", "vendor_points", "caller_mask"]},
+            "real_people": {"enum": ["consent_declared", "own_generated_clip_only"]},
+            "billing": {"enum": ["output_x2", "input_plus_output"]},
+            "input_max_bytes": {"type": "integer", "minimum": 1},
+            "input_fps": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 1, "maximum": 240}},
+            "input_min_side_px": {"type": "integer", "minimum": 1},
+            "input_max_side_px": {"type": "integer", "minimum": 1},
+            "input_min_pixels": {"type": "integer", "minimum": 1},
+            "input_max_pixels": {"type": "integer", "minimum": 1}
+          }
+        },
         "audio_out": {"type": "boolean"},
         "async": {"type": "boolean"},
         "api_documented": {

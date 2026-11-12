@@ -642,3 +642,8 @@ sec_ads_factory_0131.extend(TABLES, FUNCTIONS)
 import sec_brand_scan_0133  # noqa: E402
 
 sec_brand_scan_0133.extend(TABLES, FUNCTIONS)
+
+# Migration 0135 (Character Studio: priced character swaps, the consent trail, the gallery's cards and samples): tests/security/sec_character_swap_0135.py
+import sec_character_swap_0135  # noqa: E402
+
+sec_character_swap_0135.extend(TABLES, FUNCTIONS)

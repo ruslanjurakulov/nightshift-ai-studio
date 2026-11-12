@@ -1,0 +1,34 @@
+/* Character Studio (components/character-studio). Tokens only (app/globals.css): it follows the theme, dark included. One column at 320px. */
+.cs { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
+.cs[aria-busy="true"] .cs-studio { opacity: 0.7; }
+.cs-note { margin: 0; padding: 12px 0; border-top: 1px solid var(--color-border); color: var(--color-muted); font-size: 0.875rem; line-height: 1.55; max-width: 76ch; overflow-wrap: anywhere; }
+.cs-small { margin: 0; font-size: 0.8125rem; line-height: 1.5; color: var(--color-muted); overflow-wrap: anywhere; }
+.cs-fail { margin: 0; font-size: 0.875rem; line-height: 1.55; color: var(--color-fail); overflow-wrap: anywhere; }
+.cs-price { margin: 0; font-size: 1.5rem; font-weight: 600; line-height: 1.2; color: var(--color-fg); font-variant-numeric: tabular-nums; }
+.cs-section { display: flex; flex-direction: column; gap: 16px; min-width: 0; border-top: 1px solid var(--color-border); padding-top: 20px; }
+.cs-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+.cs-h2 { margin: 0; font-size: 1.125rem; font-weight: 600; line-height: 1.3; color: var(--color-fg); }
+.cs-h3 { margin: 0; font-size: 1rem; font-weight: 600; line-height: 1.3; color: var(--color-fg); overflow-wrap: anywhere; }
+.cs-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+.cs-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--color-border); border-radius: var(--ns-r-frame, 12px); background: var(--color-panel); }
+.cs-card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.cs-samples { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.cs-sample { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cs-sample-video, .cs-sample-empty { width: 100%; aspect-ratio: 16 / 9; border-radius: var(--ns-r-key, 8px); border: 1px solid var(--color-border); background: var(--color-panel-2); }
+.cs-sample-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--color-muted); font-size: 0.8125rem; text-align: center; padding: 8px; }
+.cs-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cs-studio { display: flex; flex-direction: column; gap: 20px; min-width: 0; transition: opacity 0.15s ease; }
+.cs-cost { display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid var(--color-border); border-radius: var(--ns-r-frame, 12px); background: var(--color-panel); }
+.cs-models, .cs-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.cs-model { display: flex; gap: 10px; align-items: flex-start; padding: 12px; min-height: 44px; border: 1px solid var(--color-border); border-radius: var(--ns-r-key, 8px); cursor: pointer; }
+.cs-model:has(input:checked) { border-color: var(--color-fg); }
+.cs-model-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cs-model-name { font-weight: 600; color: var(--color-fg); }
+.cs-picks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.cs-pick { display: flex; flex-direction: column; gap: 4px; padding: 6px; min-height: 44px; border: 1px solid var(--color-border); border-radius: var(--ns-r-key, 8px); cursor: pointer; }
+.cs-pick[data-selected="true"] { border-color: var(--color-fg); }
+.cs-thumb { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: var(--color-panel-2); display: grid; place-items: center; color: var(--color-muted); }
+.cs-check { display: flex; gap: 10px; align-items: flex-start; min-height: 44px; font-size: 0.9375rem; line-height: 1.5; color: var(--color-fg); }
+.cs-jobs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.cs-job { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-top: 10px; border-top: 1px solid var(--color-border); }
+.cs-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--color-border); font-size: 0.75rem; color: var(--color-muted); }

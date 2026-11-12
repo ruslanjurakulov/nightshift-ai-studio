@@ -120,6 +120,7 @@ export const en = {
     workflows: "Workflows",
     series: "Series",
     ads: "Ads",
+    characterStudio: "Character Studio",
     members: "Team",
     organization: "Settings",
     credits: "Credits",

@@ -69,23 +69,30 @@ VIDEO_OPS = (VIDEO_EDIT, VIDEO_REFRAME, VIDEO_REMOVE_BG)
 #: Music (no migration yet, see REGISTRY_ONLY_CAPABILITIES): a track made from words, or scored to a library video.
 MUSIC = "music"              # text → music, CapabilityRequest.duration_s seconds long
 VIDEO_MUSIC = "video_music"  # video → music that follows it; the output is the audio alone, the video is not changed
+#: Character Studio (0135, docs/CHARACTER_STUDIO.md): a video and 1..N character pictures (CapabilityRequest.input_media and
+#: input_images) + words that say who becomes whom → the same scene with those people replaced. Sold through 0135's own tables,
+#: never through creative_jobs, so the registry entries that list it are registry-only.
+VIDEO_CHARACTER_SWAP = "video_character_swap"
 CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE,
-                CAPTIONS, *PICTURE_OPS, *VIDEO_OPS, MUSIC, VIDEO_MUSIC)
+                CAPTIONS, *PICTURE_OPS, *VIDEO_OPS, MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP)
 #: Capabilities the DATABASE does not list yet. Migration 0100's ``model_registry_capabilities_check`` and
 #: ``model_probe_runs_capability_check`` are closed lists, and ``sync_model_registry`` is one statement: a single row with
 #: a capability outside them would fail the sync of EVERY model. So an entry that lists one of these is REGISTRY-ONLY: it
 #: is left out of the sync (``model_registry.sync_rows``), no probe of it is run (it could not be recorded), and with no
 #: row in the database nothing can price, sell or start a job on it. tests/test_sonilo.py compares this set with the
 #: migrations, so the migration that teaches the database a capability is also the change that takes it out of here.
-REGISTRY_ONLY_CAPABILITIES = frozenset({MUSIC, VIDEO_MUSIC})
+#: A character swap is not a creative job at all (0135 prices, holds and runs it in its own tables), so it stays here for good:
+#: the creative system must never be able to sell it.
+REGISTRY_ONLY_CAPABILITIES = frozenset({MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP})
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
              UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio",
              VIDEO_UPSCALE: "video", DESCRIBE: "text", CAPTIONS: "text",
              EXPAND: "image", RELIGHT: "image", ERASE: "image",
              VIDEO_EDIT: "video", VIDEO_REFRAME: "video", VIDEO_REMOVE_BG: "video",
-             MUSIC: "audio", VIDEO_MUSIC: "audio"}
+             MUSIC: "audio", VIDEO_MUSIC: "audio", VIDEO_CHARACTER_SWAP: "video"}
 #: Capabilities whose input is an image (CapabilityRequest.input_images).
-IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE, *PICTURE_OPS})
+#: A character swap takes pictures too (the characters), beside its video.
+IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE, *PICTURE_OPS, VIDEO_CHARACTER_SWAP})
 #: The lights a relight can be asked for by name (0099's allow-list; a model
 #: lists the ones it was proven for in ``relight_looks``).
 RELIGHT_LOOKS = ("soft", "warm", "cool", "golden_hour", "dramatic", "studio")
@@ -112,7 +119,7 @@ VIDEO_VARIANT_CAPABILITIES = frozenset({T2V, I2V})
 MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB, CAPTIONS})
 #: Capabilities whose input is a video file (0052) — also carried in
 #: CapabilityRequest.input_media, never as a picture, never with speech rules.
-VIDEO_INPUT = frozenset({VIDEO_UPSCALE, *VIDEO_OPS, VIDEO_MUSIC})
+VIDEO_INPUT = frozenset({VIDEO_UPSCALE, *VIDEO_OPS, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP})
 #: Everything that starts from a media file rather than a picture.
 FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: Capabilities where the prompt is optional (i2v, upscale) or absent

@@ -82,7 +82,9 @@ class Numbering(unittest.TestCase):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0133"), 1)
         self.assertIn("0131", numbers)
-        self.assertEqual([n for n in numbers if n > "0133"], [], "a later number needs its own review of this file's pins")
+        # 0135 (Character Studio) was reviewed against these pins: it names no object of 0133 (tests/test_character_studio_migration.py
+        # checks that it names no brand_* object), replaces nothing, and 0133's rollback does not wait for it.
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0135",)], [], "a later number needs its own review of this file's pins")
         self.assertIn("0132 is reserved by another open pull request", TEXT)
 
     def test_the_file_says_it_is_applied_as_one_transaction_and_what_to_verify(self):
