@@ -106,7 +106,7 @@ class Shipped(unittest.TestCase):
             self.skipTest("not a git checkout")
         for name in ("country.bin.gz", "manifest.json"):
             rel = f"command-center/data/geoip/{name}"
-            ignored = subprocess.run(["git", "check-ignore", "-q", rel], cwd=ROOT)
+            ignored = subprocess.run(["git", "check-ignore", "-q", "--no-index", rel], cwd=ROOT)
             self.assertNotEqual(ignored.returncode, 0, f"{rel} is ignored by a .gitignore rule")
             tracked = subprocess.run(["git", "ls-files", "--error-unmatch", rel], cwd=ROOT, capture_output=True)
             self.assertEqual(tracked.returncode, 0, f"{rel} is not committed")
