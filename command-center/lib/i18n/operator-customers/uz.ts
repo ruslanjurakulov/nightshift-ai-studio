@@ -8,7 +8,7 @@ export const operatorCustomersUz: OperatorCustomersDictionary = {
   notEnabled: "Mijozlar hisoboti (0138-migratsiya) bu joylashtirishda hali qoʻllanmagan.",
   readFailed: "Mijozlar hisobotini oʻqib boʻlmadi, shuning uchun xato boʻlishi mumkin boʻlgan raqam oʻrniga hech narsa koʻrsatilmaydi. Hech narsa oʻzgarmadi — birozdan soʻng qayta urinib koʻring.",
 
-  figPeople: "Foydalanuvchilar",
+  figPeople: "Foydalanuvchilar (barcha akkauntlar)",
   figNewSub: "7 kunda +{d7} · 30 kunda +{d30}",
   figWorkspaces: "Ish maydonlari",
   figActive: "Faol ish maydonlari (30 kun)",
@@ -16,9 +16,9 @@ export const operatorCustomersUz: OperatorCustomersDictionary = {
   figSpent: "Sarflangan kredit",
   figSpentSub: "Soʻnggi 30 kunda {n}",
   figBought: "Sotib olingan kredit",
-  figBoughtSub: "Toʻlov bilan kelgan kreditlar",
+  figBoughtSub: "Yalpi: toʻlov bilan kelgan kreditlar, qaytarishlardan oldin",
   figGranted: "Sovgʻa qilingan kredit",
-  figGrantedSub: "Xush kelibsiz kreditlari, taklif mukofotlari va qoʻlda berilganlari",
+  figGrantedSub: "Yalpi: xush kelibsiz kreditlari, taklif mukofotlari va qoʻlda berilganlari, bekor qilinganlardan oldin",
   figPaid: "Toʻlangan (USD)",
   figPaidSub: "Yalpi: qaytarishlar, soliq va komissiyadan oldin",
   figPaidOther: "Yana {n} ta toʻlov boshqa valyutada — ular bu yerga qoʻshilmagan",
@@ -75,6 +75,7 @@ export const operatorCustomersUz: OperatorCustomersDictionary = {
 
   rulesTitle: "Raqamlar qanday hisoblanadi",
   ruleSpent: "Sarflangan kredit — tugagan ishlar uchun yechib olingan kreditlar, xato bilan tugab qaytarilgan pullik yuklab olishlar ayirilgan holda. Ish boshlanganda band qilinib, xato bilan tugaganda qaytarilgan kreditlar sarf hisoblanmaydi.",
-  rulePaid: "Toʻlangan — har bir yakunlangan toʻlov bir marta, faqat USD da. Boshqa valyutadagi toʻlov alohida sanaladi va dollarga aylantirilmaydi.",
-  ruleScope: "Platformaning oʻz ish maydoni bu raqamlarning hech biriga kirmaydi. Faol ish maydoni — davr ichida kamida bir marta kredit sarflagan ish maydoni.",
+  rulePaid: "Toʻlangan — har bir yakunlangan toʻlov bir marta, faqat USD’da, API balansini toʻldirishlar ham shu jumladan. Boshqa valyutadagi toʻlov alohida sanaladi va dollarga aylantirilmaydi.",
+  ruleGross: "Sotib olingan va sovgʻa qilingan kreditlar yalpi: qaytarilgan xarid va bekor qilingan sovgʻa ulardan ayirilmaydi.",
+  ruleScope: "Foydalanuvchilar — roʻyxatdan oʻtgan har bir akkaunt, platformaning oʻz akkauntlari va ish maydoni yoʻq akkauntlar ham shu jumladan. Qolgan barcha raqamlarga platformaning oʻz ish maydoni kirmaydi. Faol ish maydoni — davr ichida kamida bir marta kredit sarflagan ish maydoni.",
 };

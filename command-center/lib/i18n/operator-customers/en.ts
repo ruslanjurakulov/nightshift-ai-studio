@@ -14,7 +14,7 @@ export const operatorCustomersEn = {
   notEnabled: "The customers report (migration 0138) is not applied on this deployment yet.",
   readFailed: "The customers report could not be read, so nothing is shown rather than a number that could be wrong. Nothing was changed — try again shortly.",
 
-  figPeople: "People",
+  figPeople: "People (every account)",
   figNewSub: "+{d7} in 7 days · +{d30} in 30 days",
   figWorkspaces: "Workspaces",
   figActive: "Active workspaces (30 days)",
@@ -22,9 +22,9 @@ export const operatorCustomersEn = {
   figSpent: "Credits spent",
   figSpentSub: "{n} in the last 30 days",
   figBought: "Credits bought",
-  figBoughtSub: "Credits that came with a payment",
+  figBoughtSub: "Gross: credits that came with a payment, before refunds",
   figGranted: "Credits granted",
-  figGrantedSub: "Welcome credits, invite rewards and grants by hand",
+  figGrantedSub: "Gross: welcome credits, invite rewards and grants by hand, before reversals",
   figPaid: "Paid (USD)",
   figPaidSub: "Gross: before refunds, tax and fees",
   figPaidOther: "{n} more payments in another currency are not added here",
@@ -81,8 +81,9 @@ export const operatorCustomersEn = {
 
   rulesTitle: "How the numbers are counted",
   ruleSpent: "Credits spent are what finished runs were charged, less paid downloads that failed and were given back. Credits held when a run starts and returned when it fails are not spent.",
-  rulePaid: "Paid counts each completed payment once, in USD only. A payment in another currency is counted apart and never converted into dollars.",
-  ruleScope: "The platform’s own workspace is in none of these numbers. An active workspace spent credits at least once in the period.",
+  rulePaid: "Paid counts each completed payment once, in USD only, including API balance top-ups. A payment in another currency is counted apart and never converted into dollars.",
+  ruleGross: "Bought and granted are gross: a refunded purchase and a reversed grant are not taken off them.",
+  ruleScope: "People counts every account that signed up, the platform’s own and those without a workspace included. Every other number leaves the platform’s own workspace out. An active workspace spent credits at least once in the period.",
 };
 
 export type OperatorCustomersDictionary = typeof operatorCustomersEn;

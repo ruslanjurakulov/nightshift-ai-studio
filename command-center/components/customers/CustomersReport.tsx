@@ -173,6 +173,7 @@ export function CustomersReport({
         </h2>
         <p className="g4-note">{c.ruleSpent}</p>
         <p className="g4-note">{c.rulePaid}</p>
+        <p className="g4-note">{c.ruleGross}</p>
         <p className="g4-note">{c.ruleScope}</p>
       </section>
     </div>

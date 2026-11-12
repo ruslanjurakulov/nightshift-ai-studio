@@ -257,6 +257,19 @@ describe("states", () => {
 });
 
 describe("copy", () => {
+  it("says what each figure holds: paid includes API balance top-ups, bought and granted are gross, people is every account", async () => {
+    const html = await page();
+    for (const text of [en.customers.rulePaid, en.customers.ruleGross, en.customers.ruleScope]) expect(has(html, text), text).toBe(true);
+    expect(en.customers.rulePaid).toMatch(/API balance top-ups/);
+    expect(en.customers.ruleGross).toMatch(/gross/);
+    expect(en.customers.figBoughtSub).toMatch(/^Gross/);
+    expect(en.customers.figGrantedSub).toMatch(/^Gross/);
+    // the operator's own accounts ARE in "People": the copy must not say the platform is left out of every number
+    expect(en.customers.ruleScope).not.toMatch(/in none of these numbers/);
+    expect(en.customers.ruleScope).toMatch(/every account/);
+    expect(uz.customers.rulePaid).toContain("USD\u2019da");
+  });
+
   it("the refusal and the subtitle use no role words and no hint of who may open it, in any language", () => {
     const roleWords = /owner|admin|editor|viewer|operator|владел|админ|редактор|наблюдател|оператор|egasi|administrator|muharrir|operator/i;
     for (const d of [en, ru, uz]) {
