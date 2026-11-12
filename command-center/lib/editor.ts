@@ -3138,6 +3138,230 @@ export function trimClip(
   return { ...model, clips: layout(clips) };
 }
 
+// ── rolling, slip, slide and ripple-trim-to-playhead (no new field) ─────────
+//
+// Each is a change of `in_s` / `out_s` only, laid out by `layout` like a trim, so a document they make is one
+// both validators already judge. Times given to them are TIMELINE seconds unless named otherwise; what they
+// may do is worked out first as a range and the request is held to it, so a drag past a limit stops at the
+// limit instead of leaving a clip under a frame, past its file, or too short for a cross-fade it has.
+
+/** Where a clip's file ends (null: not known, or a still, which has no end). */
+export type SourceLength = (assetId: string) => number | null;
+
+/** A side of a clip on the timeline: `head` is where it starts, `tail` where it ends. */
+type Side = "head" | "tail";
+
+/** Which source edge a timeline side moves: a reversed clip plays its range from the end. */
+function sourceEdge(c: VideoClip, side: Side): "in" | "out" {
+  if (c.freeze) return "out";
+  return (side === "head") !== Boolean(c.reverse) ? "in" : "out";
+}
+
+/** How much a cross-fade needs a clip to keep (layout drops one that no longer fits, which would change the
+ *  timeline's length): its own cross-fade in, the next clip's in, and the millisecond layout keeps between them. */
+function crossfadeNeed(clips: VideoClip[], i: number): number {
+  const into = i > 0 ? crossfadeOf(clips[i]) : 0;
+  const out = i + 1 < clips.length ? crossfadeOf(clips[i + 1]) : 0;
+  return into + out > 0 ? into + out + 0.002 : 0;
+}
+
+/**
+ * The timeline seconds side `side` of clip `c` may grow (positive) or shrink (negative) by: [lo, hi]. Kept inside
+ * its file (`max`, unbounded when not known) and at least {@link minPieceS} of source long. A frozen clip holds
+ * the frame at `in_s`, so either side only changes its hold (`out_s`); its length is not capped by the file.
+ */
+function sideRoom(c: VideoClip, side: Side, max: number, fps: number): [number, number] {
+  const min = minPieceS(c, fps);
+  if (c.freeze) return [c.in_s + min - c.out_s, Number.POSITIVE_INFINITY];
+  const s = c.speed > 0 ? c.speed : 1;
+  return sourceEdge(c, side) === "out"
+    ? [(c.in_s + min - c.out_s) / s, (max - c.out_s) / s]
+    : [(c.in_s - (c.out_s - min)) / s, c.in_s / s];
+}
+
+/** Clip `c` grown on side `side` by `d` timeline seconds (negative shrinks it); its fades and entrance / exit
+ *  are held to the new length as a split piece's are. */
+function growSide(c: VideoClip, side: Side, d: number): VideoClip {
+  const s = c.freeze ? 1 : c.speed > 0 ? c.speed : 1;
+  const out: VideoClip =
+    sourceEdge(c, side) === "out"
+      ? { ...c, out_s: ms(c.out_s + d * s) }
+      : { ...c, in_s: ms(c.in_s - d * s) };
+  fitPieceFades(out);
+  fitPieceAnims(out);
+  return out;
+}
+
+/** `d` held to [lo, hi], each bound rounded inwards to the millisecond: 0 when the range is empty or the step is
+ *  under half a millisecond, and never a step the other way than asked (a range that does not hold 0 must not turn
+ *  "left" into "right"). The step itself is not rounded: the edges it moves are, so a run of one-frame steps
+ *  (1/30 s) lands on the frames instead of drifting a millisecond per step. */
+function holdDelta(d: number, lo: number, hi: number): number {
+  const l = Math.ceil(lo * 1000 - 1e-6) / 1000;
+  const h = Math.floor(hi * 1000 + 1e-6) / 1000;
+  if (!(l <= h) || !Number.isFinite(d)) return 0;
+  const v = clamp(d, l, h);
+  return Math.abs(v) >= 0.0005 && Math.sign(v) === Math.sign(d) ? v : 0;
+}
+
+const srcMax = (c: VideoClip, sourceOf: SourceLength) => {
+  const v = sourceOf(c.asset_id);
+  return v && v > 0 ? ms(v) : Number.POSITIVE_INFINITY;
+};
+
+/** How far the cut into clip `id` can roll: [earliest, latest] in timeline seconds from where it is (null when
+ *  there is no cut there: the first clip, a missing id, or a speed curve on either side). */
+export function rollRange(model: EditorModel, id: string, sourceOf: SourceLength): [number, number] | null {
+  const clips = layout(model.clips);
+  const i = clips.findIndex((c) => c.id === id);
+  if (i <= 0) return null;
+  const a = clips[i - 1];
+  const b = clips[i];
+  if (a.speed_curve || b.speed_curve) return null;
+  const [aLo, aHi] = sideRoom(a, "tail", srcMax(a, sourceOf), model.fps);
+  const [bLo, bHi] = sideRoom(b, "head", srcMax(b, sourceOf), model.fps);
+  return [
+    Math.max(aLo, -bHi, crossfadeNeed(clips, i - 1) - clipLength(a)),
+    Math.min(aHi, -bLo, clipLength(b) - crossfadeNeed(clips, i)),
+  ];
+}
+
+/**
+ * Rolling edit: the cut between clip `id` and the clip before it moves `d` timeline seconds (later when
+ * positive). The clip before ends `d` later and clip `id` starts `d` later in the same place, so nothing else
+ * moves and the timeline keeps its length. Held to {@link rollRange}; the same model back when it cannot move.
+ */
+export function rollEdit(model: EditorModel, id: string, d: number, sourceOf: SourceLength): EditorModel {
+  const r = rollRange(model, id, sourceOf);
+  if (!r) return model;
+  const step = holdDelta(d, r[0], r[1]);
+  if (step === 0) return model;
+  const clips = layout(model.clips);
+  const i = clips.findIndex((c) => c.id === id);
+  const next = clips.map((c, k) =>
+    k === i - 1 ? growSide(c, "tail", step) : k === i ? growSide(c, "head", -step) : c,
+  );
+  return { ...model, clips: layout(next) };
+}
+
+/** How far clip `id` can slip: [lo, hi] SOURCE seconds from where its range is (null without a known file
+ *  length: a still, or a file whose length was never read, is never guessed). */
+export function slipRange(model: EditorModel, id: string, sourceOf: SourceLength): [number, number] | null {
+  const c = model.clips.find((x) => x.id === id);
+  if (!c) return null;
+  const max = srcMax(c, sourceOf);
+  if (!Number.isFinite(max)) return null;
+  // A frozen clip only needs its frame inside the file (its hold is not the file's).
+  if (c.freeze) return [-c.in_s, max - minPieceS(c, model.fps) - c.in_s];
+  return [-c.in_s, max - c.out_s];
+}
+
+/**
+ * Slip edit: clip `id` shows `ds` SOURCE seconds later (earlier when negative) of its file, with the same length
+ * in the same place. Nothing else moves. A speed curve slips too (its points are fractions of the range).
+ */
+export function slipClip(model: EditorModel, id: string, ds: number, sourceOf: SourceLength): EditorModel {
+  const r = slipRange(model, id, sourceOf);
+  if (!r) return model;
+  const step = holdDelta(ds, r[0], r[1]);
+  if (step === 0) return model;
+  return {
+    ...model,
+    clips: layout(
+      model.clips.map((c) => (c.id === id ? { ...c, in_s: ms(c.in_s + step), out_s: ms(c.out_s + step) } : c)),
+    ),
+  };
+}
+
+/** How far clip `id` can slide: [lo, hi] timeline seconds (null for the first or last clip, which have no
+ *  neighbour on one side, and when a neighbour has a speed curve). */
+export function slideRange(model: EditorModel, id: string, sourceOf: SourceLength): [number, number] | null {
+  const clips = layout(model.clips);
+  const i = clips.findIndex((c) => c.id === id);
+  if (i <= 0 || i >= clips.length - 1) return null;
+  const a = clips[i - 1];
+  const c = clips[i + 1];
+  if (a.speed_curve || c.speed_curve) return null;
+  const [aLo, aHi] = sideRoom(a, "tail", srcMax(a, sourceOf), model.fps);
+  const [cLo, cHi] = sideRoom(c, "head", srcMax(c, sourceOf), model.fps);
+  return [
+    Math.max(aLo, -cHi, crossfadeNeed(clips, i - 1) - clipLength(a)),
+    Math.min(aHi, -cLo, clipLength(c) - crossfadeNeed(clips, i + 1)),
+  ];
+}
+
+/**
+ * Slide edit: clip `id` moves `d` timeline seconds (later when positive) with the same content; the clip before
+ * it ends `d` later and the clip after it starts `d` later, so the timeline keeps its length. Held to
+ * {@link slideRange}; the same model back when it cannot move.
+ */
+export function slideClip(model: EditorModel, id: string, d: number, sourceOf: SourceLength): EditorModel {
+  const r = slideRange(model, id, sourceOf);
+  if (!r) return model;
+  const step = holdDelta(d, r[0], r[1]);
+  if (step === 0) return model;
+  const clips = layout(model.clips);
+  const i = clips.findIndex((c) => c.id === id);
+  const next = clips.map((c, k) =>
+    k === i - 1 ? growSide(c, "tail", step) : k === i + 1 ? growSide(c, "head", -step) : c,
+  );
+  return { ...model, clips: layout(next) };
+}
+
+/**
+ * Ripple trim to the playhead: the clip under timeline time `t` loses what plays before `t` (`head`) or from `t`
+ * on (`tail`), and the clips after it close up. `playhead` is where the edit now is (the clip's start after a
+ * head trim). Null when there is nothing to trim (no clip, `t` on its first frame), when a piece under a frame
+ * would be left, or on a speed curve (its points would need moving, as for a split).
+ */
+export function rippleTrimTo(
+  model: EditorModel,
+  t: number,
+  side: Side,
+): { model: EditorModel; playhead: number } | null {
+  const hit = clipAt(model, t);
+  if (!hit || hit.clip.speed_curve) return null;
+  const c = hit.clip;
+  const end = clipEnd(c);
+  const cut = ms(side === "head" ? t - c.start_s : end - t);
+  if (cut < 0.5 / model.fps) return null;
+  const [lo] = sideRoom(c, side, Number.POSITIVE_INFINITY, model.fps);
+  if (-cut < lo - 1e-9) return null;
+  const next = growSide(c, side, -cut);
+  if (c.move) {
+    // The window goes on from where the whole move had reached at the playhead, as a split's halves do.
+    const f = clamp((ms(t) - c.start_s) / clipLength(c), 0, 1);
+    const at = (k: keyof typeof MOVE_POINT_DEFAULTS) => {
+      const a = c.move!.from[k] ?? MOVE_POINT_DEFAULTS[k];
+      const b = c.move!.to[k] ?? MOVE_POINT_DEFAULTS[k];
+      return ms(a + (b - a) * f);
+    };
+    const mid = { zoom: at("zoom"), x: at("x"), y: at("y") };
+    next.move = side === "head" ? { from: mid, to: c.move.to } : { from: c.move.from, to: mid };
+  }
+  const out = { ...model, clips: layout(model.clips.map((x) => (x.id === c.id ? next : x))) };
+  return { model: out, playhead: side === "head" ? c.start_s : ms(t) };
+}
+
+/** Every place a cut is on the picture lane (each clip's start and end), in order, without repeats. */
+export function editPoints(model: EditorModel): number[] {
+  const out = new Set<number>();
+  for (const c of layout(model.clips)) {
+    out.add(ms(c.start_s));
+    out.add(clipEnd(c));
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+/** The next (dir 1) or previous (dir -1) cut from timeline time `t`, or null when there is none that way. */
+export function nextEditPoint(model: EditorModel, t: number, dir: 1 | -1): number | null {
+  const pts = editPoints(model);
+  // Half a millisecond: the playhead parked on a cut is AT it, so the key goes on to the next one.
+  if (dir > 0) return pts.find((p) => p > t + 0.0005) ?? null;
+  for (let i = pts.length - 1; i >= 0; i -= 1) if (pts[i] < t - 0.0005) return pts[i];
+  return null;
+}
+
 /** The clip on screen at timeline time `t`, and where in its source that is. */
 export function clipAt(
   model: EditorModel,

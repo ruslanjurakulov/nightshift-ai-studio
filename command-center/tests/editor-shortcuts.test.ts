@@ -39,14 +39,15 @@ describe("a key press", () => {
     expect(k("=")).toBe("zoomIn");
     expect(k("-")).toBe("zoomOut");
     expect(k("0")).toBe("zoomFit");
-    expect(k("q")).toBeNull();
+    // a letter no action uses does nothing
+    expect(k("x")).toBeNull();
   });
   it("S and 0 also follow the physical key on non-Latin and AZERTY layouts, but only there", () => {
     expect(resolveShortcut({ key: "ы", code: "KeyS" }, "other")).toBe("split");
     expect(resolveShortcut({ key: "à", code: "Digit0" }, "other")).toBe("zoomFit");
     expect(resolveShortcut({ key: "0", code: "Numpad0" }, "other")).toBe("zoomFit");
-    // a Latin letter is judged by what it says: Dvorak's physical S position types "o"
-    expect(resolveShortcut({ key: "o", code: "KeyS" }, "other")).toBeNull();
+    // a Latin letter is judged by what it says: Dvorak's physical S position types "o", which is the out mark, not a split
+    expect(resolveShortcut({ key: "o", code: "KeyS" }, "other")).toBe("markOut");
     expect(resolveShortcut({ key: "Insert", code: "Numpad0" }, "other")).toBeNull();
     // a Cyrillic key that is not on the S position does nothing
     expect(resolveShortcut({ key: "ы", code: "KeyA" }, "other")).toBeNull();

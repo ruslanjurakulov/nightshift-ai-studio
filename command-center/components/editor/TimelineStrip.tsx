@@ -8,6 +8,8 @@ import { Timecode } from "@/components/ui/Timecode";
 import { snapTargets, snapTrimValue } from "@/lib/editor-timeline-view";
 import type { TimelineView } from "./useTimelineView";
 import type { ShapeLayer } from "@/lib/editorShapes";
+import { isLiftHold, type Marks } from "@/lib/editorRange";
+import type { EditTool } from "./EditCore";
 import {
   clipEnd,
   clipLength,
@@ -20,6 +22,11 @@ import {
   type TextClip,
   type VideoClip,
 } from "@/lib/editor";
+
+/** A drag or a key on a roll, slip or slide handle: `delta` is timeline seconds from where the gesture started
+ *  (a roll moves the cut into clip `id`, a slide moves clip `id`), or for a slip SOURCE seconds (later when
+ *  positive). The strip only reports it; the editor runs the model's operation, which holds it to its limits. */
+export type ToolOp = { tool: Exclude<EditTool, "trim">; id: string; delta: number };
 
 export type Selection = {
   kind: "clip" | "text" | "sound" | "overlay" | "shape";
@@ -101,6 +108,10 @@ export function TimelineStrip({
   onTrimEnd,
   view,
   beats = [],
+  tool = "trim",
+  marks,
+  onToolEdit,
+  onToolEditEnd,
 }: {
   clips: readonly VideoClip[];
   texts: readonly TextClip[];
@@ -128,6 +139,14 @@ export function TimelineStrip({
   view?: TimelineView;
   /** Beat markers (timeline seconds): drawn over the clips' lane, and trims snap to them. */
   beats?: readonly number[];
+  /** The timeline tool: trim (edge handles, the default), roll (cut handles), slip or slide (a handle on the clip). */
+  tool?: EditTool;
+  /** The in / out marks, drawn over the lanes (editor state, never saved). */
+  marks?: Marks;
+  /** A roll, slip or slide gesture: `commit` false while dragging (the editor keeps one undo step for it). */
+  onToolEdit?: (op: ToolOp, commit: boolean) => void;
+  /** A roll, slip or slide drag ended. */
+  onToolEditEnd?: () => void;
 }) {
   const { t } = useI18n();
   const te = t.editor;
@@ -143,6 +162,7 @@ export function TimelineStrip({
     targets: number[];
     touch: boolean;
   } | null>(null);
+  const toolDrag = useRef<{ tool: ToolOp["tool"]; id: string; x0: number; pxPerS: number; speed: number } | null>(null);
   // Where a trim drag has snapped to (a guide line while it holds), or nothing.
   const [guide, setGuide] = useState<number | null>(null);
   const span = Math.max(total, 0.001);
@@ -239,6 +259,41 @@ export function TimelineStrip({
     onTrimEnd();
   }
 
+  // ── roll, slip and slide handles ──
+  function onToolKey(e: KeyboardEvent<HTMLElement>, op: Omit<ToolOp, "delta">, speed: number, now: number) {
+    const step = e.shiftKey ? 1 : frame;
+    let dir = 0;
+    if (e.key === "ArrowLeft" || e.key === "ArrowDown") dir = -1;
+    else if (e.key === "ArrowRight" || e.key === "ArrowUp") dir = 1;
+    if (!dir) return;
+    e.preventDefault();
+    // A slip moves through the SOURCE: one frame of the clip is `speed` frames of its file. The step lands on the
+    // frame grid (the document keeps milliseconds, so stepping a rounded value would drift a millisecond a frame).
+    const by = dir * step * (op.tool === "slip" ? speed : 1);
+    const target = Math.round((now + by) * fps) / fps;
+    onToolEdit?.({ ...op, delta: Math.abs(target - now) > 1e-9 ? target - now : by }, true);
+  }
+  function onToolDown(e: PointerEvent<HTMLElement>, op: Omit<ToolOp, "delta">, speed: number) {
+    const w = strip.current?.getBoundingClientRect().width ?? 0;
+    if (!w) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    toolDrag.current = { ...op, x0: e.clientX, pxPerS: w / span, speed };
+  }
+  function onToolMove(e: PointerEvent<HTMLElement>) {
+    const d = toolDrag.current;
+    if (!d) return;
+    const dt = Math.round(((e.clientX - d.x0) / d.pxPerS) * fps) / fps;
+    // Dragging a slip moves the PICTURE with the pointer: to the right shows an earlier part of the file.
+    onToolEdit?.({ tool: d.tool, id: d.id, delta: d.tool === "slip" ? -dt * d.speed : dt }, false);
+  }
+  function onToolUp() {
+    if (!toolDrag.current) return;
+    toolDrag.current = null;
+    onToolEditEnd?.();
+  }
+
   return (
     <div
       ref={view?.setScroller}
@@ -286,7 +341,7 @@ export function TimelineStrip({
           {clips.map((c, i) => {
             const len = clipLength(c);
             const on = selected?.kind === "clip" && selected.id === c.id;
-            const name = assets[c.asset_id]?.name ?? te.untitledVideo;
+            const name = isLiftHold(c) ? te.core.marks.holdName : (assets[c.asset_id]?.name ?? te.untitledVideo);
             const src = assets[c.asset_id]?.durationS ?? undefined;
             const x = crossfadeOf(c);
             const label = fmt(te.clipLabel, {
@@ -332,7 +387,19 @@ export function TimelineStrip({
                     </span>
                   ) : null}
                 </button>
-                {on ? (
+                {on && tool !== "trim" ? (
+                  <ToolHandles
+                    tool={tool}
+                    clips={clips}
+                    index={i}
+                    src={src}
+                    onKey={onToolKey}
+                    onDown={onToolDown}
+                    onMove={onToolMove}
+                    onUp={onToolUp}
+                  />
+                ) : null}
+                {on && tool === "trim" ? (
                   <>
                     {(["in", "out"] as const).map((edge) => (
                       <span
@@ -557,6 +624,31 @@ export function TimelineStrip({
             );
           })}
         </div>
+        {marks && (marks.in !== null || marks.out !== null) ? (
+          // The marked range over every lane, and its two edges (I / O).
+          <>
+            <span
+              aria-hidden
+              data-testid="mark-range"
+              className="pointer-events-none absolute top-0 z-10 h-full bg-[var(--color-primary)] opacity-15"
+              style={{
+                left: pct(Math.min(marks.in ?? 0, marks.out ?? span)),
+                width: pct(Math.abs((marks.out ?? span) - (marks.in ?? 0))),
+              }}
+            />
+            {(["in", "out"] as const).map((k) =>
+              marks[k] === null ? null : (
+                <span
+                  key={k}
+                  aria-hidden
+                  data-testid={`mark-${k}`}
+                  className={`pointer-events-none absolute top-0 z-20 h-full w-0.5 -translate-x-1/2 bg-[var(--color-primary)] ${k === "in" ? "rounded-l" : "rounded-r"}`}
+                  style={{ left: pct(Math.min(marks[k] ?? 0, span)) }}
+                />
+              ),
+            )}
+          </>
+        ) : null}
         <span
           aria-hidden
           className="pointer-events-none absolute top-0 z-20 h-full w-0.5 -translate-x-1/2 bg-[var(--color-fg)]"
@@ -575,7 +667,89 @@ export function TimelineStrip({
       <p id="editor-trim-keys" className="sr-only">
         {te.trimKeys}
       </p>
+      <p id="editor-tool-keys" className="sr-only">
+        {te.core.tools.keys}
+      </p>
     </div>
+  );
+}
+
+/**
+ * The handles of the roll, slip and slide tools on the selected clip `index`: a roll has one at each cut the clip
+ * has (its start, when a clip is before it; its end, when one is after it); a slip or a slide has one over the
+ * clip. Each is a slider a keyboard can move (arrow = one frame, Shift + arrow = one second).
+ */
+function ToolHandles({
+  tool,
+  clips,
+  index,
+  src,
+  onKey,
+  onDown,
+  onMove,
+  onUp,
+}: {
+  tool: Exclude<EditTool, "trim">;
+  clips: readonly VideoClip[];
+  index: number;
+  src: number | undefined;
+  onKey: (e: KeyboardEvent<HTMLElement>, op: Omit<ToolOp, "delta">, speed: number, now: number) => void;
+  onDown: (e: PointerEvent<HTMLElement>, op: Omit<ToolOp, "delta">, speed: number) => void;
+  onMove: (e: PointerEvent<HTMLElement>) => void;
+  onUp: () => void;
+}) {
+  const { t } = useI18n();
+  const ct = t.editor.core.tools;
+  const c = clips[index];
+  const handle = (op: Omit<ToolOp, "delta">, speed: number, now: number) => ({
+    role: "slider" as const,
+    tabIndex: 0,
+    "aria-describedby": "editor-tool-keys",
+    onKeyDown: (e: KeyboardEvent<HTMLElement>) => onKey(e, op, speed, now),
+    onPointerDown: (e: PointerEvent<HTMLElement>) => onDown(e, op, speed),
+    onPointerMove: onMove,
+    onPointerUp: onUp,
+    onPointerCancel: onUp,
+    "data-tool": op.tool,
+  });
+  const grip =
+    "ns-trim-handle absolute top-0 z-10 flex h-full cursor-ew-resize touch-none items-center justify-center rounded-[var(--ns-r-chip)] bg-[var(--color-primary)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-fg)]";
+  if (tool === "roll") {
+    const cuts: { id: string; a: number; side: "left-0" | "right-0"; at: number }[] = [];
+    if (index > 0) cuts.push({ id: c.id, a: index, side: "left-0", at: clipEnd(clips[index - 1]) });
+    if (index + 1 < clips.length) cuts.push({ id: clips[index + 1].id, a: index + 1, side: "right-0", at: clipEnd(c) });
+    return (
+      <>
+        {cuts.map((k) => (
+          <span
+            key={k.id}
+            {...handle({ tool, id: k.id }, 1, k.at)}
+            aria-label={fmt(ct.rollHandle, { a: k.a, b: k.a + 1 })}
+            aria-valuemin={0}
+            aria-valuemax={pictureEnd(clips)}
+            aria-valuenow={k.at}
+            aria-valuetext={formatTime(k.at)}
+            className={`${grip} ${k.side}`}
+          >
+            <span className="h-5 w-0.5 rounded-[1px] bg-[var(--color-on-accent)]" aria-hidden />
+          </span>
+        ))}
+      </>
+    );
+  }
+  const slip = tool === "slip";
+  return (
+    <span
+      {...handle({ tool, id: c.id }, c.speed > 0 ? c.speed : 1, slip ? c.in_s : c.start_s)}
+      aria-label={fmt(slip ? ct.slipHandle : ct.slideHandle, { n: index + 1 })}
+      aria-valuenow={slip ? c.in_s : c.start_s}
+      aria-valuemin={0}
+      aria-valuemax={slip ? (src !== undefined ? Math.max(0, src - (c.out_s - c.in_s)) : undefined) : pictureEnd(clips)}
+      aria-valuetext={formatTime(slip ? c.in_s : c.start_s)}
+      className="absolute inset-x-2 inset-y-1 z-10 flex cursor-grab touch-none items-center justify-center rounded-[var(--ns-r-chip)] border border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_25%,transparent)] text-xs font-semibold text-[var(--color-fg)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-fg)]"
+    >
+      <span aria-hidden>{slip ? "⇆" : "↔"}</span>
+    </span>
   );
 }
 

@@ -131,6 +131,8 @@ export function ShortcutsHelp() {
     undo: tv.scUndo,
     redo: tv.scRedo,
     save: tv.scSave,
+    ...t.editor.core.keys,
+    prevEdit: t.editor.core.keys.edits,
   };
   const keyName: Record<string, string> = {
     Space: tv.keySpace,

@@ -97,6 +97,11 @@ import {
   soundLength,
   soundWarnings,
   speechSpans,
+  rippleTrimTo,
+  rollEdit,
+  slideClip,
+  slipClip,
+  slipRange,
   splitClip,
   textWarnings,
   textsAt,
@@ -123,7 +128,21 @@ import {
   requestExports,
   saveProject,
 } from "./editorApi";
-import { TimelineStrip, pictureEnd, type Selection } from "./TimelineStrip";
+import { TimelineStrip, pictureEnd, type Selection, type ToolOp } from "./TimelineStrip";
+import { GuidesControls, MarksBar, PreviewGuides, SplitEditTools, ToolPicker, type EditTool } from "./EditCore";
+import {
+  NO_MARKS,
+  extractRange,
+  insertAt,
+  liftRange,
+  markedRange,
+  setMark,
+  type Marks,
+  type RangeProblem,
+} from "@/lib/editorRange";
+import { GUIDES_OFF, loadGuides, saveGuides, type GuideChoice } from "@/lib/editorGuides";
+import { nextShuttle } from "@/lib/editor-shortcuts";
+import type { CoreAction } from "./useEditorShortcuts";
 import { DraftBanner } from "./DraftBanner";
 import { useEditorDraft } from "./useEditorDraft";
 import { SoundPreview, previewVolume } from "./SoundPreview";
@@ -418,6 +437,17 @@ export function TimelineEditor({
   const addOverlayButton = useRef<HTMLButtonElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const dragBase = useRef<EditorModel | null>(null);
+  // The editing core: the timeline tool, the in / out marks (editor state, never saved), the shuttle's rate
+  // (J / K / L; 1 = normal play) and the preview's guides (this browser only).
+  const [tool, setTool] = useState<EditTool>("trim");
+  const [marks, setMarks] = useState<Marks>(NO_MARKS);
+  const [coreStatus, setCoreStatus] = useState<string | null>(null);
+  const [shuttle, setShuttle] = useState(1);
+  const shuttleRef = useRef(1);
+  shuttleRef.current = shuttle;
+  const [guides, setGuides] = useState<GuideChoice>(GUIDES_OFF);
+  // Read after the first render: the server has no browser storage, and a differing first render would not hydrate.
+  useEffect(() => setGuides(loadGuides()), []);
 
   const clips = useMemo(() => layout(model.clips), [model.clips]);
   const total = useMemo(() => modelDuration(model), [model]);
@@ -658,14 +688,15 @@ export function TimelineEditor({
   useEffect(() => {
     const v = video.current;
     if (!v || !at) return;
-    setRate(v, at.clip.speed);
-    v.muted = !at.clip.audio;
+    setRate(v, at.clip.speed * (shuttle > 0 ? shuttle : 1));
+    // Fast or backwards shuttle plays no sound (the note under the transport says so).
+    v.muted = !at.clip.audio || shuttle !== 1;
     // The clip's own volume, as far as a browser goes (an element plays at most 100 %; the export does 200 %).
     v.volume = previewVolume(at.clip.gain_db ?? 0);
     const switched = shownClip.current !== at.clip.id;
     shownClip.current = at.clip.id;
-    if (!playsNatively(at.clip)) {
-      // Backwards, frozen or ramped: the element cannot play it, so it is stepped to the frame the playhead is at.
+    if (!playsNatively(at.clip) || shuttle < 0) {
+      // Backwards, frozen or ramped (or the shuttle going backwards): the element cannot play it, so it is stepped to the frame the playhead is at.
       v.muted = true;
       v.pause?.();
       if (Math.abs((v.currentTime || 0) - at.sourceS) > 0.03) {
@@ -688,7 +719,7 @@ export function TimelineEditor({
       if (playing && switched)
         void v.play?.()?.catch?.(() => setPlaying(false));
     }
-  }, [at, playing, src]);
+  }, [at, playing, src, shuttle]);
 
   const playheadRef = useRef(playhead);
   playheadRef.current = playhead;
@@ -705,11 +736,21 @@ export function TimelineEditor({
       last = now;
       const ph = playheadRef.current;
       const v = video.current;
+      const rate = shuttleRef.current;
       const here = clipAt(model, Math.min(ph, Math.max(0, picture - 0.001)));
       let next: number;
-      if (!here) {
+      if (rate < 0) {
+        // The shuttle backwards: the clock runs back; the preview steps to each frame (the effect above).
+        next = ph + dt * rate;
+        if (next <= 0) {
+          playheadRef.current = 0;
+          setPlayhead(0);
+          setPlaying(false);
+          return;
+        }
+      } else if (!here) {
         // Past the picture (text only), or nothing to play: the clock runs.
-        next = ph + dt;
+        next = ph + dt * rate;
       } else {
         const c = here.clip;
         const end = clipEnd(c);
@@ -719,7 +760,7 @@ export function TimelineEditor({
         const t =
           viaVideo && v
             ? c.start_s + (v.currentTime - c.in_s) / c.speed
-            : ph + dt;
+            : ph + dt * rate;
         // At a clip's end the playhead jumps to the next clip's start.
         next = t >= end - 0.01 ? end : clamp(t, c.start_s, end);
       }
@@ -734,19 +775,24 @@ export function TimelineEditor({
       raf = requestAnimationFrame(tick);
     };
     const first = clipAt(model, Math.min(playheadRef.current, Math.max(0, picture - 0.001)));
-    if (!first || playsNatively(first.clip)) void video.current?.play?.()?.catch?.(() => {});
+    if ((!first || playsNatively(first.clip)) && shuttleRef.current > 0) void video.current?.play?.()?.catch?.(() => {});
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, model, picture, total, src]);
+  }, [playing, model, picture, total, src, shuttle]);
+  // Stopping, by any way, ends the shuttle: the next play is at 1x.
+  useEffect(() => {
+    if (!playing) setShuttle(1);
+  }, [playing]);
 
   const togglePlay = () => {
     if (!playing && playhead >= total - 0.001) setPlayhead(0);
+    setShuttle(1);
     setPlaying((p) => !p);
   };
 
   // Timeline zoom and snapping, the single-key shortcuts, the playhead slider's snapping.
   const view = useTimelineView({ total, playhead });
-  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; }, onShapeRemoved: () => { shapeFocus.current = "add"; }, clipboard, setClipboard, onClipInserted: (id) => setSelected({ kind: "clip", id }) });
+  useEditorShortcuts({ model, selected, playhead, total, togglePlay, setPlayhead, setPlaying, apply, view, onOverlayRemoved: () => { overlayFocus.current = "add"; }, onShapeRemoved: () => { shapeFocus.current = "add"; }, clipboard, setClipboard, onClipInserted: (id) => setSelected({ kind: "clip", id }), onCore: (a) => onCore(a) });
   const scrub = usePlayheadScrub({ clips, model, view, setPlayhead, setPlaying });
 
   async function refreshLinks() {
@@ -988,6 +1034,118 @@ export function TimelineEditor({
     if (base && base !== model) {
       setPast((p) => [...p.slice(-(HISTORY - 1)), base]);
       setFuture([]);
+    }
+  }
+
+  // ── the editing core: roll / slip / slide, marks, ripple trim to the playhead, shuttle ──
+  const sourceOf = (assetId: string) => assets[assetId]?.durationS ?? null;
+  const kindOf = (assetId: string) => assets[assetId]?.kind;
+  const core = t.editor.core;
+  function runTool(base: EditorModel, op: ToolOp): EditorModel {
+    if (op.tool === "roll") return rollEdit(base, op.id, op.delta, sourceOf);
+    if (op.tool === "slip") return slipClip(base, op.id, op.delta, sourceOf);
+    return slideClip(base, op.id, op.delta, sourceOf);
+  }
+  function onToolEdit(op: ToolOp, commit: boolean) {
+    if (!commit) {
+      // While dragging: the gesture is measured from where it started, and is one undo step.
+      if (!dragBase.current) dragBase.current = model;
+      setModel(runTool(dragBase.current, op));
+      return;
+    }
+    const next = runTool(model, op);
+    if (next === model) {
+      setCoreStatus(op.tool === "slip" && !slipRange(model, op.id, sourceOf) ? core.tools.noFile : core.tools.stuck);
+      return;
+    }
+    setCoreStatus(null);
+    // A run of arrow keys on one handle is one undo step.
+    apply(next, `${op.tool}:${op.id}`);
+  }
+  function onToolEditEnd() {
+    const base = dragBase.current;
+    dragBase.current = null;
+    if (!base || base === model) return;
+    // The drag showed the model unsettled; it ends settled, as an edit through apply does.
+    const fixed = settleAll(model, base);
+    setSettled(fixed.changes);
+    gesture.current = null;
+    setPast((p) => [...p.slice(-(HISTORY - 1)), base]);
+    setFuture([]);
+    if (fixed.model !== model) setModel(fixed.model);
+  }
+  const range = markedRange(marks, total, model.fps);
+  const rangeProblem = (p: RangeProblem) =>
+    p === "clips_full" ? fmt(core.marks.problem.clips_full, { max: MAX_EDITOR_CLIPS }) : core.marks.problem[p];
+  function onExtract() {
+    if (!range) return setCoreStatus(core.marks.problem.no_range);
+    const out = extractRange(model, range[0], range[1]);
+    if ("problem" in out) return setCoreStatus(rangeProblem(out.problem));
+    setPlaying(false);
+    apply(out.model);
+    setMarks(NO_MARKS);
+    setPlayhead(range[0]);
+    setCoreStatus(fmt(core.marks.extracted[countForm(out.removed, locale)], { n: out.removed }));
+  }
+  function onLift() {
+    if (!range) return setCoreStatus(core.marks.problem.no_range);
+    const out = liftRange(model, range[0], range[1], kindOf);
+    if ("problem" in out) return setCoreStatus(rangeProblem(out.problem));
+    apply(out.model);
+    setCoreStatus(core.marks.lifted);
+  }
+  function onInsert() {
+    if (!clipboard) return setCoreStatus(core.marks.noClipboard);
+    const out = insertAt(model, clipboard, playhead);
+    if ("problem" in out) return setCoreStatus(rangeProblem(out.problem));
+    apply(out.model);
+    setSelected({ kind: "clip", id: out.id });
+    setCoreStatus(core.marks.inserted);
+  }
+  function onMark(which: "in" | "out") {
+    setMarks((m) => setMark(m, which, playhead, model.fps, total));
+    setCoreStatus(null);
+  }
+  function onCore(action: CoreAction) {
+    switch (action) {
+      case "shuttleBack":
+      case "shuttleStop":
+      case "shuttleForward": {
+        const n = nextShuttle({ playing, rate: shuttle }, action);
+        // Nothing to play that way: at the start going back, at the end going forwards.
+        if (n.playing && n.rate < 0 && playhead <= 0.001) return;
+        if (n.playing && n.rate > 0 && playhead >= total - 0.001) return;
+        setShuttle(n.rate);
+        setPlaying(n.playing);
+        return;
+      }
+      case "markIn":
+      case "markOut":
+        return onMark(action === "markIn" ? "in" : "out");
+      case "rippleHead":
+      case "rippleTail": {
+        const out = rippleTrimTo(model, playhead, action === "rippleHead" ? "head" : "tail");
+        if (!out) return setCoreStatus(core.ripple.none);
+        setPlaying(false);
+        apply(out.model);
+        setPlayhead(out.playhead);
+        setCoreStatus(null);
+        return;
+      }
+      case "extract":
+        return onExtract();
+      case "lift":
+        return onLift();
+      case "insert":
+        return onInsert();
+      case "toolTrim":
+        return setTool("trim");
+      case "toolRoll":
+        return setTool("roll");
+      case "toolSlip":
+        return setTool("slip");
+      case "toolSlide":
+        return setTool("slide");
     }
   }
 
@@ -1478,7 +1636,7 @@ export function TimelineEditor({
                   const v = video.current;
                   if (v && at) {
                     v.currentTime = at.sourceS;
-                    setRate(v, at.clip.speed);
+                    setRate(v, at.clip.speed * (shuttle > 0 ? shuttle : 1));
                     if (playing)
                       void v.play?.()?.catch?.(() => setPlaying(false));
                   }
@@ -1604,6 +1762,7 @@ export function TimelineEditor({
                 </span>
               );
             })}
+            <PreviewGuides frame={model} value={guides} />
           </div>
           </div>
           <p className="m-0 text-center text-xs text-[var(--color-muted)]">
@@ -1625,11 +1784,19 @@ export function TimelineEditor({
             height={model.height}
             onChange={(id) => apply(setFrame(model, id))}
           />
+          <GuidesControls
+            frame={model}
+            value={guides}
+            onChange={(g) => {
+              setGuides(g);
+              saveGuides(g);
+            }}
+          />
           <SoundPreview
             sounds={model.sounds}
             assets={assets}
             playhead={playhead}
-            playing={playing}
+            playing={playing && shuttle === 1}
             speech={speech}
           />
 
@@ -1662,6 +1829,11 @@ export function TimelineEditor({
               className="h-11 min-w-[9rem] flex-1 accent-[var(--color-primary)]"
             />
             {/* The master-control readout: frame-accurate timecode at the project's rate; the spoken form keeps tenths. */}
+            {playing && shuttle !== 1 ? (
+              <span role="status" className="ns-chip shrink-0 text-xs font-semibold" data-testid="shuttle-rate" title={core.shuttle.note}>
+                {fmt(shuttle < 0 ? core.shuttle.back : core.shuttle.forward, { x: Math.abs(shuttle) })}
+              </span>
+            ) : null}
             <span className="shrink-0 basis-full text-right text-xs text-[var(--color-muted)] sm:basis-auto">
               <Timecode value={playhead} format="frames" fps={model.fps} label={formatTime(playhead)} /> /{" "}
               <Timecode value={total} format="frames" fps={model.fps} label={formatTime(total)} />
@@ -1669,7 +1841,12 @@ export function TimelineEditor({
           </div>
 
           <TimelineViewBar view={view} />
+          <ToolPicker tool={tool} onTool={setTool} />
           <TimelineStrip
+            tool={tool}
+            marks={marks}
+            onToolEdit={onToolEdit}
+            onToolEditEnd={onToolEditEnd}
             view={view}
             clips={clips}
             texts={model.texts}
@@ -1685,6 +1862,20 @@ export function TimelineEditor({
             onTrim={onTrim}
             onTrimEnd={onTrimEnd}
             beats={model.sounds.flatMap((x) => (beatsBySound[x.id] ? beatTimes(x, beatsBySound[x.id]) : []))}
+          />
+          <MarksBar
+            range={range}
+            marks={marks}
+            canInsert={Boolean(clipboard) && model.clips.length < MAX_EDITOR_CLIPS}
+            status={coreStatus}
+            onMark={onMark}
+            onClear={() => {
+              setMarks(NO_MARKS);
+              setCoreStatus(null);
+            }}
+            onExtract={onExtract}
+            onLift={onLift}
+            onInsert={onInsert}
           />
 
           <div className="flex flex-wrap gap-2">
@@ -2143,14 +2334,26 @@ export function TimelineEditor({
                 />
               }
               copy={
-                <ClipCopyTools
-                  model={model}
-                  clip={clip}
-                  clipboard={clipboard}
-                  onCopy={setClipboard}
-                  apply={apply}
-                  onInserted={(newId) => setSelected({ kind: "clip", id: newId })}
-                />
+                <>
+                  <ClipCopyTools
+                    model={model}
+                    clip={clip}
+                    clipboard={clipboard}
+                    onCopy={setClipboard}
+                    apply={apply}
+                    onInserted={(newId) => setSelected({ kind: "clip", id: newId })}
+                  />
+                  {clipIndex > 0 ? (
+                    <SplitEditTools
+                      model={model}
+                      clipId={clip.id}
+                      sourceOf={sourceOf}
+                      kindOf={kindOf}
+                      apply={apply}
+                      onDone={() => undefined}
+                    />
+                  ) : null}
+                </>
               }
               crossfade={crossfadeOf(clip)}
               maxCrossfade={maxCrossfade(model, clip.id)}

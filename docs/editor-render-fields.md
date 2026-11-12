@@ -37,6 +37,7 @@ into one commit) and #484 (group 11); group 12 is the editor-parity change that 
 | 12 | `claude/editor-parity-1` | V clip `gain_db`; a video on an A track (detached sound); `speed` 0.1-10; export frame rate | added by this branch (section 12) |
 | 14 | `claude/editor-parity-2` | V clip `color` (temperature, tint, hue, curve), `mask`; silence removal (no field) | on main (#675, section 14) |
 | 16 | `claude/editor-parity-2b` | V clip `fx` (glitch, shake, rgb_split, flash), `anim_in` / `anim_out`; apply a cross-fade to all cuts, beat markers (no field) | added by this branch (section 16) |
+| 17 | `claude/editor-parity-b1` | none: rolling, slip and slide edits, in / out marks with ripple delete, lift and insert, J / L cut, the key map, preview guides | added by this branch (section 17) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -1197,3 +1198,80 @@ A document without these fields builds exactly the argv origin/main (#675) built
 
 As section 12: older validators refuse `fx` and a V clip's `anim_*`, so merge as one commit and use the new controls
 only after the worker has been rebuilt by the deploy.
+
+## 17. Editing core: roll, slip, slide, marks, J / L cut, keys, guides (no new field)
+
+Branch `claude/editor-parity-b1` (Premiere parity batch 1). Browser only: no document field, no render change, no
+migration, no new route. Every operation changes fields the document already has, is laid out by `layout` like a
+trim, settles through `settleAll` like any edit (`apply`; a drag settles when it ends) and is one undo step.
+
+### Timeline tools (`lib/editor.ts`, next to `trimClip`)
+
+* **Roll** (`rollEdit`, `rollRange`): the cut into a clip moves; the clip before ends later by as much as this one
+  starts later, so nothing else moves and the length is kept. A fast clip gives its source at its speed, a reversed
+  clip grows by playing more of its range's start, a frozen clip changes only its hold. Held to the file (its
+  length when known), to `minPieceS` and to every cross-fade the two clips have (`crossfadeNeed`: a roll never
+  shortens a clip under the cross-fades it carries, which `layout` would otherwise drop, changing the length).
+  Not across a speed curve (as a split).
+* **Slip** (`slipClip`, `slipRange`): the same place and length, another part of the file (source seconds). Needs
+  the file's length: a still, or a length never read, is not slipped (never guessed). A curve slips with its range.
+* **Slide** (`slideClip`, `slideRange`): the clip moves between its neighbours, which give and take; not the first or
+  the last clip.
+* **Ripple trim to the playhead** (`rippleTrimTo`, Q / W): the clip under the playhead loses what plays before it
+  (its start) or from it (its end) and the clips after it close up; a move goes on from where it had reached.
+* `TimelineStrip` has a tool picker (Trim, the default, Roll, Slip, Slide; keys V, N, Y, U). Roll draws a handle at
+  each cut of the selected clip, Slip and Slide one over it; each is a slider (arrow = one frame on the frame grid,
+  Shift + arrow = one second; a run of arrows is one undo step) and can be dragged (one undo step per drag).
+
+### Marks and range edits (`lib/editorRange.ts`)
+
+* In / out marks are editor state (never saved); an in mark alone runs to the end, an out mark alone from the start.
+  They are drawn over every lane.
+* A cut at a mark (`cutAt`) is an existing plain cut, a split, or, inside a cross-fade, the end of the cross-fade
+  (a split inside the overlap would shorten it and with it the timeline); a mark within one shortest piece of a
+  plain edge is that edge. So both ends of a marked range are plain cuts and its length is what it covers.
+* **Ripple delete** (`extractRange`, key '): two cuts and `removeClip` for each piece between; the clips after it
+  close up. Texts, sounds, overlays and shapes keep their times, as after every ripple delete here (sync lock is
+  batch 2c). Refused for the whole picture, a curve under a mark, a full lane, a sliver against a cross-fade.
+* **Lift** (`liftRange`, key ;): the range becomes black and silent for exactly as long, so nothing after it moves.
+  The picture lane has no gaps (it is laid end to end), so the gap is held by ONE clip of existing fields: the
+  lifted part's first file frozen on its first frame (`freeze`; a still for a picture, which cannot freeze), no
+  sound, and `mask` `{rect, 0.5, 0.5, 1, 1, feather 0, invert}` (`LIFT_MASK`): black over the whole frame. The
+  strip names it "Lifted (black)". Its neighbours are cuts, so a 4K frame's "no mask on a cross-faded clip" holds.
+  It is charged the mask's render cost like any masked clip (section 14); if the timeline is over its allowance,
+  settle step 4c may take that mask off with its notice. `tests/test_editor_lift_hold.py` renders a frozen and a
+  still hold through the real export path: black in every corner, and the clips after it at their times.
+* **Insert at the playhead** (`insertAt`, key ,): a copy of the clipboard's clip at the playhead: the clip there is
+  split and everything after it moves later; inside a cross-fade it goes in at that cut.
+
+### J / L cut (`splitEdit`)
+
+On the cut into the selected clip: each side's own sound is detached (`detachClipAudio`), then the sound's cut moves
+6, 12 or 24 frames past the picture's cut (L: the first sound ends later and the second starts later; J: the other
+way), held to what the files have. Offered on every clip after the first; refused (with the reason) where neither
+side has its own sound, a side is a picture or retimed, or the mix is full.
+
+### Keys (`lib/editor-shortcuts.ts`)
+
+J / K / L shuttle (L plays, each further L doubles up to 8x; J backwards; K stops; fast and backwards play has no
+sound in the preview and backwards is stepped), I / O, Q / W, Up / Down (previous / next cut), ' ; , and the tool
+letters, all once per press (no repeat; Up / Down repeat), never in a text field, on a slider, or with Ctrl, Alt or
+Shift; on a non-Latin layout by the physical key. Ctrl / Cmd + K splits like S: inside the editor it is taken in the
+capture phase so the command palette (also Ctrl + K) does not open; in a text field it is left to the palette.
+**M (add marker) is not mapped:** the document has no marker to keep (beats are drawn, not stored, section 16);
+stored markers are batch 3a.
+
+### Guides (`lib/editorGuides.ts`, `PreviewGuides`)
+
+An SVG over the preview box (aria-hidden, no pointer events), never in the document or the export: the app interface
+areas on a 9:16 frame (YouTube Shorts, TikTok, Reels: approximate, from each platform's vertical ad template, and the
+UI says so), title and action safe (SMPTE ST 2046-1: 90 % and 93 %), centre and thirds. The choice is kept in this
+browser only.
+
+### Strings
+
+`lib/i18n/editor-core/{en,ru,uz}.ts` (`t.editor.core`); ru and uz are drafts for a native read.
+
+### Rollout
+
+Nothing to order: no field, no migration; older workers render what this saves.
