@@ -1,7 +1,8 @@
 # Meta Model API, Muse Image: first-party adapter (dark)
 
 Researched 2026-11-12 from Meta's official pages only: the dev.meta.ai docs (each page read as markdown by appending
-`.md`), and the legal pages (Terms of Service updated 2026-10-09, Geographic Use Policy updated 2026-10-12). **No
+`.md`), and the legal pages (Terms of Service updated 2026-10-09; Geographic Use Policy updated 2026-10-12, re-read 2026-11-12 at its
+2026-11-09 update, see "Geography"). **No
 endpoint was called. There is no key yet.**
 
 Where it lives:
@@ -135,10 +136,12 @@ SPEND, as for every adapter.
 
 ## Geography: the gap
 
-The Geographic Use Policy has two lists:
+The Geographic Use Policy (<https://dev.meta.ai/legal/geographic-use-policy>, "Last updated: November 9, 2026", re-read
+2026-11-12) has two lists:
 
-- 2.2: Muse Image is unavailable in **India**.
-- 3: the Restricted Territories are Afghanistan, Belarus, Cambodia, China / Hong Kong / Macau, Cuba, Eritrea,
+- 2.2, model-specific availability: only "Muse Wonder: South Korea" and "Muse Wonder Full: South Korea". **Muse Image is
+  no longer listed.** The 2026-10-12 version read for this note first barred Muse Image in India; that ban is gone.
+- 3: the Restricted Territories, unchanged by the 2026-11-09 update, are Afghanistan, Belarus, Cambodia, China / Hong Kong / Macau, Cuba, Eritrea,
   Ethiopia, Haiti, Iran, Iraq, Libya, Myanmar, Nicaragua, North Korea, Pakistan, Russia, Somalia, Syria,
   Crimea / Donetsk / Luhansk, Venezuela and Western Sahara.
 
@@ -156,7 +159,7 @@ The only "country" fields are the YouTube channel's own `snippet.country`, which
 not where the requester is, and the operator's legal country (`NEXT_PUBLIC_LEGAL_COUNTRY`).
 
 As instructed, no GeoIP was built. The entry stays terms-gated, so it cannot be sold, until a person decides how to
-meet 2.2 and 3. Two possible ways:
+meet 3 (2.2 no longer names Muse Image). Two possible ways:
 
 - a CDN or reverse-proxy country header, checked by the database function that quotes a job;
 - a country recorded on the account and checked at quote time.

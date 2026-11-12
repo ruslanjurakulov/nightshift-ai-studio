@@ -41,8 +41,10 @@ Obligations this adapter carries (Model API ToS, AUP, Geographic Use Policy):
   that reads as a real or famous person, a deepfake or a child is refused before any call, with the same keyword
   screen Character Studio uses (``modules.character_swap.PROMPT_PATTERNS``, migration 0137). It is keyword-weak by
   design; the pictures themselves are not screened.
-* Geography: the Geographic Use Policy bars Muse Image in India (2.2) and every Restricted Territory (3). The repository
-  has no signal of the requester's country (no GeoIP, no CDN country header, no country on the account), so nothing
+* Geography: the Geographic Use Policy (https://dev.meta.ai/legal/geographic-use-policy, "Last updated: November 9,
+  2026", read 2026-11-12) bars every Restricted Territory (3) for all models. Its model-specific list (2.2) no longer
+  names Muse Image (only Muse Wonder and Muse Wonder Full, in South Korea); the 2026-10-12 version barred it in India.
+  The repository has no signal of the requester's country (no GeoIP, no CDN country header, no country on the account), so nothing
   here can block by country. The entry stays unsellable until that gap is closed (docs/research/meta-muse-image-first-party.md).
 """
 

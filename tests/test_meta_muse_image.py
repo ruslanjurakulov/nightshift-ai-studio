@@ -559,7 +559,8 @@ class RegistryEntryTests(unittest.TestCase):
 
     def test_the_terms_notes_carry_each_obligation(self):
         notes = " ".join(self.e.raw["terms_notes"])
-        for must in ("18", "ToS 7", "watermark", "likeness", "India", "requester-country", "store false", "10.1(i)"):
+        for must in ("18", "ToS 7", "watermark", "likeness", "2026-11-09", "Restricted Territories", "requester-country",
+                     "store false", "10.1(i)"):
             self.assertIn(must, notes)
 
     def test_a_paid_probe_of_every_model_never_calls_it(self):
@@ -635,7 +636,8 @@ class WiringTests(unittest.TestCase):
         self.assertIn("tamper", row)
         research = (ROOT / "docs" / "research" / "meta-muse-image-first-party.md").read_text()
         self.assertIn("## Geography: the gap", research)
-        self.assertIn("India", research)
+        self.assertIn("Last updated: November 9, 2026", research)        # the policy's own date, re-read 2026-11-12
+        self.assertIn("Muse Image is\n  no longer listed", research)
 
 
 if __name__ == "__main__":
