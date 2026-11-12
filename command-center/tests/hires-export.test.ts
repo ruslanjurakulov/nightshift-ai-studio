@@ -49,7 +49,6 @@ const exportsRoute = await import("../app/api/editor/projects/[id]/exports/route
 const quoteRoute = await import("../app/api/editor/projects/[id]/exports/quote/route");
 const {
   aboveFree,
-  hasSpeedCurve,
   HIRES_EXPORT_PRESETS,
   HIRES_MAX_FPS,
   HIRES_MAX_S,
@@ -132,18 +131,11 @@ describe("the tiers and caps", () => {
   });
 });
 
-describe("above 1080p and speed curves", () => {
+describe("above 1080p", () => {
   it("above 1080p is by pixels and fails closed", () => {
     for (const [w, h] of [[1920, 1080], [1080, 1920], [1280, 720]]) expect(aboveFree(w, h), `${w}x${h}`).toBe(false);
     for (const [w, h] of [[1920, 1082], [2560, 1440], [3840, 2160], [4096, 4096]]) expect(aboveFree(w, h), `${w}x${h}`).toBe(true);
     for (const bad of [[null, 1080], ["1920", "1080"], [0, 0], [1920.5, 1080]] as [unknown, unknown][]) expect(aboveFree(...bad)).toBe(true);
-  });
-
-  it("a speed curve is found where the database looks: any clip of any track of the saved document", () => {
-    expect(hasSpeedCurve({ tracks: [{ clips: [{ id: "a" }] }, { clips: [{ id: "b", speed_curve: [] }] }] })).toBe(true);
-    expect(hasSpeedCurve({ tracks: [{ clips: [{ id: "a", speed: 2 }] }] })).toBe(false);
-    expect(hasSpeedCurve({ tracks: [null, "x", { clips: "no" }] })).toBe(false);
-    expect(hasSpeedCurve({})).toBe(false);
   });
 });
 
@@ -195,7 +187,8 @@ describe("the quote", () => {
     const q = parseHiresQuote(DBQUOTE)!;
     expect(q).toEqual({
       frame: "youtube_2160p", tier: "2160p", durationS: 6, minutes: 1, maxS: 180, tooLong: false, maxFps: 30, tooFast: false, fps: 30,
-      onSale: true, creditsPerMinute: 12.5, credits: 12.5, hold: 12.5, speedCurve: false, available: 100, exempt: false, mayPay: true,
+      onSale: true, creditsPerMinute: 12.5, credits: 12.5, hold: 12.5, speedCurve: false, curveSold: false, available: 100,
+      exempt: false, mayPay: true,
     });
     // The route's camelCase answer reads the same.
     expect(parseHiresQuote(q)).toEqual(q);
@@ -214,6 +207,9 @@ describe("the quote", () => {
     const floor = parseHiresQuote({ ...DBQUOTE, credits: 4, hold: 30 })!;
     expect([floor.credits, floor.hold]).toEqual([4, 30]);
     expect(parseHiresQuote({ ...DBQUOTE, speed_curve: true })!.speedCurve).toBe(true);
+    // 0136 sells a curve at its rendered length and says so; anything but true is a database that does not (0132 alone).
+    expect(parseHiresQuote({ ...DBQUOTE, speed_curve: true, curve_sold: true })!.curveSold).toBe(true);
+    for (const v of [undefined, null, false, "true", 1]) expect(parseHiresQuote({ ...DBQUOTE, curve_sold: v })!.curveSold).toBe(false);
   });
 
   it("names what blocks Export, in this order", () => {
@@ -221,6 +217,9 @@ describe("the quote", () => {
     expect(quoteBlocker(q)).toBeNull();
     expect(quoteBlocker({ ...q, onSale: false, credits: null })).toBe("not_on_sale");
     expect(quoteBlocker({ ...q, speedCurve: true, tooLong: true })).toBe("hires_speed_curve");
+    // A curve the database prices (0136) blocks nothing by itself.
+    expect(quoteBlocker({ ...q, speedCurve: true, curveSold: true })).toBeNull();
+    expect(quoteBlocker({ ...q, speedCurve: true, curveSold: true, tooLong: true })).toBe("hires_too_long");
     expect(quoteBlocker({ ...q, tooLong: true })).toBe("hires_too_long");
     expect(quoteBlocker({ ...q, tooFast: true, fps: 60 })).toBe("hires_fps");
     expect(quoteBlocker({ ...q, mayPay: false })).toBe("forbidden");
@@ -255,8 +254,8 @@ describe("GET .../exports/quote", () => {
     expect((await res.json()).quote).toEqual(parseHiresQuote(DBQUOTE));
   });
 
-  it("refuses a free frame, a made-up one, a bad revision and a stranger before the database", async () => {
-    for (const qs of ["rev=1&frame=square_1080", "rev=1&frame=youtube_4k", "rev=0&frame=youtube_2160p", "rev=x&frame=youtube_2160p",
+  it("refuses a made-up frame, a bad revision and a stranger before the database", async () => {
+    for (const qs of ["rev=1&frame=youtube_4k", "rev=1&frame=PROJECT", "rev=1&frame=3840x2160", "rev=0&frame=youtube_2160p", "rev=x&frame=youtube_2160p",
       "rev=1.5&frame=youtube_2160p", "frame=youtube_2160p", "rev=1"]) {
       const res = await getQuote(qs);
       expect(res.status, qs).toBe(400);
@@ -303,7 +302,7 @@ describe("POST .../exports with a paid frame", () => {
   it("sends the paid frame to the four-argument function with that number, and a free frame as always", async () => {
     let n = 0;
     h.rpc.request_editor_export = () => ({ data: E(++n), error: null });
-    const res = await post({ rev: 2, frames: ["youtube_2160p", "square_1080"], maxCredits: { youtube_2160p: 12.5, square_1080: 99 } });
+    const res = await post({ rev: 2, frames: ["youtube_2160p", "square_1080"], maxCredits: { youtube_2160p: 12.5 } });
     expect(res.status).toBe(201);
     expect(h.calls).toEqual([
       { name: "request_editor_export", args: { p_project: PID, p_rev: 2, p_frame: "square_1080" } },

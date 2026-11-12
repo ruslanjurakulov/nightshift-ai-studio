@@ -156,11 +156,12 @@ import {
 } from "@/lib/multiRatioExport/frames";
 import {
   aboveFree,
-  hasSpeedCurve,
   isHiresPresetId,
+  isQuotableFrame,
   overHiresCap,
   overHiresFps,
   type HiresPresetId,
+  type QuotableFrame,
 } from "@/lib/hiresExport/limits";
 import { applyExportPreset, isExportPresetId, setExportFps } from "@/lib/editorExportPresets";
 import {
@@ -450,8 +451,7 @@ export function TimelineEditor({
   // smaller), or after its frame is set to 1080p or smaller. Saving it stays allowed.
   const ownAboveFree = aboveFree(model.width, model.height);
   const ownBlocked = ownAboveFree ? (multiRatio && hires ? te.exportHires.ownTooBig : te.exportHires.ownTooBigOff) : null;
-  // A speed curve cannot be priced (the database's length leaves the curve out): no paid size is offered for it.
-  const speedCurve = useMemo(() => hires && hasSpeedCurve(toDoc(settledModel)), [hires, settledModel]);
+  // A speed curve is sold at its rendered length (migration 0136): the quote prices it, so nothing is held back for it here.
   const framesChosen = frames.filter(
     (c) =>
       (c === PROJECT_FRAME && !ownAboveFree) ||
@@ -459,10 +459,16 @@ export function TimelineEditor({
         frameChoices.includes(c) &&
         !frameBlocked.includes(c) &&
         !frameOverCap.includes(c) &&
-        !frameTooFast.includes(c) &&
-        !(speedCurve && isHiresPresetId(c))),
+        !frameTooFast.includes(c)),
   );
-  const paidChosen = framesChosen.filter((c): c is HiresPresetId => isHiresPresetId(c));
+  // Sizes up to 1080p are sold (migration 0136: the owner set their price). Learnt from the server's own refusal of a plain
+  // request (export_needs_quote): from then on every ticked size is priced, the project's own included. While that price
+  // is NULL the server never says it, and Export is the free request it always was.
+  const [soldUpTo1080, setSoldUpTo1080] = useState(false);
+  const quoted = multiRatio && hires;
+  const paidChosen: QuotableFrame[] = soldUpTo1080
+    ? framesChosen.filter((c): c is QuotableFrame => isQuotableFrame(c))
+    : framesChosen.filter((c): c is HiresPresetId => isHiresPresetId(c));
   // The person's yes to the server's quote of the paid sizes (HiresExportQuote): Export spends only with it.
   const [paidOk, setPaidOk] = useState<HiresConfirmation>({ ready: false, key: "", maxCredits: {} });
   // A yes counts only for the sizes and the saved version it was given for (a stale one is never sent), and is dropped
@@ -841,18 +847,18 @@ export function TimelineEditor({
     setStarting(true);
     setError(null);
     setFrameRefusals([]);
-    const paid = want.filter((c): c is HiresPresetId => isHiresPresetId(c));
-    // A paid size goes only with the number the person confirmed (the route refuses it without one: quote_required).
+    const priced = want.filter((c): c is QuotableFrame => isQuotableFrame(c) && paidOk.maxCredits[c] !== undefined);
+    // A paid size goes only with the number the person confirmed (the route refuses it without one: quote_required), and a
+    // sold size up to 1080p (0136) with its own; a free one goes without, as always.
     const out = await requestExports(
       projectId,
       rev,
       want,
-      paid.length && paidReady
-        ? Object.fromEntries(paid.flatMap((c) => (paidOk.maxCredits[c] === undefined ? [] : [[c, paidOk.maxCredits[c]]])))
-        : undefined,
+      priced.length && paidReady ? Object.fromEntries(priced.map((c) => [c, paidOk.maxCredits[c] as number])) : undefined,
     );
     setStarting(false);
     if (!out.ok) {
+      if (out.error === "export_needs_quote") setSoldUpTo1080(true);
       setError(out.error);
       return out.error;
     }
@@ -878,14 +884,16 @@ export function TimelineEditor({
       });
     }
     setFrameRefusals(refused);
+    if (refused.some((r) => r.error === "export_needs_quote")) setSoldUpTo1080(true);
     // Newest first, like the server's list.
     if (queued.length) setExports((e) => [...queued.reverse(), ...e]);
     return refused[0]?.error ?? null;
   }
 
   async function startExport(): Promise<EditorError | null> {
-    // Only the project's own size (always, without `multiRatio`): the request it always was, byte for byte.
-    if (multiRatio && !(framesChosen.length === 1 && framesChosen[0] === PROJECT_FRAME))
+    // Only the project's own size (always, without `multiRatio`): the request it always was, byte for byte. Once sizes up
+    // to 1080p are sold (0136), the project's own size too goes with its confirmed number.
+    if (multiRatio && (soldUpTo1080 || !(framesChosen.length === 1 && framesChosen[0] === PROJECT_FRAME)))
       return startFrameExports(framesChosen);
     if (dirty || active || starting) return null;
     setStarting(true);
@@ -894,6 +902,7 @@ export function TimelineEditor({
     const out = await requestExport(projectId, rev);
     setStarting(false);
     if (!out.ok) {
+      if (out.error === "export_needs_quote") setSoldUpTo1080(true);
       setError(out.error);
       return out.error;
     }
@@ -1146,13 +1155,15 @@ export function TimelineEditor({
     ? te.exportNeedsSave
     : active
       ? te.exportBusy
-      : !multiRatio && ownBlocked
-        ? ownBlocked
-        : multiRatio && framesChosen.length === 0
-          ? (ownBlocked ?? te.exportRatios.none)
-          : paidChosen.length > 0 && !paidReady
-            ? te.errors.quote_required
-            : null;
+      : soldUpTo1080 && !quoted
+        ? te.exportHires.soldNoQuote
+        : !multiRatio && ownBlocked
+          ? ownBlocked
+          : multiRatio && framesChosen.length === 0
+            ? (ownBlocked ?? te.exportRatios.none)
+            : paidChosen.length > 0 && !paidReady
+              ? te.errors.quote_required
+              : null;
   /** A size's name for a sentence: the format's, or "this project's size". */
   const frameName = (c: string) =>
     isHiresPresetId(c)
@@ -1338,11 +1349,10 @@ export function TimelineEditor({
             tooFast={frameTooFast}
             fps={model.fps}
             ownBlocked={ownBlocked}
-            speedCurve={speedCurve}
             onChange={setFrames}
           />
         ) : null}
-        {multiRatio && hires && paidChosen.length > 0 ? (
+        {quoted && paidChosen.length > 0 ? (
           <HiresExportQuote projectId={projectId} rev={rev} dirty={dirty} frames={paidChosen} onChange={setPaidOk} />
         ) : null}
         {frameRefusals.length ? (

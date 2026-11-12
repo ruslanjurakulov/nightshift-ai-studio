@@ -5,11 +5,14 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { formatClock } from "@/lib/editorExportStatus";
 import type { EditorError } from "@/lib/editor";
+import { isExportPresetId } from "@/lib/editorExportPresets";
 import {
   HIRES_MAX_S,
+  isHiresPresetId,
   quoteBlocker,
-  type HiresPresetId,
+  type ExportQuote,
   type HiresQuote,
+  type QuotableFrame,
 } from "@/lib/hiresExport/limits";
 import { fetchHiresQuote, type EditorResult } from "./editorApi";
 
@@ -18,11 +21,12 @@ export type HiresConfirmation = {
   ready: boolean;
   /** What the yes was given for: `${rev}|${frames}`. */
   key: string;
-  /** The confirmed number per paid size: what the route sends as `maxCredits`. */
-  maxCredits: Partial<Record<HiresPresetId, number>>;
+  /** The confirmed number per sold size: what the route sends as `maxCredits`. A free size has none. */
+  maxCredits: Partial<Record<QuotableFrame, number>>;
 };
 
-type Loaded = { state: "loading" } | { state: "ok"; quote: HiresQuote } | { state: "error"; error: EditorError };
+/** `quote: null` = free (a size up to 1080p while its price is NULL, migration 0136). */
+type Loaded = { state: "loading" } | { state: "ok"; quote: HiresQuote | null } | { state: "error"; error: EditorError };
 
 const credits = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
@@ -37,6 +41,10 @@ const credits = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
  *
  * States: saving first (the quote is for the saved version), loading, a quote, each refusal with its sentence, a read
  * that failed with "Get the price again". The sentences sit in a polite live region.
+ *
+ * Up to 1080p (migration 0136): once the owner sets that price the editor asks the quote of EVERY ticked size, the
+ * project's own ("project") included; each sold size is a line like a paid one, a free one says so, and the confirmation
+ * is asked only when something is sold. With nothing sold, ready needs no tick.
  */
 export function HiresExportQuote({
   projectId,
@@ -50,11 +58,11 @@ export function HiresExportQuote({
   rev: number;
   /** Unsaved changes: the price would be for the version on the server, so it is not asked. */
   dirty: boolean;
-  /** The paid sizes that are ticked, in the picker's order. */
-  frames: readonly HiresPresetId[];
+  /** The sizes to price, in the picker's order: the paid ones, and (0136, once sizes up to 1080p are sold) every one. */
+  frames: readonly QuotableFrame[];
   onChange: (c: HiresConfirmation) => void;
   /** The quote call (tests pass their own). */
-  load?: (id: string, rev: number, frame: HiresPresetId) => Promise<EditorResult<HiresQuote>>;
+  load?: (id: string, rev: number, frame: QuotableFrame) => Promise<EditorResult<ExportQuote>>;
 }) {
   const { t } = useI18n();
   const hx = t.editor.exportHires;
@@ -71,7 +79,10 @@ export function HiresExportQuote({
     for (const f of frames) {
       void load(projectId, rev, f).then((r) => {
         if (!live) return;
-        setLoaded((prev) => ({ ...prev, [f]: r.ok ? { state: "ok", quote: r.value } : { state: "error", error: r.error } }));
+        setLoaded((prev) => ({
+          ...prev,
+          [f]: r.ok ? { state: "ok", quote: r.value.free ? null : r.value.quote } : { state: "error", error: r.error },
+        }));
       });
     }
     return () => {
@@ -81,18 +92,22 @@ export function HiresExportQuote({
   }, [key, dirty, attempt, projectId, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const quotes = frames.map((f) => loaded[f]);
-  const all = quotes.every((q): q is { state: "ok"; quote: HiresQuote } => q?.state === "ok");
-  const total = all ? quotes.reduce((s, q) => s + (q.quote.exempt ? 0 : (q.quote.credits ?? 0)), 0) : null;
-  const held = all ? quotes.reduce((s, q) => s + (q.quote.exempt ? 0 : (q.quote.hold ?? 0)), 0) : null;
-  const blocked = all && quotes.some((q) => quoteBlocker(q.quote) !== null);
+  const all = quotes.every((q): q is { state: "ok"; quote: HiresQuote | null } => q?.state === "ok");
+  const sold = all ? quotes.flatMap((q) => (q.quote ? [q.quote] : [])) : [];
+  const total = all ? sold.reduce((s, q) => s + (q.exempt ? 0 : (q.credits ?? 0)), 0) : null;
+  const held = all ? sold.reduce((s, q) => s + (q.exempt ? 0 : (q.hold ?? 0)), 0) : null;
+  const blocked = all && sold.some((q) => quoteBlocker(q) !== null);
   // The confirmation is for THIS set of quotes: anything that changes them takes it back.
-  const signature = all ? `${key}|${quotes.map((q) => `${q.quote.frame}:${q.quote.credits}:${q.quote.hold}`).join(",")}` : null;
-  const ready = !dirty && all && !blocked && signature !== null && agreed === signature;
+  const signature = all
+    ? `${key}|${quotes.map((q, i) => (q.quote ? `${q.quote.frame}:${q.quote.credits}:${q.quote.hold}` : `${frames[i]}:free`)).join(",")}`
+    : null;
+  // Nothing sold (every size free): nothing to say yes to.
+  const ready = !dirty && all && !blocked && signature !== null && (sold.length === 0 || agreed === signature);
 
   const maxCredits = useMemo(() => {
-    const out: Partial<Record<HiresPresetId, number>> = {};
+    const out: Partial<Record<QuotableFrame, number>> = {};
     // The database compares its price with this number in the exempt organization too (it holds nothing there).
-    if (all) for (const q of quotes) out[q.quote.frame] = q.quote.credits ?? 0;
+    for (const q of sold) out[q.frame] = q.credits ?? 0;
     return out;
     // `signature` changes exactly when the numbers do.
   }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -102,7 +117,8 @@ export function HiresExportQuote({
   }, [ready, key, maxCredits]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (frames.length === 0) return null;
-  const name = (f: HiresPresetId) => hx.names[f];
+  const name = (f: QuotableFrame) =>
+    isHiresPresetId(f) ? hx.names[f] : isExportPresetId(f) ? t.editor.exportPreset.names[f] : t.editor.exportRatios.own;
 
   const lines: { key: string; text: string; tone: "plain" | "warn" }[] = [];
   if (dirty) lines.push({ key: "save", text: hx.saveFirst, tone: "warn" });
@@ -118,6 +134,10 @@ export function HiresExportQuote({
         continue;
       }
       const q = l.quote;
+      if (!q) {
+        lines.push({ key: f, text: fmt(hx.freeLine, { name: name(f) }), tone: "plain" });
+        continue;
+      }
       const why = quoteBlocker(q);
       if (why === "not_on_sale") lines.push({ key: f, text: fmt(hx.notOnSale, { name: name(f) }), tone: "warn" });
       else if (why === "hires_speed_curve") lines.push({ key: f, text: fmt(hx.speedCurve, { name: name(f) }), tone: "warn" });
@@ -150,13 +170,18 @@ export function HiresExportQuote({
           tone: "plain",
         });
     }
-  const firstOk = quotes.find((q): q is { state: "ok"; quote: HiresQuote } => q?.state === "ok");
+  const firstOk = sold[0];
   const failed = !dirty && quotes.some((q) => q?.state === "error");
+  // Sizes up to 1080p are sold (0136): the sentence above the lines says every export costs credits.
+  const soldUpTo1080 = sold.some((q) => q.tier === "1080p") || frames.some((f) => !isHiresPresetId(f));
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5 text-sm" data-hires-quote="">
       <p className="m-0 text-xs text-[var(--color-muted)]">
-        {fmt(hx.intro, { max1440: formatClock(HIRES_MAX_S["1440p"]), max2160: formatClock(HIRES_MAX_S["2160p"]) })}
+        {fmt(soldUpTo1080 ? hx.introSold : hx.intro, {
+          max1440: formatClock(HIRES_MAX_S["1440p"]),
+          max2160: formatClock(HIRES_MAX_S["2160p"]),
+        })}
       </p>
       <div aria-live="polite" className="flex flex-col gap-1">
         {lines.map((l) => (
@@ -167,9 +192,9 @@ export function HiresExportQuote({
             {l.text}
           </p>
         ))}
-        {all && !blocked && firstOk && !firstOk.quote.exempt && firstOk.quote.available !== null ? (
+        {all && !blocked && firstOk && !firstOk.exempt && firstOk.available !== null ? (
           <p className="m-0 text-xs text-[var(--color-muted)]">
-            {fmt(hx.available, { available: credits(firstOk.quote.available) })}
+            {fmt(hx.available, { available: credits(firstOk.available) })}
           </p>
         ) : null}
       </div>
@@ -178,7 +203,7 @@ export function HiresExportQuote({
           {hx.retry}
         </button>
       ) : null}
-      {all && !blocked && signature !== null && total !== null && held !== null ? (
+      {all && !blocked && signature !== null && total !== null && held !== null && sold.length > 0 ? (
         <>
           {held > 0 ? (
             <p id={`${id}-total`} className="m-0 text-xs text-[var(--color-muted)]">

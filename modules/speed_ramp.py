@@ -48,8 +48,13 @@ def _piece_length(t0: float, s0: float, t1: float, s1: float) -> float:
 
 
 def out_length(pts: Sequence[Point]) -> float:
-    """How long the whole range lasts at the ramp's speeds, in seconds."""
-    return sum(_piece_length(a[0], a[1], b[0], b[1]) for a, b in zip(pts, pts[1:]))
+    """How long the whole range lasts at the ramp's speeds, in seconds. Added piece by piece, left to right, on purpose: the
+    database integrates the same pieces in the same order (migration 0136 editor_doc_rendered_length) and must reach the same
+    double, and Python 3.12's sum() of floats is a compensated sum (a different last bit)."""
+    acc = 0.0
+    for a, b in zip(pts, pts[1:]):
+        acc += _piece_length(a[0], a[1], b[0], b[1])
+    return acc
 
 
 def out_time(pts: Sequence[Point], t: float) -> float:

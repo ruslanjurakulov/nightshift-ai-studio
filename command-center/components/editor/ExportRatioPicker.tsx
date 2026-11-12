@@ -33,8 +33,7 @@ import { HIRES_MAX_FPS, hiresTier, isHiresPresetId } from "@/lib/hiresExport/lim
  * Paid sizes (1440p and 4K, migration 0132): offered only when the editor passes them in `choices`
  * (NIGHTSHIFT_HIRES_EXPORT on), marked "paid", and disabled with a sentence when the video is longer than that size
  * allows (`overCap`) or the project is faster than it allows (`tooFast`: 4K is 30 fps at most). Their price is not
- * here: HiresExportQuote shows the server's quote under the group. A video with a speed curve cannot tick a paid size
- * (`speedCurve`: its length cannot be priced).
+ * here: HiresExportQuote shows the server's quote under the group, a speed curve's at its rendered length (0136).
  *
  * Above 1080p is never free (0132): a project whose own frame is bigger cannot tick "this project's size" (`ownBlocked`,
  * the sentence that says what to do instead); the paid size of the same frame is offered in its place.
@@ -50,7 +49,6 @@ export function ExportRatioPicker({
   tooFast = [],
   fps,
   ownBlocked = null,
-  speedCurve = false,
   onChange,
 }: {
   /** The project's own frame, for the first box's label. */
@@ -70,8 +68,6 @@ export function ExportRatioPicker({
   fps?: number;
   /** Why this project's own size cannot be exported free (its frame is above 1080p), or null when it can. */
   ownBlocked?: string | null;
-  /** The video has a speed curve: no paid size can be ticked. */
-  speedCurve?: boolean;
   onChange: (next: ExportFrameChoice[]) => void;
 }) {
   const { t } = useI18n();
@@ -83,7 +79,6 @@ export function ExportRatioPicker({
   const full = selected.length >= MAX_EXPORT_FRAMES;
   const isBlocked = (c: ExportFrameChoice) =>
     (c === PROJECT_FRAME && Boolean(ownBlocked)) ||
-    (speedCurve && isHiresPresetId(c)) ||
     (blocked as readonly string[]).includes(c) ||
     (overCap as readonly string[]).includes(c) ||
     (tooFast as readonly string[]).includes(c);
@@ -99,7 +94,6 @@ export function ExportRatioPicker({
   if (selected.length === 0) notes.push(er.none);
   if (full) notes.push(fmt(er.atLimit, { max: MAX_EXPORT_FRAMES }));
   if (ownBlocked) notes.push(ownBlocked);
-  if (speedCurve && choices.some((c) => isHiresPresetId(c))) notes.push(hx.speedCurveAll);
   for (const c of choices) {
     if (blocked.includes(c)) notes.push(fmt(er.blocked, { name: name(c) }));
     else if (overCap.includes(c)) {

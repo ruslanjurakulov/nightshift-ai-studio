@@ -114,8 +114,10 @@ class Numbering(unittest.TestCase):
         # table and functions and the credit helpers of 0020 / 0036 only, and replaces or alters nothing of 0131's.
         # 0133 (the brand scan, Phase 2) was reviewed against these pins: it replaces none of 0131's functions and alters none of its
         # tables (tests/test_brand_scan_migration.py pins that), and 0131's rollback must wait for 0133's (its checks use 0131's rules).
+        # 0136 (exports up to 1080p sold by the minute) was reviewed the same way: the video editor's export functions and 0132's price row
+        # only; it replaces or alters nothing of 0131's.
         # 0134 (the brand scan's follow-up) replaces one of 0133's functions and none of 0131's, and alters no table; it reads 0131's tables.
-        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134")], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136")], [], "a later number needs its own review of this file's pins")
         later = next(MIG.glob("0134_*.sql")).read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertNotRegex(code(later), r"\balter table\b")

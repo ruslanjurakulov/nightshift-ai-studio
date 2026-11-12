@@ -22,10 +22,12 @@ export const exportHiresUz: ExportHiresDictionary = {
   notAllowed: "{name}: ish maydonining kreditlarini faqat muharrir, administrator yoki egasi sarflay oladi.",
   short: "{name} render paytida {hold} kreditni band qiladi, bu ish maydonida esa {available}. Kredit qoʻshing yoki kichikroq oʻlchamni tanlang.",
   speedCurve: "{name} ni tezlik egri chizigʻi bor video uchun hozircha eksport qilib boʻlmaydi: uning uzunligini narxlab boʻlmaydi. Tezlik egri chizigʻini olib tashlang yoki 1080p yoki kichikroqni tanlang.",
-  speedCurveAll: "Tezlik egri chizigʻi bor video uchun 1440p va 4K ni hozircha tanlab boʻlmaydi: uning uzunligini narxlab boʻlmaydi. Ularni tanlash uchun tezlik egri chizigʻini olib tashlang.",
   ownTooBig: "Bu loyiha 1080p dan katta, 1080p dan katta eksport esa pullik. “Eksport oʻlchamlari” da 1440p yoki 4K ni belgilang va narxni tasdiqlang yoki “Eksport formati” da loyihani 1080p yoki kichikroq qiling.",
   ownTooBigOff: "Bu loyiha 1080p dan katta, 1080p dan katta eksport esa pullik va bu yerda taklif qilinmaydi. Eksport qilish uchun “Eksport formati” da loyihani 1080p yoki kichikroq qiling.",
   failed: "{name} narxini olib boʻlmadi.",
   retry: "Narxni qayta olish",
+  freeLine: "{name}: bepul",
+  introSold: "Har qanday eksport videoning har bir boshlangan daqiqasi uchun kredit turadi: 1080p gacha, 1440p va 4K da, har bir oʻlcham oʻz narxida. 1440p video {max1440} gacha, 4K video {max2160} gacha boʻlishi mumkin.",
+  soldNoQuote: "Endi eksport kredit turadi, bu sahifa esa hozircha narxni koʻrsata olmaydi. Keyinroq urinib koʻring.",
   saveFirst: "Avval saqlang: narx saqlangan versiya uchun hisoblanadi.",
 };
