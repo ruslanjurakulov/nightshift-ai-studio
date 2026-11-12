@@ -212,10 +212,10 @@ describe("Terms 6: generated images, video and voice", () => {
         "If a run fails or does not complete, the whole hold is returned and nothing is charged.",
         "For a generation:",
         "If a generation fails, is refused by the model, is cancelled or is not finished in time, the whole hold is returned and nothing is charged.",
-        "charged only for the areas actually applied",
+        "charged only for the areas actually applied: the share of the hold for the areas applied, rounded up to the nearest hundredth of a credit.",
       ],
-      ru: ["весь резерв возвращается и ничего не списывается", "Для генерации:", "отклонена моделью", "только за фактически применённые области"],
-      uz: ["band toʻliq qaytariladi va hech narsa yechilmaydi", "Generatsiya uchun:", "model uni rad etsa", "faqat haqiqatda qoʻllangan sohalar uchun"],
+      ru: ["весь резерв возвращается и ничего не списывается", "Для генерации:", "отклонена моделью", "только за фактически применённые области", "доля резерва за применённые области, округлённая вверх до сотой доли кредита"],
+      uz: ["band toʻliq qaytariladi va hech narsa yechilmaydi", "Generatsiya uchun:", "model uni rad etsa", "faqat haqiqatda qoʻllangan sohalar uchun", "qoʻllangan sohalar uchun bandning ulushi, kreditning yuzdan bir qismigacha yuqoriga yaxlitlangan holda"],
     }[locale];
     for (const p of phrases) expect(text, p).toContain(p);
   });

@@ -354,7 +354,7 @@ export const uz: LegalTexts = {
             list: [
               "Boshlanishidan oldin Xizmat uning narxini koʻrsatadi va siz uni tasdiqlaysiz. Shu narx band qilinadi va mavjud kreditlaringiz uni qoplamasa, generatsiya boshlanmaydi.",
               "Generatsiya tugagach, uning narxi yechiladi — hech qachon banddan koʻp emas — va bandning qolgan qismi qaytariladi. Agar modelni tanlashni Xizmatga topshirgan boʻlsangiz va birinchi model soʻrovni qabul qila olmasa, generatsiyani xuddi shu turdagi boshqa model bajarishi mumkin; bu holda shu model narxidan koʻp yechilmaydi.",
-              "Bitta rasmning bir nechta belgilangan sohasini tahrirlash faqat haqiqatda qoʻllangan sohalar uchun toʻlanadi: har bir soha uchun bandning ulushi, kreditning yuzdan bir qismigacha yuqoriga yaxlitlangan holda. Birorta ham soha qoʻllanmasa, hech narsa yechilmaydi.",
+              "Bitta rasmning bir nechta belgilangan sohasini tahrirlash faqat haqiqatda qoʻllangan sohalar uchun toʻlanadi: qoʻllangan sohalar uchun bandning ulushi, kreditning yuzdan bir qismigacha yuqoriga yaxlitlangan holda. Birorta ham soha qoʻllanmasa, hech narsa yechilmaydi.",
               "Generatsiya muvaffaqiyatsiz tugasa, model uni rad etsa, u bekor qilinsa yoki oʻz vaqtida tugallanmasa, band toʻliq qaytariladi va hech narsa yechilmaydi.",
             ],
           },
@@ -367,7 +367,7 @@ export const uz: LegalTexts = {
               unknown: "8.5. Amal qilish muddati. Toʻldirish kreditlari uchun sotib olish paytida paketlarga belgilangan muddat amal qiladi. Hozir uni bu sahifada koʻrsatib boʻlmadi; joriy muddatni bilish uchun bizga {contactEmail} manziliga yozing.",
             },
           },
-          "8.6. Qaytarish. Sotuvchi Dodo boʻlgani uchun qaytarish haqidagi qarorni Dodo [Dodo xaridorlar shartlari](https://dodopayments.com/legal/buyer-terms) va amaldagi qonunchilik asosida qabul qiladi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Qaytarishni soʻrash uchun {contactEmail} manziliga yozing — soʻrovni Dodo’ga yetkazamiz — yoki bevosita Dodo’ga murojaat qiling. [Qaytarish siyosati](/refund) bu qoidalarni bitta sahifada jamlaydi.",
+          "8.6. Qaytarish. Sotuvchi Dodo boʻlgani uchun qaytarish haqidagi qarorni Dodo [Dodo xaridorlar shartlari](https://dodopayments.com/legal/buyer-terms) va amaldagi qonunchilik asosida qabul qiladi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Qaytarishni soʻrash uchun {contactEmail} manziliga yozing — soʻrovni Dodo’ga yetkazamiz — yoki bevosita Dodo’ga murojaat qiling: xaridingizni Dodo’ning [customer.dodopayments.com](https://customer.dodopayments.com) mijozlar portalida toping va qaytarishni soʻrang. [Qaytarish siyosati](/refund) bu qoidalarni bitta sahifada jamlaydi.",
           "8.7. Qaytarish va chargeback kreditlarni olib qoʻyadi. Xarid qaytarilsa yoki bank orqali eʼtiroz qilinsa (chargeback), u qoʻshgan kreditlar tashkilot balansidan olinadi: toʻliq qaytarishda — hammasi, qisman qaytarishda — qaytarilgan summaga mutanosib qismi. Faqat mavjud kreditlarni olish mumkin: allaqachon sarflangan yoki ishlab turgan ishga tushirish uchun band qilinganlarini olib boʻlmaydi. Chargeback’dan keyin sarflangan, lekin toʻlanmagan kreditlar qolsa, tashkilotning pullik funksiyalardan foydalanishini toʻxtatib turishimiz mumkin.",
           "8.8. Narxlarning oʻzgarishi. Kredit paketlari narxlarini va kreditlar sarflanish stavkalarini oʻzgartirishimiz mumkin. Oʻzgarish balansingizdagi kreditlarni hech qachon kamaytirmaydi va ishga tushirish uchun u boshlanganda qoʻyilgan banddan koʻp hech qachon yechilmaydi.",
         ],
@@ -451,7 +451,7 @@ export const uz: LegalTexts = {
           {
             list: [
               "bizga {contactEmail} manziliga yozing — soʻrovni Dodo’ga yetkazamiz;",
-              "chekdagi buyurtma raqami va xaridda foydalangan elektron pochta manzilingizni koʻrsatib, bevosita Dodo Payments’ga murojaat qiling.",
+              "chekdagi buyurtma raqami va xaridda foydalangan elektron pochta manzilingizni koʻrsatib, bevosita Dodo Payments’ga murojaat qiling: xaridingizni Dodo’ning [customer.dodopayments.com](https://customer.dodopayments.com) mijozlar portalida toping va qaytarishni soʻrang.",
             ],
           },
         ],

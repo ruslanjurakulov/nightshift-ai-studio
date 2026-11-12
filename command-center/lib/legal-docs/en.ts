@@ -368,7 +368,7 @@ export const en: LegalTexts = {
             list: [
               "Before it starts, the Service shows its price, which you confirm. That price is put on hold, and the generation does not start if your available credits do not cover it.",
               "When it completes, its price is charged, never more than the hold, and the rest of the hold is returned. Where you let the Service choose the model and the first model could not accept the request, the generation may be made by another model of the same kind; you are then charged no more than that model’s price.",
-              "An edit of several marked areas of one picture is charged only for the areas actually applied: each area’s share of the hold, rounded up to the nearest hundredth of a credit. If no area could be applied, nothing is charged.",
+              "An edit of several marked areas of one picture is charged only for the areas actually applied: the share of the hold for the areas applied, rounded up to the nearest hundredth of a credit. If no area could be applied, nothing is charged.",
               "If a generation fails, is refused by the model, is cancelled or is not finished in time, the whole hold is returned and nothing is charged.",
             ],
           },
@@ -381,7 +381,7 @@ export const en: LegalTexts = {
               unknown: "8.5. Expiry. The expiry term for top-up credits is the one in force for packs when you buy them. It could not be shown here just now; for the current term, write to us at {contactEmail}.",
             },
           },
-          "8.6. Refunds. Because Dodo is the seller, refunds are decided by Dodo under [Dodo’s Buyer Terms](https://dodopayments.com/legal/buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. To ask for a refund, write to us at {contactEmail} and we will take it up with Dodo, or contact Dodo directly. Our [Refund Policy](/refund) sets out these rules on one page.",
+          "8.6. Refunds. Because Dodo is the seller, refunds are decided by Dodo under [Dodo’s Buyer Terms](https://dodopayments.com/legal/buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. To ask for a refund, write to us at {contactEmail} and we will take it up with Dodo, or contact Dodo directly: look up your purchase and request a refund in Dodo’s customer portal at [customer.dodopayments.com](https://customer.dodopayments.com). Our [Refund Policy](/refund) sets out these rules on one page.",
           "8.7. Refunds and chargebacks remove credits. When a purchase is refunded or charged back, the credits it added are removed from your organisation’s balance — all of them for a full refund, and in proportion to the amount refunded for a partial one. Only available credits can be removed: credits already used, or on hold for a run in progress, cannot. Where a chargeback leaves credits used but unpaid, we may suspend the organisation’s access to paid features.",
           "8.8. Price changes. We may change the prices of credit packs and the rates at which credits are used. A change never reduces the credits already in your balance, and a run is never charged more than the hold taken when it started.",
         ],
@@ -465,7 +465,7 @@ export const en: LegalTexts = {
           {
             list: [
               "write to us at {contactEmail}, and we will take it up with Dodo;",
-              "contact Dodo Payments directly, giving the order number from your receipt and the email address you used for the purchase.",
+              "contact Dodo Payments directly: look up your purchase and request a refund in Dodo’s customer portal at [customer.dodopayments.com](https://customer.dodopayments.com), giving the order number from your receipt and the email address you used for the purchase.",
             ],
           },
         ],

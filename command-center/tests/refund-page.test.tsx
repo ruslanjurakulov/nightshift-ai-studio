@@ -135,6 +135,8 @@ describe.each(LOCALES)("what the Refund Policy says (%s)", (locale) => {
     expect(list.list).toHaveLength(2);
     expect(list.list[0]).toContain("{contactEmail}");
     expect(list.list[1]).toContain("Dodo Payments");
+    // Dodo's own buyer support page (dodopayments.com/support/why-has-dodo-payments-charged-me) sends buyers to this portal.
+    expect(list.list[1]).toContain("(https://customer.dodopayments.com)");
   });
 
   // The Terms define no refund window, so the policy must not invent one: no "14 days", "14 дней", "14 kun".

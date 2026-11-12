@@ -41,7 +41,7 @@ describe("Uzbek text spells its apostrophes one way", () => {
     // (Google, Dodo) takes its suffix after U+2019, like YouTube’da.
     const hits = [...text.matchAll(/\b\S*[oOgG][ʼ’\u2018](?=[a-z])\S*/g)]
       .map((m) => m[0])
-      .filter((w) => !/^(?:YouTube|Google|Studio|ID|Dodo)/.test(w))
+      .filter((w) => !/^(?:YouTube|Google|Studio|ID)|^Dodo\u2019/.test(w))
       .slice(0, 5);
     expect(hits).toEqual([]);
   });
