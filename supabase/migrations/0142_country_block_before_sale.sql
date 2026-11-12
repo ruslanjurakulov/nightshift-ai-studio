@@ -1,4 +1,4 @@
--- 0143_country_block_before_sale.sql — a model that the registry blocks in some countries cannot be put on sale (beta or ga).
+-- 0142_country_block_before_sale.sql — a model that the registry blocks in some countries cannot be put on sale (beta or ga).
 -- (docs/GEO_BLOCK.md "What it cannot do"; the security re-review of PR #695, HIGH.)
 --
 -- *** LIVE ON APPLY. *** Merging this file applies it to the live database. It adds one CHECK and changes no row: the only model with a
@@ -26,15 +26,15 @@
 -- WHAT IT DOES NOT CHANGE
 --   No function, policy, grant, trigger or row. It does not make the database refuse by country: it keeps such a model off sale.
 --
--- NUMBER. 0143: main ends at 0139. 0140 is used twice on other branches (#699 made_for_kids, claude/meta-probe-no-tools), 0141 by
--- claude/youtube-one-org and 0142 by claude/payments-dodo (checked against every remote branch, 2026-11-12). None of them touches
--- model_registry's constraints, so their order does not matter.
+-- NUMBER. 0142: main ends at 0139. On other branches 0140 is claude/meta-probe-no-tools (#701), 0141 is #699 (made_for_kids) and
+-- claude/youtube-one-org (to be renumbered), and 0143 is claude/payments-dodo (checked against every remote branch, 2026-11-12).
+-- None of them touches model_registry's constraints, so their order does not matter.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; must return no row, or the file refuses):
 --   select id, availability from public.model_registry
 --    where availability in ('beta', 'ga') and coalesce(nullif(spec -> 'blocked_countries', 'null'::jsonb), '[]'::jsonb) <> '[]'::jsonb;
 --
--- APPLY AS ONE TRANSACTION (the Supabase SQL editor runs a file as one). Rollback: docs/sql/rollback_0143_country_block_before_sale.sql.
+-- APPLY AS ONE TRANSACTION (the Supabase SQL editor runs a file as one). Rollback: docs/sql/rollback_0142_country_block_before_sale.sql.
 -- REQUIRES 0035 (model_registry). Additive and idempotent: safe to run twice.
 
 set local lock_timeout = '5s';
@@ -42,12 +42,12 @@ set local lock_timeout = '5s';
 do $$
 begin
   if to_regclass('public.model_registry') is null then
-    raise exception '0143 needs 0035_model_registry.sql (model_registry): apply it first';
+    raise exception '0142 needs 0035_model_registry.sql (model_registry): apply it first';
   end if;
   if not exists (select 1 from information_schema.columns
                   where table_schema = 'public' and table_name = 'model_registry' and column_name in ('availability', 'spec')
                  having count(*) = 2) then
-    raise exception '0143 needs model_registry.availability and model_registry.spec (0035)';
+    raise exception '0142 needs model_registry.availability and model_registry.spec (0035)';
   end if;
 end $$;
 
@@ -62,7 +62,7 @@ begin
    where availability in ('beta', 'ga')
      and coalesce(nullif(spec -> 'blocked_countries', 'null'::jsonb), '[]'::jsonb) <> '[]'::jsonb;
   if bad is not null then
-    raise exception '0143: these models are on sale and carry blocked_countries: %. Take them off sale first (docs/GEO_BLOCK.md)', bad;
+    raise exception '0142: these models are on sale and carry blocked_countries: %. Take them off sale first (docs/GEO_BLOCK.md)', bad;
   end if;
 end $$;
 
@@ -83,15 +83,15 @@ begin
    where c.conrelid = 'public.model_registry'::regclass and c.conname = 'model_registry_countries_before_sale'
      and c.contype = 'c' and c.convalidated;
   if def is null then
-    raise exception '0143 end state: model_registry_countries_before_sale is missing or not validated';
+    raise exception '0142 end state: model_registry_countries_before_sale is missing or not validated';
   end if;
   if position('blocked_countries' in def) = 0 or position('beta' in def) = 0 or position('ga' in def) = 0 then
-    raise exception '0143 end state: model_registry_countries_before_sale does not read availability and blocked_countries (%)', def;
+    raise exception '0142 end state: model_registry_countries_before_sale does not read availability and blocked_countries (%)', def;
   end if;
   if exists (select 1 from public.model_registry
               where availability in ('beta', 'ga')
                 and coalesce(nullif(spec -> 'blocked_countries', 'null'::jsonb), '[]'::jsonb) <> '[]'::jsonb) then
-    raise exception '0143 end state: a model on sale carries blocked_countries';
+    raise exception '0142 end state: a model on sale carries blocked_countries';
   end if;
 end $$;
 

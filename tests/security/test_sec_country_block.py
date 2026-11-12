@@ -1,14 +1,14 @@
-"""Migration 0143: a model whose registry entry carries blocked_countries cannot be put on sale.
+"""Migration 0142: a model whose registry entry carries blocked_countries cannot be put on sale.
 
 The country check runs in the Next.js routes only, and a signed-in user can call create_creative_job, start_workflow_run and
 advance_workflow_run straight through PostgREST (docs/GEO_BLOCK.md "What it cannot do"). So a model with a country list must never be
 beta or ga until the database refuses by country itself. These tests prove that no caller can get there:
 
   * the platform admin (0035's column grant on availability) and the service role are refused beta and ga, with the model verified,
-    priced and without a terms_gate, so 0143's CHECK is the only thing that stops them;
+    priced and without a terms_gate, so 0142's CHECK is the only thing that stops them;
   * a sync that gives a model already on sale a country list is refused whole, and changes nothing;
   * hidden, disabled, an empty list and JSON null are allowed (the operator preview of 0139 is hidden);
-  * the file: its pre-check names a model already on sale, a replay changes nothing, the rollback takes the CHECK out and 0143 applies
+  * the file: its pre-check names a model already on sale, a replay changes nothing, the rollback takes the CHECK out and 0142 applies
     again.
 
 Everything runs inside transactions that are rolled back. Nothing calls a provider.
@@ -24,8 +24,8 @@ import sec_db
 from sec_db import SERVICE, Actor, as_superuser
 from sec_scenario import MODEL_GATED, MODEL_HIDDEN, MODEL_SOLD, _model_row
 
-MIGRATION = sec_db.MIGRATIONS / "0143_country_block_before_sale.sql"
-ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0143_country_block_before_sale.sql"
+MIGRATION = sec_db.MIGRATIONS / "0142_country_block_before_sale.sql"
+ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0142_country_block_before_sale.sql"
 CHECK = "model_registry_countries_before_sale"
 COUNTRIES = ["IR", "KP"]
 
@@ -131,7 +131,7 @@ def test_the_file_names_a_model_already_on_sale_and_refuses(conn, sc):
         assert sync(s, sold_spec={"blocked_countries": COUNTRIES}).ok      # no CHECK: the sync goes through
         become(s, None)
         out = s.run(MIGRATION.read_text(encoding="utf-8"))
-        assert not out.ok and "0143" in out.error and f"{MODEL_SOLD} (beta)" in out.error, out
+        assert not out.ok and "0142" in out.error and f"{MODEL_SOLD} (beta)" in out.error, out
         assert s.value("select count(*) from pg_constraint where conname = %s", [CHECK]) == 0
 
 
@@ -145,7 +145,7 @@ def test_a_replay_changes_nothing(conn, sc):
         assert s.rows(q) == before
 
 
-def test_the_rollback_takes_the_check_out_and_0143_applies_again(conn, sc):
+def test_the_rollback_takes_the_check_out_and_0142_applies_again(conn, sc):
     with as_superuser(conn, commit=False) as s:
         q = "select count(*) from pg_constraint where conrelid = 'public.model_registry'::regclass and conname = %s"
         s.conn.execute(body(ROLLBACK))

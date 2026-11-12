@@ -167,8 +167,8 @@ class RegistryField(unittest.TestCase):
         self.assertTrue(listed)
         for m in listed:
             self.assertTrue(m.get("terms_gate"), m["id"])      # 0035's terms_before_sale keeps it hidden
-        mig = (ROOT / "supabase" / "migrations" / "0143_country_block_before_sale.sql").read_text(encoding="utf-8")
-        self.assertIn("add constraint model_registry_countries_before_sale", mig)   # and 0143 refuses beta/ga for it
+        mig = (ROOT / "supabase" / "migrations" / "0142_country_block_before_sale.sql").read_text(encoding="utf-8")
+        self.assertIn("add constraint model_registry_countries_before_sale", mig)   # and 0142 refuses beta/ga for it
 
     def test_a_model_the_api_sells_cannot_be_blocked_by_country(self):
         self.any["blocked_countries"] = ["IN"]

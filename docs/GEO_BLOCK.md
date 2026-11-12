@@ -5,7 +5,7 @@ Command Center then neither offers nor quotes nor starts that model, through its
 from one of them. The database does not know where a request comes from, so the check lives in the web process, in the
 routes and pickers listed below. **It is not in front of every call that prices, holds or queues anything:** a signed-in
 user can call the database functions directly and skip it (see "What it cannot do"). So a model with a list is kept off
-sale in the database itself (migration 0143) until the database refuses by country too.
+sale in the database itself (migration 0142) until the database refuses by country too.
 
 ## How a request's country is known
 
@@ -91,7 +91,7 @@ works, and the listed models fail closed.
   session (the cookie is readable by the page). A signed-in user can therefore call `supabase.rpc('create_creative_job', ...)`
   directly and skip every check on this page. What stops that from mattering today: a model with a country list cannot be on
   sale. The registry validator refuses `blocked_countries` without a `terms_gate` (which 0035 keeps off sale), and migration
-  0143 refuses `beta`/`ga` for such a row in the database (a CHECK, so the platform admin, the service role and a sync are all
+  0142 refuses `beta`/`ga` for such a row in the database (a CHECK, so the platform admin, the service role and a sync are all
   refused). The fix that lets such a model be sold comes in a follow-up: either pass a server-attested country into these
   functions, or revoke them from `authenticated` behind a server-only wrapper that the web calls after its check.
 

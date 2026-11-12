@@ -627,7 +627,7 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if m.get("blocked_countries") and not m.get("terms_gate"):
             # The country is checked in the web routes only; a signed-in user can call create_creative_job and the workflow
             # functions directly (docs/GEO_BLOCK.md "What it cannot do"). Until the database refuses by country, a model with a
-            # country list stays off sale: a terms_gate keeps it hidden (0035), and 0143 refuses beta/ga for it in the database too.
+            # country list stays off sale: a terms_gate keeps it hidden (0035), and 0142 refuses beta/ga for it in the database too.
             errors.append(_err(mid, "blocked_countries needs a terms_gate until the database checks the country"))
         ent = m["entitlement"]
         if ent and ent.split(":")[0] != f"models_{m['output']}":

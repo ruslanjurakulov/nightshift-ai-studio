@@ -841,9 +841,9 @@ and nothing changes for anyone until a registry entry carries `"operator_preview
   (a non-admin and an admin in a customer's organization are refused; the operator is quoted at cost and holds nothing; every other quote is
   byte for byte 0125's; the drift guard, the rollback and the order), `command-center/tests/operator-preview.test.tsx` (the badge, the list).
 
-## A model blocked by country cannot be put on sale (0143)
+## A model blocked by country cannot be put on sale (0142)
 
-0143 (`0143_country_block_before_sale.sql`) is **live on apply** and changes no row: it adds one CHECK to `model_registry`,
+0142 (`0142_country_block_before_sale.sql`) is **live on apply** and changes no row: it adds one CHECK to `model_registry`,
 `model_registry_countries_before_sale`: `availability not in ('beta','ga')` or `spec.blocked_countries` is absent, JSON null or `[]`.
 
 - **Why.** The country check of `docs/GEO_BLOCK.md` runs in the Next.js routes only. `create_creative_job` (0075),
@@ -858,10 +858,10 @@ and nothing changes for anyone until a registry entry carries `"operator_preview
   operator preview (0139) keeps working.
 - **Before applying.** The file refuses, naming them, if a model on sale already carries a list (none does: the only one,
   `grounded-image-1.0`, is hidden). End state: the CHECK exists once and is validated. Apply as ONE transaction.
-- **Undo.** `docs/sql/rollback_0143_country_block_before_sale.sql` drops the CHECK. Run it only once the database refuses by country.
-- **Numbering.** 0143: main ends at 0139; 0140 (#699 and `claude/meta-probe-no-tools`), 0141 (`claude/youtube-one-org`) and 0142
-  (`claude/payments-dodo`) are taken on open branches. It touches no object of theirs. The numbering tests of 0127, 0131 and 0133 list it
-  as reviewed.
+- **Undo.** `docs/sql/rollback_0142_country_block_before_sale.sql` drops the CHECK. Run it only once the database refuses by country.
+- **Numbering.** 0142: main ends at 0139; on open branches 0140 is `claude/meta-probe-no-tools` (#701), 0141 is #699 (made for kids)
+  and `claude/youtube-one-org` (to be renumbered), 0143 is `claude/payments-dodo`. It touches no object of theirs. The numbering tests
+  of 0127, 0131 and 0133 list it as reviewed.
 - **Tests.** `tests/test_country_block_migration.py` (the one CHECK, the guards, the rollback), `tests/security/test_sec_country_block.py`
   (the platform admin, the service role and the owner refused beta and ga for a verified, priced, ungated model with a list; the same
   model goes on sale without one; a sync refused whole; hidden, disabled, `[]` and null allowed; the pre-check; replay; rollback and
