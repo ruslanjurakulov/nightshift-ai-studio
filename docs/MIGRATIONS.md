@@ -840,3 +840,35 @@ and nothing changes for anyone until a registry entry carries `"operator_preview
 - **Tests.** `tests/test_operator_preview_migration.py` (the hunks, the hashes, the rollback, the grants), `tests/security/test_sec_operator_preview.py`
   (a non-admin and an admin in a customer's organization are refused; the operator is quoted at cost and holds nothing; every other quote is
   byte for byte 0125's; the drift guard, the rollback and the order), `command-center/tests/operator-preview.test.tsx` (the badge, the list).
+
+## Dodo Payments next to Paddle (0142)
+
+0142 (`0142_dodo_payments.sql`, `docs/DODO_SETUP.md`) lets the payment tables and the two subscription functions carry a second
+provider, Dodo Payments (owner decision 2026-11-12, after Paddle declined the account). It is **live on apply and changes nothing for
+Paddle**: no row is written, the Paddle webhook calls the same two functions with the same arguments and gets the same answers, and no
+customer reaches Dodo until the Command Center's `PAYMENTS_PROVIDER` is `dodo` and the `dodo-webhook` Edge Function is deployed.
+
+- **What changes.** `payment_events_provider_check` and `subscriptions_provider_check` admit `'dodo'`; the subscription id, customer id
+  and price id checks become per provider — a Paddle row must match exactly 0034's patterns, a Dodo row `sub_` / `cus_` / `pdt_` plus
+  3-64 ASCII letters and digits (Dodo's documented examples are mixed case). `price_id` holds the Dodo product id.
+- **One body per function.** `upsert_subscription_for(provider, ...)` and `grant_subscription_credits_for(provider, ...)` are 0034's
+  bodies plus four hunks (the provider checked, the row looked up and inserted under it, the advisory lock keyed
+  `subscription:dodo:<id>` for Dodo and unchanged for Paddle). 0034's `upsert_subscription` and `grant_subscription_credits` become one
+  line each that calls the twin with `'paddle'`; signatures, defaults, grants (service role only), SECURITY DEFINER and the pinned
+  search_path stay. `add_purchased_credits`, `refund_purchased_credits` and `record_payment_event` are not replaced (their hashes are
+  asserted before applying): the Dodo webhook uses them as they are, with the Dodo payment id as the purchase's external id and
+  `dodo_refund:<id>` / `dodo_dispute:<id>` as the refund id.
+- **Drift guard and end state.** Before: `upsert_subscription` `60ee6ad3764dbcf6762b178f8240d5a9`, `grant_subscription_credits`
+  `7947d46697f1c35d12274ffbe22709ac` (0034), or 0142's own on a replay. After: `upsert_subscription` `09185a96a8fb02f0c2641095d51461cc`,
+  `grant_subscription_credits` `fd0c1c169a4d3b2d05c6d826c6fe10ff`, `upsert_subscription_for` `9f9b399ce3ca3421d1ccb32c4075d6ea`,
+  `grant_subscription_credits_for` `5424905376fab9ff1b4c229c5dc0c0ce`. The last block asserts bodies, grants, SECURITY DEFINER, the
+  pinned search_path and the five check definitions (md5 `0bd392d5168a2de8fb871e400200e7cc`). Apply as ONE transaction.
+- **Number.** 0142: 0140 and 0141 are taken by other work in progress; 0142 names nothing of theirs. Needs 0021 and 0034.
+- **Not covered yet.** The margin report (0063) and the operator's Customers page (0138) count paid amounts from Paddle rows only; a
+  Dodo payment shows there as not knowable / not counted until a follow-up migration (`docs/DODO_SETUP.md`, "Before you switch").
+- **Undo.** `docs/sql/rollback_0142_dodo_payments.sql` (owner-applied): refuses while any `payment_events` or `subscriptions` row names
+  `dodo`, or a function is not 0142's body; puts 0034's two bodies back byte for byte, drops the twins, restores 0021's and 0034's checks
+  and asserts the end state. Turning Dodo off does not need it (`PAYMENTS_PROVIDER` back to `paddle`).
+- **Tests.** `tests/test_dodo_payments_migration.py` (the hunks, the pins, the wrappers, the rollback), `tests/security/test_sec_dodo_payments.py`
+  (a real PostgreSQL: grants, the Dodo money path through the shared ledger functions, the Paddle path identical with and without 0142,
+  the checks, the drift guard, the rollback and the re-apply), `command-center/tests/dodo-webhook.test.ts` (the webhook).
