@@ -3668,6 +3668,8 @@ export const uz: Dictionary = {
     seconds: "{n} s",
     modelLabel: "Model",
     beta: "beta",
+    preview: "Sinov",
+    previewHint: "Bu modelni faqat siz koʻrasiz. U mijozlarga hali taklif qilinmagan va tashkilotingizdan buning uchun haq olinmaydi.",
     noModels: "Hozircha tanlash uchun hech narsa yoʻq: hech bir model buni hozir qila olmaydi.",
     generate: "Yaratish",
     generatePriced: "Yaratish · {n} kredit",

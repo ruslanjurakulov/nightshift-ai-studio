@@ -291,6 +291,12 @@ export interface StudioModel {
    */
   soundChoice?: boolean;
   /**
+   * 0139: a hidden model the platform operator may try in the operator's own (credits-exempt) organization before it is offered to
+   * anyone. Only operator_preview_models() sets it, and that answers no rows to everyone else; the quote and the create ask the
+   * database again, so the flag only decides the badge.
+   */
+  preview?: boolean;
+  /**
    * The plan entitlement the model needs (0035: `paid`, `any`, `key` or
    * `key:value`), from sellable_models(); null = none, absent = not read. Only
    * the plan dialog reads it, to name what would unlock a refused model.
@@ -398,6 +404,40 @@ export function coerceModels(rows: unknown): StudioModel[] {
     });
   }
   return out;
+}
+
+/**
+ * 0139: operator_preview_models() rows as Studio models marked `preview`. The database answers rows only to a platform admin in the
+ * exempt organization; a row without an id, a name or a capability is dropped. The marks (speed, quality, what the tools take) come
+ * from the same public half of spec, through withTiers, so a preview is described exactly like a model on sale.
+ */
+export function coercePreviewModels(rows: unknown): StudioModel[] {
+  if (!Array.isArray(rows)) return [];
+  const out: StudioModel[] = [];
+  for (const r of rows) {
+    if (!r || typeof r !== "object") continue;
+    const row = r as Record<string, unknown>;
+    if (typeof row.id !== "string" || !row.id) continue;
+    const caps = Array.isArray(row.capabilities) ? row.capabilities.filter((c): c is string => typeof c === "string") : [];
+    if (!caps.length) continue;
+    out.push({
+      id: row.id,
+      displayName: typeof row.display_name === "string" && row.display_name.trim() ? row.display_name.trim() : row.id,
+      capabilities: caps,
+      beta: false,
+      preview: true,
+    });
+  }
+  return withTiers(out, rows);
+}
+
+/**
+ * The Studio's list with the operator's previews added after the models on sale. A model already on sale is never listed twice
+ * (it stopped being a preview the day it was opened).
+ */
+export function withPreviews(models: StudioModel[], previews: StudioModel[]): StudioModel[] {
+  const ids = new Set(models.map((m) => m.id));
+  return [...models, ...previews.filter((m) => !ids.has(m.id))];
 }
 
 export function modelsFor(models: StudioModel[], capability: string): StudioModel[] {

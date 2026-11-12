@@ -370,6 +370,10 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "sellable_models": USER,
     # a vendor-announced shutdown date that has come ends the sale (0125); read inside sellable_models and creative_price only
     "model_past_shutdown": SERVICE,
+    # the operator may try a hidden model marked operator_preview in the exempt organization (0139): the rule is read inside creative_price
+    # and operator_preview_models only; the list answers no rows to everyone the rule refuses
+    "creative_operator_preview": SERVICE,
+    "operator_preview_models": USER,
     # the price list as charged, never the margin (0084)
     "credit_rates": USER,
     # what a video costs in credits, for the public price pages (0089)

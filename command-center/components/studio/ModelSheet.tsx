@@ -229,6 +229,16 @@ export function ModelSheet({
                           {g.beta}
                         </span>
                       )}
+                      {m.preview && (
+                        // 0139: the operator's own try of a hidden model; nobody else is ever shown it.
+                        <span
+                          title={g.previewHint}
+                          data-preview={m.id}
+                          className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--ns-amber-ink)] px-1.5 py-px text-xs font-medium text-[var(--ns-amber-ink)]"
+                        >
+                          {g.preview}
+                        </span>
+                      )}
                     </span>
                     <TierMarks speed={m.speedTier ?? null} quality={m.qualityTier ?? null} />
                   </span>

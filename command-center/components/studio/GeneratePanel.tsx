@@ -672,6 +672,15 @@ export function GeneratePanel({
                 {t.gen.beta}
               </span>
             )}
+            {current.preview && (
+              <span
+                title={t.gen.previewHint}
+                data-testid="gen-model-preview"
+                className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--ns-amber-ink)] px-1.5 py-px text-xs font-medium text-[var(--ns-amber-ink)]"
+              >
+                {t.gen.preview}
+              </span>
+            )}
           </span>
         )}
         {!routed && <TierMarks speed={current.speedTier ?? null} quality={current.qualityTier ?? null} />}

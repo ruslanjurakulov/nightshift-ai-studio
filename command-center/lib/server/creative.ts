@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { JOB_COLUMNS, type CreativeDb, type CreativeResult } from "@/lib/creative/operations";
-import { coerceModels, onlySellable, withTiers, type StudioModel } from "@/lib/creative/studio";
+import { coerceModels, coercePreviewModels, onlySellable, withTiers, type StudioModel } from "@/lib/creative/studio";
 import { withoutSwitchedOff } from "@/lib/model-switch";
 import { readSwitchedOffIds } from "@/lib/server/model-switch";
 
@@ -77,6 +77,23 @@ export async function loadStudioModels(): Promise<StudioModel[]> {
     // sellable_models() also knows what the policy cannot: a vendor's announced shutdown date (migration 0125) ends a sale. When it answered,
     // the picker offers only what it lists; no migration and no policy change, and a failed call leaves the list as it was.
     return marks.error ? shown : withTiers(onlySellable(shown, marks.data), marks.data);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The hidden models the platform operator may try in this organization (migration 0139), marked `preview`. The database decides who
+ * sees any: operator_preview_models() answers rows only to a platform admin in the credits-exempt organization, and no rows to
+ * everyone else. Without the migration, or on any error: none (never a crash, never a guess).
+ */
+export async function loadOperatorPreviewModels(orgId: string): Promise<StudioModel[]> {
+  try {
+    const supabase = await createClient();
+    if (!supabase) return [];
+    const { data, error } = await supabase.rpc("operator_preview_models", { p_org: orgId });
+    if (error) return [];
+    return coercePreviewModels(data);
   } catch {
     return [];
   }
