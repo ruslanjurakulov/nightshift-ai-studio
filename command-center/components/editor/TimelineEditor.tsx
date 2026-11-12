@@ -141,17 +141,28 @@ import {
 import { FitPicker, FramePicker } from "./FrameFitControls";
 import { ExportPresetPicker } from "./ExportPresetPicker";
 import { ExportRatioPicker } from "./ExportRatioPicker";
+import { HiresExportQuote, type HiresConfirmation } from "./HiresExportQuote";
 import {
   PROJECT_FRAME,
   exportFrameChoice,
   frameMismatch,
+  framePresetById,
   frameProblems,
   isExportFrameChoice,
   latestPerFrame,
   otherFrames,
   type ExportFrameChoice,
+  type FramePresetId,
 } from "@/lib/multiRatioExport/frames";
-import { applyExportPreset, exportPresetById, setExportFps, type ExportPresetId } from "@/lib/editorExportPresets";
+import {
+  aboveFree,
+  hasSpeedCurve,
+  isHiresPresetId,
+  overHiresCap,
+  overHiresFps,
+  type HiresPresetId,
+} from "@/lib/hiresExport/limits";
+import { applyExportPreset, isExportPresetId, setExportFps } from "@/lib/editorExportPresets";
 import {
   addOverlay,
   canAddOverlay,
@@ -316,6 +327,7 @@ export function TimelineEditor({
   offerAssetId = null,
   focusPanel = null,
   multiRatio = false,
+  hires = false,
 }: {
   projectId: string;
   title: string;
@@ -345,6 +357,8 @@ export function TimelineEditor({
   /** May one export be asked in several frame sizes here (NIGHTSHIFT_MULTI_RATIO_EXPORT on AND migration 0129 applied,
    *  as the server read them)? Default off: no size picker, and Export is the one plain export it always was. */
   multiRatio?: boolean;
+  /** Are the paid 1440p / 4K sizes offered in that picker (NIGHTSHIFT_HIRES_EXPORT on, migration 0132)? Default off. */
+  hires?: boolean;
 }) {
   const { t, locale } = useI18n();
   const te = t.editor;
@@ -405,18 +419,52 @@ export function TimelineEditor({
   const active = exportActive(exports);
   // Whether the edit fits each other size is the whole validator run once per size: kept off the typing / dragging path.
   const settledModel = useDeferredValue(model);
-  const frameChoices = useMemo<ExportPresetId[]>(
-    () => (multiRatio ? otherFrames(settledModel) : []),
-    [multiRatio, settledModel],
+  const frameChoices = useMemo<FramePresetId[]>(
+    () => (multiRatio ? otherFrames(settledModel, { hires }) : []),
+    [multiRatio, hires, settledModel],
   );
   const frameBlocked = useMemo(
     () => frameChoices.filter((c) => frameProblems(settledModel, c).length > 0),
     [frameChoices, settledModel],
   );
   // What Export would ask for now: a size that is no longer offered (the project took that size) or no longer fits is dropped.
+  // A paid size the video is too long for (0132's cap) is not offered either.
+  const frameOverCap = frameChoices.filter((c) => {
+    const p = isHiresPresetId(c) ? framePresetById(c) : null;
+    return p !== null && overHiresCap(p.width, p.height, total);
+  });
+  // Nor one this project's frame rate is too fast for (4K: 30 at most; never rendered at a lower rate in its place).
+  const frameTooFast = frameChoices.filter((c) => {
+    const p = isHiresPresetId(c) ? framePresetById(c) : null;
+    return p !== null && overHiresFps(p.width, p.height, model.fps);
+  });
+  // Above 1080p is never free (0132): a project whose own frame is bigger is not exported in its own size by the free
+  // request (the server refuses it: hires_needs_paid_export). It is exported in a paid size, or in a free one (1080p or
+  // smaller), or after its frame is set to 1080p or smaller. Saving it stays allowed.
+  const ownAboveFree = aboveFree(model.width, model.height);
+  const ownBlocked = ownAboveFree ? (multiRatio && hires ? te.exportHires.ownTooBig : te.exportHires.ownTooBigOff) : null;
+  // A speed curve cannot be priced (the database's length leaves the curve out): no paid size is offered for it.
+  const speedCurve = useMemo(() => hires && hasSpeedCurve(toDoc(settledModel)), [hires, settledModel]);
   const framesChosen = frames.filter(
-    (c) => c === PROJECT_FRAME || (frameChoices.includes(c) && !frameBlocked.includes(c)),
+    (c) =>
+      (c === PROJECT_FRAME && !ownAboveFree) ||
+      (c !== PROJECT_FRAME &&
+        frameChoices.includes(c) &&
+        !frameBlocked.includes(c) &&
+        !frameOverCap.includes(c) &&
+        !frameTooFast.includes(c) &&
+        !(speedCurve && isHiresPresetId(c))),
   );
+  const paidChosen = framesChosen.filter((c): c is HiresPresetId => isHiresPresetId(c));
+  // The person's yes to the server's quote of the paid sizes (HiresExportQuote): Export spends only with it.
+  const [paidOk, setPaidOk] = useState<HiresConfirmation>({ ready: false, key: "", maxCredits: {} });
+  // A yes counts only for the sizes and the saved version it was given for (a stale one is never sent), and is dropped
+  // when no paid size is ticked any more: ticking the same size again asks for a new one.
+  const paidReady = paidOk.ready && paidOk.key === `${rev}|${paidChosen.join(",")}`;
+  const anyPaid = paidChosen.length > 0;
+  useEffect(() => {
+    if (!anyPaid) setPaidOk((c) => (c.ready ? { ready: false, key: "", maxCredits: {} } : c));
+  }, [anyPaid]);
   const warnings = textWarnings(model);
   const soundWarns = soundWarnings(model);
   const speech = useMemo(() => speechSpans(model), [model]);
@@ -783,7 +831,16 @@ export function TimelineEditor({
     setStarting(true);
     setError(null);
     setFrameRefusals([]);
-    const out = await requestExports(projectId, rev, want);
+    const paid = want.filter((c): c is HiresPresetId => isHiresPresetId(c));
+    // A paid size goes only with the number the person confirmed (the route refuses it without one: quote_required).
+    const out = await requestExports(
+      projectId,
+      rev,
+      want,
+      paid.length && paidReady
+        ? Object.fromEntries(paid.flatMap((c) => (paidOk.maxCredits[c] === undefined ? [] : [[c, paidOk.maxCredits[c]]])))
+        : undefined,
+    );
     setStarting(false);
     if (!out.ok) {
       setError(out.error);
@@ -797,7 +854,7 @@ export function TimelineEditor({
         refused.push(o);
         continue;
       }
-      const p = o.frame === PROJECT_FRAME ? null : exportPresetById(o.frame);
+      const p = o.frame === PROJECT_FRAME ? null : framePresetById(o.frame);
       queued.push({
         id: o.id,
         rev,
@@ -1079,12 +1136,20 @@ export function TimelineEditor({
     ? te.exportNeedsSave
     : active
       ? te.exportBusy
-      : multiRatio && framesChosen.length === 0
-        ? te.exportRatios.none
-        : null;
+      : !multiRatio && ownBlocked
+        ? ownBlocked
+        : multiRatio && framesChosen.length === 0
+          ? (ownBlocked ?? te.exportRatios.none)
+          : paidChosen.length > 0 && !paidReady
+            ? te.errors.quote_required
+            : null;
   /** A size's name for a sentence: the format's, or "this project's size". */
   const frameName = (c: string) =>
-    isExportFrameChoice(c) && c !== PROJECT_FRAME ? te.exportPreset.names[c] : te.exportRatios.own;
+    isHiresPresetId(c)
+      ? te.exportHires.names[c]
+      : isExportPresetId(c)
+        ? te.exportPreset.names[c]
+        : te.exportRatios.own;
   const when = (iso: string | null) => {
     if (!iso) return "";
     const d = new Date(iso);
@@ -1259,8 +1324,16 @@ export function TimelineEditor({
             choices={frameChoices}
             selected={framesChosen}
             blocked={frameBlocked}
+            overCap={frameOverCap}
+            tooFast={frameTooFast}
+            fps={model.fps}
+            ownBlocked={ownBlocked}
+            speedCurve={speedCurve}
             onChange={setFrames}
           />
+        ) : null}
+        {multiRatio && hires && paidChosen.length > 0 ? (
+          <HiresExportQuote projectId={projectId} rev={rev} dirty={dirty} frames={paidChosen} onChange={setPaidOk} />
         ) : null}
         {frameRefusals.length ? (
           <div role="alert" className="flex flex-col gap-1 text-sm text-[var(--color-fail)]">

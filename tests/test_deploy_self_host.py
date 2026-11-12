@@ -445,7 +445,7 @@ class CaddyReloadStepTests(unittest.TestCase):
             "CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh in the same PR",
         )
         apply_ = self.body("caddy_apply")
-        gate = apply_.index('"$newsha" != "$CADDYFILE_APPROVED_SHA256"')
+        gate = apply_.index('"$newsha" != "$approved"')
         for later in ("compose exec", "caddy_exec", "caddy_reload"):
             self.assertLess(gate, apply_.index(later), later)
         self.assertIn("die ", apply_[gate : gate + 400])
@@ -455,13 +455,92 @@ class CaddyReloadStepTests(unittest.TestCase):
         # The service is checked before the file is judged by it.
         self.assertLess(apply_.index("caddy true"), apply_.index("caddy_exec validate"))
 
+    def test_the_pin_is_the_deployed_commits_not_the_running_copys(self):
+        # bash runs the pre-checkout copy of this script, so its own CADDYFILE_APPROVED_SHA256 is the
+        # previous commit's. The gate must take the deployed commit's line (or the env override).
+        apply_ = self.body("caddy_apply")
+        pin_of = self.body("caddy_pin_of")
+        self.assertIn('git -C "$APP_DIR" show "${sha}:deploy/remote-deploy.sh"', pin_of)
+        self.assertIn('[[ "$pins" =~ ^[0-9a-f]{64}$ ]]', pin_of)  # exactly one line, exactly 64 hex
+        self.assertNotIn("$CADDYFILE_APPROVED_SHA256", apply_, "the running copy's value must not be the gate")
+        override = apply_.index('-n "${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-}"')
+        self.assertLess(override, apply_.index('approved="$(caddy_pin_of "$sha")"'))
+        self.assertLess(apply_.index('approved="$(caddy_pin_of "$sha")"'), apply_.index('"$newsha" != "$approved"'))
+        self.assertIn('caddy_apply "${CADDY_VERIFY_HOST:-$domain}" "$sha"', self.body("main"))
+        # The check-out happens before the step, and the step reads the same commit the env lines came from.
+        self.assertLess(self.body("main").index("checkout --quiet -B main"), self.body("main").index("caddy_apply "))
+
+    def test_the_shellcheck_disable_above_the_pin_is_data_too_and_changes_nothing(self):
+        # SC2034: the running copy never reads its own pin (caddy_pin_of reads the deployed commit's).
+        # The directive sits on the line above; the exact-line parser must still find exactly that pin.
+        lines = self.script.splitlines()
+        i = next(n for n, l in enumerate(lines) if l.startswith("CADDYFILE_APPROVED_SHA256="))
+        self.assertTrue(lines[i - 1].startswith("# shellcheck disable=SC2034"), lines[i - 1])
+        pin = hashlib.sha256((DEPLOY / "Caddyfile").read_bytes()).hexdigest()
+        without = "\n".join(lines[: i - 1] + lines[i:]) + "\n"
+        self.assertEqual(self.pin_from_commit(self.script), pin)
+        self.assertEqual(self.pin_from_commit(without), pin)
+
+    def pin_from_commit(self, script_text):
+        """caddy_pin_of (from the real script) run on a throwaway commit whose deploy/remote-deploy.sh is `script_text`."""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            env = {"PATH": os.environ["PATH"], "HOME": d, "GIT_CONFIG_NOSYSTEM": "1",
+                   "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+                   "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+            git = lambda *a: subprocess.run(["git", *a], cwd=repo, env=env, check=True,  # noqa: E731
+                                            capture_output=True, text=True).stdout.strip()
+            git("init", "-q", "-b", "main")
+            (repo / "deploy").mkdir()
+            (repo / "deploy" / "remote-deploy.sh").write_text(script_text)
+            git("add", "-A")
+            git("commit", "-q", "-m", "x")
+            return subprocess.run(
+                ["bash", "-c", 'APP_DIR="$1"; eval "$(sed -n "/^caddy_pin_of() {/,/^}/p" "$2")"; caddy_pin_of HEAD',
+                 "_", str(repo), str(DEPLOY / "remote-deploy.sh")],
+                env=env, capture_output=True, text=True, check=True).stdout
+
+    def test_a_commit_changing_the_caddyfile_and_its_pin_together_is_approved_in_that_same_run(self):
+        """Simulated with git and the script's own caddy_pin_of: the running copy's constant is the OLD
+        pin, the new commit carries the new Caddyfile and the new pin; the gate sees the new pin."""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d)
+            env = {"PATH": os.environ["PATH"], "HOME": d, "GIT_CONFIG_NOSYSTEM": "1",
+                   "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+                   "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+            git = lambda *a: subprocess.run(["git", *a], cwd=repo, env=env, check=True,  # noqa: E731
+                                            capture_output=True, text=True).stdout.strip()
+            git("init", "-q", "-b", "main")
+            (repo / "deploy").mkdir()
+            caddy = (DEPLOY / "Caddyfile").read_bytes() + b"# changed in the same PR\n"
+            (repo / "deploy" / "Caddyfile").write_bytes(caddy)
+            new_pin = hashlib.sha256(caddy).hexdigest()
+            old_pin = re.search(r'NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-([0-9a-f]{64})', self.script).group(1)
+            self.assertNotEqual(new_pin, old_pin)
+            (repo / "deploy" / "remote-deploy.sh").write_text(self.script.replace(old_pin, new_pin))
+            git("add", "-A")
+            git("commit", "-q", "-m", "caddyfile + pin")
+            sha = git("rev-parse", "HEAD")
+            got = subprocess.run(
+                ["bash", "-c", 'APP_DIR="$1"; eval "$(sed -n "/^caddy_pin_of() {/,/^}/p" "$2")"; caddy_pin_of "$3"',
+                 "_", str(repo), str(DEPLOY / "remote-deploy.sh"), sha],
+                env=env, capture_output=True, text=True, check=True).stdout
+            self.assertEqual(got, new_pin, "the gate must see the new commit's pin, in this run")
+
     def test_the_file_is_copied_once_and_that_copy_is_hashed_fed_and_kept(self):
         apply_ = self.body("caddy_apply")
-        self.assertLess(apply_.index('-L "$new"'), apply_.index('cp "$new" "$snap"'))
-        self.assertLess(apply_.index('cp "$new" "$snap"'), apply_.index('sha256sum "$snap"'))
-        # After the copy the path is never opened again: no second read of it.
-        after = apply_[apply_.index('cp "$new" "$snap"') + 20 :]
-        self.assertNotRegex(after, r'<\s*"\$new"|sha256sum "\$new"|cp "\$new"|caddy_reload "\$new"')
+        # The copy is the deployed commit's blob, never the working-tree file (no .gitattributes filter
+        # or eol conversion between the commit and the hash); a symlink entry is refused before it.
+        read = 'git -C "$APP_DIR" cat-file blob "${sha}:deploy/Caddyfile" >"$snap"'
+        self.assertIn('ls-tree "$sha" -- deploy/Caddyfile', apply_)
+        self.assertLess(apply_.index("120000) die"), apply_.index(read))
+        self.assertLess(apply_.index(read), apply_.index('sha256sum "$snap"'))
+        # The working-tree path is never read for the gate or fed to Caddy.
+        self.assertNotRegex(apply_, r'<\s*"\$new"|sha256sum "\$new"|cp "\$new"|caddy_reload "\$new"')
         for fed in ('validate --config - --adapter caddyfile <"$snap"', 'adapt --config - --adapter caddyfile <"$snap"', 'caddy_reload "$snap"', 'mv -f "$snap" "$loaded"'):
             self.assertIn(fed, apply_)
         # The temporary copy is removed on every way out and the trap does not touch the exit code.

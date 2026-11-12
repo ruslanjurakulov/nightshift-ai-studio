@@ -41,3 +41,30 @@ export async function switchOrganization(orgId: string): Promise<boolean> {
     return false;
   }
 }
+
+/** Indirection so tests can watch the form go (jsdom cannot navigate). */
+export const formNav = {
+  submit(form: HTMLFormElement): void {
+    form.submit();
+  },
+};
+
+/**
+ * Switch organization as a NAVIGATION (app/api/org/switch): a same-origin form post that the server answers by
+ * switching and redirecting to `/all-channels` under the new organization. Used where leaving the page must be a
+ * full document load (the editor's project page): the page's unsaved-changes prompt runs before anything is sent,
+ * so a person who cancels it changes nothing.
+ */
+export function submitOrganizationSwitch(orgId: string): void {
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = "/api/org/switch";
+  form.style.display = "none";
+  const field = document.createElement("input");
+  field.type = "hidden";
+  field.name = "orgId";
+  field.value = orgId;
+  form.appendChild(field);
+  document.body.appendChild(form);
+  formNav.submit(form);
+}

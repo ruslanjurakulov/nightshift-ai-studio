@@ -643,10 +643,14 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         self.approved[sha] = hashlib.sha256(data).hexdigest()
         return sha
 
-    def deploy_caddy(self, sha, approved=None, **extra):
+    def deploy_caddy(self, sha, approved=None, pin_from_env=True, **extra):
+        """Deploy `sha`. The hash gate is fed from the environment override by default; with
+        pin_from_env=False nothing is set and the gate reads the pin as production does: from
+        the deployed commit's own deploy/remote-deploy.sh."""
+        if pin_from_env:
+            extra["NIGHTSHIFT_CADDYFILE_APPROVED_SHA256"] = approved or self.approved[sha]
         return self.deploy(
             self.payload(sha=sha),
-            NIGHTSHIFT_CADDYFILE_APPROVED_SHA256=approved or self.approved[sha],
             NIGHTSHIFT_CURL=str(self.tmp / "curl"),
             FAKE_CADDY_LIVE=str(self.live),
             NIGHTSHIFT_CADDY_VERIFY_TIMEOUT="0",
@@ -822,15 +826,146 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         self.assertFalse(self.live.exists())
         self.assertNoTemp()
 
+    # ── the pin is the deployed commit's, read in the same run ──────────────
+    # bash runs the copy of remote-deploy.sh that was on the server BEFORE the checkout. Its own
+    # CADDYFILE_APPROVED_SHA256 is the previous commit's, so a commit that changed the Caddyfile and
+    # the pin together was refused on its first deploy and loaded on the next (#673's deploy of
+    # 558b28e4 went red, 84a166e7 loaded it). REMOTE (this repository's script) plays the running copy;
+    # the pushed commit carries its own copy with its own pin.
+
+    PIN_LINE = re.compile(r'^CADDYFILE_APPROVED_SHA256="\$\{NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-([0-9a-f]{64})\}"$', re.M)
+
+    def script_with_pin(self, pin):
+        text = REMOTE.read_text()
+        self.assertEqual(len(self.PIN_LINE.findall(text)), 1)
+        return self.PIN_LINE.sub(f'CADDYFILE_APPROVED_SHA256="${{NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-{pin}}}"', text)
+
+    def push_with_script(self, marker, script):
+        """One commit that changes deploy/Caddyfile and deploy/remote-deploy.sh together."""
+        up = self.tmp / "upstream"
+        data = f"{self.caddyfile}\n# {marker}\n".encode()
+        (up / "deploy" / "Caddyfile").write_bytes(data)
+        if script is None:
+            (up / "deploy" / "remote-deploy.sh").unlink(missing_ok=True)
+        else:
+            (up / "deploy" / "remote-deploy.sh").write_text(script)
+        self.git(up, "add", "-A")
+        self.git(up, "commit", "-q", "-m", f"caddyfile and pin {marker}")
+        sha = self.git(up, "rev-parse", "HEAD")
+        self.approved[sha] = hashlib.sha256(data).hexdigest()
+        return sha
+
+    def running_pin(self):
+        return self.PIN_LINE.search(REMOTE.read_text()).group(1)
+
+    def test_a_commit_that_changes_the_caddyfile_and_its_pin_together_loads_in_one_run(self):
+        sha = self.push_with_script("v2", None)
+        new_hash = self.approved[sha]
+        sha = self.push_with_script("v2", self.script_with_pin(new_hash))
+        self.assertNotEqual(new_hash, self.running_pin(), "the running copy's pin must be the old one here")
+        proc = self.deploy_caddy(sha, pin_from_env=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"matches the hash commit {sha[:12]} approves ({new_hash[:12]})", proc.stdout)
+        self.assertIn("loaded and verified", proc.stdout)
+        self.assertIn("# v2", self.live.read_text())
+        self.assertEqual(self.caddy_calls(), ["validate", "adapt", "reload"])
+
+    def test_the_old_rule_the_running_copys_pin_refuses_that_same_commit(self):
+        # What the server did before this change, for the same commit: judge it by the pin of the copy
+        # that is running. It is refused, and nothing reaches Caddy: the two-deploy problem.
+        sha = self.push_with_script("v2", None)
+        sha = self.push_with_script("v2", self.script_with_pin(self.approved[sha]))
+        proc = self.deploy_caddy(sha, approved=self.running_pin())
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("NOT validated, NOT loaded", proc.stderr)
+        self.assertFalse(self.live.exists())
+
+    def test_a_caddyfile_changed_without_its_pin_is_still_refused(self):
+        # A reviewed PR has to change both; a Caddyfile edit alone never loads.
+        sha = self.push_with_script("unreviewed", self.script_with_pin(self.running_pin()))
+        proc = self.deploy_caddy(sha, pin_from_env=False)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(f"that commit's deploy/remote-deploy.sh approves {self.running_pin()[:12]}", proc.stderr)
+        self.assertIn("in the same commit; it takes effect on that commit's own deploy", proc.stderr)
+        self.assertFalse([c for c in self.docker_calls() if " exec -T caddy caddy " in c])
+        self.assertFalse(self.live.exists())
+
+    def test_a_commit_without_one_readable_pin_is_refused(self):
+        for label in ("no script", "no pin line", "two pin lines", "a pin that is not 64 hex",
+                      "a CRLF pin line", "text after the pin line"):
+            with self.subTest(label):
+                self.docker_log.unlink(missing_ok=True)
+                h = hashlib.sha256(f"{self.caddyfile}\n# {label}\n".encode()).hexdigest()
+                if label == "no script":
+                    script = None
+                elif label == "no pin line":
+                    script = self.PIN_LINE.sub("", REMOTE.read_text())
+                elif label == "two pin lines":
+                    script = self.script_with_pin(h) + f'\nCADDYFILE_APPROVED_SHA256="${{NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-{h}}}"\n'
+                elif label == "a pin that is not 64 hex":
+                    script = self.script_with_pin(h).replace(h, h[:63] + "Z")
+                else:
+                    # The exact line only: anchored at its end, so a \r (a checkout from Windows) or
+                    # anything after the closing quote is not the reviewed line and is not read.
+                    line = f'CADDYFILE_APPROVED_SHA256="${{NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-{h}}}"'
+                    tail = "\r" if label == "a CRLF pin line" else "  # approved"
+                    script = self.script_with_pin(h).replace(line, line + tail)
+                    self.assertIn(line + tail + "\n", script)
+                sha = self.push_with_script(label, script)
+                proc = self.deploy_caddy(sha, pin_from_env=False)
+                self.assertNotEqual(proc.returncode, 0, label)
+                self.assertIn(f"commit {sha[:12]} has no single CADDYFILE_APPROVED_SHA256 line", proc.stderr)
+                self.assertFalse([c for c in self.docker_calls() if " exec -T caddy caddy " in c], label)
+
+    def test_the_caddyfile_is_hashed_from_the_commit_not_the_checked_out_file(self):
+        # The commit asks git to check the Caddyfile out with CRLF line endings: the working-tree file then
+        # differs from the committed bytes. The gate hashes and loads the commit's blob, so the reviewed pin
+        # (of the committed bytes) matches, whatever .gitattributes or the server's git settings do.
+        up = self.tmp / "upstream"
+        (up / ".gitattributes").write_text("deploy/Caddyfile text eol=crlf\n")
+        sha = self.push_with_script("eol", None)
+        committed = self.approved[sha]
+        sha = self.push_with_script("eol", self.script_with_pin(committed))
+        proc = self.deploy_caddy(sha, pin_from_env=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        on_disk = (self.app / "deploy" / "Caddyfile").read_bytes()
+        self.assertIn(b"\r\n", on_disk, "the checkout really rewrote the file")
+        self.assertNotEqual(hashlib.sha256(on_disk).hexdigest(), committed)
+        self.assertEqual(hashlib.sha256((self.state / ".caddyfile.loaded").read_bytes()).hexdigest(), committed)
+        fed = {line.split()[2] for line in self.docker_calls() if line.startswith("STDIN ")}
+        self.assertEqual(fed, {committed}, "validate, adapt and reload were fed the committed bytes")
+
+    def test_the_environment_override_still_wins_over_the_commits_pin(self):
+        sha = self.push_with_script("v2", None)
+        good = self.approved[sha]
+        sha = self.push_with_script("v2", self.script_with_pin(good))
+        refused = self.deploy_caddy(sha, approved="0" * 64)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("approves 000000000000", refused.stderr)
+        sha2 = self.push_with_script("v3", self.script_with_pin("0" * 64))
+        self.assertEqual(self.deploy_caddy(sha2).returncode, 0)
+
+    def test_the_pin_is_read_from_the_commit_not_from_the_checked_out_file(self):
+        # A file edited on the server after the checkout is refused elsewhere (local changes), but
+        # the pin is read with `git show <sha>:...` all the same: the commit, not the working tree.
+        sha = self.push_with_script("v2", None)
+        sha = self.push_with_script("v2", self.script_with_pin(self.approved[sha]))
+        env = dict(self.gitenv)
+        text = subprocess.run(["bash", "-c", 'APP_DIR="$1"; eval "$(sed -n "/^caddy_pin_of() {/,/^}/p" "$2")"; '
+                               'git -C "$1" fetch -q origin main; caddy_pin_of "$3"', "_", str(self.app), str(REMOTE), sha],
+                              env=env, capture_output=True, text=True, check=True).stdout
+        self.assertEqual(text, self.approved[sha])
+        self.assertFalse((self.app / "deploy" / "remote-deploy.sh").exists(), "read without checking out")
+
     def test_a_caddyfile_that_is_not_the_approved_one_is_not_even_validated(self):
         sha = self.push("v1")
         proc = self.deploy_caddy(sha, approved="0" * 64)
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("deploy/Caddyfile changed", proc.stderr)
+        self.assertIn(f"deploy/Caddyfile of commit {sha[:12]} is {self.approved[sha][:12]}", proc.stderr)
         self.assertNoTemp()
         self.assertIn("000000000000", proc.stderr)
-        self.assertIn(self.approved[sha][:12], proc.stderr)
-        self.assertIn("update CADDYFILE_APPROVED_SHA256", proc.stderr)
+        self.assertIn("NOT validated, NOT loaded", proc.stderr)
+        self.assertIn("into CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh, in the same commit", proc.stderr)
         self.assertNotIn(self.approved[sha], proc.stderr, "only 12-char hashes are printed")
         self.assertFalse([c for c in self.docker_calls() if " exec " in c], "caddy was touched")
         self.assertFalse(self.live.exists())
@@ -855,7 +990,7 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
                 self.docker_log.unlink(missing_ok=True)
                 proc = self.deploy_caddy(self.push(name, data=data), approved=approved)
                 self.assertNotEqual(proc.returncode, 0)
-                self.assertIn("deploy/Caddyfile changed", proc.stderr)
+                self.assertIn("NOT validated, NOT loaded", proc.stderr)
                 self.assertFalse([c for c in self.docker_calls() if " exec " in c])
                 self.assertEqual(self.live.read_bytes(), base.rstrip(b"\n"))
 

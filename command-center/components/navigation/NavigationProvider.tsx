@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef } fr
 import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { recordVisit, resolveBack, restoreStack, titleKey } from "@/lib/navigation";
+import { navigate } from "@/lib/editor-nav";
 
 interface NavigationValue {
   /** The channel's display name for a URL slug, when the layout knew it. */
@@ -105,8 +106,10 @@ export function NavigationProvider({
   const goBack = useCallback(() => {
     const action = resolveBack(current.current, depthOf(stack.current));
     if (!action) return;
+    // History back leaves the editor's page for another document already (it was entered by a full load);
+    // a pushed "back" goes through lib/editor-nav (a full load out of, or into, the editor's project page).
     if (action.kind === "history") router.back();
-    else router.push(action.href);
+    else navigate(action.href, router);
   }, [router]);
 
   const value = useMemo<NavigationValue>(

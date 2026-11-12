@@ -29,6 +29,7 @@ import {
   isLongForPreset,
   presetProblems,
 } from "@/lib/editorExportPresets";
+import { HIRES_EXPORT_PRESETS } from "@/lib/hiresExport/limits";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
 import { uz } from "@/lib/i18n/uz";
@@ -56,7 +57,7 @@ describe("the closed list", () => {
     ).toBe(true);
   });
 
-  it("is the list in schemas/export_presets.json, value for value", () => {
+  it("is the list in schemas/export_presets.json, value for value (the five free formats, then the paid ones of 0132)", () => {
     const file = JSON.parse(
       readFileSync(join(__dirname, "..", "..", "schemas", "export_presets.json"), "utf8"),
     ) as { version: number; presets: Record<string, unknown>[] };
@@ -69,7 +70,10 @@ describe("the closed list", () => {
         fps: p.fps,
         maxDurationS: p.max_duration_s,
       })),
-    ).toEqual(EXPORT_PRESETS.map((p) => ({ ...p })));
+    ).toEqual([...EXPORT_PRESETS, ...HIRES_EXPORT_PRESETS].map((p) => ({ ...p })));
+    // The format picker's list is the free part only: a project's own frame is exported free, so a 4K one would be a free 4K export.
+    for (const p of EXPORT_PRESETS) expect(p.width * p.height, p.id).toBeLessThanOrEqual(1920 * 1080);
+    for (const p of HIRES_EXPORT_PRESETS) expect(isExportPresetId(p.id), p.id).toBe(false);
   });
 
   it("keeps every entry inside the limits it must never exceed", () => {

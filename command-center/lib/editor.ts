@@ -3064,7 +3064,15 @@ function cutPoint(c: VideoClip, t: number): number {
   return ms(c.reverse ? c.out_s - (t - c.start_s) * c.speed : c.in_s + (t - c.start_s) * c.speed);
 }
 
-/** Can clip `id` be split at timeline time `t` (both halves at least MIN_CLIP_S of source)? */
+/** The shortest piece of SOURCE a split may leave of a clip: MIN_CLIP_S, or one frame of the timeline at the
+ *  clip's speed when that is longer (at 10x a frame at 30 fps is 0.333 s of source; a shorter piece would be
+ *  under one frame, which the validators refuse). */
+export function minPieceS(c: Pick<VideoClip, "speed">, fps: number): number {
+  const speed = c.speed > 0 ? c.speed : 1;
+  return Math.max(MIN_CLIP_S, fps > 0 ? speed / fps : 0);
+}
+
+/** Can clip `id` be split at timeline time `t` (both halves at least `minPieceS` of source)? */
 export function canSplit(model: EditorModel, id: string, t: number): boolean {
   if (model.clips.length >= MAX_EDITOR_CLIPS) return false;
   const c = layout(model.clips).find((x) => x.id === id);
@@ -3073,11 +3081,12 @@ export function canSplit(model: EditorModel, id: string, t: number): boolean {
   // need its own curve): remove the curve first, as the backend asks.
   if (c.speed_curve) return false;
   const cut = cutPoint(c, t);
+  const min = minPieceS(c, model.fps);
   return (
     t > c.start_s &&
     t < clipEnd(c) &&
-    cut - c.in_s >= MIN_CLIP_S &&
-    c.out_s - cut >= MIN_CLIP_S
+    cut - c.in_s >= min - 1e-9 &&
+    c.out_s - cut >= min - 1e-9
   );
 }
 
@@ -3089,10 +3098,38 @@ export function splitClip(
   t: number,
 ): { model: EditorModel; newId: string } | null {
   if (!canSplit(model, id, t)) return null;
+  const c = layout(model.clips).find((x) => x.id === id)!;
+  return splitAt(model, id, t, cutPoint(c, ms(t)));
+}
+
+/**
+ * Split a forward clip at SOURCE time `cut` (the silence cuts are source times: converting them to a timeline
+ * time rounded to the millisecond and back drifts by up to speed x 0.5 ms, which put a piece of exactly
+ * `minPieceS` just under it at 6x). The same pieces and the same rules as {@link splitClip}.
+ */
+export function splitClipAtSource(
+  model: EditorModel,
+  id: string,
+  cut: number,
+): { model: EditorModel; newId: string } | null {
+  if (model.clips.length >= MAX_EDITOR_CLIPS) return null;
+  const c = layout(model.clips).find((x) => x.id === id);
+  if (!c || c.speed_curve || c.reverse || c.freeze) return null;
+  const at = ms(cut);
+  const min = minPieceS(c, model.fps);
+  if (!(at - c.in_s >= min - 1e-9 && c.out_s - at >= min - 1e-9)) return null;
+  return splitAt(model, id, c.start_s + (at - c.in_s) / c.speed, at);
+}
+
+function splitAt(
+  model: EditorModel,
+  id: string,
+  t: number,
+  cut: number,
+): { model: EditorModel; newId: string } {
   const clips = layout(model.clips);
   const i = clips.findIndex((x) => x.id === id);
   const c = clips[i];
-  const cut = cutPoint(c, ms(t));
   const newId = freshId(model, "c");
   // modules/timeline.py split_clip: the first half keeps the way in (its
   // transition and fade in), the second the way out (its fade out).
@@ -3638,6 +3675,17 @@ export const EXPORT_REASONS = [
   // the closed list, or the worker's switch was off when it arrived.
   "invalid_frame",
   "frame_off",
+  // A paid 1440p / 4K export (migration 0132, modules/editor_export.py): the worker's switch was off (the database gave
+  // the credits back when the export failed), the hold was no longer open when the worker took it, or the version is
+  // faster than 4K allows (30 fps). Above 1080p is never free: a row without a paid frame whose picture is above 1080p, a
+  // paid export of a document with a speed curve (its length cannot be priced), or a render that would start more minutes
+  // than were priced.
+  "hires_off",
+  "credits_released",
+  "hires_fps",
+  "hires_needs_paid_export",
+  "hires_speed_curve",
+  "hires_length_mismatch",
 ] as const;
 export type ExportReason = (typeof EXPORT_REASONS)[number];
 
@@ -3742,6 +3790,19 @@ export const EDITOR_ERRORS = [
   "clips_full",
   "sounds_full",
   "no_duration",
+  // A paid 1440p / 4K export (migration 0132): the size is not on sale, its price changed after the person confirmed
+  // it, the credits are short, the video is longer than the size allows, no confirmed price came with the request,
+  // the plan's parallel runs are in use (a held paid export is a run in progress, 0034), 4K of a project over 30 fps, a
+  // document with a speed curve, or a project whose own frame is above 1080p asked for free.
+  "not_on_sale",
+  "price_changed",
+  "insufficient_credits",
+  "hires_too_long",
+  "quote_required",
+  "parallel_runs",
+  "hires_fps",
+  "hires_speed_curve",
+  "hires_needs_paid_export",
   "not_available",
   "network",
   "failed",
@@ -3759,6 +3820,13 @@ const DB_WORDS: Partial<Record<string, EditorError>> = {
   export_in_progress: "export_in_progress",
   limit_reached: "limit_reached",
   daily_limit: "daily_limit",
+  // 0132
+  hires_too_long: "hires_too_long",
+  price_changed: "price_changed",
+  parallel_runs: "parallel_runs",
+  hires_fps: "hires_fps",
+  hires_speed_curve: "hires_speed_curve",
+  hires_needs_paid_export: "hires_needs_paid_export",
 };
 
 /** A database refusal (SQLSTATE + machine word, migration 0054) → a word and an HTTP status. */
@@ -3773,6 +3841,11 @@ export function mapEditorError(
       return { error: DB_WORDS[word] ?? "stale_revision", status: 409 };
     case "NS429":
       return { error: DB_WORDS[word] ?? "limit_reached", status: 429 };
+    // 0132: a paid export. NS402 is reserve_credits' "insufficient credits" (renamed by the function), NS403 "not on sale".
+    case "NS402":
+      return { error: "insufficient_credits", status: 402 };
+    case "NS403":
+      return { error: "not_on_sale", status: 403 };
     case "42501":
       return { error: "forbidden", status: 403 };
     case "P0002":

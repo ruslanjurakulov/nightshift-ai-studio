@@ -143,6 +143,29 @@ def take_off_0133(session) -> None:
     session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
+MIGRATION_0132 = MIGRATIONS / "0132_editor_hires_export.sql"
+ROLLBACK_0132 = REPO / "docs" / "sql" / "rollback_0132_editor_hires_export.sql"
+
+
+def has_0132(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regclass('public.editor_export_hires_prices') is not null").fetchone()[0])
+
+
+def take_off_0132(session) -> None:
+    """0132 replaces editor_export_frame() on 0129's body (and adds the paid overload), and 0129 (and its rollback) refuse any other
+    list. A test that replays 0129 or applies its rollback on a database that has 0132 takes 0132 off first with its own rollback
+    (inside the test's transaction), and puts it back with put_back_0132 where the chain goes on."""
+    if not has_0132(session):
+        return
+    text = ROLLBACK_0132.read_text(encoding="utf-8")
+    session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0132(session) -> None:
+    session.conn.execute(MIGRATION_0132.read_text(encoding="utf-8"))
+
+
 MIGRATION_0125 = MIGRATIONS / "0125_model_shutdown.sql"
 ROLLBACK_0125 = REPO / "docs" / "sql" / "rollback_0125_model_shutdown.sql"
 
