@@ -26,6 +26,7 @@ import {
   type EditorModel,
   type VideoClip,
 } from "@/lib/editor";
+import { NO_LOCKS, syncLock, type SyncLocks } from "@/lib/editorSync";
 
 /** The envelope's resolution: 10 ms. */
 export const BLOCK_S = 0.01;
@@ -146,14 +147,17 @@ export function proposeCuts(
 
 /**
  * The model with `cuts` (source seconds, sorted, from {@link proposeCuts}) removed from clip `id`:
- * split at both ends of each cut, the middle deleted, the rest of the picture moved up (texts, sounds
- * and overlays keep their times). Done from the last cut back, so each split time is still the one the
- * clip had. Returns how many cuts fitted (the editor's clip limit can stop it early).
+ * split at both ends of each cut, the middle deleted, the rest of the picture moved up. With sync lock
+ * (lib/editorSync.ts; `locks`, by default nothing locked) the texts, sounds, overlays and shapes after each cut
+ * move up with the picture, cut by cut, so a title over a word stays over that word; a locked lane keeps its
+ * times. Done from the last cut back, so each split time is still the one the clip had. Returns how many cuts
+ * fitted (the editor's clip limit can stop it early).
  */
 export function applyCuts(
   model: EditorModel,
   id: string,
   cuts: readonly Span[],
+  locks: SyncLocks = NO_LOCKS,
 ): { model: EditorModel; applied: number; stopped: "full" | "piece" | null } {
   let m: EditorModel = { ...model, clips: layout(model.clips) };
   let applied = 0;
@@ -178,7 +182,9 @@ export function applyCuts(
       middle = r.newId;
     }
     if (middle === id && next.clips.length <= 1) break;
-    next = removeClip(next, middle);
+    // Each cut is its own ripple: what is after it moves by that cut alone (one ripple for all would move a title
+    // between two cuts by both).
+    next = syncLock(next, removeClip(next, middle), locks);
     m = next;
     applied += 1;
     if (middle === id) break; // the head of the clip went: nothing is left of it to the left

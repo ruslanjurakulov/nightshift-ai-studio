@@ -188,13 +188,16 @@ const same = (x: EditorModel, y: EditorModel) =>
 /**
  * Ripple delete of the marked range (an "extract"): the picture between the marks goes and the clips after it
  * close up, in one step; the sounds are cut there too and the later ones move up with the picture, so a detached
- * sound stays with its picture. Texts, overlays and shapes keep their times. A gap inside the range closes.
+ * sound stays with its picture. Texts, overlays and shapes are not touched here: the editor's sync lock
+ * (lib/editorSync.ts) moves them after. With `sounds: false` (the sound lane is locked) the sounds are not cut or
+ * moved either. A gap inside the range closes.
  */
 export function extractRange(
   model: EditorModel,
   from: number,
   to: number,
-): { model: EditorModel; removed: number } | { problem: RangeProblem } {
+  opts: { sounds?: boolean } = {},
+): { model: EditorModel; removed: number; from: number; to: number } | { problem: RangeProblem } {
   const r = cutRange(model, from, to);
   if (typeof r === "string") return { problem: r };
   const clips = layout(r.model.clips);
@@ -202,11 +205,12 @@ export function extractRange(
   if (!keep.length) return { problem: "whole" };
   const len = r.b - r.a;
   const starts = keep.map((c) => (c.start_s >= r.b - 0.0005 ? c.start_s - len : c.start_s));
-  const sounds = cutSounds(r.model, r.a, r.b, true);
+  const sounds = opts.sounds === false ? r.model.sounds : cutSounds(r.model, r.a, r.b, true);
   if (sounds === "sounds_full") return { problem: "sounds_full" };
   const next = { ...r.model, clips: withStarts(keep, starts), sounds };
   if (same(next, model)) return { problem: "no_range" };
-  return { model: next, removed: clips.length - keep.length };
+  // Where the range really was (the cuts it was taken to): what the sync lock moves the other lanes by.
+  return { model: next, removed: clips.length - keep.length, from: r.a, to: r.b };
 }
 
 /**

@@ -456,6 +456,10 @@ const V_CLIP_KEYS = [
   "gain_db",
   ...EFFECT_KEYS,
 ];
+/** Every field a V clip may have (the validator's list) and its effect fields: what paste attributes
+ *  (lib/editorPasteLook.ts) sorts into groups, so a field added here has to be given a group or named as no look. */
+export const V_CLIP_FIELDS: readonly string[] = V_CLIP_KEYS;
+export const CLIP_EFFECT_FIELDS: readonly string[] = EFFECT_KEYS;
 const A_CLIP_KEYS = [
   ...MEDIA_REQUIRED,
   "gain_db",
