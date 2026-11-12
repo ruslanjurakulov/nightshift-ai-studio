@@ -1322,8 +1322,8 @@ has and goes through `settleAll` like any edit; each is ONE undo step.
   selects every item its box touches (with a modifier: added to the selection). On a phone a long press (half a
   second, held still) turns select mode on with that item alone, and taps then add or take out; "Select several" is
   the same mode as a button, for anyone without a long press. "Select all after the playhead" is track select forward
-  on every lane (the A key of other editors is not mapped: on this editor's Cyrillic test the physical A key must
-  stay unmapped).
+  on every lane, as a button (the A key other editors use is not mapped: an existing key test pins the physical A key
+  to doing nothing).
 * With two or more selected the selection bar offers: Delete, Move clips earlier / later, a frame earlier / later,
   Copy, Paste look…, Clear. Keys: Delete, Ctrl + C, Ctrl + V, Alt + Left / Right (one frame; with Shift five), Ctrl /
   Cmd + Alt + V (paste attributes). Alt + arrows act only when a text, sound, overlay or shape is selected, so Alt +
