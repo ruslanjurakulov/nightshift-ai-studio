@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
-import { LEGAL } from "@/lib/legal";
+import { CONTACT_HREF, LEGAL } from "@/lib/legal";
 import { REFUND_PATH, ROADMAP_PATH } from "@/lib/public-paths";
 import { SOLUTION_IDS, solutionHref } from "@/lib/solutions";
 import { Wordmark } from "@/components/site/Wordmark";
@@ -17,9 +17,9 @@ type FooterLink = { href: string; label: string; external?: boolean };
 /**
  * The public pages' footer: Product, Solutions, Company and Legal columns.
  * Every link resolves — section anchors point at sections the homepage always
- * renders. Pricing, Privacy, Terms, Refunds and Contact are always there: Contact mails
- * the operator's configured address, or opens the Terms' contact section when
- * none is set. Google's verification checks that the homepage links the
+ * renders. Pricing, Privacy, Terms, Refunds and Contact are always there: Contact opens
+ * the operator-details card on the Terms (the address is printed there, and beside
+ * the wordmark here when one is set). Google's verification checks that the homepage links the
  * Privacy Policy; Paddle's that pricing is one click away.
  *
  * The brand block ends with the Telegram and Instagram icon links (lib/site/social.ts).
@@ -28,9 +28,7 @@ type FooterLink = { href: string; label: string; external?: boolean };
 export function PublicFooter({ t }: { t: Dictionary }) {
   const f = t.site.footer;
   const dev = devFor(t);
-  const contact: FooterLink = LEGAL.contactEmail
-    ? { href: `mailto:${LEGAL.contactEmail}`, label: f.contact, external: true }
-    : { href: "/terms#contact", label: f.contact };
+  const contact: FooterLink = { href: CONTACT_HREF, label: f.contact };
   const pages = t.site.solutions.pages;
   const columns: { title: string; links: FooterLink[] }[] = [
     {

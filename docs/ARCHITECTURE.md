@@ -1,493 +1,299 @@
-# Nightshift — Architecture
+# Nightshift: architecture
 
-Nightshift is an autonomous YouTube-automation bot (it began as a
-"history mysteries" channel, which is still the default sample channel). It has two distinct halves:
+The current system map, written from the code on `main` (checked 2026-11-12, after #690-#694). The code
+is the source of truth. Where this page could not confirm something from the repository (live switch
+values, what the live database holds, whether a scheduled workflow is producing output), it says
+**not verified**. An unknown is not a number, and an unmeasured thing is not zero.
 
-1. **A per-video generation pipeline** — picks a topic, researches it, writes a
-   retention-optimized script with Gemini, synthesizes audio, fetches stock
-   media, generates word-by-word subtitles and A/B thumbnails, composites a
-   final MP4, and uploads it to YouTube.
-2. **A continuous-intelligence feedback loop** — on a separate schedule, polls
-   the channel's own analytics, competitor channels, YouTube trending, and
-   audience comments; persists what it finds; and turns that persisted data
-   into ranked topic suggestions that feed back into the next video's topic
-   selection and script prompt.
+Nightshift is a multi-model creative studio with a video pipeline attached:
 
-The two halves run as independent scheduled jobs and communicate only through
-shared persistence (a SQLite database and a handful of JSON flat-files under
-`history/`). Nothing in the intelligence loop calls the generation pipeline
-directly, and vice versa.
+- **Studio.** A signed-in person generates images and video with models that the model registry lists,
+  edits video in a browser editor, and keeps the results in a media library. Speech, sound-effect and
+  music models are in the registry, but each still has an open vendor-terms gate, so none can be offered
+  yet. Which models are live on the database: **not verified**.
+  Every paid job is quoted, held, then captured or refunded.
+- **Pipeline.** The original autonomous YouTube channel operator: pick a topic, research, write,
+  fact-check, narrate, render, check, upload as private, learn from the results.
+- **Ways in.** The web app (the "Command Center"), a public REST API, an MCP server and a CLI.
 
-> **Status note.** As of this writing, zero GitHub Actions workflow runs have
-> occurred. The persistence tables and the feedback wiring described below
-> exist in code and are unit-testable in isolation, but they have not yet been
-> exercised end-to-end against live credentials. Where a capability is a
-> deliberate placeholder or is intentionally not-yet-wired, this document says
-> so explicitly.
+The **historical** section at the end lists what earlier versions of this page said that is no longer true.
 
 ---
 
-## 1. Overview
+## 1. Components and how they talk
 
 ```mermaid
-flowchart TB
-    subgraph GEN["Generation pipeline — .github/workflows/daily_video.yml (15:00 UTC)"]
-        direction TB
-        T["TopicManager.pick_topic()"] --> S["ScriptEngine.generate()"]
-        S --> A["AudioMixer → MediaFetcher → SubtitleGenerator<br/>→ ThumbnailGenerator → Compositor"]
-        A --> U["YouTubeUploader.upload()"]
-    end
-
-    subgraph INTEL["Intelligence loop — .github/workflows/intelligence_poll.yml (20:00 UTC)"]
-        direction TB
-        P["IntelligencePoller.run_all()"] --> CI["CommentFetcher + classify_comments<br/>+ AudienceDemandEngine"]
-        CI --> TR["TopicRecommender.suggest_topics()"]
-        TR --> CP["ContentPlanner queue (enqueue)"]
-    end
-
-    U -->|"record_video()"| DB[("StateStore SQLite<br/>+ history/*.json")]
-    P -->|"metrics / competitor / trending snapshots"| DB
-    CI -->|"demand_signals"| DB
-    DB -->|"read back"| TR
-    CP -->|"next_topic()"| T
-    DB -->|"PerformanceAnalyzer + TopicRecommender<br/>as optional prompt context"| T
-
-    subgraph APPROVAL["Approval nudge — check_pending_approvals.yml (every 6h)"]
-        N["build_pending_approval_summary() → Notifier"]
-    end
-    DB -.->|"pipeline_runs.json (tracking only)"| N
+flowchart LR
+    B["Browser<br/>(anon key + user session)"] --> W["Next.js Command Center<br/>command-center/ (server routes)"]
+    API["Public API /api/v1, MCP /api/mcp,<br/>CLI packages/cli"] --> W
+    W -->|"RPC (security-definer SQL),<br/>RLS-scoped reads"| DB[("Supabase Postgres<br/>RLS, migrations")]
+    PW["Paddle webhook (sandbox)<br/>supabase/functions/paddle-webhook"] --> DB
+    DB <-->|"claim / heartbeat / finish<br/>(service key)"| WK["Workers on the server<br/>queue, creative, media, notify, e-mail,<br/>operator bot, marketing, brand scan"]
+    WK -->|"each maker's own API"| V["Model vendors"]
+    WK --> YT["YouTube Data API<br/>(private upload)"]
+    GA["GitHub Actions<br/>daily_video.yml, intelligence_poll.yml, ..."] --> DB
+    GA --> YT
+    WK --> FS[("Server volumes<br/>media library, renders")]
 ```
 
-The dashed line from the database to the approval nudge is deliberate: the
-`PipelineStateMachine` records what happened at each stage but does **not** gate
-the upload (see §2).
+| Layer | What runs | Where to look |
+| :-- | :-- | :-- |
+| Browser | React pages; Supabase **anon key** and the person's session only. No service key reaches the web app: the only `SUPABASE_SERVICE_KEY` mention in the app code (`lib/`, `app/`) is a comment in `lib/server/github-secrets.ts` | `command-center/lib/supabase/client.ts` |
+| Web server | Next.js App Router. Server routes validate input, then call a database function under the caller's own session. The channel travels in the URL (`/{channel}/{section}`), and `middleware.ts` puts it into request headers | `command-center/app/api/`, `command-center/lib/server/`, `command-center/middleware.ts` |
+| Database | Supabase Postgres: tables under RLS, `security definer` functions that do every write that matters, append-only logs | `supabase/schema.sql`, `supabase/migrations/` (0001-0139, 122 files) |
+| Workers | Python, one Docker image (`Dockerfile.worker`), one compose service per job type, each claiming rows from the database with the service key | `tools/*_worker.py`, `deploy/docker-compose.yml` |
+| Vendors | Studio adapters call each maker's own HTTPS endpoint (see section 2) | `modules/capabilities/` |
+| Scheduler | GitHub Actions for the pipeline schedule, the intelligence poll, probes, alerts and CI | `.github/workflows/` |
 
----
+A browser never publishes, renders or spends on its own. A button writes a request row through a
+database function and stops. A worker carries the request out after the database has checked it again.
 
-## 2. The generation pipeline
+## 2. Model registry and adapter layer
 
-Entry point: **`main.py`** → `run()`. The module docstring numbers eight
-headline stages; the code additionally interleaves a research pass and an
-advisory fact-check pass. Flags: `--niche`, `--topic`, `--privacy`
-(`private`/`unlisted`/`public`), `--no-upload`, `--list-channels`,
-`--script-file` (reuse a saved script JSON and skip both Gemini calls).
+| Piece | Holds | File |
+| :-- | :-- | :-- |
+| Registry file | Static facts per model: capabilities, inputs, sizes, durations, adapter, vendor model string, documentation quality, `credit_unit`, entitlement, `terms_gate`, limits, probe call. 85 entries today, over 21 capabilities (`t2i`, `edit`, `t2v`, `i2v`, `tts`, `sfx`, `music`, `upscale`, `captions`, `dub`, ...) | `schemas/model_registry.json`, validated against `schemas/model_registry.schema.json` by `modules/model_registry.py` |
+| Database half | `model_registry.availability` (`hidden`, `beta`, `ga`, `disabled`), `verified_at`, `model_probe_runs`. CHECK constraints refuse `beta` or `ga` without `verified_at`, with an open `terms_gate`, or without a `credit_unit` | `supabase/migrations/0035_model_registry.sql` (lines 97-124) |
+| Probe | One cheapest real call per model with the owner's key. A success sets `verified_at`. `--sync` copies the file's static facts into the database. `--all` skips terms-gated models | `tools/probe_models.py`, `.github/workflows/probe_models.yml` (manual dispatch only) |
+| What a person is offered | `sellable_models()`: beta or ga, verified, a positive `credit_prices` row, no open terms gate | `supabase/migrations/0035_model_registry.sql`, current body in `0125_model_shutdown.sql:93`, `command-center/lib/creative/registry.ts` |
+| Owner's switch | Per-model and per-provider on/off (`model_is_available`) | `0124_model_switch.sql`, `docs/MODEL_SWITCH.md`, flag `NIGHTSHIFT_MODEL_SWITCH` |
+| Shutdown dates | A model past its announced shutdown is not quoted | `0125_model_shutdown.sql` |
+| Operator preview | A platform admin may try a `hidden` model with `"operator_preview": true` in the operator's own credits-exempt organization. Today one registry entry carries it: `grounded-image-1.0` (`schemas/model_registry.json`), whose vendor-terms gate is still set | `0139_operator_preview.sql` |
+| Adapters | One class per vendor API: `submit` (the one paid call) and `poll` | `modules/capabilities/*.py`, `modules/capabilities/base.py` |
 
-### Stage 0 — Asset synthesis
-`tools/generate_assets.ensure_assets()` synthesizes any missing SFX/music WAVs
-so they need not be committed. Existing files are never overwritten, so real
-recordings dropped into `assets/` take precedence.
+The base URLs in `modules/capabilities/*.py` are the makers' own API hosts. The older pipeline has
+optional AI b-roll and image providers that are separate from the studio adapters, and one of them is an
+aggregator route (`modules/image_providers.py`, the `fal` entry; `modules/avatar_fal.py`). They stay off
+unless `CHRONOS_ENABLE_IMAGE_GEN`, `CHRONOS_ENABLE_VIDEO_GEN` or `NIGHTSHIFT_AVATAR_ENABLED` is set
+(`config.py:98`, `config.py:170`, `modules/avatar.py:320`). The live values are not verified.
 
-### Stage 1 — Topic selection
-`modules/topic_manager.py` → `TopicManager.pick_topic(niche)`. This is the
-consumer side of the feedback loop:
-- First checks `ContentPlanner`'s queue (`_try_queued_topic()`); a queued
-  suggestion that clears the originality check is used directly, spending **no**
-  Gemini call.
-- **Every topic the system picks is vetted first** (`modules/topic_gate.py`,
-  `TopicManager.vet_topic()`): a queued entry (any `content_opportunity:*`
-  source), the autopilot's trend pick and the AI's own answer. A topic given with
-  `--topic` (a manual or Command Center dispatch) is an instruction and is never
-  vetted, and neither is a planner entry whose source is `manual`.
-  - *Niche gate.* The channel's niche and name place it in one or more families
-    (history, entertainment, finance, ...; en/ru/uz word lists, one place,
-    versioned by `GATE_VERSION`); the topic's words are scored against the same
-    families. Clearly another field and nothing of the channel's own is
-    `off_niche`; clearly the channel's own is accepted; both without a model call.
-    The same teaser is rejected for a history channel and accepted for an
-    entertainment-news channel.
-  - *Sensitive screen* (minimal, not a policy engine): living people in
-    entertainment or politics, accusations and legal claims, minors in harm's way,
-    a tragedy that is still happening, a medical claim. These are `needs_human`:
-    not auto-selected. A topic anchored in the past is exempt: a period word
-    (ancient, medieval, BC ...), one distinctive historical name (Pompeii), a year
-    up to 1945 with no personal name beside it, or two strong history terms -
-    never one word that is also a modern name (Roman, Salem, Athens, Viking), and
-    never once the topic says it is recent (a recent year, "breaking", "death
-    toll"; "latest research" is not recent). Phrased as a news report (police,
-    accused, arrested, sued) the minor and living-person screens run regardless.
-    A channel that is itself about entertainment or politics is not held merely
-    for naming a person. A history channel's neighbours (true crime, science) are
-    not "another field". A niche the word tables do not know is never called
-    off-niche by words: the sensitive screen and the model decide.
-  - *Medical claims and live cases* (GATE_VERSION `2026-10-22.4`, held from every
-    source including the lenient AI pick, by words only: no model call, the model-ask
-    budget untouched, behind the same `CHRONOS_TOPIC_GATE` switch). Two gaps the first
-    version left: (1) an era word ("ancient") anchored a topic in the past and the
-    screen returned before it reached the medical branch, so "Ancient remedy for
-    COVID-19" or "Cure for cancer found in ancient herb" passed. Now, in a topic
-    anchored in the past, a medical term beside a STRONG claim word (cure, cures,
-    cured, heals, prevents, miracle ...) is held as `medical` unless the topic is
-    framed as the history of medicine (a year up to 1945, or "history of", physician,
-    papyrus, mummy, Hippocrates ...). "treatment", "remedy" and "cause" are claim
-    words only beside a modern-only condition (covid, coronavirus, autism, HIV), which
-    is held with any claim word whatever the frame: "Ancient Egyptian cancer
-    treatment" and "The cause of cancer in ancient Egypt" pass, "Ancient remedy for
-    COVID-19" and "Roman herb cures diabetes" are held. (2) A topic that OPENS with a
-    person's name (also "McCann", a title plus name: "King Charles", "Dr. Shipman")
-    beside a case word (trial, suspect, shooting, diagnosis, engagement, divorce,
-    antisemitism, "health secrets" ...) is a living person's current case: held as
-    `crime_legal` or `living_person` unless something says it is old: an era word, a
-    distinctive historical term, a year up to 1945, a regnal numeral after a name
-    ("King Louis XVI", "Richard III", "King Charles I"; not Charles III or Leo XIV), a
-    word that belongs to old cases (beheaded, gallows, posthumous, heresy, witch ...),
-    or a short list of famous old cases (`_HIST_CASES`: rare surnames such as Borden,
-    Lindbergh, Ripper, or the SAME name in full - "Queen Victoria", "Oscar Wilde",
-    "Warren Hastings" - never a bare name a living person also has, so "Victoria
-    Beckham trial" and "Reed Hastings trial" are held). A capitalised case word is not
-    half a name ("Tokyo Trials"). "conspiracy", "plot", "massacre", "execution" and
-    "dead" are deliberately NOT signs of an old case: living defendants have them
-    ("Lori Vallow conspiracy trial"). "Today's", "yesterday('s)" and "this morning" count
-    as a story as it breaks only when a disaster noun follows within three words
-    ("Today's crash of a Boeing plane"), never bare ("what today's science says").
-    A channel about entertainment or politics still waives `living_person` (not
-    `crime_legal`).
-  - *Residuals of that change* (a skipped topic is the cost; measured, not guessed).
-    The rule cannot tell a dead name from a live one: of 53 legitimate old
-    "<Name Name> trial / diagnosis / shooting / pregnancy" topics written AFTER the
-    tables were fixed (Aaron Burr trial, Mata Hari trial, Abraham Lincoln shooting,
-    Anne Neville pregnancy ...), 49 are held; the tables only cover the cases a review
-    found (see `HELD_OUT_OLD_CASES`). The remedy is a list that grows, or a model
-    question, which was not built. Also skipped: "Medieval cure for cancer", "Medieval
-    cancer cure that actually worked", "Alger Hiss trial", "Ted Bundy trial", "Frida
-    Kahlo health secrets". Still slipping through: the broad history-of-medicine frame
-    words (medicine, mummy, papyrus, archaeolog*, surgery, physician, skeleton) and
-    any year up to 1945 bypass the claim rule ("Miracle cure from ancient Egyptian
-    medicine" passes); case words that are not listed (a name beside health, cancer,
-    hospital, died, wedding); a name that does not open the topic ("Why the Luigi
-    Mangione trial matters"); a leading year; lower case, ALL CAPS or joined names;
-    single names; two-letter name parts ("Xi Jinping"); ru/uz live-case words and
-    inflected medical forms; a plain crash or shooting with no name and no marker. The
-    word "Sir" in the title list changes nothing (a three-letter capitalised word
-    already reads as a name). Nothing here knows who is alive. Pre-existing wrong holds, not
-    touched: "The Cure for Scurvy ...", "The Miracle Cure of Lourdes in 1858", "Snake
-    Oil: the history of miracle cures", "The Kidnapping of the Lindbergh Baby", "Prime
-    Minister Neville Chamberlain and Munich 1938" (`PRE_EXISTING_WRONG_HOLDS` in
-    `tests/topic_gate_probe_topics.py`).
-  - *Known residuals* (a skipped topic, never a failed run): a news-phrased
-    accusation beside a historical name with no year and no era word is held
-    ("The Knights Templar were accused of heresy", "Socrates accused of corrupting
-    the youth", "Pompeii graffiti lawsuit"); the weak entertainment word `star`
-    sends "Star Carr" or "Star Chamber" to the model for a trend; on a niche the
-    tables do not know, a three-word title in capitals ("Dragon Ball Super movie
-    box office") reads as a cast list and is held.
-  - *Only if the words cannot place it* **and** the source is a trend (or any
-    source other than the AI pick and audience demand), or the entry is stale: one
-    small Gemini question (ON / OFF), at most `CHRONOS_TOPIC_GATE_MODEL_CALLS`
-    (default 2) per run, recorded in the cost ledger as stage `topic_gate`. No
-    answer leaves the entry queued for another run (stale or not: a model outage
-    must not empty the queue); an explicit OFF on a stale entry expires it as
-    `stale`, which does not stop the same text being queued again.
-  - *Planner state.* A refused entry becomes `rejected` with one closed reason
-    word - `off_niche`, `needs_human` or `stale` - in `content_calendar.json` (and
-    `[rejected: <reason>]` in the mirrored rationale), is never served again, and
-    for `off_niche`/`needs_human` the same text is not queued a second time. The
-    run log says `reason=...` and a `topic.rejected` warning event is emitted.
-    Entries older than `CHRONOS_TOPIC_QUEUE_STALE_DAYS` (default 14; 0 = no age
-    rule), or with an unreadable age, are re-validated at use time, never bulk
-    deleted. `CHRONOS_TOPIC_GATE=off` is a logged rollback switch.
-- *Held topics.* A run the fact-check stops before the render never calls
-  `register_topic()`, so its topic was in no history file and the picker could
-  propose it again (two Roanoke runs in a row). `TopicManager.load_held_topics()`
-  (called by `main.py` only when the system picks) reads the channel's own
-  `videos` rows with `hold_detail.stage = before_render`, not uploaded, held in
-  the last `CHRONOS_HELD_TOPIC_COOLDOWN_DAYS` days (default 14; 0 = off; capped
-  at 90). Those topics are listed as "already used" in the AI prompt and skipped
-  by the same repeat and similarity checks; a queued entry that matches one stays
-  queued. Read only, per channel, never registered as used or published, and an
-  explicit `--topic` is never held back.
-- Otherwise `_generate_topic()` asks Gemini for a fresh topic, appending — as
-  *optional inspiration, never a directive* — `TopicRecommender`'s trend/demand
-  suggestions and `PerformanceAnalyzer`'s past-performance context (see §7).
-- `OriginalityEngine` (`modules/originality_engine.py`) catches paraphrased
-  repeats via model2vec embeddings + rapidfuzz, beyond the exact-string
-  exclusion list of the last 80 used topics.
+Which models are `beta` or `ga` on the live database today: **not verified** (the database is not
+readable from the repository).
 
-Key dependency: **Gemini** (`GEMINI_MODEL`, via `modules/gemini_client.py`; per-stage
-overrides, the per-day quota stop and the request count: [GEMINI_QUOTA.md](GEMINI_QUOTA.md)).
-Persists: nothing yet at pick time; the chosen topic is registered to
-`history/topics.json` and the originality vector store only after the run, via
-`register_topic()`.
+## 3. The creative job money path
 
-### Research pass (interleaved, advisory)
-`modules/research_engine.py` → `research_topic()` asks Gemini to recall what it
-knows and return a structured `ResearchBrief` (`key_facts` with self-rated
-confidence + caveats, `open_questions`, `suggested_angle`). This is **unverified
-LLM recall** — the module has no web-search/retrieval tool and deliberately
-exposes no `sources` field. A parse failure returns an empty brief rather than
-raising. Dependency: **Gemini**.
+Credits are the site currency (migration 0020: `credit_accounts`, the append-only `credit_transactions`
+ledger, `credit_reservations` for holds, `credit_prices`). A studio generation is a `creative_jobs` row
+(migration 0036), written only by these functions:
 
-### Stage 2 — Script generation
-`modules/script_engine.py` → `ScriptEngine.generate(topic, research_brief)`.
-Produces a `Script` dataclass from a strict JSON schema (`SCRIPT_SYSTEM_PROMPT`)
-encoding retention psychology: a climax-first hook, 2-3 open loops, inline
-`[PAUSE:n]`, `[SFX:name]`, `[MUSIC:cue]`, and `[VOICE:main|secondary]` cues, and
-per-section Pexels `keywords`. Research notes are appended by
-`_format_research_notes()` framed as "unverified, use as inspiration."
-Dependency: **Gemini**. Persists: `output/<slug>/script.json` (reusable via
-`--script-file`).
+| Step | Function | What it does |
+| :-- | :-- | :-- |
+| Quote | `quote_creative_job` / `creative_price` | Price = max(quantity x credits_per_unit x (1 + margin), job_minimum), from the `credit_prices` row the model's `credit_unit` names. No unit or no row: `unpriced`, never 0. The client's number is never used |
+| Create | `create_creative_job` | One transaction: lock the organization's credit account, quote again, refuse a price above what the person confirmed (`max_credits`), `reserve_credits` (the hold equals the quote), insert the job. Idempotency key per request |
+| Claim | `claim_creative_job` | `FOR UPDATE SKIP LOCKED`, heartbeat, bounded re-queue |
+| Run | `advance_creative_job` | `submitting` is recorded before the paid call, and the provider task id before any polling. A job that already has a task id is polled, never submitted again |
+| Settle | `finish_creative_job` | Success: `capture_credits` up to the hold. Failure, cancel, expiry or a lost worker: `release_credits`. Settlement and the status change happen in one transaction |
 
-### Fact-check pass (interleaved, advisory only)
-`modules/claim_extractor.extract_claims()` (heuristic sentence-splitting, not an
-LLM call) feeds `modules/fact_checker.fact_check_claims()`. Flags claims for
-human review but **never blocks** generation or upload. Persists:
-`output/<slug>/fact_check.json`.
-Since the grounded fact-check, `modules/grounding.py` then looks the claims up in the
-English Wikipedia and may clear a claim only with a quote verified in code, or add a flag on a
-contradiction; an outage changes nothing. See `docs/GROUNDED_FACTCHECK.md` (it also says how to
-switch it off: `NIGHTSHIFT_GROUNDED_FACTCHECK=off`; the checker's system prompt has its own switch,
-`NIGHTSHIFT_FACTCHECK_SYSTEM_PROMPT`).
-When the early fact-check holds a run only for the wording of its packaging text (title, A/B title,
-alternate opening, hook sentence, thumbnail text; never the description), `modules/packaging_repair.py` rewrites
-those texts once and has the same checker re-check them; it never edits narration and never changes the gate.
-See `docs/PACKAGING_REPAIR.md` (switch: `NIGHTSHIFT_PACKAGING_REPAIR=off`).
+The worker side is `modules/creative_worker.py` (`tools/creative_worker.py`). In exact mode only the chosen
+model runs. Routed modes (0075) may move to another compatible model only when the vendor provably took
+nothing, and never to a dearer one than the hold. Server entry points: `app/api/creative/quote`,
+`app/api/creative/jobs`, and `/api/v1/creative` for API keys.
 
-### Pipeline-stage tracking (capture/tracking only — does NOT gate publishing)
-`main.py` constructs a `PipelineStateMachine`
-(`modules/pipeline_stages.py`) and advances a `PipelineRun` through
-`TOPIC → RESEARCH → SCRIPT → FACT_CHECK → HUMAN_APPROVAL`. This produces an
-honest audit record of what happened at each stage, written to
-`history/pipeline_runs.json`.
+The same quote, hold, capture and release shape is used by pipeline runs (`render_jobs`, 0017, 0020, 0041),
+paid editor exports (0132, 0136, below), brand scans (0133) and the public API's own cent balance
+(`api_ledger`, 0031). `NIGHTSHIFT_CREDITS_ENFORCE` (off unless set, `modules/credits.py:79`) decides whether the
+creative worker refuses a job whose hold it cannot confirm. The queue worker refuses a customer's
+pipeline run without an open hold whatever the flag says (`tools/queue_worker.py:1301`). The operator's default organization is credits-exempt.
 
-**Crucially, `approve()` is never called in `main.py`, and the upload below does
-not consult this state at all.** The state machine *can* structurally forbid
-reaching `PUBLISH` without `human_approved` (its `advance()` refuses the
-`PUBLISH` transition without a prior `approve()`), but the real upload path is
-independent of it. Wiring an actual approval requirement into publishing is a
-deliberate, not-yet-taken follow-up. As written, the run stops tracking at
-`HUMAN_APPROVAL` and the video uploads regardless.
+Plans and packs: plans, entitlements and their keys are data (0034, `command-center/lib/plans.ts`).
+The checkout integration in code is Paddle Billing; its webhook is a Supabase Edge Function
+(`supabase/functions/paddle-webhook`), and `NEXT_PUBLIC_PADDLE_ENV` defaults to `sandbox`
+(`deploy/.env.web.example:46`). Paddle declined the account on 2026-11-12, so payments are not live and
+the production provider is not decided.
 
-### Stage 3 — Audio mixing
-`modules/audio_mixer.py` → `AudioMixer.build(script)`. Multi-voice TTS
-(Edge-TTS by default via `EDGE_TTS_VOICE`/`EDGE_TTS_SECONDARY_VOICE`, or
-ElevenLabs when `TTS_PROVIDER=elevenlabs`), layered with SFX and cue-driven
-dynamic music (`MUSIC_VOLUME_MAP`), honoring in-place `[PAUSE]` timing via
-`ScriptSection.tts_timeline()`. Dependencies: **Edge-TTS** (or ElevenLabs),
-**pydub**. Persists a mixed audio file and a section timeline under
-`output/<slug>/`.
+## 4. The editor: document, parity and render
 
-### Stage 4 — Media fetching
-`modules/media_fetcher.py` → `MediaFetcher.fetch_videos()/fetch_images()`.
-Downloads HD stock footage and images from **Pexels** (Pixabay endpoint
-constants are also present) using the per-section keywords Gemini already
-emitted (so no extra API round-trip), falling back to topic words. Dependency:
-**Pexels API** (`PEXELS_API_KEY`).
+An edit is data: a timeline document (`schemas/timeline.schema.json`, version 1) saved as a revision of
+an editor project (migration 0054). The browser edits the document. The server checks it and saves it.
+A worker renders it with ffmpeg.
 
-### Stage 5 — Subtitles
-`modules/subtitle_generator.py` → `SubtitleGenerator`. Transcribes the mixed
-audio with **OpenAI Whisper** (`base` model) to word-level timestamps, writes an
-SRT, and builds word-by-word animated caption specs. Dependency: **Whisper**.
+| Concern | TypeScript (browser and route) | Python (worker) |
+| :-- | :-- | :-- |
+| Document model and edit tools (trim, split, roll, slip, slide, ripple, speed and speed curves, colour, masks, overlays, shapes, text, captions, voice-over, effects, transitions) | `command-center/lib/editor.ts`, `lib/editor*.ts` | `modules/timeline.py` |
+| Validation | `validateTimeline` in `lib/editor.ts`, run by the save route (`app/api/editor/projects/[id]`) before the database is asked; `lib/server/editor-guard.ts` adds the rate limit and body cap | `timeline.validate` |
+| Shared cases | `command-center/tests/editor-timeline.test.ts` | `tests/test_editor_doc_cases.py` |
+| Speed curves | `lib/editorSpeedRamp.ts` | `modules/speed_ramp.py` |
 
-### Stage 6 — Thumbnails
-`modules/thumbnail_generator.py` → `ThumbnailGenerator.generate()`. Two A/B
-thumbnails via **Pillow** with a shock-text overlay (`thumbnail_overlay_text`),
-using fetched images as backgrounds. When the script has no overlay text, none
-is drawn and none is invented: the thumbnail carries the topic caption only and
-`thumbnail.completed` records `thumbnail_overlay: missing`. Dependency: **Pillow**.
+Both validators run the same documents from `samples/timeline_doc_cases.json`, so a change to one that
+the other does not make fails CI. The database function `editor_doc_problem` checks shape, size and
+`asset_id` values: an object with a tracks array of at most 32 tracks, and asset ids that are the
+organization's own live files (`0054_editor_projects.sql:177-209`). Every render field, its limits and
+its default are listed in [editor-render-fields.md](editor-render-fields.md).
 
-### Stage 7 — Compositor
-`modules/compositor.py` → `Compositor.render()`. Assembles clips, Ken-Burns
-image pans, the audio track, and the animated subtitles into the final MP4 with
-**MoviePy** (pinned `moviepy==1.0.3`, with a Pillow-10 `ANTIALIAS` shim).
-Dependency: **MoviePy / FFmpeg / ImageMagick**.
+Render path: `request_editor_export` → the media worker's export thread (`tools/media_worker.py`) →
+`modules/editor_export.py` → `timeline.validate` → `modules/timeline_render.py` (a `RenderSpec`) →
+`modules/render_backend.py` (ffmpeg, one process, wall-clock limit) → a new library file
+(`store_generated`) → `finish_editor_export`. Files are read by asset id only, never by a path taken from
+the document. Text goes through an ASS file (`modules/ass_captions.py`), never into an ffmpeg argument.
+The browser preview is an approximation, and the ffmpeg export is the reference.
 
-### Stage 8 — Upload (unconditional; publish gate NOT enabled)
-`modules/youtube_uploader.py` → `YouTubeUploader.upload()`. Uploads via the
-**YouTube Data API v3** with OAuth2, optionally targeting a specific channel
-(`YOUTUBE_CHANNEL_ID`) and setting the A thumbnail. In `main.py` this runs
-**unconditionally, gated only by `--no-upload`** — not by the fact-check
-results and not by the `PipelineStateMachine`'s approval state. On success it
-records the video via `StateStore.record_video()`; on failure it logs and keeps
-the local file. The topic is registered as used **regardless** of upload success
-(so a bad token doesn't cause the same topic to be re-picked next run).
+Export frames and money:
 
----
+- Other frames from a closed list (multi-ratio), migration 0129, flag `NIGHTSHIFT_MULTI_RATIO_EXPORT`.
+- 1440p and 4K, migration 0132, flag `NIGHTSHIFT_HIRES_EXPORT`. They are sold per started output minute,
+  and both prices are seeded NULL, which means not on sale.
+- Exports up to 1080p, migration 0136. They stay free while `credits_per_minute_1080p` is NULL, and are
+  quoted and held per started minute once the owner sets it. The quote uses the rendered length with
+  speed curves integrated. A security lab test compares it with Python over 2000+ seeded documents.
+- Whether the live database has any of these prices set: **not verified**.
 
-## 3. The intelligence / feedback loop
+An export ends as a library file and nothing else. No code path takes a library file or an export to
+YouTube or to a social account (0054 header: "Publishing stays where it was").
 
-Entry point: **`tools/run_intelligence_poll.py`**, invoked on a cron schedule.
-It runs three independent passes, each defensive on its own.
+The parity plan the editor builders follow is [research/premiere-parity.md](research/premiere-parity.md).
 
-**Pass 1 — analytics / competitor / trend polling.**
-`modules/intelligence_poller.py` → `IntelligencePoller.run_all()`:
-- `poll_own_channel_metrics()` — for each recently-published video in
-  `StateStore.list_videos()`, pulls a short analytics window via
-  `modules/analytics_client.py` (`AnalyticsClient.video_performance`, YouTube
-  Analytics API v2, OAuth) and writes a `metrics_snapshots` row.
-- `poll_competitors()` — `modules/competitor_monitor.py` (`CompetitorMonitor.poll`)
-  reads each channel's recent uploads via a quota-efficient
-  `channels.list → playlistItems.list → videos.list` chain (never the
-  100-unit `search.list`), and persists `competitor_snapshots` rows with a
-  computed `view_velocity`.
-- `poll_trends()` — `modules/trend_detector.py` (`TrendDetector.trending`) reads
-  `videos.list(chart="mostPopular")` and persists `trending_snapshots` rows.
+## 5. Publishing and the approval gate
 
-Every per-sub-call is wrapped in its own try/except: one bad video, one quota
-error, or one whole subsystem being down degrades to an empty/zero result for
-just that piece.
+Publishing applies to **pipeline videos** (the `videos` table). Every layer below is in the code on `main`:
 
-**Pass 2 — comments → audience demand.**
-`poll_comments_for_recent_videos()` fetches top-level comments with
-`modules/comment_fetcher.py` (`CommentFetcher`, YouTube Data API v3), classifies
-them in batches with `modules/comment_intelligence.py` (`classify_comments`,
-Gemini — sentiment/category/**prompt-injection flag**, with comments JSON-encoded
-into a fenced data block so untrusted comment text can never become
-instructions), then `modules/audience_demand.py` (`AudienceDemandEngine.analyze`)
-clusters `topic_request` comments into ranked `DemandSignal`s persisted as
-`demand_signals` rows.
+| Layer | What it does | File |
+| :-- | :-- | :-- |
+| Privacy default | `YOUTUBE_PRIVACY` defaults to `private` (`config.py`), and so do the scheduled run and the manual dispatch input (`daily_video.yml`) | `config.py`, `modules/run_request.py` |
+| Early hold | A fact-check that would block the gate stops the run before the voice and the render are paid for | `main.py` (`publish_gate.evaluate_fact_check`, `HeldBeforeRender`) |
+| Publish gate | Runs on every finished video before any upload: QC report (`modules/video_qc.py`), fact-check results, grounding, claims, title. A blocked video is kept on disk with a `videos` row and a `publish.blocked` event | `modules/publish_gate.py`, `main.py` (around "Pre-publish gate") |
+| Auto publish | Two per-channel settings on top of the gate. `agent_config.auto_publish` (a missing key reads as on, `modules/channels.py:353`) decides whether an allowed video uploads now or is held on disk. The `channels.auto_publish` column (0004, `default false`), the Command Center's Auto publish switch, only limits privacy: unless it is exactly true, the run uploads as `private` whatever it asked for (`_effective_privacy`, called at `main.py:780`) | `modules/channels.py`, `main.py` |
+| Two-person rule | A channel with `require_two_person_publish` needs a second admin's approval before a public upload | `modules/publish_approval.py`, migration 0009 |
+| Approval of one cut | `approve_video_publish` records who approved which exact file (sha256), until when (24 h), with what acknowledgement. It does not change privacy | migration 0112 |
+| Publish when approved | A second per-channel switch, off by default, that only a workspace admin can turn on through an audited function. The approval then queues one request, which the queue worker carries out only after asking the database again. The worker switch `NIGHTSHIFT_VISIBILITY_PUBLISH` defaults to `off` (`modules/visibility_publish.py:607`) | migration 0116, `modules/visibility_publish.py`, `docs/APPROVE_PUBLISH_1B.md` |
+| Cross-posting | "Publish to platforms" writes `publish_requests` rows. The queue worker re-asks `publish_request_refusal` (gate passed, approved, two-person rule met) and posts the master render only | migration 0029, `modules/social_publish.py` |
 
-**Pass 3 — turn persisted data into queued topics.**
-`enqueue_topic_suggestions()` calls `modules/topic_recommender.py`
-(`TopicRecommender.suggest_topics()`), which reads the three persisted tables
-(`trending_snapshots` + `competitor_snapshots` concatenated as one trend signal,
-plus `demand_signals`) back out and ranks them via
-`modules/content_opportunity.py` (`ContentOpportunityEngine.rank()` — blends
-view-velocity/percentile trend scores with mention-count demand scores, merging
-matching trend+demand items into `source="both"` with an explainable
-`rationale`). Each suggestion is enqueued into `modules/content_planner.py`
-(`ContentPlanner`), whose exact-string dedup means re-running the poll against an
-unchanged database reuses existing queued entries rather than growing the queue.
+A channel whose agent_config has no `auto_publish` key (every `channels.json` channel, and any database
+row that never set it) uploads an allowed video. It uploads as private unless the channel's
+`channels.auto_publish` column is exactly true. A `channels.json` channel has no column, so its uploads
+are always private.
 
-**Closing the loop.** On the next generation run, `TopicManager.pick_topic()`
-consumes the `ContentPlanner` queue first (`_try_queued_topic()`), and its Gemini
-topic prompt additionally receives `TopicRecommender.suggest_topics_as_prompt_text()`
-and `PerformanceAnalyzer.analyze_videos_as_prompt_text()` as optional context.
-That is the full feedback cycle: **published video → metrics/competitor/trend/
-comment data → ranked opportunities → queued/prompted topic → next video.**
+`modules/pipeline_stages.py` (`PipelineStateMachine`) and `tools/approve_run.py` are an audit trail only.
+Nothing in the upload path reads them.
 
-> `modules/performance_analyzer.py` (`PerformanceAnalyzer`, computes
-> `views_per_day` from persisted metrics) is wired into `topic_manager.py`.
-> `TopicRecommender` is consumed both by the poller (producer) and the topic
-> prompt (consumer). Both modules' own docstrings note they degrade to empty
-> output when their tables are empty — the common case until the poller has a
-> confirmed successful run.
+## 6. The autonomous pipeline and the intelligence loop
 
----
+### Pipeline (`main.py`, one run for one channel)
 
-## 4. Persistence
+Topic (`topic_manager`, vetted by `topic_gate`) → research → script (`script_engine`) → fact-check and
+grounding → voice (`audio_mixer`, with `verify_voice` refusing a substitute voice) → media (stock, and
+optional AI b-roll) → subtitles → thumbnails → render → QC → publish gate → upload or hold. Per-channel
+settings travel on `ChannelContext` (`modules/channels.py`) and are never read from a global.
 
-### SQLite — `history/chronos.db` (`modules/state_store.py`)
-Path overridable via `CHRONOS_STATE_DB`. Schema (`_SCHEMA`):
+Two run backends, chosen on the web server by `NIGHTSHIFT_RUN_BACKEND` (`command-center/lib/runBackend.ts`):
+`actions` (the default) dispatches `.github/workflows/daily_video.yml`, and `queue` writes a `render_jobs`
+row for `tools/queue_worker.py`. The same workflow runs on a cron every 15 minutes and starts a channel
+when its slot is due (`tools/list_channels.py`). `NIGHTSHIFT_PIPELINE_PAUSED` stops the scheduling
+(`modules/pipeline_pause.py`). Whether the schedule is paused or producing videos live: **not verified**
+(the Actions history is not readable from here).
 
-| Table | Key columns | Written by | Read by |
-|---|---|---|---|
-| `videos` | `video_id` (PK), `topic`, `title`, `slug`, `published_at`, `privacy`, `category_id`, `local_path` | `main.py` (`record_video`) | poller, `PerformanceAnalyzer` |
-| `metrics_snapshots` | `video_id`, `snapshot_date` (unique together), `views`, `likes`, `comment_count`, `watch_time_minutes`, `average_view_duration_seconds` | `poll_own_channel_metrics` | `PerformanceAnalyzer` |
-| `competitor_snapshots` | `video_id`, `polled_date` (unique together), `channel_id`, `title`, `view_count`, `like_count`, `comment_count`, `published_at`, `view_velocity` | `poll_competitors` | `TopicRecommender` |
-| `trending_snapshots` | `video_id`, `polled_date`, `region_code` (unique together), `title`, `view_count`, `like_count`, `comment_count`, `published_at`, `category_id` | `poll_trends` | `TopicRecommender` |
-| `demand_signals` | `id` (PK), `topic_phrase`, `mention_count`, `example_comment_ids`, `polled_date` | comment pass | `TopicRecommender` |
+Render engines (`config.py:384`): `CHRONOS_RENDER_BACKEND` defaults to `moviepy`. `ffmpeg` is the
+opt-in declarative path (`modules/render_backend.py`), with fallback to MoviePy. The Remotion scene
+renderer (`video-engine/`, `modules/scene_remotion.py`) is **off by default**: it needs
+`CHRONOS_SCENE_RENDER=1` and `CHRONOS_REMOTION=1`. The editor export always uses the ffmpeg engine.
 
-The three snapshot tables upsert on their unique keys (a re-poll for the same
-date overwrites); `demand_signals` is an append-only log (clustering can produce
-different representative phrasings per run).
+Local run history is still a SQLite file, `history/chronos.db` (`modules/state_store.py`). It is mirrored
+to Supabase (`modules/supabase_sync.py`), and Supabase is what the Command Center reads. On GitHub-hosted
+runners the file lives only for one job, restored from the Actions cache.
 
-### JSON flat-files (under `history/`)
-- **`topics.json`** — `TopicManager` history: `used_topics` exclusion list and a
-  `sessions` log (topic, channel id, date, video path, video id/url). Dedup is
-  per channel over the last 200 topics / 365 days (`modules/topic_dedup.py`);
-  rows from before the channel id was recorded count for every channel. Writes
-  are atomic (temp file + rename) under an flock; an unreadable file is moved
-  aside as `topics.json.corrupt-<time>` (newest 3 kept) and the history starts empty.
-  `OriginalityEngine` is strict by default (a corrupt store raises, so the
-  publish gate fails closed); only `TopicManager` passes `tolerate_corrupt=True`
-  and rebuilds the store from the channel's own topics; if nothing could be
-  rebuilt it writes `topic_vectors.npz.reset-unrebuilt` (a timestamp), and the
-  strict engine raises while that marker exists, so the gate blocks until a
-  non-empty store is written again. The store itself is written atomically. The publish gate reads
-  the DEFAULT vector store, not `topic_vectors.<channel>.npz`.
-- **`content_calendar.json`** — `ContentPlanner`'s FIFO topic queue of
-  `CalendarEntry` records (`queued`/`reserved`/`rendered`/`published`/`skipped`/
-  `rejected`). A write-through JSON
-  store, explicitly a placeholder rather than a `state_store` table.
-- **`pipeline_runs.json`** — `PipelineStateMachine`'s per-run stage history and
-  `human_approved` flag (tracking only; see §2). Also a placeholder store.
-- **`topic_vectors.npz`** — `OriginalityEngine`'s flat numpy vector store of
-  topic embeddings (path overridable via `CHRONOS_TOPIC_VECTORS`). The default
-  channel uses this file; every other channel gets `topic_vectors.<channel>.npz`.
+### Intelligence loop
 
-Per-video artifacts (script JSON, fact-check JSON, media, subtitles, thumbnails,
-final MP4) live under `output/<slug>/`.
+`.github/workflows/intelligence_poll.yml` (cron `0 20 * * *`) runs `tools/run_intelligence_poll.py`:
 
----
+1. own-channel analytics, competitors and trending (`modules/intelligence_poller.py`);
+2. comments fetched, classified and aggregated into demand;
+3. `TopicRecommender` suggestions queued into `ContentPlanner` (a JSON file queue);
+4. the feedback engine (`modules/feedback_engine.py`) scores topics, and `TopicManager` reads them on the next run.
 
-## 5. Scheduling — GitHub Actions (`.github/workflows/`)
+| Part | State | Evidence |
+| :-- | :-- | :-- |
+| Poll, comments, recommender, feedback | Wired in code, scheduled | `tools/run_intelligence_poll.py`, `modules/topic_manager.py:159`, `:689` |
+| Agent autopilot topic choice | Off unless `CHRONOS_AGENT_AUTOPILOT` is on | `config.py:161`, `main.py:1072` |
+| Publish score, packaging lint | Advisory only, and never gate | `main.py` after the gate |
+| `PipelineStateMachine` approval chain | Audit only | `tools/approve_run.py` docstring |
+| Command Center intelligence pages | Read-only, derived at read time | `docs/INTELLIGENCE.md` |
+| Series Factory (`SERIES_FACTORY`) | Planner, tables and worker exist and are dark: `NIGHTSHIFT_SERIES_PLANNER` (worker), `SERIES_FACTORY_ENABLED` (page), and `request_series_plan` is granted to nobody | `modules/series_plan_worker.py`, [SERIES_FACTORY.md](SERIES_FACTORY.md) |
 
-All three restore/save the `history/` directory via `actions/cache` so state
-persists between runs, and all support `workflow_dispatch` for manual runs.
+Whether the poll returns data on the live channel: **not verified**.
 
-| Workflow | Cron (UTC) | Runs | Purpose |
-|---|---|---|---|
-| `daily_video.yml` | `0 15 * * *` (daily 15:00) | `python main.py` | The full generation pipeline. Installs ffmpeg/imagemagick/fonts, generates assets, restores YouTube token + client secret from secrets, uploads the video as an artifact. |
-| `intelligence_poll.yml` | `0 20 * * *` (daily 20:00) | `python tools/run_intelligence_poll.py` | The intelligence loop — 5h after the video job so a fresh upload has some time to accrue views/comments. Supports a `skip_comments` input. |
-| `check_pending_approvals.yml` | `0 */6 * * *` (every 6h) | `python tools/check_pending_approvals.py` | A human nudge (not a pipeline step, always exits 0): reads `pipeline_runs.json` and, if any run sits at `HUMAN_APPROVAL`, prints a summary and posts to Slack if configured. |
+## 7. Auth and roles
 
----
+| Who | How it is decided | Where |
+| :-- | :-- | :-- |
+| Signed-in person | Supabase Auth (e-mail and password, or Google). The sign-up form requires a separate "18 or older" box (`command-center/lib/signup.ts`, `age_required`) and the Google button's line says the same. This is a form check. No migration stores the confirmation | `command-center/app/signup/page.tsx`, `docs/SIGNUP_SETUP.md` section 8 |
+| Organization member | `org_members.role` is one of owner, admin, editor or viewer. RLS asks `accessible_org_ids(min_role)` / `is_org_member` first | migration 0018 |
+| Platform owner and admins | The `app_members` roster. `is_platform_admin()` gives platform-wide access, and the default organization (`...0001`) is the operator's own and is credits-exempt | migrations 0018, 0033 |
+| Owner second factor | Owner pages need a fresh authenticator code while `NIGHTSHIFT_ADMIN_MFA=enforce` | `docs/security/ADMIN_MFA.md` |
+| Owner actions | Credit grants with caps, price changes with history, roster changes that cannot remove the last owner. Each one is audited in the same transaction. Shipped dormant behind `NIGHTSHIFT_OWNER_RPC` | migration 0107 |
+| API key | `nsk_live_...`, minted by the database, stored as SHA-256 only, and acting as its creator inside one organization | migrations 0031, 0040, 0042, [API.md](API.md) |
+| MCP | API key, or OAuth sign-in behind `MCP_OAUTH_LIVE` | [MCP.md](MCP.md) |
 
-## 6. Configuration & secrets
+## 8. Security architecture
 
-Loaded in `config.py` (via `python-dotenv`) and the workflows. Missing values
-degrade gracefully rather than crashing (see §7).
+- **RLS everywhere, writes through definer functions.** Tables are read under RLS. State changes that
+  matter (credits, jobs, approvals, exports, tokens) go through `security definer` functions that check
+  the caller, the organization and the role, and refuse with a stable reason word (`creative_refuse`,
+  `NS4xx` codes).
+- **Append-only records.** `credit_transactions` (0020, a trigger refuses edits), `creative_job_events`
+  (0036, a trigger refuses update and delete), `security_events` (0107; the owner role cannot rewrite it
+  either), `api_ledger` (0031).
+- **Secrets.** Keys typed in the Command Center are sealed to the repository's public key, PUT to
+  GitHub Actions secrets and dropped (`command-center/lib/server/github-secrets.ts`). Customer channel
+  tokens live in Supabase Vault (0022, `modules/channel_tokens.py`). The worker scrubs secrets from logs
+  (`modules/log_redaction.py`).
+- **Findings ledger.** Every finding, with its fix and the test that fails if it comes back:
+  [security/LEDGER.md](security/LEDGER.md). Process: [security/README.md](security/README.md).
+- **Security lab.** `tests/security/` (149 files) runs against a real PostgreSQL 16 in
+  `.github/workflows/security.yml`. That job applies every migration in order to a fresh database and
+  fails, rather than skips, when the database is missing (`NIGHTSHIFT_SECURITY_REQUIRED`).
+- **Migrations.** Additive and numbered. A merged migration is never edited. Migration headers marked
+  "LIVE ON APPLY" say that merging applies them to the live database. The integration that does this is
+  configured outside the repository (not verified from code). `tests/test_migration_prerequisites.py`
+  checks the guards. See [MIGRATIONS.md](MIGRATIONS.md).
+- **Web.** CSP ships report-only by default (`CSP_MODE`, [security/CSP.md](security/CSP.md)). The Paddle
+  webhook (sandbox) verifies the signature on a size-capped body.
 
-| Variable | Enables | Missing → |
-|---|---|---|
-| `GEMINI_API_KEY` | All Gemini calls (topic, research, script, comment classification) | Generation cannot produce a script. |
-| `PEXELS_API_KEY` | Stock video/image fetch (Stage 4) | No stock media fetched. |
-| `YOUTUBE_CLIENT_SECRET_FILE` + OAuth token | Upload + own-channel analytics + comment fetch | Upload/analytics/comment passes skipped or fail-soft. |
-| `YOUTUBE_CHANNEL_ID` | Targets a specific (brand) channel; verified at startup | Uploads to the default channel of the account. |
-| `YOUTUBE_PRIVACY` | Default upload privacy (`private`/`unlisted`/`public`) | Defaults to `private`. |
-| `YOUTUBE_DATA_API_KEY` | API-key (non-OAuth) reads for competitor + trend polling | Those polls fail-soft to empty. |
-| `COMPETITOR_CHANNEL_IDS` | Comma-separated channels to monitor | Empty → no competitor polling. |
-| `SLACK_WEBHOOK_URL` | Slack delivery of pending-approval summaries | `log` channel only (always on). |
-| `TTS_PROVIDER` / `EDGE_TTS_VOICE` / `ELEVENLABS_*` | TTS backend and voices | Defaults to free Edge-TTS. |
-| `SCRIPT_LANGUAGE`, `VIDEO_DURATION_TARGET`, `MUSIC_VOLUME`, `SFX_VOLUME`, `BLAS_THREADS`, `GEMINI_MAX_RETRIES`, `SUBTITLE_HIGHLIGHT_COLOR`, `CHRONOS_STATE_DB`, `CHRONOS_TOPIC_VECTORS` | Tuning knobs | Sensible defaults in `config.py`. |
+## 9. Deploy: what runs where
 
-Secrets in CI arrive via `secrets.*` (`GEMINI_API_KEY`, `PEXELS_API_KEY`,
-`YOUTUBE_TOKEN_JSON`, `YOUTUBE_CLIENT_SECRET_JSON`, `YOUTUBE_DATA_API_KEY`,
-`SLACK_WEBHOOK_URL`, `YOUTUBE_CHANNEL_ID`) and `vars.COMPETITOR_CHANNEL_IDS`.
+| What | Where | How it gets there |
+| :-- | :-- | :-- |
+| Command Center (`web`) behind Caddy | A dedicated server ([DEPLOY_AX42.md](DEPLOY_AX42.md)), Docker Compose | `.github/workflows/deploy_web.yml` on a push to `main` that touches `command-center/`, `deploy/` or the worker image, then `deploy/remote-deploy.sh` over SSH |
+| Pipeline worker, media worker (uploads and editor exports) | Same server, compose profile `worker` | Same run, while the repository variable `NIGHTSHIFT_WORKER` is `on` |
+| Creative worker | Same server | Also needs `NIGHTSHIFT_CREATIVE_WORKER=on` |
+| Notify, e-mail, operator bot, marketing, brand scan workers | Same server, one profile each | `NIGHTSHIFT_NOTIFY_WORKER`, `NIGHTSHIFT_EMAIL_WORKER`, `NIGHTSHIFT_OPERATOR_BOT`, `NIGHTSHIFT_MARKETING_WORKER`, `NIGHTSHIFT_ADS_BRAND_SCAN`. Anything other than `on` removes the container and its env file |
+| Media library | A Docker volume on the server (`media`). The compose file says it is not a backup | `deploy/docker-compose.yml` |
+| Database, auth, Edge Functions | Supabase | Migrations on merge; functions under `supabase/functions/` |
+| Pipeline (default backend), intelligence poll, probes, alerts, CI | GitHub Actions | `.github/workflows/` |
 
----
+**Feature flags are GitHub Actions variables (repository or `production` environment) read at deploy time.** `deploy_web.yml` copies `vars.*` and
+`secrets.*` of the GitHub Environment `production` into the server's env files on every run, so a flag
+changes on the next deploy. The web app's flags (defaults empty, which means off, in
+`deploy/.env.web.example`) include `NIGHTSHIFT_MULTI_RATIO_EXPORT`, `NIGHTSHIFT_HIRES_EXPORT`,
+`NIGHTSHIFT_IMAGE_EDITOR`, `NIGHTSHIFT_REGION_EDITOR`, `NIGHTSHIFT_CHARACTER_STUDIO`,
+`NIGHTSHIFT_ADS_FACTORY`, `NIGHTSHIFT_ADS_BRAND_SCAN`, `NIGHTSHIFT_RESULTS_DASHBOARD`,
+`NIGHTSHIFT_MODEL_SWITCH`, `NIGHTSHIFT_MODEL_KEYS`, `NIGHTSHIFT_AGENT_DRAFTS_ENABLED`,
+`NIGHTSHIFT_MARKETING_POSTS`, `SERIES_FACTORY_ENABLED`, `CUSTOM_VOICE_ENABLED`, `MCP_OAUTH_LIVE`,
+`DEV_CLI_PAGE`, `PUBLISH_ON_APPROVE_RELEASED` and `NIGHTSHIFT_OWNER_RPC`. Their live values are **not
+verified**: the repository's variables are not readable from here.
 
-## 7. Design principles
+## 10. Where to look
 
-### Graceful degradation
-Every intelligence module wraps its dependencies in try/except and returns an
-empty/None result rather than raising, so no single failure aborts a run:
-- `TopicManager._safe_make_recommender()`, `_safe_make_content_planner()`,
-  `_safe_make_performance_analyzer()`, `_safe_originality_check()`,
-  `_safe_originality_register()` — construction/call failures leave topic
-  selection working with less context.
-- `IntelligencePoller`'s per-sub-call try/except in `poll_own_channel_metrics`,
-  `poll_competitors`, `poll_trends`, and the `_persist_*` helpers.
-- `TopicRecommender.suggest_topics()` and `PerformanceAnalyzer.analyze_videos()`
-  degrade to `[]`/`0.0`/`""` on any store or ranking failure.
-- `gemini_client.generate_with_retry()` retries transient 429/5xx but gives up
-  immediately on a per-day quota (no point waiting).
-- `Notifier`'s always-on `log` channel plus fail-soft Slack.
+| Question | Start here |
+| :-- | :-- |
+| What a model can do and whether it is sold | `schemas/model_registry.json`, `modules/model_registry.py`, `0035_model_registry.sql`, `command-center/lib/creative/registry.ts` |
+| How a vendor is called | `modules/capabilities/<vendor>.py`, `modules/capabilities/base.py` |
+| How a generation is paid for | `0036_creative_jobs.sql`, `0020_credits.sql`, `modules/creative_worker.py` |
+| Editor document and render | `command-center/lib/editor.ts`, `modules/timeline.py`, `modules/editor_export.py`, `docs/editor-render-fields.md` |
+| Export pricing | `0132_editor_hires_export.sql`, `0136_editor_export_paid_1080p.sql`, `docs/HIRES_EXPORT.md` |
+| Why a video did or did not upload | `modules/publish_gate.py`, `main.py`, `modules/publish_approval.py`, `modules/visibility_publish.py` |
+| Pipeline schedule and run | `.github/workflows/daily_video.yml`, `tools/list_channels.py`, `tools/queue_worker.py` |
+| Intelligence | `tools/run_intelligence_poll.py`, `modules/feedback_engine.py`, `docs/INTELLIGENCE.md` |
+| Who may see what | `0018_organizations.sql`, `tests/security/` |
+| Deploy and flags | `.github/workflows/deploy_web.yml`, `deploy/docker-compose.yml`, `deploy/.env.web.example`, `deploy/.env.worker.example` |
+| Plans and payments | `command-center/lib/plans.ts`, `supabase/functions/paddle-webhook`, `docs/BILLING_PLANS.md`, `docs/PADDLE_SETUP.md` |
+| Public API, MCP, CLI | [API.md](API.md), [MCP.md](MCP.md), [CLI.md](CLI.md) |
 
-### Honesty-preserving framing
-Real persisted data fed into prompts is always framed as optional
-context/inspiration, never as a directive or as verified fact:
-- `script_engine._format_research_notes()` — labels research as "unverified,
-  use as inspiration — verify anything presented as fact."
-- `topic_recommender.suggest_topics_as_prompt_text()` — "not mandatory — use
-  your judgment."
-- `performance_analyzer.analyze_videos_as_prompt_text()` — "for context only —
-  not a formula to copy," and returns `""` below two videos of data (one point
-  is not a pattern).
-- `research_engine` refuses to emit a `sources`/`citations` field it cannot
-  honestly populate, and self-rates every claim's confidence.
-- `comment_intelligence` treats all comment text as untrusted data, not
-  instructions, and flags suspected prompt-injection for human review.
+## Historical: what earlier versions of this page said
 
-### Not-yet-wired, honestly labeled
-The `PipelineStateMachine` approval chain is implemented and can structurally
-forbid `PUBLISH` without approval, but is intentionally **not** wired to gate the
-real upload (§2). `ContentPlanner` and `PipelineStateMachine` use placeholder
-JSON stores pending a possible move into `state_store`. These are documented
-follow-ups, not hidden gaps.
-
-`modules/series_planner.py` (Series Factory, slice S1) is also **unwired**: a pure planner that
-outlines 3-4 episodes with one injected model call, vets each episode topic as `source="series"`
-and against used and held topics, plus a pure price preview (`quote_series`, and `quoteSeries()`
-in `command-center/lib/credits.ts`). Its outline is not fact-checked and says so
-(`fact_checked: false`). No `main.py`, route, table or workflow uses it yet, and a test fails if one
-does. See [SERIES_FACTORY.md](SERIES_FACTORY.md).
+| Earlier claim | Now |
+| :-- | :-- |
+| The two halves talk only through "a SQLite database and JSON files" | Supabase Postgres is the system of record for the product. SQLite remains as the pipeline's local run history, mirrored to Supabase (section 6) |
+| "Zero GitHub Actions workflow runs have occurred" | Out of date. `daily_video.yml` itself cites 268 scheduled runs. Current run history is not verified here |
+| "Stage 8 — Upload (unconditional; publish gate NOT enabled)" | The publish gate runs before every upload and only ever blocks (`main.py`, `modules/publish_gate.py`). Approvals and auto publish sit on top of it (section 5) |
+| `PipelineStateMachine` approval "not wired" as a pending follow-up | It is still not wired, by design: it is an audit trail. The gate and the approval functions are what decide |
+| Series Factory "unwired: no route, table or workflow uses it" | Tables (0120, 0122, 0127), a worker job and a page exist. All of them are dark behind flags (section 6) |
+| Remotion as part of the render | Optional and off by default (section 6) |

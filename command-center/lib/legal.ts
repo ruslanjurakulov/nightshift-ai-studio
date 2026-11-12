@@ -97,6 +97,15 @@ export const LEGAL: LegalConfig = readLegalConfig({
 });
 
 /**
+ * The operator-details card at the top of every legal page, and where the
+ * public footer's Contact link lands. Not "contact": each document already has
+ * a section with that id, and two elements with one id is an anchor that goes
+ * to whichever comes first.
+ */
+export const CONTACT_BLOCK_ID = "contact-details";
+export const CONTACT_HREF = `/terms#${CONTACT_BLOCK_ID}`;
+
+/**
  * How long purchased credits stay usable, for the Terms and the Pricing page.
  *
  *   NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS  whole months, 1–120; empty = credits do not expire
