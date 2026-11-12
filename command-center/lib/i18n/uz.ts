@@ -4037,6 +4037,7 @@ export const uz: Dictionary = {
   legal: {
     privacy: "Maxfiylik siyosati",
     terms: "Foydalanish shartlari",
+    refund: "Qaytarish siyosati",
     contact: "Aloqa",
     home: "Bosh sahifa",
     operator: "Operator",

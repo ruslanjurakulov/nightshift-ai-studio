@@ -81,6 +81,8 @@ const PAGES: PageSpec[] = [
   { path: "/mcp", module: "@/app/mcp/page", props: { searchParams: Promise.resolve({}) }, indexed: true },
   { path: "/privacy", module: "@/app/privacy/page", props: {}, indexed: true },
   { path: "/terms", module: "@/app/terms/page", props: {}, indexed: true },
+  // The Refund Policy: listed like /roadmap, not counted by the page-view beacon (lib/site-pages.ts UNCOUNTED_PAGE_PATHS).
+  { path: "/refund", module: "@/app/refund/page", props: {}, indexed: true },
 ];
 /** Public, with their own metadata (a layout, the page being client code), but not in the sitemap by design: forms, not content. */
 const FORM_PAGES: { path: string; module: string }[] = [
@@ -305,6 +307,7 @@ describe("20 llms.txt", () => {
     expect(byPath["/pricing"]).toBe(t.pricing.metaDescription);
     for (const p of t.site.solutions.pages) expect(byPath[`/solutions/${p.id}`]).toBe(p.lead);
     expect(byPath["/privacy"]).toBe(LEGAL_TEXTS.en.privacy.summary);
+    expect(byPath["/refund"]).toBe(LEGAL_TEXTS.en.refund.summary);
   });
 
   it("the file is public to a signed-out crawler and /llms-full.txt is not claimed", () => {
@@ -454,11 +457,12 @@ function textOf(b: LegalBlock): string[] {
 }
 
 describe("1 privacy policy, 2 terms of use, 3 cookies and local storage", () => {
-  it("both documents exist at /privacy and /terms, linked from every public footer, in every language", async () => {
+  it("the documents exist at /privacy, /terms and /refund, linked from every public footer, in every language", async () => {
     for (const locale of LOCALES) {
       const html = await htmlOf("@/app/pricing/page", {}, locale);
       expect(html).toContain('href="/privacy"');
       expect(html).toContain('href="/terms"');
+      expect(html).toContain('href="/refund"');
       expect(html).toContain('href="/privacy#cookies"');
     }
   }, 60_000);

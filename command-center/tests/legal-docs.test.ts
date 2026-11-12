@@ -126,7 +126,7 @@ describe("legal texts", () => {
   for (const [locale, texts] of Object.entries(LEGAL_TEXTS)) {
     if (locale === "en") continue;
     describe(locale, () => {
-      for (const kind of ["privacy", "terms"] as const) {
+      for (const kind of ["privacy", "terms", "refund"] as const) {
         it(`${kind}: has the same sections, links and scopes as English`, () => {
           expect(texts[kind].sections.map((s) => s.id)).toEqual(en[kind].sections.map((s) => s.id));
           expect(hrefs(texts[kind])).toEqual(hrefs(en[kind]));
