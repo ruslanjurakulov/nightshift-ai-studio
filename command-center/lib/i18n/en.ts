@@ -24,6 +24,7 @@ import { exportRatiosEn } from "./editor-ratios/en";
 import { exportHiresEn } from "./editor-hires/en";
 import { clipToolsEn } from "./editor-clip-tools/en";
 import { parity2En } from "./editor-parity2/en";
+import { parity2bEn } from "./editor-parity2b/en";
 import { voiceOverEn } from "./editor-voiceover/en";
 import { looksEn } from "./editor-looks/en";
 import { fxEn } from "./editor-fx/en";
@@ -5146,6 +5147,8 @@ export const en = {
     looks: looksEn,
     /** Advanced colour, masks and silence removal: ./editor-parity2/en.ts. */
     parity2: parity2En,
+    /** Effects pack, clip animations, apply to all cuts, beats: ./editor-parity2b/en.ts. */
+    parity2b: parity2bEn,
     fx: fxEn,
     title: "Editor",
     subtitle: "Trim, split, speed up or slow down your videos and put text on them.",

@@ -198,6 +198,10 @@ import { MAX_SHAPES, type ShapeKind } from "@/lib/editorShapes";
 import { ClipGradePanel, GradeFilterDefs } from "./ClipGradePanel";
 import { ClipPicture, LookFilterDefs } from "./ClipPicture";
 import { ClipFxSections } from "./ClipFxSections";
+import { SoundBeatsSection } from "./ClipFxPackSections";
+import { beatTimes } from "@/lib/editorBeats";
+import { applyCrossfadeToAll } from "@/lib/editorFxPack";
+import { countForm } from "@/lib/editorSilence";
 import { ClipSpeedSection, OverlayMoveSection, RenderBudgetNotice } from "./ClipMotionSections";
 import { OverlayChromaSection, SoundCleanSection } from "./CleanSections";
 import { ClipCopyTools, ClipVolumeDetach } from "./ClipSoundTools";
@@ -378,6 +382,9 @@ export function TimelineEditor({
   const [title, setTitle] = useState(initialTitle);
   const [savedTitle, setSavedTitle] = useState(initialTitle);
   const [rev, setRev] = useState(initialRev);
+  // Beat markers found for a sound (file seconds, by sound id): the editor's, never the document's.
+  const [beatsBySound, setBeatsBySound] = useState<Record<string, number[]>>({});
+  const [crossfadeAllNote, setCrossfadeAllNote] = useState<string | null>(null);
   const [selected, setSelected] = useState<Selection>(() => {
     const first = toModel(doc).clips[0];
     return first ? { kind: "clip", id: first.id } : null;
@@ -471,6 +478,9 @@ export function TimelineEditor({
   // when no paid size is ticked any more: ticking the same size again asks for a new one.
   const paidReady = paidOk.ready && paidOk.key === `${rev}|${paidChosen.join(",")}`;
   const anyPaid = paidChosen.length > 0;
+  // The "applied to all cuts" note belongs to the clip it was given on.
+  useEffect(() => setCrossfadeAllNote(null), [selected]);
+
   useEffect(() => {
     if (!anyPaid) setPaidOk((c) => (c.ready ? { ready: false, key: "", maxCredits: {} } : c));
   }, [anyPaid]);
@@ -1678,6 +1688,7 @@ export function TimelineEditor({
             onSelect={setSelected}
             onTrim={onTrim}
             onTrimEnd={onTrimEnd}
+            beats={model.sounds.flatMap((x) => (beatsBySound[x.id] ? beatTimes(x, beatsBySound[x.id]) : []))}
           />
 
           <div className="flex flex-wrap gap-2">
@@ -2054,7 +2065,24 @@ export function TimelineEditor({
                 )
               }
               onFit={() => apply(fitSoundToPicture(model, sound.id))}
-              clean={<SoundCleanSection model={model} sound={sound} apply={apply} />}
+              clean={
+                <>
+                  <SoundCleanSection model={model} sound={sound} apply={apply} />
+                  <SoundBeatsSection
+                    sound={sound}
+                    asset={assets[sound.asset_id]}
+                    shown={beatsBySound[sound.id] ?? null}
+                    onBeats={(id, beats) =>
+                      setBeatsBySound((b) => {
+                        const next = { ...b };
+                        if (beats) next[id] = beats;
+                        else delete next[id];
+                        return next;
+                      })
+                    }
+                  />
+                </>
+              }
               onDelete={() => apply(removeSound(model, sound.id))}
             />
           ) : clip ? (
@@ -2135,6 +2163,13 @@ export function TimelineEditor({
               onCrossfadeStyle={(s) =>
                 apply(setCrossfadeStyle(model, clip.id, s))
               }
+              onCrossfadeAll={() => {
+                const r = applyCrossfadeToAll(model, clip.id);
+                const ta = t.editor.parity2b.transitionAll;
+                if (r.changed) apply(r.model);
+                setCrossfadeAllNote(r.changed ? fmt(ta.done[countForm(r.changed, locale)], { n: r.changed }) : ta.none);
+              }}
+              crossfadeAllNote={crossfadeAllNote}
               onSplit={onSplit}
               onMove={(by) => apply(moveClip(model, clip.id, by))}
               onDelete={() => apply(removeClip(model, clip.id))}
@@ -2352,6 +2387,8 @@ function ClipInspector({
   onCrossfade,
   crossfadeStyle,
   onCrossfadeStyle,
+  onCrossfadeAll,
+  crossfadeAllNote,
   onSplit,
   onMove,
   onDelete,
@@ -2390,6 +2427,9 @@ function ClipInspector({
   /** How the previous clip blends into this one (`fade` = the plain blend). */
   crossfadeStyle: XfadeStyle;
   onCrossfadeStyle: (style: XfadeStyle) => void;
+  /** Give every cut this cross-fade (lib/editorFxPack.ts applyCrossfadeToAll). */
+  onCrossfadeAll?: () => void;
+  crossfadeAllNote?: string | null;
   onSplit: () => void;
   onMove: (by: -1 | 1) => void;
   onDelete: () => void;
@@ -2492,6 +2532,21 @@ function ClipInspector({
             value={crossfadeStyle}
             onChange={onCrossfadeStyle}
           />
+        ) : null}
+        {crossfade > 0 && onCrossfadeAll ? (
+          <button
+            type="button"
+            onClick={onCrossfadeAll}
+            data-testid="crossfade-all"
+            className="btn-quiet inline-flex min-h-11 items-center self-start px-3 py-1.5 text-xs"
+          >
+            {t.editor.parity2b.transitionAll.button}
+          </button>
+        ) : null}
+        {crossfadeAllNote ? (
+          <p role="status" className="m-0 text-xs" data-testid="crossfade-all-note">
+            {crossfadeAllNote}
+          </p>
         ) : null}
         <p id={`${id}-xf`} className="m-0 text-xs text-[var(--color-muted)]">
           {first

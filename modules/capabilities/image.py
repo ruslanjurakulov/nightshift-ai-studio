@@ -456,8 +456,11 @@ class SeedreamAdapter(SafeResultMixin, HttpAdapter):
     Only the sizes in ``SIZES`` are sent. The 5.0 pro price doubles above 2.61 M
     pixels (1.5K and below cost the same), so 5.0 pro / flash are offered at 1K
     only and 4.5 at 2K only (the one price the docs state for it); another size
-    is refused, never defaulted. ``watermark`` is left to the vendor's default,
-    which for Seedream is ON ("AI-generated", lower right).
+    is refused, never defaulted. ``watermark: true`` is always sent: the vendor's
+    default is already ON ("Adds an 'AI-generated' watermark to the lower-right
+    corner of the image"), and sending it means a default change cannot drop the
+    maker's mark that Nightshift promised the makers in writing (2026-11-11) to
+    keep. https://docs.byteplus.com/en/docs/ModelArk/image-generation-api
 
     TERMS: the Customer Agreement §6.2(1) bars OEM / SaaS / MaaS / reseller
     arrangements without BytePlus's prior written consent; the registry entries
@@ -506,7 +509,7 @@ class SeedreamAdapter(SafeResultMixin, HttpAdapter):
             raise AdapterError(E_BAD_REQUEST, "; ".join(bad) or "Seedream here is text-to-image only",
                                not_accepted=True)
         body = {"model": vendor_model, "prompt": request.prompt.strip(), "size": size,
-                "response_format": "b64_json"}
+                "response_format": "b64_json", "watermark": True}     # the maker's mark (see the class note)
         data = self.submit_json(f"{self.base_url}/api/v3/images/generations", body, what="generate")
         if not isinstance(data, dict):
             raise unconfirmed("the answer is not a JSON object")

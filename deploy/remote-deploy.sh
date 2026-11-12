@@ -28,6 +28,9 @@
 #   NIGHTSHIFT_MARKETING_ENV=on   optional, own section for the brand-channel poster
 #   KEY=value                     (variable NIGHTSHIFT_MARKETING_WORKER): one line per
 #   ...                           key in deploy/.env.marketing.example
+#   NIGHTSHIFT_BRAND_SCAN_ENV=on  optional, own section for the brand scan worker
+#   KEY=value                     (variable NIGHTSHIFT_ADS_BRAND_SCAN): one line per
+#   ...                           key in deploy/.env.brandscan.example
 #   (sections may come in any order after the web lines; each marker once)
 #
 # What it does, and refuses:
@@ -43,8 +46,9 @@
 #      (600) — without one, that file is deleted. The notify and e-mail
 #      sections are checked the same way and go to /opt/nightshift/.env.notify
 #      and .env.email (600), each its own file, never the worker's; so does the
-#      operator-bot section (/opt/nightshift/.env.operator) and the marketing
-#      poster's (/opt/nightshift/.env.marketing);
+#      operator-bot section (/opt/nightshift/.env.operator), the marketing
+#      poster's (/opt/nightshift/.env.marketing) and the brand scan worker's
+#      (/opt/nightshift/.env.brandscan);
 #   5. checks out exactly that commit on the local `main` branch, runs
 #      `docker compose up -d --build --remove-orphans web caddy`, and waits for
 #      `web` to report healthy;
@@ -59,7 +63,9 @@
 #      does the operator-bot (tools/operator_bot_service.py: it long-polls
 #      Telegram and runs the alert pass, no port, no Caddy route), and so does
 #      the marketing-worker (tools/marketing_worker.py: drafts and sends the
-#      brand channel's approved posts; off unless its section is sent);
+#      brand channel's approved posts; off unless its section is sent), and so
+#      does the brand-scan-worker (tools/brand_scan_worker.py: the Ads Factory's
+#      DNS checks and brand scans; no port, no Caddy route);
 #   7. last, loads deploy/Caddyfile into the running Caddy without a restart
 #      (a bind-mounted file that changes does not make compose recreate it),
 #      but ONLY the exact file whose sha256 is pinned in CADDYFILE_APPROVED_SHA256
@@ -83,6 +89,7 @@
 #   NIGHTSHIFT_EMAIL_ENV_FILE  the e-mail worker's     (/opt/nightshift/.env.email)
 #   NIGHTSHIFT_OPERATOR_ENV_FILE the operator bot's    (/opt/nightshift/.env.operator)
 #   NIGHTSHIFT_MARKETING_ENV_FILE the marketing poster's (/opt/nightshift/.env.marketing)
+#   NIGHTSHIFT_BRANDSCAN_ENV_FILE the brand scan worker's (/opt/nightshift/.env.brandscan)
 #   NIGHTSHIFT_LOCK_FILE      one deploy at a time     (/opt/nightshift/.deploy.lock)
 #   NIGHTSHIFT_DOCKER         docker binary            (docker)
 #   NIGHTSHIFT_HEALTH_TIMEOUT seconds to wait for web  (420)
@@ -112,6 +119,7 @@ NOTIFY_ENV_FILE="${NIGHTSHIFT_NOTIFY_ENV_FILE:-/opt/nightshift/.env.notify}"
 EMAIL_ENV_FILE="${NIGHTSHIFT_EMAIL_ENV_FILE:-/opt/nightshift/.env.email}"
 OPERATOR_ENV_FILE="${NIGHTSHIFT_OPERATOR_ENV_FILE:-/opt/nightshift/.env.operator}"
 MARKETING_ENV_FILE="${NIGHTSHIFT_MARKETING_ENV_FILE:-/opt/nightshift/.env.marketing}"
+BRANDSCAN_ENV_FILE="${NIGHTSHIFT_BRANDSCAN_ENV_FILE:-/opt/nightshift/.env.brandscan}"
 LOCK_FILE="${NIGHTSHIFT_LOCK_FILE:-/opt/nightshift/.deploy.lock}"
 DOCKER="${NIGHTSHIFT_DOCKER:-docker}"
 HEALTH_TIMEOUT="${NIGHTSHIFT_HEALTH_TIMEOUT:-420}"
@@ -131,6 +139,7 @@ NOTIFY_MARKER=NIGHTSHIFT_NOTIFY_ENV=on
 EMAIL_MARKER=NIGHTSHIFT_EMAIL_ENV=on
 OPERATOR_MARKER=NIGHTSHIFT_OPERATOR_ENV=on
 MARKETING_MARKER=NIGHTSHIFT_MARKETING_ENV=on
+BRANDSCAN_MARKER=NIGHTSHIFT_BRAND_SCAN_ENV=on
 # The per-channel YouTube tokens: the one family of worker keys that is not
 # listed in .env.worker.example, because each channel brings its own name.
 WORKER_TOKEN_KEY='^CHRONOS_YT_TOKEN_[A-Z0-9_]+$'
@@ -143,6 +152,8 @@ EMAIL_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY RESEND_API_KEY NIGHTSHIFT
 OPERATOR_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID)
 # The marketing poster's file also lists a key that may be empty (NIGHTSHIFT_MARKETING_POSTS: empty = the worker idles).
 MARKETING_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY TELEGRAM_CHANNEL_BOT_TOKEN MARKETING_TELEGRAM_CHAT NOTIFY_APP_ORIGIN)
+# The brand scan worker's switch travels in its own file and is the reason the section exists: it must say `on`.
+BRANDSCAN_REQUIRED_KEYS=(SUPABASE_URL SUPABASE_SERVICE_KEY NIGHTSHIFT_ADS_BRAND_SCAN)
 # Mirrors the ${VAR:?} guards in docker-compose.yml: without these the stack
 # either refuses to start or builds a dashboard that reads "NOT CONFIGURED".
 REQUIRED_KEYS=(DOMAIN ACME_EMAIL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY)
@@ -201,14 +212,15 @@ compose() {
   # the interpolation reads, including under a test override; WORKER_ENV_FILE
   # does the same for the worker's, NOTIFY_ENV_FILE and EMAIL_ENV_FILE for the
   # notify and e-mail workers', OPERATOR_ENV_FILE for the operator bot,
-  # MARKETING_ENV_FILE for the marketing poster. The
-  # worker, notify, email, operator and marketing profiles are always active so that
+  # MARKETING_ENV_FILE for the marketing poster, BRANDSCAN_ENV_FILE for the brand scan worker. The
+  # worker, notify, email, operator, marketing and brandscan profiles are always active so that
   # compose knows those services (and --remove-orphans never mistakes them for
   # orphans); services are named on every `up`.
   WEB_ENV_FILE="$ENV_FILE" WORKER_ENV_FILE="$WORKER_ENV_FILE" \
     NOTIFY_ENV_FILE="$NOTIFY_ENV_FILE" EMAIL_ENV_FILE="$EMAIL_ENV_FILE" \
-    OPERATOR_ENV_FILE="$OPERATOR_ENV_FILE" MARKETING_ENV_FILE="$MARKETING_ENV_FILE" "$DOCKER" compose \
-    --profile worker --profile notify --profile email --profile operator --profile marketing --env-file "$ENV_FILE" -f "$APP_DIR/deploy/docker-compose.yml" "$@"
+    OPERATOR_ENV_FILE="$OPERATOR_ENV_FILE" MARKETING_ENV_FILE="$MARKETING_ENV_FILE" BRANDSCAN_ENV_FILE="$BRANDSCAN_ENV_FILE" "$DOCKER" compose \
+    --profile worker --profile notify --profile email --profile operator --profile marketing --profile brandscan \
+    --env-file "$ENV_FILE" -f "$APP_DIR/deploy/docker-compose.yml" "$@"
 }
 
 # Checks the lines of one section against the KEY= lines of an example file.
@@ -637,7 +649,7 @@ caddy_apply() {
   log "caddy: loaded and verified (${newsha:0:12}): one DENY, one SAMEORIGIN for our own frame, /auth and /api DENY, baseline headers present"
 }
 
-# One of the small services (notify-worker, email-worker, operator-bot, marketing-worker), switched by
+# One of the small services (notify-worker, email-worker, operator-bot, marketing-worker, brand-scan-worker), switched by
 # the presence of its section in the payload. Prints a state line as numbers
 # only, and the names of known phrases found in its log, never the log text.
 #   start_sender <service> <on|off> <env file> <GitHub variable> <words>
@@ -702,10 +714,10 @@ main() {
   # ── 3. Validate the env against the examples AT THAT COMMIT ────────────────
   # Read from git, not the working tree: a key added in the commit being
   # deployed is known before it is checked out.
-  # The payload is the web lines, then up to four sections, each opened by its
+  # The payload is the web lines, then up to six sections, each opened by its
   # marker line (once; a repeated marker is an unknown key and refused below).
-  local -a web_lines=() worker_lines=() notify_lines=() email_lines=() operator_lines=() marketing_lines=()
-  local worker=off notify=off email=off operator=off marketing=off line cur=web
+  local -a web_lines=() worker_lines=() notify_lines=() email_lines=() operator_lines=() marketing_lines=() brandscan_lines=()
+  local worker=off notify=off email=off operator=off marketing=off brandscan=off line cur=web
   for line in "${lines[@]}"; do
     if [[ "$worker" == off && "$line" == "$WORKER_MARKER" ]]; then
       worker=on cur=worker
@@ -727,12 +739,17 @@ main() {
       marketing=on cur=marketing
       continue
     fi
+    if [[ "$brandscan" == off && "$line" == "$BRANDSCAN_MARKER" ]]; then
+      brandscan=on cur=brandscan
+      continue
+    fi
     case "$cur" in
       worker) worker_lines+=("$line") ;;
       notify) notify_lines+=("$line") ;;
       email) email_lines+=("$line") ;;
       operator) operator_lines+=("$line") ;;
       marketing) marketing_lines+=("$line") ;;
+      brandscan) brandscan_lines+=("$line") ;;
       *) web_lines+=("$line") ;;
     esac
   done
@@ -741,7 +758,7 @@ main() {
   example="$(git show "${sha}:deploy/.env.web.example")" \
     || die "deploy/.env.web.example is missing at $sha"
   local -a problems=()
-  local nkeys=0 web_keys=0 worker_keys=0 notify_keys=0 email_keys=0 operator_keys=0 marketing_keys=0
+  local nkeys=0 web_keys=0 worker_keys=0 notify_keys=0 email_keys=0 operator_keys=0 marketing_keys=0 brandscan_keys=0
   local label="deploy/.env.web.example" section=web
   check_section "$example" "" "${REQUIRED_KEYS[*]}" "${web_lines[@]}"
   web_keys=$nkeys
@@ -780,6 +797,19 @@ main() {
     check_section "$example" "" "${MARKETING_REQUIRED_KEYS[*]}" "${marketing_lines[@]}"
     marketing_keys=$nkeys
   fi
+  if [[ "$brandscan" == on ]]; then
+    example="$(git show "${sha}:deploy/.env.brandscan.example" 2>/dev/null)" \
+      || die "a brand scan env was sent, but deploy/.env.brandscan.example is missing at $sha"
+    label="deploy/.env.brandscan.example" section=brandscan nkeys=0
+    check_section "$example" "" "${BRANDSCAN_REQUIRED_KEYS[*]}" "${brandscan_lines[@]}"
+    brandscan_keys=$nkeys
+    # The section exists only while the switch is `on`; any other value in it is a mistake, never a quiet "off".
+    for line in "${brandscan_lines[@]}"; do
+      if [[ "$line" == NIGHTSHIFT_ADS_BRAND_SCAN=* && "$line" != NIGHTSHIFT_ADS_BRAND_SCAN=on ]]; then
+        problems+=("NIGHTSHIFT_ADS_BRAND_SCAN must be exactly 'on' in the brand scan section")
+      fi
+    done
+  fi
   # The creative worker's switch is one of the worker keys (the repository
   # variable NIGHTSHIFT_CREATIVE_WORKER): exactly `on` starts it, anything
   # else (empty, off, a typo) leaves it off. No worker, no creative worker.
@@ -817,6 +847,10 @@ main() {
   if [[ "$marketing" == on ]]; then
     write_env "$MARKETING_ENV_FILE" "# Written by deploy/remote-deploy.sh from GitHub Actions (commit $sha)." "${marketing_lines[@]}"
     log "wrote $MARKETING_ENV_FILE ($marketing_keys keys, mode 600)"
+  fi
+  if [[ "$brandscan" == on ]]; then
+    write_env "$BRANDSCAN_ENV_FILE" "# Written by deploy/remote-deploy.sh from GitHub Actions (commit $sha)." "${brandscan_lines[@]}"
+    log "wrote $BRANDSCAN_ENV_FILE ($brandscan_keys keys, mode 600)"
   fi
 
   # ── 5. Check out exactly that commit ───────────────────────────────────────
@@ -946,6 +980,9 @@ main() {
   # The brand channel's poster. Present = the container exists (it still does nothing until
   # NIGHTSHIFT_MARKETING_POSTS is `on` in its own file); absent = removed, with its bot token.
   start_sender marketing-worker "$marketing" "$MARKETING_ENV_FILE" NIGHTSHIFT_MARKETING_WORKER "the marketing worker"
+  # The brand scan worker (Ads Factory, Phase 2). Present = it claims DNS checks and scans (a scan is sold only once the
+  # owner has set a price in the database); absent = removed, with its copy of the service key.
+  start_sender brand-scan-worker "$brandscan" "$BRANDSCAN_ENV_FILE" NIGHTSHIFT_ADS_BRAND_SCAN "the brand scan worker"
 
   # ── 9. Caddy ───────────────────────────────────────────────────────────────
   # Last, so a proxy problem never holds back the worker; it still fails the
@@ -960,7 +997,7 @@ main() {
   # a disk. Only dangling images: nothing a container still uses.
   "$DOCKER" image prune -f >/dev/null 2>&1 || true
 
-  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; notify-worker $notify; email-worker $email; operator-bot $operator; marketing-worker $marketing"
+  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; notify-worker $notify; email-worker $email; operator-bot $operator; marketing-worker $marketing; brand-scan-worker $brandscan"
 }
 
 main "$@"

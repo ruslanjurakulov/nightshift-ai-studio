@@ -21900,6 +21900,511 @@
      }
     ]
    }
+  },
+  {
+   "name": "parity2b: every effect of the pack at its limits",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "fx": {
+         "glitch": 100,
+         "shake": 0.5,
+         "rgb_split": 100,
+         "flash": 1
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: an effect past 100 is refused",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "fx": {
+         "glitch": 100.5
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: an unknown effect is refused",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "fx": {
+         "blur": 5
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: an empty effects pack is refused",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "fx": {}
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: a slide in and a zoom out of 2 s on a 4 s clip",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "anim_in": "slide-left",
+        "anim_in_s": 2,
+        "anim_out": "zoom",
+        "anim_out_s": 2
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: an animation longer than half the clip is refused",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "anim_in": "fade",
+        "anim_in_s": 2.001
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: a text animation name on a video clip is refused",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "anim_in": "typewriter"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: an animation length without its name is refused",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "anim_out_s": 1
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: an entrance and a fade-in on the same side are refused",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "anim_in": "slide-up",
+        "fade_in_s": 0.3
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: an entrance and a fade-out on the other side are fine",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "anim_in": "slide-up",
+        "fade_out_s": 0.3
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: one effect each side of a 4K cross-fade is fine",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 3840,
+    "height": 2160,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 3,
+        "fx": {
+         "shake": 100
+        }
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2.5,
+        "in_s": 0,
+        "out_s": 3,
+        "fx": {
+         "flash": 100
+        },
+        "transition": {
+         "type": "crossfade",
+         "duration_s": 0.5
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: two effects on a 4K cross-faded clip are refused (memory)",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 3840,
+    "height": 2160,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 3,
+        "fx": {
+         "shake": 100,
+         "glitch": 10
+        }
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2.5,
+        "in_s": 0,
+        "out_s": 3,
+        "transition": {
+         "type": "crossfade",
+         "duration_s": 0.5
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: every effect on both sides of a 1440p cross-fade is fine",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 2560,
+    "height": 1440,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 3,
+        "fx": {
+         "shake": 1,
+         "glitch": 1,
+         "rgb_split": 1,
+         "flash": 1
+        }
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2.5,
+        "in_s": 0,
+        "out_s": 3,
+        "fx": {
+         "shake": 1,
+         "glitch": 1,
+         "rgb_split": 1,
+         "flash": 1
+        },
+        "transition": {
+         "type": "crossfade",
+         "duration_s": 0.5
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: an entrance on a clip with a malformed speed curve is refused, not a crash",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "speed_curve": [
+         {
+          "t": 0,
+          "speed": 1
+         },
+         {
+          "t": 1,
+          "speed": 2
+         }
+        ],
+        "anim_in": "zoom"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: an entrance on a clip with an unusable speed is refused, not a crash",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "speed": "fast",
+        "anim_in": "slide-up"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parity2b: an entrance on a curved clip is measured on the curve's length",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 0,
+        "out_s": 4,
+        "speed_curve": [
+         {
+          "at": 0,
+          "speed": 1
+         },
+         {
+          "at": 1,
+          "speed": 2
+         }
+        ],
+        "anim_in": "zoom",
+        "anim_in_s": 1.3
+       }
+      ]
+     }
+    ]
+   }
   }
  ]
 }

@@ -277,7 +277,11 @@ a domain check and a scan in turn, so a queue of slow DNS checks cannot starve t
 `invalid_result`, `worker_error`.
 
 `tools/brand_scan_worker.py` exits at once unless `NIGHTSHIFT_ADS_BRAND_SCAN=on`; it needs `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and
-(for pictures) `NIGHTSHIFT_MEDIA_DIR`. It is NOT in `deploy/docker-compose.yml` yet (a release step, below).
+(for pictures) `NIGHTSHIFT_MEDIA_DIR`. It runs as the `brand-scan-worker` service of `deploy/docker-compose.yml` (profile `brandscan`),
+started by the deploy only while the repository variable `NIGHTSHIFT_ADS_BRAND_SCAN` is exactly `on`, with its own env file
+(`/opt/nightshift/.env.brandscan`: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `NIGHTSHIFT_ADS_BRAND_SCAN`; `deploy/.env.brandscan.example`),
+the `media` volume as uid 1000, no port and no Caddy route, `mem_limit` 1.5 GB (the palette child alone may use 768 MB), `cpu_shares`
+128, `pids_limit` 256. Anything but `on` removes the container and its env file.
 
 ### The page ("Scan my site", Command Center)
 
@@ -311,14 +315,19 @@ Strings: `lib/i18n/ads-brand-scan/` (en; ru and uz are drafts that need a native
   verified separately: verifying `shop.com` covers `www.shop.com`, and a scan of `www.shop.com` may be redirected to `shop.com`. Both
   are the same zone's names in practice; the security review accepted this as is (Low), and it is noted here rather than changed.
 
-Follow-ups from the final delta review (both Low; to be fixed in a later migration, not in 0133 or the page):
-- **A failed scan can soft-delete a picture a person already put into a kit.** The worker stores a scan's pictures in the library before
-  the scan finishes. If a member puts one of them into a brand kit (as its logo, or as a product picture) while the scan is still
-  running, and the scan then fails, `brand_scan_fail_locked` marks that picture deleted (`deleted_at`), and it disappears from under
-  the kit. The fix: skip the assets that `brand_kits.logo_asset_id` or `brand_product_images.asset_id` refer to.
-- **No test covers the `source = 'pipeline'` filter.** A mutation that removes it from `brand_scan_fail_locked`'s delete is not
-  caught. The other filters (organization, `origin = 'brand_scan'`, the scan id) are covered. The lab needs a picture with the scan's
-  provenance but another source, and must check that the picture stays.
+Follow-ups from the final delta review (both Low), **fixed in migration 0134** (`0134_brand_scan_followup.sql`):
+- **A failed scan kept deleting a picture a person had already put into a kit.** The worker stores a scan's pictures in the library before
+  the scan finishes, so a member can put one into a brand kit (its logo) or a product (its pictures) while the scan runs. 0134's
+  `brand_scan_fail_locked` keeps every picture that `brand_kits.logo_asset_id` or `brand_product_images.asset_id` references (the only
+  two columns of 0131's tables that reference `media_assets`; the migration checks that list against the catalogue). It locks the
+  scan's pictures first, so a kit or product write that is still open is waited for, and then reads the kits and products in a new
+  statement. The lab races it with real concurrent transactions.
+- **The `source = 'pipeline'` filter now has a test.** `tests/security/test_sec_brand_scan_followup.py` gives the scan's provenance to
+  pictures that miss exactly one filter each (another source, another organization, another origin, another scan) and checks that
+  only the scan's own picture goes; removing any one filter fails it.
+- **What is still open.** A kit write that reads a picture as live and commits only AFTER the failure deleted it still keeps the id
+  (0131's `ads_check_images` takes no lock). This is the same window as a member deleting a library picture while saving a kit, and it
+  is not specific to the scan.
 
 ### Costs: the approved price and caps (owner decision, 2026-11-11; seeded NULL, set after merge)
 
@@ -363,14 +372,29 @@ checks per organization per 24 hours (failed scans count). Accepting the same pr
 
 ### Releasing Phase 2
 
-1. Read the live database first (the queries in the migration header, "WHAT TO VERIFY BEFORE YOU APPLY"); 0131 must be applied.
-2. Merge: the migration applies itself on deploy. Nothing can be bought while the price is NULL.
-3. Add a `brand-scan-worker` service to `deploy/docker-compose.yml` (worker image, `command: ["python", "tools/brand_scan_worker.py"]`,
-   uid 1000, the `media` volume rw, the worker env file, `NIGHTSHIFT_ADS_BRAND_SCAN=on`), and let outbound HTTPS reach customer sites
-   and `cloudflare-dns.com`.
-4. Set the approved values: `update public.brand_scan_settings set price_credits = 1, platform_daily_scans = 500, platform_daily_checks = 5000;`, and `NIGHTSHIFT_ADS_BRAND_SCAN=on`
-   for the Command Center (the "Scan my site" panel).
-5. Undo: the switch off (loses nothing), or the price back to NULL (no new scans), or `docs/sql/rollback_0133_brand_scan.sql`.
+Go-live order. Do the steps in this order, and only go on when the step before has worked:
+1. **Read the live database first**: the queries in the headers of 0133 and 0134, "WHAT TO VERIFY BEFORE YOU APPLY". 0131 must be
+   applied.
+2. **Merge** the follow-up pull request (0134 and the `brand-scan-worker` service). The migrations apply on deploy. Nothing can be bought
+   while the price is NULL.
+3. **Deploy**: Deploy web runs on the merge. With the variable still unset, the worker is not started, and the deploy log says
+   `brand-scan-worker is off`. The variable MUST still be unset for this first deploy: the server runs the remote-deploy.sh it already
+   has, which does not know the brand scan section yet and would refuse it (nothing would change; the deploy would fail).
+4. **Turn the switch on**: set the repository variable `NIGHTSHIFT_ADS_BRAND_SCAN` to exactly `on` (GitHub, Settings, Secrets and
+   variables, Actions, Variables), then run Deploy web again (a variable is read only when a deploy runs). The same variable shows the
+   "Scan my site" panel (with `NIGHTSHIFT_ADS_FACTORY` on as well) and starts the worker: the deploy writes
+   `/opt/nightshift/.env.brandscan` and starts `brand-scan-worker`. Check the deploy log for `brand-scan-worker on` and a running state.
+   The worker needs outbound HTTPS to customer sites and to `cloudflare-dns.com`; `deploy/bootstrap.sh` sets ufw to allow
+   outgoing traffic, so nothing needs opening unless an egress filter is added later. Do not use `true`, `1` or `yes`: the panel accepts them, but the worker
+   step runs only for exactly `on`.
+5. **Set the price last**, once the worker is running, to the approved 1 credit (and the approved caps), in the Supabase SQL editor:
+   `update public.brand_scan_settings set price_credits = 1, platform_daily_scans = 500, platform_daily_checks = 5000;`.
+   The settings row has no owner function and no owner page: by 0133's design it is changed in the SQL editor only, and every change
+   leaves a `security_events` row of kind `ads.brand_scan.settings`. `owner_set_credit_price` is not the right tool: it writes
+   `credit_prices`, and the scan's price must never be put there.
+6. **Undo**, from lightest to heaviest: set the price back to NULL (no new scans); unset the variable and deploy (the panel and the
+   worker go, and nothing is lost); or roll back the migrations in order, `docs/sql/rollback_0134_brand_scan_followup.sql` first, then
+   `docs/sql/rollback_0133_brand_scan.sql`.
 
 ## Phase 3: image ads through the existing creative job pipeline (designed)
 

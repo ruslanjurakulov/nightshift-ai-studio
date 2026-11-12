@@ -57,6 +57,7 @@ export const parity2En = {
     apply: { one: "Cut {n} silent part", few: "Cut {n} silent parts", many: "Cut {n} silent parts" },
     applied: { one: "{n} silent part cut ({s} s shorter). Undo brings it back.", few: "{n} silent parts cut ({s} s shorter). Undo brings them back.", many: "{n} silent parts cut ({s} s shorter). Undo brings them back." },
     partial: "{n} of {total} silent parts cut: the picture can hold at most {max} clips.",
+    partialPiece: "{n} of {total} silent parts cut: what would be left of the clip next to the others is shorter than a clip may be.",
     keepTimes: "Only the picture moves up: texts, captions, sounds and overlays stay at their times.",
     cut: "{a} – {b}",
     too_large: "This file is too long or too big to listen to in the browser.",
@@ -68,7 +69,7 @@ export const parity2En = {
     no_audio: "This clip's own sound is off (muted, or detached to a sound of its own). Turn it on first: cutting the picture alone would put a detached sound out of step.",
     full: "The picture already has {max} clips.",
   },
-  settledLook: "Clip {n}: its colour and mask were taken off: with them the video would take longer to export than it is allowed.",
+  settledLook: "Clip {n}: its colour, mask, effects and animations were taken off: with them the video would take longer to export than it is allowed.",
   settledMask: "Clip {n}: its mask was taken off: in a frame above 1440p a cross-faded clip cannot have one (the export would run out of memory).",
 };
 

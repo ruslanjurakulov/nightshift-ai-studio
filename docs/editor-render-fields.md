@@ -35,7 +35,8 @@ into one commit) and #484 (group 11); group 12 is the editor-parity change that 
 | 10 | `claude/render-stabilise` | V clip `stabilize` | on main (#480) |
 | 11 | `claude/editor-shapes` | top-level `shapes` (stickers, shapes, progress bar) | on main (#484) |
 | 12 | `claude/editor-parity-1` | V clip `gain_db`; a video on an A track (detached sound); `speed` 0.1-10; export frame rate | added by this branch (section 12) |
-| 14 | `claude/editor-parity-2` | V clip `color` (temperature, tint, hue, curve), `mask`; silence removal (no field) | added by this branch (section 14) |
+| 14 | `claude/editor-parity-2` | V clip `color` (temperature, tint, hue, curve), `mask`; silence removal (no field) | on main (#675, section 14) |
+| 16 | `claude/editor-parity-2b` | V clip `fx` (glitch, shake, rgb_split, flash), `anim_in` / `anim_out`; apply a cross-fade to all cuts, beat markers (no field) | added by this branch (section 16) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -669,6 +670,9 @@ project keeps exactly its document.
 | clip `color` | "Colour balance" section: temperature, tint, hue sliders and a tone-curve radio group (`ClipColorSection` in `ClipLookSections.tsx`) | 14 |
 | clip `mask` | "Mask" section: shape radios, centre / size / soft edge / corner sliders, invert (`ClipMaskSection`) | 14 |
 | (no field) | "Remove silences" section: threshold and length sliders, find, the proposed cuts, apply (`ClipSilenceSection`) | 14 |
+| clip `fx` | "Effects" section: four 0-100 sliders (`ClipFxPackSection` in `ClipFxPackSections.tsx`) | 16 |
+| clip `anim_in`, `anim_out` | "Animation" section: Entrance and Exit radio groups and a length slider each (`ClipAnimSection`) | 16 |
+| (no field) | "Apply this cross-fade to all cuts" under the cross-fade style (`ClipInspector`); "Beats" on a sound (`SoundBeatsSection`), markers on the clips' lane | 16 |
 
 Export formats (P): `schemas/export_presets.json` is the list (YouTube wide 1080p and 720p, vertical
 1080x1920 for Shorts / Reels / TikTok, square, 4:5), `modules/export_presets.py` loads it and refuses an
@@ -1113,3 +1117,82 @@ entries of the closed list (`schemas/export_presets.json`): `youtube_1440p` 2560
 * **Up to 1080p** (migration 0136): sold the same way once the owner sets its price (1 credit per started minute, approved
   2026-11-11); free and unchanged while it is NULL. The document does not change either: a sold export up to 1080p is a row with
   the database's quote, with a frame of the list or none (the project's own frame). `docs/HIRES_EXPORT.md`, "Up to 1080p".
+
+## 16. Effects pack, clip animations, apply to all cuts, beat markers (editor parity 2b)
+
+Branch `claude/editor-parity-2b`. Free: ffmpeg and the browser only, no model, no migration, no new route.
+
+### `fx` on a V clip (effects pack)
+
+```json
+"fx": { "glitch": 60, "shake": 25, "rgb_split": 40, "flash": 80 }
+```
+
+* closed names (`FX_NAMES`), each an intensity 0..100; 0 is off (dropped by `normalise`), an empty object is refused.
+  Vignette and grain stay the existing `vignette` / `grain` (section 3): no second field for them.
+* export (`render_backend.fx_filters`), on the fitted frame after the colour, mask and effects of section 3, over the
+  whole clip on its own clock (so a piece of a cross-faded clip glitches where the whole clip would), in this order:
+  `rgb_split` = `rgbashift` red left / blue right by up to 1.25 % of the frame width; `glitch` = bursts every 0.9 s
+  (0.04-0.14 s long) of an RGB shift and noise (`enable=`, fixed seed); `flash` = `eq` brightness pulse every 0.8 s
+  (up to +0.6); `shake` = a `crop` window moving on two sines (up to 3 % of the short side) scaled back to the frame.
+* preview: none (the panel says the export shows them).
+
+### `anim_in` / `anim_out` on a V clip
+
+* names `fade`, `slide-up`, `slide-down`, `slide-left`, `slide-right`, `zoom` (`V_ANIMS`; the text-only `pop` and
+  `typewriter` are refused); `anim_in_s` / `anim_out_s` 0.1..2 s (0.4 filled by `normalise`), each at most half the
+  clip; not with the clip's own fade on the same side. A slide moves the whole picture in from (out to) the frame's
+  edge over black, by the direction it moves (`slide-up` enters from below); `zoom` grows it from 60 % (an exit
+  shrinks it to 60 %) over black; `fade` is a fade from (to) black. Linear.
+* export (`render_backend.anim_filters`): the picture scaled per frame (`scale ... eval=frame`, zoom only) and laid
+  over a black `color` source with per-frame `overlay` x / y, before the fades and the piece's trim; label names are
+  tagged per side so both sides of a cross-fade can move.
+* a split keeps the way in on the first half and the way out on the second, each held to half its piece (dropped
+  under 0.1 s): `splitClip` and `timeline.split_clip` alike.
+
+### Apply this cross-fade to all cuts (no field)
+
+A button under the cross-fade style of a clip that has one: every other cut gets the same length (held to what its
+two clips allow, `maxCrossfade`) and style, in one undo step; a cut with no room for 0.2 s keeps what it had. The
+editor then settles it like any edit (in a frame above 1440p a newly cross-faded clip loses its blur, mask, extra
+effects or big zoom, each with a notice).
+
+### Beat markers (no field)
+
+"Beats" on a sound: the file is decoded in the browser exactly as for silence removal (the same signed link, caps and
+limiter: `editorSilence.analyseFile`), and an energy onset detector (10 ms RMS in dB; a block's rise over the 100 ms
+before it; a local peak within 50 ms, at least 6 dB and the strength's mean + 1.5 deviations, louder than -50 dB, at
+least 0.15 s after the last) marks the beats. They are drawn on the clips' lane where the sound plays them (its trim)
+and clip edges snap to them (`snapTargets` `beats`). Nothing is stored with the project. Tested on click tracks,
+kicks and an uneven snare pattern at 44.1, 48 and 22.05 kHz (within 20 ms, nothing extra) and on a steady tone.
+
+### Render budget and memory
+
+Costs (seconds per second of the clip at 1080p30, scaled by pixels x rate, in the same "colour, masks and effects"
+term as section 14; `FX_SECONDS_PER_S`, `ANIM_MOVE_SECONDS_PER_S`): `rgb_split` 0.55, `glitch` 0.35, `shake` 0.2,
+`flash` 0.1, a slide or zoom 0.3 (a fade 0). They are half of what each measured at 1080p60 (pure-filter marginal
+cost, bundled ffmpeg 7.0.2, phone-like 1080p60 source: rgbashift 1.06, glitch bursts 0.67, crop-expression shake 0.32,
+`eq` flash 0.14 s per second), rounded up. Settle step 4c now takes the dearest clip's colour, mask, effects and
+moving animations off together ("Clip N: its colour, mask, effects and animations were taken off").
+
+Memory, measured through the export path under the 2 GiB limit at 4K60 (3840x2160): a single clip took all four
+effects, a slide and a zoom, with a zoom move to 2; a cross-fade took any one effect on both sides, all four on one
+side, and slides / zooms on both sides; it ran out of memory with all four on both sides, and with all four plus a
+zoom entrance on both. So above 1440p a cross-faded clip takes at most one effect (`FX_LARGE_XFADE_MAX`); both
+validators refuse more, the panel disables the other sliders and says why, and settle step 2a keeps its strongest
+effect with "Clip N keeps only its strongest effect".
+
+### Old documents
+
+A document without these fields builds exactly the argv origin/main (#675) built: `samples/parity2b_argv_golden.json`
+(documents with colour, masks, a cross-fade, a still, a move, fades, speed and the blur fit) and the older
+`samples/parity2_argv_golden.json`. The budget sentence now reads "colour, masks and effects".
+
+### Strings
+
+`lib/i18n/editor-parity2b/{en,ru,uz}.ts` (`t.editor.parity2b`); ru and uz are drafts for a native read.
+
+### Rollout
+
+As section 12: older validators refuse `fx` and a V clip's `anim_*`, so merge as one commit and use the new controls
+only after the worker has been rebuilt by the deploy.

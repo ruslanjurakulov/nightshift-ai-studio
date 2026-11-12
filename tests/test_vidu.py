@@ -258,8 +258,9 @@ class SubmitTests(Case):
         self.adapter().submit(req(aspect_ratio="9:16", duration_s=16, resolution="1080p"), "viduq3-turbo")
         body = self.sent().json()
         self.assertEqual((body["aspect_ratio"], body["duration"], body["resolution"]), ("9:16", 16, "1080p"))
-        for field in ("off_peak", "seed", "payload", "callback_url", "audio", "watermark", "meta_data", "voice_id", "bgm",
-                      "movement_amplitude", "is_rec"):
+        # ``meta_data`` would replace Vidu's own metadata label and ``wm_url`` its mark: neither is ever sent.
+        for field in ("off_peak", "seed", "payload", "callback_url", "audio", "watermark", "meta_data", "wm_url",
+                      "wm_position", "voice_id", "bgm", "movement_amplitude", "is_rec"):
             self.assertNotIn(field, body, field)
 
     def test_the_sound_flag_is_sent_only_when_the_job_names_it(self):
@@ -523,15 +524,10 @@ class PollTests(Case):
             {"id": "c1", "url": f"{base}/clip.mp4", "cover_url": f"{base}/cover.jpg", "watermarked_url": f"{base}/marked.mp4"}]})
         self.assertEqual((res.state, res.outputs[0].mime, res.outputs[0].url), (SUCCEEDED, "video/mp4", f"{base}/clip.mp4"))
 
-    def test_the_watermarked_copy_is_one_constant_away(self):
-        base = self.vendor.base_url
-        self.vendor._routes.clear()
-        self.vendor.on("GET", "/ent/v2/tasks/t1000/creations", Resp(200, {"state": "success", "creations": [
-            {"url": f"{base}/clip.mp4", "watermarked_url": f"{base}/marked.mp4"}]}))
-        with mock.patch.object(vidu.ViduVideoAdapter, "STORE_WATERMARKED", True):
-            res = self.adapter().poll(ProviderTask("video.vidu", "viduq3-pro", "t1000"))
-        self.assertEqual(res.outputs[0].url, f"{base}/marked.mp4")
-        self.assertFalse(vidu.ViduVideoAdapter.STORE_WATERMARKED)         # shipped: the unmarked file
+    def test_the_default_output_is_stored_and_there_is_no_switch_for_the_link(self):
+        # Vidu's visible mark is optional and off by default; its Terms of Use clause 4 forbid removing the
+        # deep-synthesis sign (the metadata label in the default file), not omitting the optional mark.
+        self.assertFalse(hasattr(vidu.ViduVideoAdapter, "STORE_WATERMARKED"))
 
     def test_a_failed_task_carries_the_vendors_error_code_and_the_right_remedy(self):
         cases = (("TaskPromptPolicyViolation", E_POLICY), ("CreationPolicyViolation", E_POLICY), ("AuditFailed", E_POLICY),
