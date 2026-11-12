@@ -25,6 +25,7 @@ import { dictionaries, type Locale } from "@/lib/i18n";
 import { MadeForKidsSwitch, ReviewMadeForKids } from "@/components/review/MadeForKidsSwitch";
 import {
   KIDS_LIBRARY_STYLES,
+  KIDS_TAGGED_NOT_KIDS_ONLY,
   errorFromRpc,
   isKidsFormat,
   isKidsLook,
@@ -35,6 +36,7 @@ import {
 } from "@/lib/madeForKids";
 import { runHandoffHref, runPrefillFromQuery } from "@/lib/home";
 import { buildRenderJobInsert } from "@/lib/runBackend";
+import { STYLE_LIBRARY, libraryStyleById } from "@/lib/styles/library";
 
 const en = dictionaries.en.madeForKids;
 
@@ -56,6 +58,27 @@ describe("what is kids content", () => {
     expect([...ids].sort()).toEqual([...KIDS_LIBRARY_STYLES].sort());
     expect(KIDS_LIBRARY_STYLES).toContain("claymation-set");
   });
+
+  it("every kids-only look is a look of the library tagged kids; the list is the decision, not the tag", () => {
+    for (const id of KIDS_LIBRARY_STYLES) expect(libraryStyleById(id)?.tags, id).toContain("kids");
+    const tagged = STYLE_LIBRARY.filter((s) => s.tags.includes("kids")).map((s) => s.id);
+    // Every look the kids filter shows is either kids-only or one of the three named exceptions; nothing else slips in.
+    expect([...tagged].sort()).toEqual([...KIDS_LIBRARY_STYLES, ...KIDS_TAGGED_NOT_KIDS_ONLY].sort());
+  });
+
+  it.each(["cut-paper-collage", "claymation-set", "felt-and-wool", "gouache-storybook", "chalk-on-slate"])(
+    "%s makes a video made for kids",
+    (id) => expect(isKidsLook(id)).toBe(true),
+  );
+
+  it.each(["tilt-shift-miniature", "oil-pastel", "central-asian-miniature"])(
+    "%s keeps its kids tag for browsing but does not make a video made for kids",
+    (id) => {
+      expect(libraryStyleById(id)?.tags).toContain("kids");
+      expect(isKidsLook(id)).toBe(false);
+      expect(KIDS_LIBRARY_STYLES).not.toContain(id);
+    },
+  );
 
   it("the kids format and a kids look are recognised, nothing else is", () => {
     expect(isKidsFormat("kids")).toBe(true);

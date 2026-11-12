@@ -10,7 +10,7 @@ The rule (the owner's, PR "YouTube made for kids"):
 
 * KIDS CONTENT is a video that comes from the kids format (the run asked for it: the Kids story card or the Create form's
   switch, ``--made-for-kids``), a series whose format names kids, a channel DNA style kit that is a kids look of the
-  Style Library, or a channel whose own default (``agent_config.made_for_kids``) is on.
+  Style Library made for children only (KIDS_LIBRARY_STYLES), or a channel whose own default (``agent_config.made_for_kids``) is on.
 * Kids content is declared made for kids. Anything else is declared what the channel's default says, which is off.
 * A person may declare a kids video "not made for kids" only by confirming it in so many words
   (``set_video_made_for_kids`` with ``p_confirm_off``, migration 0140); the database refuses the combination otherwise.
@@ -34,18 +34,17 @@ logger = logging.getLogger(__name__)
 #: The run-level format id of the Kids story card (command-center/lib/home.ts HOME_FORMATS).
 KIDS_FORMAT = "kids"
 
-#: The Style Library looks tagged "kids" (command-center/lib/styles/library.ts). Ids only: the looks themselves live in
-#: TypeScript and nowhere else. command-center/tests/made-for-kids.test.ts fails when the two drift, so a look tagged kids
-#: there is a kids look here.
+#: The Style Library looks that are made for children and nothing else (command-center/lib/styles/library.ts). An explicit
+#: list, not the "kids" tag: that tag is a browsing filter meaning "good for kids", and it also sits on looks a travel film or
+#: a history documentary uses (tilt-shift-miniature, oil-pastel, central-asian-miniature), whose videos must not lose their
+#: comments for it (the owner's decision on PR #699). Ids only: the looks live in TypeScript. lib/madeForKids.ts holds the same
+#: list and command-center/tests/made-for-kids.test.tsx fails when the two drift or a listed look loses its kids tag.
 KIDS_LIBRARY_STYLES = frozenset({
-    "tilt-shift-miniature",
     "cut-paper-collage",
     "claymation-set",
     "felt-and-wool",
-    "oil-pastel",
     "gouache-storybook",
     "chalk-on-slate",
-    "central-asian-miniature",
 })
 
 #: Words that make a series' free-text format (content_series.format, 0006) a kids format. Whole words only, so

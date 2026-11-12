@@ -48,6 +48,21 @@ class TheDecision(unittest.TestCase):
         self.assertEqual((d.value, d.kids_content, d.sources), (False, False, ()))
         self.assertFalse(d.refused)
 
+    def test_each_kids_only_look_marks_the_video_made_for_kids(self):
+        for look in ("cut-paper-collage", "claymation-set", "felt-and-wool", "gouache-storybook", "chalk-on-slate"):
+            d = mfk.decide(channel(), style_library_id=look)
+            self.assertEqual((d.value, d.kids_content, d.sources), (True, True, (mfk.SOURCE_STYLE,)), look)
+
+    def test_a_look_tagged_kids_for_browsing_but_used_by_grown_up_films_does_not(self):
+        # The owner's decision on PR #699: the "kids" tag is the library's filter ("good for kids"); these three looks carry
+        # it and are also a travel film's or a history documentary's, whose comments must not be switched off for it.
+        for look in ("tilt-shift-miniature", "oil-pastel", "central-asian-miniature"):
+            self.assertFalse(mfk.style_is_kids(look), look)
+            d = mfk.decide(channel(), style_library_id=look)
+            self.assertEqual((d.value, d.kids_content, d.sources), (False, False, ()), look)
+            # A kids channel is still made for kids, whatever its look.
+            self.assertTrue(mfk.decide(channel(True), style_library_id=look).value, look)
+
     def test_a_series_format_matches_whole_words_only_in_three_languages(self):
         for text in ("Kids story", "for children", "Bolalar ertagi", "Детские сказки"):
             self.assertTrue(mfk.series_is_kids(SimpleNamespace(format=text, content_type="")), text)

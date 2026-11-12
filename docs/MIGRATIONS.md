@@ -559,7 +559,7 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
 0140 (`0140_made_for_kids.sql`, `modules/made_for_kids.py`) is **live on apply**. Every upload used to send
 `status.selfDeclaredMadeForKids: false`, while the product offers a Kids story format, kids looks and kids channels: a children's video
 declared "not made for kids" breaks YouTube's policy and COPPA. The pipeline now decides the declaration per run (the run's own
-`made_for_kids`, a series whose format names kids, a channel DNA look tagged kids in the Style Library, or the channel's
+`made_for_kids`, a series whose format names kids, a channel DNA look of the Style Library that is made for children only (an explicit list, not the `kids` browsing tag), or the channel's
 `agent_config.made_for_kids`, which needs no migration); this file gives that decision a record and a person a way to change it.
 
 - **Adds** four nullable columns on `videos`: `made_for_kids`, `kids_content` (the pipeline's), `made_for_kids_off_by` and

@@ -8,14 +8,28 @@
  *
  * Pure and client-safe: the switch, the review panel, the Create form and the tests import it.
  */
-import { STYLE_LIBRARY } from "@/lib/styles/library";
 import type { HomeFormatId } from "@/lib/home";
 
 /** The Kids story format of Home (lib/home.ts HOME_FORMATS). */
 export const KIDS_FORMAT = "kids" satisfies HomeFormatId;
 
-/** The Style Library looks tagged "kids". modules/made_for_kids.py KIDS_LIBRARY_STYLES must list the same ids (a test pins it). */
-export const KIDS_LIBRARY_STYLES: readonly string[] = STYLE_LIBRARY.filter((s) => s.tags.includes("kids")).map((s) => s.id);
+/**
+ * The Style Library looks made for children and nothing else: these make a video "made for kids". An explicit list, not the
+ * "kids" tag, which is the library's browsing filter ("good for kids") and also sits on looks a travel film or a history
+ * documentary uses (tilt-shift-miniature, oil-pastel, central-asian-miniature): their videos must not lose comments for it.
+ * modules/made_for_kids.py KIDS_LIBRARY_STYLES lists the same ids; tests/made-for-kids.test.tsx pins both, and that each id
+ * is a look of the library that carries the kids tag.
+ */
+export const KIDS_LIBRARY_STYLES: readonly string[] = [
+  "cut-paper-collage",
+  "claymation-set",
+  "felt-and-wool",
+  "gouache-storybook",
+  "chalk-on-slate",
+];
+
+/** Tagged "kids" for browsing, but used by grown-up films too: never a "made for kids" source. */
+export const KIDS_TAGGED_NOT_KIDS_ONLY: readonly string[] = ["tilt-shift-miniature", "oil-pastel", "central-asian-miniature"];
 
 export function isKidsFormat(id: unknown): boolean {
   return id === KIDS_FORMAT;
