@@ -54,4 +54,5 @@ export const parity2bUz: Parity2bDictionary = {
     marker: "Bit",
   },
   settledFx: "Klip {n} faqat eng kuchli effektini saqlaydi: 1440p dan katta kadrda oʻtishli klipda bitta effekt boʻladi.",
+  settledAnim: "Klip {n}: animatsiya klipning yarmigacha qisqartirildi (yoki klip juda qisqa boʻlsa, olib tashlandi).",
 };

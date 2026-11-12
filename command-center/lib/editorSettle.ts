@@ -21,6 +21,7 @@ import {
   FX_NAMES,
   INTERP_SECONDS_PER_FRAME,
   XFADE_LARGE_ZOOM_MAX,
+  fitClipAnims,
   layout,
   lookSeconds,
   ms,
@@ -52,7 +53,8 @@ export type SettleChange =
   | { kind: "speed"; clip: number; max: number }
   | { kind: "look"; clip: number }
   | { kind: "mask"; clip: number }
-  | { kind: "fxLarge"; clip: number };
+  | { kind: "fxLarge"; clip: number }
+  | { kind: "anim"; clip: number };
 
 function drop(c: VideoClip, ...keys: (keyof VideoClip)[]): VideoClip {
   const out = { ...c };
@@ -131,6 +133,15 @@ export function settleAll(
   const changes: SettleChange[] = [];
   let m = model;
   const number = (id: string) => m.clips.findIndex((c) => c.id === id) + 1;
+
+  // 0. an entrance or exit longer than half its clip (after a trim or a speed change) is held to half of it, and
+  //    dropped under ANIM_MIN_S (lib/editor.ts fitClipAnims, as a split does)
+  for (const c of [...m.clips]) {
+    const fitted = fitClipAnims(c);
+    if (fitted === c) continue;
+    m = put(m, c.id, fitted);
+    changes.push({ kind: "anim", clip: number(c.id) });
+  }
 
   // 1. a backwards part is shortened to what the frame size lets it hold
   for (const c of [...m.clips]) {
@@ -251,7 +262,11 @@ export function settleAll(
     if (!worst) break;
     const x = m.clips.find((k) => k.id === worst!.id)!;
     changes.push({ kind: "look", clip: number(worst.id) });
-    m = put(m, worst.id, drop(x, "color", "mask", "fx", "anim_in", "anim_in_s", "anim_out", "anim_out_s"));
+    // a fade costs nothing: only a slide or a zoom goes with the colour, mask and effects
+    const moves = (["in", "out"] as const).flatMap((s) =>
+      x[`anim_${s}`] && x[`anim_${s}`] !== "fade" ? ([`anim_${s}`, `anim_${s}_s`] as const) : [],
+    );
+    m = put(m, worst.id, drop(x, "color", "mask", "fx", ...moves));
   }
 
   // 5. shapes that no longer fit the export's memory or time (another frame size, a shorter timeline) are made

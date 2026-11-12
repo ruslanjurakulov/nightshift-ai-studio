@@ -3277,6 +3277,20 @@ function splitAt(
 
 /** Hold a split piece's animation to half the piece; under ANIM_MIN_S it goes (modules/timeline.py
  *  `_fit_piece_anims`). */
+/** A clip with its animations held to half its length (dropped under ANIM_MIN_S): the same clip when they fit.
+ *  For the editor's settle step after a trim or a speed change (lib/editorSettle.ts). */
+export function fitClipAnims(c: VideoClip): VideoClip {
+  if (!c.anim_in && !c.anim_out) return c;
+  const out = { ...c };
+  fitPieceAnims(out);
+  return out.anim_in === c.anim_in &&
+    out.anim_out === c.anim_out &&
+    out.anim_in_s === c.anim_in_s &&
+    out.anim_out_s === c.anim_out_s
+    ? c
+    : out;
+}
+
 function fitPieceAnims(c: VideoClip): void {
   const half = Math.floor((clipLength(c) / 2) * 1000) / 1000;
   for (const side of ["in", "out"] as const) {

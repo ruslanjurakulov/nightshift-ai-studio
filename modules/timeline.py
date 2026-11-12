@@ -1063,7 +1063,9 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim, frame=(None, N
             _validate_mask(clip["mask"], where, problems)
         if "fx" in clip:
             _validate_fx(clip["fx"], where, problems)
-        _validate_clip_anims(clip, where, problems)
+        # The half-the-clip check needs the clip's length: not when its speed or speed curve is already refused.
+        _validate_clip_anims(clip, where, problems,
+                             timed=ramp is not None or ("speed_curve" not in clip and bool(speed)))
         if "move" in clip:
             _validate_clip_move(clip["move"], where, problems)
         if "crop" in clip:
@@ -1259,7 +1261,7 @@ def _validate_fx(fx, where, problems) -> None:
         _num_in(fx, k, 0, FX_MAX, fw, problems)
 
 
-def _validate_clip_anims(clip, where, problems) -> None:
+def _validate_clip_anims(clip, where, problems, *, timed: bool = True) -> None:
     """A V clip's entrance and exit: names from ``V_ANIMS``, durations 0.1..2 s (0.4 when absent), a duration
     only with its name, each at most half the clip, and not on the same side as the clip's own fade."""
     for side in ("in", "out"):
@@ -1273,11 +1275,11 @@ def _validate_clip_anims(clip, where, problems) -> None:
         fade = clip.get(f"fade_{side}_s", 0)
         if name in clip and _is_num(fade) and fade > 0:
             problems.append(f"{where}: {name} and fade_{side}_s cannot both be set (a fade is an animation)")
-        if name in clip and _in_range(clip.get("in_s")) and _in_range(clip.get("out_s")):
+        if timed and name in clip and _in_range(clip.get("in_s")) and _in_range(clip.get("out_s")):
             d = clip.get(dur, ANIM_DEFAULT_S)
             try:
                 length = clip_length_s(clip)
-            except (OverflowError, ValueError, ZeroDivisionError, TypeError):
+            except (OverflowError, ValueError, ZeroDivisionError, TypeError, KeyError):
                 continue
             if _is_num(d) and d > length / 2 + 1e-9:
                 problems.append(f"{where}: {name} lasts {d:g} s, more than half the clip ({length:.3f} s)")

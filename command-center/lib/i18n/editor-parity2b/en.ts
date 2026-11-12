@@ -53,6 +53,7 @@ export const parity2bEn = {
     marker: "Beat",
   },
   settledFx: "Clip {n} keeps only its strongest effect: in a frame above 1440p a cross-faded clip takes one.",
+  settledAnim: "Clip {n}: its animation was shortened to half the clip (or taken off when the clip is too short for one).",
 };
 
 export type Parity2bDictionary = typeof parity2bEn;

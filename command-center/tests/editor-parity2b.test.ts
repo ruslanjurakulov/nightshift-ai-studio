@@ -20,7 +20,9 @@ import {
   newDocForAsset,
   setCrossfade,
   setCrossfadeStyle,
+  setSpeed,
   splitClip,
+  trimClip,
   toDoc,
   toModel,
   validateTimeline,
@@ -153,6 +155,30 @@ describe("a clip's entrance and exit", () => {
     expect([a.anim_in, a.anim_in_s, a.anim_out]).toEqual(["zoom", 0.5, undefined]);
     expect([b.anim_in, b.anim_out]).toEqual([undefined, "fade"]);
     expect(validateTimeline(toDoc(r.model))).toEqual([]);
+  });
+});
+
+describe("settling a clip's animations after a trim or a speed change", () => {
+  it("holds them to half the clip, drops one under 0.1 s, and says so; a document that fits is untouched", () => {
+    const m0 = setClipAnimLength(setClipAnim(setClipAnim(model({}, 4), "c1", "in", "zoom"), "c1", "out", "fade"), "c1", "in", 1.5);
+    expect(settleAll(m0).changes).toEqual([]);
+    const id = c0(m0).id;
+    const sped = setSpeed(m0, id, 2); // 2 s long now: half is 1 s
+    const { model: out, changes } = settleAll(sped, m0);
+    expect(changes).toContainEqual({ kind: "anim", clip: 1 });
+    expect(c0(out)).toMatchObject({ anim_in: "zoom", anim_in_s: 1, anim_out: "fade" });
+    expect(validateTimeline(toDoc(out))).toEqual([]);
+    const tiny = settleAll(trimClip(m0, id, "out", 0.15, null), m0).model; // 0.15 s: half is under 0.1 s
+    expect(c0(tiny).anim_in).toBeUndefined();
+    expect(validateTimeline(toDoc(tiny))).toEqual([]);
+  });
+
+  it("over the export's time a fade stays: it costs nothing", () => {
+    const m0 = model({ fx: { rgb_split: 100 }, anim_in: "fade", anim_in_s: 0.4, anim_out: "zoom", anim_out_s: 0.4 }, 600);
+    const { model: out } = settleAll({ ...m0, width: 3840, height: 2160, fps: 60 }, m0);
+    expect(c0(out)).toMatchObject({ anim_in: "fade", anim_in_s: 0.4 });
+    expect(c0(out).anim_out).toBeUndefined();
+    expect(c0(out).fx).toBeUndefined();
   });
 });
 

@@ -469,6 +469,9 @@ export function TimelineEditor({
   // when no paid size is ticked any more: ticking the same size again asks for a new one.
   const paidReady = paidOk.ready && paidOk.key === `${rev}|${paidChosen.join(",")}`;
   const anyPaid = paidChosen.length > 0;
+  // The "applied to all cuts" note belongs to the clip it was given on.
+  useEffect(() => setCrossfadeAllNote(null), [selected]);
+
   useEffect(() => {
     if (!anyPaid) setPaidOk((c) => (c.ready ? { ready: false, key: "", maxCredits: {} } : c));
   }, [anyPaid]);

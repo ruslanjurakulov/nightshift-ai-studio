@@ -274,9 +274,9 @@ export function TimelineStrip({
           aria-label={te.clipsTrack}
           role="list"
         >
-          {beats.map((b) => (
+          {beats.map((b, i) => (
             <span
-              key={`beat-${b}`}
+              key={`beat-${i}-${b}`}
               aria-hidden
               data-testid="beat-marker"
               className="pointer-events-none absolute -top-1 z-10 h-2 w-px bg-[var(--ns-amber)]"
