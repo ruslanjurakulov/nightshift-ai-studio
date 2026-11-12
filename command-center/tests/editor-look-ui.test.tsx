@@ -143,6 +143,30 @@ describe("selecting several items", () => {
     expect(screen.getByRole("button", { name: rs.mode }).getAttribute("aria-pressed")).toBe("false");
   });
 
+  it("a long press the phone sends no click after does not swallow the next tap on that item", () => {
+    class TouchPointer extends MouseEvent {
+      pointerType: string;
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.pointerType = init.pointerType ?? "mouse";
+      }
+    }
+    vi.stubGlobal("PointerEvent", TouchPointer);
+    vi.useFakeTimers();
+    mount();
+    fireEvent.pointerDown(item("clip", "c2"), { pointerType: "touch", clientX: 5, clientY: 5 });
+    act(() => vi.advanceTimersByTime(520));
+    fireEvent.pointerCancel(item("clip", "c2"), { pointerType: "touch" });
+    fireEvent.click(screen.getByRole("button", { name: rs.done }));
+    // a later tap on the same clip (pointer down, then its click) selects it, as any tap does
+    fireEvent.click(item("clip", "c1"));
+    fireEvent.pointerDown(item("clip", "c2"), { pointerType: "touch", clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(item("clip", "c2"), { pointerType: "touch" });
+    fireEvent.click(item("clip", "c2"));
+    expect(item("clip", "c2").getAttribute("aria-pressed")).toBe("true");
+    expect(item("clip", "c1").getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("Delete takes the whole selection in ONE undo step, the later text moves up with it, and the document is valid", async () => {
     mount();
     fireEvent.click(item("clip", "c2"));

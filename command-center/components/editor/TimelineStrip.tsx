@@ -235,6 +235,8 @@ export function TimelineStrip({
       else onSelect(x);
     },
     onPointerDown: (e: PointerEvent<HTMLElement>) => {
+      // A phone may send no click after a long press: the next press starts afresh, so no later click is swallowed.
+      pressed.current = null;
       if (e.pointerType !== "touch" || !onToggle) return;
       endHold();
       // Half a second held still: select mode, with this item added (a phone has no Shift key).

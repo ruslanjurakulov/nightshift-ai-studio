@@ -37,7 +37,8 @@ into one commit) and #484 (group 11); group 12 is the editor-parity change that 
 | 12 | `claude/editor-parity-1` | V clip `gain_db`; a video on an A track (detached sound); `speed` 0.1-10; export frame rate | added by this branch (section 12) |
 | 14 | `claude/editor-parity-2` | V clip `color` (temperature, tint, hue, curve), `mask`; silence removal (no field) | on main (#675, section 14) |
 | 16 | `claude/editor-parity-2b` | V clip `fx` (glitch, shake, rgb_split, flash), `anim_in` / `anim_out`; apply a cross-fade to all cuts, beat markers (no field) | added by this branch (section 16) |
-| 17 | `claude/editor-parity-b1` | none: rolling, slip and slide edits, in / out marks with ripple delete, lift and insert, J / L cut, the key map, preview guides | added by this branch (section 17) |
+| 17 | `claude/editor-parity-b1` | none: rolling, slip and slide edits, in / out marks with ripple delete, lift and insert, J / L cut, the key map, preview guides | on main (#690, section 17) |
+| 18 | `claude/editor-parity-2-look` | none: multi-select, paste attributes and look presets, sync lock | added by this branch (section 18) |
 
 ## 1. Blend styles (`transition.style`, crossfade only)
 
@@ -1066,7 +1067,8 @@ mask still fits (1 + 1.0 = 2.0 s per second); at 4K60 (x8) a masked clip longer 
   TypeScript detector to it (within one block).
 * The proposal is a list of cuts (0.1 s of sound kept either side, none leaving a piece shorter than a clip, never
   the whole clip); nothing changes until the person presses "Cut N silent parts", which is one undo step: splits and
-  ripple deletes of the picture (texts, sounds and overlays keep their times; the hint says so). Only for a video
+  ripple deletes of the picture. Since section 18 (sync lock) the texts, sounds, overlays and shapes after each cut move
+  up with the picture, cut by cut, unless their lane is locked; captions keep their times (the hint says so). Only for a video
   clip at one speed, forwards (no curve, reverse or freeze); stops at `MAX_EDITOR_CLIPS` and says how many fitted.
 * The clip's own sound must be on (`audio: true`): a muted clip has nothing to listen to, and a clip whose sound
   was detached to an A track would lose step with it if only the picture were cut ("Turn it on first").
@@ -1234,7 +1236,9 @@ trim, settles through `settleAll` like any edit (`apply`; a drag settles when it
   plain edge is that edge. So both ends of a marked range are plain cuts and its length is what it covers.
 * **Ripple delete** (`extractRange`, key '): the picture between the marks goes and the clips after it close up;
   every sound is cut there too and the later ones move up with the picture, so a detached sound stays with its
-  picture. Texts, overlays and shapes keep their times (sync lock is batch 2c). A gap inside the range closes.
+  picture. Texts, overlays and shapes move with it by sync lock (section 18): after the range by its length, inside it
+  to the cut; a locked lane keeps its times, and a locked sound lane is neither cut nor moved. A gap inside the range
+  closes.
   Refused for the whole picture, a curve under a mark, a full lane, a sliver against a cross-fade, or a sound that
   would have to be cut in two with the mix full.
 * **Lift** (`liftRange`, key ;): the range becomes a **gap** and every sound is cut out of it, so it is black and
@@ -1303,3 +1307,98 @@ corpus; `tools/ms_round_table.py`), and `tests/editor-ms-round.test.ts` holds `m
 A document whose picture has a gap (a clip starting after the one before it ended; another tool can write one) used to
 be closed up when the editor opened it, so the editor showed something other than what the export rendered. It now
 opens with the gap, black in the preview and in the strip, as the export renders it; "Close gap" closes it.
+
+## 18. Reuse a look: multi-select, paste attributes, presets, sync lock (no new field)
+
+Editor parity phase 2 (the plan's top-20 #2, #12 and #13; Premiere rows TE01, TE02, TE25, TE26, FX02, MK09, SQ13).
+Browser only: no document field, no render change, no migration. Every operation changes fields the document already
+has and goes through `settleAll` like any edit; each is ONE undo step.
+
+### Multi-select (`lib/editorSelection.ts`)
+
+* The selection is a set (editor state, never saved): `selected` stays the item the inspector shows, and `multi`
+  holds the whole set when there are two or more. A plain click selects one item, exactly as before.
+* Shift- or Ctrl / Cmd-click adds or takes out; a mouse or pen drag on an empty part of the strip draws a marquee and
+  selects every item its box touches (with a modifier: added to the selection). On a phone a long press (half a
+  second, held still) turns select mode on with that item alone, and taps then add or take out; "Select several" is
+  the same mode as a button, for anyone without a long press. "Select all after the playhead" is track select forward
+  on every lane (the A key of other editors is not mapped: on this editor's Cyrillic test the physical A key must
+  stay unmapped).
+* With two or more selected the selection bar offers: Delete, Move clips earlier / later, a frame earlier / later,
+  Copy, Paste look…, Clear. Keys: Delete, Ctrl + C, Ctrl + V, Alt + Left / Right (one frame; with Shift five), Ctrl /
+  Cmd + Alt + V (paste attributes). Alt + arrows act only when a text, sound, overlay or shape is selected, so Alt +
+  Left stays the browser's Back otherwise; none of the keys act in a text field or on a slider.
+* Rules: a delete removes every selected item; picture clips are ripple-deleted one at a time, the last first, each
+  with sync lock, and the picture keeps at least one clip (the first selected stays, and the status says so). The
+  picture lane is magnetic, as CapCut's main track is: its clips are moved one place as a block (a gap stays where it
+  is, as `moveClip` rules), never nudged in time (Slide does that); texts, sounds, overlays and shapes are nudged by
+  frames together, held so the earliest does not go before 0. Copy keeps the clips in order and the other items with
+  their spacing; paste puts the clips after the selected clip (each a ripple insert with sync lock) and the rest at
+  the playhead, with fresh ids; an item the project has no room for (the lanes' limits, the mix, a shape the export
+  could not afford, anything the validator refuses) is left out and counted.
+
+### Paste attributes and presets (`lib/editorPasteLook.ts`)
+
+* A look is the look fields a picture clip has, in groups: effects (the validator's own effect list: filter,
+  strength, vignette, blur, sharpen, grain, mirror, turn), grade, colour, mask, effects pack, motion (fit, move,
+  crop, angle), entrance and exit, fades, and the clip's own sound (volume, noise reduction, loudness). The groups are
+  built from `V_CLIP_FIELDS` / `CLIP_EFFECT_FIELDS` (exported from `lib/editor.ts`), and a test holds every field of
+  that list to a group or to `NOT_LOOK` (place, timing, speed, curve, reverse, freeze, the clip's sound switch, the
+  way in, smoothing and steadying: they change the timeline's length or its export budget).
+* "Copy look" (or Ctrl + C on a clip) copies; "Paste look…" opens the dialog: the source (the copied clip or a
+  preset), the groups the source has (all ticked), and "Paste on N clips". A ticked group REPLACES that group on each
+  selected picture clip. A group a clip cannot take is skipped for that clip and named in the status: the clip's own
+  sound on a picture, and anything that would make the document invalid there (a fade longer than a short clip, a
+  fade where it has an entrance). The result is settled like any edit (a mask on a cross-faded clip in a 4K frame
+  goes, an entrance is held to half a short clip).
+* Presets: "Save as preset" keeps the copied look under a name in this browser (`localStorage`, key
+  `ns:editor:look-presets:v1:<member>`), per member. At most 24 presets, names of at most 40 characters (control,
+  zero-width and direction characters removed), at most 64 KiB in all; the same name (any case) replaces. Read back,
+  the stored text is capped before parsing, must be version 1, and each look keeps only look fields whose group a
+  ten-second 1080p clip takes as the validator rules (a group with a refused value is dropped whole), then is put in
+  the editor's own form. A corrupted, oversized, other-version or hostile value is an empty list (or loses the bad
+  part), never an error and never a document field. Reading and writing are wrapped: a private window or a full
+  store is a failed save the dialog says, not a crash.
+
+### Sync lock (`lib/editorSync.ts`)
+
+* **Behaviour change.** Ripple edits of the picture now move the texts, sounds, overlays and shapes after the edit
+  point (until now they kept their times, and the extract and silence hints said so). Default: every lane follows,
+  as in Premiere (sync lock on for every track) and CapCut (items follow the main track). Each lane has a lock
+  ("Sync lock: Texts / Sounds / Overlays / Shapes", pressed = locked); a locked lane keeps its times. The locks are
+  kept in this browser (`ns:editor:sync-locks:v1`), never in the document.
+* Which edits: a clip removed (Delete, the inspector, a multi-delete), a trim (handles, keys, the inspector's in / out),
+  Q / W ripple trim, ripple delete between marks, silence cuts, an insert at the playhead, paste and duplicate, and
+  closing a gap. A speed change, moving a clip one place, a split, a roll, a slip, a slide and a lift move nothing
+  (the edits that keep the picture's timing are found to, from the lane itself).
+* How: the shift is read from the picture lane before and after the edit (`rippleOf`): the clips at the start that
+  kept place and length are before the edit, the clips at the end that kept their length and moved by one amount are
+  after it. Extract and insert are told their range (a split there gives the clip after it a new id), and silence
+  cuts apply it cut by cut.
+* The rule, written down and tested: (1) an item that starts at or after the edit's end moves by the ripple, keeping
+  its length; (2) an item over a clip that was trimmed follows its frame (a head trim moves it up with the rest of
+  the clip; when its frame was trimmed away, to that clip's new edge); (3) an item that starts inside a part that was
+  taken out goes to the cut, keeping its length: items are never deleted, never trimmed, never put before the edit
+  point and so never before 0; (4) an item that starts before the edit point never moves, even when it runs across
+  it; (5) a moved item may share time with another (every text and sound is its own track in the document, overlays
+  and shapes are layers): nothing collides, merges or is dropped. Captions and the tracks the editor does not edit
+  keep their times (captions are timed from the transcript's words).
+* Extract cuts the sounds by the range itself when their lane follows (as before) and leaves them alone when it is
+  locked; the other lanes move by sync lock.
+
+### Tests
+
+`tests/editor-look.test.ts` (sync lock cases, silence cuts with and without locks, the selection edits, paste
+attributes, preset storage: garbage, oversize, other versions, hostile values, the selection keys, and 5,000 seeded
+multi-edits with settling, undo and redo), `tests/editor-look-ui.test.tsx` (the editor: selection, long press, keys
+and their focus rules, sync lock, the dialog, presets, three languages), `tests/editor-look-fuzz.test.ts` writing
+`samples/editor_look_fuzz_docs.json.gz` (every state of 9,000 seeded edits) that `tests/test_editor_look_fuzz.py` holds
+to the Python validator, and `tools/visual-qa/editor-reuse/smoke.mjs` (real Chromium at 320, 390, 768 and 1440 px).
+
+### Strings
+
+`lib/i18n/editor-reuse/{en,ru,uz}.ts` (`t.editor.reuse`); ru and uz are drafts for a native read.
+
+### Rollout
+
+Nothing to order: no field, no migration; older workers render what this saves.
