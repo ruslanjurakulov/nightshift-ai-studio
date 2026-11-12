@@ -214,6 +214,7 @@ export const VAULT_RESULTS = [
   "missing_scopes",
   "no_channel",
   "wrong_channel",
+  "channel_in_use",
   "not_available",
   "unavailable",
   "exchange_rejected",
@@ -228,13 +229,26 @@ export function parseVaultResult(raw: string | null | undefined): VaultResult | 
   return (VAULT_RESULTS as readonly string[]).includes(v) ? (v as VaultResult) : null;
 }
 
+/**
+ * Migration 0141: this YouTube channel is already connected to ANOTHER organization (workspace). The database answers SQLSTATE 23P01
+ * with the hint (and message prefix) `youtube_channel_in_use`, and never says which organization holds it. Read from our own marker
+ * only; the error text never reaches the browser.
+ */
+export function isYoutubeChannelInUse(error: { code?: string | null; message?: string | null; hint?: string | null }): boolean {
+  return (
+    error.code === "23P01" &&
+    (error.hint === "youtube_channel_in_use" || (error.message ?? "").startsWith("youtube_channel_in_use:"))
+  );
+}
+
 /** Map a store_channel_token error to a result word. Reads the SQLSTATE and
  *  our own message markers only; nothing from the error reaches the browser. */
-export function storeErrorResult(error: { code?: string | null; message?: string | null }): VaultResult {
+export function storeErrorResult(error: { code?: string | null; message?: string | null; hint?: string | null }): VaultResult {
   const code = error.code ?? "";
   const message = error.message ?? "";
   if (isMissingFunction({ code, message })) return "not_available";
   if (message.includes("wrong_youtube_channel")) return "wrong_channel";
+  if (isYoutubeChannelInUse({ code, message, hint: error.hint })) return "channel_in_use";
   if (code === "42501") return "forbidden";
   return "failed";
 }

@@ -74,6 +74,7 @@ export const connectPickerUz: ConnectPickerDictionary = {
       other_channel: "Bu kirish u kanal nomidan ishlamaydi. Qayta kiring va uni Google ekranida tanlang.",
       id_taken: "Bunday nomli kanal allaqachon bor. Hech narsa qoʻshilmadi.",
       busy: "Bu allaqachon ulanmoqda. Biroz kuting.",
+      channel_in_use: "Bu YouTube kanali allaqachon boshqa ish maydoniga ulangan. Avval uni oʻsha yerda uzing. Bu yerda hech narsa ulanmadi.",
       failed: "Ulab boʻlmadi. Hech narsa qoʻshilmadi. Qayta urining.",
     },
   },

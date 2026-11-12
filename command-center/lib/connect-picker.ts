@@ -71,6 +71,8 @@ export const CONFIRM_RESULTS = [
   "id_taken",
   "other_channel",
   "busy",
+  /** 0141: the YouTube channel is connected to another workspace; nothing was connected here. */
+  "channel_in_use",
   "failed",
 ] as const;
 export type ConfirmResult = (typeof CONFIRM_RESULTS)[number];

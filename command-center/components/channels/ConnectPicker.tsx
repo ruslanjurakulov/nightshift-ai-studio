@@ -76,7 +76,7 @@ export function ConnectPicker({ view }: { view: PickView | null }) {
         );
         return;
       }
-      if (result === "created_not_connected") {
+      if (result === "created_not_connected" || result === "channel_in_use") {
         // The channel exists, so a second press must not create another.
         setError(result);
         setDone(true);

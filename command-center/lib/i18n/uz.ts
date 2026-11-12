@@ -2533,6 +2533,7 @@ export const uz: Dictionary = {
       missing_scopes: "Hamma ruxsat berilmadi, shuning uchun hech narsa saqlanmadi — pipelineʼga hammasi kerak. Qayta ulang va barcha belgilarni qoldiring.",
       no_channel: "Bu Google akkauntida YouTube kanali yoʻq. Kanal egasi boʻlgan akkauntni (yoki brend akkauntni) tanlang.",
       wrong_channel: "Bu Google akkauntining kanali shu kanal tasdiqlangan kanal emas. Hech narsa saqlanmadi — toʻgʻri akkauntni tanlang.",
+      channel_in_use: "Bu YouTube kanali allaqachon boshqa ish maydoniga ulangan. Avval uni oʻsha yerda uzing.",
       not_available: "Kanal ulanishlari hali sozlanmagan (migration 0022). Hech narsa saqlanmadi.",
       unavailable: "Kanal tashkilotini tekshirib boʻlmadi. Hech narsa saqlanmadi — qayta urinib koʻring.",
       exchange_rejected: "Google kirish kodini rad etdi. Qayta ulab koʻring.",

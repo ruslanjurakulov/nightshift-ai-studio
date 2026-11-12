@@ -2545,6 +2545,7 @@ export const en = {
       missing_scopes: "Not every permission was granted, so nothing was stored — the pipeline needs all of them. Connect again and leave every box ticked.",
       no_channel: "That Google account has no YouTube channel. Choose the account (or brand account) that owns the channel.",
       wrong_channel: "That Google account's channel is not the one this channel was verified against. Nothing was stored — choose the right account.",
+      channel_in_use: "This YouTube channel is already connected to another workspace. Disconnect it there first.",
       not_available: "Channel connections are not set up yet (migration 0022). Nothing was stored.",
       unavailable: "Could not check the channel's organization. Nothing was stored — try again.",
       exchange_rejected: "Google rejected the sign-in code. Try connecting again.",

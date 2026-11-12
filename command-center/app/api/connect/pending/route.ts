@@ -27,11 +27,12 @@ const STATUS: Record<ConfirmResult, number> = {
   id_taken: 409,
   other_channel: 409,
   busy: 409,
+  channel_in_use: 409,
   failed: 502,
 };
 
 /** Answers after which the held authorisation is gone (or never will work). */
-const TERMINAL: ReadonlySet<ConfirmResult> = new Set(["connected", "created_not_connected", "expired", "forbidden"]);
+const TERMINAL: ReadonlySet<ConfirmResult> = new Set(["connected", "created_not_connected", "channel_in_use", "expired", "forbidden"]);
 
 function answer(result: ConfirmResult, extra: Record<string, unknown> = {}) {
   const res = NextResponse.json({ ok: result === "connected" || result === "created_not_connected", result, ...extra }, { status: STATUS[result] });

@@ -27,7 +27,7 @@ const ALL_SCOPES = [
   "https://www.googleapis.com/auth/yt-analytics.readonly",
 ];
 
-type RpcAnswer = { data: unknown; error: { code?: string; message?: string } | null };
+type RpcAnswer = { data: unknown; error: { code?: string; message?: string; hint?: string } | null };
 
 const state: {
   user: { id: string } | null;
@@ -314,6 +314,16 @@ describe("callback — customer channel into Vault", () => {
     viewing(org(ORG_A, "admin"), ["ch-a"]);
     state.storeAnswer = { data: null, error: { code: "22023", message: "wrong_youtube_channel: …" } };
     expect((await callback.GET(callbackReq("ch-a"))).headers.get("location")).toContain("yt=wrong_channel");
+  });
+
+  it("reports a YouTube channel connected to another workspace by name (0141), and nothing else from the error", async () => {
+    viewing(org(ORG_A, "admin"), ["ch-a"]);
+    state.storeAnswer = {
+      data: null,
+      error: { code: "23P01", message: "youtube_channel_in_use: this YouTube channel is already connected to another workspace; disconnect it there first", hint: "youtube_channel_in_use" },
+    };
+    const loc = (await callback.GET(callbackReq("ch-a"))).headers.get("location") ?? "";
+    expect(loc).toBe("https://app.test/all-channels/channels?yt=channel_in_use");
   });
 
   it("says 0022 is missing instead of claiming success", async () => {
@@ -612,6 +622,11 @@ describe("helpers", () => {
     expect(helpers.storeErrorResult({ code: "22023", message: "wrong_youtube_channel: y" })).toBe("wrong_channel");
     expect(helpers.storeErrorResult({ code: "42883", message: "" })).toBe("not_available");
     expect(helpers.storeErrorResult({ code: "22023", message: "invalid refresh token" })).toBe("failed");
+    // 0141: the stable code AND our own marker (hint or message prefix); either alone is not enough
+    expect(helpers.storeErrorResult({ code: "23P01", message: "youtube_channel_in_use: x", hint: "youtube_channel_in_use" })).toBe("channel_in_use");
+    expect(helpers.storeErrorResult({ code: "23P01", message: "youtube_channel_in_use: x" })).toBe("channel_in_use");
+    expect(helpers.storeErrorResult({ code: "23P01", message: "conflicting key value violates exclusion constraint" })).toBe("failed");
+    expect(helpers.storeErrorResult({ code: "XX000", message: "youtube_channel_in_use: x", hint: "youtube_channel_in_use" })).toBe("failed");
   });
 
   it("has a message for every result word in every language", async () => {

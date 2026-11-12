@@ -22,8 +22,8 @@ const s = {
   platformAdmin: true,
   rpcs: [] as Rpc[],
   takenIds: new Set<string>(),
-  createError: null as { code: string } | null,
-  storeError: null as { code: string; message: string } | null,
+  createError: null as { code: string; message?: string; hint?: string } | null,
+  storeError: null as { code: string; message: string; hint?: string } | null,
   existing: [] as unknown[],
   tokenStatusAvailable: true,
   audits: [] as { action: string; channelId?: string; detail?: Record<string, unknown> }[],
@@ -305,6 +305,15 @@ describe("confirm (a customer organization: the token goes to the vault)", () =>
     // A second press must not create a second channel.
     expect((await yt.confirmYoutubePick({ userId: "u1", handle, youtubeChannelId: YT })).result).toBe("expired");
   });
+  it("says a YouTube channel another workspace holds is in use (0141), and a second press creates nothing", async () => {
+    s.storeError = { code: "23P01", message: "youtube_channel_in_use: this YouTube channel is already connected to another workspace; disconnect it there first", hint: "youtube_channel_in_use" };
+    const { handle } = await connected();
+    const out = await yt.confirmYoutubePick({ userId: "u1", handle, youtubeChannelId: YT });
+    expect(out).toEqual({ result: "channel_in_use", channelId: "extinctworld" });
+    expect(s.audits.at(-1)).toMatchObject({ action: "channel.youtube.connect_failed", detail: { result: "channel_in_use" } });
+    expect((await yt.confirmYoutubePick({ userId: "u1", handle, youtubeChannelId: YT })).result).toBe("expired");
+    expect(s.rpcs.filter((r) => r.name === "create_channel")).toHaveLength(1);
+  });
   it("lets a failed creation be retried", async () => {
     s.createError = { code: "XX000" };
     const { handle } = await connected();
@@ -327,6 +336,15 @@ describe("confirm (the operator's organization: the token goes to a repository s
     expect(s.rpcs.some((r) => r.name === "store_channel_token")).toBe(false);
     expect(s.secrets.map((x) => x.name)).toEqual(["CHRONOS_YT_TOKEN_EXTINCTWORLD"]);
     expect(JSON.parse(s.secrets[0].value)).toMatchObject({ refresh_token: "1//REFRESH-token-value", client_id: "client-id.apps.googleusercontent.com" });
+  });
+  it("says in use when the database refuses the stamp for a YouTube channel another workspace holds (0141), not 'id taken'", async () => {
+    s.createError = { code: "23P01", message: "youtube_channel_in_use: …", hint: "youtube_channel_in_use" };
+    const { handle } = await connected();
+    expect((await yt.confirmYoutubePick({ userId: "u1", handle, youtubeChannelId: YT })).result).toBe("channel_in_use");
+    // one attempt, no other ids tried, no secret written, and the held sign-in is gone
+    expect(s.rpcs.filter((r) => r.name === "create_channel")).toHaveLength(1);
+    expect(s.secrets).toEqual([]);
+    expect((await yt.confirmYoutubePick({ userId: "u1", handle, youtubeChannelId: YT })).result).toBe("expired");
   });
   it("refuses a caller who is not a platform admin at the confirm", async () => {
     const { handle } = await connected();

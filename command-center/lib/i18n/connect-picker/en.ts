@@ -77,6 +77,7 @@ export const connectPickerEn = {
       other_channel: "This sign-in will not act as that channel. Sign in again and choose it on Google's screen.",
       id_taken: "A channel with that name already exists. Nothing was added.",
       busy: "That is already being connected. Wait a moment.",
+      channel_in_use: "This YouTube channel is already connected to another workspace. Disconnect it there first. Nothing was connected here.",
       failed: "Connecting failed. Nothing was added. Try again.",
     },
   },

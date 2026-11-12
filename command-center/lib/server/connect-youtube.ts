@@ -30,7 +30,7 @@ import {
   releasePending,
   type YoutubeGrant,
 } from "@/lib/server/connect-pending";
-import { missingScopes } from "@/lib/channel-tokens";
+import { isYoutubeChannelInUse, missingScopes } from "@/lib/channel-tokens";
 import { readChannelPrefill } from "@/lib/welcome";
 import {
   CONNECT_PICK_PATH,
@@ -245,7 +245,7 @@ export async function linkedYoutubeChannels(
   }
 }
 
-type CreateOutcome = "created" | "taken" | "forbidden" | "failed";
+type CreateOutcome = "created" | "taken" | "in_use" | "forbidden" | "failed";
 
 async function createPickedChannel(opts: {
   slug: string;
@@ -284,6 +284,8 @@ async function createPickedChannel(opts: {
       p_verified: opts.stamp,
     });
     if (!error) return "created";
+    // 0141: the stamp would confirm a YouTube channel another workspace holds.
+    if (isYoutubeChannelInUse(error)) return "in_use";
     if (error.code === "23505") return "taken";
     return error.code === "42501" ? "forbidden" : "failed";
   } catch {
@@ -376,26 +378,31 @@ export async function confirmYoutubePick(opts: {
       }
     }
     if (!slug || outcome !== "created") {
-      const result: ConfirmResult = outcome === "taken" ? "id_taken" : outcome === "forbidden" ? "forbidden" : "failed";
+      const result: ConfirmResult =
+        outcome === "taken" ? "id_taken" : outcome === "in_use" ? "channel_in_use" : outcome === "forbidden" ? "forbidden" : "failed";
       await logAudit({
         action: "channel.youtube.connect_failed",
         detail: { flow: "pick", store: access.store, result, youtube_channel_id: candidate.id },
       });
-      if (result === "forbidden") finishPending(handle);
+      if (result === "forbidden" || result === "channel_in_use") finishPending(handle);
       else releasePending(handle);
       return { result };
     }
 
     // The channel exists (paused). Now the token, where the existing connect puts it.
     let stored: boolean;
+    let inUse = false;
     if (access.store === "vault") {
       const refresh = grant.tokens.refresh_token ?? "";
-      stored = (await storeVaultToken({
+      const vault = await storeVaultToken({
         channelId: slug,
         refreshToken: refresh,
         grantedScopes: grant.scopes,
         youtube: { id: candidate.id, title: candidate.title },
-      })) === "connected";
+      });
+      stored = vault === "connected";
+      // 0141: another workspace holds this YouTube channel. The new channel stays here, paused and not connected.
+      inUse = vault === "channel_in_use";
     } else {
       stored = await storeGithubToken(slug, grant);
     }
@@ -409,11 +416,11 @@ export async function confirmYoutubePick(opts: {
       detail: {
         flow: "pick",
         store: access.store,
-        result: stored ? "connected" : "created_not_connected",
+        result: stored ? "connected" : inUse ? "channel_in_use" : "created_not_connected",
         youtube_channel_id: candidate.id,
       },
     });
-    return { result: stored ? "connected" : "created_not_connected", channelId: slug };
+    return { result: stored ? "connected" : inUse ? "channel_in_use" : "created_not_connected", channelId: slug };
   } catch {
     // Never leave the record locked by a throw: the person may try again.
     releasePending(handle);
