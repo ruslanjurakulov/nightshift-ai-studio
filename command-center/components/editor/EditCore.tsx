@@ -31,7 +31,7 @@ export function ToolPicker({ tool, onTool }: { tool: EditTool; onTool: (t: EditT
   const ct = t.editor.core.tools;
   const hintId = useId();
   return (
-    <fieldset className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0" aria-describedby={hintId} data-testid="tool-picker">
+    <fieldset className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0" aria-describedby={hintId} data-testid="tool-picker" data-editor-timeline="">
       <legend className="sr-only">{ct.label}</legend>
       <div className="flex flex-wrap items-center gap-1.5">
         <span aria-hidden className="text-xs text-[var(--color-muted)]">
@@ -88,7 +88,7 @@ export function MarksBar({
   const id = useId();
   const any = marks.in !== null || marks.out !== null;
   return (
-    <div role="group" aria-label={cm.group} className="flex flex-col gap-1.5" data-testid="marks-bar">
+    <div role="group" aria-label={cm.group} className="flex flex-col gap-1.5" data-testid="marks-bar" data-editor-timeline="">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className={quietBtn} onClick={() => onMark("in")} aria-keyshortcuts="I">
           <ArrowRightToLine className="size-3.5" aria-hidden />

@@ -96,9 +96,11 @@ export function useEditorShortcuts(p: {
       const out = splitClip(s.model, picked, s.playhead);
       if (out) s.apply(out.model);
     };
-    // Ctrl / Cmd + K is also the app's command palette (a listener on window too): in the editor the split wins, so
-    // it is taken in the capture phase, before any bubbling listener sees it. In a text field it is left to the palette.
+    // Ctrl / Cmd + K is also the app's command palette (a listener on window too). It splits only while the timeline
+    // (the strip, its tools and marks: [data-editor-timeline]) has focus, taken in the capture phase before the palette
+    // sees it; anywhere else on the page, the editor's inspector and preview included, it still opens the palette.
     const onModKey = (e: KeyboardEvent) => {
+      if (!(e.target instanceof Element && e.target.closest("[data-editor-timeline]"))) return;
       const r = read(e);
       if (!r || resolveModShortcut(r.keyLike, r.focus) !== "split") return;
       e.preventDefault();

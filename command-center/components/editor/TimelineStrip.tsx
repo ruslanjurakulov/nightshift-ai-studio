@@ -8,13 +8,14 @@ import { Timecode } from "@/components/ui/Timecode";
 import { snapTargets, snapTrimValue } from "@/lib/editor-timeline-view";
 import type { TimelineView } from "./useTimelineView";
 import type { ShapeLayer } from "@/lib/editorShapes";
-import { isLiftHold, type Marks } from "@/lib/editorRange";
+import type { Marks } from "@/lib/editorRange";
 import type { EditTool } from "./EditCore";
 import {
   clipEnd,
   clipLength,
   crossfadeOf,
   formatTime,
+  gapOf,
   soundLength,
   type EditorAsset,
   type PictureOverlay,
@@ -112,6 +113,7 @@ export function TimelineStrip({
   marks,
   onToolEdit,
   onToolEditEnd,
+  onCloseGap,
 }: {
   clips: readonly VideoClip[];
   texts: readonly TextClip[];
@@ -147,6 +149,8 @@ export function TimelineStrip({
   onToolEdit?: (op: ToolOp, commit: boolean) => void;
   /** A roll, slip or slide drag ended. */
   onToolEditEnd?: () => void;
+  /** Close the gap before clip `id` (a ripple delete of the black a lift left). */
+  onCloseGap?: (id: string) => void;
 }) {
   const { t } = useI18n();
   const te = t.editor;
@@ -300,6 +304,7 @@ export function TimelineStrip({
       className="overflow-x-auto pb-1"
       role="group"
       aria-label={te.timeline}
+      data-editor-timeline=""
     >
       <div
         ref={strip}
@@ -338,10 +343,31 @@ export function TimelineStrip({
               style={{ left: pct(b) }}
             />
           ))}
+          {clips.map((c, i) =>
+            gapOf(c) > 0 ? (
+              // Black before clip i + 1 (what a lift leaves): its own button closes it.
+              <div
+                key={`gap-${c.id}`}
+                role="listitem"
+                data-testid="timeline-gap"
+                className="absolute top-0 h-full px-px"
+                style={{ left: pct(c.start_s - gapOf(c)), width: pct(gapOf(c)) }}
+              >
+                <button
+                  type="button"
+                  onClick={() => onCloseGap?.(c.id)}
+                  aria-label={fmt(te.core.marks.closeGap, { n: i + 1, length: formatTime(gapOf(c)) })}
+                  className="size-full min-w-0 truncate rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] bg-[repeating-linear-gradient(135deg,var(--color-panel-2)_0_6px,transparent_6px_12px)] px-1 text-left text-xs text-[var(--color-muted)]"
+                >
+                  {te.core.marks.holdName}
+                </button>
+              </div>
+            ) : null,
+          )}
           {clips.map((c, i) => {
             const len = clipLength(c);
             const on = selected?.kind === "clip" && selected.id === c.id;
-            const name = isLiftHold(c) ? te.core.marks.holdName : (assets[c.asset_id]?.name ?? te.untitledVideo);
+            const name = assets[c.asset_id]?.name ?? te.untitledVideo;
             const src = assets[c.asset_id]?.durationS ?? undefined;
             const x = crossfadeOf(c);
             const label = fmt(te.clipLabel, {

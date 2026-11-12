@@ -129,7 +129,12 @@ export function resolveShortcut(e: KeyLike, focus: FocusKind): ShortcutAction | 
     return key === "ArrowUp" ? "prevEdit" : "nextEdit";
   }
   // The keys below act once per press: a held J must not run the shuttle up to its top speed by itself.
-  if (e.repeat || e.shiftKey) return null;
+  if (e.repeat) return null;
+  // ; ' and , by the character typed, Shift or not: on many layouts (German, French, Turkish ...) typing them needs
+  // Shift, and the character is what the key means. On US keys Shift turns them into : " < , which are not mapped.
+  if (e.key in PUNCTUATION_ACTIONS) return PUNCTUATION_ACTIONS[e.key];
+  // Letters and the physical-key forms are left alone with Shift (kept for later variants).
+  if (e.shiftKey) return null;
   const letter = latinLetter(e);
   if (letter && letter in LETTER_ACTIONS) return LETTER_ACTIONS[letter];
   const mark = punctuation(e);
@@ -171,8 +176,8 @@ function punctuation(e: KeyLike): string | null {
 
 /**
  * Ctrl / Cmd + K: split at the playhead (the "add edit" of other editors), the same action as S. Never in a text
- * field or on a slider, never with Alt or Shift, never a held-down repeat. Outside the editor the app's command
- * palette keeps Ctrl + K (useEditorShortcuts only takes it inside the editor).
+ * field or on a slider, never with Alt or Shift, never a held-down repeat. It is also the app's command palette:
+ * useEditorShortcuts takes it only while the timeline has focus, so everywhere else it still opens the palette.
  */
 export function resolveModShortcut(e: KeyLike, focus: FocusKind): "split" | null {
   if (e.defaultPrevented || e.repeat) return null;
@@ -224,13 +229,14 @@ export function resolveClipShortcut(
 
 /** One row of the shortcuts help. `keys` are literal key names; `labelKey` names the dictionary entry. */
 export interface ShortcutHelpRow {
-  action: ShortcutAction | ClipShortcut | "undo" | "redo" | "save";
+  action: ShortcutAction | ClipShortcut | "splitMod" | "undo" | "redo" | "save";
   keys: string[][];
 }
 
 export const SHORTCUT_HELP: readonly ShortcutHelpRow[] = [
   { action: "play", keys: [["Space"]] },
-  { action: "split", keys: [["S"], ["Ctrl", "K"]] },
+  { action: "split", keys: [["S"]] },
+  { action: "splitMod", keys: [["Ctrl", "K"]] },
   { action: "remove", keys: [["Delete"], ["Backspace"]] },
   { action: "left", keys: [["←"], ["→"]] },
   { action: "leftBig", keys: [["Shift", "←"], ["Shift", "→"]] },

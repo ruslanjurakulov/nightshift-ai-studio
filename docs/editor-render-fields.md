@@ -1207,6 +1207,8 @@ trim, settles through `settleAll` like any edit (`apply`; a drag settles when it
 
 ### Timeline tools (`lib/editor.ts`, next to `trimClip`)
 
+* A still (a picture) has no time inside it: it grows or shrinks either way by its hold (`out_s`) and is never
+  "out of file" for a roll or a slide; it cannot slip.
 * **Roll** (`rollEdit`, `rollRange`): the cut into a clip moves; the clip before ends later by as much as this one
   starts later, so nothing else moves and the length is kept. A fast clip gives its source at its speed, a reversed
   clip grows by playing more of its range's start, a frozen clip changes only its hold. Held to the file (its
@@ -1230,19 +1232,23 @@ trim, settles through `settleAll` like any edit (`apply`; a drag settles when it
 * A cut at a mark (`cutAt`) is an existing plain cut, a split, or, inside a cross-fade, the end of the cross-fade
   (a split inside the overlap would shorten it and with it the timeline); a mark within one shortest piece of a
   plain edge is that edge. So both ends of a marked range are plain cuts and its length is what it covers.
-* **Ripple delete** (`extractRange`, key '): two cuts and `removeClip` for each piece between; the clips after it
-  close up. Texts, sounds, overlays and shapes keep their times, as after every ripple delete here (sync lock is
-  batch 2c). Refused for the whole picture, a curve under a mark, a full lane, a sliver against a cross-fade.
-* **Lift** (`liftRange`, key ;): the range becomes black and silent for exactly as long, so nothing after it moves.
-  The picture lane has no gaps (it is laid end to end), so the gap is held by ONE clip of existing fields: the
-  lifted part's first file frozen on its first frame (`freeze`; a still for a picture, which cannot freeze), no
-  sound, and `mask` `{rect, 0.5, 0.5, 1, 1, feather 0, invert}` (`LIFT_MASK`): black over the whole frame. The
-  strip names it "Lifted (black)". Its neighbours are cuts, so a 4K frame's "no mask on a cross-faded clip" holds.
-  It is charged the mask's render cost like any masked clip (section 14); if the timeline is over its allowance,
-  settle step 4c may take that mask off with its notice. `tests/test_editor_lift_hold.py` renders a frozen and a
-  still hold through the real export path: black in every corner, and the clips after it at their times.
+* **Ripple delete** (`extractRange`, key '): the picture between the marks goes and the clips after it close up;
+  every sound is cut there too and the later ones move up with the picture, so a detached sound stays with its
+  picture. Texts, overlays and shapes keep their times (sync lock is batch 2c). A gap inside the range closes.
+  Refused for the whole picture, a curve under a mark, a full lane, a sliver against a cross-fade, or a sound that
+  would have to be cut in two with the mix full.
+* **Lift** (`liftRange`, key ;): the range becomes a **gap** and every sound is cut out of it, so it is black and
+  silent; nothing after it moves. A gap is not a clip: the document simply has no clip there (the clips after it
+  keep their `start_s`), which both validators accept and the export renders as a black colour segment
+  (`timeline_render._picture`): nothing is decoded, nothing is charged to the render budget, no frame-size rule
+  applies, so no settle step can touch it. In the editor's model it is `gap_s` on the clip after it (editor only:
+  `toDoc` drops it, `toModel` reads it back from the starts, `layout` places the clip after it). A clip after a gap
+  has no cross-fade in; a split keeps the gap before its first half; a copy does not take it; deleting the clip
+  after it leaves the gap; roll and slide do not cross it. The strip draws it with a "Close gap" button (a ripple
+  delete of the black). `tests/test_editor_lift_gap.py` renders one at 1920x1080, 1080x1920 and 3840x2160: black in
+  the corners and the middle, silent, and the clips after it at their times.
 * **Insert at the playhead** (`insertAt`, key ,): a copy of the clipboard's clip at the playhead: the clip there is
-  split and everything after it moves later; inside a cross-fade it goes in at that cut.
+  split and everything after it moves later; inside a cross-fade it goes in at that cut, in a gap at the playhead.
 
 ### J / L cut (`splitEdit`)
 
@@ -1256,8 +1262,11 @@ side has its own sound, a side is a picture or retimed, or the mix is full.
 J / K / L shuttle (L plays, each further L doubles up to 8x; J backwards; K stops; fast and backwards play has no
 sound in the preview and backwards is stepped), I / O, Q / W, Up / Down (previous / next cut), ' ; , and the tool
 letters, all once per press (no repeat; Up / Down repeat), never in a text field, on a slider, or with Ctrl, Alt or
-Shift; on a non-Latin layout by the physical key. Ctrl / Cmd + K splits like S: inside the editor it is taken in the
-capture phase so the command palette (also Ctrl + K) does not open; in a text field it is left to the palette.
+Shift (; ' and , by the character typed, Shift or not, since some layouts need Shift for them); on a non-Latin
+layout by the physical key. Ctrl / Cmd + K splits like S only while the timeline (the strip, its tools and marks) has
+focus, taken in the capture phase before the command palette sees it; anywhere else, the editor's inspector and an
+idle page included, it opens the palette as everywhere in the app. The shuttle is held to 16x on the element (a fast
+clip's 2x shuttle would ask more), and the transport shows the rate the element really plays at.
 **M (add marker) is not mapped:** the document has no marker to keep (beats are drawn, not stored, section 16);
 stored markers are batch 3a.
 
@@ -1275,3 +1284,12 @@ browser only.
 ### Rollout
 
 Nothing to order: no field, no migration; older workers render what this saves.
+
+### Milliseconds, the same on both sides
+
+`ms` (lib/editor.ts) and `_ms` (modules/timeline.py) are now both `floor(v * 1000 + 0.5) / 1000`: the same three
+double operations, so the two validators see the same numbers. Python's `round(v, 3)` rounded the exact binary value
+half to even (0.7745 is 0.77449999...: 0.774 there, 0.775 in the editor), and a rolled clip laid out by the editor was
+refused by the worker as an overlap. `samples/editor_core_fuzz_docs.json.gz` (every state of 15,000 seeded edits,
+1080p to 4K, 24 to 60 fps, written by `tests/editor-core-fuzz.test.ts`) is held to the Python validator by
+`tests/test_editor_core_fuzz.py`; with the old rounding it refuses 8 of them.

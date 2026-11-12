@@ -38,17 +38,24 @@ import {
   type VideoClip,
 } from "@/lib/editor";
 import {
-  LIFT_MASK,
   NO_MARKS,
   extractRange,
   insertAt,
-  isLiftHold,
   liftRange,
   markedRange,
   setMark,
   splitEdit,
 } from "@/lib/editorRange";
+import {
+  closeGap,
+  gapOf,
+  gapsOf,
+  ms,
+  removeClip,
+  withStarts,
+} from "@/lib/editor";
 import { settleAll } from "@/lib/editorSettle";
+import { fuzzAssets, runFuzz } from "./editor-core-fuzz";
 import {
   SHORTCUT_HELP,
   focusKind,
@@ -65,7 +72,7 @@ import { uz } from "@/lib/i18n/uz";
 const A = "11111111-1111-4111-8111-111111111111"; // a 10 s video
 const B = "22222222-2222-4222-8222-222222222222"; // a 6 s video
 const P = "33333333-3333-4333-8333-333333333333"; // a picture
-const LEN: Record<string, number | null> = { [A]: 10, [B]: 6, [P]: null };
+const LEN: Record<string, number | "still"> = { [A]: 10, [B]: 6, [P]: "still" };
 const KIND: Record<string, "video" | "image"> = { [A]: "video", [B]: "video", [P]: "image" };
 const sourceOf = (id: string) => LEN[id] ?? null;
 const kindOf = (id: string) => KIND[id];
@@ -384,11 +391,10 @@ describe("ripple delete between the marks", () => {
 
   it("takes a mark inside a cross-fade to where it ends, so a lift keeps the timeline's length", () => {
     const m = three({ transition: { type: "crossfade", duration_s: 1 } }); // c2 fades in over 3..4
-    const out = liftRange(m, 1, 3.5, kindOf);
+    const out = liftRange(m, 1, 3.5);
     if ("problem" in out) throw new Error(out.problem);
     expect(modelDuration(out.model)).toBe(modelDuration(m));
-    const hold = byId(out.model, out.id);
-    expect([hold.start_s, clipEnd(hold)]).toEqual([1, 4]);
+    expect(gapsOf(out.model).map((g) => [g.start, g.end])).toEqual([[1, 4]]);
     valid(out.model);
   });
 
@@ -402,52 +408,132 @@ describe("ripple delete between the marks", () => {
 });
 
 describe("lift between the marks", () => {
-  it("leaves black and silence for exactly as long, so nothing after it moves", () => {
+  it("leaves a gap: black for exactly as long, nothing after it moves, no clip and no cost in it", () => {
     const m = three();
-    const out = liftRange(m, 2, 6, kindOf);
+    const out = liftRange(m, 2, 6);
     if ("problem" in out) throw new Error(out.problem);
-    const hold = byId(out.model, out.id);
-    expect(hold).toMatchObject({ start_s: 2, in_s: 2, out_s: 6, speed: 1, audio: false, freeze: true, mask: { ...LIFT_MASK } });
-    expect(isLiftHold(hold)).toBe(true);
+    expect(gapsOf(out.model)).toEqual([{ before: layout(out.model.clips)[1].id, start: 2, end: 6 }]);
+    expect(layout(out.model.clips).map((c) => [c.start_s, clipEnd(c)])).toEqual([[0, 2], [6, 8], [8, 10]]);
     expect(modelDuration(out.model)).toBe(modelDuration(m));
-    expect(byId(out.model, "c3").start_s).toBe(8);
+    // nothing is decoded, masked or charged there: the document simply has no clip in [2, 6]
+    const doc = toDoc(out.model);
+    expect(JSON.stringify(doc)).not.toMatch(/gap_s|mask|freeze/);
+    expect((doc.tracks[0].clips as Record<string, unknown>[]).map((c) => c.start_s)).toEqual([0, 6, 8]);
     valid(out.model);
   });
 
-  it("holds a picture as a still (a picture cannot freeze), and the whole picture may be lifted", () => {
-    const m = model([clip("c1", { asset_id: P, out_s: 3, audio: false }), clip("c2")]);
-    const out = liftRange(m, 1, 2, kindOf);
+  it("silences the range: every sound is cut out of it, one across the whole range becomes two", () => {
+    const s = (id: string, start: number, len: number): SoundClip => ({ id, asset_id: B, start_s: start, in_s: 0, out_s: len, gain_db: 0, fade_in_s: 0.5, fade_out_s: 0.5 });
+    const m = { ...three(), sounds: [s("m1", 0, 6), s("m2", 1, 3), s("m3", 5, 3), s("m4", 7, 1)] }; // B is 6 s
+    const out = liftRange(m, 2, 6);
     if ("problem" in out) throw new Error(out.problem);
-    const hold = byId(out.model, out.id);
-    expect(hold.freeze).toBeUndefined();
-    expect([hold.in_s, hold.out_s]).toEqual([0, 1]);
-    valid(out.model);
-    const all = liftRange(three(), 0, 10, kindOf);
-    if ("problem" in all) throw new Error(all.problem);
-    expect(layout(all.model.clips)).toHaveLength(1);
-    valid(all.model);
+    const spans = out.model.sounds.map((x) => [x.id, x.start_s, ms(x.start_s + x.out_s - x.in_s)]);
+    expect(spans).toEqual([["m1", 0, 2], ["m2", 1, 2], ["m3", 6, 8], ["m4", 7, 8]]);
+    // nothing sounds inside the lifted range
+    for (const x of out.model.sounds) expect(x.start_s >= 6 - 1e-9 || x.start_s + x.out_s - x.in_s <= 2 + 1e-9).toBe(true);
+    const across = liftRange({ ...three(), sounds: [s("m1", 0, 6)] }, 2, 4);
+    if ("problem" in across) throw new Error(across.problem);
+    expect(across.model.sounds.map((x) => [x.start_s, x.in_s, x.out_s, x.fade_in_s, x.fade_out_s])).toEqual([[0, 0, 2, 0.5, 0], [4, 4, 6, 0, 0.5]]);
+    valid(across.model);
+    const full = { ...three(), sounds: Array.from({ length: MAX_EDITOR_SOUNDS }, (_, i) => s(`m${i + 1}`, 0, 6)) };
+    expect(liftRange(full, 2, 4)).toEqual({ problem: "sounds_full" });
   });
 
-  it("never guesses a file it does not know", () => {
-    expect(liftRange(three(), 2, 6, () => undefined)).toEqual({ problem: "unknown_file" });
+  it("at the end of the picture just ends it there; the whole picture cannot be lifted; a lift in a gap does nothing", () => {
+    const end = liftRange(three(), 9, 10);
+    if ("problem" in end) throw new Error(end.problem);
+    expect(clipEnd(layout(end.model.clips).at(-1)!)).toBe(9);
+    expect(liftRange(three(), 0, 10)).toEqual({ problem: "whole" });
+    const once = liftRange(three(), 2, 6);
+    if ("problem" in once) throw new Error(once.problem);
+    expect(liftRange(once.model, 2.5, 5.5)).toEqual({ problem: "no_range" });
   });
 
-  it("lifts across a cross-fade and a reversed or fast clip and keeps the length", () => {
-    for (const c2 of [{ transition: { type: "crossfade" as const, duration_s: 1 } }, { reverse: true }, { speed: 2 }]) {
-      const m = three(c2);
-      const out = liftRange(m, 2.5, 6.5, kindOf);
-      if ("problem" in out) throw new Error(out.problem);
-      near(modelDuration(out.model), modelDuration(m));
-      valid(out.model);
+  it("lifts across a cross-fade, a picture and a reversed or fast clip and keeps the length, in every frame size", () => {
+    for (const [w, h] of [[1920, 1080], [2560, 1440], [3840, 2160], [1080, 1920]]) {
+      for (const c2 of [{ transition: { type: "crossfade" as const, duration_s: 1 } }, { reverse: true }, { speed: 2 }, { asset_id: P, in_s: 0, out_s: 4, audio: false }]) {
+        // the frame's own limits first (a 4 s reversed range is over 4K's), as the editor would have settled them
+        const m = settleAll({ ...three(c2), width: w, height: h }).model;
+        const out = liftRange(m, 2.5, 6.5);
+        if ("problem" in out) throw new Error(out.problem);
+        near(modelDuration(out.model), modelDuration(m));
+        valid(out.model);
+        // settling keeps the gap whole, black and free
+        const settled = settleAll(out.model, m).model;
+        expect(gapsOf(settled)).toEqual(gapsOf(out.model));
+        valid(settled);
+      }
     }
   });
+});
 
-  it("is valid in a 4K frame, where a mask may not sit on a cross-faded clip (the hold has cuts both sides)", () => {
-    const m = { ...three({ transition: { type: "crossfade", duration_s: 1 } }, {}, { transition: { type: "crossfade", duration_s: 0.5 } }), width: 3840, height: 2160 };
-    const out = liftRange(m, 4.5, 6, kindOf);
+describe("gaps on the picture lane (what a lift leaves)", () => {
+  const gapped = () => {
+    const out = liftRange(three(), 2, 6);
     if ("problem" in out) throw new Error(out.problem);
-    expect(crossfadeOf(byId(out.model, out.id))).toBe(0);
+    return out.model;
+  };
+  it("survive the document and back: toModel reads a document's gap from the starts", () => {
+    const m = gapped();
+    const back = toModel(toDoc(m));
+    expect(gapsOf(back)).toEqual(gapsOf(m));
+    expect(toDoc(back)).toEqual(toDoc(m));
+    // a gap before the first clip too
+    const lead = toModel({ version: 1, width: 1920, height: 1080, fps: 30, tracks: [{ id: "v1", kind: "V", clips: [{ id: "c1", asset_id: A, start_s: 1.5, in_s: 0, out_s: 2, speed: 1, audio: true }] }] });
+    expect(gapOf(lead.clips[0])).toBe(1.5);
+    expect(layout(lead.clips)[0].start_s).toBe(1.5);
+  });
+
+  it("move with the edits around them: a trim before ripples the gap, a split keeps it before the first half", () => {
+    const m = gapped();
+    const after = layout(m.clips)[1].id;
+    const trimmed = rippleTrimTo(m, 1, "head")!;
+    expect(gapsOf(trimmed.model)[0]).toEqual({ before: after, start: 1, end: 5 });
+    const split = splitClip(m, after, 7)!;
+    expect(gapOf(byId(split.model, after))).toBe(4);
+    expect(gapOf(byId(split.model, split.newId))).toBe(0);
+    valid(split.model);
+  });
+
+  it("closes from the strip (a ripple delete of the black), and a deleted clip leaves the gap before it", () => {
+    const m = gapped();
+    const after = layout(m.clips)[1].id;
+    const closed = closeGap(m, after);
+    expect(gapsOf(closed)).toEqual([]);
+    expect(modelDuration(closed)).toBe(6);
+    const del = removeClip(m, after);
+    expect(gapsOf(del)).toEqual([{ before: "c3", start: 2, end: 6 }]);
+    valid(del);
+  });
+
+  it("a ripple delete over a gap closes the part it covers, and the sounds move up with the picture", () => {
+    const s: SoundClip = { id: "m1", asset_id: B, start_s: 7, in_s: 0, out_s: 2, gain_db: 0, fade_in_s: 0, fade_out_s: 0 };
+    const m = { ...gapped(), sounds: [s] };
+    const out = extractRange(m, 3, 7);
+    if ("problem" in out) throw new Error(out.problem);
+    expect(gapsOf(out.model).map((g) => [g.start, g.end])).toEqual([[2, 3]]);
+    expect(modelDuration(out.model)).toBe(6);
+    expect(out.model.sounds[0].start_s).toBe(3);
     valid(out.model);
+  });
+
+  it("an insert into a gap goes in at the playhead and pushes the rest later", () => {
+    const out = insertAt(gapped(), clip("x", { in_s: 0, out_s: 1 }), 3);
+    if ("problem" in out) throw new Error(out.problem);
+    expect(layout(out.model.clips).map((c) => [c.start_s, gapOf(c)])).toEqual([[0, 0], [3, 1], [7, 3], [9, 0]]);
+    valid(out.model);
+  });
+
+  it("there is no roll or slide across a gap, no cross-fade into one, and a copy does not take the gap with it", () => {
+    const m = gapped();
+    const after = layout(m.clips)[1].id;
+    expect(rollRange(m, after, sourceOf)).toBeNull();
+    expect(slideRange(m, after, sourceOf)).toBeNull();
+    const withX = layout(withStarts(m.clips, layout(m.clips).map((c) => c.start_s)));
+    expect(withX.map(gapOf)).toEqual(layout(m.clips).map(gapOf));
+    const pasted = insertAt(m, byId(m, after), 0);
+    if ("problem" in pasted) throw new Error(pasted.problem);
+    expect(gapOf(byId(pasted.model, pasted.id))).toBe(0);
   });
 });
 
@@ -601,7 +687,8 @@ describe("the key map", () => {
       expect(k(key, {}, "slider"), key).toBeNull();
       expect(k(key, { ctrlKey: true }), key).toBeNull();
       expect(k(key, { altKey: true }), key).toBeNull();
-      expect(k(key, { shiftKey: true }), key).toBeNull();
+      // ; ' and , are judged by the character typed, which some layouts need Shift for (see "review fixes")
+      if (![";", "'", ","].includes(key)) expect(k(key, { shiftKey: true }), key).toBeNull();
     }
     for (const key of ["j", "l", "i", "q", ";"]) expect(k(key, { repeat: true }), key).toBeNull();
     // Up / Down repeat (hold to run through the cuts), but a radio group keeps them
@@ -636,7 +723,8 @@ describe("the key map", () => {
     expect(new Set(actions).size).toBe(actions.length);
     for (const a of ["shuttleBack", "shuttleStop", "shuttleForward", "prevEdit", "markIn", "markOut", "extract", "lift", "insert", "rippleHead", "rippleTail", "toolTrim", "toolRoll", "toolSlip", "toolSlide"])
       expect(actions, a).toContain(a);
-    expect(SHORTCUT_HELP.find((r) => r.action === "split")!.keys).toEqual([["S"], ["Ctrl", "K"]]);
+    expect(SHORTCUT_HELP.find((r) => r.action === "split")!.keys).toEqual([["S"]]);
+    expect(SHORTCUT_HELP.find((r) => r.action === "splitMod")!.keys).toEqual([["Ctrl", "K"]]);
     for (const d of [en, ru, uz]) {
       const keys = d.editor.core.keys as Record<string, string>;
       for (const a of actions.filter((x) => x in en.editor.core.keys)) expect(keys[a]?.length, a).toBeGreaterThan(0);
@@ -686,114 +774,49 @@ describe("the preview's guides", () => {
 
 // ── 5,000 seeded edits ─────────────────────────────────────────────────────────
 
-function rng(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function randomModel(r: () => number): EditorModel {
-  const n = 1 + Math.floor(r() * 6);
-  const clips: VideoClip[] = [];
-  for (let i = 0; i < n; i += 1) {
-    const kind = r();
-    const asset = kind < 0.15 ? P : kind < 0.55 ? A : B;
-    const len = LEN[asset] ?? 8;
-    const a = Math.round(r() * (len - 1) * 10) / 10;
-    const b = Math.min(len, Math.round((a + 0.5 + r() * (len - a - 0.5)) * 10) / 10);
-    const c: VideoClip = { id: `c${i + 1}`, asset_id: asset, start_s: 0, in_s: asset === P ? 0 : a, out_s: asset === P ? 1 + Math.round(r() * 40) / 10 : b, speed: 1, audio: asset !== P && r() < 0.8 };
-    const v = r();
-    if (asset !== P && v < 0.15) c.speed = [0.5, 2, 3][Math.floor(r() * 3)];
-    else if (asset !== P && v < 0.22) c.reverse = true;
-    else if (asset !== P && v < 0.27) {
-      c.freeze = true;
-      c.audio = false;
-    }
-    if (i > 0 && r() < 0.3) c.transition = { type: "crossfade", duration_s: 0.3 + Math.round(r() * 7) / 10 };
-    if (r() < 0.2) c.fade_in_s = 0.2;
-    if (r() < 0.2) c.fade_out_s = 0.3;
-    if ((c.fade_in_s ?? 0) + (c.fade_out_s ?? 0) > (c.out_s - c.in_s) / c.speed - 0.05) {
-      delete c.fade_in_s;
-      delete c.fade_out_s;
-    }
-    if (r() < 0.1 && !c.fade_in_s) c.anim_in = "zoom";
-    clips.push(c);
-  }
-  const vertical = r() < 0.3;
-  return model(clips, vertical ? { width: 1080, height: 1920 } : {});
-}
-
 describe("5,000 seeded edits keep the document valid after the editor's settling", () => {
-  it("every operation, on any timeline, gives a document both checks accept", () => {
-    const r = rng(20261112);
-    let edits = 0;
-    let changed = 0;
-    const byOp = new Array(11).fill(0) as number[];
-    for (let doc = 0; doc < 250; doc += 1) {
-      let m = settleAll(randomModel(r)).model;
-      valid(m);
-      let marks = NO_MARKS;
-      let clipboard: VideoClip | null = null;
-      for (let step = 0; step < 20; step += 1) {
-        const clips = layout(m.clips);
-        const total = modelDuration(m);
-        const pick = clips.length ? clips[Math.floor(r() * clips.length)] : null;
-        const t = Math.round(r() * total * m.fps) / m.fps;
-        const d = (r() - 0.5) * 6;
-        const op = Math.floor(r() * 11);
-        let next = m;
-        let keepsLength = false;
-        if (op === 0 && pick) {
-          next = rollEdit(m, pick.id, d, sourceOf);
-          keepsLength = true;
-        } else if (op === 1 && pick) {
-          next = slipClip(m, pick.id, d, sourceOf);
-          keepsLength = true;
-        } else if (op === 2 && pick) {
-          next = slideClip(m, pick.id, d, sourceOf);
-          keepsLength = true;
-        } else if (op === 3) next = rippleTrimTo(m, t, r() < 0.5 ? "head" : "tail")?.model ?? m;
-        else if (op === 4) marks = setMark(marks, r() < 0.5 ? "in" : "out", t, m.fps, total);
-        else if (op === 5) {
-          const rg = markedRange(marks, total, m.fps);
-          const out = rg ? extractRange(m, rg[0], rg[1]) : null;
-          if (out && "model" in out) next = out.model;
-        } else if (op === 6) {
-          const rg = markedRange(marks, total, m.fps);
-          const out = rg ? liftRange(m, rg[0], rg[1], kindOf) : null;
-          if (out && "model" in out) {
-            next = out.model;
-            near(modelDuration(next), total, 0.003);
-          }
-        } else if (op === 7 && clipboard) {
-          const out = insertAt(m, clipboard, t);
-          if ("model" in out) next = out.model;
-        } else if (op === 8 && pick) clipboard = pick;
-        else if (op === 9 && pick) {
-          const out = splitEdit(m, pick.id, r() < 0.5 ? "j" : "l", 1 + Math.floor(r() * 24), sourceOf, kindOf);
-          if ("model" in out) next = out.model;
-        } else if (op === 10 && pick) next = splitClip(m, pick.id, t)?.model ?? m;
-        edits += 1;
-        if (next === m) continue;
-        changed += 1;
-        byOp[op] += 1;
-        if (keepsLength && Math.abs(modelDuration(next) - total) > 0.003)
-          throw new Error(`op ${op} changed the length ${total} -> ${modelDuration(next)}: ${JSON.stringify(m.clips)} -> ${JSON.stringify(next.clips)}`);
-        const settled = settleAll(next, m).model;
-        const why = validateTimeline(toDoc(settled));
-        if (why.length) throw new Error(`op ${op}: ${why.join("; ")}\n${JSON.stringify(m.clips)}\n${JSON.stringify(next.clips)}`);
-        valid(settled);
-        m = settled;
-      }
-    }
+  it("every operation, on any timeline and frame, gives a document the TypeScript checks accept (Python: editor-core-fuzz)", () => {
+    const { edits, byOp, states } = runFuzz(20261112, 250, 20, (m, where) => {
+      const doc = toDoc(m);
+      const why = [...validateTimeline(doc), ...docAssetProblems(doc, fuzzAssets)];
+      if (why.length) throw new Error(`${where}: ${why.join("; ")}`);
+      expect(docBytes(doc)).toBeLessThanOrEqual(MAX_DOC_BYTES);
+    });
     expect(edits).toBe(5000);
-    // the run must actually exercise the operations, not refuse its way through (4 sets a mark, 8 copies)
-    expect(changed).toBeGreaterThan(1500);
+    // the run must exercise the operations, not refuse its way through (4 sets a mark, 8 copies)
+    expect(states.length).toBeGreaterThan(1500);
     for (const op of [0, 1, 2, 3, 5, 6, 7, 9, 10]) expect(byOp[op], `op ${op}`).toBeGreaterThan(40);
+  });
+});
+
+describe("review fixes", () => {
+  it("a still has no end either way: a roll or a slide into or with one is never stuck, but it cannot slip", () => {
+    const still = { asset_id: P, in_s: 0, out_s: 4, audio: false };
+    // the still before the cut grows at its tail, the still after it grows at its head (its hold, not its in)
+    const r1 = rollEdit(three({}, still), "c2", 1.5, sourceOf);
+    expect(byId(r1, "c1").out_s).toBe(5.5);
+    const r2 = rollEdit(three(still), "c2", -2, sourceOf);
+    expect([byId(r2, "c2").in_s, byId(r2, "c2").out_s, byId(r2, "c2").start_s]).toEqual([0, 6, 2]);
+    const sl = slideClip(three({}, still, { asset_id: P, in_s: 0, out_s: 2, audio: false }), "c2", -3, sourceOf);
+    expect(byId(sl, "c3").out_s).toBe(5);
+    expect(modelDuration(sl)).toBe(10);
+    expect(slipRange(three(still), "c2", sourceOf)).toBeNull();
+    for (const m of [r1, r2, sl]) valid(m);
+  });
+
+  it("; and ' fire with Shift where the layout needs Shift to type them; US Shift + ; is : and does nothing", () => {
+    expect(resolveShortcut({ key: ";", shiftKey: true }, "other")).toBe("lift");
+    expect(resolveShortcut({ key: "'", shiftKey: true }, "other")).toBe("extract");
+    expect(resolveShortcut({ key: ",", shiftKey: true }, "other")).toBe("insert");
+    expect(resolveShortcut({ key: ":", code: "Semicolon", shiftKey: true }, "other")).toBeNull();
+    expect(resolveShortcut({ key: "ж", code: "Semicolon", shiftKey: true }, "other")).toBeNull();
+    expect(resolveShortcut({ key: ";", repeat: true }, "other")).toBeNull();
+    expect(resolveShortcut({ key: ";" }, "text")).toBeNull();
+  });
+
+  it("rounds to the millisecond half up, as modules/timeline.py _ms does, on the values that once disagreed", () => {
+    // Python's round(0.7745, 3) is 0.774 (the double is 0.77449999...); both validators now use floor(v * 1000 + 0.5).
+    for (const [v, want] of [[0.7745, 0.775], [1.0005, 1.001], [2.675, 2.675], [0.0005, 0.001], [1.549 / 2, 0.775], [-0.0004, 0]] as const)
+      expect(ms(v), String(v)).toBe(want);
   });
 });

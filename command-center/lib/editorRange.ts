@@ -1,8 +1,9 @@
 /**
  * In / out marks on the timeline and the edits that use them (range delete: ripple or lift; insert at the
  * playhead), and the one-click J / L cut. All of it is built from operations the editor already had
- * (`splitClip`, `removeClip`, `detachClipAudio`) and the document's existing fields, so both validators judge
- * the result as they judge any edit and nothing new reaches the database or the render.
+ * (`splitClip`, `detachClipAudio`) and the document's existing fields: a lift leaves a GAP on the picture lane
+ * (`gap_s` in the editor's model, the clips' own `start_s` in the document), which both validators accept and
+ * the export renders as black with no sound, no decode and no cost. Nothing new reaches the database or the render.
  *
  * The marks themselves are editor state, never saved with the project (a document field would need both
  * validators and the schema: that is the stored-markers batch, not this one).
@@ -20,11 +21,12 @@ import {
   detachClipAudio,
   detachProblem,
   freshId,
+  gapOf,
   layout,
   ms,
-  removeClip,
   soundLength,
   splitClip,
+  withStarts,
   type DetachProblem,
   type EditorAsset,
   type EditorModel,
@@ -64,9 +66,9 @@ export function markedRange(marks: Marks, total: number, fps: number): [number, 
 
 /** Why a range edit or an insert was not made. */
 export type RangeProblem =
-  /** No marks, or a range shorter than a frame or holding no picture. */
+  /** No marks, or a range shorter than a frame, or one that holds nothing to take out. */
   | "no_range"
-  /** The range is the whole picture: a ripple delete would leave nothing. */
+  /** The range is the whole picture: it would leave no clip. */
   | "whole"
   /** A mark falls inside a clip with a speed curve (it cannot be split; take the curve off first). */
   | "curve"
@@ -74,8 +76,8 @@ export type RangeProblem =
   | "too_close"
   /** The picture lane holds MAX_EDITOR_CLIPS clips. */
   | "clips_full"
-  /** The file the lifted part starts with is not known to the editor (so its gap cannot be held). */
-  | "unknown_file";
+  /** A sound runs across the whole range and cutting it in two would need a sound more than the mix holds. */
+  | "sounds_full";
 
 /** The index of the clip whose cross-fade in covers timeline time `t` (its overlap with the clip before), or -1. */
 function overlapAt(clips: VideoClip[], t: number, half: number): number {
@@ -85,64 +87,108 @@ function overlapAt(clips: VideoClip[], t: number, half: number): number {
 }
 
 /**
- * A cut at timeline time `t` on the picture lane: an existing cut there (a plain one), or a split of the clip
- * under it. `at` is the id of the clip that starts at the cut (null: the end), and that clip never has a
- * cross-fade in, so a range between two cuts has plain cuts at both ends and its length is what it covers.
- * A time inside a cross-fade is taken to where the cross-fade ends (a split inside the overlap would shorten
- * the cross-fade, and with it the timeline); a time within one shortest piece of a plain edge is that edge,
- * rather than a sliver split off.
+ * A cut at timeline time `t` on the picture lane, and the time it is really at: an existing plain cut, a split of
+ * the clip under it, or nothing to cut when `t` is in a gap (black has no inside) or past the picture. A time
+ * inside a cross-fade is taken to where the cross-fade ends (a split inside the overlap would shorten it, and with
+ * it the timeline); a time within one shortest piece of a plain edge is that edge rather than a sliver split off.
  */
-function cutAt(model: EditorModel, at0: number): { model: EditorModel; at: string | null } | RangeProblem {
+function cutAt(model: EditorModel, t0: number): { model: EditorModel; t: number } | RangeProblem {
   const clips = layout(model.clips);
-  if (!clips.length) return "no_range";
   const half = 0.5 / model.fps;
-  let t = at0;
-  if (t <= half) return { model, at: clips[0].id };
+  let t = t0;
+  if (!clips.length || t <= half) return { model, t: Math.max(0, t) };
   const end = clipEnd(clips[clips.length - 1]);
-  if (t >= end - half) return { model, at: null };
+  if (t >= end - half) return { model, t };
   const o = overlapAt(clips, t, half);
   if (o > 0) t = clipEnd(clips[o - 1]);
   const plainStart = (i: number) => i === 0 || crossfadeOf(clips[i]) === 0;
-  const edge = clips.findIndex((c, i) => i > 0 && plainStart(i) && Math.abs(c.start_s - t) < half);
-  if (edge > 0) return { model, at: clips[edge].id };
+  const edge = clips.find((c, i) => plainStart(i) && Math.abs(c.start_s - t) < half);
+  if (edge) return { model, t: edge.start_s };
+  // The end of a clip with a gap or nothing after it (inside a cross-fade the clip that fades in is split below).
+  const ends = clips.find((c, i) => Math.abs(clipEnd(c) - t) < half && (i + 1 >= clips.length || gapOf(clips[i + 1]) > 0));
+  if (ends) return { model, t: clipEnd(ends) };
   const hit = clipAt(model, t);
-  if (!hit) return { model, at: null };
+  if (!hit) return { model, t }; // in a gap
   if (hit.clip.speed_curve) return "curve";
   const out = splitClip(model, hit.clip.id, t);
-  if (out) return { model: out.model, at: out.newId };
+  if (out) return { model: out.model, t: ms(t) };
   if (model.clips.length >= MAX_EDITOR_CLIPS) return "clips_full";
   // Too near an edge for a split: the edge it is near, when that edge is a plain cut.
   const i = hit.index;
   const toStart = t - hit.clip.start_s;
   const toEnd = clipEnd(hit.clip) - t;
-  if (toStart <= toEnd && plainStart(i)) return { model, at: hit.clip.id };
-  if (toEnd < toStart && (i + 1 >= clips.length || plainStart(i + 1)))
-    return { model, at: i + 1 < clips.length ? clips[i + 1].id : null };
+  if (toStart <= toEnd && plainStart(i)) return { model, t: hit.clip.start_s };
+  if (toEnd < toStart && (i + 1 >= clips.length || plainStart(i + 1))) return { model, t: clipEnd(hit.clip) };
   return "too_close";
 }
 
-/** The clips between cuts at `from` and `to`, with the model the two cuts made. */
+/** Cuts at both ends of [from, to], and the range they are really at. */
 function cutRange(
   model: EditorModel,
   from: number,
   to: number,
-): { model: EditorModel; inside: VideoClip[]; before: number; after: number } | RangeProblem {
+): { model: EditorModel; a: number; b: number } | RangeProblem {
   if (!(to - from >= 0.5 / model.fps)) return "no_range";
-  // The later cut first: a split there leaves every id before it as it was.
+  // The later cut first: a split there leaves every clip before it where it was.
   const right = cutAt(model, to);
   if (typeof right === "string") return right;
   const left = cutAt(right.model, from);
   if (typeof left === "string") return left;
-  const clips = layout(left.model.clips);
-  const ia = left.at === null ? clips.length : clips.findIndex((c) => c.id === left.at);
-  const ib = right.at === null ? clips.length : clips.findIndex((c) => c.id === right.at);
-  if (ia < 0 || ib < 0 || ib <= ia) return "no_range";
-  return { model: left.model, inside: clips.slice(ia, ib), before: ia, after: ib };
+  if (!(right.t - left.t >= 0.5 / model.fps)) return "no_range";
+  return { model: left.model, a: left.t, b: right.t };
 }
+
+/** Is clip `c` (laid out) inside [a, b]? After `cutRange` every clip is inside or wholly outside. */
+const inside = (c: VideoClip, a: number, b: number) => c.start_s >= a - 0.0005 && clipEnd(c) <= b + 0.0005;
+
+/**
+ * Every sound's part in [a, b] taken out: a sound wholly inside goes, one across an edge is trimmed to it, one
+ * across the whole range becomes two. With `ripple` what was after `b` moves up by the range (a ripple delete);
+ * without it nothing moves (a lift: the range is silent). Pieces under MIN_CLIP_S go.
+ */
+function cutSounds(model: EditorModel, a: number, b: number, ripple: boolean): SoundClip[] | "sounds_full" {
+  const out: SoundClip[] = [];
+  const len = ms(b - a);
+  let m = model;
+  const fit = (x: SoundClip): SoundClip | null => {
+    const l = soundLength(x);
+    if (l < MIN_CLIP_S - 1e-9) return null;
+    const fo = Math.min(x.fade_out_s, l);
+    return { ...x, fade_out_s: ms(fo), fade_in_s: ms(Math.max(0, Math.min(x.fade_in_s, l - fo))) };
+  };
+  for (const x of model.sounds) {
+    const s0 = x.start_s;
+    const e0 = s0 + soundLength(x);
+    if (e0 <= a + 1e-9) out.push(x);
+    else if (s0 >= b - 1e-9) out.push(ripple ? { ...x, start_s: ms(s0 - len) } : x);
+    else {
+      const head = s0 < a ? fit({ ...x, out_s: ms(x.in_s + (a - s0)), fade_out_s: x.fade_out_s }) : null;
+      const tailIn = ms(x.in_s + (b - s0));
+      const tail =
+        e0 > b ? fit({ ...x, start_s: ripple ? ms(a) : ms(b), in_s: tailIn, fade_in_s: head ? 0 : x.fade_in_s }) : null;
+      if (head) out.push({ ...head, fade_out_s: tail ? 0 : head.fade_out_s });
+      if (tail) {
+        if (head) {
+          // Cut in two: the second piece is one sound more of the mix (counted below).
+          const id = freshId(m, "m");
+          const piece = { ...tail, id };
+          m = { ...m, sounds: [...m.sounds, piece] };
+          out.push(piece);
+        } else out.push(tail);
+      }
+    }
+  }
+  if (out.length > MAX_EDITOR_SOUNDS || audioInputs({ ...model, sounds: out }) > MAX_AUDIO_CLIPS) return "sounds_full";
+  return out;
+}
+
+const same = (x: EditorModel, y: EditorModel) =>
+  JSON.stringify([layout(x.clips), x.sounds]) === JSON.stringify([layout(y.clips), y.sounds]);
 
 /**
  * Ripple delete of the marked range (an "extract"): the picture between the marks goes and the clips after it
- * close up, in one step. Texts, sounds, overlays and shapes keep their times, as after any ripple delete here.
+ * close up, in one step; the sounds are cut there too and the later ones move up with the picture, so a detached
+ * sound stays with its picture. Texts, overlays and shapes keep their times. A gap inside the range closes.
  */
 export function extractRange(
   model: EditorModel,
@@ -151,60 +197,45 @@ export function extractRange(
 ): { model: EditorModel; removed: number } | { problem: RangeProblem } {
   const r = cutRange(model, from, to);
   if (typeof r === "string") return { problem: r };
-  if (r.before === 0 && r.after === layout(r.model.clips).length) return { problem: "whole" };
-  let m = r.model;
-  for (const c of r.inside) m = removeClip(m, c.id);
-  return { model: m, removed: r.inside.length };
-}
-
-/** The black of a lifted range: a mask over the whole frame, turned inside out, hides all of the picture. */
-export const LIFT_MASK = { shape: "rect", x: 0.5, y: 0.5, w: 1, h: 1, feather: 0, invert: true } as const;
-
-/** Is this clip the black hold a lift leaves (so the editor can name it for what it is)? */
-export function isLiftHold(c: VideoClip): boolean {
-  const k = c.mask;
-  return Boolean(
-    k && !c.audio && k.shape === "rect" && k.invert === true && k.w === 1 && k.h === 1 && (k.x ?? 0.5) === 0.5 && (k.y ?? 0.5) === 0.5,
-  );
+  const clips = layout(r.model.clips);
+  const keep = clips.filter((c) => !inside(c, r.a, r.b));
+  if (!keep.length) return { problem: "whole" };
+  const len = r.b - r.a;
+  const starts = keep.map((c) => (c.start_s >= r.b - 0.0005 ? c.start_s - len : c.start_s));
+  const sounds = cutSounds(r.model, r.a, r.b, true);
+  if (sounds === "sounds_full") return { problem: "sounds_full" };
+  const next = { ...r.model, clips: withStarts(keep, starts), sounds };
+  if (same(next, model)) return { problem: "no_range" };
+  return { model: next, removed: clips.length - keep.length };
 }
 
 /**
- * Lift the marked range: the picture between the marks becomes black and silent for exactly as long, so nothing
- * after it moves. The picture lane has no empty gaps (it is laid end to end), so the gap is held by one clip:
- * the lifted part's first file, frozen on its first frame (a still for a picture) with no sound and a mask
- * over the whole frame turned inside out (black). Fields the render already has; it is a clip like any other,
- * which the person can trim or delete.
+ * Lift the marked range: the picture between the marks becomes a gap (black, no sound, nothing decoded) and the
+ * sounds are cut out of it, so the range is silent; nothing after it moves. A lift at the end of the picture just
+ * ends it there.
  */
 export function liftRange(
   model: EditorModel,
   from: number,
   to: number,
-  kindOf: (assetId: string) => EditorAsset["kind"] | undefined,
-): { model: EditorModel; id: string } | { problem: RangeProblem } {
+): { model: EditorModel } | { problem: RangeProblem } {
   const r = cutRange(model, from, to);
   if (typeof r === "string") return { problem: r };
   const clips = layout(r.model.clips);
-  const first = r.inside[0];
-  const kind = kindOf(first.asset_id);
-  if (kind !== "video" && kind !== "image") return { problem: "unknown_file" };
-  const start = first.start_s;
-  const end = r.after < clips.length ? clips[r.after].start_s : clipEnd(clips[clips.length - 1]);
-  const length = ms(end - start);
-  if (Math.round(length * model.fps) < 1) return { problem: "no_range" };
-  const id = freshId(r.model, "c");
-  // A frozen frame decodes one frame, whatever the length; a picture has no time inside it at all.
-  const hold: VideoClip =
-    kind === "video"
-      ? { id, asset_id: first.asset_id, start_s: start, in_s: first.in_s, out_s: ms(first.in_s + length), speed: 1, audio: false, freeze: true, mask: { ...LIFT_MASK } }
-      : { id, asset_id: first.asset_id, start_s: start, in_s: 0, out_s: length, speed: 1, audio: false, mask: { ...LIFT_MASK } };
-  const next = [...clips.slice(0, r.before), hold, ...clips.slice(r.after)];
-  return { model: { ...r.model, clips: layout(next) }, id };
+  const keep = clips.filter((c) => !inside(c, r.a, r.b));
+  if (!keep.length) return { problem: "whole" };
+  const sounds = cutSounds(r.model, r.a, r.b, false);
+  if (sounds === "sounds_full") return { problem: "sounds_full" };
+  const next = { ...r.model, clips: withStarts(keep, keep.map((c) => c.start_s)), sounds };
+  if (same(next, model)) return { problem: "no_range" };
+  return { model: next };
 }
 
 /**
  * Insert a copy of `source` (a clip of this project: the editor's clipboard) at timeline time `t`: the clip under
  * the playhead is split there and everything after it moves later by the copy's length. At a cut it goes in at
- * that cut; past the end it is appended. The copy follows the clip before it with a cut, as a paste does.
+ * that cut, in a gap at that time; past the end it is appended. The copy follows the clip before it with a cut, as
+ * a paste does.
  */
 export function insertAt(
   model: EditorModel,
@@ -212,14 +243,16 @@ export function insertAt(
   t: number,
 ): { model: EditorModel; id: string } | { problem: RangeProblem } {
   if (!canInsertClip(model)) return { problem: "clips_full" };
-  // Inside a cross-fade the copy goes in at that cut, before the clip that fades in (it then fades in from the copy).
   const laid = layout(model.clips);
+  // Inside a cross-fade the copy goes in at that cut, before the clip that fades in (it then fades in from the copy).
   const o = overlapAt(laid, t, 0.5 / model.fps);
-  const cut = o > 0 ? { model, at: laid[o].id } : model.clips.length ? cutAt(model, t) : { model, at: null };
+  const cut = o > 0 ? { model, t: clipEnd(laid[o - 1]), before: laid[o].id } : cutAt(model, t);
   if (typeof cut === "string") return { problem: cut };
   if (!canInsertClip(cut.model)) return { problem: "clips_full" };
   const clips = layout(cut.model.clips);
-  const at = cut.at === null ? clips.length : clips.findIndex((c) => c.id === cut.at);
+  const end = clips.length ? clipEnd(clips[clips.length - 1]) : 0;
+  const at0 = "before" in cut ? clips.findIndex((c) => c.id === cut.before) : clips.findIndex((c) => c.start_s >= cut.t - 0.0005);
+  const at = at0 < 0 ? clips.length : at0;
   const id = freshId(cut.model, "c");
   const copy: VideoClip = {
     ...(JSON.parse(JSON.stringify(source)) as VideoClip),
@@ -227,8 +260,12 @@ export function insertAt(
     audio: source.audio && audioInputs(cut.model) < MAX_AUDIO_CLIPS,
   };
   delete copy.transition;
+  delete copy.gap_s;
   const next = [...clips.slice(0, at), copy, ...clips.slice(at)];
-  return { model: { ...cut.model, clips: layout(next) }, id };
+  const len = clipEnd(layout([{ ...copy, start_s: 0 }])[0]);
+  const place = Math.min(cut.t, end);
+  const starts = next.map((c, i) => (i < at ? c.start_s : i === at ? place : c.start_s + len));
+  return { model: { ...cut.model, clips: withStarts(next, starts) }, id };
 }
 
 // ── J / L cut ────────────────────────────────────────────────────────────────
@@ -293,7 +330,7 @@ export function splitEdit(
   if (kind === "l") {
     if (before) {
       const max = sourceOf(before.asset_id);
-      room.push(max && max > 0 ? ms(max) - before.out_s : Number.POSITIVE_INFINITY);
+      room.push(typeof max === "number" && max > 0 ? ms(max) - before.out_s : Number.POSITIVE_INFINITY);
     }
     if (after) room.push(soundLength(after) - MIN_CLIP_S);
   } else {

@@ -106,7 +106,7 @@ describe("marks and range edits from the keyboard", () => {
     expect(vclips(await save())).toHaveLength(2);
   });
 
-  it("; lifts: black and silent for as long, nothing after it moves, and the strip names it", async () => {
+  it("; lifts: a gap, black with nothing in it, nothing after it moves; the preview is black there; Close gap closes it", async () => {
     mount();
     seek(1);
     key("i");
@@ -115,12 +115,17 @@ describe("marks and range edits from the keyboard", () => {
     key(";");
     expect(status()).toBe(core.marks.lifted);
     const doc = await save();
-    const clips = vclips(doc);
-    const hold = clips.find((c) => c.freeze === true)!;
-    expect(hold).toMatchObject({ start_s: 1, out_s: 5, audio: false, mask: { shape: "rect", w: 1, h: 1, invert: true } });
-    expect(Math.max(...clips.map((c) => Number(c.start_s)))).toBe(5);
+    expect(vclips(doc).map((c) => [c.start_s, c.in_s, c.out_s])).toEqual([[0, 0, 1], [5, 3, 6]]);
+    expect(JSON.stringify(doc)).not.toMatch(/gap_s|mask|freeze/);
     expect(validateTimeline(doc)).toEqual([]);
-    expect(clipButtons().some((b) => (b.getAttribute("aria-label") ?? "").includes(core.marks.holdName))).toBe(true);
+    expect(screen.getByTestId("timeline-gap")).toBeTruthy();
+    // in the gap the preview is black: no picture and no "no preview" note
+    seek(3);
+    expect(screen.queryByText(te.noPreview)).toBeNull();
+    expect(document.querySelector("video")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: fmt(core.marks.closeGap, { n: 2, length: "0:04.0" }) }));
+    expect(screen.queryByTestId("timeline-gap")).toBeNull();
+    expect(vclips(await save()).map((c) => c.start_s)).toEqual([0, 1]);
   });
 
   it("says why a range edit was not made, and does nothing without marks", async () => {
@@ -233,21 +238,27 @@ describe("J / K / L and Ctrl + K", () => {
     expect(screen.queryByTestId("shuttle-rate")).toBeNull();
   });
 
-  it("Ctrl + K splits at the playhead and the command palette's listener never sees it; in a field it is left alone", () => {
+  it("Ctrl + K splits while the timeline has focus (the palette never sees it); anywhere else it is the palette's", () => {
     const palette = vi.fn();
     window.addEventListener("keydown", palette);
     try {
       mount();
       seek(2);
+      // the page itself (nothing focused) and the inspector: the command palette opens, nothing is split
       key("k", { ctrlKey: true });
-      expect(clipButtons()).toHaveLength(3);
-      expect(palette).not.toHaveBeenCalled();
-      key("k", { metaKey: true });
-      expect(clipButtons()).toHaveLength(3); // nothing more to split at the same place
-      const field = screen.getByRole("textbox", { name: te.projectTitle });
-      field.focus();
-      key("k", { ctrlKey: true }, field);
       expect(palette).toHaveBeenCalledTimes(1);
+      expect(clipButtons()).toHaveLength(2);
+      const field = screen.getByRole("textbox", { name: te.projectTitle });
+      key("k", { ctrlKey: true }, field);
+      expect(palette).toHaveBeenCalledTimes(2);
+      // a clip of the timeline focused: it splits, and the palette's listener does not hear it
+      const c = clipButtons()[0];
+      c.focus();
+      key("k", { ctrlKey: true }, c);
+      expect(clipButtons()).toHaveLength(3);
+      expect(palette).toHaveBeenCalledTimes(2);
+      key("k", { metaKey: true }, screen.getByRole("radio", { name: core.tools.trim }));
+      expect(palette).toHaveBeenCalledTimes(2);
     } finally {
       window.removeEventListener("keydown", palette);
     }
@@ -345,6 +356,31 @@ describe("the timeline's tools", () => {
   });
 });
 
+describe("review fixes in the editor", () => {
+  it("a shuttle on a fast clip is held at the browser's top rate, and the transport says the rate it really plays", () => {
+    const d = twoClips();
+    Object.assign(d.tracks[0].clips[0], { out_s: 10, speed: 10 }); // 1 s of timeline
+    mount(d);
+    key("l");
+    key("l"); // 2 x 10x would be 20x: an element stops at 16x
+    expect(screen.getByTestId("shuttle-rate").textContent).toBe(fmt(core.shuttle.forward, { x: 1.6 }));
+    expect((document.querySelector("video") as HTMLVideoElement).playbackRate).toBe(16);
+  });
+
+  it("slip on a picture says a picture has no time to slip through", () => {
+    const PIC: EditorAsset = { id: "33333333-3333-4333-8333-333333333333", kind: "image", name: "p.png", durationS: null, width: 100, height: 100, viewUrl: "/p", thumbUrl: null };
+    render(
+      <I18nProvider locale="en">
+        <TimelineEditor projectId={PID} title="T" rev={1} exports={[]} assets={{ [A]: VIDEO, [PIC.id]: PIC }} videos={[VIDEO]} imageFiles={[PIC]} userId="u"
+          doc={{ version: 1, width: 1920, height: 1080, fps: 30, tracks: [{ id: "v1", kind: "V", clips: [{ id: "c1", asset_id: PIC.id, start_s: 0, in_s: 0, out_s: 3, speed: 1, audio: false }] }] }} />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: core.tools.slip }));
+    fireEvent.keyDown(screen.getByRole("slider", { name: fmt(core.tools.slipHandle, { n: 1 }) }), { key: "ArrowRight" });
+    expect(status()).toBe(core.tools.noFileStill);
+  });
+});
+
 describe("the J / L cut", () => {
   it("L cut on the second clip detaches both sounds and runs the first past the cut; one undo returns it", async () => {
     mount();
@@ -418,6 +454,7 @@ describe("the shortcuts help and the three languages", () => {
     for (const label of [core.keys.shuttleBack, core.keys.markIn, core.keys.extract, core.keys.lift, core.keys.rippleHead, core.keys.edits, core.keys.toolRoll])
       expect(within(dlg).getByText(label)).toBeTruthy();
     expect(within(dlg).getAllByText("K", { selector: "kbd" })).toHaveLength(2); // K and Ctrl + K
+    expect(within(dlg).getByText(core.keys.splitMod)).toBeTruthy();
   });
 
   it("every string is in all three languages, Uzbek and Russian included on screen", () => {

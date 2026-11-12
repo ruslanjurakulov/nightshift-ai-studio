@@ -97,6 +97,7 @@ import {
   soundLength,
   soundWarnings,
   speechSpans,
+  closeGap,
   rippleTrimTo,
   rollEdit,
   slideClip,
@@ -278,6 +279,12 @@ function setRate(v: HTMLVideoElement, speed: number) {
   }
 }
 
+/** The fastest an element plays (Chromium and Firefox stop at 16x; past it setting the rate throws). A shuttle on a fast
+ *  clip is held here, and the transport shows the rate the element really plays at, read back from it. */
+const PREVIEW_RATE_MAX = 16;
+const shuttleRateFor = (speed: number, shuttle: number) =>
+  Math.min(PREVIEW_RATE_MAX, speed * (shuttle > 0 ? shuttle : 1));
+
 /** Keys inside these keep their own meaning. */
 function typing(target: EventTarget | null): boolean {
   return (
@@ -443,6 +450,8 @@ export function TimelineEditor({
   const [marks, setMarks] = useState<Marks>(NO_MARKS);
   const [coreStatus, setCoreStatus] = useState<string | null>(null);
   const [shuttle, setShuttle] = useState(1);
+  // The shuttle rate the preview really plays at (the element may hold a fast clip's rate lower, or keep its last one).
+  const [shownShuttle, setShownShuttle] = useState(1);
   const shuttleRef = useRef(1);
   shuttleRef.current = shuttle;
   const [guides, setGuides] = useState<GuideChoice>(GUIDES_OFF);
@@ -688,9 +697,14 @@ export function TimelineEditor({
   useEffect(() => {
     const v = video.current;
     if (!v || !at) return;
-    setRate(v, at.clip.speed * (shuttle > 0 ? shuttle : 1));
+    setRate(v, shuttleRateFor(at.clip.speed, shuttle));
     // Fast or backwards shuttle plays no sound (the note under the transport says so).
     v.muted = !at.clip.audio || shuttle !== 1;
+    const real =
+      shuttle > 0 && playsNatively(at.clip) && at.clip.speed > 0
+        ? Math.round(((v.playbackRate || at.clip.speed) / at.clip.speed) * 100) / 100
+        : shuttle;
+    if (real !== shownShuttle) setShownShuttle(real);
     // The clip's own volume, as far as a browser goes (an element plays at most 100 %; the export does 200 %).
     v.volume = previewVolume(at.clip.gain_db ?? 0);
     const switched = shownClip.current !== at.clip.id;
@@ -719,7 +733,7 @@ export function TimelineEditor({
       if (playing && switched)
         void v.play?.()?.catch?.(() => setPlaying(false));
     }
-  }, [at, playing, src, shuttle]);
+  }, [at, playing, src, shuttle, shownShuttle]);
 
   const playheadRef = useRef(playhead);
   playheadRef.current = playhead;
@@ -1038,7 +1052,9 @@ export function TimelineEditor({
   }
 
   // ── the editing core: roll / slip / slide, marks, ripple trim to the playhead, shuttle ──
-  const sourceOf = (assetId: string) => assets[assetId]?.durationS ?? null;
+  // A picture has no time inside it ("still": any length either way); an unknown length is never guessed.
+  const sourceOf = (assetId: string) =>
+    assets[assetId]?.kind === "image" ? ("still" as const) : (assets[assetId]?.durationS ?? null);
   const kindOf = (assetId: string) => assets[assetId]?.kind;
   const core = t.editor.core;
   function runTool(base: EditorModel, op: ToolOp): EditorModel {
@@ -1055,7 +1071,14 @@ export function TimelineEditor({
     }
     const next = runTool(model, op);
     if (next === model) {
-      setCoreStatus(op.tool === "slip" && !slipRange(model, op.id, sourceOf) ? core.tools.noFile : core.tools.stuck);
+      const c = model.clips.find((x) => x.id === op.id);
+      setCoreStatus(
+        op.tool === "slip" && !slipRange(model, op.id, sourceOf)
+          ? c && sourceOf(c.asset_id) === "still"
+            ? core.tools.noFileStill
+            : core.tools.noFile
+          : core.tools.stuck,
+      );
       return;
     }
     setCoreStatus(null);
@@ -1076,7 +1099,11 @@ export function TimelineEditor({
   }
   const range = markedRange(marks, total, model.fps);
   const rangeProblem = (p: RangeProblem) =>
-    p === "clips_full" ? fmt(core.marks.problem.clips_full, { max: MAX_EDITOR_CLIPS }) : core.marks.problem[p];
+    p === "clips_full"
+      ? fmt(core.marks.problem.clips_full, { max: MAX_EDITOR_CLIPS })
+      : p === "sounds_full"
+        ? fmt(core.marks.problem.sounds_full, { max: MAX_EDITOR_SOUNDS })
+        : core.marks.problem[p];
   function onExtract() {
     if (!range) return setCoreStatus(core.marks.problem.no_range);
     const out = extractRange(model, range[0], range[1]);
@@ -1089,7 +1116,7 @@ export function TimelineEditor({
   }
   function onLift() {
     if (!range) return setCoreStatus(core.marks.problem.no_range);
-    const out = liftRange(model, range[0], range[1], kindOf);
+    const out = liftRange(model, range[0], range[1]);
     if ("problem" in out) return setCoreStatus(rangeProblem(out.problem));
     apply(out.model);
     setCoreStatus(core.marks.lifted);
@@ -1636,7 +1663,7 @@ export function TimelineEditor({
                   const v = video.current;
                   if (v && at) {
                     v.currentTime = at.sourceS;
-                    setRate(v, at.clip.speed * (shuttle > 0 ? shuttle : 1));
+                    setRate(v, shuttleRateFor(at.clip.speed, shuttle));
                     if (playing)
                       void v.play?.()?.catch?.(() => setPlaying(false));
                   }
@@ -1649,7 +1676,8 @@ export function TimelineEditor({
                   }
                 }}
               />
-            ) : (
+            ) : !at && clips.length && playhead < picture ? null : (
+              // In a gap (a lift's black) the frame is black, as the export renders it; this note is for a missing picture.
               <p className="absolute inset-0 m-0 flex items-center justify-center p-4 text-center text-xs text-[var(--ns-on-film)]">
                 {te.noPreview}
               </p>
@@ -1831,7 +1859,7 @@ export function TimelineEditor({
             {/* The master-control readout: frame-accurate timecode at the project's rate; the spoken form keeps tenths. */}
             {playing && shuttle !== 1 ? (
               <span role="status" className="ns-chip shrink-0 text-xs font-semibold" data-testid="shuttle-rate" title={core.shuttle.note}>
-                {fmt(shuttle < 0 ? core.shuttle.back : core.shuttle.forward, { x: Math.abs(shuttle) })}
+                {fmt(shownShuttle < 0 ? core.shuttle.back : core.shuttle.forward, { x: Math.abs(shownShuttle) })}
               </span>
             ) : null}
             <span className="shrink-0 basis-full text-right text-xs text-[var(--color-muted)] sm:basis-auto">
@@ -1847,6 +1875,7 @@ export function TimelineEditor({
             marks={marks}
             onToolEdit={onToolEdit}
             onToolEditEnd={onToolEditEnd}
+            onCloseGap={(id) => apply(closeGap(model, id))}
             view={view}
             clips={clips}
             texts={model.texts}

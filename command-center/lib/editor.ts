@@ -576,6 +576,12 @@ export interface VideoClip {
   id: string;
   asset_id: string;
   start_s: number;
+  /** EDITOR ONLY, never in the document: black before this clip on the picture lane (a gap, e.g. what a lift
+   *  leaves). `layout` places the clip this long after the one before it; `toDoc` drops the field, and the clip's
+   *  `start_s` carries the gap, which both validators accept and the export renders as black with no sound and no
+   *  decode (modules/timeline_render.py `_picture`). `toModel` reads it back from the starts. A clip after a gap has
+   *  no cross-fade in. */
+  gap_s?: number;
   in_s: number;
   out_s: number;
   speed: number;
@@ -782,9 +788,12 @@ const isNum = (v: unknown): v is number =>
 const isInt = (v: unknown): v is number =>
   typeof v === "number" && Number.isInteger(v);
 
-/** Milliseconds, the document's resolution (modules/timeline.py `_ms`). */
+/** Milliseconds, the document's resolution, rounded half up. The same three double operations as modules/timeline.py
+ *  `_ms` (`floor(v * 1000 + 0.5) / 1000`), so both validators see the same number: Python's `round(v, 3)` rounds the
+ *  exact binary value half to even and `Math.round` treats a few values near a half differently, and a 0.7745 s clip
+ *  once laid out at 0.775 here was 0.774 there (an "overlap" the worker refused). */
 export function ms(v: number): number {
-  return Math.round(v * 1000) / 1000;
+  return Math.floor(v * 1000 + 0.5) / 1000;
 }
 
 export function clamp(v: number, lo: number, hi: number): number {
@@ -2335,7 +2344,8 @@ export function layout(clips: VideoClip[]): VideoClip[] {
   let prevIn = 0;
   let prevLen = 0;
   return clips.map((c, i) => {
-    let x = i > 0 ? crossfadeOf(c) : 0;
+    const gap = gapOf(c);
+    let x = i > 0 && gap === 0 ? crossfadeOf(c) : 0;
     if (x > 0) {
       // The previous clip must still start strictly before this one, or
       // sorting by start (both validators do) could swap the two.
@@ -2350,7 +2360,7 @@ export function layout(clips: VideoClip[]): VideoClip[] {
         transition: { type: "crossfade", duration_s: x, ...styleOf(c) },
       };
     else if (c.transition?.type === "crossfade") base = withoutTransition(c);
-    const start = i === 0 ? 0 : x > 0 ? ms(prevEnd - x) : nextStart(prevEnd);
+    const start = i === 0 ? ms(gap) : x > 0 ? ms(prevEnd - x) : gap > 0 ? ms(nextStart(prevEnd) + gap) : nextStart(prevEnd);
     const placed = { ...base, start_s: start };
     prevEnd = clipEnd(placed);
     prevIn = x;
@@ -2359,12 +2369,68 @@ export function layout(clips: VideoClip[]): VideoClip[] {
   });
 }
 
+/** The black before a clip on the picture lane (editor only; 0 when there is none or it is not a usable number). */
+export function gapOf(c: Pick<VideoClip, "gap_s">): number {
+  const g = c.gap_s;
+  return isNum(g) && g >= 0.0005 ? ms(g) : 0;
+}
+
+/**
+ * The clips with the black before each set so that each starts where `starts` says (when that is later than where
+ * it would follow the clip before it), then laid out. What a lift, a ripple delete over a gap and an insert into a
+ * gap use, and how `toModel` reads a document's gaps back. A clip that would start earlier than its natural place
+ * (a cross-fade) keeps that place.
+ */
+export function withStarts(clips: VideoClip[], starts: number[]): VideoClip[] {
+  const out: VideoClip[] = [];
+  for (let i = 0; i < clips.length; i += 1) {
+    const bare = { ...clips[i] };
+    delete bare.gap_s;
+    const natural = layout([...out, bare])[i].start_s;
+    const want = starts[i] ?? natural;
+    if (want - natural < 0.0005) {
+      out.push(bare);
+      continue;
+    }
+    // Later than it would follow: a gap, and a clip after a gap has no cross-fade in (its natural place is then
+    // straight after the clip before, not over its end).
+    const cut = withoutTransition(bare);
+    const g = ms(want - layout([...out, cut])[i].start_s);
+    out.push(g >= 0.001 ? { ...cut, gap_s: g } : bare);
+  }
+  return layout(out);
+}
+
+/** Every gap on the picture lane: where it is, and the clip after it (which carries it). */
+export function gapsOf(model: EditorModel): { before: string; start: number; end: number }[] {
+  return layout(model.clips)
+    .filter((c) => gapOf(c) > 0)
+    .map((c) => ({ before: c.id, start: ms(c.start_s - gapOf(c)), end: c.start_s }));
+}
+
+/** Close the gap before clip `id`: it and everything after it move up (a ripple delete of the black). */
+export function closeGap(model: EditorModel, id: string): EditorModel {
+  const c = model.clips.find((x) => x.id === id);
+  if (!c || !gapOf(c)) return model;
+  return {
+    ...model,
+    clips: layout(
+      model.clips.map((x) => {
+        if (x.id !== id) return x;
+        const rest = { ...x };
+        delete rest.gap_s;
+        return rest;
+      }),
+    ),
+  };
+}
+
 /** The longest cross-fade clip `id` can have from the clip before it (0 when
- *  it cannot have one: the first clip, or too little material on a side). */
+ *  it cannot have one: the first clip, a clip after a gap, or too little material on a side). */
 export function maxCrossfade(model: EditorModel, id: string): number {
   const clips = layout(model.clips);
   const i = clips.findIndex((c) => c.id === id);
-  if (i <= 0) return 0;
+  if (i <= 0 || gapOf(clips[i]) > 0) return 0;
   const prevIn = crossfadeOf(clips[i - 1]);
   const nextOut = i + 1 < clips.length ? crossfadeOf(clips[i + 1]) : 0;
   const max = Math.min(
@@ -2685,6 +2751,9 @@ export function toModel(doc: TimelineDoc): EditorModel {
     .sort(
       (a, b) => a.start_s - b.start_s || byCodePoint(a.id, b.id),
     );
+  // A gap in the document's picture (black; what a lift leaves) is kept: each clip goes back where it starts.
+  const placed = withStarts(clips, clips.map((c) => (isNum(c.start_s) ? c.start_s : 0)));
+  clips.splice(0, clips.length, ...placed);
   // Every music / sound clip, whatever A track it was on: each gets a track
   // of its own again in toDoc, so two can play at once.
   const sounds: SoundClip[] = doc.tracks
@@ -2746,13 +2815,18 @@ export function toDoc(model: EditorModel): TimelineDoc {
     {
       id: "v1",
       kind: "V",
-      clips: layout(model.clips).map((c) => ({
-        ...c,
-        in_s: ms(c.in_s),
-        out_s: ms(c.out_s),
-        speed: ms(c.speed),
-        ...(c.gain_db !== undefined ? { gain_db: ms(c.gain_db) } : {}),
-      })),
+      // `gap_s` is the editor's own: the document carries a gap in the clip's start_s.
+      clips: layout(model.clips).map((laid) => {
+        const c = { ...laid };
+        delete c.gap_s;
+        return {
+          ...c,
+          in_s: ms(c.in_s),
+          out_s: ms(c.out_s),
+          speed: ms(c.speed),
+          ...(c.gain_db !== undefined ? { gain_db: ms(c.gain_db) } : {}),
+        };
+      }),
     },
     ...model.keep,
   ];
@@ -3145,15 +3219,17 @@ export function trimClip(
 // may do is worked out first as a range and the request is held to it, so a drag past a limit stops at the
 // limit instead of leaving a clip under a frame, past its file, or too short for a cross-fade it has.
 
-/** Where a clip's file ends (null: not known, or a still, which has no end). */
-export type SourceLength = (assetId: string) => number | null;
+/** Where a clip's file ends: seconds, "still" for a picture (no time inside it, so any length either way), or null
+ *  when not known (never guessed: an unknown file is not slipped). */
+export type SourceLength = (assetId: string) => number | "still" | null;
 
 /** A side of a clip on the timeline: `head` is where it starts, `tail` where it ends. */
 type Side = "head" | "tail";
 
-/** Which source edge a timeline side moves: a reversed clip plays its range from the end. */
-function sourceEdge(c: VideoClip, side: Side): "in" | "out" {
-  if (c.freeze) return "out";
+/** Which source edge a timeline side moves: a reversed clip plays its range from the end; a frozen clip and a still
+ *  (marked by `holds`) only change how long they hold, which is `out_s`. */
+function sourceEdge(c: VideoClip, side: Side, holds = false): "in" | "out" {
+  if (c.freeze || holds) return "out";
   return (side === "head") !== Boolean(c.reverse) ? "in" : "out";
 }
 
@@ -3170,9 +3246,9 @@ function crossfadeNeed(clips: VideoClip[], i: number): number {
  * its file (`max`, unbounded when not known) and at least {@link minPieceS} of source long. A frozen clip holds
  * the frame at `in_s`, so either side only changes its hold (`out_s`); its length is not capped by the file.
  */
-function sideRoom(c: VideoClip, side: Side, max: number, fps: number): [number, number] {
+function sideRoom(c: VideoClip, side: Side, max: number, fps: number, holds = false): [number, number] {
   const min = minPieceS(c, fps);
-  if (c.freeze) return [c.in_s + min - c.out_s, Number.POSITIVE_INFINITY];
+  if (c.freeze || holds) return [c.in_s + min - c.out_s, Number.POSITIVE_INFINITY];
   const s = c.speed > 0 ? c.speed : 1;
   return sourceEdge(c, side) === "out"
     ? [(c.in_s + min - c.out_s) / s, (max - c.out_s) / s]
@@ -3181,10 +3257,10 @@ function sideRoom(c: VideoClip, side: Side, max: number, fps: number): [number, 
 
 /** Clip `c` grown on side `side` by `d` timeline seconds (negative shrinks it); its fades and entrance / exit
  *  are held to the new length as a split piece's are. */
-function growSide(c: VideoClip, side: Side, d: number): VideoClip {
-  const s = c.freeze ? 1 : c.speed > 0 ? c.speed : 1;
+function growSide(c: VideoClip, side: Side, d: number, holds = false): VideoClip {
+  const s = c.freeze || holds ? 1 : c.speed > 0 ? c.speed : 1;
   const out: VideoClip =
-    sourceEdge(c, side) === "out"
+    sourceEdge(c, side, holds) === "out"
       ? { ...c, out_s: ms(c.out_s + d * s) }
       : { ...c, in_s: ms(c.in_s - d * s) };
   fitPieceFades(out);
@@ -3206,8 +3282,9 @@ function holdDelta(d: number, lo: number, hi: number): number {
 
 const srcMax = (c: VideoClip, sourceOf: SourceLength) => {
   const v = sourceOf(c.asset_id);
-  return v && v > 0 ? ms(v) : Number.POSITIVE_INFINITY;
+  return typeof v === "number" && v > 0 ? ms(v) : Number.POSITIVE_INFINITY;
 };
+const isStill = (c: VideoClip, sourceOf: SourceLength) => sourceOf(c.asset_id) === "still";
 
 /** How far the cut into clip `id` can roll: [earliest, latest] in timeline seconds from where it is (null when
  *  there is no cut there: the first clip, a missing id, or a speed curve on either side). */
@@ -3217,9 +3294,10 @@ export function rollRange(model: EditorModel, id: string, sourceOf: SourceLength
   if (i <= 0) return null;
   const a = clips[i - 1];
   const b = clips[i];
-  if (a.speed_curve || b.speed_curve) return null;
-  const [aLo, aHi] = sideRoom(a, "tail", srcMax(a, sourceOf), model.fps);
-  const [bLo, bHi] = sideRoom(b, "head", srcMax(b, sourceOf), model.fps);
+  // A gap is not a cut between two clips: there is nothing to roll there (close it, or trim).
+  if (a.speed_curve || b.speed_curve || gapOf(b) > 0) return null;
+  const [aLo, aHi] = sideRoom(a, "tail", srcMax(a, sourceOf), model.fps, isStill(a, sourceOf));
+  const [bLo, bHi] = sideRoom(b, "head", srcMax(b, sourceOf), model.fps, isStill(b, sourceOf));
   return [
     Math.max(aLo, -bHi, crossfadeNeed(clips, i - 1) - clipLength(a)),
     Math.min(aHi, -bLo, clipLength(b) - crossfadeNeed(clips, i)),
@@ -3239,7 +3317,11 @@ export function rollEdit(model: EditorModel, id: string, d: number, sourceOf: So
   const clips = layout(model.clips);
   const i = clips.findIndex((c) => c.id === id);
   const next = clips.map((c, k) =>
-    k === i - 1 ? growSide(c, "tail", step) : k === i ? growSide(c, "head", -step) : c,
+    k === i - 1
+      ? growSide(c, "tail", step, isStill(c, sourceOf))
+      : k === i
+        ? growSide(c, "head", -step, isStill(c, sourceOf))
+        : c,
   );
   return { ...model, clips: layout(next) };
 }
@@ -3249,6 +3331,7 @@ export function rollEdit(model: EditorModel, id: string, d: number, sourceOf: So
 export function slipRange(model: EditorModel, id: string, sourceOf: SourceLength): [number, number] | null {
   const c = model.clips.find((x) => x.id === id);
   if (!c) return null;
+  if (isStill(c, sourceOf)) return null;
   const max = srcMax(c, sourceOf);
   if (!Number.isFinite(max)) return null;
   // A frozen clip only needs its frame inside the file (its hold is not the file's).
@@ -3281,9 +3364,9 @@ export function slideRange(model: EditorModel, id: string, sourceOf: SourceLengt
   if (i <= 0 || i >= clips.length - 1) return null;
   const a = clips[i - 1];
   const c = clips[i + 1];
-  if (a.speed_curve || c.speed_curve) return null;
-  const [aLo, aHi] = sideRoom(a, "tail", srcMax(a, sourceOf), model.fps);
-  const [cLo, cHi] = sideRoom(c, "head", srcMax(c, sourceOf), model.fps);
+  if (a.speed_curve || c.speed_curve || gapOf(clips[i]) > 0 || gapOf(c) > 0) return null;
+  const [aLo, aHi] = sideRoom(a, "tail", srcMax(a, sourceOf), model.fps, isStill(a, sourceOf));
+  const [cLo, cHi] = sideRoom(c, "head", srcMax(c, sourceOf), model.fps, isStill(c, sourceOf));
   return [
     Math.max(aLo, -cHi, crossfadeNeed(clips, i - 1) - clipLength(a)),
     Math.min(aHi, -cLo, clipLength(c) - crossfadeNeed(clips, i + 1)),
@@ -3303,7 +3386,11 @@ export function slideClip(model: EditorModel, id: string, d: number, sourceOf: S
   const clips = layout(model.clips);
   const i = clips.findIndex((c) => c.id === id);
   const next = clips.map((c, k) =>
-    k === i - 1 ? growSide(c, "tail", step) : k === i + 1 ? growSide(c, "head", -step) : c,
+    k === i - 1
+      ? growSide(c, "tail", step, isStill(c, sourceOf))
+      : k === i + 1
+        ? growSide(c, "head", -step, isStill(c, sourceOf))
+        : c,
   );
   return { ...model, clips: layout(next) };
 }
@@ -3469,6 +3556,8 @@ function splitAt(
         : { ...c, id: newId, in_s: cut },
   );
   delete second.fade_in_s;
+  // The black before the clip stays before its first half.
+  delete second.gap_s;
   // A piece keeps its side's fade only as long as the piece is (the validator's rule: fade in + fade out
   // within the clip's length; modules/timeline.py split_clip does the same). The way in stays with the first
   // half and the way out with the second, each held to half its piece.
@@ -3693,6 +3782,8 @@ export function insertClipCopy(
     id,
     audio: source.audio && audioInputs(model) < MAX_AUDIO_CLIPS,
   });
+  // A gap belongs to a place on the lane, not to the clip that followed it.
+  delete copy.gap_s;
   const clips = layout(model.clips);
   const i = afterId === null ? -1 : clips.findIndex((c) => c.id === afterId);
   const at = i < 0 ? clips.length : i + 1;
@@ -3711,7 +3802,14 @@ export function duplicateClip(
 
 export function removeClip(model: EditorModel, id: string): EditorModel {
   if (model.clips.length <= 1) return model;
-  return { ...model, clips: layout(model.clips.filter((c) => c.id !== id)) };
+  // A ripple delete of the clip: a gap before it stays, now before the clip that followed it.
+  const clips = layout(model.clips);
+  const i = clips.findIndex((c) => c.id === id);
+  if (i < 0) return model;
+  const g = gapOf(clips[i]);
+  const rest = clips.filter((c) => c.id !== id);
+  if (g > 0 && i < rest.length) rest[i] = { ...rest[i], gap_s: ms(gapOf(rest[i]) + g) };
+  return { ...model, clips: layout(rest) };
 }
 
 /** Move a clip one place earlier (-1) or later (+1). */
