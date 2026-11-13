@@ -278,6 +278,9 @@ ON_0139 = (MIGRATION_0149.name,)
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
+#: Migrations that call 0124's model_is_available() and refuse to apply without it (0151, the Studio's probe seed): a sequence that
+#: leaves 0124 out leaves these out too, and puts them back after it.
+ON_0124 = ("0151_model_probe_seconds.sql",)
 
 
 def has_0139(conn_or_session) -> bool:
