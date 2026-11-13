@@ -227,6 +227,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "28f164dc-809f-49a3-b2e2-ef0bdf88519b",
+      "assetId": "e766a4be-cb70-5c11-b751-b71e3b196b9b",
+      "sha256": "d6e2da372d51888d80a3509b847dc7d711c3eff6b394e8c0825fcad0d8bb34d1",
+      "modelId": "ideogram-4.5",
+      "modelName": "Ideogram 4.5",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Square studio product photograph: a small retro robot made of brushed aluminium and orange enamel holds a tiny film clapperboard, soft gradient backdrop, rim light, glossy reflections, playful and premium, no readable text.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "ideogram-4-5",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1280,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:12:18Z"
     }
   ]
 }
