@@ -56,6 +56,9 @@ export const PUBLIC_PAGE_PATHS = [
   "/pricing",
   // What is coming (lib/public-paths.ts ROADMAP_PATH).
   "/roadmap",
+  // The model pages' index (lib/public-paths.ts MODELS_PATH). A model's own page needs no line: `/models/<slug>.rsc` is a slug
+  // app/models/[slug] never builds, so it is that route's 404, never the app layout's skeleton.
+  "/models",
   "/solutions",
   "/solutions/youtube-channels",
   "/solutions/creative-studio",

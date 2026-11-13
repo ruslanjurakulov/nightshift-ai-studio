@@ -48,6 +48,7 @@ import { LEGAL_TEXTS, type LegalBlock } from "@/lib/legal-docs";
 import { DEV_PAGE_PATHS } from "@/lib/dev-pages";
 import { SITEMAP_PATHS, SOLUTION_PATHS, gateDecision, isPublicFontPath } from "@/lib/public-paths";
 import { listedPagePaths } from "@/lib/site-pages";
+import { MODEL_PAGES } from "@/components/site/model-catalog";
 import { llmsEntries, llmsTxt, OPENAPI_PATH } from "@/lib/llms";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import robots from "@/app/robots";
@@ -83,7 +84,13 @@ const PAGES: PageSpec[] = [
   { path: "/terms", module: "@/app/terms/page", props: {}, indexed: true },
   // The Refund Policy: listed like /roadmap, not counted by the page-view beacon (lib/site-pages.ts UNCOUNTED_PAGE_PATHS).
   { path: "/refund", module: "@/app/refund/page", props: {}, indexed: true },
+  // The model pages (app/models): the index is listed like /roadmap; each model's page is in the sitemap only (not llms.txt,
+  // which names no model). Here the file module is the real one, whose stills a Vite test cannot resolve to a path, so their
+  // share card is the site's /og.png; tests/model-pages.test.tsx checks the model's own still with Next-shaped paths.
+  { path: "/models", module: "@/app/models/page", props: {}, indexed: true },
+  ...MODEL_PAGES.map((p) => ({ path: p.path, module: "@/app/models/[slug]/page", props: slug(p.slug), indexed: true })),
 ];
+const MODEL_PAGE_PATHS = new Set(MODEL_PAGES.map((p) => p.path));
 /** Public, with their own metadata (a layout, the page being client code), but not in the sitemap by design: forms, not content. */
 const FORM_PAGES: { path: string; module: string }[] = [
   { path: "/login", module: "@/app/login/layout" },
@@ -208,10 +215,10 @@ describe("12 sitemap.xml", () => {
       .filter((f) => /\/page\.tsx$/.test(f))
       .map((f) => relative(join(ROOT, "app"), f).replace(/\/?page\.tsx$/, ""))
       .filter((r) => !SKIP.some((s) => r === s || r.startsWith(s + "/")))
-      .flatMap((r) => (r === "solutions/[slug]" ? SOLUTION_PATHS.slice(1) : ["/" + r]))
+      .flatMap((r) => (r === "solutions/[slug]" ? SOLUTION_PATHS.slice(1) : r === "models/[slug]" ? [...MODEL_PAGE_PATHS] : ["/" + r]))
       .filter((r) => !unindexed.has(r))
       .map((r) => (r === "/" || r === "" ? "/" : r));
-    const listed = new Set<string>(listedPagePaths(false));
+    const listed = new Set<string>([...listedPagePaths(false), ...MODEL_PAGE_PATHS]);
     const forms = new Set(FORM_PAGES.map((p) => p.path));
     for (const route of found) expect(listed.has(route) || forms.has(route), `${route} is public but neither in the sitemap, a form page nor in NOINDEX_PUBLIC`).toBe(true);
     // A page on the unindexed list has a page file (the list cannot go stale).
@@ -278,7 +285,8 @@ describe("20 llms.txt", () => {
     for (const flag of ["", "1"]) {
       vi.stubEnv("DEV_CLI_PAGE", flag);
       const inLlms = new Set(llmsEntries(flag === "1").map((e) => e.path));
-      for (const e of sitemap()) expect(inLlms.has(new URL(e.url).pathname), e.url).toBe(true);
+      // A model's own page names its model, and llms.txt names none: it is the one kind of sitemap page left out, on purpose.
+      for (const e of sitemap()) if (!MODEL_PAGE_PATHS.has(new URL(e.url).pathname)) expect(inLlms.has(new URL(e.url).pathname), e.url).toBe(true);
     }
   });
 

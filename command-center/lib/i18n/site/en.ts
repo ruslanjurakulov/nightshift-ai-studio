@@ -1,5 +1,6 @@
 import { studioPageEn } from "../studio-page/en";
 import { roadmapEn } from "../roadmap/en";
+import { modelPagesEn } from "../model-pages/en";
 
 /**
  * The public site's copy (landing, Solutions, the sign-in shell, 404), kept
@@ -269,6 +270,9 @@ export const siteEn = {
     lead: "Each tile is a model that made a sample on this page, shown with the credit its maker asks for. A model you cannot choose in the Studio yet says so.",
     count: "Samples on this page: {n}",
     see: "Watch its sample",
+    /** To the model's own page (/models/<slug>), on a tile whose model has one. */
+    page: "All its samples and details",
+    pageAria: "{model}: all its samples and details",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {
@@ -553,6 +557,8 @@ export const siteEn = {
   studioPage: studioPageEn,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapEn,
+  /** The public model pages, /models and /models/<slug> (lib/i18n/model-pages). */
+  modelPages: modelPagesEn,
   final: {
     title: "Put your next video on the night shift.",
     lead: "Start free. See the price before every run, and every video stays private until you make it public.",

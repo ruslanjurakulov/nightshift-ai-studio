@@ -1,4 +1,4 @@
-import { REFUND_PATH, ROADMAP_PATH, SITEMAP_PATHS } from "@/lib/public-paths";
+import { MODELS_PATH, REFUND_PATH, ROADMAP_PATH, SITEMAP_PATHS } from "@/lib/public-paths";
 import { DEV_PAGE_PATHS } from "@/lib/dev-pages";
 
 /**
@@ -13,8 +13,11 @@ import { DEV_PAGE_PATHS } from "@/lib/dev-pages";
  * `devPages` is the DEV_CLI_PAGE flag (lib/dev-pages.ts): off, /docs/cli and
  * /docs/skills are the public 404 and are not listed.
  */
-/** Listed in the sitemap and llms.txt, not counted by the page-view beacon (see above). */
-export const UNCOUNTED_PAGE_PATHS = [ROADMAP_PATH, REFUND_PATH] as const;
+/**
+ * Listed in the sitemap and llms.txt, not counted by the page-view beacon (see above). /models is here; a model's own page
+ * (/models/<slug>) is in the sitemap only (app/sitemap.ts): it names its model, and llms.txt names none (lib/llms.ts).
+ */
+export const UNCOUNTED_PAGE_PATHS = [ROADMAP_PATH, REFUND_PATH, MODELS_PATH] as const;
 
 export function listedPagePaths(devPages: boolean): string[] {
   return devPages ? [...SITEMAP_PATHS, ...UNCOUNTED_PAGE_PATHS, ...DEV_PAGE_PATHS] : [...SITEMAP_PATHS, ...UNCOUNTED_PAGE_PATHS];

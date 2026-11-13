@@ -6,6 +6,7 @@ import { tryHref } from "@/lib/site/showcase-link";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { ClipPause } from "@/components/site/ClipPause";
+import { modelPageHref } from "@/components/site/model-catalog";
 
 /** The day a sample was made, in the page's language (UTC, so the server and every visitor read the same day). */
 function madeOn(iso: string, locale: Locale): string {
@@ -118,7 +119,15 @@ export function ShowcaseGallery({
                     </div>
                   )}
                   <p className="nx-gallery-model">
-                    <span className="nx-gallery-key">{g.model}</span> <strong>{e.modelName}</strong>
+                    <span className="nx-gallery-key">{g.model}</span>{" "}
+                    {/* The model's own page (app/models/[slug]), where one is built; inside this card, the one place it may be named. */}
+                    {modelPageHref(e.modelId) ? (
+                      <Link href={modelPageHref(e.modelId)!} prefetch={false} className="nx-gallery-model-link">
+                        <strong>{e.modelName}</strong>
+                      </Link>
+                    ) : (
+                      <strong>{e.modelName}</strong>
+                    )}
                   </p>
                   {e.attribution && (
                     <a href={e.attribution.url} target="_blank" rel="noopener noreferrer" className="nx-gallery-attr">

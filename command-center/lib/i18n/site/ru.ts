@@ -1,6 +1,7 @@
 import type { SiteDictionary } from "./en";
 import { studioPageRu } from "../studio-page/ru";
 import { roadmapRu } from "../roadmap/ru";
+import { modelPagesRu } from "../model-pages/ru";
 
 /** Публичный сайт: главная, «Решения», вход, 404. Источник — ./en.ts. */
 export const siteRu: SiteDictionary = {
@@ -229,6 +230,8 @@ export const siteRu: SiteDictionary = {
     lead: "Каждая плитка — модель, сделавшая пример на этой странице, с подписью, которую просит её разработчик. Если модель пока нельзя выбрать в Студии, так и написано.",
     count: "Примеров на этой странице: {n}",
     see: "Смотреть её пример",
+    page: "Все её примеры и подробности",
+    pageAria: "{model}: все примеры и подробности",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {
@@ -510,6 +513,8 @@ export const siteRu: SiteDictionary = {
   studioPage: studioPageRu,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapRu,
+  /** The public model pages, /models and /models/<slug> (lib/i18n/model-pages). */
+  modelPages: modelPagesRu,
   final: {
     title: "Поставьте следующее видео в ночную смену.",
     lead: "Начните бесплатно. Цена — до каждого запуска, а каждое видео приватно, пока вы не сделаете его публичным.",

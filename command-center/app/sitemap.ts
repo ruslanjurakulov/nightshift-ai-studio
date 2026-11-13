@@ -3,6 +3,7 @@ import { runtimeSiteOrigin } from "@/lib/landing";
 import { STUDIO_PAGE_PATH } from "@/lib/public-paths";
 import { devPagesEnabled } from "@/lib/dev-pages";
 import { listedPagePaths } from "@/lib/site-pages";
+import { MODEL_PAGES } from "@/components/site/model-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +14,14 @@ export const dynamic = "force-dynamic";
  * list of localhost addresses. /docs/cli and /docs/skills are listed only
  * while their flag is on (lib/dev-pages.ts): off, they are the public 404 and
  * a sitemap line would advertise a page that does not exist.
+ *
+ * Then one line per model page (components/site/model-catalog.ts: the list app/models/[slug] builds, so a line is never a 404).
+ * They are here and not in listedPagePaths because that list is llms.txt's too, and llms.txt names no model.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
   const origin = runtimeSiteOrigin();
   if (!origin) return [];
-  const paths = listedPagePaths(devPagesEnabled());
+  const paths = [...listedPagePaths(devPagesEnabled()), ...MODEL_PAGES.map((p) => p.path)];
   return paths.map((path) => ({
     url: new URL(path, origin).toString(),
     changeFrequency: path === "/" || path === "/pricing" ? "weekly" : "monthly",

@@ -2,7 +2,7 @@ import { dictionaries, LOCALES } from "@/lib/i18n";
 import { getDevDictionary } from "@/lib/i18n/dev";
 import { getLegalTexts } from "@/lib/legal-docs";
 import { isSolutionId, solutionHref, SOLUTIONS_PATH } from "@/lib/solutions";
-import { REFUND_PATH, ROADMAP_PATH, STUDIO_PAGE_PATH } from "@/lib/public-paths";
+import { MODELS_PATH, REFUND_PATH, ROADMAP_PATH, STUDIO_PAGE_PATH } from "@/lib/public-paths";
 import { listedPagePaths } from "@/lib/site-pages";
 
 /**
@@ -37,7 +37,7 @@ const SECTIONS: Section[] = ["Product", "Solutions", "Developers", "Legal"];
 
 /** Where each listed page belongs; a listed page missing here is a bug the test names. */
 function sectionOf(path: string): Section {
-  if (path === "/" || path === STUDIO_PAGE_PATH || path === "/pricing" || path === ROADMAP_PATH) return "Product";
+  if (path === "/" || path === STUDIO_PAGE_PATH || path === "/pricing" || path === ROADMAP_PATH || path === MODELS_PATH) return "Product";
   if (path === SOLUTIONS_PATH || path.startsWith(SOLUTIONS_PATH + "/")) return "Solutions";
   if (path === "/privacy" || path === "/terms" || path === REFUND_PATH) return "Legal";
   return "Developers";
@@ -52,6 +52,8 @@ function describe(path: string): { title: string; description: string } | null {
   if (path === STUDIO_PAGE_PATH) return { title: t.site.nav.studio, description: t.site.studioPage.meta.description };
   if (path === "/pricing") return { title: t.pricing.title, description: t.pricing.metaDescription };
   if (path === ROADMAP_PATH) return { title: t.site.roadmap.title, description: t.site.roadmap.meta.description };
+  // The index's own words, which name no model (no dictionary does: tests/site-copy.test.ts); each model's page is in the sitemap only.
+  if (path === MODELS_PATH) return { title: t.site.modelPages.index.title, description: t.site.modelPages.meta.indexDescription };
   if (path === SOLUTIONS_PATH) return { title: t.site.solutions.meta.title, description: t.site.solutions.meta.description };
   const solution = t.site.solutions.pages.find((p) => isSolutionId(p.id) && solutionHref(p.id) === path);
   if (solution) return { title: solution.nav, description: solution.lead };

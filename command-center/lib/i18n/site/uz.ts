@@ -1,6 +1,7 @@
 import type { SiteDictionary } from "./en";
 import { studioPageUz } from "../studio-page/uz";
 import { roadmapUz } from "../roadmap/uz";
+import { modelPagesUz } from "../model-pages/uz";
 
 /** Ommaviy sayt: bosh sahifa, «Yechimlar», kirish, 404. Manba — ./en.ts. */
 export const siteUz: SiteDictionary = {
@@ -229,6 +230,8 @@ export const siteUz: SiteDictionary = {
     lead: "Har bir plitka shu sahifadagi namunani yaratgan model, uning ishlab chiqaruvchisi soʻragan imzo bilan. Studiyada hali tanlab boʻlmaydigan model buni ochiq aytadi.",
     count: "Shu sahifadagi namunalar: {n}",
     see: "Namunasini koʻrish",
+    page: "Barcha namunalari va tafsilotlari",
+    pageAria: "{model}: barcha namunalari va tafsilotlari",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {
@@ -510,6 +513,8 @@ export const siteUz: SiteDictionary = {
   studioPage: studioPageUz,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapUz,
+  /** The public model pages, /models and /models/<slug> (lib/i18n/model-pages). */
+  modelPages: modelPagesUz,
   final: {
     title: "Navbatdagi videongizni tungi smenaga qoʻying.",
     lead: "Bepul boshlang. Narxni har bir ishdan oldin koʻrasiz, har bir video siz ommaviy qilmaguningizcha shaxsiy qoladi.",
