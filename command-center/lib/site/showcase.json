@@ -227,6 +227,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "f17146fd-054c-4970-9dac-f7a0dc929bd6",
+      "assetId": "134eac56-9d10-5654-8e41-97411f66f650",
+      "sha256": "e50a85f552fe0fc48b8bdc74b9e9e83c3d982eac178df61eaa18959007b35336",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Dramatic photograph of a lone lighthouse on a rocky headland at dusk, a huge wave exploding against the rocks, its beam cutting through sea spray, brooding storm clouds with a sliver of orange light on the horizon, cinematic, no text.",
+      "createdAt": "2026-11-13T17:44:46Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:51:09Z"
     }
   ]
 }
