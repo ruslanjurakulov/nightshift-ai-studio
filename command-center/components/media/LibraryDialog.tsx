@@ -25,7 +25,13 @@ export function LibraryDialog({
   wide = false,
   busy = false,
   testId,
+  side = false,
 }: {
+  /**
+   * A panel along the right edge from `lg` up (full height, the page still visible beside it) instead of a centred
+   * card; a bottom sheet on a phone either way. For a dialog someone works in for a while ("Improve with AI").
+   */
+  side?: boolean;
   title: string;
   description?: ReactNode;
   onClose: () => void;
@@ -59,7 +65,11 @@ export function LibraryDialog({
 
   if (typeof document === "undefined") return null;
   return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-end justify-center sm:items-center sm:p-4" data-testid={testId}>
+    <div
+      className={`fixed inset-0 z-[110] flex items-end justify-center sm:items-center sm:p-4${side ? " lg:items-stretch lg:justify-end lg:p-0" : ""}`}
+      data-testid={testId}
+      data-placement={side ? "side" : "center"}
+    >
       <div aria-hidden className="scrim-enter absolute inset-0 bg-black/55 backdrop-blur-[2px]" onClick={close} />
       <div
         ref={card}
@@ -70,7 +80,7 @@ export function LibraryDialog({
         tabIndex={-1}
         className={`sheet-enter relative flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-t-[var(--ns-r-sheet)] border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] outline-none sm:max-h-[80vh] sm:rounded-[var(--ns-r-sheet)] ${
           wide ? "sm:max-w-[520px]" : "sm:max-w-[420px]"
-        }`}
+        }${side ? " lg:h-full lg:max-h-none lg:max-w-[440px] lg:rounded-none lg:border-y-0 lg:border-r-0" : ""}`}
       >
         <div className="flex items-start justify-between gap-4 px-5 pb-2 pt-5">
           <div className="flex min-w-0 flex-col gap-1">

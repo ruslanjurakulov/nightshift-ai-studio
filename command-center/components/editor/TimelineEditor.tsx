@@ -35,6 +35,7 @@ import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
 import { isImproveKind } from "@/lib/creative/improve";
+import type { StudioModel } from "@/lib/creative/studio";
 import { VoiceOverRecorder } from "@/components/editor/VoiceOverRecorder";
 import { useFullLoadLinks } from "@/components/editor/useFullLoadLinks";
 import { loadDocument } from "@/lib/editor-nav";
@@ -355,6 +356,7 @@ export function TimelineEditor({
   captionModelsStatus = "ok",
   userId = "",
   aiTools = null,
+  aiModels = null,
   offerAssetId = null,
   focusPanel = null,
   multiRatio = false,
@@ -381,6 +383,8 @@ export function TimelineEditor({
   userId?: string;
   /** The AI tools sold here (lib/server/ai-tools); null = not known. Drives "Improve with AI" on a clip or picture. */
   aiTools?: readonly string[] | null;
+  /** The Studio's models for those tools; null = not known (the Studio picks). */
+  aiModels?: readonly StudioModel[] | null;
   /** A finished AI result (a library file id) the Studio sent the person back with: offered as "Add to project". */
   offerAssetId?: string | null;
   /** Open scrolled to a panel ("Improve with AI" → Captions from the library). */
@@ -1259,6 +1263,7 @@ export function TimelineEditor({
         kind={a.kind}
         name={a.name}
         available={aiTools}
+        models={aiModels}
         project={projectId}
         onCaptions={withCaptions ? () => goCaptions(assetId) : undefined}
         className={quietBtn}

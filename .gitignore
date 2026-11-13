@@ -75,3 +75,6 @@ assets/music/*.wav
 # The country table's manifest (docs/GEO_BLOCK.md): the source, its URL and MD5, the licence and what the
 # conversion changed. No credential; tests/test_geoip_build.py reads it beside country.bin.gz.
 !command-center/data/geoip/manifest.json
+# The project's Claude Code settings: permission rules only (today: WebFetch allowed), never a
+# credential. settings.local.json stays ignored by the rule above: it is per person.
+!.claude/settings.json

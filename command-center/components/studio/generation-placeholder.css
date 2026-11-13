@@ -1,0 +1,172 @@
+/* The generation placeholder (GenerationPlaceholder.tsx): a frame of film (black in either theme, like every media
+   frame) filled with a grid of dots in the primary colour. A second, brighter grid is shown only through a ring that
+   grows from the centre, so the dots light up in a slow wave outwards. Reduced motion: no wave, a still glow. */
+
+.gen-ph {
+  /* The primary in each theme (--ns-act: indigo on paper, lavender at night), lifted a touch toward the film's own
+     light so it reads on black in the light theme too. */
+  --gen-dot: color-mix(in srgb, var(--ns-act) 82%, var(--ns-on-film));
+  --gen-gap: 14px;
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--ns-film);
+  color: var(--ns-on-film);
+}
+/* A card's and a thumbnail's frame already has the result's shape: fill it. */
+.gen-ph[data-size="card"],
+.gen-ph[data-size="thumb"] { position: absolute; inset: 0; }
+/* The stage is a grid that centres its content, with no height of its own: the placeholder brings the shape. */
+.gen-ph[data-size="stage"] { --gen-gap: 18px; width: 100%; height: auto; min-height: 220px; max-height: 62vh; }
+/* With a shape, the shape wins over both caps. max-height alone would clip a 9:16 to a 62vh-tall strip still 100%
+   wide (any shape), and a min-height would stretch a wide one on a phone: so the width is what is limited — never
+   wider than 62vh of its shape (62vh × 9/16 for a tall clip) — and the height follows from the width. */
+.gen-ph[data-size="stage"][data-shaped] {
+  min-height: 0;
+  max-width: min(100%, calc(62vh * (var(--gen-ar))));
+  margin-inline: auto;
+}
+.gen-ph[data-size="thumb"] { --gen-gap: 8px; }
+.gen-ph[data-size="bar"] {
+  --gen-gap: 10px;
+  height: 56px;
+  min-height: 56px;
+  border-radius: var(--ns-r-key);
+}
+
+.gen-ph-dots,
+.gen-ph-wave {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--gen-dot) 1.1px, transparent 1.7px);
+  background-size: var(--gen-gap) var(--gen-gap);
+  background-position: center;
+  pointer-events: none;
+}
+.gen-ph-dots { opacity: 0.34; }
+.gen-ph-wave { opacity: 0; }
+
+/* The wave: the bright grid through a ring mask that grows from nothing to past the corners, then starts again. */
+.gen-ph[data-motion="wave"] .gen-ph-wave {
+  opacity: 1;
+  -webkit-mask-image: radial-gradient(circle at center, transparent 0 30%, #000 44%, transparent 58%);
+  mask-image: radial-gradient(circle at center, transparent 0 30%, #000 44%, transparent 58%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  animation: gen-ph-wave 3.4s cubic-bezier(0.33, 0, 0.2, 1) infinite;
+}
+@keyframes gen-ph-wave {
+  0% { -webkit-mask-size: 0% 0%; mask-size: 0% 0%; opacity: 1; }
+  75% { opacity: 0.85; }
+  100% { -webkit-mask-size: 280% 280%; mask-size: 280% 280%; opacity: 0; }
+}
+
+/* Still (reduced motion, or a job no longer working): the centre's dots a little brighter, nothing moves. */
+.gen-ph[data-motion="still"][data-state="active"] .gen-ph-wave,
+.gen-ph[data-state="ready"] .gen-ph-wave {
+  opacity: 0.55;
+  -webkit-mask-image: radial-gradient(circle at center, #000 0 18%, transparent 62%);
+  mask-image: radial-gradient(circle at center, #000 0 18%, transparent 62%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gen-ph .gen-ph-wave { animation: none !important; }
+  .gen-ph[data-motion="wave"] .gen-ph-wave { opacity: 0.55; -webkit-mask-size: auto; mask-size: auto; }
+}
+
+/* An ended job: the dots in the film's own light, dimmer — the colour is for work in progress. */
+.gen-ph[data-state="failed"] { --gen-dot: var(--ns-on-film); }
+.gen-ph[data-state="failed"] .gen-ph-dots { opacity: 0.12; }
+
+.gen-ph-status {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--ns-on-film);
+  text-shadow: 0 1px 2px var(--ns-film);
+}
+.gen-ph-status > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gen-ph[data-size="stage"] .gen-ph-status { top: 14px; left: 16px; font-size: var(--ns-t-ui); }
+.gen-ph[data-size="bar"] .gen-ph-status { top: 50%; transform: translateY(-50%); right: 96px; }
+
+.gen-ph-pill {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ns-on-film) 20%, transparent);
+  background: color-mix(in srgb, var(--ns-on-film) 12%, var(--ns-film));
+  color: var(--ns-on-film);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.gen-ph[data-size="stage"] .gen-ph-pill { right: 16px; bottom: 16px; padding: 5px 14px; font-size: var(--ns-t-ui); }
+.gen-ph[data-size="bar"] .gen-ph-pill { top: 50%; bottom: auto; transform: translateY(-50%); }
+
+.gen-ph-failure {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  text-align: center;
+  font-size: var(--ns-t-small);
+  line-height: 1.4;
+  color: var(--ns-on-film);
+}
+.gen-ph[data-size="bar"] .gen-ph-failure { flex-direction: row; justify-content: flex-start; text-align: left; padding: 8px 12px; }
+
+.gen-ph-center {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  color: var(--ns-on-film);
+}
+
+/* The finished result appears in the place the placeholder held: it fades in over the same dots. */
+.gen-reveal {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: var(--ns-film);
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--ns-act) 82%, var(--ns-on-film)) 1.1px, transparent 1.7px);
+  background-size: 14px 14px;
+  background-position: center;
+}
+/* On the stage the result keeps the screen's own limits (desk.css), now one level down. */
+.desk-stage-screen > .gen-reveal { display: grid; place-items: center; max-height: 62vh; }
+.desk-stage-screen > .gen-reveal > img,
+.desk-stage-screen > .gen-reveal > video { max-height: 62vh; width: 100%; height: 100%; }
+.desk-stage-screen > .gen-reveal > div { max-width: calc(62vh * 4 / 3); }
+@media (prefers-reduced-motion: no-preference) {
+  .gen-reveal > *,
+  .gen-fade-in { animation: gen-reveal-in 700ms var(--ns-ease, ease-out) both; }
+}
+@keyframes gen-reveal-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

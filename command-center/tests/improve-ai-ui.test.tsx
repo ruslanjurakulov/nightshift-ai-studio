@@ -86,15 +86,23 @@ const openMenu = () => {
 };
 const rows = (dialog: HTMLElement) => [...dialog.querySelectorAll<HTMLElement>("[data-tool]")];
 const tools = (dialog: HTMLElement) => rows(dialog).map((r) => r.dataset.tool);
+/** Pick a tool in the panel (its radio), as a person would. */
+const pick = (dialog: HTMLElement, tool: string) => {
+  const radio = dialog.querySelector<HTMLInputElement>(`[data-tool="${tool}"] input[type="radio"]`)!;
+  fireEvent.click(radio);
+  return radio;
+};
+/** Where the panel's one send key goes (null while it is disabled). */
+const sendHref = (dialog: HTMLElement) => within(dialog).getByTestId("improve-send").getAttribute("href");
 
 describe("the menu per file type", () => {
-  it("a picture: upscale, cut out, edit by prompt, animate — each a link into the Studio tool with the file chosen", () => {
+  it("a picture: upscale, cut out, edit by prompt, animate — each opens the Studio tool with the file chosen", () => {
     mount(<ImproveWithAi assetId={FILE} kind="image" name="Cover" available={null} />);
     const dialog = openMenu();
     expect(tools(dialog)).toEqual(["upscale", "remove_bg", "edit", "i2v"]);
-    for (const r of rows(dialog)) {
-      expect(r.tagName).toBe("A");
-      expect(r.getAttribute("href")).toBe(`/chronos/create?tool=${r.dataset.tool}&source=${FILE}`);
+    for (const tool of ["upscale", "remove_bg", "i2v"]) {
+      pick(dialog, tool);
+      expect(sendHref(dialog)).toBe(`/chronos/create?tool=${tool}&source=${FILE}`);
     }
     expect(within(dialog).getByText(tx.tools.upscale.label)).toBeTruthy();
     expect(within(dialog).getByText(tx.tools.remove_bg.label)).toBeTruthy();
@@ -105,8 +113,10 @@ describe("the menu per file type", () => {
     mount(<ImproveWithAi assetId={FILE} kind="video" name="Trip" available={null} orgId={ORG} />);
     const dialog = openMenu();
     expect(tools(dialog)).toEqual(["video_upscale", "captions", "dub", "voice_change"]);
-    expect(rows(dialog)[0]!.getAttribute("href")).toBe(`/chronos/create?tool=video_upscale&source=${FILE}`);
-    expect(rows(dialog)[1]!.tagName).toBe("BUTTON");
+    expect(sendHref(dialog)).toBe(`/chronos/create?tool=video_upscale&source=${FILE}`);
+    pick(dialog, "captions");
+    expect(within(dialog).getByTestId("improve-captions").tagName).toBe("BUTTON");
+    expect(within(dialog).queryByTestId("improve-send")).toBeNull();
     expect(within(dialog).getByText(tx.inEditor)).toBeTruthy();
   });
 
@@ -122,7 +132,11 @@ describe("the menu per file type", () => {
 
   it("carries the editor project into every Studio link", () => {
     mount(<ImproveWithAi assetId={FILE} kind="image" available={null} project={P1} />);
-    for (const r of rows(openMenu())) expect(r.getAttribute("href")).toBe(`/chronos/create?tool=${r.dataset.tool}&source=${FILE}&project=${P1}`);
+    const dialog = openMenu();
+    for (const tool of ["upscale", "remove_bg", "i2v"]) {
+      pick(dialog, tool);
+      expect(sendHref(dialog)).toBe(`/chronos/create?tool=${tool}&source=${FILE}&project=${P1}`);
+    }
   });
 });
 
@@ -131,13 +145,16 @@ describe("a tool that is not sold here", () => {
     mount(<ImproveWithAi assetId={FILE} kind="image" name="Cover" available={["upscale"]} />);
     const dialog = openMenu();
     const [up, cut, edit, anim] = rows(dialog);
-    expect(up!.tagName).toBe("A");
+    expect(up!.dataset.state).toBe("ready");
+    expect(sendHref(dialog)).toBe(`/chronos/create?tool=upscale&source=${FILE}`);
     for (const r of [cut!, edit!, anim!]) {
-      expect(r.tagName).not.toBe("A");
-      expect(r.getAttribute("aria-disabled")).toBe("true");
+      expect(r.querySelector<HTMLInputElement>("input")!.disabled).toBe(true);
       expect(r.dataset.state).toBe("unavailable");
       expect(within(r).getByText(tx.unavailable)).toBeTruthy();
     }
+    // Pressing a tool that is not offered does not pick it: the link still goes to the one that is.
+    fireEvent.click(cut!.querySelector("input")!);
+    expect(sendHref(dialog)).toBe(`/chronos/create?tool=upscale&source=${FILE}`);
     expect(within(up!).queryByText(tx.unavailable)).toBeNull();
   });
 
@@ -145,7 +162,9 @@ describe("a tool that is not sold here", () => {
     mount(<ImproveWithAi assetId={FILE} kind="video" name="Trip" available={[]} orgId={ORG} />);
     const dialog = openMenu();
     expect(rows(dialog)).toHaveLength(4);
-    expect(dialog.querySelectorAll("a, button[data-tool]")).toHaveLength(0);
+    expect(dialog.querySelectorAll("a")).toHaveLength(0);
+    expect(dialog.querySelectorAll("input[type=radio]:not(:disabled)")).toHaveLength(0);
+    expect((within(dialog).getByTestId("improve-send") as HTMLButtonElement).disabled).toBe(true);
     expect(within(dialog).getAllByText(tx.unavailable)).toHaveLength(4);
   });
 
@@ -166,7 +185,7 @@ describe("keyboard and focus", () => {
     const button = screen.getByTestId("improve-with-ai");
     button.focus();
     const dialog = openMenu();
-    await waitFor(() => expect(document.activeElement).toBe(rows(dialog)[1]));
+    await waitFor(() => expect(document.activeElement).toBe(rows(dialog)[1]!.querySelector("input")));
     expect(rows(dialog)[1]!.dataset.tool).toBe("remove_bg");
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByTestId("improve-with-ai-dialog")).toBeNull());
@@ -184,7 +203,8 @@ describe("Captions", () => {
   it("from the library: opens the usual 'open in editor' dialog and lands on the Captions panel", async () => {
     mount(<ImproveWithAi assetId={FILE} kind="video" name="Trip" available={null} orgId={ORG} />);
     const dialog = openMenu();
-    fireEvent.click(rows(dialog)[1]!);
+    pick(dialog, "captions");
+    fireEvent.click(within(dialog).getByTestId("improve-captions"));
     const send = await screen.findByTestId("open-in-editor-dialog");
     expect(screen.queryByTestId("improve-with-ai-dialog")).toBeNull();
     fireEvent.click(await within(send).findByLabelText(en.editor.send.existingOption));
@@ -196,7 +216,9 @@ describe("Captions", () => {
   it("in the editor: goes to the Captions panel without leaving", () => {
     const onCaptions = vi.fn();
     mount(<ImproveWithAi assetId={FILE} kind="video" name="Trip" available={null} onCaptions={onCaptions} />);
-    fireEvent.click(rows(openMenu())[1]!);
+    const dialog = openMenu();
+    pick(dialog, "captions");
+    fireEvent.click(within(dialog).getByTestId("improve-captions"));
     expect(onCaptions).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId("improve-with-ai-dialog")).toBeNull();
   });
@@ -284,7 +306,7 @@ describe("the library tiles", () => {
     for (const b of buttons) expect(b.closest("button:not([data-testid])")).toBeNull();
     fireEvent.click(buttons[0]!);
     const dialog = screen.getByTestId("improve-with-ai-dialog");
-    expect(rows(dialog)[0]!.getAttribute("href")).toBe(`/chronos/create?tool=upscale&source=${A.id}`);
+    expect(sendHref(dialog)).toBe(`/chronos/create?tool=upscale&source=${A.id}`);
     expect(rows(dialog)[1]!.dataset.state).toBe("unavailable");
   });
 
@@ -369,14 +391,16 @@ describe("the editor", () => {
     editor({ aiTools: null });
     const dialog = openMenu();
     expect(tools(dialog)).toEqual(["video_upscale", "captions", "dub", "voice_change"]);
-    expect(rows(dialog)[0]!.getAttribute("href")).toBe(`/chronos/create?tool=video_upscale&source=${CLIP.id}&project=${P1}`);
+    expect(sendHref(dialog)).toBe(`/chronos/create?tool=video_upscale&source=${CLIP.id}&project=${P1}`);
   });
 
   it("the clip's Captions entry scrolls to the Captions panel", () => {
     const scroll = vi.fn();
     HTMLElement.prototype.scrollIntoView = scroll;
     editor({ aiTools: null });
-    fireEvent.click(rows(openMenu())[1]!);
+    const dialog = openMenu();
+    pick(dialog, "captions");
+    fireEvent.click(within(dialog).getByTestId("improve-captions"));
     expect(scroll).toHaveBeenCalled();
   });
 
@@ -387,7 +411,7 @@ describe("the editor", () => {
     const dialog = openMenu();
     expect(tools(dialog)).toEqual(["upscale", "remove_bg", "edit", "i2v"]);
     expect(rows(dialog)[2]!.dataset.state).toBe("unavailable");
-    expect(rows(dialog)[0]!.getAttribute("href")).toBe(`/chronos/create?tool=upscale&source=${LOGO.id}&project=${P1}`);
+    expect(sendHref(dialog)).toBe(`/chronos/create?tool=upscale&source=${LOGO.id}&project=${P1}`);
   });
 
   it("without an organization there is no priced flow to open: no button", () => {
@@ -455,7 +479,9 @@ describe("the editor", () => {
     expect(source().value).toBe(CLIP.id);
     fireEvent.click(within(screen.getByTestId("offer-add")).getByRole("button", { name: tx.offerAdd }));
     // The added clip is the selected one: Captions from its menu pick its recording.
-    fireEvent.click(rows(openMenu())[1]!);
+    const dialog = openMenu();
+    pick(dialog, "captions");
+    fireEvent.click(within(dialog).getByTestId("improve-captions"));
     expect(source().value).toBe(CLIP2.id);
   });
 
