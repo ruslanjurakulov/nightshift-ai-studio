@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "effects": [
+    {
+      "id": "photo-to-life",
+      "capability": "i2v",
+      "input": "picture",
+      "models": ["runway-gen4.5", "minimax-h3", "runway-gen4-turbo", "minimax-hailuo-2.3"],
+      "prompt": "Bring this exact photo to life as a short real-camera shot. Everything in it moves naturally and subtly: hair and clothes stir in a light breeze, eyes blink, leaves and water move, the light shifts a little. The camera drifts slowly forward. Keep every face, body, colour, outfit and detail of the photo exactly as it is; no new people or objects, no morphing, no cuts, no text.",
+      "slotHint": null,
+      "aspect": "9:16",
+      "duration": 10,
+      "motif": "life",
+      "hues": ["#f6d365", "#fda085"],
+      "previewJobId": null
+    },
+    {
+      "id": "product-burst",
+      "capability": "i2v",
+      "input": "picture",
+      "models": ["minimax-h3", "runway-gen4.5", "minimax-hailuo-2.3"],
+      "prompt": "The product in this picture stands centred on a clean studio backdrop. On a sharp beat it bursts apart into thousands of glossy paint droplets and fine glittering particles in its own colours, which swirl around in slow motion, then rush back together and snap into the intact product again. Crisp rim light, macro detail, static camera, seamless loop. Keep the product's shape, label and colours exactly as in the picture; no added text, no extra objects.",
+      "slotHint": null,
+      "aspect": "1:1",
+      "duration": 10,
+      "motif": "burst",
+      "hues": ["#ff0f7b", "#f89b29"],
+      "previewJobId": null
+    },
+    {
+      "id": "liquid-reveal",
+      "capability": "i2v",
+      "input": "picture",
+      "models": ["minimax-h3", "runway-gen4.5", "minimax-hailuo-2.3"],
+      "prompt": "A ribbon of glossy liquid, like molten chrome with deep colour inside it, rises from below and wraps the product in this picture in one smooth spiral, hiding it for a moment, then slides away and drips off to reveal the product clean and gleaming. Slow, elegant motion, soft studio light with bright specular highlights, dark seamless background, the camera orbits a quarter turn. Keep the product's shape, label and colours exactly as in the picture; no added text.",
+      "slotHint": null,
+      "aspect": "9:16",
+      "duration": 10,
+      "motif": "spiral",
+      "hues": ["#4facfe", "#8e2de2"],
+      "previewJobId": null
+    },
+    {
+      "id": "giant-in-the-city",
+      "capability": "t2v",
+      "input": "none",
+      "models": ["minimax-h3", "runway-gen4.5", "minimax-hailuo-2.3"],
+      "prompt": "Vertical phone video filmed by a passer-by at street level on a busy city avenue: {subject}, at colossal scale and taller than the buildings, walks slowly down the street between the towers. Cars stop, tiny people look up and point, pigeons scatter. Handheld camera with natural shake that tilts up to follow it, bright slightly overexposed daylight, believable scale and real-world physics, photoreal. No text, no captions.",
+      "slotHint": "[a ginger cat]",
+      "aspect": "9:16",
+      "duration": 10,
+      "motif": "giant",
+      "hues": ["#43cea2", "#185a9d"],
+      "previewJobId": null
+    },
+    {
+      "id": "snow-globe",
+      "capability": "t2v",
+      "input": "none",
+      "models": ["minimax-h3", "minimax-hailuo-2.3"],
+      "prompt": "Close-up of a glass snow globe on a wooden table by a window at dusk. Inside the globe is a tiny, perfectly detailed miniature world of {subject}. A hand gently lifts the globe and shakes it; snowflakes swirl around the miniature and slowly settle while warm fairy lights glow in the background bokeh. Macro lens, shallow depth of field, soft cinematic light, realistic glass refraction, cosy mood. No text.",
+      "slotHint": "[a lighthouse on a rocky island]",
+      "aspect": "1:1",
+      "duration": 10,
+      "motif": "globe",
+      "hues": ["#a1c4fd", "#c2e9fb"],
+      "previewJobId": null
+    },
+    {
+      "id": "orbit-to-street",
+      "capability": "t2v",
+      "input": "none",
+      "models": ["runway-gen4.5", "minimax-h3", "minimax-hailuo-2.3"],
+      "prompt": "One continuous camera move with no cuts: the shot opens in orbit high above the Earth at sunrise, then dives straight down through thin clouds, over the landscape and the rooftops, and lands smoothly at street level in {subject}, ending on a calm eye-level view of everyday life there. Smooth motion that accelerates and then slows gently at the end, realistic geography and light, photoreal, cinematic. No text, no map labels.",
+      "slotHint": "[the old town of Bukhara]",
+      "aspect": "16:9",
+      "duration": 10,
+      "motif": "orbit",
+      "hues": ["#0f2027", "#2c5364"],
+      "previewJobId": null
+    },
+    {
+      "id": "satisfying-macro",
+      "capability": "t2v",
+      "input": "none",
+      "models": ["minimax-h3", "minimax-hailuo-2.3"],
+      "prompt": "Extreme macro close-up, oddly satisfying: {subject} sculpts itself on a clean turntable. It flows, folds and smooths into a perfect symmetrical shape with crisp edges, as if shaped by invisible hands, then holds still for a beat. Slow, smooth, continuous motion, soft diffused studio light, rich texture detail, shallow depth of field, calm and hypnotic, seamless loop. No hands, no tools, no text.",
+      "slotHint": "[glossy pink clay]",
+      "aspect": "1:1",
+      "duration": 10,
+      "motif": "macro",
+      "hues": ["#ffafbd", "#ffc3a0"],
+      "previewJobId": null
+    },
+    {
+      "id": "time-freeze",
+      "capability": "t2v",
+      "input": "none",
+      "models": ["runway-gen4.5", "minimax-h3", "minimax-hailuo-2.3"],
+      "prompt": "A frozen moment in time: {subject}, completely still in mid-action, with droplets, dust and hair hanging motionless in the air. The camera makes one smooth 360-degree orbit around the frozen scene at eye level, showing it from every side, while nothing in the scene moves. Crisp detail, cinematic lighting, shallow depth of field, photoreal, no motion blur, no text.",
+      "slotHint": "[a skateboarder mid-jump over a puddle]",
+      "aspect": "16:9",
+      "duration": 10,
+      "motif": "freeze",
+      "hues": ["#232526", "#5b86e5"],
+      "previewJobId": null
+    }
+  ]
+}
