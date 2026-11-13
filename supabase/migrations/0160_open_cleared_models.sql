@@ -82,8 +82,9 @@
 -- Rollback: docs/sql/rollback_0160_open_cleared_models.sql (owner-applied: hidden again, the tiers back, and only the price rows this file
 -- wrote and nobody changed since are deleted). Docs: docs/MIGRATIONS.md, "The nine cleared models on sale (0160)".
 --
--- NUMBER. 0160: main ends at 0156; 0157 is claude/custom-amount-credits, 0158 and 0159 are reserved by open branches. None of them writes
--- model_registry or a credit_prices row of these units.
+-- NUMBER. 0160: main ends at 0156; 0157 is claude/custom-amount-credits (it writes neither model_registry nor credit_prices), 0158 and
+-- 0159 are reserved by open branches this file was not checked against. A later file that changes one of the nine's figures, call or
+-- entitlement makes a replay of this one refuse rather than sell at an old price.
 
 set local lock_timeout = '5s';
 
