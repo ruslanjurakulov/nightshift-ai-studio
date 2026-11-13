@@ -112,4 +112,28 @@ describe("the create page reads it back", () => {
     expect(cleanImprovePrompt("upscale", 42)).toBe("");
     expect(cleanImprovePrompt("upscale", "faces")).toBe("faces");
   });
+
+  it("strips the bidi overrides and isolates and the C1 controls a crafted link could carry", () => {
+    // U+202E would show "sky the move" in the box while "move the sky" is what is sent (or the reverse).
+    const bidi = ["\u202A", "\u202B", "\u202C", "\u202D", "\u202E", "\u2066", "\u2067", "\u2068", "\u2069"];
+    for (const c of bidi) expect(cleanImprovePrompt("edit", `move${c} the sky`)).toBe("move the sky");
+    for (const code of [0x80, 0x85, 0x9b, 0x9f]) expect(cleanImprovePrompt("edit", `a${String.fromCharCode(code)}b`)).toBe("ab");
+    // A line break, a tab and ordinary non-Latin words are kept.
+    expect(cleanImprovePrompt("edit", "osmon\tko'k\nнебо")).toBe("osmon\tko'k\nнебо");
+    // Right-to-left text itself is not a control: only the invisible direction overrides are.
+    expect(cleanImprovePrompt("edit", "سماء زرقاء")).toBe("سماء زرقاء");
+  });
+
+  it("cuts at the limit on a whole character: never half of a surrogate pair (an emoji)", () => {
+    const max = IMPROVE_PROMPT_MAX;
+    // The limit falls between the two halves of the last emoji: it is left out whole.
+    const cut = cleanImprovePrompt("edit", "a".repeat(max - 1) + "😀😀");
+    expect(cut).toBe("a".repeat(max - 1));
+    expect(cut.length).toBeLessThanOrEqual(max);
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(cut)).toBe(false);
+    // An emoji that fits is kept whole.
+    const fits = cleanImprovePrompt("edit", "a".repeat(max - 2) + "😀😀");
+    expect(fits).toBe("a".repeat(max - 2) + "😀");
+    expect([...cleanImprovePrompt("edit", "😀".repeat(max))].every((ch) => ch === "😀")).toBe(true);
+  });
 });

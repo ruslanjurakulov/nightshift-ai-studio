@@ -68,16 +68,30 @@ export function improveWords(tool: ImproveTool): "required" | "optional" | "none
 /** "Auto" as the address carries it: the database picks the model at the Studio's quote (0075). */
 export const AUTO_MODEL = "auto";
 
-// Control characters other than a line break and a tab: never part of what a person typed on purpose.
-const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+// Never part of what a person typed on purpose, and the words travel in a link anyone can craft: C0 controls other
+// than a line break and a tab, DEL and the C1 controls, and the bidi overrides and isolates (U+202A–202E,
+// U+2066–2069), which would make the words shown in the Studio's box read in another order than they are sent.
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g;
 
 /**
- * Typed words as the address may carry them: control characters out, trimmed, cut to the tool's limit. Empty for a
- * tool that takes no words — the Studio sends none for it, and the database would refuse them.
+ * At most `max` UTF-16 units (the box's maxLength measure; the database's char_length counts code points, never more)
+ * without cutting a character in half: a surrogate pair split at the limit would leave a lone half, which the Studio
+ * box draws as a replacement mark and the database stores as it is.
+ */
+function cutWhole(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const last = s.charCodeAt(max - 1);
+  return s.slice(0, last >= 0xd800 && last <= 0xdbff ? max - 1 : max);
+}
+
+/**
+ * Typed words as the address may carry them: control and bidi characters out, trimmed, cut to the tool's limit on a
+ * whole character. Empty for a tool that takes no words — the Studio sends none for it, and the database would refuse
+ * them.
  */
 export function cleanImprovePrompt(tool: ImproveStudioTool, raw: unknown): string {
   if (typeof raw !== "string" || improveWords(tool) === "none") return "";
-  return raw.replace(CONTROL, "").trim().slice(0, improvePromptMax(tool)).trim();
+  return cutWhole(raw.replace(CONTROL, "").trim(), improvePromptMax(tool)).trim();
 }
 
 /**
