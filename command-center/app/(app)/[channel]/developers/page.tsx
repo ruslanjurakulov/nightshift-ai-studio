@@ -7,6 +7,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { atLeast } from "@/lib/auth/roles-shared";
 import { paddleClient } from "@/lib/paddle";
 import { paddleApi } from "@/lib/server/paddle-api";
+import { paymentsProvider } from "@/lib/server/payments";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -36,7 +37,9 @@ export default async function DevelopersPage() {
         <DeveloperConsole
           key={current.id}
           orgId={current.id}
-          topup={paddleApi && paddleClient ? paddleClient : null}
+          // API balance top-ups are a Paddle custom-amount transaction; there is no Dodo equivalent yet
+          // (docs/DODO_SETUP.md, open questions), so with PAYMENTS_PROVIDER=dodo the console says "not available yet".
+          topup={paymentsProvider() !== "dodo" && paddleApi && paddleClient ? paddleClient : null}
           connectedApps={<ConnectedApps />}
         />
       )}

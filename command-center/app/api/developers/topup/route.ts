@@ -7,6 +7,7 @@ import { paddleClient } from "@/lib/paddle";
 import { isCreditExempt } from "@/lib/credits";
 import { TOPUP_MAX_CENTS, TOPUP_MIN_CENTS, topupTransactionBody } from "@/lib/api/pricing";
 import { requireSameOrigin } from "@/lib/server/same-origin";
+import { paymentsProvider } from "@/lib/server/payments";
 import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
@@ -28,7 +29,8 @@ export const dynamic = "force-dynamic";
 export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!paddleApi || !paddleClient) return NextResponse.json({ error: "topup_not_configured" }, { status: 503 });
+  // Selling through Dodo (PAYMENTS_PROVIDER=dodo) turns the Paddle-only top-up off rather than leave a second provider half on.
+  if (!paddleApi || !paddleClient || paymentsProvider() === "dodo") return NextResponse.json({ error: "topup_not_configured" }, { status: 503 });
 
   let body: { org_id?: unknown; amount_cents?: unknown };
   try {

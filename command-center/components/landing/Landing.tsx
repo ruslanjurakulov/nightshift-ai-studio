@@ -49,6 +49,7 @@ export function Landing({
   anchor,
   showcase,
   expiry = packExpiry(null, CREDIT_EXPIRY_MONTHS),
+  dodo = false,
 }: {
   t: Dictionary;
   locale: Locale;
@@ -58,6 +59,8 @@ export function Landing({
   showcase: ShowcaseItem[];
   /** How long top-up credits last (lib/plans.ts packExpiry): the catalog's policy, the env, or unknown. */
   expiry?: PackExpiry;
+  /** Dodo Payments sells here (PAYMENTS_PROVIDER=dodo): the FAQ names it as the seller. */
+  dodo?: boolean;
 }) {
   return (
     <div className="lp-root">
@@ -73,7 +76,7 @@ export function Landing({
       )}
       <Try t={t} locale={locale} />
       <PriceBlock t={t} locale={locale} teaser={pricing} rates={priceRatesFrom(anchor)} />
-      <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} />
+      <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} dodo={dodo} />
       <FinalCta t={t} />
       <StickyCta label={t.site.bar.label} text={t.site.bar.text} cta={t.site.bar.cta} dismiss={t.site.bar.dismiss} />
     </div>

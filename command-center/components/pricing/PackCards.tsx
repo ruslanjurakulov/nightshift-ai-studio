@@ -21,10 +21,13 @@ export function PackCards({
   paddle,
   perMinute,
   rates = null,
+  testMode = false,
 }: {
   packs: PricingPack[];
   paddle: Pricing["paddle"];
   perMinute: number | null;
+  /** Dodo Payments in test mode (PAYMENTS_PROVIDER=dodo): the same badge as Paddle's sandbox. */
+  testMode?: boolean;
   /** Today's generation prices; when known, "≈ N images · M videos" replaces the minutes line. */
   rates?: GenerationRates | null;
 }) {
@@ -61,7 +64,7 @@ export function PackCards({
 
   return (
     <div className="flex flex-col gap-3">
-      {environment === "sandbox" && (
+      {(environment === "sandbox" || testMode) && (
         <span className="st-tag self-start" style={{ color: "var(--ns-caution)", borderColor: "currentColor" }}>
           {p.sandbox}
         </span>

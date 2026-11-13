@@ -36,6 +36,15 @@ export function faqForSale<T extends FaqItem>(
     );
 }
 
+/**
+ * The landing's questions with the seller this deployment really has: Paddle's
+ * wording as written, or, when Dodo Payments sells (PAYMENTS_PROVIDER=dodo),
+ * the refund answer that names Dodo. Nothing else changes.
+ */
+export function landingFaqItems(f: Dictionary["landing"]["faq"], dodo: boolean): Dictionary["landing"]["faq"]["items"] {
+  return dodo ? f.items.map((item) => (item.id === "refund" ? { ...item, a: f.refundDodo } : item)) : f.items;
+}
+
 /** The unused-credits answer, as sure as the expiry is: an unknown term points to the Terms (BR-L-100). */
 function unusedAnswer(packsOnly: Dictionary["site"]["packsOnly"], expiry: PackExpiry): string {
   if (expiry.kind === "never") return packsOnly.unusedNever;
@@ -110,15 +119,18 @@ export function Faq({
   plansOnSale,
   expiry,
   aside,
+  dodo = false,
 }: {
   t: Dictionary;
   plansOnSale: boolean;
+  /** Dodo Payments sells here (PAYMENTS_PROVIDER=dodo): the refund answer names it instead of Paddle. */
+  dodo?: boolean;
   /** The pack expiry, so the unused-credits answer says it as surely as it is known. */
   expiry: PackExpiry;
   aside?: React.ReactNode;
 }) {
   const f = t.landing.faq;
-  const items = faqForSale(f.items, plansOnSale, t.site.packsOnly, expiry);
+  const items = faqForSale(landingFaqItems(f, dodo), plansOnSale, t.site.packsOnly, expiry);
   return (
     <section id="faq" aria-labelledby="faq-title" className="st-section" data-tone="raised">
       <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
