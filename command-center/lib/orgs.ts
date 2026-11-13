@@ -113,9 +113,10 @@ export function membershipCanNarrow(orgs: OrgSummary[]): boolean {
  * the default org — reachable for every platform role even with no membership
  * row, so an operator who belongs to nothing still lands somewhere instead of
  * on /welcome. Everyone else gets `orgs` back unchanged (membershipCanNarrow).
- * Role checks read `current`, so the operator cannot act inside a customer's
- * workspace either; that is intended (owner decision, 2026-11-13), and support
- * is read-only through the Customers section.
+ * The org role checks (lib/auth/org-roles.ts) read `current`, so they resolve
+ * against these orgs too and refuse the operator inside a customer's workspace;
+ * that is intended (owner decision, 2026-11-13), and support is read-only
+ * through the Customers section.
  *
  * `memberIds` null means the membership read failed. The list fails closed to
  * the default org alone: listing every org would be the bug this fixes, and
