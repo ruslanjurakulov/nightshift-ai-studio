@@ -39,6 +39,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T16:05:40Z"
+    },
+    {
+      "jobId": "0e7b89cb-282b-43b8-8777-55001b398f67",
+      "assetId": "a0ce87ee-c473-56e4-9c14-300ead2b4d7e",
+      "sha256": "f8b5924ee522f075330b293694036a8f6aaac1739ba1c296e4cf30eb0b3a7e96",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Inside a softly lit refrigerator at night, photorealistic anthropomorphic fruit characters with subtle expressive faces: a glossy lemon with wide, teary eyes turns slowly toward a ripe avocado sitting beside it on the glass shelf. The lemon whispers, \"You told me you were ripe.\" The avocado looks away, ashamed. Dramatic soap-opera close-up, slow push-in, cool blue fridge light with a warm rim light, condensation on the shelf, 85mm lens, shallow depth of field. Audio: a dramatic violin sting over a low fridge hum.",
+      "createdAt": "2026-11-13T16:24:04Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:09:19Z"
     }
   ]
 }
