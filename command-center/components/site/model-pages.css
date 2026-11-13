@@ -1,0 +1,70 @@
+/* The public model pages (components/site/ModelPages.tsx). Layout only: the type, buttons, cards and badges are the landing's
+   nx-* rules (site-next.css), so these pages read as the same site. Phone first; two columns from 1024 px. */
+
+.ml-head { padding-block: 24px var(--nx-sec); }
+.ml-h1 { margin: 0; }
+
+.ml-crumbs { margin-bottom: 20px; font-size: 15px; color: var(--ns-text-dim); }
+.ml-crumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: 0; padding: 0; list-style: none; }
+.ml-crumbs li { display: inline-flex; align-items: center; min-width: 0; overflow-wrap: anywhere; }
+.ml-crumbs li + li::before { content: "/"; padding-inline: 10px; color: var(--ns-rule-strong); }
+.ml-crumbs a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ns-text); text-decoration: underline; text-underline-offset: 4px; }
+.ml-crumbs a:hover { color: var(--st-act-ink); }
+.ml-crumbs [aria-current] { color: var(--ns-text-dim); }
+
+.ml-hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; margin-top: 4px; }
+@media (min-width: 1024px) {
+  .ml-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 560px); align-items: start; gap: 56px; }
+}
+.ml-hero-copy { min-width: 0; }
+.ml-count { margin: 16px 0 0; font-size: 15px; color: var(--ns-text-dim); }
+.ml-hero-card { min-width: 0; }
+/* A tall clip must not push its words off a phone's screen. */
+.ml-hero-card[data-shape="tall"] .ml-pic { max-height: 78vh; }
+
+.ml-status { margin-top: 24px; padding: 16px 20px; border-radius: 16px; border: 1px solid var(--ns-rule); background: var(--ns-console); }
+.ml-status-t { margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--ns-text); }
+.ml-status p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--ns-text); text-wrap: pretty; }
+
+.ml-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 28px; }
+
+.ml-can { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+@media (min-width: 1024px) {
+  .ml-can { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: 56px; }
+  .ml-can > div:first-child { grid-row: span 2; }
+}
+.ml-facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; margin: 0; border-top: 1px solid var(--ns-rule); }
+.ml-fact { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 14px 0; border-bottom: 1px solid var(--ns-rule); }
+@media (min-width: 600px) {
+  .ml-fact { grid-template-columns: minmax(0, 200px) minmax(0, 1fr); gap: 16px; }
+}
+.ml-fact dt { font-size: 15px; font-weight: 500; color: var(--ns-text-dim); }
+.ml-fact dd { margin: 0; font-size: 16px; line-height: 1.5; color: var(--ns-text); overflow-wrap: anywhere; }
+.ml-fact-note { display: block; margin-top: 4px; font-size: 15px; color: var(--ns-text-dim); }
+.ml-price { padding: 20px; border-radius: 16px; border: 1px solid var(--ns-rule); background: var(--ns-ground); }
+.ml-price-t { margin: 0 0 4px; font-size: 17px; font-weight: 600; color: var(--ns-text); }
+.ml-price p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--ns-text); }
+
+.ml-try-note { margin: 28px 0 0; max-width: 70ch; }
+
+.ml-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 16px; margin: 36px 0 0; padding: 0; list-style: none; }
+.ml-tile { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-console); }
+.ml-tile-pic { position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: #12151c; }
+.ml-tile-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ml-tile-pic .nx-result-badge { z-index: 2; }
+.ml-tile-body { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px 20px 12px; min-width: 0; }
+.ml-tile-name { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; color: var(--ns-text); overflow-wrap: anywhere; }
+.ml-tile-meta { margin: 0; font-size: 15px; color: var(--ns-text-dim); }
+.ml-empty { margin: 32px 0 0; padding: 20px; border-radius: 16px; border: 1px dashed var(--ns-rule-strong); color: var(--ns-text); }
+
+.ml-final .nx-h2 { margin: 0; }
+
+/* Pause by touch (ClipTapPause): a transparent button over the whole clip. Nothing of it shows, not even on hover; with keyboard
+   focus it draws the amber ring and its icon, so a keyboard user can see what Space will do. */
+.ml-tap { position: absolute; inset: 0; z-index: 3; display: block; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ml-tap-key { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; background: rgba(8, 8, 8, 0.8); color: #fff; opacity: 0; }
+.ml-tap-key svg { width: 18px; height: 18px; }
+.ml-tap:focus { outline: none; }
+.ml-tap:focus-visible { outline: 3px solid #ffa940; outline-offset: -3px; }
+.ml-tap:focus-visible .ml-tap-key { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .ml-tap { display: none; } }

@@ -98,6 +98,25 @@ export const STUDIO_PAGE_PATH = "/studio";
  */
 export const ROADMAP_PATH = "/roadmap";
 
+/**
+ * The public model pages (app/models, lib/site/model-pages.ts): /models lists the models that made the site's samples, and
+ * /models/<slug> is one model's samples and what the Studio can ask it for.
+ *
+ * "models" is also a section of the app, so /models follows /studio: the page signed OUT, the old section link signed in
+ * (it goes on to `/<channel>/models`). It is listed (lib/site-pages.ts UNCOUNTED_PAGE_PATHS) but not counted, like /roadmap.
+ *
+ * A model's page is public to everyone: one segment of lowercase letters and digits joined by single dashes. The shape is a
+ * pattern, not a list, so a sample exported for a new model needs no edit here; it opens nothing else, because the static
+ * `app/models/[slug]` route owns every one-segment URL under /models and builds only the listed slugs (dynamicParams false),
+ * so any other slug is the 404. `/models/x/y`, a dot (no `.rsc` form) or an upper-case letter is gated like any app URL.
+ */
+export const MODELS_PATH = "/models";
+export const MODEL_PAGE_PATTERN = /^\/models\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function isModelPagePath(pathname: string): boolean {
+  return MODEL_PAGE_PATTERN.test(normalize(pathname));
+}
+
 /** Always public: the crawler files (app/robots.ts, app/sitemap.ts, app/llms.txt/route.ts). */
 export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml", "/llms.txt"] as const;
 
@@ -260,6 +279,7 @@ export const WELCOME_PATH = "/welcome";
 export const PUBLIC_PATHS = [
   "/",
   STUDIO_PAGE_PATH,
+  MODELS_PATH,
   ...ALWAYS_PUBLIC_PATHS,
   SIGNUP_PATH,
   FORGOT_PASSWORD_PATH,
@@ -334,7 +354,7 @@ export function isAlwaysPublicPath(pathname: string): boolean {
 }
 
 export function isPublicPath(pathname: string): boolean {
-  return (PUBLIC_PATHS as readonly string[]).includes(normalize(pathname));
+  return (PUBLIC_PATHS as readonly string[]).includes(normalize(pathname)) || isModelPagePath(pathname);
 }
 
 /** The sign-in page. */
@@ -428,6 +448,9 @@ export function gateDecision(pathname: string, signedIn: boolean, search: string
   if (isAlwaysPublicPath(pathname)) return "pass";
   // /studio: the marketing page signed out; signed in it is the old section link and goes on (middleware channelRedirect).
   if (normalize(pathname) === STUDIO_PAGE_PATH) return signedIn ? "app" : "pass";
+  // /models the same way (the app's Models section signed in); a model's own page is the same for everyone (MODEL_PAGE_PATTERN).
+  if (normalize(pathname) === MODELS_PATH) return signedIn ? "app" : "pass";
+  if (isModelPagePath(pathname)) return "pass";
   // Either way: a confirmation link opened in a browser that still holds an
   // older session must be able to replace it.
   if (isAuthCallbackPath(pathname)) return "pass";

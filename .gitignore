@@ -37,6 +37,9 @@
 # The public site's model samples (docs/SHOWCASE.md): job ids, prompts, model names and recorded costs, no credentials.
 # Written by tools/export_showcase.py; without this line the blanket rule hides it and the export's PR would carry no entry.
 !command-center/lib/site/showcase.json
+# The public model pages' facts (command-center/scripts/export-model-facts.mjs): the registry's public fields, no credentials.
+# Without this line the build would not find it and tests/model-pages.test.tsx would compare against nothing.
+!command-center/lib/site/model-facts.json
 # The Studio's effects (docs/EFFECTS.md): ids, English prompts, model ids, shapes and colours, no credentials.
 # Without this line the blanket rule hides it and the build ships no catalog (command-center/tests/effects-catalog.test.ts checks it).
 !command-center/lib/effects/effects.json

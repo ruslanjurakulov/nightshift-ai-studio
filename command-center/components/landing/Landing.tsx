@@ -27,6 +27,7 @@ import { PROMPT_TOOLS, type PromptTool } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
+import { modelPageHref } from "@/components/site/model-catalog";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
@@ -279,6 +280,13 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
                     {c.see}
                     <ArrowRight aria-hidden />
                   </a>
+                  {/* The model's own page (app/models/[slug]): all its samples and what it can do. Only where one is built. */}
+                  {modelPageHref(e.modelId) && (
+                    <Link href={modelPageHref(e.modelId)!} prefetch={false} className="nx-model-see" aria-label={fmt(c.pageAria, { model: e.modelName })}>
+                      {c.page}
+                      <ArrowRight aria-hidden />
+                    </Link>
+                  )}
                 </div>
               </li>
             );

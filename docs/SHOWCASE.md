@@ -57,6 +57,20 @@ with an error: delete the branch and run again. Run it from main; a run dispatch
 **One at a time:** every export edits the same two files (`showcase.json`, `showcase-assets.ts`), so two showcase PRs open at
 once conflict. Merge one before exporting the next.
 
+## Model pages (/models, /models/<slug>)
+
+Every model with at least one merged sample gets a public page: `/models/<id with dots as dashes>` (`runway-gen4.5` →
+`/models/runway-gen4-5`), listed on `/models` and in the sitemap (not in llms.txt, which names no model). The page shows all of
+that model's samples and what the Studio can ask it for, read from `command-center/lib/site/model-facts.json`, a copy of the
+public half of `schemas/model_registry.json` (the web image is built without `schemas/`). It shows no price (none is public per
+model), no generation time (probe timings are not public) and no "Powered by" line; availability follows the registry's
+`operator_preview` and `shutdown` flags, as the sample cards do.
+
+**When a showcase PR brings the first sample of a model**, or a registry change touches one of those models' public fields,
+`tests/model-pages.test.tsx` fails on that PR and names the fix: run `node command-center/scripts/export-model-facts.mjs` on
+the PR's branch and commit `command-center/lib/site/model-facts.json`. (The export workflow does not run it yet.) A model
+missing from the copy has no page; its samples still show on the landing.
+
 ## What the workflow checks (tools/export_showcase.py)
 
 Before it downloads anything: the id is a uuid and names the job or the library file it made; the job belongs to the

@@ -1430,6 +1430,10 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 .nx-gallery-model { margin: 0; font-size: 17px; color: var(--ns-text); overflow-wrap: anywhere; }
 .nx-gallery-key { margin: 0; font-size: 14px; font-weight: 500; color: var(--ns-text-dim); }
 .nx-gallery-model .nx-gallery-key { font-size: inherit; }
+/* The model's name as a link to its page (app/models/[slug]): a 44 px target on a phone, and the amber ring the other links use. */
+.nx-gallery-model-link { display: inline-flex; align-items: center; min-height: 44px; color: inherit; text-decoration: underline; text-underline-offset: 4px; }
+.nx-gallery-model-link:hover { color: var(--st-act-ink); }
+.nx-gallery-model-link:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; border-radius: 4px; }
 /* The maker's credit: a real link, 44 px tall to the touch, as its terms ask. */
 .nx-gallery-attr { display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; color: var(--ns-text); text-decoration: underline; text-underline-offset: 4px; }
 .nx-gallery-attr:hover { color: var(--st-act-ink); }

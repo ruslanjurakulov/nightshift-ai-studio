@@ -32,6 +32,7 @@ import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import { prefillFromImprove, IMPROVE_PROMPT_MAX } from "@/lib/creative/improve";
 import { prefillFromQuery } from "@/lib/creative/studio";
 import { SLOTS } from "@/components/site/samples";
+import { modelPageHref } from "@/components/site/model-catalog";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { GALLERY, SAMPLE_CARD, without } from "./helpers/showcase-scope";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
@@ -350,7 +351,11 @@ describe("the shipped samples", () => {
       }
       const name = rest.querySelector(".nx-gallery-model strong")!;
       expect(name.textContent).toBe(m.display_name);
-      name.remove();
+      // The name is a link to the model's own page where one is built (app/models/[slug]); its address names the model too.
+      const page = modelPageHref(e.modelId);
+      const nameLink = name.closest("a");
+      expect(nameLink?.getAttribute("href") ?? null).toBe(page);
+      (nameLink ?? name).remove();
       const credit = rest.querySelector(".nx-gallery-attr");
       if (m.attribution) {
         expect(credit?.textContent).toBe(m.attribution.text);
