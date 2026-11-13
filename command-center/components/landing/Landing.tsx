@@ -86,15 +86,15 @@ export function Landing({
   return (
     <div className="lp-root">
       <Hero t={t} formats={formats} />
-      <SampleTicker t={t} locale={locale} />
+      <SampleTicker t={t} locale={locale} exclude={inSlots} />
       <Facts t={t} locale={locale} anchor={anchor} entries={onPage.map(({ e }) => e)} />
-      <SampleCarousel t={t} locale={locale} />
+      <SampleCarousel t={t} locale={locale} exclude={inSlots} />
       {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
       <ShowcaseGallery t={t} locale={locale} exclude={inSlots} formats={formats} />
       {/* Named one-press shots that open the Studio's video form (lib/effects/catalog.ts); it names no model. */}
       <EffectsGallery t={t} />
       <ModelTiles t={t} items={onPage} />
-      <SampleCompare t={t} locale={locale} />
+      <SampleCompare t={t} locale={locale} exclude={inSlots} />
       <Showcases t={t} />
       <How t={t} />
       {showcase.length > 0 && (

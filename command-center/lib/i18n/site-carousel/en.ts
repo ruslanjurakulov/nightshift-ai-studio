@@ -21,7 +21,6 @@ export const siteCarouselEn = {
     prev: "Previous sample",
     next: "Next sample",
     pause: "Stop the carousel",
-    play: "Start the carousel",
     /** A side card's name: pressing it brings it to the centre. */
     show: "Show sample {n}: {title}",
     /** Under the centre card: what is left of its clip (or of a picture's turn), measured, never guessed. */
@@ -35,7 +34,6 @@ export const siteCarouselEn = {
     copyFailed: "Could not copy. Select the words and copy them yourself.",
     /** With reduced motion (or Save-Data) nothing plays by itself: the centre clip starts only when pressed. */
     playClip: "Play this clip",
-    pauseClip: "Pause this clip",
     reduced: "Nothing here moves by itself on your device. Use the arrows to look through the samples, and play a clip when you want to.",
     /** Read out when the centre card changes by the visitor's own press (not while it advances by itself). */
     now: "Now showing: {title}",
@@ -59,6 +57,19 @@ export const siteCarouselEn = {
       "1504b313-3a3c-4e78-bfda-5bca3ef7f3da": "A neon city in the rain",
       "64a7c2b8-a6c1-4359-9961-a1a2760f1cbf": "Moonrise behind a lone tree",
       "38c427b0-c41b-4d16-86ca-14dc2e69ec27": "Dunes at golden hour",
+      "9699e7fd-74a6-4d9e-8dcd-9dc88deec1d9": "A paper dragon takes flight",
+      "c7f8bb97-4725-4878-87a0-17d0b27027a6": "A sports car melts like ice cream",
+      "d91578df-1084-4d2e-9273-bf52bd966118": "A soda can bursts out of ice",
+      "c2733488-980e-4a20-9a58-28401bbee8c4": "A cat DJs a rooftop party",
+      "fcdba478-1a92-497d-adbb-1d2c9701e806": "A city folds out of paper",
+      "f3583fdc-25c4-42cb-96ce-1d92d80cbf68": "Tiny workers fix a phone screen",
+      "c62d40e7-b1b5-4ba4-8bc9-487f9ef7382e": "A thunderstorm in a jar",
+      "7ee6f783-7c3c-4265-ade8-88c64b674127": "Headphones assemble themselves",
+      "4e85c7e4-fd1a-4771-97ee-66c1fb853367": "From orbit to a street-food stall",
+      "3069ec2f-2f68-40a8-bcbe-fc4c5f9111bc": "A cold-brew coffee ad",
+      "ced854a6-ba49-4668-b9dd-91ca46b72f6d": "A thumbnail with a stone giant",
+      "c808297a-8479-45fe-ae33-1c7688be7cb2": "NIGHTSHIFT in balloon letters",
+      "dcb96246-9379-4c3a-aa33-a8ee6bb7f846": "The neon city comes alive",
     } as Record<string, string>,
   },
   compare: {
@@ -86,7 +97,6 @@ export const siteCarouselEn = {
     next: "Next example",
     /** The keyboard's hold (shown when focused); a tap on the result does the same. */
     pause: "Hold the examples",
-    play: "Play the examples",
     note: "Real prompts from our Studio and the clips they made.",
   },
 };

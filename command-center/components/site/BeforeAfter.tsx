@@ -16,7 +16,8 @@ export type CompareGalleryCopy = { badge: string; model: string; altClip: string
  * Picture → video: one of our pictures (a text-to-image sample) and the clip another model made from that exact picture (an
  * image-to-video sample whose input is that job; lib/site/carousel.ts beforeAfterPairs), one over the other, with a divider the
  * visitor drags to compare. The picture is on the left of the line, the playing clip on the right, each labelled, and both models
- * are credited under it with their makers' credit links.
+ * are named under it with the AI-generated label (no maker's credit line: the owner's rule of 2026-11-13 keeps those off public
+ * pages).
  *
  * The divider is a slider (role="slider", aria-valuenow 0..100 = how much of the frame is the picture): mouse, touch (a
  * horizontal drag; a vertical one still scrolls the page), and the APG slider keys. The clip follows the page's rules: muted, only
@@ -45,12 +46,13 @@ export function BeforeAfter({ clip, picture, title, copy, g }: { clip: SampleSli
 
   const auto = mounted && allowed && !reduced && !pagePaused && !stopped;
   const turn = useClipTurn(frame, mounted && (auto || pressed));
-  const [woke, setWoke] = useState(false);
-  useEffect(() => {
-    if (turn) setWoke(true);
-  }, [turn]);
+  // Clips started by hand (reduced motion, Save-Data, a slow link): a visible play button, toggled by `pressed`. Otherwise the clip
+  // plays by itself and its only control is the keyboard's pause, toggled by `stopped`.
+  const byHand = reduced || !allowed;
   const hasClip = clip.clip !== null && !failed;
-  const showVideo = hasClip && (pressed || (auto && woke));
+  // A clip playing by itself that loses its turn is taken out of the page, not only paused, so a phone never holds a second
+  // decoder for it (components/site/clip-turns.ts); it comes back from the cache when it has a turn again.
+  const showVideo = hasClip && (pressed || (auto && turn));
   const playing = showVideo && turn && visible && (pressed || auto);
 
   useEffect(() => {
@@ -68,7 +70,7 @@ export function BeforeAfter({ clip, picture, title, copy, g }: { clip: SampleSli
   // The clip's pause is a tap on the frame (there is no visible pause button; the keyboard has its own, shown when focused). A drag,
   // or a press on the divider itself, moves the divider instead.
   const togglePlay = () => {
-    if (reduced || !allowed || pressed) setPressed((p) => !(p && playing));
+    if (byHand) setPressed((p) => !p);
     else setStopped((x) => !x);
   };
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -99,7 +101,6 @@ export function BeforeAfter({ clip, picture, title, copy, g }: { clip: SampleSli
     setPos(next);
   };
 
-  const manual = mounted && hasClip && (reduced || !allowed || pressed);
   return (
     <figure className="nxb" data-showcase-entry={clip.job} data-model={clip.modelName}>
       <div
@@ -147,16 +148,17 @@ export function BeforeAfter({ clip, picture, title, copy, g }: { clip: SampleSli
           <span className="nxb-knob" aria-hidden />
         </div>
         {mounted && hasClip && (
-          // Starting a clip by hand is a visible play button. A playing clip's pause is the tap on the frame; this button is then
-          // for the keyboard only (shown when focused).
+          // Named for what it does and toggled from the visitor's own choice, never from whether the clip plays yet (a clip waiting
+          // for its turn must not flip the button). Starting by hand is a visible play button; every pause is the keyboard's only,
+          // shown when focused, because a tap on the frame is the pause for everyone else.
           <button
             type="button"
-            className={manual && !playing ? "nxb-play" : "nxb-play nxb-kbd"}
-            aria-pressed={!playing}
-            aria-label={playing ? copy.pauseClip : copy.playClip}
+            className={byHand && !pressed ? "nxb-play" : "nxb-play nxb-kbd"}
+            aria-pressed={byHand ? pressed : stopped}
+            aria-label={byHand ? copy.playClip : copy.pauseClip}
             onClick={togglePlay}
           >
-            {playing ? <Pause aria-hidden /> : <Play aria-hidden />}
+            {(byHand ? pressed : !stopped) ? <Pause aria-hidden /> : <Play aria-hidden />}
           </button>
         )}
       </div>

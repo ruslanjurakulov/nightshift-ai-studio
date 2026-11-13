@@ -60,8 +60,23 @@ function slide(it: Item, c: ReturnType<typeof siteCarouselCopy>["carousel"], tit
   };
 }
 
-function items(entries: readonly ShowcaseEntry[], files: Readonly<Record<string, ShowcaseFiles>>): Item[] {
-  return showcaseItems(entries, files);
+/** The samples whose files are here, less the ones the page shows elsewhere or not at all (`exclude`). */
+function items(entries: readonly ShowcaseEntry[], files: Readonly<Record<string, ShowcaseFiles>>, exclude: readonly string[]): Item[] {
+  return showcaseItems(entries, files).filter(({ e }) => !exclude.includes(e.jobId));
+}
+
+/** The ticker's samples: wide (its box is 16:9) text-to-video clips with words. */
+function tickerItems(list: readonly Item[]): Item[] {
+  return list.filter(({ e, f }) => e.kind === "video" && e.capability === "t2v" && f.clip !== null && e.prompt.trim() !== "" && e.width > e.height);
+}
+
+/**
+ * The jobs picture → video and the ticker show, given the same `exclude`: the carousel leaves them out, so within these pieces no
+ * clip is shown twice.
+ */
+export function sampleSectionJobs(exclude: readonly string[], entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): string[] {
+  const list = items(entries, files, exclude);
+  return [...beforeAfterPairs(list).flatMap(({ clip, picture }) => [clip.e.jobId, picture.e.jobId]), ...tickerItems(list).map(({ e }) => e.jobId)];
 }
 
 type Props = {
@@ -71,11 +86,17 @@ type Props = {
   entries?: readonly ShowcaseEntry[];
   files?: Readonly<Record<string, ShowcaseFiles>>;
   now?: Date;
+  /**
+   * The samples this piece must not show: the same list the landing gives its gallery (the ones its picture slots show, and any
+   * the owner keeps off the landing), so no clip is on the page twice. Defaults to the landing's slots.
+   */
+  exclude?: readonly string[];
 };
 
-/** The coverflow of every sample, under the facts. */
-export function SampleCarousel({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date() }: Props) {
-  const slides = carouselOrder(items(entries, files).map(slideMaker(t, locale, signedIn, now)));
+/** The coverflow of the samples, under the facts: every one not left out, and not shown by picture → video or the ticker. */
+export function SampleCarousel({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date(), exclude = slotJobs(LANDING_SLOTS, entries, files) }: Props) {
+  const elsewhere = [...exclude, ...sampleSectionJobs(exclude, entries, files)];
+  const slides = carouselOrder(items(entries, files, elsewhere).map(slideMaker(t, locale, signedIn, now)));
   if (slides.length === 0) return null;
   const c = siteCarouselCopy(locale).carousel;
   const g = t.site.gallery;
@@ -97,9 +118,9 @@ export function SampleCarousel({ t, locale, signedIn = false, entries = SHOWCASE
   );
 }
 
-/** Picture → video, for every clip made from another sample's picture. */
-export function SampleCompare({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date() }: Props) {
-  const pairs = beforeAfterPairs(items(entries, files));
+/** Picture → video, for every clip made from another sample's picture (a pair with either side left out is not shown). */
+export function SampleCompare({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date(), exclude = slotJobs(LANDING_SLOTS, entries, files) }: Props) {
+  const pairs = beforeAfterPairs(items(entries, files, exclude));
   if (pairs.length === 0) return null;
   const c = siteCarouselCopy(locale).compare;
   const g = t.site.gallery;
@@ -134,14 +155,11 @@ export function SampleCompare({ t, locale, signedIn = false, entries = SHOWCASE_
 }
 
 /**
- * Prompt → result, right under the first screen: the wide text-to-video samples (the box is 16:9) that the page's own slots do not
- * already show, so the clip under the hero is never the hero's.
+ * Prompt → result, right under the first screen: the wide text-to-video samples (the box is 16:9) not left out, so with the
+ * landing's slots in `exclude` the clip under the hero is never the hero's.
  */
-export function SampleTicker({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date() }: Props) {
-  const inSlots = slotJobs(LANDING_SLOTS, entries, files);
-  const list = items(entries, files)
-    .filter(({ e, f }) => e.kind === "video" && e.capability === "t2v" && f.clip !== null && e.prompt.trim() && e.width > e.height && !inSlots.includes(e.jobId))
-    .map(slideMaker(t, locale, signedIn, now));
+export function SampleTicker({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date(), exclude = slotJobs(LANDING_SLOTS, entries, files) }: Props) {
+  const list = tickerItems(items(entries, files, exclude)).map(slideMaker(t, locale, signedIn, now));
   if (list.length === 0) return null;
   const c = siteCarouselCopy(locale).ticker;
   const g = t.site.gallery;

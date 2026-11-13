@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Copy, Pause, Play, X } from "lucide-react";
 import { fmt } from "@/lib/i18n/core";
 import { STILL_MS, clock, ringIndex, ringOffset, type SampleSlide } from "@/lib/site/carousel";
-import { setMotionPaused, useMotionPaused } from "@/lib/site/motion";
+import { useMotionPaused } from "@/lib/site/motion";
 import type { SiteCarouselDictionary } from "@/lib/i18n/site-carousel";
 import { clipsAllowed } from "@/components/site/LoopClip";
 import { usePageVisible, useReducedMotion, useClipTurn } from "@/components/site/clip-turns";
@@ -20,9 +20,11 @@ export type CarouselGalleryCopy = { badge: string; model: string; altClip: strin
  *
  * - The centre clip plays muted, once; when it ends the next card comes in. A picture holds the centre for STILL_MS with a slow
  *   zoom. Pressing a side card brings it to the centre and plays it, and the carousel goes on from there.
- * - Arrow keys (while focus is inside), swipe, and the previous / next buttons move it. The stop button holds it, and so does the
- *   page's own pause switch (lib/site/motion.ts); pressing start here lifts both, because that is what the visitor asked for.
- *   Keyboard focus arriving inside holds it too (the APG carousel rule) until the start button is pressed.
+ * - Arrow keys (while focus is inside), swipe, and the previous / next buttons move it. A tap on the centre clip stops it (there
+ *   is no visible pause button; the stop control is for the keyboard, shown when focused), and so does the page's own pause
+ *   switch (lib/site/motion.ts). Starting it again here overrides the page's switch for this carousel only, until the switch is
+ *   pressed again; it never turns the page's switch off. Keyboard focus arriving inside holds it too (the APG carousel rule),
+ *   and the hold stays after focus leaves, until the start control (or a tap) is pressed.
  * - Under reduced motion nothing plays or advances by itself: the posters stand still, and a clip plays only when its play button
  *   is pressed. With Save-Data or a slow link clips are not fetched until pressed either, and the posters advance on the timer.
  * - Only the centre card ever has a video, and only once the carousel has a turn to play (components/site/clip-turns.ts): at most
@@ -31,7 +33,8 @@ export type CarouselGalleryCopy = { badge: string; model: string; altClip: strin
  *   page moves when a card or its words change by themselves.
  *
  * Each card is one sample's box (data-showcase-entry), the only kind of element that may name a model; the panel under the stage
- * is the centre sample's box, with its title, its own words, the model and its maker's credit.
+ * is the centre sample's box, with its title, its own words, the AI-generated label and the model (no maker's credit line: the
+ * owner's rule of 2026-11-13 keeps those off public pages).
  */
 export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; copy: SiteCarouselDictionary["carousel"]; g: CarouselGalleryCopy }) {
   const n = slides.length;
@@ -44,6 +47,9 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
   const closeBtn = useRef<HTMLButtonElement>(null);
   const swipe = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const elapsed = useRef(0);
+  // Whether keyboard focus was inside when the centre changed: a control that unmounts with its card hands focus to "next".
+  const hadFocus = useRef(false);
+  const nextBtn = useRef<HTMLButtonElement>(null);
   // How long the centre clip has been asked to play without frames to show (a stalled download).
   const waited = useRef(0);
 
@@ -53,6 +59,8 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
   const [index, setIndex] = useState(0);
   const [stopped, setStopped] = useState(false);
   const [held, setHeld] = useState(false);
+  // "Start" pressed here while the page's pause switch is on: this carousel runs anyway, until the switch changes again.
+  const [override, setOverride] = useState(false);
   const [open, setOpen] = useState(false);
   const [pressedPlay, setPressedPlay] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -72,7 +80,11 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
   }, []);
 
   const s = slides[index] ?? slides[0];
-  const auto = mounted && !reduced && !stopped && !pagePaused;
+  useEffect(() => setOverride(false), [pagePaused]);
+  const pageHolds = pagePaused && !override;
+  // What the stop control shows: stopped by a tap or the control, held by keyboard focus, or held by the page's switch.
+  const paused = stopped || held || pageHolds;
+  const auto = mounted && !reduced && !stopped && !pageHolds;
   // A press on play is the visitor's own choice, so it plays even with reduced motion or Save-Data on.
   const turn = useClipTurn(stage, mounted && (auto || pressedPlay));
   useEffect(() => {
@@ -99,10 +111,19 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
       elapsed.current = 0;
       waited.current = 0;
       bar.current?.style.setProperty("--nxc-p", "0");
+      hadFocus.current = !!root.current && root.current.contains(document.activeElement) && document.activeElement !== document.body;
       if (byVisitor) setSaid(fmt(copy.now, { title: slides[next].title }));
     },
     [n, copy.now, slides],
   );
+
+  // A focused control on the old centre card (its play button, a pressed side card) is gone now: keep the keyboard in the carousel.
+  useEffect(() => {
+    if (!hadFocus.current) return;
+    hadFocus.current = false;
+    const a = document.activeElement;
+    if (!a || a === document.body || !root.current?.contains(a)) nextBtn.current?.focus({ preventScroll: true });
+  }, [index]);
 
   // Play or hold the centre clip.
   useEffect(() => {
@@ -128,12 +149,16 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
       const v = video.current;
       let p = 0;
       let rest = Number.NaN;
-      if (showVideo && v && playing && v.readyState < 3) {
-        // A clip that never arrives does not hold the carousel: after 10 s without frames its poster takes the picture's turn.
-        waited.current += dt;
-        if (waited.current > 10_000) {
-          setFailed(true);
-          return;
+      if (showVideo && v && playing) {
+        // A clip that never arrives does not hold the carousel: after 10 s in a row without frames its poster takes the
+        // picture's turn. Any moment with frames to play starts the count again.
+        if (v.readyState >= 3) waited.current = 0;
+        else {
+          waited.current += dt;
+          if (waited.current > 10_000) {
+            setFailed(true);
+            return;
+          }
         }
       }
       if (showVideo && v && Number.isFinite(v.duration) && v.duration > 0) {
@@ -171,10 +196,10 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
   };
 
   const toggleRun = () => {
-    if (stopped || pagePaused) {
+    if (paused) {
       setStopped(false);
       setHeld(false);
-      if (pagePaused) setMotionPaused(false);
+      if (pagePaused) setOverride(true);
     } else setStopped(true);
   };
 
@@ -186,7 +211,7 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
       return;
     }
     if (reduced || !allowed || pressedPlay) {
-      if (hasClip) setPressedPlay((p) => !(p && playing));
+      if (hasClip) setPressedPlay((p) => !p);
       return;
     }
     toggleRun();
@@ -214,10 +239,6 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
       keyboard = false;
     }
     if (keyboard) setHeld(true);
-  };
-  const onFocusOut = (e: FocusEvent<HTMLDivElement>) => {
-    const to = e.relatedTarget as Node | null;
-    if (!to || !root.current?.contains(to)) setHeld(false);
   };
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -262,7 +283,6 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
   }, [open]);
 
   if (n === 0 || !s) return null;
-  const runningLabel = stopped || pagePaused ? copy.play : copy.pause;
   const promptId = `${uid}-prompt`;
   const fullId = `${uid}-full`;
   const noteId = `${uid}-note`;
@@ -279,7 +299,6 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
       data-reduced={reduced ? "true" : undefined}
       onKeyDown={onKey}
       onFocus={onFocusIn}
-      onBlur={onFocusOut}
     >
       <div ref={stage} className="nxc-stage" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => (swipe.current = null)}>
         <div className="nxc-track">
@@ -300,7 +319,7 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
                 aria-hidden={centre ? undefined : true}
               >
                 {near && (centre ? (
-                  <div className="nxc-media" data-live={showVideo && playing ? "true" : undefined} data-stopped={stopped || pagePaused ? "true" : undefined} onClick={tapCentre}>
+                  <div className="nxc-media" data-live={showVideo && playing ? "true" : undefined} data-stopped={paused ? "true" : undefined} onClick={tapCentre}>
                     <Frame it={it} alt={fmt(it.kind === "video" ? g.altClip : g.altImage, { model: it.modelName })} />
                     {showVideo && it.clip && (
                       <video
@@ -327,15 +346,15 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
                       // button stays only for the keyboard (shown when focused).
                       <button
                         type="button"
-                        className={pressedPlay && playing ? "nxc-clipbtn nxc-kbd" : "nxc-clipbtn"}
-                        aria-pressed={pressedPlay && playing}
-                        aria-label={pressedPlay && playing ? copy.pauseClip : copy.playClip}
+                        className={pressedPlay ? "nxc-clipbtn nxc-kbd" : "nxc-clipbtn"}
+                        aria-pressed={pressedPlay}
+                        aria-label={copy.playClip}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setPressedPlay((p) => !(p && playing));
+                          setPressedPlay((p) => !p);
                         }}
                       >
-                        {pressedPlay && playing ? <Pause aria-hidden /> : <Play aria-hidden />}
+                        {pressedPlay ? <Pause aria-hidden /> : <Play aria-hidden />}
                       </button>
                     )}
                   </div>
@@ -363,10 +382,10 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
           <button type="button" className="nxc-icon" aria-label={copy.prev} onClick={() => go(index - 1, true)}>
             <ChevronLeft aria-hidden />
           </button>
-          <button type="button" className="nxc-icon nxc-run nxc-kbd" aria-pressed={stopped || pagePaused} aria-label={runningLabel} onClick={toggleRun}>
-            {stopped || pagePaused ? <Play aria-hidden /> : <Pause aria-hidden />}
+          <button type="button" className="nxc-icon nxc-run nxc-kbd" aria-pressed={paused} aria-label={copy.pause} onClick={toggleRun}>
+            {paused ? <Play aria-hidden /> : <Pause aria-hidden />}
           </button>
-          <button type="button" className="nxc-icon" aria-label={copy.next} onClick={() => go(index + 1, true)}>
+          <button ref={nextBtn} type="button" className="nxc-icon" aria-label={copy.next} onClick={() => go(index + 1, true)}>
             <ChevronRight aria-hidden />
           </button>
         </div>

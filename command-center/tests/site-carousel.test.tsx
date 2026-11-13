@@ -29,7 +29,9 @@ import { FORMATS } from "@/lib/site/formats";
 import { STILL_MS, beforeAfterPairs, carouselOrder, clock, firstSentence, ringIndex, ringOffset, sliderKey } from "@/lib/site/carousel";
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
 import { PHONE_TURNS, pickTurns } from "@/components/site/clip-turns";
-import { SampleCarousel, SampleCompare, SampleTicker } from "@/components/site/landing-samples";
+import { SampleCarousel, SampleCompare, SampleTicker, sampleSectionJobs } from "@/components/site/landing-samples";
+import { LANDING_SLOTS, slotJobs } from "@/components/site/slots";
+import { setMotionPaused, useMotionPaused } from "@/lib/site/motion";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { without } from "./helpers/showcase-scope";
 
@@ -69,6 +71,14 @@ afterEach(() => {
 });
 
 const items = showcaseItems();
+// What the landing leaves out of every sample section (its slots), and the carousel's own order after picture → video and the
+// ticker have taken theirs.
+const SLOT_JOBS = slotJobs(LANDING_SLOTS);
+const shown = items.filter(({ e }) => !SLOT_JOBS.includes(e.jobId));
+const carouselJobs = () => {
+  const elsewhere = [...SLOT_JOBS, ...sampleSectionJobs(SLOT_JOBS)];
+  return carouselOrder(items.filter(({ e }) => !elsewhere.includes(e.jobId)).map(({ e }) => e));
+};
 const centre = (root: ParentNode) => root.querySelector<HTMLElement>(".nxc-card[data-offset='0']")!;
 
 describe("the arithmetic", () => {
@@ -124,12 +134,18 @@ describe("the arithmetic", () => {
 });
 
 describe("the pairs are real", () => {
-  it("each pair is a shipped clip whose input job is a shipped picture (perfume and lighthouse today)", () => {
+  it("each pair is a shipped clip whose input is a shipped picture's own output: its job and its library asset", () => {
     const pairs = beforeAfterPairs(items);
     for (const { clip, picture } of pairs) {
       expect(clip.e.kind).toBe("video");
       expect(picture.e.kind).toBe("image");
-      expect(clip.e.input).toMatchObject({ kind: "operator_job", jobId: picture.e.jobId });
+      expect(clip.e.input).toEqual({ kind: "operator_job", jobId: picture.e.jobId, assetId: picture.e.assetId });
+    }
+    // A picture that only shares the job, not the asset the clip was made from, is not its source.
+    if (pairs.length > 0) {
+      const { clip, picture } = pairs[0];
+      const other = { ...picture, e: { ...picture.e, assetId: "00000000-0000-4000-8000-000000000000" } };
+      expect(beforeAfterPairs([clip, other])).toEqual([]);
     }
     const jobs = new Set(SHOWCASE_ENTRIES.map((e) => e.jobId));
     if (jobs.has("fc1fad12-16de-4cd5-9cd9-e77ed245f469") && jobs.has("e3da9148-f2f8-443e-95b1-8ed36ef3dea4"))
@@ -161,7 +177,7 @@ describe("what the three pieces say", () => {
   it("“Use this prompt” only fills the Studio form through sign-up, names no model, and exists only for a tool with a form", () => {
     const { container } = render(<SampleCarousel t={t} locale="en" />);
     const use = container.querySelector<HTMLAnchorElement>(".nxc-use");
-    const first = carouselOrder(items.map(({ e }) => e))[0];
+    const first = carouselJobs()[0];
     if (["t2v", "t2i"].includes(first.capability)) {
       const href = use!.getAttribute("href")!;
       expect(href.startsWith("/signup?next=")).toBe(true);
@@ -186,7 +202,9 @@ describe("what the three pieces say", () => {
     expect(run.classList.contains("nxc-kbd")).toBe(true);
     for (const b of container.querySelectorAll(".nxt-hold")) expect(b.classList.contains("nxt-kbd")).toBe(true);
     const css = ["showcase-carousel.css", "prompt-ticker.css", "before-after.css"].map((f) => readFileSync(join(ROOT, "components/site", f), "utf8")).join("\n");
-    for (const k of ["nxc-kbd", "nxt-kbd", "nxb-kbd"]) expect(css).toMatch(new RegExp(`\\.${k}:not\\(:focus\\) \\{[^}]*clip-path: inset\\(50%\\)`));
+    // :focus-visible, not :focus: a mouse press focuses a button too, and must never leave a visible Pause behind it.
+    for (const k of ["nxc-kbd", "nxt-kbd", "nxb-kbd"]) expect(css).toMatch(new RegExp(`\\.${k}:not\\(:focus-visible\\) \\{[^}]*clip-path: inset\\(50%\\)`));
+    expect(css).not.toMatch(/:not\(:focus\)/);
     // And nothing here shows the page's pause switch.
     expect(container.querySelector(".nx-motion-btn, .nx-clip-pause")).toBeNull();
   });
@@ -196,7 +214,7 @@ describe("the carousel", () => {
   it("moves on when the centre clip ends, and goes on from a side card pressed into the centre", () => {
     env();
     const { container } = render(<SampleCarousel t={t} locale="en" />);
-    const order = carouselOrder(items.map(({ e }) => e));
+    const order = carouselJobs();
     expect(centre(container).getAttribute("data-showcase-entry")).toBe(order[0].jobId);
     const v = centre(container).querySelector("video");
     expect(v, "the centre clip plays").toBeTruthy();
@@ -215,16 +233,61 @@ describe("the carousel", () => {
   it("arrow keys move it, a tap on the centre clip stops it, and only the centre card ever holds a video", () => {
     env();
     const { container } = render(<SampleCarousel t={t} locale="en" />);
-    const order = carouselOrder(items.map(({ e }) => e));
+    const order = carouselJobs();
     const region = container.querySelector("[aria-roledescription='carousel']")!;
     act(() => void fireEvent.keyDown(region, { key: "ArrowRight" }));
     expect(centre(container).getAttribute("data-showcase-entry")).toBe(order[1].jobId);
     act(() => void fireEvent.keyDown(region, { key: "ArrowLeft" }));
     expect(centre(container).getAttribute("data-showcase-entry")).toBe(order[0].jobId);
     expect(container.querySelectorAll("video")).toHaveLength(1);
+    const run = container.querySelector(".nxc-run")!;
     act(() => void fireEvent.click(centre(container).querySelector(".nxc-media")!));
-    expect(container.querySelector(".nxc-run")!.getAttribute("aria-pressed")).toBe("true");
+    expect(run.getAttribute("aria-pressed")).toBe("true");
+    // A toggle keeps one name; only aria-pressed says its state.
+    expect(run.getAttribute("aria-label")).toBe(c.carousel.pause);
     expect(container.querySelector(".nxc")!.getAttribute("data-run")).toBe("false");
+    act(() => void fireEvent.click(centre(container).querySelector(".nxc-media")!));
+    expect(run.getAttribute("aria-pressed")).toBe("false");
+    expect(run.getAttribute("aria-label")).toBe(c.carousel.pause);
+  });
+
+  it("starting it while the page's pause switch is on runs this carousel only: the page's switch stays on", () => {
+    env();
+    let page = false;
+    function Probe() {
+      page = useMotionPaused();
+      return null;
+    }
+    const { container } = render(
+      <>
+        <Probe />
+        <SampleCarousel t={t} locale="en" />
+      </>,
+    );
+    act(() => setMotionPaused(true));
+    const run = container.querySelector(".nxc-run")!;
+    expect(run.getAttribute("aria-pressed")).toBe("true");
+    act(() => void fireEvent.click(run));
+    expect(run.getAttribute("aria-pressed")).toBe("false");
+    expect(page).toBe(true);
+    expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
+    // Pressing the page's switch again applies to the carousel again.
+    act(() => setMotionPaused(false));
+    act(() => setMotionPaused(true));
+    expect(run.getAttribute("aria-pressed")).toBe("true");
+    act(() => setMotionPaused(false));
+  });
+
+  it("keeps keyboard focus in the carousel when the control that had it leaves with its card", () => {
+    env();
+    const { container } = render(<SampleCarousel t={t} locale="en" />);
+    const side = container.querySelector<HTMLButtonElement>(".nxc-card[data-offset='1'] button")!;
+    side.focus();
+    expect(document.activeElement).toBe(side);
+    act(() => void fireEvent.click(side));
+    // That card is the centre now (no button any more): focus went to "next", not to the page.
+    expect(side.isConnected).toBe(false);
+    expect(document.activeElement?.getAttribute("aria-label")).toBe(c.carousel.next);
   });
 
   it("a picture holds the centre for its turn, then the next card comes in", () => {
@@ -233,7 +296,7 @@ describe("the carousel", () => {
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16) as unknown as number);
     vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
     const { container } = render(<SampleCarousel t={t} locale="en" />);
-    const order = carouselOrder(items.map(({ e }) => e));
+    const order = carouselJobs();
     const still = order.findIndex((e) => e.kind === "image");
     if (still < 0) return;
     const region = container.querySelector("[aria-roledescription='carousel']")!;
@@ -255,7 +318,12 @@ describe("the carousel", () => {
     const play = centre(container).querySelector<HTMLButtonElement>(".nxc-clipbtn");
     expect(play, "a visible play button").toBeTruthy();
     expect(play!.classList.contains("nxc-kbd")).toBe(false);
+    expect(play!.getAttribute("aria-pressed")).toBe("false");
     act(() => void fireEvent.click(play!));
+    // Pressed from the visitor's choice (not from whether frames arrived yet), with the same name; out of sight but for the keyboard.
+    expect(play!.getAttribute("aria-pressed")).toBe("true");
+    expect(play!.getAttribute("aria-label")).toBe(c.carousel.playClip);
+    expect(play!.classList.contains("nxc-kbd")).toBe(true);
     const v = centre(container).querySelector("video");
     expect(v).toBeTruthy();
     act(() => void fireEvent.ended(v!));
@@ -269,7 +337,7 @@ describe("picture → video", () => {
     env();
     const { container } = render(<SampleCompare t={t} locale="en" />);
     const sliders = container.querySelectorAll<HTMLElement>("[role='slider']");
-    expect(sliders.length).toBe(beforeAfterPairs(items).length);
+    expect(sliders.length).toBe(beforeAfterPairs(shown).length);
     if (sliders.length === 0) return;
     const s = sliders[0];
     expect(s.getAttribute("aria-valuenow")).toBe("50");
@@ -301,12 +369,19 @@ describe("picture → video", () => {
     act(() => void fireEvent.pointerDown(frame, { pointerId: 2, clientX: 20 }));
     act(() => void fireEvent.pointerUp(frame, { pointerId: 2, clientX: 20 }));
     expect(s.getAttribute("aria-valuenow")).toBe("75");
-    expect(btn.getAttribute("aria-label")).toBe(c.compare.playClip);
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+    expect(btn.getAttribute("aria-label")).toBe(c.compare.pauseClip);
+    // Paused, the clip is out of the page; a second tap brings it back.
+    expect(frame.querySelector("video")).toBeNull();
+    act(() => void fireEvent.pointerDown(frame, { pointerId: 3, clientX: 20 }));
+    act(() => void fireEvent.pointerUp(frame, { pointerId: 3, clientX: 20 }));
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+    expect(frame.querySelector("video")).toBeTruthy();
   });
 
   it("names both models, the picture's and the clip's, inside the clip's box", () => {
     const { container } = render(<SampleCompare t={t} locale="en" />);
-    for (const { clip, picture } of beforeAfterPairs(items)) {
+    for (const { clip, picture } of beforeAfterPairs(shown)) {
       const box = container.querySelector(`[data-showcase-entry="${clip.e.jobId}"]`)!;
       expect(box.textContent).toContain(clip.e.modelName);
       expect(box.textContent).toContain(picture.e.modelName);
@@ -334,6 +409,62 @@ describe("prompt → result", () => {
     const { container } = render(<SampleTicker t={t} locale="en" />);
     const job = container.querySelector(".nxt")?.getAttribute("data-showcase-entry");
     if (!job) return;
+    expect(SLOT_JOBS).not.toContain(job);
     expect(["de53f364-eaf7-4cd1-8d44-7b56b21b03b6"]).not.toContain(job);
+  });
+
+  it("a cut sentence keeps its ellipsis on screen: the typed words are clamped to three lines", () => {
+    const css = readFileSync(join(ROOT, "components/site/prompt-ticker.css"), "utf8");
+    expect(css).toMatch(/\.nxt-typed \{[^}]*-webkit-line-clamp: 3/);
+  });
+});
+
+describe("no clip twice, and every file ours", () => {
+  it("with the gallery's own exclude list, no sample is in two of these pieces, and none the slots or the list hold", () => {
+    env();
+    const { container } = render(
+      <>
+        <SampleTicker t={t} locale="en" exclude={SLOT_JOBS} />
+        <SampleCarousel t={t} locale="en" exclude={SLOT_JOBS} />
+        <SampleCompare t={t} locale="en" exclude={SLOT_JOBS} />
+      </>,
+    );
+    const carousel = [...container.querySelectorAll(".nxc-card")].map((n) => n.getAttribute("data-showcase-entry")!);
+    const compare = [...container.querySelectorAll(".nxb")].flatMap((n) => [n.getAttribute("data-showcase-entry")!, n.querySelector("[data-source-entry]")!.getAttribute("data-source-entry")!]);
+    const ticker = sampleSectionJobs(SLOT_JOBS).filter((j) => !compare.includes(j));
+    const all = [...carousel, ...compare, ...ticker];
+    expect(new Set(all).size).toBe(all.length);
+    for (const j of all) expect(SLOT_JOBS).not.toContain(j);
+    // A job the owner keeps off the landing is in none of them.
+    const off = carousel[0];
+    const { container: again } = render(<SampleCarousel t={t} locale="en" exclude={[...SLOT_JOBS, off]} />);
+    expect(again.querySelector(`[data-showcase-entry="${off}"]`)).toBeNull();
+  });
+
+  it("every picture is same-origin and lazy, and every clip sits inside its own sample's box", () => {
+    env();
+    const { container } = render(
+      <>
+        <SampleTicker t={t} locale="en" />
+        <SampleCarousel t={t} locale="en" />
+        <SampleCompare t={t} locale="en" />
+      </>,
+    );
+    const imgs = [...container.querySelectorAll("[data-sample-section] img")];
+    expect(imgs.length).toBeGreaterThan(0);
+    for (const img of imgs) {
+      expect(img.getAttribute("src") ?? "").not.toMatch(/^(https?:)?\/\//);
+      for (const part of (img.getAttribute("srcset") ?? "").split(",")) expect(part.trim()).not.toMatch(/^(https?:)?\/\//);
+      expect(img.getAttribute("loading")).toBe("lazy");
+      expect(img.closest("[data-showcase-entry]")).toBeTruthy();
+    }
+    const videos = [...container.querySelectorAll("[data-sample-section] video")];
+    expect(videos.length).toBeGreaterThan(0);
+    for (const v of videos) {
+      const box = v.closest("[data-showcase-entry]");
+      expect(box).toBeTruthy();
+      for (const src of v.querySelectorAll("source")) expect(src.getAttribute("src") ?? "").not.toMatch(/^(https?:)?\/\//);
+      expect(v.hasAttribute("muted") || (v as HTMLVideoElement).muted).toBe(true);
+    }
   });
 });

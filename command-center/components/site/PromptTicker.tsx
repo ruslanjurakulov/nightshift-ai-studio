@@ -119,7 +119,7 @@ export function PromptTicker({ items, copy, g }: { items: SampleSlide[]; copy: S
       <div className="nxt-words">
         <p className="nxt-key">{copy.prompt}</p>
         <p className="nxt-line">
-          <span aria-hidden>
+          <span className="nxt-typed" aria-hidden>
             {typed === null ? line.text : chars.slice(0, typed).join("")}
             {done && line.cut ? "…" : ""}
             <span className="nxt-caret" data-on={blurred ? "true" : undefined} />
@@ -148,7 +148,7 @@ export function PromptTicker({ items, copy, g }: { items: SampleSlide[]; copy: S
             type="button"
             className="nxt-hold nxt-kbd"
             aria-pressed={held}
-            aria-label={held ? copy.play : copy.pause}
+            aria-label={copy.pause}
             onClick={(e) => {
               e.stopPropagation();
               setHeld((h) => !h);

@@ -125,5 +125,5 @@
 /* No visible pause button (the owner's rule, 2026-11-13): a tap on the frame pauses the clip; its button is for the keyboard only,
    out of sight until focused. Starting a clip by hand (reduced motion, Save-Data) keeps its visible play button. */
 @layer components {
-.nxb-kbd:not(:focus) { width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.nxb-kbd:not(:focus-visible) { width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 }

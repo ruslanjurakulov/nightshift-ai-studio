@@ -36,6 +36,8 @@
   overflow-wrap: anywhere;
 }
 @media (min-width: 860px) { .nxt-line { font-size: 22px; } }
+/* The typed words, three lines at most: clamped, so a sentence longer than the box ends on "…" instead of a cut line. */
+.nxt-typed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .nxt-caret { display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em; background: var(--ns-amber); opacity: 0; }
 .nxt-caret[data-on="true"] { opacity: 1; }
 .nxt-meta { display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; height: 32px; margin: 0; overflow: hidden; font-size: 14px; color: var(--ns-text-dim); white-space: nowrap; }
@@ -76,5 +78,5 @@
 .nxt-hold { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(8, 8, 8, 0.78); color: #fff; cursor: pointer; }
 .nxt-hold svg { width: 18px; height: 18px; }
 .nxt-hold:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
-.nxt-kbd:not(:focus) { width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.nxt-kbd:not(:focus-visible) { width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 }

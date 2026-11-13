@@ -101,16 +101,18 @@ export function firstSentence(prompt: string, max = 150): { text: string; cut: b
 }
 
 /**
- * The image-to-video pairs: a clip whose input picture is another sample on the list (by its job), with that picture. Only a
- * picture the list itself holds is ever shown as the source (the same rule as the gallery's "Made from this picture").
+ * The image-to-video pairs: a clip whose input picture is another sample on the list, with that picture. The input must be that
+ * job's very output (its job AND its library asset), so a picture that only shares a job with the input is never shown as the
+ * source. Only a picture the list itself holds is ever shown (the same rule as the gallery's "Made from this picture").
  */
-export function beforeAfterPairs<T extends { e: Pick<ShowcaseEntry, "jobId" | "kind" | "input"> }>(items: readonly T[]): { clip: T; picture: T }[] {
+export function beforeAfterPairs<T extends { e: Pick<ShowcaseEntry, "jobId" | "assetId" | "kind" | "input"> }>(items: readonly T[]): { clip: T; picture: T }[] {
   const byJob = new Map(items.map((it) => [it.e.jobId, it]));
   const out: { clip: T; picture: T }[] = [];
   for (const it of items) {
-    if (it.e.kind !== "video" || it.e.input.kind !== "operator_job") continue;
-    const pic = byJob.get(it.e.input.jobId);
-    if (pic && pic.e.kind === "image") out.push({ clip: it, picture: pic });
+    const input = it.e.input;
+    if (it.e.kind !== "video" || input.kind !== "operator_job") continue;
+    const pic = byJob.get(input.jobId);
+    if (pic && pic.e.kind === "image" && pic.e.assetId === input.assetId) out.push({ clip: it, picture: pic });
   }
   return out;
 }
