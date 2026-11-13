@@ -22,6 +22,8 @@ const h = vi.hoisted(() => ({
   /** What dodo_issue_checkout_nonce answers (0146). */
   nonce: { data: "0123456789abcdef0123456789abcdef" as unknown, error: null as null | { code: string; message: string } },
   rpcCalls: [] as { fn: string; args: unknown }[],
+  /** What dodo_purchase_history answers (0154). */
+  history: { data: [] as unknown, error: null as null | { code: string; message: string } },
   subsError: null as { message: string } | null,
   audit: [] as unknown[],
   getUserCalls: 0,
@@ -35,7 +37,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     rpc: async (fn: string, args: unknown) => {
       h.rpcCalls.push({ fn, args });
-      return h.nonce;
+      return fn === "dodo_purchase_history" ? h.history : h.nonce;
     },
     from: () => {
       const q = {
@@ -71,6 +73,10 @@ const { PRICING_ENV, resolvePricing } = await import("@/lib/pricing");
 const { PLAN_ENV, planMatrix } = await import("@/lib/plans");
 const { buyAccess, paddleClient, paddleConfig, CREDIT_PACKS } = await import("@/lib/paddle");
 const checkout = await import("../app/api/billing/dodo/checkout/route");
+const invoice = await import("../app/api/billing/dodo/invoice/route");
+const { DODO_AMOUNT, dodoAmountInBounds, parseDodoAmount } = await import("@/lib/dodo");
+const { dodoAmountFromItem } = await import("../../supabase/functions/_shared/dodo");
+const { fetchDodoInvoicePdf } = await import("@/lib/server/dodo-api");
 const portal = await import("../app/api/billing/portal/route");
 
 const KEY = "dodo_test_" + "k".repeat(32);
@@ -96,7 +102,7 @@ function setEnv(vars: Record<string, string>) {
 
 beforeEach(() => {
   vi.unstubAllEnvs();
-  for (const k of ["PAYMENTS_PROVIDER", "APP_ORIGIN", ...Object.keys(DODO_ENV), "DODO_TEST_ORG_IDS", "DODO_PRODUCT_CREATOR", "DODO_PLAN_CREATOR", "DODO_PLAN_STUDIO"])
+  for (const k of ["PAYMENTS_PROVIDER", "APP_ORIGIN", ...Object.keys(DODO_ENV), "DODO_TEST_ORG_IDS", "DODO_PRODUCT_CREATOR", "DODO_PLAN_CREATOR", "DODO_PLAN_STUDIO", "DODO_PRODUCT_AMOUNT"])
     vi.stubEnv(k, "");
   h.user = { id: "11111111-1111-4111-8111-111111111111", email: "owner@example.com" };
   h.orgId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -106,6 +112,7 @@ beforeEach(() => {
   h.audit = [];
   h.getUserCalls = 0;
   h.nonce = { data: "0123456789abcdef0123456789abcdef", error: null };
+  h.history = { data: [], error: null };
   h.rpcCalls = [];
   fetchCalls.length = 0;
   dodoAnswer = () =>
@@ -254,7 +261,8 @@ describe("the Dodo settings (server only)", () => {
     expect(text).not.toContain("pdt_");
     expect(text).not.toContain(KEY);
     expect(text).not.toContain(DODO_ENV.DODO_METADATA_SECRET);
-    expect(view).toEqual({ environment: "test", packs: [DODO_CATALOG_PACKS[0], DODO_CATALOG_PACKS[2]].map((p) => ({ ...p })), plans: ["pro"] });
+    // No DODO_PRODUCT_AMOUNT here: no typed amount is offered (the panel is exactly the packs, as before).
+    expect(view).toEqual({ environment: "test", packs: [DODO_CATALOG_PACKS[0], DODO_CATALOG_PACKS[2]].map((p) => ({ ...p })), plans: ["pro"], amount: null });
   });
 
   it("sells the same packs and credits as Paddle", () => {
@@ -553,5 +561,219 @@ describe("the return from Dodo's checkout", () => {
     expect(parseDodoReturn("")).toBeNull();
     expect(parseDodoReturn("?payment_id=pay_x&status=succeeded")).toBeNull();
     expect(parseDodoReturn("?dodo=paid&item=pack")).toBeNull();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// A typed amount ("Add credits"): the browser names cents, and nothing else. What would break without these: a crafted body
+// opening a checkout below $5 or above $300, a string or a fraction of a cent coerced into some other amount, the checkout
+// charging something other than what was signed, or credits computed from the browser's word.
+// ───────────────────────────────────────────────────────────────────────────
+
+const PDT_AMOUNT = "pdt_PWYWamount0000000000";
+const SELLING_AMOUNT = { ...SELLING, DODO_PRODUCT_AMOUNT: PDT_AMOUNT };
+
+describe("a typed amount: the bounds and the rate", () => {
+  it("are $5 to $300 at 1 credit per US cent, in whole cents", () => {
+    expect([DODO_AMOUNT.minCents, DODO_AMOUNT.maxCents, DODO_AMOUNT.creditsPerCent]).toEqual([500, 30000, 1]);
+    expect([499, 500, 30000, 30001].map(dodoAmountInBounds)).toEqual([false, true, true, false]);
+    for (const bad of [2500.5, Number.NaN, Infinity, "2500", null, undefined, -500, 1e21]) expect(dodoAmountInBounds(bad)).toBe(false);
+  });
+
+  it("reads what a person types into exactly the cents that will be charged, never rounding", () => {
+    expect(parseDodoAmount("25")).toEqual({ ok: true, cents: 2500 });
+    expect(parseDodoAmount("$25.5")).toEqual({ ok: true, cents: 2550 });
+    expect(parseDodoAmount(" 19.99 ")).toEqual({ ok: true, cents: 1999 });
+    expect(parseDodoAmount("25,50")).toEqual({ ok: true, cents: 2550 });
+    expect(parseDodoAmount("5")).toEqual({ ok: true, cents: 500 });
+    expect(parseDodoAmount("300.00")).toEqual({ ok: true, cents: 30000 });
+    expect(parseDodoAmount("")).toEqual({ ok: false, reason: "empty" });
+    expect(parseDodoAmount("4.99")).toEqual({ ok: false, reason: "below" });
+    expect(parseDodoAmount("300.01")).toEqual({ ok: false, reason: "above" });
+    for (const bad of ["25.555", "1e3", "-25", "25 USD", "0x20", "２５", "25..5", ".5"]) expect(parseDodoAmount(bad)).toEqual({ ok: false, reason: "format" });
+  });
+
+  it("accepts only a JSON integer of cents inside the bounds from the browser", () => {
+    expect(parseCheckoutItem({ kind: "amount", usd_cents: 2500 })).toEqual({ kind: "amount", usdCents: 2500 });
+    for (const bad of [
+      { kind: "amount", usd_cents: 499 },
+      { kind: "amount", usd_cents: 30001 },
+      { kind: "amount", usd_cents: 2500.5 },
+      { kind: "amount", usd_cents: "2500" },
+      { kind: "amount", usd_cents: null },
+      { kind: "amount" },
+      { kind: "amount", usd_cents: 2500, id: "starter" },
+      { kind: "amount", amount: 2500 },
+    ])
+      expect(parseCheckoutItem(bad), JSON.stringify(bad)).toBeNull();
+  });
+
+  it("is on sale only with its own product id, which no pack or plan may share", () => {
+    expect(resolveDodoServer(SELLING_AMOUNT)!.amountProduct).toBe(PDT_AMOUNT);
+    expect(resolveDodoServer({ ...SELLING, DODO_PRODUCT_AMOUNT: PDT.starter })!.amountProduct).toBeNull();
+    expect(resolveDodoServer({ ...SELLING, DODO_PRODUCT_AMOUNT: "pri_paddle123456" })!.amountProduct).toBeNull();
+    // Only the amount product configured: Dodo still sells (the typed amount), and the view says so without any id.
+    const onlyAmount = resolveDodoServer({ DODO_PAYMENTS_API_KEY: KEY, DODO_METADATA_SECRET: DODO_ENV.DODO_METADATA_SECRET, DODO_PRODUCT_AMOUNT: PDT_AMOUNT })!;
+    const view = dodoView(onlyAmount)!;
+    expect(view.packs).toEqual([]);
+    expect(view.amount).toEqual({ minCents: 500, maxCents: 30000, creditsPerCent: 1, presetsCents: [1000, 2000, 5000, 10000] });
+    expect(JSON.stringify(view)).not.toContain("pdt_");
+    expect(dodoBuyAccess(h.orgId, "owner", view)).toBe("allowed");
+    expect(dodoBuyAccess(h.orgId, "editor", view)).toBe("admin_only");
+    expect(dodoBuyAccess("00000000-0000-0000-0000-000000000001", "owner", view)).toBe("hidden");
+  });
+});
+
+describe("POST /api/billing/dodo/checkout with a typed amount", () => {
+  it("charges exactly the signed cents on the PWYW product, quantity 1, and signs the amount into the item and the nonce", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    vi.stubEnv("APP_ORIGIN", "https://nightshift.example");
+    setEnv(SELLING_AMOUNT);
+    const res = await buy({ kind: "amount", usd_cents: 2550, return_path: "/all-channels/credits", credits: 999999, product_id: PDT.starter });
+    expect(res.status).toBe(200);
+    const body = sentBody();
+    const meta = body.metadata as Record<string, string>;
+    expect(body.product_cart).toEqual([{ product_id: PDT_AMOUNT, quantity: 1, amount: 2550 }]);
+    expect(meta.nightshift_item).toBe("pack:amount_2550");
+    expect(h.rpcCalls).toEqual([{ fn: "dodo_issue_checkout_nonce", args: { p_org: h.orgId, p_item: "pack:amount_2550" } }]);
+    // What the webhook will read back from it: our signature, over these cents.
+    const verified = await verifyDodoMetadata(meta, dodoMetadataKey(DODO_ENV.DODO_METADATA_SECRET)!);
+    expect(verified).toMatchObject({ status: "valid", item: "pack:amount_2550" });
+    expect(dodoAmountFromItem((verified as { item: string }).item)).toBe(2550);
+    // Back to the packs panel, which waits for the balance.
+    expect(String(body.return_url)).toMatch(/&dodo=return&item=pack$/);
+    expect(String(body.cancel_url)).toMatch(/&dodo=cancelled&item=pack$/);
+    expect(body.feature_flags).toEqual({ allow_discount_code: false, allow_currency_selection: false, allow_customer_editing_email: false, always_create_new_customer: true });
+    expect(body).not.toHaveProperty("subscription_data");
+  });
+
+  it("a pack never carries an amount on its line", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING_AMOUNT);
+    await buy({ kind: "pack", id: "starter", return_path: "/a/credits", amount: 1 });
+    expect(sentBody().product_cart).toEqual([{ product_id: PDT.starter, quantity: 1 }]);
+  });
+
+  it("refuses an amount out of bounds or not a whole number of cents, before a nonce or Dodo", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING_AMOUNT);
+    for (const usd_cents of [0, 499, 30001, 2500.5, "2500", -2500, 1e12])
+      expect((await buy({ kind: "amount", usd_cents, return_path: "/a/credits" })).status, String(usd_cents)).toBe(400);
+    expect(h.rpcCalls).toEqual([]);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("is not on sale without DODO_PRODUCT_AMOUNT: 404, no nonce, no Dodo call", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING);
+    const res = await buy({ kind: "amount", usd_cents: 2500, return_path: "/a/credits" });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_on_sale" });
+    expect(h.rpcCalls).toEqual([]);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("keeps every bar of the pack path: signed out, not owner/admin, exempt, test mode for a workspace not on the list", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING_AMOUNT);
+    const ask = () => buy({ kind: "amount", usd_cents: 2500, return_path: "/a/credits" });
+    h.user = null;
+    expect((await ask()).status).toBe(401);
+    h.user = { id: "11111111-1111-4111-8111-111111111111", email: "owner@example.com" };
+    h.role = { ok: false, error: "forbidden", status: 403 };
+    expect((await ask()).status).toBe(403);
+    h.role = { ok: true, role: "owner" };
+    h.orgId = "00000000-0000-0000-0000-000000000001";
+    expect((await ask()).status).toBe(409);
+    h.orgId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    expect((await ask()).status).toBe(403);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("answers 404 while PAYMENTS_PROVIDER is not dodo", async () => {
+    setEnv(SELLING_AMOUNT);
+    expect((await buy({ kind: "amount", usd_cents: 2500, return_path: "/a/credits" })).status).toBe(404);
+    expect(fetchCalls).toHaveLength(0);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// The invoice of one payment (GET /api/billing/dodo/invoice): what would break without these is one workspace downloading
+// another's invoice by guessing a payment id, another site spending Dodo's per-payment limit on someone's session, or a Dodo
+// answer that is not a PDF being passed on as one.
+// ───────────────────────────────────────────────────────────────────────────
+
+const OWN_PAY = "pay_OwnPAYMENT0000000001";
+const getInvoice = (payment: string, headers: Record<string, string> = { "sec-fetch-site": "same-origin" }) =>
+  invoice.GET(new Request(`http://test.local/api/billing/dodo/invoice?payment=${encodeURIComponent(payment)}`, { headers }));
+const pdfAnswer = () => new Response(new Uint8Array([0x25, 0x50, 0x44, 0x46]), { status: 200, headers: { "content-type": "application/pdf" } });
+
+describe("GET /api/billing/dodo/invoice", () => {
+  beforeEach(() => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING_AMOUNT);
+    h.history = { data: [{ payment_id: OWN_PAY, item: "pack:amount_2500", credits: 2500, amount_minor: 2700, currency: "USD" }], error: null };
+    dodoAnswer = pdfAnswer;
+  });
+
+  it("passes on Dodo's PDF for a payment the database says is this workspace's", async () => {
+    const res = await getInvoice(OWN_PAY);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    expect(res.headers.get("content-disposition")).toBe(`attachment; filename="invoice-${OWN_PAY}.pdf"`);
+    expect(res.headers.get("cache-control")).toContain("no-store");
+    expect(h.rpcCalls).toEqual([{ fn: "dodo_purchase_history", args: { p_org: h.orgId, p_payment: OWN_PAY } }]);
+    expect(fetchCalls.map((c) => c.url)).toEqual([`https://test.dodopayments.com/invoices/payments/${OWN_PAY}`]);
+    expect((fetchCalls[0].init.headers as Record<string, string>).Authorization).toBe(`Bearer ${KEY}`);
+  });
+
+  it("never asks Dodo for a payment that is not this workspace's, or when ownership cannot be read", async () => {
+    h.history = { data: [], error: null };
+    expect((await getInvoice("pay_SomeoneElses000000001")).status).toBe(404);
+    h.history = { data: null, error: { code: "PGRST202", message: "Could not find the function" } };
+    expect((await getInvoice(OWN_PAY)).status).toBe(503);
+    h.history = { data: null, error: { code: "42501", message: "only an owner" } };
+    expect((await getInvoice(OWN_PAY)).status).toBe(503);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("refuses a malformed id, a cross-site request, a signed-out visitor, a non-admin and the exempt organization", async () => {
+    expect((await getInvoice("pdt_0NVbdIG3JNg9Yc8ey5JHW")).status).toBe(400);
+    expect((await getInvoice("pay_../../customers")).status).toBe(400);
+    expect((await getInvoice(OWN_PAY, { "sec-fetch-site": "cross-site" })).status).toBe(403);
+    expect((await getInvoice(OWN_PAY, { "sec-fetch-site": "same-site" })).status).toBe(403);
+    h.user = null;
+    expect((await getInvoice(OWN_PAY)).status).toBe(401);
+    h.user = { id: "11111111-1111-4111-8111-111111111111", email: "owner@example.com" };
+    h.role = { ok: false, error: "forbidden", status: 403 };
+    expect((await getInvoice(OWN_PAY)).status).toBe(403);
+    h.role = { ok: true, role: "owner" };
+    h.orgId = "00000000-0000-0000-0000-000000000001";
+    expect((await getInvoice(OWN_PAY)).status).toBe(409);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("is dark while PAYMENTS_PROVIDER is not dodo", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "");
+    expect((await getInvoice(OWN_PAY)).status).toBe(404);
+    expect(h.rpcCalls).toEqual([]);
+  });
+
+  it("says Dodo's limit as a limit, a missing invoice as missing, and passes on nothing that is not a PDF", async () => {
+    dodoAnswer = () => new Response("slow down", { status: 429 });
+    const limited = await getInvoice(OWN_PAY);
+    expect([limited.status, limited.headers.get("retry-after")]).toEqual([429, "60"]);
+    dodoAnswer = () => new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
+    expect((await getInvoice(OWN_PAY)).status).toBe(404);
+    dodoAnswer = () => new Response("<html>login</html>", { status: 200, headers: { "content-type": "text/html" } });
+    expect((await getInvoice(OWN_PAY)).status).toBe(502);
+    dodoAnswer = () => new Response("x", { status: 200, headers: { "content-type": "application/pdf", "content-length": String(6 * 1024 * 1024) } });
+    expect((await getInvoice(OWN_PAY)).status).toBe(502);
+  });
+
+  it("fetchDodoInvoicePdf asks only for a well-formed payment id", async () => {
+    const cfg = resolveDodoServer(SELLING_AMOUNT)!;
+    expect(await fetchDodoInvoicePdf(cfg, "pay_../x")).toEqual({ ok: false, reason: "not_found" });
+    expect(fetchCalls).toHaveLength(0);
   });
 });

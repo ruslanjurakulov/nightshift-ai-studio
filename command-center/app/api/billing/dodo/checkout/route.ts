@@ -3,7 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isCreditExempt } from "@/lib/credits";
-import { RETURN_PATH_RE, dodoSellsTo, parseCheckoutItem } from "@/lib/dodo";
+import { RETURN_PATH_RE, dodoItemKey, dodoReturnItem, dodoSellsTo, parseCheckoutItem } from "@/lib/dodo";
 import { createDodoCheckout, dodoServer } from "@/lib/server/dodo-api";
 import { paymentsProvider } from "@/lib/server/payments";
 import { publicOrigin } from "@/lib/server/public-origin";
@@ -16,7 +16,12 @@ export const dynamic = "force-dynamic";
 /**
  * Buy a credit pack or subscribe to a plan through Dodo Payments. POST
  * `{ kind: "pack" | "plan", id, return_path }` — OUR id ("starter", "pro"),
- * never a product id or an amount.
+ * never a product id — or `{ kind: "amount", usd_cents, return_path }` for the
+ * "Add credits" sheet's typed amount: a JSON integer of US cents inside
+ * DODO_AMOUNT's bounds ($5 to $300), refused otherwise. The cents are signed
+ * into the metadata (`pack:amount_<cents>`) and set as the Pay What You Want
+ * line's price; the webhook credits the signed cents at its own rate, and only
+ * when Dodo reports exactly that amount paid. The browser never names credits.
  *
  * Dark unless PAYMENTS_PROVIDER is `dodo`: until then it answers 404 before it
  * reads the session, so nothing about the Paddle path changes. With it, the
@@ -59,7 +64,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // The checkout's e-mail is the account's own and is not editable there (lib/server/dodo-api.ts).
   if (!user.email) return NextResponse.json({ error: "email_required" }, { status: 409 });
 
-  const productId = item.kind === "pack" ? cfg.packs[item.id] : cfg.plans[item.id];
+  const productId = item.kind === "pack" ? cfg.packs[item.id] : item.kind === "plan" ? cfg.plans[item.id] : cfg.amountProduct;
   if (!productId) return NextResponse.json({ error: "not_on_sale" }, { status: 404 });
 
   if (item.kind === "plan") {
@@ -80,7 +85,8 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // own session): the webhook spends it once, so the signed metadata cannot be replayed on a static Dodo link.
   const db = await createClient();
   if (!db) return NextResponse.json({ error: "not_configured" }, { status: 503 });
-  const issued = await db.rpc("dodo_issue_checkout_nonce", { p_org: orgId, p_item: `${item.kind}:${item.id}` });
+  // The nonce row stores the same item the metadata signs, so a typed amount is bound in the database too.
+  const issued = await db.rpc("dodo_issue_checkout_nonce", { p_org: orgId, p_item: dodoItemKey(item) });
   const nonce = typeof issued.data === "string" && /^[0-9a-f]{32}$/.test(issued.data) ? issued.data : null;
   if (issued.error || !nonce) {
     const tooMany = (issued.error as { code?: string } | null)?.code === "54000";
@@ -97,8 +103,8 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     item,
     // Back through our own route (../return), which drops what Dodo appends (the customer's e-mail among it) and sends the
     // browser on to the Credits page. `item` tells the page which panel waits for the webhook; it decides no amount.
-    returnUrl: `${origin}/api/billing/dodo/return?to=${encodeURIComponent(returnPath)}&dodo=return&item=${item.kind}`,
-    cancelUrl: `${origin}/api/billing/dodo/return?to=${encodeURIComponent(returnPath)}&dodo=cancelled&item=${item.kind}`,
+    returnUrl: `${origin}/api/billing/dodo/return?to=${encodeURIComponent(returnPath)}&dodo=return&item=${dodoReturnItem(item)}`,
+    cancelUrl: `${origin}/api/billing/dodo/return?to=${encodeURIComponent(returnPath)}&dodo=cancelled&item=${dodoReturnItem(item)}`,
   });
   if (!res.ok) {
     console.error(`[dodo-checkout] Dodo refused the checkout session (HTTP ${res.status})`);

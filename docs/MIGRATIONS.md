@@ -1174,3 +1174,38 @@ model marked `operator_preview`) of a model priced by quality.
   tier is medium and the job carries it; an unoffered tier is `invalid_params`, an unpriced listed one `unpriced`; everyone 0139 refuses
   is still refused; a model on sale is never quoted at cost; a tier row wins; a video entry "by quality" stays `unpriced`; with 0153
   rolled back only these answers change; the lab chain helpers; order, drift guard and rollback on a scratch database).
+
+## The Credits page's Dodo purchase history (0154)
+
+0154 (`0154_dodo_purchase_history.sql`) is **live on apply** and read-only: ONE new function, `dodo_purchase_history(p_org uuid,
+p_payment text default null)`, and nothing else (no table, column, row, index, policy or trigger; nothing replaced). Nothing calls it
+until the Command Center sells through Dodo (`PAYMENTS_PROVIDER=dodo`).
+
+- **Why.** The "Add credits" change (typed amounts next to the packs, Ideogram-style) also shows an invoice history: each Dodo payment
+  that credited the organization, what it bought, when, the amount Dodo charged (tax included), its refund state, and a link to Dodo's
+  own invoice PDF. Everything known about a payment is in `payment_events` (0021), which no API role may read, and the Command Center
+  uses the member's session and the anon key only; so an owner or admin gets their organization's rows through this function.
+- **What a row says.** `payment_id` (pay_…), `item` (the signed item from the checkout nonce the payment spent, 0146: `pack:<id>` or
+  `pack:amount_<cents>`; `plan` for a plan period, read from its `subscription` ledger row; null when neither is known, shown as "—"),
+  `credits`, `amount_minor` and `currency` (Dodo's `total_amount`), `paid_at`, `refunded_minor` (processed refunds in the same currency),
+  `refund_unsized` (a processed refund with no amount or another currency: "refund recorded"), `chargeback` (a lost or accepted dispute).
+  Only `payment.succeeded` rows that are `processed` or `duplicate` for this organization, one per payment (the processed one wins),
+  newest first, at most 100. Rejected, ignored and failing payments (paid, not credited) are not listed.
+- **Who may call it.** Signed in, and an owner or admin of `p_org` (`is_org_member(p_org, 'admin')`, 0018: the bar for buying and for
+  `dodo_issue_checkout_nonce`; a platform owner or admin holds it in every organization). Everyone else, a null organization included,
+  gets 42501. `p_payment` must be `^pay_[A-Za-z0-9]{3,64}$` (the webhook's own shape) or 22023; the invoice route uses it to ask "is
+  this payment this organization's?" before it calls Dodo. SECURITY DEFINER, stable, `search_path = public, pg_temp`, execute for
+  `authenticated` only (not anon, not service_role, not PUBLIC). The last block asserts the body, grants, definer, volatility and
+  search_path. Apply as ONE transaction.
+- **md5.** `dodo_purchase_history` `83396f8724ca4968b7c56f2297aa0830` (drift guard, end state, rollback).
+- **Without it.** The Credits page shows "the purchase history needs migration 0154" in the history panel; the invoice route answers
+  503 without calling Dodo. Buying and crediting never read it.
+- **Number.** 0154; 0148 and 0150 are reserved by other work, 0151 to 0153 are merged. Needs 0018, 0021, 0034 and 0146; names nothing
+  of 0147's to 0153's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0154_dodo_purchase_history.sql` (owner-applied): refuses a body that is not 0154's, drops the function.
+- **Tests.** `tests/test_dodo_purchase_history_migration.py` (the text, the hash, the rollback, the numbering),
+  `tests/security/test_sec_dodo_purchase_history.py` (a real PostgreSQL: anon, the service key, a stranger and a plain member refused;
+  the owner sees each credited payment once with its signed item, a plan period labelled `plan`, rejected and failing payments left
+  out, another organization's payment not answered by id; refunds without an amount or in another currency unsized; a lost dispute a
+  chargeback; malformed ids refused; replay, rollback, drift and the 0146 prerequisite), `command-center/tests/dodo-history.test.ts`
+  (the page's reading of the rows and the invoice route).

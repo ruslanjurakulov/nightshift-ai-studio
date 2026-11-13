@@ -7,6 +7,9 @@ import { GrantCreditsForm } from "@/components/credits/GrantCreditsForm";
 import { CreditPricesEditor } from "@/components/credits/CreditPricesEditor";
 import { BuyCredits, BuyCreditsAdminOnly } from "@/components/credits/BuyCredits";
 import { DodoBuyCredits } from "@/components/credits/DodoBuyCredits";
+import { DodoPurchaseHistory } from "@/components/credits/DodoPurchaseHistory";
+import { readDodoPurchaseHistory } from "@/lib/server/dodo-history";
+import { atLeast } from "@/lib/auth/roles-shared";
 import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -168,6 +171,10 @@ export default async function CreditsPage() {
   const offersPlans = !exempt && Boolean(summary) && planAccess === "allowed";
   // Unknown (an unread summary, or 0094 not applied) is not "off": nothing is claimed then.
   const extraOff = usageRead.state === "ok" && !usageRead.value.extraEnabled;
+  // The purchase history (0154): an owner/admin's, whenever Dodo sells here, even with nothing on sale today (past purchases
+  // and their invoices stay theirs). The function refuses anyone else; it is not even asked for them.
+  const showHistory = dodoMode && dodoCfg !== null && !exempt && Boolean(org.current.role && atLeast(org.current.role, "admin"));
+  const history = showHistory ? await readDodoPurchaseHistory(supabase, orgId) : null;
 
   return (
     <div className="rhythm ns-open">
@@ -229,6 +236,7 @@ export default async function CreditsPage() {
         />
       )}
       {buy === "admin_only" && <BuyCreditsAdminOnly />}
+      {history && <DodoPurchaseHistory read={history} />}
 
       {/* Invite friends: for a workspace that pays (the reward is paid into it);
           the database refuses anyone who does not run the workspace. Left out

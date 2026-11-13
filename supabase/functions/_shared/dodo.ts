@@ -29,7 +29,13 @@
  *     anyone's: it never names an organization here (verifyDodoMetadata). The
  *     signed nonce is one the Command Center issued (dodo_checkout_nonces,
  *     0146) and is spent once, by one pack payment or one new subscription,
- *     so a signed blob cannot be replayed on a static link either.
+ *     so a signed blob cannot be replayed on a static link either. A typed
+ *     amount (the "Add credits" sheet) is the one case where the buyer picks
+ *     the price: our server signs the cents into the item
+ *     (`pack:amount_<cents>`, also the nonce row's item), the credits are the
+ *     signed cents × DODO_AMOUNT.creditsPerCent, and Dodo must report exactly
+ *     those cents paid; a static Pay What You Want link with any other price
+ *     is `rejected`, never credited at the price the buyer chose.
  *   - Test mode on a production database credits only the workspaces in
  *     DODO_TEST_ORG_IDS (DODO_WEBHOOK_MODE is `test` unless it says `live`):
  *     a public test card must not buy real credits. The credits come from the
@@ -101,6 +107,49 @@ export const DODO_PLAN_PRICES: Readonly<Record<string, number>> = {
   pro: 4900,
   studio: 12900,
 };
+
+/**
+ * Credits for a typed amount (the Command Center's "Add credits" sheet), charged under ONE Pay What You Want product
+ * (DODO_PRODUCT_AMOUNT). The Command Center's copy (command-center/lib/dodo.ts DODO_AMOUNT) must say the same; a test
+ * compares the two. THIS copy is the one that credits: credits = the signed cents × creditsPerCent, and only when Dodo
+ * reports exactly those cents paid (amountMatches, in this deployment's tax mode).
+ *
+ * 1 credit per US cent is the Starter pack's own rate (1,000 for $10). The bounds are checked again here although the
+ * checkout route refuses anything else: Dodo has no maximum price ("There is no maximum price setting. To cap the amount
+ * you charge, enforce the cap in your own code": developer-resources/dynamic-pricing-checkout, read 2026-11-13).
+ */
+export const DODO_AMOUNT = {
+  creditsPerCent: 1,
+  minCents: 500,
+  maxCents: 30000,
+  presetsCents: [1000, 2000, 5000, 10000],
+} as const;
+
+/**
+ * The cents a signed item names, only in its one canonical spelling `pack:amount_<cents>` (no leading zero, no sign, no
+ * decimal) and inside DODO_AMOUNT's bounds; null for anything else. The canonical spelling matters: the nonce row's item is
+ * compared as text (0146), so "amount_0500" and "amount_500" must not both mean $5.
+ */
+export function dodoAmountFromItem(item: string | null | undefined): number | null {
+  const m = /^pack:amount_([1-9][0-9]{0,8})$/.exec(item ?? "");
+  if (!m) return null;
+  const cents = Number(m[1]);
+  return Number.isSafeInteger(cents) && cents >= DODO_AMOUNT.minCents && cents <= DODO_AMOUNT.maxCents ? cents : null;
+}
+
+/**
+ * DODO_PRODUCT_AMOUNT: the Pay What You Want product a typed amount is charged under, or null. An id that is malformed, or
+ * already a pack's or a plan's, is no amount product (one product cannot be priced two ways): typed amounts are then not
+ * credited, and the Command Center (resolveDodoServer, which takes it last the same way) does not sell them.
+ */
+export function dodoAmountProductFromEnv(
+  get: (name: string) => string | undefined,
+  packs: DodoPackTable = new Map(),
+  plans: DodoPlanTable = new Map(),
+): string | null {
+  const id = (get("DODO_PRODUCT_AMOUNT") ?? "").trim();
+  return DODO_PRODUCT_ID_RE.test(id) && !packs.has(id) && !plans.has(id) ? id : null;
+}
 
 /** Dodo's documented examples: pdt_0NVbdIG3JNg9Yc8ey5JHW, pay_gr4RizvMOXFJ6xca3y2tU, sub_Iuaq622bbmmfOGrVTqdXv,
  *  cus_TV52uJWWXt2yIoBBxpjaa. The docs promise no length, so these accept 3-64 ASCII letters and digits after
@@ -538,6 +587,8 @@ export function decideDodoPayment(
   plans: DodoPlanTable,
   meta: DodoMetadata,
   taxMode: DodoTaxMode | null,
+  /** DODO_PRODUCT_AMOUNT (dodoAmountProductFromEnv): the Pay What You Want product typed amounts are charged under. */
+  amountProduct: string | null = null,
 ): DodoDecision {
   const paymentRaw = str(data.payment_id);
   const transactionId = paymentRaw && PAYMENT_ID_RE.test(paymentRaw) ? paymentRaw : null;
@@ -612,6 +663,20 @@ export function decideDodoPayment(
   if (cart.length !== 1) return reject("paid, but the payment does not name exactly one product — not credited");
   const line = cart[0];
   const pid = str(line.product_id);
+  if (pid && amountProduct && pid === amountProduct) {
+    // A typed amount. The credits come from the SIGNED cents, never from what the buyer could choose: a static link to the
+    // PWYW product lets a buyer pick any price (paymentAmount), so what Dodo reports paid must equal the signed cents too,
+    // in the same tax shape as every pack. The product's cart line carries no amount in the payload (product_id and
+    // quantity only, api-reference/payments/get-payments-1), so the total is what is checked.
+    const cents = dodoAmountFromItem(meta.item);
+    if (cents === null) return reject(`paid for the custom-amount product, but the signed item is ${meta.item} — not credited`);
+    if (line.quantity !== 1) return reject("paid, but the line's quantity is not 1 — not credited");
+    if (!amountMatches(total, tax, cents, taxMode))
+      return reject(`paid ${total} (tax ${tax ?? "none"}) USD cents, but the signed amount is ${cents} (${taxMode} of tax) — not credited`);
+    const credits = cents * DODO_AMOUNT.creditsPerCent;
+    const note = [`Dodo ${transactionId}: custom amount ${cents} USD cents`, userId ? `bought by user ${userId}` : null].filter(Boolean).join(" · ");
+    return { kind: "purchase", orgId: meta.orgId, userId, transactionId, credits, currency, amountMinor: total, note, item: meta.item, nonce: meta.nonce };
+  }
   const pack = pid ? packs.get(pid) : undefined;
   if (!pack) return reject(`paid, but product ${pid ?? "(none)"} is not a credit pack on this deployment — not credited`);
   if (meta.item !== `pack:${pack.id}`) return reject(`paid for ${pack.id}, but the signed item is ${meta.item} — not credited`);
@@ -759,11 +824,12 @@ export function decideDodoEvent(
   plans: DodoPlanTable,
   meta: DodoMetadata,
   taxMode: DodoTaxMode | null,
+  amountProduct: string | null = null,
 ): DodoDecision {
   if ((DODO_SUBSCRIPTION_EVENTS as readonly string[]).includes(event.eventType)) return decideDodoSubscription(event, plans, meta);
   switch (event.eventType) {
     case "payment.succeeded":
-      return decideDodoPayment(event.data, packs, plans, meta, taxMode);
+      return decideDodoPayment(event.data, packs, plans, meta, taxMode, amountProduct);
     case "refund.succeeded":
       return decideDodoRefund(event.data);
     case "dispute.accepted":
@@ -860,6 +926,8 @@ export async function handleDodoWebhook(
     testOrgs: ReadonlySet<string>;
     packs: DodoPackTable;
     plans: DodoPlanTable;
+    /** DODO_PRODUCT_AMOUNT (dodoAmountProductFromEnv): typed amounts are credited only under this product. */
+    amountProduct?: string | null;
     store: DodoStore;
     now?: () => number;
     log?: Logger;
@@ -896,7 +964,7 @@ export async function handleDodoWebhook(
     if (prior && prior !== "failed") return { status: 200, body: { ok: true, duplicate: true, status: prior } };
 
     const meta: DodoMetadata = metadataKey ? await verifyDodoMetadata(event.data.metadata, metadataKey) : { status: "unconfigured" };
-    const decision = decideDodoEvent(event, deps.packs, deps.plans, meta, deps.taxMode);
+    const decision = decideDodoEvent(event, deps.packs, deps.plans, meta, deps.taxMode, deps.amountProduct ?? null);
     const allowed = (orgId: string) => deps.mode === "live" || deps.testOrgs.has(orgId);
     const record = await execute(decision, deps.store, deps.plans, log, event.eventId, deps.taxMode, allowed, event.occurredAt);
     await deps.store.recordEvent({ ...base, ...record.row });

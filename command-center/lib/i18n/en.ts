@@ -15,6 +15,7 @@ import { marketingEn } from "./marketing/en";
 import { modelSwitchEn } from "./model-switch/en";
 import { modelBudgetEn } from "./model-budget/en";
 import { billingLedgerEn } from "./billing-ledger/en";
+import { addCreditsEn } from "./add-credits/en";
 import { modelKeysEn } from "./model-keys/en";
 import { operatorCustomersEn } from "./operator-customers/en";
 import { seriesPlanEn } from "./series-plan/en";
@@ -67,6 +68,8 @@ export const en = {
   modelBudget: modelBudgetEn,
   /** The owner's per-provider ledger on the Billing page: ./billing-ledger/en.ts. */
   billingLedger: billingLedgerEn,
+  /** The Credits page's "Add credits" sheet and purchase history (Dodo, migration 0154): ./add-credits/en.ts. */
+  addCredits: addCreditsEn,
   modelKeys: modelKeysEn,
   /** The operator's Customers page (migration 0138): ./operator-customers/en.ts. */
   customers: operatorCustomersEn,

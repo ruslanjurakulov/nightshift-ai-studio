@@ -4,6 +4,7 @@ import { fetchWithTimeout } from "@/lib/server/fetch-timeout";
 import {
   dodoCheckoutMetadata,
   dodoHostedUrl,
+  dodoItemKey,
   dodoMetadataMessage,
   dodoView,
   resolveDodoServer,
@@ -31,6 +32,7 @@ export function dodoServer(): DodoServerConfig | null {
     DODO_PLAN_CREATOR: process.env.DODO_PLAN_CREATOR,
     DODO_PLAN_PRO: process.env.DODO_PLAN_PRO,
     DODO_PLAN_STUDIO: process.env.DODO_PLAN_STUDIO,
+    DODO_PRODUCT_AMOUNT: process.env.DODO_PRODUCT_AMOUNT,
     DODO_METADATA_SECRET: process.env.DODO_METADATA_SECRET,
     DODO_TEST_ORG_IDS: process.env.DODO_TEST_ORG_IDS,
   });
@@ -57,7 +59,7 @@ export function signedCheckoutMetadata(
   const org = orgId.toLowerCase();
   const user = userId ? userId.toLowerCase() : null;
   const sig = createHmac("sha256", cfg.metadataSecret)
-    .update(dodoMetadataMessage({ orgId: org, userId: user, item: `${item.kind}:${item.id}`, nonce }))
+    .update(dodoMetadataMessage({ orgId: org, userId: user, item: dodoItemKey(item), nonce }))
     .digest("hex");
   return dodoCheckoutMetadata(org, user, item, nonce, sig);
 }
@@ -107,7 +109,12 @@ export async function createDodoCheckout(
   doFetch: FetchLike = fetchWithTimeout,
 ): Promise<{ ok: true; url: string } | { ok: false; status: number }> {
   const body = {
-    product_cart: [{ product_id: args.productId, quantity: 1 }],
+    // A typed amount sets the line's own price: "Amount the customer pays if pay_what_you_want is enabled ... in the lowest
+    // denomination of the currency" (checkout-sessions/create), and "the `amount` is a per-unit price, and the total is
+    // `amount` × `quantity`" (developer-resources/dynamic-pricing-checkout; both read 2026-11-13) — so quantity stays 1. On a
+    // product without PWYW Dodo ignores `amount` and charges the product's own price; the webhook then sees a total that is
+    // not the signed amount and credits nothing.
+    product_cart: [{ product_id: args.productId, quantity: 1, ...(args.item.kind === "amount" ? { amount: args.item.usdCents } : {}) }],
     // The signed-in user's own address, not editable in the checkout, and always a NEW Dodo customer: Dodo otherwise
     // attaches a session to an existing customer found by e-mail, so someone typing a victim's address could end up on
     // the victim's customer (and its portal).
@@ -163,4 +170,47 @@ export async function createDodoPortalLink(
     doFetch,
   );
   return status >= 200 && status < 300 ? dodoHostedUrl((json as { link?: unknown } | null)?.link) : null;
+}
+
+/** Dodo payment ids: `pay_` and 3-64 ASCII letters and digits (the webhook's PAYMENT_ID_RE). */
+export const DODO_PAYMENT_ID_RE = /^pay_[A-Za-z0-9]{3,64}$/;
+
+/** A PDF larger than this is not passed on (an invoice is a few hundred KB; this bounds what one request holds in memory). */
+export const DODO_INVOICE_MAX_BYTES = 5 * 1024 * 1024;
+
+export type DodoInvoiceAnswer = { ok: true; pdf: ArrayBuffer } | { ok: false; reason: "rate_limited" | "not_found" | "failed" };
+
+/**
+ * GET /invoices/payments/{payment_id} (docs: api-reference/payments/get-invoice, read 2026-11-13): the invoice PDF Dodo, as
+ * Merchant of Record, issued for one payment, fetched with the API key on the server. The payment object's `invoice_url` is
+ * not used ("DEPRECATED: Use GET /invoices/payments/{payment_id} with an API key"). The endpoint has its own limit, 5 requests
+ * a minute per payment and 20 per client IP (api-reference/introduction, "Invoice Downloads"), so it is fetched only when a
+ * person asks for one invoice, never while a page renders, and a 429 is said as such.
+ *
+ * Only an `application/pdf` answer of at most DODO_INVOICE_MAX_BYTES is passed on. The caller has already checked, in the
+ * database, that this payment credited the signed-in owner's organization.
+ */
+export async function fetchDodoInvoicePdf(cfg: DodoServerConfig, paymentId: string, doFetch: FetchLike = fetchWithTimeout): Promise<DodoInvoiceAnswer> {
+  if (!DODO_PAYMENT_ID_RE.test(paymentId)) return { ok: false, reason: "not_found" };
+  let res: Response;
+  try {
+    res = await doFetch(`${cfg.baseUrl}/invoices/payments/${paymentId}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${cfg.apiKey}`, Accept: "application/pdf" },
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, reason: "failed" };
+  }
+  if (res.status === 429) return { ok: false, reason: "rate_limited" };
+  if (res.status === 404) return { ok: false, reason: "not_found" };
+  const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  const declared = Number(res.headers.get("content-length") ?? "0");
+  if (res.status !== 200 || type !== "application/pdf" || !(declared <= DODO_INVOICE_MAX_BYTES)) return { ok: false, reason: "failed" };
+  try {
+    const pdf = await res.arrayBuffer();
+    return pdf.byteLength > 0 && pdf.byteLength <= DODO_INVOICE_MAX_BYTES ? { ok: true, pdf } : { ok: false, reason: "failed" };
+  } catch {
+    return { ok: false, reason: "failed" };
+  }
 }
