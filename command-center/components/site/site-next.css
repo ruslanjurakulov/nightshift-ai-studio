@@ -1501,8 +1501,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 .nx-pbar-ideas { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .nx-pbar-ideas-label { margin-inline: 6px; font-size: 14px; color: rgba(255, 255, 255, 0.78); }
 .nx-pbar-ideas ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
-/* A phone shows the first four, so the bar stays within the first screen; nothing scrolls sideways. */
-@media (max-width: 639px) { .nx-pbar-ideas li:nth-child(n+5) { display: none; } }
 .nx-pbar-idea { flex: 0 0 auto; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px dashed rgba(255, 255, 255, 0.34); background: transparent; color: rgba(255, 255, 255, 0.94); font-size: 14px; white-space: nowrap; cursor: pointer; }
 .nx-pbar-idea:hover { border-style: solid; border-color: #fff; }
 

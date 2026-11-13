@@ -297,7 +297,7 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     const { container } = landing();
     const chips = [...container.querySelectorAll(".nx-pbar-idea")].map((b) => b.textContent);
     const merged = FORMATS.filter((f) => SHOWCASE_ENTRIES.some((e) => e.jobId === f.job));
-    expect(chips).toEqual(merged.map((f) => dictionaries.en.site.formats.items.find((i) => i.id === f.id)!.title));
+    expect(chips).toEqual(merged.slice(0, 4).map((f) => dictionaries.en.site.formats.items.find((i) => i.id === f.id)!.title));
   });
 });
 

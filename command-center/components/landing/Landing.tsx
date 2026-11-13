@@ -137,7 +137,8 @@ function Hero({ t, formats }: { t: Dictionary; formats: LandingFormat[] }) {
           {h.titleA} <span className="nx-h1-b">{h.titleB}</span>
         </h1>
         <p className="nx-sh-lead">{h.leadShort}</p>
-        <PromptBar copy={t.site.prompt} ideas={ideas} />
+        {/* Four starting points, one row: the first screen stays lean (the rest of the formats are in the gallery). */}
+        <PromptBar copy={t.site.prompt} ideas={ideas.slice(0, 4)} />
         <div className="nx-sh-actions">
           <Link href="/signup" className="nx-btn">
             {h.cta}
