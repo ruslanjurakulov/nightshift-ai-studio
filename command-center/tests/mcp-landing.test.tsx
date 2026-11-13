@@ -114,7 +114,8 @@ describe("the hero: a chat card instead of a row of client logos", () => {
     const m = slotMedia("mcp.hero");
     expect(placeLabelProblems(bleed, m, site)).toEqual([]);
     expect(bleed.querySelector("img")?.getAttribute("alt")).toBe(placeAlt(m, site));
-    if (m.kind === "ai" ? m.moving : m.clip) expect(bleed.querySelector("button.nx-clip-pause")?.getAttribute("aria-label")).toBe(site.fx.pause);
+    // The keyboard's pause switch, its words visually hidden until focused (no visible pause word or icon, owner 2026-11-13).
+    if (m.kind === "ai" ? m.moving : m.clip) expect(bleed.querySelector("button.nx-clip-pause")?.textContent).toBe(site.fx.pause);
     else expect(bleed.querySelector("button.nx-clip-pause")).toBeNull();
     expect(card.querySelector(".nx-chat-foot")?.getAttribute("aria-hidden")).toBe("true");
     expect(card.querySelectorAll("button, a")).toHaveLength(0);

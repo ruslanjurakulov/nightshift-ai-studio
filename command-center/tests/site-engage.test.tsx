@@ -246,11 +246,13 @@ describe("the landing page's reasons to stay", () => {
     expect(within(bar).getByText(t.bar.cta).closest("a")!.getAttribute("href")).toBe("/signup");
     expect(bar.querySelector("button")!.getAttribute("aria-label")).toBe(t.bar.dismiss);
 
-    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of three
-    // (the hero's switch under the card and the two showcases' clip pictures carry the same switch). Each merged model sample
-    // that plays a clip carries it too, on its picture inside the gallery, and every one of them agrees.
+    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of two
+    // outside the gallery (the hero's switch under the card and the Studio showcase's clip picture carry the same switch; the
+    // Approvals showcase is a drawing and has nothing that moves by itself). Each merged model sample that plays a clip carries it
+    // too, on its picture inside the gallery, and every one of them agrees. Each is visually hidden until a keyboard focuses it
+    // (the owner wants no visible pause word or icon), so it is still in the tab order and named for a screen reader.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
-    expect(outsideGallery(all())).toHaveLength(3);
+    expect(outsideGallery(all())).toHaveLength(2);
     const inGallery = all().filter((b) => b.closest(GALLERY));
     expect(inGallery).toHaveLength(landingSamples().clips);
     for (const b of inGallery) expect(b.closest(SAMPLE_CARD)).toBeTruthy();
@@ -315,25 +317,30 @@ describe("the page's HTML stays small", () => {
 });
 
 describe("the stock-picture disclosure is printed, not only labelled", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: each of the two showcases shows the note for what its picture is as visible text, and every picture carries its badge and its credit", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: a stock showcase picture prints the stock note as visible text, a sample carries its badge and no footnote, and the drawn approval screen says it is an example", (code) => {
     const { container } = landing(NO_MONEY, code);
     const site = dictionaries[code].site;
     const shows = [...container.querySelectorAll("section.nx-show")];
     expect(shows.map((x) => x.id)).toEqual(["studio", "approvals"]);
-    for (const [x, slot] of [[shows[0], "show.studio"], [shows[1], "show.approvals"]] as const) {
-      const m = slotMedia(slot);
-      const note = x.querySelector(".nx-show-note") as HTMLElement;
-      // Stock: the stock sentence; one of our samples: the sentence that says it is a real job from our Studio.
-      expect(note.textContent?.startsWith(m.kind === "ai" ? site.gallery.slotNote : site.samples.note)).toBe(true);
-      expect(note.closest("[aria-hidden]")).toBeNull();
-      expect(placeLabelProblems(x.querySelector(".nx-show-pic")!, m, site), slot).toEqual([]);
+    const m = slotMedia("show.studio");
+    const note = shows[0].querySelector(".nx-show-note");
+    if (m.kind === "ai") expect(note).toBeNull();
+    else {
+      expect(note?.textContent?.startsWith(site.samples.note)).toBe(true);
+      expect(note?.closest("[aria-hidden]")).toBeNull();
     }
+    expect(placeLabelProblems(shows[0].querySelector(".nx-show-pic")!, m, site)).toEqual([]);
+    // No slot, no stock, no footnote: a drawing tagged as an example, described as an illustration to assistive tech.
+    expect(shows[1].querySelector(".nx-show-note, [data-sample], .nx-result-credit")).toBeNull();
+    expect(shows[1].querySelector(".nx-approve-tag")?.textContent).toBe(site.stage.tag);
+    expect(shows[1].querySelector("[role='img']")?.getAttribute("aria-label")).toBe(site.approvalCard.figure);
   });
 
   it("has no rails and no comparison any more: nothing scrolls sideways on the landing and nothing is shown twice", () => {
     const { container } = landing();
     for (const sel of ["#examples", ".nx-caps", "#compare", ".nx-gal", "[aria-roledescription='carousel']", ".nx-tiles", ".nx-rules-rail"]) expect(container.querySelector(sel), sel).toBeNull();
-    // The first screen, the two showcases and the closing panel: four different pictures (a stock still or a sample each).
+    // The first screen, the Studio showcase, the approval screen's thumbnail and the closing panel: four different pictures (a
+    // stock still or a sample each).
     const used = [...container.querySelectorAll(".nx-sh-media img, section.nx-show img, .nx-final img")].map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-sample-job"));
     expect(used).toHaveLength(4);
     expect(new Set(used).size).toBe(4);

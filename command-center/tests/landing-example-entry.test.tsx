@@ -20,6 +20,7 @@ vi.mock("next/link", () => ({
 import { dictionaries, fmt, type Locale } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import type { MoneyAnchor } from "@/lib/landing";
+import { studioToolsOpen } from "@/lib/site/tool-samples";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 
 afterEach(cleanup);
@@ -58,8 +59,9 @@ describe("landing hero → existing #try demo", () => {
     const h = dictionaries[locale].site.hero;
     expect(hero.querySelectorAll("a")).toHaveLength(2);
     expect(hero.querySelector(".nx-pill, .nx-note, .nx-price, .nx-trust")).toBeNull();
-    expect(hero.querySelector(".nx-sh-lead")?.textContent).toBe(h.leadShort);
-    expect(h.leadShort.split(/[.!?](?:\s|$)/).filter((x) => x.trim()).length).toBe(1);
+    // While no Studio model is on sale it is the closed sentence, which offers no picture or clip a visitor can make today.
+    expect(hero.querySelector(".nx-sh-lead")?.textContent).toBe(studioToolsOpen() ? h.leadShort : h.leadShortClosed);
+    for (const v of [h.leadShort, h.leadShortClosed]) expect(v.split(/[.!?](?:\s|$)/).filter((x) => x.trim()).length).toBe(1);
   });
 
   it.each(LOCALES)("%s: #try is exactly one labelled section, the same one the anchor targets", (locale) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useMotionPaused } from "@/lib/site/motion";
+import { useMotionPaused, useMotionTap } from "@/lib/site/motion";
 import { useClipsHeld } from "@/lib/site/clip-hold";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 
@@ -61,7 +61,8 @@ const subscribe = (l: () => void) => {
  * - muted, looping, inline, no controls, hidden from assistive technology (the still's description covers it); `poster` is the
  *   still itself at its phone width (the file a phone's picture already shows, so it is usually already in the cache), and the WebM is listed first, the MP4 after it
  *   (a browser takes the first it can play; Safari on a phone takes the MP4);
- * - paused while off screen and while the page's pause switch is pressed (lib/site/motion.ts), and in a hidden tab;
+ * - paused while off screen and while the page's pause switch is pressed (lib/site/motion.ts), and in a hidden tab; a tap on
+ *   the picture presses that switch, and a second one releases it (lib/site/motion.ts motionTap);
  * - the container's `data-live` says it is playing, which swaps the badge from "Example frame (stock footage)" to "Example clip
  *   (stock footage)" and fades the clip in over the still.
  */
@@ -176,6 +177,10 @@ export function LoopClip({
     document.addEventListener("visibilitychange", sync);
     return () => document.removeEventListener("visibilitychange", sync);
   }, [allowed, wanted, lead, paused, held, grid, inView]);
+
+  // A tap on the picture is the pointer's pause: one delegated listener for the whole page (lib/site/motion.ts motionTap), which
+  // also covers a still poster that drifts when no clip may play.
+  useMotionTap();
 
   if (!allowed) return null;
   return (

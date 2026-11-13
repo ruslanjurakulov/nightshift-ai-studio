@@ -24,7 +24,7 @@ import type { MoneyAnchor, PricingTeaser } from "@/lib/landing";
 import { WELCOME_CREDITS, resolvePricing, type Pricing } from "@/lib/pricing";
 import { coercePlanCatalog, creditEquivalents, planMatrix, type GenerationRates } from "@/lib/plans";
 import { PROVIDER_BRANDS } from "./helpers/brands";
-import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, placeLabelProblems, without } from "./helpers/showcase-scope";
+import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, makerCreditProblems, placeLabelProblems, without } from "./helpers/showcase-scope";
 import { slotMedia } from "@/components/site/samples";
 import { stockInUse } from "@/components/site/stock-in-use";
 
@@ -93,12 +93,13 @@ describe("public landing page", () => {
     // whatever the owner has merged.
     // The model tiles' small stills are their samples' posters, each inside that sample's box (checked below).
     const all = outsideGallery(container.querySelectorAll("img"));
-    const tiles = all.filter((i) => i.closest("#models"));
-    const imgs = all.filter((i) => !i.closest("#models"));
-    // The four slots (the first screen, the two showcases and the closing panel: a stock still with a data-sample, or one of our
-    // samples with a data-sample-job inside its own box), and the AI-generated pictures (each with a data-art-id): the sample
-    // thumbnail, the three steps' pictures and the eight tool tiles'.
-    expect(imgs.length).toBe(16);
+    const tiles = all.filter((i) => i.closest("#models, #tools, .nx-step-live"));
+    const imgs = all.filter((i) => !i.closest("#models, #tools, .nx-step-live"));
+    // The three slots (the first screen, the Studio showcase and the closing panel: a stock still with a data-sample, or one of
+    // our samples with a data-sample-job inside its own box), the drawn approval screen's thumbnail (a sample, in its box), and the
+    // AI-generated pictures (each with a data-art-id): the sample thumbnail.
+    // Round 10: no clay pictures for the steps and the tools (live pieces and real outputs instead, each in its sample's box).
+    expect(imgs.length).toBe(5);
     for (const img of imgs) {
       expect(img.getAttribute("data-sample") ?? img.getAttribute("data-art-id") ?? img.getAttribute("data-sample-job")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
@@ -139,31 +140,44 @@ describe("public landing page", () => {
     expect(eager[0].getAttribute("fetchpriority")).toBe("high");
   });
 
-  it("shows two capabilities as full-width showcases: a different still each, labelled on the picture and under it, one outlined button (and a pause button on the clips), no drawn product", () => {
+  it("shows two capabilities as full-width showcases: the Studio over its slot's picture, Approvals over a drawn approval screen; one outlined button each", () => {
     const t = dictionaries.en;
     const { container } = renderLanding({ kind: "announced" });
-    const ids = ["studio", "approvals"] as const;
     const stills = new Set<string>();
-    for (const id of ids) {
+    for (const id of ["studio", "approvals"] as const) {
       const item = t.site.caps.items.find((i) => i.id === id)!;
       const section = container.querySelector(`section#${id}.nx-show`) as HTMLElement;
       expect(within(section).getByRole("heading", { level: 2, name: item.title })).toBeTruthy();
       const cta = within(section).getByRole("link", { name: item.cta });
-      expect(cta.getAttribute("href")).toMatch(/^\/(signup|solutions\/youtube-channels)$/);
-      const m = slotMedia(id === "studio" ? "show.studio" : "show.approvals");
+      expect(cta.getAttribute("href")).toBe(id === "studio" ? "/signup" : "/solutions/youtube-channels");
+      expect(section.textContent).not.toMatch(MONEY);
+      // The words are real text beside the picture (never baked into it); the only link is the one button, and the only button is
+      // the keyboard's pause switch on a clip. A sample in a showcase offers no prompt and credits no maker.
+      expect([...section.querySelectorAll("a")]).toEqual([cta]);
+      expect([...section.querySelectorAll("button")].every((b) => b.classList.contains("nx-clip-pause"))).toBe(true);
       const img = section.querySelector("img")!;
       stills.add(img.getAttribute("data-sample") ?? img.getAttribute("data-sample-job")!);
-      // Described as what it is: a stock still's own description, or "AI-generated clip made by {model}".
-      expect(img.getAttribute("alt")).toBe(m.kind === "ai" ? fmt(m.moving ? t.site.gallery.altClip : t.site.gallery.altImage, { model: m.entry.modelName }) : t.site.samples.alts[m.id]);
-      // Labelled and credited on the picture for what it is (stock, or one of our samples), and the note under it says the same.
-      expect(placeLabelProblems(section.querySelector(".nx-show-pic")!, m, t.site)).toEqual([]);
-      expect(section.querySelector(".nx-show-note")?.textContent?.startsWith(m.kind === "ai" ? t.site.gallery.slotNote : t.site.samples.note)).toBe(true);
-      expect(section.textContent).not.toMatch(MONEY);
-      // The words are real text beside the picture (never baked into it), and the only control is the one button, the pause
-      // button on a clip, and a sample's own credit links (its maker's credit and Try this prompt).
-      expect([...section.querySelectorAll("a")].filter((a) => !a.closest(".nx-ai-credit"))).toHaveLength(1);
-      expect([...section.querySelectorAll("button")].every((b) => b.classList.contains("nx-clip-pause"))).toBe(true);
     }
+    // The Studio: its slot's picture, described and labelled for what it is (stock, or one of our samples with its badge only),
+    // and a stock picture's note under it; a sample has no footnote.
+    const studio = container.querySelector("section#studio") as HTMLElement;
+    const m = slotMedia("show.studio");
+    expect(studio.querySelector("img")!.getAttribute("alt")).toBe(m.kind === "ai" ? (m.moving ? t.site.gallery.bgClip : t.site.gallery.bgImage) : t.site.samples.alts[m.id]);
+    expect(placeLabelProblems(studio.querySelector(".nx-show-pic")!, m, t.site)).toEqual([]);
+    expect(studio.querySelector(".nx-show-note")?.textContent ?? null).toBe(m.kind === "ai" ? null : m.clip ? `${t.site.samples.note} ${t.site.samples.clipNote}` : t.site.samples.note);
+    // Approvals: the picture shows what the words say. A drawn approval screen (no slot, no stock, no clip), one image to assistive
+    // tech with its description, tagged "Example", in the product's own words: private on YouTube, the publish check passed, waiting,
+    // and the Approve key, drawn (a span, nothing to press).
+    const approvals = container.querySelector("section#approvals") as HTMLElement;
+    const art = approvals.querySelector(".nx-show-pic[data-media='drawn'] .nx-approve-art") as HTMLElement;
+    expect(art.getAttribute("role")).toBe("img");
+    expect(art.getAttribute("aria-label")).toBe(t.site.approvalCard.figure);
+    const step = t.site.stage.steps.find((x) => x.id === "approve") as { lamp: string; check: string; waiting: string; key: string };
+    for (const w of [t.site.stage.tag, step.lamp, step.check, step.waiting, step.key, t.site.gallery.badge]) expect(art.textContent).toContain(w);
+    expect(art.querySelector(".nx-approve-key")?.tagName).toBe("SPAN");
+    expect(art.querySelectorAll("a, button, input, video, [tabindex]")).toHaveLength(0);
+    expect(approvals.querySelector("[data-clip], .nx-show-note, .nx-result-credit")).toBeNull();
+    expect(approvals.querySelector(".nx-show-card")?.getAttribute("data-art")).toBe("drawn");
     expect(stills.size).toBe(2);
   });
 
@@ -479,6 +493,44 @@ describe("public pricing page", () => {
   it("says plans could not be read instead of showing none", () => {
     renderPricing({ pricing: none, plansFailed: true });
     expect(screen.getByText(dictionaries.en.plans.readFailed)).toBeTruthy();
+  });
+});
+
+/**
+ * The owner's decision (2026-11-13): the public site shows a sample's AI-generated label and model name only. It never says
+ * "Powered by" a model's maker or links one (Runway, Ideogram): their required credit is shown in the Studio, where the models are
+ * used (components/studio/ModelAttribution.tsx, tests/model-attribution.test.tsx). Over the shipped samples, in every language.
+ */
+// What would break: a model tile's "Watch its sample" jumping nowhere, because its sample is shown only on the tool wall or the
+// approval screen and had no id there (the review of #734 found two). Over the shipped samples.
+describe("the model tiles' links", () => {
+  it("every #models a.nx-model-see resolves to exactly one element on the landing, the box of that tile's sample", () => {
+    const { container } = renderLanding({ kind: "announced" });
+    const links = [...container.querySelectorAll<HTMLAnchorElement>("#models a.nx-model-see")];
+    expect(links.length).toBe(container.querySelectorAll("#models .nx-model").length);
+    for (const a of links) {
+      const href = a.getAttribute("href")!;
+      expect(href).toMatch(/^#sample-[0-9a-f-]{36}$/);
+      expect(container.querySelectorAll(href), href).toHaveLength(1);
+      const job = href.slice("#sample-".length);
+      const target = container.querySelector(href)!;
+      expect(target.closest(`[data-showcase-entry="${job}"]`) ?? target.querySelector(`[data-sample-job="${job}"], img`), href).toBeTruthy();
+    }
+  });
+});
+
+describe("no maker's credit on the public site", () => {
+  it.each(["en", "ru", "uz"] as const)("%s: the landing (gallery, model tiles, tool wall, slots), /pricing and the footer link no model maker and never say \"Powered by\"", (locale) => {
+    const t = dictionaries[locale];
+    const landing = renderLanding({ kind: "announced" }, locale).container;
+    expect(makerCreditProblems(landing)).toEqual([]);
+    expect(landing.querySelectorAll('a[href*="runway"], a[href*="ideogram"]')).toHaveLength(0);
+    cleanup();
+    expect(makerCreditProblems(renderPricing({ pricing: resolvePricing({}, null) }, locale).container)).toEqual([]);
+    cleanup();
+    const footer = render(<PublicFooter t={t} />).container;
+    expect(makerCreditProblems(footer)).toEqual([]);
+    expect(footer.textContent).not.toMatch(PROVIDER_BRANDS);
   });
 });
 

@@ -92,7 +92,7 @@ describe("a phone's first screen is the picture (round 9; the footage moved into
     expect(css).toMatch(/\.nx-bleed \.nx-clip \{ left: 3px; width: calc\(100% - 6px\);/);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: the page's own pause switch (under the first screen's picture) stops the footage, and the picture panels' 44 px pause button keeps its rules (/mcp's header is still one)", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the page's own pause switch (under the first screen's picture, visually hidden until a keyboard focuses it) stops the footage, and the picture panels' 44 px pause button keeps its rules (/mcp's header is still one)", (code) => {
     env();
     const t = dictionaries[code];
     const { container } = landing(code);
@@ -107,9 +107,14 @@ describe("a phone's first screen is the picture (round 9; the footage moved into
     expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
     act(() => setMotionPaused(false));
     expect(sw.getAttribute("aria-pressed")).toBe("false");
-    // Top right, 44 px, a visible focus ring; the badge is top left and the credit bottom right; under reduced motion it is gone with the video.
+    // Visually hidden until focused (no visible pause word or icon, owner 2026-11-13), still in the tab order and to screen readers;
+    // focused: top right, 44 px, a visible focus ring; the badge is top left and the credit bottom right; under reduced motion it is
+    // gone with the video.
+    expect(sw.querySelector("svg")).toBeNull();
+    expect(css).toMatch(/\.nx-motion-btn:not\(:focus-visible\), \.nx-clip-pause:not\(:focus-visible\) \{ position: absolute; width: 1px; height: 1px;[^}]*clip: rect\(0 0 0 0\);/);
+    expect(css).toMatch(/\.nx-motion-btn:focus-visible \{[^}]*outline: 3px solid #ffa940;/);
     expect(css).toMatch(/\.nx-bleed \.nx-clip-pause \{ top: 12px; right: 12px; bottom: auto; z-index: 3; \}/);
-    expect(css).toMatch(/\.nx-clip-pause \{[^}]*width: 44px; height: 44px;/);
+    expect(css).toMatch(/\.nx-clip-pause \{[^}]*min-width: 44px; min-height: 44px;/);
     expect(css).toMatch(/\.nx-clip-pause:focus-visible \{ outline: 3px solid var\(--nx-stage-amber, #ffa940\);/);
     expect(css).toMatch(/\.nx-bleed \.nx-result-badge \{ z-index: 2; top: 16px; left: 16px; \}/);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.nx-clip-pause \{ display: none; \} \}/);

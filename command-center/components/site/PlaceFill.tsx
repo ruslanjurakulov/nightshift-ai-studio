@@ -1,9 +1,6 @@
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
-import { fmt } from "@/lib/i18n/core";
 import { creditLine } from "@/lib/site/media";
-import { modelLeftOut, type ShowcaseEntry } from "@/lib/site/showcase";
+import type { ShowcaseEntry } from "@/lib/site/showcase";
 import { LoopClip } from "@/components/site/LoopClip";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { SAMPLES, SampleImg, type PlaceMedia } from "@/components/site/samples";
@@ -12,7 +9,7 @@ type Site = Dictionary["site"];
 /** The words a place needs to label what it shows: the stock labels and credit template, and the sample labels (the public sign-in dictionary carries exactly these, lib/i18n/public.ts). */
 export type PlaceCopy = {
   samples: Pick<Site["samples"], "tag" | "frameTag" | "clipTag" | "credit" | "alts">;
-  gallery: Pick<Site["gallery"], "badge" | "try" | "tryAria" | "use" | "useNote" | "noPrompt" | "altClip" | "altImage">;
+  gallery: Pick<Site["gallery"], "badge" | "bgClip" | "bgImage">;
 };
 
 /**
@@ -33,77 +30,56 @@ export function placeBox(m: PlaceMedia, anchor = false): Record<string, string |
     : { "data-media": "stock", "data-clip": m.clip ?? undefined };
 }
 
-/** The sentence beside a place's picture that says what it is: stock (and that a moving one is footage, looped), or one of our generations. */
-export function placeNote(m: PlaceMedia, s: Site): string {
-  if (m.kind === "ai") return s.gallery.slotNote;
+/**
+ * The sentence beside a place's picture that says what it is: stock (and that a moving one is footage, looped), or null for one of
+ * our generations. A place's picture is the page's backdrop, not its content: a footnote naming "the shown model" and "this
+ * prompt" under copy about something else read as if the section were about that clip (owner, 2026-11-13), so a sample in a place
+ * carries its AI-generated badge and nothing more. Its model and its prompt are on its own card in the gallery.
+ */
+export function placeNote(m: PlaceMedia, s: Site): string | null {
+  if (m.kind === "ai") return null;
   return m.clip ? `${s.samples.note} ${s.samples.clipNote}` : s.samples.note;
 }
 
-/** A place's picture description: the stock still's, or "AI-generated clip made by {model}". */
+/** A place's picture description: the stock still's, or "AI-generated clip" (a backdrop: it does not name the model, as the badge on it does not). */
 export function placeAlt(m: PlaceMedia, s: PlaceCopy): string {
-  return m.kind === "ai" ? fmt(m.moving ? s.gallery.altClip : s.gallery.altImage, { model: m.entry.modelName }) : s.samples.alts[m.id];
+  return m.kind === "ai" ? (m.moving ? s.gallery.bgClip : s.gallery.bgImage) : s.samples.alts[m.id];
 }
 
 /**
- * A sample's credit where it fills a place: the "AI-generated" badge, the model's registry name, the maker's credit as a link (as
- * its terms ask), and "Try this prompt" (the Studio form with the sample's tool and words; a link, nothing is priced or started).
- * The words themselves are in the page, visually hidden, so the button is described by what it opens. A model only the operator
- * can try yet is not named in the link (lib/site/showcase-link.ts), and the button is then its visible words.
- *
- * The link is built by the caller (components/site/place-try.ts placeTry, on the server): the link builder pulls in the Studio's
- * model tables, which a client page that shows a sample (the sign-in stage) must not ship. No `href`, no button.
+ * The label on a sample that fills a place: the "AI-generated" badge and nothing else (the AI disclosure is never dropped). No
+ * model name, no "Try this prompt", no maker's credit: a place's picture decorates copy about something else (owner, 2026-11-13).
+ * The model and the prompt are on the sample's own card (components/site/ShowcaseGallery.tsx) and on the tool wall (AiCredit).
+ */
+export function AiBadge({ g, className = "nx-ai-credit" }: { g: Pick<PlaceCopy["gallery"], "badge">; className?: string }) {
+  return (
+    <span className={className}>
+      <span className="nx-ai-badge">{g.badge}</span>
+    </span>
+  );
+}
+
+/**
+ * A sample's label where the sample IS the content (the tool wall's tiles): the "AI-generated" badge and the model's registry
+ * name. No maker's credit: the public site shows the AI-generated label and the model name only, and the maker's required credit
+ * is shown in the Studio, where the models are used (components/studio/ModelAttribution.tsx; owner decision 2026-11-13).
  */
 export function AiCredit({
   entry,
   g,
-  href = null,
-  now = new Date(),
   className = "nx-ai-credit",
-  scope = "ai",
   badge = true,
 }: {
   entry: ShowcaseEntry;
-  g: PlaceCopy["gallery"];
-  /** "Try this prompt": the Studio form for this sample (placeTry), or null for none. */
-  href?: string | null;
-  now?: Date;
+  g: Pick<PlaceCopy["gallery"], "badge">;
   className?: string;
-  /** Prefix of the words' element id, unique per place, for a page that credits the same sample in two places. */
-  scope?: string;
-  /** False where the place already prints the "AI-generated" badge on the picture. */
+  /** False where the picture already prints the "AI-generated" badge. */
   badge?: boolean;
 }) {
-  // Only a link needs the date (whether the model may be named in it). A place with no link (the sign-in stage, rendered in the
-  // browser too) reads no clock, so its server and client markup cannot disagree.
-  const leftOut = href ? modelLeftOut(entry, now) : null;
-  const promptId = `${scope}-prompt-${entry.jobId}`;
-  const noteId = `${scope}-use-${entry.jobId}`;
   return (
     <span className={className}>
       {badge && <span className="nx-ai-badge">{g.badge}</span>}
       <span className="nx-ai-model">{entry.modelName}</span>
-      {entry.attribution && (
-        <a href={entry.attribution.url} target="_blank" rel="noopener noreferrer" className="nx-ai-attr">
-          {entry.attribution.text}
-        </a>
-      )}
-      {href && (
-        <>
-          <span id={promptId} className="sr-only">
-            {entry.prompt.trim() ? entry.prompt : g.noPrompt}
-          </span>
-          {/* A model customers cannot choose is not in the link: the button says "use" the words, and the note says which model runs them. */}
-          <Link href={href} prefetch={false} className="nx-ai-try" aria-label={leftOut ? undefined : fmt(g.tryAria, { model: entry.modelName })} aria-describedby={leftOut ? `${promptId} ${noteId}` : promptId}>
-            {leftOut ? g.use : g.try}
-            <ArrowRight aria-hidden />
-          </Link>
-          {leftOut && (
-            <span id={noteId} className="nx-ai-note">
-              {g.useNote}
-            </span>
-          )}
-        </>
-      )}
     </span>
   );
 }
@@ -111,8 +87,8 @@ export function AiCredit({
 /**
  * Everything inside a place's box: its picture (eager on the first screen), its clip when it has one (the usual LoopClip rules:
  * nothing under reduced motion, Save-Data or a slow link, paused with the page's switch), and the labels that say what it is.
- * A stock picture carries the stock badges and its Pexels contributor's credit; a sample carries AiCredit and never a stock word.
- * `labels` false leaves the labels to the caller (a place that prints them beside the box instead of on it).
+ * A stock picture carries the stock badges and its Pexels contributor's credit; a sample carries the AI-generated badge only, and
+ * never a stock word. `labels` false leaves the labels to the caller (a place that prints them beside the box instead of on it).
  */
 export function PlaceFill({
   media: m,
@@ -124,7 +100,6 @@ export function PlaceFill({
   compact = false,
   sizes = "100vw",
   labels = true,
-  tryHref = null,
 }: {
   media: PlaceMedia;
   s: PlaceCopy;
@@ -136,8 +111,6 @@ export function PlaceFill({
   compact?: boolean;
   sizes?: string;
   labels?: boolean;
-  /** A sample's "Try this prompt" (components/site/place-try.ts placeTry), or null for none. */
-  tryHref?: string | null;
 }) {
   const description = alt ?? placeAlt(m, s);
   if (m.kind === "ai") {
@@ -161,7 +134,6 @@ export function PlaceFill({
         />
         {m.moving && <ShowcaseClip jobId={entry.jobId} early={early} compact={compact} position={m.position} />}
         {labels && <span className="nx-result-badge" data-kind="ai">{s.gallery.badge}</span>}
-        {labels && <AiCredit entry={entry} g={s.gallery} href={tryHref} className="nx-ai-credit nx-result-ai" badge={false} />}
       </>
     );
   }
