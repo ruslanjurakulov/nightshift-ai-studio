@@ -331,7 +331,11 @@ describe("registryPrices", () => {
   it("no price in the registry is no price here, never 0", () => {
     expect(price("openai-gpt-image-2").usdPerUnit).toBeNull();
     expect(price("openai-gpt-image-2").probeUsd).toBeNull();
-    expect(price("ideogram-3").probeUsd).toBeNull();
+    expect(price("ideogram-upscale").probeUsd).toBeNull();
+  });
+  it("a flat per-image figure prices one probe image (Ideogram 3 Turbo, US$0.03, the owner's reading of the price table)", () => {
+    expect(price("ideogram-3").probeUsd).toBeCloseTo(0.03);
+    expect(price("ideogram-3").usdPerUnit).toBeCloseTo(0.03);
   });
   it("ignores rows it cannot read", () => {
     expect(registryPrices([null, 5, "x", { provider: "runway" }, []])).toEqual([]);
