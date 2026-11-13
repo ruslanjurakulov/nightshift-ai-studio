@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useMotionPaused, useMotionTap } from "@/lib/site/motion";
+import { useClipsHeld } from "@/lib/site/clip-hold";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string };
@@ -93,6 +94,8 @@ export function LoopClip({
   const sources: ClipSources = own ?? CLIPS[clip as ClipId];
   const ref = useRef<HTMLVideoElement>(null);
   const paused = useMotionPaused();
+  // The Shorts feed is open over the page (lib/site/clip-hold.ts): the clips under it hold their frame.
+  const held = useClipsHeld();
   const [allowed, setAllowed] = useState(false);
   // A phone gets the 640 x 360 rendition (about a quarter of the bytes); a screen of 860 px or more the 1280 x 720 one.
   const [small, setSmall] = useState(false);
@@ -167,13 +170,13 @@ export function LoopClip({
     const v = ref.current;
     if (!allowed || !v) return;
     const sync = () => {
-      if (wanted && (grid ? inView : lead) && !paused && document.visibilityState === "visible") void Promise.resolve(v.play()).catch(() => undefined);
+      if (wanted && (grid ? inView : lead) && !paused && !held && document.visibilityState === "visible") void Promise.resolve(v.play()).catch(() => undefined);
       else v.pause();
     };
     sync();
     document.addEventListener("visibilitychange", sync);
     return () => document.removeEventListener("visibilitychange", sync);
-  }, [allowed, wanted, lead, paused, grid, inView]);
+  }, [allowed, wanted, lead, paused, held, grid, inView]);
 
   // A tap on the picture is the pointer's pause: one delegated listener for the whole page (lib/site/motion.ts motionTap), which
   // also covers a still poster that drifts when no clip may play.

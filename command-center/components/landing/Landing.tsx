@@ -30,6 +30,7 @@ import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
+import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
@@ -94,6 +95,7 @@ export function Landing({
       <ModelTiles t={t} items={onPage} />
       <Showcases t={t} />
       <How t={t} locale={locale} anchor={anchor} />
+      <AutopilotDemo copy={t.site.autopilot.demo} />
       {showcase.length > 0 && (
         <div className="st-section">
           <div className="st-wrap">
