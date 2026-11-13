@@ -219,8 +219,17 @@ print("RESULT " + json.dumps(seen))
         self.assertEqual(self.drive(_row(column=False), "private"), "private")
         self.assertEqual(self.last_warnings, [])
 
-    def test_switch_on_and_public_is_allowed_through_to_the_gate(self):
-        self.assertEqual(self.drive(_row(column=True), "public"), "public")
+    def test_switch_on_and_public_uploads_private_until_a_person_answers_who_it_is_for(self):
+        # Was "allowed through to the gate". The owner's decision on PR #699 (migration 0145): a video goes public only after a
+        # person answered "is this made for kids?", which no run can have done, so auto publish ON uploads private and holds;
+        # the video goes public through an approval on its review page, which needs the answer.
+        self.assertEqual(self.drive(_row(column=True), "public"), "private")
+        self.assertEqual(len(self.last_warnings), 1)
+        self.assertIn("until a person answers who the video is for", self.last_warnings[0])
+        self.assertEqual(self.drive(_row(column=True), "unlisted"), "private")
+
+    def test_switch_on_and_private_is_quiet(self):
+        self.assertEqual(self.drive(_row(column=True), "private"), "private")
         self.assertEqual(self.last_warnings, [])
 
     def test_absent_column_and_public_uploads_private_and_says_why(self):

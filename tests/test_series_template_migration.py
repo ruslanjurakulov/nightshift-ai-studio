@@ -291,7 +291,8 @@ class TheWhitelistOfRunParameters(unittest.TestCase):
     def test_the_database_allows_template_and_a_run_still_does_not(self):
         m = re.search(r"allowed text\[\] := array\[(.*?)\];", body(TEXT, RJPV), re.S)
         allowed = set(re.findall(r"'([a-z_]+)'", m.group(1)))
-        self.assertEqual(allowed, set(run_request.ALLOWED_PARAMS) | set(run_request.HINT_PARAMS) | {"template"})
+        # made_for_kids came later, with 0145 (0122's body plus that one key: tests/test_made_for_kids_migration.py).
+        self.assertEqual(allowed, (set(run_request.ALLOWED_PARAMS) - {"made_for_kids"}) | set(run_request.HINT_PARAMS) | {"template"})
         self.assertNotIn("template", run_request.ALLOWED_PARAMS)
         self.assertNotIn("template", run_request.HINT_PARAMS)
 

@@ -123,11 +123,13 @@ class Numbering(unittest.TestCase):
         # workspaces and the generations; it reads, replaces and alters nothing of 0131's.
         # 0139 (the operator preview of a hidden model) was reviewed the same way: it replaces creative_price on 0125's body and adds two
         # model-registry functions; it reads, replaces and alters nothing of 0131's.
+        # 0145 (YouTube's "made for kids") was reviewed the same way: videos columns, one function, the run params validator and the
+        # audit list; nothing of 0131's.
         # 0142 (a model with blocked_countries cannot be beta or ga) was reviewed the same way: one CHECK on model_registry; it reads,
         # replaces and alters nothing of 0131's.
         # 0143 (the probe log's vendor_tool_unsupported word) was reviewed the same way: it replaces one check constraint on
         # model_probe_runs and nothing else; it reads, replaces and alters nothing of 0131's.
-        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143")], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145")], [], "a later number needs its own review of this file's pins")
         later = next(MIG.glob("0134_*.sql")).read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertNotRegex(code(later), r"\balter table\b")

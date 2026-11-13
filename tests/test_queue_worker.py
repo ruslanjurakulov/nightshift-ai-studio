@@ -140,7 +140,7 @@ class WorkflowParity(unittest.TestCase):
         flags = re.findall(r'args\+=\((--[a-z-]+)(?: "\$\{?(INPUT_[A-Z_]+))?', script)
         self.assertGreaterEqual(len(flags), 7)
         full = {"topic": "t", "niche": "n", "duration": 60, "language": "L", "visual_style": "v",
-                "series": "s", "resume": True}
+                "series": "s", "resume": True, "made_for_kids": True}
         argv = run_request.build_main_args("c", full)
         argv_repair = run_request.build_main_args("c", {"repair_scenes": "3"})
         for flag, env_name in flags:

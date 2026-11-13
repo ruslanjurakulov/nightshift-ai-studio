@@ -105,6 +105,9 @@ export interface RunHandoff {
   topic: string;
   seconds: number;
   language: HomeLanguage;
+  /** The format card it came from. Only the Kids story format travels (`format=kids`): it pre-ticks YouTube's "made for
+   *  kids" on the form (lib/madeForKids.ts, migration 0145). The other formats are a length and a starter, as before. */
+  format?: HomeFormatId;
 }
 
 /**
@@ -118,6 +121,7 @@ export function runHandoffHref(slug: string, h: RunHandoff): string {
   if (topic) q.set("topic", topic);
   q.set("length", String(h.seconds));
   q.set("lang", h.language);
+  if (h.format === "kids") q.set("format", "kids");
   return `/${encodeURIComponent(slug)}/create?${q.toString()}#run`;
 }
 
@@ -126,6 +130,8 @@ export interface RunPrefill {
   brief: string;
   duration: string;
   language: string;
+  /** Came from the Kids story format: YouTube's "made for kids" starts on, and turning it off asks first. Present only when true. */
+  madeForKids?: true;
 }
 
 const first = (v: unknown): unknown => (Array.isArray(v) ? undefined : v);
@@ -145,8 +151,9 @@ export function runPrefillFromQuery(q: Record<string, string | string[] | undefi
   const n = typeof lengthRaw === "string" && /^\d{1,5}$/.test(lengthRaw) ? Number(lengthRaw) : NaN;
   const duration = (RUN_DURATIONS_S as readonly number[]).includes(n) ? String(n) : "";
   const language = isHomeLanguage(langRaw) ? langRaw : "";
-  if (!brief && !duration && !language) return null;
-  return { brief, duration, language };
+  const kids = first(q.format) === "kids";
+  if (!brief && !duration && !language && !kids) return null;
+  return kids ? { brief, duration, language, madeForKids: true } : { brief, duration, language };
 }
 
 // ── channels ────────────────────────────────────────────────────────────────

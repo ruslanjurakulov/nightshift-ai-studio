@@ -132,7 +132,7 @@ export function buildPresetCards(slug: string, locale: Locale, t: Dictionary): P
       title: copy.title,
       who: copy.who,
       tag: kind.format,
-      href: runHandoffHref(slug, { topic: copy.starter, seconds: lengthSeconds(f.length), language: lang }),
+      href: runHandoffHref(slug, { topic: copy.starter, seconds: lengthSeconds(f.length), language: lang, format: f.id }),
       art: { kind: "format", id: f.id },
       haystack: norm([f.id, copy.title, copy.who, kind.format].join(" | ")),
     });

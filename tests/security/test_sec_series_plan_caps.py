@@ -158,6 +158,7 @@ def test_no_api_role_can_call_it_and_a_refused_call_changes_nothing(conn, capwor
 
 def test_every_function_except_request_series_plan_is_exactly_as_without_the_file_and_one_table_is_new(conn, world):
     s = world.su
+    sec_db.take_off_0145(s)   # take_off_0127 takes 0145 off with it (0145 sits on 0122's bodies): measure without it on both sides
     tables = lambda: {r[0] for r in s.rows("select tablename from pg_tables where schemaname = 'public'")}   # noqa: E731
     with_file, t_with = defs(s), tables()
     sec_db.take_off_0127(s)
@@ -681,6 +682,7 @@ def test_the_rollback_restores_0122_byte_for_byte_drops_the_table_and_0127_appli
 
 def test_the_rollback_runs_before_0122s_and_0122s_then_runs_clean(conn, world):
     s = world.su
+    sec_db.take_off_0145(s)   # 0145 sits on 0122's render_job_params_valid(): off, so the guard under test is the first to answer
     out = s.run(sec_db.ROLLBACK_0122.read_text(encoding="utf-8").replace("begin;", "").replace("commit;", ""))
     assert not out.ok and "request_series_plan() is not 0122's body" in out.error, "0122's rollback refuses while 0127 is on"
     sec_db.take_off_0127(s)

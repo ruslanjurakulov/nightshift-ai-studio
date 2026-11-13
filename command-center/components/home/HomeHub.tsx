@@ -309,7 +309,7 @@ function GoalCards({ slug }: { slug: string }) {
           return (
             <li key={f.id}>
               <Link
-                href={runHandoffHref(slug, { topic: label.starter, seconds: lengthSeconds(f.length), language: defaultLanguage(locale) })}
+                href={runHandoffHref(slug, { topic: label.starter, seconds: lengthSeconds(f.length), language: defaultLanguage(locale), format: f.id })}
                 className="home-goal press"
                 data-goal={f.id}
               >

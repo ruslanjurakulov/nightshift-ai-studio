@@ -86,6 +86,8 @@ describe("preset cards", () => {
             brief: copy.starter.replace(/\s+/g, " ").trim(),
             duration: String(lengthSeconds(f.length)),
             language: defaultLanguage(locale),
+            // The Kids story format also starts YouTube's "made for kids" on (lib/madeForKids.ts); no other format carries it.
+            ...(f.id === "kids" ? { madeForKids: true } : {}),
           });
           // The run form is the YouTube desk: that is where a topic lands.
           expect(deskFromQuery({ tool: q.tool, hasRunPrefill: true })).toBe("youtube");

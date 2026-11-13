@@ -162,7 +162,7 @@ class AiFlagMapping(Scenario):
         calls = []
 
         class Adapter:
-            def publish(self, channel_id, path, meta, decision=None):
+            def publish(self, channel_id, path, meta, decision=None, kids_row=None):
                 calls.append(decision)
                 return {"result_id": "x", "result_url": None, "privacy": "whatever the adapter said"}
 
@@ -197,7 +197,7 @@ class WhatTheWorkerSays(Scenario):
         class Adapter:
             heartbeat = None
 
-            def publish(self, channel_id, path, meta, decision=None):
+            def publish(self, channel_id, path, meta, decision=None, kids_row=None):
                 seen.append(self.heartbeat)
                 return {"result_id": "x", "result_url": None, "privacy": "private"}
 

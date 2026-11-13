@@ -137,6 +137,11 @@ _COLUMNS_0016 = ("publish_state", "held_at", "hold_detail")
 # Migration 0112: the cut's hash and the gate's verdict for it. Dropped FIRST when a database does not have them
 # yet, so the state and the hold detail (0016) still land.
 COLUMNS_0112 = ("cut_sha256", "gate_verdict")
+#: Migration 0145: a person's answer to "is this made for kids?" belongs to one cut. Every write here that records a new
+#: cut_sha256 clears it (the review panel asks again; approve_video_publish also checks the answer's cut). A database
+#: without 0145 refuses the columns, and the write is retried without them before anything older is dropped.
+COLUMNS_0145_ANSWER = ("made_for_kids_answered_by", "made_for_kids_answered_at", "made_for_kids_answered_cut_sha256")
+NO_ANSWER = {k: None for k in COLUMNS_0145_ANSWER}
 # Older optional columns (0011 scenes, 0013 manifest), dropped next if a write
 # is still refused, so the row itself lands on the oldest supported schema.
 _COLUMNS_OPTIONAL = ("manifest", "scenes", "preview_path")
@@ -359,6 +364,7 @@ class HeldVideos:
             # NULL, which reads "unknown": the previous cut's verdict does not judge this one.
             row["gate_verdict"] = gate_verdict((detail or {}).get("gate"))
             row["cut_sha256"] = cut_sha256(local_path)
+            row.update(NO_ANSWER)
             if fill_if_new and self._exists(video_id) is False:
                 title = title or fill_if_new.get("title")
                 script_text = script_text or fill_if_new.get("script_text")
@@ -409,25 +415,19 @@ class HeldVideos:
         return bool(_json_list(resp))
 
     def _upsert(self, row: dict) -> bool:
-        attempts = [row]
-        without_0112 = {k: v for k, v in row.items() if k not in COLUMNS_0112}
-        attempts.append(without_0112)
-        without_0016 = {k: v for k, v in without_0112.items() if k not in _COLUMNS_0016}
-        attempts.append(without_0016)
-        attempts.append({k: v for k, v in without_0016.items() if k not in _COLUMNS_OPTIONAL})
-        for i, body in enumerate(attempts):
-            if i and body == attempts[i - 1]:
-                continue
+        body, narrowed = row, False
+        while True:
             resp = self._send("post", {"on_conflict": "video_id"}, body,
                               "resolution=merge-duplicates,return=minimal")
             if resp is not None and resp.status_code < 300:
-                if i:
+                if narrowed:
                     logger.info("Held row written on an older schema — apply migration 0016 "
                                 "(and 0011/0013) to keep its state, scenes and manifest")
                 return True
-            if resp is None or not _is_missing_column(resp):
+            body = _without_missing(body, resp, (COLUMNS_0145_ANSWER, COLUMNS_0112, _COLUMNS_0016, _COLUMNS_OPTIONAL))
+            if body is None:
                 return False
-        return False
+            narrowed = True
 
     # ── on upload ──────────────────────────────────────────────────────────
     def promote(
@@ -476,9 +476,10 @@ class HeldVideos:
             # that follows writes the gate's verdict for it, so a failure there can only leave "unknown", never a stale pass.
             patch["cut_sha256"] = cut_sha256(local_path)
             patch["gate_verdict"] = None
+            patch.update(NO_ANSWER)
             filters = {"video_id": f"eq.{held_id}", "channel_id": f"eq.{channel_id}"}
-            without_0112 = {k: v for k, v in patch.items() if k not in COLUMNS_0112}
-            for body in (patch, without_0112, {k: v for k, v in without_0112.items() if k not in _COLUMNS_0016}):
+            body = patch
+            while body is not None:
                 resp = self._send("patch", filters, body, "return=representation")
                 if resp is None:
                     return False
@@ -502,6 +503,7 @@ class HeldVideos:
                 if not _is_missing_column(resp):
                     logger.warning("Could not promote held row %s (HTTP %s)", held_id, resp.status_code)
                     return False
+                body = _without_missing(body, resp, (COLUMNS_0145_ANSWER, COLUMNS_0112, _COLUMNS_0016))
             return False
         except Exception as e:
             logger.warning("Could not promote the held row (%s: %s) — the upload is unaffected",
@@ -536,6 +538,28 @@ class HeldVideos:
         except Exception as e:
             logger.warning("Supabase %s on videos errored (%s)", method.upper(), type(e).__name__)
             return None
+
+
+def _without_missing(body: dict, resp, groups) -> Optional[dict]:
+    """The next body to try after ``resp``, or None to stop. Only a refusal that a column is missing (an un-migrated
+    database) narrows the write, and it drops the group of columns PostgREST NAMES as missing. When no name can be read the
+    older groups go in order, as before, but the 0145 audience answer is never one of them: a write must not land without
+    clearing a person's answer to a cut that is gone just because some other column was refused (review on PR #699)."""
+    if resp is None or not _is_missing_column(resp):
+        return None
+    try:
+        text = str(resp.text or "")
+    except Exception:
+        text = ""
+    present = [g for g in groups if any(c in body for c in g)]
+    named = [g for g in present if any(re.search(rf"['\"]{re.escape(c)}['\"]", text) for c in g)]
+    if named:
+        drop = named[0]
+    else:
+        drop = next((g for g in present if g is not COLUMNS_0145_ANSWER), None)
+    if drop is None:
+        return None
+    return {k: v for k, v in body.items() if k not in drop}
 
 
 def _is_missing_column(resp) -> bool:

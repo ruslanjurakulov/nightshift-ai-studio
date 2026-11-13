@@ -217,6 +217,8 @@ export async function dispatchDailyVideo(
      *  an approved storyboard (migration 0057) renders this way. Only with a
      *  topic: a bare resume would pick whichever run is newest. */
     resume?: boolean;
+    /** YouTube's "made for kids" for this run (the workflow's `made_for_kids` input, 0145). Only true is forwarded. */
+    madeForKids?: boolean;
   } = {},
 ): Promise<void> {
   if (!isGithubConfigured) throw new Error("github_not_configured");
@@ -253,6 +255,7 @@ export async function dispatchDailyVideo(
   // Same shape 0020 accepts for a reservation id; anything else is not sent.
   if (opts.creditRef && /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/.test(opts.creditRef)) inputs.credit_ref = opts.creditRef;
   if (opts.resume === true && inputs.topic) inputs.resume = "true";
+  if (opts.madeForKids === true) inputs.made_for_kids = "true";
   await dispatchWorkflow("daily_video.yml", inputs, ref);
 }
 

@@ -143,8 +143,10 @@ class ReviewStateFollowsTheChannel(unittest.TestCase):
                       script_text="x", auto_publish=False)
         keys = set(self.r._upsert_video.call_args[0][0])
         # 0112 adds the cut's hash, the gate's verdict for it, and the cleared approval: still only review facts
+        # 0145 adds the cleared audience answer (it was about the cut being replaced): a review fact too
         self.assertEqual(keys, {"video_id", "channel_id", "script_text", "review_state", "cut_sha256", "gate_verdict",
-                                "approved_cut_sha256", "decided_by", "decided_by_email", "decided_at", "approval_expires_at"})
+                                "approved_cut_sha256", "decided_by", "decided_by_email", "decided_at", "approval_expires_at",
+                                "made_for_kids_answered_by", "made_for_kids_answered_at", "made_for_kids_answered_cut_sha256"})
         for banned in ("privacy", "publish_state", "published_at"):
             self.assertNotIn(banned, keys)
 

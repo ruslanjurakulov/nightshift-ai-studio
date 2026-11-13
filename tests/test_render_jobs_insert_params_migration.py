@@ -20,6 +20,16 @@ def allowed_keys():
     return set(re.findall(r"'([a-z_]+)'", block))
 
 
+def keys_added_since():
+    """What the policy has gained since 0032, from the latest migration that recreates it: 0145 adds made_for_kids (YouTube's "made
+    for kids" for a run, true only; tests/test_made_for_kids_migration.py pins that the rest is 0076's policy)."""
+    latest = [m for m in sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
+              if "create policy render_jobs_insert on public.render_jobs" in m.read_text()][-1].read_text()
+    code = "\n".join(line.split("--", 1)[0] for line in latest.splitlines())
+    block = code.split("(params - array[", 1)[1].split("])", 1)[0]
+    return set(re.findall(r"'([a-z_]+)'", block)) - allowed_keys()
+
+
 def insert_builder_keys():
     body = RUN_BACKEND.split("export function buildRenderJobInsert(", 1)[1].split("\n}\n", 1)[0]
     return set(re.findall(r"params\.([a-z_]+)\s*=", body))
@@ -29,7 +39,8 @@ class RenderJobsInsertParams(unittest.TestCase):
     def test_every_param_the_site_sends_is_allowed(self):
         sent = insert_builder_keys()
         self.assertTrue({"tts_model", "voice_id", "publish_hint"} <= sent)
-        self.assertEqual(sent - allowed_keys(), set())
+        self.assertEqual(keys_added_since(), {"made_for_kids"})
+        self.assertEqual(sent - allowed_keys() - keys_added_since(), set())
 
     def test_browser_refused_keys_stay_refused(self):
         for key in ("privacy", "resume", "repair_scenes"):
