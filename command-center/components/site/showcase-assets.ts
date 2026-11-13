@@ -11,7 +11,14 @@ import s0Mp4 from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-2548850382
 import s0Webm from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip.webm";
 import s0SmMp4 from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip-sm.mp4";
 import s0SmWebm from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip-sm.webm";
+import s1Poster from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/poster.webp";
+import s1PosterSm from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/poster-sm.webp";
+import s1Mp4 from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/clip.mp4";
+import s1Webm from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/clip.webm";
+import s1SmMp4 from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/clip-sm.mp4";
+import s1SmWebm from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/clip-sm.webm";
 
 export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
   "a04d5d55-27ef-4cae-95a2-25488503829e": { poster: s0Poster.src, posterSm: s0PosterSm.src, clip: { mp4: s0Mp4, webm: s0Webm, smMp4: s0SmMp4, smWebm: s0SmWebm } },
+  "bf349995-6836-47fe-9481-a433b4fccb04": { poster: s1Poster.src, posterSm: s1PosterSm.src, clip: { mp4: s1Mp4, webm: s1Webm, smMp4: s1SmMp4, smWebm: s1SmWebm } },
 };

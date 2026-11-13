@@ -39,6 +39,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T16:05:40Z"
+    },
+    {
+      "jobId": "bf349995-6836-47fe-9481-a433b4fccb04",
+      "assetId": "1fdcb965-54c2-5987-8ba5-dc5e313ff461",
+      "sha256": "240010693f0830b5f7ea1f4cba171bad81b10b4dbf83a6a6c63f928144d6d0f4",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Extreme close-up, vertical: a sharp chef's knife slowly slices through a dome cake made of translucent ruby-red glass on a white marble board. The blade crunches through with crisp crackling; the cut reveals a glowing layered interior of amber and pink glass like jelly, and thin shards tinkle onto the board. Soft diffused top light, glossy reflections, 100mm macro lens, shallow depth of field, static camera. Audio: crisp glass crunch, tinkling shards, no music.",
+      "createdAt": "2026-11-13T16:17:46Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:06:14Z"
     }
   ]
 }
