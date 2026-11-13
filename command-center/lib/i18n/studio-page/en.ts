@@ -151,7 +151,7 @@ export const studioPageEn = {
     ],
     links: { pay: "See pricing", fails: "Terms: credits and refunds", data: "Read the Privacy Policy" },
   },
-  caveat: "Some tools need setting up on this deployment first. For example, auto-captions are offered only where a transcription is set up and priced, and the app says so when one is not.",
+  caveat: "The app shows when a tool is available. Auto-captions, for example, appear with their price once they can run, and the app says so when they cannot yet.",
   final: {
     title: "Start with a topic.",
     lead: "Start free. See the price before every run, and every video stays private until you make it public.",

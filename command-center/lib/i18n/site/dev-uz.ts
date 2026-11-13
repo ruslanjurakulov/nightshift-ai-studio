@@ -184,10 +184,8 @@ export const devUz: DevDictionary = {
     soon: {
       badge: "Tez orada",
       use: "Bugunoq API kalit bilan ishlaydi:",
-      claude: { title: "Claude hisobga kirish orqali ulanadi", body: "Nightshift’ni Claude’ga server manzili va hisobga kirish orqali qoʻshish hali yoqilmagan, shuning uchun bugun Claude’da qoʻshadigan narsa yoʻq. Nightshift serveri hozircha API kalitlarni qabul qiladi." },
-      gemini: { title: "Gemini hisobga kirish orqali ulanadi", body: "Nightshift’ni Gemini’ga server manzili va hisobga kirish orqali qoʻshish hali yoqilmagan, shuning uchun bugun Gemini’da qoʻshadigan narsa yoʻq. Nightshift serveri hozircha API kalitlarni qabul qiladi." },
-      grok: { title: "Grok hisobga kirish orqali ulanadi", body: "Nightshift’ni Grok’ga server manzili va hisobga kirish orqali qoʻshish hali yoqilmagan, shuning uchun bugun Grok’da qoʻshadigan narsa yoʻq. Nightshift serveri hozircha API kalitlarni qabul qiladi." },
-      chatgpt: { title: "ChatGPT hisobga kirish orqali ulanadi", body: "Nightshift’ni ChatGPT’ga server manzili va hisobga kirish orqali qoʻshish hali yoqilmagan, shuning uchun bugun ChatGPT’da qoʻshadigan narsa yoʻq. Nightshift serveri hozircha API kalitlarni qabul qiladi." },
+      noteTitle: "Bu yordamchilar uchun hisobga kirish tez orada",
+      noteBody: "ChatGPT, Claude, Gemini va Grok kalit bilan emas, hisobga kirish orqali ulanadi. U hali yoqilmagan, shuning uchun bugun ularga qoʻshadigan narsa yoʻq. Cursor va VS Code hozirning oʻzida API kalit bilan ishlaydi.",
     },
     steps: [
       { id: "key", title: "Kalit yarating", body: "Command Center’da “Dasturchilar” → “API kalitlari” boʻlimini oching. Kalitdan nusxa oling: u bir marta koʻrsatiladi." },

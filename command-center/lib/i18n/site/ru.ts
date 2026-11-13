@@ -13,6 +13,8 @@ export const siteRu: SiteDictionary = {
     api: "API",
     signIn: "Войти",
     start: "Начать бесплатно",
+    menu: "Меню",
+    menuClose: "Закрыть меню",
   },
   hero: {
     kicker: "Для YouTube-каналов — с лицом и без",
