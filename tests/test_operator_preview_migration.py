@@ -179,7 +179,8 @@ class OperatorPreviewMigration(unittest.TestCase):
         self.assertEqual(numbers.count("0139"), 1)
         self.assertIn("0138", numbers)
         lab = (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8")
-        for needle in ("def take_off_0139(", "def put_back_0139(", "ON_0125 = (MIGRATION_0139.name,)"):
+        # 0149 sits on 0139's creative_price, so ON_0125 lists it after 0139 (ON_0139).
+        for needle in ("def take_off_0139(", "def put_back_0139(", "ON_0125 = (MIGRATION_0139.name, *ON_0139)"):
             self.assertIn(needle, lab)
         expect = (ROOT / "tests" / "security" / "sec_expectations.py").read_text(encoding="utf-8")
         self.assertIn('"creative_operator_preview": SERVICE,', expect)
