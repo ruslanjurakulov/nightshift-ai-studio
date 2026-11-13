@@ -893,6 +893,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "4e85c7e4-fd1a-4771-97ee-66c1fb853367",
+      "assetId": "c93d2070-23c3-5b0c-a002-bf6f540eface",
+      "sha256": "02e80e273ced77ab85b6c9ecb12392ffd52bb7d88553e62700e354ce1408d0d2",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "One continuous shot: the camera plunges from Earth orbit through bright clouds, over a glittering night city grid, down between neon skyscrapers and lands at street level in front of a steaming street-food stall in the rain. Seamless, fast but smooth, photorealistic, epic scale.",
+      "createdAt": "2026-11-13T20:31:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:16:19Z"
     }
   ]
 }
