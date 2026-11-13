@@ -56,6 +56,8 @@ export interface ApprovalFields {
   approval_expires_at?: string | null;
   /** Migration 0141: a person's answer to "is this made for kids?" (who; NULL = nobody yet). Absent before 0141. */
   made_for_kids_answered_by?: string | null;
+  /** Migration 0141: the cut that answer is about; it counts only for this row's own cut_sha256. */
+  made_for_kids_answered_cut_sha256?: string | null;
 }
 
 export type ApprovalBlocker =
@@ -124,7 +126,10 @@ export function approvalState(
   const expiresMs = ms(video.approval_expires_at);
 
   let view: ApprovalView;
-  if (opts.autoPublish || (video.review_state === "approved" && !approvedCut)) {
+  // "Nothing to approve" only for a row recorded as approved with nobody behind it (an upload that went up watchable on its
+  // own, before 0141). The channel's auto-publish switch alone is not that any more: since 0141 every upload is private until
+  // a person answered who it is for, and is recorded pending, so the person approves it here (review finding on PR #699).
+  if (video.review_state === "approved" && !approvedCut) {
     view = { kind: "auto" };
   } else if (video.review_state === "approved" && approvedCut && cut && approvedCut === cut) {
     const live = expiresMs !== null && expiresMs > opts.nowMs;

@@ -28,12 +28,16 @@ export const madeForKidsEn = {
   unanswered: "Not answered yet. The video cannot be approved until you choose.",
   answeredOn: "Answered on {when}.",
   blockers: {
+    cut_unknown: "This video was uploaded before its cut could be recorded, so the answer has nothing to belong to. Set its audience in YouTube Studio.",
     already_public: "The video is public: change its audience in YouTube Studio.",
     approval_live: "Approved as it is. The audience can change when the approval runs out.",
     not_admin: "Only an administrator of this organization can change it.",
     not_member: "Only a member of this organization can change it.",
   },
   errors: {
+    bad_hash: "This page does not know which version of the video it shows. Reload it and try again.",
+    cut_unknown: "This video was uploaded before its cut could be recorded. Set its audience in YouTube Studio.",
+    cut_changed: "This video changed after you opened the page. Reload it, watch the new version and answer again.",
     bad_value: "That value cannot be saved.",
     rate_limited: "Too many changes in a short time. Try again in a few minutes.",
     already_public: "The video is public: change its audience in YouTube Studio.",

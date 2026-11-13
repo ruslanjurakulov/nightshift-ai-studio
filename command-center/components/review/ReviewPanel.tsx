@@ -114,7 +114,9 @@ export function ReviewPanel({
   const pressable = canPressApprove(state);
   const studio = studioUrl(video.video_id);
   // The label says "publish" ONLY on a channel whose switch is on; everywhere else it records a decision and says so.
-  const publishing = publishOnApprove && !autoPublish;
+  // ...and never over a video there is nothing to approve for (a row recorded approved with nobody behind it). The channel's
+  // auto-publish switch no longer means that: its uploads wait private for this approval too (0141).
+  const publishing = publishOnApprove && state.view.kind !== "auto";
   // A request that exists is shown whatever the switch says now (turned off since: it reads "not published, switched off").
   const vis = visibilityView(request, video, nowMs);
   const publishCopy = publishing || vis.kind !== "none";

@@ -2020,7 +2020,12 @@ def run(
                     channel_id=channel_id,
                     video_path=video_path,
                     script_text=script.full_narration(),
-                    auto_publish=review.fetch_auto_publish(channel_id),
+                    # "Approved, nothing for a person to do" only for a video that really went up watchable on its
+                    # own. Since 0141 nothing does before a person answered who it is for (_effective_privacy), so an
+                    # auto-publish channel's upload is recorded PENDING: the review panel asks the question and offers
+                    # Approve, instead of a private video nobody can approve (review finding on PR #699).
+                    auto_publish=(review.fetch_auto_publish(channel_id)
+                                  and str(recorded_privacy or "").lower() in mfk.WATCHABLE),
                     # The structured scene plan behind this video (migration 0011)
                     # — the Storyboard renders it directly instead of guessing
                     # scenes from paragraph breaks. Best-effort: a build failure

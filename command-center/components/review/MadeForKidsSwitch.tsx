@@ -143,7 +143,7 @@ export function ReviewMadeForKids({
   access,
   approvalLive,
 }: {
-  video: MadeForKidsFields & { video_id: string; privacy?: string | null };
+  video: MadeForKidsFields & { video_id: string; privacy?: string | null; cut_sha256?: string | null };
   access: "ok" | "not_admin" | "not_member";
   approvalLive: boolean;
 }) {
@@ -174,6 +174,8 @@ export function ReviewMadeForKids({
         p_video_id: video.video_id,
         p_made_for_kids: next,
         p_confirm_off: confirmedOff,
+        // The cut this page shows: the answer is about it, and a cut that changed meanwhile is refused (cut_changed).
+        p_cut_sha256: video.cut_sha256,
       });
       if (error) {
         setMessage({ tone: "fail", text: m.errors[errorFromRpc(error)] });

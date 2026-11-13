@@ -240,7 +240,7 @@ describe("when the key is dead, it says why", () => {
     ["a platform admin on a customer's channel", {}, { access: "not_member" }, "not_member"],
     ["rejected", { review_state: "rejected" }, {}, "rejected"],
     ["already public on YouTube", { privacy: "public" } as Partial<VideoRow>, {}, "already_public"],
-    ["a channel that publishes on its own", {}, { autoPublish: true }, "autoHint"],
+    ["a video recorded approved by automatic publishing, with nobody behind it", { review_state: "approved" }, { autoPublish: true }, "autoHint"],
   ];
   it.each(cases)("%s", (_name, over, props, key) => {
     panel(over, props);
@@ -250,6 +250,12 @@ describe("when the key is dead, it says why", () => {
     fireEvent.click(approveKey());
     expect(dialog()).toBeNull();
     expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it("an auto-publish channel's pending upload has a live key: it waits private for a person (0141)", () => {
+    panel({}, { autoPublish: true });
+    expect(approveKey().disabled).toBe(false);
+    expect(screen.getByTestId("approve-note").textContent).not.toBe(en.review.autoHint);
   });
 
   it("an unknown verdict is said as unknown, never as passed", () => {

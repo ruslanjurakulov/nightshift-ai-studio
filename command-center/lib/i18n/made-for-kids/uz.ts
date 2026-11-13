@@ -25,12 +25,16 @@ export const madeForKidsUz: MadeForKidsDictionary = {
   unanswered: "Hali javob berilmagan. Tanlamaguningizcha videoni tasdiqlab boʻlmaydi.",
   answeredOn: "Javob berilgan sana: {when}.",
   blockers: {
+    cut_unknown: "Bu video uning versiyasi yozib boriladigan boʻlishidan oldin yuklangan, shuning uchun javob hech narsaga bogʻlanmaydi. Auditoriyani YouTube Studio’da belgilang.",
     already_public: "Video ommaviy: auditoriyani YouTube Studio’da oʻzgartiring.",
     approval_live: "Shu holatda tasdiqlangan. Tasdiq muddati tugagach, auditoriyani oʻzgartirish mumkin.",
     not_admin: "Faqat shu tashkilot administratori oʻzgartira oladi.",
     not_member: "Faqat shu tashkilot aʼzosi oʻzgartira oladi.",
   },
   errors: {
+    bad_hash: "Sahifa videoning qaysi versiyasini koʻrsatayotganini bilmaydi. Sahifani yangilab, qayta urinib koʻring.",
+    cut_unknown: "Bu video uning versiyasi yozib boriladigan boʻlishidan oldin yuklangan. Auditoriyani YouTube Studio’da belgilang.",
+    cut_changed: "Sahifa ochilgandan keyin video oʻzgardi. Sahifani yangilang, yangi versiyani koʻring va qayta javob bering.",
     bad_value: "Bu qiymatni saqlab boʻlmaydi.",
     rate_limited: "Qisqa vaqtda juda koʻp oʻzgarish. Bir necha daqiqadan keyin qayta urinib koʻring.",
     already_public: "Video ommaviy: auditoriyani YouTube Studio’da oʻzgartiring.",

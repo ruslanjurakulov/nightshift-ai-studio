@@ -108,11 +108,13 @@ describe("what is kids content", () => {
   });
 
   it("the panel refuses in the database's order, then by who you are", () => {
-    expect(madeForKidsBlocker({ privacy: "public" }, { approvalLive: true, access: "not_admin" })).toBe("already_public");
-    expect(madeForKidsBlocker({ privacy: "private" }, { approvalLive: true, access: "ok" })).toBe("approval_live");
-    expect(madeForKidsBlocker({ privacy: "private" }, { approvalLive: false, access: "not_member" })).toBe("not_member");
-    expect(madeForKidsBlocker({ privacy: "private" }, { approvalLive: false, access: "not_admin" })).toBe("not_admin");
-    expect(madeForKidsBlocker({ privacy: "private" }, { approvalLive: false, access: "ok" })).toBeNull();
+    const cut = "c0ffee".repeat(10) + "abcd";
+    expect(madeForKidsBlocker({ privacy: "public", cut_sha256: cut }, { approvalLive: true, access: "not_admin" })).toBe("already_public");
+    expect(madeForKidsBlocker({ privacy: "private", cut_sha256: null }, { approvalLive: true, access: "ok" })).toBe("cut_unknown");
+    expect(madeForKidsBlocker({ privacy: "private", cut_sha256: cut }, { approvalLive: true, access: "ok" })).toBe("approval_live");
+    expect(madeForKidsBlocker({ privacy: "private", cut_sha256: cut }, { approvalLive: false, access: "not_member" })).toBe("not_member");
+    expect(madeForKidsBlocker({ privacy: "private", cut_sha256: cut }, { approvalLive: false, access: "not_admin" })).toBe("not_admin");
+    expect(madeForKidsBlocker({ privacy: "private", cut_sha256: cut }, { approvalLive: false, access: "ok" })).toBeNull();
   });
 
   it("the database's words are known and anything else is a plain failure", () => {
@@ -201,13 +203,16 @@ describe("the switch", () => {
 
 describe("the review panel's audience question", () => {
   // As the pipeline leaves a kids video: detected and declared made for kids, nobody's answer yet.
+  const CUT = "c0ffee".repeat(10) + "abcd";
   const DETECTED = {
     video_id: "Kd5aBc7dEfG",
     privacy: "private",
+    cut_sha256: CUT,
     made_for_kids: true,
     kids_content: true,
     made_for_kids_answered_by: null,
     made_for_kids_answered_at: null,
+    made_for_kids_answered_cut_sha256: null,
   };
   const radios = () => screen.getAllByRole("radio") as HTMLButtonElement[];
 
@@ -229,7 +234,7 @@ describe("the review panel's audience question", () => {
     expect(screen.getByTestId("made-for-kids-hint").textContent).toContain(en.hintNotKids);
     expect(radios().every((r) => r.getAttribute("aria-checked") === "false")).toBe(true);
     cleanup();
-    wrap(<ReviewMadeForKids video={{ video_id: "Old0ld0ld01", privacy: "private", made_for_kids_answered_by: null }} access="ok" approvalLive={false} />);
+    wrap(<ReviewMadeForKids video={{ video_id: "Old0ld0ld01", privacy: "private", cut_sha256: CUT, made_for_kids_answered_by: null }} access="ok" approvalLive={false} />);
     expect(screen.getByTestId("made-for-kids-hint").textContent).toContain(en.hintUnknown);
   });
 
@@ -238,7 +243,7 @@ describe("the review panel's audience question", () => {
     wrap(<ReviewMadeForKids video={DETECTED} access="ok" approvalLive={false} />);
     fireEvent.click(screen.getByRole("radio", { name: en.yes }));
     await waitFor(() => expect(h.rpc).toHaveBeenCalledTimes(1));
-    expect(h.rpc).toHaveBeenCalledWith("set_video_made_for_kids", { p_video_id: "Kd5aBc7dEfG", p_made_for_kids: true, p_confirm_off: false });
+    expect(h.rpc).toHaveBeenCalledWith("set_video_made_for_kids", { p_video_id: "Kd5aBc7dEfG", p_made_for_kids: true, p_confirm_off: false, p_cut_sha256: CUT });
     await waitFor(() => expect(screen.getByRole("radio", { name: en.yes }).getAttribute("aria-checked")).toBe("true"));
     expect(screen.getByRole("radio", { name: en.no }).getAttribute("aria-checked")).toBe("false");
     expect(h.refresh).toHaveBeenCalled();
@@ -258,7 +263,7 @@ describe("the review panel's audience question", () => {
     fireEvent.click(screen.getByRole("radio", { name: en.no }));
     fireEvent.click(screen.getByRole("button", { name: en.confirmYes }));
     await waitFor(() => expect(h.rpc).toHaveBeenCalledTimes(1));
-    expect(h.rpc).toHaveBeenCalledWith("set_video_made_for_kids", { p_video_id: "Kd5aBc7dEfG", p_made_for_kids: false, p_confirm_off: true });
+    expect(h.rpc).toHaveBeenCalledWith("set_video_made_for_kids", { p_video_id: "Kd5aBc7dEfG", p_made_for_kids: false, p_confirm_off: true, p_cut_sha256: CUT });
     await waitFor(() => expect(screen.getByRole("radio", { name: en.no }).getAttribute("aria-checked")).toBe("true"));
   });
 
@@ -270,6 +275,7 @@ describe("the review panel's audience question", () => {
       p_video_id: "Kd5aBc7dEfG",
       p_made_for_kids: false,
       p_confirm_off: false,
+      p_cut_sha256: CUT,
     }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
@@ -277,13 +283,39 @@ describe("the review panel's audience question", () => {
   it("a person's earlier answer is shown as chosen, with its date", () => {
     wrap(
       <ReviewMadeForKids
-        video={{ ...DETECTED, made_for_kids_answered_by: "u-1", made_for_kids_answered_at: "2026-11-12T10:00:00Z" }}
+        video={{ ...DETECTED, made_for_kids_answered_by: "u-1", made_for_kids_answered_at: "2026-11-12T10:00:00Z", made_for_kids_answered_cut_sha256: CUT }}
         access="ok"
         approvalLive={false}
       />,
     );
     expect(screen.getByRole("radio", { name: en.yes }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByTestId("made-for-kids-note").textContent).toBe(dictionaries.en.madeForKids.answeredOn.replace("{when}", "2026-11-12"));
+  });
+
+  it("an answer about an earlier cut is not shown as this cut's answer", () => {
+    wrap(
+      <ReviewMadeForKids
+        video={{ ...DETECTED, made_for_kids_answered_by: "u-1", made_for_kids_answered_at: "2026-11-12T10:00:00Z", made_for_kids_answered_cut_sha256: "ab".repeat(32) }}
+        access="ok"
+        approvalLive={false}
+      />,
+    );
+    expect(radios().every((r) => r.getAttribute("aria-checked") === "false")).toBe(true);
+    expect(screen.getByTestId("made-for-kids-note").textContent).toBe(en.unanswered);
+  });
+
+  it("a cut that changed while the page was open is said in words, and nothing is chosen", async () => {
+    h.rpc.mockResolvedValue({ data: { ok: false, error: "cut_changed" }, error: null });
+    wrap(<ReviewMadeForKids video={DETECTED} access="ok" approvalLive={false} />);
+    fireEvent.click(screen.getByRole("radio", { name: en.yes }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(en.errors.cut_changed));
+    expect(radios().every((r) => r.getAttribute("aria-checked") === "false")).toBe(true);
+  });
+
+  it("a video with no recorded cut takes no answer here", () => {
+    wrap(<ReviewMadeForKids video={{ ...DETECTED, cut_sha256: null }} access="ok" approvalLive={false} />);
+    for (const r of radios()) expect(r.disabled).toBe(true);
+    expect(screen.getByTestId("made-for-kids-note").textContent).toBe(en.blockers.cut_unknown);
   });
 
   it("a refusal is said in words and nothing is chosen", async () => {
@@ -335,10 +367,13 @@ describe("approving waits for the answer", () => {
     expect(unanswered.blocker).toBe("audience_unanswered");
     expect(canPressApprove(unanswered)).toBe(false);
     for (const answered of [{ made_for_kids: true }, { made_for_kids: false }]) {
-      const s = approvalState({ ...ROW, ...answered, made_for_kids_answered_by: "u-1" }, now);
+      const s = approvalState({ ...ROW, ...answered, made_for_kids_answered_by: "u-1", made_for_kids_answered_cut_sha256: ROW.cut_sha256 }, now);
       expect(s.blocker).toBeNull();
       expect(canPressApprove(s)).toBe(true);
     }
+    // An answer about an earlier cut does not open this one.
+    const stale = approvalState({ ...ROW, made_for_kids_answered_by: "u-1", made_for_kids_answered_cut_sha256: "ab".repeat(32) }, now);
+    expect(stale.blocker).toBe("audience_unanswered");
     // A database before 0141 has no such column and does not ask: nothing to wait for there.
     expect(approvalState(ROW, now).blocker).toBeNull();
     expect(audienceUnanswered({})).toBe(false);

@@ -87,7 +87,7 @@ class WhatItReplaces(unittest.TestCase):
 
     def test_approving_is_0116s_body_plus_the_audience_block_and_nothing_else(self):
         added = [ln.strip() for ln in added_lines(body(M0116, APV), body(TEXT, APV)) if not ln.strip().startswith("--")]
-        self.assertEqual(added, ["if v.made_for_kids_answered_by is null then",
+        self.assertEqual(added, ["if v.made_for_kids_answered_by is null or v.made_for_kids_answered_cut_sha256 is distinct from p_cut_sha256 then",
                                  "return jsonb_build_object('ok', false, 'error', 'audience_unanswered');", "end if;"])
         # after the row is locked and the refusals are asked, before anything is written
         b = body(TEXT, APV)
@@ -129,18 +129,31 @@ class ThePersonsFunction(unittest.TestCase):
                        "p_confirm_off is distinct from true", "'video.made_for_kids'"):
             self.assertIn(needle, self.FN, needle)
 
+    def test_the_answer_is_bound_to_the_cut_the_person_watched(self):
+        self.assertIn("p_confirm_off boolean,\n                                                          p_cut_sha256 text)", TEXT)
+        for needle in ("'cut_changed'", "'cut_unknown'", "'bad_hash'",
+                       "made_for_kids_answered_cut_sha256 = p_cut_sha256",
+                       "v.made_for_kids_answered_cut_sha256 is not distinct from p_cut_sha256"):
+            self.assertIn(needle, self.FN, needle)
+        self.assertLess(self.FN.index("'cut_changed'"), self.FN.index("update public.videos"))
+        self.assertIn("(made_for_kids_answered_by is null) = (made_for_kids_answered_cut_sha256 is null)", TEXT)
+
     def test_every_call_is_an_answer_recorded_with_who_and_when(self):
         self.assertIn("made_for_kids_answered_by = uid,", self.FN)
         self.assertIn("made_for_kids_answered_at = now()", self.FN)
         # the pipeline's own value is not an answer: agreeing with it writes
-        self.assertIn("if v.made_for_kids_answered_by is not null and v.made_for_kids is not distinct from p_made_for_kids", self.FN)
+        self.assertIn("if v.made_for_kids_answered_by is not null and v.made_for_kids_answered_cut_sha256 is not distinct from p_cut_sha256\n"
+                      "     and v.made_for_kids is not distinct from p_made_for_kids", self.FN)
         self.assertIn("(made_for_kids_answered_by is null) = (made_for_kids_answered_at is null)", TEXT)
         self.assertIn("(made_for_kids_answered_by is null or made_for_kids is not null)", TEXT)
 
     def test_only_signed_in_users_may_call_it(self):
         c = code(TEXT)
-        self.assertIn("revoke all on function public.set_video_made_for_kids(text, boolean, boolean) from public, anon, authenticated, service_role;", c)
-        self.assertIn("grant execute on function public.set_video_made_for_kids(text, boolean, boolean) to authenticated;", c)
+        self.assertIn("revoke all on function public.set_video_made_for_kids(text, boolean, boolean, text) from public, anon, authenticated, service_role;", c)
+        self.assertIn("grant execute on function public.set_video_made_for_kids(text, boolean, boolean, text) to authenticated;", c)
+        # the three-argument form (never applied) is dropped, and the end state asserts it is gone
+        self.assertIn("drop function if exists public.set_video_made_for_kids(text, boolean, boolean);", c)
+        self.assertIn("the three-argument set_video_made_for_kids() is still there", TEXT)
         self.assertNotRegex(c, r"grant execute on function public\.set_video_made_for_kids\([^)]*\) to [^;]*(anon|service_role)")
         self.assertIn("security definer set search_path = public, pg_temp", TEXT[TEXT.index(SET):])
 
@@ -158,7 +171,7 @@ class WhatTheRollbackDoes(unittest.TestCase):
         self.assertEqual(policy(ROLLBACK), policy(M0076))
         self.assertIn(h(body(TEXT, RJPV)), ROLLBACK)
         self.assertIn(h(body(TEXT, AUD)), ROLLBACK)
-        self.assertIn("drop function if exists public.set_video_made_for_kids(text, boolean, boolean);", ROLLBACK)
+        self.assertIn("drop function if exists public.set_video_made_for_kids(text, boolean, boolean, text);", ROLLBACK)
 
     def test_it_keeps_the_record(self):
         c = code(ROLLBACK)

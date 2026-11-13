@@ -87,8 +87,11 @@ describe("what the Approve key offers", () => {
     expect(approvalState(video({ preview_path: null }), { ...open, access: "not_admin" }).blocker).toBe("no_preview");
   });
 
-  it("a channel that publishes on its own has nothing to approve; neither does a video approved with nobody behind it", () => {
-    expect(approvalState(video(), { ...open, autoPublish: true }).view.kind).toBe("auto");
+  it("a video recorded approved with nobody behind it has nothing to approve; an auto-publish channel's pending upload does", () => {
+    // Since 0141 an auto-publish channel's upload is private until a person answered and approved (review finding on PR #699):
+    // the switch alone is not "nothing to approve", or the video would stay private with no key.
+    expect(approvalState(video(), { ...open, autoPublish: true }).view.kind).toBe("open");
+    expect(canPressApprove(approvalState(video(), { ...open, autoPublish: true }))).toBe(true);
     expect(approvalState(video({ review_state: "approved" }), open).view.kind).toBe("auto");
     expect(canPressApprove(approvalState(video({ review_state: "approved" }), open))).toBe(false);
   });

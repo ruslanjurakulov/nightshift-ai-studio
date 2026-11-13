@@ -11,9 +11,9 @@
 --      every update, and the worker updates a job it runs).
 --   1. Puts render_job_params_valid() back to 0122's body, audit_action_allowed() back to 0117's and approve_video_publish() back to
 --      0116's, byte for byte, and render_jobs_insert back to 0076's policy. Approving then no longer asks for the audience answer.
---   2. Drops set_video_made_for_kids().
+--   2. Drops set_video_made_for_kids() (both signatures).
 --
--- WHAT IT KEEPS, on purpose: the six videos columns and their checks. They are a record of what each video declared and of who confirmed
+-- WHAT IT KEEPS, on purpose: the seven videos columns and their checks. They are a record of what each video declared and of who confirmed
 -- "not made for kids" for a kids video; a rollback does not erase that. Nothing writes the person's columns once the function is gone.
 --
 -- CHECK BEFORE YOU RUN IT: compare the live bodies with this file's (the only differences should be the lines marked 0141):
@@ -43,7 +43,7 @@ begin
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into p
     from pg_proc p where p.oid = to_regprocedure('public.approve_video_publish(text, text, jsonb)');
-  if p is distinct from 'a852d22f8816d4bd3f4fc37ddcb34328' then
+  if p is distinct from '4e36ddae857a89774f0b4952e76dff29' then
     raise exception 'rollback 0141: approve_video_publish() is not 0141''s body (md5 %): read the live body first', p;
   end if;
   if exists (select 1 from public.render_jobs where params ? 'made_for_kids' and status in ('queued', 'running')) then
@@ -327,6 +327,7 @@ begin
 end
 $$;
 
+drop function if exists public.set_video_made_for_kids(text, boolean, boolean, text);
 drop function if exists public.set_video_made_for_kids(text, boolean, boolean);
 
 commit;

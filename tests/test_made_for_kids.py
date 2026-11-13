@@ -350,7 +350,8 @@ class TheReviewRecord(unittest.TestCase):
 
         self.assertEqual(video_review.made_for_kids_columns(KIDS_RUN),
                          {"made_for_kids": True, "kids_content": True, "made_for_kids_off_by": None, "made_for_kids_off_at": None,
-                          "made_for_kids_answered_by": None, "made_for_kids_answered_at": None})
+                          "made_for_kids_answered_by": None, "made_for_kids_answered_at": None,
+                          "made_for_kids_answered_cut_sha256": None})
         self.assertEqual(set(video_review.COLUMNS_0141), set(video_review.made_for_kids_columns(PLAIN)))
 
     def test_the_decision_lands_on_the_row_and_a_database_without_0141_keeps_the_rest(self):
@@ -435,17 +436,104 @@ class TheAudienceAnswer(unittest.TestCase):
 
     def test_the_answer_corrects_youtube_when_it_differs_from_the_upload(self):
         # Uploaded with the detection (made for kids); the person answered "no" with the confirmation: the write sends "no".
-        row = {"made_for_kids": False, "kids_content": True, "made_for_kids_off_by": "u-1", "made_for_kids_answered_by": "u-1"}
+        from tests.test_visibility_publish import CUT
+
+        row = {"made_for_kids": False, "kids_content": True, "made_for_kids_off_by": "u-1", "made_for_kids_answered_by": "u-1",
+               "made_for_kids_answered_cut_sha256": CUT}
         out, yt, _ = self._publish(row, True)
         self.assertEqual(out, "applied")
         self.assertEqual(yt.updates[0]["body"]["status"]["selfDeclaredMadeForKids"], False)
         self.assertEqual(yt.updates[0]["body"]["status"]["privacyStatus"], "public")
         # And the other way: uploaded "not for kids", answered "yes".
-        out, yt, _ = self._publish({"made_for_kids": True, "kids_content": False, "made_for_kids_answered_by": "u-2"}, False)
+        out, yt, _ = self._publish({"made_for_kids": True, "kids_content": False, "made_for_kids_answered_by": "u-2",
+                                    "made_for_kids_answered_cut_sha256": CUT}, False)
         self.assertEqual((out, yt.updates[0]["body"]["status"]["selfDeclaredMadeForKids"]), ("applied", True))
+
+    def test_an_answer_about_another_cut_does_not_take_this_one_public(self):
+        row = {"made_for_kids": True, "kids_content": True, "made_for_kids_answered_by": "u-1",
+               "made_for_kids_answered_cut_sha256": "cd" * 32}
+        out, yt, store = self._publish(row, True)
+        self.assertEqual((out, yt.updates), ("refused", []))
+        self.assertEqual(store.finishes[-1][:2], ("refused", "gate_blocked"))
+
+    def test_an_auto_publish_upload_is_recorded_for_a_person_to_approve(self):
+        # The review finding on PR #699: "approved with nobody behind it" left a private video nobody could approve. The review
+        # record says approved only when the upload really went up watchable, which nothing does before an answer.
+        text = (ROOT / "main.py").read_text(encoding="utf-8")
+        self.assertIn("auto_publish=(review.fetch_auto_publish(channel_id)\n"
+                      "                                  and str(recorded_privacy or \"\").lower() in mfk.WATCHABLE),", text)
+        self.assertNotIn("auto_publish=review.fetch_auto_publish(channel_id),", text)
 
     def test_a_video_nobody_answered_for_does_not_go_public(self):
         out, yt, store = self._publish({"made_for_kids": True, "kids_content": True, "made_for_kids_answered_by": None}, True)
         self.assertEqual(out, "refused")
         self.assertEqual(yt.updates, [])
         self.assertEqual(store.finishes[-1][:2], ("refused", "gate_blocked"))
+
+
+class EveryNewCutClearsTheAnswer(unittest.TestCase):
+    """An answer is about one cut (made_for_kids_answered_cut_sha256, 0141). Every writer of a new cut_sha256 clears it."""
+
+    ANSWER = ("made_for_kids_answered_by", "made_for_kids_answered_at", "made_for_kids_answered_cut_sha256")
+
+    def test_the_review_record_clears_it_with_or_without_a_decision(self):
+        from tests.test_video_review_record import FakeSupabase, _patched, _record, _review
+
+        for kw in ({}, {"made_for_kids": KIDS_RUN}):
+            fake = FakeSupabase()
+            fake.rows["dQw4w9WgXcQ"] = {"video_id": "dQw4w9WgXcQ", "channel_id": "news", "made_for_kids_answered_by": "u-1",
+                                        "made_for_kids_answered_at": "2026-11-12T10:00:00Z",
+                                        "made_for_kids_answered_cut_sha256": "ab" * 32}
+            with _patched(fake):
+                _record(_review(), **kw)
+            row = fake.rows["dQw4w9WgXcQ"]
+            self.assertEqual({k: row.get(k) for k in self.ANSWER}, dict.fromkeys(self.ANSWER), kw)
+
+    def test_a_held_cut_and_a_promoted_upload_clear_it(self):
+        from unittest import mock
+        from tests.test_held_video import FakePostgrest, Promote, _client, _hold
+
+        fake = FakePostgrest()
+        with mock.patch("modules.held_video.requests", fake):
+            _hold(_client())
+            row = next(iter(fake.rows.values()))
+            self.assertEqual({k: row.get(k, "absent") for k in self.ANSWER}, dict.fromkeys(self.ANSWER))
+            row.update({"made_for_kids_answered_by": "u-1", "made_for_kids_answered_at": "x",
+                        "made_for_kids_answered_cut_sha256": "ab" * 32})
+            self.assertTrue(_client().promote(**Promote.UPLOAD))
+        up = fake.rows["dQw4w9WgXcQ"]
+        self.assertEqual({k: up.get(k) for k in self.ANSWER}, dict.fromkeys(self.ANSWER))
+
+    def test_a_database_without_0141_keeps_the_0112_columns(self):
+        from unittest import mock
+        from modules import held_video
+        from tests.test_held_video import FakePostgrest, _client, _hold
+
+        fake = FakePostgrest(missing_columns=held_video.COLUMNS_0141_ANSWER)
+        with mock.patch("modules.held_video.requests", fake):
+            _hold(_client())
+        row = next(iter(fake.rows.values()))
+        self.assertIn("cut_sha256", row)
+        self.assertNotIn("made_for_kids_answered_by", row)
+
+
+class TheReviewRecordOnlyDropsTheDeclarationForAMissingColumn(unittest.TestCase):
+    def test_a_refusal_that_is_not_a_missing_column_does_not_land_the_row_without_it(self):
+        import json as _json
+        from tests.test_video_review_record import FakeSupabase, Resp, _patched, _record, _review
+
+        class Refuses(FakeSupabase):
+            def _refuse(self, body):
+                rows = body if isinstance(body, list) else [body or {}]
+                if any("made_for_kids" in r for r in rows):
+                    return Resp(400, text=_json.dumps({"code": "23514", "message": "violates check constraint"}))
+                return None
+
+        fake = Refuses()
+        with _patched(fake):
+            _record(_review(), made_for_kids=KIDS_RUN)
+        self.assertNotIn("dQw4w9WgXcQ", fake.rows, "a check refusal is not 'retry without the declaration'")
+        old = FakeSupabase(missing_columns=("made_for_kids",))
+        with _patched(old):
+            _record(_review(), made_for_kids=KIDS_RUN)
+        self.assertIn("dQw4w9WgXcQ", old.rows, "a missing column (no 0141) still lets the rest of the row land")

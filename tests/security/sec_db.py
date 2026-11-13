@@ -115,7 +115,7 @@ def take_off_0141(session) -> None:
     """0141 replaces render_job_params_valid() on 0122's body, audit_action_allowed() on 0117's, approve_video_publish() on 0116's and 0076's render_jobs_insert policy, and
     adds set_video_made_for_kids(); 0122, 0117 and their rollbacks refuse any other body. Taken off with its own rollback when it is there
     (the columns stay, as the rollback keeps them); put back with put_back_0141."""
-    if session.conn.execute("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean)') is not null").fetchone()[0]:
+    if session.conn.execute("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean, text)') is not null").fetchone()[0]:
         text = ROLLBACK_0141.read_text(encoding="utf-8")
         session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
@@ -123,7 +123,7 @@ def take_off_0141(session) -> None:
 def put_back_0141(session) -> None:
     """0141 again, once the chain under it is whole again (0122's and 0117's bodies live) and it is not on already: the helpers that take
     0121 or 0122 off and on call this, in whichever order a test puts them back."""
-    if session.conn.execute("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean)') is not null").fetchone()[0]:
+    if session.conn.execute("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean, text)') is not null").fetchone()[0]:
         return
     if all(_live_md5(session, sig) == h for sig, h in _BEFORE_0141.items()):
         session.conn.execute(MIGRATION_0141.read_text(encoding="utf-8"))

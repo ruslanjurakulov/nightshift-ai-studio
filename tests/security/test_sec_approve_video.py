@@ -75,6 +75,12 @@ def uploaded(su, channel, vid=VID, **over):
         row = {"made_for_kids": False, "kids_content": False, "made_for_kids_answered_by": str(uuid.uuid4()),
                "made_for_kids_answered_at": "2026-10-01T10:05:00Z", **row}
     row.update(over)
+    if "made_for_kids_answered_by" in row and "made_for_kids_answered_cut_sha256" not in over:
+        # The answer is about the row's own cut; a row with no recorded cut has no answer to bind (the check holds that).
+        if row.get("cut_sha256"):
+            row["made_for_kids_answered_cut_sha256"] = row["cut_sha256"]
+        else:
+            row["made_for_kids_answered_by"] = row["made_for_kids_answered_at"] = None
     cols = ", ".join(row)
     marks = ", ".join("%s::jsonb" if k == "gate_verdict" else "%s" for k in row)
     su.rows(f"insert into public.videos ({cols}) values ({marks}) returning 1", list(row.values()))

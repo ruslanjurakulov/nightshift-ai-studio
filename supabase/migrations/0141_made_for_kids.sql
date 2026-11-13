@@ -19,8 +19,11 @@
 --   videos.made_for_kids_answered_by uuid / made_for_kids_answered_at timestamptz: the person who ANSWERED "is this video made for
 --                                kids?", and when (the owner's decision on PR #699: a person's explicit choice, asked as YouTube Studio
 --                                asks, not an inferred default). NULL = nobody has; made_for_kids is then the pipeline's detection, which
---                                the review panel shows as a hint and never as a chosen answer. A new cut clears it.
---   set_video_made_for_kids(p_video_id, p_made_for_kids, p_confirm_off) -> jsonb   SIGNED-IN, NOT anon, NOT the service key.
+--                                the review panel shows as a hint and never as a chosen answer. made_for_kids_answered_cut_sha256 is the
+--                                cut it is about: set_video_made_for_kids takes it and refuses cut_changed for another, and an answer
+--                                about an earlier cut never counts (approve_video_publish, the publish-when-approved worker). A new cut
+--                                clears it (modules/video_review.py, modules/held_video.py).
+--   set_video_made_for_kids(p_video_id, p_made_for_kids, p_confirm_off, p_cut_sha256) -> jsonb   SIGNED-IN, NOT anon, NOT the service key.
 --       The review panel's audience question (yes / no, nothing pre-selected): every call is an answer, recorded with who and when. The approver's rule (video_approve_access, 0112: an administrator who is a real member of the
 --       video's organization), rate limited (take_web_rate 'video_made_for_kids', 20 per 10 minutes), the row locked. Refuses:
 --       bad_value (NULL), rate_limited, already_public (YouTube holds the declaration; change it in YouTube Studio), approval_live
@@ -30,12 +33,12 @@
 -- WHAT THIS REPLACES (each is its latest body, character for character, plus lines marked `-- 0141`)
 --   render_job_params_valid(jsonb, text)   0122's body + `made_for_kids` in the allowed list and one block: only `true`, never on a repair.
 --   audit_action_allowed(text)             0117's body + 'video.made_for_kids'.
---   approve_video_publish(text, text, jsonb)  0116's body + one block: refuses `audience_unanswered` until a person has answered
+--   approve_video_publish(text, text, jsonb)  0116's body + one block: refuses `audience_unanswered` until a person has answered for this cut
 --                                          (so nothing is approved, and nothing queued to go public, on the detection alone).
 --   policy render_jobs_insert              0076's policy + 'made_for_kids' in the list of keys a browser's "Run now" row may carry (its
 --                                          value is held to true by render_job_params_valid in render_jobs_params_check).
 --
--- WHAT THIS DOES NOT DO. It writes no row and rewrites no row (six nullable columns, no default). It does not change who may approve,
+-- WHAT THIS DOES NOT DO. It writes no row and rewrites no row (seven nullable columns, no default). It does not change who may approve,
 -- publish or make anything public, privacy, credits, holds or prices; approving now also needs the audience answer, which only ever
 -- withholds an approval. A run's `made_for_kids` can only turn the declaration ON. Nothing calls YouTube.
 --
@@ -57,8 +60,8 @@
 --   expected AFTER (the last block of this file asserts the same, inside the transaction):
 --     render_job_params_valid      21af20e5fa3fa89b9e109d521e8c5c51
 --     audit_action_allowed         c4251078a230dcb73c0aaacf2eb128fb
---     set_video_made_for_kids      a8b2556d5ed3620be3a2c3c49d9243d5
---     approve_video_publish        a852d22f8816d4bd3f4fc37ddcb34328
+--     set_video_made_for_kids      51545b3003b392b661876da34cb32798
+--     approve_video_publish        4e36ddae857a89774f0b4952e76dff29
 --   If a live value is anything else, STOP: something was applied by hand, and replacing the body would silently undo it.
 --
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1). Additive and
@@ -91,7 +94,7 @@ begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into a
     from pg_proc p where p.oid = to_regprocedure('public.audit_action_allowed(text)');
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into s
-    from pg_proc p where p.oid = to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean)');
+    from pg_proc p where p.oid = to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean, text)');
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into p
     from pg_proc p where p.oid = to_regprocedure('public.approve_video_publish(text, text, jsonb)');
   if v is null or v <> all (array['a9367e46ea79e8d57ce1c876333b5508', '21af20e5fa3fa89b9e109d521e8c5c51']) then
@@ -100,16 +103,16 @@ begin
   if a is null or a <> all (array['d622e052a695fef125d3b2b621cdda27', 'c4251078a230dcb73c0aaacf2eb128fb']) then
     raise exception '0141 found an audit_action_allowed() that is neither 0117''s body nor 0141''s (md5 %): read the live body first', a;
   end if;
-  if s is not null and s <> 'a8b2556d5ed3620be3a2c3c49d9243d5' then
+  if s is not null and s <> '51545b3003b392b661876da34cb32798' then
     raise exception '0141 found a set_video_made_for_kids() that is not this file''s body (md5 %): read the live body first', s;
   end if;
-  if p is null or p <> all (array['0e9a1608120a5fb7b48eab1c6cb08ee0', 'a852d22f8816d4bd3f4fc37ddcb34328']) then
+  if p is null or p <> all (array['0e9a1608120a5fb7b48eab1c6cb08ee0', '4e36ddae857a89774f0b4952e76dff29']) then
     raise exception '0141 found an approve_video_publish() that is neither 0116''s body nor 0141''s (md5 %): read the live body first', p;
   end if;
 end $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 1. The record: six nullable columns on videos
+-- 1. The record: seven nullable columns on videos
 -- ───────────────────────────────────────────────────────────────────────────
 
 alter table public.videos
@@ -118,7 +121,8 @@ alter table public.videos
   add column if not exists made_for_kids_off_by uuid,
   add column if not exists made_for_kids_off_at timestamptz,
   add column if not exists made_for_kids_answered_by uuid,
-  add column if not exists made_for_kids_answered_at timestamptz;
+  add column if not exists made_for_kids_answered_at timestamptz,
+  add column if not exists made_for_kids_answered_cut_sha256 text;
 
 comment on column public.videos.made_for_kids is
   'YouTube''s status.selfDeclaredMadeForKids for this video (migration 0141): what the upload declared, or what a person decided since (set_video_made_for_kids). NULL = not recorded (rows before 0141).';
@@ -132,9 +136,11 @@ comment on column public.videos.made_for_kids_answered_by is
   'The person who answered "is this video made for kids?" (set_video_made_for_kids). NULL = nobody has: the value in made_for_kids is then the pipeline''s detection, and approve_video_publish refuses (audience_unanswered). A new cut clears it (modules/video_review.py).';
 comment on column public.videos.made_for_kids_answered_at is
   'When made_for_kids_answered_by answered.';
+comment on column public.videos.made_for_kids_answered_cut_sha256 is
+  'The cut (videos.cut_sha256) the answer is about. approve_video_publish and the publish-when-approved worker count the answer only for that cut.';
 
 -- Kids content is declared "not made for kids" only with a person's confirmation, and a confirmation exists only for that. Every row
--- before 0141 has all six NULL and passes, so the checks are validated at once.
+-- before 0141 has all seven NULL and passes, so the checks are validated at once.
 alter table public.videos drop constraint if exists videos_made_for_kids_confirmed_check;
 alter table public.videos
   add constraint videos_made_for_kids_confirmed_check check (
@@ -142,11 +148,13 @@ alter table public.videos
     and (made_for_kids_off_by is null) = (made_for_kids_off_at is null)
   );
 
--- An answer is who, when and what: all three or none. Every row before 0141 has none.
+-- An answer is who, when, about which cut and what: all of them or none. Every row before 0141 has none.
 alter table public.videos drop constraint if exists videos_made_for_kids_answered_check;
 alter table public.videos
   add constraint videos_made_for_kids_answered_check check (
     (made_for_kids_answered_by is null) = (made_for_kids_answered_at is null)
+    and (made_for_kids_answered_by is null) = (made_for_kids_answered_cut_sha256 is null)
+    and (made_for_kids_answered_cut_sha256 is null or made_for_kids_answered_cut_sha256 ~ '^[0-9a-f]{64}$')
     and (made_for_kids_answered_by is null or made_for_kids is not null)
   );
 
@@ -154,7 +162,12 @@ alter table public.videos
 -- 2. A person's decision: set_video_made_for_kids
 -- ───────────────────────────────────────────────────────────────────────────
 
-create or replace function public.set_video_made_for_kids(p_video_id text, p_made_for_kids boolean, p_confirm_off boolean)
+-- The answer is about ONE cut, so the cut is part of the call (review finding on PR #699). This file is the only one that ever
+-- defined the three-argument form (never applied anywhere); it is dropped anyway, so no second door can be left open.
+drop function if exists public.set_video_made_for_kids(text, boolean, boolean);
+
+create or replace function public.set_video_made_for_kids(p_video_id text, p_made_for_kids boolean, p_confirm_off boolean,
+                                                          p_cut_sha256 text)
   returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -182,6 +195,9 @@ begin
   if p_made_for_kids is null then
     return jsonb_build_object('ok', false, 'error', 'bad_value');
   end if;
+  if p_cut_sha256 is null or p_cut_sha256 !~ '^[0-9a-f]{64}$' then
+    return jsonb_build_object('ok', false, 'error', 'bad_hash');
+  end if;
   if not public.take_web_rate('video_made_for_kids', 20, 600) then
     return jsonb_build_object('ok', false, 'error', 'rate_limited');
   end if;
@@ -193,6 +209,14 @@ begin
   -- Public already: YouTube holds what it holds, and a record that said otherwise would be a lie. Changed in YouTube Studio.
   if v.privacy = 'public' then
     return jsonb_build_object('ok', false, 'error', 'already_public');
+  end if;
+  -- The cut the person watched is the cut they answer for. No recorded cut: nothing to bind the answer to. Another cut (a repair
+  -- or a re-render landed while the page was open): the answer would be about a video they did not see.
+  if v.cut_sha256 is null then
+    return jsonb_build_object('ok', false, 'error', 'cut_unknown');
+  end if;
+  if v.cut_sha256 is distinct from p_cut_sha256 then
+    return jsonb_build_object('ok', false, 'error', 'cut_changed');
   end if;
   -- A live approval was given for the video as it was declared; the publish-when-approved worker sends that declaration.
   if v.review_state = 'approved' and v.approved_cut_sha256 is not null and v.approved_cut_sha256 is not distinct from v.cut_sha256
@@ -207,8 +231,8 @@ begin
   end if;
   -- The same answer given again by someone who already answered: nothing is written twice. The pipeline's own value is not an
   -- answer (made_for_kids_answered_by is NULL until a person gives one), so a person agreeing with it is still recorded.
-  if v.made_for_kids_answered_by is not null and v.made_for_kids is not distinct from p_made_for_kids
-     and (v.made_for_kids_off_by is not null) = v_off then
+  if v.made_for_kids_answered_by is not null and v.made_for_kids_answered_cut_sha256 is not distinct from p_cut_sha256
+     and v.made_for_kids is not distinct from p_made_for_kids and (v.made_for_kids_off_by is not null) = v_off then
     return jsonb_build_object('ok', true, 'already', true, 'video_id', v.video_id, 'made_for_kids', p_made_for_kids,
                               'kids_content', v_kids, 'confirmed_off', v_off);
   end if;
@@ -217,13 +241,14 @@ begin
          made_for_kids_off_by = case when v_off then uid end,
          made_for_kids_off_at = case when v_off then now() end,
          made_for_kids_answered_by = uid,
-         made_for_kids_answered_at = now()
+         made_for_kids_answered_at = now(),
+         made_for_kids_answered_cut_sha256 = p_cut_sha256
    where video_id = v.video_id;
   insert into public.app_audit_log (actor_user_id, action, target, detail, channel_id)
   values (uid, 'video.made_for_kids', v.video_id,
           jsonb_build_object('video_id', v.video_id, 'made_for_kids', p_made_for_kids, 'was', v.made_for_kids,
                              'kids_content', v_kids, 'confirmed_off', v_off, 'answer', true,
-                             'answered_before', v.made_for_kids_answered_by is not null),
+                             'answered_before', v.made_for_kids_answered_by is not null, 'cut_sha256', p_cut_sha256),
           v.channel_id);
   return jsonb_build_object('ok', true, 'already', false, 'video_id', v.video_id, 'made_for_kids', p_made_for_kids,
                             'kids_content', v_kids, 'confirmed_off', v_off);
@@ -486,10 +511,10 @@ begin
     return jsonb_build_object('ok', false, 'error', 'already_approved');
   end if;
 
-  -- 0141: who the video is for is a person's answer, asked before approving as YouTube Studio asks before publishing
-  -- (set_video_made_for_kids). The pipeline's detection is a hint, never an answer: until a person has given one, nothing is
+  -- 0141: who the video is for is a person's answer about THIS cut, asked before approving as YouTube Studio asks before
+  -- publishing (set_video_made_for_kids). An answer about an earlier cut does not count. The pipeline's detection is a hint, never an answer: until a person has given one, nothing is
   -- approved, so nothing is queued to go public (the publish-when-approved worker acts on an approval only).
-  if v.made_for_kids_answered_by is null then
+  if v.made_for_kids_answered_by is null or v.made_for_kids_answered_cut_sha256 is distinct from p_cut_sha256 then
     return jsonb_build_object('ok', false, 'error', 'audience_unanswered');
   end if;
   v_mail := public.my_confirmed_email();
@@ -539,8 +564,8 @@ $$;
 -- ───────────────────────────────────────────────────────────────────────────
 
 revoke all on function public.audit_action_allowed(text) from public, anon, authenticated, service_role;
-revoke all on function public.set_video_made_for_kids(text, boolean, boolean) from public, anon, authenticated, service_role;
-grant execute on function public.set_video_made_for_kids(text, boolean, boolean) to authenticated;
+revoke all on function public.set_video_made_for_kids(text, boolean, boolean, text) from public, anon, authenticated, service_role;
+grant execute on function public.set_video_made_for_kids(text, boolean, boolean, text) to authenticated;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 6. The end state, asserted inside the transaction
@@ -550,17 +575,20 @@ do $$
 begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.render_job_params_valid(jsonb, text)'::regprocedure) <> '21af20e5fa3fa89b9e109d521e8c5c51'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.audit_action_allowed(text)'::regprocedure) <> 'c4251078a230dcb73c0aaacf2eb128fb'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.set_video_made_for_kids(text, boolean, boolean)'::regprocedure) <> 'a8b2556d5ed3620be3a2c3c49d9243d5'
-     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.approve_video_publish(text, text, jsonb)'::regprocedure) <> 'a852d22f8816d4bd3f4fc37ddcb34328' then
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.set_video_made_for_kids(text, boolean, boolean, text)'::regprocedure) <> '51545b3003b392b661876da34cb32798'
+     or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.approve_video_publish(text, text, jsonb)'::regprocedure) <> '4e36ddae857a89774f0b4952e76dff29' then
     raise exception '0141 end state: a function does not hold this file''s body';
   end if;
-  if not has_function_privilege('authenticated', 'public.set_video_made_for_kids(text, boolean, boolean)', 'EXECUTE')
-     or has_function_privilege('anon', 'public.set_video_made_for_kids(text, boolean, boolean)', 'EXECUTE')
-     or has_function_privilege('service_role', 'public.set_video_made_for_kids(text, boolean, boolean)', 'EXECUTE') then
+  if not has_function_privilege('authenticated', 'public.set_video_made_for_kids(text, boolean, boolean, text)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.set_video_made_for_kids(text, boolean, boolean, text)', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.set_video_made_for_kids(text, boolean, boolean, text)', 'EXECUTE') then
     raise exception '0141 end state: set_video_made_for_kids() must be executable by authenticated only';
   end if;
+  if to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean)') is not null then
+    raise exception '0141 end state: the three-argument set_video_made_for_kids() is still there';
+  end if;
   if exists (select 1 from pg_proc p, aclexplode(p.proacl) a
-              where p.oid = 'public.set_video_made_for_kids(text, boolean, boolean)'::regprocedure and a.grantee = 0) then
+              where p.oid = 'public.set_video_made_for_kids(text, boolean, boolean, text)'::regprocedure and a.grantee = 0) then
     raise exception '0141 end state: set_video_made_for_kids() is executable by public';
   end if;
   if not has_function_privilege('authenticated', 'public.approve_video_publish(text, text, jsonb)', 'EXECUTE')
@@ -572,8 +600,9 @@ begin
        where attrelid = 'public.videos'::regclass and not attisdropped and not attnotnull
          and ((attname in ('made_for_kids', 'kids_content') and atttypid = 'boolean'::regtype)
               or (attname in ('made_for_kids_off_by', 'made_for_kids_answered_by') and atttypid = 'uuid'::regtype)
-              or (attname in ('made_for_kids_off_at', 'made_for_kids_answered_at') and atttypid = 'timestamptz'::regtype))) <> 6 then
-    raise exception '0141 end state: the six videos columns are not there with their types';
+              or (attname in ('made_for_kids_off_at', 'made_for_kids_answered_at') and atttypid = 'timestamptz'::regtype)
+              or (attname = 'made_for_kids_answered_cut_sha256' and atttypid = 'text'::regtype))) <> 7 then
+    raise exception '0141 end state: the seven videos columns are not there with their types';
   end if;
   if not exists (select 1 from pg_constraint where conrelid = 'public.videos'::regclass and conname = 'videos_made_for_kids_answered_check' and convalidated) then
     raise exception '0141 end state: videos_made_for_kids_answered_check is missing or not validated';
@@ -598,9 +627,9 @@ end $$;
 -- Verify (the SQL editor on the live project, after applying; every column should read true)
 -- ───────────────────────────────────────────────────────────────────────────
 --   select
---     has_function_privilege('authenticated', 'public.set_video_made_for_kids(text,boolean,boolean)', 'EXECUTE')
---       and not has_function_privilege('anon', 'public.set_video_made_for_kids(text,boolean,boolean)', 'EXECUTE')
---       and not has_function_privilege('service_role', 'public.set_video_made_for_kids(text,boolean,boolean)', 'EXECUTE') as callable_by_users_only,
+--     has_function_privilege('authenticated', 'public.set_video_made_for_kids(text,boolean,boolean,text)', 'EXECUTE')
+--       and not has_function_privilege('anon', 'public.set_video_made_for_kids(text,boolean,boolean,text)', 'EXECUTE')
+--       and not has_function_privilege('service_role', 'public.set_video_made_for_kids(text,boolean,boolean,text)', 'EXECUTE') as callable_by_users_only,
 --     public.render_job_params_valid('{"made_for_kids":true}', 'daily')
 --       and not public.render_job_params_valid('{"made_for_kids":false}', 'daily') as run_param_true_only,
 --     (select count(*) from public.videos where made_for_kids_off_by is not null) >= 0 as columns_there;

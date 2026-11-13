@@ -193,7 +193,8 @@ class VisibilityStore:
         """The video's "made for kids" record (migration 0141), {} on a database without those columns. Any other failure
         raises: the declaration a video goes public with is never guessed."""
         r = self.http().get(f"{self.url}/rest/v1/videos",
-                            params={"select": "video_id,made_for_kids,kids_content,made_for_kids_off_by,made_for_kids_answered_by",
+                            params={"select": "video_id,made_for_kids,kids_content,made_for_kids_off_by,made_for_kids_answered_by,"
+                                              "made_for_kids_answered_cut_sha256",
                                     "video_id": f"eq.{video_id}", "limit": "1"},
                             headers={"apikey": self._key, "Authorization": f"Bearer {self._key}"}, timeout=self._timeout)
         if r.status_code == 400:
@@ -304,7 +305,7 @@ class YouTubeVisibility:
             body={"id": video_id, "status": writable_status(current_status, "public", made_for_kids)}).execute()
 
 
-def declared_for_kids(store, video_id: str, channel) -> Optional[bool]:
+def declared_for_kids(store, video_id: str, channel, cut: str = "") -> Optional[bool]:
     """What the video goes public declaring (modules/made_for_kids.py), or None to send back what YouTube holds (a video
     recorded before 0141 on a channel whose default is off). Raises ``Stop`` (gate_blocked) for kids content declared "not
     for kids" with nobody's confirmation, and ``Retry`` when the record cannot be read: never a guess."""
@@ -316,10 +317,13 @@ def declared_for_kids(store, video_id: str, channel) -> Optional[bool]:
     except Exception as e:
         logger.info("visibility: the made-for-kids record could not be read (%s)", type(e).__name__)
         raise Retry("worker_error") from None
-    if "made_for_kids_answered_by" in row and not row.get("made_for_kids_answered_by"):
-        # 0141: approving needs a person's answer, so an approval without one is one that predates it or was forged. The
-        # detection is not an answer: nothing goes public on it.
-        logger.warning("visibility: video %s goes public only with a person's answer to who it is for; it has none", video_id)
+    if "made_for_kids_answered_by" in row and (not row.get("made_for_kids_answered_by")
+                                                or row.get("made_for_kids_answered_cut_sha256") != cut):
+        # 0141: approving needs a person's answer FOR THIS CUT (the one the approval names), so an approval without one is
+        # one that predates it or was forged, and an answer about another cut is about another video. The detection is not
+        # an answer: nothing goes public on it.
+        logger.warning("visibility: video %s goes public only with a person's answer about the approved cut; it has none",
+                       video_id)
         raise refused("gate_blocked")
     decision = mfk.for_video(row, channel)
     if decision.refused:
@@ -530,7 +534,7 @@ def process_request(
         if not status_readable(state.status):
             raise refused("status_unreadable")
         # The audience it goes public for: the declaration recorded for it, never a guess (before the budget and the marker).
-        for_kids = declared_for_kids(store, video_id, channel)
+        for_kids = declared_for_kids(store, video_id, channel, cut)
 
         # Immediately before acting: the budget for the write, then the database's LAST check and the marker "the write may be
         # sent", in one step (the video can change, an approval end or the switch be turned off while YouTube is being read).

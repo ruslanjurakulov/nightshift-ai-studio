@@ -47,6 +47,9 @@ export interface MadeForKidsFields {
   made_for_kids_off_at?: string | null;
   made_for_kids_answered_by?: string | null;
   made_for_kids_answered_at?: string | null;
+  /** The cut the answer is about (0141); an answer counts only for the row's own cut_sha256. */
+  made_for_kids_answered_cut_sha256?: string | null;
+  cut_sha256?: string | null;
 }
 
 export interface MadeForKidsView {
@@ -70,8 +73,13 @@ export function madeForKidsView(v: MadeForKidsFields | null | undefined): MadeFo
     value,
     kids,
     confirmedOff: kids && value === false && !!v?.made_for_kids_off_by,
-    answered: !!v?.made_for_kids_answered_by,
+    answered: answeredForThisCut(v),
   };
+}
+
+/** A person's answer, about the cut the row holds now: an answer about an earlier cut is about another video. */
+function answeredForThisCut(v: MadeForKidsFields | null | undefined): boolean {
+  return !!v?.made_for_kids_answered_by && !!v.cut_sha256 && v.made_for_kids_answered_cut_sha256 === v.cut_sha256;
 }
 
 /**
@@ -80,7 +88,7 @@ export function madeForKidsView(v: MadeForKidsFields | null | undefined): MadeFo
  * database before 0141) asks nothing: approve_video_publish there does not ask either.
  */
 export function audienceUnanswered(v: MadeForKidsFields | null | undefined): boolean {
-  return !!v && "made_for_kids_answered_by" in v && !v.made_for_kids_answered_by;
+  return !!v && "made_for_kids_answered_by" in v && !answeredForThisCut(v);
 }
 
 /** Turning the switch to `next` needs the "not made for kids" confirmation: kids content going off. */
@@ -88,17 +96,19 @@ export function needsConfirm(view: Pick<MadeForKidsView, "kids">, next: boolean)
   return view.kids && next === false;
 }
 
-export type MadeForKidsBlocker = "already_public" | "approval_live" | "not_admin" | "not_member";
+export type MadeForKidsBlocker = "already_public" | "cut_unknown" | "approval_live" | "not_admin" | "not_member";
 
 /**
  * Why the review panel's switch cannot be changed now, in the order set_video_made_for_kids refuses, then the person's own
  * standing; null when it may. Presentation only: the database function asks again.
  */
 export function madeForKidsBlocker(
-  video: { privacy?: string | null },
+  video: { privacy?: string | null; cut_sha256?: string | null },
   opts: { approvalLive: boolean; access: "ok" | "not_admin" | "not_member" },
 ): MadeForKidsBlocker | null {
   if (video.privacy === "public") return "already_public";
+  // The answer is about one cut; a row with no recorded cut has nothing to bind it to (the database refuses cut_unknown).
+  if (!video.cut_sha256) return "cut_unknown";
   if (opts.approvalLive) return "approval_live";
   if (opts.access === "not_member") return "not_member";
   if (opts.access === "not_admin") return "not_admin";
@@ -112,6 +122,9 @@ export const MADE_FOR_KIDS_ERRORS = [
   "already_public",
   "approval_live",
   "confirm_required",
+  "bad_hash",
+  "cut_unknown",
+  "cut_changed",
   "forbidden",
   "not_found",
 ] as const;
