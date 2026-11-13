@@ -227,6 +227,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "1b3d5f4b-f4f2-4e92-84db-77908a36df2a",
+      "assetId": "b0876d4b-baa8-56e5-ba7a-7969dda2df06",
+      "sha256": "2471a146edfeef4815fdf06d8d53a8a42b13e3c5db3675fed472e26922d681a4",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Vibrant evening street market photographed at eye level, strings of warm bulbs overhead, stalls of colorful fruit, spices and textiles, steam rising from a food stall, people blurred in motion, rich bokeh, cinematic color, no readable text or logos.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:53:14Z"
     }
   ]
 }
