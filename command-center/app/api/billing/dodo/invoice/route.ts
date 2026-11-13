@@ -17,7 +17,7 @@ const NO_STORE = { "Cache-Control": "no-store, private" };
  * credits and spends nothing.
  *
  * The same bar as buying: signed in, an owner/admin of the current organization, never the exempt operator organization. The
- * payment must be one that credited THIS organization, which the database answers (dodo_purchase_history, migration 0154, in the
+ * payment must be one that credited THIS organization, which the database answers (dodo_purchase_history, migration 0157, in the
  * user's own session) before Dodo is asked; another organization's payment id is a 404 here whatever Dodo would say. The PDF is
  * fetched from Dodo with the API key, which never leaves this server (lib/server/dodo-api.ts fetchDodoInvoicePdf).
  *

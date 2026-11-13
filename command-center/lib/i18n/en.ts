@@ -68,7 +68,7 @@ export const en = {
   modelBudget: modelBudgetEn,
   /** The owner's per-provider ledger on the Billing page: ./billing-ledger/en.ts. */
   billingLedger: billingLedgerEn,
-  /** The Credits page's "Add credits" sheet and purchase history (Dodo, migration 0154): ./add-credits/en.ts. */
+  /** The Credits page's "Add credits" sheet and purchase history (Dodo, migration 0157): ./add-credits/en.ts. */
   addCredits: addCreditsEn,
   modelKeys: modelKeysEn,
   /** The operator's Customers page (migration 0138): ./operator-customers/en.ts. */

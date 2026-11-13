@@ -687,7 +687,7 @@ import sec_model_probe_seconds_0151  # noqa: E402
 
 sec_model_probe_seconds_0151.extend(TABLES, FUNCTIONS)
 
-# Migration 0154 (the Credits page's Dodo purchase history: an owner/admin reads their own organization's credited payments): tests/security/sec_dodo_history_0154.py
-import sec_dodo_history_0154  # noqa: E402
+# Migration 0157 (the Credits page's Dodo purchase history: an owner/admin reads their own organization's credited payments): tests/security/sec_dodo_history_0157.py
+import sec_dodo_history_0157  # noqa: E402
 
-sec_dodo_history_0154.extend(TABLES, FUNCTIONS)
+sec_dodo_history_0157.extend(TABLES, FUNCTIONS)

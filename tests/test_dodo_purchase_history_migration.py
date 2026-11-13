@@ -1,4 +1,4 @@
-"""supabase/migrations/0154_dodo_purchase_history.sql — the Credits page's Dodo purchase history (invoices).
+"""supabase/migrations/0157_dodo_purchase_history.sql — the Credits page's Dodo purchase history (invoices).
 
 SQL does not run in this suite (tests/security/test_sec_dodo_purchase_history.py does that, against a real Postgres); these pin
 what must never change by accident: one stable SECURITY DEFINER function with a pinned search_path and nothing else; signed-in
@@ -15,8 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-SQL = (MIG / "0154_dodo_purchase_history.sql").read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0154_dodo_purchase_history.sql").read_text(encoding="utf-8")
+SQL = (MIG / "0157_dodo_purchase_history.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0157_dodo_purchase_history.sql").read_text(encoding="utf-8")
 MIGRATIONS_DOC = (ROOT / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
 CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 SIG = "public.dodo_purchase_history(uuid, text)"
@@ -108,7 +108,7 @@ class DodoPurchaseHistoryMigration(unittest.TestCase):
         self.assertIn("APPLY AS ONE TRANSACTION", SQL)
         self.assertIn("WHAT TO VERIFY BEFORE YOU APPLY", SQL)
         first = CODE.index("create or replace function")
-        for needle in ("0154 needs 0018", "0154 needs 0021", "0154 needs 0146", "0154 found public.dodo_purchase_history"):
+        for needle in ("0157 needs 0018", "0157 needs 0021", "0157 needs 0146", "0157 found public.dodo_purchase_history"):
             self.assertLess(SQL.index(needle), SQL.index("create or replace function"), needle)
         self.assertGreater(first, 0)
 
@@ -119,8 +119,8 @@ class DodoPurchaseHistoryMigration(unittest.TestCase):
 
     def test_the_number_is_unique_and_documented(self):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
-        self.assertEqual(numbers.count("0154"), 1)
-        self.assertIn("## The Credits page's Dodo purchase history (0154)", MIGRATIONS_DOC)
+        self.assertEqual(numbers.count("0157"), 1)
+        self.assertIn("## The Credits page's Dodo purchase history (0157)", MIGRATIONS_DOC)
 
 
 if __name__ == "__main__":

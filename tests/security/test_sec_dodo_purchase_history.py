@@ -1,4 +1,4 @@
-"""Migration 0154: the Credits page's Dodo purchase history (public.dodo_purchase_history), attacked in a real database.
+"""Migration 0157: the Credits page's Dodo purchase history (public.dodo_purchase_history), attacked in a real database.
 
 What would break without these:
   * anon, the service key, a stranger, or a plain member of the organization reading payment_events through the new door
@@ -25,8 +25,8 @@ from psycopg import sql
 
 from sec_db import ANON, REPO, SERVICE, Session, as_superuser, user
 
-MIGRATION = REPO / "supabase" / "migrations" / "0154_dodo_purchase_history.sql"
-ROLLBACK = REPO / "docs" / "sql" / "rollback_0154_dodo_purchase_history.sql"
+MIGRATION = REPO / "supabase" / "migrations" / "0157_dodo_purchase_history.sql"
+ROLLBACK = REPO / "docs" / "sql" / "rollback_0157_dodo_purchase_history.sql"
 SIG = "public.dodo_purchase_history(uuid, text)"
 CALL = ("select payment_id, item, credits::text, amount_minor, currency, paid_at is not null, refunded_minor, refund_unsized, chargeback "
         "from public.dodo_purchase_history(%s, %s)")
@@ -229,6 +229,6 @@ def test_the_migration_and_the_rollback_refuse_a_body_they_did_not_write(conn, s
 def test_the_migration_refuses_to_apply_without_0146(conn, sc):
     with as_superuser(conn, commit=False) as su:
         su.conn.execute("alter table public.dodo_checkout_nonces rename to dodo_checkout_nonces_lab_" + uuid.uuid4().hex[:6])
-        with pytest.raises(psycopg.errors.RaiseException, match="0154 needs 0146"):
+        with pytest.raises(psycopg.errors.RaiseException, match="0157 needs 0146"):
             with su.conn.transaction():
                 su.conn.execute(_text(MIGRATION))

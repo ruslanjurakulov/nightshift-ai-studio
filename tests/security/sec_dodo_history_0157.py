@@ -1,8 +1,8 @@
-"""Security-lab contract for migration 0154 (the Credits page's Dodo purchase history).
+"""Security-lab contract for migration 0157 (the Credits page's Dodo purchase history).
 
 Wired in at the bottom of sec_expectations.py, like the other per-migration files:
 
-    import sec_dodo_history_0154; sec_dodo_history_0154.extend(TABLES, FUNCTIONS)
+    import sec_dodo_history_0157; sec_dodo_history_0157.extend(TABLES, FUNCTIONS)
 
 No new table. One new function:
 

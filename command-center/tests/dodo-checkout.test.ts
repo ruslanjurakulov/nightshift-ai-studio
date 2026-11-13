@@ -22,7 +22,7 @@ const h = vi.hoisted(() => ({
   /** What dodo_issue_checkout_nonce answers (0146). */
   nonce: { data: "0123456789abcdef0123456789abcdef" as unknown, error: null as null | { code: string; message: string } },
   rpcCalls: [] as { fn: string; args: unknown }[],
-  /** What dodo_purchase_history answers (0154). */
+  /** What dodo_purchase_history answers (0157). */
   history: { data: [] as unknown, error: null as null | { code: string; message: string } },
   subsError: null as { message: string } | null,
   audit: [] as unknown[],

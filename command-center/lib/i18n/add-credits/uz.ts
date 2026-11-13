@@ -2,7 +2,7 @@ import type { AddCreditsDictionary } from "./en";
 
 /**
  * Kreditlar sahifasidagi “Kredit qoʻshish” oynasi (paketlar yonida dollarda ixtiyoriy summa, Dodo Payments orqali) va xaridlar
- * tarixi (0154 migratsiyasi). Manba — ./en.ts. Sonlar “nom: son” shaklida, koʻplik shakli kerak boʻlmasligi uchun.
+ * tarixi (0157 migratsiyasi). Manba — ./en.ts. Sonlar “nom: son” shaklida, koʻplik shakli kerak boʻlmasligi uchun.
  */
 export const addCreditsUz: AddCreditsDictionary = {
   title: "Kredit qoʻshish",
@@ -58,7 +58,7 @@ export const addCreditsUz: AddCreditsDictionary = {
     amountNote: "Summalarga Dodo olgan soliq ham kiradi.",
     empty: "Hali xarid yoʻq. Sotib olgan kreditlaringiz hisob-fakturasi bilan shu yerda chiqadi.",
     readFailed: "Xaridlar tarixini oʻqib boʻlmadi. Qayta urinish uchun sahifani yangilang.",
-    notMigrated: "Xaridlar tarixi uchun bazada 0154 migratsiyasi kerak. Xarid qilish ishlayveradi; administratordan uni qoʻllashni soʻrang.",
+    notMigrated: "Xaridlar tarixi uchun bazada 0157 migratsiyasi kerak. Xarid qilish ishlayveradi; administratordan uni qoʻllashni soʻrang.",
     limit: "Oxirgi 100 ta toʻlov koʻrsatilgan.",
     download: "Yuklab olish",
     preparing: "Tayyorlanmoqda…",

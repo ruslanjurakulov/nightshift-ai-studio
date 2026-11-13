@@ -1,5 +1,5 @@
--- 0154_dodo_purchase_history.sql — the Credits page's purchase history (invoices), from the platform's own record of what a
--- Dodo payment credited. Read-only. docs/MIGRATIONS.md "0154".
+-- 0157_dodo_purchase_history.sql — the Credits page's purchase history (invoices), from the platform's own record of what a
+-- Dodo payment credited. Read-only. docs/MIGRATIONS.md "0157".
 --
 -- *** LIVE ON APPLY, read-only. *** It adds ONE function and nothing else: no table, column, row, index, policy or trigger, and it
 -- replaces nothing. Nothing calls it until the Command Center sells through Dodo (PAYMENTS_PROVIDER=dodo).
@@ -43,9 +43,11 @@
 --
 -- REQUIRES 0018 (is_org_member), 0021 (payment_events), 0034 (the 'subscription' ledger kind) and 0146 (dodo_checkout_nonces).
 -- Additive and idempotent: create-or-replace of a function that did not exist; a replay changes nothing. Undo:
--- docs/sql/rollback_0154_dodo_purchase_history.sql (owner-applied).
+-- docs/sql/rollback_0157_dodo_purchase_history.sql (owner-applied).
 --
--- NUMBER. 0154. 0148 and 0150 are reserved by other work; 0151, 0152 and 0153 are merged. This file names no object of any of them.
+-- NUMBER. 0157 (first written as 0154). 0155 (#728) and 0156 (claude/named-resolution-params) are held by other work, and the
+-- Supabase integration refuses a number below the latest applied one. It names no object of 0147 to 0153 (0155 and 0156 are not on
+-- this branch; it creates one new function and replaces nothing, so it cannot collide with them unless they create the same name).
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: one row, all true.
 --   select to_regprocedure('public.dodo_purchase_history(uuid, text)') is null as function_is_new,
@@ -61,18 +63,18 @@ declare
   h text;
 begin
   if to_regprocedure('public.is_org_member(uuid, text)') is null then
-    raise exception '0154 needs 0018_organizations.sql: apply it first';
+    raise exception '0157 needs 0018_organizations.sql: apply it first';
   end if;
   if to_regclass('public.payment_events') is null then
-    raise exception '0154 needs 0021_credit_refunds.sql: apply it first';
+    raise exception '0157 needs 0021_credit_refunds.sql: apply it first';
   end if;
   if to_regclass('public.dodo_checkout_nonces') is null then
-    raise exception '0154 needs 0146_dodo_payments.sql: apply it first';
+    raise exception '0157 needs 0146_dodo_payments.sql: apply it first';
   end if;
   -- The one name this file creates: absent, or this file's own body (a replay).
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.dodo_purchase_history(uuid, text)');
   if h is not null and h <> '83396f8724ca4968b7c56f2297aa0830' then
-    raise exception '0154 found public.dodo_purchase_history(uuid, text) with a body that is not this file''s (md5 %): read the live body first', h;
+    raise exception '0157 found public.dodo_purchase_history(uuid, text) with a body that is not this file''s (md5 %): read the live body first', h;
   end if;
 end $$;
 
@@ -158,7 +160,7 @@ end
 $$;
 
 comment on function public.dodo_purchase_history(uuid, text) is
-  'Migration 0154: an owner or admin''s list of the Dodo payments that credited their organization (payment id, signed item, credits, amount charged incl. tax, when, refunds, chargeback), newest first, at most 100; or one payment by id. Read-only; nothing of another organization. The Credits page''s purchase history and the invoice route''s ownership check.';
+  'Migration 0157: an owner or admin''s list of the Dodo payments that credited their organization (payment id, signed item, credits, amount charged incl. tax, when, refunds, chargeback), newest first, at most 100; or one payment by id. Read-only; nothing of another organization. The Credits page''s purchase history and the invoice route''s ownership check.';
 
 revoke all on function public.dodo_purchase_history(uuid, text) from public, anon, authenticated, service_role;
 grant execute on function public.dodo_purchase_history(uuid, text) to authenticated;
@@ -172,21 +174,21 @@ declare
   fn oid := to_regprocedure('public.dodo_purchase_history(uuid, text)');
 begin
   if fn is null then
-    raise exception '0154 end state: public.dodo_purchase_history(uuid, text) does not exist';
+    raise exception '0157 end state: public.dodo_purchase_history(uuid, text) does not exist';
   end if;
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = fn) is distinct from '83396f8724ca4968b7c56f2297aa0830' then
-    raise exception '0154 end state: public.dodo_purchase_history(uuid, text) does not hold the body this file expects';
+    raise exception '0157 end state: public.dodo_purchase_history(uuid, text) does not hold the body this file expects';
   end if;
   if not has_function_privilege('authenticated', fn, 'EXECUTE')
      or has_function_privilege('anon', fn, 'EXECUTE')
      or has_function_privilege('service_role', fn, 'EXECUTE') then
-    raise exception '0154 end state: public.dodo_purchase_history(uuid, text) has the wrong grants';
+    raise exception '0157 end state: public.dodo_purchase_history(uuid, text) has the wrong grants';
   end if;
   if exists (select 1 from pg_proc p where p.oid = fn
               and (not p.prosecdef or p.provolatile <> 's' or p.proacl is null
                    or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0)
                    or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=public, pg_temp'))) then
-    raise exception '0154 end state: public.dodo_purchase_history(uuid, text) is not a stable SECURITY DEFINER with a fixed search_path, or PUBLIC may call it';
+    raise exception '0157 end state: public.dodo_purchase_history(uuid, text) is not a stable SECURITY DEFINER with a fixed search_path, or PUBLIC may call it';
   end if;
 end $$;
 

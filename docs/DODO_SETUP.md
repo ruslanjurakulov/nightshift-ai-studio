@@ -151,13 +151,13 @@ select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg
 Faylning oxiridagi "Verify" so'rovi — hamma ustun `true`. Orqaga qaytarish:
 `docs/sql/rollback_0146_dodo_payments.sql` (Dodo qatori yoki sarflangan checkout nonce bor ekan, rad etadi).
 
-### 1b. Xaridlar tarixi — 0154 migratsiyasi (bir marta, 0146 dan keyin)
+### 1b. Xaridlar tarixi — 0157 migratsiyasi (bir marta, 0146 dan keyin)
 
-`supabase/migrations/0154_dodo_purchase_history.sql` — bitta faqat o'qiydigan funksiya
+`supabase/migrations/0157_dodo_purchase_history.sql` — bitta faqat o'qiydigan funksiya
 (`dodo_purchase_history`): owner/admin o'z tashkilotining kreditlangan Dodo to'lovlarini ko'radi (Credits
 sahifasidagi "Xaridlar tarixi" va hisob-faktura yuklab olish). Qo'llashdan oldingi tekshiruv faylning
 boshida. md5: `83396f8724ca4968b7c56f2297aa0830`. Qo'llanmasa — sotish ishlayveradi, tarix paneli
-"0154 kerak" deydi. Orqaga: `docs/sql/rollback_0154_dodo_purchase_history.sql`.
+"0157 kerak" deydi. Orqaga: `docs/sql/rollback_0157_dodo_purchase_history.sql`.
 
 ## 2. Dodo akkaunti: test mode
 

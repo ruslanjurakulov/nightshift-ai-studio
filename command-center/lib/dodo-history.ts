@@ -1,5 +1,5 @@
 /**
- * The Credits page's purchase history (invoices) when Dodo sells: the rows migration 0154's dodo_purchase_history returns, read
+ * The Credits page's purchase history (invoices) when Dodo sells: the rows migration 0157's dodo_purchase_history returns, read
  * into what the page may say. Client-safe and pure, so the page's words are tested without a database.
  *
  * Rule 5 governs every field: a value the database did not give is unknown and is shown as "—", never as a 0, a "paid" or a
@@ -29,7 +29,7 @@ export type DodoHistoryRead = { state: "ok"; rows: DodoPurchaseRow[] } | { state
 
 const PAYMENT_ID_RE = /^pay_[A-Za-z0-9]{3,64}$/;
 
-/** The signed item as 0154 returns it: `pack:<catalog id>`, `pack:amount_<cents>`, `plan`; anything else is unknown. */
+/** The signed item as 0157 returns it: `pack:<catalog id>`, `pack:amount_<cents>`, `plan`; anything else is unknown. */
 export function purchaseItem(raw: unknown): DodoPurchaseItem {
   if (raw === "plan") return { kind: "plan" };
   if (typeof raw !== "string") return null;
@@ -83,7 +83,7 @@ export function coercePurchaseRows(data: unknown): DodoPurchaseRow[] {
   return out;
 }
 
-/** A PostgREST / Postgres error that means "0154 is not applied": the function does not exist. */
+/** A PostgREST / Postgres error that means "0157 is not applied": the function does not exist. */
 export function historyMissing(error: { code?: string; message?: string } | null | undefined): boolean {
   if (!error) return false;
   return error.code === "PGRST202" || error.code === "42883" || /could not find the function/i.test(error.message ?? "");

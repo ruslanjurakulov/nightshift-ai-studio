@@ -1,6 +1,6 @@
 /**
  * The Credits page's "Add credits" sheet (a typed USD amount next to the packs, through Dodo Payments) and its purchase history
- * (migration 0154). English is the source of truth; ru.ts and uz.ts are typed against it. `{name}` fillers are filled with fmt().
+ * (migration 0157). English is the source of truth; ru.ts and uz.ts are typed against it. `{name}` fillers are filled with fmt().
  *
  * Words to keep: credits, never a "wallet" or a dollar balance (what is bought is credits, not stored money). "Total" is the
  * price before any tax: Dodo, the Merchant of Record, computes tax and shows it on its own page before anything is paid.
@@ -60,7 +60,7 @@ export const addCreditsEn = {
     amountNote: "Amounts include any tax Dodo charged.",
     empty: "No purchases yet. Credits you buy appear here with their invoice.",
     readFailed: "Couldn't read the purchase history. Refresh the page to try again.",
-    notMigrated: "The purchase history needs database migration 0154. Buying still works; ask your administrator to apply it.",
+    notMigrated: "The purchase history needs database migration 0157. Buying still works; ask your administrator to apply it.",
     limit: "Showing the latest 100 payments.",
     download: "Download",
     preparing: "Preparing…",

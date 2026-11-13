@@ -171,7 +171,7 @@ export default async function CreditsPage() {
   const offersPlans = !exempt && Boolean(summary) && planAccess === "allowed";
   // Unknown (an unread summary, or 0094 not applied) is not "off": nothing is claimed then.
   const extraOff = usageRead.state === "ok" && !usageRead.value.extraEnabled;
-  // The purchase history (0154): an owner/admin's, whenever Dodo sells here, even with nothing on sale today (past purchases
+  // The purchase history (0157): an owner/admin's, whenever Dodo sells here, even with nothing on sale today (past purchases
   // and their invoices stay theirs). The function refuses anyone else; it is not even asked for them.
   const showHistory = dodoMode && dodoCfg !== null && !exempt && Boolean(org.current.role && atLeast(org.current.role, "admin"));
   const history = showHistory ? await readDodoPurchaseHistory(supabase, orgId) : null;

@@ -11,7 +11,7 @@ import { Timecode } from "@/components/ui/Timecode";
 
 /**
  * The purchase history (invoices) on the Credits page when Dodo sells, for an owner or admin: each Dodo payment that credited
- * the workspace (migration 0154), what it bought, when, the amount Dodo charged (tax included), its refund state, and Dodo's
+ * the workspace (migration 0157), what it bought, when, the amount Dodo charged (tax included), its refund state, and Dodo's
  * own invoice PDF on demand. Rule 5: a value the database did not give is "—", never a 0 or a guess.
  *
  * The invoice is fetched by this script from our own route (app/api/billing/dodo/invoice), which checks that the payment is
