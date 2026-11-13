@@ -25,9 +25,15 @@ export function without(container: Element, selector: string): HTMLElement {
   return copy;
 }
 
-/** The elements that are not inside the gallery. */
+/**
+ * The landing's other places that show the samples themselves, each in its own box like the gallery's cards: the carousel, picture
+ * → video and prompt → result (components/site/landing-samples.tsx). Like the gallery they show whatever the owner has merged.
+ */
+export const SAMPLE_SECTIONS = "[data-sample-section]";
+
+/** The elements that are not inside the gallery or one of the other sample sections. */
 export function outsideGallery<T extends Element>(els: Iterable<T>): T[] {
-  return [...els].filter((e) => !e.closest(GALLERY));
+  return [...els].filter((e) => !e.closest(GALLERY) && !e.closest(SAMPLE_SECTIONS));
 }
 
 /**

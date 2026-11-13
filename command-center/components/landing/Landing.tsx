@@ -32,6 +32,8 @@ import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
 import { ModelMarquee } from "@/components/site/motion/ModelMarquee";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
+import { SampleCarousel, SampleCompare, SampleTicker } from "@/components/site/landing-samples";
+import "@/components/site/explore-hover.css";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
@@ -88,13 +90,16 @@ export function Landing({
   return (
     <div className="lp-root">
       <Hero t={t} formats={formats} />
+      <SampleTicker t={t} locale={locale} exclude={leftOut} />
       <Facts t={t} locale={locale} anchor={anchor} entries={onPage.map(({ e }) => e)} />
+      <SampleCarousel t={t} locale={locale} exclude={leftOut} />
       {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
       <ShowcaseGallery t={t} locale={locale} exclude={leftOut} formats={formats} />
       {/* Named one-press shots that open the Studio's video form (lib/effects/catalog.ts); it names no model. */}
       <EffectsGallery t={t} />
       <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} />
       <ModelTiles t={t} items={onPage} />
+      <SampleCompare t={t} locale={locale} exclude={leftOut} />
       <Showcases t={t} />
       <How t={t} locale={locale} anchor={anchor} />
       <AutopilotDemo copy={t.site.autopilot.demo} />

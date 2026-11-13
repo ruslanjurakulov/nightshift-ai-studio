@@ -1,0 +1,129 @@
+/* Picture → video (components/site/BeforeAfter.tsx): the source picture over the clip made from it, cut at a divider the visitor
+   drags. The frame's box is the clip's own shape from its numbers (aspect-ratio), so nothing moves as either file loads. The cut is
+   a clip-path from --nxb-pos (0..100), set on the frame. The card glass reads the shared --glass-* tokens, with fallbacks. */
+
+@layer components {
+.nxb-list { display: grid; gap: 40px; margin: 36px 0 0; padding: 0; list-style: none; }
+.nxb { display: grid; gap: 20px; margin: 0; align-items: start; }
+@media (min-width: 900px) {
+  .nxb { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 32px; align-items: center; }
+}
+.nxb-frame {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.14));
+  background: #0c0c0e;
+  box-shadow: var(--glass-shadow, 0 30px 80px -34px rgba(0, 0, 0, 0.6));
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: ew-resize;
+}
+/* A tall clip stands at a phone's width at most, so it never fills a wide screen from top to bottom. */
+.nxb-frame[data-shape="tall"] { max-width: 440px; justify-self: center; }
+.nxb-layer { position: absolute; inset: 0; }
+.nxb-layer img, .nxb-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none; }
+.nxb-before { clip-path: inset(0 calc(100% - var(--nxb-pos, 50) * 1%) 0 0); }
+.nxb-tag {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.nxb-tag[data-side="before"] { left: 12px; }
+.nxb-tag[data-side="after"] { right: 12px; }
+.nxb-handle {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--nxb-pos, 50) * 1%);
+  width: 44px;
+  margin-left: -22px;
+  display: grid;
+  place-items: center;
+  cursor: ew-resize;
+}
+.nxb-handle::before { content: ""; position: absolute; top: 0; bottom: 0; left: 21px; width: 2px; background: #fff; box-shadow: 0 0 12px rgba(0, 0, 0, 0.5); }
+.nxb-knob {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  background: var(--glass-bg-strong, rgba(12, 12, 14, 0.7));
+  -webkit-backdrop-filter: var(--glass-blur, blur(10px));
+  backdrop-filter: var(--glass-blur, blur(10px));
+}
+.nxb-knob::before, .nxb-knob::after { content: ""; position: absolute; top: 50%; width: 0; height: 0; margin-top: -6px; border: 6px solid transparent; }
+.nxb-knob::before { left: 6px; border-right-color: #fff; }
+.nxb-knob::after { right: 6px; border-left-color: #fff; }
+.nxb-handle:focus-visible { outline: none; }
+.nxb-handle:focus-visible .nxb-knob { outline: 3px solid #ffa940; outline-offset: 2px; }
+.nxb-play {
+  position: absolute;
+  z-index: 4;
+  right: 12px;
+  bottom: 12px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(8, 8, 8, 0.78);
+  color: #fff;
+  cursor: pointer;
+}
+.nxb-play svg { width: 18px; height: 18px; }
+.nxb-play:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
+
+.nxb-cap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid var(--glass-border, var(--ns-rule));
+  background: var(--glass-bg, color-mix(in srgb, var(--ns-console) 78%, transparent));
+  -webkit-backdrop-filter: var(--glass-blur, blur(16px));
+  backdrop-filter: var(--glass-blur, blur(16px));
+}
+.nxb-title { margin: 0; font-family: var(--font-display); font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; color: var(--ns-text); }
+.nxb-credit { margin: 0; font-size: 15px; color: var(--ns-text); overflow-wrap: anywhere; }
+.nxb-key { margin: 0; font-size: 14px; font-weight: 500; color: var(--ns-text-dim); }
+.nxb-credit .nxb-key { font-size: inherit; }
+.nxb-prompt {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ns-text);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+}
+.nxb-still { display: none; margin: 0; font-size: 14px; line-height: 1.45; color: var(--ns-text-dim); }
+@media (prefers-reduced-motion: reduce) {
+  .nxb-still { display: block; }
+}
+}
+
+/* No visible pause button (the owner's rule, 2026-11-13): a tap on the frame pauses the clip; its button is for the keyboard only,
+   out of sight until focused. Starting a clip by hand (reduced motion, Save-Data) keeps its visible play button. */
+@layer components {
+.nxb-kbd:not(:focus-visible) { width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+}
