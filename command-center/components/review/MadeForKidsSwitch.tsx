@@ -204,7 +204,9 @@ export function ReviewMadeForKids({
     void save(next, false);
   }
 
-  const hint = !view.recorded ? m.hintUnknown : view.value ? m.hintKids : m.hintNotKids;
+  // The hint is the pipeline's own detection (videos.kids_content, which only the pipeline writes), never made_for_kids:
+  // after a new cut that column can still hold a person's answer about the cut that is gone (review on PR #699).
+  const hint = video.kids_content === true ? m.hintKids : video.kids_content === false ? m.hintNotKids : m.hintUnknown;
   const note = blocker
     ? m.blockers[blocker]
     : choice === null

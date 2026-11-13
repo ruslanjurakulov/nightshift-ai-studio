@@ -537,3 +537,53 @@ class TheReviewRecordOnlyDropsTheDeclarationForAMissingColumn(unittest.TestCase)
         with _patched(old):
             _record(_review(), made_for_kids=KIDS_RUN)
         self.assertIn("dQw4w9WgXcQ", old.rows, "a missing column (no 0145) still lets the rest of the row land")
+
+
+class TheHeldRowOnlyDropsTheAnswerWhenItsColumnIsMissing(unittest.TestCase):
+    """Review on PR #699: the held-row writes narrowed to "without the answer columns" on any missing column. A write refused
+    for another column (a database without 0013's manifest) must still clear a person's answer about the cut that is gone."""
+
+    ANSWER = ("made_for_kids_answered_by", "made_for_kids_answered_at", "made_for_kids_answered_cut_sha256")
+
+    def test_a_missing_manifest_drops_the_manifest_group_and_keeps_clearing_the_answer(self):
+        from unittest import mock
+        from tests.test_held_video import FakePostgrest, Promote, _client, _hold
+
+        fake = FakePostgrest(missing_columns={"manifest"})
+        with mock.patch("modules.held_video.requests", fake):
+            _hold(_client())
+            row = next(iter(fake.rows.values()))
+            self.assertNotIn("manifest", row)
+            self.assertEqual({k: row.get(k, "absent") for k in self.ANSWER}, dict.fromkeys(self.ANSWER))
+            self.assertIn("cut_sha256", row)
+            row.update({"made_for_kids_answered_by": "u-1", "made_for_kids_answered_at": "x",
+                        "made_for_kids_answered_cut_sha256": "ab" * 32})
+            fake.missing = {"publish_state"}           # promote refused for a 0016 column: the answer still goes
+            self.assertTrue(_client().promote(**Promote.UPLOAD))
+        up = fake.rows["dQw4w9WgXcQ"]
+        self.assertEqual({k: up.get(k) for k in self.ANSWER}, dict.fromkeys(self.ANSWER))
+
+    def test_an_unnamed_missing_column_never_drops_the_answer(self):
+        from modules import held_video
+
+        class R:
+            status_code = 400
+            text = '{"code": "42703", "message": "column does not exist"}'
+
+        body = {"cut_sha256": "x", "made_for_kids_answered_by": None, "manifest": {}}
+        out = held_video._without_missing(body, R(), (held_video.COLUMNS_0145_ANSWER, held_video.COLUMNS_0112,
+                                                      held_video._COLUMNS_OPTIONAL))
+        self.assertIn("made_for_kids_answered_by", out)
+        self.assertNotIn("cut_sha256", out)
+
+        class Named(R):
+            text = '{"code": "PGRST204", "message": "Could not find the \'made_for_kids_answered_by\' column"}'
+
+        out = held_video._without_missing(body, Named(), (held_video.COLUMNS_0145_ANSWER, held_video.COLUMNS_0112))
+        self.assertEqual(out, {"cut_sha256": "x", "manifest": {}})
+
+        class Check(R):
+            status_code = 400
+            text = '{"code": "23514", "message": "violates check constraint"}'
+
+        self.assertIsNone(held_video._without_missing(body, Check(), (held_video.COLUMNS_0145_ANSWER,)))

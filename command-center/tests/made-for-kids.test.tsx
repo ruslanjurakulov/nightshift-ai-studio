@@ -304,6 +304,19 @@ describe("the review panel's audience question", () => {
     expect(screen.getByTestId("made-for-kids-note").textContent).toBe(en.unanswered);
   });
 
+  it("after a new cut the hint is the pipeline's detection, not the previous person's answer left in made_for_kids", () => {
+    // A repaired cut (held_video.record_held): the old answer's cut is gone, made_for_kids still says what that person chose.
+    const stale = { ...DETECTED, made_for_kids: false, made_for_kids_answered_by: "u-1", made_for_kids_answered_at: "2026-11-12T10:00:00Z",
+                    made_for_kids_answered_cut_sha256: "ab".repeat(32) };
+    wrap(<ReviewMadeForKids video={stale} access="ok" approvalLive={false} />);
+    expect(screen.getByTestId("made-for-kids-hint").textContent).toContain(en.hintKids);
+    expect(radios().every((r) => r.getAttribute("aria-checked") === "false")).toBe(true);
+    cleanup();
+    // No detection recorded at all: the hint says so, whatever made_for_kids holds.
+    wrap(<ReviewMadeForKids video={{ ...stale, kids_content: null }} access="ok" approvalLive={false} />);
+    expect(screen.getByTestId("made-for-kids-hint").textContent).toContain(en.hintUnknown);
+  });
+
   it("a cut that changed while the page was open is said in words, and nothing is chosen", async () => {
     h.rpc.mockResolvedValue({ data: { ok: false, error: "cut_changed" }, error: null });
     wrap(<ReviewMadeForKids video={DETECTED} access="ok" approvalLive={false} />);
