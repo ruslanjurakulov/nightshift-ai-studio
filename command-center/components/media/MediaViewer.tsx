@@ -9,6 +9,8 @@ import { useDayTime } from "@/components/usage/useDay";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { SOURCE_CAPABILITIES } from "@/lib/creative/operations";
+import { useShell } from "@/components/shell/ShellContext";
+import { toolOpen } from "@/lib/tool-availability";
 import { formatDuration, formatMediaBytes, type LibraryAsset } from "@/lib/media";
 import { stepIndex } from "./libraryView";
 import { KIND_ICON } from "./kindIcon";
@@ -75,6 +77,8 @@ export function MediaViewer({
   imageEditor?: boolean;
 }) {
   const { t } = useI18n();
+  const { tools: availability } = useShell();
+  const studioTools = SOURCE_CAPABILITIES.filter((c) => toolOpen(availability, c));
   const dayTime = useDayTime();
   const path = useChannelPath();
   const tm = t.media;
@@ -268,11 +272,12 @@ export function MediaViewer({
             </div>
 
             {/* A picture opens a Studio tool with it chosen. A link only: nothing is priced or spent here. */}
-            {asset.kind === "image" && picture && (
+            {/* Only the tools with something on sale (lib/tool-availability.ts): the others would open a form with nothing to pick. */}
+            {asset.kind === "image" && picture && studioTools.length > 0 && (
               <div className="flex flex-col gap-2">
                 <span className="t-label">{t.gen.useInStudio}</span>
                 <div className="flex flex-wrap gap-2">
-                  {SOURCE_CAPABILITIES.map((tool) => (
+                  {studioTools.map((tool) => (
                     <Link
                       key={tool}
                       href={path(`/create?tool=${tool}&source=${encodeURIComponent(asset.id)}`)}

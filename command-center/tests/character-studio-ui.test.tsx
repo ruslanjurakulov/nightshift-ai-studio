@@ -84,15 +84,46 @@ describe("the studio", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("a card shows each model's sample slot, and an empty slot says a sample is coming, never another model's clip", () => {
+  it("a card shows only the samples that exist: an empty slot is not drawn, and never borrows another model's clip", () => {
     mount();
     const card = document.querySelector('[data-template="one-character"]') as HTMLElement;
     const kling = card.querySelector('[data-model="kling-4.0-omni-edit"]') as HTMLElement;
-    const seed = card.querySelector('[data-model="seedance-2.5-edit"]') as HTMLElement;
     expect(kling.querySelector("video")?.getAttribute("src")).toBe("https://cdn.example.com/s/one/kling.mp4");
     expect(kling.querySelector("video")?.hasAttribute("autoplay")).toBe(false);
-    expect(seed.querySelector("video")).toBeNull();
-    expect(within(seed).getByText(t.gallery.sampleSoon)).toBeTruthy();
+    expect(card.querySelector('[data-model="seedance-2.5-edit"]')).toBeNull();
+    expect(card.textContent).toContain("1 character");
+    expect(card.textContent).not.toContain("(s)");
+  });
+
+  it("with no real sample yet the example gallery is not drawn at all, and the studio still opens", () => {
+    const bare = state();
+    bare.templates = bare.templates.map((tpl) => ({ ...tpl, samples: { "kling-4.0-omni-edit": null, "seedance-2.5-edit": null } }));
+    mount({ initial: bare });
+    expect(document.querySelector("[data-template]")).toBeNull();
+    expect(screen.queryByText(t.gallery.heading)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: t.openStudio }));
+    expect(screen.getByTestId("cs-prompt")).toBeTruthy();
+  });
+
+  it("the form is headed by its own name, not the page title again", () => {
+    mount();
+    expect(screen.getByRole("heading", { level: 2, name: t.studioHeading })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 2, name: t.title })).toBeNull();
+  });
+
+  it("no model is listed before a video is picked; then only the ones the quote prices", async () => {
+    answers.push((url) => url.startsWith("/api/character-studio/quote")
+      ? { status: 200, body: { quote: { ...QUOTE, models: [{ model: "kling-4.0-omni-edit", onSale: false, credits: null, hold: null, problem: null }, QUOTE.models[1]] } } }
+      : undefined);
+    mount();
+    fireEvent.click(screen.getAllByRole("button", { name: t.gallery.try })[0]);
+    expect(screen.getByTestId("cs-models-wait").textContent).toBe(t.model.pickVideoFirst);
+    expect(screen.queryByRole("radio", { name: /Kling/ })).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: /clip\.mp4/ }));
+    // The page's default (Kling) is not priced for this clip: it is not listed, and the form starts on the one that is.
+    await waitFor(() => expect(screen.getByTestId("cs-cost-main").textContent).toBe("27.6 credits"));
+    expect(screen.queryByRole("radio", { name: /Kling/ })).toBeNull();
+    expect((screen.getByRole("radio", { name: /Seedance 2\.5/ }) as HTMLInputElement).checked).toBe(true);
   });
 
   it("Try opens the studio with the example's words", () => {
@@ -124,14 +155,44 @@ describe("the studio", () => {
     await waitFor(() => expect(calls.some((c) => c.url.includes("resolution=1080p"))).toBe(true));
   });
 
-  it("a model with no price reads not on sale, and the button stays off", async () => {
+  it("with no model priced for the clip, none is listed, the cost reads not on sale, and the button stays off", async () => {
     answers.push((url) => url.startsWith("/api/character-studio/quote")
-      ? { status: 200, body: { quote: { ...QUOTE, models: [{ model: "kling-4.0-omni-edit", onSale: false, credits: null, hold: null, problem: null }, QUOTE.models[1]] } } }
+      ? { status: 200, body: { quote: { ...QUOTE, models: QUOTE.models.map((m) => ({ ...m, onSale: false, credits: null, hold: null })) } } }
       : undefined);
     mount();
     fireEvent.click(screen.getAllByRole("button", { name: t.gallery.try })[0]);
     fireEvent.click(screen.getByRole("radio", { name: /clip\.mp4/ }));
     await waitFor(() => expect(screen.getByTestId("cs-cost-main").textContent).toBe("Kling 4.0 Omni is not on sale yet."));
+    expect(screen.getByTestId("cs-models-none").textContent).toBe(t.model.noneOnSale);
+    expect(screen.queryByRole("radio", { name: /Kling|Seedance/ })).toBeNull();
+    expect((screen.getByRole("button", { name: t.consent.submit }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("the default the first quote priced stays checked when a new quote stops pricing it: never moved without anyone choosing", async () => {
+    // Lens repro: Kling is checked by default and priced at 720p; at 1080p Kling's charge is null. Seedance must not become checked.
+    mount();
+    await openAndPick();
+    expect((screen.getByRole("radio", { name: /Kling/ }) as HTMLInputElement).checked).toBe(true);
+    answers.push((url) => url.includes("resolution=1080p")
+      ? { status: 200, body: { quote: { ...QUOTE, resolution: "1080p", models: [{ ...QUOTE.models[0], onSale: false, credits: null, hold: null }, QUOTE.models[1]] } } }
+      : undefined);
+    fireEvent.click(screen.getByRole("radio", { name: "1080p" }));
+    await waitFor(() => expect(screen.getByTestId("cs-cost-main").textContent).toBe("Kling 4.0 Omni is not on sale yet."));
+    expect((screen.getByRole("radio", { name: /Kling/ }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: /Seedance 2\.5/ }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("button", { name: t.consent.submit }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("a model the person chose stays chosen when a new quote stops pricing it: never swapped from under them", async () => {
+    mount();
+    await openAndPick();
+    fireEvent.click(screen.getByRole("radio", { name: /Seedance 2\.5/ }));
+    answers.push((url) => url.startsWith("/api/character-studio/quote")
+      ? { status: 200, body: { quote: { ...QUOTE, models: [QUOTE.models[0], { ...QUOTE.models[1], onSale: false, credits: null, hold: null }] } } }
+      : undefined);
+    fireEvent.click(screen.getByRole("radio", { name: "1080p" }));
+    await waitFor(() => expect(screen.getByTestId("cs-cost-main").textContent).toBe("Seedance 2.5 is not on sale yet."));
+    expect((screen.getByRole("radio", { name: /Seedance 2\.5/ }) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByRole("button", { name: t.consent.submit }) as HTMLButtonElement).disabled).toBe(true);
   });
 
