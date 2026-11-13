@@ -893,6 +893,48 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "1e24acc6-f616-49b0-a0d0-1e0733f41ad6",
+      "assetId": "aca754d3-6875-5d82-af3c-c81fbc9e4fba",
+      "sha256": "136b279e796bc94dda05bedcc55392a7dd29f437ad5fefa64dcf33e814ad21fa",
+      "modelId": "runway-gen4-turbo",
+      "modelName": "Runway Gen-4 Turbo",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "The photo comes alive: the warm bulbs overhead sway and flicker, steam billows from the food stall, a vendor tosses spices that burst into a glowing cloud, shoppers stream past in motion blur, fabric awnings ripple in the breeze. Camera glides forward through the market. Cinematic, photorealistic.",
+      "createdAt": "2026-11-13T21:22:42Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "1b3d5f4b-f4f2-4e92-84db-77908a36df2a",
+        "assetId": "b0876d4b-baa8-56e5-ba7a-7969dda2df06"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4_turbo",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:31:00Z"
     }
   ]
 }
