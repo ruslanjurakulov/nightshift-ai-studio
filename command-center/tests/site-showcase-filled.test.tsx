@@ -48,15 +48,21 @@ describe("with one sample merged", () => {
     expect(SHOWCASE_ENTRIES.map((e) => e.jobId)).toEqual([FIXTURE_JOB]);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: the landing shows the gallery after the showcases, and names the model only inside its card", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the landing shows the gallery right under the first screen, then the models, and names the model only inside its card", (code) => {
     const t = dictionaries[code];
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={NO_MONEY} showcase={[]} />);
     const section = container.querySelector("section#samples") as HTMLElement;
     expect(section).toBeTruthy();
-    // After the two showcases, before the hands-on example.
+    // Round 10: the explore grid comes first (as on an AI studio's page), the model tiles after it, the showcases and the
+    // hands-on example later.
     const order = [...container.querySelectorAll("section[id]")].map((s) => s.id);
-    expect(order.indexOf("samples")).toBeGreaterThan(order.indexOf("approvals"));
+    expect(order.indexOf("samples")).toBeLessThan(order.indexOf("models"));
+    expect(order.indexOf("models")).toBeLessThan(order.indexOf("studio"));
     expect(order.indexOf("samples")).toBeLessThan(order.indexOf("try"));
+    // The one model's tile is inside the sample's own box, and links down to its card.
+    const tile = container.querySelector(`#models [data-showcase-entry="${FIXTURE_JOB}"]`)!;
+    expect(tile.querySelector(`a[href="#sample-${FIXTURE_JOB}"]`)).toBeTruthy();
+    expect(container.querySelector(`#sample-${FIXTURE_JOB}`)).toBeTruthy();
     expect(section.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`)?.textContent).toMatch(/Runway/);
     const rest = container.cloneNode(true) as HTMLElement;
     rest.querySelectorAll("[data-showcase-entry]").forEach((n) => n.remove());

@@ -337,6 +337,17 @@ def test_a_request_without_the_new_keys_is_judged_and_priced_as_before_0126(db):
             corpus.append({"prompt": "x", "source_asset_id": SRC, "duration_s": 5, "aspect_ratio": "16:9", k: v})
     corpus += [None, [], "x", 5]
     diffs = []
+    # 0156 replaced creative_params_problem on 0126's body (the resolution words, which this corpus touches with "9p"): judge 0126's own
+    # body here, and put 0156 back after.
+    db.su(sec_db.rollback_0156_body())
+    try:
+        _judge_corpus(db, caps, corpus, diffs)
+    finally:
+        db.su(sec_db.MIGRATION_0156.read_text(encoding="utf-8"))
+    assert not diffs, diffs[:5]
+
+
+def _judge_corpus(db, caps, corpus, diffs):
     for cap in caps:
         for p in corpus:
             new = db.su("select public.creative_params_problem(%s, %s::jsonb)", [cap, json.dumps(p)])[0][0]
@@ -350,7 +361,6 @@ def test_a_request_without_the_new_keys_is_judged_and_priced_as_before_0126(db):
                 qo = db.su("select public.zz_old_creative_quantity(%s, %s::jsonb)", [cap, json.dumps(p)])[0][0]
                 if qn != qo:
                     diffs.append((cap, p, "qty", qo, qn))
-    assert not diffs, diffs[:5]
 
 
 # ── the price, the hold ──────────────────────────────────────────────────────
@@ -774,6 +784,8 @@ def test_a_replay_changes_nothing_and_a_foreign_body_is_refused(db):
     name, d = _fresh(admin, "guard")
     try:
         text = MIGRATION.read_text(encoding="utf-8")
+        # 0156 sits on 0126's creative_params_problem, and 0126's guard refuses any other body: it comes off first.
+        d.su(sec_db.rollback_0156_body())
         mine = _md5s(d)  # the lab applied 0126 already
         d.su(text)
         assert _md5s(d) == mine
@@ -792,6 +804,8 @@ def test_the_rollback_restores_the_three_bodies_refuses_while_a_region_edit_is_i
     admin = db.admin
     name, d = _fresh(admin, "roll")
     try:
+        # 0156 sits on 0126's creative_params_problem, and 0126's rollback refuses any other body: it comes off first.
+        d.su(sec_db.rollback_0156_body())
         mine = _md5s(d)
         rb = ROLLBACK.read_text(encoding="utf-8")
         text = MIGRATION.read_text(encoding="utf-8")

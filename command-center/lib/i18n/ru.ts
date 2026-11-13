@@ -15,6 +15,7 @@ import { marketingRu } from "./marketing/ru";
 import { modelSwitchRu } from "./model-switch/ru";
 import { modelBudgetRu } from "./model-budget/ru";
 import { billingLedgerRu } from "./billing-ledger/ru";
+import { addCreditsRu } from "./add-credits/ru";
 import { modelKeysRu } from "./model-keys/ru";
 import { operatorCustomersRu } from "./operator-customers/ru";
 import { seriesPlanRu } from "./series-plan/ru";
@@ -22,6 +23,7 @@ import { ownerTruthRu } from "./owner-truth/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
 import { availabilityRu } from "./availability/ru";
+import { effectsRu } from "./effects/ru";
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
 import { overlayRu } from "./overlay/ru";
@@ -50,6 +52,7 @@ export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
   availability: availabilityRu,
+  effects: effectsRu,
   libraryUx: libraryUxRu,
   ownerShell: ownerShellRu,
   ownerSafety: ownerSafetyRu,
@@ -61,6 +64,7 @@ export const ru: Dictionary = {
   modelBudget: modelBudgetRu,
   /** The owner's per-provider ledger on the Billing page: ./billing-ledger/ru.ts. */
   billingLedger: billingLedgerRu,
+  addCredits: addCreditsRu,
   modelKeys: modelKeysRu,
   /** The operator's Customers page (migration 0138): ./operator-customers/ru.ts. */
   customers: operatorCustomersRu,
@@ -4642,10 +4646,11 @@ export const ru: Dictionary = {
   },
   desk: {
     nav: "Разделы студии",
-    names: { overview: "Обзор", video: "Видео", image: "Картинка", enhance: "Улучшение", voice: "Голос", youtube: "Видео для YouTube" },
+    names: { overview: "Обзор", video: "Видео", effects: "Эффекты", image: "Картинка", enhance: "Улучшение", voice: "Голос", youtube: "Видео для YouTube" },
     keySub: {
       overview: "Последние работы",
       video: "Из слов или картинки",
+      effects: "Готовые приёмы",
       image: "Создать · править · описать",
       enhance: "Увеличить · вырезать",
       voice: "Речь · голос · дубляж",
@@ -4654,6 +4659,7 @@ export const ru: Dictionary = {
     blurbs: {
       overview: "Напишите, что нужно, выберите вид работы или начните с примера. Цена видна на кнопке до начала.",
       video: "Клипы на 5 или 10 секунд из слов или из картинки. Цена видна до того, как клип сделан.",
+      effects: "Готовые приёмы, которые заполняют форму видео за вас. Вы добавляете объект или картинку; цена видна до того, как что-то сделано.",
       image: "Новые картинки, правки вашей картинки и картинка, прочитанная обратно в промпт.",
       enhance: "Сделать картинку или видео чётче и больше или вырезать объект из фона.",
       voice: "Речь по сценарию, новый голос на записи или дубляж на другой язык.",

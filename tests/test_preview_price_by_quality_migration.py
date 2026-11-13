@@ -156,7 +156,7 @@ class PreviewPriceByQualityMigration(unittest.TestCase):
         self.assertIn("put_back_0153(session)", on)
         # take_off_0139 must still find the chain when the live body is 0153's (has_0149 compares 0149's hash only).
         off39 = lab[lab.index("def take_off_0139("):lab.index("def put_back_0139(")]
-        self.assertIn("if has_0149(session) or has_0153(session) or has_0155(session):", off39)
+        self.assertIn("if has_0149(session) or has_0153(session) or has_0155(session)", off39)
 
 
 #: Every entry the registry marks operator_preview today. A new one is a decision (a hidden model the operator can run in the Studio),

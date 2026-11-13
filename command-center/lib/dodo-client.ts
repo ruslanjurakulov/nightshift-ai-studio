@@ -13,7 +13,11 @@
 import { assignTop } from "@/components/view-mode/frame-nav";
 import type { DodoCheckoutItem } from "@/lib/dodo";
 
-export type DodoOpenResult = "redirecting" | "already_subscribed" | "failed";
+/**
+ * How opening a checkout ended. `too_many` is the database's cap (50 checkouts a day per organization, 0146) and
+ * `not_on_sale` an item this deployment no longer sells: both say what to do instead of "try again".
+ */
+export type DodoOpenResult = "redirecting" | "already_subscribed" | "too_many" | "not_on_sale" | "failed";
 
 const BALANCE_KEY = "ns:dodo:balance-before";
 
@@ -22,7 +26,9 @@ export async function openDodoCheckout(item: DodoCheckoutItem, returnPath: strin
     const res = await fetch("/api/billing/dodo/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: item.kind, id: item.id, return_path: returnPath }),
+      body: JSON.stringify(
+        item.kind === "amount" ? { kind: "amount", usd_cents: item.usdCents, return_path: returnPath } : { kind: item.kind, id: item.id, return_path: returnPath },
+      ),
     });
     const data = (await res.json().catch(() => ({}))) as { url?: unknown; error?: unknown };
     if (res.ok && typeof data.url === "string") {
@@ -37,7 +43,10 @@ export async function openDodoCheckout(item: DodoCheckoutItem, returnPath: strin
       assignTop(data.url);
       return "redirecting";
     }
-    return data.error === "already_subscribed" ? "already_subscribed" : "failed";
+    if (data.error === "already_subscribed") return "already_subscribed";
+    if (data.error === "too_many_checkouts") return "too_many";
+    if (data.error === "not_on_sale") return "not_on_sale";
+    return "failed";
   } catch {
     return "failed";
   }

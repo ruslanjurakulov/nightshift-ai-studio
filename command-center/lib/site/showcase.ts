@@ -78,7 +78,7 @@ export interface ShowcaseEntry {
   /** The 1280-wide derivative's size. */
   width: number;
   height: number;
-  /** Where a later change may put it (components/site/samples.tsx SLOTS), or null. Not used by the gallery. */
+  /** The slot it was exported for (components/site/slots.ts SLOTS), or null; it fills that slot while the slot's `ai` is null. */
   slot: string | null;
   /** The owner's note from the workflow's input. Not shown on the site (it is one language). */
   caption: string | null;

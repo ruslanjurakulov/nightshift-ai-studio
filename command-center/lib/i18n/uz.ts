@@ -15,6 +15,7 @@ import { marketingUz } from "./marketing/uz";
 import { modelSwitchUz } from "./model-switch/uz";
 import { modelBudgetUz } from "./model-budget/uz";
 import { billingLedgerUz } from "./billing-ledger/uz";
+import { addCreditsUz } from "./add-credits/uz";
 import { modelKeysUz } from "./model-keys/uz";
 import { operatorCustomersUz } from "./operator-customers/uz";
 import { seriesPlanUz } from "./series-plan/uz";
@@ -22,6 +23,7 @@ import { ownerTruthUz } from "./owner-truth/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
 import { availabilityUz } from "./availability/uz";
+import { effectsUz } from "./effects/uz";
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
 import { overlayUz } from "./overlay/uz";
@@ -50,6 +52,7 @@ export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
   availability: availabilityUz,
+  effects: effectsUz,
   libraryUx: libraryUxUz,
   ownerShell: ownerShellUz,
   ownerSafety: ownerSafetyUz,
@@ -61,6 +64,7 @@ export const uz: Dictionary = {
   modelBudget: modelBudgetUz,
   /** The per-provider ledger the owner reads on the Billing page: ./billing-ledger/uz.ts. */
   billingLedger: billingLedgerUz,
+  addCredits: addCreditsUz,
   modelKeys: modelKeysUz,
   /** «Mijozlar» sahifasi (0138-migratsiya): ./operator-customers/uz.ts. */
   customers: operatorCustomersUz,
@@ -4642,10 +4646,11 @@ export const uz: Dictionary = {
   },
   desk: {
     nav: "Studiya boʻlimlari",
-    names: { overview: "Umumiy koʻrinish", video: "Video", image: "Rasm", enhance: "Kuchaytirish", voice: "Ovoz", youtube: "YouTube video" },
+    names: { overview: "Umumiy koʻrinish", video: "Video", effects: "Effektlar", image: "Rasm", enhance: "Kuchaytirish", voice: "Ovoz", youtube: "YouTube video" },
     keySub: {
       overview: "Soʻnggi ishlar",
       video: "Soʻzdan yoki rasmdan",
+      effects: "Tayyor usullar",
       image: "Yaratish · tahrir · tavsif",
       enhance: "Kattalashtirish · qirqish",
       voice: "Nutq · ovoz · dublyaj",
@@ -4654,6 +4659,7 @@ export const uz: Dictionary = {
     blurbs: {
       overview: "Nima kerakligini yozing, ish turini tanlang yoki misoldan boshlang. Narx boshlanishdan oldin tugmada koʻrinadi.",
       video: "Soʻzdan yoki rasmdan 5 yoki 10 soniyalik kliplar. Har birining narxi yaratilishidan oldin koʻrinadi.",
+      effects: "Video formasini siz uchun toʻldiradigan tayyor usullar. Siz obyekt yoki rasm qoʻshasiz; narx biror narsa yaratilishidan oldin koʻrinadi.",
       image: "Yangi rasmlar, rasmingizga tahrir va rasmni qayta promptga oʻgirish.",
       enhance: "Rasm yoki videoni tiniqroq va kattaroq qilish yoki obyektni fonidan qirqib olish.",
       voice: "Ssenariydan nutq, yozuvga yangi ovoz yoki boshqa tilga dublyaj.",

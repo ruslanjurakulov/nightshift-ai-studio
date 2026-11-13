@@ -7,9 +7,24 @@ import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
  * A model sample's loop, over its own first frame. A Client Component so the build copies the sample's video files to
  * /_next/static/media/ (see showcase-assets.ts); every rule of LoopClip holds (reduced motion, Save-Data, one clip at a time, the
  * page's pause switch). Nothing for a picture or an entry whose files are missing.
+ *
+ * `compact` defaults to true (a gallery card is never wide); a slot that fills a wide box (the landing's first screen) passes
+ * false and gets the 1280 file on a wide screen. `early` is the first screen's clip, started after load and idle.
  */
-export function ShowcaseClip({ jobId }: { jobId: string }) {
+export function ShowcaseClip({
+  jobId,
+  compact = true,
+  early = false,
+  position,
+  together = false,
+}: {
+  jobId: string;
+  compact?: boolean;
+  early?: boolean;
+  position?: string;
+  together?: boolean;
+}) {
   const files = SHOWCASE_FILES[jobId];
   if (!files?.clip) return null;
-  return <LoopClip sources={files.clip} poster={files.posterSm} compact />;
+  return <LoopClip sources={files.clip} poster={files.posterSm} compact={compact} early={early} position={position} together={together} />;
 }

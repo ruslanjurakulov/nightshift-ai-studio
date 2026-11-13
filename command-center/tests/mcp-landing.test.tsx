@@ -21,6 +21,9 @@ import type { Locale } from "@/lib/i18n";
 import { dictionaries } from "@/lib/i18n";
 import { chatCopy } from "@/components/landing/HeroCard";
 import { HeroBleed } from "@/components/landing/HeroBleed";
+import { slotMedia } from "@/components/site/samples";
+import { placeAlt } from "@/components/site/PlaceFill";
+import { placeLabelProblems } from "./helpers/showcase-scope";
 import { MCP_CLIENTS, MCP_TOOL_IDS } from "@/lib/dev/mcp-clients";
 import { ASK_IDS, CAPABILITY_ROWS, EXAMPLE_SCENES } from "@/lib/dev/mcp-landing";
 
@@ -103,17 +106,16 @@ describe("the hero: a chat card instead of a row of client logos", () => {
     expect(card.querySelector("svg[data-art='tools']")).toBeNull();
     expect(card.querySelector("img, video, .nx-result-art")).toBeNull();
     expect(card.querySelector(".nx-demo-note")?.textContent).toBe(land.frames.exampleNote);
-    // The atmosphere is the header panel behind the words (round 9): footage of a sea of cloud, labelled an example and credited, and not a picture of the product at work.
+    // The atmosphere is the header panel behind the words (round 9): what the "mcp.hero" slot shows (round 10: one of our samples
+    // once its id is set, else the stock footage), labelled for what it is and credited, and not a picture of the product at work.
     const panel = top.querySelector(".nx-mcp-copy.nx-bleed-panel")!;
     expect(panel.querySelector("h1")).toBeTruthy();
     const bleed = panel.querySelector(".nx-bleed.nx-mcp-bleed")!;
-    expect(bleed.getAttribute("data-clip")).toBe("cloud");
-    expect(bleed.querySelector("img")?.getAttribute("data-sample")).toBe("cloud");
-    expect(bleed.querySelector("img")?.getAttribute("alt")).toBe(site.samples.alts.cloud);
-    expect(bleed.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(site.samples.frameTag);
-    expect(bleed.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(site.samples.clipTag);
-    expect(bleed.querySelector("button.nx-clip-pause")?.getAttribute("aria-label")).toBe(site.fx.pause);
-    expect(bleed.querySelector(".nx-result-credit")?.textContent).toMatch(/ \/ Pexels$|Pexels$/);
+    const m = slotMedia("mcp.hero");
+    expect(placeLabelProblems(bleed, m, site)).toEqual([]);
+    expect(bleed.querySelector("img")?.getAttribute("alt")).toBe(placeAlt(m, site));
+    if (m.kind === "ai" ? m.moving : m.clip) expect(bleed.querySelector("button.nx-clip-pause")?.getAttribute("aria-label")).toBe(site.fx.pause);
+    else expect(bleed.querySelector("button.nx-clip-pause")).toBeNull();
     expect(card.querySelector(".nx-chat-foot")?.getAttribute("aria-hidden")).toBe("true");
     expect(card.querySelectorAll("button, a")).toHaveLength(0);
     expect(card.querySelector(".nx-ui-status svg, .nx-ui-play")).toBeNull();
