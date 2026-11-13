@@ -893,6 +893,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "d2fd7dda-de9b-4ee0-babd-f9e8a21ec40d",
+      "assetId": "fecc17a2-ad81-5ac7-8073-7da5def50fa9",
+      "sha256": "a0120377616ed4320fe615047af3f6161ebac54270a2f85ef85fabe5aa315794",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "A frozen moment in time: a skateboarder mid-jump over a puddle, completely still in mid-action, with droplets, dust and hair hanging motionless in the air. The camera makes one smooth 360-degree orbit around the frozen scene at eye level, showing it from every side, while nothing in the scene moves. Crisp detail, cinematic lighting, shallow depth of field, photoreal, no motion blur, no text.",
+      "createdAt": "2026-11-13T22:04:04Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:20:44Z"
     }
   ]
 }
