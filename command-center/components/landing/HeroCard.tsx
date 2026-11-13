@@ -2,10 +2,10 @@ import { Check } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { BrandMark } from "@/components/site/BrandMark";
 import { BrandArt, type BrandArtKind } from "@/components/site/BrandArt";
-import { LoopClip } from "@/components/site/LoopClip";
 import { TypedText } from "@/components/site/TypedText";
-import { SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, slotSample, type SlotId } from "@/components/site/samples";
-import { creditLine } from "@/lib/site/media";
+import { slotMedia, type PlaceMedia, type SlotId } from "@/components/site/samples";
+import { PlaceFill, placeAlt, placeBox, placeNote } from "@/components/site/PlaceFill";
+import { placeTry } from "@/components/site/place-try";
 
 /** Everything a chat card says, as plain strings, so any page (the landing, /pricing, /mcp) can print one from its own dictionary. */
 export type ChatCopy = {
@@ -18,11 +18,11 @@ export type ChatCopy = {
   reply: string;
   alt: string;
   badge: string;
-  /** The label on the picture while it moves, the courtesy credit on it ("Photo: name / Pexels"), and the sentence that says what a moving picture is. */
-  clipBadge: string;
-  credit: string;
-  clipNote: string;
+  /** The sentence under the card: what its picture is (stock, or one of our generations), or the caller's own. */
   note: string;
+  /** What the card's slot shows (components/site/samples.tsx slotMedia), and the site dictionary its labels come from. */
+  media: PlaceMedia;
+  site: Dictionary["site"];
   lamps: [string, string, string];
   key: string;
 };
@@ -30,6 +30,7 @@ export type ChatCopy = {
 /** The chat card's words from the site dictionary; `ask` replaces the default one-line ask, `opts` the picture's label and note (for drawn art). */
 export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opts?: { badge?: string; note?: string }): ChatCopy {
   const st = t.site.stage;
+  const media = slotMedia(slot);
   const approve = st.steps.find((s) => s.id === "approve" && "check" in s) as Extract<(typeof st.steps)[number], { check: string }>;
   return {
     figure: st.figure,
@@ -39,12 +40,11 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opt
     current: "approve",
     ask: ask ?? t.site.caps.items[0].bubble,
     reply: t.site.caps.exampleReply,
-    alt: slotAlt(t.site.samples.alts, slot),
-    badge: opts?.badge ?? (slotSample(slot).footage ? t.site.samples.frameTag : t.site.samples.tag),
-    clipBadge: t.site.samples.clipTag,
-    credit: creditLine(slotSample(slot).id, t.site.samples.credit),
-    clipNote: t.site.samples.clipNote,
-    note: opts?.note ?? t.site.samples.note,
+    alt: placeAlt(media, t.site),
+    badge: opts?.badge ?? t.site.stage.tag,
+    note: opts?.note ?? placeNote(media, t.site),
+    media,
+    site: t.site,
     lamps: [approve.lamp, approve.check, approve.waiting],
     key: approve.key,
   };
@@ -60,14 +60,14 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opt
  * rests on its last state: the ask types, the reply arrives, the rail goes Topic, Plan, Approve (never Live: nothing goes live
  * until the person presses the button) and the lamps and the button light, in that order (".nx-chat" in site-next.css). With
  * reduced motion, the pause switch or no script that last state is simply what is there, and it is what the server renders,
- * so nothing flashes. Nothing in it can be pressed; its frame has a fixed aspect ratio, so it cannot shift the page.
- * A Server Component.
+ * so nothing flashes. The drawn parts cannot be pressed; the only links are a sample's own credit and "Try this prompt", when
+ * the slot shows one of our generations (components/site/PlaceFill.tsx). Its frame has a fixed aspect ratio, so it cannot
+ * shift the page. A Server Component.
  *
- * `art` puts a drawing where the still goes (the /mcp card), and a slot with a clip plays it (stock footage, looped).
+ * `art` puts a drawing where the picture goes (the /mcp card); otherwise the frame is whatever chatCopy's slot shows.
  */
 export function ChatCard({
   copy,
-  slot = "hero",
   eager = false,
   className = "",
   art,
@@ -75,7 +75,6 @@ export function ChatCard({
   compactClip = false,
 }: {
   copy: ChatCopy;
-  slot?: SlotId;
   eager?: boolean;
   className?: string;
   art?: BrandArtKind;
@@ -84,8 +83,7 @@ export function ChatCard({
   /** The card is never wider than about 560 px, so its clip uses the 640 px file on any screen. */
   compactClip?: boolean;
 }) {
-  const clip = art || bare ? null : slotClip(slot);
-  const moving = Boolean(clip);
+  const m = copy.media;
   const current = Math.max(0, copy.steps.findIndex((s) => s.id === copy.current));
   return (
     <figure className={`nx-demo nx-chat ${className}`.trim()} data-spot aria-label={copy.figure}>
@@ -113,18 +111,17 @@ export function ChatCard({
         </div>
         <div className="nx-result nx-result-sign">
           {!bare && (
-            <div className="nx-result-art" data-ratio="wide" data-clip={clip ?? undefined}>
-              {art ? <BrandArt kind={art} className="nx-art" /> : <SlotImg slot={slot} alt={copy.alt} className="nx-art" eager={eager} sizes="(min-width: 640px) 520px, calc(100vw - 80px)" />}
-              {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].sm} early={eager} compact={compactClip} />}
-              <span className="nx-result-badge" data-kind="still">
-                {copy.badge}
-              </span>
-              {moving && (
-                <span className="nx-result-badge" data-kind="clip">
-                  {copy.clipBadge}
-                </span>
+            <div className="nx-result-art" data-ratio="wide" {...(art ? {} : placeBox(m))}>
+              {art ? (
+                <>
+                  <BrandArt kind={art} className="nx-art" />
+                  <span className="nx-result-badge" data-kind="still">
+                    {copy.badge}
+                  </span>
+                </>
+              ) : (
+                <PlaceFill media={m} s={copy.site} alt={copy.alt} tryHref={placeTry(m)} eager={eager} early={eager} compact={compactClip} sizes="(min-width: 640px) 520px, calc(100vw - 80px)" />
               )}
-              {!art && <span className="nx-result-credit">{copy.credit}</span>}
             </div>
           )}
           <ul className="nx-ui-status">
@@ -147,7 +144,7 @@ export function ChatCard({
           <span className="nx-chat-key">{copy.key}</span>
         </div>
       </div>
-      <figcaption className="nx-demo-note">{moving ? `${copy.note} ${copy.clipNote}` : copy.note}</figcaption>
+      <figcaption className="nx-demo-note">{copy.note}</figcaption>
     </figure>
   );
 }

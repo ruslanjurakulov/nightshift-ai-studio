@@ -3,10 +3,12 @@ import { CAPABILITY_ROWS, EXAMPLE_SCENES } from "@/lib/dev/mcp-landing";
 import type { DevDictionary } from "@/lib/i18n/dev";
 import { CopyButton } from "@/components/docs/CopyButton";
 import { ResultsCarousel } from "@/components/docs/ResultsCarousel";
-import { Scene, SCENE_SAMPLE } from "@/components/docs/SampleFrame";
+import { sceneMedia } from "@/components/docs/SampleFrame";
 import { LoopClip } from "@/components/site/LoopClip";
-import { SAMPLES } from "@/components/site/samples";
+import { SAMPLES, SampleImg } from "@/components/site/samples";
+import { AiCredit, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { creditLine } from "@/lib/site/media";
+import type { Dictionary } from "@/lib/i18n";
 
 /**
  * The middle of /mcp, between the connect card and the tool list: six things to
@@ -17,7 +19,7 @@ import { creditLine } from "@/lib/site/media";
  * Every picture is labelled an example and credited (they are stock photos by Pexels contributors, not output of
  * any account); no model, provider or price is named (see lib/dev/mcp-landing.ts).
  */
-export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: boolean }) {
+export function McpLanding({ dev, site, oauthLive }: { dev: DevDictionary; site?: Dictionary["site"]; oauthLive: boolean }) {
   const c = dev.mcp;
   const l = c.land;
   return (
@@ -56,7 +58,7 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
                 {l.examples.title}
               </h2>
             </div>
-            <p className="ml-land-lead ml-examples-lead">{l.examples.lead}</p>
+            <p className="ml-land-lead ml-examples-lead">{site && EXAMPLE_SCENES.some((x) => sceneMedia(x).kind === "ai") ? l.examples.leadSamples : l.examples.lead}</p>
           </div>
         </div>
         <div className="ml-land-bleed">
@@ -65,20 +67,33 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
             labels={{ region: l.examples.region, track: l.examples.track, prev: l.examples.prev, next: l.examples.next }}
             cards={EXAMPLE_SCENES.map((scene) => {
               const card = l.examples.cards.find((x) => x.id === scene)!;
-              const pic = SCENE_SAMPLE[scene];
+              // Without the site dictionary there are no words to label a sample with, so the card keeps its stock picture.
+              const pic = sceneMedia(scene, site ? undefined : []);
               return (
-                <div key={scene} className="ml-ex" data-scene={scene} data-clip={pic.clip}>
-                  <Scene kind={scene} alt={l.examples.alts[scene]} />
-                  {pic.clip && <LoopClip clip={pic.clip} poster={SAMPLES[pic.id].sm} position={pic.position} />}
-                  <span className="ml-ex-badge" data-kind="still">
-                    {pic.clip ? l.examples.sampleFootage : l.examples.sample}
-                  </span>
-                  {pic.clip && (
-                    <span className="ml-ex-badge" data-kind="clip">
-                      {l.examples.sampleClip}
-                    </span>
+                <div key={scene} className="ml-ex" data-scene={scene} {...placeBox(pic)}>
+                  {pic.kind === "ai" ? (
+                    <>
+                      <PlaceFill media={pic} s={site!} className="ml-scene" labels={false} compact sizes="288px" />
+                      <span className="ml-ex-badge" data-kind="ai">
+                        {site!.gallery.badge}
+                      </span>
+                      <AiCredit entry={pic.entry} g={site!.gallery} badge={false} scope={`mcp-${scene}`} className="nx-ai-credit ml-ex-credit" />
+                    </>
+                  ) : (
+                    <>
+                      <SampleImg id={pic.id} alt={l.examples.alts[scene]} className="ml-scene" position={pic.position} sizes="288px" />
+                      {pic.clip && <LoopClip clip={pic.clip} poster={SAMPLES[pic.id].sm} position={pic.position} />}
+                      <span className="ml-ex-badge" data-kind="still">
+                        {pic.clip ? l.examples.sampleFootage : l.examples.sample}
+                      </span>
+                      {pic.clip && (
+                        <span className="ml-ex-badge" data-kind="clip">
+                          {l.examples.sampleClip}
+                        </span>
+                      )}
+                      <span className="ml-ex-credit">{creditLine(pic.id, l.examples.credit)}</span>
+                    </>
                   )}
-                  <span className="ml-ex-credit">{creditLine(pic.id, l.examples.credit)}</span>
                   <div className="ml-ex-over">
                     <span className="ml-ex-tag">{card.tag}</span>
                     <p className="ml-ex-q">{card.prompt}</p>

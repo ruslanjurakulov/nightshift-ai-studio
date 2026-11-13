@@ -36,6 +36,7 @@ export default async function McpConnectPage({ searchParams }: { searchParams: P
         bleed={<HeroBleed t={t} slot="mcp.hero" className="nx-mcp-bleed" />}
         chat={chatCopy(t, "hero", dev.mcp.land.asks.items[0].prompt, { badge: t.site.stage.tag, note: dev.mcp.land.frames.exampleNote })}
         pause={t.site.fx.pause}
+        site={t.site}
         origin={docsOrigin()}
         labels={{ table: t.common.scrollTable, code: t.common.scrollCode }}
         showCli={devPagesEnabled()}

@@ -8,6 +8,9 @@
  * They now check the page outside the gallery's root, so they hold with zero or any number of merged samples, and what the
  * gallery itself may say is pinned over the real data file in tests/site-showcase.test.tsx ("the shipped samples").
  */
+import type { Dictionary } from "@/lib/i18n";
+import { creditLine } from "@/lib/site/media";
+import { LANDING_SLOTS, slotJobs, type PlaceMedia } from "@/components/site/samples";
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
 
 /** The gallery's root. It renders only when a sample whose files are in the repository exists. */
@@ -39,4 +42,50 @@ export function shippedSamples(): { cards: number; clips: number; sources: numbe
     clips: items.filter(({ e, f }) => e.kind === "video" && f.clip !== null).length,
     sources: items.filter(({ e }) => e.kind === "video" && e.input.kind === "operator_job" && jobs.has(e.input.jobId)).length,
   };
+}
+
+/** The same for the landing, whose gallery leaves out the samples its own slots show (so no clip is on the page twice). */
+export function landingSamples(): { cards: number; clips: number; sources: number } {
+  const inSlots = slotJobs(LANDING_SLOTS);
+  const all = showcaseItems();
+  const jobs = new Set(all.map(({ e }) => e.jobId));
+  const items = all.filter(({ e }) => !inSlots.includes(e.jobId));
+  return {
+    cards: items.length,
+    clips: items.filter(({ e, f }) => e.kind === "video" && f.clip !== null).length,
+    // A card's source picture is looked up among every sample, the slots' included (ShowcaseGallery byJob).
+    sources: items.filter(({ e }) => e.kind === "video" && e.input.kind === "operator_job" && jobs.has(e.input.jobId)).length,
+  };
+}
+
+/**
+ * What is wrong with the labels of a place that shows `m` (components/site/samples.tsx slotMedia), or [] when nothing is. One of
+ * our samples says AI-generated, names its model (in a box marked as that sample, the only place a model may be named) and carries
+ * its maker's credit as a link, and says nothing about stock; a stock picture says it is a stock example and credits its Pexels
+ * contributor, and says nothing about AI. Tests call it for whatever the slots hold, so they pass before and after a sample
+ * replaces a stock picture, and fail on a label that lies in either direction.
+ */
+export function placeLabelProblems(el: Element, m: PlaceMedia, site: Dictionary["site"]): string[] {
+  const out: string[] = [];
+  const text = el.textContent ?? "";
+  const s = site.samples;
+  if (m.kind === "ai") {
+    const box = el.closest(SAMPLE_CARD);
+    if (box?.getAttribute("data-showcase-entry") !== m.entry.jobId) out.push("not inside its sample's box");
+    if (!text.includes(site.gallery.badge)) out.push("no AI-generated badge");
+    if (!text.includes(m.entry.modelName)) out.push("does not name its model");
+    if (m.entry.attribution && !el.querySelector(`a[href="${m.entry.attribution.url}"]`)) out.push("no maker's credit link");
+    for (const w of [s.tag, s.frameTag, s.clipTag]) if (text.includes(w)) out.push(`says "${w}"`);
+    if (/pexels/i.test(el.innerHTML)) out.push("mentions Pexels");
+  } else {
+    if (el.closest(SAMPLE_CARD)) out.push("a stock picture inside a sample's box");
+    const still = el.querySelector(".nx-result-badge[data-kind='still']")?.textContent;
+    if (still !== (m.footage ? s.frameTag : s.tag)) out.push(`still badge is ${still}`);
+    const clip = el.querySelector(".nx-result-badge[data-kind='clip']")?.textContent ?? null;
+    if (clip !== (m.clip ? s.clipTag : null)) out.push(`clip badge is ${clip}`);
+    const credit = el.querySelector(".nx-result-credit")?.textContent;
+    if (credit !== creditLine(m.id, s.credit)) out.push(`credit is ${credit}`);
+    if (text.includes(site.gallery.badge)) out.push("says AI-generated");
+  }
+  return out;
 }

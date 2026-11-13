@@ -26,6 +26,8 @@ export const siteEn = {
     titleA: "We make the video.",
     titleB: "You press publish.",
     lead: "Give Nightshift a topic. It writes, voices and edits a YouTube video, then waits for your OK. You see the price before anything starts.",
+    /** The landing's first screen says one sentence (the lead above is for pages that have room). */
+    leadShort: "Make clips and pictures from a sentence, or let Nightshift make your channel’s next video and wait for your OK.",
     cta: "Start free",
     secondary: "See pricing",
     demo: "Try an example",
@@ -56,6 +58,8 @@ export const siteEn = {
   stage: {
     figure: "Illustration of how a video moves in Nightshift: you give a topic, check the plan, approve the finished video, and publish it. Everything shown is an example.",
     tag: "Example",
+    /** Under the chat card when it shows no picture (the landing's "How it works"): what the card is. */
+    bareNote: "An example of the flow: you ask, Nightshift plans and makes the video, uploads it to YouTube as private and waits for you.",
     label: "How a video moves",
     steps: [
       { id: "brief", tab: "Topic", title: "Tell it the topic", body: "One line is enough. Or let the channel pick from its niche.", field: "Why the Silk Road ran through Samarkand", chips: ["Your channel", "Calm narrator"], key: "Make a plan" },
@@ -173,10 +177,12 @@ export const siteEn = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Image credits",
-    lead: "Every photograph and clip on these pages is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. Some pictures are different: the hero’s backdrop, the pictures for the three steps and the eight tools, and the sample thumbnail are AI-generated images made for Nightshift. They are decoration, not screenshots of the product.",
+    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. Some pictures are different: the pictures for the three steps and the eight tools, and the sample thumbnail, are AI-generated images made for Nightshift. They are decoration, not screenshots of the product.",
     licence: "Pexels License",
-    /** Shown only while the model samples (lib/site/showcase.json) hold an entry. It names no model: each sample names its own. */
-    generated: "One more exception: the samples under “Made in the Studio” are AI-generated. Each is a real job from our own Studio, made by the model named on it, and shows the words it was given and the day it was made.",
+    /** The lead once no page shows a stock picture any more (components/site/stock-in-use.ts is empty). */
+    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by the model named on it, with the words it was given. The pictures for the three steps and the eight tools, and the sample thumbnail, are AI-generated images made for Nightshift as decoration, not screenshots of the product.",
+    /** Shown beside the stock credits while any sample (lib/site/showcase.json) is on the site, wherever it is shown. It names no model: each sample names its own. */
+    generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by the model named on it, with the words it was given.",
   },
   /**
    * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
@@ -199,13 +205,70 @@ export const siteEn = {
     notInStudio: "This model is not in the Studio yet",
     /** On a card whose model the vendor has shut down (its announced date has come): the button no longer names it. */
     gone: "This model is no longer in the Studio",
-    tryNote: "“Try this prompt” opens the Studio with that tool and those words. Before anything starts, the Studio shows which model it will use and the price.",
-    tryNoteSignedOut: "“Try this prompt” asks you to create an account first, then opens the Studio with that tool and those words. Nothing starts until you press Generate there, and the price is shown before you do.",
+    tryNote: "“Try this prompt” and “Use this prompt” open the Studio with that tool and those words. Before anything starts, the Studio shows which model it will use and the price.",
+    tryNoteSignedOut: "“Try this prompt” and “Use this prompt” ask you to create an account first, then open the Studio with that tool and those words. Nothing starts until you press Generate there, and the price is shown before you do.",
     altClip: "AI-generated clip made by {model}",
     altImage: "AI-generated picture made by {model}",
+    /**
+     * The button on a sample whose model customers cannot choose (an operator preview, or shut down): its link opens the Studio
+     * with the words but not that model, so it does not say "try" it, and the note says which model will run them.
+     */
+    use: "Use this prompt",
+    useNote: "Opens the Studio with these words on a model it offers; the Studio shows which one, and the price, before anything starts.",
+    /** Beside a page's picture when it is one of our samples (components/site/samples.tsx slotMedia), in place of the stock sentence. */
+    slotNote: "AI-generated: a real job from our own Studio, made by the model named on it from the words it was given.",
     /** On a clip animated from one of the samples' own pictures: that picture, small, with the model that made it. */
     source: "Made from this picture:",
     altSource: "The AI-generated picture this clip was made from, made by {model}",
+  },
+  /**
+   * The landing's prompt bar (components/landing/PromptBar.tsx): it only opens the Studio form with the words and the tool.
+   * Nothing is priced, held or started from here; the notes say so, because the button reads "Create".
+   */
+  prompt: {
+    label: "Describe the video or picture you want",
+    placeholder: "Describe a scene: what we see, how the camera moves, the light…",
+    tools: "What to make",
+    video: "Video",
+    image: "Image",
+    submit: "Create",
+    empty: "Write a few words first.",
+    noteIn: "Opens the Studio with your words. Nothing starts until you press Generate there.",
+    noteOut: "Free sign-up first, then the Studio opens with your words. Nothing starts until you press Generate.",
+    ideas: "Start from a real prompt",
+  },
+  /** Three facts the page can back (components/landing/Landing.tsx Facts): counted from the data files and the welcome grant, never typed in. */
+  facts: {
+    label: "What is on this page",
+    samples: "Real generations from our Studio",
+    models: "Models behind them",
+    credits: "Free credits when you sign up",
+  },
+  /**
+   * Formats (lib/site/formats.ts): the name and line on the gallery card of the sample that shows each one, and the prompt bar's chips.
+   * The titles and lines describe the sample on the card; check them against it when a card's sample changes.
+   */
+  formats: {
+    items: [
+      { id: "product-ad", title: "Street-size product ad", body: "An oversized product lands in a real street, shot like an outdoor campaign." },
+      { id: "satisfying", title: "Satisfying macro", body: "A close-up cut through something that should not be cut. People replay it." },
+      { id: "cctv", title: "Caught on camera", body: "Night-vision security footage of animals up to something." },
+      { id: "miniature", title: "Tiny world", body: "Thumb-sized people at work in a real kitchen, in tilt-shift." },
+      { id: "pov", title: "Time-travel POV", body: "Walk into another century, filmed like a travel vlog." },
+      { id: "soap", title: "Fruit soap opera", body: "Talking food in a dramatic scene, played completely straight." },
+    ],
+  },
+  /**
+   * The models behind the samples (components/landing/Landing.tsx ModelTiles): one tile per model that made a sample on this page, each
+   * inside that sample's own box (the only place a model may be named). No tile says a model is on sale: a model only the
+   * operator can try yet carries the gallery's "not in the Studio yet".
+   */
+  models: {
+    label: "Models",
+    title: "The models behind these samples",
+    lead: "Each tile is a model that made a sample on this page, shown with the credit its maker asks for. A model you cannot choose in the Studio yet says so.",
+    count: "Samples on this page: {n}",
+    see: "Watch its sample",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {

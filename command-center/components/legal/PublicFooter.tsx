@@ -8,7 +8,8 @@ import { devFor } from "@/lib/i18n/dev";
 import { devPagesEnabled } from "@/lib/dev-pages";
 import { ViewModeControl } from "@/components/view-mode/ViewModeToggle";
 import { SocialIcons } from "@/components/site/SocialIcons";
-import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
+import { creditLine, LICENCE, MEDIA } from "@/lib/site/media";
+import { stockInUse } from "@/components/site/stock-in-use";
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
@@ -28,6 +29,7 @@ type FooterLink = { href: string; label: string; external?: boolean };
  */
 export function PublicFooter({ t }: { t: Dictionary }) {
   const f = t.site.footer;
+  const stock = stockInUse();
   const dev = devFor(t);
   const contact: FooterLink = { href: CONTACT_HREF, label: f.contact };
   const pages = t.site.solutions.pages;
@@ -118,26 +120,30 @@ export function PublicFooter({ t }: { t: Dictionary }) {
         </div>
       </div>
       <div className="st-wrap">
-        {/* Every picture and clip on the public pages, from the one data file (lib/site/media.ts): stock photos and footage by Pexels contributors. */}
+        {/* The stock pictures the public pages still show (components/site/stock-in-use.ts), each credited from lib/site/media.ts; none once our samples replaced them all. */}
         <details className="st-credits">
           <summary>{t.site.credits.title}</summary>
-          <p>{t.site.credits.lead}</p>
+          <p>{stock.length > 0 ? t.site.credits.lead : t.site.credits.leadNoStock}</p>
           {/* Only while a model sample is on the site (lib/site/showcase.json): it names no model, each sample names its own. */}
-          {showcaseItems().length > 0 && <p>{t.site.credits.generated}</p>}
-          <ul>
-            {MEDIA_IDS.map((id) => (
-              <li key={id}>
-                <a href={MEDIA[id].sourceUrl} target="_blank" rel="noopener noreferrer">
-                  {creditLine(id, t.site.samples.credit)}
+          {stock.length > 0 && showcaseItems().length > 0 && <p>{t.site.credits.generated}</p>}
+          {stock.length > 0 && (
+            <>
+              <ul>
+                {stock.map((id) => (
+                  <li key={id}>
+                    <a href={MEDIA[id].sourceUrl} target="_blank" rel="noopener noreferrer">
+                      {creditLine(id, t.site.samples.credit)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+              <p>
+                <a href={LICENCE.url} target="_blank" rel="noopener noreferrer">
+                  {t.site.credits.licence}
                 </a>
-              </li>
-            ))}
-          </ul>
-          <p>
-            <a href={LICENCE.url} target="_blank" rel="noopener noreferrer">
-              {t.site.credits.licence}
-            </a>
-          </p>
+              </p>
+            </>
+          )}
         </details>
         <div className="st-footer-base">
           <span>{LEGAL.legalName ? `© ${LEGAL.legalName}` : t.brand.name}</span>

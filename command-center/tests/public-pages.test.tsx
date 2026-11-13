@@ -24,7 +24,9 @@ import type { MoneyAnchor, PricingTeaser } from "@/lib/landing";
 import { WELCOME_CREDITS, resolvePricing, type Pricing } from "@/lib/pricing";
 import { coercePlanCatalog, creditEquivalents, planMatrix, type GenerationRates } from "@/lib/plans";
 import { PROVIDER_BRANDS } from "./helpers/brands";
-import { GALLERY, SAMPLE_CARD, outsideGallery, shippedSamples, without } from "./helpers/showcase-scope";
+import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, placeLabelProblems, without } from "./helpers/showcase-scope";
+import { slotMedia } from "@/components/site/samples";
+import { stockInUse } from "@/components/site/stock-in-use";
 
 afterEach(cleanup);
 
@@ -89,21 +91,33 @@ describe("public landing page", () => {
     const { container } = renderLanding({ kind: "announced" });
     // Outside the model samples (each a real generation, never a stock example: tests/site-showcase.test.tsx), whose number is
     // whatever the owner has merged.
-    const imgs = outsideGallery(container.querySelectorAll("img"));
-    // The hero card's footage frame (at every width), the two showcases and the closing panel's photograph (stock stills, each with a data-sample),
-    // and the AI-generated pictures (each with a data-art-id): the hero's two backdrops (wide, and the phone's portrait cut), the sample thumbnail, the three steps' pictures and the eight tool tiles'.
-    expect(imgs.length).toBe(18);
+    // The model tiles' small stills are their samples' posters, each inside that sample's box (checked below).
+    const all = outsideGallery(container.querySelectorAll("img"));
+    const tiles = all.filter((i) => i.closest("#models"));
+    const imgs = all.filter((i) => !i.closest("#models"));
+    // The four slots (the first screen, the two showcases and the closing panel: a stock still with a data-sample, or one of our
+    // samples with a data-sample-job inside its own box), and the AI-generated pictures (each with a data-art-id): the sample
+    // thumbnail, the three steps' pictures and the eight tool tiles'.
+    expect(imgs.length).toBe(16);
     for (const img of imgs) {
-      expect(img.getAttribute("data-sample") ?? img.getAttribute("data-art-id")).toBeTruthy();
+      expect(img.getAttribute("data-sample") ?? img.getAttribute("data-art-id") ?? img.getAttribute("data-sample-job")).toBeTruthy();
+      expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
+      if (img.hasAttribute("data-sample-job")) expect(img.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(img.getAttribute("data-sample-job"));
+    }
+    expect(imgs.filter((i) => i.getAttribute("data-sample") || i.getAttribute("data-sample-job"))).toHaveLength(4);
+    // Every stock picture shown is one the footer credits (components/site/stock-in-use.ts).
+    for (const img of container.querySelectorAll("[data-sample]")) expect(stockInUse() as string[]).toContain(img.getAttribute("data-sample"));
+    for (const img of tiles) {
+      expect(img.closest(SAMPLE_CARD)).toBeTruthy();
+      expect(img.getAttribute("loading")).toBe("lazy");
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
     }
-    expect(imgs.filter((i) => i.getAttribute("data-sample"))).toHaveLength(4);
-    // The two <picture>s are the hero's backdrops: each fetches only in its own range of widths.
+    // Nothing plays in a jsdom (no clip is rendered without matchMedia), and the old backdrops' <picture>s are gone.
     expect(outsideGallery(container.querySelectorAll("video, audio"))).toHaveLength(0);
-    expect(outsideGallery(container.querySelectorAll("picture"))).toHaveLength(2);
+    expect(outsideGallery(container.querySelectorAll("picture"))).toHaveLength(0);
     // The gallery's pictures: one per shipped sample, each in its own card, same-origin, lazy, and never marked as a stock
     // example or as the site's own decoration. With no sample merged there is no gallery at all.
-    const shipped = shippedSamples();
+    const shipped = landingSamples();
     const gallery = container.querySelector(GALLERY);
     expect(gallery === null).toBe(shipped.cards === 0);
     const samplePics = [...(gallery?.querySelectorAll("img") ?? [])];
@@ -117,12 +131,11 @@ describe("public landing page", () => {
     }
     // A sample's clip is the only moving picture the gallery may hold.
     for (const v of gallery?.querySelectorAll("video, audio") ?? []) expect(v.tagName).toBe("VIDEO");
-    // The first screen's pictures are the eager ones: the card's cloud still and the two backdrops (one of them a blank GIF at any given width).
-    const eager = imgs.filter((i) => i.getAttribute("loading") === "eager");
-    expect(eager).toHaveLength(3);
-    expect(new Set(eager.map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-art-id")))).toEqual(new Set(["cloud", "hero-night", "hero-night-sm"]));
-    expect(container.querySelector("figure.nx-chat img")?.getAttribute("loading")).toBe("eager");
-    expect(container.querySelector(".nx-hero-bg-phone img")?.getAttribute("loading")).toBe("eager");
+    // The first screen's picture is the one eager picture (the page's LCP), at high priority; everything else waits.
+    const eager = all.filter((i) => i.getAttribute("loading") === "eager");
+    expect(eager).toHaveLength(1);
+    expect(eager[0].closest(".nx-sh-media")).toBeTruthy();
+    expect(eager[0].getAttribute("fetchpriority")).toBe("high");
   });
 
   it("shows two capabilities as full-width showcases: a different still each, labelled on the picture and under it, one outlined button (and a pause button on the clips), no drawn product", () => {
@@ -136,27 +149,27 @@ describe("public landing page", () => {
       expect(within(section).getByRole("heading", { level: 2, name: item.title })).toBeTruthy();
       const cta = within(section).getByRole("link", { name: item.cta });
       expect(cta.getAttribute("href")).toMatch(/^\/(signup|solutions\/youtube-channels)$/);
+      const m = slotMedia(id === "studio" ? "show.studio" : "show.approvals");
       const img = section.querySelector("img")!;
-      stills.add(img.getAttribute("data-sample")!);
-      expect(Object.values(t.site.samples.alts)).toContain(img.getAttribute("alt"));
-      // A photograph says "stock photo"; a frame of footage says "stock footage". Either way it is credited on the picture.
-      expect(section.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.frameTag);
-      expect(section.querySelector(".nx-result-credit")?.textContent).toMatch(/ \/ Pexels$/);
-      // The note, and for a card that plays a clip the sentence that says what a moving picture is.
-      expect(section.querySelector(".nx-show-note")?.textContent?.startsWith(t.site.samples.note)).toBe(true);
+      stills.add(img.getAttribute("data-sample") ?? img.getAttribute("data-sample-job")!);
+      // Described as what it is: a stock still's own description, or "AI-generated clip made by {model}".
+      expect(img.getAttribute("alt")).toBe(m.kind === "ai" ? fmt(m.moving ? t.site.gallery.altClip : t.site.gallery.altImage, { model: m.entry.modelName }) : t.site.samples.alts[m.id]);
+      // Labelled and credited on the picture for what it is (stock, or one of our samples), and the note under it says the same.
+      expect(placeLabelProblems(section.querySelector(".nx-show-pic")!, m, t.site)).toEqual([]);
+      expect(section.querySelector(".nx-show-note")?.textContent?.startsWith(m.kind === "ai" ? t.site.gallery.slotNote : t.site.samples.note)).toBe(true);
       expect(section.textContent).not.toMatch(MONEY);
-      // The words are real text beside the picture (never baked into it), and the only control is the one button.
-      // The one link, plus (on the two with a clip) the pause button that stops it: nothing else is a control.
-      expect(section.querySelectorAll("a")).toHaveLength(1);
+      // The words are real text beside the picture (never baked into it), and the only control is the one button, the pause
+      // button on a clip, and a sample's own credit links (its maker's credit and Try this prompt).
+      expect([...section.querySelectorAll("a")].filter((a) => !a.closest(".nx-ai-credit"))).toHaveLength(1);
       expect([...section.querySelectorAll("button")].every((b) => b.classList.contains("nx-clip-pause"))).toBe(true);
     }
     expect(stills.size).toBe(2);
   });
 
-  it("draws the hero's product as one labelled example exchange: the ask, an example reply, a real example frame, and a drawn key that is not a button", () => {
+  it("draws the product as one labelled example exchange under the steps: the ask, an example reply, no picture, and a drawn key that is not a button", () => {
     const t = dictionaries.en;
     const { container } = renderLanding({ kind: "announced" });
-    const card = container.querySelector("figure.nx-chat") as HTMLElement;
+    const card = container.querySelector("#how figure.nx-chat") as HTMLElement;
     // The figure's description is there for assistive tech, and the card says it is an example.
     expect(card.getAttribute("aria-label")).toBe(t.site.stage.figure);
     expect(card.querySelector(".nx-demo-tag")?.textContent).toBe(t.site.stage.tag);
@@ -165,12 +178,9 @@ describe("public landing page", () => {
     expect(card.querySelector(".nx-bubble .sr-only")?.textContent).toBe(t.site.caps.items[0].bubble);
     expect(card.querySelector(".nx-reply")?.textContent).toContain(t.site.caps.exampleReply);
     expect(card.querySelector(".nx-reply")?.textContent).not.toContain(t.site.caps.items[0].reply);
-    // The frame is a frame of stock footage, described, labelled and credited, and the note that says what the pictures are is printed under the card.
-    const img = card.querySelector("img")!;
-    expect(img.getAttribute("alt")).toBe(t.site.samples.alts.cloud);
-    expect(card.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.frameTag);
-    expect(card.querySelector(".nx-result-credit")?.textContent).toBe(t.site.samples.credit.video.replace("{name}", "K"));
-    expect(card.querySelector("figcaption")?.textContent).toBe(`${t.site.samples.note} ${t.site.samples.clipNote}`);
+    // Round 10: the first screen shows the picture, so the card shows none, and its note says what the card is.
+    expect(card.querySelector("img, video, .nx-result-art")).toBeNull();
+    expect(card.querySelector("figcaption")?.textContent).toBe(t.site.stage.bareNote);
     // Nothing in it is a control: the drawn "Approve and publish" key is a span inside an aria-hidden group.
     expect(card.querySelector("a, button, input, [tabindex]")).toBeNull();
     const key = within(card).getByText(t.site.stage.steps.find((x) => x.id === "approve")!["key" as never] as string);
@@ -266,18 +276,19 @@ describe("public landing page", () => {
     expect(container.textContent).toContain("A video in the app: 60 credits a minute of finished video");
   });
 
-  it("says the one known price above the fold, only when the live price list holds it", () => {
+  it("says the one known price just under the first screen (round 10: the hero holds only the headline, the bar and two actions), only when the live price list holds it", () => {
     const priced = renderLanding({ kind: "announced" }, "en", {
       pack: { kind: "none" },
       api: null,
       site: { perMinute: 60, minimum: 30, usd: null },
     });
-    const hero = priced.container.querySelector(".nx-hero")!;
-    expect(hero.querySelector(".nx-price")?.textContent).toBe("A video in the app: 60 credits a minute of finished video");
+    const facts = priced.container.querySelector(".nx-facts")!;
+    expect(priced.container.querySelector(".nx-hero .nx-price")).toBeNull();
+    expect(facts.querySelector(".nx-price")?.textContent).toBe("A video in the app: 60 credits a minute of finished video");
     cleanup();
     // No list, no line: the hero never prints a default or a zero.
     const unpriced = renderLanding({ kind: "announced" });
-    expect(unpriced.container.querySelector(".nx-hero .nx-price")).toBeNull();
+    expect(unpriced.container.querySelector(".nx-price")).toBeNull();
   });
 
   it("prints exactly the price the data holds", () => {
@@ -412,7 +423,8 @@ describe("public pricing page", () => {
     const plans = planMatrix(catalog(), { NEXT_PUBLIC_PLAN_DISPLAY_CREATOR: "$12" }, null);
     const pricing = resolvePricing({ NEXT_PUBLIC_PRICE_DISPLAY_STARTER: "$5" }, null);
     const { container } = renderPricing({ pricing, plans }, locale);
-    expect(container.innerHTML).not.toMatch(PROVIDER_BRANDS);
+    // The chat card's picture is a sample once its slot has one, and a sample's box names its model (tests/site-showcase.test.tsx).
+    expect(without(container, SAMPLE_CARD).innerHTML).not.toMatch(PROVIDER_BRANDS);
   });
 
   it("shows no Monthly / Yearly switch, because the plan data holds monthly prices only", () => {
@@ -441,7 +453,8 @@ describe("public pricing page", () => {
     const rates = { perMinute: 25, jobMinimum: 30 };
     const generationRates: GenerationRates = { image: 4, shortVideo: { credits: 40, seconds: 5 }, videoMinute: 25 };
     const { container } = renderPricing({ pricing, plans, signedIn: true, rates, generationRates, expiry: { kind: "months", months: 12 } });
-    const text = container.textContent ?? "";
+    // A sample's box (the chat card's picture, once its slot has one) names its model, whose name may hold a number ("H3"): not a figure.
+    const text = without(container, SAMPLE_CARD).textContent ?? "";
 
     // Every figure the page was handed, and every figure derived from them.
     const allowed = new Set<number>([12, 5, WELCOME_CREDITS, 25, 30, 4, 40]);
@@ -517,7 +530,11 @@ describe("the pricing page, product first (round 3)", () => {
     const kids = [...hero.children].map((c) => c.className);
     expect(kids).toEqual(["nx-pr-copy", "nx-pr-calc", "nx-pr-actions"]);
     expect(container.querySelectorAll("figure.nx-chat")).toHaveLength(1);
-    expect(container.querySelector("figure.nx-chat img")?.getAttribute("data-sample")).toBe("floating");
+    // The card's picture is the "pricing.card" slot's: our sample once its id is set, the stock lanterns before.
+    const pm = slotMedia("pricing.card");
+    const pic = container.querySelector("figure.nx-chat img")!;
+    expect(pm.kind === "ai" ? pic.getAttribute("data-sample-job") : pic.getAttribute("data-sample")).toBe(pm.kind === "ai" ? pm.entry.jobId : "floating");
+    expect(placeLabelProblems(container.querySelector("figure.nx-chat .nx-result-art")!, pm, dictionaries.en.site)).toEqual([]);
     expect(screen.queryByText(dictionaries.en.pricing.ratesTitle)).toBeNull();
   });
 });
