@@ -7,17 +7,20 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  CLOCK_OFFSET_MAX_MS,
   DURATION_SAMPLES,
   ESTIMATE_CAP,
   MIN_SAMPLES,
   durationsFrom,
   jobPhase,
   median,
+  nextClockOffset,
+  clockOffset,
   progressReading,
   secondsBetween,
 } from "@/lib/creative/progress";
 import { DURATION_MODELS_MAX, listDurations, parseModelList } from "@/lib/creative/durations";
-import { cardAspect, coerceJobs } from "@/lib/creative/studio";
+import { cardAspect, cardShape, coerceJobs } from "@/lib/creative/studio";
 import type { CreativeDb, DbAnswer } from "@/lib/creative/operations";
 
 const T0 = Date.parse("2026-11-01T10:00:00Z");
@@ -50,13 +53,31 @@ describe("the pill's reading", () => {
     expect(running({ now: T0 + 57_600 })).toMatchObject({ kind: "estimate", percent: 95 });
   });
 
-  it("with fewer than 3 finished jobs for the model: seconds since it started, never a percentage", () => {
+  const elapsed = (seconds: number, since: "started" | "asked", history: string | null, waiting = false) => ({
+    kind: "elapsed",
+    seconds,
+    waiting,
+    since,
+    history,
+  });
+
+  it("with fewer than 3 finished jobs for the model: seconds since it started, never a percentage — and says 'few'", () => {
     expect(MIN_SAMPLES).toBe(3);
-    expect(running({ samples: [60, 60] })).toEqual({ kind: "elapsed", seconds: 30, waiting: false });
-    expect(running({ samples: [] })).toEqual({ kind: "elapsed", seconds: 30, waiting: false });
-    expect(running({ samples: null })).toEqual({ kind: "elapsed", seconds: 30, waiting: false });
+    expect(running({ samples: [60, 60] })).toEqual(elapsed(30, "started", "few"));
+    expect(running({ samples: [] })).toEqual(elapsed(30, "started", "few"));
     // Three samples of which only two are readable are two samples.
-    expect(running({ samples: [60, 60, Number.NaN] }).kind).toBe("elapsed");
+    expect(running({ samples: [60, 60, Number.NaN] })).toEqual(elapsed(30, "started", "few"));
+  });
+
+  it("history that was not read is not 'too little history': it says why there is none (rule 5)", () => {
+    // Asked and not (yet) answered — on its way, a failed fetch, a 503, a failed read of that model.
+    expect(running({ samples: null })).toEqual(elapsed(30, "started", "unread"));
+    expect(running({ samples: null, missing: "unread" })).toEqual(elapsed(30, "started", "unread"));
+    // Never asked: past DURATION_MODELS_MAX models at once.
+    expect(running({ samples: null, missing: "not_asked" })).toEqual(elapsed(30, "started", "not_asked"));
+    // A reason for missing samples never outranks samples that were read.
+    expect(running({ samples: [60, 60], missing: "not_asked" })).toEqual(elapsed(30, "started", "few"));
+    expect(running({ samples: [50, 60, 70], missing: "not_asked" }).kind).toBe("estimate");
   });
 
   it("prefers a figure the provider reported, printed as it is (no '~', no cap)", () => {
@@ -69,16 +90,14 @@ describe("the pill's reading", () => {
   });
 
   it("a job in line counts its wait since it was asked for — the model's history says nothing about the queue", () => {
-    expect(progressReading({ status: "queued", startedAt: null, createdAt: at(0), now: T0 + 12_000, samples: [5, 5, 5] })).toEqual({
-      kind: "elapsed",
-      seconds: 12,
-      waiting: true,
-    });
+    expect(progressReading({ status: "queued", startedAt: null, createdAt: at(0), now: T0 + 12_000, samples: [5, 5, 5] })).toEqual(
+      elapsed(12, "asked", null, true),
+    );
   });
 
-  it("a started job without a readable start time counts from when it was asked, as seconds", () => {
-    expect(running({ startedAt: null })).toEqual({ kind: "elapsed", seconds: 35, waiting: false });
-    expect(running({ startedAt: "not a time" })).toEqual({ kind: "elapsed", seconds: 35, waiting: false });
+  it("a started job without a readable start time counts from when it was asked — and says so, not 'since it started'", () => {
+    expect(running({ startedAt: null })).toEqual(elapsed(35, "asked", null));
+    expect(running({ startedAt: "not a time", samples: null })).toEqual(elapsed(35, "asked", null));
   });
 
   it("nothing readable at all, or a job that ended: nothing is printed", () => {
@@ -111,22 +130,84 @@ describe("the phase, from the job's real status", () => {
 });
 
 describe("the shape held for a result", () => {
-  const job = (capability: string, params: Record<string, unknown> = {}) => ({ capability, params });
-  it("is the shape the form sent", () => {
-    expect(cardAspect(job("t2i", { aspect_ratio: "16:9" }))).toBe("16 / 9");
-    expect(cardAspect(job("t2v", { aspect_ratio: "9:16" }))).toBe("9 / 16");
-    expect(cardAspect(job("expand", { aspect_ratio: "4:3" }))).toBe("4 / 3");
+  const job = (capability: string, params: Record<string, unknown> = {}, status = "provider_pending") => ({ capability, params, status });
+  const NO_SHAPE = ["upscale", "edit", "remove_bg", "relight", "i2v", "video_upscale", "t2i"] as const;
+  it("is the shape the form sent, working or finished — the result comes back in it", () => {
+    for (const status of ["provider_pending", "completed"]) {
+      expect(cardShape(job("t2i", { aspect_ratio: "16:9" }, status))).toEqual({ aspect: "16 / 9", asked: true });
+      expect(cardAspect(job("t2v", { aspect_ratio: "9:16" }, status))).toBe("9 / 16");
+      expect(cardAspect(job("expand", { aspect_ratio: "4:3" }, status))).toBe("4 / 3");
+    }
   });
-  it("a model that takes no shape (fixedShape: none sent) gets a neutral 3:2 picture or 16:9 clip — a placeholder, not a promise", () => {
-    expect(cardAspect(job("t2i", { prompt: "x" }))).toBe("3 / 2");
-    expect(cardAspect(job("upscale"))).toBe("3 / 2");
+  it("without one, a WORKING job's placeholder holds a neutral 3:2 picture or 16:9 clip — a placeholder, not a promise", () => {
+    expect(cardShape(job("t2i", { prompt: "x" }))).toEqual({ aspect: "3 / 2", asked: false });
+    for (const status of ["queued", "running", "provider_pending", "processing"]) expect(cardAspect(job("upscale", {}, status))).toBe("3 / 2");
     expect(cardAspect(job("t2v"))).toBe("16 / 9");
+    expect(cardAspect(job("i2v"))).toBe("16 / 9");
     expect(cardAspect(job("video_upscale"))).toBe("16 / 9");
+  });
+  it("without one, a FINISHED card is the square it always was — a guessed 3:2 / 16:9 would crop the result (object-cover)", () => {
+    // The regression this pins: an upscaled portrait, a square cut-out or a 9:16 i2v drawn into a 3:2 or 16:9 frame.
+    for (const cap of NO_SHAPE) {
+      for (const status of ["completed", "failed", "cancelled", "expired"]) {
+        expect(cardShape(job(cap, {}, status))).toEqual({ aspect: "1 / 1", asked: false });
+      }
+    }
   });
   it("a sound is a wide bar, and a malformed shape is not trusted", () => {
     expect(cardAspect(job("tts"))).toBe("16 / 7");
+    expect(cardAspect(job("tts", {}, "completed"))).toBe("16 / 7");
     expect(cardAspect(job("t2i", { aspect_ratio: "0:9" }))).toBe("3 / 2");
     expect(cardAspect(job("t2i", { aspect_ratio: "16:9;x" }))).toBe("3 / 2");
+    expect(cardShape(job("t2i", { aspect_ratio: "0:9" }, "completed"))).toEqual({ aspect: "1 / 1", asked: false });
+  });
+});
+
+describe("the server's clock, not the browser's", () => {
+  // The rows' started_at / created_at are written by the database; the pill counts from the browser's Date.now().
+  const header = (ms: number) => new Date(ms).toUTCString();
+  const started = (offset: number, clientNow: number) =>
+    progressReading({ status: "provider_pending", startedAt: at(0), createdAt: at(-5), now: clientNow + offset, samples: [60, 60, 60] });
+
+  it("a browser a minute FAST is corrected: the job is 30 s along, not 90 s", () => {
+    const serverNow = T0 + 30_000;
+    const clientNow = serverNow + 60_000;
+    const offset = clockOffset(header(serverNow), clientNow);
+    expect(offset).toBeLessThan(-58_000);
+    expect(offset).toBeGreaterThan(-60_000);
+    expect(started(0, clientNow)).toMatchObject({ kind: "estimate", percent: 95 });
+    expect(started(offset, clientNow)).toEqual({ kind: "estimate", percent: 50, samples: 3 });
+  });
+
+  it("a browser five minutes SLOW is corrected: the job is not 'just started' (or read as 0 s)", () => {
+    const serverNow = T0 + 30_000;
+    const clientNow = serverNow - 300_000;
+    const offset = clockOffset(header(serverNow), clientNow);
+    expect(offset).toBeGreaterThan(299_000);
+    expect(started(0, clientNow)).toMatchObject({ kind: "estimate", percent: 0 });
+    expect(started(offset, clientNow)).toEqual({ kind: "estimate", percent: 50, samples: 3 });
+  });
+
+  it("within the header's own rounding (whole seconds, the trip) there is nothing to correct", () => {
+    expect(clockOffset(header(T0), T0)).toBe(0);
+    expect(clockOffset(header(T0), T0 + 1_400)).toBe(0);
+    expect(clockOffset(header(T0), T0 - 1_400)).toBe(0);
+  });
+
+  it("an unreadable, missing or absurd header is not believed: 0", () => {
+    expect(clockOffset(null, T0)).toBe(0);
+    expect(clockOffset(undefined, T0)).toBe(0);
+    expect(clockOffset("not a date", T0)).toBe(0);
+    expect(clockOffset(header(T0 - CLOCK_OFFSET_MAX_MS - 60_000), T0)).toBe(0);
+    expect(clockOffset(header(T0 + CLOCK_OFFSET_MAX_MS + 60_000), T0)).toBe(0);
+    expect(clockOffset(header(T0), Number.NaN)).toBe(0);
+  });
+
+  it("a new reading within the rounding of the one in use keeps it, so the seconds do not jitter on every poll", () => {
+    expect(nextClockOffset(60_500, 60_000)).toBe(60_500);
+    expect(nextClockOffset(60_500, 61_900)).toBe(60_500);
+    expect(nextClockOffset(60_500, 0)).toBe(0);
+    expect(nextClockOffset(0, -45_000)).toBe(-45_000);
   });
 });
 

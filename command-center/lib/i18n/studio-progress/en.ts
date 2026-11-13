@@ -21,7 +21,12 @@ export const studioProgressEn = {
   reportedSpoken: "{n}% done, as the model reports it.",
   seconds: "{n} s",
   minutes: "{m} min {s} s",
-  elapsedSpoken: "{n} seconds since it started. No estimate: this model has fewer than 3 finished jobs here.",
+  // Seconds without an estimate, each with its real reason (lib/creative/progress.ts NoEstimate): "too little history"
+  // is said only when the history was read and is too short.
+  elapsedSpoken: "{n} seconds since it started. No estimate: this model has fewer than {min} finished jobs here.",
+  elapsedUnreadSpoken: "{n} seconds since it started. No estimate: this model's past jobs here have not been read.",
+  elapsedNotAskedSpoken: "{n} seconds since it started. No estimate: with this many models working at once, only {max} are looked up.",
+  elapsedNoStartSpoken: "{n} seconds since it was asked for. No estimate: the time it started is not recorded.",
   waitingSpoken: "{n} seconds in line.",
 };
 

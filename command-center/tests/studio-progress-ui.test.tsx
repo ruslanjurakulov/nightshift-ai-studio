@@ -6,8 +6,10 @@
  * was; a failure shows the reason the feed already knows, with the feed's own Try again.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/chronos/create",
@@ -26,6 +28,7 @@ import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, fmt } from "@/lib/i18n";
 import { GenerationPlaceholder } from "@/components/studio/GenerationPlaceholder";
 import { JobFeed } from "@/components/studio/JobFeed";
+import { useModelDurations } from "@/components/studio/useModelDurations";
 import type { StudioJob } from "@/lib/creative/studio";
 
 const t = dictionaries.en;
@@ -101,7 +104,7 @@ describe("the placeholder", () => {
     const { container } = render(withI18n(<GenerationPlaceholder job={job()} samples={[60, 60]} />));
     expect(pill()!.dataset.kind).toBe("elapsed");
     expect(within(pill()!).getByText("30 s")).toBeTruthy();
-    expect(within(pill()!).getByText(fmt(tp.elapsedSpoken, { n: 30 }))).toBeTruthy();
+    expect(within(pill()!).getByText(fmt(tp.elapsedSpoken, { n: 30, min: 3 }))).toBeTruthy();
     expect(container.textContent).not.toMatch(/%/);
   });
 
@@ -109,6 +112,53 @@ describe("the placeholder", () => {
     const { container } = render(withI18n(<GenerationPlaceholder job={job()} samples={null} />));
     expect(container.textContent).not.toMatch(/%/);
     expect(within(pill()!).getByText("30 s")).toBeTruthy();
+  });
+
+  // Rule 5: "fewer than 3 finished jobs here" is a claim about the data; said only when the data was read and is short.
+  const reasons = (d: typeof tp) =>
+    [
+      ["few: read, and too short", { samples: [60, 60] }, d.elapsedSpoken, {}],
+      ["unread: asked, not (yet) read", { samples: null, missing: "unread" as const }, d.elapsedUnreadSpoken, {}],
+      ["not_asked: past the models one request may name", { samples: null, missing: "not_asked" as const }, d.elapsedNotAskedSpoken, {}],
+      ["no start time: counted from the ask", { samples: [60, 60], missing: "not_asked" as const }, d.elapsedNoStartSpoken, { status: "running", started_at: null }],
+    ] as const;
+
+  it.each(reasons(tp))("seconds without an estimate say the real reason — %s — visibly (hover) and spoken", (_, props, sentence, over) => {
+    render(withI18n(<GenerationPlaceholder job={job(over)} {...props} />));
+    const n = "started_at" in over ? 40 : 30;
+    const spoken = fmt(sentence, { n, min: 3, max: 4 });
+    expect(spoken).not.toMatch(/[{}]/);
+    expect(within(pill()!).getByText(spoken).className).toBe("sr-only");
+    const visible = within(pill()!).getByText(`${n} s`);
+    expect(visible.getAttribute("aria-hidden")).toBe("true");
+    expect(visible.getAttribute("title")).toBe(spoken);
+    // Each reason is its own sentence: none of the others is said.
+    for (const [, , other] of reasons(tp)) if (other !== sentence) expect(within(pill()!).queryByText(fmt(other, { n, min: 3, max: 4 }))).toBeNull();
+  });
+
+  it("each reason reads in Russian and Uzbek, and they differ from one another", () => {
+    for (const locale of ["ru", "uz"] as const) {
+      const d = dictionaries[locale].studioProgress;
+      const seen = new Set<string>();
+      for (const [, props, sentence, over] of reasons(d)) {
+        const { unmount } = render(withI18n(<GenerationPlaceholder job={job(over)} {...props} />, locale));
+        const spoken = fmt(sentence, { n: "started_at" in over ? 40 : 30, min: 3, max: 4 });
+        expect(spoken).not.toMatch(/[{}]/);
+        expect(within(pill()!).getByText(spoken)).toBeTruthy();
+        seen.add(sentence);
+        unmount();
+      }
+      expect(seen.size).toBe(4);
+    }
+  });
+
+  it("counts from the server's clock when given its offset: a browser a minute fast does not age the job", () => {
+    render(withI18n(<GenerationPlaceholder job={job()} samples={null} clockOffset={-60_000} />));
+    // 30 s by the server's clock is −30 s by this one: never a negative, and never 90 s.
+    expect(within(pill()!).getByText("0 s")).toBeTruthy();
+    cleanup();
+    render(withI18n(<GenerationPlaceholder job={job()} samples={null} clockOffset={45_000} />));
+    expect(within(pill()!).getByText("1 min 15 s")).toBeTruthy();
   });
 
   it("counts on by itself (its own clock), and longer waits read in minutes", async () => {
@@ -205,6 +255,56 @@ describe("in the feed", () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith("/api/creative/durations"))).toBe(true));
     expect(within(ph).getByTestId("gen-pill").dataset.kind).toBe("elapsed");
     expect(ph.textContent).not.toMatch(/%/);
+    // …and says the history was not read, not that the model has too little of it.
+    expect(within(ph).getByText(fmt(tp.elapsedUnreadSpoken, { n: 30 }))).toBeTruthy();
+    expect(within(ph).queryByText(fmt(tp.elapsedSpoken, { n: 30, min: 3 }))).toBeNull();
+  });
+
+  it("a model whose own read failed (absent from a 200) is 'not read'; one read with 2 jobs is 'fewer than 3'", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/creative/jobs"))
+        return json({ jobs: [row({ id: "a", requested_model: "pic-1" }), row({ id: "b", requested_model: "pic-2", params: { prompt: "b", aspect_ratio: "1:1" } })] });
+      if (url.startsWith("/api/creative/durations")) return json({ durations: { "pic-2": [60, 60] } });
+      return json({}, 404);
+    });
+    render(withI18n(<JobFeed orgId={ORG} />));
+    await waitFor(() => expect(screen.getByText(fmt(tp.elapsedSpoken, { n: 30, min: 3 }))).toBeTruthy());
+    expect(screen.getByText(fmt(tp.elapsedUnreadSpoken, { n: 30 }))).toBeTruthy();
+  });
+
+  it("past the models one request may name (4), the rest are 'not looked up', never 'fewer than 3'", async () => {
+    const models = ["m-a", "m-b", "m-c", "m-d", "m-e"];
+    fetchMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/creative/jobs"))
+        return json({ jobs: models.map((m, i) => row({ id: `j${i}`, requested_model: m, params: { prompt: m, aspect_ratio: "1:1" } })) });
+      if (url.startsWith("/api/creative/durations")) return json({ durations: Object.fromEntries(models.slice(0, 4).map((m) => [m, [60, 60]])) });
+      return json({}, 404);
+    });
+    render(withI18n(<JobFeed orgId={ORG} />));
+    await waitFor(() => expect(screen.getAllByText(fmt(tp.elapsedSpoken, { n: 30, min: 3 }))).toHaveLength(4));
+    const asked = fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith("/api/creative/durations"));
+    expect(asked).toEqual([`/api/creative/durations?org_id=${ORG}&models=${encodeURIComponent("m-a,m-b,m-c,m-d")}`]);
+    expect(screen.getAllByText(fmt(tp.elapsedNotAskedSpoken, { n: 30, max: 4 }))).toHaveLength(1);
+  });
+
+  it("times the job by the server's clock (the feed answer's Date header), not a browser set a minute fast", async () => {
+    // This browser reads NOW; the server's clock says a minute earlier, and the job started 30 s ago by the server.
+    const serverNow = NOW - 60_000;
+    const started = new Date(serverNow - 30_000).toISOString();
+    fetchMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/creative/jobs"))
+        return Promise.resolve(
+          new Response(JSON.stringify({ jobs: [row({ started_at: started, created_at: started })] }), {
+            status: 200,
+            headers: { "content-type": "application/json", date: new Date(serverNow).toUTCString() },
+          }),
+        );
+      if (url.startsWith("/api/creative/durations")) return json({ durations: { "pic-1": [60, 60, 60] } });
+      return json({}, 404);
+    });
+    render(withI18n(<JobFeed orgId={ORG} />));
+    // Uncorrected it would read 90 s → ~95% (capped); corrected it is 30 s of a 60 s median.
+    await waitFor(() => expect(within(pill()!).getByText("~50%")).toBeTruthy());
   });
 
   it("a job in line asks no history (there is no start to time)", async () => {
@@ -248,8 +348,61 @@ describe("in the feed", () => {
       return el!;
     });
     expect(img.parentElement!.className).toContain("gen-reveal");
+    expect(img.parentElement!.dataset.shape).toBe("asked");
     expect(img.closest<HTMLElement>(".ns-frame-media")!.style.aspectRatio).toBe("16 / 9");
     expect(screen.queryByTestId("gen-placeholder")).toBeNull();
+  });
+
+  it.each([
+    ["upscale", "image", "3 / 2"],
+    ["remove_bg", "image", "3 / 2"],
+    ["t2i", "image", "3 / 2"],
+    ["i2v", "video", "16 / 9"],
+  ] as const)(
+    "%s with no shape sent: the placeholder holds %s's guess while it works, the finished card is the square it always was",
+    async (capability, kind, working) => {
+      let call = 0;
+      const params = { prompt: "x", source_asset_id: "44444444-4444-4444-8444-444444444444" };
+      fetchMock.mockImplementation((url: string) => {
+        if (url.startsWith("/api/creative/jobs")) {
+          call += 1;
+          return json({ jobs: [call === 1 ? row({ capability, params }) : row({ capability, params, status: "completed", charged_credits: 4, result_asset_ids: [OUT] })] });
+        }
+        if (url.startsWith("/api/media")) return json({ available: true, assets: [{ id: OUT, kind, thumbUrl: `/t/${OUT}`, viewUrl: `/v/${OUT}` }] });
+        return json({}, 404);
+      });
+      render(withI18n(<JobFeed orgId={ORG} />));
+      const ph = await screen.findByTestId("gen-placeholder");
+      expect(ph.closest<HTMLElement>(".ns-frame-media")!.style.aspectRatio).toBe(working);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_100);
+      });
+      const img = await waitFor(() => {
+        const el = document.querySelector<HTMLImageElement>(`img[src="/t/${OUT}"]`);
+        expect(el).not.toBeNull();
+        return el!;
+      });
+      // object-cover in a guessed 3:2 / 16:9 would crop a portrait or square result: the square, faded into.
+      expect(img.closest<HTMLElement>(".ns-frame-media")!.style.aspectRatio).toBe("1 / 1");
+      const reveal = img.closest<HTMLElement>(".gen-reveal")!;
+      expect(reveal.dataset.shape).toBe("fallback");
+    },
+  );
+
+  it("a no-shape result that was already done when the page opened is drawn in the square, as before", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/creative/jobs"))
+        return json({ jobs: [row({ capability: "upscale", params: {}, status: "completed", charged_credits: 4, result_asset_ids: [OUT] })] });
+      if (url.startsWith("/api/media")) return json({ available: true, assets: [{ id: OUT, kind: "image", thumbUrl: `/t/${OUT}`, viewUrl: `/v/${OUT}` }] });
+      return json({}, 404);
+    });
+    render(withI18n(<JobFeed orgId={ORG} />));
+    const img = await waitFor(() => {
+      const el = document.querySelector<HTMLImageElement>(`img[src="/t/${OUT}"]`);
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(img.closest<HTMLElement>(".ns-frame-media")!.style.aspectRatio).toBe("1 / 1");
   });
 
   it("a result that was already done when the page opened is simply drawn (no fade)", async () => {
@@ -303,5 +456,48 @@ describe("in the feed", () => {
     const ph = within(stage).getByTestId("gen-placeholder");
     expect(ph.dataset.size).toBe("stage");
     expect(ph.style.aspectRatio).toBe("9 / 16");
+    // A tall shape under the stage's 62vh cap: the stylesheet limits the WIDTH from the height (62vh × 9/16), so the
+    // cap cannot squash a 9:16 into a 100%-wide strip.
+    expect(ph.dataset.shaped).toBe("true");
+    expect(ph.style.getPropertyValue("--gen-ar")).toBe("9 / 16");
+    const css = readFileSync(join(__dirname, "../components/studio/generation-placeholder.css"), "utf8");
+    const rule = /\.gen-ph\[data-size="stage"\]\[data-shaped\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toMatch(/max-width:\s*min\(100%,\s*calc\(62vh \* \(var\(--gen-ar\)\)\)\)/);
+    expect(rule).toMatch(/min-height:\s*0/);
+  });
+});
+
+describe("the history belongs to the organization it was read for", () => {
+  it("a switch to another organization starts from nothing — the first one's durations never time the second's jobs", async () => {
+    const OTHER = "22222222-2222-4222-8222-222222222222";
+    let answerOther: (r: Response) => void = () => undefined;
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes(`org_id=${ORG}`)) return json({ durations: { "pic-1": [50, 60, 70] } });
+      return new Promise<Response>((resolve) => {
+        answerOther = resolve;
+      });
+    });
+    const { result, rerender } = renderHook(({ org }) => useModelDurations(org, ["pic-1"]), { initialProps: { org: ORG } });
+    await waitFor(() => expect(result.current.samples("pic-1")).toEqual([50, 60, 70]));
+    rerender({ org: OTHER });
+    // At once, before the other organization's answer arrives.
+    expect(result.current.samples("pic-1")).toBeNull();
+    expect(result.current.missing("pic-1")).toBe("unread");
+    await act(async () => {
+      answerOther(new Response(JSON.stringify({ durations: {} }), { status: 200 }));
+    });
+    expect(result.current.samples("pic-1")).toBeNull();
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual([
+      `/api/creative/durations?org_id=${ORG}&models=pic-1`,
+      `/api/creative/durations?org_id=${OTHER}&models=pic-1`,
+    ]);
+  });
+
+  it("a model it was not asked about is 'not asked'; one it was asked about and has no answer for is 'unread'", () => {
+    fetchMock.mockImplementation(() => new Promise<Response>(() => undefined));
+    const { result } = renderHook(() => useModelDurations(ORG, ["m-a", "m-b", "m-c", "m-d", "m-e"]));
+    expect(result.current.missing("m-a")).toBe("unread");
+    expect(result.current.missing("m-e")).toBe("not_asked");
+    expect(result.current.samples("m-a")).toBeNull();
   });
 });

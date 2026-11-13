@@ -22,6 +22,14 @@
 .gen-ph[data-size="thumb"] { position: absolute; inset: 0; }
 /* The stage is a grid that centres its content, with no height of its own: the placeholder brings the shape. */
 .gen-ph[data-size="stage"] { --gen-gap: 18px; width: 100%; height: auto; min-height: 220px; max-height: 62vh; }
+/* With a shape, the shape wins over both caps. max-height alone would clip a 9:16 to a 62vh-tall strip still 100%
+   wide (any shape), and a min-height would stretch a wide one on a phone: so the width is what is limited — never
+   wider than 62vh of its shape (62vh × 9/16 for a tall clip) — and the height follows from the width. */
+.gen-ph[data-size="stage"][data-shaped] {
+  min-height: 0;
+  max-width: min(100%, calc(62vh * (var(--gen-ar))));
+  margin-inline: auto;
+}
 .gen-ph[data-size="thumb"] { --gen-gap: 8px; }
 .gen-ph[data-size="bar"] {
   --gen-gap: 10px;

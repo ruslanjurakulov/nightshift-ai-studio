@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { isActiveStatus, kindLabel, statusView, type StudioJob } from "@/lib/creative/studio";
-import { jobPhase, progressReading, type ProgressReading } from "@/lib/creative/progress";
+import { MIN_SAMPLES, jobPhase, progressReading, type NoEstimate, type ProgressReading } from "@/lib/creative/progress";
+import { DURATION_MODELS_MAX } from "@/lib/creative/durations";
 import "@/components/studio/generation-placeholder.css";
 
 /** Is the person's system asking for less motion? Read live, so changing the setting stops the wave at once. */
@@ -44,7 +45,11 @@ export function pillWords(
   if (r.kind === "reported") return { text: fmt(tp.reported, { n: r.percent }), spoken: fmt(tp.reportedSpoken, { n: r.percent }) };
   if (r.kind === "elapsed") {
     const text = r.seconds < 60 ? fmt(tp.seconds, { n: r.seconds }) : fmt(tp.minutes, { m: Math.floor(r.seconds / 60), s: r.seconds % 60 });
-    return { text, spoken: fmt(r.waiting ? tp.waitingSpoken : tp.elapsedSpoken, { n: r.seconds }) };
+    const vars = { n: r.seconds, min: MIN_SAMPLES, max: DURATION_MODELS_MAX };
+    if (r.waiting) return { text, spoken: fmt(tp.waitingSpoken, vars) };
+    if (r.since === "asked") return { text, spoken: fmt(tp.elapsedNoStartSpoken, vars) };
+    const why = r.history === "unread" ? tp.elapsedUnreadSpoken : r.history === "not_asked" ? tp.elapsedNotAskedSpoken : tp.elapsedSpoken;
+    return { text, spoken: fmt(why, vars) };
   }
   return null;
 }
@@ -70,12 +75,17 @@ export function GenerationPlaceholder({
   failure = null,
   ready = false,
   aspect,
+  missing = "unread",
+  clockOffset = 0,
 }: {
   /** The result's shape (cardAspect), for the stage, which has no shape of its own to fill. */
   aspect?: string;
   job: Pick<StudioJob, "status" | "capability" | "created_at" | "started_at">;
-  /** This model's recent durations here (s); null = none read. */
+  /** This model's recent durations here (s); null = none read, and `missing` says why. */
   samples: readonly number[] | null;
+  missing?: Exclude<NoEstimate, "few">;
+  /** The server's clock minus this browser's (ms, lib/creative/progress clockOffset): the row's times are the server's. */
+  clockOffset?: number;
   size?: PlaceholderSize;
   failure?: string | null;
   ready?: boolean;
@@ -89,7 +99,7 @@ export function GenerationPlaceholder({
   const sv = statusView(t, job.status);
   // No provider reports progress into creative_jobs today (0036 has no column for it), so nothing is passed as
   // `reported`: the pill is the history estimate or the seconds, and says which.
-  const reading = progressReading({ status: job.status, startedAt: job.started_at, createdAt: job.created_at, now, samples });
+  const reading = progressReading({ status: job.status, startedAt: job.started_at, createdAt: job.created_at, now: now + clockOffset, samples, missing });
   const pill = active ? pillWords(t, fmt, reading) : null;
   const failed = !active && !ready;
   const words = ready ? tp.loadingResult : tp.phase[phase];
@@ -103,7 +113,9 @@ export function GenerationPlaceholder({
       data-phase={phase}
       data-motion={active && !reduced ? "wave" : "still"}
       data-testid="gen-placeholder"
-      style={aspect ? { aspectRatio: aspect } : undefined}
+      data-shaped={aspect ? "true" : undefined}
+      // `--gen-ar` (e.g. "9 / 16") lets the stylesheet take the width from the height cap, so a tall shape stays tall.
+      style={aspect ? ({ aspectRatio: aspect, "--gen-ar": aspect } as CSSProperties) : undefined}
     >
       <span aria-hidden className="gen-ph-dots" />
       <span aria-hidden className="gen-ph-wave" />
@@ -133,7 +145,11 @@ export function GenerationPlaceholder({
           )}
           {pill && (
             <span className="gen-ph-pill tnum" data-kind={reading.kind} data-testid="gen-pill">
-              <span aria-hidden>{pill.text}</span>
+              {/* The sentence is shown on hover too, so the reason is not only for a screen reader; on the hidden
+                  half, so a screen reader does not hear it twice. */}
+              <span aria-hidden title={pill.spoken}>
+                {pill.text}
+              </span>
               <span className="sr-only">{pill.spoken}</span>
             </span>
           )}

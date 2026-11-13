@@ -74,16 +74,27 @@ export function durationsFrom(rows: unknown): number[] {
 }
 
 /**
+ * Why a started job's pill counts seconds instead of estimating — each is a different sentence, because "this model
+ * has too little history here" is a claim about the data, and it is false when the data simply was not read:
+ * - `few`: the history was read and has fewer than MIN_SAMPLES usable durations;
+ * - `unread`: it was asked for and has not arrived (still on its way, a failed request, a 503, a failed read);
+ * - `not_asked`: it was never asked for (more models were working at once than one request may name).
+ */
+export type NoEstimate = "few" | "unread" | "not_asked";
+
+/**
  * What the pill may say.
  * - `reported`: a number the provider itself reported (none does today; see the file's head) — printed without "~".
  * - `estimate`: ~N% from this organization's history on the model, N ≤ ESTIMATE_CAP.
- * - `elapsed`: seconds — since it started, or (`waiting`) since it was asked for while it is still in line.
+ * - `elapsed`: seconds. `since` says from what: the job's start (`started`), or when it was asked for (`asked`) — in
+ *   line (`waiting`), or started without a recorded start time. `history` says why there is no estimate; null when
+ *   none was looked for (counting from the ask, there is no "since it started" to set against a median).
  * - `none`: nothing can be read, so nothing is printed.
  */
 export type ProgressReading =
   | { kind: "reported"; percent: number }
   | { kind: "estimate"; percent: number; samples: number }
-  | { kind: "elapsed"; seconds: number; waiting: boolean }
+  | { kind: "elapsed"; seconds: number; waiting: boolean; since: "started" | "asked"; history: NoEstimate | null }
   | { kind: "none" };
 
 export function progressReading({
@@ -92,14 +103,18 @@ export function progressReading({
   createdAt,
   now,
   samples,
+  missing = "unread",
   reported = null,
 }: {
   status: string;
   startedAt: string | null | undefined;
   createdAt: string | null | undefined;
+  /** The server's "now" (the browser's clock corrected by clockOffset), since the row's times are the server's. */
   now: number;
-  /** Durations (s) of the model's newest finished jobs here; null = not read (or unreadable). */
+  /** Durations (s) of the model's newest finished jobs here; null = none read (`missing` says why). */
   samples: readonly number[] | null;
+  /** Why `samples` is null: asked and not (yet) read, or never asked. */
+  missing?: Exclude<NoEstimate, "few">;
   /** A fraction 0..1 the provider reported for THIS job, when one ever does. */
   reported?: number | null;
 }): ProgressReading {
@@ -111,10 +126,41 @@ export function progressReading({
   const ran = status === "queued" ? null : secondsBetween(startedAt, now);
   if (ran === null) {
     const waited = secondsBetween(createdAt, now);
-    return waited === null ? { kind: "none" } : { kind: "elapsed", seconds: waited, waiting: status === "queued" };
+    return waited === null ? { kind: "none" } : { kind: "elapsed", seconds: waited, waiting: status === "queued", since: "asked", history: null };
   }
-  const valid = (samples ?? []).filter((x) => Number.isFinite(x) && x > 0);
+  if (samples === null) return { kind: "elapsed", seconds: ran, waiting: false, since: "started", history: missing };
+  const valid = samples.filter((x) => Number.isFinite(x) && x > 0);
   const m = valid.length >= MIN_SAMPLES ? median(valid) : null;
-  if (m === null) return { kind: "elapsed", seconds: ran, waiting: false };
+  if (m === null) return { kind: "elapsed", seconds: ran, waiting: false, since: "started", history: "few" };
   return { kind: "estimate", percent: Math.min(ESTIMATE_CAP, Math.floor((ran / m) * 100)), samples: valid.length };
+}
+
+/** The Date header counts whole seconds and the answer took a trip: a difference this small is that, not a wrong clock. */
+export const CLOCK_SLACK_MS = 2000;
+/** A difference larger than this is not a clock to correct for but a header not to believe (a cached answer, a bad proxy). */
+export const CLOCK_OFFSET_MAX_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How far the server's clock is ahead of this browser's (ms; negative = behind), from the Date header of an answer
+ * and the browser's time when it arrived. The row's started_at / created_at are the database's clock, so a browser
+ * set a minute fast would otherwise show every job a minute older than it is (and an estimate that much further on).
+ * 0 when the header is missing or unreadable, or the difference is within the header's own rounding; never more than
+ * CLOCK_OFFSET_MAX_MS either way (beyond that the header, not the clock, is what is wrong: 0).
+ */
+export function clockOffset(dateHeader: string | null | undefined, receivedAt: number): number {
+  if (typeof dateHeader !== "string" || !Number.isFinite(receivedAt)) return 0;
+  const server = Date.parse(dateHeader);
+  if (!Number.isFinite(server)) return 0;
+  // The header is the second the server wrote it, floored: its middle is the better guess at the server's "now".
+  const offset = server + 500 - receivedAt;
+  if (Math.abs(offset) <= CLOCK_SLACK_MS || Math.abs(offset) > CLOCK_OFFSET_MAX_MS) return 0;
+  return Math.round(offset);
+}
+
+/**
+ * The offset to keep, given the one in use and a new reading: a reading within CLOCK_SLACK_MS of the one in use is
+ * the header's rounding again, and taking it would make the seconds on every pill jump back and forth on each poll.
+ */
+export function nextClockOffset(current: number, reading: number): number {
+  return Math.abs(reading - current) <= CLOCK_SLACK_MS ? current : reading;
 }

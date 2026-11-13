@@ -1124,22 +1124,33 @@ export function outputKind(capability: string): "image" | "video" | "audio" | "t
 const RATIO = /^(\d{1,2}):(\d{1,2})$/;
 
 /**
- * The card's shape, the same while the job works (the placeholder) and once it is done (the result), so the result
- * appears in the place the placeholder held. The shape the form sent when it sent one (an expand's 4:3 included).
- * A model that takes no shape (StudioModel.fixedShape: the picture comes back in the model's own) and the picture
- * tools that keep their source's shape send none: then a neutral 3:2 for a picture and 16:9 for a clip. That is a
- * PLACEHOLDER shape, not a promise about the file — grounded-image-1.0 returned 1920x1280 in practice, which 3:2
- * happens to match, and a finished picture is fitted into the frame either way. A sound or a description: a wide bar.
+ * The card's shape. `asked`: it is the shape the form sent (an expand's 4:3 included), which the result comes back in,
+ * so the placeholder and the finished card are the same frame and the result appears in the place it held.
+ *
+ * Without one — a model that takes no shape (StudioModel.fixedShape: the picture comes back in the model's own) and
+ * the tools that keep their source's shape (upscale, edit, remove_bg, relight, i2v, video_upscale) — the shape is not
+ * known until the file is, and the two states differ on purpose:
+ *  - working (the placeholder): a neutral 3:2 for a picture, 16:9 for a clip, so something the size of a likely
+ *    result holds its place — grounded-image-1.0 returned 1920x1280 in practice, which 3:2 happens to match;
+ *  - ended: the square every such card always had. A finished card is drawn object-cover; a guessed 3:2 or 16:9
+ *    frame would crop a portrait upscale or a square cut-out to a strip of its middle. The result fades into the
+ *    square from the placeholder (JobFeed's gen-reveal), which is a change of frame, not a jump inside one.
+ * A sound or a description: a wide bar, either way.
  */
-export function cardAspect(job: Pick<StudioJob, "capability" | "params">): string {
+export function cardShape(job: Pick<StudioJob, "capability" | "params" | "status">): { aspect: string; asked: boolean } {
   const kind = outputKind(job.capability);
-  if (kind === "audio" || kind === "text") return "16 / 7";
+  if (kind === "audio" || kind === "text") return { aspect: "16 / 7", asked: false };
   const a = job.params.aspect_ratio;
   const m = typeof a === "string" ? RATIO.exec(a) : null;
   const w = m ? Number(m[1]) : 0;
   const h = m ? Number(m[2]) : 0;
-  if (w > 0 && h > 0) return `${w} / ${h}`;
-  return kind === "video" ? "16 / 9" : "3 / 2";
+  if (w > 0 && h > 0) return { aspect: `${w} / ${h}`, asked: true };
+  if (!isActiveStatus(job.status)) return { aspect: "1 / 1", asked: false };
+  return { aspect: kind === "video" ? "16 / 9" : "3 / 2", asked: false };
+}
+
+export function cardAspect(job: Pick<StudioJob, "capability" | "params" | "status">): string {
+  return cardShape(job).aspect;
 }
 
 /**

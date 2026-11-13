@@ -18,6 +18,9 @@ export const studioProgressUz: StudioProgressDictionary = {
   reportedSpoken: "{n}% bajarildi — model maʼlumotiga koʻra.",
   seconds: "{n} s",
   minutes: "{m} daq {s} s",
-  elapsedSpoken: "Boshlanganiga {n} soniya boʻldi. Taxmin yoʻq: bu modelning shu yerda tugagan ishlari 3 tadan kam.",
+  elapsedSpoken: "Boshlanganiga {n} soniya boʻldi. Taxmin yoʻq: bu modelning shu yerda tugagan ishlari {min} tadan kam.",
+  elapsedUnreadSpoken: "Boshlanganiga {n} soniya boʻldi. Taxmin yoʻq: bu modelning shu yerdagi oldingi ishlari oʻqilmadi.",
+  elapsedNotAskedSpoken: "Boshlanganiga {n} soniya boʻldi. Taxmin yoʻq: bir vaqtda shuncha model ishlayotganda faqat {max} tasi tekshiriladi.",
+  elapsedNoStartSpoken: "Soʻralganiga {n} soniya boʻldi. Taxmin yoʻq: ish boshlangan vaqt yozilmagan.",
   waitingSpoken: "{n} soniyadan beri navbatda.",
 };
