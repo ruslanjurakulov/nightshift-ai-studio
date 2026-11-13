@@ -146,12 +146,17 @@ describe("the gallery", () => {
     expect(card.querySelector("time")?.getAttribute("dateTime")).toBe(FIXTURE_ENTRY.createdAt);
     expect(card.querySelector("img")?.getAttribute("alt")).toContain("Runway Gen-4.5");
     // An operator preview: the card says, as a fact, that the model is not in the Studio, and the button neither names it in its
-    // link nor in its accessible name; it is its visible words, described by the sample's prompt.
-    const tryIt = within(card).getByRole("link", { name: d.site.gallery.try });
+    // link nor in its accessible name. It says "Use this prompt" (never "try" a model its link will not open), and a visible note,
+    // which also describes the button with the sample's prompt, says the words run on a model the Studio offers.
+    const tryIt = within(card).getByRole("link", { name: d.site.gallery.use });
+    expect(within(card).queryByRole("link", { name: d.site.gallery.try })).toBeNull();
     expect(tryIt.getAttribute("href")).toBe(signupTryHref(FIXTURE_ENTRY));
-    expect(tryIt.textContent).toBe(d.site.gallery.try);
+    expect(tryIt.textContent).toBe(d.site.gallery.use);
     expect(tryIt.hasAttribute("aria-label")).toBe(false);
-    expect(document.getElementById(tryIt.getAttribute("aria-describedby")!)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    const [promptId, noteId] = tryIt.getAttribute("aria-describedby")!.split(" ");
+    expect(document.getElementById(promptId)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    expect(document.getElementById(noteId)?.textContent).toBe(d.site.gallery.useNote);
+    expect(card.querySelector(".nx-gallery-use")?.textContent).toBe(d.site.gallery.useNote);
     expect(card.querySelector(".nx-gallery-unavailable")?.textContent).toBe(d.site.gallery.notInStudio);
     expect(tryIt.getAttribute("href")).not.toContain("model");
     // The heading and the note say what the section is, in this language.
@@ -252,16 +257,38 @@ describe("the gallery", () => {
     expect(s.gallery.tryAria.startsWith(s.gallery.try)).toBe(true);
     expect(s.gallery.notInStudio + s.gallery.gone).not.toMatch(PROVIDER_BRANDS);
     // Statements of fact, not promises (CLAUDE.md #5): nothing about when or whether it will come.
-    expect(s.gallery.notInStudio + s.gallery.gone).not.toMatch(/coming|soon|скоро|появится|tez orada|paydo/i);
+    expect(s.gallery.notInStudio + s.gallery.gone + s.gallery.useNote).not.toMatch(/coming|soon|скоро|появится|tez orada|paydo/i);
+    // A button that does not open the sample's model says "use" the words, not "try" them; it is another word from "try".
+    expect(s.gallery.use).not.toBe(s.gallery.try);
+    expect(s.gallery.useNote).not.toMatch(PROVIDER_BRANDS);
     // The heading claims nothing about which models are on sale.
     expect(s.gallery.title).toContain("Nightshift");
   });
 
-  it("the stylesheet lays the cards out in one column on a phone and gives the credit link a touch-sized target", () => {
+  it("the stylesheet lays the cards out in one column on a phone (nothing scrolls sideways), a masonry above it, and gives the credit link a touch-sized target", () => {
     const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
     expect(css).toMatch(/\.nx-gallery \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
-    expect(css).toMatch(/@media \(min-width: 860px\) \{ \.nx-gallery \{ grid-template-columns: repeat\(2/);
+    expect(css).not.toMatch(/\.nx-gallery \{[^}]*overflow-x/);
+    expect(css).toMatch(/@media \(min-width: 600px\) \{\n  \.nx-gallery \{ display: block; columns: 2;/);
+    expect(css).toMatch(/\.nx-gallery-card \{ break-inside: avoid;/);
+    expect(css).toMatch(/@media \(min-width: 1100px\) \{ \.nx-gallery \{ columns: 3; \} \}/);
+    // The box takes the clip's own shape from the element; the stylesheet forces none.
+    expect(css).not.toMatch(/\.nx-gallery-pic \{[^}]*aspect-ratio/);
     expect(css).toMatch(/\.nx-gallery-attr \{[^}]*min-height: 44px/);
+  });
+
+  it("each card keeps its clip's own shape: a 9:16 sample stands tall, a 16:9 one lies wide, its box sized from the file before it loads", () => {
+    const tall = { ...FIXTURE_ENTRY, width: 1280, height: 2276 };
+    const { container } = render(<ShowcaseGallery t={t} locale="en" entries={[tall]} files={FIXTURE_FILES} />);
+    const card = container.querySelector(`#sample-${FIXTURE_JOB}`) as HTMLElement;
+    expect(card.dataset.shape).toBe("tall");
+    expect((card.querySelector(".nx-gallery-pic") as HTMLElement).style.aspectRatio).toBe("1280 / 2276");
+    cleanup();
+    const wide = render(<ShowcaseGallery t={t} locale="en" entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />).container;
+    expect((wide.querySelector(`#sample-${FIXTURE_JOB}`) as HTMLElement).dataset.shape).toBe("wide");
+    // A page that shows the sample in a slot leaves it out of its gallery (no clip twice on a page).
+    cleanup();
+    expect(render(<ShowcaseGallery t={t} locale="en" entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} exclude={[FIXTURE_JOB]} />).container.innerHTML).toBe("");
   });
 });
 

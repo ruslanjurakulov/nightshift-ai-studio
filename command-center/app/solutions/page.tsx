@@ -11,9 +11,9 @@ import { HeroFx } from "@/components/site/HeroFx";
 import { AudienceTabs } from "@/components/site/AudienceTabs";
 import { ApiPicture, ComposerPicture, SignOffPicture } from "@/components/site/SolutionPictures";
 import { MotionToggle } from "@/components/site/MotionToggle";
-import { LoopClip } from "@/components/site/LoopClip";
-import { SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, slotSample, type SlotId } from "@/components/site/samples";
-import { creditLine } from "@/lib/site/media";
+import { slotMedia, type SlotId } from "@/components/site/samples";
+import { PlaceFill, placeBox } from "@/components/site/PlaceFill";
+import { placeTry } from "@/components/site/place-try";
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
 export async function generateMetadata(): Promise<Metadata> {
@@ -52,8 +52,7 @@ export default async function SolutionsPage() {
     if (!isSolutionId(page.id)) return [];
     const Picture = WAY_PICTURE[page.id];
     const slot = `solutions.${page.id}` as SlotId;
-    const sample = slotSample(slot);
-    const clip = slotClip(slot);
+    const media = slotMedia(slot);
     // The channels tab's picture carries its own real frame (SignOffPicture), so only the other two get a photograph or clip above theirs.
     const banner = page.id !== "youtube-channels";
     return [
@@ -93,18 +92,8 @@ export default async function SolutionsPage() {
             </div>
             <div className="nx-aud-stage">
               {banner && (
-                <figure className="nx-aud-photo" data-clip={clip ?? undefined}>
-                  <SlotImg slot={slot} alt={slotAlt(t.site.samples.alts, slot)} sizes="(min-width: 860px) 560px, calc(100vw - 64px)" />
-                  {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].sm} />}
-                  <span className="nx-result-badge" data-kind="still">
-                    {sample.footage ? t.site.samples.frameTag : t.site.samples.tag}
-                  </span>
-                  {clip && (
-                    <span className="nx-result-badge" data-kind="clip">
-                      {t.site.samples.clipTag}
-                    </span>
-                  )}
-                  <span className="nx-result-credit">{creditLine(sample.id, t.site.samples.credit)}</span>
+                <figure className="nx-aud-photo" {...placeBox(media)}>
+                  <PlaceFill media={media} s={t.site} tryHref={placeTry(media)} className="" sizes="(min-width: 860px) 560px, calc(100vw - 64px)" />
                 </figure>
               )}
               <Picture t={t} />
@@ -114,6 +103,8 @@ export default async function SolutionsPage() {
       },
     ];
   });
+  const kinds = (["solutions.youtube-channels", "solutions.creative-studio", "solutions.developers"] as const).map((x) => slotMedia(x).kind);
+  const notes = [kinds.includes("stock") ? t.site.samples.note : null, kinds.includes("ai") ? t.site.gallery.slotNote : null].filter((n): n is string => n !== null);
   return (
     <PublicShell t={t} current="solutions" fresh>
       <div className="nx-lit">
@@ -128,7 +119,12 @@ export default async function SolutionsPage() {
         </section>
         <section aria-label={s.slug} className="st-wrap nx-sol-ways">
           <AudienceTabs label={s.slug} tabs={tabs} />
-          <p className="nx-show-note">{t.site.samples.note}</p>
+          {/* What the pictures above are, said once for the three: the stock sentence only while one of them is stock, the samples' while one is ours. */}
+          {notes.map((n) => (
+            <p key={n} className="nx-show-note">
+              {n}
+            </p>
+          ))}
         </section>
       </div>
 

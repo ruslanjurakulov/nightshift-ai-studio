@@ -24,6 +24,9 @@ export function showcaseItems(
   return entries.flatMap((e) => (files[e.jobId] ? [{ e, f: files[e.jobId] }] : []));
 }
 
+/** A format card's words (lib/site/formats.ts and site.formats.items), on the card of the sample that shows it. */
+export type LandingFormat = { id: string; job: string; title: string; body: string; entry: ShowcaseEntry };
+
 /**
  * The model samples (lib/site/showcase.ts): real generations from the operator's Studio, each in its own card with an
  * "AI-generated" badge, the model that made it and its maker's credit (a link, as the maker's terms ask), the words it was
@@ -34,6 +37,12 @@ export function showcaseItems(
  *
  * With no entry, or none whose files are here, it renders nothing: never a placeholder that looks like ours. A model is named
  * only inside its own card (data-showcase-entry), because that card is a generation by it; tests/site-showcase.test.tsx pins it.
+ *
+ * Laid out as an explore grid: each card keeps its clip's own shape (a 9:16 clip stands tall, a 16:9 one lies wide; the box's
+ * aspect ratio is the file's, so nothing shifts as it loads), in one column on a phone and a two- or three-column masonry above
+ * it. On a wide screen every clip in view plays (LoopClip `together`); on a phone only the one most in view. A card whose sample
+ * shows a format (lib/site/formats.ts) carries the format's name and line above its model. `exclude` leaves out the samples the
+ * page already shows in a slot, so no clip is on a page twice.
  */
 export function ShowcaseGallery({
   t,
@@ -42,6 +51,8 @@ export function ShowcaseGallery({
   entries = SHOWCASE_ENTRIES,
   files = SHOWCASE_FILES,
   now = new Date(),
+  exclude = [],
+  formats = [],
 }: {
   t: Dictionary;
   locale: Locale;
@@ -50,13 +61,18 @@ export function ShowcaseGallery({
   files?: Readonly<Record<string, ShowcaseFiles>>;
   /** Today, for a shutdown day that has come (tests pass a fixed day). */
   now?: Date;
+  /** Jobs the page shows elsewhere (its slots). */
+  exclude?: readonly string[];
+  formats?: readonly LandingFormat[];
 }) {
-  const items = showcaseItems(entries, files);
+  const all = showcaseItems(entries, files);
+  const items = all.filter(({ e }) => !exclude.includes(e.jobId));
   if (items.length === 0) return null;
   const g = t.site.gallery;
   // An animation of one of our own pictures reads as a trick without the picture it started from. Shown only when that picture is
   // itself a sample here (its file is in the repository and its own card names its model); any other input is not shown.
-  const byJob = new Map(items.map((it) => [it.e.jobId, it]));
+  // Looked up among every sample, so a picture the page shows in a slot (and leaves out of the grid) still credits the clip made from it.
+  const byJob = new Map(all.map((it) => [it.e.jobId, it]));
   const sourceOf = (e: ShowcaseEntry) => (e.kind === "video" && e.input.kind === "operator_job" ? byJob.get(e.input.jobId) ?? null : null);
   return (
     <section id="samples" aria-labelledby="samples-title" className="nx-section" data-tone="raised">
@@ -72,27 +88,35 @@ export function ShowcaseGallery({
             const leftOut = modelLeftOut(e, now);
             const promptId = `sample-prompt-${e.jobId}`;
             const clip = e.kind === "video" && f.clip !== null;
+            const format = formats.find((x) => x.job === e.jobId);
+            const shape = e.height > e.width * 1.15 ? "tall" : e.width > e.height * 1.15 ? "wide" : "square";
             const source = sourceOf(e);
             return (
-              <li key={e.jobId} className="nx-gallery-card" data-showcase-entry={e.jobId} data-model={e.modelId}>
-                <div className="nx-gallery-pic" data-clip={clip ? "sample" : undefined}>
+              <li key={e.jobId} id={`sample-${e.jobId}`} className="nx-gallery-card" data-showcase-entry={e.jobId} data-model={e.modelId} data-shape={shape}>
+                <div className="nx-gallery-pic" data-clip={clip ? "sample" : undefined} style={{ aspectRatio: `${e.width} / ${e.height}` }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={f.poster}
                     srcSet={`${f.posterSm} 640w, ${f.poster} 1280w`}
-                    sizes="(min-width: 860px) 560px, 100vw"
+                    sizes="(min-width: 1024px) 400px, (min-width: 600px) 50vw, 100vw"
                     width={e.width}
                     height={e.height}
                     alt={fmt(clip ? g.altClip : g.altImage, { model: e.modelName })}
-                    className="nx-art"
+                    className="nx-art nx-drift-pic"
                     loading="lazy"
                     decoding="async"
                   />
-                  {clip && <ShowcaseClip jobId={e.jobId} />}
+                  {clip && <ShowcaseClip jobId={e.jobId} together />}
                   <span className="nx-result-badge">{g.badge}</span>
                   {clip && <ClipPause label={t.site.fx.pause} />}
                 </div>
                 <div className="nx-gallery-body">
+                  {format && (
+                    <div className="nx-gallery-format" data-format={format.id}>
+                      <h3 className="nx-gallery-format-t">{format.title}</h3>
+                      <p className="nx-gallery-format-b">{format.body}</p>
+                    </div>
+                  )}
                   <p className="nx-gallery-model">
                     <span className="nx-gallery-key">{g.model}</span> <strong>{e.modelName}</strong>
                   </p>
@@ -133,17 +157,23 @@ export function ShowcaseGallery({
                     <time dateTime={e.createdAt}>{fmt(g.made, { date: madeOn(e.createdAt, locale) })}</time>
                   </p>
                   {href && (
-                    // Named by the model only where the link opens that model; otherwise its visible name, described by the prompt.
+                    // Named by the model only where the link opens that model. Where it does not (the model is not in the Studio),
+                    // the button says "Use this prompt", not "try" a model the link will not open, and a note says which model runs it.
                     <Link
                       href={href}
                       prefetch={false}
                       className="nx-btn nx-gallery-try"
                       aria-label={leftOut ? undefined : fmt(g.tryAria, { model: e.modelName })}
-                      aria-describedby={promptId}
+                      aria-describedby={leftOut ? `${promptId} sample-use-${e.jobId}` : promptId}
                     >
-                      {g.try}
+                      {leftOut ? g.use : g.try}
                       <ArrowRight aria-hidden />
                     </Link>
+                  )}
+                  {href && leftOut && (
+                    <p id={`sample-use-${e.jobId}`} className="nx-gallery-use">
+                      {g.useNote}
+                    </p>
                   )}
                 </div>
               </li>

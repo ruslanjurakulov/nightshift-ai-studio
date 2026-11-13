@@ -11,9 +11,9 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { LegalFooter } from "@/components/legal/LegalFooter";
 import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
-import { LoopClip } from "@/components/site/LoopClip";
 import { ClipPause } from "@/components/site/ClipPause";
-import { SAMPLES, SLOTS, SlotImg, slotClip, slotPosition, slotSample, type SlotId } from "@/components/site/samples";
+import { slotMedia, type SlotId } from "@/components/site/samples";
+import { AiCredit, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { creditLine } from "@/lib/site/media";
 import { FlowCard } from "@/components/auth/FlowCard";
 import "@/components/site/site.css";
@@ -42,23 +42,23 @@ export function AuthShell({
   const a = t.site.auth;
   preloadSiteFonts(locale);
   const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;
-  // A real photograph (sign in) or a looped clip (sign up) behind the stage, stock by a Pexels contributor, credited under the stage: golden light over dunes to sign in, lanterns on water at night to start.
+  // The picture behind the stage is what the slot shows: one of our samples (credited with its model under the stage) or the stock fallback (credited with its contributor).
   const slot: SlotId = mode === "signup" ? "auth.signup" : "auth.login";
-  const photo = slotSample(slot).id as "desert" | "floating";
-  const clip = slotClip(slot);
-  const poster = SAMPLES[SLOTS[slot].id].sm;
-  const credit = `${t.site.samples.captions[photo]}. ${creditLine(photo, t.site.samples.credit)}`;
+  const m = slotMedia(slot);
+  const moving = m.kind === "ai" ? m.moving : m.clip !== null;
+  const photo = m.kind === "stock" ? m.id : "sample";
+  const caption = m.kind === "stock" && (m.id === "desert" || m.id === "floating") ? `${t.site.samples.captions[m.id]}. ` : "";
+  const credit = m.kind === "stock" ? `${caption}${creditLine(m.id, t.site.samples.credit)}` : null;
   return (
     <div className="st nx st-auth">
       {/* The same first stop as the marketing pages: past the brand, the way back, language and theme, to the form. */}
       <a href="#main" className="st-skip">
         {t.landing.nav.skip}
       </a>
-      <aside className="st-auth-aside" aria-label={asideTitle} data-photo={photo} data-clip={clip ?? undefined}>
-        {/* A photograph behind the house rules (decorative: darkened under the words, credited below); the flow card on it is the example. */}
-        <SlotImg slot={slot} className="nx-aside-bg" eager sizes="(min-width: 960px) 900px, 1px" />
-        {clip && <LoopClip clip={clip} poster={poster} early position={slotPosition(slot)} />}
-        {clip && <ClipPause label={t.site.fx.pause} />}
+      <aside className="st-auth-aside" aria-label={asideTitle} data-photo={photo} {...placeBox(m)}>
+        {/* A picture behind the house rules (decorative: darkened under the words, credited below); the flow card on it is the example. */}
+        <PlaceFill media={m} s={t.site} alt="" className="nx-aside-bg" eager early labels={false} sizes="(min-width: 960px) 900px, 1px" />
+        {moving && <ClipPause label={t.site.fx.pause} />}
         <Link href="/" className="st-brand self-start" aria-label={t.brand.name}>
           <Wordmark />
         </Link>
@@ -80,7 +80,7 @@ export function AuthShell({
             {a.asideLamp}
           </span>
           <span className="st-small">{fmt(a.welcomeNote, { n: formatCredits(WELCOME_CREDITS, locale) })}</span>
-          <span className="st-small nx-aside-note">{credit}</span>
+          {credit !== null ? <span className="st-small nx-aside-note">{credit}</span> : m.kind === "ai" && <AiCredit entry={m.entry} g={t.site.gallery} className="nx-ai-credit nx-aside-note" />}
         </div>
       </aside>
 
@@ -97,11 +97,10 @@ export function AuthShell({
         </div>
 
         {/* On a phone the stage is a band above the form: the same drawing, the brand over it, the brief and the approval playing on it. */}
-        <div className="nx-auth-band lg:hidden" data-photo={photo} data-clip={clip ?? undefined}>
-          <SlotImg slot={slot} className="nx-art" eager sizes="(max-width: 959px) 100vw, 1px" />
-          {clip && <LoopClip clip={clip} poster={poster} early position={slotPosition(slot)} />}
-          {clip && <ClipPause label={t.site.fx.pause} />}
-          <span className="nx-result-credit">{creditLine(photo, t.site.samples.credit)}</span>
+        <div className="nx-auth-band lg:hidden" data-photo={photo} {...placeBox(m)}>
+          <PlaceFill media={m} s={t.site} alt="" eager early labels={m.kind === "stock"} sizes="(max-width: 959px) 100vw, 1px" />
+          {moving && <ClipPause label={t.site.fx.pause} />}
+          {m.kind === "ai" && <AiCredit entry={m.entry} g={t.site.gallery} className="nx-ai-credit nx-result-ai" />}
           <Link href="/" className="st-brand" aria-label={t.brand.name}>
             <Wordmark />
           </Link>

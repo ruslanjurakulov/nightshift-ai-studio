@@ -26,7 +26,8 @@ import { thumbWords } from "@/components/site/BrandArt";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import type { MoneyAnchor } from "@/lib/landing";
 import { PROVIDER_BRANDS } from "./helpers/brands";
-import { GALLERY, SAMPLE_CARD, outsideGallery, shippedSamples, without } from "./helpers/showcase-scope";
+import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, placeLabelProblems, without } from "./helpers/showcase-scope";
+import { slotMedia } from "@/components/site/samples";
 
 afterEach(() => {
   cleanup();
@@ -251,7 +252,7 @@ describe("the landing page's reasons to stay", () => {
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
     expect(outsideGallery(all())).toHaveLength(3);
     const inGallery = all().filter((b) => b.closest(GALLERY));
-    expect(inGallery).toHaveLength(shippedSamples().clips);
+    expect(inGallery).toHaveLength(landingSamples().clips);
     for (const b of inGallery) expect(b.closest(SAMPLE_CARD)).toBeTruthy();
     const toggle = container.querySelector(".nx-motion-btn") as HTMLElement;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
@@ -314,30 +315,30 @@ describe("the page's HTML stays small", () => {
 });
 
 describe("the stock-picture disclosure is printed, not only labelled", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the hero card and each of the two showcases show the note as visible text, and every picture carries its badge and its credit", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: each of the two showcases shows the note for what its picture is as visible text, and every picture carries its badge and its credit", (code) => {
     const { container } = landing(NO_MONEY, code);
-    const s = dictionaries[code].site.samples;
-    const hero = container.querySelector("figure.nx-chat") as HTMLElement;
-    expect(hero.querySelector("figcaption")?.textContent).toBe(`${s.note} ${s.clipNote}`);
-    expect(hero.querySelector("figcaption")?.closest("[aria-hidden]")).toBeNull();
+    const site = dictionaries[code].site;
     const shows = [...container.querySelectorAll("section.nx-show")];
     expect(shows.map((x) => x.id)).toEqual(["studio", "approvals"]);
-    for (const x of shows) {
+    for (const [x, slot] of [[shows[0], "show.studio"], [shows[1], "show.approvals"]] as const) {
+      const m = slotMedia(slot);
       const note = x.querySelector(".nx-show-note") as HTMLElement;
-      expect(note.textContent?.startsWith(s.note)).toBe(true);
+      // Stock: the stock sentence; one of our samples: the sentence that says it is a real job from our Studio.
+      expect(note.textContent?.startsWith(m.kind === "ai" ? site.gallery.slotNote : site.samples.note)).toBe(true);
       expect(note.closest("[aria-hidden]")).toBeNull();
-      expect(x.querySelector(".nx-result-badge")?.textContent).toBe(s.frameTag);
-      expect(x.querySelector(".nx-result-credit")?.textContent).toContain(" / Pexels");
+      expect(placeLabelProblems(x.querySelector(".nx-show-pic")!, m, site), slot).toEqual([]);
     }
   });
 
-  it("has no gallery, no rails and no comparison any more: nothing scrolls sideways on the landing and nothing is shown twice", () => {
+  it("has no rails and no comparison any more: nothing scrolls sideways on the landing and nothing is shown twice", () => {
     const { container } = landing();
     for (const sel of ["#examples", ".nx-caps", "#compare", ".nx-gal", "[aria-roledescription='carousel']", ".nx-tiles", ".nx-rules-rail"]) expect(container.querySelector(sel), sel).toBeNull();
-    // Two different stills in the showcases, a third in the hero card.
-    const used = [...container.querySelectorAll("figure.nx-chat img:not(.nx-fx-fg), section.nx-show img:not(.nx-fx-fg)")].map((i) => i.getAttribute("data-sample"));
-    expect(used).toHaveLength(3);
-    expect(new Set(used).size).toBe(3);
+    // The first screen, the two showcases and the closing panel: four different pictures (a stock still or a sample each).
+    const used = [...container.querySelectorAll(".nx-sh-media img, section.nx-show img, .nx-final img")].map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-sample-job"));
+    expect(used).toHaveLength(4);
+    expect(new Set(used).size).toBe(4);
+    // A sample in one of those places is not shown again in the gallery.
+    for (const id of used) expect(container.querySelector(`${GALLERY} [data-showcase-entry="${id}"]`)).toBeNull();
   });
 
   it("sets the text of every showcase on a dark overlay: white on the brightest possible still stays above 7:1 (AA needs 4.5)", async () => {

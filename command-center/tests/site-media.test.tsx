@@ -7,7 +7,9 @@ import { LoopClip } from "@/components/site/LoopClip";
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { devDictionaries } from "@/lib/i18n/dev";
 import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
-import { SAMPLES, SLOTS } from "@/components/site/samples";
+import { SAMPLES, SLOTS, slotMedia } from "@/components/site/samples";
+import { stockInUse } from "@/components/site/stock-in-use";
+import { placeLabelProblems } from "./helpers/showcase-scope";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { SignOffPicture } from "@/components/site/SolutionPictures";
 
@@ -59,29 +61,56 @@ describe("every picture has a credit", () => {
     }
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: the footer lists every credit, with its link, from the one data file", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the footer lists the credit of every stock picture a page still shows, with its link, from the one data file (and none once none is shown)", (code) => {
     const t = dictionaries[code];
     const { container } = render(<PublicFooter t={t} />);
+    // Round 10: a picture every place of which shows one of our samples is no longer on the site, so it is no longer credited.
+    const used = stockInUse();
     const links = [...container.querySelectorAll(".st-credits li a")] as HTMLAnchorElement[];
-    expect(links.map((a) => a.textContent)).toEqual(MEDIA_IDS.map((id) => creditLine(id, t.site.samples.credit)));
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(MEDIA_IDS.map((id) => MEDIA[id].sourceUrl));
+    expect(links.map((a) => a.textContent)).toEqual(used.map((id) => creditLine(id, t.site.samples.credit)));
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(used.map((id) => MEDIA[id].sourceUrl));
     for (const a of links) expect(a.getAttribute("rel")).toContain("noopener");
     expect(container.querySelector(".st-credits summary")?.textContent).toBe(t.site.credits.title);
-    expect(container.querySelector(".st-credits a[href='https://www.pexels.com/license/']")?.textContent).toBe(t.site.credits.licence);
+    const licence = container.querySelector(".st-credits a[href='https://www.pexels.com/license/']");
+    if (used.length > 0) {
+      expect(licence?.textContent).toBe(t.site.credits.licence);
+      expect(container.querySelector(".st-credits")?.textContent).toContain(t.site.credits.lead);
+    } else {
+      expect(licence).toBeNull();
+      expect(container.querySelector(".st-credits")?.innerHTML).not.toMatch(/pexels/i);
+      expect(container.querySelector(".st-credits")?.textContent).toContain(t.site.credits.leadNoStock);
+    }
   });
 });
 
-describe("the publish desk's frame is real footage, labelled and credited", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the frame says it is an example and credits the footage, on the frame and, for a phone, in a caption under it", (code) => {
+describe("no stock picture is left on the public site (round 10)", () => {
+  it("every slot and every /mcp example card shows one of our samples, so the footer credits no Pexels picture", () => {
+    // The owner's goal: our own generations everywhere. A slot or scene whose sample is missing would fall back to stock (and be
+    // credited again); this says so the day it happens.
+    expect(stockInUse()).toEqual([]);
+    for (const slot of Object.keys(SLOTS) as (keyof typeof SLOTS)[]) expect(slotMedia(slot).kind, slot).toBe("ai");
+  });
+});
+
+describe("the publish desk's frame says what it is, on the frame and, for a phone, under it", () => {
+  it.each(LOCALES.map((l) => l.code))("%s: stock footage is labelled an example and credited (with a caption for a phone); one of our samples is labelled AI-generated with its model's credit under the drawing", (code) => {
     const t = dictionaries[code];
     const { container } = render(<SignOffPicture t={t} />);
     const frame = container.querySelector(".st-signoff-frame")!;
-    expect(frame.getAttribute("data-clip")).toBe("caravan");
-    expect(frame.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.frameTag);
-    expect(frame.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(t.site.samples.clipTag);
-    const credit = creditLine("caravan", t.site.samples.credit);
-    expect(frame.querySelector(".nx-result-credit")?.textContent).toBe(credit);
-    expect(container.querySelector(".st-signoff-caption")?.textContent).toContain(credit);
+    const m = slotMedia("solutions.youtube-channels");
+    if (m.kind === "stock") {
+      expect(frame.getAttribute("data-clip")).toBe(m.clip);
+      expect(frame.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(m.footage ? t.site.samples.frameTag : t.site.samples.tag);
+      const credit = creditLine(m.id, t.site.samples.credit);
+      expect(frame.querySelector(".nx-result-credit")?.textContent).toBe(credit);
+      expect(container.querySelector(".st-signoff-caption")?.textContent).toContain(credit);
+    } else {
+      expect(frame.getAttribute("data-showcase-entry")).toBe(m.entry.jobId);
+      expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
+      expect(container.querySelector(".st-signoff-caption")).toBeNull();
+      expect(placeLabelProblems(container.querySelector(".nx-place-credit")!, m, t.site)).toEqual([]);
+      expect(container.innerHTML).not.toMatch(/pexels/i);
+    }
     // The flat drawn placeholder is gone.
     expect(container.querySelector(".st-clip-pic")).toBeNull();
   });

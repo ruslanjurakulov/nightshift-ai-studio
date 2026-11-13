@@ -9,8 +9,29 @@ in the Studio yet"; once a model is past its announced shutdown date, the same h
 Studio". A signed-out visitor goes through sign-up first; the form opens after /welcome. The button only fills the form:
 nothing is priced or started until the person presses Generate and sees the price.
 
-The gallery is empty, and renders nothing, until the first sample is merged. The stock picture slots are unchanged; a later
-change can point a slot at a sample.
+The gallery is empty, and renders nothing, until the first sample is merged.
+
+## Putting a sample in a picture slot
+
+Every picture place on the public site is a line in `command-center/components/site/slots.ts` `SLOTS` (and, for /mcp's
+example cards, `components/docs/SampleFrame.tsx` `SCENE_SAMPLE`). A line's `ai` is the job id of the sample that fills it:
+
+```ts
+hero: { ai: "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8", id: "cloud", clip: "cloud" },
+```
+
+- The slot shows that sample only once its entry and files are merged (the showcase PR); until then it keeps the stock picture
+  (`id`, `clip`), so setting `ai` before the PR lands is safe. Exporting with the workflow's **slot** input does the same for a
+  slot whose `ai` is null.
+- A sample in a slot is labelled as one: "AI-generated", the model, the maker's credit and **Try this prompt**, never a stock
+  label. `aiPosition` frames it in the slot's box (CSS `object-position`) when the centre is wrong.
+- The landing leaves a sample shown in its own slots (hero, show.studio, show.approvals, landing.final) out of its gallery.
+- The footer credits only the stock pictures some page still shows, so a stock picture drops out of the credits by itself
+  once every place that used it holds a sample. When none is left, the credits say so and list no Pexels item. The stock files
+  stay in the repository even then: every line still names its stock fallback (`id`, a `lib/site/media.ts` item), which the
+  place shows if its sample's files were ever missing. Deleting them needs a change that makes the fallback optional first.
+- The landing's format cards (`lib/site/formats.ts`) name a sample by job id the same way; their titles are in
+  `lib/i18n/site/{en,ru,uz}.ts` `site.formats.items` and describe that sample, so change them together.
 
 ## Adding a sample (the owner's steps)
 
