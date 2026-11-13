@@ -169,6 +169,23 @@ describe("site-motion.css", () => {
     expect(src).toMatch(/\.nx-marquee \.nx-clip-pause:not\(:focus-visible\) \{ opacity: 0; clip-path: inset\(50%\); pointer-events: none; \}/);
   });
 
+  it("keeps the strip still on a touch screen and the turning edge to a fine pointer (no unpausable or stuck motion)", () => {
+    for (const block of mediaBlocks(src, "prefers-reduced-motion: no-preference")) {
+      if (/\.nx-marquee-track \{ animation|html\[data-fx="on"\] \.nx-marquee-track/.test(block)) expect(src.slice(0, src.indexOf(block)).slice(-120)).toContain("(hover: hover)");
+    }
+    const fine = mediaBlocks(src, "pointer: fine").join("\n");
+    expect(fine).toContain("animation: nx-edge-turn");
+    let outside = src;
+    for (const inner of mediaBlocks(src, "pointer: fine")) outside = outside.replace(inner, "");
+    expect(outside).not.toContain("animation: nx-edge-turn");
+  });
+
+  it("lets a click through the see-through strip under the scrolled header", () => {
+    const header = mediaBlocks(src, "min-width: 1024px").join("\n");
+    expect(header).toContain(".st .st-header[data-scrolled], .st .st-header[data-scrolled] .st-header-row { pointer-events: none; }");
+    expect(header).toContain(".st .st-header[data-scrolled] .st-header-row > * { pointer-events: auto; }");
+  });
+
   it("leaves the focus ring alone: no outline is set or removed here", () => {
     expect(src).not.toMatch(/\boutline(?:-[a-z]+)?\s*:/);
     expect(src).not.toMatch(/:focus(?!-visible)/);
@@ -286,7 +303,7 @@ describe("the pointer arithmetic", () => {
 
 describe("loading on keys that navigate", () => {
   const here = { origin: "https://nightshift.test", pathname: "/", search: "" };
-  const click = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, defaultPrevented: false };
+  const click = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
   const link = (href: string, attrs: Record<string, string> = {}) => {
     const a = document.createElement("a");
     a.href = new URL(href, here.origin).toString();
@@ -331,6 +348,37 @@ describe("loading on keys that navigate", () => {
     key.setAttribute("data-busy", "true");
     stop();
     expect(key.hasAttribute("data-busy")).toBe(false);
+  });
+
+  it("stops spinning the moment the address changes (path or query), for a key that survives the navigation", () => {
+    vi.useFakeTimers();
+    try {
+      history.replaceState(null, "", "/");
+      document.body.innerHTML = `<a class="st-key" href="/signup">Start free</a><a class="nx-btn" href="/?tab=b">B</a>`;
+      const stop = attachNavBusy();
+      const key = document.querySelector<HTMLAnchorElement>(".st-key")!;
+      key.addEventListener("click", (e) => e.preventDefault());
+      key.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      vi.advanceTimersByTime(500);
+      expect(key.getAttribute("data-busy")).toBe("true");
+      // The router commits the new page: the address changes, the header's key is the same element.
+      history.pushState(null, "", "/signup");
+      vi.advanceTimersByTime(200);
+      expect(key.hasAttribute("data-busy")).toBe(false);
+      // A query-only change on the same page (/mcp?tab=) clears it too.
+      const tab = document.querySelector<HTMLAnchorElement>(".nx-btn")!;
+      history.replaceState(null, "", "/");
+      tab.addEventListener("click", (e) => e.preventDefault());
+      tab.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      expect(tab.getAttribute("data-busy")).toBe("true");
+      history.pushState(null, "", "/?tab=b");
+      vi.advanceTimersByTime(200);
+      expect(tab.hasAttribute("data-busy")).toBe(false);
+      stop();
+    } finally {
+      vi.useRealTimers();
+      history.replaceState(null, "", "/");
+    }
   });
 });
 
@@ -443,6 +491,27 @@ describe("the facts count up", () => {
     fire([six]);
     expect(six.hasAttribute("data-counting")).toBe(false);
     stop();
+  });
+
+  it("does not count on a reload or a back/forward visit (scroll is restored after it runs), nor in forced colours", () => {
+    for (const type of ["reload", "back_forward"]) {
+      device(() => false);
+      vi.spyOn(performance, "getEntriesByType").mockReturnValue([{ type } as unknown as PerformanceEntry]);
+      facts(true);
+      attachCountUp()();
+      expect(observed, type).toEqual([]);
+      vi.restoreAllMocks();
+    }
+    vi.spyOn(performance, "getEntriesByType").mockReturnValue([{ type: "navigate" } as unknown as PerformanceEntry]);
+    device((q) => /forced-colors: active/.test(q));
+    facts(true);
+    attachCountUp()();
+    expect(observed).toEqual([]);
+    device(() => false);
+    const [six] = facts(true);
+    attachCountUp()();
+    expect(observed).toEqual([six]);
+    vi.restoreAllMocks();
   });
 });
 

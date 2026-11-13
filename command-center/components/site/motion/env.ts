@@ -26,6 +26,11 @@ export function richPointer(): boolean {
   return query("(hover: hover) and (pointer: fine) and (min-width: 1024px)");
 }
 
+/** The system's forced colours (Windows High Contrast): nothing may draw its own colours over the page's text. */
+export function forcedColors(): boolean {
+  return query("(forced-colors: active)");
+}
+
 /** Motion may run now: allowed by the system and not paused by the visitor. */
 export function motionAllowed(): boolean {
   return !prefersReduced() && !motionPaused();

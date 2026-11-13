@@ -5,11 +5,12 @@
  * spin over a page that is not going anywhere.
  */
 export function willNavigate(
-  e: Pick<MouseEvent, "button" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "defaultPrevented">,
+  e: Pick<MouseEvent, "button" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">,
   a: Pick<HTMLAnchorElement, "href" | "target" | "hasAttribute">,
   here: { origin: string; pathname: string; search: string },
 ): boolean {
-  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return false;
+  // (No defaultPrevented check: this runs in the capture phase, before any handler could cancel the click.)
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return false;
   if ((a.target && a.target !== "_self") || a.hasAttribute("download")) return false;
   let to: URL;
   try {

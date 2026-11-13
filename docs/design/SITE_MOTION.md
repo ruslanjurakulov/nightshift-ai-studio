@@ -39,10 +39,12 @@ both the still and the clip, and stops when the clip plays, so the cross-fade is
 ## Larger files
 
 The site's clips are 720p to 768p. `ShowcaseFiles.lg` (lib/site/showcase.ts) lets an entry carry a larger rendition with its
-true width when the model made one; `lib/site/renditions.ts` then adds it to the still's `srcset` and plays its clip on a screen
-with at least 1600 device pixels across and a fast link. No entry has one today, and nothing is upscaled: the exporter
-(`tools/export_showcase.py`) still writes the 640 and 1280 files only, and emitting `lg` is a follow-up once a model's real
-output is larger than 1280.
+true width when the model made one; `lib/site/renditions.ts` then adds it to the still's `srcset` and plays its clip in a frame
+at least 1600 device pixels wide (the frame's CSS width x the pixel ratio, not the window's) on a fast link. Only a file wider
+than 1280 counts as larger. No entry has one today. The exporter (`tools/export_showcase.py`) writes the 640 and 1280 files
+only, and it scales every source to those widths, so a source narrower than 1280 is enlarged there today; this layer adds no
+scaling of its own. Emitting `lg` (at the model's own width, never scaled up) is a follow-up once a model's real output is
+larger than 1280.
 
 ## Glass (the owner's "Liquid Glass" request)
 

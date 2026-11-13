@@ -50,7 +50,12 @@
 }
 @media (prefers-reduced-motion: no-preference) and (hover: hover) {
   .nx-btn::before, .st .st-key:not([data-tone])::before { transition: opacity 240ms var(--ns-ease); }
+}
+/* The turning edge only for a fine pointer: a tap leaves :hover stuck on some touch screens, and the edge would keep turning. */
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
   .nx-btn:hover::before, .st .st-key:not([data-tone]):hover::before { animation: nx-edge-turn 3.6s linear infinite; }
+}
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
   /* The sheen: one sweep of light across the key as the pointer arrives (it snaps back unseen when the pointer leaves). */
   .nx-btn:not([data-busy])::after, .st .st-key:not([data-tone]):not([data-busy])::after {
     opacity: 1;
@@ -309,8 +314,10 @@
    the page's switch; this key is for the keyboard only, invisible until it has the keyboard's focus. */
 .nx-marquee .nx-clip-pause { top: 50%; right: 12px; bottom: auto; margin-top: -22px; }
 .nx-marquee .nx-clip-pause:not(:focus-visible) { opacity: 0; clip-path: inset(50%); pointer-events: none; }
-/* Moving: one line, the list twice, the track sliding by exactly one copy so the loop has no seam. Its speed is per name. */
-@media (prefers-reduced-motion: no-preference) {
+/* Moving: one line, the list twice, the track sliding by exactly one copy so the loop has no seam. Its speed is per name.
+   Only where the pointer can hover (and so stop it): on a touch screen the names sit still in a row, so nothing moves there
+   that a visitor cannot pause. */
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
   .nx-marquee-track { width: max-content; }
   .nx-marquee-row { flex-wrap: nowrap; justify-content: flex-start; padding: 0 44px 0 0; }
   .nx-marquee-row[data-copy="1"] { display: flex; }
@@ -361,6 +368,10 @@
     transform: scaleY(0.88);
   }
   .st .st-header[data-scrolled] .st-header-row { translate: 0 -4px; }
+  /* The strip under the slimmer bar is see-through, so it does not catch clicks either: the bar's own boxes stay clickable
+     (they end where the bar does), and a click on the page just under it reaches the page. */
+  .st .st-header[data-scrolled], .st .st-header[data-scrolled] .st-header-row { pointer-events: none; }
+  .st .st-header[data-scrolled] .st-header-row > * { pointer-events: auto; }
 }
 @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
   .st .st-header::before { transition: transform 260ms var(--ns-ease), background-color 260ms var(--ns-ease); }

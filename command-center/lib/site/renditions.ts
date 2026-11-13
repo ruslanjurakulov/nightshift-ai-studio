@@ -16,8 +16,9 @@ export function posterSrcSet(f: Pick<ShowcaseFiles, "poster" | "posterSm" | "lg"
 export const LARGE_CLIP_FROM = 1600;
 
 /**
- * Which clip file plays: the 640 one for a phone or a small frame, the large one only for a wide frame on a screen with the
- * pixels to show it (CSS width x device pixel ratio) and a fast link, the 1280 one otherwise. Chosen once, when the clip mounts.
+ * Which clip file plays: the 640 one for a phone or a small frame, the large one only for a frame with the pixels to show it
+ * (`devicePixels`: the frame's own CSS width x the device pixel ratio, never the window's) and a fast link, the 1280 one
+ * otherwise. Chosen once, before the clip first plays.
  */
 export function clipRendition(o: { small: boolean; hasLarge: boolean; devicePixels: number; fast: boolean }): "sm" | "md" | "lg" {
   if (o.small) return "sm";

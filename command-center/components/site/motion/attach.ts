@@ -1,4 +1,4 @@
-import { motionAllowed, prefersReduced, richPointer } from "@/components/site/motion/env";
+import { forcedColors, motionAllowed, prefersReduced, richPointer } from "@/components/site/motion/env";
 import { magnetOffset, parallaxOffset } from "@/components/site/motion/geometry";
 import { willNavigate } from "@/components/site/motion/nav-intent";
 
@@ -130,6 +130,12 @@ export function attachSpotlight(doc: Document = document): Cleanup {
   };
 }
 
+/** How this document was reached ("navigate", "reload", "back_forward"); "navigate" where the browser does not say. */
+export function navigationType(win: Window = window): string {
+  const entry = win.performance?.getEntriesByType?.("navigation")?.[0] as PerformanceNavigationTiming | undefined;
+  return entry?.type ?? "navigate";
+}
+
 /**
  * 4. The facts row counts up to its numbers, once, as it is scrolled to.
  *
@@ -139,9 +145,14 @@ export function attachSpotlight(doc: Document = document): Cleanup {
  * alternative text, shows the climbing figure over it. Only a number that starts below the fold counts (one already on screen
  * is never taken back to 0 in front of the visitor), and only a plain integer whose printed form is its own digits (a grouped
  * "1 000" would show a different shape while counting).
+ *
+ * Never on a reload or a back/forward visit: the browser restores the scroll position after this runs, so the facts can be on
+ * screen already and would drop to 0 in front of a visitor who has seen them. Never in forced colours either, where the
+ * transparent text and the drawn counter would not follow the system's palette.
  */
 export function attachCountUp(doc: Document = document, win: Window = window): Cleanup {
-  if (prefersReduced() || typeof IntersectionObserver === "undefined") return () => undefined;
+  if (prefersReduced() || forcedColors() || typeof IntersectionObserver === "undefined") return () => undefined;
+  if (["reload", "back_forward"].includes(navigationType(win))) return () => undefined;
   const timers: number[] = [];
   const els = [...doc.querySelectorAll<HTMLElement>("[data-count]")].filter((el) => {
     const n = Number(el.dataset.count);
@@ -213,19 +224,35 @@ export function clearBusy(doc: Document = document): void {
  * 6. A key that opens another page shows a small spinner in place of its arrow until that page arrives (a client-side
  * navigation can take a moment on a slow link, and a key that does nothing visible gets pressed twice). Only for a click that
  * really navigates this tab (nav-intent.ts); visual only, so the link's name and role are unchanged; and never left behind:
- * SiteMotion clears it on every route change, on `pageshow`, and after 8 s at the latest.
+ * it clears the moment the address changes (path or query: the new page has committed, and a key that survives the navigation,
+ * like the header's, would otherwise keep spinning), on `pageshow`, when this page's shell unmounts, and after 8 s at the latest.
+ *
+ * The address is watched by a light poll while a key is busy rather than through next/navigation's hooks: the hooks would need
+ * a Suspense boundary on every statically rendered public page (useSearchParams) for a few seconds of spinner.
  */
 export function attachNavBusy(doc: Document = document, win: Window = window): Cleanup {
   let timer = 0;
+  let watch = 0;
+  const stop = () => {
+    win.clearTimeout(timer);
+    win.clearInterval(watch);
+    watch = 0;
+    clearBusy(doc);
+  };
   const onClick = (e: MouseEvent) => {
     const a = (e.target as Element | null)?.closest?.<HTMLAnchorElement>(NAV_KEYS) ?? null;
     if (!a || a.getAttribute("aria-disabled") === "true") return;
     if (!willNavigate(e, a, win.location)) return;
     a.setAttribute("data-busy", "true");
     win.clearTimeout(timer);
-    timer = win.setTimeout(() => clearBusy(doc), 8000);
+    timer = win.setTimeout(stop, 8000);
+    const from = win.location.pathname + win.location.search;
+    win.clearInterval(watch);
+    watch = win.setInterval(() => {
+      if (win.location.pathname + win.location.search !== from) stop();
+    }, 120);
   };
-  const onShow = () => clearBusy(doc);
+  const onShow = () => stop();
   // Capture phase, before React's: next/link cancels the browser's own navigation (preventDefault) to make it a client-side
   // one, so in the bubble phase every Link click would look cancelled and no key would ever show it is working.
   doc.addEventListener("click", onClick, true);
@@ -233,8 +260,7 @@ export function attachNavBusy(doc: Document = document, win: Window = window): C
   return () => {
     doc.removeEventListener("click", onClick, true);
     win.removeEventListener("pageshow", onShow);
-    win.clearTimeout(timer);
-    clearBusy(doc);
+    stop();
   };
 }
 
