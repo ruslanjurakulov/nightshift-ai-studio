@@ -2309,6 +2309,7 @@
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 7000,
         "max_concurrent_per_org": 2
@@ -2407,6 +2408,7 @@
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 7000,
         "max_concurrent_per_org": 2
@@ -2505,6 +2507,7 @@
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 7000,
         "max_concurrent_per_org": 2
@@ -2602,6 +2605,7 @@
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 7000,
         "max_concurrent_per_org": 2

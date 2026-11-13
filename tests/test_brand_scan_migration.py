@@ -100,7 +100,9 @@ class Numbering(unittest.TestCase):
         # nothing of 0131's or 0133's.
         # 0146 (Dodo Payments next to Paddle: the payment tables' provider checks and 0034's two subscription functions) was reviewed
         # against these pins: nothing of 0131's or 0133's.
-        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146")], [], "a later number needs its own review of this file's pins")
+        # 0149 (an operator preview priced by resolution: creative_price on 0139's body only) was reviewed against these pins:
+        # nothing of 0131's or 0133's.
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0149")], [], "a later number needs its own review of this file's pins")
         later = (MIG / "0134_brand_scan_followup.sql").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertIn(GUARD["brand_scan_fail_locked"], later)
