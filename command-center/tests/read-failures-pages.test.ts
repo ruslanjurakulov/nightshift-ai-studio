@@ -221,7 +221,20 @@ describe("credits plans: unknown, never 'Free', 0 or an empty list", () => {
   });
 
   it("Invite friends: the card when migration 0092 is applied, nothing before it, an honest error when unread", async () => {
+    // Switch off and no link yet: no card (a disabled "Create my link" is a dead button); open, or a link already made: the card.
     state.client = plansClient();
+    const closed = await render(load);
+    // One line under the heading, still at #invite (the account menu's "Invite friends" links there), and no dead button.
+    expect(has(closed, en.invite.closedShort)).toBe(true);
+    expect(closed).toContain('id="invite"');
+    expect(closed).toContain("data-invite-closed");
+    expect(has(closed, en.invite.create)).toBe(false);
+    expect(closed).not.toContain("data-invite-card");
+    state.client = plansClient({ my_friend_invite: { data: { ...NO_INVITE, enabled: true }, error: null } });
+    const open = await render(load);
+    expect(has(open, en.invite.title)).toBe(true);
+    expect(open).not.toContain("data-invite-closed");
+    state.client = plansClient({ my_friend_invite: { data: { ...NO_INVITE, link: { token: "0123456789abcdef0123456789abcdef", created_at: "2026-10-01T00:00:00Z" } }, error: null } });
     expect(has(await render(load), en.invite.title)).toBe(true);
     state.client = plansClient({ my_friend_invite: { data: null, error: { message: "Could not find the function", code: "PGRST202" } } });
     const before = await render(load);

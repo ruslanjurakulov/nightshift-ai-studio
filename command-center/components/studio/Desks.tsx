@@ -12,7 +12,10 @@ import { LocalTime } from "@/components/ui/LocalTime";
 import { formatNumber } from "@/lib/number-format";
 import type { CreditAccount } from "@/lib/credits";
 import { DESK_ICONS } from "@/components/studio/deskIcons";
+import { useShell } from "@/components/shell/ShellContext";
+import { deskOpen } from "@/lib/tool-availability";
 import "@/components/studio/desk.css";
+import "@/components/studio/availability.css";
 
 
 /**
@@ -24,21 +27,36 @@ import "@/components/studio/desk.css";
 export function DeskBar({ current }: { current: Desk }) {
   const { t } = useI18n();
   const path = useChannelPath();
+  const { tools } = useShell();
   return (
     <nav aria-label={t.desk.nav} className="desk-bar">
       <ul className="desk-bar-row">
         {DESKS.map((d) => {
           const Icon = DESK_ICONS[d];
           const on = d === current;
+          // A desk with nothing on sale says so in place of its line, and is not a link (lib/tool-availability.ts); the current
+          // one stays a link so the bar still says where you are.
+          const closed = !deskOpen(tools, d);
+          const body = (
+            <>
+              <Icon aria-hidden className="desk-key-icon" strokeWidth={1.75} />
+              <span className="flex min-w-0 flex-col">
+                <span className="desk-key-name">{t.desk.names[d]}</span>
+                <span className="desk-key-sub">{closed ? t.availability.notYet : t.desk.keySub[d]}</span>
+              </span>
+            </>
+          );
           return (
             <li key={d}>
-              <Link href={path(deskHref(d))} aria-current={on ? "page" : undefined} className="desk-key" data-desk={d}>
-                <Icon aria-hidden className="desk-key-icon" strokeWidth={1.75} />
-                <span className="flex min-w-0 flex-col">
-                  <span className="desk-key-name">{t.desk.names[d]}</span>
-                  <span className="desk-key-sub">{t.desk.keySub[d]}</span>
+              {closed && !on ? (
+                <span className="desk-key av-closed" aria-disabled="true" data-desk={d} data-unavailable="true">
+                  {body}
                 </span>
-              </Link>
+              ) : (
+                <Link href={path(deskHref(d))} aria-current={on ? "page" : undefined} className="desk-key" data-desk={d} data-unavailable={closed ? "true" : undefined}>
+                  {body}
+                </Link>
+              )}
             </li>
           );
         })}
@@ -211,7 +229,8 @@ export function YouTubeDesk({ run }: { run: ReactNode }) {
           })}
         </ol>
       </section>
-      <div className="min-w-0">{run}</div>
+      {/* id="prompt": the target of "Skip to the prompt" (components/shell/SkipLink). */}
+      <div id="prompt" className="min-w-0">{run}</div>
     </div>
   );
 }

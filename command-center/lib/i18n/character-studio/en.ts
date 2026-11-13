@@ -15,14 +15,17 @@ export const characterStudioEn = {
   notAvailable: "Character Studio is not set up on this deployment yet.",
   retry: "Try again",
   loading: "Loading…",
+  /** The heading of the form itself: the page title is "Character Studio" already, and the two read as a duplicate. */
+  studioHeading: "Make a swap",
+  openStudio: "Start a swap",
 
   gallery: {
     heading: "Start from an example",
-    sampleSoon: "Sample coming soon",
     sampleOf: "Made with {model}",
     try: "Try",
     tryHint: "Opens the studio with this example's words. You bring your own video and pictures.",
-    characters: "{n} character(s)",
+    /** By the reader's plural rule (Intl.PluralRules): English uses one / other. */
+    characters: { one: "{n} character", few: "{n} characters", many: "{n} characters", other: "{n} characters" },
   },
 
   cost: {
@@ -47,6 +50,8 @@ export const characterStudioEn = {
     ownClipsOnly: "Only for clips you made here in the last 30 days: this model refuses real people's faces.",
     pictures: "Up to {n} pictures.",
     notOnSale: "Not on sale yet",
+    pickVideoFirst: "Pick a video below: the models that can make it are listed here, each with its price for that clip.",
+    noneOnSale: "No model is on sale for this clip yet, so a swap cannot start.",
   },
 
   inputs: {

@@ -38,6 +38,24 @@ import type { UpsellCatalog } from "@/lib/upsell";
 import type { StudioDna } from "@/lib/channel-dna";
 import "@/components/studio/desk.css";
 import "@/components/studio/studio-home.css";
+import "@/components/studio/availability.css";
+import { useShell } from "@/components/shell/ShellContext";
+import { DeskAvailabilityNote, NothingOnSaleNote } from "@/components/studio/Availability";
+import { deskOpen, nothingOnSale, toolOpen, type ToolAvailability } from "@/lib/tool-availability";
+
+/** A kind of the overview with something on sale (the YouTube video is the channel pipeline, not a model on sale). */
+function modeOpen(av: ToolAvailability, m: StudioMode): boolean {
+  return m === "youtube" || deskOpen(av, m);
+}
+
+/**
+ * The kind the overview opens on: the one a link came with; else the first with something on sale, so a person whose workspace can
+ * buy no picture is not greeted by a picture box that cannot be sent (the YouTube video when nothing is on sale).
+ */
+export function startMode(av: ToolAvailability, initial: StudioPrefill | null): StudioMode {
+  if (initial && isStudioCapability(initial.capability)) return deskFor(initial.capability);
+  return STUDIO_MODES.find((m) => modeOpen(av, m)) ?? "youtube";
+}
 
 /** Smooth only for a reader who has not asked for less motion. */
 function scrollBehavior(): ScrollBehavior {
@@ -94,7 +112,8 @@ export function StudioHome({
   const th = t.studioHome;
   const path = useChannelPath();
   const router = useRouter();
-  const [mode, setMode] = useState<StudioMode>(initial && isStudioCapability(initial.capability) ? deskFor(initial.capability) : "image");
+  const { tools } = useShell();
+  const [mode, setMode] = useState<StudioMode>(() => startMode(tools, initial));
   const [planning, setPlanning] = useState(false);
   // Once opened, the planner stays mounted (hidden while another mode is shown): a running plan's loop
   // belongs to that one instance, so leaving the Plan never orphans it and coming back never starts a second.
@@ -249,14 +268,22 @@ export function StudioHome({
     setWorking(n);
   };
 
-  // The chips are one radio group: ←/→ move and choose, Home/End jump, one tab stop.
+  // The chips are one radio group: ←/→ move and choose, Home/End jump, one tab stop. A kind with nothing on sale is passed over.
   function onChipKey(e: KeyboardEvent<HTMLButtonElement>, i: number) {
     const n = STUDIO_MODES.length;
+    const open = (k: number) => modeOpen(tools, STUDIO_MODES[k]);
+    const step = (from: number, d: number) => {
+      for (let k = 1; k <= n; k++) {
+        const j = (from + d * k + n * k) % n;
+        if (open(j)) return j;
+      }
+      return -1;
+    };
     let to = -1;
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (i + 1) % n;
-    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (i - 1 + n) % n;
-    else if (e.key === "Home") to = 0;
-    else if (e.key === "End") to = n - 1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") to = step(i, 1);
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = step(i, -1);
+    else if (e.key === "Home") to = step(n - 1, 1);
+    else if (e.key === "End") to = step(0, -1);
     if (to < 0) return;
     e.preventDefault();
     switchMode(STUDIO_MODES[to]);
@@ -352,11 +379,16 @@ export function StudioHome({
         <p className="sh-lead">{th.lead}</p>
       </div>
 
+      {/* Not one picture, clip or voice tool on sale: said once, plainly, with the way to what works today. */}
+      <NothingOnSaleNote />
+
       <div role="radiogroup" aria-label={th.modesLabel} className="sh-modes" data-testid="studio-modes">
         {STUDIO_MODES.map((m, i) => {
           const Icon = DESK_ICONS[m];
           const on = mode === m;
           const busy = m !== "youtube" ? (working[m] ?? 0) : 0;
+          // Nothing on sale for this kind (lib/tool-availability.ts): said on the chip, and the chip does nothing.
+          const closed = !modeOpen(tools, m);
           return (
             <button
               key={m}
@@ -366,14 +398,19 @@ export function StudioHome({
               type="button"
               role="radio"
               aria-checked={on}
+              aria-disabled={closed && !on ? true : undefined}
               tabIndex={on ? 0 : -1}
-              onClick={() => switchMode(m)}
+              onClick={() => {
+                if (!closed || on) switchMode(m);
+              }}
               onKeyDown={(e) => onChipKey(e, i)}
-              className="sh-mode"
+              className={closed ? "sh-mode av-closed" : "sh-mode"}
               data-mode={m}
+              data-unavailable={closed ? "true" : undefined}
             >
               <Icon aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
               <span>{th.modes[m]}</span>
+              {closed && <span className="av-tag">· {t.availability.notYet}</span>}
               {busy > 0 && (
                 <span className="sh-mode-live" title={fmt(t.desk.workingNow, { n: busy })}>
                   <span aria-hidden className="ns-lamp" data-tone="run" data-live="true" />
@@ -385,7 +422,11 @@ export function StudioHome({
         })}
       </div>
 
-      <div ref={composerRef} className="sh-composer scroll-mt-24" data-sticky="mobile" data-testid="studio-composer" aria-label={th.composerLabel} role="group">
+      {/* The box's own tool row (Describe, Relight…) cannot say it; this line names the tools of this kind with nothing on sale. */}
+      {desk && !nothingOnSale(tools) && <DeskAvailabilityNote desk={desk} />}
+
+      {/* id="prompt": the target of "Skip to the prompt" (components/shell/SkipLink). */}
+      <div ref={composerRef} id="prompt" className="sh-composer scroll-mt-24" data-sticky="mobile" data-testid="studio-composer" aria-label={th.composerLabel} role="group">
         {planner}
         {box}
       </div>
@@ -398,7 +439,8 @@ export function StudioHome({
           <p className="sh-section-lead">{th.examples.lead}</p>
         </div>
         <ul className="sh-examples" aria-label={th.examples.listLabel}>
-          {CREATIVE_EXAMPLES.map((e) => (
+          {/* An example for a tool with nothing on sale would fill a box that cannot be sent: not offered. */}
+          {CREATIVE_EXAMPLES.filter((e) => !e.capability || toolOpen(tools, e.capability)).map((e) => (
             <li key={e.id}>
               <ExampleCard example={e} onUse={() => pickExample(e)} />
             </li>
@@ -457,6 +499,19 @@ export function StudioHome({
         <ul className="sh-pages">
           {STUDIO_MODES.map((m) => {
             const Icon = DESK_ICONS[m];
+            if (!modeOpen(tools, m)) {
+              return (
+                <li key={m}>
+                  <span className="sh-page av-closed" data-unavailable="true">
+                    <Icon aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate">{th.advanced.pages[m]}</span>
+                      <span className="av-tag truncate">{t.availability.notYet}</span>
+                    </span>
+                  </span>
+                </li>
+              );
+            }
             return (
               <li key={m}>
                 <Link href={path(deskHref(m))} className="sh-page">

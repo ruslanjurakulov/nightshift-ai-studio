@@ -40,6 +40,9 @@
 # The public model pages' facts (command-center/scripts/export-model-facts.mjs): the registry's public fields, no credentials.
 # Without this line the build would not find it and tests/model-pages.test.tsx would compare against nothing.
 !command-center/lib/site/model-facts.json
+# The Studio's effects (docs/EFFECTS.md): ids, English prompts, model ids, shapes and colours, no credentials.
+# Without this line the blanket rule hides it and the build ships no catalog (command-center/tests/effects-catalog.test.ts checks it).
+!command-center/lib/effects/effects.json
 # The labelled claims tools/factcheck_calibration.py measures the fact-checker against: public history, no credentials.
 # Without this line the blanket rule above hides the file and CI fails the calibration tests
 # (tests/test_factcheck_calibration.py checks it is not ignored).
