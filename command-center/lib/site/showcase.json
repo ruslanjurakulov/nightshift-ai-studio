@@ -227,6 +227,48 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "ab7cc0e2-8040-4643-8e14-74219fc1d8e2",
+      "assetId": "c134cd33-f40e-5f35-940d-3f3e773a0338",
+      "sha256": "7373e34ae305b48eb044b3b70fcad29669e992bca5565e4818d5250f3d673854",
+      "modelId": "runway-gen4-turbo",
+      "modelName": "Runway Gen-4 Turbo",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "The photo comes alive: the huge wave explodes against the rocks and the spray rises and falls in slow motion, the lighthouse beam sweeps across the sea through the mist, storm clouds roll, sea foam drains off the rocks. Camera holds steady with a slight push-in. Cinematic, photorealistic.",
+      "createdAt": "2026-11-13T18:17:31Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "f17146fd-054c-4970-9dac-f7a0dc929bd6",
+        "assetId": "134eac56-9d10-5654-8e41-97411f66f650"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4_turbo",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:35:16Z"
     }
   ]
 }
