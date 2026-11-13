@@ -1,6 +1,6 @@
 "use client";
 
-import { setMotionPaused, useMotionPaused } from "@/lib/site/motion";
+import { setMotionPaused, useMotionPaused, useMotionTap } from "@/lib/site/motion";
 
 /**
  * "Pause motion": the one control that stops everything on the page that moves by itself (WCAG 2.2.2). It reads and writes
@@ -13,6 +13,7 @@ import { setMotionPaused, useMotionPaused } from "@/lib/site/motion";
  */
 export function MotionToggle({ pause }: { pause: string }) {
   const paused = useMotionPaused();
+  useMotionTap();
   return (
     <div className="nx-motion">
       <button type="button" className="nx-motion-btn" aria-pressed={paused} onClick={() => setMotionPaused(!paused)}>

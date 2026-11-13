@@ -66,12 +66,13 @@ import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
 import { PromptBar } from "@/components/landing/PromptBar";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { LoopClip } from "@/components/site/LoopClip";
+import { motionTap } from "@/lib/site/motion";
 import { SLOTS, placeMedia, slotJobs, slotMedia, LANDING_SLOTS } from "@/components/site/samples";
 import { stockInUse } from "@/components/site/stock-in-use";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { FORMATS } from "@/lib/site/formats";
-import { PROMPT_MAX, PROMPT_TOOLS, linkWords, promptHref } from "@/lib/site/prompt-link";
-import { IMPROVE_PROMPT_MAX, LINK_PROMPT_TOOLS } from "@/lib/creative/improve";
+import { ATTACH_TOOL, PROMPT_MAX, PROMPT_TOOLS, attachHref, linkWords, promptHref } from "@/lib/site/prompt-link";
+import { IMPROVE_PROMPT_MAX, LINK_PROMPT_TOOLS, isLinkPromptTool } from "@/lib/creative/improve";
 import { SIGNUP_PATH } from "@/lib/public-paths";
 import { DEFAULT_AFTER_AUTH, afterSignupPath, studioNext } from "@/lib/safe-redirect";
 import { MEDIA_IDS } from "@/lib/site/media";
@@ -308,7 +309,8 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(container.textContent).toContain(t.prompt.noteOut);
   });
 
-  it("\"+\" (attach a picture or a video) needs an account: signed out it goes to sign-up with the words kept, and reads nothing from the device", () => {
+  // What would break: "+" saying "attach" and then opening a text-only form with nothing to attach to (the review of #734 found it).
+  it("\"+\" opens the Studio's picture-to-video form, the one that asks for your own picture: signed out through sign-up first (and says so), the words kept, nothing read from the device", () => {
     const assign = vi.fn();
     vi.stubGlobal("location", { ...window.location, assign });
     const t = dictionaries.en.site;
@@ -317,18 +319,42 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     const box = container.querySelector("textarea")!;
     fireEvent.change(box, { target: { value: "lanterns over a lake" } });
     fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOut }));
-    expect(assign).toHaveBeenCalledWith(promptHref("t2v", "lanterns over a lake", false));
-    expect(assign.mock.calls[0][0]).toMatch(/^\/signup\?next=/);
-    // With no words it is plain sign-up.
+    expect(assign).toHaveBeenCalledWith(attachHref("lanterns over a lake", false));
+    const href = assign.mock.calls[0][0] as string;
+    expect(href).toMatch(/^\/signup\?next=/);
+    const next = new URL(href, "https://x.test").searchParams.get("next")!;
+    expect(studioNext(next)).toBe(next);
+    const form = new URL(next, "https://x.test").searchParams;
+    expect(form.get("tool")).toBe(ATTACH_TOOL);
+    expect(form.get("prompt")).toBe("lanterns over a lake");
+    // The form it opens takes a picture first and its words from a link (the Studio's own lists).
+    expect(ATTACH_TOOL).toBe("i2v");
+    expect(isLinkPromptTool(ATTACH_TOOL)).toBe(true);
+    // With no words it still opens that form, through sign-up.
     assign.mockClear();
     fireEvent.change(box, { target: { value: "" } });
     fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOut }));
-    expect(assign).toHaveBeenCalledWith("/signup");
+    expect(new URL(new URL(assign.mock.calls[0][0], "https://x.test").searchParams.get("next")!, "https://x.test").searchParams.get("tool")).toBe("i2v");
+    // Signed in it is the form itself, and the label does not ask for a sign-up.
+    cleanup();
+    assign.mockClear();
+    const signedIn = render(<PromptBar copy={t.prompt} ideas={[]} signedIn />).container;
+    fireEvent.click(within(signedIn).getByRole("button", { name: t.prompt.attachIn }));
+    expect(assign).toHaveBeenCalledWith(attachHref("", true));
+    expect(attachHref("", true).startsWith("/signup")).toBe(false);
+    // The words say what happens, in every language: a picture, a video from it, and (signed out) sign-up first.
+    for (const code of LOCALES.map((l) => l.code)) {
+      const c = dictionaries[code].site.prompt;
+      expect(c.attachOut.startsWith(c.attachIn)).toBe(true);
+      expect(c.attachOut.length).toBeGreaterThan(c.attachIn.length);
+    }
   });
 
   it("docks to the bottom once its place has scrolled above the window, keeps that place's height, tells the page (the start bar steps aside), and undocks on the way back; Escape leaves the box", () => {
     let cb: IntersectionObserverCallback = () => undefined;
+    let ro: ResizeObserverCallback | null = null;
     vi.stubGlobal("IntersectionObserver", class { constructor(c: IntersectionObserverCallback) { cb = c; } observe() {} disconnect() {} unobserve() {} });
+    vi.stubGlobal("ResizeObserver", class { constructor(c: ResizeObserverCallback) { ro = c; } observe() {} disconnect() { ro = null; } unobserve() {} });
     const t = dictionaries.en.site;
     const { container } = render(<PromptBar copy={t.prompt} ideas={[]} />);
     const form = container.querySelector("form.nx-pbar") as HTMLFormElement;
@@ -338,6 +364,14 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(form.dataset.docked).toBe("true");
     expect(document.documentElement.getAttribute("data-composer")).toBe("docked");
     expect((container.querySelector(".nx-pbar-slot") as HTMLElement).style.minHeight).toBe("64px");
+    // While docked the box grows (more lines, the empty-box message): its place follows, so undocking shifts nothing.
+    act(() => ro?.([] as unknown as ResizeObserverEntry[], {} as ResizeObserver));
+    Object.defineProperty(form, "offsetHeight", { configurable: true, value: 112 });
+    act(() => ro?.([] as unknown as ResizeObserverEntry[], {} as ResizeObserver));
+    expect((container.querySelector(".nx-pbar-slot") as HTMLElement).style.minHeight).toBe("112px");
+    // The empty-box message is inside the form, so it is on the docked box, not left behind in the first screen.
+    fireEvent.submit(form);
+    expect(form.querySelector(".nx-pbar-err[role='alert']")?.textContent).toBe(t.prompt.empty);
     act(() => cb([{ isIntersecting: true, boundingClientRect: { bottom: 300 } } as IntersectionObserverEntry], {} as IntersectionObserver));
     expect(form.dataset.docked).toBe("false");
     expect(document.documentElement.hasAttribute("data-composer")).toBe(false);
@@ -347,6 +381,9 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(document.activeElement).not.toBe(box);
     expect(css).toMatch(/\.nx-pbar\[data-docked="true"\] \{ position: fixed;[^}]*env\(safe-area-inset-bottom\)/);
     expect(css).toContain('html[data-composer="docked"] .nx-bar { display: none; }');
+    // Scrolled-to fields and anchors stop above the docked box; the lifted first screen stays under the sticky header (40).
+    expect(css).toMatch(/html\[data-composer="docked"\]:has\(\.nx-pbar\) \{ scroll-padding-bottom: calc\(/);
+    expect(css).toContain('.nx-hero.nx-sh:has(.nx-pbar[data-docked="true"]) { z-index: 39; }');
     expect(css).toMatch(/@supports not \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\)/);
   });
 
@@ -406,35 +443,76 @@ describe("the gallery's clips on a wide screen", () => {
     expect(render(<LoopClip sources={sources} poster="/p.webp" together />).container.querySelector("video")).toBeNull();
   });
 
-  // The owner wants no visible pause button (2026-11-13): a pointer pauses by tapping the clip, a keyboard by the focus-revealed
-  // switch (ClipPause, MotionToggle), and reduced motion still renders no clip at all (above). What would break: a tap on the
-  // clip that does nothing (WCAG 2.2.2 for pointer users), or a tap on the box's own link or button that also flips the switch.
-  it("a tap on a playing clip's box pauses the page's motion and a second one resumes it; a tap on a link or button in the box does not", () => {
+  // The owner wants no visible pause button (2026-11-13): a pointer pauses by tapping what moves, a keyboard by the focus-revealed
+  // switch (ClipPause, MotionToggle). What would break (WCAG 2.2.2): a pointer with no way to stop motion, which the review of #734
+  // found under Save-Data, where no clip plays but the posters drift; a tap on a link or button that also flips the switch.
+  it("a tap on a clip's box, a drifting poster or the first screen pauses the page's motion and a second resumes it, clip playing or not; a tap on a control does nothing", () => {
     vi.stubGlobal("matchMedia", (q: string) => ({ matches: !q.includes("reduce") && q.includes("min-width"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
     vi.stubGlobal("IntersectionObserver", undefined);
     const sources = FIXTURE_FILES[FIXTURE_JOB].clip!;
     const { container } = render(
-      <div data-clip="sample" data-testid="box">
-        <LoopClip sources={sources} poster="/p.webp" />
-        <a href="/signup">Start</a>
-        <button type="button">Other</button>
+      <div>
+        <div data-clip="sample" data-testid="box">
+          <LoopClip sources={sources} poster="/p.webp" />
+          <a href="/signup">Start</a>
+          <button type="button">Other</button>
+        </div>
+        <img className="nx-drift-pic" alt="" data-testid="drift" />
+        <section className="nx-sh" data-testid="hero">
+          <h1>Words over the clip</h1>
+          <form>
+            <textarea aria-label="box" />
+          </form>
+        </section>
+        <p data-testid="plain">Not moving</p>
       </div>,
     );
+    const paused = () => document.documentElement.getAttribute("data-motion") === "paused";
     const box = container.querySelector("[data-testid='box']") as HTMLElement;
-    const video = box.querySelector("video") as HTMLVideoElement;
-    // jsdom never plays: say this one is playing, as the browser would.
-    Object.defineProperty(video, "paused", { configurable: true, get: () => false });
     act(() => fireEvent.click(box.querySelector("a")!));
     act(() => fireEvent.click(box.querySelector("button")!));
-    expect(document.documentElement.hasAttribute("data-motion")).toBe(false);
-    act(() => fireEvent.click(video));
-    expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
+    act(() => fireEvent.click(container.querySelector("[data-testid='plain']")!));
+    act(() => fireEvent.click(container.querySelector("textarea")!));
+    expect(paused()).toBe(false);
+    // jsdom never plays a video, so this is also the "no clip is playing" case: the tap still stops the page's motion.
+    act(() => fireEvent.click(box.querySelector("video")!));
+    expect(paused()).toBe(true);
     act(() => fireEvent.click(box));
-    expect(document.documentElement.hasAttribute("data-motion")).toBe(false);
-    // A clip that is still only because another one leads (or it has not started) is not what the visitor meant to stop.
-    Object.defineProperty(video, "paused", { configurable: true, get: () => true });
-    act(() => fireEvent.click(box));
-    expect(document.documentElement.hasAttribute("data-motion")).toBe(false);
+    expect(paused()).toBe(false);
+    act(() => fireEvent.click(container.querySelector("[data-testid='drift']")!));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(container.querySelector("h1")!));
+    expect(paused()).toBe(false);
+    cleanup();
+    // Under Save-Data no clip is rendered at all, and a drifting poster still stops on a tap (the listener is the page's, not the clip's).
+    Object.defineProperty(navigator, "connection", { configurable: true, value: { saveData: true } });
+    const saving = render(
+      <div>
+        <LoopClip sources={sources} poster="/p.webp" />
+        <img className="nx-drift-pic" alt="" data-testid="drift" />
+      </div>,
+    ).container;
+    expect(saving.querySelector("video")).toBeNull();
+    act(() => fireEvent.click(saving.querySelector("[data-testid='drift']")!));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(saving.querySelector("[data-testid='drift']")!));
+    expect(paused()).toBe(false);
+    Object.defineProperty(navigator, "connection", { configurable: true, value: undefined });
+    cleanup();
+    // Under reduced motion nothing moves: a tap changes nothing.
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    const still = render(<LoopClip sources={sources} poster="/p.webp" />).container;
+    expect(still.querySelector("video")).toBeNull();
+    // (Called directly too: the decision itself refuses under reduced motion, whoever calls it.)
+    const tap = new MouseEvent("click", { bubbles: true });
+    Object.defineProperty(tap, "target", { value: Object.assign(document.createElement("img"), { className: "nx-drift-pic" }) });
+    motionTap(tap);
+    const drift = document.createElement("img");
+    drift.className = "nx-drift-pic";
+    document.body.append(drift);
+    act(() => fireEvent.click(drift));
+    drift.remove();
+    expect(paused()).toBe(false);
   });
 });
 

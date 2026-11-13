@@ -25,7 +25,7 @@ export function ApprovalCard({ t }: { t: Dictionary }) {
     <div className="nx-approve-art" role="img" aria-label={t.site.approvalCard.figure}>
       <div className="nx-approve-card" aria-hidden>
         <span className="nx-approve-tag">{st.tag}</span>
-        <span className="nx-approve-thumb" {...(entry && files ? { "data-showcase-entry": entry.jobId, "data-model": entry.modelId } : {})}>
+        <span className="nx-approve-thumb" {...(entry && files ? { id: `sample-${entry.jobId}`, "data-showcase-entry": entry.jobId, "data-model": entry.modelId } : {})}>
           {entry && files && (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}

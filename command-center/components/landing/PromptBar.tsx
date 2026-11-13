@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowUp, Clapperboard, Image as ImageIcon, Plus } from "lucide-react";
-import { PROMPT_MAX, promptHref, type PromptTool } from "@/lib/site/prompt-link";
+import { PROMPT_MAX, attachHref, promptHref, type PromptTool } from "@/lib/site/prompt-link";
 
 export type PromptBarCopy = {
   label: string;
@@ -11,6 +11,7 @@ export type PromptBarCopy = {
   image: string;
   mode: string;
   attachOut: string;
+  attachIn: string;
   submit: string;
   empty: string;
   noteIn: string;
@@ -32,8 +33,9 @@ const MAX_LINES = 6;
  * first screen.
  *
  * What it does is a link and nothing more (lib/site/prompt-link.ts): the Studio form with the words and the tool, through
- * sign-up when signed out. Never a job, a price or a hold (CLAUDE.md #3). "+" (attach a picture or a video) needs an account:
- * signed out, it goes to sign-up with the words kept, and nothing is read or stored from the visitor's device here.
+ * sign-up when signed out. Never a job, a price or a hold (CLAUDE.md #3). "+" opens the Studio's picture-to-video form, which asks
+ * for the person's own picture; it needs an account, so signed out it goes to sign-up first with the words kept, and nothing is read
+ * or stored from the visitor's device here.
  *
  * Enter sends, Shift+Enter is a new line, Escape leaves the box. Create is off until this script runs, so no form is ever sent
  * that would drop the words. The light under the pointer is off on touch and under reduced motion.
@@ -64,6 +66,16 @@ export function PromptBar({ copy, ideas, signedIn = false }: { copy: PromptBarCo
     io.observe(el);
     return () => io.disconnect();
   }, []);
+
+  // While docked the box can still grow (more lines, the empty-box message): its place in the first screen follows its height, so
+  // undocking puts it back into a place of its own size and nothing under it jumps. Off again on undock, where the place sizes itself.
+  useEffect(() => {
+    const el = form.current;
+    if (!docked || !el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setReserve(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [docked]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -112,11 +124,13 @@ export function PromptBar({ copy, ideas, signedIn = false }: { copy: PromptBarCo
     window.location.assign(href);
   };
 
-  // "+" needs an account to keep a file: signed out it is sign-up, with the words (and the tool) kept for the Studio form.
+  // "+" is the Studio's picture-to-video form, whose first field is the person's own picture (the Studio asks for it; this page
+  // reads nothing from the device). It needs an account to keep a file: signed out it is sign-up first, the words kept.
   const attach = () => {
     if (!ready) return;
-    window.location.assign(promptHref(tool, words, false) ?? "/signup");
+    window.location.assign(attachHref(words, signedIn));
   };
+  const attachLabel = signedIn ? copy.attachIn : copy.attachOut;
 
   const ModeIcon = tool === "t2v" ? Clapperboard : ImageIcon;
 
@@ -132,7 +146,7 @@ export function PromptBar({ copy, ideas, signedIn = false }: { copy: PromptBarCo
             go();
           }}
         >
-          <button type="button" className="nx-pbar-plus" aria-label={copy.attachOut} title={copy.attachOut} onClick={attach} disabled={!ready}>
+          <button type="button" className="nx-pbar-plus" aria-label={attachLabel} title={attachLabel} onClick={attach} disabled={!ready}>
             <Plus aria-hidden />
           </button>
           <label htmlFor={`${id}-box`} className="sr-only">
@@ -177,13 +191,14 @@ export function PromptBar({ copy, ideas, signedIn = false }: { copy: PromptBarCo
           <button type="submit" className="nx-pbar-go" aria-label={copy.submit} title={copy.submit} disabled={!ready}>
             <ArrowUp aria-hidden />
           </button>
+          {/* Inside the form, so it travels with the box when it docks to the bottom of the window. */}
+          {missing && (
+            <p id={`${id}-err`} className="nx-pbar-err" role="alert">
+              {copy.empty}
+            </p>
+          )}
         </form>
       </div>
-      {missing && (
-        <p id={`${id}-err`} className="nx-pbar-err" role="alert">
-          {copy.empty}
-        </p>
-      )}
       <p id={`${id}-note`} className="nx-pbar-note">
         {signedIn ? copy.noteIn : copy.noteOut}
       </p>

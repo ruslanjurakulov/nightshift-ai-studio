@@ -16,12 +16,12 @@ import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { StickyCta } from "@/components/site/StickyCta";
-import { LANDING_LEFT_OUT, LANDING_SLOTS, slotJobs, slotMedia } from "@/components/site/samples";
+import { landingExcludedJobs, landingPlacedJobs, slotMedia } from "@/components/site/samples";
 import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { PromptBar, type PromptIdea } from "@/components/landing/PromptBar";
 import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
-import { STEP_PHONE_JOB, TOOL_JOBS } from "@/lib/site/tool-samples";
+import { STEP_PHONE_JOB } from "@/lib/site/tool-samples";
 import { TypedText } from "@/components/site/TypedText";
 import { PROMPT_TOOLS, type PromptTool } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
@@ -74,11 +74,10 @@ export function Landing({
   /** Dodo Payments sells here (PAYMENTS_PROVIDER=dodo): the FAQ names it as the seller. */
   dodo?: boolean;
 }) {
-  // The samples the landing's own slots show are left out of its gallery, so no clip is on the page twice.
-  // Also the samples the tool wall and the steps show (lib/site/tool-samples.ts): the gallery leaves them all out.
-  const inSlots = [...slotJobs(LANDING_SLOTS), ...TOOL_JOBS];
-  // And the repeated sea and sky samples (LANDING_LEFT_OUT): on no part of this page, so not counted below either.
-  const leftOut = [...inSlots, ...LANDING_LEFT_OUT];
+  // The samples the landing's own places show (slots, tool wall, steps, approval screen) are left out of its gallery, so no clip
+  // is on the page twice, and so are the repeated sea and sky samples: one list (components/site/slots.ts landingExcludedJobs).
+  const inSlots = landingPlacedJobs();
+  const leftOut = landingExcludedJobs();
   const gallery = showcaseItems().filter(({ e }) => !leftOut.includes(e.jobId));
   // Everything on the page that is one of our samples: the gallery's, then the slots' (each with its files). The facts count
   // these and the model tiles are built from these, so a tile's count and the facts can never disagree.

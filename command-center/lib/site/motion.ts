@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 /**
  * One switch for everything on the public pages that moves by itself (the
@@ -67,4 +67,41 @@ const serverSnapshot = () => false;
 
 export function useMotionPaused(): boolean {
   return useSyncExternalStore(subscribe, snapshot, serverSnapshot);
+}
+
+/**
+ * Where a tap is a pointer's pause (WCAG 2.2.2): anything that moves by itself. A clip's box, a drifting poster, the landing's
+ * first screen (its words column covers the clip under it), the drifting light behind a page's first words (.nx-lit) and the
+ * sign-in stages. The owner wants no visible pause button (2026-11-13); keyboards keep the focus-revealed one (MotionToggle,
+ * ClipPause). Taps toggle the page's one switch whether or not a clip is playing at that moment: under Save-Data or a slow link
+ * no clip plays, but the posters drift and the light moves, and a pointer must still be able to stop them.
+ */
+const TAP_AREAS = "[data-clip], .nx-drift-pic, .nx-sh, .nx-lit, .st-auth-aside, .nx-auth-band";
+/** What a tap in such an area belongs to rather than to the switch: a control, the composer's form, or anything focusable. */
+const CONTROLS = "a, button, input, select, textarea, label, summary, form, [role='button'], [contenteditable='true'], [tabindex]:not([tabindex='-1'])";
+
+/** One click on the page decides: in a motion area, not on a control, not the end of a text selection, and motion not reduced. */
+export function motionTap(ev: MouseEvent): void {
+  if (ev.defaultPrevented || ev.button !== 0) return;
+  const target = ev.target;
+  if (!(target instanceof Element) || !target.closest(TAP_AREAS) || target.closest(CONTROLS)) return;
+  if (window.getSelection?.()?.isCollapsed === false) return;
+  // Under reduced motion nothing moves: a tap would only flip a remembered state nobody can see.
+  if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  start();
+  setMotionPaused(!paused);
+}
+
+let tapUsers = 0;
+/**
+ * Listens for motionTap on the document while any public part that moves is mounted (the effects script, the switches, the clips,
+ * the sign-in stage). One delegated listener however many call it, so a page never toggles twice for one tap.
+ */
+export function useMotionTap(): void {
+  useEffect(() => {
+    if (tapUsers++ === 0) document.addEventListener("click", motionTap);
+    return () => {
+      if (--tapUsers === 0) document.removeEventListener("click", motionTap);
+    };
+  }, []);
 }

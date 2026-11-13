@@ -22,7 +22,8 @@ import { LoopClip } from "@/components/site/LoopClip";
 import { StickyCta } from "@/components/site/StickyCta";
 import { Landing } from "@/components/landing/Landing";
 import { CLIPS, SLOTS, slotMedia, type PlaceDef } from "@/components/site/samples";
-import { TOOL_SAMPLES } from "@/lib/site/tool-samples";
+import { TOOL_SAMPLES, toolSource } from "@/lib/site/tool-samples";
+import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { setMotionPaused } from "@/lib/site/motion";
 import { buildCsp } from "@/lib/security/csp";
 import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, placeLabelProblems, without } from "./helpers/showcase-scope";
@@ -344,9 +345,10 @@ describe("the capability wall (round 8, stock photographs replaced by AI-generat
       expect(tile.querySelector(".nx-wall-body")?.textContent).toBe(tool.body);
       // Only the tool that costs no credits says so on its tile; the note says the rest once.
       expect(tile.querySelector(".nx-wall-price")?.textContent ?? null).toBe(id === "styles" ? t.site.studio.free : null);
-      // A tool no customer can use today says so, and shows no output (never a drawn result).
+      // A tool no customer can use today says so in the Studio's own words (#735, lib/i18n/availability), and shows no output
+      // (never a drawn result).
       if (!def.inStudio) {
-        expect(tile.querySelector(".nx-wall-notyet")?.textContent).toBe(t.site.wall.notYet);
+        expect(tile.querySelector(".nx-wall-notyet")?.textContent).toBe(t.availability.notYet);
         expect(tile.querySelector("img, video")).toBeNull();
         expect(tile.hasAttribute("data-showcase-entry")).toBe(false);
       } else expect(tile.querySelector(".nx-wall-notyet")).toBeNull();
@@ -355,7 +357,12 @@ describe("the capability wall (round 8, stock photographs replaced by AI-generat
         expect(tile.dataset.showcaseEntry).toBe(def.job);
         expect(tile.querySelector(".nx-wall-credit")?.textContent).toContain(t.site.gallery.badge);
         for (const img of tile.querySelectorAll("img")) expect(img.getAttribute("loading")).toBe("lazy");
-        expect(tile.querySelectorAll(".nx-wall-frame img")).toHaveLength(def.from ? 2 : 1);
+        // Animate's still is the clip's own recorded input, never a typed id: before and after cannot disagree.
+        const src = toolSource(def.job);
+        expect(tile.querySelectorAll(".nx-wall-frame img")).toHaveLength(src ? 2 : 1);
+        // The model tiles link to every sample on the page: the tile's sample and the still beside it carry their anchors.
+        expect(tile.id).toBe(`sample-${def.job}`);
+        if (src) expect(tile.querySelector(`#sample-${src}`)).toBeTruthy();
       }
       // Nothing on a tile is pressable: no maker's credit is linked on the public site (it is shown in the Studio).
       expect(tile.querySelectorAll("a")).toHaveLength(0);
@@ -421,5 +428,43 @@ describe("small type fixes (round 5)", () => {
     expect(site).toMatch(/\.st-banner \{[^}]*font-size: 14px;/);
     expect(site).toMatch(/\.ml-car-track \{[^}]*scroll-padding-inline: 16px;/);
     expect(site).not.toMatch(/font-size: 13(\.5)?px/);
+  });
+});
+
+/**
+ * The tool wall's lines (lib/site/tool-samples.ts) against what this repository can check. What would break: a tile showing a sample
+ * of another tool (a still on the Animate tile, a picture on Video); Animate's "before" picture that is not what the clip was made
+ * from; a tool marked available that no registry model could serve (CLAUDE.md #5: never claim what is not backed).
+ */
+describe("the tool wall's lines", () => {
+  const REGISTRY = JSON.parse(readFileSync(join(__dirname, "..", "..", "schemas", "model_registry.json"), "utf8")) as {
+    models: { id: string; capabilities: string[]; terms_gate?: string | null; shutdown?: { on: string } | null }[];
+  };
+  const today = new Date().toISOString().slice(0, 10);
+
+  it("each tile's sample is a job of its tool's capability, and Animate's still is that clip's recorded input", () => {
+    for (const [tool, def] of Object.entries(TOOL_SAMPLES)) {
+      if (!def.job) continue;
+      const e = SHOWCASE_ENTRIES.find((x) => x.jobId === def.job);
+      expect(e, tool).toBeTruthy();
+      expect(e!.capability, tool).toBe(def.capability);
+      const src = toolSource(def.job);
+      expect(src).toBe(e!.kind === "video" && e!.input.kind === "operator_job" ? e!.input.jobId : null);
+    }
+    expect(toolSource(TOOL_SAMPLES.animate.job)).toBeTruthy();
+  });
+
+  it("a tool marked available has at least one registry model of its capability that is not terms-gated and not past its shutdown", () => {
+    for (const [tool, def] of Object.entries(TOOL_SAMPLES)) {
+      if (!def.inStudio || def.capability === null) continue;
+      const servable = REGISTRY.models.filter((m) => m.capabilities.includes(def.capability!) && !m.terms_gate && !(m.shutdown && m.shutdown.on <= today));
+      expect(servable.length, tool).toBeGreaterThan(0);
+    }
+  });
+
+  it("a tool with no line claims nothing: the wall does not draw it, and no default says it can be used", () => {
+    const src = readFileSync(join(__dirname, "..", "components/landing/CapabilityWall.tsx"), "utf8");
+    expect(src).not.toMatch(/\?\? \{ job: null, inStudio: true \}/);
+    expect(src).toMatch(/if \(!\(tool\.id in TOOL_ICON\) \|\| !def\) return \[\];/);
   });
 });

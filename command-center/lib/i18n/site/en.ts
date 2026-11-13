@@ -140,7 +140,7 @@ export const siteEn = {
   },
   /** The landing's Approvals band: a drawn approval screen (components/landing/ApprovalCard.tsx), its rows from `stage`. */
   approvalCard: {
-    figure: "Illustration of a finished video waiting for you: private on YouTube, the publish check passed, and the Approve button not pressed yet. Everything shown is an example.",
+    figure: "Illustration of a finished video waiting for you: private on YouTube, the publish check passed, and the Approve button not pressed yet. Its thumbnail is an AI-generated picture made in our Studio. Everything shown is an example.",
   },
   fx: {
     pause: "Pause motion",
@@ -233,7 +233,9 @@ export const siteEn = {
     label: "Describe the video or picture you want",
     placeholder: "Describe a scene: what we see, how the camera moves, the light…",
     mode: "What to make",
-    attachOut: "Attach a picture or a video (create a free account first)",
+    /** "+" opens the Studio's picture-to-video form (lib/site/prompt-link.ts attachHref), through free sign-up when signed out. */
+    attachOut: "Attach a picture to make a video from it (free sign-up first)",
+    attachIn: "Attach a picture to make a video from it",
     video: "Video",
     image: "Image",
     submit: "Create",
@@ -432,9 +434,8 @@ export const siteEn = {
   toolStrip: { title: "What Nightshift can make" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    notYet: "Not in the Studio yet",
     label: "Real outputs, made in our Studio",
-    note: "Where a tool shows a picture or a clip, it is a real job from our Studio, labelled with the model that made it. A tool marked “Not in the Studio yet” cannot be used yet. Each tool shows its price on its button, except the ones that cost no credits.",
+    note: "Where a tool shows a picture or a clip, it is a real job from our Studio, labelled with the model that made it. A tool marked “Not available yet” has nothing on sale today. Each tool shows its price on its button, except the ones that cost no credits.",
     more: "Show four more tools",
     less: "Show fewer tools",
   },

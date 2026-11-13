@@ -12,6 +12,7 @@ import { LegalFooter } from "@/components/legal/LegalFooter";
 import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import { ClipPause } from "@/components/site/ClipPause";
+import { useMotionTap } from "@/lib/site/motion";
 import { slotMedia, type SlotId } from "@/components/site/samples";
 import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { creditLine } from "@/lib/site/media";
@@ -39,6 +40,8 @@ export function AuthShell({
   children: React.ReactNode;
 }) {
   const { t, locale } = usePublicI18n();
+  // The stage's picture (and its lamp) stop on a tap, as on the marketing pages (lib/site/motion.ts motionTap).
+  useMotionTap();
   const a = t.site.auth;
   preloadSiteFonts(locale);
   const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;

@@ -7,6 +7,7 @@ import type { ClipId } from "@/components/site/clip-assets";
 import { MEDIA, type MediaId } from "@/lib/site/media";
 import { SHOWCASE_ENTRIES, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import { TOOL_JOBS } from "@/lib/site/tool-samples";
 
 /**
  * THE MEDIA SLOTS: which picture goes where. Every page asks for a slot by name, never for a file, so swapping a picture, or
@@ -100,3 +101,21 @@ export const LANDING_LEFT_OUT: readonly string[] = [
   "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8",
   "ab0bcba2-8374-465d-b505-8dac19977948",
 ];
+
+/**
+ * The samples a landing place shows: its slots, the tool wall, the steps and the approval screen (lib/site/tool-samples.ts). They
+ * are on the page, so they count in its facts and model tiles; a sample surface leaves them out so nothing is shown twice.
+ * Functions, not constants, so they read the slots and the data file as they are when called.
+ */
+export function landingPlacedJobs(): string[] {
+  return [...slotJobs(LANDING_SLOTS), ...TOOL_JOBS];
+}
+
+/**
+ * THE landing exclusion list: every sample the landing's sample surfaces (the gallery, and any carousel, ticker or comparison built
+ * on the showcase data) must leave out: the placed samples (landingPlacedJobs) and the repeated sea and sky ones (LANDING_LEFT_OUT).
+ * One list, so a new surface cannot show a sample twice or bring the sea back.
+ */
+export function landingExcludedJobs(): string[] {
+  return [...landingPlacedJobs(), ...LANDING_LEFT_OUT];
+}

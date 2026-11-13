@@ -1,6 +1,6 @@
 "use client";
 
-import { setMotionPaused, useMotionPaused } from "@/lib/site/motion";
+import { setMotionPaused, useMotionPaused, useMotionTap } from "@/lib/site/motion";
 
 /**
  * The page's pause switch at each clip, for a keyboard. It is the same switch as the hero's (lib/site/motion.ts): pressing either
@@ -12,6 +12,7 @@ import { setMotionPaused, useMotionPaused } from "@/lib/site/motion";
  */
 export function ClipPause({ label }: { label: string }) {
   const paused = useMotionPaused();
+  useMotionTap();
   return (
     <button type="button" className="nx-clip-pause" aria-pressed={paused} onClick={() => setMotionPaused(!paused)}>
       {label}

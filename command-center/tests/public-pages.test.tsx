@@ -500,6 +500,24 @@ describe("public pricing page", () => {
  * "Powered by" a model's maker or links one (Runway, Ideogram): their required credit is shown in the Studio, where the models are
  * used (components/studio/ModelAttribution.tsx, tests/model-attribution.test.tsx). Over the shipped samples, in every language.
  */
+// What would break: a model tile's "Watch its sample" jumping nowhere, because its sample is shown only on the tool wall or the
+// approval screen and had no id there (the review of #734 found two). Over the shipped samples.
+describe("the model tiles' links", () => {
+  it("every #models a.nx-model-see resolves to exactly one element on the landing, the box of that tile's sample", () => {
+    const { container } = renderLanding({ kind: "announced" });
+    const links = [...container.querySelectorAll<HTMLAnchorElement>("#models a.nx-model-see")];
+    expect(links.length).toBe(container.querySelectorAll("#models .nx-model").length);
+    for (const a of links) {
+      const href = a.getAttribute("href")!;
+      expect(href).toMatch(/^#sample-[0-9a-f-]{36}$/);
+      expect(container.querySelectorAll(href), href).toHaveLength(1);
+      const job = href.slice("#sample-".length);
+      const target = container.querySelector(href)!;
+      expect(target.closest(`[data-showcase-entry="${job}"]`) ?? target.querySelector(`[data-sample-job="${job}"], img`), href).toBeTruthy();
+    }
+  });
+});
+
 describe("no maker's credit on the public site", () => {
   it.each(["en", "ru", "uz"] as const)("%s: the landing (gallery, model tiles, tool wall, slots), /pricing and the footer link no model maker and never say \"Powered by\"", (locale) => {
     const t = dictionaries[locale];

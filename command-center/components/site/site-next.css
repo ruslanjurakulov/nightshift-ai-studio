@@ -1484,8 +1484,9 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 @media (min-width: 1024px) { .nx-sh-foot { position: absolute; top: 14px; left: 0; right: 0; justify-content: flex-end; padding-top: 0; } }
 
 /* The composer (components/landing/PromptBar.tsx): one glass box, "+" on the left, the box that grows to six lines, the output key
-   and the send key on the right. Liquid-glass recipe in our own CSS, with the variable names the site's shared glass uses
-   (--glass-*), so the two can be unified without a visible change: a translucent surface that blurs and brightens the clip behind
+   and the send key on the right. Liquid-glass recipe in our own CSS, its variables scoped to .nx-pbar. They are NOT yet the
+   shared glass's names: app/glass.css (#738, not on main as of 2026-11-13) will own --glass-*; when it lands, switch this box to
+   its names (--glass-saturate, --glass-sheen, --glass-x/--glass-y) and drop the local ones it does not define. A translucent surface that blurs and brightens the clip behind
    it, a darker tint under the words (white on it stays above 4.5:1 over the brightest frame), a bright rim top and left, a softer
    shade bottom and right, a thin border that catches light, and a soft highlight under the pointer (two CSS variables, set at most
    once a frame, never on touch or under reduced motion). Without backdrop-filter it is a solid dark surface. */
@@ -1528,12 +1529,20 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 .nx-pbar-plus:focus-visible, .nx-pbar-mode:focus-visible, .nx-pbar-go:focus-visible, .nx-pbar-idea:focus-visible, .nx-ai-try:focus-visible, .nx-model-see:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
 /* Docked: the same box, fixed at the bottom centre over the safe area; its place in the first screen keeps its height. */
 /* The first screen is its own stacking context (isolation, for the picture under the words): while the composer is docked it is
-   lifted above the sections after it, so the fixed box paints over them. */
-.nx-hero.nx-sh:has(.nx-pbar[data-docked="true"]) { z-index: 40; }
+   lifted above the sections after it, so the fixed box paints over them; one below the sticky header (.st-header is 40), so the
+   header's menus still open over the docked box. */
+.nx-hero.nx-sh:has(.nx-pbar[data-docked="true"]) { z-index: 39; }
 .nx-pbar[data-docked="true"] { position: fixed; z-index: 60; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); width: min(768px, calc(100% - 24px)); transform: translateX(-50%); }
 /* While it is docked the page's own start bar steps aside, and the page ends with room for it, so it never hides the last words. */
 html[data-composer="docked"] .nx-bar { display: none; }
 html[data-composer="docked"] .nx { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+/* And a field or anchor scrolled into view (a tab to a link, #samples) stops above the docked box, not under it. */
+html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+/* The empty-box message is inside the form, so it travels with the box when it docks: a full-width line under the keys. */
+.nx-pbar { flex-wrap: wrap; }
+/* With wrapping on, the box starts from no width and takes what the keys leave, so it never pushes a key to a second line. */
+.nx-pbar .nx-pbar-box { flex-basis: 0; }
+.nx-pbar .nx-pbar-err { flex: 1 0 100%; order: 10; margin: 0 6px 2px; }
 .nx-pbar-err { margin: 8px 6px 0; font-size: 15px; color: #ffc2b8; }
 .nx-pbar-note { margin: 8px 6px 2px; font-size: 14px; line-height: 1.45; color: rgba(255, 255, 255, 0.78); }
 .nx-pbar-ideas { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }

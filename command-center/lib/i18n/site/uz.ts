@@ -129,7 +129,7 @@ export const siteUz: SiteDictionary = {
     ],
   },
   approvalCard: {
-    figure: "Rasm: tayyor video sizni kutmoqda. U YouTube’da shaxsiy holda, nashr tekshiruvidan oʻtgan, «Tasdiqlash» tugmasi hali bosilmagan. Undagi hamma narsa namuna.",
+    figure: "Rasm: tayyor video sizni kutmoqda. U YouTube’da shaxsiy holda, nashr tekshiruvidan oʻtgan, «Tasdiqlash» tugmasi hali bosilmagan. Muqovasi Studiyamizda sunʼiy intellekt yaratgan tasvir. Undagi hamma narsa namuna.",
   },
   fx: {
     pause: "Harakatni toʻxtatish",
@@ -202,7 +202,8 @@ export const siteUz: SiteDictionary = {
     label: "Qanday video yoki rasm kerakligini tasvirlang",
     placeholder: "Sahnani tasvirlang: kadrda nima bor, kamera qanday harakatlanadi, yorugʻlik qanday…",
     mode: "Nima yaratamiz",
-    attachOut: "Rasm yoki video biriktirish (avval bepul roʻyxatdan oʻting)",
+    attachOut: "Rasm biriktirib, undan video yaratish (avval bepul roʻyxatdan oʻting)",
+    attachIn: "Rasm biriktirib, undan video yaratish",
     video: "Video",
     image: "Rasm",
     submit: "Yaratish",
@@ -390,9 +391,8 @@ export const siteUz: SiteDictionary = {
   toolStrip: { title: "Nightshift nimalar yarata oladi" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    notYet: "Hozircha Studiyada yoʻq",
     label: "Studiyamizdagi haqiqiy natijalar",
-    note: "Vositada rasm yoki klip boʻlsa, u Studiyamizdagi haqiqiy topshiriq boʻlib, uni yaratgan model koʻrsatilgan. “Hozircha Studiyada yoʻq” belgisi bor vositadan hali foydalanib boʻlmaydi. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
+    note: "Vositada rasm yoki klip boʻlsa, u Studiyamizdagi haqiqiy topshiriq boʻlib, uni yaratgan model koʻrsatilgan. “Hozircha mavjud emas” belgisi bor vosita uchun bugun hech narsa sotilmaydi. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
     more: "Yana toʻrtta vositani koʻrsatish",
     less: "Kamroq koʻrsatish",
   },
