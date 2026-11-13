@@ -93,6 +93,8 @@ beforeEach(() => {
   state.results = {
     sellable_models: { data: [sellableRow], error: null },
     credit_prices: { data: [{ unit: "u_vid", credits_per_unit: 3, margin: 9.999, note: "NOTECANARY" }], error: null },
+    // The customer's price list (0084): the model on sale has its rate, so the catalog may offer it (unpriced reads "Not on sale yet").
+    credit_rates: { data: [{ unit: "u_vid", credits_per_unit: 3, margin: 0 }], error: null },
     model_registry_admin: { data: [adminRow], error: null },
     model_probe_runs: { data: [], error: null },
   };

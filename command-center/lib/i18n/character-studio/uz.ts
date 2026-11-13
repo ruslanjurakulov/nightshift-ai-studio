@@ -13,14 +13,15 @@ export const characterStudioUz: CharacterStudioDictionary = {
   notAvailable: "Qahramon studiyasi bu serverda hali sozlanmagan.",
   retry: "Qayta urinish",
   loading: "Yuklanmoqda…",
+  studioHeading: "Almashtirish yaratish",
+  openStudio: "Almashtirishni boshlash",
 
   gallery: {
     heading: "Namunadan boshlang",
-    sampleSoon: "Namuna tez orada",
     sampleOf: "{model} bilan yaratilgan",
     try: "Sinab koʻrish",
     tryHint: "Studiyani shu namunaning matni bilan ochadi. Video va rasmlar — sizniki.",
-    characters: "Qahramonlar: {n}",
+    characters: { one: "{n} ta qahramon", few: "{n} ta qahramon", many: "{n} ta qahramon", other: "{n} ta qahramon" },
   },
 
   cost: {
@@ -45,6 +46,8 @@ export const characterStudioUz: CharacterStudioDictionary = {
     ownClipsOnly: "Faqat shu yerda oxirgi 30 kunda yaratilgan roliklar uchun: bu model haqiqiy odamlarning yuzini qabul qilmaydi.",
     pictures: "{n} tagacha rasm.",
     notOnSale: "Hali sotuvda emas",
+    pickVideoFirst: "Quyida videoni tanlang: uni yarata oladigan modellar shu yerda, har biri shu rolik uchun oʻz narxi bilan chiqadi.",
+    noneOnSale: "Bu rolik uchun hozircha birorta model sotuvda emas, shuning uchun almashtirishni boshlab boʻlmaydi.",
   },
 
   inputs: {

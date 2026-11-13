@@ -33,6 +33,8 @@ import { planValue, readBillingSummary } from "@/lib/server/plans";
 import { accountPlan, type AccountPlan } from "@/lib/account";
 import type { CreditAccount } from "@/lib/credits";
 import { ShellProvider } from "@/components/shell/ShellContext";
+import { readToolAvailability } from "@/lib/server/tool-availability";
+import { GeoAttribution } from "@/components/legal/GeoAttribution";
 import { SidebarProvider } from "@/components/shell/SidebarState";
 import { SIDEBAR_COOKIE, isSidebarCollapsed } from "@/lib/sidebar-pref";
 import { AppProviders } from "@/components/AppProviders";
@@ -142,6 +144,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // member's own session (RLS), read-only.
   let credits: CreditAccount | null = null;
   let plan: AccountPlan | null = null;
+  // Which Studio tools have a model on sale (lib/server/tool-availability.ts): the sidebar, the desk bar, Home and Presets mark the
+  // rest "Not available yet" instead of linking to a form that has nothing to pick. Started here so it runs beside the credit reads
+  // below (it never rejects: a failure is "unknown"); one read, shared with the page (React cache).
+  const toolsRead = readToolAvailability(org.supported && org.current ? org.current.id : null);
   if (org.supported && org.current && !org.current.is_default) {
     const supabase = await createClient();
     if (supabase) {
@@ -156,6 +162,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   } else if (org.supported && org.current?.is_default) {
     plan = { kind: "exempt" };
   }
+  const tools = await toolsRead;
+  // The DB-IP credit (docs/GEO_BLOCK.md), once for the whole signed-in app: since the availability marks above, every page's shell is
+  // shaped by the country filter (readStudioModels -> hideBlockedModelsHere), not only the few pages that drew it. It renders nothing
+  // while no model has a country list.
+  const geo = (
+    <div className="mt-10">
+      <GeoAttribution label={tt.create.geoAttribution} />
+    </div>
+  );
 
   // The breadcrumb names a channel the way the switcher does, by its name — the
   // URL carries a slug, which is not always the name the operator gave it.
@@ -190,7 +205,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MotionProvider>
       <NavigationProvider channelNames={channelNames}>
         {/* The optional sections' switches are read HERE, on the server, per request: the navigation lists Ads only while its switch is on. */}
-        <ShellProvider operator={operator} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled() }}>
+        <ShellProvider operator={operator} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled() }} tools={tools}>
         <SidebarProvider initialCollapsed={!operator && sidebarCollapsed}>
           <div className="app-shell atmos relative flex min-h-svh flex-col">
             {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}
@@ -204,7 +219,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
                   <SideNav operator />
                   {/* The operator's phone has its bottom tab bar too (SideNav): the page keeps its end above it. */}
-                  <main id="main" tabIndex={-1} className="pad-page pad-page-tabbar min-w-0 flex-1 focus:outline-none">{children}</main>
+                  <main id="main" tabIndex={-1} className="pad-page pad-page-tabbar min-w-0 flex-1 focus:outline-none">{children}{geo}</main>
                 </div>
               </div>
             ) : (
@@ -216,7 +231,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <SideNav email={email} avatarV={avatarV} plan={plan} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   {header}
-                  <main id="main" tabIndex={-1} className="pad-page pad-page-tabbar min-w-0 flex-1 focus:outline-none">{children}</main>
+                  <main id="main" tabIndex={-1} className="pad-page pad-page-tabbar min-w-0 flex-1 focus:outline-none">{children}{geo}</main>
                 </div>
               </div>
             )}

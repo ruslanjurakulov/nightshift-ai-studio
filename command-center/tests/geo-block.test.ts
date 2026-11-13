@@ -8,7 +8,7 @@
  * registry's lists drifting from schemas/model_registry.json; and the Caddyfile no longer writing the one header this trusts (or trusting a header a visitor can send).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -242,12 +242,24 @@ describe("a broken setup in production fails closed", () => {
 
 describe("the DB-IP credit", () => {
   it("is on every page whose picker is filtered, linked to db-ip.com, in all three languages, once a model has a country list", () => {
-    const app = join(__dirname, "..", "app", "(app)", "[channel]");
-    // Every page that calls loadStudioModels (the filtered picker) carries the credit.
-    for (const page of [["create", "page.tsx"], ["workflows", "page.tsx"], ["studio", "regions", "page.tsx"], ["home", "page.tsx"]]) {
-      const src = readFileSync(join(app, ...page), "utf8");
-      expect([page.join("/"), src.includes("loadStudioModels(")]).toEqual([page.join("/"), true]);
-      expect([page.join("/"), /<GeoAttribution label=\{(t\.create\.geoAttribution|geoLabel)\} \/>/.test(src)]).toEqual([page.join("/"), true]);
+    const root = join(__dirname, "..", "app");
+    // Since the "Not available yet" marks, the (app) layout itself reads the filtered list (readToolAvailability -> readStudioModels ->
+    // hideBlockedModelsHere) for every page, so the layout carries the credit once, in both frames, and no page draws a second one.
+    const layout = readFileSync(join(root, "(app)", "layout.tsx"), "utf8");
+    expect(layout).toContain("readToolAvailability(");
+    expect(layout.match(/<GeoAttribution label=\{tt\.create\.geoAttribution\} \/>/g)).toHaveLength(1);
+    expect(layout.match(/\{children\}\{geo\}<\/main>/g)).toHaveLength(2);
+    // Every page that reads the filtered list (loadStudioModels, readStudioModels, readToolAvailability) is under that layout:
+    // a page outside app/(app) that called one would have no credit.
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : e.name === "page.tsx" || e.name === "layout.tsx" ? [join(dir, e.name)] : [],
+      );
+    const readers = walk(root).filter((f) => /\b(loadStudioModels|readStudioModels|readToolAvailability)\(/.test(readFileSync(f, "utf8")));
+    expect(readers.length).toBeGreaterThanOrEqual(5);
+    for (const f of readers) expect([f, f.startsWith(join(root, "(app)"))]).toEqual([f, true]);
+    for (const f of readers.filter((x) => !x.endsWith(join("(app)", "layout.tsx")))) {
+      expect([f, readFileSync(f, "utf8").includes("<GeoAttribution")]).toEqual([f, false]);
     }
     const credit = readFileSync(join(__dirname, "..", "components", "legal", "GeoAttribution.tsx"), "utf8");
     expect(credit).toContain("Object.keys(BLOCKED_COUNTRIES).length === 0) return null");

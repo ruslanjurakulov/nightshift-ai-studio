@@ -37,6 +37,9 @@
 # The public site's model samples (docs/SHOWCASE.md): job ids, prompts, model names and recorded costs, no credentials.
 # Written by tools/export_showcase.py; without this line the blanket rule hides it and the export's PR would carry no entry.
 !command-center/lib/site/showcase.json
+# The Studio's effects (docs/EFFECTS.md): ids, English prompts, model ids, shapes and colours, no credentials.
+# Without this line the blanket rule hides it and the build ships no catalog (command-center/tests/effects-catalog.test.ts checks it).
+!command-center/lib/effects/effects.json
 # The labelled claims tools/factcheck_calibration.py measures the fact-checker against: public history, no credentials.
 # Without this line the blanket rule above hides the file and CI fails the calibration tests
 # (tests/test_factcheck_calibration.py checks it is not ignored).
