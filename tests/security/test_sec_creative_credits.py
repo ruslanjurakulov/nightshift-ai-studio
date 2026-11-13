@@ -67,7 +67,8 @@ def install_real_registry(d):
     adapter = lambda cap: "image.acme" if cap == "t2i" else "video.acme"
     rows = [{"id": m, "display_name": m, "provider": "acme", "adapter": adapter(cap),
              "capabilities": [cap], "credit_unit": unit, "entitlement": ent,
-             "spec": {"vendor_model": "acme-" + m, "output": "image" if cap == "t2i" else "video"}}
+             # 0159: a quote refuses a length the model's spec does not list; these models make every length 1-60 s (what is tested here is not the length).
+             "spec": {"vendor_model": "acme-" + m, "output": "image" if cap == "t2i" else "video", "durations_s": list(range(1, 61))}}
             for m, cap, _av, _v, unit, ent in MODELS]
     d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
     for m, cap, av, verified, _unit, _ent in MODELS:

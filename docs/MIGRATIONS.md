@@ -1289,3 +1289,36 @@ until the Command Center sells through Dodo (`PAYMENTS_PROVIDER=dodo`).
   out, another organization's payment not answered by id; refunds without an amount or in another currency unsized; a lost dispute a
   chargeback; malformed ids refused; replay, rollback, drift and the 0146 prerequisite), `command-center/tests/add-credits-ui.test.tsx`
   (the page's reading of the rows) and `command-center/tests/dodo-checkout.test.ts` (the invoice route).
+
+## A quote refuses a clip length the model does not list (0159)
+
+0159 (`0159_duration_offered_by_model.sql`) is **live on apply** and writes no row. It replaces ONE function, `creative_price`, on
+0156's body plus one hunk (0155's shape check and 0156's named-resolution rule are kept as they are).
+
+- **Evidence.** Read from the code (2026-11-13): `creative_params_problem` (0126, unchanged by 0156) checks only that `duration_s` is a
+  whole number from 1 to 60, and `creative_price` checks the model's own list for a shape, a resolution, a quality, a factor, a language,
+  a target and a light, but never for a length. The first reader of `spec.durations_s` is the worker's `ModelEntry.problems`
+  (`duration <n>s is not offered by <model>`), after the quote, the job and its hold. The Studio offered 5 and 10 seconds to every video
+  model (`VIDEO_DURATIONS`): Veo 3.1 makes 4, 6 or 8; LTX 2.5 Pro 6, 8 or 10.
+- **The rule.** When the params name a `duration_s`, the model must list it in `spec.durations_s` (exactly the worker's list; `--sync`
+  copies it and `sellable_models()` already returns it). An empty list (image and voice models) and a spec with no list refuse every
+  length. Refused `invalid_params` with `<model> does not offer a <n>-second clip for <capability>`. No length named: unchanged. The
+  router treats the refusal as "not a candidate", so Auto skips a model that cannot make the length.
+- **What ships with it.** The Studio builds its shape, length and resolution keys from the picked model's own lists (Auto: the union
+  over the models this organization can buy, with a note), so it no longer offers a length the model refuses.
+- **Before it helps.** `model_registry.spec` must carry `durations_s` (every sync since 0035 copies it; the schema requires it). The
+  file REFUSES to apply while an offered timed model (beta / ga, or an operator preview) states no list, and names the models: run
+  Actions -> Probe models with `--sync`, then apply. The last Verify column checks every timed row.
+- **Drift guard and end state.** Live `creative_price` must be 0156's (`a70dba23b303c72f2b9f5dc5acb3b3ec`) or 0159's
+  (`dafc5edae0000e741ac1b19bd0075790`); 0155's body is refused (0156 first). The last block asserts the body, no API role grant, the
+  pinned search_path, the volatility and every guard (0124, 0125, 0139, 0155, 0156, and the new length check). Apply as ONE transaction.
+- **Order.** 0156's replay and rollback refuse 0159's body: run `docs/sql/rollback_0159_duration_offered_by_model.sql` first (it puts
+  0156's body back byte for byte). The lab takes 0159 off before 0156 (`sec_db.take_off_0156` calls `take_off_0159`; `sec_db.ON_0156`,
+  listed in `ON_0155` and so in `ON_0153`, `ON_0149`, `ON_0139` and `ON_0125`). Numbering: 0159; 0157 is merged (it replaces no creative function), 0158 is held by an open
+  branch. The numbering tests of 0127, 0131 and 0133 list it as reviewed. An open branch that replaces `creative_price` and merges first
+  makes this file's guard refuse: rebase the hunk on that body.
+- **Tests.** `tests/test_duration_offered_by_model_migration.py` (the hunk, the list is the worker's, the hashes, the rollback, the lab
+  chain, every synced row states its lengths) and `tests/security/test_sec_duration_offered_by_model.py` (a listed length is quoted and
+  created, an unlisted one is refused before anything is held for the customer and for the operator's preview, an empty or missing list
+  refuses, Auto skips a model that cannot make the length, every other answer is 0156's on a corpus, order, drift guard, replay and
+  rollback on a scratch database).

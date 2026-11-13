@@ -189,7 +189,8 @@ class NamedResolutionParamsMigration(unittest.TestCase):
         self.assertEqual(numbers.count("0156"), 1)
         for n in ("0126", "0155"):
             self.assertIn(n, numbers)
-        for needle in ("def take_off_0156(", "def put_back_0156(", "ON_0155 = (MIGRATION_0156.name,)",
+        # (0159, on 0156's creative_price, extends the chain: tests/test_duration_offered_by_model_migration.py.)
+        for needle in ("def take_off_0156(", "def put_back_0156(", "ON_0155 = (MIGRATION_0156.name, *ON_0156)",
                        "ON_0153 = (MIGRATION_0155.name, *ON_0155)", "ON_0149 = (MIGRATION_0153.name, *ON_0153)",
                        "ON_0139 = (MIGRATION_0149.name, *ON_0149)"):
             self.assertIn(needle, LAB)
@@ -200,11 +201,11 @@ class NamedResolutionParamsMigration(unittest.TestCase):
         self.assertIn("put_back_0156(session)", on)
         # The chain is still found from 0156's body (has_0149 / has_0153 / has_0155 compare their own hashes only).
         off53 = LAB[LAB.index("def take_off_0153("):LAB.index("def put_back_0153(")]
-        self.assertIn("if has_0155(session) or has_0156(session):", off53)
+        self.assertIn("if has_0155(session) or has_0156(session)", off53)
         off49 = LAB[LAB.index("def take_off_0149("):LAB.index("def put_back_0149(")]
-        self.assertIn("if has_0153(session) or has_0155(session) or has_0156(session):", off49)
+        self.assertIn("if has_0153(session) or has_0155(session) or has_0156(session)", off49)
         off39 = LAB[LAB.index("def take_off_0139("):LAB.index("def put_back_0139(")]
-        self.assertIn("or has_0155(session) or has_0156(session):", off39)
+        self.assertIn("or has_0155(session) or has_0156(session)", off39)
 
     def test_the_known_gap_0149_pinned_is_now_a_real_test(self):
         lab_test = (ROOT / "tests" / "security" / "test_sec_preview_price_by_resolution.py").read_text(encoding="utf-8")

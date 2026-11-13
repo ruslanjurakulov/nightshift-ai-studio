@@ -3,7 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { JOB_COLUMNS, type CreativeDb, type CreativeResult } from "@/lib/creative/operations";
-import { coerceModels, coercePreviewModels, onlySellable, withTiers, type StudioModel } from "@/lib/creative/studio";
+import { coerceModels, coercePreviewModels, modelLock, onlySellable, withTiers, type StudioModel } from "@/lib/creative/studio";
+import { readPurchased } from "@/lib/server/model-discovery";
 import { withoutSwitchedOff } from "@/lib/model-switch";
 import { readSwitchedOffIds } from "@/lib/server/model-switch";
 import { hideBlockedModelsHere } from "@/lib/server/geo";
@@ -68,7 +69,7 @@ export async function creativeSession(): Promise<
  * and the Studio offers only what quote/create would accept. A missing table
  * or a failed read is "nothing to pick", never a crash.
  */
-export async function loadStudioModels(): Promise<StudioModel[]> {
+export async function loadStudioModels(orgId: string | null = null): Promise<StudioModel[]> {
   try {
     const supabase = await createClient();
     if (!supabase) return [];
@@ -92,7 +93,14 @@ export async function loadStudioModels(): Promise<StudioModel[]> {
     const shown = withoutSwitchedOff(models, await readSwitchedOffIds(supabase));
     // sellable_models() also knows what the policy cannot: a vendor's announced shutdown date (migration 0125) ends a sale. When it answered,
     // the picker offers only what it lists; no migration and no policy change, and a failed call leaves the list as it was.
-    const offered = marks.error ? shown : withTiers(onlySellable(shown, marks.data), marks.data);
+    const marked = marks.error ? shown : withTiers(onlySellable(shown, marks.data), marks.data);
+    // Which of them this organization cannot buy, by creative_price's own rule (modelLock): the picker then starts on one it can,
+    // and names the reason on the others instead of a red refusal. Purchases are read only when a model needs one.
+    const purchased = marked.some((m) => m.entitlement === "paid") ? await readPurchased(supabase, orgId) : null;
+    const offered = marked.map((m) => {
+      const lock = modelLock(m.entitlement, purchased);
+      return lock ? { ...m, lock } : m;
+    });
     // A model whose vendor forbids the country this request comes from is not offered (docs/GEO_BLOCK.md); the quote and the
     // create routes refuse it too. Reads nothing while no model has a country list.
     return await hideBlockedModelsHere(offered);

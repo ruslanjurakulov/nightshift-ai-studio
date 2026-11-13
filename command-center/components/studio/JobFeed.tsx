@@ -19,6 +19,8 @@ import { useChannelPath } from "@/lib/channels-client";
 import { editorAddHref } from "@/lib/creative/improve";
 import type { CreativeError } from "@/lib/creative/operations";
 import { deskFor, deskHref } from "@/lib/creative/desks";
+import { registryName } from "@/lib/creative/model-names";
+import { refreshCredits } from "@/lib/credits-live";
 import {
   addDismissed,
   apiErrorMessage,
@@ -176,6 +178,9 @@ export function JobFeed({
     }
   }
 
+  // The jobs seen working at the last read: when one of them is no longer working, its hold was charged or released, so the
+  // header's credits are read again (lib/credits-live.ts). null = no read yet (a page that opens on finished jobs re-reads nothing).
+  const workingIds = useRef<ReadonlySet<string> | null>(null);
   const load = useCallback(async () => {
     const mine = ++seq.current;
     try {
@@ -188,6 +193,10 @@ export function JobFeed({
       if (res.ok) {
         const list = coerceJobs(body.jobs);
         setJobs(list);
+        const working = new Set(list.filter((j) => isActiveStatus(j.status)).map((j) => j.id));
+        const before = workingIds.current;
+        workingIds.current = working;
+        if (before && [...before].some((id) => !working.has(id))) void refreshCredits(orgId);
         const reading = clockOffset(res.headers?.get?.("date"), receivedAt);
         setSkew((prev) => nextClockOffset(prev, reading));
         // Jobs seen working while this page was open: when one finishes, its result fades in where its placeholder
@@ -251,10 +260,14 @@ export function JobFeed({
     } finally {
       setCancelling(null);
       void load();
+      // A cancelled job's hold went back to the balance.
+      void refreshCredits(orgId);
     }
   }
 
   const names = new Map(models.map((m) => [m.id, m.displayName]));
+  // A job of a model no longer on sale (or never sold here) is named from the registry file, never by its raw id.
+  const nameOf = (id: string) => names.get(id) ?? registryName(id);
   // The maker's required credit line, per model (Runway: "Powered by Runway"), shown with what that model made or is making.
   const makerLines = new Map(models.flatMap((m) => (m.attribution ? [[m.id, m.attribution] as const] : [])));
   const mine = (j: StudioJob) => !capabilities || capabilities.includes(j.capability);
@@ -586,7 +599,7 @@ export function JobFeed({
           </p>
         )}
         <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-xs text-[var(--color-muted)]">
-          <span className="min-w-0 truncate">{names.get(jobModel(job)) ?? jobModel(job)}</span>
+          <span className="min-w-0 truncate">{nameOf(jobModel(job))}</span>
           <span aria-hidden>·</span>
           <span className="tnum">{creditsLine(t, job, locale)}</span>
         </p>

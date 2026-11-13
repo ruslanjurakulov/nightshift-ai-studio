@@ -233,6 +233,9 @@ def test_a_capability_without_resolution_variants_refuses_a_new_name(conn, sc):
 def test_with_0156_rolled_back_only_the_newly_accepted_names_change(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
+        # This measures 0156's own body: 0159 (which sits on it, and refuses a length a model does not list) comes off first.
+        conn.execute(sec_db.rollback_0159_body())
+        assert sec_db.has_0156(conn)
         _h3(conn, resolutions=("480p", "768p", "2k"),
             pricing={"unit": "second", "provider_usd_per_unit": 0.08,
                      "variants": {"by": "resolution", "prices": {"480p": 0.05, "768p": 0.08, "2k": 0.13}}})
@@ -270,6 +273,8 @@ def test_with_0156_rolled_back_only_the_newly_accepted_names_change(conn, sc):
         assert sold == {(H3, "768p"), (H3, "2k"), ("lab-sold-h3", "2k")}, sold
         conn.execute(sec_db.MIGRATION_0156.read_text(encoding="utf-8"))
         assert sec_db.has_0156(conn)
+        conn.execute(sec_db.MIGRATION_0159.read_text(encoding="utf-8"))
+        assert sec_db.has_0159(conn)
 
 
 # ── the file itself: order, drift guards, replay, rollback ─────────────────────────────────────────────────────────────
@@ -289,13 +294,14 @@ def test_the_lab_takes_the_whole_chain_off_and_puts_it_back_from_0156s_bodies(co
     session = SimpleNamespace(conn=conn)
     with conn.transaction(force_rollback=True):
         _become(conn, None)
-        assert sec_db.has_0156(conn) and not sec_db.has_0155(conn)
+        # The lab ends at 0159, which sits on 0156's creative_price (and leaves its creative_params_problem as 0156 wrote it).
+        assert sec_db.has_0159(conn) and not sec_db.has_0156(conn) and not sec_db.has_0155(conn)
         assert _md5_conn(conn, PP) == sec_db.CREATIVE_PARAMS_PROBLEM_0156
         sec_db.take_off_0139(session)
         assert _md5_conn(conn, CP) == "e0c4a7806642086398558cf322c95a0d", "0125's body"
         assert _md5_conn(conn, PP) == PP_0126, "0126's body"
         sec_db.put_back_0139(session)
-        assert (_md5_conn(conn, PP), _md5_conn(conn, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0156, sec_db.CREATIVE_PRICE_0156)
+        assert (_md5_conn(conn, PP), _md5_conn(conn, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0156, sec_db.CREATIVE_PRICE_0159)
 
 
 def _md5s(d):

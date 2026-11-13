@@ -18,6 +18,7 @@ import { ContextSwitcher } from "@/components/shell/ContextSwitcher";
 import { CreditBalanceChip } from "@/components/credits/CreditBalanceChip";
 import { CreditMenu } from "@/components/shell/CreditMenu";
 import type { CreditAccount } from "@/lib/credits";
+import { useLiveCredits } from "@/lib/credits-live";
 import type { AccountPlan } from "@/lib/account";
 import type { OrgSummary } from "@/lib/orgs";
 import { ALL_CHANNELS, unscopedScope, type ChannelScope, type ChannelSelection } from "@/lib/channels";
@@ -65,6 +66,8 @@ export function Header({
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
+  // The layout's reading seeds the live value; a generation started, cancelled or finished re-reads it (lib/credits-live.ts).
+  const account = useLiveCredits(currentOrgId, credits);
 
   function openPalette() {
     window.dispatchEvent(new CustomEvent("chronos:palette-open"));
@@ -108,7 +111,7 @@ export function Header({
                 <span className="tnum pill border border-[var(--color-border)] px-1.5 text-xs">⌘K</span>
               </button>
             </span>
-            <CreditMenu account={credits} plan={plan} />
+            <CreditMenu account={account} plan={plan} />
             {/* The customer's own, database-backed inbox (migration 0064); the
                 operator's bar below keeps the event-derived feed. */}
             <NotificationBell orgId={currentOrgId} channels={channels} />
@@ -158,7 +161,7 @@ export function Header({
           <ContextSwitcher orgs={orgs} currentOrgId={currentOrgId} channels={channels} selection={selection} />
           <span className="hidden sm:contents">
             <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
-            <CreditBalanceChip account={credits} />
+            <CreditBalanceChip account={account} />
             <ChannelSwitcher channels={channels} selection={selection} />
             <button
               type="button"

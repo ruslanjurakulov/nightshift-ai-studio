@@ -46,6 +46,20 @@ function withSound(params: Record<string, unknown>, sound: boolean | null | unde
   return params;
 }
 
+/**
+ * The same settings with the model's own shape, length and resolution: each model is priced at the settings IT offers (the ones the
+ * panel would snap to if it were picked), never at another model's — a shape or length it does not list is refused (0155, 0159),
+ * which would read as "this model cannot" when it can. A key set to null is left out.
+ */
+function withSettings(params: Record<string, unknown>, over: Record<string, string | number | null> | undefined): Record<string, unknown> {
+  if (!over) return params;
+  for (const [k, v] of Object.entries(over)) {
+    delete params[k];
+    if (v !== null) params[k] = v;
+  }
+  return params;
+}
+
 /** The same settings with the model's own tier: a model without tiers is asked without one (the database refuses a tier it does not list). */
 function withTier(paramsKey: string, tier: ImageQuality | null | undefined): Record<string, unknown> {
   const params = JSON.parse(paramsKey) as Record<string, unknown>;
@@ -71,6 +85,7 @@ export function useModelPrices({
   params,
   tierFor,
   soundFor,
+  settingsFor,
 }: {
   open: boolean;
   orgId: string;
@@ -82,10 +97,13 @@ export function useModelPrices({
   tierFor?: Record<string, ImageQuality | null>;
   /** Each model's own soundtrack setting (0070) for a video tool; absent or null = ask without one. */
   soundFor?: Record<string, boolean | null>;
+  /** Each model's own shape / length / resolution keys (key -> value, null = leave it out); absent = the form's as they are. */
+  settingsFor?: Record<string, Record<string, string | number | null>>;
 }): Record<string, ModelPrice> {
   const [prices, setPrices] = useState<Record<string, ModelPrice>>({});
   const tiersKey = JSON.stringify(tierFor ?? {});
   const soundKey = JSON.stringify(soundFor ?? {});
+  const settingsKey = JSON.stringify(settingsFor ?? {});
   const paramsKey = params ? JSON.stringify(params) : "";
   const ids = pricedIds(modelIds, selectedId);
   const idsKey = ids.join(",");
@@ -103,7 +121,9 @@ export function useModelPrices({
         void (async () => {
           const tiers = JSON.parse(tiersKey) as Record<string, ImageQuality | null>;
           const sounds = JSON.parse(soundKey) as Record<string, boolean | null>;
-          const next = await askPrice(orgId, capability, id, withSound(withTier(paramsKey, tiers[id]), sounds[id]), ctrl.signal);
+          const settings = JSON.parse(settingsKey) as Record<string, Record<string, string | number | null>>;
+          const asked = withSettings(withSound(withTier(paramsKey, tiers[id]), sounds[id]), settings[id]);
+          const next = await askPrice(orgId, capability, id, asked, ctrl.signal);
           if (next && !ctrl.signal.aborted) setPrices((p) => ({ ...p, [id]: next }));
         })();
       }
@@ -112,7 +132,7 @@ export function useModelPrices({
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [open, orgId, capability, idsKey, paramsKey, tiersKey, soundKey]);
+  }, [open, orgId, capability, idsKey, paramsKey, tiersKey, soundKey, settingsKey]);
 
   return prices;
 }
