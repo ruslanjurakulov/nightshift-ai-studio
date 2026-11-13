@@ -88,7 +88,7 @@ export function SampleImg({ id, alt = "", className, eager = false, position, si
  * `--slot <name>` (tools/export_showcase.py) fills the slot the same way. `aiPosition` frames the sample in the slot's box.
  *
  * The stock fields are only the fallback. The footer lists only the stock pictures a page still shows
- * (components/site/stock-in-use.ts), so a replaced one leaves the credits by itself; its files can then be deleted.
+ * (components/site/stock-in-use.ts), so a replaced one leaves the credits by itself. Its files stay: the line still names it as the fallback.
  */
 export const SLOTS = {
   /** The landing's first screen: edge to edge behind the headline and the prompt bar. */

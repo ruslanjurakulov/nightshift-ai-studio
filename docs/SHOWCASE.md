@@ -27,8 +27,9 @@ hero: { ai: "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8", id: "cloud", clip: "cloud" }
   label. `aiPosition` frames it in the slot's box (CSS `object-position`) when the centre is wrong.
 - The landing leaves a sample shown in its own slots (hero, show.studio, show.approvals, landing.final) out of its gallery.
 - The footer credits only the stock pictures some page still shows, so a stock picture drops out of the credits by itself
-  once every place that used it holds a sample. When none is left, the credits say so and list no Pexels item; the stock files
-  and their `lib/site/media.ts` entries can then be deleted in a cleanup PR.
+  once every place that used it holds a sample. When none is left, the credits say so and list no Pexels item. The stock files
+  stay in the repository even then: every line still names its stock fallback (`id`, a `lib/site/media.ts` item), which the
+  place shows if its sample's files were ever missing. Deleting them needs a change that makes the fallback optional first.
 - The landing's format cards (`lib/site/formats.ts`) name a sample by job id the same way; their titles are in
   `lib/i18n/site/{en,ru,uz}.ts` `site.formats.items` and describe that sample, so change them together.
 

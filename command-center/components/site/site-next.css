@@ -1456,18 +1456,23 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 .nx-sh .nx-sh-h1 { order: 0; margin: 18px 0 0; max-width: 13ch; font-size: clamp(46px, 12vw, 112px); line-height: 0.98; letter-spacing: -0.045em; text-shadow: 0 2px 32px rgba(0, 0, 0, 0.45); }
 html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size: clamp(38px, 9.4vw, 88px); }
 @media (min-width: 1024px) {
-  .nx-sh .nx-sh-h1 { max-width: 16ch; font-size: clamp(60px, 6.2vw, 100px); }
-  html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { font-size: clamp(52px, 5.6vw, 88px); }
+  /* A display size well above the section headings (.nx-h2 tops out at 64 px): the first screen is one statement. */
+  .nx-sh .nx-sh-h1 { max-width: 16ch; font-size: clamp(76px, 7.2vw, 116px); }
+  html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { font-size: clamp(60px, 5.8vw, 92px); }
 }
 .nx-sh-lead { margin: 18px 0 0; max-width: 34em; font-size: 17px; line-height: 1.5; color: rgba(255, 255, 255, 0.9); }
 @media (min-width: 640px) { .nx-sh-lead { font-size: 20px; } }
 .nx-sh-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; margin-top: 22px; }
 .nx-sh-actions .nx-sample { padding-inline: 0; text-align: left; align-items: flex-start; }
-.nx-sh .nx-note { margin: 16px 0 0; font-size: 15px; color: rgba(255, 255, 255, 0.85); }
-.nx-sh .nx-price { margin: 6px 0 0; font-size: 15px; color: rgba(255, 255, 255, 0.85); }
-.nx-sh .nx-trust { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 4px 20px; margin: 14px 0 0; padding: 0; list-style: none; }
-.nx-sh .nx-trust li { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: 15px; color: rgba(255, 255, 255, 0.9); }
-.nx-sh .nx-trust svg { width: 16px; height: 16px; color: #5ee0a0; }
+/* The welcome grant, the price and the promises, just under the first screen (Landing.tsx Facts), on the page's own tokens. */
+.nx-facts-more { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 28px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--ns-rule); }
+.nx-facts-more .nx-note { margin: 0; font-size: 15px; color: var(--ns-text-dim); }
+.nx-facts-more .nx-price { margin: 0; font-size: 15px; color: var(--ns-text-dim); }
+.nx-facts-more .nx-trust { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 4px 20px; margin: 0; padding: 0; list-style: none; }
+.nx-facts-more .nx-trust li { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: 15px; color: var(--ns-text); }
+.nx-facts-more .nx-trust svg { width: 16px; height: 16px; color: var(--ns-go); }
+.nx-ai-note { flex-basis: 100%; font-size: 13px; line-height: 1.4; }
+.nx-gallery-use { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ns-text-dim); }
 .nx-sh-foot { position: relative; z-index: 1; margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 28px; color: #fff; }
 .nx-sh-credit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: 100%; margin: 0; padding: 4px 8px; border-radius: 22px; background: rgba(0, 0, 0, 0.62); font-size: 14px; }
 .nx-sh-credit .nx-result-badge, .nx-sh-credit .nx-result-credit { position: static; max-width: none; padding: 3px 4px; background: none; }
@@ -1489,6 +1494,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 .nx-pbar-tool[aria-pressed="true"] { border-color: #fff; background: #fff; color: #0b0b10; }
 .nx-pbar-go { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; margin-left: auto; padding: 0 22px; border: 0; border-radius: 999px; background: linear-gradient(135deg, #a79cff 0%, #d08cff 52%, #ffb066 100%); color: #0b0b10; font-family: var(--font-display); font-size: 16px; font-weight: 600; cursor: pointer; box-shadow: 0 10px 30px -12px rgba(208, 140, 255, 0.8); }
 .nx-pbar-go svg { width: 18px; height: 18px; }
+.nx-pbar-go:disabled { opacity: 0.6; cursor: default; }
 .nx-pbar-tool:focus-visible, .nx-pbar-go:focus-visible, .nx-pbar-idea:focus-visible, .nx-ai-try:focus-visible, .nx-ai-attr:focus-visible, .nx-model-see:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
 .nx-pbar-err { margin: 8px 6px 0; font-size: 15px; color: #ffc2b8; }
 .nx-pbar-note { margin: 8px 6px 2px; font-size: 14px; line-height: 1.45; color: rgba(255, 255, 255, 0.78); }

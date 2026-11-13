@@ -18,6 +18,7 @@ export const siteUz: SiteDictionary = {
     titleA: "Videoni biz tayyorlaymiz.",
     titleB: "Nashr qilishni siz bosasiz.",
     lead: "Nightshift’ga mavzu bering. U YouTube uchun video yozadi, ovozlaydi va montaj qiladi, soʻng roziligingizni kutadi. Narxni boshlashdan oldin koʻrasiz.",
+    leadShort: "Bir jumladan klip va rasmlar yarating yoki Nightshift kanalingiz uchun keyingi videoni tayyorlab, qaroringizni kutsin.",
     cta: "Bepul boshlash",
     secondary: "Narxlarni koʻrish",
     demo: "Namunani sinab koʻring",
@@ -166,10 +167,10 @@ export const siteUz: SiteDictionary = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Rasm mualliflari",
-    lead: "Bu sahifalardagi har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Baʼzi rasmlar esa boshqacha: uch qadam va sakkiz vosita uchun rasmlar hamda namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvirlar. Bu bezak, mahsulotning skrinshotlari emas.",
+    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Baʼzi rasmlar esa boshqacha: uch qadam va sakkiz vosita uchun rasmlar hamda namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvirlar. Bu bezak, mahsulotning skrinshotlari emas.",
     licence: "Pexels litsenziyasi",
     leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni koʻrsatilgan model berilgan soʻzlar boʻyicha yaratgan. Uch qadam va sakkiz vosita uchun rasmlar hamda namuna muqova Nightshift uchun bezak sifatida sunʼiy intellekt yaratgan tasvirlar, mahsulotning skrinshotlari emas.",
-    generated: "Yana bir istisno: “Studiyada yaratilgan” boʻlimidagi namunalarni sunʼiy intellekt yaratgan. Har biri oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, unda nomi koʻrsatilgan model tomonidan yaratilgan; har birida berilgan soʻzlar va yaratilgan sana koʻrinadi.",
+    generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni koʻrsatilgan model berilgan soʻzlar boʻyicha yaratgan.",
   },
   gallery: {
     label: "Studiyada yaratilgan",
@@ -184,10 +185,12 @@ export const siteUz: SiteDictionary = {
     tryAria: "Shu soʻrovni sinab koʻrish: {model}",
     notInStudio: "Bu model hozircha Studiyada yoʻq",
     gone: "Bu model endi Studiyada yoʻq",
-    tryNote: "“Shu soʻrovni sinab koʻrish” Studiyani shu vosita va shu soʻzlar bilan ochadi. Biror narsa boshlanishidan oldin Studiya qaysi modelni ishlatishini va narxini koʻrsatadi.",
-    tryNoteSignedOut: "“Shu soʻrovni sinab koʻrish” avval hisob yaratishni soʻraydi, soʻng Studiyani shu vosita va shu soʻzlar bilan ochadi. Studiyada “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi, narx esa oldindan koʻrinadi.",
+    tryNote: "“Shu soʻrovni sinab koʻrish” va “Shu soʻrovdan foydalanish” Studiyani shu vosita va shu soʻzlar bilan ochadi. Biror narsa boshlanishidan oldin Studiya qaysi modelni ishlatishini va narxini koʻrsatadi.",
+    tryNoteSignedOut: "“Shu soʻrovni sinab koʻrish” va “Shu soʻrovdan foydalanish” avval hisob yaratishni soʻraydi, soʻng Studiyani shu vosita va shu soʻzlar bilan ochadi. Studiyada “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi, narx esa oldindan koʻrinadi.",
     altClip: "Sunʼiy intellekt yaratgan klip: {model} modeli",
     altImage: "Sunʼiy intellekt yaratgan tasvir: {model} modeli",
+    use: "Shu soʻrovdan foydalanish",
+    useNote: "Studiyani shu soʻzlar bilan undagi modellardan birida ochadi; qaysi biri va narxi qancha ekanini Studiya boshlashdan oldin koʻrsatadi.",
     slotNote: "Sunʼiy intellekt yaratgan: oʻzimizning Studiyamizdagi haqiqiy topshiriq, uni koʻrsatilgan model shu soʻrov boʻyicha yaratgan.",
   },
   prompt: {
@@ -198,8 +201,8 @@ export const siteUz: SiteDictionary = {
     image: "Rasm",
     submit: "Yaratish",
     empty: "Avval bir-ikki soʻz yozing.",
-    noteIn: "Studiyani sizning soʻzlaringiz bilan ochadi. U yerda “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi, narxni esa oldindan koʻrasiz.",
-    noteOut: "Avval bepul hisob yaratasiz, soʻng Studiya sizning soʻzlaringiz bilan ochiladi. “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi, narxni esa oldindan koʻrasiz.",
+    noteIn: "Studiyani soʻzlaringiz bilan ochadi. U yerda “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi.",
+    noteOut: "Avval bepul roʻyxatdan oʻtasiz, soʻng Studiya soʻzlaringiz bilan ochiladi. “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi.",
     ideas: "Haqiqiy soʻrovdan boshlang",
   },
   facts: {
@@ -209,11 +212,6 @@ export const siteUz: SiteDictionary = {
     credits: "Roʻyxatdan oʻtganda bepul kreditlar",
   },
   formats: {
-    label: "Formatlar",
-    title: "Odamlar toʻxtab koʻradigan formatdan boshlang",
-    lead: "Har bir karta Studiyamizdagi haqiqiy klip. “Sinab koʻrish” Studiyani xuddi shu soʻzlar bilan ochadi: soʻzlarni oʻzgartiring va oʻzingiznikini yarating.",
-    try: "Sinab koʻrish",
-    tryAria: "Formatni sinab koʻrish: {format}",
     items: [
       { id: "product-ad", title: "Koʻcha boʻyi reklama", body: "Ulkan mahsulot haqiqiy koʻchaga tushadi, tashqi reklama kampaniyasidek suratga olingan." },
       { id: "satisfying", title: "Zavqli makro", body: "Pichoq yaqin plandan kesilmaydigan narsani kesadi. Buni qayta-qayta koʻrishadi." },

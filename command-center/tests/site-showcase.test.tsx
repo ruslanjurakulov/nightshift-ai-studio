@@ -146,12 +146,17 @@ describe("the gallery", () => {
     expect(card.querySelector("time")?.getAttribute("dateTime")).toBe(FIXTURE_ENTRY.createdAt);
     expect(card.querySelector("img")?.getAttribute("alt")).toContain("Runway Gen-4.5");
     // An operator preview: the card says, as a fact, that the model is not in the Studio, and the button neither names it in its
-    // link nor in its accessible name; it is its visible words, described by the sample's prompt.
-    const tryIt = within(card).getByRole("link", { name: d.site.gallery.try });
+    // link nor in its accessible name. It says "Use this prompt" (never "try" a model its link will not open), and a visible note,
+    // which also describes the button with the sample's prompt, says the words run on a model the Studio offers.
+    const tryIt = within(card).getByRole("link", { name: d.site.gallery.use });
+    expect(within(card).queryByRole("link", { name: d.site.gallery.try })).toBeNull();
     expect(tryIt.getAttribute("href")).toBe(signupTryHref(FIXTURE_ENTRY));
-    expect(tryIt.textContent).toBe(d.site.gallery.try);
+    expect(tryIt.textContent).toBe(d.site.gallery.use);
     expect(tryIt.hasAttribute("aria-label")).toBe(false);
-    expect(document.getElementById(tryIt.getAttribute("aria-describedby")!)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    const [promptId, noteId] = tryIt.getAttribute("aria-describedby")!.split(" ");
+    expect(document.getElementById(promptId)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    expect(document.getElementById(noteId)?.textContent).toBe(d.site.gallery.useNote);
+    expect(card.querySelector(".nx-gallery-use")?.textContent).toBe(d.site.gallery.useNote);
     expect(card.querySelector(".nx-gallery-unavailable")?.textContent).toBe(d.site.gallery.notInStudio);
     expect(tryIt.getAttribute("href")).not.toContain("model");
     // The heading and the note say what the section is, in this language.
@@ -227,7 +232,10 @@ describe("the gallery", () => {
     expect(s.gallery.tryAria.startsWith(s.gallery.try)).toBe(true);
     expect(s.gallery.notInStudio + s.gallery.gone).not.toMatch(PROVIDER_BRANDS);
     // Statements of fact, not promises (CLAUDE.md #5): nothing about when or whether it will come.
-    expect(s.gallery.notInStudio + s.gallery.gone).not.toMatch(/coming|soon|скоро|появится|tez orada|paydo/i);
+    expect(s.gallery.notInStudio + s.gallery.gone + s.gallery.useNote).not.toMatch(/coming|soon|скоро|появится|tez orada|paydo/i);
+    // A button that does not open the sample's model says "use" the words, not "try" them; it is another word from "try".
+    expect(s.gallery.use).not.toBe(s.gallery.try);
+    expect(s.gallery.useNote).not.toMatch(PROVIDER_BRANDS);
     // The heading claims nothing about which models are on sale.
     expect(s.gallery.title).toContain("Nightshift");
   });

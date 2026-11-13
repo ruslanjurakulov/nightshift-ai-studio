@@ -125,17 +125,23 @@ export function ShowcaseGallery({
                     <time dateTime={e.createdAt}>{fmt(g.made, { date: madeOn(e.createdAt, locale) })}</time>
                   </p>
                   {href && (
-                    // Named by the model only where the link opens that model; otherwise its visible name, described by the prompt.
+                    // Named by the model only where the link opens that model. Where it does not (the model is not in the Studio),
+                    // the button says "Use this prompt", not "try" a model the link will not open, and a note says which model runs it.
                     <Link
                       href={href}
                       prefetch={false}
                       className="nx-btn nx-gallery-try"
                       aria-label={leftOut ? undefined : fmt(g.tryAria, { model: e.modelName })}
-                      aria-describedby={promptId}
+                      aria-describedby={leftOut ? `${promptId} sample-use-${e.jobId}` : promptId}
                     >
-                      {g.try}
+                      {leftOut ? g.use : g.try}
                       <ArrowRight aria-hidden />
                     </Link>
+                  )}
+                  {href && leftOut && (
+                    <p id={`sample-use-${e.jobId}`} className="nx-gallery-use">
+                      {g.useNote}
+                    </p>
                   )}
                 </div>
               </li>

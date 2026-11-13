@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, within } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 
 const state = vi.hoisted(() => ({ noStock: false }));
@@ -140,9 +141,14 @@ describe("the landing with a sample in its hero slot", () => {
     expect(img.hasAttribute("data-sample")).toBe(false);
     const credit = container.querySelector(".nx-sh-credit") as HTMLElement;
     expect(placeLabelProblems(credit, m, t.site)).toEqual([]);
-    const tryIt = within(credit).getByRole("link", { name: t.site.gallery.try });
+    // The fixture's model is an operator preview: the link does not open it, so the button says "Use this prompt" (never "try"
+    // a model it will not run), and a visible note says the words run on a model the Studio offers.
+    const tryIt = within(credit).getByRole("link", { name: t.site.gallery.use });
     expect(tryIt.getAttribute("href")!.startsWith("/signup?next=")).toBe(true);
-    expect(document.getElementById(tryIt.getAttribute("aria-describedby")!)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    expect(within(credit).queryByRole("link", { name: t.site.gallery.try })).toBeNull();
+    const [promptId, noteId] = tryIt.getAttribute("aria-describedby")!.split(" ");
+    expect(document.getElementById(promptId)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    expect(document.getElementById(noteId)?.textContent).toBe(t.site.gallery.useNote);
     // The hero's sample is not shown again in the gallery; the other sample is.
     expect(slotJobs(LANDING_SLOTS)).toEqual([FIXTURE_JOB]);
     expect(container.querySelector(`${GALLERY} [data-showcase-entry="${FIXTURE_JOB}"]`)).toBeNull();
@@ -158,12 +164,23 @@ describe("the landing with a sample in its hero slot", () => {
     expect(facts).toEqual({ samples: "2", models: "2", credits: String(WELCOME_CREDITS) });
   });
 
-  it("gives each model of the gallery one tile, inside its sample's box, with the maker's credit where there is one, the truth about the Studio and no price", () => {
+  it("gives each model of a sample anywhere on the page one tile (as many as the facts count), inside its sample's box, with the maker's credit where there is one, the truth about the Studio and no price", () => {
     const t = dictionaries.en;
     const { container } = landing();
     const tiles = [...container.querySelectorAll<HTMLElement>("#models .nx-model")];
-    // The gallery shows one sample (the other is the hero's): one model.
-    expect(tiles.map((x) => x.dataset.model)).toEqual(["minimax-h3"]);
+    // The gallery's sample, then the hero's: two models, the number the facts row says.
+    expect(tiles.map((x) => x.dataset.model)).toEqual(["minimax-h3", "runway-gen4.5"]);
+    expect(container.querySelector("[data-fact='models'] .nx-facts-n")?.textContent).toBe(String(tiles.length));
+    // Each tile links to its sample on this page: the gallery card, or the box of the slot that shows it (the hero).
+    for (const tile of tiles) {
+      const href = tile.querySelector(".nx-model-see")!.getAttribute("href")!;
+      expect(href).toBe(`#sample-${tile.dataset.showcaseEntry}`);
+      expect(container.querySelectorAll(href)).toHaveLength(1);
+    }
+    expect(container.querySelector(`#sample-${FIXTURE_JOB}`)?.matches(".nx-sh-media")).toBe(true);
+    const runway = tiles[1];
+    expect(runway.querySelector(".nx-model-count")?.textContent).toBe(fmt(t.site.models.count, { n: "1" }));
+    expect(runway.querySelector(".nx-ai-attr")?.getAttribute("href")).toBe("https://runway.com");
     const tile = tiles[0];
     expect(tile.dataset.showcaseEntry).toBe(OTHER);
     expect(tile.querySelector(".nx-model-name")?.textContent).toBe("MiniMax H3");
@@ -269,6 +286,13 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(container.textContent).toContain(t.prompt.noteOut);
   });
 
+  it("before its script runs, Create is off (the server's markup), so no form is ever sent that would drop the words", () => {
+    const html = renderToStaticMarkup(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />);
+    expect(html).toMatch(/<button type="submit" class="nx-pbar-go" disabled="">/);
+    // Once it runs, Create is on (checked above by pressing it).
+    expect(render(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />).container.querySelector(".nx-pbar-go")?.hasAttribute("disabled")).toBe(false);
+  });
+
   it("is fed only real prompts on the landing: each chip is a format whose sample is merged, with that sample's words", () => {
     const { container } = landing();
     const chips = [...container.querySelectorAll(".nx-pbar-idea")].map((b) => b.textContent);
@@ -324,9 +348,13 @@ describe("copy and config", () => {
     const s = dictionaries[code].site;
     for (const block of [s.prompt, s.facts, s.formats, s.models]) expect(JSON.stringify(block)).not.toMatch(PROVIDER_BRANDS);
     expect(s.formats.items.map((i) => i.id)).toEqual(FORMATS.map((f) => f.id));
-    for (const v of [s.gallery.slotNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut]) expect(v.trim().length).toBeGreaterThan(20);
+    for (const v of [s.gallery.slotNote, s.gallery.useNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut, s.hero.leadShort]) expect(v.trim().length).toBeGreaterThan(20);
+    // The formats are only their cards' words: the cards are drawn inside the gallery, under its own heading.
+    expect(Object.keys(s.formats)).toEqual(["items"]);
+    // The bar's note names the Studio's own button (ru «Создать», not «Сгенерировать»).
+    expect(s.prompt.noteIn).toContain(dictionaries[code].gen.generate);
+    expect(s.prompt.noteOut).toContain(dictionaries[code].gen.generate);
     expect(s.models.count).toContain("{n}");
-    expect(s.formats.tryAria).toContain("{format}");
     // Facts are statements, not promises or claims about other people.
     expect(JSON.stringify(s.facts)).not.toMatch(/users|customers|creators|пользовател|клиент|foydalanuvchi|mijoz/i);
   });

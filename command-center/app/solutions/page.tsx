@@ -103,6 +103,8 @@ export default async function SolutionsPage() {
       },
     ];
   });
+  const kinds = (["solutions.youtube-channels", "solutions.creative-studio", "solutions.developers"] as const).map((x) => slotMedia(x).kind);
+  const notes = [kinds.includes("stock") ? t.site.samples.note : null, kinds.includes("ai") ? t.site.gallery.slotNote : null].filter((n): n is string => n !== null);
   return (
     <PublicShell t={t} current="solutions" fresh>
       <div className="nx-lit">
@@ -117,7 +119,12 @@ export default async function SolutionsPage() {
         </section>
         <section aria-label={s.slug} className="st-wrap nx-sol-ways">
           <AudienceTabs label={s.slug} tabs={tabs} />
-          <p className="nx-show-note">{t.site.samples.note}</p>
+          {/* What the pictures above are, said once for the three: the stock sentence only while one of them is stock, the samples' while one is ours. */}
+          {notes.map((n) => (
+            <p key={n} className="nx-show-note">
+              {n}
+            </p>
+          ))}
         </section>
       </div>
 

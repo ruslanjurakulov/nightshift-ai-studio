@@ -364,13 +364,17 @@ describe("the hero and the Try grid (round 5)", () => {
     const hero = container.querySelector("section.nx-sh")!;
     expect([...hero.children].map((c) => c.className)).toEqual(["nx-sh-media", "nx-wrap nx-sh-in", "nx-wrap nx-sh-foot"]);
     const order = [...hero.querySelector(".nx-sh-in")!.children].map((c) => c.className.split(" ")[0] || c.tagName);
-    expect(order.slice(0, 5)).toEqual(["nx-pill", "nx-h1", "nx-sh-lead", "nx-pbar", "nx-sh-actions"]);
+    expect(order).toEqual(["nx-h1", "nx-sh-lead", "nx-pbar", "nx-sh-actions"]);
+    // The headline is a display size above every section heading: on a desktop its smallest is above .nx-h2's largest.
+    const h2max = Number(css.match(/\.nx-h2 \{[^}]*font-size: clamp\(\d+px, [\d.]+vw, (\d+)px\)/)![1]);
+    const h1min = Number(css.match(/  \.nx-sh \.nx-sh-h1 \{ max-width: 16ch; font-size: clamp\((\d+)px/)![1]);
+    expect(h1min).toBeGreaterThan(h2max * 1.15);
     // The chat card is the idea, not the picture: it sits under the steps, with no picture of its own.
     const card = container.querySelector("#how figure.nx-chat")!;
     expect(card.querySelector("img, video, .nx-result-art")).toBeNull();
     // The box takes 16 px or more (no zoom on a phone), and the promises wrap in a row under the words.
     expect(css).toMatch(/\.nx-pbar-box \{[^}]*font-size: 17px;/);
-    expect(css).toMatch(/\.nx-sh \.nx-trust \{ display: flex; flex-wrap: wrap;/);
+    expect(css).toMatch(/\.nx-facts-more \.nx-trust \{ display: flex; flex-wrap: wrap;/);
   });
 
   it("lays the plan cards out in full rows (three columns, the picture card down the right across two rows) and keeps a card's box while its words are held back", () => {

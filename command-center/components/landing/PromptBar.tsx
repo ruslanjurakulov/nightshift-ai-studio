@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ArrowUp, Clapperboard, Image as ImageIcon } from "lucide-react";
 import { PROMPT_TOOLS, PROMPT_MAX, promptHref, type PromptTool } from "@/lib/site/prompt-link";
 
@@ -34,8 +34,13 @@ export function PromptBar({ copy, ideas, signedIn = false }: { copy: PromptBarCo
   const [words, setWords] = useState("");
   const [tool, setTool] = useState<PromptTool>("t2v");
   const [missing, setMissing] = useState(false);
+  // Before the script runs the bar cannot build the Studio link (the words have to go into it), so Create is off until then
+  // instead of submitting a form that would drop them. Typing works from the first paint.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
 
   const go = () => {
+    if (!ready) return;
     const href = promptHref(tool, words, signedIn);
     if (!href) {
       setMissing(true);
@@ -92,7 +97,7 @@ export function PromptBar({ copy, ideas, signedIn = false }: { copy: PromptBarCo
             );
           })}
         </div>
-        <button type="submit" className="nx-pbar-go">
+        <button type="submit" className="nx-pbar-go" disabled={!ready}>
           {copy.submit}
           <ArrowUp aria-hidden />
         </button>

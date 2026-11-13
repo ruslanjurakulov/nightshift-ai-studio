@@ -30,7 +30,7 @@ export function Showcases({ t }: { t: Dictionary }) {
           <section key={id} id={id} aria-labelledby={`show-${id}-title`} className="nx-show">
             <div className="nx-wrap">
               <div className="nx-show-card">
-                <div className="nx-show-pic" {...placeBox(media)}>
+                <div className="nx-show-pic" {...placeBox(media, true)}>
                   <PlaceFill media={media} s={t.site} tryHref={placeTry(media)} sizes="(min-width: 1240px) 1160px, 100vw" />
                   {moving && <ClipPause label={t.site.fx.pause} />}
                 </div>
