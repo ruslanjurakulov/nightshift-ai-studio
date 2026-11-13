@@ -39,7 +39,12 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // The switcher's list, not every org the caller can read: a platform admin may read every customer's workspace
   // but is not put inside one (lib/orgs.ts switchableOrgs). The cookie would be ignored on the next request anyway;
   // refusing here is the honest answer now.
-  if (!(await switchableFor(supabase, user.id, coerceOrgs(data))).some((o) => o.id === orgId)) {
+  const switchable = await switchableFor(supabase, user.id, coerceOrgs(data));
+  if (!switchable.orgs.some((o) => o.id === orgId)) {
+    // The membership read failed, so "not yours" is unknown, not established: 503 like a failed
+    // my_organizations(), never a 403 that tells someone their own workspace is not theirs. The default org
+    // needs no membership row, so choosing it still works during the failure.
+    if (switchable.membershipReadFailed) return NextResponse.json({ error: "org_unavailable" }, { status: 503 });
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

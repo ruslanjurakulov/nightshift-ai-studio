@@ -2,13 +2,15 @@
  * The header's organization switcher lists the orgs the caller BELONGS to, not every org they can read.
  *
  * my_organizations() (accessible_org_ids, migration 0043) gives a platform owner/admin every organization on the
- * platform — that is their support access, and the role checks keep reading it (`orgs`). But the switcher listed
- * every customer, and a remembered cookie could leave the operator's own Command Center acting inside a customer's
- * workspace. `switchable` (lib/orgs.ts switchableOrgs, lib/orgs-server.ts switchableFor) is their own bound
- * memberships plus the default org, and `current` is resolved from it. What would break without these tests:
- * customers reappearing in the owner's switcher, the owner landing in a customer's org from an old cookie, a
- * customer's own list being narrowed, an operator who belongs to nothing being sent to /welcome, or a failed
- * membership read showing every org again.
+ * platform — what they may READ (`orgs`). But the switcher listed every customer, and a remembered cookie could leave
+ * the operator's own Command Center acting inside a customer's workspace. `switchable` (lib/orgs.ts switchableOrgs,
+ * lib/orgs-server.ts switchableFor) is their own bound memberships plus the default org, and `current` is resolved
+ * from it, so role checks (which read `current`) resolve against those orgs too: the operator cannot act inside a
+ * customer's workspace. That is intended (owner decision, 2026-11-13); support is read-only through Customers.
+ * What would break without these tests: customers reappearing in the owner's switcher, the owner landing in a
+ * customer's org from an old cookie, a customer's own list being narrowed, an operator who belongs to nothing being
+ * sent to /welcome, a failed membership read showing every org again, or a failed read quietly moving a remembered
+ * workspace to the default org (writes landing in the wrong org).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,7 +19,8 @@ vi.mock("server-only", () => ({}));
 const state: {
   orgs: { data: unknown; error: { message: string; code?: string } | null };
   members: { data: unknown; error: { message: string } | null } | "throw";
-  memberReads: Array<[string, string, unknown]>;
+  /** [table, select's columns, eq column, eq value] for every org_members read. */
+  memberReads: Array<[string, unknown, string, unknown]>;
   cookie: string | undefined;
   user: { id: string } | null;
 } = { orgs: { data: [], error: null }, members: { data: [], error: null }, memberReads: [], cookie: undefined, user: null };
@@ -27,9 +30,9 @@ vi.mock("@/lib/supabase/server", () => {
     auth: { getUser: async () => ({ data: { user: state.user } }) },
     rpc: async (fn: string) => (fn === "my_organizations" ? state.orgs : { data: null, error: null }),
     from: (table: string) => ({
-      select: () => ({
+      select: (columns: unknown) => ({
         eq: async (col: string, value: unknown) => {
-          state.memberReads.push([table, col, value]);
+          state.memberReads.push([table, columns, col, value]);
           if (state.members === "throw") throw new Error("network");
           return state.members;
         },
@@ -93,10 +96,11 @@ describe("getOrgContext", () => {
     const ctx = await getOrgContext();
     expect(ctx.supported).toBe(true);
     expect(ctx.switchable.map((o) => o.slug)).toEqual(["nightshift"]);
-    // Support access and role checks (lib/auth/org-roles.ts, canCarryRun) are unchanged.
+    // `orgs` still holds what they may READ (RLS, Customers, canCarryRun). Role checks read `current`, which comes
+    // from `switchable`, so acting inside a customer's workspace is not possible (intended; support is read-only).
     expect(ctx.orgs.map((o) => o.slug)).toEqual(["nightshift", "new", "ruslan-media"]);
-    // Their own rows only: the select policy would hand a platform admin every org's member rows.
-    expect(state.memberReads).toEqual([["org_members", "user_id", "u-owner"]]);
+    // Their own rows only, and the org ids only: the select policy would hand a platform admin every org's member rows.
+    expect(state.memberReads).toEqual([["org_members", "org_id", "user_id", "u-owner"]]);
   });
 
   it("a remembered cookie naming a customer's org resolves to the operator's own default org", async () => {
@@ -147,9 +151,8 @@ describe("getOrgContext", () => {
     ["an error", { data: null, error: { message: "permission denied" } }],
     ["a throw", "throw"],
   ] as const) {
-    it(`a membership read that fails with ${label} fails closed to the default org, not to every org`, async () => {
+    it(`a membership read that fails with ${label} and no remembered org fails closed to the default org, not to every org`, async () => {
       state.members = members;
-      state.cookie = NEW.id;
       const ctx = await getOrgContext();
       expect(ctx.supported).toBe(true);
       expect(ctx.unavailable).toBeUndefined();
@@ -157,7 +160,36 @@ describe("getOrgContext", () => {
       expect(ctx.current?.id).toBe(DEFAULT_ORG_ID);
       expect(ctx.orgs.length).toBe(3);
     });
+
+    it(`a membership read that fails with ${label} and a default-org cookie keeps the default org`, async () => {
+      state.members = members;
+      state.cookie = DEFAULT_ORG_ID;
+      const ctx = await getOrgContext();
+      expect(ctx.unavailable).toBeUndefined();
+      expect(ctx.current?.id).toBe(DEFAULT_ORG_ID);
+    });
+
+    it(`a membership read that fails with ${label} while a non-default org is remembered is UNAVAILABLE, never a quiet move to the default org`, async () => {
+      // The remembered org may be the operator's own second workspace: resolving to the default org would send
+      // every write of this request (keyed on current.id) to another organization with nothing on screen.
+      state.orgs = { data: [NIGHTSHIFT, OWN_TEST, NEW], error: null };
+      state.members = members;
+      state.cookie = OWN_TEST.id;
+      const ctx = await getOrgContext();
+      expect(ctx.unavailable).toBe(true);
+      expect(ctx.supported).toBe(false);
+      expect(ctx.current).toBeNull();
+      expect(ctx.switchable).toEqual([]);
+    });
   }
+
+  it("a failed read with a cookie naming no org the caller can read is the default org, as a good read would give", async () => {
+    state.members = { data: null, error: { message: "boom" } };
+    state.cookie = "0a0a0a0a-0000-4000-8000-0000000000aa";
+    const ctx = await getOrgContext();
+    expect(ctx.unavailable).toBeUndefined();
+    expect(ctx.current?.id).toBe(DEFAULT_ORG_ID);
+  });
 });
 
 describe("/api/org/select", () => {
@@ -192,10 +224,21 @@ describe("/api/org/select", () => {
     expect(orgCookie(await choose(DEFAULT_ORG_ID))).toContain(DEFAULT_ORG_ID);
   });
 
-  it("a failed membership read allows the default org only", async () => {
+  it("a failed membership read answers 503 org_unavailable (could not check), never 403, and sets no cookie", async () => {
     state.members = { data: null, error: { message: "boom" } };
-    expect((await choose(NEW.id)).status).toBe(403);
-    expect((await choose(DEFAULT_ORG_ID)).status).toBe(200);
+    const res = await choose(NEW.id);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "org_unavailable" });
+    expect(orgCookie(res)).toBeNull();
+    state.members = "throw";
+    expect((await choose(OWN_TEST.id)).status).toBe(503);
+  });
+
+  it("a failed membership read still lets the default org be chosen: it needs no membership row", async () => {
+    state.members = { data: null, error: { message: "boom" } };
+    const res = await choose(DEFAULT_ORG_ID);
+    expect(res.status).toBe(200);
+    expect(orgCookie(res)).toContain(DEFAULT_ORG_ID);
   });
 
   it("a customer switches between their own workspaces exactly as before", async () => {

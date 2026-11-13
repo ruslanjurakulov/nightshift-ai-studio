@@ -31,8 +31,13 @@ import { normalizeAal } from "@/lib/security/aal";
  * - The target must be IN the organization being viewed: the channel via the
  *   same guard the routes already use (isChannelInCurrentOrg, #227), the org
  *   by id. Another organization's channel is "not found", never "forbidden":
- *   an admin of org A learns nothing about org B's channel ids, and a platform
- *   admin acts on B only after switching to it.
+ *   an admin of org A learns nothing about org B's channel ids.
+ * - The organization being viewed (`org.current`) is resolved from the caller's
+ *   own memberships plus the default org (getOrgContext's `switchable`), not
+ *   from every org a platform admin may read. So a platform admin cannot act
+ *   inside a customer's workspace at all: switching into one is refused. That is
+ *   intended (owner decision, 2026-11-13); support is read-only, through the
+ *   Customers section.
  *
  * Before 0018 there are no organizations: the check is today's `requireRole`,
  * unchanged. If 0018 IS there but the membership lookup failed for another

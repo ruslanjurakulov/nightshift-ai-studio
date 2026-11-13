@@ -113,12 +113,17 @@ export function membershipCanNarrow(orgs: OrgSummary[]): boolean {
  * the default org — reachable for every platform role even with no membership
  * row, so an operator who belongs to nothing still lands somewhere instead of
  * on /welcome. Everyone else gets `orgs` back unchanged (membershipCanNarrow).
+ * Role checks read `current`, so the operator cannot act inside a customer's
+ * workspace either; that is intended (owner decision, 2026-11-13), and support
+ * is read-only through the Customers section.
  *
- * `memberIds` null means the membership read failed. That fails closed to the
- * default org alone: listing every org would be the bug this fixes, and
+ * `memberIds` null means the membership read failed. The list fails closed to
+ * the default org alone: listing every org would be the bug this fixes, and
  * refusing everything would lock the operator out of their own Command Center
- * over one failed read. Nothing is lost that was theirs — only the default org
- * is offered until the next request reads memberships again.
+ * over one failed read. It is not a quiet move, though: a request that
+ * remembered a non-default org gets UNAVAILABLE instead of the default org
+ * (getOrgContext, lib/orgs-server.ts), and the switch routes answer "could not
+ * check" rather than "forbidden".
  */
 export function switchableOrgs(orgs: OrgSummary[], memberIds: ReadonlySet<string> | null): OrgSummary[] {
   if (!membershipCanNarrow(orgs)) return orgs;

@@ -15,6 +15,8 @@ import { dictionaries, type Locale } from "@/lib/i18n";
 import { CUSTOMER_NAV_KEYS, CUSTOMER_SECTIONS, isOperatorOnlySection, sectionAllowed } from "@/lib/navigation";
 
 const ROOT = path.resolve(__dirname, "..");
+/** The switcher's own-org-ids read (lib/orgs-server.ts switchableFor), the single exemption to the roster rule. */
+const OWN_ORG_IDS_READ = /from\(\s*["'`]org_members["'`]\s*\)\s*\.\s*select\(\s*["'`]org_id["'`]\s*\)\s*\.\s*eq\(\s*["'`]user_id["'`]\s*,\s*userId\s*\)/g;
 
 function files(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -120,6 +122,7 @@ describe("the operator's roster is the operator's", () => {
 describe("no screen touches the closed doors", () => {
   it("nothing in app/, components/ or lib/ invites, accepts, lists invitations or writes org_members", () => {
     const bad: string[] = [];
+    const ownReads: string[] = [];
     for (const dir of ["app", "components", "lib"]) {
       for (const f of files(path.join(ROOT, dir))) {
         const src = readFileSync(f, "utf8");
@@ -128,12 +131,34 @@ describe("no screen touches the closed doors", () => {
         if (/rpc\(\s*["'`](invite_org_member|accept_org_invite|decline_org_invite|my_invites)["'`]/.test(code)) bad.push(`${f}: invite rpc`);
         if (/from\(\s*["'`]org_members["'`]\s*\)\s*\.\s*(insert|update|delete|upsert)/.test(code)) bad.push(`${f}: org_members write`);
         // One read is not a team list: the caller's OWN org ids (lib/orgs-server.ts switchableFor), which keeps a
-        // platform admin's org switcher to the orgs they belong to. Any other column, or no user_id filter, is
-        // still a roster read and still refused.
-        if (/from\(\s*["'`]org_members["'`]\s*\)\s*\.\s*select(?!\(\s*["'`]org_id["'`]\s*\)\s*\.\s*eq\(\s*["'`]user_id["'`])/.test(code))
-          bad.push(`${f}: org_members read`);
+        // platform admin's org switcher to the orgs they belong to. That exact expression, in that one file, is
+        // the only exemption (pinned below); every other org_members read is a roster read and still refused.
+        const reads = code.match(/from\(\s*["'`]org_members["'`]\s*\)\s*\.\s*select\b/g) ?? [];
+        const own = code.match(OWN_ORG_IDS_READ) ?? [];
+        const allowed = path.relative(ROOT, f) === "lib/orgs-server.ts" ? own.length : 0;
+        ownReads.push(...own.map(() => path.relative(ROOT, f)));
+        if (reads.length > allowed) bad.push(`${f}: org_members read`);
       }
     }
     expect(bad).toEqual([]);
+    // Exactly one own-org-ids read in the whole app, and it is the switcher's.
+    expect(ownReads).toEqual(["lib/orgs-server.ts"]);
+  });
+
+  it("the one org_members read is filtered by the server-verified user id, never by a value from the request", () => {
+    const code = readFileSync(path.join(ROOT, "lib/orgs-server.ts"), "utf8");
+    // switchableFor's userId parameter is the read's only filter value...
+    expect(code).toMatch(/export async function switchableFor\(\s*supabase: SupabaseClient,\s*userId: string,/);
+    // ...and every caller hands it the id of the user the session resolved to (auth.getUser), nothing else.
+    const callers: string[] = [];
+    for (const dir of ["app", "components", "lib"]) {
+      for (const f of files(path.join(ROOT, dir))) {
+        for (const m of readFileSync(f, "utf8").matchAll(/switchableFor\(\s*supabase\s*,\s*([^,]+?)\s*,/g))
+          callers.push(`${path.relative(ROOT, f)}: ${m[1]}`);
+      }
+    }
+    expect(callers.length).toBeGreaterThanOrEqual(3);
+    for (const c of callers) expect(c).toMatch(/: user\.id$/);
   });
 });
+

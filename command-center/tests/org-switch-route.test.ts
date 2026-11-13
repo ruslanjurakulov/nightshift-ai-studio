@@ -13,7 +13,8 @@ const state: {
   orgs: { data: unknown; error: { message: string } | null };
   /** The caller's own org_members rows (switchableFor). */
   members: { data: unknown; error: { message: string } | null };
-  memberFilter: Array<[string, string, unknown]>;
+  /** [table, select's columns, eq column, eq value] for every read. */
+  memberFilter: Array<[string, unknown, string, unknown]>;
   rpcCalls: string[];
 } = { user: { id: "u1" }, orgs: { data: [], error: null }, members: { data: [], error: null }, memberFilter: [], rpcCalls: [] };
 
@@ -25,9 +26,9 @@ vi.mock("@/lib/supabase/server", () => ({
       return fn === "my_organizations" ? state.orgs : { data: null, error: null };
     },
     from: (table: string) => ({
-      select: () => ({
+      select: (columns: unknown) => ({
         eq: async (col: string, value: unknown) => {
-          state.memberFilter.push([table, col, value]);
+          state.memberFilter.push([table, columns, col, value]);
           return table === "org_members" ? state.members : { data: null, error: { message: "unexpected table" } };
         },
       }),
@@ -126,8 +127,8 @@ describe("the form-post organization switch", () => {
     const res = await post(`orgId=${CUSTOMER.id}`);
     expect(new URL(res.headers.get("location")!).pathname).toBe("/chronos/editor/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
     expect(cookie(res, ORG_COOKIE)).toBeNull();
-    // Their OWN rows: without the user_id filter, RLS hands a platform admin every org's members.
-    expect(state.memberFilter).toEqual([["org_members", "user_id", "u1"]]);
+    // Their OWN rows, org ids only: without the user_id filter, RLS hands a platform admin every org's members.
+    expect(state.memberFilter).toEqual([["org_members", "org_id", "user_id", "u1"]]);
   });
 
   it("a platform admin still switches into an org they are a member of, and into the default org", async () => {
@@ -138,11 +139,16 @@ describe("the form-post organization switch", () => {
     expect(cookie(await post(`orgId=${ORGS[0].id}`), ORG_COOKIE)).toContain(ORGS[0].id);
   });
 
-  it("a failed membership read lets a platform admin into the default org only", async () => {
+  it("a failed membership read goes back to the page unchanged (as a failed my_organizations does); the default org stays reachable", async () => {
     state.orgs = { data: PLATFORM_ORGS, error: null };
     state.members = { data: null, error: { message: "boom" } };
-    expect(cookie(await post(`orgId=${ORGS[1].id}`), ORG_COOKIE)).toBeNull();
-    expect(cookie(await post(`orgId=${CUSTOMER.id}`), ORG_COOKIE)).toBeNull();
+    for (const id of [ORGS[1].id, CUSTOMER.id]) {
+      const res = await post(`orgId=${id}`);
+      expect(res.status).toBe(303);
+      expect(new URL(res.headers.get("location")!).pathname).toBe("/chronos/editor/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+      expect(cookie(res, ORG_COOKIE)).toBeNull();
+      expect(cookie(res, CHANNEL_COOKIE)).toBeNull();
+    }
     expect(cookie(await post(`orgId=${ORGS[0].id}`), ORG_COOKIE)).toContain(ORGS[0].id);
   });
 
