@@ -1,4 +1,4 @@
-"""Migration 0144 (Dodo Payments next to Paddle), pinned as text.
+"""Migration 0146 (Dodo Payments next to Paddle), pinned as text.
 
 What would break: a provider-aware twin that drifts from 0034's body (two ledgers that disagree on what a plan period
 grants), a Paddle wrapper that passes its arguments in another order, a Paddle id check that admits a shape 0034
@@ -15,8 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 M0034 = (ROOT / "supabase" / "migrations" / "0034_plans_entitlements.sql").read_text(encoding="utf-8")
-M0144 = (ROOT / "supabase" / "migrations" / "0144_dodo_payments.sql").read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0144_dodo_payments.sql").read_text(encoding="utf-8")
+M0146 = (ROOT / "supabase" / "migrations" / "0146_dodo_payments.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0146_dodo_payments.sql").read_text(encoding="utf-8")
 MIGRATIONS_DOC = (ROOT / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
 
 
@@ -37,7 +37,7 @@ def pg_md5(defn: str) -> str:
 
 
 def with_provider(src: str, name: str) -> str:
-    """0034's body with exactly the hunks 0144's header lists."""
+    """0034's body with exactly the hunks 0146's header lists."""
     out = src.replace(f"create or replace function public.{name}(\n  p_org uuid,",
                       f"create or replace function public.{name}_for(\n  p_provider text, p_org uuid,", 1)
     i = out.index("  end if;\n") + len("  end if;\n")
@@ -68,28 +68,28 @@ PINS = {
     "upsert_subscription_for": "9f9b399ce3ca3421d1ccb32c4075d6ea",
     "grant_subscription_credits_for": "5424905376fab9ff1b4c229c5dc0c0ce",
     "dodo_issue_checkout_nonce": "ddfe1dc46a18fe7df7823eb09ffbe88f",
-    "dodo_consume_checkout_nonce": "08a15f9281430963565060ac12532b78",
+    "dodo_consume_checkout_nonce": "1b79c8eac0f085985ca8cc8544f72def",
 }
 
 
 class ProviderAwareTwins(unittest.TestCase):
     def test_each_twin_is_0034s_body_plus_the_listed_hunks_byte_for_byte(self):
         for name in ("upsert_subscription", "grant_subscription_credits"):
-            self.assertEqual(definition(M0144, f"{name}_for"), with_provider(definition(M0034, name), name), name)
+            self.assertEqual(definition(M0146, f"{name}_for"), with_provider(definition(M0034, name), name), name)
 
     def test_the_paddle_wrappers_pass_paddle_and_every_argument_in_order(self):
-        up = body(definition(M0144, "upsert_subscription"))
+        up = body(definition(M0146, "upsert_subscription"))
         self.assertIn("return public.upsert_subscription_for('paddle', p_org, p_subscription_id, p_customer_id, p_plan, p_price_id,", up)
         self.assertIn("p_status, p_period_start, p_period_end,", up)
         self.assertIn("p_cancel_at_period_end, p_canceled_at, p_occurred_at);", up)
-        gr = body(definition(M0144, "grant_subscription_credits"))
+        gr = body(definition(M0146, "grant_subscription_credits"))
         self.assertIn("return public.grant_subscription_credits_for('paddle', p_org, p_subscription_id, p_plan, p_period_start, p_period_end,", gr)
         self.assertIn("p_external_id, p_note, p_customer_id, p_price_id, p_paid_share);", gr)
 
     def test_the_wrappers_keep_0034s_signatures_and_defaults(self):
         for name in ("upsert_subscription", "grant_subscription_credits"):
             old = definition(M0034, name).split("as $$", 1)[0]
-            new = definition(M0144, name).split("as $$", 1)[0]
+            new = definition(M0146, name).split("as $$", 1)[0]
             self.assertEqual(old, new, name)
 
     def test_the_md5_pins_describe_the_bodies_in_the_files(self):
@@ -97,41 +97,48 @@ class ProviderAwareTwins(unittest.TestCase):
         self.assertEqual(pg_md5(definition(M0034, "grant_subscription_credits")), PINS["grant_subscription_credits@0034"])
         for name in ("upsert_subscription", "grant_subscription_credits", "upsert_subscription_for", "grant_subscription_credits_for",
                      "dodo_issue_checkout_nonce", "dodo_consume_checkout_nonce"):
-            self.assertEqual(pg_md5(definition(M0144, name)), PINS[name], name)
+            self.assertEqual(pg_md5(definition(M0146, name)), PINS[name], name)
         for value in PINS.values():
-            self.assertIn(value, M0144)
+            self.assertIn(value, M0146)
 
     def test_the_twins_are_service_role_only(self):
         for sig in ("upsert_subscription_for(text, uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, timestamptz, timestamptz)",
                     "grant_subscription_credits_for(text, uuid, text, text, timestamptz, timestamptz, text, text, text, text, numeric)"):
-            self.assertIn(f"revoke all on function public.{sig}\n  from public, anon, authenticated;", M0144)
-            self.assertIn(f"grant execute on function public.{sig}\n  to service_role;", M0144)
-            self.assertNotRegex(M0144, rf"grant execute on function public\.{re.escape(sig)}\s+to [^;]*(authenticated|anon)")
+            self.assertIn(f"revoke all on function public.{sig}\n  from public, anon, authenticated;", M0146)
+            self.assertIn(f"grant execute on function public.{sig}\n  to service_role;", M0146)
+            self.assertNotRegex(M0146, rf"grant execute on function public\.{re.escape(sig)}\s+to [^;]*(authenticated|anon)")
 
 
 class CheckoutNonces(unittest.TestCase):
     """Security review of #702 (M1): a signed metadata blob is good for one purchase."""
 
     def test_a_member_issues_and_only_the_service_role_spends(self):
-        self.assertIn("revoke all on function public.dodo_issue_checkout_nonce(uuid, text) from public, anon, authenticated;", M0144)
-        self.assertIn("grant execute on function public.dodo_issue_checkout_nonce(uuid, text) to authenticated;", M0144)
+        self.assertIn("revoke all on function public.dodo_issue_checkout_nonce(uuid, text) from public, anon, authenticated;", M0146)
+        self.assertIn("grant execute on function public.dodo_issue_checkout_nonce(uuid, text) to authenticated;", M0146)
         sig = "dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)"
-        self.assertIn(f"revoke all on function public.{sig} from public, anon, authenticated;", M0144)
-        self.assertIn(f"grant execute on function public.{sig} to service_role;", M0144)
-        self.assertNotRegex(M0144, rf"grant execute on function public\.{re.escape(sig)} to [^;]*(authenticated|anon)")
+        self.assertIn(f"revoke all on function public.{sig} from public, anon, authenticated;", M0146)
+        self.assertIn(f"grant execute on function public.{sig} to service_role;", M0146)
+        self.assertNotRegex(M0146, rf"grant execute on function public\.{re.escape(sig)} to [^;]*(authenticated|anon)")
 
     def test_issuing_needs_an_owner_or_admin_and_spending_needs_the_platform(self):
-        issue = body(definition(M0144, "dodo_issue_checkout_nonce"))
+        issue = body(definition(M0146, "dodo_issue_checkout_nonce"))
         self.assertIn("public.is_org_member(p_org, 'admin')", issue)
         self.assertIn("auth.uid()", issue)
-        consume = body(definition(M0144, "dodo_consume_checkout_nonce"))
+        consume = body(definition(M0146, "dodo_consume_checkout_nonce"))
         self.assertIn("public.credits_trusted_caller()", consume)
         for answer in ("'unknown'", "'mismatch'", "'consumed'", "'expired'", "'ok'"):
             self.assertIn(answer, consume)
 
+    def test_a_null_argument_cannot_pass_the_mismatch_check(self):
+        # With `<>` a NULL organization or item makes the test NULL, IF reads it as false, and the nonce is spent with 'ok' (R2-L1).
+        consume = body(definition(M0146, "dodo_consume_checkout_nonce"))
+        for col, arg in (("org_id", "p_org"), ("user_id", "p_user"), ("item", "p_item")):
+            self.assertIn(f"r.{col} is distinct from {arg}", consume)
+        self.assertNotRegex(consume, r"r\.\w+ <> p_")
+
     def test_the_table_is_closed_to_every_api_role(self):
-        self.assertIn("alter table public.dodo_checkout_nonces enable row level security;", M0144)
-        self.assertIn("revoke all on table public.dodo_checkout_nonces from public, anon, authenticated, service_role;", M0144)
+        self.assertIn("alter table public.dodo_checkout_nonces enable row level security;", M0146)
+        self.assertIn("revoke all on table public.dodo_checkout_nonces from public, anon, authenticated, service_role;", M0146)
 
     def test_the_rollback_drops_them(self):
         self.assertIn("drop table if exists public.dodo_checkout_nonces;", ROLLBACK)
@@ -144,13 +151,13 @@ class Checks(unittest.TestCase):
         for pattern in ("provider = 'paddle' and provider_subscription_id ~ '^sub_[a-z0-9]{10,40}$'",
                         "provider = 'paddle' and provider_customer_id ~ '^ctm_[a-z0-9]{10,40}$'",
                         "provider = 'paddle' and price_id ~ '^pri_[a-z0-9]{10,40}$'"):
-            self.assertIn(pattern, M0144)
+            self.assertIn(pattern, M0146)
         for old in ("provider_subscription_id ~ '^sub_[a-z0-9]{10,40}$'", "provider_customer_id ~ '^ctm_[a-z0-9]{10,40}$'",
                     "price_id ~ '^pri_[a-z0-9]{10,40}$'"):
             self.assertIn(old, M0034)
 
     def test_only_paddle_and_dodo_are_providers(self):
-        self.assertEqual(re.findall(r"check \(provider in \(([^)]*)\)\)", M0144), ["'paddle', 'dodo'", "'paddle', 'dodo'"])
+        self.assertEqual(re.findall(r"check \(provider in \(([^)]*)\)\)", M0146), ["'paddle', 'dodo'", "'paddle', 'dodo'"])
 
 
 class Rollback(unittest.TestCase):
@@ -161,13 +168,13 @@ class Rollback(unittest.TestCase):
     def test_refuses_while_dodo_rows_exist_and_runs_as_one_transaction(self):
         self.assertIn("exists (select 1 from public.payment_events where provider = 'dodo')", ROLLBACK)
         self.assertIn("exists (select 1 from public.subscriptions where provider = 'dodo')", ROLLBACK)
-        self.assertTrue(ROLLBACK.lstrip().splitlines()[0].startswith("-- rollback_0144"))
+        self.assertTrue(ROLLBACK.lstrip().splitlines()[0].startswith("-- rollback_0146"))
         self.assertIn("\nbegin;\n", ROLLBACK)
         self.assertTrue(ROLLBACK.rstrip().endswith("commit;"))
 
     def test_the_migration_is_documented(self):
-        self.assertIn("0144_dodo_payments.sql", MIGRATIONS_DOC)
-        self.assertIn("rollback_0144_dodo_payments.sql", MIGRATIONS_DOC)
+        self.assertIn("0146_dodo_payments.sql", MIGRATIONS_DOC)
+        self.assertIn("rollback_0146_dodo_payments.sql", MIGRATIONS_DOC)
 
 
 if __name__ == "__main__":

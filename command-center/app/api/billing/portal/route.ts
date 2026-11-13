@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
  * to Paddle. Nothing is changed here: every change happens in Paddle's portal
  * and comes back through the webhook.
  *
- * A subscription bought through Dodo Payments (0144, provider 'dodo') opens
+ * A subscription bought through Dodo Payments (0146, provider 'dodo') opens
  * Dodo's customer portal instead, with DODO_PAYMENTS_API_KEY — whatever
  * PAYMENTS_PROVIDER says today, because the portal belongs to the provider
  * that holds that subscription. With PAYMENTS_PROVIDER unset or `paddle` and

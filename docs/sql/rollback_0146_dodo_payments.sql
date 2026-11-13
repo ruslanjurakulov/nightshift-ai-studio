@@ -1,13 +1,14 @@
--- rollback_0144_dodo_payments.sql — takes migration 0144 (a second payment provider, Dodo Payments) out again. OWNER-APPLY: paste into
+-- rollback_0146_dodo_payments.sql — takes migration 0146 (a second payment provider, Dodo Payments) out again. OWNER-APPLY: paste into
 -- the Supabase SQL editor. Nothing in the app runs it.
 --
 -- WHEN: only before any Dodo payment has been recorded. The Dodo webhook (supabase/functions/dodo-webhook) must be undeployed or its
 -- secrets removed first, and PAYMENTS_PROVIDER must be back on `paddle` (docs/DODO_SETUP.md, "Rolling back"). Turning Dodo off does
--- NOT need this file: the switch and the webhook are enough, and 0144 changes nothing for Paddle.
+-- NOT need this file: the switch and the webhook are enough, and 0146 changes nothing for Paddle.
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) while a payment_events or subscriptions row names provider 'dodo' (a Dodo purchase would lose its
---      audit row and its subscription), or when a function of 0144 is not 0144's body (a later change would be undone).
+--   0. REFUSES (changes nothing) while a payment_events or subscriptions row names provider 'dodo' or a checkout nonce has been
+--      spent (a Dodo purchase would lose its audit row, its subscription or the record of which checkout it came from), or when a
+--      function of 0146 is not 0146's body (a later change would be undone).
 --   1. Puts 0034's upsert_subscription and grant_subscription_credits bodies back, byte for byte.
 --   2. Drops upsert_subscription_for, grant_subscription_credits_for, the two checkout-nonce functions and dodo_checkout_nonces.
 --   3. Puts 0021's and 0034's provider and id checks back exactly ('paddle' only).
@@ -24,7 +25,7 @@ begin
   if exists (select 1 from public.payment_events where provider = 'dodo')
      or exists (select 1 from public.subscriptions where provider = 'dodo')
      or (to_regclass('public.dodo_checkout_nonces') is not null and exists (select 1 from public.dodo_checkout_nonces where consumed_at is not null)) then
-    raise exception 'rollback 0144: Dodo rows exist (payment_events / subscriptions); they would be orphaned. Keep 0144, or settle those first';
+    raise exception 'rollback 0146: Dodo rows exist (payment_events / subscriptions / spent checkout nonces); they would be orphaned. Keep 0146, or settle those first';
   end if;
   foreach pair slice 1 in array array[
       ['public.upsert_subscription(uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, timestamptz, timestamptz)', '09185a96a8fb02f0c2641095d51461cc'],
@@ -32,10 +33,10 @@ begin
       ['public.upsert_subscription_for(text, uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, timestamptz, timestamptz)', '9f9b399ce3ca3421d1ccb32c4075d6ea'],
       ['public.grant_subscription_credits_for(text, uuid, text, text, timestamptz, timestamptz, text, text, text, text, numeric)', '5424905376fab9ff1b4c229c5dc0c0ce'],
       ['public.dodo_issue_checkout_nonce(uuid, text)', 'ddfe1dc46a18fe7df7823eb09ffbe88f'],
-      ['public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)', '08a15f9281430963565060ac12532b78']] loop
+      ['public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)', '1b79c8eac0f085985ca8cc8544f72def']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(pair[1]);
     if h is distinct from pair[2] then
-      raise exception 'rollback 0144: % is not 0144''s body (md5 %): read the live body first', pair[1], h;
+      raise exception 'rollback 0146: % is not 0146''s body (md5 %): read the live body first', pair[1], h;
     end if;
   end loop;
 end $$;
@@ -249,17 +250,17 @@ begin
       ['public.upsert_subscription(uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, timestamptz, timestamptz)', '60ee6ad3764dbcf6762b178f8240d5a9'],
       ['public.grant_subscription_credits(uuid, text, text, timestamptz, timestamptz, text, text, text, text, numeric)', '7947d46697f1c35d12274ffbe22709ac']] loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(pair[1])) is distinct from pair[2] then
-      raise exception 'rollback 0144 end state: % is not 0034''s body', pair[1];
+      raise exception 'rollback 0146 end state: % is not 0034''s body', pair[1];
     end if;
     if not has_function_privilege('service_role', pair[1], 'EXECUTE') or has_function_privilege('authenticated', pair[1], 'EXECUTE') then
-      raise exception 'rollback 0144 end state: % has the wrong grants', pair[1];
+      raise exception 'rollback 0146 end state: % has the wrong grants', pair[1];
     end if;
   end loop;
   if to_regprocedure('public.upsert_subscription_for(text, uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, timestamptz, timestamptz)') is not null
      or to_regprocedure('public.grant_subscription_credits_for(text, uuid, text, text, timestamptz, timestamptz, text, text, text, text, numeric)') is not null
      or to_regprocedure('public.dodo_issue_checkout_nonce(uuid, text)') is not null or to_regprocedure('public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)') is not null
      or to_regclass('public.dodo_checkout_nonces') is not null then
-    raise exception 'rollback 0144 end state: a function of 0144 is still there';
+    raise exception 'rollback 0146 end state: a function of 0146 is still there';
   end if;
   select string_agg(conname || '=' || pg_get_constraintdef(oid), ' | ' order by conname) into defs
     from pg_constraint
@@ -267,7 +268,7 @@ begin
                                        'subscriptions_provider_subscription_id_check', 'subscriptions_provider_customer_id_check',
                                        'subscriptions_price_id_check');
   if md5(defs) is distinct from 'ec234114398cef44cceb69b2d07c1da8' then
-    raise exception 'rollback 0144 end state: the checks are not 0034''s (%)', defs;
+    raise exception 'rollback 0146 end state: the checks are not 0034''s (%)', defs;
   end if;
 end $$;
 

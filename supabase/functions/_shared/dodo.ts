@@ -28,7 +28,7 @@
  *     payment links accept metadata_* in the URL, so unsigned metadata is
  *     anyone's: it never names an organization here (verifyDodoMetadata). The
  *     signed nonce is one the Command Center issued (dodo_checkout_nonces,
- *     0144) and is spent once, by one pack payment or one new subscription,
+ *     0146) and is spent once, by one pack payment or one new subscription,
  *     so a signed blob cannot be replayed on a static link either.
  *   - Test mode on a production database credits only the workspaces in
  *     DODO_TEST_ORG_IDS (DODO_WEBHOOK_MODE is `test` unless it says `live`):
@@ -37,7 +37,7 @@
  *     catalog's price for that product, in USD, before anything is granted.
  *   - Every grant goes through the same database functions as Paddle's:
  *     add_purchased_credits (packs), grant_subscription_credits_for (plan
- *     periods, 0144: 0034's body under a provider) and refund_purchased_credits
+ *     periods, 0146: 0034's body under a provider) and refund_purchased_credits
  *     (refunds and lost disputes). The Dodo payment id is the external id, so
  *     a payment delivered twice, under two webhook ids, still credits once.
  *   - Idempotency by event: the Standard Webhooks `webhook-id` is the
@@ -104,7 +104,7 @@ export const DODO_PLAN_PRICES: Readonly<Record<string, number>> = {
 
 /** Dodo's documented examples: pdt_0NVbdIG3JNg9Yc8ey5JHW, pay_gr4RizvMOXFJ6xca3y2tU, sub_Iuaq622bbmmfOGrVTqdXv,
  *  cus_TV52uJWWXt2yIoBBxpjaa. The docs promise no length, so these accept 3-64 ASCII letters and digits after
- *  the prefix (0144's subscription checks say the same). */
+ *  the prefix (0146's subscription checks say the same). */
 export const DODO_PRODUCT_ID_RE = /^pdt_[A-Za-z0-9]{3,64}$/;
 const PAYMENT_ID_RE = /^pay_[A-Za-z0-9]{3,64}$/;
 const SUBSCRIPTION_ID_RE = /^sub_[A-Za-z0-9]{3,64}$/;
@@ -800,7 +800,7 @@ export interface DodoStore {
     reason: "refund" | "chargeback",
   ): Promise<{ duplicate: boolean; requested: number; taken: number; shortfall: number }>;
   findSubscription(subscriptionId: string): Promise<DodoSubscriptionRow | null>;
-  /** dodo_consume_checkout_nonce (0144): spend a checkout nonce once, for one payment or one new subscription. */
+  /** dodo_consume_checkout_nonce (0146): spend a checkout nonce once, for one payment or one new subscription. */
   consumeNonce(n: {
     nonce: string;
     orgId: string;

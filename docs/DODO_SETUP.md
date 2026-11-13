@@ -46,7 +46,7 @@ Qoidalar (Paddle'dagi bilan bir xil):
   katalog narxiga teng bo'lmasa (USD'da, soliqsiz yoki soliq ichida) — kredit **berilmaydi**,
   hodisa `rejected` bo'lib yoziladi (pul olingan — odam hal qiladi).
 - **Kreditlar Paddle'dagi funksiyalar orqali**: paket — `add_purchased_credits`, tarif davri —
-  `grant_subscription_credits_for('dodo', …)` (0144, 0034'ning o'sha tanasi), qaytarish va
+  `grant_subscription_credits_for('dodo', …)` (0146, 0034'ning o'sha tanasi), qaytarish va
   yutqazilgan nizo — `refund_purchased_credits`. Ledger, lotlar, yonish, idempotentlik — bir xil.
 - **Service key Command Center'da yo'q.** Webhook Supabase Edge Function'da ishlaydi.
 - **Dodo API key faqat serverda** (GitHub secret → serverning `.env.web`), brauzerga hech qachon.
@@ -55,7 +55,7 @@ Qoidalar (Paddle'dagi bilan bir xil):
   statik to'lov havolalari URL'dagi `metadata_*` ni qabul qiladi — ya'ni imzosiz metadata'ni
   istalgan odam yoza oladi. Webhook imzosi tekshirilmagan metadata bo'yicha hech qaysi tashkilotga
   kredit, tarif yoki portal bermaydi. Imzodagi `ns_nonce` ni baza har bir checkout uchun beradi
-  (`dodo_checkout_nonces`, 0144) va webhook uni **bir marta** sarflaydi — bitta paket to'lovi yoki
+  (`dodo_checkout_nonces`, 0146) va webhook uni **bir marta** sarflaydi — bitta paket to'lovi yoki
   bitta yangi obuna uchun: imzolangan metadata statik havolada qayta ishlatilsa, `rejected`.
   Manage subscription portali faqat Dodo mijozining email'i kirgan foydalanuvchining email'iga
   teng bo'lsa ochiladi.
@@ -104,11 +104,11 @@ Narxni o'zgartirmoqchi bo'lsangiz: avval kod (ikkala katalog, PR), keyin Dodo'da
    portalini ochadi. Karta bir MoR'dan boshqasiga ko'chmaydi.
 5. Avval hammasi **test mode**'da (pul yurmaydi), keyin live.
 
-## 1. Bazani tayyorlash — 0144 migratsiyasi (bir marta)
+## 1. Bazani tayyorlash — 0146 migratsiyasi (bir marta)
 
 0021 va 0034 qo'llangan bo'lishi kerak. Supabase → **SQL Editor** →
-`supabase/migrations/0144_dodo_payments.sql` ning butun matni → **Run** (bitta tranzaksiya).
-Qayta ishga tushirish xavfsiz. 0144 Paddle uchun hech narsani o'zgartirmaydi va hech qanday
+`supabase/migrations/0146_dodo_payments.sql` ning butun matni → **Run** (bitta tranzaksiya).
+Qayta ishga tushirish xavfsiz. 0146 Paddle uchun hech narsani o'zgartirmaydi va hech qanday
 qator yozmaydi.
 
 Oldin va keyin tekshiruv (faqat o'qiydi):
@@ -118,17 +118,17 @@ select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg
  where proname in ('upsert_subscription', 'grant_subscription_credits', 'upsert_subscription_for', 'grant_subscription_credits_for');
 ```
 
-| Funksiya | Oldin (0034) | Keyin (0144) |
+| Funksiya | Oldin (0034) | Keyin (0146) |
 | :-- | :-- | :-- |
 | `upsert_subscription` | `60ee6ad3764dbcf6762b178f8240d5a9` | `09185a96a8fb02f0c2641095d51461cc` |
 | `grant_subscription_credits` | `7947d46697f1c35d12274ffbe22709ac` | `fd0c1c169a4d3b2d05c6d826c6fe10ff` |
 | `upsert_subscription_for` | — | `9f9b399ce3ca3421d1ccb32c4075d6ea` |
 | `grant_subscription_credits_for` | — | `5424905376fab9ff1b4c229c5dc0c0ce` |
 | `dodo_issue_checkout_nonce` | — | `ddfe1dc46a18fe7df7823eb09ffbe88f` |
-| `dodo_consume_checkout_nonce` | — | `08a15f9281430963565060ac12532b78` |
+| `dodo_consume_checkout_nonce` | — | `1b79c8eac0f085985ca8cc8544f72def` |
 
 Faylning oxiridagi "Verify" so'rovi — hamma ustun `true`. Orqaga qaytarish:
-`docs/sql/rollback_0144_dodo_payments.sql` (Dodo qatori bor ekan, rad etadi).
+`docs/sql/rollback_0146_dodo_payments.sql` (Dodo qatori yoki sarflangan checkout nonce bor ekan, rad etadi).
 
 ## 2. Dodo akkaunti: test mode
 
@@ -370,8 +370,8 @@ o'sha rejimning imzosi o'tadi.
    `dodo-webhook` funksiyasini va endpoint'ni **o'chirmang** — aks holda to'langan davr kredit
    olmaydi. Kerak bo'lsa obunalarni Dodo'da bekor qiling (davr oxirida).
 3. Kod: bu PR'ni revert qilish Paddle yo'liga tegmaydi.
-4. Baza: `docs/sql/rollback_0144_dodo_payments.sql` — faqat birorta ham `provider = 'dodo'`
-   qatori yo'q bo'lsa ishlaydi (aks holda rad etadi). Odatda kerak emas: 1-band yetarli.
+4. Baza: `docs/sql/rollback_0146_dodo_payments.sql` — faqat birorta ham `provider = 'dodo'`
+   qatori va sarflangan checkout nonce yo'q bo'lsa ishlaydi (aks holda rad etadi). Odatda kerak emas: 1-band yetarli.
 
 ## Kuzatish
 

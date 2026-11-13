@@ -1,7 +1,7 @@
 """Selling through Dodo Payments: the properties that would quietly break if someone edited the files later.
 
 The behaviour is tested where it runs: the webhook's logic and the checkout route in the Command Center's vitest suite
-(command-center/tests/dodo-webhook.test.ts, dodo-checkout.test.ts, dodo-ui.test.tsx) and migration 0144 against a real
+(command-center/tests/dodo-webhook.test.ts, dodo-checkout.test.ts, dodo-ui.test.tsx) and migration 0146 against a real
 PostgreSQL (tests/security/test_sec_dodo_payments.py). These pin:
 
 * the webhook secret or the service key becoming something the Command Center reads, or the Dodo API key being read

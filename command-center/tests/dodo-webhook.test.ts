@@ -193,7 +193,7 @@ class FakeStore implements DodoStore {
   subs = new Map<string, DodoSubscriptionRow & { status: string; cancelAtPeriodEnd: boolean; customerId: string | null }>();
   grants: { paymentId: string; planId: string; periodEnd: string }[] = [];
   failNext: StoreError | Error | null = null;
-  /** dodo_checkout_nonces as 0144 keeps it: who the nonce was issued for, and what spent it. */
+  /** dodo_checkout_nonces as 0146 keeps it: who the nonce was issued for, and what spent it. */
   nonces = new Map<string, { key: string; consumer: string | null; expired?: boolean }>();
   /** Nonces this deployment never issued (a blob signed with the right key but not by our checkout). */
   unknownNonces = new Set<string>();

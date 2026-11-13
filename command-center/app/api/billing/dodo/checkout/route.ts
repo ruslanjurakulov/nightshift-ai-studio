@@ -76,7 +76,7 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     if ((data ?? []).length > 0) return NextResponse.json({ error: "already_subscribed" }, { status: 409 });
   }
 
-  // A fresh nonce for this one checkout (dodo_issue_checkout_nonce, 0144: owner/admin of the organization, in the user's
+  // A fresh nonce for this one checkout (dodo_issue_checkout_nonce, 0146: owner/admin of the organization, in the user's
   // own session): the webhook spends it once, so the signed metadata cannot be replayed on a static Dodo link.
   const db = await createClient();
   if (!db) return NextResponse.json({ error: "not_configured" }, { status: 503 });

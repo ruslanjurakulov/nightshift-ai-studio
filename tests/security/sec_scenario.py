@@ -378,9 +378,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # The unique @username (0096): tests/security/sec_user_handles_0096.py — Alice has one, Bob has none.
     import sec_user_handles_0096
     sec_user_handles_0096.seed(conn, sc)
-    # Dodo checkout nonces (0144): tests/security/sec_dodo_0144.py — one per tenant, issued by its owner.
-    import sec_dodo_0144
-    sec_dodo_0144.seed(conn, sc)
+    # Dodo checkout nonces (0146): tests/security/sec_dodo_0146.py — one per tenant, issued by its owner.
+    import sec_dodo_0146
+    sec_dodo_0146.seed(conn, sc)
     # Telegram notification channels (0102): tests/security/sec_notify_channels_0102.py — Alice and Bob each have a chat.
     import sec_notify_channels_0102
     sec_notify_channels_0102.seed(conn, sc)

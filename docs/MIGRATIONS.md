@@ -933,12 +933,12 @@ declared "not made for kids" breaks YouTube's policy and COPPA. The pipeline now
   `tests/security/test_sec_made_for_kids.py` (the lab). 0145 sits on 0122's and 0117's bodies, so the lab's `take_off_0121`,
   `take_off_0122` and `take_off_0127` take it off first and their `put_back_*` put it back (`tests/security/sec_db.py`).
 - **Numbering.** 0145: merged migrations apply to live in ascending order and main ends at 0143 (#701, after #695's
-  0142); 0144 is the Dodo payments branch's. None of them names anything of this file's. The numbering tests of 0127, 0131 and 0133 list
+  0142); 0146 is the Dodo payments branch's. None of them names anything of this file's. The numbering tests of 0127, 0131 and 0133 list
   it as reviewed.
 
-## Dodo Payments next to Paddle (0144)
+## Dodo Payments next to Paddle (0146)
 
-0144 (`0144_dodo_payments.sql`, `docs/DODO_SETUP.md`) lets the payment tables and the two subscription functions carry a second
+0146 (`0146_dodo_payments.sql`, `docs/DODO_SETUP.md`) lets the payment tables and the two subscription functions carry a second
 provider, Dodo Payments (owner decision 2026-11-12, after Paddle declined the account). It is **live on apply and changes nothing for
 Paddle**: no row is written, the Paddle webhook calls the same two functions with the same arguments and gets the same answers, and no
 customer reaches Dodo until the Command Center's `PAYMENTS_PROVIDER` is `dodo` and the `dodo-webhook` Edge Function is deployed.
@@ -958,20 +958,20 @@ customer reaches Dodo until the Command Center's `PAYMENTS_PROVIDER` is `dodo` a
   at most 50 a day per organization) gives the nonce the server signs into the session's metadata; `dodo_consume_checkout_nonce(...)`
   (service role) lets the webhook spend it once, for one pack payment or one new subscription (`ok` | `unknown` | `expired` |
   `consumed` | `mismatch`; the same payment or subscription again is `ok`). md5: issue `ddfe1dc46a18fe7df7823eb09ffbe88f`, consume
-  `08a15f9281430963565060ac12532b78`.
+  `1b79c8eac0f085985ca8cc8544f72def`.
 - **Drift guard and end state.** Before: `upsert_subscription` `60ee6ad3764dbcf6762b178f8240d5a9`, `grant_subscription_credits`
-  `7947d46697f1c35d12274ffbe22709ac` (0034), or 0144's own on a replay. After: `upsert_subscription` `09185a96a8fb02f0c2641095d51461cc`,
+  `7947d46697f1c35d12274ffbe22709ac` (0034), or 0146's own on a replay. After: `upsert_subscription` `09185a96a8fb02f0c2641095d51461cc`,
   `grant_subscription_credits` `fd0c1c169a4d3b2d05c6d826c6fe10ff`, `upsert_subscription_for` `9f9b399ce3ca3421d1ccb32c4075d6ea`,
   `grant_subscription_credits_for` `5424905376fab9ff1b4c229c5dc0c0ce`. The last block asserts bodies, grants, SECURITY DEFINER, the
   pinned search_path and the five check definitions (md5 `0bd392d5168a2de8fb871e400200e7cc`). Apply as ONE transaction.
-- **Number.** 0144: merged migrations apply to live in ascending order; live is at 0142 and 0143 is #701's (2026-11-13). 0144
-  names nothing of theirs. Needs 0021 and 0034. (First written
-  as 0142, then 0143, on this branch.)
+- **Number.** 0146: merged migrations apply to live in ascending order; live is at 0145 (#699's made_for_kids, 2026-11-13).
+  0146 names nothing of 0143's or 0145's. Needs 0021 and 0034. (First written as 0142, then 0143, then 0144, on this
+  branch.)
 - **Not covered yet.** The margin report (0063) and the operator's Customers page (0138) count paid amounts from Paddle rows only; a
   Dodo payment shows there as not knowable / not counted until a follow-up migration (`docs/DODO_SETUP.md`, "Before you switch").
-- **Undo.** `docs/sql/rollback_0144_dodo_payments.sql` (owner-applied): refuses while any `payment_events` or `subscriptions` row names
-  `dodo`, or a function is not 0144's body; puts 0034's two bodies back byte for byte, drops the twins, restores 0021's and 0034's checks
+- **Undo.** `docs/sql/rollback_0146_dodo_payments.sql` (owner-applied): refuses while any `payment_events` or `subscriptions` row names
+  `dodo` or a checkout nonce has been spent, or a function is not 0146's body; puts 0034's two bodies back byte for byte, drops the twins, restores 0021's and 0034's checks
   and asserts the end state. Turning Dodo off does not need it (`PAYMENTS_PROVIDER` back to `paddle`).
 - **Tests.** `tests/test_dodo_payments_migration.py` (the hunks, the pins, the wrappers, the rollback), `tests/security/test_sec_dodo_payments.py`
-  (a real PostgreSQL: grants, the Dodo money path through the shared ledger functions, the Paddle path identical with and without 0144,
+  (a real PostgreSQL: grants, the Dodo money path through the shared ledger functions, the Paddle path identical with and without 0146,
   the checks, the drift guard, the rollback and the re-apply), `command-center/tests/dodo-webhook.test.ts` (the webhook).

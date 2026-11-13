@@ -1,12 +1,12 @@
-"""Security-lab contract for migration 0144 (Dodo Payments next to Paddle).
+"""Security-lab contract for migration 0146 (Dodo Payments next to Paddle).
 
-0144 widens two tables' checks and adds two SECURITY DEFINER functions, the provider-aware twins of 0034's
+0146 widens two tables' checks and adds two SECURITY DEFINER functions, the provider-aware twins of 0034's
 upsert_subscription and grant_subscription_credits, plus the checkout nonces: one table no API role reads or writes
 (Service()), the member function that issues a nonce (USER: it checks sign-in and owner/admin itself) and the webhook's
 function that spends one (SERVICE). Wired in at the bottom of sec_expectations.py, like the other
 per-migration files:
 
-    import sec_dodo_0144; sec_dodo_0144.extend(TABLES, FUNCTIONS)
+    import sec_dodo_0146; sec_dodo_0146.extend(TABLES, FUNCTIONS)
 
 The attacks and the money path are in test_sec_dodo_payments.py.
 """

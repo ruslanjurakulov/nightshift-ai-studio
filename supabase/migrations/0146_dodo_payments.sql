@@ -1,4 +1,4 @@
--- 0144_dodo_payments.sql — lets the payment tables and the two subscription functions carry a second provider, Dodo Payments.
+-- 0146_dodo_payments.sql — lets the payment tables and the two subscription functions carry a second provider, Dodo Payments.
 -- Owner decision 2026-11-12: take payments through Dodo Payments (Merchant of Record); Paddle declined the account. docs/DODO_SETUP.md.
 --
 -- *** LIVE ON APPLY, AND CHANGES NOTHING FOR PADDLE. *** No row is written or changed. Nothing calls the new names until the
@@ -44,8 +44,8 @@
 -- NOT COVERED YET (docs/DODO_SETUP.md, "Before you switch"): the margin report (0063) and the operator's Customers page (0138) read
 -- paid amounts from Paddle rows only, so a Dodo payment shows there as not knowable / not counted until a follow-up migration.
 --
--- NUMBER. 0144: merged migrations apply to live in ascending order; live is at 0142 and 0143 is #701's (2026-11-13). This file
--- names nothing of theirs. Needs 0021 and 0034.
+-- NUMBER. 0146: merged migrations apply to live in ascending order; live is at 0145 (#699's made_for_kids, 2026-11-13). This
+-- file names nothing of 0143's or 0145's. Needs 0021 and 0034. (First written as 0142, then 0143, then 0144, on this branch.)
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; md5 of the body with every run of white space read as one space):
 --   select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc p
@@ -54,8 +54,8 @@
 --   expected BEFORE (0034): upsert_subscription 60ee6ad3764dbcf6762b178f8240d5a9 · grant_subscription_credits 7947d46697f1c35d12274ffbe22709ac
 --   expected AFTER:         upsert_subscription 09185a96a8fb02f0c2641095d51461cc · grant_subscription_credits fd0c1c169a4d3b2d05c6d826c6fe10ff
 --                           upsert_subscription_for 9f9b399ce3ca3421d1ccb32c4075d6ea · grant_subscription_credits_for 5424905376fab9ff1b4c229c5dc0c0ce
---                           dodo_issue_checkout_nonce ddfe1dc46a18fe7df7823eb09ffbe88f · dodo_consume_checkout_nonce 08a15f9281430963565060ac12532b78
--- Undo: docs/sql/rollback_0144_dodo_payments.sql (owner-applied; refuses while any Dodo row exists).
+--                           dodo_issue_checkout_nonce ddfe1dc46a18fe7df7823eb09ffbe88f · dodo_consume_checkout_nonce 1b79c8eac0f085985ca8cc8544f72def
+-- Undo: docs/sql/rollback_0146_dodo_payments.sql (owner-applied; refuses while any Dodo row exists).
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 set local lock_timeout = '5s';
@@ -68,7 +68,7 @@ begin
   if to_regclass('public.payment_events') is null or to_regclass('public.subscriptions') is null
      or to_regprocedure('public.record_payment_event(text, text, text, timestamptz, text, text, uuid, text, text, numeric, text, bigint)') is null
      or to_regprocedure('public.refund_purchased_credits(text, text, numeric, text, text)') is null then
-    raise exception '0144 needs payment events and plans: apply 0021_credit_refunds.sql and 0034_plans_entitlements.sql first';
+    raise exception '0146 needs payment events and plans: apply 0021_credit_refunds.sql and 0034_plans_entitlements.sql first';
   end if;
   -- Each function this file replaces: 0034's body, or this file's own (a replay).
   foreach trio slice 1 in array array[
@@ -78,7 +78,7 @@ begin
        '7947d46697f1c35d12274ffbe22709ac', 'fd0c1c169a4d3b2d05c6d826c6fe10ff']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(trio[1]);
     if h is null or h <> all (array[trio[2], trio[3]]) then
-      raise exception '0144 found % with a body that is neither 0034''s nor 0144''s (md5 %): read the live body first', trio[1], h;
+      raise exception '0146 found % with a body that is neither 0034''s nor 0146''s (md5 %): read the live body first', trio[1], h;
     end if;
   end loop;
   -- Each name this file creates: absent, or this file's own body.
@@ -88,10 +88,10 @@ begin
       ['public.grant_subscription_credits_for(text, uuid, text, text, timestamptz, timestamptz, text, text, text, text, numeric)',
        '5424905376fab9ff1b4c229c5dc0c0ce', ''],
       ['public.dodo_issue_checkout_nonce(uuid, text)', 'ddfe1dc46a18fe7df7823eb09ffbe88f', ''],
-      ['public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)', '08a15f9281430963565060ac12532b78', '']] loop
+      ['public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)', '1b79c8eac0f085985ca8cc8544f72def', '']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(trio[1]);
     if h is not null and h <> trio[2] then
-      raise exception '0144 found % with a body that is not this file''s (md5 %): read the live body first', trio[1], h;
+      raise exception '0146 found % with a body that is not this file''s (md5 %): read the live body first', trio[1], h;
     end if;
   end loop;
   -- What it builds on and leaves alone: the ledger's two money functions and the audit write, as the repo has them.
@@ -102,7 +102,7 @@ begin
        '2e6e988bdffe612dacba03baaaf525ec', '']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(trio[1]);
     if h is distinct from trio[2] then
-      raise exception '0144 found % with a body that is not the one it was written against (md5 %): read the live body first', trio[1], h;
+      raise exception '0146 found % with a body that is not the one it was written against (md5 %): read the live body first', trio[1], h;
     end if;
   end loop;
 end $$;
@@ -135,9 +135,9 @@ alter table public.subscriptions add constraint subscriptions_price_id_check
          or (provider = 'dodo' and price_id ~ '^pdt_[A-Za-z0-9]{3,64}$'));
 
 comment on table public.subscriptions is
-  'Subscriptions of a payment provider (0034 Paddle; 0144 also Dodo Payments), one row each, kept in step by that provider''s webhook (service role). A live status (active, trialing, past_due) gives the organization its plan''s entitlements; credits come only from paid transactions (grant_subscription_credits_for). price_id is the provider''s price (Paddle pri_) or product (Dodo pdt_). Ids only: no card or personal data.';
+  'Subscriptions of a payment provider (0034 Paddle; 0146 also Dodo Payments), one row each, kept in step by that provider''s webhook (service role). A live status (active, trialing, past_due) gives the organization its plan''s entitlements; credits come only from paid transactions (grant_subscription_credits_for). price_id is the provider''s price (Paddle pri_) or product (Dodo pdt_). Ids only: no card or personal data.';
 comment on table public.payment_events is
-  'Webhook events received from a payment provider (migration 0021; 0144 adds dodo), one row per (provider, event id): the outcome and why. rejected = paid but not credited (unknown organization, price or amount) — needs a person; failed = will be retried by the provider. Ids and amounts only; no personal or card data.';
+  'Webhook events received from a payment provider (migration 0021; 0146 adds dodo), one row per (provider, event id): the outcome and why. rejected = paid but not credited (unknown organization, price or amount) — needs a person; failed = will be retried by the provider. Ids and amounts only; no personal or card data.';
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 2. One body per subscription function, for every provider
@@ -354,9 +354,9 @@ end
 $$;
 
 comment on function public.upsert_subscription_for(text, uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, timestamptz, timestamptz) is
-  'A provider''s subscription.* state (migration 0144; 0034''s upsert_subscription body under a provider): ''paddle'' or ''dodo''. An event older than the last one applied changes nothing; a new subscription needs a known plan. Service role only.';
+  'A provider''s subscription.* state (migration 0146; 0034''s upsert_subscription body under a provider): ''paddle'' or ''dodo''. An event older than the last one applied changes nothing; a new subscription needs a known plan. Service role only.';
 comment on function public.grant_subscription_credits_for(text, uuid, text, text, timestamptz, timestamptz, text, text, text, text, numeric) is
-  'A provider''s paid plan period -> that period''s credits (migration 0144; 0034''s grant_subscription_credits body under a provider): idempotent per external id and per (subscription, period end), pro rata on a mid-period upgrade, nothing for a period already over. Service role only.';
+  'A provider''s paid plan period -> that period''s credits (migration 0146; 0034''s grant_subscription_credits body under a provider): idempotent per external id and per (subscription, period end), pro rata on a mid-period upgrade, nothing for a period already over. Service role only.';
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 3. Privileges: the platform only, exactly like 0034's two
@@ -392,7 +392,7 @@ create index if not exists dodo_checkout_nonces_org_created_idx on public.dodo_c
 alter table public.dodo_checkout_nonces enable row level security;
 revoke all on table public.dodo_checkout_nonces from public, anon, authenticated, service_role;
 comment on table public.dodo_checkout_nonces is
-  'One row per Dodo checkout the Command Center opened (migration 0144): the nonce signed into the session''s metadata, for which organization, user and item, and the payment or subscription that spent it. Written and read only by dodo_issue_checkout_nonce and dodo_consume_checkout_nonce.';
+  'One row per Dodo checkout the Command Center opened (migration 0146): the nonce signed into the session''s metadata, for which organization, user and item, and the payment or subscription that spent it. Written and read only by dodo_issue_checkout_nonce and dodo_consume_checkout_nonce.';
 
 create or replace function public.dodo_issue_checkout_nonce(p_org uuid, p_item text) returns text
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -439,7 +439,8 @@ begin
   if not found then
     return 'unknown';
   end if;
-  if r.org_id <> p_org or r.user_id is distinct from p_user or r.item <> p_item then
+  -- is distinct from, never <>: a NULL organization or item would make the test NULL, read as false, and spend the nonce.
+  if r.org_id is distinct from p_org or r.user_id is distinct from p_user or r.item is distinct from p_item then
     return 'mismatch';
   end if;
   if r.consumed_at is not null then
@@ -456,9 +457,9 @@ end
 $$;
 
 comment on function public.dodo_issue_checkout_nonce(uuid, text) is
-  'A fresh nonce for one Dodo checkout of one item (migration 0144): an owner/admin of the organization, 24 hours, at most 50 a day per organization. The Command Center signs it into the session''s metadata.';
+  'A fresh nonce for one Dodo checkout of one item (migration 0146): an owner/admin of the organization, 24 hours, at most 50 a day per organization. The Command Center signs it into the session''s metadata.';
 comment on function public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz) is
-  'The Dodo webhook spends a checkout nonce once, for one payment or one new subscription (migration 0144): ok | unknown | expired | consumed | mismatch; the same consumer again is ok. Service role only.';
+  'The Dodo webhook spends a checkout nonce once, for one payment or one new subscription (migration 0146): ok | unknown | expired | consumed | mismatch; the same consumer again is ok. Service role only.';
 
 revoke all on function public.dodo_issue_checkout_nonce(uuid, text) from public, anon, authenticated;
 grant execute on function public.dodo_issue_checkout_nonce(uuid, text) to authenticated;
@@ -480,30 +481,30 @@ begin
       ['public.upsert_subscription_for(text, uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, timestamptz, timestamptz)', '9f9b399ce3ca3421d1ccb32c4075d6ea'],
       ['public.grant_subscription_credits_for(text, uuid, text, text, timestamptz, timestamptz, text, text, text, text, numeric)', '5424905376fab9ff1b4c229c5dc0c0ce']] loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(pair[1])) is distinct from pair[2] then
-      raise exception '0144 end state: % does not hold the body this file expects', pair[1];
+      raise exception '0146 end state: % does not hold the body this file expects', pair[1];
     end if;
     if not has_function_privilege('service_role', pair[1], 'EXECUTE')
        or has_function_privilege('anon', pair[1], 'EXECUTE')
        or has_function_privilege('authenticated', pair[1], 'EXECUTE') then
-      raise exception '0144 end state: % has the wrong grants (service role only)', pair[1];
+      raise exception '0146 end state: % has the wrong grants (service role only)', pair[1];
     end if;
     if exists (select 1 from pg_proc p where p.oid = to_regprocedure(pair[1])
                 and (not p.prosecdef or p.provolatile <> 'v'
                      or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0)
                      or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=public, pg_temp'))) then
-      raise exception '0144 end state: % is not a volatile SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', pair[1];
+      raise exception '0146 end state: % is not a volatile SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', pair[1];
     end if;
   end loop;
   -- The nonces: the two bodies, who may call them, and a table no API role can touch.
-  foreach pair slice 1 in array array[['public.dodo_issue_checkout_nonce(uuid, text)', 'ddfe1dc46a18fe7df7823eb09ffbe88f'], ['public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)', '08a15f9281430963565060ac12532b78']] loop
+  foreach pair slice 1 in array array[['public.dodo_issue_checkout_nonce(uuid, text)', 'ddfe1dc46a18fe7df7823eb09ffbe88f'], ['public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)', '1b79c8eac0f085985ca8cc8544f72def']] loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(pair[1])) is distinct from pair[2] then
-      raise exception '0144 end state: % does not hold the body this file expects', pair[1];
+      raise exception '0146 end state: % does not hold the body this file expects', pair[1];
     end if;
     if exists (select 1 from pg_proc p where p.oid = to_regprocedure(pair[1])
                 and (not p.prosecdef or p.provolatile <> 'v'
                      or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0)
                      or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=public, pg_temp'))) then
-      raise exception '0144 end state: % is not a volatile SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', pair[1];
+      raise exception '0146 end state: % is not a volatile SECURITY DEFINER with a fixed search_path, or PUBLIC may call it', pair[1];
     end if;
   end loop;
   if not has_function_privilege('authenticated', 'public.dodo_issue_checkout_nonce(uuid, text)', 'EXECUTE')
@@ -511,7 +512,7 @@ begin
      or not has_function_privilege('service_role', 'public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)', 'EXECUTE')
      or has_function_privilege('anon', 'public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)', 'EXECUTE') then
-    raise exception '0144 end state: the nonce functions have the wrong grants (issue: authenticated; consume: service role only)';
+    raise exception '0146 end state: the nonce functions have the wrong grants (issue: authenticated; consume: service role only)';
   end if;
   if not (select relrowsecurity from pg_class where oid = 'public.dodo_checkout_nonces'::regclass)
      or has_table_privilege('anon', 'public.dodo_checkout_nonces', 'SELECT')
@@ -519,7 +520,7 @@ begin
      or has_table_privilege('authenticated', 'public.dodo_checkout_nonces', 'INSERT')
      or has_table_privilege('service_role', 'public.dodo_checkout_nonces', 'SELECT')
      or has_table_privilege('service_role', 'public.dodo_checkout_nonces', 'UPDATE') then
-    raise exception '0144 end state: dodo_checkout_nonces must have RLS on and no API role privilege';
+    raise exception '0146 end state: dodo_checkout_nonces must have RLS on and no API role privilege';
   end if;
   -- The checks: exactly these definitions (a Paddle row keeps 0034's patterns).
   select string_agg(conname || '=' || pg_get_constraintdef(oid), ' | ' order by conname) into defs
@@ -528,7 +529,7 @@ begin
                                        'subscriptions_provider_subscription_id_check', 'subscriptions_provider_customer_id_check',
                                        'subscriptions_price_id_check');
   if md5(defs) is distinct from '0bd392d5168a2de8fb871e400200e7cc' then
-    raise exception '0144 end state: the provider checks are not this file''s (%)', defs;
+    raise exception '0146 end state: the provider checks are not this file''s (%)', defs;
   end if;
 end $$;
 

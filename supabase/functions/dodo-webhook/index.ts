@@ -57,8 +57,8 @@ const testOrgs = dodoTestOrgsFromEnv(env("DODO_TEST_ORG_IDS"));
 // Said once at boot, by name only.
 if (!dodoSigningKey(secret)) console.error("dodo-webhook: DODO_WEBHOOK_SECRET is not a whsec_ signing secret — every delivery is refused");
 if (packs.size === 0) console.error("dodo-webhook: no DODO_PRODUCT_* is set to a valid product id — pack purchases cannot be credited");
-if (!dodoMetadataKey(metadataSecret)) console.error("dodo-webhook: DODO_METADATA_SECRET is not set (32+ characters) — every delivery is refused");
-if (!taxMode) console.error("dodo-webhook: DODO_TAX_MODE is not inclusive or exclusive — every delivery is refused");
+if (!dodoMetadataKey(metadataSecret)) console.error("dodo-webhook: DODO_METADATA_SECRET is not set (32+ characters) — nothing is credited until it is set; refunds and disputes still land");
+if (!taxMode) console.error("dodo-webhook: DODO_TAX_MODE is not inclusive or exclusive — nothing is credited until it is set; refunds and disputes still land");
 if (mode === "test") console.error(`dodo-webhook: TEST mode — only the ${testOrgs.size} organization(s) in DODO_TEST_ORG_IDS are credited`);
 
 const store = createDodoRestStore({ url: supabaseUrl, serviceKey });

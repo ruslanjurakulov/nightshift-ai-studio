@@ -43,7 +43,7 @@ export function dodoEnvironment(): "test" | "live" {
 
 /**
  * The checkout metadata, signed: the nonce the database issued for this
- * checkout (dodo_issue_checkout_nonce, 0144) and the hex HMAC-SHA256 of
+ * checkout (dodo_issue_checkout_nonce, 0146) and the hex HMAC-SHA256 of
  * dodoMetadataMessage under DODO_METADATA_SECRET. The webhook verifies it in
  * constant time, names no organization without it, and spends the nonce once.
  */
