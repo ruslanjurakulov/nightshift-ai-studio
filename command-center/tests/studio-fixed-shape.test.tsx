@@ -229,7 +229,6 @@ const asStudio = (e: Entry): StudioModel =>
 describe("the registry entries that list no shape", () => {
   it.each([
     ["grounded-image-1.0", "t2i"],
-    ["ideogram-4", "t2i"],
     ["minimax-hailuo-2.3", "t2v"],
     ["flux-3-video", "t2v"],
     ["pika-2.5", "t2v"],
@@ -259,10 +258,19 @@ describe("the registry entries that list no shape", () => {
     });
   });
 
-  it("the panel sends ideogram-4 no shape", async () => {
+  // Ideogram 4.0 and 4.5 list their shapes since docs/research/ideogram-shapes-2026-11-13.md: the picker is offered and sent.
+  it.each(["ideogram-4", "ideogram-4.5"])("%s lists the Studio's three shapes and keeps the picker", (id) => {
+    const e = entry(id);
+    for (const shape of ["16:9", "9:16", "1:1"]) expect(e.aspect_ratios).toContain(shape);
+    const model = asStudio(e);
+    expect(model).not.toHaveProperty("fixedShape");
+    expect(buildParams(form({ noAspect: model.fixedShape }))).toMatchObject({ aspect_ratio: "16:9" });
+  });
+
+  it("the panel sends grounded-image-1.0 no shape", async () => {
     render(
       withI18n(
-        <GeneratePanel orgId={ORG} models={[asStudio(entry("ideogram-4"))]} />,
+        <GeneratePanel orgId={ORG} models={[asStudio(entry("grounded-image-1.0"))]} />,
       ),
     );
     expect(screen.queryByRole("group", { name: t.gen.aspectLabel })).toBeNull();
