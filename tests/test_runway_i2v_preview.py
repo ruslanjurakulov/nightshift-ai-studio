@@ -164,6 +164,32 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(kw["headers"]["X-Runway-Version"], "2024-11-06")
         # 5 s at 12 credits a second: what Runway reports is printed beside OK, to be compared before a price is trusted.
         self.assertIn("credits reported by Runway: 60", res.note)
+        self.assertEqual(res.credits, 60.0)                         # the bare number --brief (the workflow) can print
+
+    def test_the_workflows_brief_log_carries_the_credits_and_nothing_else_of_the_vendors(self):
+        # The workflow always runs --brief, which prints no free text: without a bare number there the owner could not read
+        # the figure the doc's "Owner steps" ask them to compare (Lens on PR 712).
+        import io
+        from unittest import mock
+        from tools import probe_models
+        db = mock.Mock()
+        db.sync.return_value = 0
+        cases = [(60, "ok runway-gen4.5 credits=60"), (None, "ok runway-gen4.5\n")]
+        for credits, want in cases:
+            out = io.StringIO()
+            res = probe_models.ProbeResult("runway-gen4.5", True, latency_ms=1, output_bytes=1,
+                                           note="credits reported by Runway: secret-looking text", credits=credits)
+            with mock.patch.object(probe_models, "run_probe", return_value=res):
+                code = probe_models.main(["--model", "runway-gen4.5", "--brief"], env=ENV, db=db, stream=out)
+            self.assertEqual(code, 0)
+            self.assertIn(want, out.getvalue())
+            self.assertNotIn("secret-looking", out.getvalue())
+
+    def test_only_a_finite_non_negative_number_becomes_the_credits_figure(self):
+        from tools import probe_models
+        for bad in (None, True, "60", float("nan"), float("inf"), -1, {"credits": 1}):
+            self.assertIsNone(probe_models._bare_number(bad), bad)
+        self.assertEqual(probe_models._bare_number(12), 12.0)
 
 
 class AdapterRequestTests(unittest.TestCase):
@@ -249,6 +275,8 @@ class AdapterPollTests(unittest.TestCase):
         self.assertEqual(a.poll(TASK).state, SUCCEEDED)
         self.assertIn("25", a.probe_note(TASK))
         self.assertIn("no cost.credits", a.probe_note(ProviderTask("video.runway", "gen4.5", "other")))
+        self.assertEqual(a.probe_credits(TASK), 25)
+        self.assertIsNone(a.probe_credits(ProviderTask("video.runway", "gen4.5", "other")))
 
 
 if __name__ == "__main__":

@@ -517,6 +517,10 @@ class RunwayAdapter(HttpAdapter):
             return "Runway reported no cost.credits figure"
         return f"credits reported by Runway: {seen:g} (compare with the registry estimate before trusting a price)"
 
+    def probe_credits(self, task: ProviderTask) -> Optional[float]:
+        """The same figure as a bare number, for the probe's --brief log (the workflow's), which prints no free text."""
+        return self.credits_reported.get(str(task.task_id or ""))
+
     def poll(self, task: ProviderTask) -> PollResult:
         self.require_key()
         tid = _safe_id(task.task_id)

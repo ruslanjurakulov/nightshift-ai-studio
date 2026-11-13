@@ -65,8 +65,9 @@ MP4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x00" * 2048
 H3, HS, LITE, MAX = "minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max"
 NEW_IDS = (H3, HS, LITE, MAX)
 PROBE_IDS = (*NEW_IDS, "minimax-hailuo-2.3")        # the Hailuo entry shares the Terms
-CLEARED = (H3, HS, LITE)                            # MiniMax's e-mail of 2026-11-13 and the owner's decision
-STILL_GATED = (MAX, "minimax-hailuo-2.3")
+ANSWERED = (H3, HS, LITE)                           # MiniMax's e-mail of 2026-11-13 names them; it settles use, not resale
+UNANSWERED = (MAX, "minimax-hailuo-2.3")
+STILL_GATED = PROBE_IDS                              # every MiniMax entry, until the pre-sale list is done
 CREATE = "/v2/video_generation"
 QUERY = "/v2/query/video_generation/"
 
@@ -152,13 +153,13 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertIn("guardian", notes, mid)
             self.assertNotIn("could not be read", notes, mid)          # the stale claim is gone
 
-    def test_the_gate_is_cleared_only_where_minimaxs_written_answer_reaches(self):
-        # MiniMax's e-mail of 2026-11-13 names "Video model H3" (and H3-Image, which is not registered). The owner cleared the
-        # gate for the H3 video models on it. H3 Max is a fal.ai post-train left to its own decision, and Hailuo 2.3 is another
-        # family: a gate cleared on a letter that does not name them would be a decision nobody took.
-        for mid in CLEARED:
+    def test_the_email_is_recorded_where_it_reaches_and_the_gate_still_stands(self):
+        # MiniMax's e-mail of 2026-11-13 names "Video model H3" and answers ownership and the revenue thresholds. It says
+        # nothing about reselling (ToS 7(c)), and the operator preview (0139) works with a gate. Clearing the gate on it would
+        # leave availability as the only lock between a credit_prices row and a sale nobody checked (Lens on PR 712).
+        for mid in ANSWERED:
             e = self.r[mid]
-            self.assertIsNone(e.terms_gate, mid)
+            self.assertEqual(e.terms_gate, "terms_review_required", mid)
             notes = e.raw["terms_notes"]
             text = " ".join(notes)
             for words in ("api@minimaxi.com", "2026-11-13 12:15 UTC+5", "belong to the users themselves",
@@ -167,30 +168,32 @@ class RegistryEntryTests(unittest.TestCase):
                 self.assertIn(words, text, (mid, words))
             # What the clearing does not rest on is said too, so nobody reads the e-mail as a reading of 7(c).
             self.assertIn("does not quote ToS 7(c)", text, mid)
-            self.assertNotIn("Why the gate stays open", text, mid)
+            self.assertIn("terms_gate stays until", text, mid)
+            self.assertNotIn("terms_gate is cleared", text, mid)
             self.assertTrue(all(len(n) <= 300 for n in notes), mid)
-        for mid in STILL_GATED:
+        for mid in UNANSWERED:
             self.assertEqual(self.r[mid].terms_gate, "terms_review_required", mid)
             self.assertNotIn("api@minimaxi.com", " ".join(self.r[mid].raw["terms_notes"]), mid)
 
     def test_the_terms_gate_reaches_the_database_row(self):
-        # sellable_models() (migration 0035) refuses any row whose spec.terms_gate is non-empty; the cleared ones stay hidden
-        # because availability is the database's, and no credit_prices row exists (test_no_migration_or_price_file_prices_them).
+        # sellable_models() (migration 0035) refuses any row whose spec.terms_gate is non-empty, and 0035's terms_before_sale
+        # refuses beta/ga for it: two locks, whatever a credit_prices row says. The sync never writes availability.
         rows = {row["id"]: row for row in reg.sync_rows(list(self.r.values()))}
         for mid in STILL_GATED:
             self.assertEqual(rows[mid]["spec"]["terms_gate"], "terms_review_required", mid)
-        for mid in CLEARED:
-            self.assertIsNone(rows[mid]["spec"]["terms_gate"], mid)
             for banned in ("availability", "verified_at"):
                 self.assertNotIn(banned, rows[mid], mid)
 
-    def test_only_h3_and_h3_lite_are_the_operators_preview(self):
-        # 0139 reads the JSON value true. Highspeed is cleared but not part of the trial; Max and Hailuo are gated.
+    def test_no_minimax_model_is_previewed_while_its_price_is_by_resolution(self):
+        # 0139's creative_price uses the preview rate only when pricing has no variants, and every H3 entry is priced by
+        # resolution: a preview would show the operator a model whose every quote is refused 'unpriced'. A dead end shown as
+        # available. The trial waits for per-resolution preview pricing.
         rows = {row["id"]: row for row in reg.sync_rows(list(self.r.values()))}
-        for mid in (*NEW_IDS, "minimax-hailuo-2.3"):
-            want = mid in (H3, LITE)
-            self.assertIs(self.r[mid].raw.get("operator_preview", False), want, mid)
-            self.assertIs(rows[mid]["spec"].get("operator_preview", False), want, mid)
+        for mid in PROBE_IDS:
+            self.assertIsNot(self.r[mid].raw.get("operator_preview", False), True, mid)
+            self.assertIsNot(rows[mid]["spec"].get("operator_preview", False), True, mid)
+        for mid in NEW_IDS:
+            self.assertIn("variants", self.r[mid].raw["pricing"], mid)
 
     def test_h3_max_says_it_is_a_fal_post_train_and_that_it_is_the_owners_call(self):
         notes = " ".join(self.r[MAX].raw["terms_notes"])
@@ -223,7 +226,7 @@ class RegistryEntryTests(unittest.TestCase):
             p = self.r[mid].raw["pricing"]
             self.assertFalse(p["confirmed"], mid)
             self.assertEqual(p["source_url"], "https://platform.minimax.io/docs/pricing/overview", mid)
-            self.assertEqual(p["as_of"], "2026-11-13" if mid in CLEARED else "2026-10-25", mid)
+            self.assertEqual(p["as_of"], "2026-11-13" if mid in ANSWERED else "2026-10-25", mid)
             self.assertIn("ESTIMATE", p["note"], mid)
             self.assertEqual(p["variants"]["by"], "resolution", mid)
             self.assertEqual(p["variants"]["prices"], want[mid], mid)
@@ -808,8 +811,7 @@ class ProbeSkipsGatedTests(unittest.TestCase):
 
         entries = list(reg.registry().values())
         chosen = {e.id for e in probe_models.select(entries, [], None, True)}
-        self.assertFalse(chosen & set(STILL_GATED), chosen & set(STILL_GATED))
-        self.assertEqual(chosen & set(CLEARED), set(CLEARED))
+        self.assertFalse(chosen & set(STILL_GATED), chosen & set(STILL_GATED))   # no paid MiniMax call from --all
         for cap in ("t2v", "i2v", "t2i"):
             self.assertFalse({e.id for e in probe_models.select(entries, [], cap, True)} & set(STILL_GATED), cap)
         code, called, text = self.run_main(["--all", "--brief"])
