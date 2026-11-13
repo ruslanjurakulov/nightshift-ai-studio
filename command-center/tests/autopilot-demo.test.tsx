@@ -129,7 +129,8 @@ describe("the walk-through on the page", () => {
     const p = siteAutopilotEn.demo.publish;
     const all = [p.defaultBody, p.autoBody, ...p.approvedSteps].join(" ");
     expect(all).toMatch(/off by default/i);
-    expect(all).toMatch(/only an administrator of the workspace/i);
+    expect(all).toMatch(/only someone who manages the workspace can switch it on/i);
+    expect(all).toMatch(/never the bot/);
     expect(all).toMatch(/queues one request/);
     expect(all).toMatch(/asks the database again/);
     expect(all).toMatch(/reads the video back/);

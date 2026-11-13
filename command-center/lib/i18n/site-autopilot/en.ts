@@ -118,7 +118,7 @@ export const siteAutopilotEn = {
       autoBody: "A per-channel switch, off by default. The publish check runs in front of it.",
       approvedTitle: "“Publish when approved”",
       approvedSteps: [
-        "Off by default for every channel. Only an administrator of the workspace can switch it on, by typing a confirmation word, and one tap switches it off.",
+        "Off by default for every channel. Only someone who manages the workspace can switch it on, on purpose, by typing a confirmation word, never the bot; one tap switches it off.",
         "With it on, approving one exact version queues one request.",
         "Just before acting, the worker asks the database again: still the approved version, the approval not expired, the publish check’s verdict stored and allowed, the switch still on.",
         "It asks YouTube once to make that video public, then reads the video back. The app says “Published” only when YouTube’s answer says public.",

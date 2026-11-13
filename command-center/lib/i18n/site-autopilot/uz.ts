@@ -112,7 +112,7 @@ export const siteAutopilotUz: SiteAutopilotDictionary = {
       autoBody: "Kanal kaliti, sukut boʻyicha oʻchiq. Undan oldin nashr tekshiruvi oʻtkaziladi.",
       approvedTitle: "“Tasdiqdan keyin nashr qilish”",
       approvedSteps: [
-        "Har bir kanal uchun sukut boʻyicha oʻchiq. Uni faqat ish maydoni administratori tasdiq soʻzini yozib yoqa oladi, bir bosishda esa oʻchiriladi.",
+        "Har bir kanal uchun sukut boʻyicha oʻchiq. Uni faqat ish maydonini boshqaradigan kishi ataylab, tasdiq soʻzini yozib yoqa oladi, bot hech qachon yoqmaydi; bir bosishda esa oʻchiriladi.",
         "Sozlama yoqilganda aynan bitta versiyani tasdiqlash navbatga bitta soʻrov qoʻyadi.",
         "Harakatdan oldin ishlovchi maʼlumotlar bazasidan yana soʻraydi: bu hali ham tasdiqlangan versiyami, tasdiq muddati oʻtmaganmi, nashr tekshiruvining xulosasi saqlangan va ruxsat beradimi, kalit hali ham yoqilganmi.",
         "U YouTube’dan videoni ommaviy qilishni bir marta soʻraydi, soʻng videoni qayta oʻqiydi. Ilova “Nashr qilindi” deb faqat YouTube video ommaviy ekanini aytganda yozadi.",
