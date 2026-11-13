@@ -5,5 +5,13 @@
  * Server Components is never copied to /_next/static/media/).
  */
 import type { ShowcaseFiles } from "@/lib/site/showcase";
+import s0Poster from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/poster.webp";
+import s0PosterSm from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/poster-sm.webp";
+import s0Mp4 from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip.mp4";
+import s0Webm from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip.webm";
+import s0SmMp4 from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip-sm.mp4";
+import s0SmWebm from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip-sm.webm";
 
-export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {};
+export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
+  "a04d5d55-27ef-4cae-95a2-25488503829e": { poster: s0Poster.src, posterSm: s0PosterSm.src, clip: { mp4: s0Mp4, webm: s0Webm, smMp4: s0SmMp4, smWebm: s0SmWebm } },
+};

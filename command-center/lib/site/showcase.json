@@ -1,3 +1,44 @@
 {
-  "entries": []
+  "entries": [
+    {
+      "jobId": "a04d5d55-27ef-4cae-95a2-25488503829e",
+      "assetId": "51074ff0-f185-5597-8dd6-7a80c4e7cbc6",
+      "sha256": "295b3ee86b147c41a6a26e19ae7198c1a8e208f86acfea9374161c2ab91b3f84",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical cinematic shot of a rainy city crosswalk at blue hour, wet asphalt reflecting shop lights. A colossal plain white sneaker with no logo, the size of a bus, drops from the overcast sky and lands on the crosswalk with a heavy impact, throwing a wave of puddle water and shaking the street lamps; pedestrians with umbrellas, seen from behind, stop and look up. Low angle, a short camera shake on impact, then a slow tilt up along the shoe. 24mm lens, realistic scale, photorealistic, faux out-of-home ad style.",
+      "createdAt": "2026-11-13T15:33:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2276,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T16:05:40Z"
+    }
+  ]
 }

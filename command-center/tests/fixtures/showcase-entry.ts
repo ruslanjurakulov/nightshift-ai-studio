@@ -1,6 +1,6 @@
 /**
  * One model sample as tools/export_showcase.py writes it, for the tests only. The data file the site reads
- * (lib/site/showcase.json) ships EMPTY: no entry exists until a real job is exported and the owner merges it.
+ * (lib/site/showcase.json) holds only real jobs, exported and merged by the owner, so no test may assume what or how many.
  */
 import type { ShowcaseEntry, ShowcaseFiles } from "@/lib/site/showcase";
 
