@@ -99,6 +99,11 @@ export function inviteBlock(invite: MyInvite): InviteBlock | null {
   return invite.enabled ? null : "off";
 }
 
+/** Is the "Invite friends" card worth showing? Not while invites are closed and there is no link to follow: it would be a dead button. */
+export function inviteWorthShowing(invite: MyInvite): boolean {
+  return inviteBlock(invite) !== "off";
+}
+
 /** The operator's view (friend_invite_admin()). */
 export interface InviteAdmin {
   enabled: boolean;

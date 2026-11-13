@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { characterStudioStrings, type CharacterStudioDictionary } from "@/lib/i18n/character-studio";
 import { TemplateCard } from "@/components/character-studio/TemplateCard";
+import { galleryTemplates, listedModels } from "@/components/character-studio/samples";
 import {
   DECLARATIONS,
   MODEL_FACTS,
@@ -121,6 +122,10 @@ export function CharacterStudio({
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState<ModelId>(MODEL_IDS[0]);
+  // Settled: the model shown checked is now the person's, whether they pressed it or the first priced quote placed it there. From
+  // then on nothing moves it (rule 4): a later quote that stops pricing it leaves it listed and checked, says "not on sale", and the
+  // button stays off. Only the page's opening default, before any quote priced something, may be moved.
+  const [settled, setSettled] = useState(false);
   const [resolution, setResolution] = useState<Resolution>("720p");
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [quoting, setQuoting] = useState<"idle" | "loading" | "error">("idle");
@@ -164,6 +169,18 @@ export function CharacterStudio({
     const r = await call<StudioState>("GET", `/api/character-studio?org=${encodeURIComponent(orgId)}`);
     if (r.ok) setState(r.data);
   }, [orgId]);
+
+  // The picker lists what this clip's quote prices (samples.ts listedModels), never a fixed list of names.
+  const listed = useMemo(() => listedModels(quote, model, settled), [quote, model, settled]);
+  useEffect(() => {
+    // The first quote that prices anything: keep the default if it is priced, else start on the first priced one. Then settle.
+    if (!quote || settled) return;
+    const priced = listedModels(quote, model, false);
+    if (priced.length === 0) return;
+    if (!priced.includes(model)) setModel(priced[0]);
+    setSettled(true);
+  }, [quote, settled, model]);
+  const gallery = useMemo(() => galleryTemplates(state.templates), [state.templates]);
 
   const chosen = quote?.models.find((m) => m.model === model);
   const cost = video && quote ? costText(t, chosen, quote.exempt) : null;
@@ -254,25 +271,28 @@ export function CharacterStudio({
         </div>
       ) : null}
 
-      <section className="cs-section" aria-labelledby={`${ids}-gallery`}>
-        <h2 id={`${ids}-gallery`} className="cs-h2">
-          {t.gallery.heading}
-        </h2>
-        <ul className="cs-cards">
-          {state.templates.map((tpl) => (
-            <TemplateCard key={tpl.id} template={tpl} locale={locale} t={t} onTry={(text) => tryTemplate(text)} />
-          ))}
-        </ul>
-      </section>
+      {/* Examples only once a real sample exists: a wall of "coming soon" tiles is a page that was never finished. */}
+      {gallery.length > 0 ? (
+        <section className="cs-section" aria-labelledby={`${ids}-gallery`}>
+          <h2 id={`${ids}-gallery`} className="cs-h2">
+            {t.gallery.heading}
+          </h2>
+          <ul className="cs-cards">
+            {gallery.map((tpl) => (
+              <TemplateCard key={tpl.id} template={tpl} locale={locale} t={t} onTry={(text) => tryTemplate(text)} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="cs-section" ref={studioRef} aria-labelledby={`${ids}-studio`} data-open={open ? "true" : undefined}>
         <div className="cs-head">
           <h2 id={`${ids}-studio`} className="cs-h2">
-            {t.title}
+            {t.studioHeading}
           </h2>
           {!open ? (
             <button type="button" className="btn-quiet min-h-11 px-4 text-sm" onClick={() => setOpen(true)}>
-              {t.gallery.try}
+              {t.openStudio}
             </button>
           ) : null}
         </div>
@@ -303,14 +323,29 @@ export function CharacterStudio({
             {/* 2. The model picker, below the cost: each with its own price for this clip. */}
             <fieldset className="cs-models" data-testid="cs-models">
               <legend className="cs-h3">{t.model.heading}</legend>
-              <p className="cs-small">{t.model.hint}</p>
-              {MODEL_IDS.map((m) => {
+              {!video ? (
+                <p className="cs-small" data-testid="cs-models-wait">{t.model.pickVideoFirst}</p>
+              ) : quote && listed.length === 0 ? (
+                <p className="cs-fail" data-testid="cs-models-none">{t.model.noneOnSale}</p>
+              ) : quote ? (
+                <p className="cs-small">{t.model.hint}</p>
+              ) : null}
+              {listed.map((m) => {
                 const f = MODEL_FACTS[m];
                 const q = quote?.models.find((x) => x.model === m);
                 const line = video && quote ? costText(t, q, quote.exempt).main : null;
                 return (
                   <label key={m} className="cs-model" data-model={m}>
-                    <input type="radio" name={`${ids}-model`} value={m} checked={model === m} onChange={() => setModel(m)} />
+                    <input
+                      type="radio"
+                      name={`${ids}-model`}
+                      value={m}
+                      checked={model === m}
+                      onChange={() => {
+                        setModel(m);
+                        setSettled(true);
+                      }}
+                    />
                     <span className="cs-model-body">
                       <span className="cs-model-name">
                         {f.name} <span className="cs-small">({f.maker})</span>
