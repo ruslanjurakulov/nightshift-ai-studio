@@ -2,12 +2,16 @@
 
 Status: adapter shipped DARK, 2026-10-25. Internal notes. Nothing here makes a model available or for sale.
 
+**Update 2026-11-13:** MiniMax answered the terms question in writing, and the owner cleared `terms_gate` for H3, H3 Highspeed and
+H3 Lite (not H3 Max, not Hailuo 2.3). H3 and H3 Lite are an operator-only preview; nothing is on sale. See
+`docs/research/video-i2v-2026-11-13.md`. The "Why they are not for sale" section below is the 2026-10-25 reading.
+
 Four registry entries use MiniMax's own video API V2 (`https://api.minimax.io`, key `MINIMAX_API_KEY`, the same key and base-URL override as the Hailuo adapter):
 
 | Registry id | Vendor model | What it does |
 | :-- | :-- | :-- |
 | `minimax-h3` | `MiniMax-H3` | t2v, i2v with first and last frame, 768p or 2k, 4-15 s, native stereo audio |
-| `minimax-h3-highspeed` | `MiniMax-H3-Highspeed` | same, 768p only |
+| `minimax-h3-highspeed` | `MiniMax-H3-Highspeed` | same, 480p or 768p (480p added 2026-11-13) |
 | `minimax-h3-lite` | `MiniMax-H3-Lite` | same, 480p or 768p, cheapest |
 | `minimax-h3-max` | `MiniMax-H3-Max` | same, 480p or 768p, 5-15 s. **Post-trained by fal.ai** (below) |
 

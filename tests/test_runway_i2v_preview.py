@@ -1,4 +1,4 @@
-"""Runway image-to-video, prepared for the operator's own trial (docs/research/runway-i2v-2026-11-13.md).
+"""Runway image-to-video, prepared for the operator's own trial (docs/research/video-i2v-2026-11-13.md).
 
 Step 1 of "one photo -> styled clips": both Runway video models may be tried by the platform operator in the operator's own
 credits-exempt organization (migration 0139) and by nobody else, and nothing is put on sale. These tests pin what would
