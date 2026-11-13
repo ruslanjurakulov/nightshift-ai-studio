@@ -130,12 +130,13 @@ export const uz: LegalTexts = {
                 ["Telegram, Slack (ixtiyoriy)", "Operatorga bildirishnomalar", "Ishga tushirish holati, video nomlari va havolalari"],
                 ["Xat yetkazish xizmati (ixtiyoriy, operator tanlaydi)", "Xizmat xatlari: tayyor video haqida va yoqsangiz haftalik xulosa", "Elektron pochta manzilingiz, kanal nomi, videolar soni va qolgan kreditlar; hech qachon stsenariy, soʻrov yoki video nomi emas"],
                 ["Google Fonts, Amazon CloudFront", "Ushbu sahifalardagi shriftlar va fon mediasi", "Har qanday veb-soʻrovdagi kabi IP manzilingiz va brauzer maʼlumotlari"],
-                ["Paddle (Paddle.com)", "Kredit xaridlari boʻyicha onlayn qayta sotuvchimiz va sotuvchi (Merchant of Record): toʻlov oynasi, toʻlovni qayta ishlash, soliq, cheklar va qaytarish", "Paddle toʻlov oynasiga kiritadigan toʻlov va hisob-kitob maʼlumotlaringiz — ularni Paddle oʻzi qayta ishlaydi; bizdan — toʻlov oynasini toʻldirish uchun akkauntingiz emaili hamda tashkilotingiz va akkauntingiz identifikatorlari"],
+                ["Dodo Payments (dodopayments.com)", "Kredit va tarif xaridlari boʻyicha sotuvchimiz (Merchant of Record) va toʻlov provayderimiz: toʻlov sahifasi, toʻlovni qayta ishlash, soliq, cheklar, qaytarish va chargeback", "Dodo toʻlov sahifasiga kiritadigan toʻlov va hisob-kitob maʼlumotlaringiz — ularni Dodo oʻz maxfiylik siyosati asosida oʻzi qayta ishlaydi; bizdan — toʻlov oynasini toʻldirish uchun akkauntingiz emaili, tashkilotingiz va akkauntingiz identifikatorlari hamda nima sotib olayotganingiz"],
+                ["Paddle (Paddle.com), faqat sinov toʻlovi", "Dodo orqali toʻlov yoqilguncha koʻrsatiladigan sinov toʻlov oynasi (sandbox); u haqiqiy toʻlov qabul qilmaydi va olib tashlanadi", "Sinov toʻlov oynasiga kiritgan maʼlumotlaringiz; bizdan — akkauntingiz emaili hamda tashkilotingiz va akkauntingiz identifikatorlari"],
               ],
             },
           },
           "Google foydalanuvchi maʼlumotlarini faqat ushbu roʻyxatdagi Supabase, GitHub, Google va bildirishnoma xizmatlari oladi va faqat yuqoridagi maqsadlarda. Biz shaxsiy maʼlumotlarni hech kimga sotmaymiz.",
-          "Toʻlovlar. Kreditlar onlayn qayta sotuvchimiz va sotuvchi (Merchant of Record) boʻlgan Paddle orqali sotiladi: kredit sotib olayotganda toʻlov va hisob-kitob maʼlumotlaringizni Paddle’ning oʻz toʻlov oynasiga kiritasiz va Paddle ularni sotuvchi sifatida [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) asosida qayta ishlaydi. Biz karta maʼlumotlaringizni yoki hisob-kitob manzilingizni hech qachon olmaymiz va saqlamaymiz. Paddle bizga faqat xaridni hisobga qoʻshish va qaytarishda uni bekor qilish uchun kerakli narsani yuboradi: tranzaksiya va qaytarish identifikatorlari, toʻlangan summa va valyuta, sotib olingan kreditlar hamda xarid qaysi tashkilot (va maʼlum boʻlsa, qaysi foydalanuvchi) uchun qilingani. Bu yozuvlarni tashkilotingizning kredit tarixi bilan birga uning akkaunti mavjud ekan saqlaymiz yoki soliq yoxud buxgalteriya qonunchiligi talab qilsa, undan uzoqroq.",
+          "Toʻlovlar. Kreditlar va tariflar sotuvchimiz (Merchant of Record) va toʻlov provayderimiz Dodo Payments («Dodo») orqali sotiladi: xarid qilayotganda toʻlov va hisob-kitob maʼlumotlaringizni Dodo’ning oʻz toʻlov sahifasiga kiritasiz va Dodo ularni sotuvchi sifatida [Dodo Payments maxfiylik siyosati](https://dodopayments.com/legal/privacy-policy) asosida qayta ishlaydi. Biz karta maʼlumotlaringizni yoki hisob-kitob manzilingizni hech qachon olmaymiz va saqlamaymiz. Dodo’dan faqat xaridni hisobga qoʻshish va qaytarish yoki chargeback holatida uni bekor qilish uchun kerakli narsani saqlaymiz: toʻlov va qaytarish identifikatorlari, toʻlangan summa va valyuta, nima sotib olingani hamda xarid qaysi tashkilot (va maʼlum boʻlsa, qaysi foydalanuvchi) uchun qilingani. Bu yozuvlarni tashkilotingizning kredit tarixi bilan birga uning akkaunti mavjud ekan saqlaymiz yoki soliq yoxud buxgalteriya qonunchiligi talab qilsa, undan uzoqroq. Dodo orqali toʻlovni ulash hali yakunlanmagan: u yoqilguncha Xizmatda koʻrsatiladigan har qanday toʻlov oynasi Paddle’ning sinov oynasi (sandbox) boʻlib, haqiqiy toʻlov qabul qilmaydi.",
         ],
       },
       {
@@ -177,7 +178,7 @@ export const uz: LegalTexts = {
               ],
             },
           },
-          "Uchinchi tomonlar. Narxlar sahifasi toʻlov provayderimiz Paddle’dan narxlarni koʻrib chiqish skriptini yuklaydi, shunda narxlar sizning valyutangizda koʻrinadi. Skript va u yoki Paddle’ning kontent tarmogʻi oʻrnatadigan har qanday cookie (masalan, botlardan himoya cookieʼsi) Paddle’ga tegishli; [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) bilan tanishing. Toʻlov Paddle’ning oʻz oynasida amalga oshadi. YouTube akkauntingizni ulaganingizda siz Google’ga yoʻnaltirilasiz. Boshqa uchinchi tomon skriptlarini yuklamaymiz.",
+          "Uchinchi tomonlar. 7-boʻlimda tasvirlangan Paddle sinov toʻlov oynasi amal qilayotgan paytda Narxlar sahifasi va kredit sotib olinadigan sahifalar narxlarni koʻrsatish va shu sinov oynasini ochish uchun Paddle skriptini (Paddle.js) yuklaydi. Skript va u yoki Paddle’ning kontent tarmogʻi oʻrnatadigan har qanday cookie (masalan, botlardan himoya cookieʼsi) Paddle’ga tegishli; [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) bilan tanishing. Uning oʻrnini egallaydigan Dodo toʻlovi Dodo’ning oʻz saytidagi sahifada amalga oshadi: biz sahifalarimizga Dodo skriptlarini yuklamaymiz, Dodo sahifasida oʻrnatiladigan cookie’lar esa Dodo’ga tegishli va [Dodo Payments cookie siyosati](https://dodopayments.com/legal/cookie-policy) bilan tartibga solinadi. YouTube akkauntingizni ulaganingizda siz Google’ga yoʻnaltirilasiz. Boshqa uchinchi tomon skriptlarini yuklamaymiz.",
           "Sahifa statistikasi. Qaysi ochiq sahifalar oʻqilishini bilish uchun biz koʻrishlarni oʻz serverlarimizda oʻzimiz sanaymiz: har bir ochiq sahifa va har bir kun uchun — nechta koʻrish, qaysi saytdan kelingan (faqat uning nomi), telefon oʻlchamidagi yoki kattaroq ekranda va qaysi tilda. Bunda cookie ham, mahalliy xotira ham ishlatilmaydi, IP manzil, user agent va hech qanday identifikator saqlanmaydi, shuning uchun statistikani siz yoki boshqa tashriflaringiz bilan bogʻlab boʻlmaydi. Brauzeringiz Do Not Track yoki Global Privacy Control yuborsa, hech narsa sanalmaydi. Hech qanday maʼlumot analitika provayderiga ketmaydi.",
           "Cookie va mahalliy xotirani brauzer sozlamalarida istalgan vaqtda oʻchirishingiz mumkin. Shunda Xizmat tilingizni, mavzuingizni va koʻrinish tanlovingizni unutadi, siz esa tizimdan chiqasiz.",
         ],
@@ -247,7 +248,7 @@ export const uz: LegalTexts = {
         id: "service",
         heading: "2. Xizmat",
         body: [
-          "Nightshift siz boshqaradigan YouTube kanallari uchun video tayyorlashga yordam beradi: mavzularni oʻrganadi, ssenariy yozadi va tekshiradi, ovozlashtiradi, render qiladi, videolarni kanalingizga yuklaydi va ularning natijalarini koʻrsatadi. Funksiyalar oʻzgarishi mumkin, Xizmatning ayrim qismlari sinov versiyasi sifatida taqdim etilishi mumkin.",
+          "Nightshift siz boshqaradigan YouTube kanallari uchun video tayyorlashga yordam beradi: mavzularni oʻrganadi, ssenariy yozadi va tekshiradi, ovozlashtiradi, render qiladi, videolarni kanalingizga yuklaydi va ularning natijalarini koʻrsatadi. Shuningdek, Xizmat sunʼiy intellekt modellari yordamida rasm, videoklip va audio yaratish hamda tahrirlash (Studiya) va videolarni videomuharrirda montaj qilish imkonini beradi. Funksiyalar oʻzgarishi mumkin, Xizmatning ayrim qismlari sinov versiyasi sifatida taqdim etilishi mumkin.",
         ],
       },
       {
@@ -287,7 +288,7 @@ export const uz: LegalTexts = {
         id: "acceptable-use",
         heading: "6. Maqbul foydalanish",
         body: [
-          "Xizmatdan quyidagilar uchun foydalanish taqiqlanadi:",
+          "6.1. Har qanday foydalanish. Xizmatdan quyidagilar uchun foydalanish taqiqlanadi:",
           {
             list: [
               "spam yoki asosan YouTube tizimlarini aldash uchun yaratilgan ommaviy, takroriy yoki past qiymatli kontentni, yoxud YouTube’ning [spam, aldov va firibgarlik qoidalari](https://support.google.com/youtube/answer/2801973)ni buzadigan har qanday narsani nashr qilish;",
@@ -296,6 +297,30 @@ export const uz: LegalTexts = {
               "boshqarishga vakolatingiz boʻlmagan kanallarni boshqarish yoki YouTube cheklovi yoxud bloklanishini chetlab oʻtish uchun kanal yaratish va yuritish;",
               "YouTube API kvotalari yoki cheklovlarini chetlab oʻtish, boshqa foydalanuvchilar maʼlumotlariga kirish, Xizmatni tekshirib koʻrish yoki ishini buzish, qonun ruxsat bergan holatlardan tashqari uni teskari muhandislik qilish;",
               "yozma ruxsatimizsiz Xizmatga kirish huquqini qayta sotish yoki boshqalarga berish.",
+            ],
+          },
+          "6.2. Generatsiya qilingan rasm, video va ovoz. Xizmat boshqa kompaniyalar yaratgan sunʼiy intellekt modellari («model ishlab chiqaruvchilari») yordamida matn, rasm, video, ovoz va boshqa audio yaratish hamda tahrirlash imkonini beradi. Bu qoidalar Xizmatda yaratgan yoki tahrirlagan hamma narsangizga, uni nashr qilasizmi-yoʻqmi, bundan qatʼi nazar, tegishli. Xizmat yordamida quyidagilarni yaratish, tahrirlash yoki tarqatish taqiqlanadi:",
+          {
+            list: [
+              "har qanday turdagi jinsiy yoki jinsiy ishorali kontent, jumladan yalangʻochlik, shuningdek voyaga yetmaganlarni jinsiylashtiradigan yoki ekspluatatsiya qiladigan har qanday kontent;",
+              "real, tanib boʻladigan insonning uning aniq roziligisiz yaratilgan realistik rasmi, videosi yoki ovozi — jumladan yuz almashtirish, dipfeyklar, ovozni klonlash va birovning ovoziga taqlid qilish;",
+              "biror shaxs yoki tashkilot sifatida oʻzini koʻrsatadigan, yoxud aldash maqsadida real voqealarning haqiqiy tasvirga olinishi, haqiqiy surati yoki haqiqiy yozuvi sifatida taqdim etiladigan kontent;",
+              "mualliflik huquqi, tovar belgilari yoki boshqa huquqlarni buzadigan kontent, jumladan modeldan boshqa muallifning himoyalangan asarini koʻchirishni soʻrab yaratilgan kontent;",
+              "kimnidir taʼqib qiladigan yoki unga tahdid qiladigan, nafratga undaydigan, zoʻravonlikni targʻib qiladigan, oʻziga zarar yetkazish yoki oʻz joniga qasd qilishni targʻib qiladigan yoxud boshqacha tarzda noqonuniy kontent;",
+              "modelning xavfsizlik filtrlarini chetlab oʻtib yoki chetlab oʻtishga urinib olingan har qanday narsa — masalan, rad etilgan soʻrovni uning mazmunini yashirish uchun boshqa soʻzlar bilan qayta yozish orqali.",
+            ],
+          },
+          "Xizmat yuz almashtirish yoki ovozni klonlash funksiyalarini taklif qilmaydi.",
+          "6.3. Belgilar va kelib chiqish maʼlumotlari. Baʼzi model ishlab chiqaruvchilari oʻz modellari yaratgan kontentga koʻrinadigan suv belgisi yoki yorliq, yoxud kelib chiqish metamaʼlumotlarini qoʻshadi. Bunday suv belgisi yoki yorliqni olib tashlash, yashirish yoki oʻzgartirish, shuningdek kontent generatsiya qilinganini yashirish uchun bu metamaʼlumotlarni oʻchirish yoki oʻzgartirish taqiqlanadi. Qonun yoki siz nashr qiladigan platforma kontent generatsiya qilingani yoki oʻzgartirilganini bildirishni talab qilgan joyda generatsiya qilingan kontentni inson yaratgan deb koʻrsatish taqiqlanadi; 5-boʻlim ham qoʻllaniladi.",
+          "6.4. Xavfsizlik filtrlari. Model ishlab chiqaruvchilari oʻz xavfsizlik filtrlarini qoʻllaydi va soʻrovni rad etishi mumkin. Model rad etgan soʻrov uchun haq olinmaydi: u uchun band qilingan kreditlar har qanday muvaffaqiyatsiz ishga tushirishdagidek qaytariladi (8.3-boʻlim).",
+          "6.5. Qoidabuzarlik haqida xabar berish. Xizmat yordamida yaratilgan va bu qoidalarni buzadigan kontent haqida — jumladan, roziligingizsiz sizni koʻrsatadigan yoki ovozingizdan foydalanadigan kontent haqida — xabar berish uchun {contactEmail} manziliga yozing va uni qayerda topganingizni ayting. Biz bu qoidalarni buzadigan kontentni olib tashlashimiz hamda uni yaratgan akkauntning kirishini 13-boʻlimda aytilganidek toʻxtatib turishimiz yoki tugatishimiz mumkin. Bolalarga nisbatan jinsiy zoʻravonlik materiallariga hech qanday holatda yoʻl qoʻyilmaydi: biz ularni olib tashlaymiz, ularni yaratgan akkauntning kirishini tugatamiz va ular haqida vakolatli organlarga, jumladan tegishli hollarda AQShning Bedarak yoʻqolgan va ekspluatatsiya qilingan bolalar milliy markaziga (NCMEC) xabar beramiz.",
+          "6.6. Mualliflik huquqi buzilishi haqida bildirishnomalar. Agar Xizmat yordamida yaratilgan kontent mualliflik huquqingizni yoki boshqa huquqingizni buzadi deb hisoblasangiz, {contactEmail} manziliga yozing. Bildirishnomada koʻrsatilgan kontentni olib tashlashimiz yoki unga kirishni yopishimiz mumkin. Bildirishnomada quyidagilar boʻlishi kerak:",
+          {
+            list: [
+              "sizningcha buzilgan asar yoki huquq;",
+              "kontent qayerda joylashgani — masalan, uni topa olishimiz uchun havola;",
+              "ismingiz va aloqa maʼlumotlaringiz, jumladan elektron pochta manzili;",
+              "bunday foydalanishga huquq egasi, uning vakili yoki qonun ruxsat bermagan deb vijdonan hisoblashingiz, bildirishnomadagi maʼlumotlar toʻgʻri ekani hamda siz huquq egasi ekaningiz yoki uning nomidan harakat qilishga vakolatingiz borligi haqidagi bayonot.",
             ],
           },
         ],
@@ -315,16 +340,25 @@ export const uz: LegalTexts = {
             note: "Bu boʻlim oldindan toʻlangan kreditlar Xizmatda hozir qanday ishlashini tavsiflaydi. U malakali yurist koʻrib chiqishini kutmoqda; har qanday oʻzgarish shu sahifada yangi kuchga kirish sanasi bilan eʼlon qilinadi.",
           },
           "8.1. Nima sotib olasiz. Xizmatdan foydalanishning bir qismi oldindan toʻlangan kreditlar bilan toʻlanadi. Ular [Narxlar](/pricing) sahifasida koʻrsatilgan narxlarda, yakuniy koʻrinishda esa toʻlashdan oldin toʻlov oynasida koʻrsatilgan narxda ikki xil sotiladi: (a) oylik tariflar — siz bekor qilmaguningizcha har oy avtomatik yangilanadigan obuna; u har bir toʻlangan davr uchun belgilangan miqdorda kredit beradi; bu kreditlar faqat shu davr ichida ishlatiladi va uning oxirida yonadi, keyingi davrga oʻtmaydi; obunani istalgan vaqtda bekor qilish mumkin, shundan keyin tarif allaqachon toʻlangan davr oxirigacha qoʻshimcha toʻlovsiz amal qiladi; va (b) kredit paketlari — yangilanmaydigan bir martalik toʻlovlar. Kreditlar siz ular uchun sotib olgan tashkilot balansiga qoʻshiladi va faqat Xizmatda, faqat shu tashkilot tomonidan ishlatilishi mumkin. Tarif kreditlari paket kreditlaridan oldin, muddati tezroq tugaydiganlari esa birinchi sarflanadi.",
-          "8.2. Kimdan sotib olasiz. Buyurtma jarayonini bizning onlayn qayta sotuvchimiz (reseller) Paddle.com («Paddle») amalga oshiradi. Paddle barcha buyurtmalarimiz boʻyicha sotuvchi (Merchant of Record) hisoblanadi: kreditlarni siz Paddle’dan [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) asosida sotib olasiz. Paddle toʻlovni qayta ishlaydi, amaldagi soliqlarni (QQS yoki savdo soligʻi) hisoblaydi va undiradi, chek yoki hisob-faktura beradi hamda toʻlov boʻyicha savollar va qaytarish soʻrovlarini koʻrib chiqadi. Toʻlov maʼlumotlaringizni Paddle [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) asosida qayta ishlaydi; biz karta maʼlumotlaringizni hech qachon olmaymiz va saqlamaymiz.",
-          "8.3. Kreditlar qanday sarflanadi. Kreditlar Xizmat tashkilotingiz kanallaridan biri uchun video tayyorlaganda sarflanadi:",
+          "8.2. Kimdan sotib olasiz. Buyurtma jarayonini sotuvchimiz (Merchant of Record) va toʻlov provayderimiz Dodo Payments («Dodo») amalga oshiradi. Dodo kreditlarimiz va tariflarimizning vakolatli qayta sotuvchisi (reseller): ularni siz Dodo’dan [Dodo xaridorlar shartlari](https://dodopayments.com/legal/buyer-terms) asosida sotib olasiz, Xizmatni esa sizga biz taqdim etamiz. Dodo toʻlovni oʻzining toʻlov sahifasida qayta ishlaydi, amaldagi soliqlarni (QQS yoki savdo soligʻi) hisoblaydi va undiradi, buyurtma tasdigʻi va chekni elektron pochta orqali yuboradi hamda toʻlov boʻyicha savollar, qaytarish soʻrovlari va chargeback (toʻlovni bank orqali eʼtiroz qilish) holatlarini koʻrib chiqadi. Toʻlov maʼlumotlaringizni Dodo [Dodo Payments maxfiylik siyosati](https://dodopayments.com/legal/privacy-policy) asosida qayta ishlaydi; biz karta maʼlumotlaringizni hech qachon olmaymiz va saqlamaymiz. Dodo orqali toʻlovni ulash hali yakunlanmagan: u yoqilguncha Xizmatda koʻrsatiladigan har qanday toʻlov oynasi Paddle’ning sinov oynasi (sandbox) boʻlib, haqiqiy toʻlov qabul qilmaydi.",
+          "8.3. Kreditlar qanday sarflanadi. Kreditlar Xizmat tashkilotingiz kanallaridan biri uchun video tayyorlaganda («ishga tushirish»), Studiyada siz uchun rasm, videoklip yoki audio yaratganda yoxud tahrirlaganda («generatsiya»), shuningdek narxi boshlanishidan oldin Xizmatda koʻrsatiladigan boshqa pullik ishlar uchun sarflanadi. Ishga tushirish uchun:",
           {
             list: [
               "Ishga tushirishdan oldin taxminiy miqdordagi kredit band qilinadi. Taxmin — soʻralgan video uzunligining amaldagi daqiqalik stavkaga koʻpaytmasi, daqiqalik stavka qoʻllanilmasa — kanalingizning soʻnggi ishga tushirishlari narxiga asoslangan hisob; u hech qachon bitta ishga tushirish uchun belgilangan minimumdan kam boʻlmaydi. Taxmin ishga tushirishdan oldin Xizmatda koʻrsatiladi va mavjud kreditlaringiz (balans minus allaqachon band qilinganlar) uni qoplamasa, ishga tushirish boshlanmaydi.",
               "Ishga tushirish tugagach, u haqiqatda ishlatgan resurslar uchun kreditlar amaldagi stavkalar boʻyicha yechiladi — lekin hech qachon banddan koʻp emas. Bandning ishlatilmagan qismi shu zahoti mavjud kreditlaringizga qaytariladi. Ishga tushirish ishlatgan resurslarning hammasini oʻlchab va narxlab boʻlmasa, band toʻliq yechiladi.",
               "Ishga tushirish muvaffaqiyatsiz tugasa yoki oxiriga yetmasa, band toʻliq qaytariladi va hech narsa yechilmaydi. Hech qachon boshlanmagan yoki natijasini xabar qilmagan ishga tushirishning bandi avtomatik qaytariladi.",
-              "Har bir band, yechish va qaytarish Xizmatdagi tashkilotingizning kredit tarixiga yoziladi.",
             ],
           },
+          "Generatsiya uchun:",
+          {
+            list: [
+              "Boshlanishidan oldin Xizmat uning narxini koʻrsatadi va siz uni tasdiqlaysiz. Shu narx band qilinadi va mavjud kreditlaringiz uni qoplamasa, generatsiya boshlanmaydi.",
+              "Generatsiya tugagach, uning narxi yechiladi — hech qachon banddan koʻp emas — va bandning qolgan qismi qaytariladi. Agar modelni tanlashni Xizmatga topshirgan boʻlsangiz va birinchi model soʻrovni qabul qila olmasa, generatsiyani xuddi shu turdagi boshqa model bajarishi mumkin; bu holda shu model narxidan koʻp yechilmaydi.",
+              "Bitta rasmning bir nechta belgilangan sohasini tahrirlash faqat haqiqatda qoʻllangan sohalar uchun toʻlanadi: qoʻllangan sohalar uchun bandning ulushi, kreditning yuzdan bir qismigacha yuqoriga yaxlitlangan holda. Birorta ham soha qoʻllanmasa, hech narsa yechilmaydi.",
+              "Generatsiya muvaffaqiyatsiz tugasa, model uni rad etsa, u bekor qilinsa yoki oʻz vaqtida tugallanmasa, band toʻliq qaytariladi va hech narsa yechilmaydi.",
+            ],
+          },
+          "Boshqa har qanday pullik ish ham shu qoidaga boʻysunadi: boshlanishidan oldin kreditlar band qilinadi, tugagach banddan koʻp yechilmaydi, muvaffaqiyatsiz boʻlsa band toʻliq qaytariladi. Har bir band, yechish va qaytarish Xizmatdagi tashkilotingizning kredit tarixiga yoziladi.",
           "8.4. Kreditlarning tabiati. Kreditlar — Xizmatdan foydalanish uchun oldindan toʻlangan huquq, pul yoki depozit emas: ularning pul qiymati yoʻq, ularga foiz hisoblanmaydi, ularni pulga almashtirib (8.6-boʻlimdagi qaytarishdan tashqari), boshqa tashkilotga oʻtkazib yoki qayta sotib boʻlmaydi.",
           {
             creditExpiry: {
@@ -333,7 +367,7 @@ export const uz: LegalTexts = {
               unknown: "8.5. Amal qilish muddati. Toʻldirish kreditlari uchun sotib olish paytida paketlarga belgilangan muddat amal qiladi. Hozir uni bu sahifada koʻrsatib boʻlmadi; joriy muddatni bilish uchun bizga {contactEmail} manziliga yozing.",
             },
           },
-          "8.6. Qaytarish. Sotuvchi Paddle boʻlgani uchun qaytarishni Paddle [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) va amaldagi qonunchilik asosida amalga oshiradi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Qaytarishni soʻrash uchun Paddle chekidagi havoladan foydalaning yoki {contactEmail} manziliga yozing — yordam beramiz. [Qaytarish siyosati](/refund) bu qoidalarni bitta sahifada jamlaydi.",
+          "8.6. Qaytarish. Sotuvchi Dodo boʻlgani uchun qaytarish haqidagi qarorni Dodo [Dodo xaridorlar shartlari](https://dodopayments.com/legal/buyer-terms) va amaldagi qonunchilik asosida qabul qiladi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Qaytarishni soʻrash uchun {contactEmail} manziliga yozing — soʻrovni Dodo’ga yetkazamiz — yoki bevosita Dodo’ga murojaat qiling: xaridingizni Dodo’ning [customer.dodopayments.com](https://customer.dodopayments.com) mijozlar portalida toping va qaytarishni soʻrang. [Qaytarish siyosati](/refund) bu qoidalarni bitta sahifada jamlaydi.",
           "8.7. Qaytarish va chargeback kreditlarni olib qoʻyadi. Xarid qaytarilsa yoki bank orqali eʼtiroz qilinsa (chargeback), u qoʻshgan kreditlar tashkilot balansidan olinadi: toʻliq qaytarishda — hammasi, qisman qaytarishda — qaytarilgan summaga mutanosib qismi. Faqat mavjud kreditlarni olish mumkin: allaqachon sarflangan yoki ishlab turgan ishga tushirish uchun band qilinganlarini olib boʻlmaydi. Chargeback’dan keyin sarflangan, lekin toʻlanmagan kreditlar qolsa, tashkilotning pullik funksiyalardan foydalanishini toʻxtatib turishimiz mumkin.",
           "8.8. Narxlarning oʻzgarishi. Kredit paketlari narxlarini va kreditlar sarflanish stavkalarini oʻzgartirishimiz mumkin. Oʻzgarish balansingizdagi kreditlarni hech qachon kamaytirmaydi va ishga tushirish uchun u boshlanganda qoʻyilgan banddan koʻp hech qachon yechilmaydi.",
         ],
@@ -406,7 +440,7 @@ export const uz: LegalTexts = {
           {
             note: "Ushbu siyosat [Foydalanish shartlari](/terms#credits) 8-boʻlimining mazmunini bir joyda bayon qiladi. U boʻlim malakali yurist koʻrib chiqishini kutmoqda; har qanday oʻzgarish ikkala sahifada yangi kuchga kirish sanasi bilan eʼlon qilinadi. Agar matnlar bir-biridan farq qilsa, Foydalanish shartlari amal qiladi.",
           },
-          "Buyurtma jarayonini bizning onlayn qayta sotuvchimiz (reseller) Paddle.com («Paddle») amalga oshiradi. Paddle barcha buyurtmalarimiz boʻyicha sotuvchi (Merchant of Record) hisoblanadi: kreditlar va tariflarni siz Paddle’dan [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) asosida sotib olasiz, Paddle esa toʻlovni qayta ishlaydi, chek beradi va qaytarish soʻrovlarini koʻrib chiqadi.",
+          "Buyurtma jarayonini sotuvchimiz (Merchant of Record) va toʻlov provayderimiz Dodo Payments («Dodo») amalga oshiradi: kreditlar va tariflarni siz Dodo’dan [Dodo xaridorlar shartlari](https://dodopayments.com/legal/buyer-terms) asosida sotib olasiz, Dodo esa toʻlovni qayta ishlaydi, chek yuboradi hamda qaytarish soʻrovlari va chargeback holatlarini koʻrib chiqadi. Dodo orqali toʻlovni ulash hali yakunlanmagan: u yoqilguncha Xizmatda koʻrsatiladigan har qanday toʻlov oynasi Paddle’ning sinov oynasi (sandbox) boʻlib, haqiqiy toʻlov qabul qilmaydi, shuning uchun u boʻyicha qaytariladigan narsa yoʻq.",
         ],
       },
       {
@@ -416,9 +450,8 @@ export const uz: LegalTexts = {
           "Qaytarishni quyidagi usullardan biri bilan soʻrashingiz mumkin:",
           {
             list: [
-              "bizga {contactEmail} manziliga yozing — yordam beramiz;",
-              "xariddan keyin Paddle yuborgan chek xatiga javob yozing yoki undagi havoladan foydalaning;",
-              "xaridingizni [paddle.net](https://paddle.net) saytida toping va u yerda Paddle’ga murojaat qiling.",
+              "bizga {contactEmail} manziliga yozing — soʻrovni Dodo’ga yetkazamiz;",
+              "chekdagi buyurtma raqami va xaridda foydalangan elektron pochta manzilingizni koʻrsatib, bevosita Dodo Payments’ga murojaat qiling: xaridingizni Dodo’ning [customer.dodopayments.com](https://customer.dodopayments.com) mijozlar portalida toping va qaytarishni soʻrang.",
             ],
           },
         ],
@@ -427,7 +460,7 @@ export const uz: LegalTexts = {
         id: "when",
         heading: "3. Qaytarish qachon beriladi",
         body: [
-          "Qaytarish haqidagi qarorni Paddle [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) va amaldagi qonunchilik asosida qabul qiladi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Biz qaytarish uchun alohida muddat belgilamaymiz.",
+          "Qaytarish haqidagi qarorni Dodo [Dodo xaridorlar shartlari](https://dodopayments.com/legal/buyer-terms) va amaldagi qonunchilik asosida qabul qiladi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Biz qaytarish uchun alohida muddat belgilamaymiz.",
           "Ushbu siyosatdagi hech narsa qonun bilan berilgan isteʼmolchi huquqlaringizni cheklamaydi.",
         ],
       },
@@ -444,7 +477,7 @@ export const uz: LegalTexts = {
         id: "failed-runs",
         heading: "5. Muvaffaqiyatsiz generatsiyalar",
         body: [
-          "Generatsiya muvaffaqiyatsiz tugasa, hech narsa soʻrashingiz shart emas. Ishga tushirishdan oldin uning taxminiy narxi band qilinadi. Ishga tushirish muvaffaqiyatsiz tugasa yoki oxiriga yetmasa, band toʻliq qaytariladi va hech narsa yechilmaydi; hech qachon boshlanmagan yoki natijasini xabar qilmagan ishga tushirishning bandi avtomatik qaytariladi. Ishga tushirish tugagach, faqat u haqiqatda ishlatgan resurslar uchun yechiladi — hech qachon banddan koʻp emas.",
+          "Generatsiya muvaffaqiyatsiz tugasa, hech narsa soʻrashingiz shart emas. Ishga tushirishdan oldin uning taxminiy narxi band qilinadi. Ishga tushirish muvaffaqiyatsiz tugasa yoki oxiriga yetmasa, band toʻliq qaytariladi va hech narsa yechilmaydi; hech qachon boshlanmagan yoki natijasini xabar qilmagan ishga tushirishning bandi avtomatik qaytariladi. Ishga tushirish tugagach, faqat u haqiqatda ishlatgan resurslar uchun yechiladi — hech qachon banddan koʻp emas. Studiyadagi generatsiyaga ham shu qoida tegishli: u muvaffaqiyatsiz tugasa yoki model uni rad etsa, uning bandi toʻliq qaytariladi (Shartlarning 8.3-boʻlimi).",
           "Har bir band, yechish va qaytarish Xizmatdagi tashkilotingizning kredit tarixiga yoziladi.",
         ],
       },
@@ -452,7 +485,7 @@ export const uz: LegalTexts = {
         id: "subscriptions",
         heading: "6. Oylik tarifni bekor qilish",
         body: [
-          "Oylik tarifni istalgan vaqtda bekor qilishingiz mumkin — Xizmatdagi Kreditlar sahifasidagi «Obunani boshqarish» orqali yoki [paddle.net](https://paddle.net) saytida. Shundan keyin tarif allaqachon toʻlangan davr oxirigacha qoʻshimcha toʻlovsiz amal qiladi va yangilanmaydi. Tarif bilan berilgan kreditlar faqat ular berilgan davr ichida ishlatiladi va uning oxirida yonadi.",
+          "Oylik tarifni istalgan vaqtda bekor qilishingiz mumkin — Xizmatdagi Kreditlar sahifasidagi «Obunani boshqarish» orqali. Shundan keyin tarif allaqachon toʻlangan davr oxirigacha qoʻshimcha toʻlovsiz amal qiladi va yangilanmaydi. Tarif bilan berilgan kreditlar faqat ular berilgan davr ichida ishlatiladi va uning oxirida yonadi.",
           "Bekor qilish keyingi yangilanishlarni toʻxtatadi. Allaqachon amalga oshirilgan toʻlovni qaytarishni soʻrash uchun 2-boʻlimga qarang.",
         ],
       },
