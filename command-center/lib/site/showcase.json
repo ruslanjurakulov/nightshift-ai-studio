@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "b146819c-ea16-4b1d-9e95-bde9bf8be2a6",
+      "assetId": "6d865b49-b4c8-5009-bc9e-326dc704b29d",
+      "sha256": "0a1d330a04e48368f95b74fa5088b4ced7a3bbb46270471040c554f273a5f12d",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical shot in a dim bedroom: a smartphone lies on the bed playing a video; a cheerful cartoon-style character in a yellow raincoat climbs out of the glowing screen into the real room, looks at the camera, shrugs and hops back into the phone. Magical realism, soft blue screen light. Audio: a playful pop, a tiny giggle.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2276,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:03:33Z"
     }
   ]
 }
