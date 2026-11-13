@@ -72,7 +72,8 @@ class ApiCreativeModelsMigration(unittest.TestCase):
 
     def test_read_only_nothing_held_or_charged(self):
         for name in SIGS:
-            low = body(name).lower()
+            # The code, not its comments (one says why a failed, released job lists no file).
+            low = re.sub(r"--[^\n]*", "", body(name)).lower()
             for verb in ("insert into", "update public", "delete from", "truncate", "perform ", "set_config",
                          "create_creative_job", "reserve_credits", "capture", "release", "grant_credits"):
                 self.assertNotIn(verb, low, f"{name}: {verb}")
@@ -80,7 +81,7 @@ class ApiCreativeModelsMigration(unittest.TestCase):
     def test_the_model_list_is_the_api_sellable_set_narrowed_by_creates_entitlement_rule_and_has_no_price(self):
         b = body("api_creative_models")
         self.assertIn("from public.sellable_models(v_cap, 'api') s", b)
-        self.assertIn("where coalesce(s.entitlement, 'any') = 'any'\n          or (s.entitlement = 'paid' and v_paid);", b)
+        self.assertIn("where (coalesce(s.entitlement, 'any') = 'any'\n              or (s.entitlement = 'paid' and v_paid))", b)
         self.assertIn("v_paid := public.credits_exempt(v_org)\n                or exists (select 1 from public.credit_transactions t where t.org_id = v_org and t.kind = 'purchase');", b)
         # The same two branches as creative_price's entitlement check, in the latest body that has them (0156).
         price = (MIG / "0156_named_resolution_params.sql").read_text(encoding="utf-8")
@@ -89,6 +90,20 @@ class ApiCreativeModelsMigration(unittest.TestCase):
         for priced in ("credits_per_unit", "margin", "credit_unit", "price"):
             self.assertNotIn(priced, re.sub(r"--.*", "", b), priced)
         self.assertIn("'spec', s.spec - 'api_exposure'", b)
+
+    def test_the_listed_capabilities_are_exactly_the_apis_twin_in_typescript(self):
+        b = body("api_creative_models")
+        sql_caps = re.findall(r"'([a-z_0-9]+)'", re.search(r"and s\.capabilities && array\[(.*?)\]::text\[\];", b, re.S).group(1))
+        ts = (ROOT / "command-center" / "lib" / "api" / "operations.ts").read_text(encoding="utf-8")
+        ts_caps = re.findall(r'"([a-z_0-9]+)"', re.search(r"export const API_CREATIVE_CAPABILITIES = \[(.*?)\] as const", ts, re.S).group(1))
+        self.assertEqual(sql_caps, ts_caps)
+        # Captions are a web tool (0125): never an API capability.
+        self.assertNotIn("captions", sql_caps)
+        # Today every capability the registry allows (0100's check) but captions is an API one, so the array changes nothing; it
+        # keeps a capability added to the registry later out of the list until the API can generate it.
+        reg = (MIG / "0100_video_ai_ops.sql").read_text(encoding="utf-8")
+        allowed = re.findall(r"'([a-z_0-9]+)'", re.search(r"model_registry_capabilities_check\n  check \(cardinality\(capabilities\) between 1 and 19\n\s+and capabilities <@ array\[(.*?)\]::text\[\]\);", reg, re.S).group(1))
+        self.assertEqual(sorted(allowed), sorted(sql_caps + ["captions"]))
 
     def test_files_only_for_a_job_this_key_started_like_api_creative_get(self):
         files = body("api_creative_job_files")
@@ -104,7 +119,8 @@ class ApiCreativeModelsMigration(unittest.TestCase):
         )
         self.assertIn(rule, files)
         self.assertIn(rule, get)
-        self.assertIn("where m.id = any (j.result_asset_ids)\n       and m.org_id = j.org_id\n       and m.deleted_at is null\n       and m.storage = 'local';", files)
+        # Breach BR-0162-1: a job that failed after its assets were attached (hold released) must not hand out a download.
+        self.assertIn("where j.status = 'completed'\n       and m.id = any (j.result_asset_ids)\n       and m.org_id = j.org_id\n       and m.deleted_at is null\n       and m.storage = 'local';", files)
         self.assertIn("public.api_ok(public.api_creative_job_json(j) || jsonb_build_object('files', v_files))", files)
 
     def test_the_drift_guard_and_the_rollback_carry_each_bodys_own_md5(self):

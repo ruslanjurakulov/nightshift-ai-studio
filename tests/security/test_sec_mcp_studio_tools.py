@@ -200,6 +200,23 @@ def test_a_paid_model_is_listed_once_the_organization_bought_credits_and_create_
     assert "img-paid" not in ids(models(db, "a_full"))
 
 
+def test_a_credits_exempt_organization_sees_a_paid_model_without_a_purchase_but_never_a_plan_feature(db):
+    # The operator's own organization (0018 default_org_id) is credits-exempt: creative_price sells it a `paid` model (0156).
+    exempt = db.su("select public.default_org_id()::text")[0][0]
+    assert db.su("select public.credits_exempt(%s)", [exempt])[0][0]
+    db.su("insert into public.organizations (id, name, slug) values (%s, 'Default', 'default-c6') on conflict (id) do nothing", [exempt])
+    db.su("insert into public.org_members (org_id, user_id, email, role) values (%s,%s,'a@c6.io','owner') on conflict do nothing", [exempt, UA])
+    db.su("insert into public.api_settings (org_id, activated_at, activated_by, terms_version) values (%s, now(), %s, 'v1') "
+          "on conflict (org_id) do update set activated_at = now()", [exempt, UA])
+    db.su("insert into public.api_keys (org_id, name, key_hash, created_by, scopes) values (%s, 'exempt', %s, %s, %s)",
+          [exempt, H("exempt"), UA, ALL_CREATIVE])
+    assert db.su("select count(*) from public.credit_transactions where org_id=%s and kind='purchase'", [exempt])[0][0] == 0
+    listed = ids(models(db, "exempt"))
+    assert "img-paid" in listed and "img-pro" not in listed and "img-webonly" not in listed, listed
+    quoted = db.act("anon", None, "select public.api_creative_quote(%s,'t2i','img-paid',%s::jsonb,null)", [H("exempt"), json.dumps(PROMPT)])[0][0]
+    assert quoted["ok"], quoted
+
+
 def test_a_capability_narrows_the_list_and_an_unknown_one_is_400(db):
     assert ids(models(db, "a_full", "edit")) == ["img-edit"]
     assert models(db, "a_full", "EDIT ")["data"]["capability"] == "edit"
@@ -244,6 +261,10 @@ def test_files_of_a_job_this_key_started_only_its_own_live_local_assets(db):
     theirs = asset(db, ORG_B)
     # Even if a job row named them, only the organization's own, undeleted, local assets are answered.
     db.su("update public.creative_jobs set result_asset_ids = %s::uuid[] where id = %s", [[mine, gone, remote, theirs], job])
+    # Not yet completed (so not charged): no file at all (Breach BR-0162-1; tests/security/test_sec_breach_mcp_studio_0162.py
+    # walks the worker's real path to a failed job).
+    assert files(db, "a_full", job)["data"]["files"] == []
+    db.su("update public.creative_jobs set status = 'completed', finished_at = now() where id = %s", [job])
     out = files(db, "a_full", job)
     assert out["ok"] and out["data"]["id"] == job, out
     assert [f["asset_id"] for f in out["data"]["files"]] == [mine], out

@@ -13,7 +13,7 @@ import { parseJobError, type RunBackend } from "@/lib/runBackend";
 import { en } from "@/lib/i18n/en";
 import { API_KEY_PREFIX, hashApiKey, parseBearer, sha256Hex } from "@/lib/api/keys";
 import { apiError, fromRpcResult, type ApiResult } from "@/lib/api/http";
-import { parseGenerationInput } from "@/lib/creative/operations";
+import { parseGenerationInput, type CreativeCapability } from "@/lib/creative/operations";
 
 export type Rpc = (
   fn: string,
@@ -463,11 +463,15 @@ export async function getCreativeJob(caller: ApiCaller, jobId: string): Promise<
 
 // ── the MCP Studio tools (0162) ────────────────────────────────────────────
 
-/** The capabilities a model list may be narrowed to: 0125's sellable_models list, which refuses any other. */
-export const CREATIVE_CAPABILITIES = [
+/**
+ * What the API generates: the capabilities api_creative_quote / _create accept for a key, i.e. the creative list
+ * (lib/creative/operations.ts) without captions (a web tool, 0125) and music (no registry capability; 0100's check). 0162's
+ * api_creative_models lists only models with one of these (its SQL array is pinned equal by tests/test_api_creative_models_migration.py).
+ */
+export const API_CREATIVE_CAPABILITIES = [
   "t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe",
   "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg",
-] as const;
+] as const satisfies readonly CreativeCapability[];
 
 /**
  * The models this key's organization can generate with through the API (0162 api_creative_models): what its create would accept,
@@ -475,8 +479,8 @@ export const CREATIVE_CAPABILITIES = [
  */
 export async function listCreativeModels(caller: ApiCaller, capability?: string | null): Promise<ApiResult> {
   const cap = capability == null ? null : capability.trim().toLowerCase();
-  if (cap !== null && !(CREATIVE_CAPABILITIES as readonly string[]).includes(cap))
-    return bad("invalid_params", `capability must be one of: ${CREATIVE_CAPABILITIES.join(", ")}.`);
+  if (cap !== null && !(API_CREATIVE_CAPABILITIES as readonly string[]).includes(cap))
+    return bad("invalid_params", `capability must be one of: ${API_CREATIVE_CAPABILITIES.join(", ")}.`);
   return call(caller, "api_creative_models", { p_capability: cap }, "0162");
 }
 
@@ -503,13 +507,19 @@ export async function getCreativeJobFiles(caller: ApiCaller, jobId: string): Pro
     const thumbnail_url = UUID_RE.test(id) && mime && sign && variants.includes("thumb") ? sign(id, "thumb", mime) : null;
     return { asset_id: id, kind: f.kind, mime, width: f.width ?? null, height: f.height ?? null, duration_s: f.duration_s ?? null, url, thumbnail_url };
   });
-  const unsigned = files.length > 0 && files.every((f) => f.url === null);
-  return {
-    ...result,
-    data: {
-      ...d,
-      files,
-      ...(unsigned ? { files_note: "This server cannot hand out file links right now; the files are in the workspace's library in the app." } : {}),
-    },
-  };
+  // CLAUDE.md #5: an empty or short list must never read as "it made nothing". The database lists files only for a completed job
+  // (0162, Breach BR-0162-1), and only those still in the library on this server's own volume.
+  const made = Array.isArray(d.result_asset_ids) ? d.result_asset_ids.length : 0;
+  const note =
+    d.status !== "completed"
+      ? // A failed, cancelled or expired generation was not charged and has no files to give; its error says why.
+        ["failed", "cancelled", "expired"].includes(String(d.status))
+        ? null
+        : "Files are listed once the generation is completed."
+      : files.length < made
+        ? `${made - files.length} of this generation's ${made} results cannot be served from this server (deleted, or stored elsewhere); what is still kept is in the workspace's library in the app.`
+        : files.length > 0 && files.every((f) => f.url === null)
+          ? "This server cannot hand out file links right now; the files are in the workspace's library in the app."
+          : null;
+  return { ...result, data: { ...d, files, ...(note ? { files_note: note } : {}) } };
 }

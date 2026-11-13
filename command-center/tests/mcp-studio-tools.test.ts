@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiCaller, Rpc } from "@/lib/api/operations";
 import { apiError, type ApiResult } from "@/lib/api/http";
-import { buildMcpServer, STUDIO_REMEDIES, STUDIO_TOOL_NAMES, TOOL_NAMES } from "@/lib/api/mcp";
+import { buildMcpServer, CREATE_REMEDIES, STUDIO_REMEDIES, STUDIO_TOOL_NAMES, TOOL_NAMES } from "@/lib/api/mcp";
+import { API_CREATIVE_CAPABILITIES } from "@/lib/api/operations";
+import { CREATIVE_CAPABILITIES } from "@/lib/creative/operations";
 import { OAUTH_TOOL_SCOPES, oauthRpc } from "@/lib/api/mcp-oauth";
 import { MCP_TOOL_IDS } from "@/lib/dev/mcp-clients";
 import { devDictionaries } from "@/lib/i18n/dev";
@@ -126,6 +128,10 @@ describe("list_models", () => {
     expect(dbCalls()).toEqual([{ fn: "api_creative_models", args: { p_key_hash: KEY_HASH, p_capability: "t2v", p_request_id: expect.stringMatching(/^req_/) } }]);
   });
 
+  it("the API's capabilities are the Studio's own, without the web-only captions and the unsellable music", () => {
+    expect([...API_CREATIVE_CAPABILITIES].sort()).toEqual(CREATIVE_CAPABILITIES.filter((c) => c !== "captions" && c !== "music").sort());
+  });
+
   it("with no capability asks for every model; an unknown capability never reaches the database", async () => {
     await callTool("list_models", {});
     expect(dbCalls()[0].args.p_capability).toBeNull();
@@ -224,6 +230,24 @@ describe("create_generation: the ceiling and the idempotency key carry the money
     expect(err.remedy).toContain(remedy);
   });
 
+  it.each(["idempotency_in_progress", "upstream_error", "internal_error"])(
+    "a %s answer to create says to retry with the SAME idempotency_key, never a new one (a new one could pay twice)",
+    async (code) => {
+      state.answers.api_creative_create = { ok: false, status: code === "idempotency_in_progress" ? 409 : 502, error: { code, message: "not settled" } };
+      const out = await callTool("create_generation", { ...GEN, max_credits: 90, idempotency_key: "gen-4" });
+      const err = (out.body as { error: { code: string; remedy: string } }).error;
+      expect(err.code).toBe(code);
+      expect(err.remedy).toMatch(/SAME idempotency_key, never a new one/);
+    },
+  );
+
+  it("a read that the database did not answer gets no create advice", async () => {
+    state.answers.api_creative_quote = { ok: false, status: 502, error: { code: "upstream_error", message: "no answer" } };
+    const out = await callTool("quote_generation", GEN);
+    expect((out.body as { error: Record<string, unknown> }).error).not.toHaveProperty("remedy");
+    expect(CREATE_REMEDIES.upstream_error).toMatch(/SAME idempotency_key/);
+  });
+
   it("no credits and no model are told apart: opposite remedies", () => {
     expect(STUDIO_REMEDIES.insufficient_credits).not.toMatch(/list_models/);
     expect(STUDIO_REMEDIES.model_not_sellable).not.toMatch(/credits/);
@@ -232,7 +256,7 @@ describe("create_generation: the ceiling and the idempotency key carry the money
 });
 
 describe("get_generation", () => {
-  const row = (files: unknown[]) => ({ ok: true, status: 200, data: { id: JOB, status: "succeeded", charged_credits: 90, files } });
+  const row = (files: unknown[]) => ({ ok: true, status: 200, data: { id: JOB, status: "completed", charged_credits: 90, result_asset_ids: files.map((f) => (f as { asset_id: string }).asset_id), files } });
 
   it("is api_creative_job_files for the id, and signs a link to each file (the original, and its thumbnail when there is one)", async () => {
     state.answers.api_creative_job_files = row([{ asset_id: ASSET, kind: "video", mime: "video/mp4", variants: ["thumb", "proxy"], width: 1280, height: 720, duration_s: 6 }]);
@@ -256,6 +280,26 @@ describe("get_generation", () => {
     expect(body.files[0].url).toBeNull();
     expect(body.files[0].thumbnail_url).toBeNull();
     expect(body.files_note).toMatch(/library/);
+  });
+
+  it("an empty or short list never reads as 'it made nothing' (CLAUDE.md #5)", async () => {
+    // Completed, two results, one no longer served here: the list says how many cannot be served and where they are.
+    state.answers.api_creative_job_files = {
+      ok: true, status: 200,
+      data: { id: JOB, status: "completed", result_asset_ids: [ASSET, JOB], files: [{ asset_id: ASSET, kind: "image", mime: "image/png", variants: [] }] },
+    };
+    const short = (await callTool("get_generation", { generation_id: JOB })).body as { files: unknown[]; files_note?: string };
+    expect(short.files).toHaveLength(1);
+    expect(short.files_note).toMatch(/^1 of this generation's 2 results cannot be served/);
+    // Still running: no file yet, and it says so.
+    state.answers.api_creative_job_files = { ok: true, status: 200, data: { id: JOB, status: "running", result_asset_ids: [], files: [] } };
+    const running = (await callTool("get_generation", { generation_id: JOB })).body as { files_note?: string };
+    expect(running.files_note).toBe("Files are listed once the generation is completed.");
+    // Failed and refunded (Breach BR-0162-1): no file and no promise of one; the job's own error is the explanation.
+    state.answers.api_creative_job_files = { ok: true, status: 200, data: { id: JOB, status: "failed", result_asset_ids: [ASSET], files: [], error: "refused" } };
+    const failed = (await callTool("get_generation", { generation_id: JOB })).body as { files: unknown[]; files_note?: string };
+    expect(failed.files).toEqual([]);
+    expect(failed).not.toHaveProperty("files_note");
   });
 
   it("a job that is not this key's is the database's 404; a malformed id never reaches it", async () => {

@@ -18,11 +18,11 @@ declare
   h text;
 begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.api_creative_models(text, text, text)');
-  if h is not null and h <> 'c71d2d0fe6e76d5ed2cd8975b8ad73c3' then
+  if h is not null and h <> 'fe49adb06e9344c925e14c1bfbe3330d' then
     raise exception 'rollback 0162: public.api_creative_models(text, text, text) is not 0162''s body (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.api_creative_job_files(text, uuid, text)');
-  if h is not null and h <> '010344fe500657f32873d04f6d666b14' then
+  if h is not null and h <> '31afb0f38cd2bbe7fa69ae983ebc5c8c' then
     raise exception 'rollback 0162: public.api_creative_job_files(text, uuid, text) is not 0162''s body (md5 %): read the live body first', h;
   end if;
 end $$;

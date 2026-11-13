@@ -10,7 +10,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import {
-  CREATIVE_CAPABILITIES,
+  API_CREATIVE_CAPABILITIES,
+  IDEMPOTENCY_KEY_RE,
   createCreative,
   createVideo,
   getBalance,
@@ -28,6 +29,7 @@ import {
   type ApiCaller,
 } from "@/lib/api/operations";
 import { apiError, toWire, type ApiResult } from "@/lib/api/http";
+import { MODEL_ID_RE } from "@/lib/models-admin";
 import { missingScope, OAUTH_TOOL_SCOPES, oauthRefusalText } from "@/lib/api/mcp-oauth";
 
 export const MCP_SERVER_INFO = { name: "nightshift", version: "1.0.0" } as const;
@@ -43,7 +45,7 @@ export function toToolResult(result: ApiResult, requestId: string): CallToolResu
 
 const idempotency = z
   .string()
-  .regex(/^[A-Za-z0-9_:.-]{1,255}$/)
+  .regex(IDEMPOTENCY_KEY_RE)
   .optional()
   .describe("Optional. Reuse the same value when retrying so the action happens once (24 hours).");
 
@@ -82,7 +84,7 @@ const KEY_INSTRUCTIONS =
   "cross-posts a finished video that passed review; YouTube uploads are private. " +
   "For a single picture, clip or voice-over from the Studio's models: list_models, then quote_generation (free), tell the person " +
   "the price in credits, and only then create_generation with that price as max_credits and a fresh idempotency_key. Generations " +
-  "are paid in the organization's CREDITS, not the API balance; poll get_generation until it succeeds for its file links.";
+  "are paid in the organization's CREDITS, not the API balance; poll get_generation until it is completed for its file links.";
 
 /**
  * The instructions of a connection, from the tools its grant is offered. One
@@ -147,15 +149,28 @@ export const STUDIO_REMEDIES: Readonly<Record<string, string>> = {
   invalid_params: "A setting is missing or not accepted by this model. Check list_models for what the model takes, then quote again.",
   max_credits_required: "Send max_credits: the price from quote_generation that the person agreed to.",
   idempotency_key_reused: "That idempotency_key was already used for a different generation. Use a fresh one for a new generation.",
+  idempotency_in_progress:
+    "The same generation is still being started. Call create_generation again in a few seconds with the SAME idempotency_key, never a new one.",
   insufficient_scope: "This API key lacks the permission for this tool. An owner or admin can create a key with the Studio permissions (creative) in the Developer console.",
   run_limit_reached: "All of the plan's parallel runs are busy. Wait a minute for one to finish, then try again.",
   api_not_activated: "The API is not activated for this organization. An owner or admin can activate it in the Developer console.",
 };
 
+/**
+ * create_generation's own remedies, where its answer differs from a read's: when the database did not answer, whether a
+ * generation was started is unknown, so the only safe retry is the same request with the same idempotency_key (it can never
+ * start twice); a fresh key could pay twice.
+ */
+export const CREATE_REMEDIES: Readonly<Record<string, string>> = {
+  upstream_error: "Whether it started is not known. Call create_generation again with the SAME idempotency_key, never a new one: it starts at most once.",
+  internal_error: "Whether it started is not known. Call create_generation again with the SAME idempotency_key, never a new one: it starts at most once.",
+};
+
 /** A Studio tool's result: the API's answer, plus `remedy` on a refusal the caller can act on. */
-function withRemedy(result: ApiResult): ApiResult {
-  if (result.ok || !Object.hasOwn(STUDIO_REMEDIES, result.code)) return result;
-  return { ...result, details: { ...(result.details ?? {}), remedy: STUDIO_REMEDIES[result.code] } };
+function withRemedy(result: ApiResult, own: Readonly<Record<string, string>> = {}): ApiResult {
+  if (result.ok) return result;
+  const remedy = Object.hasOwn(own, result.code) ? own[result.code] : Object.hasOwn(STUDIO_REMEDIES, result.code) ? STUDIO_REMEDIES[result.code] : null;
+  return remedy === null ? result : { ...result, details: { ...(result.details ?? {}), remedy } };
 }
 
 /** A log line's name for a thrown value: the class name when it is a plain identifier, never the message. */
@@ -415,10 +430,10 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
   // Each is one call to an existing database door: 0162's model list and files, 0062's quote and create. The price, the hold, the
   // capture and the refund stay in those functions (create_creative_job); nothing here computes or moves a credit. A connected app
   // is never offered them: they are not in OAUTH_TOOL_SCOPES, so `offered` is false and `register` skips them.
-  const capability = z.enum(CREATIVE_CAPABILITIES).describe("What to make: t2i (a picture from words), edit, t2v (a clip from words), i2v (a clip from a picture), tts, sfx, and so on.");
+  const capability = z.enum(API_CREATIVE_CAPABILITIES).describe("What to make: t2i (a picture from words), edit, t2v (a clip from words), i2v (a clip from a picture), tts, sfx, and so on.");
   const generation = {
     capability,
-    model: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/).describe("A model id from list_models."),
+    model: z.string().regex(MODEL_ID_RE).describe("A model id from list_models."),
     params: z
       .record(z.string(), z.unknown())
       .describe("The model's settings, e.g. { \"prompt\": \"…\", \"aspect_ratio\": \"16:9\", \"duration_s\": 5 }. list_models names what each model takes."),
@@ -463,12 +478,12 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
         .object({
           ...generation,
           max_credits: z.number().min(0).describe("The most credits the person agreed to pay for this generation: the quoted price."),
-          idempotency_key: z.string().regex(/^[A-Za-z0-9_:.-]{1,255}$/).describe("Required. A fresh value per generation; reuse it only to retry the same one."),
+          idempotency_key: z.string().regex(IDEMPOTENCY_KEY_RE).describe("Required. A fresh value per generation; reuse it only to retry the same one."),
         })
         .strict(),
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    async ({ idempotency_key, ...body }) => done(withRemedy(await createCreative(caller, body, idempotency_key))),
+    async ({ idempotency_key, ...body }) => done(withRemedy(await createCreative(caller, body, idempotency_key), CREATE_REMEDIES)),
   );
 
   register(
@@ -476,8 +491,8 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
     {
       title: "Get a generation",
       description:
-        "A generation this key started: its status (queued, running, succeeded, failed), what was held and charged, and once it " +
-        "succeeded a link to each file (it expires after a few minutes; ask again for a fresh one).",
+        "A generation this key started: its status (queued, running, completed, failed), what was held and charged, and once it " +
+        "completed a link to each file: a path on this server (prefix it with the origin of the MCP address you connected to), which expires after a few minutes (ask again for a fresh one).",
       inputSchema: z.object({ generation_id: z.string().uuid() }).strict(),
       annotations: { readOnlyHint: true },
     },

@@ -1299,22 +1299,28 @@ the API key's hash, never a session or the service key — and two things the St
 - **`api_creative_models(p_key_hash, p_capability, p_request_id)`.** The models an API key's organization can generate with through
   the API, optionally for one capability: `sellable_models(capability, 'api')` (the set `api_creative_model_ok` lets
   `api_creative_create` sell), narrowed by creative_price's own entitlement rule (0156: `any`, or `paid` once the organization bought
-  credits or is credits-exempt). Every other entitlement is refused at create, so it is not listed. No price: the quote is the only
-  price a caller may act on. api_begin with `creative.quote` (scope `creative:quote`; api_endpoint_scope is not replaced), logged as
-  `creative.models`. An unknown capability is 400 `invalid_params`.
+  credits or is credits-exempt). Every other entitlement is refused at create, so it is not listed; nor is a model with none of the
+  API's capabilities (a SQL array twinned with `API_CREATIVE_CAPABILITIES` in `command-center/lib/api/operations.ts`). No price: the
+  quote is the only price a caller may act on. Answers `{ capability, models: [{ id, name, capabilities, availability, spec }] }`.
+  api_begin with `creative.quote` (scope `creative:quote`; api_endpoint_scope is not replaced): a call past api_begin is logged as
+  `creative.models`, one refused inside it (key, scope, request limit) as `creative.quote`. An unknown capability is 400
+  `invalid_params`.
 - **`api_creative_job_files(p_key_hash, p_job_id, p_request_id)`.** `api_creative_get`'s answer for a generation THIS key started
   (0062's ownership rule, word for word) plus `files`: each result asset not deleted and stored `local` (the only storage the signed
-  file route serves), with kind, type, size and variants, so the server can sign `/api/media/file/...` links. api_begin with
-  `creative.get` (scope `creative:read`).
+  file route serves), as `{ asset_id, kind, mime, variants, width, height, duration_s }`, so the server can sign
+  `/api/media/file/...` links. Files only for a `completed` job: the worker attaches a job's assets while it is still processing and
+  settles it afterwards, so a job that then failed (hold released, nothing charged) still names them (Breach BR-0162-1); any other
+  status answers `files: []`. api_begin with `creative.get` (scope `creative:read`).
 - **Who may call them.** `anon` only (PostgREST with the anon key), like every api_* entry point; not authenticated, not service_role,
   not PUBLIC. A connected app's access token (0093) is refused by oauth_ctx (`not_available_for_connected_apps`): oauth_endpoint_scope
   has no entry for creative.quote or creative.get. The last block asserts grants, definer and search_path.
-- **md5.** `api_creative_models` `c71d2d0fe6e76d5ed2cd8975b8ad73c3`, `api_creative_job_files` `010344fe500657f32873d04f6d666b14`
+- **md5.** `api_creative_models` `fe49adb06e9344c925e14c1bfbe3330d`, `api_creative_job_files` `31afb0f38cd2bbe7fa69ae983ebc5c8c`
   (drift guard, rollback).
 - **Without it.** The MCP tools `list_models` and `get_generation` answer 503 `api_unavailable` naming 0162; `quote_generation` and
   `create_generation` call 0062's functions and work either way.
-- **Number.** 0162. Needs 0031, 0035, 0038 and 0062; names nothing of 0147's to 0157's. The numbering tests of 0127, 0131 and 0133
+- **Number.** 0162. Needs 0031, 0035, 0038, 0062, 0075 (`creative_route_quote`) and 0124 (`model_is_available`); names nothing of 0147's to 0157's. The numbering tests of 0127, 0131 and 0133
   list it as reviewed.
 - **Undo.** `docs/sql/rollback_0162_api_creative_models.sql` (owner-applied): refuses a body that is not 0162's, drops both.
 - **Tests.** `tests/test_api_creative_models_migration.py` (the text, the hashes, the rollback, the numbering),
-  `tests/security/test_sec_mcp_studio_tools.py` (a real PostgreSQL), `command-center/tests/mcp-studio-tools.test.ts` (the MCP layer).
+  `tests/security/test_sec_mcp_studio_tools.py` and `tests/security/test_sec_breach_mcp_studio_0162.py` (a real PostgreSQL),
+  `command-center/tests/mcp-studio-tools.test.ts` (the MCP layer).
