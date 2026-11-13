@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./fonts.css";
 import "./globals.css";
+// The glass tokens (--glass-*, .ns-glass) the public site and the app share; after globals.css, whose theme it follows.
+import "./glass.css";
 // The motion kit's CSS half (reduced-motion and no-script guards, plate,
 // .ns-press) is global and tiny; the JavaScript half (MotionProvider) is
 // mounted only by layouts whose pages animate — see docs/design/MOTION.md §7.
