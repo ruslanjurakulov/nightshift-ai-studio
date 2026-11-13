@@ -227,6 +227,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "ab0bcba2-8374-465d-b505-8dac19977948",
+      "assetId": "c8157f94-ef60-53cc-b19e-09dbf4e67854",
+      "sha256": "5b6fcc9d11d6cf4c7c8e23a0937f141a087a376480e9af721705cc575f058c45",
+      "modelId": "minimax-h3-highspeed",
+      "modelName": "MiniMax H3 Highspeed",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Aerial drone tracking shot of a vintage white camper van driving along a winding coastal cliff road at golden hour, turquoise ocean waves breaking below, long shadows, warm sun flare, smooth steady camera following the van, cinematic travel-vlog look. Audio: wind and distant surf, no music.",
+      "createdAt": "2026-11-13T17:44:33Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Highspeed",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:14:00Z"
     }
   ]
 }
