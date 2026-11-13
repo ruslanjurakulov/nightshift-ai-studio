@@ -42,8 +42,9 @@ export default async function SeriesPlanPage({ params }: { params: Promise<{ id:
   const supabase = await createClient();
   if (!supabase) return <NotConfigured />;
 
-  // Another organization's plan reads exactly like a missing one: RLS hides it from a member elsewhere, and a platform administrator
-  // sees it only after switching to its organization (its episodes are then never asked for).
+  // Another organization's plan reads exactly like a missing one (its episodes are then never asked for): RLS hides it from a
+  // member elsewhere, and a platform administrator, whose RLS would let it through, cannot be in a customer's organization here
+  // (the current org is their own or the default; owner decision, 2026-11-13; support is read-only through Customers).
   const scope = await getChannelScope();
   const read = await readSeriesPlan(supabase, id, (channelId) => channelInScope(channelId, scope));
   if (read.state === "unsupported") {

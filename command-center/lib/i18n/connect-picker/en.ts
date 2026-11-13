@@ -27,7 +27,7 @@ export const connectPickerEn = {
     not_available: "Connecting accounts is not set up for this workspace yet.",
     token_store: "Saving a connection is not set up on this server yet, so nothing was added.",
     forbidden: "You can't connect accounts in this workspace. Nothing was added.",
-    not_found: "That is not the workspace you are viewing. Switch to it and try again.",
+    not_found: "That is another workspace than the one you are viewing, so nothing was added. If you are a member of it, switch to it in the header and try again; a workspace you are not a member of cannot be switched to.",
     bad_state: "The sign-in expired or did not start here. Start again from this page.",
     missing_scopes: "Not every permission was granted, so nothing was added. Connect again and leave every box ticked.",
     no_refresh: "The sign-in did not return a lasting connection. Remove Nightshift in your Google account's connected apps, then connect again.",

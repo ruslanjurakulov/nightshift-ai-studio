@@ -23,7 +23,7 @@ const state: {
   user: { id: string; factors?: Factor[] } | null;
   org: OrgContext;
   aal: string;
-} = { user: null, org: { supported: true, orgs: [], current: null }, aal: "aal1" };
+} = { user: null, org: { supported: true, orgs: [], switchable: [], current: null }, aal: "aal1" };
 
 const touched = vi.fn();
 const fakeClient = {
@@ -112,13 +112,13 @@ const OURS = { origin: "https://app.test" };
 
 function admin(factors: Factor[] = [], aal = "aal1") {
   state.user = { id: "u-admin-1234567", factors };
-  state.org = { supported: true, orgs: [ORG], current: ORG };
+  state.org = { supported: true, orgs: [ORG], switchable: [ORG], current: ORG };
   state.aal = aal;
 }
 
 beforeEach(() => {
   state.user = null;
-  state.org = { supported: true, orgs: [], current: null };
+  state.org = { supported: true, orgs: [], switchable: [], current: null };
   state.aal = "aal1";
   touched.mockClear();
   fetchMock.mockClear();

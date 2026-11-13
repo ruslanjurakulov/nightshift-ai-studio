@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { ORG_COOKIE, coerceOrgs } from "@/lib/orgs";
-import { ORG_COOKIE_OPTIONS } from "@/lib/orgs-server";
+import { ORG_COOKIE_OPTIONS, switchableFor } from "@/lib/orgs-server";
 import { ALL_CHANNELS_SLUG, CHANNEL_COOKIE } from "@/lib/channels";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { readBytesCapped } from "@/lib/server/json-body";
@@ -16,7 +16,7 @@ const MAX_BODY_BYTES = 1024;
 /**
  * Switch organization as a NAVIGATION: a same-origin `<form method="post">` (lib/context-switch.ts
  * `submitOrganizationSwitch`) sends `orgId`; the server checks the caller and their membership exactly as
- * /api/org/select does (`my_organizations()`), sets the organization cookie, forgets the remembered channel and
+ * /api/org/select does (`my_organizations()` narrowed by `switchableFor`), sets the organization cookie, forgets the remembered channel and
  * answers 303 to `/all-channels`, which the next request resolves under the NEW organization.
  *
  * Why a navigation: leaving the editor's project page runs its unsaved-changes prompt (`beforeunload`). A form
@@ -24,7 +24,8 @@ const MAX_BODY_BYTES = 1024;
  * first by fetch and then navigating left a person who cancelled on the old page under the new session.
  *
  * Refused: another origin (403, requireSameOrigin), no session (303 to /login), a body that is not one small
- * form field, or an organization the caller is not a member of (303 back to the page the form was on, or /).
+ * form field, an organization the caller is not a member of, or a membership that could not be checked (303 back to
+ * the page the form was on, or /).
  */
 export const POST = requireSameOrigin(async function POST(request: Request) {
   const origin = publicOrigin(request);
@@ -55,7 +56,12 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   const supabase = await createClient();
   if (!supabase) return back();
   const { data, error } = await supabase.rpc("my_organizations");
-  if (error || !coerceOrgs(data).some((o) => o.id === orgId)) return back();
+  if (error) return back();
+  // The same list /api/org/select checks: the caller's own organizations, not every one a platform admin can read.
+  // A failed membership read is "could not check", answered exactly like a failed my_organizations() above: back
+  // to the page, nothing changed. The default org needs no membership row, so it stays reachable meanwhile.
+  const switchable = await switchableFor(supabase, user.id, coerceOrgs(data));
+  if (!switchable.orgs.some((o) => o.id === orgId)) return back();
 
   const response = NextResponse.redirect(new URL(`/${ALL_CHANNELS_SLUG}`, origin), 303);
   response.cookies.set(ORG_COOKIE, orgId, ORG_COOKIE_OPTIONS);

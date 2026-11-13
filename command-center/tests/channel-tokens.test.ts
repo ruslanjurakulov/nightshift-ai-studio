@@ -45,7 +45,7 @@ const state: {
   youtube: { id: string; title: string } | null;
 } = {
   user: null,
-  org: { supported: false, orgs: [], current: null },
+  org: { supported: false, orgs: [], switchable: [], current: null },
   inScope: new Set(),
   platformRole: "viewer",
   channelOrg: {},
@@ -130,7 +130,7 @@ function org(id: string, role: Role, isDefault = false) {
 /** Signed in, viewing `current` whose channels are `channels`. */
 function viewing(current: ReturnType<typeof org>, channels: string[], platformRole: Role = "viewer") {
   state.user = { id: "u-me" };
-  state.org = { supported: true, orgs: [current], current };
+  state.org = { supported: true, orgs: [current], switchable: [current], current };
   state.inScope = new Set(channels);
   state.platformRole = platformRole;
 }

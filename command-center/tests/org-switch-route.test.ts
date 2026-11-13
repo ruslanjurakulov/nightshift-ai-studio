@@ -11,8 +11,12 @@ vi.mock("server-only", () => ({}));
 const state: {
   user: { id: string } | null;
   orgs: { data: unknown; error: { message: string } | null };
+  /** The caller's own org_members rows (switchableFor). */
+  members: { data: unknown; error: { message: string } | null };
+  /** [table, select's columns, eq column, eq value] for every read. */
+  memberFilter: Array<[string, unknown, string, unknown]>;
   rpcCalls: string[];
-} = { user: { id: "u1" }, orgs: { data: [], error: null }, rpcCalls: [] };
+} = { user: { id: "u1" }, orgs: { data: [], error: null }, members: { data: [], error: null }, memberFilter: [], rpcCalls: [] };
 
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => state.user,
@@ -21,6 +25,14 @@ vi.mock("@/lib/supabase/server", () => ({
       state.rpcCalls.push(fn);
       return fn === "my_organizations" ? state.orgs : { data: null, error: null };
     },
+    from: (table: string) => ({
+      select: (columns: unknown) => ({
+        eq: async (col: string, value: unknown) => {
+          state.memberFilter.push([table, columns, col, value]);
+          return table === "org_members" ? state.members : { data: null, error: { message: "unexpected table" } };
+        },
+      }),
+    }),
   }),
 }));
 
@@ -51,10 +63,16 @@ function post(body: string, headers: Record<string, string> = {}) {
 const cookie = (res: Response, name: string) =>
   (res.headers.getSetCookie?.() ?? [res.headers.get("set-cookie") ?? ""]).find((c) => c.startsWith(`${name}=`)) ?? null;
 
+/** What my_organizations() answers a platform owner: every org, a customer's included, each with the platform role. */
+const CUSTOMER = { id: "0c000000-0000-4000-8000-00000000000c", name: "Customer", slug: "customer", role: "owner", is_default: false };
+const PLATFORM_ORGS = [{ ...ORGS[0], role: "owner" }, { ...ORGS[1], role: "owner" }, CUSTOMER];
+
 beforeEach(() => {
   delete process.env.APP_ORIGIN;
   state.user = { id: "u1" };
   state.orgs = { data: ORGS, error: null };
+  state.members = { data: [{ org_id: ORGS[0].id }, { org_id: ORGS[1].id }], error: null };
+  state.memberFilter = [];
   state.rpcCalls = [];
 });
 
@@ -102,6 +120,43 @@ describe("the form-post organization switch", () => {
     }
     state.orgs = { data: null, error: { message: "boom" } };
     expect(cookie(await post(`orgId=${ORGS[1].id}`), ORG_COOKIE)).toBeNull();
+  });
+
+  it("a platform admin cannot switch into a customer's org they can read but do not belong to", async () => {
+    state.orgs = { data: PLATFORM_ORGS, error: null };
+    const res = await post(`orgId=${CUSTOMER.id}`);
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/chronos/editor/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    expect(cookie(res, ORG_COOKIE)).toBeNull();
+    // Their OWN rows, org ids only: without the user_id filter, RLS hands a platform admin every org's members.
+    expect(state.memberFilter).toEqual([["org_members", "org_id", "user_id", "u1"]]);
+  });
+
+  it("a platform admin still switches into an org they are a member of, and into the default org", async () => {
+    state.orgs = { data: PLATFORM_ORGS, error: null };
+    expect(cookie(await post(`orgId=${ORGS[1].id}`), ORG_COOKIE)).toContain(ORGS[1].id);
+    // A member of nothing: the default org stays reachable for every platform role.
+    state.members = { data: [], error: null };
+    expect(cookie(await post(`orgId=${ORGS[0].id}`), ORG_COOKIE)).toContain(ORGS[0].id);
+  });
+
+  it("a failed membership read goes back to the page unchanged (as a failed my_organizations does); the default org stays reachable", async () => {
+    state.orgs = { data: PLATFORM_ORGS, error: null };
+    state.members = { data: null, error: { message: "boom" } };
+    for (const id of [ORGS[1].id, CUSTOMER.id]) {
+      const res = await post(`orgId=${id}`);
+      expect(res.status).toBe(303);
+      expect(new URL(res.headers.get("location")!).pathname).toBe("/chronos/editor/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+      expect(cookie(res, ORG_COOKIE)).toBeNull();
+      expect(cookie(res, CHANNEL_COOKIE)).toBeNull();
+    }
+    expect(cookie(await post(`orgId=${ORGS[0].id}`), ORG_COOKIE)).toContain(ORGS[0].id);
+  });
+
+  it("a customer's list is never narrowed and costs no membership read", async () => {
+    state.orgs = { data: [{ ...ORGS[1], role: "owner" }, CUSTOMER], error: null };
+    state.members = { data: null, error: { message: "would fail closed if it were asked" } };
+    expect(cookie(await post(`orgId=${CUSTOMER.id}`), ORG_COOKIE)).toContain(CUSTOMER.id);
+    expect(state.memberFilter).toEqual([]);
   });
 
   it("a same-origin referer whose path would leave the site is not followed back (no open redirect)", async () => {

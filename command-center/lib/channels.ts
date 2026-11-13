@@ -330,8 +330,11 @@ export function buildChannelScope(
  * May the current view open this channel? The guard for pages and routes that
  * take a channel id from somewhere other than the switcher — a video's own
  * channel, a request body. A channel of another organization is refused even
- * for a platform admin, whose RLS would let the row through: looking at it
- * takes switching to that organization first.
+ * for a platform admin, whose RLS would let the row through. The current
+ * organization is one of the caller's own (or the default org), so a customer's
+ * channel is never in scope for the operator here: acting inside a customer's
+ * workspace is intentionally not possible (owner decision, 2026-11-13), and
+ * support is read-only through the Customers section.
  */
 export function channelInScope(channelId: string | null | undefined, scope: ChannelScope): boolean {
   if (scope.orgChannelIds === null) return true;

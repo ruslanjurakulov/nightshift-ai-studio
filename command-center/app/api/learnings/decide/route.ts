@@ -46,9 +46,12 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     const missing = isMissingTable(readError);
     return NextResponse.json({ error: missing ? "migration_missing" : "read_failed" }, { status: missing ? 503 : 500 });
   }
-  // Another organization's learning reads as missing: deciding it takes
-  // switching to that organization first. The role is the one held in the
-  // learning's own channel's organization.
+  // Another organization's learning reads as missing. Deciding it takes being
+  // in that organization, which means being a member of it: the current org is
+  // one of the caller's own or the default org, so the operator cannot decide a
+  // customer's learning (owner decision, 2026-11-13; support is read-only
+  // through Customers). The role is the one held in the learning's own channel's
+  // organization.
   if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const access = await requireOrgRole({ channelId: row.channel_id as string | null }, "admin");
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });

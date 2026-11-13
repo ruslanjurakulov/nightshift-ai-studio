@@ -24,7 +24,7 @@ export const connectPickerUz: ConnectPickerDictionary = {
     not_available: "Bu ish maydoni uchun akkaunt ulash hali sozlanmagan.",
     token_store: "Ulanishni saqlash bu serverda hali sozlanmagan, shuning uchun hech narsa qoʻshilmadi.",
     forbidden: "Bu ish maydonida akkaunt ulay olmaysiz. Hech narsa qoʻshilmadi.",
-    not_found: "Bu siz hozir koʻrib turgan ish maydoni emas. Unga oʻting va qayta urining.",
+    not_found: "Bu siz hozir koʻrib turgan ish maydoni emas, shuning uchun hech narsa qoʻshilmadi. Agar siz uning aʼzosi boʻlsangiz, yuqoridagi panelda unga oʻting va qayta urining; aʼzosi boʻlmagan ish maydoniga oʻtib boʻlmaydi.",
     bad_state: "Kirish muddati tugadi yoki bu yerdan boshlanmagan. Shu sahifadan qaytadan boshlang.",
     missing_scopes: "Hamma ruxsatlar berilmadi, shuning uchun hech narsa qoʻshilmadi. Qayta ulang va barcha belgilarni qoldiring.",
     no_refresh: "Kirish uzoq muddatli ulanishni qaytarmadi. Google akkauntingizdagi ulangan ilovalardan Nightshift’ni olib tashlang va qayta ulang.",
