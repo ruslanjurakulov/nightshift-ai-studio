@@ -105,8 +105,8 @@ describe("the register (lib/dev/brand-logos.ts)", () => {
   it("the gate is on: the owner accepted the trademark risk on 2026-10-03, and every vendor's mark is shown", () => {
     expect(ANTHROPIC_MARKS_APPROVED).toBe(true);
     expect(OWNER_ACCEPTED_MARKS_SHOWN).toBe(true);
-    for (const b of BRAND_LOGOS.filter((x) => x.id !== "other")) expect(logoShown(b), b.id).toBe(true);
-    for (const id of ["claude", "claude-code", "claude-desktop", "gemini-cli", "hermes", "codex", "vscode", "roo-code", "openclaw", "chatgpt"]) expect(logoShown(brandLogo(id)), id).toBe(true);
+    for (const b of BRAND_LOGOS.filter((x) => x.status !== "fallback")) expect(logoShown(b), b.id).toBe(true);
+    for (const id of ["chatgpt", "claude", "cursor", "vscode"]) expect(logoShown(brandLogo(id)), id).toBe(true);
   });
 
   it("taking them down is one line: with the gate off the owner-accepted marks go and the officially allowed ones stay", () => {
@@ -114,8 +114,12 @@ describe("the register (lib/dev/brand-logos.ts)", () => {
     for (const b of BRAND_LOGOS.filter((x) => x.status === "official")) expect(logoShown(b, false), b.id).toBe(true);
   });
 
-  it("only \"Other\" (any client) has no mark: it is not a product", () => {
-    expect(BRAND_LOGOS.filter((b) => b.status === "fallback").map((b) => b.id)).toEqual(["other"]);
+  it("only Gemini and Grok, whose marks were not cleared, have no mark", () => {
+    expect(BRAND_LOGOS.filter((b) => b.status === "fallback").map((b) => b.id)).toEqual(["gemini", "grok"]);
+  });
+
+  it("the register has exactly the six clients on the page, in the page's order", () => {
+    expect(BRAND_LOGOS.map((b) => b.id)).toEqual(MCP_CLIENTS.map((c) => c.id));
   });
 });
 
@@ -272,8 +276,8 @@ describe("where the logos show", () => {
       expect(p.querySelector(".st-pill-label")?.textContent?.trim().length ?? 0).toBeGreaterThan(0);
     }
     const withLogo = pills.filter((p) => p.querySelector(".st-pill-glyph svg use"));
-    // Every tab but "Other" carries its vendor's own mark.
-    expect(withLogo.length).toBe(MCP_CLIENTS.length - 1);
+    // Every tab but the plain-icon ones (Gemini, Grok) carries its vendor's own mark.
+    expect(withLogo.length).toBe(MCP_CLIENTS.length - BRAND_LOGOS.filter((b) => b.status === "fallback").length);
     expect(doc.querySelector(".st-trademarks")?.textContent).toBe(devDictionaries[locale].mcp.trademarks);
     expect(devDictionaries[locale].mcp.trademarks.length).toBeGreaterThan(60);
   });
@@ -284,38 +288,39 @@ describe("where the logos show", () => {
     );
   });
 
-  it("a mark that needs a light surface sits on the light tile in both themes (Roo Code), the rest on the theme's own", () => {
+  it("the marks sit on the theme's own tile, except the Claude Spark, which is a loose glyph", () => {
     const doc = new DOMParser().parseFromString(page(), "text/html");
-    const roo = doc.querySelector('.st-pill[data-id="roo-code"] .st-pill-glyph')!;
-    expect(roo.getAttribute("data-tile")).toBe("paper");
-    expect(doc.querySelector('.st-pill[data-id="cursor"] .st-pill-glyph')?.getAttribute("data-tile")).toBe("theme");
+    const tile = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph`)?.getAttribute("data-tile");
+    for (const id of ["chatgpt", "gemini", "grok", "cursor", "vscode"]) expect(tile(id), id).toBe("theme");
+    expect(tile("claude")).toBe("plain");
   });
 
-  it("every tab shows its vendor's own mark; only \"Other\" carries a plain icon from the icon set the site already uses", () => {
+  it("every tab shows its vendor's own mark; only Gemini and Grok carry a plain icon from the icon set the site already uses", () => {
     const doc = new DOMParser().parseFromString(page(), "text/html");
     const glyph = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph`)!;
-    for (const c of MCP_CLIENTS.filter((x) => x.id !== "other")) {
+    const plain = ["gemini", "grok"];
+    for (const c of MCP_CLIENTS.filter((x) => !plain.includes(x.id))) {
       expect(glyph(c.id).querySelector("svg use"), c.id).toBeTruthy();
       expect(glyph(c.id).textContent?.trim(), c.id).toBe("");
     }
-    expect(glyph("other").querySelector("svg.st-logo-glyph")).toBeTruthy();
-    expect(glyph("other").querySelector("use")).toBeNull();
-    // The Claude Spark is a loose glyph (no tile); finished icons of their own sit bare; the rest on the theme's neutral tile.
-    for (const id of ["claude", "claude-desktop", "claude-code"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("plain");
-    for (const id of ["gemini-cli", "hermes"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("bare");
-    for (const id of ["codex", "cursor", "vscode"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("theme");
+    for (const id of plain) {
+      expect(glyph(id).querySelector("svg.st-logo-glyph"), id).toBeTruthy();
+      expect(glyph(id).querySelector("use"), id).toBeNull();
+    }
+    // The Claude Spark is a loose glyph (no tile); the rest sit on the theme's neutral tile.
+    expect(glyph("claude").getAttribute("data-tile")).toBe("plain");
+    for (const id of ["chatgpt", "cursor", "vscode"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("theme");
   });
 
-  it("the Anthropic marks are on the page, unmodified: the Claude Spark in the text colour on Claude and Claude Desktop, in clay on Claude Code", () => {
+  it("the Anthropic mark is on the page, unmodified: the Claude Spark in the text colour on the Claude tab", () => {
     const html = page();
     expect(html).toContain('id="nl-claude-any"');
-    expect(html).toContain('id="nl-claude-spark-any"');
     expect(html).toContain('id="nl-claude-spark-mono"');
+    // The clay spark belonged to the Claude Code tab, which the page no longer has.
+    expect(html).not.toContain('id="nl-claude-spark-any"');
     const doc = new DOMParser().parseFromString(html, "text/html");
     const ref = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph use`)?.getAttribute("href");
     expect(ref("claude")).toBe("#nl-claude-spark-mono");
-    expect(ref("claude-desktop")).toBe("#nl-claude-spark-mono");
-    expect(ref("claude-code")).toBe("#nl-claude-spark-any");
     // (The hero no longer carries a row of client tiles: a chat card stands there, so the app icon is only in the sprite.)
     expect(doc.querySelector(".st-tiles")).toBeNull();
     // The vendor's own colour, as its file has it; the one-colour spark takes the pill's text colour.
@@ -333,12 +338,12 @@ describe("where the logos show", () => {
     expect(rule![1]).toMatch(/color:\s*inherit/);
   });
 
-  it("Codex carries the OpenAI mark under OpenAI's terms; Gemini CLI and Hermes their vendors' own icons", () => {
-    const doc = new DOMParser().parseFromString(page(), "text/html");
+  it("ChatGPT carries the OpenAI mark under OpenAI's terms; the dropped clients' drawings never reach the page", () => {
+    const html = page();
+    const doc = new DOMParser().parseFromString(html, "text/html");
     const uses = (id: string) => [...doc.querySelectorAll(`.st-pill[data-id="${id}"] .st-pill-glyph use`)].map((u) => u.getAttribute("href"));
-    expect(uses("codex")).toEqual(["#nl-openai-light", "#nl-openai-dark"]);
-    expect(uses("gemini-cli")).toEqual(["#nl-gemini-any"]);
-    expect(uses("hermes")).toEqual(["#nl-hermes-any"]);
+    expect(uses("chatgpt")).toEqual(["#nl-openai-light", "#nl-openai-dark"]);
+    for (const gone of ["gemini-any", "hermes-any", "windsurf-light", "zed-light", "warp-light", "cline-light", "openclaw-any", "roo-any"]) expect(html, gone).not.toContain(`nl-${gone}`);
   });
 
   it("the sprite exists once and holds exactly the marks that are shown", () => {
