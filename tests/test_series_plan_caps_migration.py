@@ -110,9 +110,11 @@ class Numbering(unittest.TestCase):
         # way: it names none of the three words below.
         # 0157 (the Credits page's Dodo purchase history: one read-only function over payment_events and dodo_checkout_nonces) was
         # reviewed the same way: it names none of the three words below.
+        # 0158 (the concept-thumbnail settings are an administrator's: channel_admin_controls and one trigger on channels) was
+        # reviewed the same way: it names none of the three words below.
         # 0159 (a quote refuses a clip length the model does not list: creative_price on 0156's body only) was reviewed the same
         # way: it names none of the three words below.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0159")
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

@@ -1,6 +1,7 @@
 import type { SiteDictionary } from "./en";
 import { studioPageUz } from "../studio-page/uz";
 import { roadmapUz } from "../roadmap/uz";
+import { siteAutopilotUz } from "../site-autopilot/uz";
 
 /** Ommaviy sayt: bosh sahifa, «Yechimlar», kirish, 404. Manba — ./en.ts. */
 export const siteUz: SiteDictionary = {
@@ -12,6 +13,8 @@ export const siteUz: SiteDictionary = {
     api: "API",
     signIn: "Kirish",
     start: "Bepul boshlash",
+    menu: "Menyu",
+    menuClose: "Menyuni yopish",
   },
   hero: {
     kicker: "Yuzli va yuzsiz YouTube kanallari uchun",
@@ -510,6 +513,8 @@ export const siteUz: SiteDictionary = {
   studioPage: studioPageUz,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapUz,
+  /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
+  autopilot: siteAutopilotUz,
   final: {
     title: "Navbatdagi videongizni tungi smenaga qoʻying.",
     lead: "Bepul boshlang. Narxni har bir ishdan oldin koʻrasiz, har bir video siz ommaviy qilmaguningizcha shaxsiy qoladi.",

@@ -1290,6 +1290,36 @@ until the Command Center sells through Dodo (`PAYMENTS_PROVIDER=dodo`).
   chargeback; malformed ids refused; replay, rollback, drift and the 0146 prerequisite), `command-center/tests/add-credits-ui.test.tsx`
   (the page's reading of the rows) and `command-center/tests/dodo-checkout.test.ts` (the invoice route).
 
+## Concept-thumbnail settings are an administrator's (0158)
+
+0158 (`0158_thumbnail_concept_admin_lock.sql`) is **live on apply**. It rewrites no row and widens no grant. It replaces one small
+function and adds one trigger.
+
+- **Why.** `agent_config.thumbnail_mode = "concept"` (modules/thumbnail_concept.py, PR #731) makes every run of the channel pay for a
+  planner call and one generated image per A/B arm on the worker's provider keys. `agent_config.thumbnail_concept` picks the image
+  provider and model, whether invented faces (`allow_faces`) or words from the fact-checked texts (`allow_baked_text`) may appear,
+  and the headline style. Before 0158 any editor of the organization could change both keys, like any other agent_config key.
+- **What changes.** `channel_admin_controls()` (0086) lists the two keys after its four, so `create_channel()` holds them to an
+  administrator, or to a trusted server caller. A second BEFORE INSERT OR UPDATE trigger, `channels_thumbnail_concept_guard`
+  (security invoker, browser roles only, execute revoked from everyone), refuses a write that sets, changes or removes either key
+  unless the caller administers the channel's organization: 42501, message prefix and hint `thumbnail_concept_lock`. A whole blob
+  carried back unchanged, an unrelated edit, the service role and the definer functions pass. `patch_channel_agent_config` (0119)
+  already refuses both keys. The 0119 guard body (md5-pinned) is not touched.
+- **Drift guard.** The file refuses to run when `channel_admin_controls()` is neither 0086's four keys nor 0158's six. It takes a
+  short lock on `public.channels` to create the trigger (`lock_timeout` 5s).
+- **Without it.** An editor can switch a channel to paid concept thumbnails. The worker and the credit hold still work: the
+  Command Center adds one image per arm (ceiling 4) at the `image_generations` price to a concept channel's run hold, or refuses the
+  run with the gap `unpriced_concept_thumbnail` when that price is unset (lib/credits.ts `withConceptThumbnail`).
+- **Number.** 0158: 0157 is the highest on main. Needs 0018, 0020 and 0086 (and 0114's `create_channel`). Names nothing of
+  0127's, 0131's or 0133's; their numbering tests list it as reviewed.
+- **Undo.** `docs/sql/rollback_0158_thumbnail_concept_admin_lock.sql` (owner-applied): drops the trigger and its function and puts
+  0086's four-key `channel_admin_controls()` back. A row keeps whatever keys it has.
+- **Tests.** `tests/test_thumbnail_concept_lock_migration.py` (the text, the keys equal the worker's, the rollback),
+  `tests/security/test_sec_thumbnail_concept_lock.py` (a real PostgreSQL: an editor and a viewer refused on set, change, removal,
+  `jsonb_set` and whole-blob replacement; `create_channel` holds both keys; an administrator, the owner and the service role pass;
+  an unchanged blob passes; replay, rollback and drift), `tests/security/test_sec_breach_channel_config.py` (the live control
+  list) and `command-center/tests/reserveRunCredits.test.ts` (the hold).
+
 ## A quote refuses a clip length the model does not list (0159)
 
 0159 (`0159_duration_offered_by_model.sql`) is **live on apply** and writes no row. It replaces ONE function, `creative_price`, on
@@ -1314,8 +1344,8 @@ until the Command Center sells through Dodo (`PAYMENTS_PROVIDER=dodo`).
   pinned search_path, the volatility and every guard (0124, 0125, 0139, 0155, 0156, and the new length check). Apply as ONE transaction.
 - **Order.** 0156's replay and rollback refuse 0159's body: run `docs/sql/rollback_0159_duration_offered_by_model.sql` first (it puts
   0156's body back byte for byte). The lab takes 0159 off before 0156 (`sec_db.take_off_0156` calls `take_off_0159`; `sec_db.ON_0156`,
-  listed in `ON_0155` and so in `ON_0153`, `ON_0149`, `ON_0139` and `ON_0125`). Numbering: 0159; 0157 is merged (it replaces no creative function), 0158 is held by an open
-  branch. The numbering tests of 0127, 0131 and 0133 list it as reviewed. An open branch that replaces `creative_price` and merges first
+  listed in `ON_0155` and so in `ON_0153`, `ON_0149`, `ON_0139` and `ON_0125`). Numbering: 0159; 0157 and 0158 are merged (neither replaces a creative
+  function). The numbering tests of 0127, 0131 and 0133 list it as reviewed. An open branch that replaces `creative_price` and merges first
   makes this file's guard refuse: rebase the hunk on that body.
 - **Tests.** `tests/test_duration_offered_by_model_migration.py` (the hunk, the list is the worker's, the hashes, the rollback, the lab
   chain, every synced row states its lengths) and `tests/security/test_sec_duration_offered_by_model.py` (a listed length is quoted and

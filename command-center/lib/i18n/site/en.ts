@@ -1,5 +1,6 @@
 import { studioPageEn } from "../studio-page/en";
 import { roadmapEn } from "../roadmap/en";
+import { siteAutopilotEn } from "../site-autopilot/en";
 
 /**
  * The public site's copy (landing, Solutions, the sign-in shell, 404), kept
@@ -20,6 +21,8 @@ export const siteEn = {
     api: "API",
     signIn: "Sign in",
     start: "Start free",
+    menu: "Menu",
+    menuClose: "Close menu",
   },
   hero: {
     kicker: "For YouTube channels, faceless or not",
@@ -553,6 +556,8 @@ export const siteEn = {
   studioPage: studioPageEn,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapEn,
+  /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
+  autopilot: siteAutopilotEn,
   final: {
     title: "Put your next video on the night shift.",
     lead: "Start free. See the price before every run, and every video stays private until you make it public.",

@@ -26,7 +26,7 @@
 --
 -- LOCKS AND GRANTS: unchanged. creative_price takes no lock (it is stable) and stays revoked from every API role.
 --
--- NUMBER AND ORDER. 0159 (main ends at 0157, the Dodo purchase history, which replaces no creative function; 0158 is held by an open branch). It is written on 0156's body of creative_price,
+-- NUMBER AND ORDER. 0159 (main ends at 0158; neither 0157, the Dodo purchase history, nor 0158, the concept-thumbnail lock, replaces a creative function). It is written on 0156's body of creative_price,
 -- so it REFUSES to apply without 0156, and its drift guard accepts only 0156's body or its own. 0156's replay and rollback refuse any
 -- other body: run docs/sql/rollback_0159_duration_offered_by_model.sql FIRST (the security lab does: sec_db.take_off_0159, called by
 -- take_off_0156). If another open branch replaces creative_price and merges first, this file's guard refuses its body: rebase this hunk

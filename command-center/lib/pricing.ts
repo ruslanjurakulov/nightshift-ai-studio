@@ -158,6 +158,19 @@ export function displayPriceCents(text: string | null | undefined): number | nul
 }
 
 /**
+ * "45 USD", "45.00 USD" or "USD 45": the same plain amount written with the currency code, as an owner's display env
+ * may hold it. Text only: /pricing printed "45 USD" in the planner beside "$45.00" from Paddle for the same pack, so
+ * the formatter reads it, but the money math (displayPriceCents) still does not, so no figure is worked out from it.
+ */
+function usdCodeCents(text: string): number | null {
+  const t = text.trim();
+  const m = /^(\d{1,3}(?:,\d{3})+|\d{1,7})(?:\.(\d{2}))?\s?USD$/.exec(t) ?? /^USD\s?(\d{1,3}(?:,\d{3})+|\d{1,7})(?:\.(\d{2}))?$/.exec(t);
+  if (!m) return null;
+  const cents = Number(m[1].replace(/,/g, "")) * 100 + (m[2] ? Number(m[2]) : 0);
+  return cents > 0 ? cents : null;
+}
+
+/**
  * An owner's display price as this page's language writes US dollars: a plain
  * US-dollar amount ("$10") goes through the same formatter as every computed
  * figure beside it (lib/number-format.ts formatUsdAmount), so one card never
@@ -165,11 +178,13 @@ export function displayPriceCents(text: string | null | undefined): number | nul
  * keep no cents. The layout is a table, not `Intl`'s currency style: the
  * runtime's ICU data differs between Node and the browser in Uzbek, and a price
  * that reads differently on the server than in the browser makes React discard
- * the server's HTML. Anything else ("€9", "from $5") is printed exactly as the
- * owner typed it.
+ * the server's HTML. Paddle's own preview total ("$19.00") goes through it too, so a
+ * plan card, a pack row and the planner write one price one way ("$19", never
+ * "$19.00" beside "19 USD"). Anything else ("€9", "from $5", another currency's
+ * preview) is printed exactly as it came.
  */
 export function displayPriceText(text: string, locale: string): string {
-  const cents = displayPriceCents(text);
+  const cents = displayPriceCents(text) ?? usdCodeCents(text);
   if (cents === null) return text;
   return formatUsdAmount(cents / 100, locale, cents % 100 === 0 ? 0 : 2, 2);
 }
