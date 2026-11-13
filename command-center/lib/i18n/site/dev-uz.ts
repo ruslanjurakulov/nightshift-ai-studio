@@ -181,6 +181,10 @@ export const devUz: DevDictionary = {
     paid: { title: "Har qanday tarif", body: "Hisobga kirish orqali ulanish har qanday tarifda, jumladan Free tarifida ham ishlaydi. U ish maydoni kreditlarini sarflaydi (xush kelibsiz kreditlari, paketlar va tarif kreditlari hisoblanadi), kredit yetmasa, yordamchiga ish boshlanishidan oldin aytiladi. API kalitlari va REST API alohida: ular oldindan toʻlangan API balansidan toʻlanadi.", link: "Tariflar va kreditlar" },
     apiKeyInstead: "API kalitdan foydalanish",
     apiKeyInsteadBody: "Kira olmaydigan mijoz yoki skript uchun. Kalitni “Dasturchilar” → “API kalitlari” boʻlimida yarating.",
+    ready: {
+      badge: "Ulashga tayyor",
+      body: "Nightshift serveri {app} oʻz serverlari uchun eʼlon qilgan talablarga mos keladi. Yuqoridagi qadamlarni bajaring.",
+    },
     soon: {
       badge: "Tez orada",
       use: "Bugunoq API kalit bilan ishlaydi:",

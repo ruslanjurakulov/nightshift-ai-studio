@@ -193,6 +193,10 @@ export const devEn = {
     paid: { title: "Every plan", body: "Connecting with a sign-in works on every plan, Free included. It spends your workspace’s credits (welcome credits, top-up packs and plan credits all count), and when there are not enough the assistant is told so before anything starts. API keys and the REST API are separate: they are paid from a prepaid API balance.", link: "Plans and credits" },
     apiKeyInstead: "Use an API key instead",
     apiKeyInsteadBody: "For a client that cannot sign in, or for a script. Create the key in Developers → API keys.",
+    ready: {
+      badge: "Ready to connect",
+      body: "Nightshift’s server follows {app}’s published requirements for custom servers. Follow the steps above.",
+    },
     soon: {
       badge: "Coming soon",
       use: "Works today with an API key:",

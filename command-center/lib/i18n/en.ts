@@ -4494,7 +4494,7 @@ export const en = {
     creditsNote: "On every plan, Free included, what it makes is paid from this workspace's credits: welcome credits, top-up packs and plan credits all count. When there are not enough, it is told so before anything starts and nothing is charged; you can add credits or choose a plan, and it works again on its next request.",
     seePlans: "See plans",
     errorTitle: "This connection request cannot be used",
-    errorBody: "The app or its return address is not registered with Nightshift, or the link is incomplete. Nothing was connected. Go back to the app and try again.",
+    errorBody: "The app or its return address is not registered with Nightshift, or the link is incomplete. Nothing was connected. Go back to the app and try again. If this page comes back, remove Nightshift in the app (in ChatGPT, the Nightshift plugin) and add it again: the app then registers with Nightshift anew.",
     noWorkspaceTitle: "Finish setting up first",
     noWorkspaceBody: "Your account has no workspace yet, so there is nothing for an app to connect to.",
     finishSetup: "Finish setup",

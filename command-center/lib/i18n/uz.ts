@@ -4478,7 +4478,7 @@ export const uz: Dictionary = {
     creditsNote: "Har qanday tarifda, jumladan Free tarifida ham, u yaratgan narsa shu ish maydonining kreditlaridan toʻlanadi: xush kelibsiz kreditlari, paketlar va tarif kreditlari hisoblanadi. Kredit yetmasa, unga ish boshlanishidan oldin aytiladi va hech narsa yechilmaydi; siz kredit qoʻshishingiz yoki tarif tanlashingiz mumkin, keyingi soʻrovdan u yana ishlaydi.",
     seePlans: "Tariflarni koʻrish",
     errorTitle: "Bu ulanish soʻrovidan foydalanib boʻlmaydi",
-    errorBody: "Ilova yoki uning qaytish manzili Nightshift’da roʻyxatdan oʻtmagan yoki havola toʻliq emas. Hech narsa ulanmadi. Ilovaga qayting va qayta urinib koʻring.",
+    errorBody: "Ilova yoki uning qaytish manzili Nightshift’da roʻyxatdan oʻtmagan yoki havola toʻliq emas. Hech narsa ulanmadi. Ilovaga qayting va qayta urinib koʻring. Bu sahifa yana chiqsa, ilovada Nightshift’ni oʻchirib, qaytadan qoʻshing (ChatGPT’da — Nightshift plagini): ilova Nightshift’da qaytadan roʻyxatdan oʻtadi.",
     noWorkspaceTitle: "Avval sozlashni tugating",
     noWorkspaceBody: "Akkauntingizda hali ish maydoni yoʻq, shuning uchun ilova ulanadigan joy yoʻq.",
     finishSetup: "Sozlashni tugatish",

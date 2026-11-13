@@ -11,6 +11,8 @@ import {
   type InstallLink,
   type McpClient,
 } from "@/lib/dev/mcp-clients";
+import { mcpClientAvailability } from "@/lib/dev/mcp-availability";
+import { fmt } from "@/lib/i18n/core";
 import type { DevDictionary } from "@/lib/i18n/dev";
 import type { Dictionary } from "@/lib/i18n";
 import { BrandLogo, BrandSprite, logoTile } from "@/components/docs/BrandLogo";
@@ -179,7 +181,8 @@ export function McpPage({
     // Connector-only tabs: the real steps when sign-in is live, an honest "Coming soon" until then.
     if (client.oauthOnly) {
       const o = c.oauth[client.id as "chatgpt" | "claude" | "gemini" | "grok"];
-      if (!oauthLive) {
+      const availability = mcpClientAvailability(client.id, oauthLive);
+      if (availability === "soon") {
         const soon = c.soon[client.id as "chatgpt" | "claude" | "gemini" | "grok"];
         const goto = SOON_GOTO;
         return {
@@ -201,9 +204,15 @@ export function McpPage({
         panel: (
           <>
             {stepsList(client.label, o.steps, oauthActions(client.id, url, client, o))}
-            {"note" in o && o.note && (
+            {(availability === "ready" || ("note" in o && o.note)) && (
               <div className="st-panel-foot">
-                <p className="st-small">{o.note}</p>
+                {/* "Ready", not "works": the server meets the vendor's published rules, and no real account has connected yet (lib/dev/mcp-availability.ts). */}
+                {availability === "ready" && (
+                  <p className="st-small" data-availability="ready">
+                    <strong>{c.ready.badge}.</strong> {fmt(c.ready.body, { app: client.label })}
+                  </p>
+                )}
+                {"note" in o && o.note && <p className="st-small">{o.note}</p>}
               </div>
             )}
           </>
@@ -238,10 +247,10 @@ export function McpPage({
   // The first tab that connects: ChatGPT once the sign-in is live, Cursor (an API key) until then.
   const defaultTab = oauthLive ? "chatgpt" : "cursor";
   const open = initialTab && tabs.some((t) => t.id === initialTab) ? initialTab : defaultTab;
-  const worksWith = MCP_CLIENTS.filter((x) => oauthLive || !x.oauthOnly).map((x) => x.label);
+  const worksWith = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) !== "soon").map((x) => x.label);
 
   // With the sign-in off (MCP_OAUTH_LIVE) Claude and ChatGPT are "coming soon": nothing on the page may read as if they connect today.
-  const soonIds = oauthLive ? [] : MCP_CLIENTS.filter((x) => x.oauthOnly).map((x) => x.id);
+  const soonIds = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "soon").map((x) => x.id);
   const names = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, x.label]));
   const marks = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, <span key={x.id} className="st-pill-glyph" data-tile={logoTile(x.id)}><BrandLogo id={x.id} /></span>]));
 

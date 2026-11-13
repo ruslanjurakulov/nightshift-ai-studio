@@ -691,3 +691,8 @@ sec_model_probe_seconds_0151.extend(TABLES, FUNCTIONS)
 import sec_dodo_history_0157  # noqa: E402
 
 sec_dodo_history_0157.extend(TABLES, FUNCTIONS)
+
+# Migration 0161 (ChatGPT keeps the client it registered: the collector spares a ChatGPT-only client 30 days, 3 a person): tests/security/sec_mcp_chatgpt_client_0161.py
+import sec_mcp_chatgpt_client_0161  # noqa: E402
+
+sec_mcp_chatgpt_client_0161.extend(TABLES, FUNCTIONS)
