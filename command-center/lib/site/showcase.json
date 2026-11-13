@@ -893,6 +893,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "6a94865b-ac2f-4b1f-b273-fd4b10c8c477",
+      "assetId": "97417825-a6ad-56fd-be61-b1e57aced8c1",
+      "sha256": "a348cf5325a59ab95e67be1edb7b356a3eaacd1225265edcf59f914c3d6e9b10",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "One continuous camera move with no cuts: the shot opens in orbit high above the Earth at sunrise, then dives straight down through thin clouds, over the landscape and the rooftops, and lands smoothly at street level in the old town of Bukhara, ending on a calm eye-level view of everyday life there. Smooth motion that accelerates and then slows gently at the end, realistic geography and light, photoreal, cinematic. No text, no map labels.",
+      "createdAt": "2026-11-13T21:50:35Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:17:50Z"
     }
   ]
 }
