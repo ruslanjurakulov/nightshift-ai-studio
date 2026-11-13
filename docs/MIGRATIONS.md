@@ -1175,10 +1175,43 @@ model marked `operator_preview`) of a model priced by quality.
   is still refused; a model on sale is never quoted at cost; a tier row wins; a video entry "by quality" stays `unpriced`; with 0153
   rolled back only these answers change; the lab chain helpers; order, drift guard and rollback on a scratch database).
 
+## A quote refuses a shape the model does not list (0155)
+
+0155 (`0155_shape_offered_by_model.sql`) is **live on apply** and writes no row. It replaces ONE function, `creative_price`, on 0153's
+body plus one hunk, and changes an answer only for a request that names an `aspect_ratio` the model's spec does not list for that
+capability: a request the worker already refuses before it calls a vendor.
+
+- **Why.** On 2026-11-13 `ideogram-4` and `ideogram-4.5` t2i jobs with `{"aspect_ratio": "16:9"}` were quoted and created, and the
+  worker then failed them (`aspect ratio 16:9 is not offered for t2i by ideogram-4`). `creative_params_problem` only checks that a shape
+  looks like `16:9`, and `creative_price` read the model's own list for `expand` (0099) and `video_reframe` (0100) only, so the first
+  reader for `t2i`, `t2v`, `edit` and `i2v` was the worker, after the job and its hold (`docs/research/ideogram-shapes-2026-11-13.md`).
+- **The rule.** A named `aspect_ratio` must be in `spec.aspect_ratios_by_capability[<capability>]` when that names some, else in
+  `spec.aspect_ratios`: exactly the worker's `ModelEntry.aspects_for` (an empty narrowing reads as none). An empty list refuses every
+  shape, and so does a spec with no list. Refused `invalid_params`, "`<model>` does not offer the `<shape>` shape for `<capability>`".
+  No shape named: unchanged. The router (0075 / 0088) treats a `creative_price` refusal as "not a candidate", so a routed request skips
+  a model that cannot make the shape instead of being routed to it and failed.
+- **Before it helps.** The list is the one `tools/probe_models.py --sync` copied into `model_registry.spec` from
+  `schemas/model_registry.json`. Run a sync after merging (the Probe models workflow does one): until then the database reads the lists
+  of the last sync (for `ideogram-4` and `ideogram-4.5`, the old empty ones, which already refuse every shape: the same answer the
+  worker gave, only earlier).
+- **Drift guard and end state.** The live `creative_price` must be 0153's body (`28130a014027e6ad0b7876a78d69a396`) or 0155's
+  (`48105e11fbd820b6f103c19b8fd1e693`); 0149's body is refused (0153 must come first). The last block asserts the body, no API role
+  grant, the pinned search_path, the three guards and the shape check. Apply as ONE transaction.
+- **Order.** 0155 sits on 0153's `creative_price` and refuses to apply without it. 0153's replay and rollback refuse 0155's body: run
+  `docs/sql/rollback_0155_shape_offered_by_model.sql` first (it puts 0153's body back byte for byte). The lab takes 0155 off before
+  0153 (`sec_db.take_off_0153` calls `take_off_0155`; `take_off_0149` and `take_off_0139` recognise 0155's body; `sec_db.ON_0153`, and
+  `ON_0149`, `ON_0139` and `ON_0125` list it last). Numbering: 0155; 0154 is reserved by other work. The numbering tests of 0127, 0131
+  and 0133 list it as reviewed.
+- **Tests.** `tests/test_shape_offered_by_model_migration.py` (the hunk, the list is the worker's own for every registry entry, the
+  hashes, the rollback, the lab chain, every synced row states its list), `tests/security/test_sec_shape_offered_by_model.py` (a listed
+  shape is quoted and an unlisted one refused by name; an empty or missing list refuses every shape; a capability narrowing; the
+  operator preview held to the same list; a refused shape never becomes a job or a hold; with 0155 rolled back the same job is queued
+  and every other answer is 0153's; order, drift guard and rollback on a scratch database).
+
 ## A model's own resolution names (0156)
 
 0156 (`0156_named_resolution_params.sql`) is **live on apply** and writes no row. It replaces TWO functions: `creative_params_problem`
-on 0126's body plus one hunk, and `creative_price` on 0153's body plus one hunk.
+on 0126's body plus one hunk, and `creative_price` on 0155's body plus one hunk (0155's shape check is kept as it is).
 
 - **Evidence.** On the live database (2026-11-13) a `t2v` job for `minimax-h3-max` / `minimax-h3` with `{"resolution": "768p"}` was
   refused at quote and create with `invalid_params: resolution must be one of 480p 540p 720p 1080p 1440p 2160p`, while the same job
@@ -1198,20 +1231,20 @@ on 0126's body plus one hunk, and `creative_price` on 0153's body plus one hunk.
   resolution variant (a flat-priced model; a model priced by resolution that pins no default and so is sold by its base row, as 0070
   sells Veo 3.1, whose 4k costs the vendor more than that row's figure; a capability without resolution variants), the name is refused
   before any rate is read: `unpriced` for `t2v` / `i2v`, `invalid_params` otherwise. Widening what a request may name never widens
-  what a base row sells. Every quote that names no resolution or one of the six is answered exactly as under 0153 (the lab compares the
+  what a base row sells. Every quote that names no resolution or one of the six is answered exactly as under 0155 (the lab compares the
   two on a corpus).
 - **What it turns on.** Nothing goes on sale: no price row, no availability. Today a named 768p / 2k reaches MiniMax H3 (and H3 Lite /
   Highspeed / Max at 480p / 768p) in the operator's preview; any other model once the owner sets the variant's `credit_prices` row. A
   resolution picker in the Studio is a separate change.
 - **Drift guards and end state.** Live `creative_params_problem` must be 0126's (`6e815ae544cbb23d7f03845465f8ce6a`) or 0156's
-  (`25ee9cc62a27ad3a19e71008b04f3f36`); live `creative_price` must be 0153's (`28130a014027e6ad0b7876a78d69a396`) or 0156's
-  (`bcd99f06a87c0ac580a0afe1b81a63ff`). The last block asserts both bodies, no API role grant, the pinned search_path, the volatility, the
-  three guards and the new resolution answers. Apply as ONE transaction.
-- **Order.** 0156 sits on 0126's `creative_params_problem` and 0153's `creative_price` and refuses to apply without them. 0126's and
-  0153's replays and rollbacks refuse 0156's bodies: run `docs/sql/rollback_0156_named_resolution_params.sql` first (it puts both bodies
-  back byte for byte). The lab takes 0156 off before 0153 (`sec_db.take_off_0153` calls `take_off_0156`; `sec_db.ON_0153`, listed in
-  `ON_0149`, `ON_0139` and `ON_0125`), and before replaying 0126 (`test_sec_region_edit_run.py`). Numbering: 0156; 0154 and 0155 are
-  held by open branches. The numbering tests of 0127, 0131 and 0133 list it as reviewed. An open branch that replaces either function
+  (`25ee9cc62a27ad3a19e71008b04f3f36`); live `creative_price` must be 0155's (`48105e11fbd820b6f103c19b8fd1e693`) or 0156's
+  (`a70dba23b303c72f2b9f5dc5acb3b3ec`); 0153's body is refused (0155 first). The last block asserts both bodies, no API role grant, the
+  pinned search_path, the volatility, the four guards (0155's shape check included) and the new resolution answers. Apply as ONE transaction.
+- **Order.** 0156 sits on 0126's `creative_params_problem` and 0155's `creative_price` and refuses to apply without them. 0126's and
+  0155's replays and rollbacks refuse 0156's bodies: run `docs/sql/rollback_0156_named_resolution_params.sql` first (it puts 0126's and
+  0155's bodies back byte for byte). The lab takes 0156 off before 0155 (`sec_db.take_off_0155` calls `take_off_0156`; `sec_db.ON_0155`,
+  listed in `ON_0153`, `ON_0149`, `ON_0139` and `ON_0125`), and before replaying 0126 (`test_sec_region_edit_run.py`). Numbering: 0156;
+  0155 is merged (#728), 0154 is held by an open branch. The numbering tests of 0127, 0131 and 0133 list it as reviewed. An open branch that replaces either function
   and merges first makes this file's guard refuse: rebase the hunks on that body.
 - **Tests.** `tests/test_named_resolution_params_migration.py` (the two hunks, the shape equals the schema's and fits every registry
   name, the grandfathered list is 0126's, the hashes, the rollback, the lab chain), `tests/security/test_sec_named_resolution_params.py`

@@ -186,6 +186,8 @@ export const siteRu: SiteDictionary = {
     tryNoteSignedOut: "«Попробовать этот запрос» сначала предложит создать аккаунт, а затем откроет Студию с этим инструментом и этими словами. Ничего не начнётся, пока вы не нажмёте «Создать» в Студии, а цена видна заранее.",
     altClip: "Клип, созданный нейросетью: модель {model}",
     altImage: "Изображение, созданное нейросетью: модель {model}",
+    source: "Сделано из этой картинки:",
+    altSource: "Изображение, созданное нейросетью, из которого сделан этот клип: модель {model}",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {

@@ -107,7 +107,8 @@ describe("public landing page", () => {
     const gallery = container.querySelector(GALLERY);
     expect(gallery === null).toBe(shipped.cards === 0);
     const samplePics = [...(gallery?.querySelectorAll("img") ?? [])];
-    expect(samplePics).toHaveLength(shipped.cards);
+    // One per card, and one more in each card whose clip was animated from another sample's picture (that picture, small).
+    expect(samplePics).toHaveLength(shipped.cards + shipped.sources);
     for (const img of samplePics) {
       expect(img.closest(SAMPLE_CARD)).toBeTruthy();
       expect(img.hasAttribute("data-sample") || img.hasAttribute("data-art-id")).toBe(false);

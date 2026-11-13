@@ -3,7 +3,8 @@
 What would break: the quoted tier not reaching the vendor (Ideogram renders and bills ``high`` when ``quality``
 is left out, more than the medium tier a Studio quote names by default), an unknown tier quietly replaced by
 another, a shape or reference picture silently dropped, the key leaking into a stored message, or a refusal
-read with the wrong remedy (docs/research/ideogram-4-5-2026-11-13.md)."""
+read with the wrong remedy (docs/research/ideogram-4-5-2026-11-13.md). The shapes themselves are pinned in
+tests/test_ideogram_shapes.py."""
 from __future__ import annotations
 
 import json
@@ -85,11 +86,16 @@ class RequestShape(unittest.TestCase):
                 a.submit(ask(tier), "ideogram-4-5")
                 self.assertEqual(s.calls[0][2]["files"]["quality"], (None, vendor))
 
-    def test_no_size_is_sent_so_the_vendors_documented_auto_runs(self):
+    def test_no_shape_named_sends_no_size_so_the_vendors_documented_auto_runs(self):
         a, s = make()
         a.submit(ask("low"), "ideogram-4-5")
         self.assertNotIn("size", s.calls[0][2]["files"])
         self.assertNotIn("aspect_ratio", s.calls[0][2]["files"])
+
+    def test_a_named_shape_is_sent_as_its_exact_size(self):
+        a, s = make()
+        a.submit(ask("low", aspect_ratio="16:9"), "ideogram-4-5")
+        self.assertEqual(s.calls[0][2]["files"]["size"], (None, "2560x1440"))
 
 
 class RefusedBeforeAnythingIsSent(unittest.TestCase):
@@ -111,8 +117,9 @@ class RefusedBeforeAnythingIsSent(unittest.TestCase):
             with self.subTest(tier=tier):
                 self.assertRefused(ask(tier), fragment="not an Ideogram 4.5 tier")
 
-    def test_a_shape_is_refused_rather_than_dropped(self):
-        self.assertRefused(ask("medium", aspect_ratio="16:9"), fragment="shapes are not wired")
+    def test_a_shape_without_a_size_is_refused_rather_than_dropped(self):
+        # 21:9 has no exact size in Ideogram's list: it is refused, never sent as auto or as the nearest preset.
+        self.assertRefused(ask("medium", aspect_ratio="21:9"), fragment="not a shape Ideogram 4.5 is wired for")
 
     def test_a_reference_picture_is_refused_rather_than_dropped(self):
         self.assertRefused(ask("medium", input_images=("/tmp/ref.png",)), fragment="text to image only")
@@ -134,7 +141,8 @@ class RefusedBeforeAnythingIsSent(unittest.TestCase):
         self.assertEqual(a.problems(entry.probe_request(), entry), [])
         self.assertTrue(any("bills high" in p for p in a.problems(ask(None), entry)))
         self.assertTrue(a.problems(ask("ultra"), entry))
-        self.assertTrue(a.problems(ask("medium", aspect_ratio="1:1"), entry))
+        self.assertTrue(a.problems(ask("medium", aspect_ratio="21:9"), entry))
+        self.assertEqual(a.problems(ask("medium", aspect_ratio="1:1"), entry), [])
 
 
 class VendorAnswers(unittest.TestCase):

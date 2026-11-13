@@ -12,8 +12,8 @@ run the real quote and the real create on a real Postgres and pin what must hold
 * a name 0156 opens is never sold by a base row or a flat price: a model priced by resolution that pins no default (sold by its base row,
   like Veo 3.1, whose 4k costs the vendor more) and a flat-priced model refuse it `unpriced`, even with a stray variant row; a
   capability without resolution variants refuses it `invalid_params`;
-* the six names accepted before are answered exactly as before (rolled back to 0153 and 0126, compared on a corpus);
-* the file: needs 0153 and 0126, its guards refuse a hand edit, a replay changes nothing, its rollback restores both bodies byte for byte.
+* the six names accepted before are answered exactly as before (rolled back to 0155 and 0126, compared on a corpus);
+* the file: needs 0155 and 0126, its guards refuse a hand edit, a replay changes nothing, its rollback restores both bodies byte for byte.
 
 Every row is made inside a rolled-back transaction. The file-level test runs on a scratch database.
 """
@@ -255,12 +255,12 @@ def test_with_0156_rolled_back_only_the_newly_accepted_names_change(conn, sc):
         with_0156 = [_quote(conn, who, org, mid, p, cap) for who, org, mid, p, cap, _ in cases]
         _become(conn, None)
         conn.execute(sec_db.rollback_0156_body())
-        assert not sec_db.has_0156(conn) and sec_db.has_0153(conn)
+        assert not sec_db.has_0156(conn) and sec_db.has_0155(conn)
         without = [_quote(conn, who, org, mid, p, cap) for who, org, mid, p, cap, _ in cases]
         same, opened = [], []
         for (who, org, mid, p, cap, res), a, b in zip(cases, with_0156, without):
             (same if res is None or res in OLD_SIX else opened).append((mid, cap, res, a, b))
-        # Every answer for no name or one of the six, refusals and their words included, is 0153's.
+        # Every answer for no name or one of the six, refusals and their words included, is 0155's.
         assert [x for x in same if x[3] != x[4]] == [], [x for x in same if x[3] != x[4]][:3]
         assert any(x[3][0] == "ok" for x in same), "the positive control"
         # Every new name was refused by 0126's closed list before the model was read.
@@ -284,11 +284,12 @@ def _md5_conn(conn, sig):
 
 
 def test_the_lab_takes_the_whole_chain_off_and_puts_it_back_from_0156s_bodies(conn, sc):
-    # has_0149 and has_0153 compare their own hashes only: from 0156's body the chain must still be found, or 0139's rollback refuses.
+    # has_0149, has_0153 and has_0155 compare their own hashes only: from 0156's body the chain must still be found, or 0139's
+    # rollback refuses.
     session = SimpleNamespace(conn=conn)
     with conn.transaction(force_rollback=True):
         _become(conn, None)
-        assert sec_db.has_0156(conn) and not sec_db.has_0153(conn)
+        assert sec_db.has_0156(conn) and not sec_db.has_0155(conn)
         assert _md5_conn(conn, PP) == sec_db.CREATIVE_PARAMS_PROBLEM_0156
         sec_db.take_off_0139(session)
         assert _md5_conn(conn, CP) == "e0c4a7806642086398558cf322c95a0d", "0125's body"
@@ -302,35 +303,35 @@ def _md5s(d):
                  for sig in (PP, CP))
 
 
-def test_the_file_needs_0153_its_guards_refuse_a_hand_edit_and_its_rollback_restores_both_bodies(lab):
+def test_the_file_needs_0155_its_guards_refuse_a_hand_edit_and_its_rollback_restores_both_bodies(lab):
     admin = sec_db.admin_dsn()
     name = f"ns_named_res_{uuid.uuid4().hex[:8]}"
     base = sec_db.create_database(admin, name)
     try:
-        # everything up to 0149, without 0153 (and so without this file)
-        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name not in sec_db.ON_0149])
+        # everything up to 0153, without 0155 (and so without this file)
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name not in sec_db.ON_0153])
         d = Db(base)
-        assert _md5s(d) == (PP_0126, sec_db.CREATIVE_PRICE_0149)
+        assert _md5s(d) == (PP_0126, sec_db.CREATIVE_PRICE_0153)
         m0156 = sec_db.MIGRATION_0156.read_text(encoding="utf-8")
         with pytest.raises(Exception) as cm:
             d.su(m0156)
-        assert "0156 found a creative_price() that is neither 0153's body nor 0156's" in str(cm.value)
-        assert _md5s(d) == (PP_0126, sec_db.CREATIVE_PRICE_0149), "nothing left behind"
-        d.su(sec_db.MIGRATION_0153.read_text(encoding="utf-8"))
+        assert "0156 found a creative_price() that is neither 0155's body nor 0156's" in str(cm.value)
+        assert _md5s(d) == (PP_0126, sec_db.CREATIVE_PRICE_0153), "nothing left behind"
+        d.su(sec_db.MIGRATION_0155.read_text(encoding="utf-8"))
         d.su(m0156)
         mine = (sec_db.CREATIVE_PARAMS_PROBLEM_0156, sec_db.CREATIVE_PRICE_0156)
         assert _md5s(d) == mine
         d.su(m0156)                                                        # the replay
         assert _md5s(d) == mine
-        # 0153's and 0126's replays refuse 0156's bodies: the chain is taken off from the top
+        # 0155's and 0126's replays refuse 0156's bodies: the chain is taken off from the top
         with pytest.raises(Exception) as cm:
-            d.su(sec_db.MIGRATION_0153.read_text(encoding="utf-8"))
-        assert "0153 found a creative_price() that is neither 0149's body nor 0153's" in str(cm.value)
+            d.su(sec_db.MIGRATION_0155.read_text(encoding="utf-8"))
+        assert "0155 found a creative_price() that is neither 0153's body nor 0155's" in str(cm.value)
         with pytest.raises(Exception) as cm:
             d.su((sec_db.MIGRATIONS / "0126_region_edit_run.sql").read_text(encoding="utf-8"))
         assert "0126 found a creative_params_problem() that is neither 0100's body nor 0126's" in str(cm.value)
         d.su(sec_db.ROLLBACK_0156.read_text(encoding="utf-8"))
-        assert _md5s(d) == (PP_0126, sec_db.CREATIVE_PRICE_0153), "byte for byte"
+        assert _md5s(d) == (PP_0126, sec_db.CREATIVE_PRICE_0155), "byte for byte"
         assert d.su(f"select has_function_privilege('authenticated', '{PP}', 'EXECUTE') or "
                     f"has_function_privilege('authenticated', '{CP}', 'EXECUTE') or "
                     f"has_function_privilege('service_role', '{CP}', 'EXECUTE')")[0][0] is False

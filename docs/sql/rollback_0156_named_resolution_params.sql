@@ -1,16 +1,16 @@
 -- rollback_0156_named_resolution_params.sql — takes migration 0156 out again. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in
 -- the app runs it.
 --
--- WHEN YOU NEED IT. If a named resolution misbehaves, or before docs/sql/rollback_0153_preview_price_by_quality.sql or
+-- WHEN YOU NEED IT. If a named resolution misbehaves, or before docs/sql/rollback_0155_shape_offered_by_model.sql or
 -- docs/sql/rollback_0126_region_edit_run.sql (each refuses a body that is not its own or the one it was written on). Afterwards a request
--- that names 768p, 2k, 4k or 360p is refused `invalid_params` again before any model is read, exactly as under 0153; every other answer is
+-- that names 768p, 2k, 4k or 360p is refused `invalid_params` again before any model is read, exactly as under 0155; every other answer is
 -- unchanged. A job already queued at such a resolution is not touched: it was priced and held at that resolution's own price, and it runs
 -- (or fails) like any other job.
 --
 -- WHAT IT DOES, in one transaction:
---   1. Refuses to run if creative_params_problem is neither 0156's body nor 0126's, or creative_price is neither 0156's body nor 0153's
+--   1. Refuses to run if creative_params_problem is neither 0156's body nor 0126's, or creative_price is neither 0156's body nor 0155's
 --      (something redefined them since: running this would silently undo that change). md5 of the body, white space folded.
---   2. Puts 0126's creative_params_problem and 0153's creative_price back, byte for byte, with their grants (none: revoked from every API
+--   2. Puts 0126's creative_params_problem and 0155's creative_price back, byte for byte, with their grants (none: revoked from every API
 --      role).
 -- It rewrites no row and drops nothing (0156 added nothing). tests/security/test_sec_named_resolution_params.py applies this file to a lab
 -- database and re-applies 0156.
@@ -28,8 +28,8 @@ begin
     raise exception 'rollback 0156 found a creative_params_problem() that is neither 0156''s body nor 0126''s (md5 %): read the live body first', p;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into c from pg_proc x where x.oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
-  if c is null or c <> all (array['bcd99f06a87c0ac580a0afe1b81a63ff', '28130a014027e6ad0b7876a78d69a396']) then
-    raise exception 'rollback 0156 found a creative_price() that is neither 0156''s body nor 0153''s (md5 %): read the live body first', c;
+  if c is null or c <> all (array['a70dba23b303c72f2b9f5dc5acb3b3ec', '48105e11fbd820b6f103c19b8fd1e693']) then
+    raise exception 'rollback 0156 found a creative_price() that is neither 0156''s body nor 0155''s (md5 %): read the live body first', c;
   end if;
 end $$;
 
@@ -339,7 +339,7 @@ $$;
 
 revoke all on function public.creative_params_problem(text, jsonb) from public, anon, authenticated, service_role;
 
--- 0153's creative_price, byte for byte.
+-- 0155's creative_price, byte for byte.
 create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
@@ -486,6 +486,21 @@ begin
                       and (m_spec -> 'aspect_ratios_by_capability' -> 'video_reframe') @> jsonb_build_array(p_params ->> 'aspect_ratio'), false) then
     perform public.creative_refuse('invalid_params',
       format('%s does not reframe a video to %s', mdl, p_params ->> 'aspect_ratio'));
+  end if;
+  -- 0155: nor any shape the model does not list for this capability: spec.aspect_ratios_by_capability[cap] when it names
+  -- some, else spec.aspect_ratios, the same list the worker checks before it calls the vendor (ModelEntry.aspects_for). An
+  -- empty list is a model that makes its own shape, so any shape is refused. Refused here, before anything is held, rather
+  -- than by the worker after the job was queued. Each branch casts nothing: the CASE decides the order, not an `and`.
+  if p_params ? 'aspect_ratio'
+     and not coalesce(case
+                        when jsonb_typeof(m_spec -> 'aspect_ratios_by_capability' -> cap) = 'array'
+                             and m_spec -> 'aspect_ratios_by_capability' -> cap <> '[]'::jsonb
+                          then (m_spec -> 'aspect_ratios_by_capability' -> cap) @> jsonb_build_array(p_params ->> 'aspect_ratio')
+                        when jsonb_typeof(m_spec -> 'aspect_ratios') = 'array'
+                          then (m_spec -> 'aspect_ratios') @> jsonb_build_array(p_params ->> 'aspect_ratio')
+                      end, false) then
+    perform public.creative_refuse('invalid_params',
+      format('%s does not offer the %s shape for %s', mdl, p_params ->> 'aspect_ratio', cap));
   end if;
   -- Nor an ending on a model that would drop it.
   if p_params ? 'end_asset_id' and coalesce(m_spec -> 'end_frame', 'false'::jsonb) <> 'true'::jsonb then

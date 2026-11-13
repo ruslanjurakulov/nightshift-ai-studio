@@ -227,6 +227,672 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "de53f364-eaf7-4cd1-8d44-7b56b21b03b6",
+      "assetId": "bb50e092-bc9b-55b8-967f-29cf5deea830",
+      "sha256": "79cbc10c8b800b8819e4d65f42a82f3f295e535bcc79bad7d21d987da3db32f5",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Epic wide shot at golden-hour sunset: a colossal humpback whale glides slowly through a sea of glowing clouds above a modern city skyline, sunlight streaming through its fins, a flock of birds and a tiny airplane pass beneath it, people on a rooftop in silhouette point up. The camera tracks smoothly alongside the whale. Photorealistic, awe-inspiring scale, cinematic blockbuster look.",
+      "createdAt": "2026-11-13T17:46:16Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:18:16Z"
+    },
+    {
+      "jobId": "f92a89ed-2145-4342-acd5-f24b8805a0f9",
+      "assetId": "45a5152e-9c55-55bd-8ee5-4d3a2dee19ee",
+      "sha256": "6f9e8885c1f557aa8d2cfb7f87ea9462ae056c56cd8342ca9ecd200593c0a0b0",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Premium 3D product commercial, wide shot: a sleek matte-black sneaker with no logo floats and slowly rotates in a dark studio, then bursts in slow motion into thousands of glowing neon paint droplets in electric blue, magenta and lime that swirl around the camera and snap back together into the shoe. Hard rim light, glossy reflections, ultra sharp, high-end ad energy. Audio: deep whoosh, liquid splash, bass hit.",
+      "createdAt": "2026-11-13T17:45:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:19:38Z"
+    },
+    {
+      "jobId": "01c9f1f0-d54b-4fd3-a88f-ddf459aece73",
+      "assetId": "cf9e6cf2-85e3-5e38-8466-6148f1cd7d5a",
+      "sha256": "c79b6d22f70860bb64952fea1546f4d18a2ac2aad87703f338e322cb251665f5",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Macro shot of a glass snow globe on a dark desk; inside it a tiny neon city at night is alive: miniature flying cars streak between skyscrapers, lights flicker, snow swirls. The camera pushes in smoothly through the glass into the tiny streets. Magical, hyper-detailed, cinematic, wide 16:9. Audio: soft magical chimes and a distant city hum.",
+      "createdAt": "2026-11-13T17:45:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:21:08Z"
+    },
+    {
+      "jobId": "b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9",
+      "assetId": "54e2e42c-7c52-5b0a-bc77-05dc818e7d53",
+      "sha256": "0a9c6131041438c2c8d1bab2687af14e5365dbd28e3bb6dade1a4f950668ffdc",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Handheld smartphone-style video on a busy sunny city street: a friendly golden retriever the size of a three-storey building walks calmly between the buildings, wagging its tail; pedestrians stop, laugh and film it on their phones, a bus passes under its belly. Realistic scale, viral social-media clip look, wide 16:9. Audio: crowd gasps and laughter, a deep happy woof.",
+      "createdAt": "2026-11-13T17:45:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:22:44Z"
+    },
+    {
+      "jobId": "a6768488-04c6-4325-9465-62d61f888a70",
+      "assetId": "ec6373fd-be12-57d1-8208-bffe99840243",
+      "sha256": "82ad20f3e039719f0c252bc94455335dd7555de22b4550013154ef0ac39824ff",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Oddly satisfying macro food commercial: glossy molten dark chocolate pours onto a white marble surface and sculpts itself into a perfect chocolate rose whose petals unfurl and bloom, a dusting of gold flakes falls and sparkles. Soft top light, mirror-like gloss, slow motion, wide 16:9. Audio: thick silky pour, soft crackle, no music.",
+      "createdAt": "2026-11-13T17:45:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:24:07Z"
+    },
+    {
+      "jobId": "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8",
+      "assetId": "ba812699-099b-51c1-b60e-b5b32523829a",
+      "sha256": "68247f158216d31cb969bdce2dc7da53c4c941608326a57b0959d622edd3d4fa",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Slow cinematic drone glide over an endless sea of clouds at sunrise. Jagged dark mountain ridges rise through the cloud layer, golden light rakes across the cloud tops and thin mist streams over the ridges. One smooth, steady forward camera move, no cuts. Anamorphic 35mm film look, rich contrast, photorealistic, epic scale.",
+      "createdAt": "2026-11-13T17:42:47Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:48:27Z"
+    },
+    {
+      "jobId": "ab0bcba2-8374-465d-b505-8dac19977948",
+      "assetId": "c8157f94-ef60-53cc-b19e-09dbf4e67854",
+      "sha256": "5b6fcc9d11d6cf4c7c8e23a0937f141a087a376480e9af721705cc575f058c45",
+      "modelId": "minimax-h3-highspeed",
+      "modelName": "MiniMax H3 Highspeed",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Aerial drone tracking shot of a vintage white camper van driving along a winding coastal cliff road at golden hour, turquoise ocean waves breaking below, long shadows, warm sun flare, smooth steady camera following the van, cinematic travel-vlog look. Audio: wind and distant surf, no music.",
+      "createdAt": "2026-11-13T17:44:33Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Highspeed",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:14:00Z"
+    },
+    {
+      "jobId": "fc1fad12-16de-4cd5-9cd9-e77ed245f469",
+      "assetId": "b5778484-8b74-5b82-aa2d-4f7f8f2645b6",
+      "sha256": "2fe0212969aa31dff00ff6a2affe13fd5022a6abfa0d5027b269b71ad9b31357",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "The perfume bottle comes alive: amber liquid inside swirls and glows, a slow wave of water rises and wraps around the bottle in a glossy spiral, droplets hang in the air and sparkle, then the camera slowly orbits around it. Luxury commercial, dramatic rim light, slow motion. Audio: deep elegant whoosh, water shimmer, no music.",
+      "createdAt": "2026-11-13T18:17:24Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "e3da9148-f2f8-443e-95b1-8ed36ef3dea4",
+        "assetId": "9283b527-51ec-5f5a-97b0-125d6aea3cc8"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1600,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:37:05Z"
+    },
+    {
+      "jobId": "ab7cc0e2-8040-4643-8e14-74219fc1d8e2",
+      "assetId": "c134cd33-f40e-5f35-940d-3f3e773a0338",
+      "sha256": "7373e34ae305b48eb044b3b70fcad29669e992bca5565e4818d5250f3d673854",
+      "modelId": "runway-gen4-turbo",
+      "modelName": "Runway Gen-4 Turbo",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "The photo comes alive: the huge wave explodes against the rocks and the spray rises and falls in slow motion, the lighthouse beam sweeps across the sea through the mist, storm clouds roll, sea foam drains off the rocks. Camera holds steady with a slight push-in. Cinematic, photorealistic.",
+      "createdAt": "2026-11-13T18:17:31Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "f17146fd-054c-4970-9dac-f7a0dc929bd6",
+        "assetId": "134eac56-9d10-5654-8e41-97411f66f650"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4_turbo",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:35:16Z"
+    },
+    {
+      "jobId": "e3da9148-f2f8-443e-95b1-8ed36ef3dea4",
+      "assetId": "9283b527-51ec-5f5a-97b0-125d6aea3cc8",
+      "sha256": "492837bf5c409487bd4493648e623ca0eeaf272c6bb3087630d745a6b9bc9782",
+      "modelId": "ideogram-4",
+      "modelName": "Ideogram 4.0",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Luxury perfume bottle of faceted amber glass standing on wet black stone, splashes of water frozen mid-air around it, dramatic rim light, dark moody background, high-end product advertising photograph, no readable text or logos.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1600,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:10:22Z"
+    },
+    {
+      "jobId": "28f164dc-809f-49a3-b2e2-ef0bdf88519b",
+      "assetId": "e766a4be-cb70-5c11-b751-b71e3b196b9b",
+      "sha256": "d6e2da372d51888d80a3509b847dc7d711c3eff6b394e8c0825fcad0d8bb34d1",
+      "modelId": "ideogram-4.5",
+      "modelName": "Ideogram 4.5",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Square studio product photograph: a small retro robot made of brushed aluminium and orange enamel holds a tiny film clapperboard, soft gradient backdrop, rim light, glossy reflections, playful and premium, no readable text.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "ideogram-4-5",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1280,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:12:18Z"
+    },
+    {
+      "jobId": "f17146fd-054c-4970-9dac-f7a0dc929bd6",
+      "assetId": "134eac56-9d10-5654-8e41-97411f66f650",
+      "sha256": "e50a85f552fe0fc48b8bdc74b9e9e83c3d982eac178df61eaa18959007b35336",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Dramatic photograph of a lone lighthouse on a rocky headland at dusk, a huge wave exploding against the rocks, its beam cutting through sea spray, brooding storm clouds with a sliver of orange light on the horizon, cinematic, no text.",
+      "createdAt": "2026-11-13T17:44:46Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:51:09Z"
+    },
+    {
+      "jobId": "1b3d5f4b-f4f2-4e92-84db-77908a36df2a",
+      "assetId": "b0876d4b-baa8-56e5-ba7a-7969dda2df06",
+      "sha256": "2471a146edfeef4815fdf06d8d53a8a42b13e3c5db3675fed472e26922d681a4",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Vibrant evening street market photographed at eye level, strings of warm bulbs overhead, stalls of colorful fruit, spices and textiles, steam rising from a food stall, people blurred in motion, rich bokeh, cinematic color, no readable text or logos.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:53:14Z"
+    },
+    {
+      "jobId": "639bbde5-dc70-4954-b71d-54db6a5b3ea9",
+      "assetId": "6c65025b-0a61-5f1f-8889-3ac1b31dec75",
+      "sha256": "763728c3edb21804ed6a12cae4ee5e3f105398e7eaefd645af99f37d23474221",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Wide cinematic landscape photograph of rolling green hills and a winding river valley at sunrise, low mist pooling in the folds, soft golden backlight, a few trees on the ridgelines, painterly depth, no text.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:54:31Z"
+    },
+    {
+      "jobId": "1504b313-3a3c-4e78-bfda-5bca3ef7f3da",
+      "assetId": "263cbf6e-9d00-5f65-aebb-2683c97d0718",
+      "sha256": "cca8fc936999d811a2a0805814980d2e49425afd7e2acf8bfd34966848488b1a",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Cinematic photograph of a futuristic city at night seen from a rooftop, rain-slick streets glowing with teal and magenta neon, light trails of traffic far below, haze and volumetric light between skyscrapers, ultra detailed, moody, no readable text or logos.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:07:26Z"
+    },
+    {
+      "jobId": "64a7c2b8-a6c1-4359-9961-a1a2760f1cbf",
+      "assetId": "437ebfbd-c70a-5271-8140-60934ac623b1",
+      "sha256": "b26a216718169dedc581746863e348a108391d7ebcc63867419cc7d45cd43abc",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Cinematic wide photograph of a huge full moon rising behind a lone silhouetted hilltop tree, deep blue night sky with faint stars, thin luminous clouds crossing the moon, telephoto compression, crisp detail, quiet and majestic, no text.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:09:12Z"
+    },
+    {
+      "jobId": "38c427b0-c41b-4d16-86ca-14dc2e69ec27",
+      "assetId": "3ccd50ce-ddd7-592c-bedd-6601c42612b3",
+      "sha256": "fb53f6d1f4ebe9ae2746a540c36cf787c285e26f2e462084b94e70e2ef7fe3bd",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Golden hour photograph of sweeping sand dunes, sharp sculpted ridgelines casting long shadows, warm amber light, a tiny lone traveler walking along the crest for scale, fine sand blowing off the ridge, cinematic, no text.",
+      "createdAt": "2026-11-13T17:44:33Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:49:51Z"
     }
   ]
 }

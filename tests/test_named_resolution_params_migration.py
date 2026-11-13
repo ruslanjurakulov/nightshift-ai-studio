@@ -1,7 +1,7 @@
 """supabase/migrations/0156_named_resolution_params.sql — a request may name a model's own resolution, sold only at its own variant's price.
 
 SQL does not run in this suite (tests/security/test_sec_named_resolution_params.py does that, against a real Postgres). These pin what
-must not change by accident: the file replaces exactly creative_params_problem (0126's body plus one hunk) and creative_price (0153's
+must not change by accident: the file replaces exactly creative_params_problem (0126's body plus one hunk) and creative_price (0155's
 body plus one hunk), undoing each hunk gives the old text byte for byte; the params check's resolution shape is the registry schema's own
 pattern, so every name the registry lists passes it and nothing else does; the list of names "accepted before 0156" in creative_price is
 0126's list exactly; the drift guards, the end state, the rollback and the lab name the hashes recomputed from the files; the grants; the
@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
 NEW_TEXT = (MIG / "0156_named_resolution_params.sql").read_text(encoding="utf-8")
 PP_TEXT = (MIG / "0126_region_edit_run.sql").read_text(encoding="utf-8")
-CP_TEXT = (MIG / "0153_preview_price_by_quality.sql").read_text(encoding="utf-8")
+CP_TEXT = (MIG / "0155_shape_offered_by_model.sql").read_text(encoding="utf-8")
 ROLLBACK_TEXT = (ROOT / "docs" / "sql" / "rollback_0156_named_resolution_params.sql").read_text(encoding="utf-8")
 LAB = (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8")
 CODE = "\n".join(line.split("--", 1)[0] for line in NEW_TEXT.splitlines())
@@ -38,6 +38,7 @@ def md5_of(fn):
 
 NEW = bodies(NEW_TEXT)
 PP_0126 = "6e815ae544cbb23d7f03845465f8ce6a"
+CP_0155 = "48105e11fbd820b6f103c19b8fd1e693"
 CP_0153 = "28130a014027e6ad0b7876a78d69a396"
 OLD_RE = "^(480|540|720|1080|1440|2160)p$"
 NEW_RE = "^([0-9]{3,4}p|[24]k)$"
@@ -91,13 +92,13 @@ class NamedResolutionParamsMigration(unittest.TestCase):
         self.assertNotRegex("\n".join(ln.split("--", 1)[0] for ln in new.splitlines()).lower(), r"\b(from|join)\s+public\.\w+")
         self.assertIn("creative_regions_problem", new)
 
-    def test_creative_price_is_0153s_body_plus_exactly_the_one_refusal(self):
+    def test_creative_price_is_0155s_body_plus_exactly_the_one_refusal(self):
         old = bodies(CP_TEXT)["creative_price"]
-        self.assertEqual(md5_of(old), CP_0153)
+        self.assertEqual(md5_of(old), CP_0155)
         hunk = cp_hunk()
         new = NEW["creative_price"]
         self.assertEqual(new.count(hunk), 1)
-        self.assertEqual(new.replace(hunk, ""), old, "creative_price differs from 0153's beyond the 0156 refusal")
+        self.assertEqual(new.replace(hunk, ""), old, "creative_price differs from 0155's beyond the 0156 refusal")
         # It sits after 0070's video settings (so `variant` is settled and an unlisted name was refused there first) and before any rate
         # is read (so neither a credit_prices row nor the preview figure can sell the name).
         self.assertIn(CP_ANCHOR, new)
@@ -116,7 +117,9 @@ class NamedResolutionParamsMigration(unittest.TestCase):
         self.assertIn("perform public.creative_refuse('unpriced',", code)
         self.assertIn("if cap not in ('t2v', 'i2v') then\n      perform public.creative_refuse('invalid_params',", code)
         for guard in ("model_is_available(mdl)", "not public.model_past_shutdown(r.spec)", "r.verified_at is not null",
-                      "public.creative_operator_preview(p_org, r.availability, r.spec)"):
+                      "public.creative_operator_preview(p_org, r.availability, r.spec)",
+                      # 0155's shape check, kept as 0155 wrote it
+                      "format('%s does not offer the %s shape for %s', mdl, p_params ->> 'aspect_ratio', cap)"):
             self.assertIn(guard, new)
 
     def test_the_params_shape_is_the_registry_schemas_and_every_listed_name_fits_it(self):
@@ -151,15 +154,16 @@ class NamedResolutionParamsMigration(unittest.TestCase):
         for h in (pp, cp):
             self.assertGreaterEqual(NEW_TEXT.count(h), 3, "the guard, the end state and the verify query")
         self.assertIn(f"array['{PP_0126}', '{pp}']", NEW_TEXT)
-        self.assertIn(f"array['{CP_0153}', '{cp}']", NEW_TEXT)
+        self.assertIn(f"array['{CP_0155}', '{cp}']", NEW_TEXT)
         self.assertIn(f"array['{pp}', '{PP_0126}']", ROLLBACK_TEXT)
-        self.assertIn(f"array['{cp}', '{CP_0153}']", ROLLBACK_TEXT)
-        # 0149's creative_price is NOT accepted: this file was written on 0153's.
+        self.assertIn(f"array['{cp}', '{CP_0155}']", ROLLBACK_TEXT)
+        # 0149's and 0153's creative_price are NOT accepted: this file was written on 0155's.
         self.assertNotIn("728241a09e56f65e19efc460afea7355", CODE)
+        self.assertNotIn(CP_0153, CODE)
         self.assertIn("0156 found a creative_params_problem() that is neither 0126''s body nor 0156''s", NEW_TEXT)
-        self.assertIn("0156 found a creative_price() that is neither 0153''s body nor 0156''s", NEW_TEXT)
+        self.assertIn("0156 found a creative_price() that is neither 0155''s body nor 0156''s", NEW_TEXT)
         first = NEW_TEXT.index("create or replace function")
-        self.assertLess(NEW_TEXT.index("0156 needs 0126_region_edit_run.sql and 0153_preview_price_by_quality.sql"), first)
+        self.assertLess(NEW_TEXT.index("0156 needs 0126_region_edit_run.sql and 0155_shape_offered_by_model.sql"), first)
         self.assertLess(NEW_TEXT.index("0156 found a creative_price()"), first)
         self.assertLess(NEW_TEXT.rindex("create or replace function"), NEW_TEXT.index("The end state, asserted inside the transaction"))
         self.assertIn("set local lock_timeout = '5s';", NEW_TEXT)
@@ -169,35 +173,38 @@ class NamedResolutionParamsMigration(unittest.TestCase):
         self.assertIn(f'CREATIVE_PRICE_0156 = "{cp}"', LAB)
         self.assertIn(f'CREATIVE_PARAMS_PROBLEM_0156 = "{pp}"', LAB)
 
-    def test_the_rollback_restores_0126s_and_0153s_text_byte_for_byte(self):
+    def test_the_rollback_restores_0126s_and_0155s_text_byte_for_byte(self):
         rb = bodies(ROLLBACK_TEXT)
         self.assertEqual(set(rb), {"creative_params_problem", "creative_price"})
         self.assertEqual(rb["creative_params_problem"], bodies(PP_TEXT)["creative_params_problem"])
         self.assertEqual(rb["creative_price"], bodies(CP_TEXT)["creative_price"])
         self.assertIn("rollback 0156 found a creative_params_problem() that is neither 0156''s body nor 0126''s", ROLLBACK_TEXT)
-        self.assertIn("rollback 0156 found a creative_price() that is neither 0156''s body nor 0153''s", ROLLBACK_TEXT)
+        self.assertIn("rollback 0156 found a creative_price() that is neither 0156''s body nor 0155''s", ROLLBACK_TEXT)
         self.assertNotIn("drop function", ROLLBACK_TEXT.lower())
         self.assertEqual(len(re.findall(r"(?m)^begin;$", ROLLBACK_TEXT)), 1)
         self.assertEqual(len(re.findall(r"(?m)^commit;$", ROLLBACK_TEXT)), 1)
 
-    def test_the_number_is_unique_and_the_lab_knows_it_sits_on_0153(self):
+    def test_the_number_is_unique_and_the_lab_knows_it_sits_on_0155(self):
         numbers = sorted(p.name[:4] for p in MIG.glob("*.sql"))
         self.assertEqual(numbers.count("0156"), 1)
-        for n in ("0126", "0153"):
+        for n in ("0126", "0155"):
             self.assertIn(n, numbers)
-        for needle in ("def take_off_0156(", "def put_back_0156(", "ON_0153 = (MIGRATION_0156.name,)",
-                       "ON_0149 = (MIGRATION_0153.name, *ON_0153)", "ON_0139 = (MIGRATION_0149.name, *ON_0149)"):
+        for needle in ("def take_off_0156(", "def put_back_0156(", "ON_0155 = (MIGRATION_0156.name,)",
+                       "ON_0153 = (MIGRATION_0155.name, *ON_0155)", "ON_0149 = (MIGRATION_0153.name, *ON_0153)",
+                       "ON_0139 = (MIGRATION_0149.name, *ON_0149)"):
             self.assertIn(needle, LAB)
-        # take_off_0153 takes 0156 off first and put_back_0153 puts it back: 0153's rollback and replay refuse 0156's body.
-        off = LAB[LAB.index("def take_off_0153("):LAB.index("def put_back_0153(")]
-        self.assertLess(off.index("take_off_0156(session)"), off.index("rollback_0153_body()"))
-        on = LAB[LAB.index("def put_back_0153("):LAB.index("CREATIVE_PRICE_0156 =")]
+        # take_off_0155 takes 0156 off first and put_back_0155 puts it back: 0155's rollback and replay refuse 0156's body.
+        off = LAB[LAB.index("def take_off_0155("):LAB.index("def put_back_0155(")]
+        self.assertLess(off.index("take_off_0156(session)"), off.index("rollback_0155_body()"))
+        on = LAB[LAB.index("def put_back_0155("):LAB.index("CREATIVE_PRICE_0156 =")]
         self.assertIn("put_back_0156(session)", on)
-        # The chain is still found from 0156's body (has_0149 / has_0153 compare their own hashes only).
+        # The chain is still found from 0156's body (has_0149 / has_0153 / has_0155 compare their own hashes only).
+        off53 = LAB[LAB.index("def take_off_0153("):LAB.index("def put_back_0153(")]
+        self.assertIn("if has_0155(session) or has_0156(session):", off53)
         off49 = LAB[LAB.index("def take_off_0149("):LAB.index("def put_back_0149(")]
-        self.assertIn("if has_0153(session) or has_0156(session):", off49)
+        self.assertIn("if has_0153(session) or has_0155(session) or has_0156(session):", off49)
         off39 = LAB[LAB.index("def take_off_0139("):LAB.index("def put_back_0139(")]
-        self.assertIn("if has_0149(session) or has_0153(session) or has_0156(session):", off39)
+        self.assertIn("or has_0155(session) or has_0156(session):", off39)
 
     def test_the_known_gap_0149_pinned_is_now_a_real_test(self):
         lab_test = (ROOT / "tests" / "security" / "test_sec_preview_price_by_resolution.py").read_text(encoding="utf-8")

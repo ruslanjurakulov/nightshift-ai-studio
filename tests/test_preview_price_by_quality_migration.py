@@ -145,6 +145,7 @@ class PreviewPriceByQualityMigration(unittest.TestCase):
         self.assertEqual(numbers.count("0153"), 1)
         self.assertIn("0149", numbers)
         lab = (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8")
+        # 0155 sits on 0153's creative_price, so ON_0149 lists it after 0153 (ON_0153).
         for needle in ("def take_off_0153(", "def put_back_0153(", "ON_0149 = (MIGRATION_0153.name, *ON_0153)",
                        "ON_0139 = (MIGRATION_0149.name, *ON_0149)", "ON_0125 = (MIGRATION_0139.name, *ON_0139)"):
             self.assertIn(needle, lab)
@@ -155,8 +156,7 @@ class PreviewPriceByQualityMigration(unittest.TestCase):
         self.assertIn("put_back_0153(session)", on)
         # take_off_0139 must still find the chain when the live body is 0153's (has_0149 compares 0149's hash only).
         off39 = lab[lab.index("def take_off_0139("):lab.index("def put_back_0139(")]
-        # (0156, on 0153's creative_price, is recognised too: tests/test_named_resolution_params_migration.py.)
-        self.assertIn("if has_0149(session) or has_0153(session)", off39)
+        self.assertIn("if has_0149(session) or has_0153(session) or has_0155(session)", off39)
 
 
 #: Every entry the registry marks operator_preview today. A new one is a decision (a hidden model the operator can run in the Studio),

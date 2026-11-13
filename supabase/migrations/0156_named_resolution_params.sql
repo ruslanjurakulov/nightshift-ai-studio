@@ -2,7 +2,7 @@
 -- that resolution's own price.
 --
 -- *** LIVE ON APPLY. *** Merging this file applies it to the live database. It replaces TWO functions that exist there and adds nothing:
--- creative_params_problem (0126's body plus one hunk) and creative_price (0153's body plus one hunk). It writes no row, alters no table,
+-- creative_params_problem (0126's body plus one hunk) and creative_price (0155's body plus one hunk). It writes no row, alters no table,
 -- policy or constraint, and grants nothing: both stay revoked from every API role.
 --
 -- THE EVIDENCE (live database, 2026-11-13). A t2v job for minimax-h3-max or minimax-h3 with params {"resolution": "768p", ...} is refused
@@ -26,7 +26,7 @@
 --     schemas/model_registry.schema.json (tests/test_named_resolution_params_migration.py pins that the two agree). Lower case only:
 --     "768P" or "2K" is refused, never read as 768p or 2k. Every name accepted before is accepted still (480p 540p 720p 1080p 1440p 2160p
 --     all fit the shape), and every other answer of the function is 0126's.
---   * creative_price, unchanged from 0153 for every name accepted before: a name the model does not list is refused `invalid_params`
+--   * creative_price, unchanged from 0155 for every name accepted before: a name the model does not list is refused `invalid_params`
 --     ("does not offer", 0070, unchanged and before this hunk), and a listed one is priced by 0070's video settings: on a model priced by
 --     resolution that pins a default_resolution, by the variant's own unit model_<id>_<unit>_<resolution> (its credit_prices row; for 0139's
 --     operator preview, 0149's figure variants.prices[<resolution>]); none of its own = `unpriced`, never another resolution's row or figure.
@@ -35,12 +35,12 @@
 --     pins no default and so is sold by its base row, as 0070 sells Veo 3.1 whose 4k costs the vendor more than that row's 720p/1080p
 --     figure; a capability with no resolution variants at all), such a name is refused before any rate is read: `unpriced` for t2v and
 --     i2v ("is not sold at 4k yet"), `invalid_params` for any other capability ("does not offer"). Widening what a request may NAME never
---     widens what a base row SELLS. Every quote that names no resolution, or one of the six, is answered exactly as 0153 answers it.
+--     widens what a base row SELLS. Every quote that names no resolution, or one of the six, is answered exactly as 0155 answers it.
 -- Nothing goes on sale because of this file: it writes no credit_prices row and changes no availability. Today the names it opens are
 -- reachable only where a variant price exists: MiniMax H3 (and H3 Lite / Highspeed / Max) for the operator's preview (0139 / 0149),
 -- and any other model once the owner sets the variant's credit_prices row.
 --
--- THE HUNKS (tests/test_named_resolution_params_migration.py undoes each one and compares the rest with 0126's and 0153's bodies byte for
+-- THE HUNKS (tests/test_named_resolution_params_migration.py undoes each one and compares the rest with 0126's and 0155's bodies byte for
 -- byte):
 --   creative_params_problem   the resolution test: the closed list of six becomes the registry's shape, and the refusal names the fix
 --   creative_price            after 0070's video settings, before any rate is read: the refusal above
@@ -48,10 +48,11 @@
 -- LOCKS AND GRANTS: unchanged. Both functions take no lock (immutable and stable) and stay revoked from public, anon, authenticated and
 -- service_role.
 --
--- NUMBER AND ORDER. 0156 (main ends at 0153; 0154 and 0155 are held by open branches, claude/custom-amount-credits and
--- claude/ideogram-shapes). It is written on 0126's creative_params_problem and on 0153's creative_price, so it REFUSES to apply without them,
--- and its drift guards accept only those bodies or its own. 0126's and 0153's replays and rollbacks refuse any other body: run
--- docs/sql/rollback_0156_named_resolution_params.sql FIRST (the security lab does: sec_db.take_off_0156, called by take_off_0153). If
+-- NUMBER AND ORDER. 0156 (main ends at 0155, #728: a quote refuses a shape the model does not list; 0154 is held by an open branch,
+-- claude/custom-amount-credits). It is written on 0126's creative_params_problem and on 0155's creative_price (0153's plus 0155's shape
+-- check, kept as it is: the two hunks are independent), so it REFUSES to apply without them, and its drift guards accept only those bodies
+-- or its own; 0153's body is refused (0155 must be applied first). 0126's and 0155's replays and rollbacks refuse any other body: run
+-- docs/sql/rollback_0156_named_resolution_params.sql FIRST (the security lab does: sec_db.take_off_0156, called by take_off_0155). If
 -- another open branch replaces creative_price or creative_params_problem and merges first, this file's guard refuses its body: rebase this
 -- file on that body (the hunks are small) rather than accepting both.
 --
@@ -59,13 +60,13 @@
 --   select (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
 --            where oid = 'public.creative_params_problem(text, jsonb)'::regprocedure) = '6e815ae544cbb23d7f03845465f8ce6a' as params_is_0126s,
 --          (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---            where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) = '28130a014027e6ad0b7876a78d69a396' as price_is_0153s;
+--            where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) = '48105e11fbd820b6f103c19b8fd1e693' as price_is_0155s;
 --
 -- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local lock_timeout`
 -- assumes it, and the last block asserts the end state. Additive and idempotent: create or replace, then revoke; a replay finds this file's
 -- bodies and changes nothing.
 -- Rollback: docs/sql/rollback_0156_named_resolution_params.sql (owner-applied; refuses a body that is neither 0156's nor the one it was
--- written on; puts 0126's creative_params_problem and 0153's creative_price back byte for byte). Docs: docs/MIGRATIONS.md, "A model's own
+-- written on; puts 0126's creative_params_problem and 0155's creative_price back byte for byte). Docs: docs/MIGRATIONS.md, "A model's own
 -- resolution names (0156)".
 
 set local lock_timeout = '5s';
@@ -78,7 +79,7 @@ begin
      or to_regprocedure('public.creative_operator_preview(uuid, text, jsonb)') is null
      or to_regprocedure('public.model_past_shutdown(jsonb)') is null
      or to_regprocedure('public.model_is_available(text)') is null then
-    raise exception '0156 needs 0126_region_edit_run.sql and 0153_preview_price_by_quality.sql (and 0149, 0139, 0125, 0124): apply them first';
+    raise exception '0156 needs 0126_region_edit_run.sql and 0155_shape_offered_by_model.sql (and 0153, 0149, 0139, 0125, 0124): apply them first';
   end if;
 end $$;
 
@@ -95,8 +96,8 @@ begin
     raise exception '0156 found a creative_params_problem() that is neither 0126''s body nor 0156''s (md5 %): read the live body first', p;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into c from pg_proc x where x.oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
-  if c is null or c <> all (array['28130a014027e6ad0b7876a78d69a396', 'bcd99f06a87c0ac580a0afe1b81a63ff']) then
-    raise exception '0156 found a creative_price() that is neither 0153''s body nor 0156''s (md5 %): read the live body first (0153 must be applied before 0156)', c;
+  if c is null or c <> all (array['48105e11fbd820b6f103c19b8fd1e693', 'a70dba23b303c72f2b9f5dc5acb3b3ec']) then
+    raise exception '0156 found a creative_price() that is neither 0155''s body nor 0156''s (md5 %): read the live body first (0155 must be applied before 0156)', c;
   end if;
 end $$;
 
@@ -409,7 +410,7 @@ $$;
 
 revoke all on function public.creative_params_problem(text, jsonb) from public, anon, authenticated, service_role;
 
--- 0153's quote with a newly accepted resolution name sold only at its own variant's price (the second hunk in the header).
+-- 0155's quote with a newly accepted resolution name sold only at its own variant's price (the second hunk in the header).
 create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
@@ -556,6 +557,21 @@ begin
                       and (m_spec -> 'aspect_ratios_by_capability' -> 'video_reframe') @> jsonb_build_array(p_params ->> 'aspect_ratio'), false) then
     perform public.creative_refuse('invalid_params',
       format('%s does not reframe a video to %s', mdl, p_params ->> 'aspect_ratio'));
+  end if;
+  -- 0155: nor any shape the model does not list for this capability: spec.aspect_ratios_by_capability[cap] when it names
+  -- some, else spec.aspect_ratios, the same list the worker checks before it calls the vendor (ModelEntry.aspects_for). An
+  -- empty list is a model that makes its own shape, so any shape is refused. Refused here, before anything is held, rather
+  -- than by the worker after the job was queued. Each branch casts nothing: the CASE decides the order, not an `and`.
+  if p_params ? 'aspect_ratio'
+     and not coalesce(case
+                        when jsonb_typeof(m_spec -> 'aspect_ratios_by_capability' -> cap) = 'array'
+                             and m_spec -> 'aspect_ratios_by_capability' -> cap <> '[]'::jsonb
+                          then (m_spec -> 'aspect_ratios_by_capability' -> cap) @> jsonb_build_array(p_params ->> 'aspect_ratio')
+                        when jsonb_typeof(m_spec -> 'aspect_ratios') = 'array'
+                          then (m_spec -> 'aspect_ratios') @> jsonb_build_array(p_params ->> 'aspect_ratio')
+                      end, false) then
+    perform public.creative_refuse('invalid_params',
+      format('%s does not offer the %s shape for %s', mdl, p_params ->> 'aspect_ratio', cap));
   end if;
   -- Nor an ending on a model that would drop it.
   if p_params ? 'end_asset_id' and coalesce(m_spec -> 'end_frame', 'false'::jsonb) <> 'true'::jsonb then
@@ -767,7 +783,7 @@ begin
     raise exception '0156 end state: creative_params_problem does not hold this file''s body (md5 %)', got;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = cp;
-  if got <> 'bcd99f06a87c0ac580a0afe1b81a63ff' then
+  if got <> 'a70dba23b303c72f2b9f5dc5acb3b3ec' then
     raise exception '0156 end state: creative_price does not hold this file''s body (md5 %)', got;
   end if;
   -- No API role at all. A NULL ACL would mean "default privileges", and the default includes public.
@@ -787,10 +803,10 @@ begin
      or not (select prosecdef from pg_proc where oid = cp) then
     raise exception '0156 end state: a function changed its volatility or security';
   end if;
-  -- The guards every creative_price keeps (0124's switch, 0125's date) and the preview reached only through 0139's rule.
+  -- The guards every creative_price keeps (0124's switch, 0125's date, 0139's preview rule, 0155's shape check).
   def := pg_get_functiondef(cp);
   if position('model_is_available' in def) = 0 or position('model_past_shutdown' in def) = 0
-     or position('creative_operator_preview' in def) = 0 then
+     or position('creative_operator_preview' in def) = 0 or position('does not offer the %s shape for %s' in def) = 0 then
     raise exception '0156 end state: creative_price lost a guard';
   end if;
   -- What this file is about, read back from the functions themselves: a model's own names pass the params check, a wrong case and an
@@ -816,7 +832,7 @@ end $$;
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
 --     where oid = 'public.creative_params_problem(text,jsonb)'::regprocedure) = '25ee9cc62a27ad3a19e71008b04f3f36' as params_is_0156s,
 --   (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---     where oid = 'public.creative_price(uuid,text,text,jsonb)'::regprocedure) = 'bcd99f06a87c0ac580a0afe1b81a63ff' as creative_price_is_0156s,
+--     where oid = 'public.creative_price(uuid,text,text,jsonb)'::regprocedure) = 'a70dba23b303c72f2b9f5dc5acb3b3ec' as creative_price_is_0156s,
 --   not has_function_privilege('authenticated', 'public.creative_price(uuid,text,text,jsonb)', 'EXECUTE')
 --     and not has_function_privilege('anon', 'public.creative_price(uuid,text,text,jsonb)', 'EXECUTE')
 --     and not has_function_privilege('authenticated', 'public.creative_params_problem(text,jsonb)', 'EXECUTE')
