@@ -297,6 +297,16 @@ class AgentConfig:
     # when it comes from the kids format, a kids series or a kids look. Only an explicit true turns it on. Stored in this
     # blob, so no migration.
     made_for_kids: bool = False
+    # How this channel's thumbnails are made (modules/thumbnail_concept.py).
+    # "frame" (the default, and anything that is not exactly "concept") is the
+    # darkened video still it has always had. "concept" plans the picture with the
+    # script model, generates it clean through the image adapter named in
+    # thumbnail_concept.image_provider, and stops the run when that cannot be done
+    # — so it adds a cost per video and is only ever turned on by a person.
+    # thumbnail_concept also holds image_model, allow_faces and allow_baked_text
+    # (both off unless an explicit true). Stored in this blob — no migration.
+    thumbnail_mode: str = "frame"
+    thumbnail_concept: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -326,6 +336,8 @@ class AgentConfig:
             "ai_disclosure_text": self.ai_disclosure_text,
             "playlist_id": self.playlist_id,
             "made_for_kids": self.made_for_kids,
+            "thumbnail_mode": self.thumbnail_mode,
+            "thumbnail_concept": dict(self.thumbnail_concept),
         }
 
     @staticmethod
@@ -378,6 +390,10 @@ class AgentConfig:
             ai_disclosure_text=ai_disclosure.normalize_text(d.get("ai_disclosure_text")),
             playlist_id=clean_playlist_id(d.get("playlist_id")),
             made_for_kids=(True if d.get("made_for_kids") is True else False),
+            thumbnail_mode=("concept" if str(d.get("thumbnail_mode") or "").strip().lower() == "concept"
+                            else "frame"),
+            thumbnail_concept=(dict(d["thumbnail_concept"]) if isinstance(d.get("thumbnail_concept"), dict)
+                               else {}),
         )
 
 

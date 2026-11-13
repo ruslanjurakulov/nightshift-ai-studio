@@ -94,6 +94,7 @@ from modules import storyboard_review
 from modules import strategy
 from modules.subtitle_generator import SubtitleGenerator
 from modules.thumbnail_generator import ThumbnailGenerator, overlay_is_missing
+from modules import thumbnail_concept
 from modules import title_formulas
 from modules.title_planner import plan_titles
 from modules.topic_manager import TopicManager, TopicSelectionError
@@ -738,13 +739,41 @@ def _presenter_stop_recorded(channel_id):
         raise
 
 
+def _concept_thumbnails(ctx, costs, script, slug, channel_id, engine):
+    """The channel's concept thumbnails, or None in frame mode (the default:
+    nothing is called, written or spent). Runs before the voice, so a concept
+    that cannot be made stops the run having paid for one planner call and the
+    images, not for the narration and footage too. A stop is recorded with what
+    it measured and re-raised; frame mode is never substituted (CLAUDE.md #4)."""
+    if thumbnail_concept.settings_from_agent(ctx.agent).mode != thumbnail_concept.MODE_CONCEPT:
+        return None
+    arms = _variant_arms()
+    _guard_spend(ctx, costs, "the concept thumbnail", planned=[(IMAGE_GENERATIONS, len(arms))])
+    planner = engine if engine is not None else ScriptEngine(channel=ctx)
+    try:
+        return thumbnail_concept.make_concept_thumbnails(
+            ctx.agent, script, ThumbnailGenerator(slug).out_dir, arms, gen=planner._gen,
+            on_planner_response=lambda: costs.add_gemini_usage(planner.last_response, stage="thumbnail_concept"),
+            on_image=lambda provider: costs.add(IMAGE_GENERATIONS, 1, stage=f"thumbnail:{provider}"),
+            language=getattr(ctx.agent, "language", ""), title=script.title)
+    except thumbnail_concept.ThumbnailConceptUnavailable as e:
+        logger.error("[channel: %s] %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="thumbnail_concept", status=events.STATUS_FAILED,
+                    channel_id=channel_id,
+                    metadata={**e.record, "error": str(e), "stage": f"thumbnail_concept:{e.stage}"})
+        _flush_costs(costs, slug)
+        raise
+
+
 def _preflight_pictures(ctx, series_obj, channel_id) -> None:
     """Raise (after recording the failure) when generated stills or a presenter
     were asked for but cannot be made. Makes no request."""
     try:
         image_providers.preflight()
         preflight_avatar(resolve_avatar_config(ctx, series_obj))
-    except (image_providers.ImageProviderUnavailable, AvatarUnavailable, UnsafeAvatarRequest) as e:
+        thumbnail_concept.preflight(ctx.agent)
+    except (image_providers.ImageProviderUnavailable, AvatarUnavailable, UnsafeAvatarRequest,
+            thumbnail_concept.ThumbnailConceptUnavailable) as e:
         logger.error("Generated pictures or presenter not usable for channel %s: %s", channel_id, e)
         events.emit(events.AGENT_FAILED, agent="media_preflight", status=events.STATUS_FAILED,
                     channel_id=channel_id, metadata={"error": f"{type(e).__name__}: {e}", "stage": "preflight"})
@@ -1166,6 +1195,7 @@ def run(
             events.emit(events.AGENT_FAILED, agent="research_engine", status=events.STATUS_FAILED,
                         channel_id=channel_id, metadata={"error": f"{type(e).__name__}: {e}"})
 
+    engine = None
     if not script_file:
         engine = ScriptEngine(channel=ctx)
         # Growth: decide the packaging BEFORE the script. The title and a
@@ -1357,6 +1387,9 @@ def run(
     # Per-section Pexels keywords — already inside the script JSON, no API call.
     keyword_map = ScriptEngine.extract_visual_keywords(script)
 
+    # ── Stage 2c: Concept thumbnail (per channel, off unless thumbnail_mode is "concept")
+    concept_thumbs = _concept_thumbnails(ctx, costs, script, slug, channel_id, engine)
+
     # ── Stage 3: Audio
     _guard_spend(ctx, costs, "the voice")
     events.emit(events.VOICE_STARTED, agent="audio_mixer", status=events.STATUS_RUNNING, channel_id=channel_id)
@@ -1529,16 +1562,20 @@ def run(
     logger.info("[channel: %s] Thumbnail variant for this video: %s (of %s)",
                 channel_id, variant, "/".join(arms))
     events.emit(events.THUMBNAIL_STARTED, agent="thumbnail_generator", status=events.STATUS_RUNNING, channel_id=channel_id)
-    # One background per arm where footage allows; arms past the available
-    # backgrounds fall back to the variant's own solid style (generate_variants).
-    backgrounds = [images[i] if i < len(images) else None for i in range(len(arms))]
-    thumb_gen = ThumbnailGenerator(slug)
-    thumbs = thumb_gen.generate_variants(
-        topic=script.topic,
-        overlay_text=script.thumbnail_overlay_text,   # never defaulted: absent means no overlay
-        variants=arms,
-        backgrounds=backgrounds,
-    )
+    if concept_thumbs is not None:
+        # Made and checked before the voice (Stage 2c), one per arm.
+        thumbs = dict(concept_thumbs.paths)
+    else:
+        # One background per arm where footage allows; arms past the available
+        # backgrounds fall back to the variant's own solid style (generate_variants).
+        backgrounds = [images[i] if i < len(images) else None for i in range(len(arms))]
+        thumb_gen = ThumbnailGenerator(slug)
+        thumbs = thumb_gen.generate_variants(
+            topic=script.topic,
+            overlay_text=script.thumbnail_overlay_text,   # never defaulted: absent means no overlay
+            variants=arms,
+            backgrounds=backgrounds,
+        )
     # The chosen arm's thumbnail; fall back to A if the label somehow isn't in
     # the rendered set (never crash the render over a variant mismatch).
     chosen_thumb = thumbs.get(variant) or thumbs.get("A") or next(iter(thumbs.values()))
@@ -1557,10 +1594,15 @@ def run(
     published_title = chosen_title or script.title
     logger.info("Thumbnails: %s | %s — shipping %s", thumb_a.name, thumb_b.name, chosen_thumb.name)
     no_overlay = overlay_is_missing(script.thumbnail_overlay_text)
-    if no_overlay:
+    if no_overlay and concept_thumbs is not None:
+        logger.warning("[channel: %s] The script has no thumbnail overlay text — the concept thumbnails carry no headline", channel_id)
+    elif no_overlay:
         logger.warning("[channel: %s] The script has no thumbnail overlay text — thumbnails carry the topic caption only", channel_id)
+    thumb_record = {"thumbnail_overlay": "missing"} if no_overlay else None
+    if concept_thumbs is not None:
+        thumb_record = {**(thumb_record or {}), **concept_thumbs.record}
     events.emit(events.THUMBNAIL_COMPLETED, agent="thumbnail_generator", status=events.STATUS_COMPLETED, channel_id=channel_id,
-                metadata={"thumbnail_overlay": "missing"} if no_overlay else None)
+                metadata=thumb_record)
     run_checkpoint.record_stage(slug, run_checkpoint.STAGE_THUMBNAILS,
                                 artifacts={"thumbnail_a": str(thumb_a), "thumbnail_b": str(thumb_b)})
 

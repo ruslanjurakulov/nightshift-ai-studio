@@ -240,6 +240,26 @@ def get_client():
     return client if client.api_key else None
 
 
+def client_for(provider: str, model: str = ""):
+    """A client for ``provider`` with ``model`` pinned (empty: that provider's own
+    default), or ``None`` when the provider is unknown or has no key.
+
+    For a caller with its own per-channel choice (modules/thumbnail_concept.py):
+    ``get_client`` follows the run-wide ``CHRONOS_IMAGE_PROVIDER`` and its
+    ``CHRONOS_IMAGE_MODEL``, which may name a model of a different provider."""
+    cls = _CLIENTS.get((provider or "").strip().lower())
+    if cls is None:
+        return None
+    client = cls()
+    if not client.api_key:
+        return None
+    if cls is LeonardoClient:
+        client.model_id = model or getattr(config, "LEONARDO_MODEL_ID", "")
+    else:
+        client.model = model or DEFAULT_MODELS.get(client.provider_id, "")
+    return client
+
+
 def _aspect(width: int, height: int) -> str:
     """"16:9"-style ratio for the providers that take one instead of pixels."""
     if width <= 0 or height <= 0:
