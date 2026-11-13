@@ -463,6 +463,8 @@ def test_a_batch_of_tool_calls_under_one_check_costs_one_unit_each(db):
 
 CLAUDE_CB = "https://claude.ai/api/mcp/auth_callback"
 CHATGPT_CB = "https://chatgpt.com/connector_platform_oauth_redirect"
+GROK_CB = "https://grok.com/connectors-oauth-exchange-code/"
+GEMINI_CB = "https://oauth-redirect.googleusercontent.com/r/my-gemini-project"
 ORDINARY = "https://app.example.com/cb"
 
 
@@ -491,6 +493,17 @@ def test_a_vendor_callback_registers_at_least_200_an_hour_from_one_address_and_s
         db.su("delete from public.oauth_clients where ip_hash = %s", [ip_hash])
 
 
+@pytest.mark.parametrize("callback", [CLAUDE_CB, CHATGPT_CB, "https://chatgpt.com/connector/oauth/g-AbC123", GROK_CB, GEMINI_CB,
+                                      "https://oauth-redirect.googleusercontent.com/a/my-gemini-project"])
+def test_each_vendor_callback_passes_the_11th_registration_from_one_address(db, callback):
+    ip = "198.51.100." + uuid.uuid4().hex[:6]
+    answers = [register(db, (callback,), ip) for _ in range(15)]
+    try:
+        assert all(a["ok"] for a in answers), [a for a in answers if not a["ok"]][:2]
+    finally:
+        db.su("delete from public.oauth_clients where client_id = any(%s::uuid[])", [[a["client_id"] for a in answers if a.get("ok")]])
+
+
 def test_an_arbitrary_redirect_from_one_address_is_still_limited_to_10_an_hour(db):
     ip = "198.18.47." + uuid.uuid4().hex[:6]
     for uris in ((ORDINARY,), (CLAUDE_CB, ORDINARY)):  # one non-vendor URI makes the whole registration ordinary
@@ -503,7 +516,15 @@ def test_the_class_is_what_the_stored_uris_say(db):
     for uris, vendor in (((CLAUDE_CB,), True), ((CHATGPT_CB,), True), (("https://chatgpt.com/connector/oauth/AbC_12-x",), True),
                          ((CLAUDE_CB, CHATGPT_CB), True), ((CLAUDE_CB, ORDINARY), False), ((CLAUDE_CB + "/x",), False),
                          (("https://chatgpt.com/connector/oauth/a/b",), False), (("https://claude.ai.evil.example/api/mcp/auth_callback",), False),
-                         (("http://127.0.0.1:33418/callback",), False)):
+                         (("http://127.0.0.1:33418/callback",), False),
+                         ((GROK_CB,), True), ((GROK_CB.rstrip("/"),), False), (("https://grok.com.evil.example/connectors-oauth-exchange-code/",), False),
+                         ((GEMINI_CB,), True), (("https://oauth-redirect.googleusercontent.com/a/abc.Def_9~x",), True),
+                         (("https://oauth-redirect.googleusercontent.com/r/a/b",), False),
+                         (("https://oauth-redirect.googleusercontent.com/r/..",), False),
+                         (("https://oauth-redirect.googleusercontent.com/x/project",), False),
+                         (("https://oauth-redirect-sandbox.googleusercontent.com/r/my-gemini-project",), False),
+                         (("https://oauth-redirect.googleusercontent.com.evil.example/r/p",), False),
+                         ((CLAUDE_CB, CHATGPT_CB, GROK_CB, GEMINI_CB), True), ((GEMINI_CB, ORDINARY), False)):
         r = register(db, uris, "203.0.113." + uuid.uuid4().hex[:8])
         assert r["ok"] is True, (uris, r)
         assert db.su("select vendor from public.oauth_clients where client_id = %s", [r["client_id"]])[0][0] is vendor, uris

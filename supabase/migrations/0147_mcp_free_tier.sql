@@ -55,8 +55,12 @@
 --    Decision: a registration whose EVERY redirect URI is one of the vendors' own callbacks is its own class (oauth_clients
 --    .vendor, generated from the URIs by oauth_vendor_callbacks_only, so it cannot disagree with them):
 --      https://claude.ai/api/mcp/auth_callback, https://chatgpt.com/connector_platform_oauth_redirect,
---      https://chatgpt.com/connector/oauth/<id> (<id>: 1 to 64 of A-Z a-z 0-9 _ -; any other shape is the ordinary class:
---      it still registers, at the old limits).
+--      https://chatgpt.com/connector/oauth/<id> (<id>: 1 to 64 of A-Z a-z 0-9 _ -), Grok's
+--      https://grok.com/connectors-oauth-exchange-code/ (with its trailing slash), and Gemini's
+--      https://oauth-redirect.googleusercontent.com/r/<seg> and /a/<seg> (Google's MCP OAuth guide lists /r/* and /a/*
+--      without defining *; <seg> is ONE path segment of 1 to 128 of A-Z a-z 0-9 . _ ~ -, starting with a letter or digit;
+--      Google's -sandbox / -test hosts stay ordinary). Any other shape is the ordinary class: it still registers, at the
+--      old limits, so a vendor whose real callback differs is throttled as before, never refused outright.
 --    It gets 300 an address an hour, 2 000 an hour in total and its own 60 000-row cap; the ordinary class keeps exactly 0093's
 --    10 / 300 / 20 000, counted over ordinary rows only, so neither class can spend the other's budget. Why that is not an abuse
 --    hole: the code of a vendor-class client can only ever be delivered to the vendor's own callback (0093 matches it exactly),
@@ -125,7 +129,7 @@ begin
   foreach trio slice 1 in array array[
       ['public.oauth_check_credit_put(uuid, text)', 'b50cfb0cfaa7d8a57512f3381d6b72e3', ''],
       ['public.oauth_check_credit_take(uuid, text)', '7092b99bdaef02719f247dcd26d77c08', ''],
-      ['public.oauth_vendor_callbacks_only(text[])', 'ea8f4b03c3eea3db46d3e3210b920def', '']] loop
+      ['public.oauth_vendor_callbacks_only(text[])', 'e4c9b0824b91bc3c6ff3b10e91934a74', '']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(trio[1]);
     if h is not null and h <> trio[2] then
       raise exception '0147 found % with a body that is not this file''s (md5 %): read the live body first', trio[1], h;
@@ -183,16 +187,21 @@ $$;
 -- 1b. The vendor class of a registration
 -- ───────────────────────────────────────────────────────────────────────────
 
--- True when every redirect URI is an AI vendor's own callback, matched exactly (the id of a ChatGPT connector by shape). A
--- registration with even one other URI is ordinary: its code could go somewhere that is not the vendor.
+-- True when every redirect URI is an AI vendor's own callback, matched exactly (the id of a ChatGPT connector and the one
+-- path segment of Google's redirect by shape). A registration with even one other URI is ordinary: its code could go
+-- somewhere that is not the vendor. Google's own test hosts (oauth-redirect-sandbox / -test) are deliberately ordinary: the
+-- class is for the production servers that register for every person. A Gemini segment starts with a letter or digit so
+-- a dot-only segment cannot climb out of /r/ or /a/ (the host stays Google's either way).
 create or replace function public.oauth_vendor_callbacks_only(p text[]) returns boolean
   language sql immutable set search_path = public, pg_temp as $$
   select coalesce(cardinality(p), 0) > 0 and not exists (
     select 1 from unnest(p) u
      where u is null
         or not (u = any (array['https://claude.ai/api/mcp/auth_callback',
-                               'https://chatgpt.com/connector_platform_oauth_redirect']::text[])
-                or u ~ '^https://chatgpt\.com/connector/oauth/[A-Za-z0-9_-]{1,64}$'))
+                               'https://chatgpt.com/connector_platform_oauth_redirect',
+                               'https://grok.com/connectors-oauth-exchange-code/']::text[])
+                or u ~ '^https://chatgpt\.com/connector/oauth/[A-Za-z0-9_-]{1,64}$'
+                or u ~ '^https://oauth-redirect\.googleusercontent\.com/[ra]/[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$'))
 $$;
 revoke all on function public.oauth_vendor_callbacks_only(text[]) from public, anon, authenticated, service_role;
 
@@ -997,7 +1006,7 @@ begin
   -- The two plain helpers (not definers): this file's bodies, and no API role may call them.
   foreach pair slice 1 in array array[
       ['public.oauth_limits()', 'e49fb50fbe306e0d727836239baab57a'],
-      ['public.oauth_vendor_callbacks_only(text[])', 'ea8f4b03c3eea3db46d3e3210b920def']] loop
+      ['public.oauth_vendor_callbacks_only(text[])', 'e4c9b0824b91bc3c6ff3b10e91934a74']] loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(pair[1])) is distinct from pair[2]
        or has_function_privilege('anon', pair[1], 'EXECUTE') or has_function_privilege('authenticated', pair[1], 'EXECUTE')
        or has_function_privilege('service_role', pair[1], 'EXECUTE') then
@@ -1010,6 +1019,13 @@ begin
      or public.oauth_vendor_callbacks_only(array['https://claude.ai/api/mcp/auth_callback', 'https://evil.example/cb'])
      or public.oauth_vendor_callbacks_only(array['https://claude.ai/api/mcp/auth_callback/'])
      or public.oauth_vendor_callbacks_only(array['https://chatgpt.com/connector/oauth/a/b'])
+     or not public.oauth_vendor_callbacks_only(array['https://grok.com/connectors-oauth-exchange-code/'])
+     or public.oauth_vendor_callbacks_only(array['https://grok.com/connectors-oauth-exchange-code'])
+     or not public.oauth_vendor_callbacks_only(array['https://oauth-redirect.googleusercontent.com/r/my-project-1',
+                                                     'https://oauth-redirect.googleusercontent.com/a/abc.Def_9'])
+     or public.oauth_vendor_callbacks_only(array['https://oauth-redirect.googleusercontent.com/r/a/b'])
+     or public.oauth_vendor_callbacks_only(array['https://oauth-redirect.googleusercontent.com/r/..'])
+     or public.oauth_vendor_callbacks_only(array['https://oauth-redirect-sandbox.googleusercontent.com/r/my-project-1'])
      or public.oauth_vendor_callbacks_only(array[]::text[]) then
     raise exception '0147 end state: the vendor class of a registration is not what this file defines';
   end if;

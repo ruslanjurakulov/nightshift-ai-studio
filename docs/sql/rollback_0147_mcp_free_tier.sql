@@ -38,7 +38,7 @@ begin
       ['public.oauth_my_grants()', '595922d17683b2e0620612f60c5d10c3'],
       ['public.oauth_limits()', 'e49fb50fbe306e0d727836239baab57a'],
       ['public.oauth_register_client(text, text[], text)', '51d0b4f6ee421aa0fd276b09c108da2f'],
-      ['public.oauth_vendor_callbacks_only(text[])', 'ea8f4b03c3eea3db46d3e3210b920def'],
+      ['public.oauth_vendor_callbacks_only(text[])', 'e4c9b0824b91bc3c6ff3b10e91934a74'],
       ['public.api_create_video(text, text, jsonb, text, text, text)', 'cba47be1a674f5cea3b5d7443bc31bab'],
       ['public.api_request_download(text, text, text, text, text, text)', '055003f8a2fb5390bbd1b5f7820e6e2e'],
       ['public.oauth_check_credit_put(uuid, text)', 'b50cfb0cfaa7d8a57512f3381d6b72e3'],

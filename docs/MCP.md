@@ -225,7 +225,8 @@ Nightshift is its own authorization server for its MCP resource.
   leet folding in several scripts, with invisible and direction characters removed); an app nobody ever approves is deleted after a day.
   Two classes, each with its own budgets (0147): a registration whose **every** redirect URI is an AI vendor's own callback
   (`https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/connector_platform_oauth_redirect`,
-  `https://chatgpt.com/connector/oauth/<id>`) may make 300 per address and 2 000 in total per hour, up to 60 000 rows, because
+  `https://chatgpt.com/connector/oauth/<id>`, Grok's `https://grok.com/connectors-oauth-exchange-code/`, Gemini's
+  `https://oauth-redirect.googleusercontent.com/r/<segment>` and `/a/<segment>`, one path segment) may make 300 per address and 2 000 in total per hour, up to 60 000 rows, because
   Claude registers a new client on every fresh connection from Anthropic's shared servers and ChatGPT once per server connection
   (with one budget for all, the 11th person an hour was refused); every other registration keeps 10 per address and 300 in total
   per hour, 20 000 rows. A vendor-class client's code can only ever be delivered to that vendor's callback, so the class gains an

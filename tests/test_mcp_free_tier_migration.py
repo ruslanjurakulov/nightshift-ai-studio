@@ -302,7 +302,9 @@ class VendorRegistrations(unittest.TestCase):
         self.assertIn("language sql immutable", fn)
         self.assertIn("not exists (", fn)
         for exact in ("'https://claude.ai/api/mcp/auth_callback'", "'https://chatgpt.com/connector_platform_oauth_redirect'",
-                      "'^https://chatgpt\\.com/connector/oauth/[A-Za-z0-9_-]{1,64}$'"):
+                      "'^https://chatgpt\\.com/connector/oauth/[A-Za-z0-9_-]{1,64}$'",
+                      "'https://grok.com/connectors-oauth-exchange-code/'",
+                      "'^https://oauth-redirect\\.googleusercontent\\.com/[ra]/[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$'"):
             self.assertIn(exact, fn)
 
     def test_every_count_of_the_registration_is_per_class(self):
