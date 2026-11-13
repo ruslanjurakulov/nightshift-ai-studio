@@ -22,7 +22,8 @@ import { oauthEndpoints } from "@/lib/oauth/config";
  *
  * Tests marked `it.fails` demonstrate a confirmed product bug (named in the
  * comment above each); they flip to failing-as-passing when the bug is fixed,
- * which is the cue to turn them into plain `it`.
+ * which is the cue to turn them into plain `it`. A comment that starts "Was a
+ * bug" marks a test that was `it.fails` until the fix it names.
  */
 
 // ── the fake database ──────────────────────────────────────────────────────
@@ -476,53 +477,87 @@ describe("tools/list: exactly the documented tools for each door and permission"
     expect(words).not.toMatch(PRICE);
   });
 
-  // BUG (low): request_download's description hard-codes "x 1.5 cents" (lib/api/mcp.ts:211). The rate is
-  // the api_prices row 'download_cents_per_credit' (0031:179, read at 0042:881), which the operator can
-  // change; the description then states a price the backend does not charge. Name where the price comes
-  // from (the order's price_cents) instead of a number.
-  it.fails("API key: no description or instruction states a fixed price", async () => {
+  // Was a bug: request_download's description hard-coded "x 1.5 cents". The rate is the api_prices row
+  // 'download_cents_per_credit' (0031:179, read at 0042:881), which the operator can change; the
+  // description then stated a price the backend does not charge. It now names where the price comes
+  // from: the order's own answer (price_cents).
+  it("API key: no description or instruction states a fixed price", async () => {
     const tools = await listTools(KEY);
     const words = tools.flatMap((t) => [t.title ?? "", t.description ?? ""]).join("\n");
     expect(words).not.toMatch(PRICE);
+    expect(tools.find((t) => t.name === "request_download")!.description).toMatch(/price_cents/);
   });
 
-  // BUG (low): get_balance's TITLE is "Get API balance" on the OAuth door too (lib/api/mcp.ts:234). A
-  // connected app has no API balance (docs/MCP.md: it pays with site credits); clients show the title in
-  // the tool picker and approval prompt, so the person is told the app reads a USD balance it never sees.
-  it.fails("OAuth: get_balance is not titled as the API (USD) balance", async () => {
-    const tools = await listTools(TOKEN);
-    expect(tools.find((t) => t.name === "get_balance")!.title).not.toMatch(/API balance/i);
+  // Was a bug: get_balance was titled "Get API balance" on the OAuth door too. A connected app has no API
+  // balance (docs/MCP.md: it pays with site credits); clients show the title in the tool picker and the
+  // approval prompt, so the person was told the app reads a USD balance it never sees.
+  it("OAuth: get_balance is titled as the credit balance; the API key keeps its API balance title", async () => {
+    expect((await listTools(TOKEN)).find((t) => t.name === "get_balance")!.title).toBe("Get credit balance");
+    expect((await listTools(KEY)).find((t) => t.name === "get_balance")!.title).toBe("Get API balance");
   });
 
-  // BUG (medium): OAuth publish_video still advertises idempotency_key as "Reuse the same value when
-  // retrying so the action happens once (24 hours)" (lib/api/mcp.ts:43, :198), but for a connection the key
-  // is dropped before the database (lib/api/mcp-oauth.ts:299-302) and docs/MCP.md says "once it has
-  // finished a new call posts again". An assistant that retries with the same key, as the schema tells it
-  // to, cross-posts the video a second time to Instagram/TikTok. Either omit the field for OAuth or say
-  // there what really happens.
-  it.fails("OAuth: publish_video does not promise once-only for an idempotency key it ignores", async () => {
+  // Was a bug (medium): OAuth publish_video advertised idempotency_key as "Reuse the same value when
+  // retrying so the action happens once (24 hours)", but for a connection the key is dropped before the
+  // database (oauthRpc: the idempotency record is keyed by API key) and, once a post has finished, a new
+  // call posts again. An assistant that retried with the same key, as the schema told it to, would
+  // cross-post the video a second time. The OAuth schema now has no such field, and the description says
+  // what a repeat does.
+  it("OAuth: publish_video does not promise once-only for an idempotency key it ignores", async () => {
     const tools = await listTools(TOKEN);
-    const s = tools.find((t) => t.name === "publish_video")!.inputSchema as { properties: Record<string, { description?: string }> };
-    const d = s.properties.idempotency_key?.description ?? "";
-    expect(d).not.toMatch(/happens once/i);
+    const t = tools.find((x) => x.name === "publish_video")!;
+    const s = t.inputSchema as { properties: Record<string, { description?: string }>; additionalProperties?: boolean };
+    expect(Object.keys(s.properties)).not.toContain("idempotency_key");
+    expect(s.additionalProperties).toBe(false);
+    expect(JSON.stringify(t)).not.toMatch(/happens once/i);
+    expect(t.description).toMatch(/once that post has finished a new call posts the video again/);
+  });
+
+  it("OAuth: a publish_video that still sends an idempotency_key is refused with the field named, and nothing is posted", async () => {
+    const client = await connect(TOKEN);
+    db.calls = [];
+    const r = await call(client, "publish_video", { video_id: "vid-abc123", account_ids: [ACCOUNT_IG], idempotency_key: "retry-1" });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain("idempotency_key");
+    expect(db.calls.filter((c) => c.fn !== "oauth_check")).toEqual([]);
+    await client.close();
+  });
+
+  it("API key: publish_video keeps its idempotency_key, and it reaches the database", async () => {
+    const tools = await listTools(KEY);
+    const s = tools.find((t) => t.name === "publish_video")!.inputSchema as { properties: Record<string, unknown> };
+    expect(Object.keys(s.properties)).toContain("idempotency_key");
+    const client = await connect(KEY);
+    await call(client, "publish_video", { video_id: "vid-abc123", account_ids: [ACCOUNT_IG], idempotency_key: "p-1" });
+    expect(db.calls.find((c) => c.fn === "api_request_publish")!.args).toMatchObject({ p_idem_key: "p-1", p_account_ids: [ACCOUNT_IG] });
+    await client.close();
   });
 });
 
 describe("OAuth with a partial grant (a client may ask for one scope; docs/MCP.md: unknown words ignored)", () => {
-  // BUG (low): OAUTH_INSTRUCTIONS (lib/api/mcp.ts:71-79) are the same text for every grant. A connection
-  // granted only videos:create (0093:712-716 lets a client ask for just that) is still told to "Start with
-  // list_channels", "call get_balance first" and "Poll get_job_status": tools it does not have; a
-  // read-only one is told to create_video and publish_video. An
-  // assistant then cannot find a channel id or follow its job and tells the person a tool is broken.
-  // Either build OAUTH_INSTRUCTIONS from the tools offered, or have the consent screen always include
-  // videos:read with create/publish.
-  it.fails.each([[["videos:create"]], [["videos:publish"]], [["videos:read"]], [["videos:read", "videos:create"]]])("scopes %j: the instructions name only tools that are offered", async (scopes) => {
+  // Was a bug: the OAuth instructions were the same text for every grant. A connection granted only
+  // videos:create (0093:712-716 lets a client ask for just that) was told to "Start with list_channels",
+  // "call get_balance first" and "Poll get_job_status": tools it does not have; a read-only one was told
+  // to create_video and publish_video. An assistant then cannot find a channel id or follow its job and
+  // tells the person a tool is broken. The instructions are now built from the tools the grant is offered.
+  it.each([
+    [["videos:create"]], [["videos:publish"]], [["videos:read"]], [["videos:read", "videos:create"]],
+    [["videos:create", "videos:publish"]], [["videos:read", "videos:create", "videos:publish"]],
+  ])("scopes %j: the instructions name only tools that are offered", async (scopes) => {
     db.oauth.scopes = scopes;
     const client = await connect(TOKEN);
     const offered = new Set((await client.listTools()).tools.map((t) => t.name));
     const named = KEY_TOOLS.filter((t) => (client.getInstructions() ?? "").includes(t));
     await client.close();
     expect(named.filter((t) => !offered.has(t))).toEqual([]);
+  });
+
+  it("a read-only grant is told it cannot create or publish, and that the person can allow it", async () => {
+    db.oauth.scopes = ["videos:read"];
+    const client = await connect(TOKEN);
+    const i = client.getInstructions() ?? "";
+    await client.close();
+    expect(i).toMatch(/not given permission to create videos or to publish videos/);
+    expect(i).toMatch(/connect it again/);
   });
 });
 
@@ -847,18 +882,21 @@ describe("refusals as an assistant hits them (tool errors that name the next ste
     await client.close();
   });
 
-  // BUG (low): docs/MCP.md says a repeat publish of a target still being sent "is answered `already_sending`".
+  // Was a bug: docs/MCP.md says a repeat publish of a target still being sent "is answered `already_sending`".
   // The database does say so (0042: publish_refused with errors[].error = 'already_sending'), but
-  // oauthRefusalText's default branch (lib/api/mcp-oauth.ts:385-386) prints only the message and code and
-  // drops `details.errors`, so the assistant reads "No publish request could be recorded. (publish_refused)"
-  // and cannot tell a duplicate from a refusal by the gate. Add a publish_refused case that names each
-  // target's reason (already being sent: nothing to do; forbidden: the gate or approvals).
-  it.fails("OAuth publish: the repeat is explained as already being sent", async () => {
+  // oauthRefusalText's default branch printed only the message and code and dropped `details.errors`, so
+  // the assistant read "No publish request could be recorded. (publish_refused)" and could not tell a
+  // duplicate from a refusal. publish_refused now names each target's reason.
+  it("OAuth publish: the repeat is explained as already being sent", async () => {
     const client = await connect(TOKEN);
     const args = { video_id: "vid-abc123", account_ids: [ACCOUNT_IG] };
     await call(client, "publish_video", args);
     const again = await call(client, "publish_video", args);
     expect(text(again)).toMatch(/already.?sending|already being sent/i);
+    expect(text(again)).toContain(ACCOUNT_IG);
+    // ...and that repeating it later would post twice, so the assistant does not "retry until it works".
+    expect(text(again)).toMatch(/a new call would post the video a second time/);
+    expectNoLeak(text(again));
     await client.close();
   });
 
@@ -884,19 +922,34 @@ describe("refusals as an assistant hits them (tool errors that name the next ste
     await client.close();
   });
 
-  // BUG (low, rule 6): a connection without videos:create that calls create_video (an assistant that
-  // remembers the tool from another connection or the docs) gets the SDK's "MCP error -32602: Tool
-  // create_video not found": nothing says the permission is missing or what the person can do. The text
-  // for exactly this case exists (oauthRefusalText "insufficient_scope", lib/api/mcp-oauth.ts:371-374) and
-  // is never reached, because buildMcpServer does not register the tool at all (lib/api/mcp.ts:94-97).
-  // Fix: for a tool in OAUTH_TOOL_SCOPES whose scope is missing, answer tools/call with the
-  // insufficient_scope text (e.g. a fallback CallTool handler) while still not listing it.
-  it.fails("OAuth videos:read only: calling create_video says which permission is missing and how to get it", async () => {
-    db.oauth.scopes = ["videos:read"];
+  // Was a bug (rule 6): a connection without videos:create that called create_video (an assistant that
+  // remembers the tool from another connection or the docs) got the SDK's "MCP error -32602: Tool
+  // create_video not found": nothing said the permission was missing or what the person can do. The tool
+  // is still not listed; a call to it is now answered with the insufficient_scope text.
+  it.each([
+    [["videos:read"], "create_video", { channel_id: "history-uz" }, "videos:create"],
+    [["videos:read"], "publish_video", { video_id: "vid-abc123", account_ids: [ACCOUNT_IG] }, "videos:publish"],
+    [["videos:create"], "list_channels", {}, "videos:read"],
+  ])("OAuth %j: calling %s says which permission is missing and how to get it, and reaches nothing", async (scopes, name, args, need) => {
+    db.oauth.scopes = scopes;
     const client = await connect(TOKEN);
-    const r = await call(client, "create_video", { channel_id: "history-uz" });
-    expect(text(r)).toMatch(/videos:create/);
+    expect((await client.listTools()).tools.map((t) => t.name)).not.toContain(name);
+    db.calls = [];
+    const r = await call(client, name, args);
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain(`"${need}"`);
     expect(text(r)).toMatch(/connect it again/i);
+    expect(text(r)).toContain(`${ORIGIN}/developers`);
+    expect(db.calls.filter((c) => c.fn !== "oauth_check")).toEqual([]);
+    await client.close();
+  });
+
+  it("OAuth: a tool no connection is ever offered (the paid downloads) stays unknown, not a missing permission", async () => {
+    const client = await connect(TOKEN);
+    const r = await call(client, "request_download", { video_id: "vid-abc123", quality: "720p" });
+    expect(r.isError).toBe(true);
+    expect(text(r)).not.toMatch(/permission/);
+    expect(db.calls.filter((c) => c.fn !== "oauth_check")).toEqual([]);
     await client.close();
   });
 
@@ -946,34 +999,84 @@ describe("refusals as an assistant hits them (tool errors that name the next ste
     });
   }
 
-  // BUG (low, defense in depth): when the database call THROWS (instead of returning { error }), the SDK's
-  // tools/call handler catches it and returns the exception's message verbatim as the tool result
-  // (sdk server/mcp.js createToolError), so whatever the driver put in the message reaches the assistant.
-  // The route's own try/catch (app/api/mcp/route.ts:103-114), which writes "could not complete this
-  // request", never sees it. Wrap each tool callback in buildMcpServer (lib/api/mcp.ts:94-97) so a throw
-  // becomes toToolResult(apiError(500, "internal_error", …)) / the OAuth "could not complete" text.
+  // Was a bug (defense in depth): when the database call THROWS (instead of returning { error }), the SDK's
+  // tools/call handler caught it and returned the exception's message verbatim as the tool result
+  // (sdk server/mcp.js createToolError), so whatever the driver put in the message reached the assistant.
+  // The route's own try/catch never sees it. Every tool callback is now wrapped in buildMcpServer: the
+  // assistant gets the generic "could not complete this request" text with the request id, and the log
+  // line names only the error's class.
   for (const [door, auth] of [["API key", KEY], ["OAuth", TOKEN]] as const) {
-    it.fails(`${door}: a thrown database error never reaches the assistant's text`, async () => {
-      const client = await connect(auth);
-      db.throwOn.api_list_channels = "connect ECONNREFUSED 10.0.0.5:5432 (password=hunter2)";
-      const r = await call(client, "list_channels");
-      expect(r.isError).toBe(true);
-      expect(text(r)).not.toMatch(/ECONNREFUSED|hunter2|10\.0\.0\.5/);
-      await client.close();
+    it(`${door}: a thrown database error never reaches the assistant's text or the log`, async () => {
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const client = await connect(auth);
+        db.throwOn.api_list_channels = "connect ECONNREFUSED 10.0.0.5:5432 (password=hunter2)";
+        const r = await call(client, "list_channels");
+        expect(r.isError).toBe(true);
+        expect(text(r)).not.toMatch(/ECONNREFUSED|hunter2|10\.0\.0\.5/);
+        expect(text(r)).toMatch(/could not complete this request/);
+        expect(text(r)).toMatch(/req_[A-Za-z0-9]/);
+        // It is not known whether a thrown call took effect, so the text must not say nothing happened.
+        expect(text(r)).not.toMatch(/Nothing was (started|created|charged)/i);
+        const lines = logged.mock.calls.map((c) => c.map(String).join(" "));
+        expect(lines.some((l) => /\[mcp\] req_\S+ tool list_channels threw Error$/.test(l))).toBe(true);
+        for (const l of lines) expect(l).not.toMatch(/ECONNREFUSED|hunter2|10\.0\.0\.5/);
+        await client.close();
+      } finally {
+        logged.mockRestore();
+      }
     });
   }
 
-  // BUG (low): list_videos (and get_job_status, get_video, publish_video) use non-strict schemas, so a
-  // misspelt argument is silently DROPPED: list_videos({ channel: "history-uz" }) lists every channel's
-  // videos as if no filter had been asked for. create_video is strict for exactly this reason (lib/api/mcp.ts:121-122)
-  // and REST refuses unknown fields (operations.ts parsePublish). Make the other input schemas
-  // z.object({...}).strict() too.
-  it.fails("list_videos with a misspelt filter is refused, not answered with every channel", async () => {
+  // Was a bug: list_videos (and get_job_status, get_video, publish_video) had non-strict schemas, so a
+  // misspelt argument was silently DROPPED: list_videos({ channel: "history-uz" }) listed every channel's
+  // videos as if no filter had been asked for. create_video was strict for exactly this reason, and REST
+  // refuses unknown fields (operations.ts parsePublish). Every tool with arguments is now strict.
+  it("list_videos with a misspelt filter is refused, not answered with every channel", async () => {
     const client = await connect(KEY);
     const r = await call(client, "list_videos", { channel: "history-uz" });
     expect(r.isError).toBe(true);
     await client.close();
   });
+
+  for (const [door, auth] of [["API key", KEY], ["OAuth", TOKEN]] as const) {
+    it.each([
+      ["get_job_status", { job_id: 101, jobid: 7 }, "jobid"],
+      ["list_videos", { channel: "history-uz" }, "channel"],
+      ["get_video", { video_id: "vid-abc123", videoId: "x" }, "videoId"],
+      ["publish_video", { video_id: "vid-abc123", account_ids: [ACCOUNT_IG], accounts: [ACCOUNT_IG] }, "accounts"],
+    ])(`${door}: %s with a misspelt argument names it, before any database call`, async (name, args, field) => {
+      const client = await connect(auth);
+      db.calls = [];
+      const r = await call(client, name, args);
+      expect(r.isError).toBe(true);
+      expect(text(r)).toContain(`"${field}"`);
+      expect(db.calls.filter((c) => c.fn !== "oauth_check")).toEqual([]);
+      await client.close();
+    });
+  }
+
+  it.each([
+    ["request_download", { video_id: "vid-abc123", quality: "720p", idempotencyKey: "k" }, "idempotencyKey"],
+    ["get_download", { download_id: 55, id: 55 }, "id"],
+  ])("API key: the paid %s refuses a misspelt argument too (a dropped idempotency key would charge a retry twice)", async (name, args, field) => {
+    const client = await connect(KEY);
+    db.calls = [];
+    const r = await call(client, name, args);
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain(`"${field}"`);
+    expect(db.calls).toEqual([]);
+    await client.close();
+  });
+
+  for (const [door, auth] of [["API key", KEY], ["OAuth", TOKEN]] as const) {
+    it(`${door}: every listed schema with properties refuses unknown fields`, async () => {
+      for (const t of await listTools(auth)) {
+        const s = t.inputSchema as { properties?: Record<string, unknown>; additionalProperties?: boolean };
+        if (s.properties && Object.keys(s.properties).length) expect(s.additionalProperties, t.name).toBe(false);
+      }
+    });
+  }
 });
 
 // ── the API-key door's own refusal sentences (they are the database's, passed through) ─
