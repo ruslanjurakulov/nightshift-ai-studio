@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "dd553f69-beb4-4f89-9722-91ad95a9d2cc",
+      "assetId": "f7a63347-4abb-5ac7-824c-a7d4a4cad0e9",
+      "sha256": "e78ab9ed16ca0f2023fa5b3289a47413bb2f3b08faa9740bbb8ecf9d4367ff28",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Close-up of a glass snow globe on a wooden table by a window at dusk. Inside the globe is a tiny, perfectly detailed miniature world of a tiny volcano erupting. A hand gently lifts the globe and shakes it; snowflakes swirl around the miniature and slowly settle while warm fairy lights glow in the background bokeh. Macro lens, shallow depth of field, soft cinematic light, realistic glass refraction, cosy mood. No text.",
+      "createdAt": "2026-11-13T21:50:35Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1280,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:08:06Z"
     }
   ]
 }
