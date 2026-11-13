@@ -7,7 +7,7 @@ import unittest
 
 from modules import model_registry as reg
 
-IDEOGRAM = ("ideogram-3", "ideogram-4", "ideogram-upscale")
+IDEOGRAM = ("ideogram-3", "ideogram-4", "ideogram-4.5", "ideogram-upscale")
 
 
 class IdeogramIsWebOnly(unittest.TestCase):

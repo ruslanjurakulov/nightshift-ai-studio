@@ -177,6 +177,10 @@ UNPRICED_ON_PURPOSE = {
     "model_sonilo_music_second": "registry: Sonilo first-party, registry-only (the database has no music capability yet) and terms-gated (terms_review_required: ToS 4 bars a competing product, 12.2 needs written consent for uses not expressly allowed, and uploads train Sonilo's models with no opt-out) and unpriced; the owner prices it only after Sonilo has answered in writing",
     "model_sonilo_video_music_second": "registry: Sonilo first-party, registry-only (the database has no music capability yet) and terms-gated (terms_review_required: ToS 4 bars a competing product, 12.2 needs written consent for uses not expressly allowed, and uploads train Sonilo's models with no opt-out) and unpriced; the owner prices it only after Sonilo has answered in writing",
     "model_grounded_image_1_0_image": "registry: Meta Muse Image first-party, terms-gated (terms_review_required: no requester-country signal for the Geographic Use Policy, the 18+ gate first, ToS 7 bars Meta names) and unpriced; not on sale",
+    "model_ideogram_4_5_image": "registry: Ideogram 4.5, an operator-only trial (0139 operator_preview, priced by 0153 at the vendor's list per tier, an estimate the owner read 2026-11-13); nothing on sale, the owner sets the price",
+    "model_ideogram_4_5_image_low": "registry: Ideogram 4.5, an operator-only trial (0139 operator_preview, priced by 0153 at the vendor's list per tier, an estimate the owner read 2026-11-13); nothing on sale, the owner sets the price",
+    "model_ideogram_4_5_image_medium": "registry: Ideogram 4.5, an operator-only trial (0139 operator_preview, priced by 0153 at the vendor's list per tier, an estimate the owner read 2026-11-13); nothing on sale, the owner sets the price",
+    "model_ideogram_4_5_image_high": "registry: Ideogram 4.5, an operator-only trial (0139 operator_preview, priced by 0153 at the vendor's list per tier, an estimate the owner read 2026-11-13); nothing on sale, the owner sets the price",
     "usd": "pricing a ledger unit changes run settlement (metered vs hold): owner policy",
     "gemini_input_tokens": "ledger unit: owner policy",
     "gemini_output_tokens": "ledger unit: owner policy",
@@ -336,13 +340,16 @@ class PriceDefaultsFile(unittest.TestCase):
         self.assertIn("'scene_regenerate_clip_' ||", (MIGRATIONS / "0076_scene_regenerate.sql").read_text())
 
     def test_quality_tiers_match_what_the_registry_sells(self):
-        # The gated, unpriced grok tiers are not ones the registry SELLS; every other tier must still be priced.
+        # The gated, unpriced grok tiers and the operator-only Ideogram 4.5 trial are not ones the registry SELLS; every other
+        # tier must still be priced.
         tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)} \
-            - {u for u in UNPRICED_ON_PURPOSE if u.startswith("model_grok_imagine_")}
+            - {u for u in UNPRICED_ON_PURPOSE if u.startswith(("model_grok_imagine_", "model_ideogram_4_5_"))}
         all_tiers = {u for u, _ in _registry_units().items() if re.search(r"_image_(low|medium|high)$", u)}
         self.assertEqual(all_tiers - tiers, {"model_grok_imagine_image_2_0_image_low",
-                                             "model_grok_imagine_image_2_0_image_medium"},
-                         "only the gated grok tiers may be left out of the sold-tier check")
+                                             "model_grok_imagine_image_2_0_image_medium",
+                                             "model_ideogram_4_5_image_low", "model_ideogram_4_5_image_medium",
+                                             "model_ideogram_4_5_image_high"},
+                         "only the gated grok tiers and the Ideogram 4.5 trial may be left out of the sold-tier check")
         self.assertEqual(len(tiers), 9)
         self.assertTrue(tiers <= {r["unit"] for r in self.rows})
 

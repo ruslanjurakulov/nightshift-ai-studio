@@ -1,4 +1,4 @@
-"""Image adapters: OpenAI GPT Image, Gemini image, FLUX.2, Ideogram 3 and 4,
+"""Image adapters: OpenAI GPT Image, Gemini image, FLUX.2, Ideogram 3, 4 and 4.5,
 Ideogram Upscale, Seedream (BytePlus ModelArk) — and one that READS an image: the Gemini text model the
 pipeline already uses for vision (modules/video_critic.py), asked to describe
 a library picture as a generation prompt (``describe``, migration 0055).
@@ -33,6 +33,8 @@ from modules.capabilities.base import (
     E_BAD_RESPONSE,
     E_NOT_FOUND,
     E_POLICY,
+    E_QUOTA,
+    E_RATE_LIMITED,
     E_UNAVAILABLE,
     EDIT,
     FAILED,
@@ -385,6 +387,91 @@ class IdeogramV4Adapter(IdeogramAdapter):
                             outputs=[Output("image/png", url=str(first["url"]))])
 
 
+#: Ideogram 4.5's ``reject_reason`` (the 402 and 429 bodies) that waiting a moment fixes. Every other documented reason
+#: (insufficient_funds, subscription_required, daily_limit, priority_credit_required, feature_limit, app_user_limit) is
+#: the account's, not the moment's: retrying only fails again, so it is a quota the operator acts on.
+_IDEOGRAM_WAIT = frozenset({"inflight_limit"})
+_IDEOGRAM_ACCOUNT = frozenset({"insufficient_funds", "subscription_required", "daily_limit",
+                               "priority_credit_required", "feature_limit", "app_user_limit"})
+
+
+class IdeogramV45Adapter(IdeogramAdapter):
+    """Ideogram 4.5, text to image: ``POST https://api.ideogram.ai/v2/image/generate/ideogram-4-5``,
+    header ``Api-Key``, a multipart form with ``prompt``, ``quality`` and ``num_images``; answered
+    synchronously with ``data[0].url`` and ``data[0].is_image_safe`` (developer.ideogram.ai, read
+    2026-11-13: docs/research/ideogram-4-5-2026-11-13.md).
+
+    ``quality`` is ALWAYS sent, and only the tier that was priced: left out, the vendor renders
+    without source images at ``high`` (its documented default), which costs more than the medium
+    tier the Studio quotes when a request names none. A missing or unknown tier is refused before
+    anything is sent. No ``size`` is sent and the registry offers no shape: the docs name only a
+    few 1K/2K presets by example, so the vendor's documented default (``auto``: the shape is picked
+    from the prompt) is what runs. Source images (the same endpoint's edit mode) are not wired: the
+    owner's price table puts High with source images at another figure than High without, and one
+    tier table per model cannot say both."""
+
+    key = "image.ideogram_v4_5"
+    capabilities = (T2I,)
+    quality_capabilities = (T2I,)
+    timeout = 180                        # "Higher quality takes longer"; the call waits for the image
+    VENDOR_MODEL = "ideogram-4-5"
+    #: Our tier -> the vendor's ``quality`` value. ``very_low`` exists but "requires source images".
+    QUALITY = {"low": "low", "medium": "medium", "high": "high"}
+
+    def _refusals(self, request: CapabilityRequest) -> List[str]:
+        out: List[str] = []
+        if request.quality is None:
+            out.append("Ideogram 4.5 needs a quality tier: without one the vendor renders and bills high")
+        elif request.quality not in self.QUALITY:
+            out.append(f"quality {request.quality} is not an Ideogram 4.5 tier")
+        if request.aspect_ratio:
+            out.append("Ideogram 4.5 shapes are not wired: the vendor picks one from the prompt")
+        if request.input_images:
+            out.append("Ideogram 4.5 is wired for text to image only")
+        return out
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        out.extend(p for p in self._refusals(request) if p not in out)
+        return out
+
+    def vendor_error_code(self, status: int, text: str) -> Optional[str]:
+        if status == 422:
+            return E_POLICY              # documented: "The prompt did not pass safety checks"
+        reason = dig(json_body(text), "reject_reason")
+        if status in (402, 429) and reason in _IDEOGRAM_WAIT:
+            return E_RATE_LIMITED
+        if status in (402, 429) and reason in _IDEOGRAM_ACCOUNT:
+            return E_QUOTA
+        return None
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        bad = self._refusals(request)
+        if not request.prompt.strip():
+            bad.append("prompt is empty")
+        if vendor_model != self.VENDOR_MODEL:
+            bad.append(f"{vendor_model!r} is not the Ideogram 4.5 endpoint")
+        if bad or request.capability != T2I:
+            # Nothing has been sent: a refusal, not a lost answer.
+            raise AdapterError(E_BAD_REQUEST, "; ".join(bad) or "Ideogram 4.5 is wired for text to image only",
+                               not_accepted=True)
+        form = {"prompt": (None, request.prompt.strip()),
+                "quality": (None, self.QUALITY[request.quality]),
+                "num_images": (None, "1")}       # the price is per image: never the vendor's default count
+        data = self._call("POST", f"{self.base_url}/v2/image/generate/{self.VENDOR_MODEL}", files=form,
+                          what="generate")
+        first = dig(data, "data", 0)
+        if not isinstance(first, dict):
+            raise unconfirmed("the answer carries no image")
+        if first.get("is_image_safe") is False:
+            raise AdapterError(E_POLICY, "the vendor marked the image unsafe")
+        if not first.get("url"):
+            raise unconfirmed("the answer carries no image URL")
+        return ProviderTask(self.key, vendor_model, None,
+                            outputs=[Output("image/png", url=str(first["url"]))])
+
+
 class IdeogramUpscaleAdapter(IdeogramAdapter):
     """``POST https://api.ideogram.ai/upscale`` — multipart: ``image_request``
     (a JSON object as a form field: optional ``prompt``) and ``image_file``
@@ -533,6 +620,6 @@ class SeedreamAdapter(SafeResultMixin, HttpAdapter):
 
 
 ADAPTERS = (OpenAIImageAdapter, GeminiImageAdapter, GeminiDescribeAdapter, FluxAdapter, IdeogramAdapter,
-            IdeogramV4Adapter, IdeogramUpscaleAdapter, SeedreamAdapter)
+            IdeogramV4Adapter, IdeogramV45Adapter, IdeogramUpscaleAdapter, SeedreamAdapter)
 
 __all__ = [a.__name__ for a in ADAPTERS] + ["ADAPTERS"]
