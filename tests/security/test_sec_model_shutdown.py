@@ -128,8 +128,10 @@ def _scratch(files):
 
 
 def test_it_refuses_to_apply_before_0124_and_leaves_nothing_behind():
-    # 0139 sits on 0125's creative_price and refuses to apply without it: left out with it.
-    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name not in (M0124.name, MIGRATION.name, *sec_db.ON_0125)])
+    # 0139 sits on 0125's creative_price and refuses to apply without it: left out with it. 0151 (the probe seed) refuses to
+    # apply without 0124's model_is_available(): left out with 0124.
+    admin, name, d = _scratch([f for f in sec_db.build_sequence()
+                               if f.name not in (M0124.name, MIGRATION.name, *sec_db.ON_0125, *sec_db.ON_0124)])
     try:
         with pytest.raises(Exception) as cm:
             d.su(MIGRATION.read_text(encoding="utf-8"))

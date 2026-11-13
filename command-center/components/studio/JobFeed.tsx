@@ -324,6 +324,7 @@ export function JobFeed({
             job={job}
             samples={durations.samples(jobModel(job))}
             missing={durations.missing(jobModel(job))}
+            seed={durations.seed(jobModel(job), job.capability)}
             clockOffset={skew}
             size={size}
             aspect={aspect}
@@ -750,6 +751,7 @@ export function JobFeed({
               job={job}
               samples={isActiveStatus(job.status) ? durations.samples(jobModel(job)) : null}
               missing={durations.missing(jobModel(job))}
+              seed={isActiveStatus(job.status) ? durations.seed(jobModel(job), job.capability) : null}
               clockOffset={skew}
               size="bar"
               failure={isUnsuccessful(job.status) ? failureReason(t, job) : null}
