@@ -17,7 +17,7 @@ vi.mock("server-only", () => ({}));
 
 const state = vi.hoisted(() => ({
   user: null as { id: string; email?: string } | null,
-  org: { supported: false, orgs: [], current: null } as unknown,
+  org: { supported: false, orgs: [], switchable: [], current: null } as unknown,
   rpc: "yes" as "yes" | "no" | "error",
   path: "/chronos/home" as string | null,
   refresh: vi.fn(),
@@ -59,7 +59,7 @@ vi.mock("@/lib/supabase/server", () => ({
     auth: { getUser: async () => ({ data: { user: state.user } }), mfa: { getAuthenticatorAssuranceLevel: async () => ({ data: { currentLevel: "aal1" }, error: null }) } },
   }),
 }));
-vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => (state.user ? state.org : { supported: false, orgs: [], current: null }), ORG_COOKIE_OPTIONS: {} }));
+vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => (state.user ? state.org : { supported: false, orgs: [], switchable: [], current: null }), ORG_COOKIE_OPTIONS: {} }));
 const SCOPE = { selection: "__all__", orgChannelIds: null, includeGlobal: true };
 vi.mock("@/lib/channels-server", () => ({
   getChannelContext: async () => ({ channels: [], credentials: [], notMigrated: false, selection: "__all__", slug: "chronos", scope: SCOPE }),
@@ -95,7 +95,7 @@ const { operatorLookup, isOperator } = await import("../lib/auth/org-roles");
 const { AccessError } = await import("../components/shell/AccessError");
 
 const ORG = { id: "0b000000-0000-0000-0000-00000000000b", name: "B", slug: "b", role: "owner" as const, is_default: false };
-const supported: OrgContext = { supported: true, orgs: [ORG], current: ORG };
+const supported: OrgContext = { supported: true, orgs: [ORG], switchable: [ORG], current: ORG };
 
 function walk(node: unknown, hit: (el: ReactElement) => boolean): boolean {
   if (!node || typeof node !== "object") return false;
@@ -126,7 +126,7 @@ describe("operatorLookup()", () => {
     expect(await operatorLookup()).toEqual({ operator: true, failed: false });
   });
   it("a failed organization lookup is 'could not check' too", async () => {
-    state.org = { supported: false, orgs: [], current: null, unavailable: true };
+    state.org = { supported: false, orgs: [], switchable: [], current: null, unavailable: true };
     expect(await operatorLookup()).toEqual({ operator: false, failed: true });
   });
   it("signed out is a plain no", async () => {
@@ -153,7 +153,7 @@ describe("the (app) layout when the access lookup fails", () => {
     expect(showsAccessError(await AppLayout({ children: null }))).toBe(true);
   });
   it("my_organizations failing does the same", async () => {
-    state.org = { supported: false, orgs: [], current: null, unavailable: true };
+    state.org = { supported: false, orgs: [], switchable: [], current: null, unavailable: true };
     state.path = "/chronos/billing";
     expect(showsAccessError(await AppLayout({ children: null }))).toBe(true);
   });
@@ -174,6 +174,22 @@ describe("the (app) layout when the access lookup fails", () => {
     const tree = await AppLayout({ children: null });
     expect(showsAccessError(tree)).toBe(false);
     expect(walk(tree, (el) => (el.props as { operator?: boolean }).operator === true)).toBe(true);
+  });
+});
+
+describe("the (app) layout's organization switcher", () => {
+  it("the header's switcher gets the orgs the owner belongs to, not every org they can read", async () => {
+    // What getOrgContext gives the platform owner: `orgs` is every org (support access), `switchable` their own.
+    const own = { id: "00000000-0000-0000-0000-000000000001", name: "Nightshift", slug: "nightshift", role: "owner" as const, is_default: true };
+    state.org = { supported: true, orgs: [own, ORG], switchable: [own], current: own };
+    const tree = await AppLayout({ children: null });
+    let headerOrgs: unknown = undefined;
+    walk(tree, (el) => {
+      const p = el.props as { currentOrgId?: unknown; orgs?: unknown };
+      if (p && "currentOrgId" in p) headerOrgs = p.orgs;
+      return false;
+    });
+    expect(headerOrgs).toEqual([own]);
   });
 });
 

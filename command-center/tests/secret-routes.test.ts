@@ -17,7 +17,7 @@ const state: {
   org: OrgContext;
   aal: string;
   amr: Array<{ method: string; timestamp: number }> | undefined;
-} = { user: null, org: { supported: true, orgs: [], current: null }, aal: "aal1", amr: undefined };
+} = { user: null, org: { supported: true, orgs: [], switchable: [], current: null }, aal: "aal1", amr: undefined };
 
 const put = vi.fn();
 const fakeClient = {
@@ -77,7 +77,7 @@ let n = 0;
 function admin(factors: Factor[] = [], aal = "aal1", amr?: typeof state.amr) {
   // a fresh id per test: the rate limit is per person, per process
   state.user = { id: `u-admin-${String(++n).padStart(8, "0")}`, factors };
-  state.org = { supported: true, orgs: [ORG], current: ORG };
+  state.org = { supported: true, orgs: [ORG], switchable: [ORG], current: ORG };
   state.aal = aal;
   state.amr = amr;
 }

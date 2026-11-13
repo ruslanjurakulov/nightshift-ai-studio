@@ -30,7 +30,7 @@ const state: {
   series: Row | null;
 } = {
   user: null,
-  org: { supported: false, orgs: [], current: null },
+  org: { supported: false, orgs: [], switchable: [], current: null },
   inScope: null,
   platformRole: "viewer",
   platformAdmin: false,
@@ -140,14 +140,14 @@ function org(id: string, role: Role, isDefault = false) {
 /** Signed in, viewing `current` (whose channels are `channels`). */
 function viewing(current: ReturnType<typeof org> | null, channels: string[], platformRole: Role = "viewer") {
   state.user = { id: "u-me" };
-  state.org = { supported: true, orgs: current ? [current] : [], current };
+  state.org = { supported: true, orgs: current ? [current] : [], switchable: current ? [current] : [], current };
   state.inScope = new Set(channels);
   state.platformRole = platformRole;
 }
 
 function preMigration(platformRole: Role) {
   state.user = { id: "u-me" };
-  state.org = { supported: false, orgs: [], current: null };
+  state.org = { supported: false, orgs: [], switchable: [], current: null };
   state.inScope = null;
   state.platformRole = platformRole;
 }
@@ -241,7 +241,7 @@ describe("requireOrgRole", () => {
 
   it("fails closed when 0018 is there but the membership lookup failed", async () => {
     preMigration("owner");
-    state.org = { supported: false, orgs: [], current: null, unavailable: true };
+    state.org = { supported: false, orgs: [], switchable: [], current: null, unavailable: true };
     expect(await requireOrgRole({ channelId: "ch-a" }, "viewer")).toMatchObject({ ok: false, status: 503 });
     expect(await resolveCurrentOrgRole()).toBe("viewer");
   });

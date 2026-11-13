@@ -44,7 +44,7 @@ const state: {
   update: { data: unknown; error: { code?: string; message?: string } | null };
 } = {
   user: null,
-  org: { supported: true, orgs: [], current: null },
+  org: { supported: true, orgs: [], switchable: [], current: null },
   platformAdmin: false,
   adminRows: { data: [], error: null },
   update: { data: [], error: null },
@@ -107,13 +107,13 @@ const { appRedirect, isSection } = await import("../lib/channels");
 
 function customerAdmin() {
   state.user = { id: "u-bob" };
-  state.org = { supported: true, orgs: [CUSTOMER_ORG], current: CUSTOMER_ORG };
+  state.org = { supported: true, orgs: [CUSTOMER_ORG], switchable: [CUSTOMER_ORG], current: CUSTOMER_ORG };
   state.platformAdmin = false;
 }
 
 function operator() {
   state.user = { id: "u-op" };
-  state.org = { supported: true, orgs: [CUSTOMER_ORG], current: CUSTOMER_ORG };
+  state.org = { supported: true, orgs: [CUSTOMER_ORG], switchable: [CUSTOMER_ORG], current: CUSTOMER_ORG };
   state.platformAdmin = true;
 }
 
@@ -129,7 +129,7 @@ function post(body: unknown) {
 
 beforeEach(() => {
   state.user = null;
-  state.org = { supported: true, orgs: [], current: null };
+  state.org = { supported: true, orgs: [], switchable: [], current: null };
   state.platformAdmin = false;
   state.adminRows = { data: [VERIFIED, UNVERIFIED, GATED], error: null };
   state.update = { data: [{ id: VERIFIED.id, availability: "beta" }], error: null };

@@ -36,7 +36,7 @@ const state: {
   configured: true,
   aal: "aal1",
   user: null,
-  org: { supported: false, orgs: [], current: null },
+  org: { supported: false, orgs: [], switchable: [], current: null },
   platformAdmin: false,
 };
 
@@ -102,7 +102,7 @@ vi.mock("@/lib/orgs-server", () => ({
   getOrgContext: async () => {
     calls.orgContext += 1;
     // What the real one does: no client or no user reads as "not supported".
-    if (!state.configured || !state.user) return { supported: false, orgs: [], current: null };
+    if (!state.configured || !state.user) return { supported: false, orgs: [], switchable: [], current: null };
     return state.org;
   },
   ORG_COOKIE_OPTIONS: {},
@@ -162,24 +162,24 @@ const CUSTOMER_ORG = { id: "0b000000-0000-0000-0000-00000000000b", name: "B", sl
 
 function signedOut() {
   state.user = null;
-  state.org = { supported: false, orgs: [], current: null };
+  state.org = { supported: false, orgs: [], switchable: [], current: null };
   state.platformAdmin = false;
 }
 /** Signed up and owns their own organization: an admin, but not the operator. */
 function customerAdmin() {
   state.user = { id: "u-bob", email: "bob@example.test" };
-  state.org = { supported: true, orgs: [CUSTOMER_ORG], current: CUSTOMER_ORG };
+  state.org = { supported: true, orgs: [CUSTOMER_ORG], switchable: [CUSTOMER_ORG], current: CUSTOMER_ORG };
   state.platformAdmin = false;
 }
 /** Signed in, organizations exist, the membership lookup failed. */
 function lookupFailed() {
   state.user = { id: "u-bob" };
-  state.org = { supported: false, orgs: [], current: null, unavailable: true };
+  state.org = { supported: false, orgs: [], switchable: [], current: null, unavailable: true };
   state.platformAdmin = false;
 }
 function operator() {
   state.user = { id: "u-op", email: "op@example.test" };
-  state.org = { supported: true, orgs: [CUSTOMER_ORG], current: CUSTOMER_ORG };
+  state.org = { supported: true, orgs: [CUSTOMER_ORG], switchable: [CUSTOMER_ORG], current: CUSTOMER_ORG };
   state.platformAdmin = true;
 }
 
@@ -228,7 +228,7 @@ describe("isOperator() is false when nobody is signed in", () => {
 
   it("before 0018, a signed-in member: true, as before", async () => {
     state.user = { id: "u-team" };
-    state.org = { supported: false, orgs: [], current: null };
+    state.org = { supported: false, orgs: [], switchable: [], current: null };
     expect(await isOperator()).toBe(true);
   });
 
@@ -236,7 +236,7 @@ describe("isOperator() is false when nobody is signed in", () => {
     vi.stubEnv("NODE_ENV", "production");
     try {
       state.user = { id: "u-team" };
-      state.org = { supported: false, orgs: [], current: null };
+      state.org = { supported: false, orgs: [], switchable: [], current: null };
       expect(await isOperator()).toBe(false);
     } finally {
       vi.unstubAllEnvs();
