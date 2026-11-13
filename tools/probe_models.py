@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import shutil
 import socket
@@ -167,11 +168,15 @@ class RegistryDB:
 # ── one probe ───────────────────────────────────────────────────────────────
 class ProbeResult:
     def __init__(self, model: str, ok: bool, code: Optional[str] = None, message: str = "",
-                 latency_ms: int = 0, output_bytes: Optional[int] = None, task_id: Optional[str] = None, note: str = ""):
+                 latency_ms: int = 0, output_bytes: Optional[int] = None, task_id: Optional[str] = None, note: str = "",
+                 credits: Optional[float] = None):
         self.model, self.ok, self.code, self.message = model, ok, code, message
         self.latency_ms, self.output_bytes, self.task_id = latency_ms, output_bytes, task_id
         #: Something an adapter wants printed beside an OK (Vidu's reported credits). Logged, never recorded as an error.
         self.note = note
+        #: The vendor's own cost figure for the task, a bare number. --brief prints free text never, so without this the
+        #: workflow log (always --brief) could not show the owner the figure a price is checked against.
+        self.credits = credits
 
 
 def probe_image(dest: Path, *, end: bool = False) -> Path:
@@ -301,11 +306,20 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
             raise AdapterError(E_BAD_RESPONSE, "the output is not a media file")
         size = sum(f.stat().st_size for f in files)
         noter = getattr(adapter, "probe_note", None)
+        counter = getattr(adapter, "probe_credits", None)
         return ProbeResult(entry.id, True, latency_ms=int((clock() - started) * 1000),
-                           output_bytes=size, task_id=task.task_id, note=noter(task) if callable(noter) else "")
+                           output_bytes=size, task_id=task.task_id, note=noter(task) if callable(noter) else "",
+                           credits=_bare_number(counter(task)) if callable(counter) else None)
     except AdapterError as e:
         return ProbeResult(entry.id, False, e.code, e.message, int((clock() - started) * 1000),
                            task_id=task.task_id if task else None)
+
+
+def _bare_number(v) -> Optional[float]:
+    """Only a finite, non-negative number reaches the brief log: anything else an adapter returns is dropped, never printed."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
+        return None
+    return float(v)
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
@@ -443,7 +457,8 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
                           output_bytes=res.output_bytes, probed_by=args.by[:120])
                 if args.brief:
                     code = res.code if res.code in BRIEF_CODES else "other"
-                    logger.info(f"ok {e.id}" if res.ok else f"failed {e.id} {code}")
+                    extra = f" credits={res.credits:g}" if res.ok and res.credits is not None else ""
+                    logger.info(f"ok {e.id}{extra}" if res.ok else f"failed {e.id} {code}")
                     failures += 0 if res.ok else 1
                 elif res.ok:
                     logger.info(f"OK   {e.id}: {res.output_bytes} bytes in {res.latency_ms} ms" + (f" - {res.note}" if res.note else ""))
