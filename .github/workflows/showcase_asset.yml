@@ -39,6 +39,10 @@ jobs:
   export:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # MEDIA_URL_SECRET is a secret of the production environment (deploy_web.yml gives the server the same one); a job outside
+    # that environment reads it as empty and the export refuses with media_secret_missing. Only this job joins it: publish holds
+    # no secret.
+    environment: production
     permissions:
       contents: read
     outputs:
