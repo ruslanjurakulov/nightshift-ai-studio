@@ -34,7 +34,7 @@
 -- NOT COVERED YET (docs/DODO_SETUP.md, "Before you switch"): the margin report (0063) and the operator's Customers page (0138) read
 -- paid amounts from Paddle rows only, so a Dodo payment shows there as not knowable / not counted until a follow-up migration.
 --
--- NUMBER. 0143: 0140 (#699) and 0141 are taken by other work in progress and 0142 is held for the geo-block follow-up; this file names
+-- NUMBER. 0143: 0140, 0141 and 0142 are taken by other open pull requests (#701, #699 and #695 as of 2026-11-13); this file names
 -- nothing of theirs. Needs 0021 and 0034.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; md5 of the body with every run of white space read as one space):

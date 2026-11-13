@@ -863,8 +863,8 @@ customer reaches Dodo until the Command Center's `PAYMENTS_PROVIDER` is `dodo` a
   `grant_subscription_credits` `fd0c1c169a4d3b2d05c6d826c6fe10ff`, `upsert_subscription_for` `9f9b399ce3ca3421d1ccb32c4075d6ea`,
   `grant_subscription_credits_for` `5424905376fab9ff1b4c229c5dc0c0ce`. The last block asserts bodies, grants, SECURITY DEFINER, the
   pinned search_path and the five check definitions (md5 `0bd392d5168a2de8fb871e400200e7cc`). Apply as ONE transaction.
-- **Number.** 0143: 0140 (#699, made for kids) and 0141 (`claude/youtube-one-org`) are taken by other work in progress, and 0142 is
-  held for the geo-block follow-up to #695. 0143 names nothing of theirs. Needs 0021 and 0034. (First written as 0142 on this branch.)
+- **Number.** 0143: 0140, 0141 and 0142 are taken by other open pull requests (#701, #699 and #695 as of 2026-11-13). 0143 names
+  nothing of theirs. Needs 0021 and 0034. (First written as 0142 on this branch.)
 - **Not covered yet.** The margin report (0063) and the operator's Customers page (0138) count paid amounts from Paddle rows only; a
   Dodo payment shows there as not knowable / not counted until a follow-up migration (`docs/DODO_SETUP.md`, "Before you switch").
 - **Undo.** `docs/sql/rollback_0143_dodo_payments.sql` (owner-applied): refuses while any `payment_events` or `subscriptions` row names
