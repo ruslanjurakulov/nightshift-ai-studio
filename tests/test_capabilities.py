@@ -473,7 +473,8 @@ class ProbeToolTests(unittest.TestCase):
         from tools import probe_models
 
         entry = reg.load()["runway-gen4.5"]
-        session = FakeSession([("POST", "text_to_video", FakeResp(200, {"id": "t9"})),
+        # Its probe is image-to-video (the path the photo-to-clips feature uses), from a generated frame.
+        session = FakeSession([("POST", "image_to_video", FakeResp(200, {"id": "t9"})),
                                ("GET", "/v1/tasks/t9", FakeResp(200, {"status": "RUNNING"}))])
         ticks = iter(range(0, 100000, 400))
         with tempfile.TemporaryDirectory() as d:

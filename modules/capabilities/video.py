@@ -18,6 +18,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import re
 import shutil
 import subprocess
@@ -62,6 +63,8 @@ from modules.capabilities.base import (
 from modules.capabilities.modelark import RESULT_HOSTS as MODELARK_RESULT_HOSTS
 from modules.capabilities.modelark import map_code as modelark_code
 from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, checked_polling_url, unconfirmed
+
+logger = logging.getLogger(__name__)
 
 _ID = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
 _POLICY_HINTS = ("safety", "policy", "blocked", "moderation", "sensitive", "risk")
@@ -414,10 +417,25 @@ class MiniMaxVideoAdapter(HttpAdapter):
 
 
 # ── Runway ──────────────────────────────────────────────────────────────────
+#: GET /v1/tasks/{id} ``status`` words that mean "not finished yet" (docs.dev.runwayml.com/api.md, read 2026-11-13). THROTTLED is
+#: Runway holding the task behind the account's concurrency limit: it still runs, and bills, once a slot frees up.
+_RUNWAY_IN_FLIGHT = frozenset({"PENDING", "THROTTLED", "RUNNING"})
+#: ``failureCode`` prefixes that are the input's fault (docs.dev.runwayml.com/errors/task-failures, read 2026-11-13): an input asset
+#: Runway cannot use (its size, shape or length), which a retry of the same picture would only pay for again. Every code with SAFETY
+#: in it (SAFETY.INPUT.*, SAFETY.OUTPUT.*, INPUT_PREPROCESSING.SAFETY.TEXT) is a moderation refusal; the rest (INTERNAL,
+#: INTERNAL.BAD_OUTPUT.*, INPUT_PREPROCESSING.INTERNAL, THIRD_PARTY.UNAVAILABLE, or none) Runway documents as worth a later retry.
+_RUNWAY_BAD_INPUT = ("ASSET.INVALID",)
+#: A 4xx body that names a credit shortfall. Runway's error page does not document these words, so the match is narrow on purpose:
+#: without it an empty Runway balance answered as a 400 reads as "change your input", the opposite remedy (CLAUDE.md #6).
+_RUNWAY_NO_CREDITS = re.compile(r"(?i)\b(?:not have enough|insufficient)\s+credits?\b")
+#: Tasks whose reported credits are kept for the probe's note (the worker never reads them).
+_RUNWAY_KEEP = 32
+
+
 class RunwayAdapter(HttpAdapter):
     """``POST /v1/text_to_video`` or ``/v1/image_to_video`` (header
     ``X-Runway-Version: 2024-11-06``) → ``id``; ``GET /v1/tasks/{id}`` →
-    ``status`` and ``output[0]`` (runwayml SDK)."""
+    ``status`` and ``output[0]`` (docs.dev.runwayml.com/api.md, read 2026-11-13)."""
 
     key = "video.runway"
     key_env = ("RUNWAYML_API_SECRET", "RUNWAY_API_KEY")
@@ -429,24 +447,53 @@ class RunwayAdapter(HttpAdapter):
                "4:3": "1104:832", "3:4": "832:1104", "21:9": "1584:672"}
     #: text_to_video (gen4.5) documents only the two 720p ratios.
     _T2V_RATIOS = ("16:9", "9:16")
+    #: ``duration`` is an integer from 2 to 10 seconds for gen4.5 (where it is required) and gen4_turbo. The registry may offer fewer
+    #: lengths, never more: Runway would refuse one after the job was queued and priced.
+    MIN_DURATION_S, MAX_DURATION_S = 2, 10
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        #: ``cost.credits`` per task as Runway reported it ($0.01 a credit): printed beside a probe's OK so the registry's
+        #: per-second figure can be compared with a real bill before anyone sets pricing.confirmed.
+        self.credits_reported: Dict[str, float] = {}
 
     def auth_headers(self) -> Dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key()}", "X-Runway-Version": self.API_VERSION}
+
+    def _duration_problem(self, request: CapabilityRequest) -> Optional[str]:
+        d = 5 if request.duration_s is None else request.duration_s
+        if isinstance(d, bool) or not isinstance(d, int) or not self.MIN_DURATION_S <= d <= self.MAX_DURATION_S:
+            return f"Runway makes clips of {self.MIN_DURATION_S} to {self.MAX_DURATION_S} whole seconds"
+        return None
 
     def problems(self, request: CapabilityRequest, entry) -> List[str]:
         out = super().problems(request, entry)
         if request.capability == T2V and (request.aspect_ratio or "16:9") not in self._T2V_RATIOS:
             out.append("Runway text-to-video takes 16:9 or 9:16 only")
+        if request.capability in (T2V, I2V):
+            problem = self._duration_problem(request)
+            if problem:
+                out.append(problem)
         return out
+
+    def vendor_error_code(self, status: int, text: str) -> Optional[str]:
+        # Never for a 5xx: a gateway in front of a Runway that already took the task must stay "unavailable", never a refusal.
+        if 400 <= status < 500 and _RUNWAY_NO_CREDITS.search(text or ""):
+            return E_QUOTA
+        return None
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
         ratio = self._RATIOS.get(request.aspect_ratio or "16:9")
         if not ratio or (request.capability == T2V and (request.aspect_ratio or "16:9") not in self._T2V_RATIOS):
-            raise AdapterError(E_BAD_REQUEST, "aspect ratio not offered by Runway for this capability")
+            raise AdapterError(E_BAD_REQUEST, "aspect ratio not offered by Runway for this capability", not_accepted=True)
+        problem = self._duration_problem(request)
+        if problem:
+            raise AdapterError(E_BAD_REQUEST, problem, not_accepted=True)
         body: dict = {"model": vendor_model, "promptText": request.prompt.strip(), "ratio": ratio,
                       "duration": int(request.duration_s or 5)}
         if request.capability == I2V:
+            # promptImage as one string is the first frame (position "first"), the only frame gen4.5 and gen4_turbo take.
             body["promptImage"] = _image_ref(request.input_images[0])
             path = "image_to_video"
         else:
@@ -456,20 +503,46 @@ class RunwayAdapter(HttpAdapter):
             raise AdapterError(E_BAD_RESPONSE, "no task id in the response")
         return ProviderTask(self.key, vendor_model, _safe_id(data["id"]))
 
+    def _remember_cost(self, task_id: str, data) -> None:
+        credits = dig(data, "cost", "credits")
+        if isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0:
+            self.credits_reported[task_id] = credits
+            while len(self.credits_reported) > _RUNWAY_KEEP:
+                self.credits_reported.pop(next(iter(self.credits_reported)))
+
+    def probe_note(self, task: ProviderTask) -> str:
+        """What the probe prints beside OK: the credits Runway says the task cost, to compare with the registry estimate."""
+        seen = self.credits_reported.get(str(task.task_id or ""))
+        if seen is None:
+            return "Runway reported no cost.credits figure"
+        return f"credits reported by Runway: {seen:g} (compare with the registry estimate before trusting a price)"
+
+    def probe_credits(self, task: ProviderTask) -> Optional[float]:
+        """The same figure as a bare number, for the probe's --brief log (the workflow's), which prints no free text."""
+        return self.credits_reported.get(str(task.task_id or ""))
+
     def poll(self, task: ProviderTask) -> PollResult:
         self.require_key()
-        data = self.get(f"{self.base_url}/v1/tasks/{_safe_id(task.task_id)}")
+        tid = _safe_id(task.task_id)
+        data = self.get(f"{self.base_url}/v1/tasks/{tid}")
         status = str(data.get("status") or "").upper()
         if status == "SUCCEEDED":
             url = dig(data, "output", 0)
             if not url:
                 raise AdapterError(E_BAD_RESPONSE, "succeeded without output")
+            self._remember_cost(tid, data)
             return PollResult(SUCCEEDED, [Output("video/mp4", url=str(url))])
         if status in ("FAILED", "CANCELLED"):
             fcode = str(data.get("failureCode") or "")
             if "SAFETY" in fcode.upper():
                 return PollResult(FAILED, error=AdapterError(E_POLICY, self.message(fcode)))
+            if fcode.upper().startswith(_RUNWAY_BAD_INPUT):
+                return PollResult(FAILED, error=AdapterError(E_BAD_REQUEST, self.message(fcode)))
             return _failed(self, f"{fcode} {data.get('failure') or ''}".strip() or status)
+        if status not in _RUNWAY_IN_FLIGHT:
+            # A word the docs do not list is a docs change to read, not a reason to drop a task Runway may still finish and bill.
+            logger.warning("runway: task status %r is not one the docs list; treated as pending",
+                           self.message(status)[:40] or "(none)")
         return PollResult(PENDING, progress=data.get("progress"))
 
 

@@ -241,7 +241,8 @@ class Registry(unittest.TestCase):
 
     def test_no_other_model_is_priced_by_sound_or_pins_a_resolution(self):
         # seedance-2.0 / 2.5, gemini-omni-1.1-flash, the grok-imagine-video, minimax-h3, happyhorse-1.1, ltx, pika and vidu entries pin a resolution too
-        # (their price depends on it) but are gated (terms_gate) and seeded with no credit_prices row: 0070 prices only
+        # (their price depends on it) but are gated (terms_gate) and
+        # seeded with no credit_prices row: 0070 prices only
         # the three below.
         self.assertEqual(sorted(m.id for m in reg.load().values() if m.default_resolution),
                          ["gemini-omni-1.1-flash", "grok-imagine-video-1.5", "grok-imagine-video-1.5-lite", "happyhorse-1.1", "ltx-2.3-fast",
