@@ -6,6 +6,8 @@ import { tryHref } from "@/lib/site/showcase-link";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { ClipPause } from "@/components/site/ClipPause";
+import { ShortsFeed } from "@/components/site/ShortsFeed";
+import { shortsItems } from "@/components/site/shorts";
 
 /** The day a sample was made, in the page's language (UTC, so the server and every visitor read the same day). */
 function madeOn(iso: string, locale: Locale): string {
@@ -82,6 +84,8 @@ export function ShowcaseGallery({
           {g.title}
         </h2>
         <p className="nx-sub">{g.lead}</p>
+        {/* Phones only (CSS): the vertical clips as a full-screen feed (components/site/ShortsFeed.tsx). */}
+        <ShortsFeed items={shortsItems(items, signedIn, now)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, try: g.try, tryAria: g.tryAria, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
         <ul className="nx-gallery">
           {items.map(({ e, f }) => {
             const href = tryHref(e, signedIn, now);
