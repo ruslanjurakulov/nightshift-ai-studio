@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { restoreMotion } from "@/lib/site/motion";
+import { restoreMotion, useMotionTap } from "@/lib/site/motion";
 
 /**
  * The public pages' two quiet effects, run by one small script instead of
@@ -36,6 +36,8 @@ const REVEAL = [
 ];
 
 export function SiteEffects() {
+  // A tap on anything that moves (a clip, a drifting poster, the first screen's light) pauses it: the pointer's pause switch.
+  useMotionTap();
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
     // Lets the hero light start drifting once the page has loaded and settled (see site-next.css).

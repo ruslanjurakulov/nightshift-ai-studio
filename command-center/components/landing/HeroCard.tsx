@@ -5,7 +5,6 @@ import { BrandArt, type BrandArtKind } from "@/components/site/BrandArt";
 import { TypedText } from "@/components/site/TypedText";
 import { slotMedia, type PlaceMedia, type SlotId } from "@/components/site/samples";
 import { PlaceFill, placeAlt, placeBox, placeNote } from "@/components/site/PlaceFill";
-import { placeTry } from "@/components/site/place-try";
 
 /** Everything a chat card says, as plain strings, so any page (the landing, /pricing, /mcp) can print one from its own dictionary. */
 export type ChatCopy = {
@@ -18,8 +17,8 @@ export type ChatCopy = {
   reply: string;
   alt: string;
   badge: string;
-  /** The sentence under the card: what its picture is (stock, or one of our generations), or the caller's own. */
-  note: string;
+  /** The sentence under the card: what its stock picture is, or the caller's own; null under one of our samples (it carries its AI badge, and no footnote, components/site/PlaceFill.tsx placeNote). */
+  note: string | null;
   /** What the card's slot shows (components/site/samples.tsx slotMedia), and the site dictionary its labels come from. */
   media: PlaceMedia;
   site: Dictionary["site"];
@@ -60,9 +59,8 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opt
  * rests on its last state: the ask types, the reply arrives, the rail goes Topic, Plan, Approve (never Live: nothing goes live
  * until the person presses the button) and the lamps and the button light, in that order (".nx-chat" in site-next.css). With
  * reduced motion, the pause switch or no script that last state is simply what is there, and it is what the server renders,
- * so nothing flashes. The drawn parts cannot be pressed; the only links are a sample's own credit and "Try this prompt", when
- * the slot shows one of our generations (components/site/PlaceFill.tsx). Its frame has a fixed aspect ratio, so it cannot
- * shift the page. A Server Component.
+ * so nothing flashes. Nothing in it can be pressed: a frame that shows one of our generations carries its AI badge
+ * only (components/site/PlaceFill.tsx). Its frame has a fixed aspect ratio, so it cannot shift the page. A Server Component.
  *
  * `art` puts a drawing where the picture goes (the /mcp card); otherwise the frame is whatever chatCopy's slot shows.
  */
@@ -120,7 +118,7 @@ export function ChatCard({
                   </span>
                 </>
               ) : (
-                <PlaceFill media={m} s={copy.site} alt={copy.alt} tryHref={placeTry(m)} eager={eager} early={eager} compact={compactClip} sizes="(min-width: 640px) 520px, calc(100vw - 80px)" />
+                <PlaceFill media={m} s={copy.site} alt={copy.alt} eager={eager} early={eager} compact={compactClip} sizes="(min-width: 640px) 520px, calc(100vw - 80px)" />
               )}
             </div>
           )}
@@ -144,7 +142,7 @@ export function ChatCard({
           <span className="nx-chat-key">{copy.key}</span>
         </div>
       </div>
-      <figcaption className="nx-demo-note">{copy.note}</figcaption>
+      {copy.note && <figcaption className="nx-demo-note">{copy.note}</figcaption>}
     </figure>
   );
 }

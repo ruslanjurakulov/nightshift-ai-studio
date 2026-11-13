@@ -3,7 +3,6 @@ import type { Dictionary } from "@/lib/i18n";
 import { ClipPause } from "@/components/site/ClipPause";
 import { slotMedia, type SlotId } from "@/components/site/samples";
 import { PlaceFill, placeBox } from "@/components/site/PlaceFill";
-import { placeTry } from "@/components/site/place-try";
 
 /**
  * A picture edge to edge behind a page's first words: the /mcp header panel (slot "mcp.hero", `className` "nx-mcp-bleed", its
@@ -19,7 +18,7 @@ export function HeroBleed({ t, slot = "hero", position, className = "nx-hero-ble
   const sizes = className === "nx-hero-bleed" ? "(min-width: 1024px) 1px, 200vw" : "(min-width: 1024px) 720px, 200vw";
   return (
     <div className={`nx-bleed ${className}`} {...placeBox(m)} style={position ? ({ "--bleed-pos": position } as CSSProperties) : undefined}>
-      <PlaceFill media={m} s={t.site} tryHref={placeTry(m)} eager early sizes={sizes} />
+      <PlaceFill media={m} s={t.site} eager early sizes={sizes} />
       {moving && <ClipPause label={t.site.fx.pause} />}
     </div>
   );

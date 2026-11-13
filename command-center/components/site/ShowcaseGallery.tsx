@@ -31,8 +31,7 @@ export type LandingFormat = { id: string; job: string; title: string; body: stri
 
 /**
  * The model samples (lib/site/showcase.ts): real generations from the operator's Studio, each in its own card with an
- * "AI-generated" badge, the model that made it and its maker's credit (a link, as the maker's terms ask), the words it was
- * given, the day, and "Try this prompt", which opens the Studio form with that tool and words (lib/site/showcase-link.ts). Nothing
+ * "AI-generated" badge, the model that made it, the words it was given, the day, and "Try this prompt", which opens the Studio form with that tool and words (lib/site/showcase-link.ts). Nothing
  * claims the model is on sale: a model only the operator can try yet (registry `operator_preview`) is left out of the link and its
  * card says it is not in the Studio yet; a model whose announced shutdown day has come is left out the same way, and its card says
  * it is no longer in the Studio. Those buttons are named by their sample's prompt, not by the model.
@@ -124,11 +123,6 @@ export function ShowcaseGallery({
                   <p className="nx-gallery-model">
                     <span className="nx-gallery-key">{g.model}</span> <strong>{e.modelName}</strong>
                   </p>
-                  {e.attribution && (
-                    <a href={e.attribution.url} target="_blank" rel="noopener noreferrer" className="nx-gallery-attr">
-                      {e.attribution.text}
-                    </a>
-                  )}
                   {leftOut && <p className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</p>}
                   {source && (
                     <figure className="nx-gallery-source" data-source-entry={source.e.jobId}>
@@ -143,15 +137,6 @@ export function ShowcaseGallery({
                       />
                       <figcaption>
                         <span className="nx-gallery-key">{g.source}</span> <strong>{source.e.modelName}</strong>
-                        {/* The picture is the other maker's output, shown here too, so its credit travels with it. */}
-                        {source.e.attribution && (
-                          <>
-                            {" "}
-                            <a href={source.e.attribution.url} target="_blank" rel="noopener noreferrer" className="nx-gallery-attr">
-                              {source.e.attribution.text}
-                            </a>
-                          </>
-                        )}
                       </figcaption>
                     </figure>
                   )}

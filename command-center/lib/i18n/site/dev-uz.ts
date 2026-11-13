@@ -397,7 +397,7 @@ export const devUz: DevDictionary = {
         label: "Misollar",
         title: "Nimalarni soʻrash mumkin",
         lead: "Oltita namuna soʻrov, har birida namuna kadr bor. Kadrlar Pexels mualliflarining stok surat va videolari, muallif har bir kartada koʻrsatilgan; ulardan biri harakatlanadi (muallifning takrorlanuvchi videosi). Ular gʻoyani koʻrsatadi, haqiqiy natijani emas.",
-        leadSamples: "Oltita namuna soʻrov, har biri oʻz rasmi bilan. “Sunʼiy intellekt yaratgan” belgisi bor rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq, uni koʻrsatilgan model yaratgan; stok namuna deb belgilangan rasm Pexels muallifiniki, u kartada koʻrsatilgan. Ular gʻoyani koʻrsatadi, bu soʻrovlarning natijasini emas.",
+        leadSamples: "Oltita namuna soʻrov, har biri oʻz rasmi bilan. “Sunʼiy intellekt yaratgan” belgisi bor rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq; stok namuna deb belgilangan rasm Pexels muallifiniki, u kartada koʻrsatilgan. Ular gʻoyani koʻrsatadi, bu soʻrovlarning natijasini emas.",
         region: "Nimalarni soʻrash mumkinligi misollari",
         track: "Misol kartalari, yon tomonga suring",
         prev: "Oldingi misol",
