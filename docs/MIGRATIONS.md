@@ -1737,3 +1737,43 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   the same request reused without a second hold, a redownload, the exempt organization, another organization's key, the list
   not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
   `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).
+
+## The nine cleared models on sale (0160)
+
+0160 (`0160_open_cleared_models.sql`) is **live on apply** and moves money: it writes 20 `credit_prices` rows and sets
+`model_registry.availability = 'beta'` and `entitlement = NULL` for nine models. It replaces no function, policy, grant or constraint.
+
+- **What opens.** Ideogram 3, 4 and 4.5; MiniMax H3, H3 Highspeed, H3 Lite and H3 Max; Runway gen4.5 and gen4_turbo: every registry
+  entry with no `terms_gate`, a successful probe of its current call, a vendor figure for every priced variant, no shutdown date passed,
+  no `blocked_countries`, and `api_exposure` `web_only` (so the API and MCP never list them). The 68 terms-gated entries stay hidden;
+  0035's CHECK would refuse the file if it tried otherwise.
+- **Prices.** The repository's convention (`docs/sql/prices_2026_10_01.sql`, `prices_defaults_2026_10_03.sql`): `credits_per_unit` is
+  the vendor figure in US cents, margin 1.5 for image and video, so every unit sells at 2.5x its registry figure, rounded up per job. A
+  model priced by variant has a row per variant (`model_<id>_<unit>_<768p|2k|480p|low|medium|high>`), which is all a quote of it reads;
+  its base row (what `sellable_models` joins to list it) is the default variant's figure. The figures are the registry's own list prices
+  (`confirmed: false`); the file compares each with the registry before it writes, and refuses if one moved.
+- **Entitlement: the diagnosis.** `creative_price` refuses every entitlement except `any` (NULL) and `paid`, for every organization
+  whatever its plan; 0034's `model_tier_allowed()` and its plan tiers are seeded but never called (`entitlement_keys` marks
+  `models_*` `planned`). Availability alone would sell to nobody, and would take the models from the operator (0139's preview passes
+  only a `hidden` model; a beta model's quote asks the entitlement even in the exempt organization). So the nine get NULL, here and in
+  `schemas/model_registry.json`; the tiers they had are in the rollback. Enforcing tiers is its own change (creative_price, the
+  entitlement keys and both Studio gates together), and with no plan purchasable yet it would open only the two `basic` models.
+- **Free credits.** 100 welcome credits per mailbox (0042) buy at most US$0.40 of vendor cost at 2.5x. A failed or refused job returns its
+  whole hold, so vendor money spent on a failed task (whether MiniMax bills one is not stated; not verified for Runway or Ideogram) is
+  not bounded by those 100 credits. No cap is applied by this file.
+- **Drift guards.** Each of the nine must be present, the same adapter / vendor model / credit unit / variant set / default as written,
+  verified, ungated, not disabled, not shut down, web only, and carry either its old tier or NULL. A price row that already exists is
+  never overwritten: kept when it sells at or above this file's price (with a NOTICE), refused when below. An empty registry (a fresh
+  deployment, the lab's build) writes nothing. The end state is asserted in the same block: every unit at 2.5x, the nine beta with NULL
+  entitlement, listed by `sellable_models('web')` and not by `'api'` or `'mcp'`, nothing terms-gated on sale.
+- **Not checked by SQL (owner).** The Privacy Policy now names Ideogram, MiniMax and Runway as Studio processors and says MiniMax and
+  Runway may use inputs and outputs to improve their models (the registry's "before a sale" note). Still open: Runway's photo-consent
+  confirmation on the i2v upload, Runway's export-embargo country decision, MiniMax's Uzbekistan billing.
+- **Undo.** `docs/sql/rollback_0160_open_cleared_models.sql` (owner-applied): the nine back to `hidden` with their tiers, and only the
+  price rows 0160 wrote (note `0160:`) whose rate and margin nobody changed are deleted. The operator's preview works again as before.
+- **Tests.** `tests/test_open_cleared_models_migration.py` (the nine are exactly the openable entries, no gated id in the file, every
+  price is the registry figure in cents at 1.5, every variant priced, base rows at the default, the file's entitlement NULL, the
+  rollback's tiers and rates, rows only, the 100 welcome credits, the Privacy Policy row) and `tests/security/test_sec_open_cleared_models.py`
+  (every variant quoted to a customer at 2.5x and never below cost, a customer held at the quote, the catalog and not the API or MCP,
+  gated models refused and un-openable, the operator exempt and not a preview, availability alone sells to nobody, the drift guards,
+  replay, rollback and re-apply).

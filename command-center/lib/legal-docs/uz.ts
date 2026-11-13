@@ -126,6 +126,7 @@ export const uz: LegalTexts = {
                 ["ElevenLabs; Microsoft Edge nutq sintezi", "Ovozlashtirish — kanal sozlamasiga qarab", "Ssenariy matni"],
                 ["Pexels, Pixabay", "Stok video va rasmlar", "Ssenariydan olingan qidiruv soʻzlari"],
                 ["Ixtiyoriy media generatorlari, faqat operator yoqqan boʻlsa: Google Veo, Google Gemini (rasm), OpenAI (GPT Image), Black Forest Labs (FLUX), Ideogram, fal.ai, Leonardo.Ai, Higgsfield, Kling, MiniMax, Seedance (ByteDance), Wan (Alibaba Cloud)", "Rasm va video kliplar generatsiyasi", "Ssenariydan olingan promptlar"],
+                ["Studioda oʻzingiz tanlagan rasm va video modellari: Ideogram, MiniMax, Runway", "Siz soʻragan rasm yoki video klipni yaratish", "Soʻrovingiz (prompt) va birinchi yoki oxirgi kadr sifatida bergan rasmingiz (Ideogram faqat soʻrovni oladi). MiniMax va Runway oʻz shartlariga koʻra olgan va yaratgan narsalaridan oʻz xizmatlari va modellarini yaxshilash uchun foydalanishi mumkin"],
                 ["vidIQ (ixtiyoriy)", "Kalit soʻz va sarlavha tadqiqoti", "Mavzu kalit soʻzlari va sarlavha qoralamalari"],
                 ["Telegram (faqat chatni ulagan boʻlsangiz)", "Siz tanlagan qisqa bildirishnomalarni ulangan Telegram chatiga yetkazish: bitta gap va ilovaga qaytish havolasi", "Telegram chatingiz identifikatori hamda har bir xabarning gapi va havolasi; hech qachon stsenariy, soʻrov, fayl nomi yoki video nomi emas"],
                 ["Telegram, Slack (ixtiyoriy)", "Operatorga bildirishnomalar", "Ishga tushirish holati, video nomlari va havolalari"],

@@ -1409,7 +1409,7 @@
         "note": "ESTIMATE: Ideogram 3.0 Turbo API list price, US$0.03 per image (the adapter sends rendering_speed TURBO), read by the owner in a browser on 2026-11-13; the page draws its table with a script a plain fetch is refused."
       },
       "credit_unit": "model_ideogram_3_image",
-      "entitlement": "models_image:basic",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [
         "Ideogram Developer API Agreement 2.3.3 (rev. 2024-08-14): no providing the Ideogram API or model access to third parties. Studio generations fit 2.1(b); our public API and MCP would pass it on. Hence api_exposure web_only",
@@ -1483,7 +1483,7 @@
         "note": "ESTIMATE: Ideogram 4.0 Turbo API list price, US$0.03 per image (the adapter sends rendering_speed turbo at a 1K resolution), read by the owner in a browser on 2026-11-13; the page draws its table with a script a plain fetch is refused."
       },
       "credit_unit": "model_ideogram_4_image",
-      "entitlement": "models_image:premium",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [
         "Ideogram Developer API Agreement 2.3.3 (rev. 2024-08-14): no providing the Ideogram API or model access to third parties. Studio generations fit 2.1(b); our public API and MCP would pass it on. Hence api_exposure web_only",
@@ -1570,7 +1570,7 @@
         "note": "ESTIMATE: Ideogram 4.5 Generate API list price per image, Low/Medium/High 1K/2K US$0.03/0.06/0.10, read by the owner in a browser on 2026-11-13 (the page draws its table with a script a plain fetch is refused). Flat figure = medium, the default tier."
       },
       "credit_unit": "model_ideogram_4_5_image",
-      "entitlement": "models_image:premium",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [
         "Ideogram Developer API Agreement 2.3.3 (rev. 2024-08-14): no providing the Ideogram API or model access to third parties. Studio generations fit 2.1(b); our public API and MCP would pass it on. Hence api_exposure web_only",
@@ -2402,7 +2402,7 @@
         "note": "ESTIMATE: list price per second of OUTPUT (pay-as-you-go API). Input video and pictures past the free quota (5; Max 2) cost extra; at most first and last frame are sent. Whether a failed or moderated task is billed is not stated. '2K' is MiniMax's name with no pixel size: labelled 2k, not 1440p."
       },
       "credit_unit": "model_minimax_h3_second",
-      "entitlement": "models_video:premium",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [
         "MiniMax Open Platform Terms of Service (Nanonoble Pte Ltd, effective 2026-03-30, read 2026-10-25), User Rights and Obligations 7(c): you may not 'independently sublicense, resell, or distribute any or all services outside of any integrated applications'.",
@@ -2414,7 +2414,7 @@
         "Same e-mail: 'Entry for application when required: https://platform.minimax.io/console/license'. The owner decided on 2026-11-13 that Nightshift is far below both thresholds.",
         "That e-mail answers the owner's question of 2026-11-11 (to contact.nanonoble@minimax.io): may we sell Hailuo 2.3, H3, H3 Lite and H3 Max to our users for credits inside our own app under 7(c)? It does not quote ToS 7(c).",
         "On that answer the owner cleared terms_gate on 2026-11-13 for every MiniMax video model, H3 Highspeed included (owner decided on 2026-11-13). Re-apply at the console link before annual revenue nears USD 20M (video).",
-        "Nothing is on sale yet: availability stays hidden and no credit_prices row exists. Before a sale: the privacy-notice line on MiniMax's training use, Uzbekistan billing, and per-resolution preview pricing for a trial."
+        "On sale (beta) since migration 0160 (2026-11-13) at 2.5x the list price of each resolution, entitlement open (null). Done before that sale: MiniMax's training use is named in the Privacy Policy (processors); per-resolution pricing (0149). Still NOT verified: Uzbekistan billing."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -2501,7 +2501,7 @@
         "note": "ESTIMATE: list price per second of OUTPUT (pay-as-you-go API). Input video and pictures past the free quota (5; Max 2) cost extra; at most first and last frame are sent. Whether a failed or moderated task is billed is not stated."
       },
       "credit_unit": "model_minimax_h3_highspeed_second",
-      "entitlement": "models_video:premium",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [
         "MiniMax Open Platform Terms of Service (Nanonoble Pte Ltd, effective 2026-03-30, read 2026-10-25), User Rights and Obligations 7(c): you may not 'independently sublicense, resell, or distribute any or all services outside of any integrated applications'.",
@@ -2513,7 +2513,7 @@
         "Same e-mail: 'Entry for application when required: https://platform.minimax.io/console/license'. The owner decided on 2026-11-13 that Nightshift is far below both thresholds.",
         "That e-mail answers the owner's question of 2026-11-11 (to contact.nanonoble@minimax.io): may we sell Hailuo 2.3, H3, H3 Lite and H3 Max to our users for credits inside our own app under 7(c)? It does not quote ToS 7(c).",
         "On that answer the owner cleared terms_gate on 2026-11-13 for every MiniMax video model, H3 Highspeed included (owner decided on 2026-11-13). Re-apply at the console link before annual revenue nears USD 20M (video).",
-        "Nothing is on sale yet: availability stays hidden and no credit_prices row exists. Before a sale: the privacy-notice line on MiniMax's training use, Uzbekistan billing, and per-resolution preview pricing for a trial."
+        "On sale (beta) since migration 0160 (2026-11-13) at 2.5x the list price of each resolution, entitlement open (null). Done before that sale: MiniMax's training use is named in the Privacy Policy (processors); per-resolution pricing (0149). Still NOT verified: Uzbekistan billing."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -2600,7 +2600,7 @@
         "note": "ESTIMATE: list price per second of OUTPUT (pay-as-you-go API). Input video and pictures past the free quota (5; Max 2) cost extra; at most first and last frame are sent. Whether a failed or moderated task is billed is not stated."
       },
       "credit_unit": "model_minimax_h3_lite_second",
-      "entitlement": "models_video:basic",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [
         "MiniMax Open Platform Terms of Service (Nanonoble Pte Ltd, effective 2026-03-30, read 2026-10-25), User Rights and Obligations 7(c): you may not 'independently sublicense, resell, or distribute any or all services outside of any integrated applications'.",
@@ -2612,7 +2612,7 @@
         "Same e-mail: 'Entry for application when required: https://platform.minimax.io/console/license'. The owner decided on 2026-11-13 that Nightshift is far below both thresholds.",
         "That e-mail answers the owner's question of 2026-11-11 (to contact.nanonoble@minimax.io): may we sell Hailuo 2.3, H3, H3 Lite and H3 Max to our users for credits inside our own app under 7(c)? It does not quote ToS 7(c).",
         "On that answer the owner cleared terms_gate on 2026-11-13 for every MiniMax video model, H3 Highspeed included (owner decided on 2026-11-13). Re-apply at the console link before annual revenue nears USD 20M (video).",
-        "Nothing is on sale yet: availability stays hidden and no credit_prices row exists. Before a sale: the privacy-notice line on MiniMax's training use, Uzbekistan billing, and per-resolution preview pricing for a trial."
+        "On sale (beta) since migration 0160 (2026-11-13) at 2.5x the list price of each resolution, entitlement open (null). Done before that sale: MiniMax's training use is named in the Privacy Policy (processors); per-resolution pricing (0149). Still NOT verified: Uzbekistan billing."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -2697,7 +2697,7 @@
         "note": "ESTIMATE: list price per second of OUTPUT (pay-as-you-go API). Input video and pictures past the free quota (5; Max 2) cost extra; at most first and last frame are sent. Whether a failed or moderated task is billed is not stated."
       },
       "credit_unit": "model_minimax_h3_max_second",
-      "entitlement": "models_video:premium",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [
         "MiniMax Open Platform Terms of Service (Nanonoble Pte Ltd, effective 2026-03-30, read 2026-10-25), User Rights and Obligations 7(c): you may not 'independently sublicense, resell, or distribute any or all services outside of any integrated applications'.",
@@ -2709,7 +2709,7 @@
         "Same e-mail: 'Entry for application when required: https://platform.minimax.io/console/license'. The owner decided on 2026-11-13 that Nightshift is far below both thresholds.",
         "That e-mail answers the owner's question of 2026-11-11 (to contact.nanonoble@minimax.io): may we sell Hailuo 2.3, H3, H3 Lite and H3 Max to our users for credits inside our own app under 7(c)? It does not quote ToS 7(c).",
         "On that answer the owner cleared terms_gate on 2026-11-13 for every MiniMax video model, H3 Highspeed included (owner decided on 2026-11-13). Re-apply at the console link before annual revenue nears USD 20M (video).",
-        "Nothing is on sale yet: availability stays hidden and no credit_prices row exists. Before a sale: the privacy-notice line on MiniMax's training use, Uzbekistan billing, and per-resolution preview pricing for a trial.",
+        "On sale (beta) since migration 0160 (2026-11-13) at 2.5x the list price of each resolution, entitlement open (null). Done before that sale: MiniMax's training use is named in the Privacy Policy (processors); per-resolution pricing (0149). Still NOT verified: Uzbekistan billing.",
         "H3 Max: MiniMax's docs (guides/video-generation, guides/models-intro) call it 'jointly released by MiniMax and fal.ai' and 'post-trained by fal.ai on MiniMax H3'. Served from MiniMax's own API; including it was the owner's decision (2026-11-13)."
       ],
       "attribution": null,
@@ -2781,7 +2781,7 @@
         "note": "'$0.01 per credit', gen4.5 12 credits per second (pricing page, read 2026-11-13). A page figure: confirmed stays false until a probe's cost.credits matches it"
       },
       "credit_unit": "model_runway_gen4_5_second",
-      "entitlement": "models_video:ultra",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [
         "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",
@@ -2858,7 +2858,7 @@
         "note": "'$0.01 per credit', gen4_turbo 5 credits per second (pricing page, read 2026-11-13; the old 'minimum 10 credits per task' note is no longer on it). confirmed stays false until a probe's cost.credits matches"
       },
       "credit_unit": "model_runway_gen4_turbo_second",
-      "entitlement": "models_video:premium",
+      "entitlement": null,
       "terms_gate": null,
       "terms_notes": [
         "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",
