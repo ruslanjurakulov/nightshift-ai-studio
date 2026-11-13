@@ -165,8 +165,15 @@ describe("site-motion.css", () => {
     expect(readFileSync(join(ROOT, "components/site/SiteEffects.tsx"), "utf8")).toContain('".ml-land .ml-land-in > *"');
   });
 
-  it("shows no pause button: the strip's key is invisible until the keyboard focuses it", () => {
-    expect(src).toMatch(/\.nx-marquee \.nx-clip-pause:not\(:focus-visible\) \{ opacity: 0; clip-path: inset\(50%\); pointer-events: none; \}/);
+  it("shows no pause button: the strip's key is invisible until the keyboard focuses it (site-next.css hides every one)", () => {
+    const next = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
+    expect(next).toMatch(/\.nx-clip-pause:not\(:focus-visible\) \{ position: absolute; width: 1px; height: 1px;[^}]*clip-path: inset\(50%\)/);
+    expect(src).not.toMatch(/\.nx-marquee \.nx-clip-pause[^{]*\{[^}]*(?:opacity: 1|clip-path: none|display: (?:block|grid|flex))/);
+  });
+
+  it("only places the strip's key; it does not undo the hiding (no size, clip or position of its own)", () => {
+    const rule = src.match(/\.nx-marquee \.nx-clip-pause \{([^}]*)\}/)![1];
+    expect(rule).not.toMatch(/\b(?:width|height|clip|clip-path|position|overflow|opacity)\s*:/);
   });
 
   it("keeps the strip still on a touch screen and the turning edge to a fine pointer (no unpausable or stuck motion)", () => {
@@ -542,7 +549,7 @@ describe("the models strip", () => {
     // Nothing focusable inside the hidden part; its own pause switch is outside it.
     expect(track.querySelector("a, button, input, [tabindex]")).toBeNull();
     const pause = container.querySelector(".nx-marquee > button.nx-clip-pause")!;
-    expect(pause.getAttribute("aria-label")).toBe("Pause motion");
+    expect(pause.textContent).toBe("Pause motion");
     expect(pause.closest("[aria-hidden]")).toBeNull();
   });
 

@@ -300,9 +300,9 @@
 .nx-marquee-item { display: inline-flex; align-items: center; gap: 44px; font-family: var(--font-display); font-size: clamp(20px, 2.4vw, 28px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; white-space: nowrap; color: rgba(244, 240, 233, 0.78); }
 .nx-marquee-item::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: linear-gradient(135deg, #a79cff, #ffb066); }
 /* No visible pause key on the public site (the owner's rule): the strip stops under the pointer, with reduced motion, and with
-   the page's switch; this key is for the keyboard only, invisible until it has the keyboard's focus. */
+   the page's switch; its key is for the keyboard only, hidden until focused by site-next.css's rule for every .nx-clip-pause.
+   Focused, it shows its words at the strip's right end. */
 .nx-marquee .nx-clip-pause { top: 50%; right: 12px; bottom: auto; margin-top: -22px; }
-.nx-marquee .nx-clip-pause:not(:focus-visible) { opacity: 0; clip-path: inset(50%); pointer-events: none; }
 /* Moving: one line, the list twice, the track sliding by exactly one copy so the loop has no seam. Its speed is per name.
    Only where the pointer can hover (and so stop it): on a touch screen the names sit still in a row, so nothing moves there
    that a visitor cannot pause. */
