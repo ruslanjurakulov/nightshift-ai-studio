@@ -161,9 +161,9 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertIsNone(e.terms_gate, mid)
             notes = e.raw["terms_notes"]
             text = " ".join(notes)
-            # 0160 put the four H3 models on sale; their last note says so and names what was done before the sale (the
+            # 0163 put the four H3 models on sale; their last note says so and names what was done before the sale (the
             # privacy-notice line) and what is still not verified. Hailuo 2.3 is not on sale and keeps its "before a sale" list.
-            sale = (("On sale (beta) since migration 0160", "Privacy Policy", "Uzbekistan billing") if mid in NEW_IDS
+            sale = (("On sale (beta) since migration 0163", "Privacy Policy", "Uzbekistan billing") if mid in NEW_IDS
                     else ("Before a sale", "privacy-notice line", "Uzbekistan billing"))
             for words in ("api@minimaxi.com", "2026-11-13 12:15 UTC+5", "belong to the users themselves",
                           "annual commercial revenue exceeds 20 million USD", "exceeds 1 million USD",
@@ -211,8 +211,8 @@ class RegistryEntryTests(unittest.TestCase):
         for mid in (H3, HS, LITE):
             self.assertNotIn("fal.ai", " ".join(self.r[mid].raw["terms_notes"]), mid)
 
-    def test_only_0160_and_its_rollback_price_them(self):
-        # 0160 (the nine cleared models on sale) is the one file that writes these units, at 2.5x the registry figure
+    def test_only_0163_and_its_rollback_price_them(self):
+        # 0163 (the nine cleared models on sale) is the one file that writes these units, at 2.5x the registry figure
         # (tests/test_open_cleared_models_migration.py pins the figures); its rollback deletes them. Any other mention
         # would be a second price for the same unit.
         units = []
@@ -222,7 +222,7 @@ class RegistryEntryTests(unittest.TestCase):
             units += [reg.credit_unit_for(mid, e.raw["pricing"]["unit"], k)
                       for k in (e.raw["pricing"].get("variants") or {}).get("prices", {})]
         self.assertTrue(all(u.startswith("model_minimax_h3_") for u in units), units)
-        allowed = {"supabase/migrations/0160_open_cleared_models.sql", "docs/sql/rollback_0160_open_cleared_models.sql"}
+        allowed = {"supabase/migrations/0163_open_cleared_models.sql", "docs/sql/rollback_0163_open_cleared_models.sql"}
         hits, seen = [], set()
         for folder in ("supabase/migrations", "docs", "deploy", "command-center/lib"):
             for path in (ROOT / folder).rglob("*"):
@@ -237,7 +237,7 @@ class RegistryEntryTests(unittest.TestCase):
                         else:
                             hits.append(f"{rel}: {u}")
         self.assertEqual(hits, [], "a second credit_prices row (or any other mention) would give a unit two prices")
-        self.assertEqual(seen, {(f, u) for f in allowed for u in units}, "0160 and its rollback name every unit")
+        self.assertEqual(seen, {(f, u) for f in allowed for u in units}, "0163 and its rollback name every unit")
 
     def test_every_price_is_a_dated_unconfirmed_estimate_with_a_source(self):
         # Re-read 2026-11-13 for the cleared three (Highspeed 480P is on the page at $0.04/s); Max was not touched.

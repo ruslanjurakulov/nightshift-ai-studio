@@ -1,8 +1,8 @@
-"""The nine cleared models go on sale at 2.5x their vendor figure, and nothing else does (migration 0160).
+"""The nine cleared models go on sale at 2.5x their vendor figure, and nothing else does (migration 0163).
 
-0160 writes credit_prices rows for every unit a quote of Ideogram 3 / 4 / 4.5, MiniMax H3 / Highspeed / Lite / Max and Runway gen4.5 /
+0163 writes credit_prices rows for every unit a quote of Ideogram 3 / 4 / 4.5, MiniMax H3 / Highspeed / Lite / Max and Runway gen4.5 /
 gen4_turbo can read, and puts those nine on sale (beta, entitlement NULL). These tests seed the nine from schemas/model_registry.json as
-the live database holds them before 0160 (hidden, verified by a probe, a plan-tier entitlement), apply the real file, and run the real
+the live database holds them before 0163 (hidden, verified by a probe, a plan-tier entitlement), apply the real file, and run the real
 quote and create on a real Postgres:
 
 * every variant of every opened model is quoted to a customer at exactly 2.5x its registry vendor figure per unit, its own variant's row,
@@ -12,7 +12,7 @@ quote and create on a real Postgres:
 * the operator's own organization is still credits-exempt: quoted, held and charged nothing, and no longer a "preview";
 * the diagnosis: availability alone (the tier entitlement left in place) sells to nobody and takes the models from the operator;
 * the drift guards: an unverified model, a moved registry figure, a missing model, a price row below this file's;
-* a replay changes nothing; the rollback takes the nine off sale, restores the tiers, deletes only 0160's own rows, and 0160 re-applies.
+* a replay changes nothing; the rollback takes the nine off sale, restores the tiers, deletes only 0163's own rows, and 0163 re-applies.
 
 Every row is made inside a rolled-back transaction.
 """
@@ -44,8 +44,8 @@ def _sync_row(mid):
             "spec": {k: v for k, v in m.items() if k not in _COLUMNS}}
 
 
-MIGRATION = sec_db.MIGRATIONS / "0160_open_cleared_models.sql"
-ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0160_open_cleared_models.sql"
+MIGRATION = sec_db.MIGRATIONS / "0163_open_cleared_models.sql"
+ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0163_open_cleared_models.sql"
 TEXT = MIGRATION.read_text(encoding="utf-8")
 
 
@@ -81,8 +81,8 @@ def _call(conn, who, q, params):
 
 
 def _seed(conn, ids=None, *, verified=True, tiers=True, mutate=None):
-    """The registry entries as the live database holds them before 0160: the file's static facts, hidden, a successful probe of the
-    exact call, and (tiers) the plan-tier entitlement the file carried before 0160."""
+    """The registry entries as the live database holds them before 0163: the file's static facts, hidden, a successful probe of the
+    exact call, and (tiers) the plan-tier entitlement the file carried before 0163."""
     ids = list(NINE if ids is None else ids)
     # A deep copy: the row shares the nested spec with REGISTRY, and a mutation must not reach the next test.
     for row in copy.deepcopy([_sync_row(i) for i in ids]):
@@ -235,7 +235,7 @@ def test_the_operators_organization_is_still_exempt_and_no_longer_a_preview(conn
 
 
 def test_availability_alone_with_the_tier_left_in_place_sells_to_nobody_and_takes_the_models_from_the_operator(conn, sc):
-    # The diagnosis 0160 rests on: creative_price refuses every plan-tier entitlement, whatever the plan, and a beta model is no
+    # The diagnosis 0163 rests on: creative_price refuses every plan-tier entitlement, whatever the plan, and a beta model is no
     # longer an operator preview. So opening availability without the entitlement change would be worse than nothing.
     with conn.transaction(force_rollback=True):
         _become(conn, None)
@@ -267,7 +267,7 @@ def test_an_unverified_model_stops_the_apply(conn, sc):
         _seed(conn, [i for i in NINE if i != "runway-gen4.5"])
         _seed(conn, ["runway-gen4.5"], verified=False)
         _refused(conn, "runway-gen4.5 has no successful probe")
-        assert conn.execute("select count(*) from public.credit_prices where note like '0160:%'").fetchone()[0] == 0
+        assert conn.execute("select count(*) from public.credit_prices where note like '0163:%'").fetchone()[0] == 0
 
 
 def test_a_registry_figure_that_moved_stops_the_apply(conn, sc):
@@ -306,7 +306,7 @@ def test_a_capability_a_resync_added_stops_the_apply_and_nothing_is_priced_or_op
         _become(conn, None)
         _seed(conn, mutate=edits)
         _refused(conn, "ideogram-3 now offers")
-        assert conn.execute("select count(*) from public.credit_prices where note like '0160:%'").fetchone()[0] == 0
+        assert conn.execute("select count(*) from public.credit_prices where note like '0163:%'").fetchone()[0] == 0
         assert conn.execute("select count(*) from public.model_registry where id = any(%s) and availability <> 'hidden'",
                             [NINE]).fetchone()[0] == 0
 
@@ -358,7 +358,7 @@ def test_the_rollback_takes_the_nine_off_sale_restores_the_tiers_and_deletes_onl
     with conn.transaction(force_rollback=True):
         _become(conn, None)
         _seed(conn)
-        # a row that was there before 0160 at this file's very figures, and one the owner raised after it
+        # a row that was there before 0163 at this file's very figures, and one the owner raised after it
         conn.execute("insert into public.credit_prices (unit, credits_per_unit, margin, note) values ('model_runway_gen4_turbo_second', 5, 1.5, 'owner')")
         _apply(conn)
         conn.execute("update public.credit_prices set credits_per_unit = 9 where unit = 'model_ideogram_4_image'")
@@ -368,7 +368,7 @@ def test_the_rollback_takes_the_nine_off_sale_restores_the_tiers_and_deletes_onl
         assert rows == {i: ("hidden", TIER[i]) for i in NINE}, rows
         left = {r[0] for r in conn.execute("select unit from public.credit_prices where unit = any(%s)", [[p["unit"] for p in PRICES]]).fetchall()}
         assert left == {"model_runway_gen4_turbo_second", "model_ideogram_4_image"}, left
-        # hidden again, the operator previews them as before 0160
+        # hidden again, the operator previews them as before 0163
         state, q = _quote(conn, sc.operator, DEFAULT_ORG, "t2i", "ideogram-4.5", {"prompt": "x", "quality": "low"})
         assert state == "ok" and q["preview"] is True, q
         # and the file applies again on top of its own rollback (the edited 9-credit row sells above 3, so it is kept)

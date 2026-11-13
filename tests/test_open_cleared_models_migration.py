@@ -1,4 +1,4 @@
-"""supabase/migrations/0160_open_cleared_models.sql — the nine cleared, verified, priced models go on sale (beta) at 2.5x their vendor figure.
+"""supabase/migrations/0163_open_cleared_models.sql — the nine cleared, verified, priced models go on sale (beta) at 2.5x their vendor figure.
 
 SQL does not run in this suite (tests/security/test_sec_open_cleared_models.py runs the file, the quotes and the rollback on a real
 Postgres). These pin, from the files alone, what would cost money or break the owner's legal gate if it changed by accident:
@@ -22,8 +22,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-TEXT = (MIG / "0160_open_cleared_models.sql").read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0160_open_cleared_models.sql").read_text(encoding="utf-8")
+TEXT = (MIG / "0163_open_cleared_models.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0163_open_cleared_models.sql").read_text(encoding="utf-8")
 REGISTRY = {m["id"]: m for m in json.loads((ROOT / "schemas" / "model_registry.json").read_text(encoding="utf-8"))["models"]}
 CODE = "\n".join(line.split("--", 1)[0] for line in TEXT.splitlines())
 NINE = ("ideogram-3", "ideogram-4", "ideogram-4.5", "minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max",
@@ -104,7 +104,7 @@ class Prices(unittest.TestCase):
             self.assertEqual(p["usd"], figure(e, p["variant"]), p["unit"])
             self.assertEqual(p["credits"], p["usd"] * 100, p["unit"])
             self.assertLessEqual(len(p["note"]), 300, p["unit"])
-            self.assertTrue(p["note"].startswith("0160:"), p["unit"])
+            self.assertTrue(p["note"].startswith("0163:"), p["unit"])
 
     def test_no_unit_sells_below_its_vendor_figure_and_the_note_says_what_it_sells_at(self):
         for p in PRICES:
@@ -143,7 +143,7 @@ class EntitlementAndRollback(unittest.TestCase):
         rates = json.loads(re.search(r"rates constant jsonb := \$json\$(.*?)\$json\$::jsonb;", ROLLBACK, re.S).group(1),
                            parse_float=Decimal, parse_int=Decimal)
         self.assertEqual(rates, {p["unit"]: p["credits"] for p in PRICES})
-        self.assertIn("cp.note like '0160:%'", ROLLBACK)
+        self.assertIn("cp.note like '0163:%'", ROLLBACK)
         self.assertIn("cp.margin = 1.5", ROLLBACK)
         self.assertIn("'hidden'", ROLLBACK)
 
