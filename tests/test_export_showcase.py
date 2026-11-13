@@ -7,13 +7,15 @@ job twice, a cost of "0" that was never measured. Runs under both ``python -m py
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import shutil
 import subprocess
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -82,8 +84,8 @@ def world(**over):
     return FakeRest(jobs=[job(**over)], assets=[asset(OUT), art_upload()])
 
 
-def plan(rest, existing=()):
-    return x.plan_export(rest, JOB, registry=REGISTRY, art=ART, stock=STOCK, existing=list(existing))
+def plan(rest, existing=(), today=date(2026, 11, 13)):
+    return x.plan_export(rest, JOB, registry=REGISTRY, art=ART, stock=STOCK, existing=list(existing), today=today)
 
 
 class JobIdTest(unittest.TestCase):
@@ -111,6 +113,8 @@ class RefusalsTest(unittest.TestCase):
         self.assertEqual(p["input"], {"kind": "site_art", "file": "step-1.webp", "sha256": next(iter(ART))})
         self.assertEqual(p["prompt"], "the lanterns drift up")
         self.assertEqual(p["createdAt"], "2026-11-12T09:30:00Z")
+        # Runway's models are operator previews: the card will say "coming" and the link will not name the model.
+        self.assertIs(p["operatorPreview"], True)
 
     def test_a_customers_job_is_never_ours_to_show(self):
         self.refused(world(org_id=CUSTOMER), "not_operator_org")
@@ -122,6 +126,25 @@ class RefusalsTest(unittest.TestCase):
 
     def test_a_missing_job(self):
         self.refused(FakeRest(), "job_not_found")
+
+    def test_a_model_past_its_announced_shutdown_is_refused_from_that_day(self):
+        # openai-gpt-image-2: shutdown.on 2027-02-10 in the registry, no terms gate.
+        self.assertEqual(REGISTRY["openai-gpt-image-2"]["shutdown"]["on"], "2027-02-10")
+        self.assertIs(plan(world(requested_model="openai-gpt-image-2"), today=date(2027, 2, 9))["operatorPreview"], False)
+        with self.assertRaises(x.Refusal) as cm:
+            plan(world(requested_model="openai-gpt-image-2"), today=date(2027, 2, 10))
+        self.assertEqual(cm.exception.code, "model_shut_down")
+
+    def test_a_model_whose_vendor_terms_are_not_cleared_is_refused(self):
+        for model in ("kling-v3", "seedance-2.0", "elevenlabs-v3"):
+            with self.subTest(model=model):
+                self.assertTrue(REGISTRY[model].get("terms_gate"))
+                self.refused(world(requested_model=model), "model_terms_not_cleared")
+
+    def test_a_prompt_the_site_would_drop_is_refused_not_cut(self):
+        # 2001 lanterns: 2001 characters to the database, 4002 to the page's parser (UTF-16), which would drop the entry unseen.
+        self.refused(world(params={"prompt": chr(0x1F3EE) * 2001, "source_asset_id": SRC}), "entry_invalid")
+        self.assertEqual(len(plan(world(params={"prompt": "a" * 4000, "source_asset_id": SRC}))["prompt"]), 4000)
 
     def test_a_model_the_registry_does_not_list(self):
         self.refused(world(requested_model="made-up-model"), "unknown_model")
@@ -185,6 +208,18 @@ class RefusalsTest(unittest.TestCase):
     def test_a_clip_too_long_for_a_landing_page(self):
         rest = FakeRest(jobs=[job()], assets=[asset(OUT, duration_s=120), art_upload()])
         self.refused(rest, "clip_too_long")
+
+
+class TextTest(unittest.TestCase):
+    def test_invisible_characters_never_reach_the_entry(self):
+        z = lambda *cps: "".join(chr(c) for c in cps)  # noqa: E731 — built from code points so the source shows what they are
+        hidden = "lan" + z(0x200B) + "terns" + z(0xFEFF) + " " + z(0x2063) + "rise" + z(0xE0041, 0xE0042, 0x202E, 0x200E)
+        self.assertEqual(x.clean_text(hidden, 100), "lanterns rise")
+
+    def test_the_cut_counts_as_the_page_does_and_never_halves_a_character(self):
+        lantern = chr(0x1F3EE)
+        self.assertEqual(x.utf16_len(lantern), 2)
+        self.assertEqual(x.clean_text(lantern * 5, 5), lantern * 2)
 
 
 class CostTest(unittest.TestCase):
@@ -279,6 +314,54 @@ class DownloadTest(unittest.TestCase):
         self.assertNotIn("sig=", str(cm.exception))
         self.assertNotIn("k" * 10, str(cm.exception))
 
+    def test_a_connection_error_never_carries_the_signed_link(self):
+        import requests
+
+        class Broken:
+            def get(self, url, **kw):
+                raise requests.ConnectionError(f"HTTPSConnectionPool: Max retries exceeded with url: {url}")
+
+        with self.assertRaises(x.Refusal) as cm:
+            x.download(Broken(), "https://site.test", "k" * 40, OUT, "video/mp4", SHA, self.tmp / "f", now=1000)
+        self.assertEqual(cm.exception.code, "download_failed")
+        self.assertIn("ConnectionError", str(cm.exception))
+        self.assertNotIn("sig=", str(cm.exception))
+        self.assertNotIn("/api/media/file", str(cm.exception))
+        # `from None`: the traceback does not chain the original (whose text holds the link) either.
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertTrue(cm.exception.__suppress_context__)
+
+    def test_main_prints_only_the_type_of_an_unexpected_error(self):
+        import requests
+
+        signed = f"https://site.test/api/media/file/{OUT}/original?t=video%2Fmp4&exp=1&sig=SIGNATURE"
+
+        def boom(*a, **kw):
+            raise requests.ConnectionError(signed)
+
+        env = {"SUPABASE_URL": "https://db.test", "SUPABASE_SERVICE_KEY": "service-key-value", "MEDIA_URL_SECRET": "m" * 40, "SITE_ORIGIN": "https://site.test"}
+        out, err = io.StringIO(), io.StringIO()
+        saved = {k: x.os.environ.get(k) for k in env}
+        orig_export = x.export
+        x.export = boom
+        x.os.environ.update(env)
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = x.main(["--job-id", JOB, "--outcome", str(self.tmp / "outcome")])
+        finally:
+            x.export = orig_export
+            for k, v in saved.items():
+                if v is None:
+                    x.os.environ.pop(k, None)
+                else:
+                    x.os.environ[k] = v
+        self.assertEqual(code, 1)
+        printed = out.getvalue() + err.getvalue()
+        self.assertIn("ConnectionError", printed)
+        for leak in ("SIGNATURE", "sig=", "/api/media/file", "service-key-value"):
+            self.assertNotIn(leak, printed)
+        self.assertEqual((self.tmp / "outcome").read_text(encoding="utf-8").strip(), "failed")
+
     def test_a_missing_or_short_key_stops_before_any_request(self):
         s = FakeSession(FakeResponse(200, BYTES))
         with self.assertRaises(x.Refusal) as cm:
@@ -324,7 +407,7 @@ class ExportTest(unittest.TestCase):
             x.file_hashes = orig
 
     def test_one_export_writes_the_entry_the_files_and_the_module(self):
-        entry = self.run_export(world(), slot_raw="show.studio", caption_raw="first‮ sample")
+        entry = self.run_export(world(), slot_raw="show.studio", caption_raw="first" + chr(0x202E) + " sample")
         data = json.loads(self.data.read_text(encoding="utf-8"))
         self.assertEqual([e["jobId"] for e in data["entries"]], [JOB])
         self.assertEqual(entry["slot"], "show.studio")
@@ -482,6 +565,24 @@ class WorkflowTest(unittest.TestCase):
         self.assertNotIn("secrets.", yaml.safe_dump(publish))
         self.assertEqual(publish["permissions"]["contents"], "write")
 
+    def test_only_an_open_pull_request_is_a_no_op(self):
+        run = "\n".join(s.get("run", "") for s in self.doc["jobs"]["publish"]["steps"])
+        self.assertIn('gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number -q length', run)
+        # The no-op exit comes before the branch check; a branch without an open PR still reaches `gh pr create`.
+        self.assertLess(run.index("exit 0"), run.index("branches/${branch}"))
+        self.assertGreater(run.index("gh pr create"), run.index("branches/${branch}"))
+        self.assertEqual(run.count("exit 0"), 1)
+
+    def test_it_runs_only_from_main_with_pinned_installs_and_values_that_cannot_become_options(self):
+        export = self.doc["jobs"]["export"]
+        self.assertEqual(export["if"], "github.ref == 'refs/heads/main'")
+        checkout = next(s for s in self.doc["jobs"]["publish"]["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        self.assertEqual(checkout["with"]["ref"], "main")
+        runs = "\n".join(s.get("run", "") for s in export["steps"])
+        self.assertIn("pip install -c constraints.txt", runs)
+        for flag in ('--job-id="$JOB_ID"', '--slot="$SLOT"', '--caption="$CAPTION"'):
+            self.assertIn(flag, runs)
+
     def test_it_never_pushes_to_main_and_opens_a_draft(self):
         run = "\n".join(s.get("run", "") for s in self.doc["jobs"]["publish"]["steps"])
         self.assertIn("gh pr create --draft --base main", run)
@@ -500,6 +601,10 @@ class DerivativesTest(unittest.TestCase):
         subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=24:duration=1",
                         "-pix_fmt", "yuv420p", str(src)], check=True)
         size = x.make_derivatives(src, "video", "video/mp4", tmp / "out")
+        # No rendition runs past a sample's length, whatever the file says about itself.
+        for cmd in x.video_commands("ffmpeg", src, "video/mp4", tmp / "out"):
+            self.assertLess(cmd.index("-t"), cmd.index("-i"))
+            self.assertEqual(cmd[cmd.index("-t") + 1], "30")
         self.assertEqual(size, (1280, 720))
         self.assertEqual(sorted(p.name for p in (tmp / "out").iterdir()), sorted(x.VIDEO_FILES))
 

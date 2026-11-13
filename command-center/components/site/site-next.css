@@ -1424,4 +1424,5 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 .nx-gallery-attr:hover { color: var(--st-act-ink); }
 .nx-gallery-prompt { margin: 0; max-width: 60ch; font-size: 16px; line-height: 1.55; color: var(--ns-text); white-space: pre-line; overflow-wrap: anywhere; }
 .nx-gallery-date { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
+.nx-gallery-coming { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
 .nx-gallery-try { margin-top: 8px; }

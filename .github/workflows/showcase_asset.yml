@@ -37,6 +37,8 @@ concurrency:
 
 jobs:
   export:
+    # Only from main: a run dispatched on another branch would export with that branch's tool and data file.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -71,9 +73,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      # The same floors as requirements.txt, held below the next major release, with the repository's constraints applied
+      # (constraints.txt pins neither package today; a pin added there binds this install too).
       - name: Install requests, Pillow and ffmpeg
         run: |
-          pip install requests pillow
+          pip install -c constraints.txt "requests>=2.33.0,<3" "Pillow>=12.3.0,<13"
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
 
@@ -91,7 +95,8 @@ jobs:
           SITE_ORIGIN: https://${{ vars.DOMAIN || 'new.nightshift-ai.studio' }}
         run: |
           set +e
-          python tools/export_showcase.py --job-id "$JOB_ID" --slot "$SLOT" --caption "$CAPTION" \
+          # `--x=value`: a caption or slot that starts with "-" is a value, never read as another option.
+          python tools/export_showcase.py --job-id="$JOB_ID" --slot="$SLOT" --caption="$CAPTION" \
             --summary "$RUNNER_TEMP/summary.md" --outcome "$RUNNER_TEMP/outcome" --stage showcase-export --job-out "$RUNNER_TEMP/job"
           rc=$?
           set -e
@@ -129,6 +134,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The branch is cut from main, whatever the run was dispatched on.
+          ref: main
           # The push below authenticates through gh's credential helper for that one command; nothing is stored in .git/config.
           persist-credentials: false
 
@@ -140,26 +147,32 @@ jobs:
       - name: Check the export holds only the sample's files
         env:
           JOB_ID: ${{ needs.export.outputs.job_id }}
-        run: python3 tools/export_showcase.py --job-id "$JOB_ID" --verify-export "$RUNNER_TEMP/export"
+        run: python3 tools/export_showcase.py --job-id="$JOB_ID" --verify-export "$RUNNER_TEMP/export"
 
-      # Idempotent: a branch for this job already exists means its PR is open (or was closed unmerged); a second one is not made.
+      # Idempotent: an OPEN pull request for this job is the only no-op. A branch left from an earlier run whose PR was never
+      # opened (or was closed) gets its PR now, as it is; a new branch is pushed only when none exists. Nothing is force-pushed.
       - name: Open a draft pull request
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_ID: ${{ needs.export.outputs.job_id }}
         run: |
           branch="showcase/${JOB_ID}"
-          if gh api "repos/${GITHUB_REPOSITORY}/branches/${branch}" --silent 2>/dev/null; then
-            echo "::notice::A branch for this job already exists (${branch}); no second pull request is opened."
+          open="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number -q length)"
+          if [ "$open" != "0" ]; then
+            echo "::notice::A pull request for this job is already open (${branch}); no second one is opened."
             exit 0
           fi
-          cp -R "$RUNNER_TEMP/export/command-center/." command-center/
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
-          git add command-center/lib/site/showcase.json command-center/components/site/showcase-assets.ts "command-center/components/site/showcase/${JOB_ID}"
-          git commit -q -m "Showcase: sample from Studio job ${JOB_ID}"
-          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin "HEAD:refs/heads/${branch}"
+          if gh api "repos/${GITHUB_REPOSITORY}/branches/${branch}" --silent 2>/dev/null; then
+            echo "::notice::The branch ${branch} exists from an earlier run but has no open pull request: opening one for it as it is."
+          else
+            cp -R "$RUNNER_TEMP/export/command-center/." command-center/
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -c "$branch"
+            git add command-center/lib/site/showcase.json command-center/components/site/showcase-assets.ts "command-center/components/site/showcase/${JOB_ID}"
+            git commit -q -m "Showcase: sample from Studio job ${JOB_ID}"
+            git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin "HEAD:refs/heads/${branch}"
+          fi
           {
             echo "A model sample for the public site, exported by the **Showcase asset** workflow (docs/SHOWCASE.md)."
             echo

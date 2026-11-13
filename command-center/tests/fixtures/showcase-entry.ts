@@ -13,6 +13,8 @@ export const FIXTURE_ENTRY: ShowcaseEntry = {
   modelId: "runway-gen4.5",
   modelName: "Runway Gen-4.5",
   provider: "runway",
+  // Runway's models are operator previews in the registry today (tests/site-showcase.test.tsx checks the flag matches).
+  operatorPreview: true,
   attribution: { text: "Powered by Runway", url: "https://runway.com" },
   capability: "i2v",
   kind: "video",

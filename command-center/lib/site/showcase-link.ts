@@ -1,6 +1,6 @@
 /**
- * A model sample's "Try it" (components/site/ShowcaseGallery.tsx): a link into the Studio with the sample's tool, model and
- * words in the form. It is a link and nothing more: the form is filled, nothing is priced, held or started until the person
+ * A model sample's "Try this prompt" (components/site/ShowcaseGallery.tsx): a link into the Studio with the sample's tool and
+ * words in the form, and its model too unless the model is an operator preview (not on sale: naming it would promise it). It is a link and nothing more: the form is filled, nothing is priced, held or started until the person
  * presses Generate there and sees the price (CLAUDE.md #3). The panel keeps the model only if it offers it to that workspace
  * (lib/models-discovery prefillModel), and shows which model and price it will use before anything runs.
  *
@@ -14,12 +14,14 @@ import { cleanLinkPrompt, isLinkPromptTool } from "@/lib/creative/improve";
 import { fitsAfterSignup } from "@/lib/safe-redirect";
 import { SIGNUP_PATH } from "@/lib/public-paths";
 
-type Sample = { capability: string; modelId: string; prompt: string };
+/** `operatorPreview`: the model is not on sale yet, so the link opens the tool with the words and does not name it. */
+type Sample = { capability: string; modelId: string; prompt: string; operatorPreview?: boolean };
 
 /** The Studio form for a sample, under the all-channels workspace, with its words cut to `max` characters; null for a tool the Studio has no form for. */
 function studioPath(s: Sample, max: number): string | null {
   if (!(STUDIO_TOOL_CAPS as readonly string[]).includes(s.capability) || !MODEL_ID_RE.test(s.modelId)) return null;
-  const q = new URLSearchParams({ tool: s.capability, model: s.modelId });
+  const q = new URLSearchParams({ tool: s.capability });
+  if (!s.operatorPreview) q.set("model", s.modelId);
   const words = isLinkPromptTool(s.capability) ? cleanLinkPrompt(s.capability, s.prompt) : "";
   const cut = cutWords(words, max);
   if (cut) q.set("prompt", cut);

@@ -70,8 +70,11 @@ export const AUTO_MODEL = "auto";
 
 // Never part of what a person typed on purpose, and the words travel in a link anyone can craft: C0 controls other
 // than a line break and a tab, DEL and the C1 controls, and the bidi overrides and isolates (U+202A–202E,
-// U+2066–2069), which would make the words shown in the Studio's box read in another order than they are sent.
-const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g;
+// U+2066–2069), which would make the words shown in the Studio's box read in another order than they are sent; and the
+// characters that show nothing at all: zero-width spaces, joiners and marks (U+200B–200F), the word joiner and invisible
+// operators (U+2060–2064), the byte-order mark, and the tag characters (U+E0000–E007F), which can carry a whole hidden
+// sentence inside words that look harmless. tools/export_showcase.py CONTROL_RE is the same set.
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/gu;
 
 /**
  * At most `max` UTF-16 units (the box's maxLength measure; the database's char_length counts code points, never more)

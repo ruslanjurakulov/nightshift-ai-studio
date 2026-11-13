@@ -180,22 +180,25 @@ export const siteEn = {
   },
   /**
    * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
-   * here; each card names its own, from the data file. "Try it" only opens the Studio form.
+   * here; each card names its own, from the data file. "Try this prompt" only opens the Studio form. Nothing here says a model is on
+   * sale: some samples are made with models only the operator can try yet (`coming` on their card).
    */
   gallery: {
     label: "Made in the Studio",
-    title: "Made with the models in the Studio",
+    title: "Made with Nightshift",
     lead: "Real generations from our own Studio. Each one names the model that made it and the words it was given.",
     badge: "AI-generated",
     model: "Model",
     prompt: "Prompt",
     noPrompt: "No words: made from the picture alone.",
     made: "Made {date}",
-    try: "Try it",
+    try: "Try this prompt",
     /** The button's accessible name, so each card's button says which sample it opens. */
-    tryAria: "Try it: {model}",
-    tryNote: "“Try it” opens the Studio with that tool and those words. Before anything starts, the Studio shows which model it will use and the price.",
-    tryNoteSignedOut: "“Try it” asks you to create an account first, then opens the Studio with that tool and those words. Nothing starts until you press Generate there, and the price is shown before you do.",
+    tryAria: "Try this prompt: {model}",
+    /** On a card whose model only the operator can try yet: its button opens the tool with the words, without the model. */
+    coming: "This model is coming to the Studio",
+    tryNote: "“Try this prompt” opens the Studio with that tool and those words. Before anything starts, the Studio shows which model it will use and the price.",
+    tryNoteSignedOut: "“Try this prompt” asks you to create an account first, then opens the Studio with that tool and those words. Nothing starts until you press Generate there, and the price is shown before you do.",
     altClip: "AI-generated clip made by {model}",
     altImage: "AI-generated picture made by {model}",
   },

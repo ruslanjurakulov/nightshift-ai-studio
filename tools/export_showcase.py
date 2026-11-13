@@ -13,7 +13,9 @@ It REFUSES, before it downloads anything, unless:
 * the id is a well-formed uuid and names a job, or the library file a job made (the Library shows files, not jobs);
 * the job belongs to the operator's organization (``00000000-0000-0000-0000-000000000001``) and ``completed``;
 * the job ran without a style kit (a kit's reference pictures are not ours to check here);
-* the model that made it (the routed one on Auto) is in schemas/model_registry.json;
+* the model that made it (the routed one on Auto) is in schemas/model_registry.json, its vendor terms are cleared for public
+  display (no ``terms_gate``) and it is not past an announced ``shutdown.on``. An ``operator_preview`` model is allowed (the
+  owner's decision): the entry records it, and the site then claims nothing about the model being on sale;
 * its output is a library asset of the same organization, made by this job, not deleted, an image or a video;
 * every input picture (``source_asset_id``, ``end_asset_id``) is OURS: one of the site's AI-generated pictures
   (components/site/art/, byte for byte by sha256), or the output of another completed job of the operator's organization, checked
@@ -30,7 +32,8 @@ The cost is what creative_job_costs recorded (migration 0037): the dollar estima
 when there is no row or any row has no figure, never 0 for unknown; and the vendor's own measure (unit and quantity) per row.
 
 Nothing secret is printed: not the service key, not the signing key, not the signed link (it is a bearer for the file). Errors name
-the step and the HTTP status.
+the step and the HTTP status; a connection error or any other unexpected one is printed as its type name only, because its own
+message (and its traceback) can hold the signed link.
 """
 
 from __future__ import annotations
@@ -47,7 +50,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -68,8 +71,13 @@ UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 MODEL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,39}$")
 SLOT_RE = re.compile(r"^[a-z][a-z0-9.-]{0,40}$")
-#: Control characters and the bidi overrides / isolates, never part of a prompt or a note on purpose (lib/creative/improve.ts).
-CONTROL_RE = re.compile("[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]")
+#: Never part of a prompt or a note on purpose, and the same set as lib/creative/improve.ts CONTROL: C0/C1 controls (not a line
+#: break or a tab), the bidi overrides and isolates, the zero-width characters and marks, the word joiner and invisible operators,
+#: the byte-order mark, and the tag characters (which can carry hidden text).
+CONTROL_RE = re.compile(
+    "[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u202a-\\u202e"
+    "\\u2060-\\u2064\\u2066-\\u2069\\ufeff\\U000e0000-\\U000e007f]"
+)
 
 #: How far back an input picture's own inputs are followed before the chain is refused as too long to vouch for.
 MAX_INPUT_DEPTH = 6
@@ -109,10 +117,48 @@ def parse_job_id(raw: Any) -> str:
     return value
 
 
-def clean_text(raw: Any, max_chars: int) -> str:
+def utf16_len(s: str) -> int:
+    """A string's length as JavaScript's `.length` counts it (lib/site/showcase.ts measures every limit that way)."""
+    return len(s.encode("utf-16-le")) // 2
+
+
+def clean_text(raw: Any, max_units: int) -> str:
+    """Controls out, trimmed, then cut to `max_units` UTF-16 units on a whole character (the site's parser's own measure)."""
     if not isinstance(raw, str):
         return ""
-    return "".join(list(CONTROL_RE.sub("", raw).strip())[:max_chars]).strip()
+    out: List[str] = []
+    n = 0
+    for ch in CONTROL_RE.sub("", raw).strip():
+        n += 2 if ord(ch) > 0xFFFF else 1
+        if n > max_units:
+            break
+        out.append(ch)
+    return "".join(out).strip()
+
+
+#: The site parser's limits (lib/site/showcase.ts parseShowcaseEntry), in UTF-16 units: an entry over one would be dropped there
+#: without a word, so the export refuses it here instead.
+TEXT_LIMITS = {"modelName": 80, "prompt": 4000, "caption": 200}
+
+
+def entry_problem(entry: Mapping[str, Any]) -> Optional[str]:
+    """The first field the site's parser would refuse, or None."""
+    for key, limit in TEXT_LIMITS.items():
+        value = entry.get(key)
+        if isinstance(value, str) and utf16_len(value) > limit:
+            return key
+    if not entry.get("modelName"):
+        return "modelName"
+    att = entry.get("attribution")
+    if att is not None and (not att.get("text") or utf16_len(att["text"]) > 80 or not str(att.get("url", "")).startswith("https://")):
+        return "attribution"
+    cost = entry.get("cost") or {}
+    if cost.get("priceSource") is not None and utf16_len(cost["priceSource"]) > 300:
+        return "cost.priceSource"
+    for v in cost.get("vendor") or []:
+        if utf16_len(v["provider"]) > 40 or (v["vendorModel"] and utf16_len(v["vendorModel"]) > 200) or (v["unit"] and utf16_len(v["unit"]) > 40):
+            return "cost.vendor"
+    return None
 
 
 def slot_names(path: Path = SAMPLES_TSX) -> List[str]:
@@ -229,7 +275,7 @@ def summarize_costs(rows: Sequence[Mapping[str, Any]]) -> dict:
     if not known:
         return {"usdEstimate": None, "priceSource": None, "rows": len(rows), "vendor": vendor}
     usd = round(sum(f for f in figures if f is not None), 6)
-    return {"usdEstimate": usd, "priceSource": "; ".join(sources)[:300], "rows": len(rows), "vendor": vendor}
+    return {"usdEstimate": usd, "priceSource": clean_text("; ".join(sources), 300), "rows": len(rows), "vendor": vendor}
 
 
 def _live_operator_asset(rest: Rest, asset_id: str, what: str) -> dict:
@@ -311,6 +357,7 @@ def plan_export(
     stock: Mapping[str, str],
     existing: Sequence[Mapping[str, Any]],
     asset_hint: Optional[str] = None,
+    today: Optional[date] = None,
 ) -> dict:
     """Every check, in order; returns what the entry will say (without files). Raises Refusal or AlreadyThere.
     ``asset_hint``: the library file the owner named, shown when it is one of the job's outputs (else the first output)."""
@@ -330,7 +377,12 @@ def plan_export(
     spec = registry.get(model)
     if not MODEL_ID_RE.match(model) or not spec:
         raise Refusal("unknown_model", "the model that made it is not in schemas/model_registry.json")
-    outputs = [str(x).lower() for x in (job.get("result_asset_ids") or [])]
+    shutdown = spec.get("shutdown") if isinstance(spec.get("shutdown"), dict) else None
+    if shutdown and str(shutdown.get("on") or "") <= (today or datetime.now(timezone.utc).date()).isoformat():
+        raise Refusal("model_shut_down", f"the vendor shut the model down on {shutdown.get('on')}; a sample of a model nobody can use is not shown")
+    if spec.get("terms_gate"):
+        raise Refusal("model_terms_not_cleared", f"the model's vendor terms are not cleared ({spec.get('terms_gate')}), so its output is not shown in public")
+    outputs =[str(x).lower() for x in (job.get("result_asset_ids") or [])]
     if not outputs:
         raise Refusal("output_not_in_library", "the job's output was never added to the library, so there is no stored file to show")
     out_id = asset_hint if asset_hint in outputs else outputs[0]
@@ -354,7 +406,7 @@ def plan_export(
         raise Refusal("input_missing", "the job's tool starts from a picture, but none is recorded")
     attribution = spec.get("attribution") if isinstance(spec.get("attribution"), dict) else None
     created = str(job.get("created_at") or "")
-    return {
+    plan = {
         "jobId": job_id,
         "assetId": out_id,
         "sha256": str(asset["sha256"]),
@@ -362,15 +414,23 @@ def plan_export(
         "modelId": model,
         "modelName": str(spec.get("display_name") or model),
         "provider": str(spec.get("provider") or "unknown"),
+        # Not on sale yet (the operator may try it): the card then claims nothing about the Studio offering it, and Try it opens
+        # the tool without naming the model. tests/site-showcase.test.tsx keeps this equal to the registry's flag.
+        "operatorPreview": spec.get("operator_preview") is True,
         "attribution": {"text": attribution["text"], "url": attribution["url"]} if attribution and str(attribution.get("url", "")).startswith("https://") else None,
         "capability": str(job.get("capability")),
         "kind": kind,
-        "prompt": clean_text(params.get("prompt"), 4000),
+        # Never cut: a prompt the site would not take is refused below, not shortened into words the model was never given.
+        "prompt": clean_text(params.get("prompt"), 1 << 30),
         "createdAt": _iso(created),
         "input": source,
         "endFrame": end,
         "cost": summarize_costs(rest.costs(job_id)),
     }
+    bad = entry_problem(plan)
+    if bad:
+        raise Refusal("entry_invalid", f"the entry's {bad} is longer or other than the site accepts, so it would never be shown")
+    return plan
 
 
 def _iso(raw: str) -> str:
@@ -408,17 +468,23 @@ def download(session, origin: str, secret: str, asset_id: str, mime: str, want_s
     url = f"{origin}/api/media/file/{asset_id}/original?{query}"
     digest = hashlib.sha256()
     n = 0
-    # The link is a bearer for the file: it is never printed, and an error says only the status.
-    with session.get(url, stream=True, timeout=60, allow_redirects=False) as r:
-        if r.status_code != 200:
-            raise Refusal("download_failed", f"the site answered HTTP {r.status_code} for the file (503: the server has no media volume or key; 410: the file is gone; 403: MEDIA_URL_SECRET differs from the server's)")
-        with open(dest, "wb") as f:
-            for chunk in r.iter_content(1 << 16):
-                n += len(chunk)
-                if n > MAX_DOWNLOAD_BYTES:
-                    raise Refusal("download_too_large", "the file is larger than a sample may be")
-                digest.update(chunk)
-                f.write(chunk)
+    # The link is a bearer for the file: it is never printed, and an error says only the status. A connection error's own text
+    # names the URL (signature included), so it is replaced by its type alone, and its traceback is cut (`from None`).
+    try:
+        with session.get(url, stream=True, timeout=60, allow_redirects=False) as r:
+            if r.status_code != 200:
+                raise Refusal("download_failed", f"the site answered HTTP {r.status_code} for the file (503: the server has no media volume or key; 410: the file is gone; 403: MEDIA_URL_SECRET differs from the server's)")
+            with open(dest, "wb") as f:
+                for chunk in r.iter_content(1 << 16):
+                    n += len(chunk)
+                    if n > MAX_DOWNLOAD_BYTES:
+                        raise Refusal("download_too_large", "the file is larger than a sample may be")
+                    digest.update(chunk)
+                    f.write(chunk)
+    except Refusal:
+        raise
+    except Exception as e:  # requests.RequestException and anything under it; never its message
+        raise Refusal("download_failed", f"the site could not be reached ({type(e).__name__})") from None
     if digest.hexdigest() != want_sha:
         raise Refusal("hash_mismatch", "the downloaded file is not the one the library stored; nothing was written")
     return n
@@ -436,7 +502,8 @@ def _run(argv: Sequence[str]) -> None:
 
 def video_commands(ffmpeg: str, src: Path, mime: str, out: Path) -> List[List[str]]:
     """The four renditions (the site's clip conventions, scripts/make-site-media.py) and the first frame, from one forced demuxer."""
-    base = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime], "-i", str(src)]
+    # -t: never more than a sample may run, whatever the file claims about itself.
+    base = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime], "-t", str(int(MAX_CLIP_SECONDS)), "-i", str(src)]
     cmds: List[List[str]] = []
     for suffix, w in WIDTHS.items():
         scale = f"scale={w}:-2:flags=lanczos,format=yuv420p"
@@ -449,7 +516,8 @@ def video_commands(ffmpeg: str, src: Path, mime: str, out: Path) -> List[List[st
 def write_posters(still: Path, out: Path) -> Tuple[int, int]:
     from PIL import Image
 
-    with Image.open(still) as im:
+    # Only the three types a sample is (and ffmpeg's PNG frame): Pillow never guesses another decoder from the bytes.
+    with Image.open(still, formats=["PNG", "JPEG", "WEBP"]) as im:
         im = im.convert("RGB")
         size = (0, 0)
         for suffix, w in WIDTHS.items():
@@ -513,9 +581,12 @@ def dump_data(data: Mapping[str, Any]) -> str:
 
 
 def entry_from_plan(plan: Mapping[str, Any], size: Tuple[int, int], slot: Optional[str], caption: str, now: datetime) -> dict:
-    keep = ("jobId", "assetId", "sha256", "modelId", "modelName", "provider", "attribution", "capability", "kind", "prompt", "createdAt", "input", "endFrame", "cost")
+    keep = ("jobId", "assetId", "sha256", "modelId", "modelName", "provider", "operatorPreview", "attribution", "capability", "kind", "prompt", "createdAt", "input", "endFrame", "cost")
     entry = {k: plan[k] for k in keep}
     entry.update({"width": size[0], "height": size[1], "slot": slot, "caption": caption or None, "exportedAt": now.strftime("%Y-%m-%dT%H:%M:%SZ")})
+    bad = entry_problem(entry)
+    if bad:
+        raise Refusal("entry_invalid", f"the entry's {bad} is longer or other than the site accepts, so it would never be shown")
     return entry
 
 
@@ -534,6 +605,7 @@ def summary_markdown(entry: Mapping[str, Any]) -> str:
     lines = [
         f"- Job: `{entry['jobId']}` ({entry['capability']}, {entry['kind']}), created {entry['createdAt']}",
         f"- Model: {entry['modelName']} (`{entry['modelId']}`)" + (f", attribution: [{entry['attribution']['text']}]({entry['attribution']['url']})" if entry["attribution"] else ", no attribution required"),
+        "- In the Studio: " + ("not on sale yet (operator preview): the card says it is coming, and Try it opens the tool without it" if entry.get("operatorPreview") else "not an operator preview: Try it names this model (the Studio keeps it only if it offers it to that workspace)"),
         f"- Input picture: {origin}" + (f"; end frame: {entry['endFrame']['kind']}" if entry.get("endFrame") else ""),
         f"- Provider cost (creative_job_costs): {usd}",
         f"- Vendor's own figure: {vendor}",
@@ -697,7 +769,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"refused: {e.code}: {e.remedy}", file=sys.stderr)
         outcome("refused")
         return 2
-    summary = args.summary or Path(tempfile.gettempdir()) / f"showcase-{entry['jobId']}.md"
+    except Exception as e:
+        # Anything else: its type only. A message or a traceback can carry a URL with a signature, a header or a key.
+        print(f"failed: {type(e).__name__} (no detail is printed: it could carry a signed link or a key)", file=sys.stderr)
+        outcome("failed")
+        return 1
+    summary =args.summary or Path(tempfile.gettempdir()) / f"showcase-{entry['jobId']}.md"
     summary.write_text(summary_markdown(entry), encoding="utf-8")
     if args.stage:
         stage_export(entry["jobId"], entry["kind"], summary, args.stage)

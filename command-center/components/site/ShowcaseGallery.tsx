@@ -27,7 +27,9 @@ export function showcaseItems(
 /**
  * The model samples (lib/site/showcase.ts): real generations from the operator's Studio, each in its own card with an
  * "AI-generated" badge, the model that made it and its maker's credit (a link, as the maker's terms ask), the words it was
- * given, the day, and "Try it", which opens the Studio form with that tool, model and words (lib/site/showcase-link.ts).
+ * given, the day, and "Try this prompt", which opens the Studio form with that tool and words (lib/site/showcase-link.ts). Nothing
+ * claims the model is on sale: a model only the operator can try yet (registry `operator_preview`) is left out of the link, and its
+ * card says it is coming to the Studio.
  *
  * With no entry, or none whose files are here, it renders nothing: never a placeholder that looks like ours. A model is named
  * only inside its own card (data-showcase-entry), because that card is a generation by it; tests/site-showcase.test.tsx pins it.
@@ -88,6 +90,7 @@ export function ShowcaseGallery({
                       {e.attribution.text}
                     </a>
                   )}
+                  {e.operatorPreview && <p className="nx-gallery-coming">{g.coming}</p>}
                   <p className="nx-gallery-key">{g.prompt}</p>
                   <p className="nx-gallery-prompt">{e.prompt.trim() ? e.prompt : g.noPrompt}</p>
                   <p className="nx-gallery-date">

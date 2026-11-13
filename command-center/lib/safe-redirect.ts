@@ -60,10 +60,14 @@ export function safeLoginReturn(raw: string | null | undefined, fallback: string
 }
 
 /**
- * A Studio form on some channel (`/<channel>/create…`): the one kind of `next` sign-up carries through /welcome. A model sample's
- * "Try it" on the public site (lib/site/showcase-link.ts) sends a signed-out visitor to `/signup?next=/all-channels/create?…`.
+ * The Studio form in the all-channels workspace (`/all-channels/create…`): the one kind of `next` sign-up carries through /welcome.
+ * A model sample's "Try it" on the public site (lib/site/showcase-link.ts) sends a signed-out visitor to
+ * `/signup?next=/all-channels/create?…`, and that is all it ever emits. Pinned to that one segment rather than any channel slug, so
+ * no reserved root (/api, /oauth, /auth, /admin …) can ever pass as one. The slug is lib/channels ALL_CHANNELS_SLUG, written out here
+ * so this module stays free of the channel code (tests/site-showcase.test.tsx holds the two equal).
  */
-const STUDIO_NEXT_RE = /^\/[a-z0-9]+(?:-[a-z0-9]+)*\/create(?:\?|$)/;
+export const STUDIO_NEXT_PREFIX = "/all-channels/create";
+const STUDIO_NEXT_RE = /^\/all-channels\/create(?:\?|$)/;
 
 export function studioNext(raw: string | null | undefined): string | null {
   const next = safeNextPath(raw, "");

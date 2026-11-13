@@ -27,7 +27,8 @@ import { SHOWCASE_ENTRIES, parseShowcase, parseShowcaseEntry, showcaseModels } f
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseGallery, showcaseItems } from "@/components/site/ShowcaseGallery";
 import { cutWords, signupTryHref, studioTryHref, tryHref } from "@/lib/site/showcase-link";
-import { DEFAULT_AFTER_AUTH, afterSignupPath, safeLoginReturn, safeNextPath, studioNext } from "@/lib/safe-redirect";
+import { DEFAULT_AFTER_AUTH, STUDIO_NEXT_PREFIX, afterSignupPath, safeLoginReturn, safeNextPath, studioNext } from "@/lib/safe-redirect";
+import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import { prefillFromImprove, IMPROVE_PROMPT_MAX } from "@/lib/creative/improve";
 import { prefillFromQuery } from "@/lib/creative/studio";
 import { SLOTS } from "@/components/site/samples";
@@ -38,7 +39,7 @@ afterEach(cleanup);
 
 const ROOT = join(__dirname, "..");
 const REGISTRY = JSON.parse(readFileSync(join(ROOT, "..", "schemas", "model_registry.json"), "utf8")) as {
-  models: { id: string; display_name: string; provider: string; capabilities: string[]; attribution: { text: string; url: string } | null }[];
+  models: { id: string; display_name: string; provider: string; capabilities: string[]; attribution: { text: string; url: string } | null; operator_preview?: boolean; terms_gate?: string | null }[];
 };
 const MODELS = new Map(REGISTRY.models.map((m) => [m.id, m]));
 const t = dictionaries.en;
@@ -62,6 +63,10 @@ describe("the data file", () => {
       expect(e.provider).toBe(m!.provider);
       expect(m!.capabilities).toContain(e.capability);
       expect(e.attribution).toEqual(m!.attribution ?? null);
+      // Stale when the registry flips: a model that goes on sale must get its link back (and one taken off sale lose it).
+      expect(e.operatorPreview, e.modelId).toBe(m!.operator_preview === true);
+      // The export refuses a model whose vendor terms are not cleared for public display.
+      expect(m!.terms_gate ?? null, e.modelId).toBeNull();
       expect(e.jobId).toMatch(/^[0-9a-f-]{36}$/);
       expect(e.cost.usdEstimate === null || (typeof e.cost.usdEstimate === "number" && e.cost.usdEstimate >= 0)).toBe(true);
       if (e.cost.rows === 0) expect(e.cost.usdEstimate).toBeNull();
@@ -93,6 +98,9 @@ describe("the data file", () => {
       { ...FIXTURE_ENTRY, input: { kind: "upload" } },
       { ...FIXTURE_ENTRY, kind: "audio" },
       { ...FIXTURE_ENTRY, createdAt: "yesterday" },
+      { ...FIXTURE_ENTRY, operatorPreview: undefined },
+      // Over the limit as the page counts it (UTF-16 units): 2001 emoji are 4002 units.
+      { ...FIXTURE_ENTRY, prompt: "🏮".repeat(2001) },
     ];
     for (const b of bad) expect(parseShowcaseEntry(b), JSON.stringify(b).slice(0, 120)).toBeNull();
     // A job is shown once, newest first.
@@ -110,7 +118,7 @@ describe("the gallery", () => {
     expect(showcaseItems()).toEqual([]);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: one entry shows the badge, the model and its credit link, the prompt, the date and Try it", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: one entry shows the badge, the model and its credit link, the prompt, the date and Try this prompt", (code) => {
     const d = dictionaries[code];
     const { container } = render(<ShowcaseGallery t={d} locale={code} entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />);
     const card = container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
@@ -127,6 +135,9 @@ describe("the gallery", () => {
     const tryIt = within(card).getByRole("link", { name: new RegExp(`^${d.site.gallery.try}`) });
     expect(tryIt.getAttribute("href")).toBe(signupTryHref(FIXTURE_ENTRY));
     expect(tryIt.textContent).toBe(d.site.gallery.try);
+    // An operator preview: the card says the model is coming, and the button does not name it.
+    expect(card.querySelector(".nx-gallery-coming")?.textContent).toBe(d.site.gallery.coming);
+    expect(tryIt.getAttribute("href")).not.toContain("model");
     // The heading and the note say what the section is, in this language.
     expect(container.querySelector("h2")?.textContent).toBe(d.site.gallery.title);
     expect(container.textContent).toContain(d.site.gallery.tryNoteSignedOut);
@@ -137,6 +148,14 @@ describe("the gallery", () => {
     const href = container.querySelector(".nx-gallery-try")?.getAttribute("href");
     expect(href).toBe(studioTryHref(FIXTURE_ENTRY));
     expect(container.textContent).toContain(t.site.gallery.tryNote);
+  });
+
+  it("a model customers can use: the card makes no coming-soon line and the button names the model", () => {
+    const onSale = { ...FIXTURE_ENTRY, modelId: "minimax-hailuo-2.3", modelName: "MiniMax Hailuo 2.3", provider: "minimax", operatorPreview: false, attribution: null };
+    const { container } = render(<ShowcaseGallery t={t} locale="en" signedIn entries={[onSale]} files={FIXTURE_FILES} />);
+    expect(container.querySelector(".nx-gallery-coming")).toBeNull();
+    const u = new URL(container.querySelector(".nx-gallery-try")!.getAttribute("href")!, "https://x.test");
+    expect(u.searchParams.get("model")).toBe("minimax-hailuo-2.3");
   });
 
   it("a picture has no clip and no pause button; a sample without words says so instead of showing an empty quote", () => {
@@ -173,6 +192,9 @@ describe("the gallery", () => {
     expect(s.credits.generated).toMatch(AI);
     expect(s.gallery.altClip).toContain("{model}");
     expect(s.gallery.tryAria.startsWith(s.gallery.try)).toBe(true);
+    expect(s.gallery.coming).not.toMatch(PROVIDER_BRANDS);
+    // The heading claims nothing about which models are on sale.
+    expect(s.gallery.title).toContain("Nightshift");
   });
 
   it("the stylesheet lays the cards out in one column on a phone and gives the credit link a touch-sized target", () => {
@@ -226,8 +248,26 @@ describe("Try it", () => {
   it("signed in, the words are bounded as the Studio box takes them from a link, with control and bidi characters out", () => {
     const u = new URL(studioTryHref({ ...sample, prompt: "z".repeat(5000) })!, "https://x.test");
     expect(u.searchParams.get("prompt")).toHaveLength(IMPROVE_PROMPT_MAX);
-    const v = new URL(studioTryHref({ ...sample, prompt: "move‮ the\u0000 sky" })!, "https://x.test");
+    const v = new URL(studioTryHref({ ...sample, prompt: `move${String.fromCodePoint(0x202e)} the${String.fromCodePoint(0)} sky` })!, "https://x.test");
     expect(v.searchParams.get("prompt")).toBe("move the sky");
+  });
+
+  it("an operator-preview model is left out of the link, in and out of sign-up; the tool and the words stay", () => {
+    const preview = { ...sample, operatorPreview: true };
+    const u = new URL(studioTryHref(preview)!, "https://x.test");
+    expect(u.searchParams.has("model")).toBe(false);
+    expect(u.searchParams.get("tool")).toBe("i2v");
+    expect(u.searchParams.get("prompt")).toBe(sample.prompt);
+    const next = new URL(signupTryHref(preview)!, "https://x.test").searchParams.get("next")!;
+    expect(new URL(next, "https://x.test").searchParams.has("model")).toBe(false);
+    // ...and a model customers can use is named.
+    expect(new URL(studioTryHref({ ...sample, operatorPreview: false })!, "https://x.test").searchParams.get("model")).toBe(sample.modelId);
+  });
+
+  it("zero-width and tag characters never travel in the words", () => {
+    const hidden = `lan${String.fromCodePoint(0x200b)}terns${String.fromCodePoint(0xfeff)} ${String.fromCodePoint(0x2063)}rise${String.fromCodePoint(0xe0041, 0xe0042)}`;
+    expect(new URL(studioTryHref({ ...sample, prompt: hidden })!, "https://x.test").searchParams.get("prompt")).toBe("lanterns rise");
+    expect(prefillFromImprove(prefillFromQuery("t2v", undefined), { prompt: hidden })!.prompt).toBe("lanterns rise");
   });
 
   it("a tool the Studio has no form for, or a malformed model id, gets no button", () => {
@@ -244,10 +284,15 @@ describe("Try it", () => {
 
 describe("sign-up carries only a Studio form", () => {
   it("anything else is plain /welcome", () => {
-    for (const bad of [null, "", "//evil.example/create", "https://evil.example/all-channels/create", "/auth/callback", "/pricing", "/a/b/create", "/all-channels/createx", "/\\evil.com/create"]) {
+    for (const bad of [null, "", "//evil.example/create", "https://evil.example/all-channels/create", "/auth/callback", "/pricing", "/a/b/create", "/all-channels/createx", "/\\evil.com/create", "/api/create", "/oauth/create", "/auth/create", "/admin/create", "/login/create", "/signup/create", "/welcome/create", "/chronos/create"]) {
       expect(afterSignupPath(bad), String(bad)).toBe(DEFAULT_AFTER_AUTH);
     }
     expect(afterSignupPath("/all-channels/create?tool=t2v")).toBe(`${DEFAULT_AFTER_AUTH}?next=${encodeURIComponent("/all-channels/create?tool=t2v")}`);
+  });
+
+  it("is pinned to the all-channels workspace, the only one the link builder emits", () => {
+    expect(STUDIO_NEXT_PREFIX).toBe(`/${ALL_CHANNELS_SLUG}/create`);
+    expect(studioTryHref({ capability: "t2v", modelId: "some-model", prompt: "x" })!.startsWith(`${STUDIO_NEXT_PREFIX}?`)).toBe(true);
   });
 
   it("a form too long to fit through the callback is dropped, not cut", () => {
@@ -266,7 +311,7 @@ describe("sign-up carries only a Studio form", () => {
 
 describe("the Studio reads the words back from a link", () => {
   it("for the text tools too (t2v, t2i), cleaned and bounded; it only fills the form", () => {
-    expect(prefillFromImprove(prefillFromQuery("t2v", undefined), { prompt: " lanterns‮ rise " })!.prompt).toBe("lanterns rise");
+    expect(prefillFromImprove(prefillFromQuery("t2v", undefined), { prompt: ` lanterns${String.fromCodePoint(0x202e)} rise ` })!.prompt).toBe("lanterns rise");
     expect(prefillFromImprove(prefillFromQuery("t2i", undefined), { prompt: "z".repeat(9000) })!.prompt).toHaveLength(IMPROVE_PROMPT_MAX);
     expect(prefillFromImprove(prefillFromQuery("i2v", undefined), { prompt: "drift" })!.prompt).toBe("drift");
   });
