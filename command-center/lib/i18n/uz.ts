@@ -402,6 +402,7 @@ export const uz: Dictionary = {
     open: "Ochish",
     done: "Bajarildi",
     finish: "Command Center’ga oʻtish",
+    finishStudio: "Namunangiz bilan Studiyani ochish",
     unavailable: "Ish maydoningizni hozir yuklab boʻlmadi. Birozdan keyin sahifani yangilang.",
     welcomeCredits: "Ish maydoningizda {n} ta bepul kredit bor (≈ bitta Short) — boshlash uchun sovgʻa.",
     finishSetup: "Sozlashni yakunlang",

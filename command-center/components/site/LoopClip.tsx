@@ -6,6 +6,9 @@ import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string };
 
+/** The four renditions of one loop: 1280 and 640 wide, each in WebM and MP4. */
+export type ClipSources = { mp4: string; webm: string; smMp4: string; smWebm: string };
+
 /** Whether a clip may be fetched and played at all: never under reduced motion, never on Save-Data or a slow link. */
 function clipsAllowed(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
@@ -61,8 +64,24 @@ const subscribe = (l: () => void) => {
  * - the container's `data-live` says it is playing, which swaps the badge from "Example frame (stock footage)" to "Example clip
  *   (stock footage)" and fades the clip in over the still.
  */
-export function LoopClip({ clip, poster, early = false, position, compact = false }: { clip: ClipId; poster: string; early?: boolean; position?: string; compact?: boolean }) {
-  const sources = CLIPS[clip];
+export function LoopClip({
+  clip,
+  sources: own,
+  poster,
+  early = false,
+  position,
+  compact = false,
+}: {
+  poster: string;
+  early?: boolean;
+  position?: string;
+  compact?: boolean;
+} & (
+  | { clip: ClipId; sources?: undefined }
+  /** A model sample's own files (components/site/showcase-assets.ts, read by ShowcaseClip): the same rules, other files. */
+  | { clip?: undefined; sources: ClipSources }
+)) {
+  const sources: ClipSources = own ?? CLIPS[clip as ClipId];
   const ref = useRef<HTMLVideoElement>(null);
   const paused = useMotionPaused();
   const [allowed, setAllowed] = useState(false);

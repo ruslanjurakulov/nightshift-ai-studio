@@ -6,6 +6,7 @@ import { isPlatformAdmin } from "@/lib/auth/org-roles";
 import { NotConfigured } from "@/components/NotConfigured";
 import { WelcomeFlow } from "@/components/welcome/WelcomeFlow";
 import { LEGAL } from "@/lib/legal";
+import { studioNext } from "@/lib/safe-redirect";
 import "../(app)/app-redesign.css";
 import "../(app)/app-pages-g5.css";
 
@@ -24,8 +25,12 @@ export const revalidate = 0;
  * (the actual ledger row from migration 0027, or nothing), and whether this
  * account may connect YouTube itself.
  */
-export default async function WelcomePage() {
+export default async function WelcomePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
+  // A Studio form the person asked for before signing up (a model sample's "Try it", lib/safe-redirect.ts afterSignupPath):
+  // the last button opens it. Only a same-origin Studio path is ever kept; it fills a form and starts nothing.
+  const q = await searchParams;
+  const next = studioNext(typeof q.next === "string" ? q.next : null);
   const user = await getUser();
   if (!user) redirect("/login");
 
@@ -68,6 +73,7 @@ export default async function WelcomePage() {
           showCredits={Boolean(org.supported && org.current && !org.current.is_default) || (org.supported && !org.current)}
           welcomeCredits={welcomeCredits}
           contactEmail={LEGAL.contactEmail}
+          next={next}
         />
     </main>
   );

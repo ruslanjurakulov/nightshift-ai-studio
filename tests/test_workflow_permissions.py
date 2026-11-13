@@ -11,9 +11,10 @@ Every workflow under .github/workflows/ must now:
 * declare a top-level ``permissions:`` mapping (never ``write-all``/``read-all``),
   with ``contents: read``;
 * grant no ``write`` scope, at workflow or job level, unless the workflow and
-  scope are listed in ``WRITE_ALLOWED`` below with the reason (none are today:
-  no workflow calls the GitHub API or pushes);
-* check out with ``persist-credentials: false``, since no workflow pushes.
+  scope are listed in ``WRITE_ALLOWED`` below with the reason (one job today:
+  showcase_asset.yml's ``publish``, which pushes one branch and opens a draft PR);
+* check out with ``persist-credentials: false``: the one job that pushes passes
+  its token to that single ``git push`` through gh's credential helper.
 
 Runs under both ``python -m pytest`` and ``python -m unittest``.
 """
@@ -29,8 +30,13 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = ROOT / ".github" / "workflows"
 
 # (workflow file name, job id or "*" for top level, scope) -> why it needs write.
-# Empty: nothing pushes, comments, releases or calls the GitHub API.
-WRITE_ALLOWED: dict = {}
+WRITE_ALLOWED: dict = {
+    # The one job that pushes: a branch named showcase/<job id> with a model sample's files, then a DRAFT pull request for
+    # the owner to review and merge (docs/SHOWCASE.md). It holds no secret and checks every file it commits
+    # (tools/export_showcase.py --verify-export); the job with the service key cannot write. Never main.
+    ("showcase_asset.yml", "publish", "contents"): "push the showcase/<job id> branch",
+    ("showcase_asset.yml", "publish", "pull-requests"): "open the draft pull request for that branch",
+}
 
 # The six files BR-S-001 named. Pinned by name so a rename cannot quietly
 # drop one out of the glob below.

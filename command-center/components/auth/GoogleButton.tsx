@@ -7,7 +7,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/con
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert } from "@/components/auth/AuthShell";
 import { GOOGLE_PROVIDER, googleRedirectTo, isGoogleEnabled, isGoogleError, type GoogleError } from "@/lib/google-signin";
-import { DEFAULT_AFTER_AUTH } from "@/lib/safe-redirect";
+import { DEFAULT_AFTER_AUTH, afterSignupPath, studioNext } from "@/lib/safe-redirect";
 import { useGoogleEnabledFromServer } from "@/components/auth/google-enabled-context";
 import "@/components/auth/google-button.css";
 
@@ -106,14 +106,14 @@ export function GoogleButton({ mode }: { mode: "signin" | "signup" }) {
     setFailed(null);
     setBusy(true);
     try {
+      const asked = new URLSearchParams(window.location.search).get("next");
+      // A new account opening a Studio form (a model sample's "Try it") goes through /welcome first, as the e-mail sign-up does:
+      // the (app) layout would send a workspace-less account there anyway and drop the form. Any other `next` is as it was.
+      const next = mode === "signup" && studioNext(asked) ? afterSignupPath(asked) : asked;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: GOOGLE_PROVIDER,
         options: {
-          redirectTo: googleRedirectTo(
-            window.location.origin,
-            new URLSearchParams(window.location.search).get("next"),
-            mode === "signup" ? DEFAULT_AFTER_AUTH : "/command-center",
-          ),
+          redirectTo: googleRedirectTo(window.location.origin, next, mode === "signup" ? DEFAULT_AFTER_AUTH : "/command-center"),
         },
       });
       // On success the browser is already on its way to Google.

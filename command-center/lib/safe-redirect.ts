@@ -58,3 +58,36 @@ export function safeLoginReturn(raw: string | null | undefined, fallback: string
   if (long === "/oauth/authorize" || long.startsWith("/oauth/authorize?")) return long;
   return safeNextPath(raw, fallback);
 }
+
+/**
+ * The Studio form in the all-channels workspace (`/all-channels/create…`): the one kind of `next` sign-up carries through /welcome.
+ * A model sample's "Try it" on the public site (lib/site/showcase-link.ts) sends a signed-out visitor to
+ * `/signup?next=/all-channels/create?…`, and that is all it ever emits. Pinned to that one segment rather than any channel slug, so
+ * no reserved root (/api, /oauth, /auth, /admin …) can ever pass as one. The slug is lib/channels ALL_CHANNELS_SLUG, written out here
+ * so this module stays free of the channel code (tests/site-showcase.test.tsx holds the two equal).
+ */
+export const STUDIO_NEXT_PREFIX = "/all-channels/create";
+const STUDIO_NEXT_RE = /^\/all-channels\/create(?:\?|$)/;
+
+export function studioNext(raw: string | null | undefined): string | null {
+  const next = safeNextPath(raw, "");
+  return next && STUDIO_NEXT_RE.test(next) ? next : null;
+}
+
+/**
+ * Where a new account goes once it is signed in. Always /welcome first: an account without a workspace is sent there by the
+ * (app) layout anyway, and a `next` given to the callback directly would be dropped on that redirect. With a Studio form to come
+ * back to, /welcome carries it (`/welcome?next=…`) and its last button opens it. The whole thing must still be a `next` the
+ * callback accepts (MAX_NEXT_LENGTH); one that would not fit is dropped rather than cut, and the person lands on plain /welcome.
+ */
+export function afterSignupPath(raw: string | null | undefined): string {
+  const next = studioNext(raw);
+  if (!next) return DEFAULT_AFTER_AUTH;
+  const wrapped = `${DEFAULT_AFTER_AUTH}?next=${encodeURIComponent(next)}`;
+  return wrapped.length <= MAX_NEXT_LENGTH ? wrapped : DEFAULT_AFTER_AUTH;
+}
+
+/** Whether afterSignupPath() still carries this Studio path (the try-it link builder sizes its words to it). */
+export function fitsAfterSignup(next: string): boolean {
+  return afterSignupPath(next) !== DEFAULT_AFTER_AUTH;
+}

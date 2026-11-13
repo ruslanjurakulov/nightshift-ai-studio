@@ -70,8 +70,19 @@ export const AUTO_MODEL = "auto";
 
 // Never part of what a person typed on purpose, and the words travel in a link anyone can craft: C0 controls other
 // than a line break and a tab, DEL and the C1 controls, and the bidi overrides and isolates (U+202A–202E,
-// U+2066–2069), which would make the words shown in the Studio's box read in another order than they are sent.
-const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g;
+// U+2066–2069), which would make the words shown in the Studio's box read in another order than they are sent; and the
+// characters that show nothing at all: zero-width spaces, joiners and marks (U+200B–200F), the word joiner and invisible
+// operators (U+2060–2064), the byte-order mark, and the tag characters (U+E0000–E007F), which can carry a whole hidden
+// sentence inside words that look harmless; plus the soft hyphen, the Arabic letter mark, the Mongolian vowel separator and the
+// supplementary variation selectors (U+E0100–E01EF). tools/export_showcase.py CONTROL_RE is the same set.
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/gu;
+/** A variation selector alone is ordinary (U+FE0F after a symbol makes it an emoji); a run of them shows nothing at all. */
+const VS_RUN = /[\uFE00-\uFE0F]{2,}/g;
+
+/** Every character above out of words that came in a link. */
+function stripInvisible(s: string): string {
+  return s.replace(CONTROL, "").replace(VS_RUN, "");
+}
 
 /**
  * At most `max` UTF-16 units (the box's maxLength measure; the database's char_length counts code points, never more)
@@ -91,7 +102,24 @@ function cutWhole(s: string, max: number): string {
  */
 export function cleanImprovePrompt(tool: ImproveStudioTool, raw: unknown): string {
   if (typeof raw !== "string" || improveWords(tool) === "none") return "";
-  return cutWhole(raw.replace(CONTROL, "").trim(), improvePromptMax(tool)).trim();
+  return cutWhole(stripInvisible(raw).trim(), improvePromptMax(tool)).trim();
+}
+
+/**
+ * The text tools a link may also start with words: a model sample's "Try it" on the public site (lib/site/showcase-link.ts) opens
+ * `/create?tool=t2v&model=…&prompt=…`. Same cleaning and bound as the file tools above; it only fills the box (CLAUDE.md #3).
+ */
+export const LINK_PROMPT_TOOLS = ["t2i", "t2v"] as const;
+export type LinkPromptTool = ImproveStudioTool | (typeof LINK_PROMPT_TOOLS)[number];
+
+export function isLinkPromptTool(tool: unknown): tool is LinkPromptTool {
+  return (IMPROVE_STUDIO_TOOLS as readonly unknown[]).includes(tool) || (LINK_PROMPT_TOOLS as readonly unknown[]).includes(tool);
+}
+
+/** A link's words for any tool that takes them from a link, cleaned and bounded as cleanImprovePrompt does. */
+export function cleanLinkPrompt(tool: LinkPromptTool, raw: unknown): string {
+  if (typeof raw !== "string" || promptRule(tool) === "none") return "";
+  return cutWhole(stripInvisible(raw).trim(), Math.min(IMPROVE_PROMPT_MAX, wordsMax(tool))).trim();
 }
 
 /**
@@ -141,8 +169,8 @@ export function prefillFromImprove(initial: StudioPrefill | null, q: { model?: u
   let out = initial;
   if (one(q.model) === AUTO_MODEL) out = { ...out, model: "", auto: true };
   const tool = out.capability as string;
-  if (!out.prompt && (IMPROVE_STUDIO_TOOLS as readonly string[]).includes(tool)) {
-    const words = cleanImprovePrompt(tool as ImproveStudioTool, one(q.prompt));
+  if (!out.prompt && isLinkPromptTool(tool)) {
+    const words = cleanLinkPrompt(tool, one(q.prompt));
     if (words) out = { ...out, prompt: words };
   }
   return out;

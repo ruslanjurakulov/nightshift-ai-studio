@@ -9,6 +9,7 @@ import { creditUnit, formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
 import { Showcases } from "@/components/landing/Showcases";
+import { ShowcaseGallery } from "@/components/site/ShowcaseGallery";
 import { TryDemo } from "@/components/landing/TryDemo";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
@@ -67,6 +68,8 @@ export function Landing({
       <Hero t={t} locale={locale} anchor={anchor} />
       <How t={t} />
       <Showcases t={t} />
+      {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
+      <ShowcaseGallery t={t} locale={locale} />
       {showcase.length > 0 && (
         <div className="st-section">
           <div className="st-wrap">

@@ -175,6 +175,34 @@ export const siteEn = {
     title: "Image credits",
     lead: "Every photograph and clip on these pages is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. Some pictures are different: the hero’s backdrop, the pictures for the three steps and the eight tools, and the sample thumbnail are AI-generated images made for Nightshift. They are decoration, not screenshots of the product.",
     licence: "Pexels License",
+    /** Shown only while the model samples (lib/site/showcase.json) hold an entry. It names no model: each sample names its own. */
+    generated: "One more exception: the samples under “Made in the Studio” are AI-generated. Each is a real job from our own Studio, made by the model named on it, and shows the words it was given and the day it was made.",
+  },
+  /**
+   * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
+   * here; each card names its own, from the data file. "Try this prompt" only opens the Studio form. Nothing here says a model is on
+   * sale: some samples are made with models only the operator can try yet (`notInStudio` on their card).
+   */
+  gallery: {
+    label: "Made in the Studio",
+    title: "Made with Nightshift",
+    lead: "Real generations from our own Studio. Each one names the model that made it and the words it was given.",
+    badge: "AI-generated",
+    model: "Model",
+    prompt: "Prompt",
+    noPrompt: "No words: made from the picture alone.",
+    made: "Made {date}",
+    try: "Try this prompt",
+    /** The button's accessible name where its link names the model too, so each card's button says which sample it opens. */
+    tryAria: "Try this prompt: {model}",
+    /** On a card whose model only the operator can try yet: its button opens the tool with the words, without the model. */
+    notInStudio: "This model is not in the Studio yet",
+    /** On a card whose model the vendor has shut down (its announced date has come): the button no longer names it. */
+    gone: "This model is no longer in the Studio",
+    tryNote: "“Try this prompt” opens the Studio with that tool and those words. Before anything starts, the Studio shows which model it will use and the price.",
+    tryNoteSignedOut: "“Try this prompt” asks you to create an account first, then opens the Studio with that tool and those words. Nothing starts until you press Generate there, and the price is shown before you do.",
+    altClip: "AI-generated clip made by {model}",
+    altImage: "AI-generated picture made by {model}",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {

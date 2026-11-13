@@ -10,7 +10,8 @@ import { fmt } from "@/lib/i18n/core";
 import { AuthAlert, AuthField, AuthNotice, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { useInvited } from "@/components/auth/InvitedContext";
 import { GoogleButton } from "@/components/auth/GoogleButton";
-import { AUTH_CALLBACK_PATH, HANDLE_CHECK_PATH, WELCOME_PATH } from "@/lib/public-paths";
+import { AUTH_CALLBACK_PATH, HANDLE_CHECK_PATH } from "@/lib/public-paths";
+import { afterSignupPath } from "@/lib/safe-redirect";
 import { HandleInput } from "@/components/account/HandleInput";
 import { useHandleCheck } from "@/components/account/useHandleCheck";
 import { HANDLE_META_KEY, applyPendingHandle, handleAllowsSubmit, type HandleClient } from "@/lib/handles";
@@ -93,6 +94,8 @@ export default function SignupPage() {
     setBusy(true);
     setProblem(null);
     const address = email.trim();
+    // /welcome, or /welcome carrying a Studio form to open afterwards (a model sample's "Try it"): never anywhere else.
+    const after = afterSignupPath(new URLSearchParams(window.location.search).get("next"));
     try {
       const { data, error } = await supabase.auth.signUp({
         email: address,
@@ -100,7 +103,7 @@ export default function SignupPage() {
         options: {
           // Kept on the new account until its first session can set it (lib/handles.ts applyPendingHandle).
           data: { [HANDLE_META_KEY]: handle },
-          emailRedirectTo: `${window.location.origin}${AUTH_CALLBACK_PATH}?next=${encodeURIComponent(WELCOME_PATH)}`,
+          emailRedirectTo: `${window.location.origin}${AUTH_CALLBACK_PATH}?next=${encodeURIComponent(after)}`,
         },
       });
       // An address that already has an account sees the same screen as a new one (neutralSignupOutcome).
@@ -112,7 +115,7 @@ export default function SignupPage() {
         // account whose e-mail it has not confirmed.
         if (invited) await fetch("/api/invite/join", { method: "POST" }).catch(() => undefined);
         await applyPendingHandle(supabase as unknown as HandleClient);
-        router.push(WELCOME_PATH);
+        router.push(after);
         router.refresh();
         return;
       }
