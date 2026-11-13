@@ -8,8 +8,8 @@
  *   - the page: scrollWidth <= clientWidth (no horizontal scroll), and the header on its own:
  *     nothing inside it sticks out of the viewport;
  *   - the primary key (Start free / Начать бесплатно / Bepul boshlash) and Sign in: bounding box
- *     fully inside the viewport, ONE line box (Range rects), at least 44 px tall. There is no menu
- *     on the public pages, so both are in the header at every width;
+ *     fully inside the viewport, ONE line box (Range rects), at least 44 px tall. From 768px there
+ *     is no menu, so both are in the header; below it the bar is Start free and a menu button, 64px at most;
  *   - the nav links: always shown, one line each, inside the viewport; the brand, nav, language,
  *     theme and Sign in do not overlap (2-D); the header is at most --max-header tall; nothing in it
  *     is a menu / disclosure button; on touch (to 1024 px wide) every link and button is >= 44 px;
@@ -173,8 +173,8 @@ function measureInPage() {
     signin: item(hdr.querySelector(".st-signin")),
     navShown,
     navLinks,
-    // There is no menu on the public pages: nothing in the header may be a disclosure button.
-    menuBtn: hdr.querySelector(".st-menu-btn, [aria-expanded][aria-controls]") ? { present: true } : null,
+    // Below 768px the bar's one disclosure is the menu button (components/legal/PublicMenu.tsx); from 768px there is none.
+    menuBtn: [...hdr.querySelectorAll(".st-menu-btn, [aria-expanded][aria-controls]")].some(shown) ? { present: true } : null,
     coarse: matchMedia("(pointer: coarse)").matches,
     // Every visible link and button in the header (the language chip and the theme key included) is a tap target.
     smallTargets: [...hdr.querySelectorAll("a[href], button")].filter(shown).map((e) => ({ e, r: e.getBoundingClientRect() })).filter(({ r }) => r.width < 43.5 || r.height < 43.5).map(({ e, r }) => `${(e.getAttribute("aria-label") || e.textContent || e.tagName).trim().slice(0, 16)} ${Math.round(r.width)}x${Math.round(r.height)}`),
@@ -185,7 +185,7 @@ function measureInPage() {
 
 /** Opens the language list and reports whether it lies inside the viewport (it is a popup anchored to the chip). */
 async function measureLanguage(frame) {
-  const btn = frame.locator('.st-header [aria-haspopup="listbox"]').first();
+  const btn = frame.locator('.st-header [aria-haspopup="listbox"]:visible').first();
   await btn.click({ timeout: 3000 });
   await frame.waitForSelector('.st-header ul[role="listbox"]', { timeout: 3000 });
   const r = await frame.evaluate(() => {
@@ -193,7 +193,7 @@ async function measureLanguage(frame) {
     const b = document.querySelector('.st-header ul[role="listbox"]').getBoundingClientRect();
     return { l: Math.round(b.left), r: Math.round(b.right), inside: b.left >= -0.5 && b.right <= cw + 0.5 };
   });
-  await frame.locator('.st-header [aria-haspopup="listbox"]').first().click();
+  await btn.click();
   return r;
 }
 
@@ -211,9 +211,13 @@ function verdict(m) {
     if (m.cta.t >= m.brandBottom - 1) f.push("Start free wrapped under the wordmark");
     if (m.cta.h < 43.5) f.push(`Start free ${m.cta.h}px tall`);
   }
+  // A phone's bar is the wordmark, Start free and the menu button, one 64px row; the links and Sign in are in the sheet.
+  const phone = m.innerWidth < 768;
+  if (phone && m.headerH > 64) f.push(`phone bar is ${m.headerH}px tall (64 at most)`);
   const si = m.signin;
-  if (!si) f.push("Sign in not shown");
-  else {
+  if (!si) {
+    if (!phone) f.push("Sign in not shown");
+  } else {
     if (!si.inside) f.push(`Sign in outside the viewport`);
     if (si.lines !== 1) f.push(`Sign in on ${si.lines} lines`);
     if (si.h < 43.5) f.push(`Sign in ${si.h}px tall`);
@@ -223,8 +227,12 @@ function verdict(m) {
     if (n.lines !== 1) f.push("a nav link wraps");
   }
   if (m.overlaps.length) f.push(`overlap: ${m.overlaps.join(", ")}`);
-  if (!m.navShown) f.push("the links are not shown");
-  if (m.menuBtn) f.push("the header has a menu / disclosure button");
+  if (phone) {
+    if (!m.menuBtn) f.push("no menu button below 768px");
+  } else {
+    if (!m.navShown) f.push("the links are not shown");
+    if (m.menuBtn) f.push("the header has a menu / disclosure button");
+  }
   if (m.coarse && m.smallTargets.length) f.push(`touch targets under 44px: ${m.smallTargets.join(", ")}`);
   return f;
 }
@@ -251,7 +259,8 @@ async function runMeasure() {
               const o = await outer.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
               if (o > 0) m.over = Math.max(m.over, o);
             }
-            if (!m.noHeader) lang = await measureLanguage(frame);
+            // Below 768px the language chip is in the menu sheet, not the bar.
+            if (!m.noHeader && m.innerWidth >= 768) lang = await measureLanguage(frame);
             m.tol = view === "desktop" && width < 700 ? 1 : 0;
             problems = verdict(m);
             if (lang && !lang.inside) problems.push(`the language list leaves the page (${lang.l}..${lang.r} of ${m.clientWidth})`);
@@ -260,7 +269,7 @@ async function runMeasure() {
             m = m ?? {};
           }
           if (problems.length) failed += 1;
-          rows.push({ locale, view: view ?? "auto", width, page: pg, layout: m.clientWidth ?? null, over: m.over ?? null, headerH: m.headerH ?? null, rows: m.rows ?? null, headerOver: m.headerOver ?? null, ctaRight: m.cta?.r ?? null, ctaOk: !!m.cta && m.cta.inside && m.cta.lines === 1, signinOk: !!m.signin && m.signin.inside && m.signin.lines === 1, nav: !!m.navShown, toggle: !!m.toggle, problems });
+          rows.push({ locale, view: view ?? "auto", width, page: pg, layout: m.clientWidth ?? null, over: m.over ?? null, headerH: m.headerH ?? null, rows: m.rows ?? null, headerOver: m.headerOver ?? null, ctaRight: m.cta?.r ?? null, ctaOk: !!m.cta && m.cta.inside && m.cta.lines === 1, signinOk: m.innerWidth < 768 ? !!m.menuBtn : !!m.signin && m.signin.inside && m.signin.lines === 1, nav: !!m.navShown, toggle: !!m.toggle, problems });
           if (problems.length || !QUIET) process.stdout.write(`${problems.length ? "FAIL" : "ok  "} ${locale} ${view ?? "auto"} ${width} ${pg}${problems.length ? "  " + problems.join("; ") : ""}\n`);
         }
         await c.close();

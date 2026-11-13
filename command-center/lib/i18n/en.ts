@@ -4184,6 +4184,8 @@ export const en = {
     matrixTitle: "Plans",
     matrixLead: "A monthly plan brings a fresh credit allowance every billing period and unlocks more parallel runs, a head start in the render queue and API access. Cancel any time; the plan runs to the end of the period you paid for.",
     free: "Free",
+    freeName: "Free",
+    freePrice: "No charge",
     freeCredits: "{n} credits once, on sign-up",
     perMonth: "/ month",
     monthlyCredits: "{n} credits / month",

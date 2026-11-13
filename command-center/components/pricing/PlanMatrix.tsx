@@ -6,7 +6,7 @@ import { Check, Minus } from "lucide-react";
 import { fmt } from "@/lib/i18n/core";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { formatCredits } from "@/lib/credits";
-import { packMinutes, WELCOME_CREDITS } from "@/lib/pricing";
+import { displayPriceText, packMinutes, WELCOME_CREDITS } from "@/lib/pricing";
 import {
   columnPrice,
   type EntitlementType,
@@ -102,13 +102,16 @@ export function PlanMatrix({
           const minutes = col.isDefault || rates ? null : packMinutes(col.monthlyCredits, perMinute);
           return (
             <li key={col.id} className="st-plan" data-spot>
-              <h3 className="st-price-name">{col.name}</h3>
+              {/* The free plan's catalog name is the English word "Free"; above "Бесплатно" it read as a second, untranslated
+                  price (and as "Free / Free" in English). It is named in the page's language, and its price line says it costs
+                  nothing in words: a "$0" would be a figure no price list gave this page. */}
+              <h3 className="st-price-name">{col.isDefault ? p.freeName : col.name}</h3>
               <div className="min-h-[2.25rem]">
                 {price.kind === "free" ? (
-                  <div className="st-h3 text-[34px]">{p.free}</div>
+                  <div className="st-h3 text-[34px]">{p.freePrice}</div>
                 ) : price.kind === "preview" || price.kind === "display" ? (
                   <div className="st-num text-[28px] leading-none">
-                    {price.text}
+                    {displayPriceText(price.text, locale)}
                     <span className="ml-1 font-[family-name:var(--font-sans)] text-sm text-[var(--ns-text-dim)]">{p.perMonth}</span>
                   </div>
                 ) : (
@@ -137,14 +140,15 @@ export function PlanMatrix({
               {matrix.rows.length > 0 && (
                 <div className="flex flex-col gap-2.5">
                   <div className="st-kicker text-sm">{t.pricing.limitsLabel}</div>
-                  <dl className="flex flex-col gap-2.5 text-sm">
+                  {/* A label column and a value column: as two shrinking flex items, "4 at once" broke as "4 at / once". */}
+                  <dl className="st-plan-limits">
                     {matrix.rows.map((row) => {
                       const v = row.cells[i];
                       const off = v === false || v === 0 || v === "none";
                       return (
-                        <div key={row.key} className="flex items-start justify-between gap-3">
-                          <dt className="text-[var(--ns-text-dim)]">{rowLabel(row.key)}</dt>
-                          <dd className="flex items-center gap-1 text-right font-medium">
+                        <div key={row.key}>
+                          <dt>{rowLabel(row.key)}</dt>
+                          <dd>
                             {row.type === "bool" ? (
                               off ? (
                                 <Minus className="size-4 text-[var(--color-muted)]" aria-label={p.no} />
@@ -162,11 +166,11 @@ export function PlanMatrix({
                 </div>
               )}
               {!col.isDefault && col.priceId ? (
-                <Link href={signedIn ? subscribeHref : "/signup"} className="st-key mt-auto" data-size="sm" data-block="true">
+                <Link href={signedIn ? subscribeHref : "/signup"} className="st-key mt-auto" data-size="sm" data-block="true" data-wrap="true">
                   {signedIn ? p.subscribe : p.subscribeSignedOut}
                 </Link>
               ) : col.isDefault && !signedIn ? (
-                <Link href="/signup" className="st-key mt-auto" data-size="sm" data-tone="quiet" data-block="true">
+                <Link href="/signup" className="st-key mt-auto" data-size="sm" data-tone="quiet" data-block="true" data-wrap="true">
                   {t.pricing.ctaSignedOut}
                 </Link>
               ) : null}

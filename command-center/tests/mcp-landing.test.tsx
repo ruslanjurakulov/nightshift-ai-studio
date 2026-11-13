@@ -307,11 +307,12 @@ describe("the questions", () => {
 });
 
 describe("what did not change", () => {
-  it("keeps the two flags' meaning: with sign-in off the Claude and ChatGPT tabs say 'Coming soon'; with it on they carry steps", () => {
+  it("keeps the two flags' meaning: with sign-in off Claude and ChatGPT are named under 'Coming soon' and are no tab; with it on they are tabs with steps", () => {
     const off = doc(page("en", "claude", false));
-    expect(off.querySelector('[role="tabpanel"] .st-soon')).toBeTruthy();
+    expect(off.querySelector(".st-cc-soon")?.textContent).toMatch(/Coming soon[\s\S]*ChatGPT[\s\S]*Claude/);
+    expect(off.querySelector('.st-pill[data-id="claude"]')).toBeNull();
     const on = doc(page("en", "claude", true));
-    expect(on.querySelectorAll(".st-soon")).toHaveLength(0);
+    expect(on.querySelectorAll(".st-cc-soon")).toHaveLength(0);
     expect(on.querySelector('.st-pill[data-id="claude"]')?.getAttribute("aria-selected")).toBe("true");
   });
 

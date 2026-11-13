@@ -164,8 +164,9 @@ describe("/studio page", () => {
     expect(link.getAttribute("aria-current")).toBe("page");
     const footer = container.querySelector("footer")!;
     expect(within(footer).getAllByRole("link", { name: "Studio" }).map((a) => a.getAttribute("href"))).toContain("/studio");
-    // No menu came back with the new link.
-    expect(container.querySelector("header [aria-expanded][aria-controls]")).toBeNull();
+    // The only disclosure in the header is the phone's menu button, closed, and its sheet lights the same item.
+    expect([...container.querySelectorAll("header [aria-expanded][aria-controls]")].map((b) => b.className)).toEqual(["st-menu-btn"]);
+    expect(container.querySelector('.st-menu-nav a[href="/studio"]')?.getAttribute("aria-current")).toBe("page");
   });
 });
 

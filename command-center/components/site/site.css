@@ -414,6 +414,92 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 }
 .st-signin:hover { background: var(--ns-hover); }
 
+/* ── The phone bar and its menu (components/legal/PublicMenu.tsx) ─────────
+   Below 768px the rows under the wordmark were 209px tall at 390px (the links wrapped to three lines). There the bar is
+   one 64px row: the wordmark takes what Start free and the menu button leave it (a container, so its height is that
+   width over the lockup's 5.91 aspect, in every language, with no per-width table), and the rest opens in a sheet. */
+.st-menu-btn { display: none; }
+@media (max-width: 767px) {
+  .st-header-sub { display: none; }
+  .st-header-row { flex-wrap: nowrap; }
+  /* 63px and the header's 1px rule: 64px in all. */
+  .st-header-row, .st-header-row > .st-brand, .st-header-tools { min-height: 63px; }
+  .st-header-row > .st-brand { flex: 1 1 0; min-width: 0; container-type: inline-size; --wm-h: clamp(14px, calc(100cqw / 5.91), 36px); }
+  .st-header-tools { flex: none; gap: 6px; }
+  .st-menu-btn { display: inline-grid; }
+}
+.st-menu-btn, .st-menu-close {
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-key);
+  background: transparent;
+  color: var(--ns-text);
+  cursor: pointer;
+}
+.st-menu-close { display: inline-grid; }
+.st-menu-btn svg, .st-menu-close svg { width: 20px; height: 20px; }
+.st-menu-btn:hover, .st-menu-close:hover { background: var(--ns-hover); }
+.st-menu-btn[aria-expanded="true"] { background: var(--ns-hover); }
+.st-menu-root { position: fixed; inset: 0; z-index: 60; }
+.st-menu-root[hidden] { display: none; }
+@media (min-width: 768px) { .st-menu-root { display: none; } }
+.st-menu-scrim { position: absolute; inset: 0; background: rgba(10, 9, 8, 0.55); }
+.st-menu-sheet {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(100%, 360px);
+  padding: 10px var(--st-gutter, 16px) 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--ns-ground);
+  border-left: 1px solid var(--ns-rule);
+}
+.st-menu-head { display: flex; justify-content: flex-end; align-items: center; min-height: 44px; }
+.st-menu-nav { display: flex; flex-direction: column; }
+.st-menu-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--ns-rule);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ns-text);
+}
+.st-menu-nav a:hover { background: var(--ns-hover); }
+.st-menu-nav a[aria-current="page"]::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--ns-amber); }
+.st-menu-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.st-menu-tools ul[role="listbox"] { right: auto; left: 0; }
+.st-menu-signin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin-top: 4px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ns-text);
+}
+.st-menu-signin:hover { background: var(--ns-hover); }
+@media (prefers-reduced-motion: no-preference) {
+  .st-menu-sheet { animation: st-menu-in var(--ns-dur-2) var(--ns-ease); }
+}
+@keyframes st-menu-in { from { transform: translateX(24px); opacity: 0; } }
+
 
 /* ── Hero ───────────────────────────────────────────────────────────────── */
 .st-hero {
@@ -478,7 +564,9 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   letter-spacing: 0;
   text-transform: none;
 }
-.st-monitor-title span { font-size: 14px; color: var(--ns-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The second name is never cut: Russian's "Ваш канал" was 70px of text in a 52px box at 390px. It moves under the title instead. */
+.st-monitor-title { flex-wrap: wrap; row-gap: 0; }
+.st-monitor-title span { flex: none; font-size: 14px; color: var(--ns-text-dim); white-space: nowrap; }
 .st-tag {
   flex-shrink: 0;
   padding: 3px 7px;
@@ -1128,6 +1216,11 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 /* The fifth group (the legal documents) has the longest names ("конфиденциальности"): on a phone it takes the whole row so none of them breaks mid-phrase. */
 @media (max-width: 1023px) { .st-footer-cols > :last-child { grid-column: 1 / -1; } }
 @media (min-width: 1024px) { .st-footer-cols { display: contents; } }
+/* Five 44px icons need 225px of the brand column (it starts 11px into the gutter); at 1.2fr it was about 200px at 1440 and
+   TikTok sat alone on a second row. From 1280px the column is never narrower than the row; the other five give up 5px each. */
+@media (min-width: 1280px) {
+  .st-footer-grid { grid-template-columns: minmax(228px, 1.2fr) repeat(5, minmax(0, 1fr)); }
+}
 .st-footer h2 {
   margin-bottom: 8px;
   font-family: var(--font-display);
@@ -1485,6 +1578,15 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 @media (min-width: 640px) { .st-plan { border-right: 1px solid var(--ns-rule); } }
 .st-plan:last-child { border-right: 0; }
+/* A plan card's call to action is a block key whose words may not fit its column: Russian's and Uzbek's sign-up labels ran
+   268-281px in a 247px key at 1440px and were cut at both ends. It wraps onto a second, balanced line instead, and grows. */
+.st-key[data-wrap="true"] { white-space: normal; text-wrap: balance; text-align: center; line-height: 1.25; height: auto; padding-block: 10px; }
+/* The limits: a label column and a value column. As two shrinking flex items both gave way, so "4 at once" broke as
+   "4 at / once" beside a label that still had room; here the value keeps its own width and the label takes the rest. */
+.st-plan-limits { display: grid; gap: 10px; margin: 0; font-size: 14px; }
+.st-plan-limits > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; }
+.st-plan-limits dt { color: var(--ns-text-dim); }
+.st-plan-limits dd { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin: 0; max-width: 11em; text-align: end; font-weight: 500; text-wrap: balance; }
 .st-price-row > div { min-width: 0; }
 
 /* ── How a video moves: one heading line, then a full-bleed strip ─────────
@@ -2058,7 +2160,23 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-keyalt summary:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: -2px; }
 .st-keyalt > p { margin: 0; padding: 0 20px 8px; }
 
-.st-soon { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; max-width: 64ch; padding: 28px 20px; }
+/* The assistants whose sign-in is not live yet: one note under the card, never tabs that look as if they connect. */
+.st-cc-soon { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 8px; padding: 18px 20px; border: 1px dashed var(--ns-rule-strong); border-radius: 16px; }
+.st-cc-soon > p { margin: 0; max-width: 72ch; }
+.st-cc-soon-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; line-height: 1.25; color: var(--ns-text); }
+.st-cc-soon-list { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 0; list-style: none; font-size: 15px; font-weight: 600; color: var(--ns-text-dim); }
+.st-cc-soon-list li { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; }
+/* A config block under the three steps, the card's full width; its lines scroll sideways (components/docs/Field.tsx). */
+.st-steps2-code { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 16px 20px 20px; border-top: 1px solid var(--ns-rule); }
+.st-steps2-code-label { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 14.5px; font-weight: 600; color: var(--ns-text); }
+.st-steps2-code-label .st-circle { width: 24px; height: 24px; font-size: 13px; }
+/* The steps stay their own height, so the block sits right under them; the card's spare height (it is as tall as its tallest
+   tab, so it never jumps) goes to the block, not to an empty band under the footnotes. */
+@media (min-width: 768px) {
+  .st-tabpanel:has(.st-steps2-code) .st-steps2 { flex: none; }
+  .st-tabpanel > .st-steps2-code { flex: 1; }
+  .st-tabpanel > .st-steps2-code > .st-cfield { flex: 1; }
+}
 .st-soon-badge {
   padding: 2px 10px;
   border: 1px solid var(--ns-caution);
@@ -2070,8 +2188,6 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   text-transform: none;
   color: var(--ns-caution);
 }
-.st-soon-title { margin: 0; font-family: var(--font-display); font-size: 26px; font-weight: 600; line-height: 1.1; letter-spacing: 0; text-wrap: balance; }
-.st-soon-go { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* How it works */
 
