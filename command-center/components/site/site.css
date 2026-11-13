@@ -279,9 +279,9 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   background: var(--ns-ground);
   border-bottom: 1px solid var(--ns-rule);
 }
-/* From 1024px the bar is one row (two lines when a language's links need them) and sticks. Below it the page has no menu:
-   row one is the wordmark and Start free, row two (or three, when the links wrap) is the links, language, theme and Sign in,
-   all visible; that is up to about 200px, too much to keep on a phone's screen, so it scrolls away with the page. */
+/* From 1024px the bar is one row (two lines when a language's links need them) and sticks. From 768px to 1023px it wraps:
+   row one is the wordmark and Start free, row two is the links, language, theme and Sign in, too tall to keep on screen,
+   so it scrolls away with the page. Below 768px it is one row with a menu (the phone bar below). */
 @media (min-width: 1024px) { .st-header { position: sticky; top: 0; } }
 .st-header-row {
   display: flex;

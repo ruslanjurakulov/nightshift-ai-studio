@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 
 vi.mock("next/navigation", () => ({
@@ -140,5 +141,105 @@ describe("the public header", () => {
     expect(signin).toBeGreaterThan(lang);
     expect(start).toBeGreaterThan(signin);
     expect(screen.getByText("Behind the header")).toBeTruthy();
+  });
+});
+
+// Lens review of the phone header (PR 733): each pins a failure seen in the audit build.
+describe("the phone header, reviewed", () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  // Without JavaScript the rows under the wordmark come back, but the phone bar is nowrap: .st-header-sub (flex 1 0
+  // 100%) then sat on the wordmark's line, squeezed it to 0 width and pushed the row past a 390px screen.
+  it("without JavaScript the phone bar wraps again, so the restored rows go under the wordmark instead of beside it", () => {
+    const t = dictionaries.en;
+    const html = renderToStaticMarkup(
+      <PublicI18nProvider locale="en" t={publicDictionary(t)}>
+        <PublicShell t={t}>
+          <p>Behind the header</p>
+        </PublicShell>
+      </PublicI18nProvider>,
+    );
+    const css = /<noscript><style>([\s\S]*?)<\/style><\/noscript>/.exec(html)?.[1] ?? "";
+    const phone = /^@media \(max-width:767px\)\{([\s\S]*)\}$/.exec(css)?.[1] ?? "";
+    expect(phone).toContain(".st-header-row{flex-wrap:wrap!important}");
+    expect(phone).toContain(".st-header-sub{display:flex!important}");
+    expect(phone).toContain(".st-menu-btn{display:none!important}");
+  });
+
+  // Picking a language unmounts its list with focus on the option, and focus falls to <body>: a handler on the sheet
+  // then heard neither Escape (the sheet stayed open) nor Tab (it walked into the page behind the scrim).
+  it("keeps focus and Escape in the sheet after a language is picked and focus falls to the page", () => {
+    renderShell("en");
+    const button = document.querySelector<HTMLButtonElement>(".st-menu-btn")!;
+    fireEvent.click(button);
+    const sheet = screen.getByRole("dialog", { name: "Menu" });
+    const items = () => [...sheet.querySelectorAll<HTMLElement>("a[href], button")];
+
+    const lang = within(sheet).getByRole("button", { name: dictionaries.en.common.language });
+    fireEvent.click(lang);
+    const option = within(sheet).getByRole("option", { name: /Русский/ });
+    option.focus();
+    // The list is open: Escape belongs to it, and the sheet stays.
+    fireEvent.keyDown(option, { key: "Escape" });
+    expect(within(sheet).queryByRole("listbox")).toBeNull();
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(lang);
+    const pick = within(sheet).getByRole("option", { name: /Русский/ });
+    pick.focus();
+    fireEvent.click(pick);
+    expect(within(sheet).queryByRole("listbox")).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+
+    // Tab from the page goes to the sheet's first item, Shift+Tab to its last.
+    fireEvent.keyDown(document.body, { key: "Tab" });
+    expect(document.activeElement).toBe(items()[0]);
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(document.body, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(items().at(-1));
+
+    // Focus that lands behind the sheet is brought back.
+    const behind = document.querySelector<HTMLElement>("header.st-header .st-nav a")!;
+    behind.focus();
+    expect(sheet.contains(document.activeElement)).toBe(true);
+
+    // And Escape from the page closes it, returning focus to the button.
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(button);
+
+    // Closed, the page's own focus is its own again.
+    behind.focus();
+    expect(document.activeElement).toBe(behind);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(document.activeElement).toBe(behind);
+  });
+
+  // The bar and the sheet each draw a theme toggle; each read the theme once on mount, so a press on one left the other
+  // showing the old theme.
+  it("the bar's and the sheet's theme toggles agree after either is pressed, and follow a change made elsewhere", async () => {
+    const t = dictionaries.en;
+    renderShell("en");
+    const toggles = () => [...document.querySelectorAll<HTMLButtonElement>("header.st-header button")].filter((b) => b.getAttribute("aria-label")?.startsWith(`${t.common.theme}:`));
+    const names = () => toggles().map((b) => b.getAttribute("aria-label"));
+    const dark = `${t.common.theme}: ${t.common.dark}`;
+    const light = `${t.common.theme}: ${t.common.light}`;
+    expect(toggles()).toHaveLength(2);
+    // jsdom's media query says light.
+    expect(names()).toEqual([light, light]);
+
+    fireEvent.click(toggles()[0]);
+    await waitFor(() => expect(names()).toEqual([dark, dark]));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+
+    fireEvent.click(toggles()[1]);
+    await waitFor(() => expect(names()).toEqual([light, light]));
+
+    // Set from outside (another tab's choice, through ViewFrame): both follow.
+    document.documentElement.setAttribute("data-theme", "dark");
+    await waitFor(() => expect(names()).toEqual([dark, dark]));
   });
 });

@@ -127,6 +127,8 @@ export function upsellCatalog(
         id: col.id,
         name: col.name,
         monthlyCredits: col.monthlyCredits,
+        // The owner's text as written: the catalog is built on the server, and the dialog writes it in the page's
+        // language with displayPriceText when it draws it (a language switch in the browser reformats it there).
         price: view.kind === "display" ? view.text : null,
         values: { ...(catalog.values[col.id] ?? {}) },
       },

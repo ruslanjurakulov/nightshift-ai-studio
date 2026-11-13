@@ -1341,7 +1341,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 
 
 /* The phone band's brand and credit share the bottom edge, and a credit with a longer name ran into the brand: the credit keeps the corner, the brand moves up a row. */
-.nx-auth-band { padding-bottom: 92px; min-height: 224px; }
+.nx-auth-band { min-height: 224px; }
 .nx-auth-band .st-brand { bottom: 50px; }
 /* The brand row is 44px from 50px up (94px), so 92px left the card's lower edge on the wordmark at 390px in English: 104px
    keeps 10px between them. The "Example" tag sits on the card's left, clear of the pause button in the band's top-right corner. */

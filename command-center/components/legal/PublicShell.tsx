@@ -111,9 +111,11 @@ export function PublicShell({
               <ThemeToggle />
             </PublicMenu>
           </div>
-          {/* Without JavaScript the menu button cannot open its sheet: the wrapped rows come back instead. */}
+          {/* Without JavaScript the menu button cannot open its sheet: the wrapped rows come back instead. The row must wrap
+              again too: the phone bar is nowrap, and a .st-header-sub of flex 1 0 100% on the same line squeezed the
+              wordmark to 0 and pushed the row past a 390px screen. */}
           <noscript>
-            <style>{`@media (max-width:767px){.st-header-sub{display:flex!important}.st-menu-btn{display:none!important}}`}</style>
+            <style>{`@media (max-width:767px){.st-header-row{flex-wrap:wrap!important}.st-header-sub{display:flex!important}.st-menu-btn{display:none!important}}`}</style>
           </noscript>
         </div>
       </header>

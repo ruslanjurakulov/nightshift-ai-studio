@@ -64,35 +64,55 @@ export function PublicMenu({
       if (!wide.matches) close(false);
     };
     wide.addEventListener("change", onWide);
+
+    // On the document, not the sheet: picking a language unmounts its list with focus on the option, focus falls to
+    // <body>, and a handler on the sheet then heard neither Escape (the sheet stayed open) nor Tab (it walked into the
+    // page behind the scrim).
+    const items = () =>
+      // Everything in the sheet is shown while it is open (the language list is only in the page while it is open), so
+      // no visibility filter: one based on layout (offsetParent) would find nothing where there is no layout.
+      sheet.current ? Array.from(sheet.current.querySelectorAll<HTMLElement>(FOCUSABLE)) : [];
+    const inside = (n: EventTarget | null) => n instanceof Node && Boolean(sheet.current?.contains(n));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        // The language list closes itself on Escape first; only a second Escape closes the sheet.
+        if (sheet.current?.querySelector('[aria-haspopup="listbox"][aria-expanded="true"]')) return;
+        e.preventDefault();
+        close(true);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const all = items();
+      if (all.length === 0) return;
+      const firstEl = all[0];
+      const lastEl = all[all.length - 1];
+      const active = document.activeElement;
+      if (!inside(active)) {
+        e.preventDefault();
+        (e.shiftKey ? lastEl : firstEl).focus();
+      } else if (e.shiftKey && active === firstEl) {
+        e.preventDefault();
+        lastEl.focus();
+      } else if (!e.shiftKey && active === lastEl) {
+        e.preventDefault();
+        firstEl.focus();
+      }
+    };
+    // Anything else that lands focus behind the sheet (a script, an assistive technology's cursor) is brought back. The
+    // menu button is exempt: closing returns focus to it before this listener is removed.
+    const onFocusIn = (e: FocusEvent) => {
+      if (inside(e.target) || e.target === button.current) return;
+      items()[0]?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("focusin", onFocusIn);
     return () => {
       root.style.overflow = before;
       wide.removeEventListener("change", onWide);
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusin", onFocusIn);
     };
   }, [open, close]);
-
-  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key === "Escape") {
-      // The language list closes itself on Escape first; only a second Escape closes the sheet.
-      if (sheet.current?.querySelector('[aria-haspopup="listbox"][aria-expanded="true"]')) return;
-      e.preventDefault();
-      close(true);
-      return;
-    }
-    if (e.key !== "Tab" || !sheet.current) return;
-    // Everything in the sheet is shown while it is open (the language list is only in the page while it is open), so no
-    // visibility filter: one based on layout (offsetParent) would find nothing where there is no layout.
-    const items = Array.from(sheet.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-    if (items.length === 0) return;
-    const firstEl = items[0];
-    const lastEl = items[items.length - 1];
-    if (e.shiftKey && (document.activeElement === firstEl || !sheet.current.contains(document.activeElement))) {
-      e.preventDefault();
-      lastEl.focus();
-    } else if (!e.shiftKey && document.activeElement === lastEl) {
-      e.preventDefault();
-      firstEl.focus();
-    }
-  }
 
   const sheetId = `${uid}-menu`;
   return (
@@ -111,7 +131,7 @@ export function PublicMenu({
       </button>
       <div className="st-menu-root" data-open={open} hidden={!open}>
         <div className="st-menu-scrim" aria-hidden onClick={() => close(true)} />
-        <div ref={sheet} id={sheetId} role="dialog" aria-modal="true" aria-label={label} className="st-menu-sheet" onKeyDown={onKeyDown}>
+        <div ref={sheet} id={sheetId} role="dialog" aria-modal="true" aria-label={label} className="st-menu-sheet">
           <div className="st-menu-head">
             <button type="button" className="st-menu-close" aria-label={closeLabel} onClick={() => close(true)}>
               <X aria-hidden />

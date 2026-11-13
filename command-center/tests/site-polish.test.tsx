@@ -165,6 +165,8 @@ describe("the rest of the audit", () => {
 
   it("the sign-up band keeps the card off the wordmark and the Example tag clear of the pause button", () => {
     expect(nextCss).toMatch(/\.nx-auth-band \{ padding-bottom: 104px; \}/);
+    // One value, not an earlier 92px the later rule silently overrides.
+    expect(nextCss).not.toMatch(/padding-bottom: 92px/);
     expect(nextCss).toMatch(/\.nx-auth-band \.nx-fcard \.nx-demo-tag \{ right: auto; left: 18px; \}/);
   });
 

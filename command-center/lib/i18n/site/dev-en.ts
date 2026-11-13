@@ -198,10 +198,6 @@ export const devEn = {
       use: "Works today with an API key:",
       noteTitle: "Sign-in is coming for these assistants",
       noteBody: "ChatGPT, Claude, Gemini and Grok connect with a sign-in rather than a key. It is not switched on yet, so there is nothing to add in them today. Cursor and VS Code work now with an API key.",
-      claude: { title: "Claude will connect with a sign-in", body: "Adding Nightshift to Claude by its server address and a sign-in is not switched on yet, so there is nothing to add in Claude today. Nightshift’s server takes API keys for now." },
-      gemini: { title: "Gemini will connect with a sign-in", body: "Adding Nightshift to Gemini by its server address and a sign-in is not switched on yet, so there is nothing to add in Gemini today. Nightshift’s server takes API keys for now." },
-      grok: { title: "Grok will connect with a sign-in", body: "Adding Nightshift to Grok by its server address and a sign-in is not switched on yet, so there is nothing to add in Grok today. Nightshift’s server takes API keys for now." },
-      chatgpt: { title: "ChatGPT will connect with a sign-in", body: "Adding Nightshift to ChatGPT by its server address and a sign-in is not switched on yet, so there is nothing to add in ChatGPT today. Nightshift’s server takes API keys for now." },
     },
     steps: [
       { id: "key", title: "Create a key", body: "In the Command Center open Developers → API keys. Copy the key; it is shown once." },

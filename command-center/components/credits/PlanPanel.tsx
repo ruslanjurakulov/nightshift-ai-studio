@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { resolvedTheme } from "@/lib/theme";
 import { checkoutCustomData, paddleLocale } from "@/lib/paddle";
+import { displayPriceText } from "@/lib/pricing";
 import { columnPrice, type BillingSummary, type GenerationRates, type PlanMatrix, type SubscribeAccess } from "@/lib/plans";
 import { ensurePaddle, previewPrices, type PaddleEventData } from "@/lib/paddle-client";
 import { ErrorState } from "@/components/ReadError";
@@ -196,7 +197,8 @@ export function PlanPanel({
 
   const sub = summary?.subscription ?? null;
   // A summary without a plan is an unknown plan — never "Free".
-  const planName = summary?.plan?.name ?? t.common.unknown;
+  // The default plan's name in the catalog is one English word; /pricing already says it in the page's language.
+  const planName = summary?.plan ? (summary.plan.isDefault ? p.freeName : summary.plan.name) : t.common.unknown;
   const currentId = summary?.plan?.id ?? null;
   const statusText = sub ? p.status[sub.status] : null;
   const dateLine = !sub
@@ -283,7 +285,8 @@ export function PlanPanel({
             {cards.map((col) => {
               const i = matrix.columns.indexOf(col);
               const price = columnPrice(col, prices, prices === null && access === "allowed");
-              const priceText = price.kind === "preview" || price.kind === "display" ? price.text : null;
+              // Written as /pricing writes it ("$19", not Paddle's "$19.00" or an owner's "19 USD"); text only, no amount math.
+              const priceText = price.kind === "preview" || price.kind === "display" ? displayPriceText(price.text, locale) : null;
               const current = col.id === currentId;
               const canBuy = access === "allowed" && (dodo ? dodo.plans.includes(col.id) : Boolean(col.priceId)) && !current;
               return (
