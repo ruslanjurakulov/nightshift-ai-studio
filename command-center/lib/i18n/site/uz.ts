@@ -128,9 +128,11 @@ export const siteUz: SiteDictionary = {
       { id: "publish", step: "Nashr qilishni bosish" },
     ],
   },
+  approvalCard: {
+    figure: "Rasm: tayyor video sizni kutmoqda. U YouTube’da shaxsiy holda, nashr tekshiruvidan oʻtgan, «Tasdiqlash» tugmasi hali bosilmagan. Undagi hamma narsa namuna.",
+  },
   fx: {
     pause: "Harakatni toʻxtatish",
-    play: "Harakatni yoqish",
   },
   bar: {
     label: "Tez boshlash",
@@ -169,8 +171,8 @@ export const siteUz: SiteDictionary = {
     title: "Rasm mualliflari",
     lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Bitta rasm boshqacha: amaliy misoldagi namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvir. Bu bezak, mahsulotning skrinshoti emas.",
     licence: "Pexels litsenziyasi",
-    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni koʻrsatilgan model berilgan soʻzlar boʻyicha yaratgan. Amaliy misoldagi namuna muqova Nightshift uchun bezak sifatida sunʼiy intellekt yaratgan tasvir, mahsulotning skrinshoti emas.",
-    generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni koʻrsatilgan model berilgan soʻzlar boʻyicha yaratgan.",
+    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan. Amaliy misoldagi namuna muqova Nightshift uchun bezak sifatida sunʼiy intellekt yaratgan tasvir, mahsulotning skrinshoti emas.",
+    generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
   },
   gallery: {
     label: "Studiyada yaratilgan",
@@ -191,7 +193,8 @@ export const siteUz: SiteDictionary = {
     altImage: "Sunʼiy intellekt yaratgan tasvir: {model} modeli",
     use: "Shu soʻrovdan foydalanish",
     useNote: "Studiyani shu soʻzlar bilan undagi modellardan birida ochadi; qaysi biri va narxi qancha ekanini Studiya boshlashdan oldin koʻrsatadi.",
-    slotNote: "Sunʼiy intellekt yaratgan: oʻzimizning Studiyamizdagi haqiqiy topshiriq, uni koʻrsatilgan model shu soʻrov boʻyicha yaratgan.",
+    bgClip: "Sunʼiy intellekt yaratgan klip",
+    bgImage: "Sunʼiy intellekt yaratgan tasvir",
     source: "Shu rasmdan yaratilgan:",
     altSource: "Bu klip yaratilgan, sunʼiy intellekt yaratgan tasvir: {model} modeli",
   },
@@ -227,7 +230,7 @@ export const siteUz: SiteDictionary = {
   models: {
     label: "Modellar",
     title: "Bu namunalarni yaratgan modellar",
-    lead: "Har bir plitka shu sahifadagi namunani yaratgan model, uning ishlab chiqaruvchisi soʻragan imzo bilan. Studiyada hali tanlab boʻlmaydigan model buni ochiq aytadi.",
+    lead: "Har bir plitka shu sahifadagi namunani yaratgan model. Studiyada hali tanlab boʻlmaydigan model buni ochiq aytadi.",
     count: "Shu sahifadagi namunalar: {n}",
     see: "Namunasini koʻrish",
   },

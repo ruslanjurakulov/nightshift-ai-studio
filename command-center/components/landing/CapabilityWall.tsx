@@ -45,7 +45,7 @@ function SamplePic({ s, alt }: { s: Sample; alt: string }) {
  * What Nightshift can make, as a wall of tiles, one per tool (lib/site/tool-samples.ts says what each shows). A tool with a real
  * output shows it: a picture the Image tool made, a clip the Video tool made, and for Animate the still and the clip made from
  * it, side by side. Each such tile is that sample's box (the only kind of element that may name a model), labelled
- * AI-generated with its model and its maker's credit, and it says when the model is not in the Studio yet. A tool no customer can
+ * AI-generated with its model (no maker's credit on the public site: it is shown in the Studio), and it says when the model is not in the Studio yet. A tool no customer can
  * use today shows its icon and says "Not in the Studio yet": never a drawn result. Tools with an output come first. The Editor is a
  * plain line under the wall. A Server Component.
  */
@@ -91,14 +91,6 @@ export function CapabilityWall({ t }: { t: Dictionary }) {
               {from && (
                 <small className="nx-wall-from">
                   {g.source} {from.e.modelName}
-                  {from.e.attribution && (
-                    <>
-                      {" · "}
-                      <a href={from.e.attribution.url} target="_blank" rel="noopener noreferrer" className="nx-ai-attr">
-                        {from.e.attribution.text}
-                      </a>
-                    </>
-                  )}
                 </small>
               )}
               {leftOut && <small className="nx-wall-model-note">{leftOut === "shut_down" ? g.gone : g.notInStudio}</small>}

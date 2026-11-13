@@ -138,9 +138,12 @@ export const siteEn = {
       { id: "publish", step: "Press publish" },
     ],
   },
+  /** The landing's Approvals band: a drawn approval screen (components/landing/ApprovalCard.tsx), its rows from `stage`. */
+  approvalCard: {
+    figure: "Illustration of a finished video waiting for you: private on YouTube, the publish check passed, and the Approve button not pressed yet. Everything shown is an example.",
+  },
   fx: {
     pause: "Pause motion",
-    play: "Play motion",
   },
   bar: {
     label: "Quick start",
@@ -180,9 +183,9 @@ export const siteEn = {
     lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. One picture is different: the sample thumbnail in the hands-on example is an AI-generated image made for Nightshift. It is decoration, not a screenshot of the product.",
     licence: "Pexels License",
     /** The lead once no page shows a stock picture any more (components/site/stock-in-use.ts is empty). */
-    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by the model named on it, with the words it was given. The sample thumbnail in the hands-on example is an AI-generated image made for Nightshift as decoration, not a screenshot of the product.",
+    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by one of its models. The sample thumbnail in the hands-on example is an AI-generated image made for Nightshift as decoration, not a screenshot of the product.",
     /** Shown beside the stock credits while any sample (lib/site/showcase.json) is on the site, wherever it is shown. It names no model: each sample names its own. */
-    generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by the model named on it, with the words it was given.",
+    generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by one of its models.",
   },
   /**
    * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
@@ -215,8 +218,9 @@ export const siteEn = {
      */
     use: "Use this prompt",
     useNote: "Opens the Studio with these words on a model it offers; the Studio shows which one, and the price, before anything starts.",
-    /** Beside a page's picture when it is one of our samples (components/site/samples.tsx slotMedia), in place of the stock sentence. */
-    slotNote: "AI-generated: a real job from our own Studio, made by the model named on it from the words it was given.",
+    /** A page's backdrop when it is one of our samples (components/site/PlaceFill.tsx placeAlt): what it is, without the model. */
+    bgClip: "AI-generated clip",
+    bgImage: "AI-generated picture",
     /** On a clip animated from one of the samples' own pictures: that picture, small, with the model that made it. */
     source: "Made from this picture:",
     altSource: "The AI-generated picture this clip was made from, made by {model}",
@@ -267,7 +271,7 @@ export const siteEn = {
   models: {
     label: "Models",
     title: "The models behind these samples",
-    lead: "Each tile is a model that made a sample on this page, shown with the credit its maker asks for. A model you cannot choose in the Studio yet says so.",
+    lead: "Each tile is a model that made a sample on this page. A model you cannot choose in the Studio yet says so.",
     count: "Samples on this page: {n}",
     see: "Watch its sample",
   },

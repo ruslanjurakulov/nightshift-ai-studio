@@ -13,7 +13,7 @@ import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import { ClipPause } from "@/components/site/ClipPause";
 import { slotMedia, type SlotId } from "@/components/site/samples";
-import { AiCredit, PlaceFill, placeBox } from "@/components/site/PlaceFill";
+import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { creditLine } from "@/lib/site/media";
 import { FlowCard } from "@/components/auth/FlowCard";
 import "@/components/site/site.css";
@@ -80,7 +80,7 @@ export function AuthShell({
             {a.asideLamp}
           </span>
           <span className="st-small">{fmt(a.welcomeNote, { n: formatCredits(WELCOME_CREDITS, locale) })}</span>
-          {credit !== null ? <span className="st-small nx-aside-note">{credit}</span> : m.kind === "ai" && <AiCredit entry={m.entry} g={t.site.gallery} className="nx-ai-credit nx-aside-note" />}
+          {credit !== null ? <span className="st-small nx-aside-note">{credit}</span> : m.kind === "ai" && <AiBadge g={t.site.gallery} className="nx-ai-credit nx-aside-note" />}
         </div>
       </aside>
 
@@ -100,7 +100,7 @@ export function AuthShell({
         <div className="nx-auth-band lg:hidden" data-photo={photo} {...placeBox(m)}>
           <PlaceFill media={m} s={t.site} alt="" eager early labels={m.kind === "stock"} sizes="(max-width: 959px) 100vw, 1px" />
           {moving && <ClipPause label={t.site.fx.pause} />}
-          {m.kind === "ai" && <AiCredit entry={m.entry} g={t.site.gallery} className="nx-ai-credit nx-result-ai" />}
+          {m.kind === "ai" && <AiBadge g={t.site.gallery} className="nx-ai-credit nx-result-ai" />}
           <Link href="/" className="st-brand" aria-label={t.brand.name}>
             <Wordmark />
           </Link>

@@ -15,9 +15,8 @@ import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { StickyCta } from "@/components/site/StickyCta";
-import { LANDING_SLOTS, slotJobs, slotMedia } from "@/components/site/samples";
-import { AiCredit, PlaceFill, placeBox } from "@/components/site/PlaceFill";
-import { placeTry } from "@/components/site/place-try";
+import { LANDING_LEFT_OUT, LANDING_SLOTS, slotJobs, slotMedia } from "@/components/site/samples";
+import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { PromptBar, type PromptIdea } from "@/components/landing/PromptBar";
 import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
@@ -47,7 +46,7 @@ const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
  * page itself holds, and whatever the pricing source holds. No competitor is
  * named, a model only inside its own sample's box, and there are no
  * testimonials, logos or usage numbers, because there are none to show. Every
- * picture says what it is: one of our samples (AI-generated, its model) or a
+ * picture says what it is: one of our samples (AI-generated; its model on its gallery card) or a
  * stock example (its contributor), from components/site/samples.tsx slotMedia.
  *
  * A Server Component. The client code on the page is the header's menu and its
@@ -77,7 +76,9 @@ export function Landing({
   // The samples the landing's own slots show are left out of its gallery, so no clip is on the page twice.
   // Also the samples the tool wall and the steps show (lib/site/tool-samples.ts): the gallery leaves them all out.
   const inSlots = [...slotJobs(LANDING_SLOTS), ...TOOL_JOBS];
-  const gallery = showcaseItems().filter(({ e }) => !inSlots.includes(e.jobId));
+  // And the repeated sea and sky samples (LANDING_LEFT_OUT): on no part of this page, so not counted below either.
+  const leftOut = [...inSlots, ...LANDING_LEFT_OUT];
+  const gallery = showcaseItems().filter(({ e }) => !leftOut.includes(e.jobId));
   // Everything on the page that is one of our samples: the gallery's, then the slots' (each with its files). The facts count
   // these and the model tiles are built from these, so a tile's count and the facts can never disagree.
   const onPage = [...gallery, ...showcaseItems().filter(({ e }) => inSlots.includes(e.jobId))];
@@ -87,7 +88,7 @@ export function Landing({
       <Hero t={t} formats={formats} />
       <Facts t={t} locale={locale} anchor={anchor} entries={onPage.map(({ e }) => e)} />
       {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
-      <ShowcaseGallery t={t} locale={locale} exclude={inSlots} formats={formats} />
+      <ShowcaseGallery t={t} locale={locale} exclude={leftOut} formats={formats} />
       <ModelTiles t={t} items={onPage} />
       <Showcases t={t} />
       <How t={t} locale={locale} anchor={anchor} />
@@ -118,7 +119,7 @@ function formatsFor(t: Dictionary): LandingFormat[] {
 
 /**
  * The first screen, lean as an AI studio's is: the hero slot's picture edge to edge (one of our generations once its job is
- * merged, labelled with its model; until then the stock fallback, labelled stock), under a veil that keeps the words at 4.5:1;
+ * merged, labelled AI-generated; until then the stock fallback, labelled stock), under a veil that keeps the words at 4.5:1;
  * the headline, one sentence, the prompt bar (it only opens the Studio form) with real prompts to start from, one primary and
  * one secondary action. The welcome grant, the price and the three promises are just under it (Facts). The picture is the
  * page's LCP: eager, high priority, its clip started only after load and idle.
@@ -155,10 +156,10 @@ function Hero({ t, formats }: { t: Dictionary; formats: LandingFormat[] }) {
         </div>
       </div>
       <div className="nx-wrap nx-sh-foot">
-        {/* What the picture behind the words is, on it: our sample's model and credit, or the stock contributor's. */}
+        {/* What the picture behind the words is, on it: our sample's AI-generated badge, or the stock contributor's credit. */}
         {m.kind === "ai" ? (
           <p className="nx-sh-credit" {...placeBox({ ...m, moving: false })}>
-            <AiCredit entry={m.entry} g={t.site.gallery} href={placeTry(m)} scope="hero" />
+            <AiBadge g={t.site.gallery} />
           </p>
         ) : (
           <p className="nx-sh-credit" data-media="stock">
@@ -231,7 +232,7 @@ function Facts({ t, locale, anchor, entries }: { t: Dictionary; locale: Locale; 
 
 /**
  * The models behind the samples: one tile per model, each inside the box of that model's first sample on the page (the only kind
- * of element that may name a model), with its maker's credit, how many of the page's samples it made, whether the Studio offers
+ * of element that may name a model), with its AI-generated label, how many of the page's samples it made, whether the Studio offers
  * it (an operator preview says it does not yet), and a link down to its sample. No price: the site has no public per-model price
  * to read, and a typed one would be a promise (CLAUDE.md #5).
  */
@@ -267,11 +268,6 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
                 <div className="nx-model-body">
                   <span className="nx-ai-badge">{g.badge}</span>
                   <h3 className="nx-model-name">{e.modelName}</h3>
-                  {e.attribution && (
-                    <a href={e.attribution.url} target="_blank" rel="noopener noreferrer" className="nx-ai-attr">
-                      {e.attribution.text}
-                    </a>
-                  )}
                   <p className="nx-model-count">{fmt(c.count, { n: String(n) })}</p>
                   {leftOut && <p className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</p>}
                   <a href={`#sample-${e.jobId}`} className="nx-model-see">
@@ -294,8 +290,8 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
  * 1. the ask, typed as you watch (the chat card's own example ask; reduced motion or the pause switch show it whole);
  * 2. the Generate key as the Studio draws it, with the price beside it only when the live price list holds one, else where it
  *    will appear (never a default or a zero);
- * 3. a phone with one of our vertical samples playing as a channel's video, under "Private on YouTube": an example, labelled
- *    AI-generated with its model, in the sample's own box.
+ * 3. a phone with one of our vertical samples playing as a channel's video, under "Private on YouTube": an example,
+ *    labelled AI-generated (the badge only: the phone illustrates the step, the clip is not its subject), in the sample's own box.
  * The first two are pictures of a control, not controls: hidden from assistive tech (the step's words say it).
  */
 function StepLive({ id, t, locale, anchor }: { id: string; t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
@@ -329,11 +325,11 @@ function StepLive({ id, t, locale, anchor }: { id: string; t: Dictionary; locale
     <div className="nx-step-live" data-step="approve" data-showcase-entry={e.jobId} data-model={e.modelId}>
       <span className="nx-step-phone" data-clip={clip ? "sample" : undefined}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={f.posterSm} width={e.width} height={e.height} alt={fmt(clip ? t.site.gallery.altClip : t.site.gallery.altImage, { model: e.modelName })} className="nx-step-shot nx-drift-pic" loading="lazy" decoding="async" />
+        <img src={f.posterSm} width={e.width} height={e.height} alt={clip ? t.site.gallery.bgClip : t.site.gallery.bgImage} className="nx-step-shot nx-drift-pic" loading="lazy" decoding="async" />
         {clip && <ShowcaseClip jobId={e.jobId} />}
         {approve && <span className="nx-step-private">{approve.lamp}</span>}
       </span>
-      <AiCredit entry={e} g={t.site.gallery} className="nx-ai-credit nx-step-credit" />
+      <AiBadge g={t.site.gallery} className="nx-ai-credit nx-step-credit" />
     </div>
   );
 }
@@ -448,7 +444,7 @@ function FinalCta({ t }: { t: Dictionary }) {
           {/* The slot's picture (or its loop) behind the closing words: decorative, so no description; what it is is printed on it. */}
           <PlaceFill media={m} s={t.site} alt="" className="nx-final-pic" labels={false} sizes="(min-width: 1240px) 1160px, 100vw" />
           {m.kind === "ai" ? (
-            <AiCredit entry={m.entry} g={t.site.gallery} href={placeTry(m)} scope="final" className="nx-ai-credit nx-final-credit" />
+            <AiBadge g={t.site.gallery} className="nx-ai-credit nx-final-credit" />
           ) : (
             <span className="nx-final-credit">{creditLine(m.id, t.site.samples.credit)}</span>
           )}

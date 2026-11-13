@@ -78,7 +78,7 @@ import { MEDIA_IDS } from "@/lib/site/media";
 import type { MoneyAnchor } from "@/lib/landing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import { PROVIDER_BRANDS } from "./helpers/brands";
-import { GALLERY, SAMPLE_CARD, placeLabelProblems, without } from "./helpers/showcase-scope";
+import { GALLERY, SAMPLE_CARD, makerCreditProblems, placeLabelProblems, without } from "./helpers/showcase-scope";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
 
 const ROOT = join(__dirname, "..");
@@ -135,7 +135,7 @@ describe("a slot is one line: a sample when it is merged, the stock picture unti
 });
 
 describe("the landing with a sample in its hero slot", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the first screen plays our sample edge to edge, labelled AI-generated with its model, its maker's credit and Try this prompt, and no stock word", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the first screen plays our sample edge to edge, labelled AI-generated only: no model name, no prompt button, no footnote, no maker's credit, no stock word", (code) => {
     const t = dictionaries[code];
     const { container } = landing(code);
     const m = slotMedia("hero");
@@ -144,19 +144,16 @@ describe("the landing with a sample in its hero slot", () => {
     expect(media.dataset.showcaseEntry).toBe(FIXTURE_JOB);
     expect(media.dataset.model).toBe(FIXTURE_ENTRY.modelId);
     const img = media.querySelector("img")!;
-    expect(img.getAttribute("alt")).toBe(fmt(t.site.gallery.altClip, { model: FIXTURE_ENTRY.modelName }));
+    // A backdrop: described as what it is, without the model (the owner, 2026-11-13: the model and the prompt belong on the
+    // sample's own card, not under copy about something else).
+    expect(img.getAttribute("alt")).toBe(t.site.gallery.bgClip);
     expect(img.getAttribute("loading")).toBe("eager");
     expect(img.hasAttribute("data-sample")).toBe(false);
     const credit = container.querySelector(".nx-sh-credit") as HTMLElement;
     expect(placeLabelProblems(credit, m, t.site)).toEqual([]);
-    // The fixture's model is an operator preview: the link does not open it, so the button says "Use this prompt" (never "try"
-    // a model it will not run), and a visible note says the words run on a model the Studio offers.
-    const tryIt = within(credit).getByRole("link", { name: t.site.gallery.use });
-    expect(tryIt.getAttribute("href")!.startsWith("/signup?next=")).toBe(true);
-    expect(within(credit).queryByRole("link", { name: t.site.gallery.try })).toBeNull();
-    const [promptId, noteId] = tryIt.getAttribute("aria-describedby")!.split(" ");
-    expect(document.getElementById(promptId)?.textContent).toBe(FIXTURE_ENTRY.prompt);
-    expect(document.getElementById(noteId)?.textContent).toBe(t.site.gallery.useNote);
+    expect(credit.textContent).toBe(t.site.gallery.badge);
+    expect(within(credit).queryAllByRole("link")).toHaveLength(0);
+    expect(media.textContent).not.toContain(FIXTURE_ENTRY.modelName);
     // The hero's sample is not shown again in the gallery; the other sample is.
     expect(slotJobs(LANDING_SLOTS)).toEqual([FIXTURE_JOB]);
     expect(container.querySelector(`${GALLERY} [data-showcase-entry="${FIXTURE_JOB}"]`)).toBeNull();
@@ -172,7 +169,7 @@ describe("the landing with a sample in its hero slot", () => {
     expect(facts).toEqual({ samples: "2", models: "2", credits: String(WELCOME_CREDITS) });
   });
 
-  it("gives each model of a sample anywhere on the page one tile (as many as the facts count), inside its sample's box, with the maker's credit where there is one, the truth about the Studio and no price", () => {
+  it("gives each model of a sample anywhere on the page one tile (as many as the facts count), inside its sample's box, with no maker's credit, the truth about the Studio and no price", () => {
     const t = dictionaries.en;
     const { container } = landing();
     const tiles = [...container.querySelectorAll<HTMLElement>("#models .nx-model")];
@@ -188,11 +185,12 @@ describe("the landing with a sample in its hero slot", () => {
     expect(container.querySelector(`#sample-${FIXTURE_JOB}`)?.matches(".nx-sh-media")).toBe(true);
     const runway = tiles[1];
     expect(runway.querySelector(".nx-model-count")?.textContent).toBe(fmt(t.site.models.count, { n: "1" }));
-    expect(runway.querySelector(".nx-ai-attr")?.getAttribute("href")).toBe("https://runway.com");
+    // Runway asks for "Powered by Runway"; the public site does not show it (it is shown in the Studio, where the model is used).
+    expect(FIXTURE_ENTRY.attribution).not.toBeNull();
+    expect(makerCreditProblems(runway)).toEqual([]);
     const tile = tiles[0];
     expect(tile.dataset.showcaseEntry).toBe(OTHER);
     expect(tile.querySelector(".nx-model-name")?.textContent).toBe("MiniMax H3");
-    expect(tile.querySelector(".nx-ai-attr")).toBeNull();
     expect(tile.querySelector(".nx-gallery-unavailable")?.textContent).toBe(t.site.gallery.notInStudio);
     expect(tile.querySelector(`a[href="#sample-${OTHER}"]`)?.textContent).toBe(t.site.models.see);
     expect(tile.textContent).not.toMatch(/\$|€|credit|new\b/i);
@@ -224,7 +222,7 @@ describe("the landing with a sample in its hero slot", () => {
 });
 
 describe("another page's slot with a sample: the /pricing chat card", () => {
-  it("labels the frame as our sample, says so under the card, and says nothing about stock", () => {
+  it("labels the frame as our sample with its badge only (no footnote under the card), and says nothing about stock", () => {
     const t = dictionaries.en;
     // Only the hero is exported for a slot in the fixture; pricing.card still shows its stock picture, labelled stock.
     const stock = render(<ChatCard copy={chatCopy(t, "pricing.card")} compactClip />).container;
@@ -234,7 +232,8 @@ describe("another page's slot with a sample: the /pricing chat card", () => {
     const ai = render(<ChatCard copy={chatCopy(t, "hero")} />).container;
     const art = ai.querySelector(".nx-result-art")!;
     expect(placeLabelProblems(art, slotMedia("hero"), t.site)).toEqual([]);
-    expect(ai.querySelector("figcaption")?.textContent).toBe(t.site.gallery.slotNote);
+    expect(ai.querySelector("figcaption")).toBeNull();
+    expect(ai.textContent).not.toContain(FIXTURE_ENTRY.modelName);
     expect(ai.textContent).not.toMatch(/Pexels|stock/i);
   });
 });
@@ -406,14 +405,45 @@ describe("the gallery's clips on a wide screen", () => {
     stub(true);
     expect(render(<LoopClip sources={sources} poster="/p.webp" together />).container.querySelector("video")).toBeNull();
   });
+
+  // The owner wants no visible pause button (2026-11-13): a pointer pauses by tapping the clip, a keyboard by the focus-revealed
+  // switch (ClipPause, MotionToggle), and reduced motion still renders no clip at all (above). What would break: a tap on the
+  // clip that does nothing (WCAG 2.2.2 for pointer users), or a tap on the box's own link or button that also flips the switch.
+  it("a tap on a playing clip's box pauses the page's motion and a second one resumes it; a tap on a link or button in the box does not", () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: !q.includes("reduce") && q.includes("min-width"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    vi.stubGlobal("IntersectionObserver", undefined);
+    const sources = FIXTURE_FILES[FIXTURE_JOB].clip!;
+    const { container } = render(
+      <div data-clip="sample" data-testid="box">
+        <LoopClip sources={sources} poster="/p.webp" />
+        <a href="/signup">Start</a>
+        <button type="button">Other</button>
+      </div>,
+    );
+    const box = container.querySelector("[data-testid='box']") as HTMLElement;
+    const video = box.querySelector("video") as HTMLVideoElement;
+    // jsdom never plays: say this one is playing, as the browser would.
+    Object.defineProperty(video, "paused", { configurable: true, get: () => false });
+    act(() => fireEvent.click(box.querySelector("a")!));
+    act(() => fireEvent.click(box.querySelector("button")!));
+    expect(document.documentElement.hasAttribute("data-motion")).toBe(false);
+    act(() => fireEvent.click(video));
+    expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
+    act(() => fireEvent.click(box));
+    expect(document.documentElement.hasAttribute("data-motion")).toBe(false);
+    // A clip that is still only because another one leads (or it has not started) is not what the visitor meant to stop.
+    Object.defineProperty(video, "paused", { configurable: true, get: () => true });
+    act(() => fireEvent.click(box));
+    expect(document.documentElement.hasAttribute("data-motion")).toBe(false);
+  });
 });
 
 describe("copy and config", () => {
   it.each(LOCALES.map((l) => l.code))("%s: the new words exist, name no model or maker, and say the bar starts nothing", (code) => {
     const s = dictionaries[code].site;
-    for (const block of [s.prompt, s.facts, s.formats, s.models]) expect(JSON.stringify(block)).not.toMatch(PROVIDER_BRANDS);
+    for (const block of [s.prompt, s.facts, s.formats, s.models, s.approvalCard]) expect(JSON.stringify(block)).not.toMatch(PROVIDER_BRANDS);
     expect(s.formats.items.map((i) => i.id)).toEqual(FORMATS.map((f) => f.id));
-    for (const v of [s.gallery.slotNote, s.gallery.useNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut, s.hero.leadShort]) expect(v.trim().length).toBeGreaterThan(20);
+    for (const v of [s.approvalCard.figure, s.gallery.useNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut, s.hero.leadShort]) expect(v.trim().length).toBeGreaterThan(20);
     // The formats are only their cards' words: the cards are drawn inside the gallery, under its own heading.
     expect(Object.keys(s.formats)).toEqual(["items"]);
     // The bar's note names the Studio's own button (ru «Создать», not «Сгенерировать»).

@@ -29,5 +29,11 @@ export const TOOL_SAMPLES: Record<string, ToolSample> = {
 /** The sample the third step of "How it works" plays in its phone (a vertical clip, as a channel's short is). */
 export const STEP_PHONE_JOB = "a04d5d55-27ef-4cae-95a2-25488503829e";
 
-/** Every sample the wall and the steps show, for the gallery to leave out. */
-export const TOOL_JOBS: string[] = [...Object.values(TOOL_SAMPLES).flatMap((s) => [s.job, s.from].filter((x): x is string => Boolean(x))), STEP_PHONE_JOB];
+/**
+ * The thumbnail on the Approvals band's drawn approval screen (components/landing/ApprovalCard.tsx): a wide picture, as a video's
+ * thumbnail is, and a street market rather than more sea (the owner found the page read as "all sea", 2026-11-13).
+ */
+export const APPROVAL_THUMB_JOB = "1b3d5f4b-f4f2-4e92-84db-77908a36df2a";
+
+/** Every sample the wall, the steps and the approval screen show, for the gallery to leave out. */
+export const TOOL_JOBS: string[] = [...Object.values(TOOL_SAMPLES).flatMap((s) => [s.job, s.from].filter((x): x is string => Boolean(x))), STEP_PHONE_JOB, APPROVAL_THUMB_JOB];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useMotionPaused } from "@/lib/site/motion";
+import { setMotionPaused, useMotionPaused } from "@/lib/site/motion";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string };
@@ -18,6 +18,9 @@ function clipsAllowed(): boolean {
   if (c?.effectiveType && /^(slow-2g|2g|3g)$/.test(c.effectiveType)) return false;
   return true;
 }
+
+/** What a click inside a clip's box belongs to rather than to the clip (see the tap-to-pause effect below). */
+const CONTROLS = "a, button, input, select, textarea, label, summary, [role='button'], [contenteditable='true']";
 
 /**
  * Which clip plays. Two clips playing at once cost a 4x-throttled phone half its frames (a showcase with the next one's edge
@@ -60,7 +63,8 @@ const subscribe = (l: () => void) => {
  * - muted, looping, inline, no controls, hidden from assistive technology (the still's description covers it); `poster` is the
  *   still itself at its phone width (the file a phone's picture already shows, so it is usually already in the cache), and the WebM is listed first, the MP4 after it
  *   (a browser takes the first it can play; Safari on a phone takes the MP4);
- * - paused while off screen and while the page's pause switch is pressed (lib/site/motion.ts), and in a hidden tab;
+ * - paused while off screen and while the page's pause switch is pressed (lib/site/motion.ts), and in a hidden tab; a tap or
+ *   click on the playing picture presses that switch, and on the paused one releases it;
  * - the container's `data-live` says it is playing, which swaps the badge from "Example frame (stock footage)" to "Example clip
  *   (stock footage)" and fades the clip in over the still.
  */
@@ -173,6 +177,26 @@ export function LoopClip({
     document.addEventListener("visibilitychange", sync);
     return () => document.removeEventListener("visibilitychange", sync);
   }, [allowed, wanted, lead, paused, grid, inView]);
+
+  // A tap or click on the moving picture is the pointer's pause (the owner wants no visible pause button, 2026-11-13; the keyboard
+  // keeps a focus-revealed one, ClipPause and MotionToggle). The video itself takes no pointer events and often sits under a gradient
+  // or the page's words, so the listener is on its box. It flips the page's one switch, as the button on the clip did. A click on a
+  // link or button inside the box is that control's, a click that ends a text selection is a selection, and a clip that is still
+  // because another one leads (or it has not started) is not what the visitor meant to stop.
+  useEffect(() => {
+    const v = ref.current;
+    const box = v?.parentElement;
+    if (!allowed || !v || !box) return;
+    const onClick = (ev: MouseEvent) => {
+      if (ev.defaultPrevented || ev.button !== 0) return;
+      if (ev.target instanceof Element && ev.target.closest(CONTROLS)) return;
+      if (window.getSelection?.()?.isCollapsed === false) return;
+      if (!paused && v.paused) return;
+      setMotionPaused(!paused);
+    };
+    box.addEventListener("click", onClick);
+    return () => box.removeEventListener("click", onClick);
+  }, [allowed, paused]);
 
   if (!allowed) return null;
   return (

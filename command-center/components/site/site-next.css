@@ -515,8 +515,11 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 @keyframes nx-drift-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(70px, 50px, 0) scale(1.14); } }
 @keyframes nx-drift-b { from { transform: translate3d(0, 0, 0) scale(1.08); } to { transform: translate3d(-80px, 40px, 0) scale(0.94); } }
 @keyframes nx-drift-c { from { transform: translate3d(-30px, 0, 0) scale(0.92); } to { transform: translate3d(40px, 36px, 0) scale(1.1); } }
-/* The pause switch (WCAG 2.2.2). With reduced motion already asked for there is nothing to pause. */
-.nx-motion { display: flex; justify-content: flex-end; max-width: 1000px; margin: 8px auto 0; }
+/* The pause switch (WCAG 2.2.2). With reduced motion already asked for there is nothing to pause. The owner wants no visible
+   "Pause motion" word or icon on the public site (2026-11-13), so the button is visually hidden until it has keyboard focus
+   (below); a pointer pauses by tapping the moving picture itself (components/site/LoopClip.tsx). The row has no height, and the
+   revealed button is absolutely placed at its static position, so focusing it shifts nothing. */
+.nx-motion { position: relative; display: flex; justify-content: flex-end; max-width: 1000px; height: 0; margin: 0 auto; }
 .nx-motion-btn {
   display: inline-flex;
   align-items: center;
@@ -531,12 +534,16 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   color: var(--ns-text-dim);
   cursor: pointer;
 }
-.nx-motion-btn svg { width: 16px; height: 16px; }
 .nx-motion-btn[aria-pressed="true"] { color: var(--ns-amber-ink); border-color: var(--ns-amber); background: var(--ns-select); }
 .nx-motion-btn:hover { color: var(--ns-text); border-color: var(--ns-rule-strong); }
 @media (prefers-reduced-motion: reduce) {
   .nx-motion { display: none; }
 }
+/* Visually hidden (still in the accessibility tree and the tab order) until a keyboard focuses it; then a dark pill with the
+   stage amber ring, which reads on any page colour and over any footage. */
+.nx-motion-btn:not(:focus-visible), .nx-clip-pause:not(:focus-visible) { position: absolute; width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.nx-motion-btn:focus-visible { position: absolute; z-index: 10; white-space: nowrap; border-color: #ffa940; background: #080808; color: #fff; outline: 3px solid #ffa940; outline-offset: 2px; }
+.nx-motion-btn[aria-pressed="true"]:focus-visible { color: #ffa940; }
 /* `animation-play-state` is reset by the `animation` shorthand of every rule that starts a loop, and those come later in this file, so the pause wins by !important (not by order). */
 html[data-motion="paused"][data-fx] .nx-fx-blob[data-n],
 html[data-motion="paused"] .nx-fx-blob,
@@ -854,9 +861,9 @@ html:is([lang="ru"], [lang="uz"]) .nx-hero .nx-h1 { font-size: clamp(36px, 8.6vw
 .nx-show-pic { position: relative; grid-area: 1 / 1; aspect-ratio: 4 / 5.2; overflow: hidden; background: #12151c; }
 .nx-show-pic .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .nx-show-pic .nx-result-badge { z-index: 2; top: 16px; left: 16px; }
-/* The pause button on a clip: the page's one pause switch, within reach of every clip (a 44 px circle over the picture, top right). */
-.nx-clip-pause { position: absolute; z-index: 3; top: 10px; right: 10px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(8, 8, 8, 0.8); color: #fff; cursor: pointer; }
-.nx-clip-pause svg { width: 18px; height: 18px; }
+/* The pause button on a clip: the page's one pause switch, at every clip for a keyboard (visually hidden until focused, see
+   .nx-motion-btn above; a pointer taps the clip instead). Focused, a 44 px dark pill with its words over the picture, top right. */
+.nx-clip-pause { position: absolute; z-index: 3; top: 10px; right: 10px; display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(8, 8, 8, 0.8); color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .nx-clip-pause:hover { border-color: var(--nx-stage-act, #a8a1ff); }
 .nx-clip-pause[aria-pressed="true"] { border-color: var(--nx-stage-amber, #ffa940); color: var(--nx-stage-amber, #ffa940); }
 @media (prefers-reduced-motion: reduce) { .nx-clip-pause { display: none; } }
@@ -1184,8 +1191,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 @media (max-width: 859px) {
   .nx { --nx-sec: 34px; }
   .nx .st-footer-grid { padding-block: 40px 24px; }
-  /* The three showcases are one run of full-bleed breaks: each picture says what it is on its badge, and the note under the last covers the run. */
-  .nx-show:not(:last-child) .nx-show-note { display: none; }
   .nx-show { padding-block: 6px; }
   .nx-strip { gap: 20px; margin-top: 22px; }
   .nx-final { padding-block: 40px; }
@@ -1430,9 +1435,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 .nx-gallery-model { margin: 0; font-size: 17px; color: var(--ns-text); overflow-wrap: anywhere; }
 .nx-gallery-key { margin: 0; font-size: 14px; font-weight: 500; color: var(--ns-text-dim); }
 .nx-gallery-model .nx-gallery-key { font-size: inherit; }
-/* The maker's credit: a real link, 44 px tall to the touch, as its terms ask. */
-.nx-gallery-attr { display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; color: var(--ns-text); text-decoration: underline; text-underline-offset: 4px; }
-.nx-gallery-attr:hover { color: var(--st-act-ink); }
 /* A prompt runs to hundreds of words: the card shows its first five lines (all of it is in the page, and "Try this prompt" carries all of it). */
 .nx-gallery-prompt { margin: 0; max-width: 60ch; font-size: 15px; line-height: 1.5; color: var(--ns-text); white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-clamp: 5; overflow: hidden; }
 .nx-gallery-date { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
@@ -1523,7 +1525,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 .nx-pbar-go { border-color: transparent; background: linear-gradient(135deg, #a79cff 0%, #d08cff 52%, #ffb066 100%); color: #0b0b10; }
 .nx-pbar-go:disabled, .nx-pbar-plus:disabled { opacity: 0.6; cursor: default; }
 @media (max-width: 479px) { .nx-pbar-mode span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } .nx-pbar-mode { padding: 0; } }
-.nx-pbar-plus:focus-visible, .nx-pbar-mode:focus-visible, .nx-pbar-go:focus-visible, .nx-pbar-idea:focus-visible, .nx-ai-try:focus-visible, .nx-ai-attr:focus-visible, .nx-model-see:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
+.nx-pbar-plus:focus-visible, .nx-pbar-mode:focus-visible, .nx-pbar-go:focus-visible, .nx-pbar-idea:focus-visible, .nx-ai-try:focus-visible, .nx-model-see:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
 /* Docked: the same box, fixed at the bottom centre over the safe area; its place in the first screen keeps its height. */
 /* The first screen is its own stacking context (isolation, for the picture under the words): while the composer is docked it is
    lifted above the sections after it, so the fixed box paints over them. */
@@ -1544,7 +1546,6 @@ html[data-composer="docked"] .nx { padding-bottom: calc(96px + env(safe-area-ins
 .nx-ai-credit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: 14px; line-height: 1.35; }
 .nx-ai-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; background: linear-gradient(135deg, #5546d1, #8236c8); color: #fff; font-size: 13px; font-weight: 600; }
 .nx-ai-model { font-weight: 600; }
-.nx-ai-attr { display: inline-flex; align-items: center; min-height: 44px; color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .nx-ai-try { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid currentColor; color: inherit; font-weight: 600; }
 .nx-ai-try svg { width: 16px; height: 16px; }
 .nx-result-badge[data-kind="ai"] { z-index: 2; background: linear-gradient(135deg, #5546d1, #8236c8); }
@@ -1561,7 +1562,7 @@ html[data-composer="docked"] .nx { padding-bottom: calc(96px + env(safe-area-ins
 .nx-facts-n { font-family: var(--font-display); font-size: clamp(36px, 6vw, 60px); font-weight: 600; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--ns-text); }
 .nx-facts-l { font-size: 15px; line-height: 1.4; color: var(--ns-text-dim); }
 
-/* The model tiles: a small still of the model's sample beside its name, its maker's credit and a link down to the sample. */
+/* The model tiles: a small still of the model's sample beside its name and a link down to the sample. */
 .nx-models-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 16px; margin: 36px 0 0; padding: 0; list-style: none; }
 .nx-model-media { position: relative; flex: 0 0 76px; width: 76px; height: 104px; overflow: hidden; border-radius: 12px; background: #12151c; }
 .nx-model-pic { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -1569,7 +1570,6 @@ html[data-composer="docked"] .nx { padding-bottom: calc(96px + env(safe-area-ins
 .nx-model-pic { flex: 0 0 76px; width: 76px; height: 104px; object-fit: cover; border-radius: 12px; background: #12151c; }
 .nx-model-body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
 .nx-model-name { margin: 8px 0 0; font-family: var(--font-display); font-size: 19px; font-weight: 600; letter-spacing: -0.01em; color: var(--ns-text); overflow-wrap: anywhere; }
-.nx-model .nx-ai-attr { font-size: 14px; color: var(--ns-text); }
 .nx-model-count { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
 .nx-model-see { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--ns-text); text-decoration: underline; text-underline-offset: 4px; }
 .nx-model-see svg { width: 16px; height: 16px; }
@@ -1592,13 +1592,9 @@ html[data-composer="docked"] .nx { padding-bottom: calc(96px + env(safe-area-ins
 
 /* The first screen's credit row reads on the picture in both themes (the same white tokens as the words). */
 .nx-sh-foot { --ns-text: #fff; --ns-text-dim: rgba(255, 255, 255, 0.88); --ns-rule-strong: rgba(255, 255, 255, 0.4); --ns-console: rgba(8, 8, 8, 0.66); }
-/* A sample's credit on a showcase: bottom right on the picture from 860 px; on a phone the headline is over the picture, so it is printed under the card instead (.nx-show-credit). */
-.nx-show-credit { margin: 6px 0 0; color: var(--ns-text); }
-@media (max-width: 859px) { .nx-show-pic .nx-result-ai { display: none; } }
-@media (min-width: 860px) { .nx-show-pic .nx-result-ai { left: auto; right: 72px; width: fit-content; max-width: 52%; } .nx-show-credit { display: none; } }
 .nx-show-pic .nx-result-badge[data-kind="ai"] { top: 16px; left: 16px; }
 
-/* A clip animated from one of the samples' pictures: that picture beside its maker, small enough not to compete with the clip. */
+/* A clip animated from one of the samples' pictures: that picture beside its model, small enough not to compete with the clip. */
 .nx-gallery-source { display: flex; align-items: center; gap: 12px; margin: 0; min-width: 0; }
 .nx-gallery-source img { flex: none; width: 96px; height: auto; border-radius: 10px; border: 1px solid var(--ns-rule); }
 .nx-gallery-source figcaption { min-width: 0; font-size: 15px; color: var(--ns-text); overflow-wrap: anywhere; }
@@ -1608,9 +1604,8 @@ html[data-composer="docked"] .nx { padding-bottom: calc(96px + env(safe-area-ins
 .nx-result-ai .nx-ai-note, .ml-ex-credit .nx-ai-note, .nx-sh-credit .nx-ai-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* /mcp's header panel: the words fill its lower half, so a sample's credit sits at the top, between the badge and the pause button. */
 .nx-bleed .nx-result-ai { top: 12px; bottom: auto; left: auto; right: 64px; width: fit-content; max-width: calc(100% - 200px); }
-/* /mcp's example cards: the model and its maker's credit in one small pill under the badge. */
+/* /mcp's example cards: the model in one small pill under the badge. */
 .ml-ex-credit.nx-ai-credit { gap: 0 8px; border-radius: 14px; }
-.ml-ex-credit .nx-ai-attr { min-height: 24px; }
 
 /* The explore grid and the model tiles never look dead: every poster drifts slowly (a Ken-Burns push) until its own clip plays
    over it (data-live), and a still keeps drifting. The box clips it (overflow hidden), so nothing around it moves. Stopped by the
@@ -1632,9 +1627,7 @@ html[data-composer="docked"] .nx { padding-bottom: calc(96px + env(safe-area-ins
 .nx-wall-out .nx-clip { inset: 0; width: 100%; height: 100%; }
 .nx-wall-notyet { justify-self: start; margin-top: 4px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); font-size: 13px; color: var(--ns-text-dim); }
 .nx-wall-credit { margin-top: 4px; font-size: 13px; color: var(--ns-text-dim); }
-.nx-wall-credit .nx-ai-attr { min-height: 24px; }
 .nx-wall-from, .nx-wall-model-note { font-size: 13px; line-height: 1.4; color: var(--ns-text-dim); }
-.nx-wall-from .nx-ai-attr { min-height: 24px; display: inline; }
 
 /* ── The live steps of "How it works" (components/landing/Landing.tsx StepLive): one fixed height each, so nothing shifts. ── */
 /* The live piece spans the step's row on a phone (the numeral and the words keep their two columns under it); from 860 px the three
@@ -1654,4 +1647,29 @@ html[data-composer="docked"] .nx { padding-bottom: calc(96px + env(safe-area-ins
 .nx-step-phone .nx-clip { inset: 0; width: 100%; height: 100%; }
 .nx-step-private { position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 2; padding: 3px 6px; border-radius: 8px; background: rgba(0, 0, 0, 0.8); font-size: 13px; line-height: 1.25; color: #fff; text-align: center; }
 .nx-step-credit { flex-direction: column; align-items: flex-start; font-size: 13px; color: var(--ns-text-dim); }
-.nx-step-credit .nx-ai-attr { min-height: 24px; }
+
+/* ── The Approvals band's drawn approval screen (components/landing/ApprovalCard.tsx) ──
+   A dark stage of its own instead of a picture: on a phone the headline goes under it (nothing covers the screen it draws); from
+   860 px the screen sits on the right and the words on the left, on the stage itself (no gradient: there is no picture to darken). */
+.nx-show-card[data-art="drawn"] .nx-show-pic { display: grid; place-items: center; aspect-ratio: auto; padding: 28px 20px; background: radial-gradient(120% 90% at 80% 20%, #2a2463 0%, #141327 46%, #0b0a12 100%); }
+.nx-show-card[data-art="drawn"] .nx-show-head { grid-area: 2 / 1; padding: 22px 22px 0; background: none; }
+.nx-show-card[data-art="drawn"] .nx-show-rest { grid-area: 3 / 1; }
+@media (min-width: 860px) {
+  .nx-show-card[data-art="drawn"] .nx-show-pic { justify-items: end; padding: 40px 56px; }
+  .nx-show-card[data-art="drawn"] .nx-show-pic::after { display: none; }
+  .nx-show-card[data-art="drawn"] .nx-show-head { padding: 0; }
+}
+.nx-approve-art { width: 100%; max-width: 380px; }
+.nx-approve-card { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 22px; border: 1px solid rgba(255, 255, 255, 0.14); background: #16151f; color: #fff; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45); }
+.nx-approve-tag { align-self: flex-start; padding: 2px 10px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.28); font-size: 13px; color: rgba(255, 255, 255, 0.88); }
+.nx-approve-thumb { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; background: #24232f; }
+.nx-approve-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.nx-approve-thumb .nx-ai-badge { position: absolute; top: 8px; left: 8px; }
+.nx-approve-private { position: absolute; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.78); font-size: 13px; font-weight: 600; color: #fff; }
+.nx-approve-private svg { width: 14px; height: 14px; }
+.nx-approve-title { font-size: 16px; line-height: 1.3; font-weight: 600; color: #fff; }
+.nx-approve-rows li { color: rgba(255, 255, 255, 0.88); font-size: 14px; }
+.nx-approve-rows li[data-lit="true"] { color: #ffa940; }
+.nx-approve-ok { width: 16px; height: 16px; color: #5ee0a0; flex-shrink: 0; }
+/* The key as it waits: drawn, not a control (a span in an aria-hidden group), outlined in the stage amber, not filled. */
+.nx-approve-key { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px dashed #ffa940; font-weight: 600; color: #ffa940; }

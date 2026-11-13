@@ -91,13 +91,15 @@ describe("the clips (round 5)", () => {
     expect(css).toMatch(/\.nx-clip \{ position: absolute; inset: 1px; width: calc\(100% - 2px\); height: calc\(100% - 2px\);/);
   });
 
-  it("are the stock fallback of eight slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
+  it("are the stock fallback of seven slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
     // Round 10: these are what a slot shows only until one of our samples fills it (its `ai` line); the fallback stays declared.
     const fallback = (slot: keyof typeof SLOTS): string | null => {
       const s: PlaceDef = SLOTS[slot];
       return s.clip ?? null;
     };
-    const moving = ["hero", "show.studio", "show.approvals", "pricing.card", "solutions.youtube-channels", "solutions.creative-studio", "auth.signup", "mcp.hero"] as const;
+    // (The Approvals showcase has no slot any more: it is a drawn approval screen, components/landing/ApprovalCard.tsx.)
+    const moving = ["hero", "show.studio", "pricing.card", "solutions.youtube-channels", "solutions.creative-studio", "auth.signup", "mcp.hero"] as const;
+    expect(Object.keys(SLOTS)).not.toContain("show.approvals");
     for (const slot of moving) expect(SLOTS[slot].id, slot).toBe(fallback(slot));
     // The closing panel, the developers' photograph and the sign-in stage are still.
     for (const slot of ["landing.final", "solutions.developers", "auth.login"] as const) expect(fallback(slot), slot).toBeNull();
@@ -225,7 +227,7 @@ describe("LoopClip", () => {
 });
 
 describe("the landing's clips are labelled for what they are (round 5)", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the first screen, the two showcases and the closing panel each carry the labels of what they show (stock or one of our samples), and no stock clip claims to be Nightshift's output", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the first screen, the Studio showcase and the closing panel each carry the labels of what they show (stock, or one of our samples with its badge only), and no stock clip claims to be Nightshift's output", (code) => {
     const t = dictionaries[code];
     env();
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
@@ -234,17 +236,19 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     const places: [Element, keyof typeof SLOTS][] = [
       [container.querySelector(".nx-sh-credit")!, "hero"],
       [container.querySelector("#studio .nx-show-pic")!, "show.studio"],
-      [container.querySelector("#approvals .nx-show-pic")!, "show.approvals"],
     ];
     for (const [el, slot] of places) expect(placeLabelProblems(el, slotMedia(slot), t.site), slot).toEqual([]);
     const fin = slotMedia("landing.final");
     const finCredit = container.querySelector(".nx-final-credit")!;
-    if (fin.kind === "ai") expect(finCredit.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(fin.entry.jobId);
+    if (fin.kind === "ai") {
+      expect(finCredit.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(fin.entry.jobId);
+      expect(placeLabelProblems(finCredit, fin, t.site)).toEqual([]);
+    }
     else expect(finCredit.textContent).toMatch(/ \/ Pexels$/);
     // A box that plays something says what it plays: a stock clip by its name, a sample's as "sample".
     // (The model tiles, the tool wall and the third step play samples' loops too, each inside its sample's box: checked on their own.)
     const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]")).filter((b) => !b.closest("#models, #tools, .nx-step-live"));
-    const expected = (["hero", "show.studio", "show.approvals", "landing.final"] as const).flatMap((s) => {
+    const expected = (["hero", "show.studio", "landing.final"] as const).flatMap((s) => {
       const m = slotMedia(s);
       return m.kind === "ai" ? (m.moving ? ["sample"] : []) : m.clip ? [m.clip] : [];
     });
@@ -269,21 +273,25 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     expect(text).not.toMatch(/made with Nightshift|Nightshift made|Nightshift-generated/i);
   });
 
-  it("puts a pause button on each of the two moving pictures in the showcases (the hero has the page's switch) and none on the still one, the same switch, named \"Pause motion\"", () => {
+  it("puts the keyboard's pause switch on the moving Studio picture (the hero has the page's switch) and none on the drawn approval screen, the same switch, named \"Pause motion\" and visually hidden until focused", () => {
     const t = dictionaries.en;
     env();
     const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
     expect(container.querySelector("#video .nx-clip-pause")).toBeNull();
-    for (const id of ["studio", "approvals"]) {
-      const btn = container.querySelector(`#${id} .nx-show-pic .nx-clip-pause`) as HTMLElement;
-      expect(btn.getAttribute("aria-label")).toBe(t.site.fx.pause);
-      expect(btn.getAttribute("aria-pressed")).toBe("false");
-    }
-    const first = container.querySelector("#studio .nx-clip-pause") as HTMLElement;
-    fireEvent.click(first);
+    expect(container.querySelector("#approvals .nx-clip-pause")).toBeNull();
+    const m = slotMedia("show.studio");
+    if (!(m.kind === "ai" ? m.moving : m.clip)) return expect(container.querySelector("#studio .nx-clip-pause")).toBeNull();
+    const btn = container.querySelector("#studio .nx-show-pic .nx-clip-pause") as HTMLElement;
+    // Its name is its own words, no icon (the owner wants no visible pause word or icon: the stylesheet hides it until focused).
+    expect(btn.textContent).toBe(t.site.fx.pause);
+    expect(btn.querySelector("svg")).toBeNull();
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(btn);
     expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
     for (const b of container.querySelectorAll(".nx-clip-pause, .nx-motion-btn")) expect(b.getAttribute("aria-pressed")).toBe("true");
-    expect(css).toMatch(/\.nx-clip-pause \{[^}]*width: 44px; height: 44px;/);
+    fireEvent.click(btn);
+    expect(document.documentElement.hasAttribute("data-motion")).toBe(false);
+    expect(css).toMatch(/\.nx-clip-pause \{[^}]*min-width: 44px; min-height: 44px;/);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.nx-clip-pause \{ display: none; \} \}/);
   });
 
@@ -349,8 +357,8 @@ describe("the capability wall (round 8, stock photographs replaced by AI-generat
         for (const img of tile.querySelectorAll("img")) expect(img.getAttribute("loading")).toBe("lazy");
         expect(tile.querySelectorAll(".nx-wall-frame img")).toHaveLength(def.from ? 2 : 1);
       }
-      // Nothing on a tile is pressable but a sample's maker's credit.
-      for (const a of tile.querySelectorAll("a")) expect(a.classList.contains("nx-ai-attr")).toBe(true);
+      // Nothing on a tile is pressable: no maker's credit is linked on the public site (it is shown in the Studio).
+      expect(tile.querySelectorAll("a")).toHaveLength(0);
       expect(tile.querySelector('button, [tabindex]:not([tabindex="-1"])')).toBeNull();
     }
     // The ninth tool, the Editor, is a plain line: it has no picture.
