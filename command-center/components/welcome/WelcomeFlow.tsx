@@ -36,6 +36,7 @@ export function WelcomeFlow({
   showCredits,
   welcomeCredits,
   contactEmail,
+  next = null,
 }: {
   needsWorkspace: boolean;
   unavailable: boolean;
@@ -44,6 +45,8 @@ export function WelcomeFlow({
   showCredits: boolean;
   welcomeCredits: number | null;
   contactEmail: string | null;
+  /** A Studio form to open at the end (app/welcome/page.tsx, already checked by lib/safe-redirect.ts studioNext), or null. */
+  next?: string | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -248,8 +251,8 @@ export function WelcomeFlow({
             <button type="button" onClick={() => setIndex(index - 1)} className="g5-link" style={{ background: "none", border: 0, cursor: "pointer" }}>
               ← {t.signup.back}
             </button>
-            <Link href={home} onClick={rememberAllChannels} className="btn-primary">
-              {t.signup.finish}
+            <Link href={next ?? home} onClick={rememberAllChannels} className="btn-primary">
+              {next ? t.signup.finishStudio : t.signup.finish}
             </Link>
           </div>
         </div>

@@ -95,6 +95,23 @@ export function cleanImprovePrompt(tool: ImproveStudioTool, raw: unknown): strin
 }
 
 /**
+ * The text tools a link may also start with words: a model sample's "Try it" on the public site (lib/site/showcase-link.ts) opens
+ * `/create?tool=t2v&model=…&prompt=…`. Same cleaning and bound as the file tools above; it only fills the box (CLAUDE.md #3).
+ */
+export const LINK_PROMPT_TOOLS = ["t2i", "t2v"] as const;
+export type LinkPromptTool = ImproveStudioTool | (typeof LINK_PROMPT_TOOLS)[number];
+
+export function isLinkPromptTool(tool: unknown): tool is LinkPromptTool {
+  return (IMPROVE_STUDIO_TOOLS as readonly unknown[]).includes(tool) || (LINK_PROMPT_TOOLS as readonly unknown[]).includes(tool);
+}
+
+/** A link's words for any tool that takes them from a link, cleaned and bounded as cleanImprovePrompt does. */
+export function cleanLinkPrompt(tool: LinkPromptTool, raw: unknown): string {
+  if (typeof raw !== "string" || promptRule(tool) === "none") return "";
+  return cutWhole(raw.replace(CONTROL, "").trim(), Math.min(IMPROVE_PROMPT_MAX, wordsMax(tool))).trim();
+}
+
+/**
  * The Studio link (without the channel prefix) that opens `tool` with the file
  * chosen. null for captions (not a Studio tool) and for an id that is not a
  * well-formed file id (the Studio would refuse it). `project` is an editor
@@ -141,8 +158,8 @@ export function prefillFromImprove(initial: StudioPrefill | null, q: { model?: u
   let out = initial;
   if (one(q.model) === AUTO_MODEL) out = { ...out, model: "", auto: true };
   const tool = out.capability as string;
-  if (!out.prompt && (IMPROVE_STUDIO_TOOLS as readonly string[]).includes(tool)) {
-    const words = cleanImprovePrompt(tool as ImproveStudioTool, one(q.prompt));
+  if (!out.prompt && isLinkPromptTool(tool)) {
+    const words = cleanLinkPrompt(tool, one(q.prompt));
     if (words) out = { ...out, prompt: words };
   }
   return out;

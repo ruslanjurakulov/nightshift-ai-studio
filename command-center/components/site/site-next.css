@@ -1406,3 +1406,22 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 /* --ns-text-dim is the whole site's muted text (#b4aea1, 7.9:1 on the dark surface); this section reads it at 15 to 16 px under 14 to 21 px headings, so it takes #d3cdc1 here (11.0:1 measured on the glyphs) and nothing else on the site moves. The three selectors are globals.css's own dark switches (the system's, and the explicit data-theme). */
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .nx-section#how { --ns-text-dim: #d3cdc1; } }
 :root[data-theme="dark"] .nx-section#how { --ns-text-dim: #d3cdc1; }
+
+/* ── The model samples (components/site/ShowcaseGallery.tsx): one card per real generation, a column on a phone, two from 860 px ── */
+.nx-gallery { display: grid; gap: 24px; margin: 40px 0 0; padding: 0; list-style: none; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 860px) { .nx-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.nx-gallery-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-console); }
+/* The box, not the picture, decides the layout (16:9, the shape the models are asked for), so nothing shifts when it loads. */
+.nx-gallery-pic { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #12151c; }
+.nx-gallery-pic .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.nx-gallery-pic .nx-result-badge { z-index: 2; }
+.nx-gallery-body { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 20px; min-width: 0; }
+.nx-gallery-model { margin: 0; font-size: 17px; color: var(--ns-text); overflow-wrap: anywhere; }
+.nx-gallery-key { margin: 0; font-size: 14px; font-weight: 500; color: var(--ns-text-dim); }
+.nx-gallery-model .nx-gallery-key { font-size: inherit; }
+/* The maker's credit: a real link, 44 px tall to the touch, as its terms ask. */
+.nx-gallery-attr { display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; color: var(--ns-text); text-decoration: underline; text-underline-offset: 4px; }
+.nx-gallery-attr:hover { color: var(--st-act-ink); }
+.nx-gallery-prompt { margin: 0; max-width: 60ch; font-size: 16px; line-height: 1.55; color: var(--ns-text); white-space: pre-line; overflow-wrap: anywhere; }
+.nx-gallery-date { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
+.nx-gallery-try { margin-top: 8px; }

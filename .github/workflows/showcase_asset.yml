@@ -1,0 +1,172 @@
+name: Showcase asset
+
+# Turns one Studio generation of the operator's own organization into a sample on the public site (docs/SHOWCASE.md):
+# tools/export_showcase.py checks the job (operator organization, completed, no style kit, a registry model, an input picture
+# that is ours), downloads its output through the Library's own signed link, checks its sha256, makes the web copies, and
+# appends the entry to command-center/lib/site/showcase.json. A second job opens a DRAFT pull request with exactly those files.
+# Nothing reaches the site until the owner reviews and merges it; nothing here ever pushes to main.
+#
+# Two jobs on purpose: the one that holds the database's service key and the media signing key cannot write to the
+# repository, and the one that can write (contents, pull-requests) holds neither key, runs no ffmpeg, and checks every file it
+# was handed before committing it (tools/export_showcase.py --verify-export).
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "The Studio job's id, or the id of the library file it made (a uuid; docs/SHOWCASE.md says where to find it)"
+        required: true
+        type: string
+      slot:
+        description: "Optional: the site slot a later change may put it in (components/site/samples.tsx SLOTS); empty = none"
+        required: false
+        default: ""
+        type: string
+      caption:
+        description: "Optional: a note kept with the entry (not shown on the site)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: showcase-asset
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      outcome: ${{ steps.export.outputs.outcome }}
+      # The job the export resolved the given id to (it may have been the file's), checked again below.
+      job_id: ${{ steps.export.outputs.job_id }}
+
+    steps:
+      # The inputs arrive through env, never pasted into a script, and the id is refused unless it is a uuid.
+      - name: Check the job id
+        id: id
+        env:
+          JOB_ID: ${{ github.event.inputs.job_id }}
+        run: |
+          id="$(printf '%s' "$JOB_ID" | tr 'A-F' 'a-f' | tr -d '[:space:]')"
+          if ! printf '%s' "$id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+            echo "::error::job_id must be a uuid: the Studio job's id or its library file's id (docs/SHOWCASE.md)."
+            exit 2
+          fi
+          echo "job_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # This job never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install requests, Pillow and ffmpeg
+        run: |
+          pip install requests pillow
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      # The keys are only ever env here; the tool sends the service key as a header and the signed link (a bearer for the
+      # file) is never printed. SITE_ORIGIN is the public domain deploy_web.yml serves.
+      - name: Export the sample
+        id: export
+        env:
+          JOB_ID: ${{ steps.id.outputs.job_id }}
+          SLOT: ${{ github.event.inputs.slot }}
+          CAPTION: ${{ github.event.inputs.caption }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MEDIA_URL_SECRET: ${{ secrets.MEDIA_URL_SECRET }}
+          SITE_ORIGIN: https://${{ vars.DOMAIN || 'new.nightshift-ai.studio' }}
+        run: |
+          set +e
+          python tools/export_showcase.py --job-id "$JOB_ID" --slot "$SLOT" --caption "$CAPTION" \
+            --summary "$RUNNER_TEMP/summary.md" --outcome "$RUNNER_TEMP/outcome" --stage showcase-export --job-out "$RUNNER_TEMP/job"
+          rc=$?
+          set -e
+          outcome="$(cat "$RUNNER_TEMP/outcome" 2>/dev/null || echo failed)"
+          if [ "$outcome" = "exported" ]; then
+            job="$(cat "$RUNNER_TEMP/job")"
+            printf '%s' "$job" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || { echo "::error::the export named no job"; exit 1; }
+            echo "job_id=$job" >> "$GITHUB_OUTPUT"
+          fi
+          echo "outcome=$outcome" >> "$GITHUB_OUTPUT"
+          exit $rc
+
+      - name: Hand the files to the publish job
+        if: steps.export.outputs.outcome == 'exported'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: showcase-export
+          # Only the files the tool staged: the data file, the generated module, the sample's own copies and the summary.
+          path: showcase-export/
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    needs: export
+    if: needs.export.outputs.outcome == 'exported'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The only write scopes in this workflow: push one branch (showcase/<job id>) and open one draft PR. No secret is read here.
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The push below authenticates through gh's credential helper for that one command; nothing is stored in .git/config.
+          persist-credentials: false
+
+      - name: Fetch the export
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name showcase-export --dir "$RUNNER_TEMP/export"
+
+      - name: Check the export holds only the sample's files
+        env:
+          JOB_ID: ${{ needs.export.outputs.job_id }}
+        run: python3 tools/export_showcase.py --job-id "$JOB_ID" --verify-export "$RUNNER_TEMP/export"
+
+      # Idempotent: a branch for this job already exists means its PR is open (or was closed unmerged); a second one is not made.
+      - name: Open a draft pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_ID: ${{ needs.export.outputs.job_id }}
+        run: |
+          branch="showcase/${JOB_ID}"
+          if gh api "repos/${GITHUB_REPOSITORY}/branches/${branch}" --silent 2>/dev/null; then
+            echo "::notice::A branch for this job already exists (${branch}); no second pull request is opened."
+            exit 0
+          fi
+          cp -R "$RUNNER_TEMP/export/command-center/." command-center/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add command-center/lib/site/showcase.json command-center/components/site/showcase-assets.ts "command-center/components/site/showcase/${JOB_ID}"
+          git commit -q -m "Showcase: sample from Studio job ${JOB_ID}"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin "HEAD:refs/heads/${branch}"
+          {
+            echo "A model sample for the public site, exported by the **Showcase asset** workflow (docs/SHOWCASE.md)."
+            echo
+            cat "$RUNNER_TEMP/export/summary.md"
+            echo
+            echo "Review the clip, the prompt and the cost, then merge. Nothing is on the site before the merge."
+            echo
+            echo "Checks do not start by themselves on a pull request opened by a workflow: close and reopen it to run them."
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --draft --base main --head "$branch" --title "Showcase: sample from Studio job ${JOB_ID}" --body-file "$RUNNER_TEMP/body.md"

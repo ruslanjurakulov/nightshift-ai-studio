@@ -413,6 +413,8 @@ export const en = {
     open: "Open",
     done: "Done",
     finish: "Go to Command Center",
+    /** The last button when the person came from a model sample's "Try it": it opens the Studio with that sample's tool and words. */
+    finishStudio: "Open the Studio with your sample",
     unavailable: "We couldn't load your workspace just now. Reload the page in a moment.",
     welcomeCredits: "{n} free credits (≈ one Short) are in your workspace — a welcome gift.",
     finishSetup: "Finish setting up",

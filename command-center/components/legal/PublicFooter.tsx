@@ -9,6 +9,7 @@ import { devPagesEnabled } from "@/lib/dev-pages";
 import { ViewModeControl } from "@/components/view-mode/ViewModeToggle";
 import { SocialIcons } from "@/components/site/SocialIcons";
 import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
+import { showcaseItems } from "@/components/site/ShowcaseGallery";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
@@ -121,6 +122,8 @@ export function PublicFooter({ t }: { t: Dictionary }) {
         <details className="st-credits">
           <summary>{t.site.credits.title}</summary>
           <p>{t.site.credits.lead}</p>
+          {/* Only while a model sample is on the site (lib/site/showcase.json): it names no model, each sample names its own. */}
+          {showcaseItems().length > 0 && <p>{t.site.credits.generated}</p>}
           <ul>
             {MEDIA_IDS.map((id) => (
               <li key={id}>
