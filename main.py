@@ -655,7 +655,7 @@ def _effective_privacy(ctx: ChannelContext, privacy: str) -> str:
                 "private instead (the switch means never public)", ctx.channel_id, privacy)
     # Nobody has answered "is this video made for kids?" for a video that does not exist yet: it uploads private, with the
     # detected declaration, and goes public only through an approval, which needs a person's answer (modules/made_for_kids.py,
-    # migration 0141; the owner's decision on PR #699). Auto publish ON holds here rather than going public on its own.
+    # migration 0145; the owner's decision on PR #699). Auto publish ON holds here rather than going public on its own.
     held = mfk.privacy_until_answered(allowed, answered=False)
     if held != allowed:
         logger.warning(
@@ -2021,7 +2021,7 @@ def run(
                     video_path=video_path,
                     script_text=script.full_narration(),
                     # "Approved, nothing for a person to do" only for a video that really went up watchable on its
-                    # own. Since 0141 nothing does before a person answered who it is for (_effective_privacy), so an
+                    # own. Since 0145 nothing does before a person answered who it is for (_effective_privacy), so an
                     # auto-publish channel's upload is recorded PENDING: the review panel asks the question and offers
                     # Approve, instead of a private video nobody can approve (review finding on PR #699).
                     auto_publish=(review.fetch_auto_publish(channel_id)
@@ -2048,7 +2048,7 @@ def run(
                     # (migration 0112). Uploads happen only when it allowed.
                     gate_verdict=held_video.gate_verdict(gate.to_metadata()),
                     # What this upload declared, so the review panel shows it and a cross-post or the publish-when-approved
-                    # worker sends the same (migration 0141).
+                    # worker sends the same (migration 0145).
                     made_for_kids=kids_decision,
                 )
             except Exception as e:

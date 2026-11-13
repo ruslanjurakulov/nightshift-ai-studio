@@ -137,11 +137,11 @@ _COLUMNS_0016 = ("publish_state", "held_at", "hold_detail")
 # Migration 0112: the cut's hash and the gate's verdict for it. Dropped FIRST when a database does not have them
 # yet, so the state and the hold detail (0016) still land.
 COLUMNS_0112 = ("cut_sha256", "gate_verdict")
-#: Migration 0141: a person's answer to "is this made for kids?" belongs to one cut. Every write here that records a new
+#: Migration 0145: a person's answer to "is this made for kids?" belongs to one cut. Every write here that records a new
 #: cut_sha256 clears it (the review panel asks again; approve_video_publish also checks the answer's cut). A database
-#: without 0141 refuses the columns, and the write is retried without them before anything older is dropped.
-COLUMNS_0141_ANSWER = ("made_for_kids_answered_by", "made_for_kids_answered_at", "made_for_kids_answered_cut_sha256")
-NO_ANSWER = {k: None for k in COLUMNS_0141_ANSWER}
+#: without 0145 refuses the columns, and the write is retried without them before anything older is dropped.
+COLUMNS_0145_ANSWER = ("made_for_kids_answered_by", "made_for_kids_answered_at", "made_for_kids_answered_cut_sha256")
+NO_ANSWER = {k: None for k in COLUMNS_0145_ANSWER}
 # Older optional columns (0011 scenes, 0013 manifest), dropped next if a write
 # is still refused, so the row itself lands on the oldest supported schema.
 _COLUMNS_OPTIONAL = ("manifest", "scenes", "preview_path")
@@ -415,7 +415,7 @@ class HeldVideos:
         return bool(_json_list(resp))
 
     def _upsert(self, row: dict) -> bool:
-        attempts = [row, {k: v for k, v in row.items() if k not in COLUMNS_0141_ANSWER}]
+        attempts = [row, {k: v for k, v in row.items() if k not in COLUMNS_0145_ANSWER}]
         without_0112 = {k: v for k, v in attempts[-1].items() if k not in COLUMNS_0112}
         attempts.append(without_0112)
         without_0016 = {k: v for k, v in without_0112.items() if k not in _COLUMNS_0016}
@@ -484,9 +484,9 @@ class HeldVideos:
             patch["gate_verdict"] = None
             patch.update(NO_ANSWER)
             filters = {"video_id": f"eq.{held_id}", "channel_id": f"eq.{channel_id}"}
-            without_0141 = {k: v for k, v in patch.items() if k not in COLUMNS_0141_ANSWER}
-            without_0112 = {k: v for k, v in without_0141.items() if k not in COLUMNS_0112}
-            for body in (patch, without_0141, without_0112,
+            without_0145 = {k: v for k, v in patch.items() if k not in COLUMNS_0145_ANSWER}
+            without_0112 = {k: v for k, v in without_0145.items() if k not in COLUMNS_0112}
+            for body in (patch, without_0145, without_0112,
                          {k: v for k, v in without_0112.items() if k not in _COLUMNS_0016}):
                 resp = self._send("patch", filters, body, "return=representation")
                 if resp is None:

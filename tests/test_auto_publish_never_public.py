@@ -220,7 +220,7 @@ print("RESULT " + json.dumps(seen))
         self.assertEqual(self.last_warnings, [])
 
     def test_switch_on_and_public_uploads_private_until_a_person_answers_who_it_is_for(self):
-        # Was "allowed through to the gate". The owner's decision on PR #699 (migration 0141): a video goes public only after a
+        # Was "allowed through to the gate". The owner's decision on PR #699 (migration 0145): a video goes public only after a
         # person answered "is this made for kids?", which no run can have done, so auto publish ON uploads private and holds;
         # the video goes public through an approval on its review page, which needs the answer.
         self.assertEqual(self.drive(_row(column=True), "public"), "private")

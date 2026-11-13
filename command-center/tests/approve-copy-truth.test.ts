@@ -164,7 +164,7 @@ describe("what the review panel says is what the code does", () => {
 });
 
 describe("the reasons and blockers exist in all three languages", () => {
-  // audience_unanswered: 0141, nobody has answered who the video is for (lib/madeForKids.ts).
+  // audience_unanswered: 0145, nobody has answered who the video is for (lib/madeForKids.ts).
   const blockers: ApprovalBlocker[] = ["held", "rejected", "already_public", "gate_blocked", "gate_unknown", "no_preview", "cut_unknown", "audience_unanswered", "not_admin", "not_member"];
 
   it.each(["en", "ru", "uz"] as const)("%s has a sentence for every blocker and every reason word the database can answer", (loc) => {
@@ -204,7 +204,7 @@ describe("publish when approved (migration 0116): no copy claims publishing unle
     const uses = panel.split("\n").filter((l) => /\bapprovePublish\b/.test(l));
     expect(uses.length).toBeGreaterThanOrEqual(2);
     for (const l of uses) expect(l, l).toMatch(/publishing/);
-    // `publishing` is the switch and nothing else, and never over a video there is nothing to approve for. Since 0141 the
+    // `publishing` is the switch and nothing else, and never over a video there is nothing to approve for. Since 0145 the
     // channel's auto-publish switch is not that: its uploads wait private for this approval (review finding on PR #699).
     expect(panel).toContain('const publishing = publishOnApprove && state.view.kind !== "auto";');
     // the page hands over the switch as read from the channel row: true only for an explicit true, false on any error

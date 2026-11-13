@@ -40,7 +40,7 @@ export type RunOptions = {
   /** "Making this for:" (migration 0029) — which connected account the video
    *  is meant for. A hint recorded on the job; the pipeline never reads it. */
   publishHint?: string;
-  /** YouTube's "made for kids" for this run (the Kids story format, the Create form's switch; migration 0141). Only ever
+  /** YouTube's "made for kids" for this run (the Kids story format, the Create form's switch; migration 0145). Only ever
    *  true: a run can turn the declaration on, never off — kids content is made for kids whatever the run says. */
   madeForKids?: boolean;
 };
@@ -98,7 +98,7 @@ export function buildRenderJobInsert(
   if (voiceId && isVoiceId(voiceId)) params.voice_id = voiceId;
   const hint = parsePublishHint(opts.publishHint);
   if (hint) params.publish_hint = formatPublishHint(hint.platform, hint.id);
-  // Only `true` (the database's check refuses anything else, 0141); absent means "the channel, series and look decide".
+  // Only `true` (the database's check refuses anything else, 0145); absent means "the channel, series and look decide".
   if (opts.madeForKids === true) params.made_for_kids = true;
   // The credit hold that pays for this job (migration 0020) — a column, not a
   // param: the pipeline never sees it, the worker settles it. Only sent when a

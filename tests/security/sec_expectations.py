@@ -667,7 +667,7 @@ import sec_operator_customers_0138  # noqa: E402
 
 sec_operator_customers_0138.extend(TABLES, FUNCTIONS)
 
-# Migration 0141 (YouTube's "made for kids" declaration per video; a run's made_for_kids): tests/security/sec_made_for_kids_0141.py
-import sec_made_for_kids_0141  # noqa: E402
+# Migration 0145 (YouTube's "made for kids" declaration per video; a run's made_for_kids): tests/security/sec_made_for_kids_0145.py
+import sec_made_for_kids_0145  # noqa: E402
 
-sec_made_for_kids_0141.extend(TABLES, FUNCTIONS)
+sec_made_for_kids_0145.extend(TABLES, FUNCTIONS)

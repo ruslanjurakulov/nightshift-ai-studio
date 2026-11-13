@@ -30,7 +30,7 @@ export const APPROVE_REASONS = [
   "no_preview",
   "cut_unknown",
   "cut_changed",
-  // 0141: nobody has answered who the video is for (lib/madeForKids.ts).
+  // 0145: nobody has answered who the video is for (lib/madeForKids.ts).
   "audience_unanswered",
   "forbidden",
   "not_found",
@@ -54,9 +54,9 @@ export interface ApprovalFields {
   decided_by_email?: string | null;
   decided_at?: string | null;
   approval_expires_at?: string | null;
-  /** Migration 0141: a person's answer to "is this made for kids?" (who; NULL = nobody yet). Absent before 0141. */
+  /** Migration 0145: a person's answer to "is this made for kids?" (who; NULL = nobody yet). Absent before 0145. */
   made_for_kids_answered_by?: string | null;
-  /** Migration 0141: the cut that answer is about; it counts only for this row's own cut_sha256. */
+  /** Migration 0145: the cut that answer is about; it counts only for this row's own cut_sha256. */
   made_for_kids_answered_cut_sha256?: string | null;
 }
 
@@ -127,7 +127,7 @@ export function approvalState(
 
   let view: ApprovalView;
   // "Nothing to approve" only for a row recorded as approved with nobody behind it (an upload that went up watchable on its
-  // own, before 0141). The channel's auto-publish switch alone is not that any more: since 0141 every upload is private until
+  // own, before 0145). The channel's auto-publish switch alone is not that any more: since 0145 every upload is private until
   // a person answered who it is for, and is recorded pending, so the person approves it here (review finding on PR #699).
   if (video.review_state === "approved" && !approvedCut) {
     view = { kind: "auto" };

@@ -4,7 +4,7 @@ Why this exists: every upload used to send ``selfDeclaredMadeForKids: False``, w
 format (command-center/lib/home.ts), kids looks in the Style Library and kids channels. A video for children declared "not
 made for kids" breaks YouTube's policy and COPPA, and the channel pays for it, not the bot. So the declaration is decided
 here, from what the run really was, and every path that builds a YouTube ``status`` body takes it from here
-(docs/MIGRATIONS.md "0141" lists them).
+(docs/MIGRATIONS.md "0145" lists them).
 
 The rule (the owner's, PR "YouTube made for kids"):
 
@@ -13,14 +13,14 @@ The rule (the owner's, PR "YouTube made for kids"):
   Style Library made for children only (KIDS_LIBRARY_STYLES), or a channel whose own default (``agent_config.made_for_kids``) is on.
 * Kids content is declared made for kids. Anything else is declared what the channel's default says, which is off.
 * A person may declare a kids video "not made for kids" only by confirming it in so many words
-  (``set_video_made_for_kids`` with ``p_confirm_off``, migration 0141); the database refuses the combination otherwise.
+  (``set_video_made_for_kids`` with ``p_confirm_off``, migration 0145); the database refuses the combination otherwise.
   A kids video declared "not for kids" WITHOUT that confirmation is never sent: the publish gate blocks it
   (``made_for_kids_unconfirmed``), the cross-post refuses it, and the uploader raises rather than send it.
 
 THE ANSWER (the owner's decision on PR #699): before a video is watchable, a PERSON answers "is this video made for kids?" on
 its review page, as YouTube Studio asks before publishing. The decision above is the detection: it goes on the private upload
 (``selfDeclaredMadeForKids`` is set at insert) and is shown to the person as a hint, never as a chosen answer. Approving needs the
-answer (approve_video_publish refuses ``audience_unanswered``, migration 0141); the publish-when-approved write sends it and so
+answer (approve_video_publish refuses ``audience_unanswered``, migration 0145); the publish-when-approved write sends it and so
 corrects YouTube when it differs; and no run uploads public or unlisted before it (``privacy_until_answered``, the publish gate's
 ``audience_unanswered``), so auto publish holds the video private until a person has answered.
 
@@ -78,7 +78,7 @@ def privacy_until_answered(privacy, answered: bool = False):
     """The privacy an upload may have before a person has answered "is this made for kids?" (the owner's decision on PR #699:
     a person's explicit choice, asked as YouTube Studio asks, not an inferred default). Public and unlisted become private until
     then; the detection still goes on the private upload (``selfDeclaredMadeForKids`` is set at insert), the person answers on
-    the review page, and the video goes public only through an approval, which needs the answer (approve_video_publish, 0141)."""
+    the review page, and the video goes public only through an approval, which needs the answer (approve_video_publish, 0145)."""
     if not answered and str(privacy or "").strip().lower() in WATCHABLE:
         return "private"
     return privacy
@@ -152,9 +152,9 @@ def decide(channel=None, *, series=None, run_made_for_kids: bool = False, style_
 
 def for_video(row: Optional[Mapping], channel=None) -> Decision:
     """The declaration for a video that already exists (a cross-post of it, making it public), from its ``videos`` row
-    (migration 0141: made_for_kids, kids_content, made_for_kids_off_by) and the channel it goes to.
+    (migration 0145: made_for_kids, kids_content, made_for_kids_off_by) and the channel it goes to.
 
-    A row without the columns (written before 0141, or a database without it) has nothing recorded: the video is then
+    A row without the columns (written before 0145, or a database without it) has nothing recorded: the video is then
     kids content only if the channel says so, and declared as the channel's default."""
     row = row if isinstance(row, Mapping) else {}
     sources = []

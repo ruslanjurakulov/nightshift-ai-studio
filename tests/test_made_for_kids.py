@@ -1,4 +1,4 @@
-"""YouTube's "made for kids" declaration (modules/made_for_kids.py, migration 0141).
+"""YouTube's "made for kids" declaration (modules/made_for_kids.py, migration 0145).
 
 Every upload used to send ``selfDeclaredMadeForKids: False``; a Kids story declared "not made for kids" breaks YouTube's
 policy and COPPA. These tests pin what each path that builds a YouTube ``status`` body now sends, and what must never be
@@ -84,7 +84,7 @@ class TheDecision(unittest.TestCase):
         off = mfk.for_video({"made_for_kids": False, "kids_content": True, "made_for_kids_off_by": "u-1"})
         self.assertEqual((off.value, off.confirmed_off, off.refused), (False, True, False))
         self.assertTrue(mfk.for_video({"made_for_kids": False, "kids_content": True}).refused)
-        # Nothing recorded (before 0141): the channel decides, and a kids channel's copy is made for kids.
+        # Nothing recorded (before 0145): the channel decides, and a kids channel's copy is made for kids.
         self.assertEqual(mfk.for_video({}, channel()).value, False)
         self.assertEqual(mfk.for_video({}, channel(True)).value, True)
         self.assertTrue(mfk.for_video({"made_for_kids": False, "kids_content": False}, channel(True)).refused)
@@ -283,7 +283,7 @@ class MakingItPublic(unittest.TestCase):
         d = visibility_publish.declared_for_kids
         self.assertIs(d(self.store({"made_for_kids": True, "kids_content": True}), "v", channel()), True)
         self.assertIs(d(self.store({"made_for_kids": False, "kids_content": True, "made_for_kids_off_by": "u"}), "v", channel()), False)
-        # Nothing recorded (an upload before 0141) on a channel that is not for kids: what YouTube holds goes back, as before.
+        # Nothing recorded (an upload before 0145) on a channel that is not for kids: what YouTube holds goes back, as before.
         self.assertIsNone(d(self.store({}), "v", channel()))
         self.assertIs(d(self.store({}), "v", channel(True)), True)
         # A store from before this change (no kids_record) behaves as nothing recorded.
@@ -352,9 +352,9 @@ class TheReviewRecord(unittest.TestCase):
                          {"made_for_kids": True, "kids_content": True, "made_for_kids_off_by": None, "made_for_kids_off_at": None,
                           "made_for_kids_answered_by": None, "made_for_kids_answered_at": None,
                           "made_for_kids_answered_cut_sha256": None})
-        self.assertEqual(set(video_review.COLUMNS_0141), set(video_review.made_for_kids_columns(PLAIN)))
+        self.assertEqual(set(video_review.COLUMNS_0145), set(video_review.made_for_kids_columns(PLAIN)))
 
-    def test_the_decision_lands_on_the_row_and_a_database_without_0141_keeps_the_rest(self):
+    def test_the_decision_lands_on_the_row_and_a_database_without_0145_keeps_the_rest(self):
         from modules import video_review
         from tests.test_video_review_record import FakeSupabase, _patched, _record, _review
 
@@ -363,7 +363,7 @@ class TheReviewRecord(unittest.TestCase):
             _record(_review(), made_for_kids=KIDS_RUN)
         row = fake.rows["dQw4w9WgXcQ"]
         self.assertEqual((row["made_for_kids"], row["kids_content"]), (True, True))
-        old = FakeSupabase(missing_columns=video_review.COLUMNS_0141)
+        old = FakeSupabase(missing_columns=video_review.COLUMNS_0145)
         with _patched(old):
             _record(_review(), made_for_kids=KIDS_RUN)
         row = old.rows["dQw4w9WgXcQ"]
@@ -472,7 +472,7 @@ class TheAudienceAnswer(unittest.TestCase):
 
 
 class EveryNewCutClearsTheAnswer(unittest.TestCase):
-    """An answer is about one cut (made_for_kids_answered_cut_sha256, 0141). Every writer of a new cut_sha256 clears it."""
+    """An answer is about one cut (made_for_kids_answered_cut_sha256, 0145). Every writer of a new cut_sha256 clears it."""
 
     ANSWER = ("made_for_kids_answered_by", "made_for_kids_answered_at", "made_for_kids_answered_cut_sha256")
 
@@ -504,12 +504,12 @@ class EveryNewCutClearsTheAnswer(unittest.TestCase):
         up = fake.rows["dQw4w9WgXcQ"]
         self.assertEqual({k: up.get(k) for k in self.ANSWER}, dict.fromkeys(self.ANSWER))
 
-    def test_a_database_without_0141_keeps_the_0112_columns(self):
+    def test_a_database_without_0145_keeps_the_0112_columns(self):
         from unittest import mock
         from modules import held_video
         from tests.test_held_video import FakePostgrest, _client, _hold
 
-        fake = FakePostgrest(missing_columns=held_video.COLUMNS_0141_ANSWER)
+        fake = FakePostgrest(missing_columns=held_video.COLUMNS_0145_ANSWER)
         with mock.patch("modules.held_video.requests", fake):
             _hold(_client())
         row = next(iter(fake.rows.values()))
@@ -536,4 +536,4 @@ class TheReviewRecordOnlyDropsTheDeclarationForAMissingColumn(unittest.TestCase)
         old = FakeSupabase(missing_columns=("made_for_kids",))
         with _patched(old):
             _record(_review(), made_for_kids=KIDS_RUN)
-        self.assertIn("dQw4w9WgXcQ", old.rows, "a missing column (no 0141) still lets the rest of the row land")
+        self.assertIn("dQw4w9WgXcQ", old.rows, "a missing column (no 0145) still lets the rest of the row land")

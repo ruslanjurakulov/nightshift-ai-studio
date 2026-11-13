@@ -554,9 +554,9 @@ and service_role. Nothing calls it until `NIGHTSHIFT_MULTI_RATIO_EXPORT` is on.
   frame; drops the overload, the list, the check and the three columns. Exported videos stay in the library.
 - **Review.** Needs the independent security review before merge, and a person reading the live two-argument `request_editor_export` hash first.
 
-## YouTube's "made for kids" declaration (0141)
+## YouTube's "made for kids" declaration (0145)
 
-0141 (`0141_made_for_kids.sql`, `modules/made_for_kids.py`) is **live on apply**. Every upload used to send
+0145 (`0145_made_for_kids.sql`, `modules/made_for_kids.py`) is **live on apply**. Every upload used to send
 `status.selfDeclaredMadeForKids: false`, while the product offers a Kids story format, kids looks and kids channels: a children's video
 declared "not made for kids" breaks YouTube's policy and COPPA. The pipeline now decides the declaration per run (the run's own
 `made_for_kids`, a series whose format names kids, a channel DNA look of the Style Library that is made for children only (an explicit list, not the `kids` browsing tag), or the channel's
@@ -585,23 +585,23 @@ declared "not made for kids" breaks YouTube's policy and COPPA. The pipeline now
   (`modules/social_publish.py`, refused as `made_for_kids_unconfirmed`), and the publish-when-approved write (`modules/visibility_publish.py`,
   which sends the recorded value instead of the one read back). The publish gate blocks `made_for_kids_unconfirmed` on every channel,
   including one that turned the gate off. Instagram and TikTok have no such field in the APIs this repo uses, and are unchanged.
-- **Drift guard.** Refuses (changes nothing) if a replaced body is neither its predecessor's nor 0141's, or if
+- **Drift guard.** Refuses (changes nothing) if a replaced body is neither its predecessor's nor 0145's, or if
   `set_video_made_for_kids` exists with another body; the last block asserts every body by md5, the grants, the columns, the check, the
   policy and the validator's answers.
 - **Apply as ONE transaction.** `set local lock_timeout = '5s'`.
 - **Undo together with the code.** The rollback must ship with the revert of this PR's code, not alone: the worker's
-  `declared_for_kids` refuses a video that has the 0141 columns and no answer for its cut, and with the rollback applied
+  `declared_for_kids` refuses a video that has the 0145 columns and no answer for its cut, and with the rollback applied
   nothing can write an answer any more, so every publish-when-approved request would be refused (and the review panel would
   offer a question it cannot save). Revert the code first or in the same deploy.
-- **Undo.** `docs/sql/rollback_0141_made_for_kids.sql` (owner-applied): refuses a body that is not 0141's and a queued or running job that
+- **Undo.** `docs/sql/rollback_0145_made_for_kids.sql` (owner-applied): refuses a body that is not 0145's and a queued or running job that
   carries `made_for_kids`; restores the three predecessors byte for byte and drops the function. It keeps the columns and their check:
   the record of who confirmed what is not erased.
 - **Tests.** `tests/test_made_for_kids_migration.py` (the file, pinned), `tests/test_made_for_kids.py` (every upload body) and
-  `tests/security/test_sec_made_for_kids.py` (the lab). 0141 sits on 0122's and 0117's bodies, so the lab's `take_off_0121`,
+  `tests/security/test_sec_made_for_kids.py` (the lab). 0145 sits on 0122's and 0117's bodies, so the lab's `take_off_0121`,
   `take_off_0122` and `take_off_0127` take it off first and their `put_back_*` put it back (`tests/security/sec_db.py`).
-- **Numbering.** 0141, after 0139 (the operator's preview, which replaces `creative_price` only and names nothing of this file's); 0140
-  is taken by PR #701 (model_probe_runs' error codes) and 0142 (#695, a CHECK on model_registry) is merged; neither names
-  anything of this file's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Numbering.** 0145: merged migrations apply to live in ascending order and main ends at 0142 (#695); 0143 is #701's and
+  0144 the Dodo payments branch's. None of them names anything of this file's. The numbering tests of 0127, 0131 and 0133 list
+  it as reviewed.
 
 ## The operator's Customers page (0138)
 

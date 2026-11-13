@@ -207,7 +207,7 @@ class RowMissing(unittest.TestCase):
         # NULL is the point ("unknown", "no approval"), tests/test_cut_recording.py pins them.
         from modules.held_video import NO_ANSWER
         from modules.video_review import NO_APPROVAL
-        # Since 0141 a new cut also sends NULL for the audience answer: it was about a cut that is gone (no answer yet).
+        # Since 0145 a new cut also sends NULL for the audience answer: it was about a cut that is gone (no answer yet).
         self.assertNotIn(None, [v for k, v in body.items()
                                 if k not in ("script_text", "cut_sha256", "gate_verdict", *NO_APPROVAL, *NO_ANSWER)])
 

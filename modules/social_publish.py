@@ -220,8 +220,8 @@ class PublishStore:
         return self._select_one("channels", "channel_id,niche,status,agent_config", channel_id=channel_id)
 
     def kids_record(self, video_id: str) -> dict:
-        """The video's "made for kids" record (migration 0141): made_for_kids, kids_content, made_for_kids_off_by. {} when
-        the database has no such columns (before 0141: nothing was recorded). Any other failure raises: a cross-post does
+        """The video's "made for kids" record (migration 0145): made_for_kids, kids_content, made_for_kids_off_by. {} when
+        the database has no such columns (before 0145: nothing was recorded). Any other failure raises: a cross-post does
         not guess a kids video's audience."""
         r = self.http().get(f"{self.url}/rest/v1/videos", params={
             "select": "video_id,made_for_kids,kids_content,made_for_kids_off_by", "video_id": f"eq.{video_id}",

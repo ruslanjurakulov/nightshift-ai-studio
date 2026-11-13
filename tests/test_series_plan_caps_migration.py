@@ -86,11 +86,11 @@ class Numbering(unittest.TestCase):
         # the same way: it replaces nothing and names none of the three words below.
         # 0139 (the operator preview of a hidden model: creative_price on 0125's body, creative_operator_preview, operator_preview_models)
         # was reviewed the same way: it names none of the three words below.
-        # 0141 (YouTube's "made for kids": seven videos columns, set_video_made_for_kids, and 0122's render_job_params_valid with one more
+        # 0145 (YouTube's "made for kids": seven videos columns, set_video_made_for_kids, and 0122's render_job_params_valid with one more
         # key) was reviewed the same way: it does not touch request_series_plan (0127's) or the planning tables, and names none of the
         # three words below; it sits on 0122's validator, so 0122's rollback and replay take it off first (tests/security/sec_db.py).
         # 0142 (one CHECK on model_registry: a model with blocked_countries cannot be beta or ga) was reviewed the same way.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0141", "0142")
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0145", "0142")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

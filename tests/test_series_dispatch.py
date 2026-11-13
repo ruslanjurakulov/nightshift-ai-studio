@@ -335,8 +335,8 @@ class ArgsBuilder(unittest.TestCase):
         migrations = sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
         latest = [m.name for m in migrations if "create or replace function public.render_job_params_valid" in m.read_text()][-1]
         # 0120 added the key; 0122 (the format-template carrier) redefines the validator on 0120's body and adds `template`, for a planning job only;
-        # 0141 (YouTube's "made for kids") redefines it on 0122's body and adds `made_for_kids`. The series key and its check are still there.
-        self.assertEqual(latest, "0141_made_for_kids.sql")
+        # 0145 (YouTube's "made for kids") redefines it on 0122's body and adds `made_for_kids`. The series key and its check are still there.
+        self.assertEqual(latest, "0145_made_for_kids.sql")
         sql = (ROOT / "supabase" / "migrations" / latest).read_text()
         self.assertIn("'publish_hint','series','template','made_for_kids'];", sql)
         self.assertIn("p ->> 'series' !~ '^[a-z0-9][a-z0-9._-]{0,63}$'", sql)

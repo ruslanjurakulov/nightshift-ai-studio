@@ -88,7 +88,7 @@ describe("what the Approve key offers", () => {
   });
 
   it("a video recorded approved with nobody behind it has nothing to approve; an auto-publish channel's pending upload does", () => {
-    // Since 0141 an auto-publish channel's upload is private until a person answered and approved (review finding on PR #699):
+    // Since 0145 an auto-publish channel's upload is private until a person answered and approved (review finding on PR #699):
     // the switch alone is not "nothing to approve", or the video would stay private with no key.
     expect(approvalState(video(), { ...open, autoPublish: true }).view.kind).toBe("open");
     expect(canPressApprove(approvalState(video(), { ...open, autoPublish: true }))).toBe(true);

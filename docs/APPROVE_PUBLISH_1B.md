@@ -191,7 +191,7 @@ Use a channel nobody watches, a throwaway video, and the real OAuth project. Sto
       switch off for everyone.
    b. Did the request body (`status` = embeddable, license, publicStatsViewable, selfDeclaredMadeForKids, privacyStatus) leave the
       video's other settings (comments, license, made-for-kids, embeddable) unchanged in Studio? If anything changed, stop.
-      (Since migration 0141 `selfDeclaredMadeForKids` is the declaration recorded for the video, `videos.made_for_kids`: the same
+      (Since migration 0145 `selfDeclaredMadeForKids` is the declaration recorded for the video, `videos.made_for_kids`: the same
       value its upload sent unless a person changed it on the review page before approving. Made-for-kids differing from what the
       review page shows is the thing to stop on.)
    c. Units: the ledger row for today vs the Cloud console quota graph (expect 53 for a flip: channels.list 1, videos.list 1,

@@ -234,7 +234,7 @@ describe("when the key is dead, it says why", () => {
     ["no stored verdict", { gate_verdict: null } as Partial<VideoRow>, { gate: null }, "gate_unknown"],
     ["no preview", { preview_path: null } as Partial<VideoRow>, {}, "no_preview"],
     ["recorded before approvals", { cut_sha256: null } as Partial<VideoRow>, {}, "cut_unknown"],
-    // 0141: nobody has answered "is this made for kids?" yet (the detection alone is not an answer).
+    // 0145: nobody has answered "is this made for kids?" yet (the detection alone is not an answer).
     ["nobody answered who it is for", { made_for_kids: true, kids_content: true, made_for_kids_answered_by: null } as Partial<VideoRow>, {}, "audience_unanswered"],
     ["a viewer or editor", {}, { access: "not_admin" }, "not_admin"],
     ["a platform admin on a customer's channel", {}, { access: "not_member" }, "not_member"],
@@ -252,7 +252,7 @@ describe("when the key is dead, it says why", () => {
     expect(h.rpc).not.toHaveBeenCalled();
   });
 
-  it("an auto-publish channel's pending upload has a live key: it waits private for a person (0141)", () => {
+  it("an auto-publish channel's pending upload has a live key: it waits private for a person (0145)", () => {
     panel({}, { autoPublish: true });
     expect(approveKey().disabled).toBe(false);
     expect(screen.getByTestId("approve-note").textContent).not.toBe(en.review.autoHint);

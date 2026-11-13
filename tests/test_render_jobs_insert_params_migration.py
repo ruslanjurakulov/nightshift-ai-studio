@@ -21,7 +21,7 @@ def allowed_keys():
 
 
 def keys_added_since():
-    """What the policy has gained since 0032, from the latest migration that recreates it: 0141 adds made_for_kids (YouTube's "made
+    """What the policy has gained since 0032, from the latest migration that recreates it: 0145 adds made_for_kids (YouTube's "made
     for kids" for a run, true only; tests/test_made_for_kids_migration.py pins that the rest is 0076's policy)."""
     latest = [m for m in sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
               if "create policy render_jobs_insert on public.render_jobs" in m.read_text()][-1].read_text()
