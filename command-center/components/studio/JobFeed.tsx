@@ -64,6 +64,15 @@ const FEED_SHOWN = 20;
  */
 export type FeedVariant = "sheet" | "monitor" | "table" | "takes" | "log";
 
+/**
+ * The job on the monitor or the light table: the one the person picked; else the newest that did not fail. A failed latest job used
+ * to take the whole stage with its warning, burying the clip that did come out; it stays on the strip with its "Try again". When
+ * every job failed, the newest is still shown, so the stage is never empty while there is something to say.
+ */
+export function featuredJob<J extends { id: string; status: string }>(jobs: readonly J[], picked: string | null): J | null {
+  return jobs.find((j) => j.id === picked) ?? jobs.find((j) => !isUnsuccessful(j.status)) ?? jobs[0] ?? null;
+}
+
 /** Seconds since an ISO time, or null when it cannot be read (never a made-up 0). */
 export function elapsedSeconds(iso: string, now: number): number | null {
   const at = Date.parse(iso);
@@ -286,8 +295,8 @@ export function JobFeed({
   // Square keys on the picture: named for screen readers and on hover; 44px on a phone.
   const onMedia = "studio-on-media tap-icon press grid size-9 place-items-center rounded-[var(--ns-r-key)] max-sm:size-11";
 
-  // The one shown large on a monitor or a light table: the one picked, else the newest.
-  const featured = variant === "monitor" || variant === "table" ? (shown.find((j) => j.id === featuredId) ?? shown[0] ?? null) : null;
+  // The one shown large on a monitor or a light table (featuredJob below).
+  const featured = variant === "monitor" || variant === "table" ? featuredJob(shown, featuredId) : null;
 
   /** What a job looks like: everything a card, the monitor and a strip frame draw from. */
   function look(job: StudioJob) {

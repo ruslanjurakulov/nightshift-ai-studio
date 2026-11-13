@@ -28,6 +28,7 @@ import { InviteAdminPanel } from "@/components/credits/InviteAdminPanel";
 import { UsageLinkCard } from "@/components/usage/UsageLinkCard";
 import { readUsageSummary } from "@/lib/server/usage";
 import { readInviteAdmin, readMyInvite } from "@/lib/server/friend-invites";
+import { inviteWorthShowing } from "@/lib/friend-invites";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
 import { ScrollToHash } from "@/components/navigation/ScrollToHash";
@@ -233,7 +234,9 @@ export default async function CreditsPage() {
       {/* Invite friends: for a workspace that pays (the reward is paid into it);
           the database refuses anyone who does not run the workspace. Left out
           before migration 0092. */}
-      {showInvite && inviteRead.state === "ok" && (
+      {/* While invites are closed and this workspace has no link yet, the card is left out: a disabled "Create my link" is a button
+          that cannot be pressed for a reason nobody can act on. A workspace that already has a link keeps its progress. */}
+      {showInvite && inviteRead.state === "ok" && inviteWorthShowing(inviteRead.value) && (
         <InviteFriendsCard invite={inviteRead.value} orgId={orgId} />
       )}
       {showInvite && inviteRead.state === "failed" && (

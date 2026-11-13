@@ -21,6 +21,7 @@ import { seriesPlanEn } from "./series-plan/en";
 import { ownerTruthEn } from "./owner-truth/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
+import { availabilityEn } from "./availability/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
 import { shapesEn } from "./shapes/en";
@@ -56,6 +57,7 @@ export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
   presets: presetsEn,
+  availability: availabilityEn,
   libraryUx: libraryUxEn,
   ownerShell: ownerShellEn,
   ownerSafety: ownerSafetyEn,
@@ -127,7 +129,7 @@ export const en = {
     margin: "Margin",
     customers: "Customers",
     billing: "Billing",
-    studio: "Studio",
+    studio: "Brand look",
     library: "Library",
     styles: "Styles",
     inbox: "Inbox",
@@ -1584,7 +1586,7 @@ export const en = {
     setupNote: "Set SLACK_WEBHOOK_URL and RESEND_API_KEY as GitHub Actions secrets, and ALERT_EMAIL_TO / ALERT_EMAIL_FROM as Actions variables, in the bot repository (the same secret forwarding the Providers page uses). Delivery with the real credential happens where that secret env is present — the Actions pipeline; this page confirms configuration and keeps the feed.",
   },
   studio: {
-    title: "Studio Canvas",
+    title: "Brand look",
     subtitle: "Your channel's visual identity in one place — pick a look and the whole pipeline follows it.",
     presetsTitle: "Style presets",
     presetsHint: "Pick a look for this channel and its next videos follow it. A style you write yourself still works as before.",
@@ -4214,7 +4216,9 @@ export const en = {
     lotsReadFailed: "Your credit lots could not be read, so they are not listed. Nothing was charged or changed — retry in a moment.",
     status: { active: "Active", trialing: "Trial", past_due: "Payment failed", paused: "Paused", canceled: "Cancelled" },
     renews: "Renews {date}",
+    renewsUnknown: "Renewal date unknown",
     endsOn: "Ends {date} — no further charges",
+    endsUnknown: "End date unknown — no further charges",
     pastDue: "The last payment did not go through. Paddle retries it for a few days; update your card in Manage subscription to keep the plan.",
     planCredits: "Plan credits",
     topupCredits: "Top-up credits",
@@ -4274,6 +4278,7 @@ export const en = {
     noOrg: "Open or create an organization to use the library.",
     readFailed: "The library could not be read just now. Reload the page to try again.",
     empty: "Nothing here yet. Upload an image, a video, an audio file or a caption track.",
+    emptyCreate: "Make something in Create",
     upload: "Upload a file",
     uploading: "Uploading {name} — {pct}%",
     accepted: "JPEG, PNG, WebP, GIF, HEIC, HEIF · MP4, MOV, WebM, MKV · MP3, M4A, WAV, OGG, FLAC, AAC · VTT, SRT",
@@ -4888,9 +4893,10 @@ export const en = {
     readyBody: "Finished videos and storyboards are waiting for you. Nothing is uploaded or published until you decide.",
     readyAcross: "Spread over {n} channels: this opens the first one; the others are under their own Videos.",
     reviewNow: "Take a look",
-    makingOne: "A clip is being made",
-    makingMany: "{n} clips are being made",
+    makingOne: "A generation is being made",
+    makingMany: "{n} generations are being made",
     makingBody: "It will appear below when it is ready.",
+    makingBodyMany: "They will appear below when they are ready.",
     videosTitle: "Your videos",
     videosAll: "See all",
     videosEmpty: "No videos yet. Make your first one above.",
@@ -5778,7 +5784,7 @@ export const en = {
     any: "Any",
     inputs: { text: "Words", image: "A picture", video: "A video", audio: "Audio" },
     outputs: { image: "Picture", video: "Video", audio: "Audio", text: "Text" },
-    states: { available: "Available", needs_probe: "Needs probe", plan_gated: "Plan-gated", unavailable: "Unavailable" },
+    states: { available: "Available", needs_probe: "Needs probe", plan_gated: "Plan-gated", not_on_sale: "Not on sale yet", unavailable: "Unavailable" },
     clearFilters: "Clear filters",
     resultCount: "{n} of {total}",
     resultsLabel: "Models",

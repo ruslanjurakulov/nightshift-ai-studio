@@ -33,6 +33,7 @@ import { planValue, readBillingSummary } from "@/lib/server/plans";
 import { accountPlan, type AccountPlan } from "@/lib/account";
 import type { CreditAccount } from "@/lib/credits";
 import { ShellProvider } from "@/components/shell/ShellContext";
+import { readToolAvailability } from "@/lib/server/tool-availability";
 import { SidebarProvider } from "@/components/shell/SidebarState";
 import { SIDEBAR_COOKIE, isSidebarCollapsed } from "@/lib/sidebar-pref";
 import { AppProviders } from "@/components/AppProviders";
@@ -156,6 +157,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   } else if (org.supported && org.current?.is_default) {
     plan = { kind: "exempt" };
   }
+  // Which Studio tools have a model on sale (lib/server/tool-availability.ts): the sidebar, the desk bar, Home and Presets mark the
+  // rest "Not available yet" instead of linking to a form that has nothing to pick. One read, shared with the page (React cache).
+  const tools = await readToolAvailability(org.supported && org.current ? org.current.id : null);
 
   // The breadcrumb names a channel the way the switcher does, by its name — the
   // URL carries a slug, which is not always the name the operator gave it.
@@ -190,7 +194,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MotionProvider>
       <NavigationProvider channelNames={channelNames}>
         {/* The optional sections' switches are read HERE, on the server, per request: the navigation lists Ads only while its switch is on. */}
-        <ShellProvider operator={operator} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled() }}>
+        <ShellProvider operator={operator} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled() }} tools={tools}>
         <SidebarProvider initialCollapsed={!operator && sidebarCollapsed}>
           <div className="app-shell atmos relative flex min-h-svh flex-col">
             {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}

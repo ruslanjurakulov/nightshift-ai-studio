@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -69,9 +70,23 @@ export async function creativeSession(): Promise<
  * or a failed read is "nothing to pick", never a crash.
  */
 export async function loadStudioModels(): Promise<StudioModel[]> {
+  return (await readStudioModels()) ?? [];
+}
+
+/**
+ * The same list, with a failed read kept apart from an empty one: null = the
+ * registry could not be read (no client, an error), [] = read, nothing on sale.
+ * The tool-availability marks (lib/server/tool-availability.ts) need the
+ * difference: "could not read" must never be drawn as "not available"
+ * (CLAUDE.md rule 5).
+ *
+ * Memoised per request (React cache): the layout's availability marks and the
+ * page's own Studio read the same rows, so one request makes one read.
+ */
+export const readStudioModels = cache(async (): Promise<StudioModel[] | null> => {
   try {
     const supabase = await createClient();
-    if (!supabase) return [];
+    if (!supabase) return null;
     const { data, error } = await supabase
       .from("model_registry")
       .select("id,display_name,capabilities,availability,verified_at")
@@ -79,7 +94,7 @@ export async function loadStudioModels(): Promise<StudioModel[]> {
       .not("verified_at", "is", null)
       .order("display_name", { ascending: true })
       .limit(200);
-    if (error) return [];
+    if (error) return null;
     const models = coerceModels(data);
     if (models.length === 0) return models;
     // The speed and quality marks live in spec, which members cannot read
@@ -97,9 +112,9 @@ export async function loadStudioModels(): Promise<StudioModel[]> {
     // create routes refuse it too. Reads nothing while no model has a country list.
     return await hideBlockedModelsHere(offered);
   } catch {
-    return [];
+    return null;
   }
-}
+});
 
 /**
  * The hidden models the platform operator may try in this organization (migration 0139), marked `preview`. The database decides who
