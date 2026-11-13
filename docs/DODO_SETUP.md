@@ -46,10 +46,19 @@ Qoidalar (Paddle'dagi bilan bir xil):
   katalog narxiga teng bo'lmasa (USD'da, soliqsiz yoki soliq ichida) — kredit **berilmaydi**,
   hodisa `rejected` bo'lib yoziladi (pul olingan — odam hal qiladi).
 - **Kreditlar Paddle'dagi funksiyalar orqali**: paket — `add_purchased_credits`, tarif davri —
-  `grant_subscription_credits_for('dodo', …)` (0143, 0034'ning o'sha tanasi), qaytarish va
+  `grant_subscription_credits_for('dodo', …)` (0144, 0034'ning o'sha tanasi), qaytarish va
   yutqazilgan nizo — `refund_purchased_credits`. Ledger, lotlar, yonish, idempotentlik — bir xil.
 - **Service key Command Center'da yo'q.** Webhook Supabase Edge Function'da ishlaydi.
 - **Dodo API key faqat serverda** (GitHub secret → serverning `.env.web`), brauzerga hech qachon.
+- **"Kim to'layapti" imzolanadi.** Server checkout metadata'siga `{org_id, user_id, item}` ni
+  `DODO_METADATA_SECRET` bilan imzolab qo'yadi (`ns_nonce`, `ns_sig` — HMAC-SHA256). Dodo'ning
+  statik to'lov havolalari URL'dagi `metadata_*` ni qabul qiladi — ya'ni imzosiz metadata'ni
+  istalgan odam yoza oladi. Webhook imzosi tekshirilmagan metadata bo'yicha hech qaysi tashkilotga
+  kredit, tarif yoki portal bermaydi.
+- **Test mode — faqat ruxsat ro'yxatidagi tashkilotlar.** Test karta (4242…) ochiq. Production
+  bazasida test mode faqat `DODO_TEST_ORG_IDS` dagi test ish maydonlariga sotadi va kreditlaydi;
+  boshqa hech bir mijoz test to'lov bilan kredit yoki tarif ololmaydi (checkout ham, webhook ham
+  rad etadi).
 
 ### Katalog
 
@@ -91,11 +100,11 @@ Narxni o'zgartirmoqchi bo'lsangiz: avval kod (ikkala katalog, PR), keyin Dodo'da
    portalini ochadi. Karta bir MoR'dan boshqasiga ko'chmaydi.
 5. Avval hammasi **test mode**'da (pul yurmaydi), keyin live.
 
-## 1. Bazani tayyorlash — 0143 migratsiyasi (bir marta)
+## 1. Bazani tayyorlash — 0144 migratsiyasi (bir marta)
 
 0021 va 0034 qo'llangan bo'lishi kerak. Supabase → **SQL Editor** →
-`supabase/migrations/0143_dodo_payments.sql` ning butun matni → **Run** (bitta tranzaksiya).
-Qayta ishga tushirish xavfsiz. 0143 Paddle uchun hech narsani o'zgartirmaydi va hech qanday
+`supabase/migrations/0144_dodo_payments.sql` ning butun matni → **Run** (bitta tranzaksiya).
+Qayta ishga tushirish xavfsiz. 0144 Paddle uchun hech narsani o'zgartirmaydi va hech qanday
 qator yozmaydi.
 
 Oldin va keyin tekshiruv (faqat o'qiydi):
@@ -105,7 +114,7 @@ select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg
  where proname in ('upsert_subscription', 'grant_subscription_credits', 'upsert_subscription_for', 'grant_subscription_credits_for');
 ```
 
-| Funksiya | Oldin (0034) | Keyin (0143) |
+| Funksiya | Oldin (0034) | Keyin (0144) |
 | :-- | :-- | :-- |
 | `upsert_subscription` | `60ee6ad3764dbcf6762b178f8240d5a9` | `09185a96a8fb02f0c2641095d51461cc` |
 | `grant_subscription_credits` | `7947d46697f1c35d12274ffbe22709ac` | `fd0c1c169a4d3b2d05c6d826c6fe10ff` |
@@ -113,7 +122,7 @@ select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg
 | `grant_subscription_credits_for` | — | `5424905376fab9ff1b4c229c5dc0c0ce` |
 
 Faylning oxiridagi "Verify" so'rovi — hamma ustun `true`. Orqaga qaytarish:
-`docs/sql/rollback_0143_dodo_payments.sql` (Dodo qatori bor ekan, rad etadi).
+`docs/sql/rollback_0144_dodo_payments.sql` (Dodo qatori bor ekan, rad etadi).
 
 ## 2. Dodo akkaunti: test mode
 
@@ -127,9 +136,10 @@ qaytadan (yoki "copy to live mode") qilinadi va id'lar boshqacha bo'ladi.
   tarif ishlaydi — Paddle'dagi kabi).
 - **Allow Immediate Cancellation** — **o'chiring** (darhol bekor qilish tarifni davr o'rtasida
   to'xtatadi; davr kreditlari lot muddatigacha qoladi, lekin imkoniyatlar yo'qoladi).
-- **Allow Subscription Updates** — **o'chiq** qoldiring va tariflarni **Product Collection**'ga
-  qo'shmang: portal orqali tarif almashtirish (upgrade/downgrade) hozircha avtomatik kredit
-  bermaydi (webhook `plan_change` to'lovini `rejected` qiladi — qo'lda `grant`).
+- **Allow Subscription Updates** — ⚠️ **O'CHIQ BO'LISHI SHART** va tariflarni **Product
+  Collection**'ga **qo'shmang**. Yoqilsa, mijoz portalda tarifni o'zi almashtiradi: Dodo pro-rata
+  pul oladi, webhook esa bu `plan_change` to'lovini **kreditlamaydi** (`rejected`, qo'lda `grant`
+  kerak bo'ladi) — har bir almashtirish odam ishi. Bu sozlamani yoqmang, avval kod o'zgarishi kerak.
 - **Allow Subscription Pause** — o'chiq (standart).
 - **Adaptive Currency** — **o'chiq**: webhook faqat USD to'lovni kreditlaydi; mahalliy valyutada
   to'langan xarid `rejected` bo'ladi.
@@ -142,9 +152,10 @@ Har biri uchun (6 ta, yuqoridagi katalog jadvali):
 - Paketlar: **One-Time**. Tariflar: **Subscription**, *Repeat every* **1 month**,
   *Trial days* **0**, *subscription period* **20 years** (Dodo tavsiyasi: davr = to'lov chastotasi
   bo'lsa obuna bitta to'lovdan keyin tugaydi).
-- Soliq: Dodo'ning SaaS / raqamli mahsulot soliq toifasi. Narx soliq **ichida** yoki **ustida**
-  bo'lishi mumkin — webhook ikkalasini qabul qiladi (to'langan summa = narx, yoki summa − soliq =
-  narx). Bittasini tanlang va hammasiga bir xil qo'llang.
+- Soliq: Dodo'ning SaaS / raqamli mahsulot soliq toifasi. Narx soliq **ichida** (`inclusive`) yoki
+  **ustida** (`exclusive`) — **bittasini** tanlang, hamma 6 mahsulotga bir xil qo'llang va o'shani
+  Supabase secret `DODO_TAX_MODE` ga yozing (4-band). Webhook faqat shu shaklni qabul qiladi:
+  `inclusive` — to'langan summa = narx; `exclusive` — summa − soliq = narx. Boshqasi `rejected`.
 - Pay What You Want, chegirma, chegirma kodi — yo'q (checkout chegirma kodini o'chiradi; chegirma
   bilan kelgan to'lov `rejected`).
 - Mahsulot sahifasidan `pdt_…` id'ni nusxalang.
@@ -163,6 +174,8 @@ GitHub → Settings → Environments → **production**:
 | Nomi | Turi | Qiymat |
 | :-- | :-- | :-- |
 | `DODO_PAYMENTS_API_KEY` | **Secret** | 3-banddagi kalit |
+| `DODO_METADATA_SECRET` | **Secret** | 32+ belgili tasodifiy qator (masalan `openssl rand -hex 32`); **aynan shu qiymat** Supabase secret'iga ham (4-band) |
+| `DODO_TEST_ORG_IDS` | Variable | test mode'da sotib olishi mumkin bo'lgan **sizning test** tashkilot(lar)ingiz uuid'lari, vergul bilan. Live'da e'tiborga olinmaydi |
 | `DODO_PAYMENTS_ENV` | Variable | `test` (live'da `live`) |
 | `DODO_PRODUCT_STARTER`, `DODO_PRODUCT_CREATOR`, `DODO_PRODUCT_STUDIO` | Variable | paketlarning `pdt_…` id'lari |
 | `DODO_PLAN_CREATOR`, `DODO_PLAN_PRO`, `DODO_PLAN_STUDIO` | Variable | tariflarning `pdt_…` id'lari |
@@ -209,6 +222,10 @@ Shell tarixida qolmasligi uchun fayl orqali:
 ```bash
 cat > /tmp/dodo.env <<'EOF'
 DODO_WEBHOOK_SECRET=whsec_...
+DODO_METADATA_SECRET=<GitHub secret'idagi bilan aynan bir xil>
+DODO_TAX_MODE=exclusive
+DODO_WEBHOOK_MODE=test
+DODO_TEST_ORG_IDS=<test tashkilot uuid>,<yana biri>
 DODO_PRODUCT_STARTER=pdt_...
 DODO_PRODUCT_CREATOR=pdt_...
 DODO_PRODUCT_STUDIO=pdt_...
@@ -220,6 +237,12 @@ supabase secrets set --env-file /tmp/dodo.env --project-ref <REF>
 rm /tmp/dodo.env
 supabase secrets list --project-ref <REF>    # faqat nomlar
 ```
+
+- `DODO_TAX_MODE` — `inclusive` yoki `exclusive` (2-banddagi tanlov). Bo'sh bo'lsa webhook har bir
+  so'rovga 500 qaytaradi (Dodo qayta yuboradi), hech narsa kreditlanmaydi.
+- `DODO_METADATA_SECRET` — bo'sh yoki GitHub'dagidan farqli bo'lsa: 500 / `rejected`, kredit yo'q.
+- `DODO_WEBHOOK_MODE` — aynan `live` bo'lmaguncha **test**: faqat `DODO_TEST_ORG_IDS` dagi
+  tashkilotlar kreditlanadi.
 
 `SUPABASE_URL` va `SUPABASE_SERVICE_ROLE_KEY` ni qo'ymang — Supabase o'zi beradi.
 Product id'lar GitHub variable'laridagi bilan **bir xil** bo'lsin: webhook'da yo'q mahsulot
@@ -240,7 +263,7 @@ select event_id, event_type, status, detail, received_at
 ```
 
 **401** — `DODO_WEBHOOK_SECRET` noto'g'ri yoki deploy `--no-verify-jwt` siz. **500 "webhook
-not configured"** — secret `whsec_…` emas.
+not configured"** — secret `whsec_…` emas, yoki `DODO_METADATA_SECRET` / `DODO_TAX_MODE` qo'yilmagan.
 
 ## 6. Yoqish
 
@@ -250,14 +273,26 @@ Shundan keyin `/pricing`, landing, Credits va Usage sahifalari Dodo orqali sotad
 checkout'i ko'rsatilmaydi. Test mode'da sahifada "Sandbox · test payments only" /
 "Test mode · no real charges" belgisi turadi.
 
+> ⚠️ **Production'da test mode faqat ruxsat ro'yxatidagi tashkilotlar uchun.** `DODO_PAYMENTS_ENV=test`
+> ekan, Credits'da "Sotib olish" faqat `DODO_TEST_ORG_IDS` dagi tashkilotlarga ko'rinadi; qolgan
+> mijozlarga hech narsa sotilmaydi (sahifa "test mode" deydi). Bu ro'yxatga faqat **o'zingizning**
+> test ish maydonlaringizni yozing — hech qachon haqiqiy mijozni emas.
+
 ## 7. Sinov ro'yxati (test mode)
 
 Test karta: `4242 4242 4242 4242`, muddati `06/32`, CVV `123` (rad etiladigan karta:
-`4000 0000 0000 0002`). Standart bo'lmagan tashkilotda, owner/admin sifatida:
+`4000 0000 0000 0002`). **`DODO_TEST_ORG_IDS` dagi** test tashkilotda, owner/admin sifatida:
+
+- [ ] **Ro'yxatda yo'q tashkilot.** Boshqa (ro'yxatda yo'q) tashkilotda Credits'da Dodo paneli yo'q,
+      "test mode" yozuvi bor.
 
 - [ ] **Paket.** Credits → Starter → Buy → Dodo sahifasi → to'lov. Qaytgach "Payment received…",
       bir necha soniyada balans +1 000; `credit_transactions` da `purchase` qatori
-      (`external_id` = `pay_…`), `payment_events` da `processed`. Manzil satrida `email` qolmagan.
+      (`external_id` = `pay_…`), `payment_events` da `processed`. Qaytish `/api/billing/dodo/return`
+      orqali o'tadi: manzil satrida `email` yo'q.
+- [ ] **Soxta metadata.** Dodo dashboard'dagi statik to'lov havolasi bilan (metadata'siz yoki
+      `metadata_org_id=…` bilan) to'lang — `payment_events` da `rejected` ("not this deployment's"),
+      kredit yo'q. Refund qiling.
 - [ ] **Takror.** Dodo → endpoint → xabarni **Replay** — kredit ikkinchi marta qo'shilmaydi
       (`duplicate`).
 - [ ] **Rad etilgan karta** — "Checkout closed. Nothing was charged.", kredit yo'q.
@@ -284,14 +319,34 @@ Test obunalarini oxirida bekor qiling (test mode'da ular o'zi yangilanib turadi)
 
 ## 8. Live'ga o'tish
 
+0. **Test grant'larini olib tashlang.** Test mode'da berilgan kreditlar va tariflar haqiqiy
+   bazada turibdi. Live'dan oldin:
+   - Dodo test mode'da har bir test to'lovini **Refund** qiling va har bir test obunasini **bekor
+     qiling** — webhook kreditni qaytarib oladi va obunani `canceled` qiladi.
+   - Keyin tekshiring — ikkala so'rov ham **0 qator** qaytarishi kerak:
+
+   ```sql
+   -- Kreditlari hali olib qo'yilmagan Dodo test to'lovlari
+   select t.org_id, t.kind, t.amount, t.external_id
+     from public.credit_transactions t
+    where t.external_id in (select transaction_id from public.payment_events where provider = 'dodo')
+      and t.amount > 0
+      and coalesce((select sum(r.taken) from public.credit_refunds r where r.purchase_external_id = t.external_id), 0) < t.amount;
+   -- Hali tirik Dodo (test) obunalari
+   select org_id, plan_id, status from public.subscriptions
+    where provider = 'dodo' and status in ('active', 'trialing', 'past_due', 'paused');
+   ```
+
+   Biror qator qolsa: Dodo'da o'sha to'lovni refund qiling (yoki qo'lda `refund_purchased_credits`).
+   Shundan keyin `DODO_TEST_ORG_IDS` ni ikkala joydan (GitHub variable va Supabase secret) o'chiring.
 1. Dodo'da Live Mode; verifikatsiya va to'lov hisobi tayyor bo'lsin.
 2. 2-banddagi sozlamalar va 6 ta mahsulot live'da (yoki test'dan "copy to live mode") — **yangi
    `pdt_…` id'lar**.
 3. Live API key (`dodo_live_…`) → GitHub secret `DODO_PAYMENTS_API_KEY`; variable
    `DODO_PAYMENTS_ENV=live`; `DODO_PRODUCT_*` / `DODO_PLAN_*` live id'lar.
 4. Live webhook endpoint (xuddi shu funksiya URL'i, shu hodisalar) → yangi `whsec_…` →
-   `supabase secrets set` (DODO_WEBHOOK_SECRET va live product id'lar). Funksiyani qayta deploy
-   qilish shart emas.
+   `supabase secrets set` (`DODO_WEBHOOK_SECRET`, live product id'lar va **`DODO_WEBHOOK_MODE=live`**).
+   Funksiyani qayta deploy qilish shart emas.
 5. Deploy web'ni qayta ishga tushiring. Kichik haqiqiy xarid → ledger → refund.
 
 Bitta funksiya bir vaqtda bitta rejimga xizmat qiladi — secret qaysi endpoint'niki bo'lsa,
@@ -305,7 +360,7 @@ o'sha rejimning imzosi o'tadi.
    `dodo-webhook` funksiyasini va endpoint'ni **o'chirmang** — aks holda to'langan davr kredit
    olmaydi. Kerak bo'lsa obunalarni Dodo'da bekor qiling (davr oxirida).
 3. Kod: bu PR'ni revert qilish Paddle yo'liga tegmaydi.
-4. Baza: `docs/sql/rollback_0143_dodo_payments.sql` — faqat birorta ham `provider = 'dodo'`
+4. Baza: `docs/sql/rollback_0144_dodo_payments.sql` — faqat birorta ham `provider = 'dodo'`
    qatori yo'q bo'lsa ishlaydi (aks holda rad etadi). Odatda kerak emas: 1-band yetarli.
 
 ## Kuzatish
@@ -333,11 +388,13 @@ select org_id, plan_id, status, current_period_end, cancel_at_period_end, update
 | Har bir so'rov | POST; tana ≤ 1 MB (Paddle bilan bir xil chegara, imzodan oldin o'qiladi); `webhook-id`, `webhook-timestamp`, `webhook-signature` bor; vaqt ±5 daqiqa ichida; `v1,` imzolardan biri `{id}.{timestamp}.{tana}` ning HMAC-SHA256 si (konstant vaqtda solishtiriladi). Aks holda 401, hech narsa yozilmaydi. |
 | Takror | `webhook-id` bo'yicha (`payment_events`, provider `dodo`): qayta yuborilgan hodisa hech narsani o'zgartirmaydi. Bitta to'lov ikki xil `webhook-id` bilan kelsa ham — ledger'dagi `external_id` (`pay_…`) bir marta. |
 | Ruxsat ro'yxati | Faqat 4-banddagi hodisalar; qolgani `ignored`. |
-| Paket | `status = succeeded`; USD; chegirma yo'q; metadata'da tashkilot; har bir qator bizning paket, soni 1–1000; `total_amount` = katalog narxi (soliq ichida) yoki `total_amount − tax` = katalog narxi (soliq ustida). Tashkilot mavjud. |
+| Metadata | Tashkilot faqat bizning imzomiz (`ns_sig`, `DODO_METADATA_SECRET`, konstant vaqtda tekshiriladi) bo'lgan metadata'dan olinadi. Imzosiz yoki noto'g'ri imzoli metadata — `rejected`, hech qaysi tashkilot nomlanmaydi. |
+| Test mode | `DODO_WEBHOOK_MODE` aynan `live` bo'lmasa, faqat `DODO_TEST_ORG_IDS` dagi tashkilotlarga kredit va tarif; qolgani `rejected`. Qaytarish (refund, nizo) cheklanmaydi. |
+| Paket | `status = succeeded`; USD; chegirma yo'q; imzolangan tashkilot; aynan bitta qator, imzolangan paket, soni 1; `DODO_TAX_MODE=inclusive` bo'lsa `total_amount` = katalog narxi, `exclusive` bo'lsa `total_amount − tax` = katalog narxi. Tashkilot mavjud. |
 | Tarif davri | Yuqoridagidek, plus: `charge_type` `new` yoki `renewal`; obuna bazada bor (yo'q bo'lsa 503 — Dodo qayta yuboradi), uning tashkiloti metadata'dagiga mos; obuna mahsuloti shu deployment'dagi tarif; summa o'sha tarif narxi; `service_periods` dagi davr. `plan_change` to'lovi — `rejected` (qo'lda). |
 | Obuna holati | `active`, `past_due` → imkoniyatlar bor; `on_hold`, `paused` → `paused`; `cancelled`, `expired` → `canceled`; `cancel_at_next_billing_date` → davr oxirida tugaydi. Eskirgan hodisa (vaqt bo'yicha) hech narsani o'zgartirmaydi. |
 | Refund | Faqat `succeeded`; to'liq — qolgan hammasi, qisman — pulga mutanosib; xariddan oldin kelsa 503 (qayta). Hech qachon kreditlanganidan ko'p emas (baza cheklaydi). |
-| Nizo | `dispute.accepted` / `dispute.lost` — chargeback, summa bo'yicha mutanosib; `dispute.expired` — `rejected` (natijani Dodo'da tekshirib, qo'lda). |
+| Nizo | `dispute.accepted` / `dispute.lost` — chargeback, summa bo'yicha mutanosib (oldingi qisman refund bilan birga hech qachon kreditlanganidan ko'p emas); Visa RDR (`is_resolved_by_rdr`) — `rejected`, qaytarilmaydi (pul refund sifatida qaytgan; refund hodisasini tekshiring); `dispute.expired` — `rejected` (natijani Dodo'da tekshirib, qo'lda). |
 
 ## Muammolar
 
@@ -352,6 +409,9 @@ select org_id, plan_id, status, current_period_end, cancel_at_period_end, update
 | `rejected: … discount` | Chegirma qo'llangan | Qo'lda `grant` yoki refund |
 | `failed: subscription not recorded yet` (qolib ketsa) | `subscription.active` kelmayapti yoki unda `metadata.org_id` yo'q | Endpoint hodisalarini tekshiring; ochiq savol 1 |
 | `rejected: subscription … names no known organization` | Obuna metadata'sida tashkilot yo'q | Ochiq savol 1; qo'lda `grant` |
+| `rejected: … metadata is not this deployment's` | Imzosiz/soxta metadata (statik havola) yoki ikki joydagi `DODO_METADATA_SECRET` farqli | Ikkala secret bir xilmi tekshiring; soxta bo'lsa — refund |
+| `rejected: test mode: … not in DODO_TEST_ORG_IDS` | Test mode'da ro'yxatda yo'q tashkilot | Kutilgan himoya; test to'lovini refund qiling |
+| Credits'da "test mode … only the test workspaces" | `DODO_PAYMENTS_ENV=test`, tashkilot ro'yxatda yo'q | Kutilgan; live'ga o'ting yoki test tashkilotni ro'yxatga qo'shing |
 | `rejected: plan-change charge` | Tarif portal/dashboard orqali almashtirilgan | Mutanosib kreditni qo'lda `grant` qiling |
 
 ## Ochiq savollar (hujjatda yo'q — taxmin qilinmadi)
@@ -369,15 +429,19 @@ select org_id, plan_id, status, current_period_end, cancel_at_period_end, update
 4. **Nizo `amount` birligi.** Hujjat uni "string" deydi, birligini aytmaydi. Faqat raqamlardan
    iborat qator eng kichik birlik (sent) deb o'qiladi; boshqasi `rejected` (qo'lda).
 5. **Visa RDR**: `dispute.lost` + `is_resolved_by_rdr: true` "the refund was issued
-   automatically". Bunda alohida `refund.succeeded` ham keladimi — hujjat aytmaydi. Ikkalasi
-   kelsa ham baza kreditlanganidan ko'p olmaydi, lekin qisman summalarda ikki marta olinishi
-   mumkin.
-6. **Dodo xaridorlar shartlari (Buyer Terms) URL'i** hujjatda yo'q — `/pricing` da Paddle'dagi
-   kabi havola qo'yilmadi.
-7. **Soliq rejimi**: to'lovda mahsulot narxi soliq ichidami yoki ustidami degan maydon yo'q;
-   webhook ikkala shaklni qabul qiladi. Soliq ustidagi narx + soliq tasodifan katalog narxiga
-   teng bo'lib qolsa (noto'g'ri narx qo'yilgan bo'lsa) farq sezilmaydi — shuning uchun 2-banddagi
-   narxni aniq qo'ying.
+   automatically". Webhook bunday nizoni qaytarmaydi (`rejected`), pul refund sifatida qaytgan deb
+   hisoblaydi. Alohida `refund.succeeded` keladimi — hujjat aytmaydi: kelmasa, kreditni qo'lda
+   oling (monitoring so'rovida ko'rinadi).
+9. **Qaytish havolasi.** Dodo qaytishda URL'ga mijozning `email` ini qo'shadi. Sahifa avval
+   `/api/billing/dodo/return` ga qaytadi, u faqat bizning parametrlar va `status` ni qoldirib
+   Credits'ga yo'naltiradi — email sahifa URL'ida, tarixda va Referer'da qolmaydi. Lekin reverse
+   proxy'ning (Caddy) access log'i shu bitta so'rovning query'sini ko'radi; uni yashirish uchun
+   Caddyfile'ga `email` query'ni o'chiradigan log filtri kerak (bu PR Caddy'ga tegmaydi).
+6. ~~Buyer Terms URL'i~~ — **javob berildi** (egasi, 2026-11-13): https://dodopayments.com/legal/buyer-terms,
+   xaridor portali https://customer.dodopayments.com. `/pricing` Dodo yoqilganda shu havolani ko'rsatadi.
+7. **Soliq rejimi**: to'lovda mahsulot narxi soliq ichidami yoki ustidami degan maydon yo'q.
+   Endi deployment bitta rejimni `DODO_TAX_MODE` bilan qat'iy belgilaydi va webhook faqat o'shani
+   qabul qiladi.
 8. **Tarif almashtirish** (pro-rata) va **API balansi top-up** Dodo uchun avtomatlashtirilmagan.
 
 ## Manbalar (docs.dodopayments.com, 2026-11-12 da o'qildi)
