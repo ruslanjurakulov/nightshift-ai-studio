@@ -161,26 +161,22 @@ describe("the MCP page", () => {
     }
   });
 
-  it("the sign-in snippets carry no key at all, and OpenClaw and Hermes turn OAuth on explicitly", () => {
-    for (const c of MCP_CLIENTS.filter((x) => x.oauthSnippet)) {
+  it("the sign-in snippets carry no key at all", () => {
+    const withSignIn = MCP_CLIENTS.filter((x) => x.oauthSnippet);
+    expect(withSignIn.map((c) => c.id)).toEqual(["cursor", "vscode"]);
+    for (const c of withSignIn) {
       const snippet = c.oauthSnippet!(`${ORIGIN}/api/mcp`);
       expect(snippet, c.id).toContain(`${ORIGIN}/api/mcp`);
-      expect(snippet, c.id).not.toMatch(/Bearer|API key|nsk_live_/);
+      expect(snippet, c.id).not.toMatch(/Bearer|API key|nsk_live_|headers/);
     }
-    const oc = MCP_CLIENTS.find((c) => c.id === "openclaw")!;
-    expect(oc.oauthSnippet!(ORIGIN)).toMatch(/"auth": "oauth"/);
-    expect(oc.oauthSnippet!(ORIGIN)).toMatch(/"transport": "streamable-http"/);
-    expect(oc.snippet(ORIGIN)).toMatch(/"transport": "streamable-http"/);
-    expect(MCP_CLIENTS.find((c) => c.id === "hermes")!.oauthSnippet!(ORIGIN)).toContain("auth: oauth");
   });
 
-  it.each(LOCALES)("(%s) one h1, the six named tabs first, then the others, ending with Other", (locale) => {
+  it.each(LOCALES)("(%s) one h1 and the six tabs in the owner's order, with no \"More clients\" group", (locale) => {
     const d = doc(mcp({ locale }));
     expect(d.querySelectorAll("h1")).toHaveLength(1);
     const tabs = [...d.querySelectorAll('[role="tab"].st-pill')].map((t) => t.getAttribute("data-id"));
-    expect(tabs.slice(0, 6)).toEqual(["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"]);
-    expect(tabs).toHaveLength(MCP_CLIENTS.length);
-    expect(tabs.at(-1)).toBe("other");
+    expect(tabs).toEqual(["chatgpt", "claude", "gemini", "grok", "cursor", "vscode"]);
+    expect(d.querySelector(".st-pill-more")).toBeNull();
   });
 
   it.each(LOCALES)("(%s) no internal wording, code names or status numbers, flag off and on", (locale) => {
@@ -191,17 +187,19 @@ describe("the MCP page", () => {
 
   it("picks the open tab on the server from ?tab=, so there is no flash and no-JS sees it", () => {
     expect(selected(doc(mcp({ initialTab: "cursor" })))).toBe("cursor");
-    expect(selected(doc(mcp({ initialTab: "hermes", oauthLive: true })))).toBe("hermes");
-    // Unknown values and missing values mean the default: Claude Code while sign-in is off, Claude once it is on.
-    expect(selected(doc(mcp({ initialTab: "nope" })))).toBe("claude-code");
-    expect(selected(doc(mcp()))).toBe("claude-code");
-    expect(selected(doc(mcp({ oauthLive: true })))).toBe("claude");
+    expect(selected(doc(mcp({ initialTab: "grok", oauthLive: true })))).toBe("grok");
+    // Unknown, removed and missing values mean the default: Cursor (an API key) while sign-in is off, ChatGPT once it is on.
+    expect(selected(doc(mcp({ initialTab: "nope" })))).toBe("cursor");
+    expect(selected(doc(mcp({ initialTab: "claude-code" })))).toBe("cursor");
+    expect(selected(doc(mcp()))).toBe("cursor");
+    expect(selected(doc(mcp({ oauthLive: true })))).toBe("chatgpt");
   });
 
   it("renders every tab's steps in the page, for crawlers and for no-JS readers", () => {
     const html = renderToStaticMarkup(mcp());
-    for (const needle of ["claude mcp add", "openclaw mcp set", "mcp_servers:", "gemini mcp add", "[mcp_servers.nightshift]", "mcp-remote", "context_servers", "streamableHttp", "streamable-http", "serverUrl"]) {
-      expect(html, needle).toContain(needle);
+    const text = doc(mcp()).body.textContent ?? "";
+    for (const needle of ['"mcpServers"', '"servers"', "promptString", "Coming soon"]) {
+      expect(text, needle).toContain(needle);
     }
     expect(html).toContain("<noscript>");
     expect(doc(mcp()).querySelectorAll(".st-tabpanel")).toHaveLength(MCP_CLIENTS.length);
@@ -218,24 +216,25 @@ describe("the MCP page", () => {
     expect(d.querySelector('[role="tablist"]')?.getAttribute("aria-label")).toBeTruthy();
   });
 
-  it("flag off: Claude and ChatGPT say Coming soon, point at what works today, and show no connector link", () => {
+  it("flag off: the four sign-in tabs say Coming soon, point at what works today, and show no connector link", () => {
     const html = renderToStaticMarkup(mcp());
-    expect(html).not.toContain("claude.ai/customize");
-    expect(html).not.toContain("developers.openai.com");
+    for (const host of ["claude.ai/customize", "developers.openai.com", "support.google.com", "docs.x.ai"]) expect(html).not.toContain(host);
     const d = doc(mcp());
-    for (const id of ["claude", "chatgpt"]) {
+    for (const id of ["chatgpt", "claude", "gemini", "grok"]) {
       const panel = d.getElementById(d.querySelector(`[role="tab"][data-id="${id}"]`)!.getAttribute("aria-controls")!)!;
       expect(panel.textContent).toContain("Coming soon");
       expect(panel.querySelector("a")).toBeNull();
       expect(panel.querySelectorAll("button").length).toBeGreaterThan(0);
     }
-    // Every other primary tab leads with the API-key steps.
-    const cc = d.getElementById(d.querySelector('[role="tab"][data-id="claude-code"]')!.getAttribute("aria-controls")!)!;
-    expect(cc.textContent).toContain("<your API key>");
-    expect(cc.querySelector("details")).toBeNull();
+    // Cursor and VS Code lead with the API-key steps.
+    for (const id of ["cursor", "vscode"]) {
+      const p = d.getElementById(d.querySelector(`[role="tab"][data-id="${id}"]`)!.getAttribute("aria-controls")!)!;
+      expect(p.textContent, id).toMatch(/<your API key>|\$\{input:nightshift-key\}/);
+      expect(p.querySelector("details"), id).toBeNull();
+    }
   });
 
-  it("flag on: the real connector steps — the prefilled Claude link, the ChatGPT developer-mode guide, sign-in snippets with the key under a disclosure", () => {
+  it("flag on: the real connector steps — the prefilled Claude link, OpenAI’s custom-MCP-server guide, sign-in snippets with the key under a disclosure", () => {
     const d = doc(mcp({ oauthLive: true }));
     const panel = (id: string) => d.getElementById(d.querySelector(`[role="tab"][data-id="${id}"]`)!.getAttribute("aria-controls")!)!;
     const link = panel("claude").querySelector("a[href]")!.getAttribute("href")!;
@@ -246,16 +245,15 @@ describe("the MCP page", () => {
     expect(u.searchParams.get("connectorUrl")).toBe(`${ORIGIN}/api/mcp`);
     expect(panel("claude").querySelector("a")?.getAttribute("rel")).toContain("noopener");
     expect(panel("claude").textContent).toContain(`${ORIGIN}/api/mcp`);
-    expect(panel("chatgpt").querySelector("a[href]")?.getAttribute("href")).toBe("https://developers.openai.com/api/docs/guides/developer-mode");
-    expect(panel("chatgpt").textContent).toContain("Developer mode");
-    for (const id of ["claude", "chatgpt"]) expect(panel(id).textContent).not.toContain("Coming soon");
-    for (const id of ["claude-code", "openclaw", "cursor", "hermes"]) {
+    expect(panel("chatgpt").querySelector("a[href]")?.getAttribute("href")).toBe("https://developers.openai.com/api/docs/guides/custom-mcp-server");
+    expect(panel("chatgpt").textContent).toContain("Add custom MCP server");
+    // The developer-mode flow it replaced is gone, and its guide is a 404.
+    expect(panel("chatgpt").textContent).not.toMatch(/developer mode/i);
+    for (const id of ["chatgpt", "claude", "gemini", "grok"]) expect(panel(id).textContent).not.toContain("Coming soon");
+    for (const id of ["cursor", "vscode"]) {
       expect(panel(id).querySelector("details summary")?.textContent, id).toBe("Use an API key instead");
-      expect(panel(id).querySelector("details")!.textContent, id).toContain("<your API key>");
+      expect(panel(id).querySelector("details")!.textContent, id).toMatch(/<your API key>|\$\{input:nightshift-key\}/);
     }
-    expect(panel("openclaw").textContent).toContain("openclaw mcp login nightshift");
-    expect(panel("hermes").textContent).toContain("hermes mcp login nightshift");
-    expect(panel("hermes").textContent).toContain("auth: oauth");
   });
 
   it("says MCP sign-in needs a paid plan, that Free does not include it, and that keys and REST are billed separately (sign-in on)", () => {
@@ -287,9 +285,9 @@ describe("the MCP page", () => {
     for (const im of Array.from(d.querySelectorAll("image"))) {
       expect(im.getAttribute("href") ?? "").toMatch(/^data:image\/(png|webp);base64,/);
     }
-    // With the sign-in off Claude and ChatGPT cannot connect yet, so the line names only what does.
-    expect(d.querySelector(".sr-only")?.textContent).toMatch(/Works with: Claude Code, OpenClaw, Cursor, Hermes/);
-    expect(doc(mcp({ oauthLive: true })).querySelector(".sr-only")?.textContent).toMatch(/Works with: Claude, ChatGPT, Claude Code, OpenClaw, Cursor, Hermes/);
+    // With the sign-in off the four chat apps cannot connect yet, so the line names only what does.
+    expect(d.querySelector(".sr-only")?.textContent).toBe("Works with: Cursor, VS Code (GitHub Copilot)");
+    expect(doc(mcp({ oauthLive: true })).querySelector(".sr-only")?.textContent).toBe("Works with: ChatGPT, Claude, Gemini, Grok, Cursor, VS Code (GitHub Copilot)");
   });
 
   describe("interaction", () => {
@@ -342,10 +340,10 @@ describe("the MCP page", () => {
     });
 
     it("an old #hash link still opens its tab, and is rewritten to ?tab=", () => {
-      window.history.replaceState(null, "", "/mcp#hermes");
+      window.history.replaceState(null, "", "/mcp#vscode");
       render(mcp());
-      expect(screen.getByRole("tab", { name: /Hermes/ }).getAttribute("aria-selected")).toBe("true");
-      expect(window.location.search).toBe("?tab=hermes");
+      expect(screen.getByRole("tab", { name: /VS Code/ }).getAttribute("aria-selected")).toBe("true");
+      expect(window.location.search).toBe("?tab=vscode");
       expect(window.location.hash).toBe("");
     });
 
@@ -371,8 +369,8 @@ describe("the MCP page", () => {
     it("the Coming soon tabs offer buttons that open a tab that works today", () => {
       render(mcp({ initialTab: "claude" }));
       const open = document.querySelector('[role="tabpanel"][data-active="true"]') as HTMLElement;
-      fireEvent.click(within(open).getByRole("button", { name: "Claude Code" }));
-      expect(screen.getByRole("tab", { name: /Claude Code/ }).getAttribute("aria-selected")).toBe("true");
+      fireEvent.click(within(open).getByRole("button", { name: "VS Code (GitHub Copilot)" }));
+      expect(screen.getByRole("tab", { name: /VS Code/ }).getAttribute("aria-selected")).toBe("true");
     });
   });
 

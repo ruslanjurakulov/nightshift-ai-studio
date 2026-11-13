@@ -52,6 +52,20 @@ decision of 2026-10-03.
 | Gemini CLI | the project's own icon | **owner-accepted** | `geminicli.com/icon.png` (Gemini CLI's own site; Google's Brand Resource Center releases assets only after an application) | partnermarketinghub.withgoogle.com/brands/google | No public official asset or usage terms for this mark; **no permission was asked** |
 | Hermes | the project's own icon | **owner-accepted** | `hermes-agent.nousresearch.com/icon.png` (48 px), github.com/NousResearch/hermes-agent (MIT) | none published | No brand page and no larger official mark; **no permission was asked** |
 | Other | plug glyph (icon set the site already uses) | n/a | - | - | Not a product |
+| Gemini (the app) | chat glyph (icon set the site already uses) | n/a (fallback, added 2026-11-13) | - (no asset taken) | partnermarketinghub.withgoogle.com/brands/google | Google releases marks only on application; none was made. The Gemini CLI icon above is not the Gemini app's mark |
+| Grok | chat glyph (icon set the site already uses) | n/a (fallback, added 2026-11-13) | - (no asset taken) | not read | No official vector or brand rules were verified |
+
+**Since 2026-11-13 /mcp shows six clients only: ChatGPT, Claude, Gemini, Grok,
+Cursor and VS Code (GitHub Copilot)** (the owner's decision;
+`lib/dev/brand-logos.ts` has exactly those six entries). The other rows above
+stay as the record of the vendor files still kept, unmodified, in
+`brand/third-party` and in the generated sprite sheet; none of them is drawn on
+the page any more, because the page's sprite holds only its own clients' symbols.
+
+The "Add to Claude / Cursor / VS Code" buttons on /mcp and in Developers →
+Connected apps carry no vendor mark at all: a generic plus icon and the
+product's name in text (VS Code's rules, for one, forbid a lock-up of its icon
+with a name).
 
 ## One-colour Claude Spark
 

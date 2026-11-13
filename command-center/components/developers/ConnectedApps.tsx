@@ -8,6 +8,8 @@ import { fmt } from "@/lib/i18n/core";
 import { AppName } from "@/components/oauth/AppName";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { cleanClientName, describeRedirect } from "@/lib/oauth/redirect";
+import { MCP_CLIENTS, installLink } from "@/lib/dev/mcp-clients";
+import { InstallButton } from "@/components/docs/InstallButton";
 
 /**
  * Connected apps (migration 0093): the AI apps this person allowed to use
@@ -43,7 +45,53 @@ function trim(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 }
 
-export function ConnectedApps() {
+/**
+ * "Add an assistant": the four assistants and one-click buttons /mcp has, for a person already in the console. Drawn only when the
+ * server's sign-in is live (MCP_OAUTH_LIVE, read on the server and passed in): every button starts a sign-in, and
+ * while the server takes API keys only, a button here would lead into a flow that cannot finish. Each button
+ * keeps a "Steps by hand" link beside it, because a cursor: link does nothing where Cursor is missing, and ChatGPT, Gemini and Grok have no install link at all.
+ */
+function AddAssistant({ mcpUrl }: { mcpUrl: string }) {
+  const { t } = useI18n();
+  const c = t.connectedApps;
+  return (
+    <div className="mt-3 rounded-[var(--ns-r-panel)] bg-[var(--ns-key)] p-4" data-testid="add-assistant">
+      <h3 className="text-base font-semibold">{c.addTitle}</h3>
+      <p className="mt-1 text-sm text-[var(--color-muted)]">{c.addLead}</p>
+      <ul className="mt-3 flex flex-col gap-2">
+        {MCP_CLIENTS.map((client) => {
+          // ChatGPT, Gemini and Grok document no install link: their row is the name and the steps by hand.
+          const link = installLink(client.id, mcpUrl);
+          return (
+            <li key={client.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {link ? (
+                <InstallButton
+                  link={link}
+                  label={fmt(c.addTo, { app: client.shortLabel ?? client.label })}
+                  newTab={c.newTab}
+                  className="btn-quiet inline-flex items-center gap-2 [&_svg]:size-4"
+                />
+              ) : (
+                <span className="text-sm font-semibold">{client.label}</span>
+              )}
+              <Link href={`/mcp?tab=${client.id}`} className="text-sm underline" prefetch={false}>
+                {c.addSteps}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-sm text-[var(--color-muted)]">
+        {c.addUrl}:{" "}
+        <code className="break-all font-mono text-[var(--color-fg)] select-all" dir="ltr">
+          {mcpUrl}
+        </code>
+      </p>
+    </div>
+  );
+}
+
+export function ConnectedApps({ mcpUrl, oauthLive = false }: { mcpUrl?: string; oauthLive?: boolean } = {}) {
   const { t, locale } = useI18n();
   const c = t.connectedApps;
   const [grants, setGrants] = useState<Grant[] | null>(null);
@@ -143,6 +191,7 @@ export function ConnectedApps() {
         )}
       </div>
       <p className="fl-hint">{c.lead}</p>
+      {oauthLive && mcpUrl && <AddAssistant mcpUrl={mcpUrl} />}
 
       {state === "loading" && <p className="mt-3 text-sm text-[var(--color-muted)]">…</p>}
       {state === "missing" && <p className="mt-3 text-sm text-[var(--color-muted)]">{c.notMigrated}</p>}

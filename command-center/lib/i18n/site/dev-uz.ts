@@ -16,7 +16,6 @@ export const devUz: DevDictionary = {
     copyFailed: "Nusxa olib boʻlmadi — matnni belgilab, qoʻlda nusxalang",
     keyPlaceholder: "<your API key> oʻrniga yaratgan kalitingizni qoʻying.",
     newTab: "(yangi yorliqda ochiladi)",
-    other: "Boshqa",
     openApi: "OpenAPI 3.1 spetsifikatsiyasi",
   },
   api: {
@@ -159,11 +158,11 @@ export const devUz: DevDictionary = {
   mcp: {
     meta: {
       title: "AI yordamchini ulash (MCP)",
-      description: "Claude, ChatGPT, Claude Code, OpenClaw, Cursor, Hermes va boshqalarni Nightshift’ga ulang va yordamchidan soʻrab video yarating.",
+      description: "ChatGPT, Claude, Gemini, Grok, Cursor yoki VS Code’ni (GitHub Copilot) Nightshift’ga ulang va yordamchingizdan soʻrab video yarating.",
     },
     signinOff: {
-      description: "Claude Code, OpenClaw, Cursor, Hermes va boshqalarni Nightshift’ga API kalit bilan ulang, yordamchidan video soʻrang. Claude va ChatGPT kirishi tez orada.",
-      paidLine: "API kalitlar sarlavha yubora oladigan har qanday yordamchi bilan hozir ishlaydi. Claude va ChatGPT kirish orqali ulanadi — tez orada.",
+      description: "Cursor yoki VS Code’ni (GitHub Copilot) Nightshift’ga API kalit bilan ulang va video soʻrang. ChatGPT, Claude, Gemini va Grok uchun kirish tez orada.",
+      paidLine: "API kalitlar bugunoq Cursor va VS Code’da ishlaydi. ChatGPT, Claude, Gemini va Grok hisobga kirish orqali ulanadi — tez orada.",
       paidTitle: "API balansi",
       paidBody: "API kalitlari va REST API oldindan toʻlangan API balansidan toʻlanadi. Har bir pullik tarifga kiradigan, kirish orqali ulanish tez orada ochiladi.",
       worksTitle: "API kalit qabul qiladigan yordamchilar bilan ishlaydi",
@@ -173,7 +172,7 @@ export const devUz: DevDictionary = {
     title: "Nightshift MCP.",
     titleDim: "Butun studiyangiz agentingiz ichida.",
     lead: "Nightshift’ni allaqachon ishlatadigan yordamchingizga qoʻshing va undan video yaratish, vazifani kuzatish va nashr qilishni soʻrang — ilovadagi bilan bir xil nashr tekshiruvi va tasdiqlashlar bilan.",
-    paidLine: "Hisobga kirish orqali ulanish pullik tarifni talab qiladi. Kalitni afzal koʻrasizmi? Sarlavha yubora oladigan mijozlar API kalit bilan ishlaydi.",
+    paidLine: "Hisobga kirish orqali ulanish pullik tarifni talab qiladi. Kalitni afzal koʻrasizmi? Cursor va VS Code API kalit bilan ham ishlaydi.",
     trademarks: "Mahsulot nomlari va logotiplari ularning egalarining tovar belgilaridir va faqat moslikni koʻrsatish uchun keltirilgan; Nightshift ular bilan bogʻliq emas va ular tomonidan tasdiqlanmagan.",
     worksWith: "Bular bilan ishlaydi",
     moreLabel: "Boshqa mijozlar",
@@ -186,6 +185,8 @@ export const devUz: DevDictionary = {
       badge: "Tez orada",
       use: "Bugunoq API kalit bilan ishlaydi:",
       claude: { title: "Claude hisobga kirish orqali ulanadi", body: "Nightshift’ni Claude’ga server manzili va hisobga kirish orqali qoʻshish hali yoqilmagan, shuning uchun bugun Claude’da qoʻshadigan narsa yoʻq. Nightshift serveri hozircha API kalitlarni qabul qiladi." },
+      gemini: { title: "Gemini hisobga kirish orqali ulanadi", body: "Nightshift’ni Gemini’ga server manzili va hisobga kirish orqali qoʻshish hali yoqilmagan, shuning uchun bugun Gemini’da qoʻshadigan narsa yoʻq. Nightshift serveri hozircha API kalitlarni qabul qiladi." },
+      grok: { title: "Grok hisobga kirish orqali ulanadi", body: "Nightshift’ni Grok’ga server manzili va hisobga kirish orqali qoʻshish hali yoqilmagan, shuning uchun bugun Grok’da qoʻshadigan narsa yoʻq. Nightshift serveri hozircha API kalitlarni qabul qiladi." },
       chatgpt: { title: "ChatGPT hisobga kirish orqali ulanadi", body: "Nightshift’ni ChatGPT’ga server manzili va hisobga kirish orqali qoʻshish hali yoqilmagan, shuning uchun bugun ChatGPT’da qoʻshadigan narsa yoʻq. Nightshift serveri hozircha API kalitlarni qabul qiladi." },
     },
     steps: [
@@ -197,69 +198,67 @@ export const devUz: DevDictionary = {
     urlLabel: "Server manzili",
     tablist: "Ulanish mumkin boʻlgan yordamchilar",
     oauth: {
-      claude: {
-        button: "Claude sozlamalarini ochish",
-        note: "Team va Enterprise tariflari: Organization settings → Connectors → Add → Custom → Web.",
-        steps: [
-          { title: "Nightshift manzilidan nusxa oling", body: "Bu Nightshift MCP serverining manzili." },
-          { title: "Uni Customize → Connectors ga qoʻshing", body: "Claude’da Customize → Connectors ni oching, + Add, keyin Add custom connector ni bosing. Tugma nom va manzilni oʻzi toʻldiradi." },
-          { title: "Kiring", body: "Connect ni bosing, Nightshift’ga kiring va video soʻrang." },
-        ],
-      },
       chatgpt: {
-        button: "Dasturchi rejimi qoʻllanmasini ochish",
-        note: "Dasturchi rejimi kuchli: har bir amalni tasdiqlashdan oldin tekshiring.",
+        button: "OpenAI qoʻllanmasi",
+        note: "Oʻz serverlaringiz brauzerda chatgpt.com orqali qoʻshiladi. Har bir amalni tasdiqlashdan oldin tekshiring.",
         steps: [
-          { title: "Dasturchi rejimini yoqing", body: "ChatGPT’da Settings → Security and login ni oching va Developer mode ni yoqing (veb; Pro, Plus, Business, Enterprise va Education)." },
-          { title: "Ilovani yarating", body: "Plugins ni oching, plyus tugmasini bosing va dasturchi rejimidagi ilova yarating. Shu manzilni qoʻying va autentifikatsiya sifatida OAuth ni tanlang." },
-          { title: "Kiring va soʻrang", body: "Soʻralganda Nightshift’ga kiring va video soʻrang." },
+          { title: "chatgpt.com’da Plugins ni oching", body: "Brauzerda chatgpt.com/plugins ni oching, + ni, keyin Add custom MCP server ni bosing." },
+          { title: "Serverni taʼriflang", body: "Unga Nightshift deb nom bering, qisqa tavsif qoʻshing va shu manzilni /api/mcp bilan birga qoʻying. OAuth ni tanlang." },
+          { title: "Kiring va oʻrnating", body: "“I understand and want to continue” bilan tasdiqlang va soʻralganda Nightshift’ga kiring. Keyin Create as a plugin ni bosing, uni oʻrnating va video soʻrang." },
         ],
       },
-      "claude-code": {
+      claude: {
+        button: "Claude’ga qoʻshish",
+        hint: "Claude’da nom va manzil toʻldirilgan Add custom connector oynasini ochadi; ularni tekshiring va Add ni bosing. Hisobga kirmagan boʻlsangiz, Claude avval kirishni soʻraydi.",
+        extra: "Tashkilot uchun qoʻshish",
+        note: "OAuth client bandida “Register automatically” ni qoldiring: “Use Claude’s published identity” Nightshift bilan ishlamaydi. Free tarifida bitta oʻz konnektoringizni qoʻshish mumkin. Team va Enterprise’da uni faqat Claude tashkilotining egalari yoki Enterprise’da konnektorlarni boshqarishga ruxsat berilgan maxsus rol egalari “Tashkilot uchun qoʻshish” tugmasi bilan qoʻshadi. Qoʻshilgandan keyin konnektor Claude’ning kompyuter va mobil ilovalarida ham ishlaydi.",
         steps: [
-          { title: "Buyruqdan nusxa oling", body: "Nightshift serverini Claude Code’ga qoʻshadi." },
-          { title: "Uni terminalda bajaring", body: "--scope user bilan u barcha loyihalarda boʻladi." },
-          { title: "/mcp orqali kiring", body: "Claude Code ichida /mcp ni bajaring va brauzerda kirishni yakunlang." },
+          { title: "Nightshift’ni Claude’ga qoʻshing", body: "Tugma Claude’ni brauzerda hammasi toʻldirilgan holda ochadi." },
+          { title: "Yoki qoʻlda qoʻshing", body: "Claude’da Customize → Connectors ni oching, + Add, keyin Add custom connector ni bosing. Unga Nightshift deb nom bering va shu manzilni qoʻying." },
+          { title: "Ulang va kiring", body: "Connect ni bosing, Nightshift’ga kiring va ruxsat bering, keyin video soʻrang." },
         ],
       },
-      openclaw: {
+      gemini: {
+        button: "Google yordam sahifasi",
+        note: "Gemini’dagi oʻz ilovalaringiz faqat shaxsiy Google hisobi bilan ishlaydi (ish yoki oʻqish hisobi emas), 18 yoshdan oshganlar uchun, hozircha faqat AQShda va ingliz tilida, Keep Activity yoqilgan boʻlsa. Veb-versiyada ulang; keyin ilova telefondagi Gemini’da ham ishlaydi.",
         steps: [
-          { title: "Buyruqdan nusxa oling", body: "U transportni belgilaydi va server uchun OAuth ni yoqadi." },
-          { title: "Uni terminalda bajaring", body: "OpenClaw server taʼrifini saqlaydi." },
-          { title: "Kiring", body: "Shu buyruqni bajaring va brauzerda kirishni yakunlang." },
+          { title: "Gemini’da Connected Apps ni oching", body: "Kompyuterda gemini.google.com → Settings → Connected Apps ni oching. Topilmasa, Personal Intelligence → Connected Apps ichidan qarang." },
+          { title: "Oʻz ilovangizni qoʻshing", body: "Custom apps boʻlimida Add a custom app ni tanlang, shu manzilni qoʻying va Next ni bosing." },
+          { title: "Kiring va soʻrang", body: "Nightshift’ga kirishni yakunlang. Keyin soʻrovda @ ni yozing, Nightshift’ni tanlang va video soʻrang." },
+        ],
+      },
+      grok: {
+        button: "xAI qoʻllanmasi",
+        note: "Client ID va Client Secret ni boʻsh qoldiring — shunda Grok Nightshift’da oʻzini oʻzi roʻyxatdan oʻtkazadi. Agar Grok Client ID’siz davom etmasa, u hozircha Nightshift’ga ulana olmaydi. Business va Enterprise’da avval jamoa administratori xAI konsolida konnektorni qoʻshadi (Add Connector → Other → shu manzil), keyin aʼzolar grok.com/connectors’da ulanadi.",
+        steps: [
+          { title: "Grok’da Connectors ni oching", body: "grok.com/connectors ni oching, New Connector, keyin Custom ni bosing." },
+          { title: "Manzilni qoʻying", body: "Shu manzilni kiriting. Client ID va Client Secret ni boʻsh qoldiring." },
+          { title: "Kiring va soʻrang", body: "Nightshift’ga kirishni yakunlang, keyin Grok’dan video soʻrang." },
         ],
       },
       cursor: {
+        button: "Cursor’ga qoʻshish",
+        hint: "Cursor’ni ochadi, u oʻrnatishdan oldin soʻraydi. Bu kompyuterda Cursor boʻlishi kerak; hech narsa boʻlmasa, keyingi qadamdan foydalaning.",
         steps: [
-          { title: "Sozlamalar faylini oching", body: "Barcha loyihalar uchun ~/.cursor/mcp.json ni, bitta loyiha uchun .cursor/mcp.json ni tahrirlang." },
-          { title: "Serverni qoʻshing", body: "Shu yozuvni qoʻying va saqlang." },
+          { title: "Nightshift’ni Cursor’ga qoʻshing", body: "Bir marta bosing, keyin Cursor’da tasdiqlang." },
+          { title: "Yoki qoʻlda qoʻshing", body: "Shu yozuvni barcha loyihalar uchun ~/.cursor/mcp.json ga yoki bitta loyiha uchun .cursor/mcp.json ga qoʻying va saqlang." },
           { title: "Kiring", body: "Cursor birinchi marta ulanganda Nightshift’ga kirishni brauzerda ochadi." },
         ],
       },
-      hermes: {
+      vscode: {
+        button: "VS Code’ga qoʻshish",
+        hint: "VS Code’ni ochadi, u oʻrnatishdan oldin serverni tekshirish uchun koʻrsatadi. Bu kompyuterda VS Code boʻlishi kerak; hech narsa boʻlmasa, keyingi qadamdan foydalaning.",
+        extra: "VS Code Insiders’ga qoʻshish",
         steps: [
-          { title: "Konfiguratsiyadan nusxa oling", body: "Kirish uchun auth: oauth qatori majburiy." },
-          { title: "Uni konfiguratsiyaga qoʻshing", body: "~/.hermes/config.yaml ga qoʻying va /reload-mcp ni bajaring." },
-          { title: "Kiring", body: "Hermes brauzerda kirishni ochadi. Keyinroq qayta kirish uchun shu buyruqni bajaring." },
+          { title: "Nightshift’ni VS Code’ga qoʻshing", body: "Bir marta bosing, keyin VS Code’da tekshirib oʻrnating." },
+          { title: "Yoki qoʻlda qoʻshing", body: "Buni loyihangizda .vscode/mcp.json sifatida saqlang. Faylga kalit yozilmaydi." },
+          { title: "Kiring", body: "Server ishga tushganda VS Code kirishni soʻraydi; uni brauzerda yakunlang, keyin GitHub Copilot’dan video soʻrang." },
         ],
       },
     },
     clients: [
-      { id: "claude-code", where: "Terminalda bajaring", hint: "Serverni joriy loyihada sizga qoʻshadi; --scope user bilan u barcha loyihalarda boʻladi. Claude Code ichidagi /mcp buyrugʻi uning ulanganini koʻrsatadi." },
       { id: "cursor", where: "~/.cursor/mcp.json sifatida saqlang", hint: "Saqlagandan keyin Cursor’ni qayta ishga tushiring." },
       { id: "vscode", where: "Loyihangizda .vscode/mcp.json sifatida saqlang", hint: "VS Code server birinchi marta ishga tushganda kalitni soʻraydi va uni oʻzi saqlaydi, shuning uchun kalit faylga yozilmaydi." },
-      { id: "windsurf", where: "Cascade paneli → amallar menyusi → Open MCP config file", hint: "mcpServers ichiga yozuvni qoʻshing va faylni saqlang." },
-      { id: "cline", where: "Cline paneli → MCP Servers → Configure → Configure MCP Servers", hint: "type: streamableHttp deb yozing; yozilmasa eski SSE transporti tanlanadi." },
-      { id: "zed", where: "Sozlamalar faylini oching (zed: open settings file)", hint: "Yoki Settings → AI → MCP Servers → Add Server → Add Remote Server." },
-      { id: "gemini-cli", where: "Terminalda bajaring", hint: "Foydalanuvchingiz uchun ~/.gemini/settings.json ga saqlanadi, shuning uchun kalit loyiha fayllariga tushmaydi." },
-      { id: "codex", where: "Qobiq profili va ~/.codex/config.toml", hint: "Kalit muhit oʻzgaruvchisida qoladi. Ilova, CLI va IDE kengaytmasi bitta faylni ishlatadi." },
-      { id: "roo-code", where: "Roo Code paneli → MCP → Edit Global MCP", hint: "type: streamable-http deb yozing." },
-      { id: "warp", where: "Settings → Agents → MCP servers → + Add, keyin qoʻying", hint: "Warp boshqa yordamchilar ishlatadigan xuddi shu JSON’ni qabul qiladi." },
-      { id: "claude-desktop", where: "Settings → Developer → Edit Config (claude_desktop_config.json)", hint: "Claude Desktop kichik mcp-remote koʻprigi orqali ulanadi, u sarlavhani kompyuteringizning oʻzida qoʻshadi. Node.js kerak. Keyin Claude Desktop’ni qayta ishga tushiring." },
-      { id: "other", where: "Streamable HTTP’ni tushunadigan va sarlavha yubora oladigan istalgan mijoz", hint: "Manzil, transport va sarlavhani aynan yozilganidek ishlating." },
-    
-      { id: "openclaw", where: "Terminalda bajaring", hint: "Transportni har doim streamable-http qilib qoldiring; yozilmasa OpenClaw eski SSE transportini ishlatadi." },
-      { id: "hermes", where: "~/.hermes/config.yaml ga qoʻshing", hint: "Keyin /reload-mcp ni bajaring. Hermes kalitni shu faylda saqlaydi, shuning uchun faylni maxfiy tuting." },
     ],
     how: {
       badge: "Qanday ishlaydi",
@@ -427,14 +426,13 @@ export const devUz: DevDictionary = {
         lead: "Nightshift’ni bir marta qoʻshing — tanlagan yordamchingiz videolaringizni boshlay, kuzata va nashr qila oladi.",
         publishes: "Nashr qiladi",
         pause: "Logotiplar harakatini toʻxtatish",
-        more: "va masofaviy MCP serveri bilan ishlay oladigan har qanday mijoz",
       },
       faq: {
         title: "Tez-tez beriladigan savollar",
         items: [
           { q: "Nightshift MCP nima?", a: "Sunʼiy intellekt yordamchingiz ulanadigan server. U orqali yordamchi kanallaringizni sanab beradi, video yaratadi, har bir vazifani kuzatadi va nashr qiladi — ilovadagi bilan bir xil nashr tekshiruvi va tasdiqlashlar asosida." },
           { q: "Yordamchim nimalarni qila oladi?", a: "Kanallaringiz va videolaringizni sanab beradi, videoni boshlaydi, vazifasini kuzatadi, balansni tekshiradi, tayyor videoni ulangan akkauntlarga nashr qiladi va API kalit bilan HD yuklab olishni buyuradi. Vositalarning toʻliq roʻyxati shu sahifaning pastida." },
-          { q: "Qaysi yordamchilar mos keladi?", a: "Avval Claude, ChatGPT, Claude Code, OpenClaw, Cursor va Hermes, keyin Claude Desktop, VS Code, Windsurf, Cline, Zed, Gemini CLI, Codex, Roo Code, Warp va masofaviy server bilan ishlay oladigan har qanday mijoz." },
+          { q: "Qaysi yordamchilar mos keladi?", a: "ChatGPT, Claude, Gemini, Grok, Cursor va GitHub Copilot bilan VS Code. Yuqoridagi ulanish kartasida oʻzingiznikini tanlang — har birining oʻz qadamlari bor." },
           { q: "Qanday ulanadi?", a: "Yuqoridagi ulanish kartasidan yordamchingizni tanlang. Kirish mavjud boʻlgan joyda server manzili va kirish kerak boʻladi; qolgan yordamchilarga “Dasturchilar”da yaratadigan API kalitingiz kerak." },
           { q: "Narxi qancha?", a: "Kirish orqali ulanish har bir pullik tarifga kiradi va ilovada yaratilgan video bilan bir xil kreditlarni sarflaydi. API kalit oldindan toʻlangan API balansingizni sarflaydi. Video navbatga qoʻyilganda uning narxi band qilinadi; faqat video muvaffaqiyatli boʻlganda yechiladi, muvaffaqiyatsiz ishga tushirish esa hech narsaga tushmaydi." },
           { q: "U mendan soʻramasdan nashr qila oladimi?", a: "Yoʻq. Nashr ilovadagi bilan bir xil tekshiruv va tasdiqlashlardan oʻtadi, YouTube’ga yuklashlar esa siz qaror qilmaguningizcha yopiq qoladi." },
@@ -444,11 +442,11 @@ export const devUz: DevDictionary = {
       },
       keyMode: {
         credits: "Video navbatga qoʻyilganda uning narxi API balansingizdan band qilinadi; faqat video muvaffaqiyatli boʻlganda yechiladi va xato boʻlsa qaytariladi. Tashkilot oylik limit belgilashi mumkin, har bir kalit esa oʻzinikini.",
-        works: "Nightshift’ni sarlavha yubora oladigan har qanday yordamchiga API kalit bilan qoʻshing, masalan Claude Code, Cursor yoki Hermes. Claude va ChatGPT kirish orqali ulanadi — tez orada.",
+        works: "Nightshift’ni API kalit bilan Cursor yoki VS Code’ga (GitHub Copilot) qoʻshing. ChatGPT, Claude, Gemini va Grok hisobga kirish orqali ulanadi — tez orada.",
         limitBar: "Oylik limit",
         faq: {
-          connect: "Yuqoridagi ulanish kartasidan yordamchingizni tanlang. Hozir har bir yordamchiga “Dasturchilar”da yaratadigan API kalitingiz kerak; Claude va ChatGPT’ni kirish orqali ulash tez orada ochiladi.",
-          assistants: "Bugun API kalit bilan: Claude Code, OpenClaw, Cursor va Hermes, keyin VS Code, Windsurf, Cline, Zed, Gemini CLI, Codex, Roo Code, Warp, Claude Desktop va masofaviy serverga sarlavha yubora oladigan har qanday mijoz. Claude va ChatGPT kirish orqali ulanadi — tez orada.",
+          connect: "Yuqoridagi ulanish kartasida yordamchingizni tanlang. Bugun Cursor va VS Code “Dasturchilar” boʻlimida yaratilgan API kalitni qabul qiladi; ChatGPT, Claude, Gemini va Grok’ni hisobga kirish orqali ulash tez orada.",
+          assistants: "Bugun API kalit bilan: Cursor va VS Code (GitHub Copilot). ChatGPT, Claude, Gemini va Grok hisobga kirish orqali ulanadi — tez orada.",
           cost: "API kalit oldindan toʻlangan API balansingizni sarflaydi. Video navbatga qoʻyilganda uning narxi band qilinadi; faqat video muvaffaqiyatli boʻlganda yechiladi, muvaffaqiyatsiz ishga tushirish esa hech narsaga tushmaydi. Tarif kreditlarini sarflaydigan kirish orqali ulanish tez orada ochiladi.",
           disconnect: "API kalit “Dasturchilar” → “API kalitlari”da bekor qilinadi.",
           credits: "Soʻrov ish boshlanishidan oldin rad etiladi, yordamchi esa keyingi qadamni aytadi. Hech narsa band qilinmaydi, navbatga qoʻyilmaydi va yaratilmaydi. API balansini toʻldirganingizdan keyin shu kalit keyingi chaqiruvdan yana ishlaydi.",

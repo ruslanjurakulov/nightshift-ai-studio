@@ -1972,6 +1972,11 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-step2-action { margin-top: auto; min-width: 0; padding-top: 4px; display: flex; flex-direction: column; align-items: stretch; }
 .st-step2-action .st-key { align-self: flex-start; }
 .st-step2-action:empty { display: none; }
+/* "Add to <assistant>": the lit key, an optional quiet second key, and the line that says what the click needs.
+   The keys may wrap: a long Russian or Uzbek label must not push past a 360px column. */
+.st-install { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.st-install .st-key { white-space: normal; text-align: start; max-width: 100%; gap: 8px; }
+.st-install-hint { margin: 0; max-width: 46ch; }
 
 .st-cfield {
   display: flex;

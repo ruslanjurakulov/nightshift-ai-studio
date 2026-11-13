@@ -82,19 +82,25 @@ limit; only new holds are refused.
 
 ## Connecting a client
 
-The customer-facing version of this section is the public page **/mcp** (snippets for
-eleven assistants, each checked against that assistant's own documentation:
-see `command-center/lib/dev/mcp-clients.ts`).
+The customer-facing version of this section is the public page **/mcp**, and
+Developers → Connected apps repeats its buttons. Since 2026-11-13 (the owner's
+decision) both name exactly **six assistants, in this order: ChatGPT, Claude,
+Gemini, Grok, Cursor, VS Code (GitHub Copilot)**, each checked against its own
+documentation (`command-center/lib/dev/mcp-clients.ts` cites the pages). No other
+client has a tab, a button or a logo there. The server itself is standard, so
+another client that speaks the MCP authorization flow (Claude Code, for one) can
+still connect on its own; see "Other clients" below.
 
-`/mcp` has one tab per assistant (Claude, ChatGPT, Claude Code, OpenClaw, Cursor and Hermes first, then the rest),
-each with three numbered steps. Whether it shows the sign-in (OAuth) flow or only API-key steps is decided by the
-environment flag `MCP_OAUTH_LIVE` (literal `1` = on, read at request time; `deploy/.env.web.example`,
-`lib/mcp-oauth.ts`). Leave it off until the server's OAuth is merged, deployed and tested with a real connector: while
-it is off the Claude and ChatGPT tabs say "Coming soon" and every other tab shows its API-key steps.
+`/mcp` has one tab per assistant, each with three numbered steps. Whether it shows the sign-in (OAuth) flow or only
+API-key steps is decided by the environment flag `MCP_OAUTH_LIVE` (literal `1` = on, read at request time;
+`deploy/.env.web.example`, `lib/mcp-oauth.ts`). Leave it off until the server's OAuth is merged, deployed and tested
+with a real connector: while it is off the four sign-in-only tabs (ChatGPT, Claude, Gemini, Grok) say "Coming soon",
+Cursor and VS Code show their API-key steps, and no "Add to …" button is drawn on /mcp or in Developers → Connected
+apps.
 
 Under the connect card `/mcp` is one long page, the same on every tab except the assistant's name: how it works,
 ready-to-copy asks, six capability rows (video, channels, language and voice, approval, credits and limits, a list of topics in one ask),
-a carousel of example asks, a "works with" strip, the tool list, questions, and a closing line. Every picture on it is
+a carousel of example asks, the tool list, questions, and a closing line. Every picture on it is
 drawn in CSS and inline SVG and captioned as an illustration (never a generated or real result); it names no model,
 provider or price. The structure is in `command-center/lib/dev/mcp-landing.ts`, the copy under `mcp.land` in
 `lib/i18n/site/dev-*.ts`, and `tests/mcp-landing.test.tsx` pins the order, the honesty rules and the carousel's
@@ -110,51 +116,111 @@ speaks the MCP authorization flow discovers everything else itself
 `/.well-known/oauth-authorization-server`), registers, and opens a browser to
 Nightshift's consent screen.
 
-### claude.ai (Custom Connectors) and Claude Desktop
+### One-click "Add to …" buttons
 
-1. In Claude open **Customize → Connectors**, press **+ Add**, then **Add custom connector**.
-2. Name: `Nightshift`. URL: `https://nightshift-ai.studio/api/mcp`. Leave any
-   OAuth client ID / secret fields **empty** (the server registers the app
-   itself). Add.
-3. Press **Connect**. A Nightshift page opens: sign in if asked, check the app
-   name and the address it names, choose the monthly credit limit (default 500,
-   up to 20 000; 0 means read-only), **Allow**.
+With the flag on, `/mcp` and Developers → Connected apps show an install button
+for the three assistants that document one, built in
+`command-center/lib/dev/mcp-clients.ts` and pinned byte for byte by
+`tests/mcp-connect-buttons.test.tsx`. **None has been tried end to end with the
+product itself**, so the steps by hand are the very next step on every tab, and
+Cursor's `cursor:` link does nothing on a computer without Cursor:
+
+| Client | Link | Opens |
+| :-- | :-- | :-- |
+| Claude | `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Nightshift&connectorUrl=<encoded URL>`; for an organization the same on `claude.ai/admin-settings/connectors` | Claude's dialog, prefilled; the person presses Add (a signed-out person signs in first) |
+| Cursor | `cursor://anysphere.cursor-deeplink/mcp/install?name=nightshift&config=<base64 of {"url": …}>` | Cursor's install prompt |
+| VS Code | `https://vscode.dev/redirect?url=` + the encoded `vscode:mcp/install?{"name":"nightshift","type":"http","url":…}` (Insiders: `vscode-insiders:`) | VS Code's review editor, then install |
+
+No link carries a key: they only work with the sign-in. ChatGPT, Gemini and
+Grok document no install link: their tabs link the vendor's own guide and give
+the steps by hand.
+
+### ChatGPT (custom MCP server)
+
+OpenAI's guide: https://developers.openai.com/api/docs/guides/custom-mcp-server
+(the developer-mode guide it replaced is gone).
+
+1. On the web open **chatgpt.com/plugins**, press **+**, then **Add custom MCP
+   server**.
+2. Name: `Nightshift`, a short description, URL:
+   `https://nightshift-ai.studio/api/mcp` (with the path). Authentication:
+   **OAuth**.
+3. Confirm **I understand and want to continue**, sign in and approve on the
+   Nightshift page when it opens (sign in if asked, check the app name and the
+   address it names, choose the monthly credit limit: default 500, up to 20 000,
+   0 means read-only; **Allow**), then press **Create as a plugin** and install it.
+4. In a chat, use the plugin. Check each action before you approve it.
+
+### Claude (custom connector, web, desktop and mobile)
+
+1. Press **Add to Claude** on `/mcp`, or in Claude open **Customize → Connectors**,
+   press **+ Add**, then **Add custom connector**.
+2. Name: `Nightshift`. URL: `https://nightshift-ai.studio/api/mcp`. Under
+   **OAuth client** keep **Register automatically**: the server registers the
+   app itself, and it does not read Client ID Metadata Documents, so
+   "Use Claude's published identity" cannot work. Add.
+3. Press **Connect** and approve on the Nightshift page as above.
 4. In a conversation, enable the Nightshift connector for it and ask for a
-   video. Claude Desktop uses the same account-level connectors list.
+   video. Claude's desktop and mobile apps use the same account-level
+   connectors list.
 
-(Where your Claude plan offers custom connectors. On Team/Enterprise an
-organization administrator may need to add the connector first.)
+A Free Claude plan allows one custom connector. On Team and Enterprise only
+Owners (or an Enterprise custom role) can add one, from
+`claude.ai/admin-settings/connectors` ("Add for your organization" on `/mcp`).
+Claude's "Request headers" field is a beta for some organizations only, so the
+page offers Claude the sign-in, never an API key.
 
-### ChatGPT (developer mode)
+### Gemini (custom app)
 
-1. Turn on **Developer mode**: Settings → Security and login (web; Pro, Plus,
-   Business, Enterprise and Education plans).
-2. Open **Plugins**, press the plus button and create a developer-mode app.
-   Name: `Nightshift`. MCP server URL: `https://nightshift-ai.studio/api/mcp`.
-   Authentication: **OAuth**. If it asks for a client ID / secret, leave them
-   empty.
-3. **Connect** and approve on the Nightshift page as above.
-4. In a chat, choose the app from the tools menu. Check each action before you
-   approve it.
+Google's help: https://support.google.com/gemini/answer/17209137
 
-### Claude Code
+1. On a computer open **gemini.google.com → Settings → Connected Apps** (if it is
+   not there: **Personal Intelligence → Connected Apps**).
+2. Under **Custom apps** choose **Add a custom app**, paste
+   `https://nightshift-ai.studio/api/mcp`, **Next**.
+3. Finish the sign-in. Then type **@** in a prompt and pick the app.
 
-```bash
-claude mcp add --transport http nightshift https://nightshift-ai.studio/api/mcp
-```
+Limits, stated on the page: a personal Google Account only (not work or school),
+18 and over, currently the US and English only, Keep Activity on. Connecting is
+done on the web; the app then works in Gemini on mobile too. Gemini has no header
+field, so it is sign-in only. Its callbacks
+(`https://oauth-redirect.googleusercontent.com/r/…` and `/a/…`) already pass the
+redirect rule.
 
-then run `/mcp`, pick `nightshift` and **Authenticate**: the browser opens on
-the consent screen (the callback is a `http://localhost:<port>` address).
+### Grok (custom connector)
 
-### Cursor, VS Code, Windsurf, Gemini CLI, Codex CLI, OpenClaw, Hermes, …
+xAI's guide: https://docs.x.ai/grok/connectors
 
-Add Nightshift as a **remote (HTTP) MCP server** with just the URL, with **no
-`Authorization` header**; the client starts the OAuth flow itself.
+1. Open **grok.com/connectors → New Connector → Custom**.
+2. Enter `https://nightshift-ai.studio/api/mcp`. Leave **Client ID** and
+   **Client Secret** empty, so Grok registers itself.
+3. Complete the sign-in.
 
-* Cursor, `~/.cursor/mcp.json`: `{ "mcpServers": { "nightshift": { "url": "https://nightshift-ai.studio/api/mcp" } } }`
-* VS Code, `.vscode/mcp.json`: `{ "servers": { "nightshift": { "type": "http", "url": "https://nightshift-ai.studio/api/mcp" } } }`
-* Any other client that supports the MCP authorization specification works the
-  same way; use its "add remote MCP server" command.
+On Business and Enterprise a team admin first adds the connector in the xAI
+console (Add Connector → Other → the URL;
+https://docs.x.ai/grok/connector-management); members then connect at
+grok.com/connectors. **Unverified:** that Grok actually uses dynamic client
+registration. If it insists on a Client ID it cannot connect yet, and the page
+says so plainly. Its web callback (`https://grok.com/connectors-oauth-exchange-code/`)
+already passes the redirect rule.
+
+### Cursor and VS Code (GitHub Copilot)
+
+Press **Add to Cursor** / **Add to VS Code**, or add Nightshift as a **remote
+(HTTP) MCP server** with just the URL and **no `Authorization` header**; the
+client starts the OAuth flow itself.
+
+* Cursor, `~/.cursor/mcp.json` (or `.cursor/mcp.json` for one project): `{ "mcpServers": { "nightshift": { "url": "https://nightshift-ai.studio/api/mcp" } } }`
+* VS Code, `.vscode/mcp.json`: `{ "servers": { "nightshift": { "type": "http", "url": "https://nightshift-ai.studio/api/mcp" } } }`; then ask GitHub Copilot.
+
+### Other clients
+
+Not on the page, but nothing stops them: any client that supports the MCP
+authorization specification adds the URL and signs in the same way. Claude Code,
+for example: `claude mcp add --transport http nightshift https://nightshift-ai.studio/api/mcp`,
+then `/mcp` or `claude mcp login nightshift`. It registers itself as
+"Claude Code (nightshift)"; the server registers and shows it as "Claude Code"
+(see Registration below).
 
 We run the official MCP SDK client against this server in a real end-to-end
 test (below). We have **not** tested each product above ourselves: they differ
@@ -165,30 +231,12 @@ own `cursor://anysphere.cursor-retrieval/oauth/…`).
 ### With an API key (unchanged)
 
 Create a key in **Developers → API keys** (after activating the API). Treat it
-like a password: a client holding it can spend your API balance.
+like a password: a client holding it can spend your API balance. On `/mcp` only
+Cursor and VS Code take one ("Use an API key instead" under their sign-in steps).
 
-```bash
-claude mcp add --transport http nightshift https://nightshift-ai.studio/api/mcp \
-  --header "Authorization: Bearer nsk_live_…"
-```
-
-Cursor: `{ "mcpServers": { "nightshift": { "url": "https://nightshift-ai.studio/api/mcp", "headers": { "Authorization": "Bearer nsk_live_…" } } } }`.
-
-For a client with no browser flow and no way to send a header, the
-`mcp-remote` bridge adds the header locally:
-
-```json
-{
-  "mcpServers": {
-    "nightshift": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://nightshift-ai.studio/api/mcp",
-               "--header", "Authorization:${NIGHTSHIFT_AUTH}"],
-      "env": { "NIGHTSHIFT_AUTH": "Bearer nsk_live_…" }
-    }
-  }
-}
-```
+* Cursor: `{ "mcpServers": { "nightshift": { "url": "https://nightshift-ai.studio/api/mcp", "headers": { "Authorization": "Bearer nsk_live_…" } } } }`.
+* VS Code: the same `servers` entry with `"headers": { "Authorization": "Bearer ${input:nightshift-key}" }` and a
+  `promptString` input with `"password": true`, so the key is asked for and never written into the file.
 
 ## What the person controls
 
@@ -219,7 +267,12 @@ Nightshift is its own authorization server for its MCP resource.
   `[::1]`; plus Cursor's one private-use callback. No fragment, userinfo,
   wildcard, `javascript:`, `data:` or other custom scheme. Bounded: 5 URIs, a name of 1 to 80 visible
   characters that may not contain "Nightshift" (checked after Unicode folding, lookalike and
-  leet folding in several scripts, with invisible and direction characters removed), 10 registrations per address and 300 in total per hour, 20 000
+  leet folding in several scripts, with invisible and direction characters removed). One exception, in
+  TypeScript before the database is asked (`registrationName`, `lib/oauth/redirect.ts`): a single trailing
+  `(nightshift)` is dropped and the rest registered, because Claude Code names itself
+  `Claude Code (<server name>)` and our snippets name the server `nightshift`; it is registered and shown
+  as "Claude Code". What is left must pass the rule on its own, so "Nightshift (nightshift)" and every
+  lookalike are still refused, and the database's check is unchanged. 10 registrations per address and 300 in total per hour, 20 000
   rows; an app nobody ever approves is deleted after a day. Client ID Metadata
   Documents are **not** implemented (they need SSRF-safe fetching of a
   client-supplied URL); the metadata says `client_id_metadata_document_supported: false`.

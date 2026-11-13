@@ -28,7 +28,6 @@ export const devEn = {
     copyFailed: "Could not copy — select the text and copy it",
     keyPlaceholder: "Replace <your API key> with the key you created.",
     newTab: "(opens in a new tab)",
-    other: "Other",
     openApi: "OpenAPI 3.1 spec",
   },
   api: {
@@ -171,11 +170,11 @@ export const devEn = {
   mcp: {
     meta: {
       title: "Connect an AI assistant (MCP)",
-      description: "Connect Claude, ChatGPT, Claude Code, OpenClaw, Cursor, Hermes and more to Nightshift, then make videos by asking your assistant.",
+      description: "Connect ChatGPT, Claude, Gemini, Grok, Cursor or VS Code (GitHub Copilot) to Nightshift, then make videos by asking your assistant.",
     },
     signinOff: {
-      description: "Connect Claude Code, OpenClaw, Cursor, Hermes and more to Nightshift with an API key, then ask your assistant for videos. Claude and ChatGPT sign-in is coming.",
-      paidLine: "API keys work today with any assistant that can send a header. Claude and ChatGPT will connect with a sign-in, which is coming soon.",
+      description: "Connect Cursor or VS Code (GitHub Copilot) to Nightshift with an API key and ask for videos. Sign-in for ChatGPT, Claude, Gemini and Grok is coming.",
+      paidLine: "API keys work today in Cursor and VS Code. ChatGPT, Claude, Gemini and Grok will connect with a sign-in, which is coming soon.",
       paidTitle: "API balance",
       paidBody: "API keys and the REST API are paid from a prepaid API balance. Connecting with a sign-in, which will be part of every paid plan, is coming soon.",
       worksTitle: "Works with assistants that take an API key",
@@ -185,7 +184,7 @@ export const devEn = {
     title: "Nightshift MCP.",
     titleDim: "Your whole studio, inside your agent.",
     lead: "Add Nightshift to the assistant you already use, then ask it to make a video, follow the job and publish it — with the same publish check and approvals as the app.",
-    paidLine: "Connecting with a sign-in needs a paid plan. Prefer a key? Clients that can send a header work with an API key.",
+    paidLine: "Connecting with a sign-in needs a paid plan. Prefer a key? Cursor and VS Code also work with an API key.",
     trademarks: "Product names and logos are trademarks of their respective owners and are shown only to indicate compatibility; Nightshift is not affiliated with or endorsed by them.",
     worksWith: "Works with",
     moreLabel: "More clients",
@@ -198,6 +197,8 @@ export const devEn = {
       badge: "Coming soon",
       use: "Works today with an API key:",
       claude: { title: "Claude will connect with a sign-in", body: "Adding Nightshift to Claude by its server address and a sign-in is not switched on yet, so there is nothing to add in Claude today. Nightshift’s server takes API keys for now." },
+      gemini: { title: "Gemini will connect with a sign-in", body: "Adding Nightshift to Gemini by its server address and a sign-in is not switched on yet, so there is nothing to add in Gemini today. Nightshift’s server takes API keys for now." },
+      grok: { title: "Grok will connect with a sign-in", body: "Adding Nightshift to Grok by its server address and a sign-in is not switched on yet, so there is nothing to add in Grok today. Nightshift’s server takes API keys for now." },
       chatgpt: { title: "ChatGPT will connect with a sign-in", body: "Adding Nightshift to ChatGPT by its server address and a sign-in is not switched on yet, so there is nothing to add in ChatGPT today. Nightshift’s server takes API keys for now." },
     },
     steps: [
@@ -209,69 +210,67 @@ export const devEn = {
     urlLabel: "Server address",
     tablist: "Assistants you can connect from",
     oauth: {
-      claude: {
-        button: "Open Claude settings",
-        note: "Team and Enterprise plans: Organization settings → Connectors → Add → Custom → Web.",
-        steps: [
-          { title: "Copy the Nightshift address", body: "This is the address of Nightshift’s MCP server." },
-          { title: "Add it in Customize → Connectors", body: "In Claude open Customize → Connectors, press + Add, then Add custom connector. The button fills in the name and address for you." },
-          { title: "Sign in", body: "Press Connect, sign in to Nightshift, then ask for a video." },
-        ],
-      },
       chatgpt: {
-        button: "Read the developer-mode guide",
-        note: "Developer mode is powerful: check each action before you approve it.",
+        button: "Read OpenAI’s guide",
+        note: "Custom servers are added on chatgpt.com in a browser. Check each action before you approve it.",
         steps: [
-          { title: "Turn on Developer mode", body: "In ChatGPT open Settings → Security and login and turn on Developer mode (web; Pro, Plus, Business, Enterprise and Education)." },
-          { title: "Create the app", body: "Open Plugins, press the plus button and create a developer-mode app. Paste this address and choose OAuth as the authentication." },
-          { title: "Sign in and ask", body: "Sign in to Nightshift when asked, then ask for a video." },
+          { title: "Open Plugins on chatgpt.com", body: "In a browser open chatgpt.com/plugins, press +, then Add custom MCP server." },
+          { title: "Describe the server", body: "Name it Nightshift, add a short description and paste this address, including /api/mcp. Choose OAuth." },
+          { title: "Sign in and install", body: "Confirm with “I understand and want to continue” and sign in to Nightshift when it asks. Then press Create as a plugin, install it and ask for a video." },
         ],
       },
-      "claude-code": {
+      claude: {
+        button: "Add to Claude",
+        hint: "Opens Claude’s Add custom connector dialog with the name and address filled in; check them and press Add. Signed out? Claude asks you to sign in first.",
+        extra: "Add for your organization",
+        note: "Under OAuth client keep “Register automatically”: “Use Claude’s published identity” does not work with Nightshift. The Free plan allows one custom connector. On Team and Enterprise only the people who own the Claude organization (or, on Enterprise, a custom role allowed to manage connectors) can add one, with “Add for your organization”. Once added, the connector also works in Claude’s desktop and mobile apps.",
         steps: [
-          { title: "Copy the command", body: "Adds Nightshift’s server to Claude Code." },
-          { title: "Run it in your terminal", body: "Add --scope user to keep it in every project." },
-          { title: "Sign in with /mcp", body: "Run /mcp inside Claude Code and finish the sign-in in your browser." },
+          { title: "Add Nightshift to Claude", body: "The button opens Claude on the web with everything filled in." },
+          { title: "Or add it by hand", body: "In Claude open Customize → Connectors, press + Add, then Add custom connector. Name it Nightshift and paste this address." },
+          { title: "Connect and sign in", body: "Press Connect, sign in to Nightshift and allow access, then ask for a video." },
         ],
       },
-      openclaw: {
+      gemini: {
+        button: "Read Google’s help page",
+        note: "Custom apps in Gemini work only with a personal Google Account (not a work or school account), for people 18 and over, currently in the US and in English only, and with Keep Activity on. Connect on the web; the app then works in Gemini on your phone too.",
         steps: [
-          { title: "Copy the command", body: "It sets the transport and turns on OAuth for the server." },
-          { title: "Run it in your terminal", body: "OpenClaw saves the server definition." },
-          { title: "Sign in", body: "Run this command and finish the sign-in in your browser." },
+          { title: "Open Connected Apps in Gemini", body: "On a computer open gemini.google.com → Settings → Connected Apps. Not there? Look under Personal Intelligence → Connected Apps." },
+          { title: "Add a custom app", body: "Under Custom apps choose Add a custom app, paste this address and press Next." },
+          { title: "Sign in and ask", body: "Finish the Nightshift sign-in. Then type @ in a prompt, pick Nightshift and ask for a video." },
+        ],
+      },
+      grok: {
+        button: "Read xAI’s guide",
+        note: "Leave Client ID and Client Secret empty, so Grok registers itself with Nightshift. If Grok will not continue without a Client ID, it cannot connect to Nightshift yet. On Business and Enterprise a team admin first adds the connector in the xAI console (Add Connector → Other → this address); members then connect at grok.com/connectors.",
+        steps: [
+          { title: "Open Connectors in Grok", body: "Open grok.com/connectors, press New Connector, then Custom." },
+          { title: "Paste the address", body: "Enter this address. Leave Client ID and Client Secret empty." },
+          { title: "Sign in and ask", body: "Finish the Nightshift sign-in, then ask Grok for a video." },
         ],
       },
       cursor: {
+        button: "Add to Cursor",
+        hint: "Opens Cursor, which asks before it installs. It needs Cursor on this computer; if nothing happens, use the next step.",
         steps: [
-          { title: "Open your config file", body: "Edit ~/.cursor/mcp.json for every project, or .cursor/mcp.json for one." },
-          { title: "Add the server", body: "Paste this entry and save." },
+          { title: "Add Nightshift to Cursor", body: "One click, then confirm in Cursor." },
+          { title: "Or add it by hand", body: "Paste this entry into ~/.cursor/mcp.json for every project, or .cursor/mcp.json for one, and save." },
           { title: "Sign in", body: "The first time Cursor connects, it opens the Nightshift sign-in in your browser." },
         ],
       },
-      hermes: {
+      vscode: {
+        button: "Add to VS Code",
+        hint: "Opens VS Code, which shows the server for you to review before it installs. It needs VS Code on this computer; if nothing happens, use the next step.",
+        extra: "Add to VS Code Insiders",
         steps: [
-          { title: "Copy the config", body: "The auth: oauth line is required for a sign-in." },
-          { title: "Add it to your config", body: "Paste it into ~/.hermes/config.yaml, then run /reload-mcp." },
-          { title: "Sign in", body: "Hermes opens a sign-in in your browser. To sign in again later, run this command." },
+          { title: "Add Nightshift to VS Code", body: "One click, then review and install it in VS Code." },
+          { title: "Or add it by hand", body: "Save this as .vscode/mcp.json in your project. No key goes into the file." },
+          { title: "Sign in", body: "When the server starts, VS Code asks you to sign in; finish it in your browser, then ask GitHub Copilot for a video." },
         ],
       },
     },
     clients: [
-      { id: "claude-code", where: "Run in a terminal", hint: "Adds the server for you in the current project; add --scope user to have it in every project. Run /mcp inside Claude Code to see it connected." },
       { id: "cursor", where: "Save as ~/.cursor/mcp.json", hint: "Restart Cursor after saving." },
       { id: "vscode", where: "Save as .vscode/mcp.json in your project", hint: "VS Code asks for the key the first time the server starts and stores it for you, so it is never written into the file." },
-      { id: "windsurf", where: "Cascade panel → Actions menu → Open MCP config file", hint: "Add the entry under mcpServers and save." },
-      { id: "cline", where: "Cline panel → MCP Servers → Configure → Configure MCP Servers", hint: "Set type to streamableHttp; leaving it out selects the older SSE transport." },
-      { id: "zed", where: "Open your settings file (zed: open settings file)", hint: "Or use Settings → AI → MCP Servers → Add Server → Add Remote Server." },
-      { id: "gemini-cli", where: "Run in a terminal", hint: "Saved for your user in ~/.gemini/settings.json, so the key never lands in a project’s files." },
-      { id: "codex", where: "Shell profile and ~/.codex/config.toml", hint: "The key stays in an environment variable. The desktop app, the CLI and the IDE extension share this file." },
-      { id: "roo-code", where: "Roo Code pane → MCP → Edit Global MCP", hint: "Set type to streamable-http." },
-      { id: "warp", where: "Settings → Agents → MCP servers → + Add, then paste", hint: "Warp accepts the same JSON other assistants use." },
-      { id: "claude-desktop", where: "Settings → Developer → Edit Config (claude_desktop_config.json)", hint: "Claude Desktop connects through the small mcp-remote bridge, which adds the header on your computer. It needs Node.js. Restart Claude Desktop afterwards." },
-      { id: "other", where: "Any client that speaks Streamable HTTP and can send a header", hint: "Use the URL, the transport and the header exactly as written." },
-    
-      { id: "openclaw", where: "Run in a terminal", hint: "Always keep the transport set to streamable-http; left out, OpenClaw uses the older SSE transport." },
-      { id: "hermes", where: "Add to ~/.hermes/config.yaml", hint: "Run /reload-mcp afterwards. Hermes keeps the key in this file, so keep the file private." },
     ],
     how: {
       badge: "How it works",
@@ -439,14 +438,13 @@ export const devEn = {
         lead: "Add Nightshift once and the assistant you pick can start, follow and publish your videos.",
         publishes: "Publishes to",
         pause: "Pause the moving logos",
-        more: "and any client that can talk to a remote MCP server",
       },
       faq: {
         title: "Frequently asked questions",
         items: [
           { q: "What is Nightshift MCP?", a: "A server your AI assistant connects to. Through it the assistant can list your channels, make videos, follow each job and publish, with the same publish check and approvals as the app." },
           { q: "What can my assistant do?", a: "It can list your channels and videos, start a video, follow its job, check your balance, publish a finished video to your connected accounts and, with an API key, order an HD download. The full list of tools is further down this page." },
-          { q: "Which assistants work with it?", a: "Claude, ChatGPT, Claude Code, OpenClaw, Cursor and Hermes first, then Claude Desktop, VS Code, Windsurf, Cline, Zed, Gemini CLI, Codex, Roo Code, Warp, and any client that can talk to a remote server." },
+          { q: "Which assistants work with it?", a: "ChatGPT, Claude, Gemini, Grok, Cursor and VS Code with GitHub Copilot. Pick yours in the connect card at the top; each one has its own steps." },
           { q: "How do I connect one?", a: "Pick your assistant in the connect card at the top. Where a sign-in is available it takes the server address and a sign-in; every other assistant takes an API key you create in Developers." },
           { q: "What does it cost?", a: "Connecting with a sign-in is part of every paid plan and spends the same credits as a video made in the app. An API key spends your prepaid API balance. When a video is queued its price is set aside; it is charged only when the video succeeds, and a failed run costs nothing." },
           { q: "Can it publish without asking me?", a: "No. Publishing passes the same publish check and approvals as the app, and YouTube uploads stay private until you decide." },
@@ -456,11 +454,11 @@ export const devEn = {
       },
       keyMode: {
         credits: "When a video is queued, its price is set aside from your API balance; it is charged only when the video succeeds and is given back when it fails. Your organization can set a monthly limit, and each key its own.",
-        works: "Add Nightshift with an API key to any assistant that can send a header, such as Claude Code, Cursor or Hermes. Claude and ChatGPT will connect with a sign-in, which is coming soon.",
+        works: "Add Nightshift with an API key to Cursor or VS Code (GitHub Copilot). ChatGPT, Claude, Gemini and Grok will connect with a sign-in, which is coming soon.",
         limitBar: "Monthly limit",
         faq: {
-          connect: "Pick your assistant in the connect card at the top. Today every assistant takes an API key you create in Developers; connecting Claude and ChatGPT with a sign-in is coming soon.",
-          assistants: "With an API key today: Claude Code, OpenClaw, Cursor and Hermes, then VS Code, Windsurf, Cline, Zed, Gemini CLI, Codex, Roo Code, Warp, Claude Desktop, and any client that can send a header to a remote server. Claude and ChatGPT will connect with a sign-in, which is coming soon.",
+          connect: "Pick your assistant in the connect card at the top. Today Cursor and VS Code take an API key you create in Developers; connecting ChatGPT, Claude, Gemini and Grok with a sign-in is coming soon.",
+          assistants: "With an API key today: Cursor and VS Code (GitHub Copilot). ChatGPT, Claude, Gemini and Grok will connect with a sign-in, which is coming soon.",
           cost: "An API key spends your prepaid API balance. When a video is queued its price is set aside; it is charged only when the video succeeds, and a failed run costs nothing. Connecting with a sign-in, which spends your plan’s credits instead, is coming soon.",
           disconnect: "An API key is revoked in Developers → API keys.",
           credits: "The request is refused before any work starts, and the assistant tells you what to do next. Nothing is held, queued or produced. After you top up your API balance, the same key works again on its next call.",

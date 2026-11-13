@@ -53,6 +53,14 @@ describe("redirect URI validation (twin of oauth_redirect_uri_ok)", () => {
     expect(validateRedirectUri("https://a.example.com/" + "x".repeat(300)).ok).toBe(false);
   });
 
+  // mcp-clients.ts leaves Raycast and LM Studio out because their app-scheme callbacks are refused here; pin that, so the
+  // reason for leaving them out cannot quietly stop being true.
+  it("refuses app-scheme callbacks of the clients /mcp does not offer", () => {
+    for (const uri of ["raycast://oauth/callback", "raycast://extensions/mcp/oauth", "lmstudio://oauth/callback"]) {
+      expect(validateRedirectUri(uri).ok).toBe(false);
+    }
+  });
+
   it("shows the person where they will be sent, loopback marked as their own computer", () => {
     expect(describeRedirect("https://claude.ai/api/mcp/auth_callback")).toEqual({ host: "claude.ai", local: false });
     expect(describeRedirect("http://127.0.0.1:33418/callback")).toEqual({ host: "127.0.0.1:33418", local: true });

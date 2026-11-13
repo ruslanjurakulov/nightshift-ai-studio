@@ -102,12 +102,11 @@ describe("developer pages copy", () => {
     }
   });
 
-  it("puts the six clients the owner named first, in his order, then the rest", () => {
-    expect(MCP_CLIENTS.slice(0, 6).map((c) => c.id)).toEqual(["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"]);
-    expect(MCP_CLIENTS.slice(0, 6).every((c) => c.group === "primary")).toBe(true);
-    expect(MCP_CLIENTS.slice(6).every((c) => c.group === "more")).toBe(true);
-    expect(MCP_CLIENTS.at(-1)!.id).toBe("other");
-    expect(MCP_CLIENTS.length).toBeGreaterThanOrEqual(12);
+  it("names exactly the six assistants the owner chose (2026-11-13), in his order", () => {
+    expect(MCP_CLIENTS.map((c) => c.id)).toEqual(["chatgpt", "claude", "gemini", "grok", "cursor", "vscode"]);
+    expect(MCP_CLIENTS.map((c) => c.label)).toEqual(["ChatGPT", "Claude", "Gemini", "Grok", "Cursor", "VS Code (GitHub Copilot)"]);
+    // The four chat apps take a sign-in only; Cursor and VS Code also take a key.
+    expect(KEY_CLIENT_IDS).toEqual(["cursor", "vscode"]);
   });
 
   it("lists the tools the server really has, in the server's order", () => {

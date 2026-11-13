@@ -4,12 +4,14 @@
  *
  *  - The flag is `MCP_OAUTH_LIVE=1`, read at request time from the server's
  *    environment (never `NEXT_PUBLIC_`). Anything else, including unset, is OFF.
- *  - OFF: the Claude and ChatGPT tabs say "Coming soon" and name what works
- *    today (an API key from a client that can send a header). Every other tab
- *    shows its API-key steps.
- *  - ON: the Claude and ChatGPT tabs show the real connector steps (the server
- *    URL and a sign-in, no key), and the other primary tabs lead with sign-in
- *    and keep the API key under "Use an API key instead".
+ *  - OFF: the sign-in-only tabs (ChatGPT, Claude, Gemini, Grok) say "Coming
+ *    soon" and name what works today (an API key in Cursor or VS Code), whose
+ *    tabs show their API-key steps. No "Add to …" button is drawn anywhere,
+ *    on /mcp or in Developers → Connected apps: each one starts a sign-in.
+ *  - ON: the sign-in-only tabs show the real connector steps (the server URL
+ *    and a sign-in, no key); Claude, Cursor and VS Code get their install
+ *    buttons; Cursor and VS Code lead with sign-in and keep the API key under
+ *    "Use an API key instead".
  *
  * Switch it on only after the OAuth branch (claude/mcp-oauth) is merged,
  * deployed and tested with a real connector: until then the server accepts API
