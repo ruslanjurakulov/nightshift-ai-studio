@@ -162,6 +162,31 @@ class Exposure(unittest.TestCase):
         self.assertIn("at most US$0.40 of vendor cost per account", TEXT)
 
 
+class TheLab(unittest.TestCase):
+    """tests/security/test_sec_open_cleared_models.py runs where only tests/security/requirements.txt is installed (no `requests`), so
+    it must not import modules.model_registry (its adapters import requests: a failed import stopped collection of the whole lab, CI
+    run 43514470759). It builds the sync row itself; these keep that copy equal to the real one."""
+
+    LAB = (ROOT / "tests" / "security" / "test_sec_open_cleared_models.py").read_text(encoding="utf-8")
+
+    def test_the_lab_file_does_not_import_the_pipeline(self):
+        self.assertNotRegex(self.LAB, r"(?m)^\s*(from|import)\s+modules\b")
+
+    def test_the_lab_builds_the_row_sync_rows_builds(self):
+        import ast
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from modules import model_registry as reg
+
+        cols = re.search(r"^_COLUMNS = (\(.*?\))$", self.LAB, re.M).group(1)
+        self.assertEqual(ast.literal_eval(cols), reg._COLUMNS)
+        # The helper's own source, from this repository's test file (the lab module itself needs psycopg, which this suite may lack).
+        ns = {"REGISTRY": REGISTRY, "_COLUMNS": reg._COLUMNS}
+        exec(re.search(r"(?ms)^def _sync_row\(mid\):\n.*?(?=^\n)", self.LAB).group(0), ns)  # noqa: S102
+        for row in reg.sync_rows([reg.get(i) for i in NINE]):
+            self.assertEqual(ns["_sync_row"](row["id"]), row, row["id"])
+
+
 class PrivacyPolicy(unittest.TestCase):
     def test_every_language_names_the_three_vendors_and_their_training_use(self):
         for loc, word in (("en", "improve"), ("ru", "улучшения"), ("uz", "yaxshilash")):

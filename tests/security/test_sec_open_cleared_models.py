@@ -22,7 +22,6 @@ from __future__ import annotations
 import copy
 import json
 import re
-import sys
 from decimal import Decimal
 
 import pytest
@@ -31,8 +30,19 @@ import sec_db
 from sec_scenario import DEFAULT_ORG
 from test_sec_operator_preview import _become
 
-sys.path.insert(0, str(sec_db.REPO))
-from modules import model_registry as registry  # noqa: E402
+# The reviewed file is read directly, not through modules.model_registry: that module imports the capability adapters, which need
+# `requests`, and the lab installs only tests/security/requirements.txt. A failed import stops pytest's collection of the WHOLE lab.
+# The row is built the way modules.model_registry.sync_rows builds it (tests/test_open_cleared_models_migration.py keeps _COLUMNS equal).
+REGISTRY = {m["id"]: m for m in json.loads((sec_db.REPO / "schemas" / "model_registry.json").read_text(encoding="utf-8"))["models"]}
+_COLUMNS = ("id", "display_name", "provider", "adapter", "capabilities", "credit_unit", "entitlement")
+
+
+def _sync_row(mid):
+    m = REGISTRY[mid]
+    return {"id": m["id"], "display_name": m["display_name"], "provider": m["provider"], "adapter": m["adapter"],
+            "capabilities": list(m["capabilities"]), "credit_unit": m["credit_unit"], "entitlement": m["entitlement"],
+            "spec": {k: v for k, v in m.items() if k not in _COLUMNS}}
+
 
 MIGRATION = sec_db.MIGRATIONS / "0160_open_cleared_models.sql"
 ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0160_open_cleared_models.sql"
@@ -74,9 +84,8 @@ def _seed(conn, ids=None, *, verified=True, tiers=True, mutate=None):
     """The registry entries as the live database holds them before 0160: the file's static facts, hidden, a successful probe of the
     exact call, and (tiers) the plan-tier entitlement the file carried before 0160."""
     ids = list(NINE if ids is None else ids)
-    entries = [registry.get(i) for i in ids]
-    # A deep copy: sync_rows shares the nested spec with the cached registry, and a mutation must not reach the next test.
-    for row in copy.deepcopy(registry.sync_rows(entries)):
+    # A deep copy: the row shares the nested spec with REGISTRY, and a mutation must not reach the next test.
+    for row in copy.deepcopy([_sync_row(i) for i in ids]):
         if mutate:
             mutate(row)
         ent = TIER.get(row["id"], row["entitlement"]) if tiers else row["entitlement"]
@@ -105,8 +114,8 @@ def _create(conn, who, org, cap, mid, params, maxc=5000):
 
 def _request(sc, model, variant):
     """The capability and params a customer (Bob) sends for this model at this variant (None = name none)."""
-    e = registry.get(model)
-    if e.output == "image":
+    e = REGISTRY[model]
+    if e["output"] == "image":
         params = {"prompt": "a poster that says HELLO"}
         if variant is not None:
             params["quality"] = variant
@@ -114,13 +123,13 @@ def _request(sc, model, variant):
     params = {"prompt": "slow push in", "duration_s": SECONDS}
     if variant is not None:
         params["resolution"] = variant
-    if "t2v" in e.capabilities:
+    if "t2v" in e["capabilities"]:
         return "t2v", params
     return "i2v", {**params, "source_asset_id": sc.bob.media_asset}
 
 
 def _qty(model):
-    return 1 if registry.get(model).output == "image" else SECONDS
+    return 1 if REGISTRY[model]["output"] == "image" else SECONDS
 
 
 # ── every variant sells at 2.5x its vendor figure, never below it ─────────────────────────────────────────────────────
@@ -185,7 +194,7 @@ def test_a_terms_gated_model_stays_refused_even_verified_and_priced(conn, sc):
         _seed(conn)
         _seed(conn, GATED, tiers=False)
         for mid in GATED:
-            unit = registry.get(mid).credit_unit
+            unit = REGISTRY[mid]["credit_unit"]
             conn.execute("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 50, 1.5) on conflict do nothing", [unit])
         _apply(conn)
         rows = dict(conn.execute("select id, availability from public.model_registry where id = any(%s)", [GATED]).fetchall())
@@ -193,11 +202,11 @@ def test_a_terms_gated_model_stays_refused_even_verified_and_priced(conn, sc):
         web = {r[0] for r in conn.execute("select id from public.sellable_models(null, 'web')").fetchall()}
         assert not (set(GATED) & web)
         for mid in GATED:
-            e = registry.get(mid)
+            caps = REGISTRY[mid]["capabilities"]
             # (the upscaler takes a source video, so it is not quoted here: the catalog above and the CHECK below hold it)
-            if "t2i" in e.capabilities:
+            if "t2i" in caps:
                 assert _quote(conn, sc.bob.actor, sc.bob.org, "t2i", mid, {"prompt": "x"}) == ("NS400", "model_not_sellable"), mid
-            elif "t2v" in e.capabilities:
+            elif "t2v" in caps:
                 got = _quote(conn, sc.bob.actor, sc.bob.org, "t2v", mid, {"prompt": "x", "duration_s": SECONDS})
                 assert got == ("NS400", "model_not_sellable"), (mid, got)
             # and no path can put it on sale: 0035's CHECK
