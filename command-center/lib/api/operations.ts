@@ -28,6 +28,11 @@ export interface ApiCaller {
   backend: RunBackend;
   /** Whether this host can serve HD download files (0030's shared volume). */
   downloads: boolean;
+  /**
+   * A signed, expiring path to one variant of a library file (lib/server/media.ts signedMediaPath), or null when this host has no
+   * media volume or no signing secret. Absent for a caller that may not read files (a connected app).
+   */
+  mediaLink?: (assetId: string, variant: "original" | "thumb" | "proxy", mime: string) => string | null;
 }
 
 export const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_:.-]{1,255}$/;
@@ -454,4 +459,57 @@ export async function createCreative(caller: ApiCaller, body: unknown, idempoten
 export async function getCreativeJob(caller: ApiCaller, jobId: string): Promise<ApiResult> {
   if (!UUID_RE.test(jobId)) return apiError(404, "job_not_found", "No generation with that id for this key.");
   return call(caller, "api_creative_get", { p_job_id: jobId.toLowerCase() }, "0062");
+}
+
+// ── the MCP Studio tools (0162) ────────────────────────────────────────────
+
+/** The capabilities a model list may be narrowed to: 0125's sellable_models list, which refuses any other. */
+export const CREATIVE_CAPABILITIES = [
+  "t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe",
+  "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg",
+] as const;
+
+/**
+ * The models this key's organization can generate with through the API (0162 api_creative_models): what its create would accept,
+ * with each model's shapes, durations and resolutions. No price: quote_generation is the price.
+ */
+export async function listCreativeModels(caller: ApiCaller, capability?: string | null): Promise<ApiResult> {
+  const cap = capability == null ? null : capability.trim().toLowerCase();
+  if (cap !== null && !(CREATIVE_CAPABILITIES as readonly string[]).includes(cap))
+    return bad("invalid_params", `capability must be one of: ${CREATIVE_CAPABILITIES.join(", ")}.`);
+  return call(caller, "api_creative_models", { p_capability: cap }, "0162");
+}
+
+type JobFile = { asset_id: string; kind: string; mime: string; variants: string[]; width?: number | null; height?: number | null; duration_s?: number | null };
+
+/**
+ * A generation this key started, with a signed link to each result file (0162 api_creative_job_files). The link is a same-origin
+ * path that expires (lib/server/media.ts: MEDIA_URL_TTL_S); ask again for a fresh one. A host with no media volume or signing secret
+ * answers the files with `url: null` and says why, never a link that cannot work.
+ */
+export async function getCreativeJobFiles(caller: ApiCaller, jobId: string): Promise<ApiResult> {
+  if (!UUID_RE.test(jobId)) return apiError(404, "job_not_found", "No generation with that id for this key.");
+  const result = await call(caller, "api_creative_job_files", { p_job_id: jobId.toLowerCase() }, "0162");
+  if (!result.ok || !result.data || typeof result.data !== "object") return result;
+  const d = result.data as Record<string, unknown>;
+  const raw: JobFile[] = Array.isArray(d.files) ? (d.files as JobFile[]) : [];
+  const sign = caller.mediaLink;
+  const files = raw.map((f) => {
+    const id = String(f.asset_id ?? "");
+    const mime = String(f.mime ?? "");
+    const variants = Array.isArray(f.variants) ? f.variants : [];
+    // The original, never the smaller proxy: this is the file the person paid for.
+    const url = UUID_RE.test(id) && mime && sign ? sign(id, "original", mime) : null;
+    const thumbnail_url = UUID_RE.test(id) && mime && sign && variants.includes("thumb") ? sign(id, "thumb", mime) : null;
+    return { asset_id: id, kind: f.kind, mime, width: f.width ?? null, height: f.height ?? null, duration_s: f.duration_s ?? null, url, thumbnail_url };
+  });
+  const unsigned = files.length > 0 && files.every((f) => f.url === null);
+  return {
+    ...result,
+    data: {
+      ...d,
+      files,
+      ...(unsigned ? { files_note: "This server cannot hand out file links right now; the files are in the workspace's library in the app." } : {}),
+    },
+  };
 }
