@@ -227,6 +227,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "1504b313-3a3c-4e78-bfda-5bca3ef7f3da",
+      "assetId": "263cbf6e-9d00-5f65-aebb-2683c97d0718",
+      "sha256": "cca8fc936999d811a2a0805814980d2e49425afd7e2acf8bfd34966848488b1a",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Cinematic photograph of a futuristic city at night seen from a rooftop, rain-slick streets glowing with teal and magenta neon, light trails of traffic far below, haze and volumetric light between skyscrapers, ultra detailed, moody, no readable text or logos.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:07:26Z"
     }
   ]
 }
