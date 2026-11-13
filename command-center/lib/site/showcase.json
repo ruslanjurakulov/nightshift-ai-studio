@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "d91578df-1084-4d2e-9273-bf52bd966118",
+      "assetId": "ade20755-463a-5756-a80a-7298d17caf3d",
+      "sha256": "0ee6bdc21bf1e6178e296ffdf2cc684e0857f0bdd2feb5c413b1271bf5d6343f",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical product commercial: a frosted block of ice on black glass cracks and shatters in extreme slow motion, revealing an unbranded aluminium soda can covered in condensation; a burst of fizz and droplets erupts upward and freezes in mid-air, sharp rim light, high-end ad energy. Audio: ice crack, can hiss, deep bass hit.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:50:35Z"
     }
   ]
 }
