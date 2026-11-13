@@ -7,9 +7,9 @@ real create on a real Postgres and pin what must hold:
 
 * 480p and 768p of an H3 Lite-shaped model quote their own two vendor costs, and the quote names the resolution;
 * no resolution named = the model's pinned default_resolution, and the job carries it (what the worker sends);
-* KNOWN GAP, not this file's: creative_params_problem (0126's, unchanged here) accepts only 480p 540p 720p 1080p 1440p 2160p, so a
-  request that NAMES 768p or 2k is refused `invalid_params` before any model is read. 768p is reached only as the pinned default (the
-  Studio sends no resolution); 2k not at all. Pinned as a strict xfail below, so the day it is fixed the test says so;
+* a request that NAMES 768p or 2k reaches its own figure. Until 0156 creative_params_problem (0126's) accepted only 480p 540p 720p
+  1080p 1440p 2160p and refused both before any model was read; this was pinned here as a strict xfail, and 0156 closed it
+  (tests/security/test_sec_named_resolution_params.py has the rest);
 * a resolution the model does not list is refused `invalid_params`, and a listed one without its own figure `unpriced`: never mapped
   to another resolution's figure, never to provider_usd_per_unit;
 * everyone 0139's rule refuses (a member who is not a platform admin, the operator in a customer's organization, a customer, a model
@@ -87,7 +87,7 @@ def test_480p_and_768p_of_h3_lite_quote_their_own_two_vendor_costs(conn, sc):
         _become(conn, None)
         _make(conn)
         low = _ok(conn, sc, LITE, _params(resolution="480p"))
-        high = _ok(conn, sc, LITE, _params())              # 768p, the pinned default (a NAMED 768p: see the known gap)
+        high = _ok(conn, sc, LITE, _params())              # 768p, the pinned default (a NAMED 768p: below)
         # 0.025 and 0.04 USD a second x 100 credits per USD, no margin; 4 seconds, rounded up, floored at job_minimum like every quote.
         assert (float(low["credits_per_unit"]), low["unit"], low["resolution"]) == (2.5, _unit(LITE) + "_480p", "480p"), low
         assert (float(high["credits_per_unit"]), high["unit"], high["resolution"]) == (4.0, _unit(LITE) + "_768p", "768p"), high
@@ -100,10 +100,9 @@ def test_480p_and_768p_of_h3_lite_quote_their_own_two_vendor_costs(conn, sc):
                             [_unit(LITE).replace("_", "\\_") + "%"]).fetchone()[0] == 0
 
 
-@pytest.mark.xfail(strict=True, reason="creative_params_problem (0126) accepts only 480p 540p 720p 1080p 1440p 2160p: a named "
-                                       "768p or 2k is refused invalid_params before the model is read. A separate change.")
+# Was a strict xfail (0126's closed list refused both names before the model was read); 0156 accepts a model's own names.
 @pytest.mark.parametrize("res,cost", [("768p", 8.0), ("2k", 13.0)])
-def test_known_gap_a_named_768p_or_2k_reaches_its_own_figure(conn, sc, res, cost):
+def test_a_named_768p_or_2k_reaches_its_own_figure(conn, sc, res, cost):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
         _make(conn, "lab-h3", resolutions=("768p", "2k"),
@@ -269,7 +268,9 @@ def test_with_0149_rolled_back_only_the_by_resolution_preview_changes(conn, sc):
         ours = [(sc.operator, DEFAULT_ORG, LITE, p) for p in (_params(), _params(resolution="480p"))]
         with_0149 = [_quote(conn, *c) for c in others + ours]
         _become(conn, None)
-        # 0153 sits on 0149's creative_price, and 0149's rollback refuses any other body: it comes off first.
+        # 0153 sits on 0149's creative_price, and 0149's rollback refuses any other body: it comes off first (0155, on 0153's, before it).
+        conn.execute(sec_db.rollback_0156_body())  # 0156 sits on 0155's creative_price: off first
+        conn.execute(sec_db.rollback_0155_body())
         conn.execute(sec_db.rollback_0153_body())
         conn.execute(sec_db.rollback_0149_body())
         without = [_quote(conn, *c) for c in others + ours]
