@@ -273,8 +273,9 @@ export interface DiscoverySpec {
 }
 
 export type Stage = "hidden" | "beta" | "ga" | "disabled";
-export type DiscoveryState = "available" | "needs_probe" | "plan_gated" | "unavailable";
-export const DISCOVERY_STATES: readonly DiscoveryState[] = ["available", "plan_gated", "needs_probe", "unavailable"];
+/** `not_on_sale`: offered by the database but the price list (read) has no rate for it, so a quote would refuse it. */
+export type DiscoveryState = "available" | "needs_probe" | "plan_gated" | "not_on_sale" | "unavailable";
+export const DISCOVERY_STATES: readonly DiscoveryState[] = ["available", "plan_gated", "needs_probe", "not_on_sale", "unavailable"];
 
 export type Reason =
   | { kind: "not_verified" }
@@ -530,19 +531,25 @@ export function fromSellableRow(row: unknown, prices: PriceList, purchased: bool
   const list = prices ?? (creditUnit && Number.isFinite(base) && base > 0 && !priceVariants(creditUnit, spec) ? { [creditUnit]: base } : null);
   const entitlement = str(row.entitlement);
   const gate = planGate(entitlement, purchased);
+  const price = priceView(creditUnit, spec, list);
+  // A card read "Available" and "not priced yet" at once (Runway Video Upscale): the database listed it, but the price list that was
+  // read has no rate for it, so every quote would refuse it. It is not on sale until it has a price. An unread list proves nothing.
+  // A plan gate that already closes it says more than a missing price, and stays the reason given.
+  const gated = gatedState(gate);
+  const unpriced = gated !== "unavailable" && (price.kind === "flat" || price.kind === "variants") && lowestRate(price) === null;
   return {
     id,
     displayName: str(row.display_name) ?? id,
     provider,
     capabilities,
     stage: row.availability,
-    state: gatedState(gate),
-    reasons: gate ? [gate] : [],
+    state: unpriced ? "not_on_sale" : gated,
+    reasons: unpriced ? [{ kind: "unpriced" }, ...(gate ? [gate] : [])] : gate ? [gate] : [],
     entitlement,
     verifiedAt: str(row.verified_at),
     probe: null,
     spec,
-    price: priceView(creditUnit, spec, list),
+    price,
   };
 }
 
@@ -661,7 +668,7 @@ export function matchesFilters(m: DiscoveryModel, f: Filters, words: readonly st
   return matchesQuery(searchText(m, words, withProvider), f.q);
 }
 
-const STATE_RANK: Record<DiscoveryState, number> = { available: 0, plan_gated: 1, needs_probe: 2, unavailable: 3 };
+const STATE_RANK: Record<DiscoveryState, number> = { available: 0, plan_gated: 1, needs_probe: 2, not_on_sale: 3, unavailable: 4 };
 
 /** What can be used first, then by name: no ranking the registry does not give. */
 export function sortModels(models: DiscoveryModel[]): DiscoveryModel[] {

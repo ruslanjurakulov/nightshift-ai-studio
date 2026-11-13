@@ -6,7 +6,11 @@ import { ArrowRight, Search } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelSlug } from "@/lib/channels-client";
-import { PRESET_KINDS, buildPresetCards, filterPresets, type PresetKind } from "@/lib/presets";
+import { PRESET_KINDS, buildPresetCards, cardTool, filterPresets, type PresetKind } from "@/lib/presets";
+import { useShell } from "@/components/shell/ShellContext";
+import { NothingOnSaleNote } from "@/components/studio/Availability";
+import { toolOpen } from "@/lib/tool-availability";
+import "@/components/studio/availability.css";
 import { Chip } from "@/components/ui/Chip";
 import { Section } from "@/components/g3/Section";
 import { PresetArt } from "@/components/presets/PresetArt";
@@ -28,6 +32,7 @@ export function PresetsGallery() {
   const searchId = useId();
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<PresetKind | null>(null);
+  const { tools } = useShell();
 
   const cards = useMemo(() => buildPresetCards(slug, locale, t), [slug, locale, t]);
   const shown = useMemo(() => filterPresets(cards, query, kind), [cards, query, kind]);
@@ -39,6 +44,7 @@ export function PresetsGallery() {
 
   return (
     <div className="flex flex-col gap-8">
+      <NothingOnSaleNote />
       <section className="flex flex-col gap-4" aria-label={tp.searchLabel}>
         <div className="pr-search">
           <label htmlFor={searchId} className="sr-only">
@@ -94,7 +100,28 @@ export function PresetsGallery() {
           return (
             <Section key={k} title={tp.sections[k].title} hint={tp.sections[k].hint}>
               <ul className="pr-grid">
-                {group.map((c) => (
+                {group.map((c) => {
+                  // A starter or a voice whose tool has nothing on sale keeps its card, says so, and is not a link: it would open
+                  // a form with nothing to pick (lib/tool-availability.ts). Formats and looks do not depend on a model on sale.
+                  const tool = cardTool(c);
+                  if (tool !== null && !toolOpen(tools, tool)) {
+                    return (
+                      <li key={c.key}>
+                        <div className="pr-card av-closed" data-preset={c.key} data-unavailable="true">
+                          <span className="pr-art" aria-hidden>
+                            <PresetArt art={c.art} />
+                          </span>
+                          <span className="pr-body">
+                            <span className="pr-tag">{c.tag}</span>
+                            <span className="pr-title">{c.title}</span>
+                            <span className="pr-who">{c.who}</span>
+                            <span className="av-tag">{t.availability.notYet}</span>
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  }
+                  return (
                   <li key={c.key}>
                     <Link
                       href={c.href}
@@ -116,7 +143,8 @@ export function PresetsGallery() {
                       </span>
                     </Link>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </Section>
           );

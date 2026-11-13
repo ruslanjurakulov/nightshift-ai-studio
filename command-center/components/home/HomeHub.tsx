@@ -29,6 +29,9 @@ import { Timecode } from "@/components/ui/Timecode";
 import { RecentStrip } from "@/components/home/RecentStrip";
 import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
 import type { StudioModel } from "@/lib/creative/studio";
+import { useShell } from "@/components/shell/ShellContext";
+import { NothingOnSaleNote } from "@/components/studio/Availability";
+import { deskOpen, nothingOnSale, toolOpen } from "@/lib/tool-availability";
 import "@/components/create/flow.css";
 
 const QUICK_ICON: Record<QuickActionId, LucideIcon> = {
@@ -84,7 +87,11 @@ export function HomeHub({
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
+  const { tools } = useShell();
   const composer = useRef<ComposerHandle>(null);
+  // Home's tiles open a tool's form: a tool with nothing on sale is left out rather than linked to a form with nothing to pick
+  // (lib/tool-availability.ts). When none is left, the section says so and points at the YouTube video instead.
+  const quick = QUICK_ACTIONS.filter((a) => toolOpen(tools, a.tool));
   const runnable: ComposerChannel[] = channels
     .filter((c) => c.standing !== "draft")
     .map((c) => ({ slug: c.slug, name: c.name, autoPublish: c.autoPublish }));
@@ -162,11 +169,14 @@ export function HomeHub({
               <Plus aria-hidden className="size-4" />
               {t.home.connect}
             </Link>
-            {/* Not a way round connecting: the picture, clip and voice desks need no channel, and say so. A full YouTube video still needs one. */}
-            <Link href={path(deskHref("image"))} className="tap-link flex min-h-11 flex-col justify-center text-sm" data-testid="home-try-media">
-              <span className="font-medium text-[var(--color-primary)] hover:underline">{t.home.tryMedia}</span>
-              <span className="text-[var(--color-muted)]">{t.home.tryMediaNote}</span>
-            </Link>
+            {/* Not a way round connecting: the picture, clip and voice desks need no channel, and say so. A full YouTube video still needs one.
+                Only while one of them has something on sale: otherwise it would promise a picture nobody can make. */}
+            {!nothingOnSale(tools) && (
+              <Link href={path(deskOpen(tools, "image") ? deskHref("image") : deskHref("overview"))} className="tap-link flex min-h-11 flex-col justify-center text-sm" data-testid="home-try-media">
+                <span className="font-medium text-[var(--color-primary)] hover:underline">{t.home.tryMedia}</span>
+                <span className="text-[var(--color-muted)]">{t.home.tryMediaNote}</span>
+              </Link>
+            )}
           </div>
         ) : (
           <div className="home-desk">
@@ -224,8 +234,10 @@ export function HomeHub({
             {t.presets.homeLink}
           </Link>
         </div>
+        <NothingOnSaleNote testId="home-nothing-on-sale" />
+        {quick.length > 0 && (
         <ul className="home-quick">
-          {QUICK_ACTIONS.map((a) => {
+          {quick.map((a) => {
             const Icon = QUICK_ICON[a.id];
             return (
               <li key={a.id}>
@@ -242,6 +254,7 @@ export function HomeHub({
             );
           })}
         </ul>
+        )}
       </section>
 
       <RecentStrip orgId={orgId} />

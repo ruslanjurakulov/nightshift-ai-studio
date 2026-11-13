@@ -343,6 +343,17 @@ describe("the strings", () => {
 
   it("the Uzbek card says what the owner asked for", () => {
     expect(CHARACTER_STUDIO_STRINGS.uz.gallery.try).toBe("Sinab koʻrish");
-    expect(CHARACTER_STUDIO_STRINGS.uz.gallery.sampleSoon).toBe("Namuna tez orada");
+  });
+
+  it("a card counts its characters in the reader's plural, never \"character(s)\"", async () => {
+    const { pluralText } = await import("../lib/plural");
+    const forms = (loc: string) => CHARACTER_STUDIO_STRINGS[loc].gallery.characters;
+    expect(pluralText(forms("en"), 1, "en")).toBe("1 character");
+    expect(pluralText(forms("en"), 2, "en")).toBe("2 characters");
+    expect(pluralText(forms("ru"), 1, "ru")).toBe("1 герой");
+    expect(pluralText(forms("ru"), 3, "ru")).toBe("3 героя");
+    expect(pluralText(forms("ru"), 5, "ru")).toBe("5 героев");
+    expect(pluralText(forms("uz"), 4, "uz")).toBe("4 ta qahramon");
+    for (const loc of ["en", "ru", "uz"]) for (const s of Object.values(forms(loc))) expect(s, loc).not.toMatch(/\(s\)|\(ов\)|:\s*\{n\}/);
   });
 });

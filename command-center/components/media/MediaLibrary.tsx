@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useChannelPath } from "@/lib/channels-client";
 import { Check, FolderInput, Images, Search, Upload } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/context";
@@ -142,6 +144,7 @@ export function MediaLibrary({
 }) {
   const { t, locale } = useI18n();
   const day = useDay();
+  const channelPath = useChannelPath();
   const tm = t.media;
   const tf = tm.folders;
   const tu = t.libraryUx;
@@ -937,7 +940,13 @@ export function MediaLibrary({
             <Images className="size-6" strokeWidth={1.5} />
           </span>
           <p className="m-0 max-w-[46ch] text-sm font-light leading-relaxed text-[var(--color-muted)]">{tm.empty}</p>
-          {canUpload && uploadButton(true)}
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {canUpload && uploadButton(true)}
+            {/* The other way in: what is made in Create lands here. Never a dead end, even where nothing can be uploaded. */}
+            <Link href={channelPath("/create")} className="btn-quiet inline-flex min-h-11 items-center px-4 text-sm" data-testid="library-empty-create">
+              {tm.emptyCreate}
+            </Link>
+          </div>
         </section>
       ) : (
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">

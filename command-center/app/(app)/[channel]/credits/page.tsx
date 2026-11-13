@@ -31,6 +31,7 @@ import { InviteAdminPanel } from "@/components/credits/InviteAdminPanel";
 import { UsageLinkCard } from "@/components/usage/UsageLinkCard";
 import { readUsageSummary } from "@/lib/server/usage";
 import { readInviteAdmin, readMyInvite } from "@/lib/server/friend-invites";
+import { inviteWorthShowing } from "@/lib/friend-invites";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
 import { ScrollToHash } from "@/components/navigation/ScrollToHash";
@@ -241,8 +242,19 @@ export default async function CreditsPage() {
       {/* Invite friends: for a workspace that pays (the reward is paid into it);
           the database refuses anyone who does not run the workspace. Left out
           before migration 0092. */}
-      {showInvite && inviteRead.state === "ok" && (
+      {/* While invites are closed and this workspace has no link yet, the card gives way to one line: a disabled "Create my link" is
+          a button that cannot be pressed for a reason nobody can act on. The line keeps #invite, which the account menu links to, so
+          that link never lands nowhere. A workspace that already has a link keeps its card and its progress. */}
+      {showInvite && inviteRead.state === "ok" && inviteWorthShowing(inviteRead.value) && (
         <InviteFriendsCard invite={inviteRead.value} orgId={orgId} />
+      )}
+      {showInvite && inviteRead.state === "ok" && !inviteWorthShowing(inviteRead.value) && (
+        <section id="invite" className="flex scroll-mt-7 flex-col gap-1" aria-labelledby="invite-title" data-invite-closed>
+          <h2 id="invite-title" className="t-section">
+            {t.invite.title}
+          </h2>
+          <p className="text-sm text-[var(--color-muted)]">{t.invite.closedShort}</p>
+        </section>
       )}
       {showInvite && inviteRead.state === "failed" && (
         <section id="invite" className="panel flex scroll-mt-7 flex-col gap-2 p-5 sm:p-6" aria-labelledby="invite-title">

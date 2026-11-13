@@ -47,7 +47,7 @@ import {
 } from "@/lib/models-discovery";
 import styles from "./ModelDiscovery.module.css";
 
-const LAMP: Record<DiscoveryState, LampTone> = { available: "ok", plan_gated: "info", needs_probe: "warn", unavailable: "off" };
+const LAMP: Record<DiscoveryState, LampTone> = { available: "ok", plan_gated: "info", needs_probe: "warn", not_on_sale: "off", unavailable: "off" };
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const TEXT_CAPS: readonly RegistryCapability[] = ["t2i", "edit", "t2v", "i2v", "tts", "sfx"];
 
