@@ -305,7 +305,9 @@ def test_search_is_plain_text_and_case_blind(conn, sc):
         by_id = _accounts(conn, sc.operator, search=c2)
         wildcard = _accounts(conn, sc.operator, search="%")
         underscore = _accounts(conn, sc.operator, search="opslab_c")
-        everyone = _accounts(conn, sc.operator, search="   ")
+        # The largest page (100): the lab database is shared by the whole session, and with every workspace the earlier
+        # files leave behind (e.g. the Dodo lab's) the four asked for can sit past a page of 50 that sorts by spend.
+        everyone = _accounts(conn, sc.operator, search="   ", limit=100)
     assert [str(r["org_id"]) for r in by_email] == [c1]
     assert [str(r["org_id"]) for r in by_name] == [c2]
     assert [str(r["org_id"]) for r in by_id] == [c2]
