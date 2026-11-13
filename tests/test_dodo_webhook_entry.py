@@ -87,7 +87,8 @@ class Deploy(unittest.TestCase):
     def test_the_switch_is_a_variable_with_no_default_and_the_key_is_a_secret(self):
         self.assertIn("WEBENV_PAYMENTS_PROVIDER: ${{ vars.PAYMENTS_PROVIDER }}\n", DEPLOY)
         self.assertIn("WEBENV_DODO_PAYMENTS_API_KEY: ${{ secrets.DODO_PAYMENTS_API_KEY }}\n", DEPLOY)
-        for name in ("DODO_PRODUCT_STARTER", "DODO_PRODUCT_CREATOR", "DODO_PRODUCT_STUDIO", "DODO_PLAN_CREATOR", "DODO_PLAN_PRO", "DODO_PLAN_STUDIO", "DODO_PAYMENTS_ENV"):
+        for name in ("DODO_PRODUCT_STARTER", "DODO_PRODUCT_CREATOR", "DODO_PRODUCT_STUDIO", "DODO_PLAN_CREATOR", "DODO_PLAN_PRO", "DODO_PLAN_STUDIO", "DODO_PAYMENTS_ENV",
+                     "DODO_PRODUCT_AMOUNT"):
             self.assertIn(f"WEBENV_{name}: ${{{{ vars.{name} }}}}\n", DEPLOY)
         self.assertNotIn("vars.DODO_PAYMENTS_API_KEY", DEPLOY)
         self.assertIn("WEBENV_DODO_METADATA_SECRET: ${{ secrets.DODO_METADATA_SECRET }}\n", DEPLOY)
@@ -95,13 +96,41 @@ class Deploy(unittest.TestCase):
         self.assertIn("WEBENV_DODO_TEST_ORG_IDS: ${{ vars.DODO_TEST_ORG_IDS }}\n", DEPLOY)
         self.assertNotIn("DODO_WEBHOOK_SECRET", DEPLOY)
         self.assertRegex(ENV_EXAMPLE, r"(?m)^PAYMENTS_PROVIDER=$")
+        self.assertRegex(ENV_EXAMPLE, r"(?m)^DODO_PRODUCT_AMOUNT=$")
+
+
+class TypedAmount(unittest.TestCase):
+    """The "Add credits" sheet's typed amount: the one purchase whose price the buyer picks."""
+
+    def test_the_webhook_reads_the_pwyw_product_and_passes_it_to_the_handler(self):
+        self.assertIn("dodoAmountProductFromEnv(env, packs, plans)", ENTRY)
+        self.assertIn("amountProduct, store }", ENTRY)
+
+    def test_credits_come_from_the_signed_item_and_only_when_paid_equals_signed(self):
+        branch = SHARED.split("if (pid && amountProduct && pid === amountProduct) {")[1].split("\n  }\n")[0]
+        self.assertIn("const cents = dodoAmountFromItem(meta.item);", branch)
+        self.assertIn("if (!amountMatches(total, tax, cents, taxMode))", branch)
+        self.assertIn("const credits = cents * DODO_AMOUNT.creditsPerCent;", branch)
+        self.assertIn("if (line.quantity !== 1)", branch)
+        # Never from a number the payment or the buyer chose.
+        self.assertNotRegex(branch, r"credits\s*=\s*(total|line\.|data\.)")
+        self.assertLess(branch.index("amountMatches"), branch.index('kind: "purchase"'))
+
+    def test_the_bounds_are_enforced_in_the_webhook_too(self):
+        reader = SHARED.split("export function dodoAmountFromItem")[1].split("\n}\n")[0]
+        self.assertIn("cents >= DODO_AMOUNT.minCents && cents <= DODO_AMOUNT.maxCents", reader)
+        self.assertIn("/^pack:amount_([1-9][0-9]{0,8})$/", reader)
+
+    def test_the_setup_guide_names_the_product_and_its_settings(self):
+        self.assertIn("DODO_PRODUCT_AMOUNT", DOCS)
+        self.assertIn("Pay What You Want", DOCS)
 
 
 class SetupGuide(unittest.TestCase):
     def test_deploys_without_jwt_verification_and_sets_the_secrets_by_name(self):
         self.assertIn("supabase functions deploy dodo-webhook --no-verify-jwt", DOCS)
         for name in ("DODO_WEBHOOK_SECRET", "DODO_PRODUCT_STARTER", "DODO_PLAN_PRO", "DODO_PAYMENTS_API_KEY", "PAYMENTS_PROVIDER",
-                     "DODO_METADATA_SECRET", "DODO_TAX_MODE", "DODO_WEBHOOK_MODE", "DODO_TEST_ORG_IDS"):
+                     "DODO_METADATA_SECRET", "DODO_TAX_MODE", "DODO_WEBHOOK_MODE", "DODO_TEST_ORG_IDS", "DODO_PRODUCT_AMOUNT"):
             self.assertIn(name, DOCS)
         self.assertNotRegex(DOCS, r"whsec_[A-Za-z0-9+/]{8,}|dodo_(test|live)_[A-Za-z0-9]{8,}")
 

@@ -18,7 +18,7 @@ on:
         required: true
         type: string
       slot:
-        description: "Optional: the site slot a later change may put it in (components/site/samples.tsx SLOTS); empty = none"
+        description: "Optional: the site slot a later change may put it in (components/site/slots.ts SLOTS); empty = none"
         required: false
         default: ""
         type: string

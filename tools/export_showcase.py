@@ -61,7 +61,7 @@ ASSETS_MODULE = CC / "components" / "site" / "showcase-assets.ts"
 OUT_ROOT = CC / "components" / "site" / "showcase"
 ART_DIR = CC / "components" / "site" / "art"
 STOCK_DIRS = (CC / "components" / "site" / "media", CC / "components" / "site" / "clips")
-SAMPLES_TSX = CC / "components" / "site" / "samples.tsx"
+SAMPLES_TSX = CC / "components" / "site" / "slots.ts"
 REGISTRY_FILE = ROOT / "schemas" / "model_registry.json"
 
 #: The operator's own organization (migration 0018 default_org_id; modules/credits.DEFAULT_ORG_ID).
@@ -165,7 +165,7 @@ def entry_problem(entry: Mapping[str, Any]) -> Optional[str]:
 
 
 def slot_names(path: Path = SAMPLES_TSX) -> List[str]:
-    """The slot names of components/site/samples.tsx SLOTS (the keys a later change may point at a sample)."""
+    """The slot names of components/site/slots.ts SLOTS (the keys a later change may point at a sample)."""
     text = path.read_text(encoding="utf-8")
     start = text.index("export const SLOTS = {")
     end = text.index("} as const", start)

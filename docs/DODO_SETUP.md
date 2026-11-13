@@ -45,6 +45,13 @@ Qoidalar (Paddle'dagi bilan bir xil):
   Qaysi Dodo mahsuloti — serverdagi env; nechta kredit — koddagi katalog; to'langan summa
   katalog narxiga teng bo'lmasa (USD'da, soliqsiz yoki soliq ichida) — kredit **berilmaydi**,
   hodisa `rejected` bo'lib yoziladi (pul olingan — odam hal qiladi).
+- **Ixtiyoriy summa ("Kredit qo'shish") — yagona istisno, lekin kreditni baribir brauzer belgilamaydi.**
+  Brauzer faqat sentni aytadi (butun son, $5 dan $300 gacha — serverda tekshiriladi). Server shu sentni
+  imzoli metadata'ga yozadi (`nightshift_item = pack:amount_<sent>`, nonce qatorida ham aynan shu) va
+  Dodo'ning Pay What You Want mahsulotiga `amount` qilib beradi. Webhook kreditni **imzolangan sent ×
+  `DODO_AMOUNT.creditsPerCent`** (1 kredit = 1 sent) dan hisoblaydi va faqat Dodo xuddi shu sentni
+  to'langan deb aytsa beradi (paketlardagi o'sha soliq qoidasi). Statik PWYW havolasida xaridor istalgan
+  narxni yoza oladi (`paymentAmount`) — imzolangan summaga teng bo'lmasa `rejected`, kredit yo'q.
 - **Kreditlar Paddle'dagi funksiyalar orqali**: paket — `add_purchased_credits`, tarif davri —
   `grant_subscription_credits_for('dodo', …)` (0146, 0034'ning o'sha tanasi), qaytarish va
   yutqazilgan nizo — `refund_purchased_credits`. Ledger, lotlar, yonish, idempotentlik — bir xil.
@@ -78,6 +85,13 @@ mahsulot narxini aynan shunday qo'ying — boshqa narxda to'langan xarid kredit 
 | Plus (`creator`) | 2 000 / oy | 19 / oy | Subscription, har 1 oy | `DODO_PLAN_CREATOR` |
 | Pro (`pro`) | 6 000 / oy | 49 / oy | Subscription, har 1 oy | `DODO_PLAN_PRO` |
 | Business (`studio`) | 18 000 / oy | 129 / oy | Subscription, har 1 oy | `DODO_PLAN_STUDIO` |
+| Ixtiyoriy summa ("Kredit qo'shish") | 1 sentga 1 kredit | 5 – 300 (xaridor tanlaydi; tugmalar 10 / 20 / 50 / 100) | One-time, **Pay What You Want** | `DODO_PRODUCT_AMOUNT` |
+
+Ixtiyoriy summaning stavkasi va chegaralari ham kodda (`DODO_AMOUNT`, ikkala faylda; test bir xilligini
+tekshiradi). 1 kredit = 1 sent — Starter paketining o'z stavkasi (1 000 kredit / $10), shuning uchun
+asosiy narx o'zgarmaydi. Katta paketlar (Creator, Studio) Credits sahifasida "foydaliroq" kartalar bo'lib
+qoladi va har biri yozilgan summadan qancha ko'p kredit berishini ko'rsatadi (+11%, +25% — ikki katalogdan
+hisoblanadi). `DODO_PRODUCT_AMOUNT` bo'sh bo'lsa sahifa avvalgidek faqat paketlarni ko'rsatadi.
 
 Tarif kreditlari bazadan (`plans.monthly_credits`), narxi koddan. Product id'lar **hech
 qachon kodda emas** — har biri ikki joyda turadi va ikkalasida bir xil bo'lishi shart:
@@ -103,6 +117,13 @@ Narxni o'zgartirmoqchi bo'lsangiz: avval kod (ikkala katalog, PR), keyin Dodo'da
 4. **Paddle obunachilari** (agar bo'lsa) Paddle'da qoladi: Manage subscription ularga Paddle
    portalini ochadi. Karta bir MoR'dan boshqasiga ko'chmaydi.
 5. Avval hammasi **test mode**'da (pul yurmaydi), keyin live.
+6. **Avtomatik to'ldirish (auto recharge) qurilmagan.** "Kredit qo'shish" oynasida bu yorliq bor, lekin
+   ichida faqat "hozircha mavjud emas" va sababi yozilgan — hech qanday tugma yoki kalit yo'q. Saqlangan
+   kartadan avtomatik pul yechish uchun avval Dodo'dan yozma javob kerak: Merchant Acceptance Policy
+   (https://docs.dodopayments.com/miscellaneous/merchant-acceptance, 2026-11-13 da o'qildi) 7-bandda
+   "anything involving stored value" va 18-bandda "Digital wallets" ni qo'llab-quvvatlamaydi; saqlangan
+   karta mandati matni tasdiqlanmagan. Shu sabab sahifa "hamyon" yoki dollar balansi demaydi — faqat
+   kredit. Javob kelguncha bu qism qurilmaydi.
 
 ## 1. Bazani tayyorlash — 0146 migratsiyasi (bir marta)
 
@@ -129,6 +150,14 @@ select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg
 
 Faylning oxiridagi "Verify" so'rovi — hamma ustun `true`. Orqaga qaytarish:
 `docs/sql/rollback_0146_dodo_payments.sql` (Dodo qatori yoki sarflangan checkout nonce bor ekan, rad etadi).
+
+### 1b. Xaridlar tarixi — 0157 migratsiyasi (bir marta, 0146 dan keyin)
+
+`supabase/migrations/0157_dodo_purchase_history.sql` — bitta faqat o'qiydigan funksiya
+(`dodo_purchase_history`): owner/admin o'z tashkilotining kreditlangan Dodo to'lovlarini ko'radi (Credits
+sahifasidagi "Xaridlar tarixi" va hisob-faktura yuklab olish). Qo'llashdan oldingi tekshiruv faylning
+boshida. md5: `83396f8724ca4968b7c56f2297aa0830`. Qo'llanmasa — sotish ishlayveradi, tarix paneli
+"0157 kerak" deydi. Orqaga: `docs/sql/rollback_0157_dodo_purchase_history.sql`.
 
 ## 2. Dodo akkaunti: test mode
 
@@ -162,9 +191,21 @@ Har biri uchun (6 ta, yuqoridagi katalog jadvali):
   **ustida** (`exclusive`) — **bittasini** tanlang, hamma 6 mahsulotga bir xil qo'llang va o'shani
   Supabase secret `DODO_TAX_MODE` ga yozing (4-band). Webhook faqat shu shaklni qabul qiladi:
   `inclusive` — to'langan summa = narx; `exclusive` — summa − soliq = narx. Boshqasi `rejected`.
-- Pay What You Want, chegirma, chegirma kodi — yo'q (checkout chegirma kodini o'chiradi; chegirma
-  bilan kelgan to'lov `rejected`).
+- Paketlar va tariflarda Pay What You Want, chegirma, chegirma kodi — yo'q (checkout chegirma kodini
+  o'chiradi; chegirma bilan kelgan to'lov `rejected`).
 - Mahsulot sahifasidan `pdt_…` id'ni nusxalang.
+
+**7-mahsulot: ixtiyoriy summa** (`DODO_PRODUCT_AMOUNT`, "Kredit qo'shish" oynasi uchun):
+
+- Pricing Type: **One Time**; valyuta **USD**; **Pay What You Want** — yoqiq.
+- **Minimum Price: `5.00`** (bizning eng kam summamizdan katta bo'lmasin — aks holda $5 lik xarid Dodo'da
+  rad etiladi). Suggested Price — ixtiyoriy. Eng ko'p summa sozlamasi Dodo'da yo'q ("There is no maximum
+  price setting"): $300 chegarasini kod qo'yadi (sahifa, checkout route va webhook).
+- Soliq toifasi va `inclusive` / `exclusive` — **qolgan 6 mahsulot bilan bir xil** (`DODO_TAX_MODE`).
+- Localized Pricing — o'chiq (PWYW u bilan birga ishlamaydi; webhook faqat USD'ni kreditlaydi).
+- Agar mahsulotda PWYW yoqilmasa, Dodo `amount` ni e'tiborsiz qoldiradi va mahsulot narxini oladi — webhook
+  buni imzolangan summaga mos emas deb `rejected` qiladi (kredit yo'q). Ya'ni xato sozlama pulni xavf
+  ostiga qo'ymaydi, lekin har bir xarid odam ishiga aylanadi: test mode'da tekshiring (7-band).
 
 ## 3. API key (test mode)
 
@@ -185,6 +226,7 @@ GitHub → Settings → Environments → **production**:
 | `DODO_PAYMENTS_ENV` | Variable | `test` (live'da `live`) |
 | `DODO_PRODUCT_STARTER`, `DODO_PRODUCT_CREATOR`, `DODO_PRODUCT_STUDIO` | Variable | paketlarning `pdt_…` id'lari |
 | `DODO_PLAN_CREATOR`, `DODO_PLAN_PRO`, `DODO_PLAN_STUDIO` | Variable | tariflarning `pdt_…` id'lari |
+| `DODO_PRODUCT_AMOUNT` | Variable | ixtiyoriy summa (Pay What You Want) mahsulotining `pdt_…` id'si; bo'sh = faqat paketlar |
 | `PAYMENTS_PROVIDER` | Variable | **hozircha qo'ymang** (6-band) |
 
 Kalit rejimi `DODO_PAYMENTS_ENV` ga mos bo'lishi shart (`test` ↔ `dodo_test_…`, `live` ↔
@@ -238,6 +280,7 @@ DODO_PRODUCT_STUDIO=pdt_...
 DODO_PLAN_CREATOR=pdt_...
 DODO_PLAN_PRO=pdt_...
 DODO_PLAN_STUDIO=pdt_...
+DODO_PRODUCT_AMOUNT=pdt_...
 EOF
 supabase secrets set --env-file /tmp/dodo.env --project-ref <REF>
 rm /tmp/dodo.env
@@ -300,6 +343,25 @@ Test karta: `4242 4242 4242 4242`, muddati `06/32`, CVV `123` (rad etiladigan ka
       bir necha soniyada balans +1 000; `credit_transactions` da `purchase` qatori
       (`external_id` = `pay_…`), `payment_events` da `processed`. Qaytish `/api/billing/dodo/return`
       orqali o'tadi: manzil satrida `email` yo'q.
+- [ ] **Ixtiyoriy summa.** Credits → "Kredit qo'shish" → $25.50 yozing: "Qo'shiladigan kredit 2,550",
+      "Jami $25.50". Tugma "Processing…" deydi, Dodo sahifasida summa $25.50 (+ soliq). To'lovdan keyin
+      balans +2 550; `payment_events` da `processed`, `credits = 2550`. $4.99 va $300.01 — sahifa
+      xabar beradi, tugma bosilmaydi. "Avtomatik to'ldirish" yorlig'i — faqat "hozircha mavjud emas".
+- [ ] **Dodo sahifasida summani o'zgartirish.** "Kredit qo'shish" → $25.50 → Dodo'ning to'lov sahifasida
+      summani o'zgartirishga urinib ko'ring (agar Dodo bunga yo'l qo'ysa — hujjat "When `amount` is provided,
+      the checkout uses that exact amount" deydi, ya'ni o'zgartirib bo'lmasligi kerak) va to'lang. Kutilgan:
+      to'lov `rejected` ("signed amount is 2550"), kredit **yo'q** — bu to'lovni Dodo'da **refund qiling**.
+      Agar sahifa summani o'zgartirishga ruxsat bersa, buni yozib qo'ying: Credits sahifasi allaqachon "Dodo
+      sahifasida summani o'zgartirmang" deydi, lekin ruxsat bo'lsa har bir shunday to'lov odam ishi bo'ladi.
+- [ ] **Statik PWYW havolasi, boshqa narx.** Dodo → Products → PWYW mahsuloti → havola, Advanced Settings
+      → Payment amount `5.00`, URL'ga yuqoridagi xariddagi imzolangan metadata'ni qo'shib to'lang —
+      `rejected` ("signed amount is …"), kredit yo'q. Refund qiling.
+- [ ] **Xaridlar tarixi.** Credits pastida "Xaridlar tarixi": har bir to'lov bir marta, sana, nima, kredit,
+      summa (soliq bilan), holat; qisman refunddan keyin "Partly refunded". "Download" — Dodo'ning PDF
+      hisob-fakturasi. Bir daqiqada 5 martadan ko'p bossangiz — "Too many invoice downloads in a minute"
+      (bizning odam boshiga limit, `dodo.invoice`, 5/daqiqa: Dodo'ning IP boshiga 20/daqiqa limiti butun server
+      uchun bitta, shuning uchun bitta admin uni hammaga tugatib qo'ymasin). Boshqa tashkilotning to'lov ID'si —
+      "can't be opened from this workspace", Dodo'ga so'rov yuborilmaydi.
 - [ ] **Soxta metadata.** Dodo dashboard'dagi statik to'lov havolasi bilan (metadata'siz yoki
       `metadata_org_id=…` bilan) to'lang — `payment_events` da `rejected` ("not this deployment's"),
       kredit yo'q. Refund qiling.
@@ -401,6 +463,7 @@ select org_id, plan_id, status, current_period_end, cancel_at_period_end, update
 | Metadata | Tashkilot faqat bizning imzomiz (`ns_sig`, `DODO_METADATA_SECRET`, konstant vaqtda tekshiriladi) bo'lgan metadata'dan olinadi. Imzosiz yoki noto'g'ri imzoli metadata — `rejected`, hech qaysi tashkilot nomlanmaydi. |
 | Test mode | `DODO_WEBHOOK_MODE` aynan `live` bo'lmasa, faqat `DODO_TEST_ORG_IDS` dagi tashkilotlarga kredit va tarif; qolgani `rejected`. Qaytarish (refund, nizo) cheklanmaydi. |
 | Paket | `status = succeeded`; USD; chegirma yo'q; imzolangan tashkilot; aynan bitta qator, imzolangan paket, soni 1; `DODO_TAX_MODE=inclusive` bo'lsa `total_amount` = katalog narxi, `exclusive` bo'lsa `total_amount − tax` = katalog narxi. Tashkilot mavjud. |
+| Ixtiyoriy summa | Paketdagidek, plus: qator mahsuloti `DODO_PRODUCT_AMOUNT`; imzolangan item aynan `pack:amount_<sent>` (bosh nolsiz, 500 – 30000); soni 1; `total_amount` (yoki `total_amount − tax`) = **imzolangan sent**. Kredit = imzolangan sent × 1. Boshqa narx (statik havolada xaridor tanlagani ham) — `rejected`. Nonce bir marta. |
 | Tarif davri | Yuqoridagidek, plus: `charge_type` `new` yoki `renewal`; obuna bazada bor (yo'q bo'lsa 503 — Dodo qayta yuboradi), uning tashkiloti metadata'dagiga mos; obuna mahsuloti shu deployment'dagi tarif; summa o'sha tarif narxi; `service_periods` dagi davr. `plan_change` to'lovi — `rejected` (qo'lda). |
 | Obuna holati | `active`, `past_due` → imkoniyatlar bor; `on_hold`, `paused` → `paused`; `cancelled`, `expired` → `canceled`; `cancel_at_next_billing_date` → davr oxirida tugaydi. Eskirgan hodisa (vaqt bo'yicha) hech narsani o'zgartirmaydi. |
 | Refund | Faqat `succeeded`; to'liq — qolgan hammasi, qisman — pulga mutanosib; xariddan oldin kelsa 503 (qayta). Hech qachon kreditlanganidan ko'p emas (baza cheklaydi). |
@@ -453,6 +516,16 @@ select org_id, plan_id, status, current_period_end, cancel_at_period_end, update
    Endi deployment bitta rejimni `DODO_TAX_MODE` bilan qat'iy belgilaydi va webhook faqat o'shani
    qabul qiladi.
 8. **Tarif almashtirish** (pro-rata) va **API balansi top-up** Dodo uchun avtomatlashtirilmagan.
+10. ~~PWYW `amount` bitta birlik uchunmi yoki jamimi?~~ — **hujjatda bor** (2026-11-13): "the `amount` is a
+    per-unit price, and the total is `amount` × `quantity`" (dynamic-pricing-checkout). Biz doim `quantity: 1`
+    yuboramiz va webhook 1 dan boshqasini rad etadi. Eng ko'p summa sozlamasi yo'q — chegarani kod qo'yadi.
+11. **To'lov hodisasidagi `product_cart` qatorida PWYW summasi yo'q** (faqat `product_id`, `quantity` —
+    get-payments-1 sxemasi). Shuning uchun webhook `total_amount` / `tax` ni imzolangan sent bilan solishtiradi.
+12. **Hisob-faktura raqami.** To'lov obyektida `invoice_id` bor ("Invoice ID for this payment"), lekin webhook
+    uni saqlamaydi; Credits sahifasi "To'lov ID" (`pay_…`) ni ko'rsatadi, raqam esa PDF'ning o'zida. PDF —
+    `GET /invoices/payments/{payment_id}` (API key bilan; `invoice_url` eskirgan deb belgilangan). Limit:
+    bir to'lovga daqiqasiga 5, bir IP'ga 20.
+13. **Avtomatik to'ldirish** — Dodo'ning yozma javobi kerak (0-bo'lim, 6-band).
 
 ## Manbalar (docs.dodopayments.com, 2026-11-12 da o'qildi)
 
@@ -473,3 +546,13 @@ select org_id, plan_id, status, current_period_end, cancel_at_period_end, update
 - API kirish (kalitlar, hostlar): https://docs.dodopayments.com/api-reference/introduction
 - Metadata: https://docs.dodopayments.com/api-reference/metadata
 - Test kartalar: https://docs.dodopayments.com/miscellaneous/testing-process
+
+Ixtiyoriy summa va hisob-fakturalar uchun (2026-11-13 da o'qildi):
+
+- Pay What You Want: https://docs.dodopayments.com/features/pay-what-you-want
+- PWYW checkout (`amount`, birlik narxi, eng ko'p summa yo'q): https://docs.dodopayments.com/developer-resources/dynamic-pricing-checkout
+- `product_cart[].amount` maydoni: https://docs.dodopayments.com/api-reference/checkout-sessions/create
+- To'lov obyekti (`total_amount`, `tax`, `invoice_id`, `product_cart`): https://docs.dodopayments.com/api-reference/payments/get-payments-1 ·
+  https://docs.dodopayments.com/developer-resources/webhooks/intents/payment
+- Hisob-faktura PDF: https://docs.dodopayments.com/api-reference/payments/get-invoice
+- Limitlar (Invoice Downloads): https://docs.dodopayments.com/api-reference/introduction

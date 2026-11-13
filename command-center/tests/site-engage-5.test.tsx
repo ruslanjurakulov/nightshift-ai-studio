@@ -21,10 +21,10 @@ import { dictionaries, LOCALES } from "@/lib/i18n";
 import { LoopClip } from "@/components/site/LoopClip";
 import { StickyCta } from "@/components/site/StickyCta";
 import { Landing } from "@/components/landing/Landing";
-import { CLIPS, SLOTS, slotClip } from "@/components/site/samples";
+import { CLIPS, SLOTS, slotMedia, type PlaceDef } from "@/components/site/samples";
 import { setMotionPaused } from "@/lib/site/motion";
 import { buildCsp } from "@/lib/security/csp";
-import { GALLERY, SAMPLE_CARD, outsideGallery, shippedSamples, without } from "./helpers/showcase-scope";
+import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, placeLabelProblems, without } from "./helpers/showcase-scope";
 
 const ROOT = join(__dirname, "..");
 const SRC = CLIPS.caravan;
@@ -90,19 +90,20 @@ describe("the clips (round 5)", () => {
     expect(css).toMatch(/\.nx-clip \{ position: absolute; inset: 1px; width: calc\(100% - 2px\); height: calc\(100% - 2px\);/);
   });
 
-  it("belong to eight slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
-    expect(slotClip("hero")).toBe("cloud");
-    expect(slotClip("show.studio")).toBe("pottery");
-    expect(slotClip("show.approvals")).toBe("coast");
-    expect(slotClip("pricing.card")).toBe("floating");
-    expect(slotClip("solutions.youtube-channels")).toBe("caravan");
-    expect(slotClip("solutions.creative-studio")).toBe("loom");
-    // Round 9: the sign-up stage plays the floating lanterns (behind a pause button), /mcp's header panel plays the cloud sea.
-    expect(slotClip("auth.signup")).toBe("floating");
-    expect(slotClip("mcp.hero")).toBe("cloud");
-    for (const slot of ["hero", "show.studio", "show.approvals", "pricing.card", "solutions.youtube-channels", "solutions.creative-studio", "auth.signup", "mcp.hero"] as const) expect(SLOTS[slot].id).toBe(slotClip(slot));
+  it("are the stock fallback of eight slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
+    // Round 10: these are what a slot shows only until one of our samples fills it (its `ai` line); the fallback stays declared.
+    const fallback = (slot: keyof typeof SLOTS): string | null => {
+      const s: PlaceDef = SLOTS[slot];
+      return s.clip ?? null;
+    };
+    const moving = ["hero", "show.studio", "show.approvals", "pricing.card", "solutions.youtube-channels", "solutions.creative-studio", "auth.signup", "mcp.hero"] as const;
+    for (const slot of moving) expect(SLOTS[slot].id, slot).toBe(fallback(slot));
     // The closing panel, the developers' photograph and the sign-in stage are still.
-    for (const slot of ["landing.final", "solutions.developers", "auth.login"] as const) expect(slotClip(slot), slot).toBeNull();
+    for (const slot of ["landing.final", "solutions.developers", "auth.login"] as const) expect(fallback(slot), slot).toBeNull();
+    for (const slot of Object.keys(SLOTS) as (keyof typeof SLOTS)[]) {
+      const c = fallback(slot);
+      if (c) expect(Object.keys(CLIPS)).toContain(c);
+    }
   });
 
   it("are served from /_next/static/media (a path the middleware never gates) through one webpack rule, and the CSP already allows same-origin media (nothing in the CSP changed)", () => {
@@ -223,24 +224,34 @@ describe("LoopClip", () => {
 });
 
 describe("the landing's clips are labelled for what they are (round 5)", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the hero card and two showcases carry both labels (frame and clip), the clip sentence under them, and no clip claims to be Nightshift's output", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the first screen, the two showcases and the closing panel each carry the labels of what they show (stock or one of our samples), and no stock clip claims to be Nightshift's output", (code) => {
     const t = dictionaries[code];
     env();
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
-    // The stock clips are the page's outside the model samples: a merged sample is a real generation, in its own card with its
-    // own badge (tests/site-showcase.test.tsx), and the gallery is the one place that may say it was made with Nightshift.
-    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]"));
-    // The hero's footage is printed once (the card's picture, at every width: the phone panel's copy went when the studio backdrop took the panel), then the two showcases.
-    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["cloud", "pottery", "coast"]);
-    for (const b of clipBoxes) {
-      // The still under a clip is a frame of stock footage.
-      expect(b.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.frameTag);
-      expect(b.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(t.site.samples.clipTag);
-      expect(b.querySelector("img")?.getAttribute("alt")).toBeTruthy();
-    }
-    expect(outsideGallery(container.querySelectorAll("video"))).toHaveLength(3);
+    // Round 10: each slot shows one of our samples once its job is merged and named on its `ai` line, the stock picture until then.
+    // Either way the labels are the ones for what is there (tests/helpers/showcase-scope.ts placeLabelProblems).
+    const places: [Element, keyof typeof SLOTS][] = [
+      [container.querySelector(".nx-sh-credit")!, "hero"],
+      [container.querySelector("#studio .nx-show-pic")!, "show.studio"],
+      [container.querySelector("#approvals .nx-show-pic")!, "show.approvals"],
+    ];
+    for (const [el, slot] of places) expect(placeLabelProblems(el, slotMedia(slot), t.site), slot).toEqual([]);
+    const fin = slotMedia("landing.final");
+    const finCredit = container.querySelector(".nx-final-credit")!;
+    if (fin.kind === "ai") expect(finCredit.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(fin.entry.jobId);
+    else expect(finCredit.textContent).toMatch(/ \/ Pexels$/);
+    // A box that plays something says what it plays: a stock clip by its name, a sample's as "sample".
+    // (The model tiles play their samples' loops too; each is inside its sample's box, checked in tests/site-ai-media.test.tsx.)
+    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]")).filter((b) => !b.closest("#models"));
+    const expected = (["hero", "show.studio", "show.approvals", "landing.final"] as const).flatMap((s) => {
+      const m = slotMedia(s);
+      return m.kind === "ai" ? (m.moving ? ["sample"] : []) : m.clip ? [m.clip] : [];
+    });
+    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(expected);
+    for (const b of clipBoxes) expect(b.querySelector("img")?.hasAttribute("alt")).toBe(true);
+    expect(outsideGallery(container.querySelectorAll("video")).filter((v) => !v.closest("#models"))).toHaveLength(expected.length);
     // Inside the gallery, a clip box is a sample's, never a stock one's: in its card, labelled AI-generated, with no stock label.
-    const { clips } = shippedSamples();
+    const { clips } = landingSamples();
     const sampleBoxes = [...container.querySelectorAll(`${GALLERY} [data-clip]`)];
     expect(sampleBoxes).toHaveLength(clips);
     for (const b of sampleBoxes) {
@@ -347,20 +358,24 @@ describe("one Start free at a time (round 5)", () => {
 });
 
 describe("the hero and the Try grid (round 5)", () => {
-  it("puts the chat card beside the headline on a desktop and the button, then the card, then the words on a phone", () => {
+  it("sets the first screen as the picture with the words and the prompt bar over it, and moves the chat card into How it works (round 10)", () => {
     const t = dictionaries.en;
     env();
     const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
-    const grid = container.querySelector(".nx-hero-grid")!;
-    expect([...grid.children].map((c) => c.className)).toEqual(["nx-hero-copy", "nx-hero-visual"]);
-    expect(grid.querySelector(".nx-hero-copy h1")).toBeTruthy();
-    expect(css).toMatch(/\.nx-hero-grid \{ display: grid; grid-template-columns: minmax\(0, 1\.2fr\) minmax\(0, 0\.8fr\)/);
-    expect(css).toMatch(/\.nx-hero-copy \.nx-actions \{ order: 2;/);
-    expect(css).toMatch(/\.nx-hero-visual \{ order: 3;/);
-    expect(css).toMatch(/\.nx-hero-copy \.nx-lead \{ order: 4;/);
-    expect(css).toMatch(/\.nx-chat \.nx-result-art \{ aspect-ratio: 16 \/ 10; \}/);
-    // The promises are one per line on a desktop: a row that wraps differently in the fallback face moved the column (CLS 0.12).
-    expect(css).toMatch(/\.nx-hero-copy \.nx-trust \{ flex-direction: column;/);
+    const hero = container.querySelector("section.nx-sh")!;
+    expect([...hero.children].map((c) => c.className)).toEqual(["nx-sh-media", "nx-wrap nx-sh-in", "nx-wrap nx-sh-foot"]);
+    const order = [...hero.querySelector(".nx-sh-in")!.children].map((c) => c.className.split(" ")[0] || c.tagName);
+    expect(order).toEqual(["nx-h1", "nx-sh-lead", "nx-pbar", "nx-sh-actions"]);
+    // The headline is a display size above every section heading: on a desktop its smallest is above .nx-h2's largest.
+    const h2max = Number(css.match(/\.nx-h2 \{[^}]*font-size: clamp\(\d+px, [\d.]+vw, (\d+)px\)/)![1]);
+    const h1min = Number(css.match(/  \.nx-sh \.nx-sh-h1 \{ max-width: 16ch; font-size: clamp\((\d+)px/)![1]);
+    expect(h1min).toBeGreaterThan(h2max * 1.15);
+    // The chat card is the idea, not the picture: it sits under the steps, with no picture of its own.
+    const card = container.querySelector("#how figure.nx-chat")!;
+    expect(card.querySelector("img, video, .nx-result-art")).toBeNull();
+    // The box takes 16 px or more (no zoom on a phone), and the promises wrap in a row under the words.
+    expect(css).toMatch(/\.nx-pbar-box \{[^}]*font-size: 17px;/);
+    expect(css).toMatch(/\.nx-facts-more \.nx-trust \{ display: flex; flex-wrap: wrap;/);
   });
 
   it("lays the plan cards out in full rows (three columns, the picture card down the right across two rows) and keeps a card's box while its words are held back", () => {

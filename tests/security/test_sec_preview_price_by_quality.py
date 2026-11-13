@@ -277,6 +277,10 @@ def test_with_0153_rolled_back_only_the_by_quality_preview_changes(conn, sc):
         others += [(who, org, FLARE, _params(quality="low"))
                    for who, org in ((sc.alice.actor, sc.alice.org), (sc.operator, sc.alice.org), (sc.dana, DEFAULT_ORG))]
         ours = [(sc.operator, DEFAULT_ORG, FLARE, p) for p in (_params(), *(_params(quality=t) for t in TIERS))]
+        # This measures 0153's own body: 0155 (which sits on it) comes off first.
+        _become(conn, None)
+        conn.execute(sec_db.rollback_0156_body())  # 0156 sits on 0155's creative_price: off first
+        conn.execute(sec_db.rollback_0155_body())
         with_0153 = [_quote(conn, *c) for c in others + ours]
         _become(conn, None)
         conn.execute(sec_db.rollback_0153_body())
@@ -293,11 +297,14 @@ def test_the_lab_takes_the_whole_chain_off_and_puts_it_back_from_0153s_body(conn
     session = SimpleNamespace(conn=conn)
     with conn.transaction(force_rollback=True):
         _become(conn, None)
+        # The lab's database ends at 0155, which sits on 0153's body: start from 0153's own.
+        sec_db.take_off_0155(session)
         assert sec_db.has_0153(conn) and not sec_db.has_0149(conn)
         sec_db.take_off_0139(session)
         assert _md5_conn(conn) == "e0c4a7806642086398558cf322c95a0d", "0125's body"
         sec_db.put_back_0139(session)
-        assert _md5_conn(conn) == sec_db.CREATIVE_PRICE_0153
+        # put_back_0153 puts 0155 (and 0156 on it) back with it: the whole chain, as the lab was built
+        assert _md5_conn(conn) == sec_db.CREATIVE_PRICE_0156
 
 
 def _md5_conn(conn):

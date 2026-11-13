@@ -2,8 +2,9 @@ import { Lock } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ASPECT_RATIOS } from "@/lib/creative/studio";
-import { LoopClip } from "@/components/site/LoopClip";
-import { SAMPLES, SlotImg } from "@/components/site/samples";
+import { slotMedia } from "@/components/site/samples";
+import { AiCredit, PlaceFill, placeBox } from "@/components/site/PlaceFill";
+import { placeTry } from "@/components/site/place-try";
 import { creditLine } from "@/lib/site/media";
 
 /**
@@ -100,7 +101,9 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
     { id: "check", name: s.check, state: s.checkState, tone: "ok" as const },
     { id: "first", name: s.first, state: s.firstState, tone: "run" as const },
   ];
+  const m = slotMedia("solutions.youtube-channels");
   return (
+    <>
     <figure role="img" aria-label={s.figure} className="st-monitor">
       <div className="st-monitor-head">
         <div className="st-monitor-title">
@@ -110,25 +113,36 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
         <span className="st-tag">{s.tag}</span>
       </div>
       <div className="flex flex-col gap-4 p-4">
-        {/* The desk's own frame is a real clip of stock footage (credited, labelled an example); the desk around it is the drawing. */}
-        <div className="st-signoff-frame" data-clip="caravan">
-          <SlotImg slot="solutions.youtube-channels" alt="" className="nx-art" sizes="(min-width: 860px) 480px, calc(100vw - 96px)" />
-          <LoopClip clip="caravan" poster={SAMPLES.caravan.sm} compact />
+        {/* The desk's own frame is what the slot shows (one of our samples, or stock footage, each labelled as what it is); the desk around it is the drawing. */}
+        <div className="st-signoff-frame" {...placeBox(m)}>
+          <PlaceFill media={m} s={t.site} alt="" compact labels={false} sizes="(min-width: 860px) 480px, calc(100vw - 96px)" />
           <span className="st-signoff-private">{s.private}</span>
-          <span className="nx-result-badge st-signoff-badge" data-kind="still">
-            {t.site.samples.frameTag}
-          </span>
-          <span className="nx-result-badge st-signoff-badge" data-kind="clip">
-            {t.site.samples.clipTag}
-          </span>
-          <span className="nx-result-credit">{creditLine("caravan", t.site.samples.credit)}</span>
+          {m.kind === "ai" ? (
+            <span className="nx-result-badge st-signoff-badge" data-kind="ai">
+              {t.site.gallery.badge}
+            </span>
+          ) : (
+            <>
+              <span className="nx-result-badge st-signoff-badge" data-kind="still">
+                {m.footage ? t.site.samples.frameTag : t.site.samples.tag}
+              </span>
+              {m.clip && (
+                <span className="nx-result-badge st-signoff-badge" data-kind="clip">
+                  {t.site.samples.clipTag}
+                </span>
+              )}
+              <span className="nx-result-credit">{creditLine(m.id, t.site.samples.credit)}</span>
+            </>
+          )}
         </div>
-        {/* On a phone the frame is too small for three labels: its label and credit are a caption under it instead. */}
-        <p className="st-signoff-caption">
-          <span data-kind="still">{t.site.samples.frameTag}</span>
-          <span data-kind="clip">{t.site.samples.clipTag}</span>
-          {` · ${creditLine("caravan", t.site.samples.credit)}`}
-        </p>
+        {/* On a phone the frame is too small for three labels: its label and credit are a caption under it instead. A sample's model and credit are printed under the drawing, where its link can be pressed. */}
+        {m.kind === "stock" && (
+          <p className="st-signoff-caption">
+            <span data-kind="still">{m.footage ? t.site.samples.frameTag : t.site.samples.tag}</span>
+            {m.clip && <span data-kind="clip">{t.site.samples.clipTag}</span>}
+            {` · ${creditLine(m.id, t.site.samples.credit)}`}
+          </p>
+        )}
         <p className="st-signoff-title">{s.video}</p>
         <ol className="st-signoff-gates">
           {gates.map((g) => (
@@ -144,5 +158,12 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
         </p>
       </div>
     </figure>
+    {/* A role="img" figure hides its links, so a sample's credit and "Try this prompt" sit under it, in the sample's own box. */}
+    {m.kind === "ai" && (
+      <p className="nx-place-credit" {...placeBox({ ...m, moving: false })}>
+        <AiCredit entry={m.entry} g={t.site.gallery} href={placeTry(m)} />
+      </p>
+    )}
+    </>
   );
 }

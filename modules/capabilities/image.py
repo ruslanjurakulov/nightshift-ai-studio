@@ -1,4 +1,4 @@
-"""Image adapters: OpenAI GPT Image, Gemini image, FLUX.2, Ideogram 3, 4 and 4.5,
+"""Image adapters: OpenAI GPT Image, Gemini image, FLUX.2, Ideogram 3, 4.0 and 4.5,
 Ideogram Upscale, Seedream (BytePlus ModelArk) — and one that READS an image: the Gemini text model the
 pipeline already uses for vision (modules/video_critic.py), asked to describe
 a library picture as a generation prompt (``describe``, migration 0055).
@@ -357,37 +357,29 @@ class IdeogramAdapter(HttpAdapter):
                             outputs=[Output("image/png", url=str(first["url"]))])
 
 
-class IdeogramV4Adapter(IdeogramAdapter):
-    """Ideogram 4.0: ``POST https://api.ideogram.ai/v1/ideogram-v4/generate``
-    with ``text_prompt`` and ``rendering_speed``. Only those two fields are
-    confirmed (search extract of developer.ideogram.ai; the page itself was
-    unreachable), so no aspect ratio or resolution is sent and the registry
-    offers none. Hidden until a probe succeeds."""
+#: Ideogram 4.0's ``resolution`` for each shape we offer: only exact ratios from the 1K half of the vendor's own closed list
+#: (OpenAPI ``ResolutionV4``, "The 1K and 2K resolutions supported for Ideogram 4.0 image generation", read 2026-11-13:
+#: docs/research/ideogram-shapes-2026-11-13.md). 1K, because the owner's price reading for 4.0 (Turbo US$0.03) names no size and
+#: the docs do not say whether 2K bills the same: a 2K picture could cost more than it was quoted at. A ratio the list has no
+#: exact size for (21:9 among them) is not offered, never rounded to a neighbour.
+IDEOGRAM_V4_RESOLUTIONS = {
+    "1:1": "1024x1024", "16:9": "1280x720", "9:16": "720x1280", "4:3": "1152x864", "3:4": "864x1152",
+    "3:2": "1248x832", "2:3": "832x1248", "5:4": "1120x896", "4:5": "896x1120", "2:1": "1440x720", "1:2": "720x1440",
+    "3:1": "1536x512", "1:3": "512x1536", "16:10": "1280x800", "10:16": "800x1280"}
 
-    key = "image.ideogram_v4"
+#: Ideogram 4.5's ``size`` for each shape. 4.5's page asks for "one of the supported 1K/2K presets (for example 1024x1024,
+#: 2048x2048 or 1440x2880)" without listing them, and states the rules an exact size must meet: both sides a multiple of 32, at
+#: least 256 px, at most 2048x2048 pixels in total, at most 6:1. Each size here is in Ideogram's one published 1K/2K list
+#: (``ResolutionV4``, which holds all three of 4.5's examples) AND meets every one of those rules; 4.0's 1280x720 does not
+#: (720 is not a multiple of 32). 2K, because the owner's reading prices 4.5 the same at 1K and 2K and the vendor's own default
+#: (``auto``, what ran until now) bills as 2K. That 4.5 takes these exact presets is read from the docs, not yet seen: a size
+#: it refused would come back as a 400 ("Invalid input provided"), and the probe asks for 16:9 to prove it.
+IDEOGRAM_V45_SIZES = {
+    "1:1": "2048x2048", "16:9": "2560x1440", "9:16": "1440x2560", "4:3": "2304x1728", "3:4": "1728x2304",
+    "3:2": "2496x1664", "2:3": "1664x2496", "5:4": "2240x1792", "4:5": "1792x2240", "2:1": "2880x1440", "1:2": "1440x2880",
+    "3:1": "3072x1024", "1:3": "1024x3072", "16:10": "2560x1600", "10:16": "1600x2560"}
 
-    def problems(self, request: CapabilityRequest, entry) -> List[str]:
-        out = super().problems(request, entry)
-        if request.aspect_ratio:
-            out.append("Ideogram 4.0 aspect ratios are not wired yet")
-        return out
-
-    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
-        self.require_key()
-        form = {"text_prompt": (None, request.prompt.strip()),
-                "rendering_speed": (None, vendor_model)}
-        data = self._call("POST", f"{self.base_url}/v1/ideogram-v4/generate", files=form,
-                          what="generate")
-        first = dig(data, "data", 0) or {}
-        if first.get("is_image_safe") is False:
-            raise AdapterError(E_POLICY, "the vendor marked the image unsafe")
-        if not first.get("url"):
-            raise AdapterError(E_BAD_RESPONSE, "no image in the response")
-        return ProviderTask(self.key, vendor_model, None,
-                            outputs=[Output("image/png", url=str(first["url"]))])
-
-
-#: Ideogram 4.5's ``reject_reason`` (the 402 and 429 bodies) that waiting a moment fixes. Every other documented reason
+#: Ideogram v2's ``reject_reason`` (the 402 and 429 bodies) that waiting a moment fixes. Every other documented reason
 #: (insufficient_funds, subscription_required, daily_limit, priority_credit_required, feature_limit, app_user_limit) is
 #: the account's, not the moment's: retrying only fails again, so it is a quota the operator acts on.
 _IDEOGRAM_WAIT = frozenset({"inflight_limit"})
@@ -395,45 +387,20 @@ _IDEOGRAM_ACCOUNT = frozenset({"insufficient_funds", "subscription_required", "d
                                "priority_credit_required", "feature_limit", "app_user_limit"})
 
 
-class IdeogramV45Adapter(IdeogramAdapter):
-    """Ideogram 4.5, text to image: ``POST https://api.ideogram.ai/v2/image/generate/ideogram-4-5``,
-    header ``Api-Key``, a multipart form with ``prompt``, ``quality`` and ``num_images``; answered
-    synchronously with ``data[0].url`` and ``data[0].is_image_safe`` (developer.ideogram.ai, read
-    2026-11-13: docs/research/ideogram-4-5-2026-11-13.md).
+class _IdeogramV2(IdeogramAdapter):
+    """What Ideogram's v2 generate endpoints for 4.0 and 4.5 share (their pages document the same answer and the same
+    errors): header ``Api-Key``; a synchronous 200 with ``data[0].url`` and ``data[0].is_image_safe``; 402 / 429 with a
+    ``reject_reason``; 422 for a prompt that failed the safety check. Not an adapter of its own (no key)."""
 
-    ``quality`` is ALWAYS sent, and only the tier that was priced: left out, the vendor renders
-    without source images at ``high`` (its documented default), which costs more than the medium
-    tier the Studio quotes when a request names none. A missing or unknown tier is refused before
-    anything is sent. No ``size`` is sent and the registry offers no shape: the docs name only a
-    few 1K/2K presets by example, so the vendor's documented default (``auto``: the shape is picked
-    from the prompt) is what runs. Source images (the same endpoint's edit mode) are not wired: the
-    owner's price table puts High with source images at another figure than High without, and one
-    tier table per model cannot say both."""
-
-    key = "image.ideogram_v4_5"
-    capabilities = (T2I,)
-    quality_capabilities = (T2I,)
     timeout = 180                        # "Higher quality takes longer"; the call waits for the image
-    VENDOR_MODEL = "ideogram-4-5"
-    #: Our tier -> the vendor's ``quality`` value. ``very_low`` exists but "requires source images".
-    QUALITY = {"low": "low", "medium": "medium", "high": "high"}
+    NAME = "Ideogram"
+    #: Our shape -> the vendor's exact size value. A shape not here is refused, never sent as another.
+    SIZES: Dict[str, str] = {}
 
-    def _refusals(self, request: CapabilityRequest) -> List[str]:
-        out: List[str] = []
-        if request.quality is None:
-            out.append("Ideogram 4.5 needs a quality tier: without one the vendor renders and bills high")
-        elif request.quality not in self.QUALITY:
-            out.append(f"quality {request.quality} is not an Ideogram 4.5 tier")
-        if request.aspect_ratio:
-            out.append("Ideogram 4.5 shapes are not wired: the vendor picks one from the prompt")
-        if request.input_images:
-            out.append("Ideogram 4.5 is wired for text to image only")
-        return out
-
-    def problems(self, request: CapabilityRequest, entry) -> List[str]:
-        out = super().problems(request, entry)
-        out.extend(p for p in self._refusals(request) if p not in out)
-        return out
+    def _shape_refusals(self, request: CapabilityRequest) -> List[str]:
+        if request.aspect_ratio and request.aspect_ratio not in self.SIZES:
+            return [f"aspect ratio {request.aspect_ratio} is not a shape {self.NAME} is wired for"]
+        return []
 
     def vendor_error_code(self, status: int, text: str) -> Optional[str]:
         if status == 422:
@@ -444,6 +411,105 @@ class IdeogramV45Adapter(IdeogramAdapter):
         if status in (402, 429) and reason in _IDEOGRAM_ACCOUNT:
             return E_QUOTA
         return None
+
+    def _image(self, data, vendor_model: str) -> ProviderTask:
+        first = dig(data, "data", 0)
+        if not isinstance(first, dict):
+            raise unconfirmed("the answer carries no image")
+        if first.get("is_image_safe") is False:
+            raise AdapterError(E_POLICY, "the vendor marked the image unsafe")
+        if not first.get("url"):
+            raise unconfirmed("the answer carries no image URL")
+        return ProviderTask(self.key, vendor_model, None,
+                            outputs=[Output("image/png", url=str(first["url"]))])
+
+
+class IdeogramV4Adapter(_IdeogramV2):
+    """Ideogram 4.0, text to image: ``POST https://api.ideogram.ai/v2/image/generate/ideogram-4``, a JSON body with
+    ``prompt``, ``rendering_speed``, ``num_images`` and ``resolution`` (developer.ideogram.ai v2 reference and OpenAPI, read
+    2026-11-13: docs/research/ideogram-shapes-2026-11-13.md). It used to call v1's ``/v1/ideogram-v4/generate``, which v1's
+    own index now calls legacy; v2's overview maps that path to this one ("v1's ``text_prompt`` is v2's ``prompt``").
+
+    ``resolution`` is ALWAYS sent: the shape asked for as one of the vendor's own 1K sizes, and 1:1 when the request names
+    none (as Ideogram 3 here does). Left out, the vendor picks the shape and the size from the prompt, and a 2K size may bill
+    more than the Turbo figure the quote is read from. ``rendering_speed`` is the registry's vendor_model, ``turbo``: the
+    speed that was priced."""
+
+    key = "image.ideogram_v4"
+    NAME = "Ideogram 4.0"
+    SIZES = IDEOGRAM_V4_RESOLUTIONS
+    #: The documented values of ``rendering_speed`` (OpenAPI GenerateImageIdeogramV4RequestRenderingSpeed).
+    SPEEDS = frozenset({"turbo", "default", "quality"})
+
+    def _refusals(self, request: CapabilityRequest) -> List[str]:
+        out = self._shape_refusals(request)
+        if request.input_images:
+            out.append("Ideogram 4.0 is wired for text to image only")
+        return out
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        out.extend(p for p in self._refusals(request) if p not in out)
+        return out
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        bad = self._refusals(request)
+        if not request.prompt.strip():
+            bad.append("prompt is empty")
+        if vendor_model not in self.SPEEDS:
+            bad.append(f"{vendor_model!r} is not an Ideogram 4.0 rendering speed")
+        if bad or request.capability != T2I:
+            # Nothing has been sent: a refusal, not a lost answer.
+            raise AdapterError(E_BAD_REQUEST, "; ".join(bad) or "Ideogram 4.0 is wired for text to image only",
+                               not_accepted=True)
+        body = {"prompt": request.prompt.strip(), "rendering_speed": vendor_model,
+                "num_images": 1,                 # the price is per image: never the vendor's default count
+                "resolution": self.SIZES[request.aspect_ratio or "1:1"]}
+        data = self.post(f"{self.base_url}/v2/image/generate/ideogram-4", body, what="generate")
+        return self._image(data, vendor_model)
+
+
+class IdeogramV45Adapter(_IdeogramV2):
+    """Ideogram 4.5, text to image: ``POST https://api.ideogram.ai/v2/image/generate/ideogram-4-5``,
+    header ``Api-Key``, a multipart form with ``prompt``, ``quality``, ``num_images`` and, when a shape is
+    asked for, ``size``; answered synchronously with ``data[0].url`` and ``data[0].is_image_safe``
+    (developer.ideogram.ai, read 2026-11-13: docs/research/ideogram-4-5-2026-11-13.md and
+    docs/research/ideogram-shapes-2026-11-13.md).
+
+    ``quality`` is ALWAYS sent, and only the tier that was priced: left out, the vendor renders
+    without source images at ``high`` (its documented default), which costs more than the medium
+    tier the Studio quotes when a request names none. A missing or unknown tier is refused before
+    anything is sent. A shape is sent as one exact 2K ``size`` (``IDEOGRAM_V45_SIZES``), and a shape
+    without one is refused. A request that names no shape sends no ``size``: the vendor's documented
+    default (``auto``: picked from the prompt, billed as 2K at the same figure) runs, as before. Source
+    images (the same endpoint's edit mode) are not wired: the owner's price table puts High with source
+    images at another figure than High without, and one tier table per model cannot say both."""
+
+    key = "image.ideogram_v4_5"
+    capabilities = (T2I,)
+    quality_capabilities = (T2I,)
+    NAME = "Ideogram 4.5"
+    SIZES = IDEOGRAM_V45_SIZES
+    VENDOR_MODEL = "ideogram-4-5"
+    #: Our tier -> the vendor's ``quality`` value. ``very_low`` exists but "requires source images".
+    QUALITY = {"low": "low", "medium": "medium", "high": "high"}
+
+    def _refusals(self, request: CapabilityRequest) -> List[str]:
+        out: List[str] = []
+        if request.quality is None:
+            out.append("Ideogram 4.5 needs a quality tier: without one the vendor renders and bills high")
+        elif request.quality not in self.QUALITY:
+            out.append(f"quality {request.quality} is not an Ideogram 4.5 tier")
+        out.extend(self._shape_refusals(request))
+        if request.input_images:
+            out.append("Ideogram 4.5 is wired for text to image only")
+        return out
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        out.extend(p for p in self._refusals(request) if p not in out)
+        return out
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
@@ -459,17 +525,11 @@ class IdeogramV45Adapter(IdeogramAdapter):
         form = {"prompt": (None, request.prompt.strip()),
                 "quality": (None, self.QUALITY[request.quality]),
                 "num_images": (None, "1")}       # the price is per image: never the vendor's default count
+        if request.aspect_ratio:
+            form["size"] = (None, self.SIZES[request.aspect_ratio])
         data = self._call("POST", f"{self.base_url}/v2/image/generate/{self.VENDOR_MODEL}", files=form,
                           what="generate")
-        first = dig(data, "data", 0)
-        if not isinstance(first, dict):
-            raise unconfirmed("the answer carries no image")
-        if first.get("is_image_safe") is False:
-            raise AdapterError(E_POLICY, "the vendor marked the image unsafe")
-        if not first.get("url"):
-            raise unconfirmed("the answer carries no image URL")
-        return ProviderTask(self.key, vendor_model, None,
-                            outputs=[Output("image/png", url=str(first["url"]))])
+        return self._image(data, vendor_model)
 
 
 class IdeogramUpscaleAdapter(IdeogramAdapter):

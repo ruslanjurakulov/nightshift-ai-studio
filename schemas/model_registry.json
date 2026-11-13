@@ -1438,7 +1438,7 @@
       "display_name": "Ideogram 4.0",
       "provider": "ideogram",
       "adapter": "image.ideogram_v4",
-      "vendor_model": "TURBO",
+      "vendor_model": "turbo",
       "capabilities": [
         "t2i"
       ],
@@ -1446,17 +1446,33 @@
       "inputs": {
         "image_refs_max": 0
       },
-      "aspect_ratios": [],
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "5:4",
+        "4:5",
+        "2:1",
+        "1:2",
+        "3:1",
+        "1:3",
+        "16:10",
+        "10:16"
+      ],
       "resolutions": [],
       "durations_s": [],
       "audio_out": false,
       "async": false,
       "api_documented": {
-        "url": "https://developer.ideogram.ai",
-        "checked_at": "2026-09-30",
+        "url": "https://developer.ideogram.ai/v2/api-reference/images/generate/ideogram-4",
+        "checked_at": "2026-11-13",
         "source": "vendor_docs_search",
-        "evidence": "search extract of developer.ideogram.ai: POST /v1/ideogram-v4/generate with text_prompt and rendering_speed",
-        "note": "request encoding and aspect/resolution fields not confirmed; the adapter sends only text_prompt and rendering_speed"
+        "evidence": "developer.ideogram.ai v2 reference and OpenAPI (fetched 2026-11-13): POST /v2/image/generate/ideogram-4, JSON, header Api-Key, prompt, rendering_speed turbo/default/quality, num_images, resolution = one of ResolutionV4 (38 1K/2K WxH values); sync data[0].url, is_image_safe; 402/429 reject_reason; 422 safety",
+        "note": "vendor_model is the rendering speed. Each shape is sent as an exact 1K resolution (1:1 when none is named): the Turbo figure names no size and 2K may bill more. v1's /v1/ideogram-v4/generate is legacy"
       },
       "pricing": {
         "unit": "image",
@@ -1464,7 +1480,7 @@
         "source_url": "https://ideogram.ai/pricing/?pricing_tab=api",
         "as_of": "2026-11-13",
         "confirmed": false,
-        "note": "ESTIMATE: Ideogram 4.0 Turbo API list price, US$0.03 per image (the adapter sends rendering_speed TURBO), read by the owner in a browser on 2026-11-13; the page draws its table with a script a plain fetch is refused."
+        "note": "ESTIMATE: Ideogram 4.0 Turbo API list price, US$0.03 per image (the adapter sends rendering_speed turbo at a 1K resolution), read by the owner in a browser on 2026-11-13; the page draws its table with a script a plain fetch is refused."
       },
       "credit_unit": "model_ideogram_4_image",
       "entitlement": "models_image:premium",
@@ -1487,7 +1503,8 @@
       "speed_tier": 3,
       "probe": {
         "capability": "t2i",
-        "prompt": "a poster that says HELLO"
+        "prompt": "a poster that says HELLO",
+        "aspect_ratio": "16:9"
       }
     },
     {
@@ -1503,7 +1520,23 @@
       "inputs": {
         "image_refs_max": 0
       },
-      "aspect_ratios": [],
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "5:4",
+        "4:5",
+        "2:1",
+        "1:2",
+        "3:1",
+        "1:3",
+        "16:10",
+        "10:16"
+      ],
       "resolutions": [],
       "qualities": [
         "low",
@@ -1517,8 +1550,8 @@
         "url": "https://developer.ideogram.ai/v2/api-reference/images/generate/ideogram-4-5",
         "checked_at": "2026-11-13",
         "source": "vendor_docs_search",
-        "evidence": "developer.ideogram.ai v2 reference and OpenAPI (fetched 2026-11-13): POST /v2/image/generate/ideogram-4-5, header Api-Key, prompt, quality very_low/low/medium/high (very_low needs source images; default high without), num_images, size default auto; sync data[0].url, is_image_safe; 422 safety",
-        "note": "no size is sent: 4.5 presets are named only by example, so the vendor's default auto runs (bills as 2K). Edit with source images is not wired: its High price differs from text-to-image High"
+        "evidence": "developer.ideogram.ai v2 reference and OpenAPI (fetched 2026-11-13): POST /v2/image/generate/ideogram-4-5, header Api-Key, prompt, quality very_low/low/medium/high (very_low needs source images; default high without), num_images, size auto or a 1K/2K preset WxH; sync data[0].url, is_image_safe; 422 safety",
+        "note": "a shape is sent as an exact 2K size from Ideogram's 1K/2K list that meets 4.5's size rules (x32, <= 2048x2048 px); 4.5's page names its presets by example only, so the 16:9 probe is the proof. No shape: auto. Edit is not wired"
       },
       "pricing": {
         "unit": "image",
@@ -1558,7 +1591,8 @@
       "probe": {
         "capability": "t2i",
         "prompt": "a poster that says HELLO",
-        "quality": "low"
+        "quality": "low",
+        "aspect_ratio": "16:9"
       }
     },
     {
