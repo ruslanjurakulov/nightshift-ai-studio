@@ -76,10 +76,22 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     if ((data ?? []).length > 0) return NextResponse.json({ error: "already_subscribed" }, { status: 409 });
   }
 
+  // A fresh nonce for this one checkout (dodo_issue_checkout_nonce, 0144: owner/admin of the organization, in the user's
+  // own session): the webhook spends it once, so the signed metadata cannot be replayed on a static Dodo link.
+  const db = await createClient();
+  if (!db) return NextResponse.json({ error: "not_configured" }, { status: 503 });
+  const issued = await db.rpc("dodo_issue_checkout_nonce", { p_org: orgId, p_item: `${item.kind}:${item.id}` });
+  const nonce = typeof issued.data === "string" && /^[0-9a-f]{32}$/.test(issued.data) ? issued.data : null;
+  if (issued.error || !nonce) {
+    const tooMany = (issued.error as { code?: string } | null)?.code === "54000";
+    return NextResponse.json({ error: tooMany ? "too_many_checkouts" : "checkout_unavailable" }, { status: tooMany ? 429 : 503 });
+  }
+
   const origin = publicOrigin(request);
   const res = await createDodoCheckout(cfg, {
     productId,
     orgId,
+    nonce,
     userId: user.id,
     email: user.email,
     item,

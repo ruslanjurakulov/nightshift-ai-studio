@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { fetchWithTimeout } from "@/lib/server/fetch-timeout";
 import {
   dodoCheckoutMetadata,
@@ -42,12 +42,18 @@ export function dodoEnvironment(): "test" | "live" {
 }
 
 /**
- * The checkout metadata, signed: a fresh 128-bit nonce and the hex HMAC-SHA256
- * of dodoMetadataMessage under DODO_METADATA_SECRET. The webhook verifies it in
- * constant time and names no organization without it.
+ * The checkout metadata, signed: the nonce the database issued for this
+ * checkout (dodo_issue_checkout_nonce, 0144) and the hex HMAC-SHA256 of
+ * dodoMetadataMessage under DODO_METADATA_SECRET. The webhook verifies it in
+ * constant time, names no organization without it, and spends the nonce once.
  */
-export function signedCheckoutMetadata(cfg: DodoServerConfig, orgId: string, userId: string | null, item: DodoCheckoutItem): Record<string, string> {
-  const nonce = randomBytes(16).toString("hex");
+export function signedCheckoutMetadata(
+  cfg: DodoServerConfig,
+  orgId: string,
+  userId: string | null,
+  item: DodoCheckoutItem,
+  nonce: string,
+): Record<string, string> {
   const org = orgId.toLowerCase();
   const user = userId ? userId.toLowerCase() : null;
   const sig = createHmac("sha256", cfg.metadataSecret)
@@ -88,7 +94,16 @@ async function dodo(cfg: DodoServerConfig, path: string, init: RequestInit, doFe
  */
 export async function createDodoCheckout(
   cfg: DodoServerConfig,
-  args: { productId: string; orgId: string; userId: string | null; email: string; item: DodoCheckoutItem; returnUrl: string; cancelUrl: string },
+  args: {
+    productId: string;
+    orgId: string;
+    nonce: string;
+    userId: string | null;
+    email: string;
+    item: DodoCheckoutItem;
+    returnUrl: string;
+    cancelUrl: string;
+  },
   doFetch: FetchLike = fetchWithTimeout,
 ): Promise<{ ok: true; url: string } | { ok: false; status: number }> {
   const body = {
@@ -97,7 +112,7 @@ export async function createDodoCheckout(
     // attaches a session to an existing customer found by e-mail, so someone typing a victim's address could end up on
     // the victim's customer (and its portal).
     customer: { email: args.email },
-    metadata: signedCheckoutMetadata(cfg, args.orgId, args.userId, args.item),
+    metadata: signedCheckoutMetadata(cfg, args.orgId, args.userId, args.item, args.nonce),
     return_url: args.returnUrl,
     cancel_url: args.cancelUrl,
     feature_flags: {
@@ -114,6 +129,18 @@ export async function createDodoCheckout(
   const { status, json } = await dodo(cfg, "/checkouts", { method: "POST", body: JSON.stringify(body) }, doFetch);
   const url = dodoHostedUrl((json as { checkout_url?: unknown } | null)?.checkout_url);
   return status >= 200 && status < 300 && url ? { ok: true, url } : { ok: false, status };
+}
+
+/**
+ * GET /customers/{customer_id} (docs: api-reference/customers/get-customers-1): the
+ * customer's e-mail, lower case, or null on any failure. The portal is opened
+ * only for a customer whose address is the signed-in user's own.
+ */
+export async function dodoCustomerEmail(cfg: DodoServerConfig, customerId: string, doFetch: FetchLike = fetchWithTimeout): Promise<string | null> {
+  if (!/^cus_[A-Za-z0-9]{3,64}$/.test(customerId)) return null;
+  const { status, json } = await dodo(cfg, `/customers/${customerId}`, { method: "GET" }, doFetch);
+  const email = (json as { email?: unknown } | null)?.email;
+  return status >= 200 && status < 300 && typeof email === "string" && email.includes("@") ? email.trim().toLowerCase() : null;
 }
 
 /**

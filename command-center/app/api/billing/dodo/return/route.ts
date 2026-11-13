@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { RETURN_PATH_RE, RETURN_STATUS_RE } from "@/lib/dodo";
 import { publicOrigin } from "@/lib/server/public-origin";
+import { getUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,13 @@ export const dynamic = "force-dynamic";
  * history, an analytics script or a Referer. (Our reverse proxy's access log
  * still sees this one request's query.) It reads nothing, changes nothing and
  * credits nothing: the webhook does that.
+ *
+ * The person coming back is signed in (they opened the checkout from Credits;
+ * the session cookie is SameSite=Lax, lib/supabase/cookie-options.ts, so this
+ * top-level navigation from Dodo carries it). Without a session they go to
+ * plain /login: no `next`, nothing of the incoming query or of `to`. (The
+ * middleware answers a signed-out /api/* request with 401 JSON before this
+ * runs; this covers a session that no longer verifies.)
  *
  * The docs do not say how Dodo appends to a URL that already has a query, so a
  * value is read up to a stray "?" too. Only our own /{channel}/credits path is
@@ -35,5 +43,9 @@ export async function GET(request: Request) {
   next.searchParams.set("dodo", flag);
   next.searchParams.set("item", item);
   if (status && RETURN_STATUS_RE.test(status)) next.searchParams.set("status", status);
-  return NextResponse.redirect(next, { status: 303, headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+  const headers = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" };
+  if (!(await getUser())) {
+    return NextResponse.redirect(new URL("/login", next.origin), { status: 303, headers });
+  }
+  return NextResponse.redirect(next, { status: 303, headers });
 }

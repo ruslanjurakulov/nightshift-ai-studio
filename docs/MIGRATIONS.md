@@ -904,6 +904,12 @@ customer reaches Dodo until the Command Center's `PAYMENTS_PROVIDER` is `dodo` a
   search_path stay. `add_purchased_credits`, `refund_purchased_credits` and `record_payment_event` are not replaced (their hashes are
   asserted before applying): the Dodo webhook uses them as they are, with the Dodo payment id as the purchase's external id and
   `dodo_refund:<id>` / `dodo_dispute:<id>` as the refund id.
+- **Checkout nonces (security review of #702).** `dodo_checkout_nonces` (RLS on, no API role privilege) holds one row per Dodo
+  checkout the Command Center opened. `dodo_issue_checkout_nonce(org, item)` (authenticated; owner/admin of the organization; 24 hours,
+  at most 50 a day per organization) gives the nonce the server signs into the session's metadata; `dodo_consume_checkout_nonce(...)`
+  (service role) lets the webhook spend it once, for one pack payment or one new subscription (`ok` | `unknown` | `expired` |
+  `consumed` | `mismatch`; the same payment or subscription again is `ok`). md5: issue `ddfe1dc46a18fe7df7823eb09ffbe88f`, consume
+  `08a15f9281430963565060ac12532b78`.
 - **Drift guard and end state.** Before: `upsert_subscription` `60ee6ad3764dbcf6762b178f8240d5a9`, `grant_subscription_credits`
   `7947d46697f1c35d12274ffbe22709ac` (0034), or 0144's own on a replay. After: `upsert_subscription` `09185a96a8fb02f0c2641095d51461cc`,
   `grant_subscription_credits` `fd0c1c169a4d3b2d05c6d826c6fe10ff`, `upsert_subscription_for` `9f9b399ce3ca3421d1ccb32c4075d6ea`,

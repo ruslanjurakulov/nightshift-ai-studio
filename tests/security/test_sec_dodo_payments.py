@@ -218,6 +218,87 @@ def test_the_same_id_string_under_two_providers_is_two_subscriptions(conn):
             ("dodo", dodo_org, "active"), ("paddle", paddle_org, "canceled")]
 
 
+# ── checkout nonces: one signed blob, one purchase (security review of #702, M1) ──
+
+ISSUE = "select public.dodo_issue_checkout_nonce(%s, %s)"
+CONSUME = "select public.dodo_consume_checkout_nonce(%s, %s, %s, %s, %s, %s)"
+
+
+def issue(conn, who, org, item="pack:starter"):
+    with acting(conn, who, commit=True) as s:
+        return s.run(ISSUE, [org, item])
+
+
+def consume(conn, nonce, org, user, item, consumer, at=None):
+    return svc(conn, CONSUME, [nonce, org, user, item, consumer, at]).rows[0][0]
+
+
+def test_only_an_owner_or_admin_of_the_organization_gets_a_nonce(conn, sc):
+    ok = issue(conn, sc.alice.actor, sc.alice.org)
+    assert ok.ok and len(ok.rows[0][0]) == 32 and set(ok.rows[0][0]) <= set("0123456789abcdef"), ok
+    for who, org in ((ANON, sc.alice.org), (sc.bob.actor, sc.alice.org)):
+        out = issue(conn, who, org)
+        assert not out.ok and out.sqlstate == "42501", (who, out)
+    bad = issue(conn, sc.alice.actor, sc.alice.org, item="pdt_0NVbdIG3JNg9Yc8ey5JHW")
+    assert not bad.ok and bad.sqlstate == "22023", bad
+
+
+def test_a_nonce_is_spent_once_for_its_own_org_user_and_item(conn, sc):
+    n = issue(conn, sc.alice.actor, sc.alice.org).rows[0][0]
+    uid = sc.alice.actor.uid
+    assert consume(conn, n, sc.bob.org, uid, "pack:starter", "pay_Spend000001") == "mismatch"
+    assert consume(conn, n, sc.alice.org, sc.bob.actor.uid, "pack:starter", "pay_Spend000001") == "mismatch"
+    assert consume(conn, n, sc.alice.org, uid, "plan:studio", "sub_Spend000001") == "mismatch"
+    assert consume(conn, n, sc.alice.org, uid, "pack:starter", "pay_Spend000001") == "ok"
+    # Dodo's retry of the same payment: still ok. Any other payment or subscription: spent.
+    assert consume(conn, n, sc.alice.org, uid, "pack:starter", "pay_Spend000001") == "ok"
+    assert consume(conn, n, sc.alice.org, uid, "pack:starter", "pay_Spend000002") == "consumed"
+    assert consume(conn, n, sc.alice.org, uid, "pack:starter", "sub_ReplayedOnLink01") == "consumed"
+    assert consume(conn, "f" * 32, sc.alice.org, uid, "pack:starter", "pay_Spend000003") == "unknown"
+
+
+def test_an_expired_nonce_is_refused_unless_dodo_says_the_event_happened_in_time(conn, sc):
+    n = issue(conn, sc.alice.actor, sc.alice.org, "plan:pro").rows[0][0]
+    with as_superuser(conn) as s:
+        s.rows("update public.dodo_checkout_nonces set created_at = now() - interval '3 days', expires_at = now() - interval '2 days' "
+               "where nonce = %s returning 1", [n])
+    uid = sc.alice.actor.uid
+    in_time = svc(conn, CONSUME + "::text", [n, sc.alice.org, uid, "plan:pro", "sub_InTime00000001", None]).rows[0][0]
+    assert in_time == "expired"
+    late_retry = svc(conn, "select public.dodo_consume_checkout_nonce(%s, %s, %s, %s, %s, now() - interval '50 hours')",
+                     [n, sc.alice.org, uid, "plan:pro", "sub_InTime00000001"]).rows[0][0]
+    assert late_retry == "ok"
+    # A future event time is read as now: it cannot stretch a nonce.
+    m = issue(conn, sc.alice.actor, sc.alice.org, "plan:pro").rows[0][0]
+    with as_superuser(conn) as s:
+        s.rows("update public.dodo_checkout_nonces set expires_at = now() - interval '1 minute' where nonce = %s returning 1", [m])
+    future = svc(conn, "select public.dodo_consume_checkout_nonce(%s, %s, %s, %s, %s, now() + interval '1 year')",
+                 [m, sc.alice.org, uid, "plan:pro", "sub_Future00000001"]).rows[0][0]
+    assert future == "expired"
+
+
+def test_a_customer_cannot_spend_a_nonce_or_touch_the_table(conn, sc):
+    n = issue(conn, sc.alice.actor, sc.alice.org).rows[0][0]
+    for who in (sc.alice.actor, sc.bob.actor, ANON):
+        with acting(conn, who) as s:
+            out = s.run(CONSUME, [n, sc.alice.org, sc.alice.actor.uid, "pack:starter", "pay_Customer00001", None])
+        assert not out.ok and out.sqlstate == "42501", (who, out)
+        with acting(conn, who) as s:
+            out = s.run("select count(*) from public.dodo_checkout_nonces")
+        assert not out.ok and out.sqlstate == "42501", (who, out)
+
+
+def test_fifty_checkouts_a_day_per_organization(conn, sc):
+    org = new_org(conn)
+    with as_superuser(conn) as s:
+        s.rows("insert into public.org_members (org_id, user_id, role, email) values (%s, %s, 'owner', %s) returning 1",
+               [org, sc.alice.actor.uid, sc.alice.actor.email])
+    for _ in range(50):
+        assert issue(conn, sc.alice.actor, org).ok
+    over = issue(conn, sc.alice.actor, org)
+    assert not over.ok and over.sqlstate == "54000", over
+
+
 # ── Paddle, with and without 0144: the same answers ─────────────────────────
 
 @contextmanager

@@ -67,6 +67,8 @@ PINS = {
     "grant_subscription_credits": "fd0c1c169a4d3b2d05c6d826c6fe10ff",
     "upsert_subscription_for": "9f9b399ce3ca3421d1ccb32c4075d6ea",
     "grant_subscription_credits_for": "5424905376fab9ff1b4c229c5dc0c0ce",
+    "dodo_issue_checkout_nonce": "ddfe1dc46a18fe7df7823eb09ffbe88f",
+    "dodo_consume_checkout_nonce": "08a15f9281430963565060ac12532b78",
 }
 
 
@@ -93,7 +95,8 @@ class ProviderAwareTwins(unittest.TestCase):
     def test_the_md5_pins_describe_the_bodies_in_the_files(self):
         self.assertEqual(pg_md5(definition(M0034, "upsert_subscription")), PINS["upsert_subscription@0034"])
         self.assertEqual(pg_md5(definition(M0034, "grant_subscription_credits")), PINS["grant_subscription_credits@0034"])
-        for name in ("upsert_subscription", "grant_subscription_credits", "upsert_subscription_for", "grant_subscription_credits_for"):
+        for name in ("upsert_subscription", "grant_subscription_credits", "upsert_subscription_for", "grant_subscription_credits_for",
+                     "dodo_issue_checkout_nonce", "dodo_consume_checkout_nonce"):
             self.assertEqual(pg_md5(definition(M0144, name)), PINS[name], name)
         for value in PINS.values():
             self.assertIn(value, M0144)
@@ -104,6 +107,36 @@ class ProviderAwareTwins(unittest.TestCase):
             self.assertIn(f"revoke all on function public.{sig}\n  from public, anon, authenticated;", M0144)
             self.assertIn(f"grant execute on function public.{sig}\n  to service_role;", M0144)
             self.assertNotRegex(M0144, rf"grant execute on function public\.{re.escape(sig)}\s+to [^;]*(authenticated|anon)")
+
+
+class CheckoutNonces(unittest.TestCase):
+    """Security review of #702 (M1): a signed metadata blob is good for one purchase."""
+
+    def test_a_member_issues_and_only_the_service_role_spends(self):
+        self.assertIn("revoke all on function public.dodo_issue_checkout_nonce(uuid, text) from public, anon, authenticated;", M0144)
+        self.assertIn("grant execute on function public.dodo_issue_checkout_nonce(uuid, text) to authenticated;", M0144)
+        sig = "dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz)"
+        self.assertIn(f"revoke all on function public.{sig} from public, anon, authenticated;", M0144)
+        self.assertIn(f"grant execute on function public.{sig} to service_role;", M0144)
+        self.assertNotRegex(M0144, rf"grant execute on function public\.{re.escape(sig)} to [^;]*(authenticated|anon)")
+
+    def test_issuing_needs_an_owner_or_admin_and_spending_needs_the_platform(self):
+        issue = body(definition(M0144, "dodo_issue_checkout_nonce"))
+        self.assertIn("public.is_org_member(p_org, 'admin')", issue)
+        self.assertIn("auth.uid()", issue)
+        consume = body(definition(M0144, "dodo_consume_checkout_nonce"))
+        self.assertIn("public.credits_trusted_caller()", consume)
+        for answer in ("'unknown'", "'mismatch'", "'consumed'", "'expired'", "'ok'"):
+            self.assertIn(answer, consume)
+
+    def test_the_table_is_closed_to_every_api_role(self):
+        self.assertIn("alter table public.dodo_checkout_nonces enable row level security;", M0144)
+        self.assertIn("revoke all on table public.dodo_checkout_nonces from public, anon, authenticated, service_role;", M0144)
+
+    def test_the_rollback_drops_them(self):
+        self.assertIn("drop table if exists public.dodo_checkout_nonces;", ROLLBACK)
+        self.assertIn("drop function if exists public.dodo_issue_checkout_nonce(uuid, text);", ROLLBACK)
+        self.assertIn("drop function if exists public.dodo_consume_checkout_nonce(text, uuid, uuid, text, text, timestamptz);", ROLLBACK)
 
 
 class Checks(unittest.TestCase):

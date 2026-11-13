@@ -4,7 +4,7 @@ import { requireOrgRole } from "@/lib/auth/org-roles";
 import { getOrgContext } from "@/lib/orgs-server";
 import { logAudit } from "@/lib/server/audit";
 import { createPortalSession, paddleServerKey } from "@/lib/server/paddle-api";
-import { createDodoPortalLink, dodoServer } from "@/lib/server/dodo-api";
+import { createDodoPortalLink, dodoCustomerEmail, dodoServer } from "@/lib/server/dodo-api";
 import { paymentsProvider } from "@/lib/server/payments";
 import { publicOrigin } from "@/lib/server/public-origin";
 import { requireSameOrigin } from "@/lib/server/same-origin";
@@ -61,6 +61,12 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   if (newest?.provider === "dodo") {
     const cfg = dodoServer();
     if (!cfg) return NextResponse.json({ error: "portal_not_configured" }, { status: 503 });
+    // Belt and braces next to the webhook's signed, single-use nonce: Dodo may attach a checkout to an existing customer
+    // found by e-mail, so the portal opens only for a customer whose address is this user's own.
+    const customerEmail = await dodoCustomerEmail(cfg, newest.provider_customer_id ?? "");
+    if (!customerEmail) return NextResponse.json({ error: "portal_failed" }, { status: 502 });
+    if (!user.email || customerEmail !== user.email.trim().toLowerCase())
+      return NextResponse.json({ error: "portal_customer_mismatch" }, { status: 403 });
     const link = await createDodoPortalLink(cfg, newest.provider_customer_id ?? "", `${publicOrigin(request)}/all-channels/credits`);
     if (!link) return NextResponse.json({ error: "portal_failed" }, { status: 502 });
     await logAudit({ action: "billing.portal", target: orgId, detail: { provider: "dodo" } });

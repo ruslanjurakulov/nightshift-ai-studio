@@ -19,6 +19,9 @@ const h = vi.hoisted(() => ({
   orgId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as string | null,
   role: { ok: true, role: "owner" } as { ok: true; role: string } | { ok: false; error: string; status: number },
   subs: [] as Record<string, unknown>[],
+  /** What dodo_issue_checkout_nonce answers (0144). */
+  nonce: { data: "0123456789abcdef0123456789abcdef" as unknown, error: null as null | { code: string; message: string } },
+  rpcCalls: [] as { fn: string; args: unknown }[],
   subsError: null as { message: string } | null,
   audit: [] as unknown[],
   getUserCalls: 0,
@@ -30,6 +33,10 @@ vi.mock("@/lib/supabase/server", () => ({
     return h.user;
   },
   createClient: async () => ({
+    rpc: async (fn: string, args: unknown) => {
+      h.rpcCalls.push({ fn, args });
+      return h.nonce;
+    },
     from: () => {
       const q = {
         select: () => q,
@@ -98,6 +105,8 @@ beforeEach(() => {
   h.subsError = null;
   h.audit = [];
   h.getUserCalls = 0;
+  h.nonce = { data: "0123456789abcdef0123456789abcdef", error: null };
+  h.rpcCalls = [];
   fetchCalls.length = 0;
   dodoAnswer = () =>
     new Response(JSON.stringify({ session_id: "cks_1", checkout_url: "https://test.checkout.dodopayments.com/session/cks_1" }), { status: 200 });
@@ -331,17 +340,33 @@ describe("POST /api/billing/dodo/checkout", () => {
       cancel_url: "https://nightshift.example/api/billing/dodo/return?to=%2Fall-channels%2Fcredits&dodo=cancelled&item=pack",
       feature_flags: { allow_discount_code: false, allow_currency_selection: false, allow_customer_editing_email: false, always_create_new_customer: true },
     });
-    // The metadata the webhook will verify: signed with the shared secret, a fresh nonce each time.
-    expect(meta.ns_nonce).toMatch(/^[0-9a-f]{32}$/);
+    // The metadata the webhook will verify: signed with the shared secret, over the nonce the database issued for it.
+    expect(h.rpcCalls).toEqual([{ fn: "dodo_issue_checkout_nonce", args: { p_org: h.orgId, p_item: "pack:starter" } }]);
+    expect(meta.ns_nonce).toBe("0123456789abcdef0123456789abcdef");
     expect(await verifyDodoMetadata(meta, dodoMetadataKey(DODO_ENV.DODO_METADATA_SECRET)!)).toEqual({
       status: "valid",
       orgId: h.orgId,
       userId: h.user!.id,
       item: "pack:starter",
+      nonce: "0123456789abcdef0123456789abcdef",
     });
     expect((await verifyDodoMetadata(meta, dodoMetadataKey("another-secret-that-is-long-enough-000")!)).status).toBe("invalid");
+    // The next checkout signs the next nonce the database issues.
+    h.nonce = { data: "fedcba9876543210fedcba9876543210", error: null };
     await buy({ kind: "pack", id: "starter", return_path: "/all-channels/credits" });
-    expect((JSON.parse(String(fetchCalls[1].init.body)).metadata as Record<string, string>).ns_nonce).not.toBe(meta.ns_nonce);
+    expect((JSON.parse(String(fetchCalls[1].init.body)).metadata as Record<string, string>).ns_nonce).toBe("fedcba9876543210fedcba9876543210");
+  });
+
+  it("opens no checkout when the database issues no nonce (refused, or 50 opened today)", async () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(SELLING);
+    h.nonce = { data: null, error: { code: "42501", message: "only an owner or admin" } };
+    expect((await buy({ kind: "pack", id: "starter", return_path: "/a/credits" })).status).toBe(503);
+    h.nonce = { data: null, error: { code: "54000", message: "too many" } };
+    expect((await buy({ kind: "pack", id: "starter", return_path: "/a/credits" })).status).toBe(429);
+    h.nonce = { data: "not-a-nonce", error: null };
+    expect((await buy({ kind: "pack", id: "starter", return_path: "/a/credits" })).status).toBe(503);
+    expect(fetchCalls).toHaveLength(0);
     // No audit row: the database would refuse an action it does not list (tests/test_audit_actions.py).
     expect(h.audit).toEqual([]);
   });
@@ -433,21 +458,37 @@ describe("POST /api/billing/portal", () => {
     setEnv(DODO_ENV);
     vi.stubEnv("APP_ORIGIN", "https://nightshift.example");
     h.subs = [{ provider: "dodo", provider_subscription_id: "sub_Iuaq622bbmmfOGrVTqdXv", provider_customer_id: "cus_TV52uJWWXt2yIoBBxpjaa", status: "active" }];
-    dodoAnswer = () => new Response(JSON.stringify({ link: "https://customer.dodopayments.com/login/xyz" }), { status: 200 });
+    dodoAnswer = () =>
+      new Response(
+        JSON.stringify(fetchCalls.length === 1 ? { customer_id: "cus_TV52uJWWXt2yIoBBxpjaa", email: "Owner@Example.com" } : { link: "https://customer.dodopayments.com/login/xyz" }),
+        { status: 200 },
+      );
     const res = await post(portal, "/api/billing/portal");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ url: "https://customer.dodopayments.com/login/xyz" });
-    expect(fetchCalls[0].url).toBe(
+    expect(fetchCalls[0].url).toBe("https://test.dodopayments.com/customers/cus_TV52uJWWXt2yIoBBxpjaa");
+    expect(fetchCalls[1].url).toBe(
       "https://test.dodopayments.com/customers/cus_TV52uJWWXt2yIoBBxpjaa/customer-portal/session?return_url=" +
         encodeURIComponent("https://nightshift.example/all-channels/credits"),
     );
-    expect(fetchCalls[0].init.method).toBe("POST");
+    expect(fetchCalls[1].init.method).toBe("POST");
+  });
+
+  it("opens no portal for a Dodo customer whose e-mail is not the signed-in user's own", async () => {
+    setEnv(DODO_ENV);
+    h.subs = [{ provider: "dodo", provider_subscription_id: "sub_Iuaq622bbmmfOGrVTqdXv", provider_customer_id: "cus_VICTIM0000000000000", status: "active" }];
+    dodoAnswer = () => new Response(JSON.stringify({ customer_id: "cus_VICTIM0000000000000", email: "victim@example.com" }), { status: 200 });
+    const res = await post(portal, "/api/billing/portal");
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "portal_customer_mismatch" });
+    expect(fetchCalls).toHaveLength(1); // no portal session was asked for
   });
 
   it("a portal link that is not on Dodo's domain is not followed", async () => {
     setEnv(DODO_ENV);
     h.subs = [{ provider: "dodo", provider_subscription_id: "sub_Iuaq622bbmmfOGrVTqdXv", provider_customer_id: "cus_TV52uJWWXt2yIoBBxpjaa", status: "active" }];
-    dodoAnswer = () => new Response(JSON.stringify({ link: "https://phish.example/portal" }), { status: 200 });
+    dodoAnswer = () =>
+      new Response(JSON.stringify(fetchCalls.length === 1 ? { email: "owner@example.com" } : { link: "https://phish.example/portal" }), { status: 200 });
     expect((await post(portal, "/api/billing/portal")).status).toBe(502);
   });
 });
@@ -471,6 +512,16 @@ describe("GET /api/billing/dodo/return", () => {
     expect(glued.headers.get("location")).toBe("https://nightshift.example/my-channel/credits?dodo=return&item=plan&status=active");
     const cancelled = await back("to=%2Fmy-channel%2Fcredits&dodo=cancelled&item=pack");
     expect(cancelled.headers.get("location")).toBe("https://nightshift.example/my-channel/credits?dodo=cancelled&item=pack");
+  });
+
+  it("without a session goes to plain /login: nothing of Dodo's query or of `to` is carried", async () => {
+    vi.stubEnv("APP_ORIGIN", "https://nightshift.example");
+    h.user = null;
+    const res = await back("to=%2Fmy-channel%2Fcredits&dodo=return&item=pack&payment_id=pay_x&status=succeeded&email=buyer%40example.com");
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("https://nightshift.example/login");
+    expect(res.headers.get("location")).not.toContain("buyer");
+    expect(res.headers.get("location")).not.toContain("pay_x");
   });
 
   it("goes nowhere but our own Credits page", async () => {

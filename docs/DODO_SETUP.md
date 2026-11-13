@@ -54,7 +54,11 @@ Qoidalar (Paddle'dagi bilan bir xil):
   `DODO_METADATA_SECRET` bilan imzolab qo'yadi (`ns_nonce`, `ns_sig` — HMAC-SHA256). Dodo'ning
   statik to'lov havolalari URL'dagi `metadata_*` ni qabul qiladi — ya'ni imzosiz metadata'ni
   istalgan odam yoza oladi. Webhook imzosi tekshirilmagan metadata bo'yicha hech qaysi tashkilotga
-  kredit, tarif yoki portal bermaydi.
+  kredit, tarif yoki portal bermaydi. Imzodagi `ns_nonce` ni baza har bir checkout uchun beradi
+  (`dodo_checkout_nonces`, 0144) va webhook uni **bir marta** sarflaydi — bitta paket to'lovi yoki
+  bitta yangi obuna uchun: imzolangan metadata statik havolada qayta ishlatilsa, `rejected`.
+  Manage subscription portali faqat Dodo mijozining email'i kirgan foydalanuvchining email'iga
+  teng bo'lsa ochiladi.
 - **Test mode — faqat ruxsat ro'yxatidagi tashkilotlar.** Test karta (4242…) ochiq. Production
   bazasida test mode faqat `DODO_TEST_ORG_IDS` dagi test ish maydonlariga sotadi va kreditlaydi;
   boshqa hech bir mijoz test to'lov bilan kredit yoki tarif ololmaydi (checkout ham, webhook ham
@@ -120,6 +124,8 @@ select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg
 | `grant_subscription_credits` | `7947d46697f1c35d12274ffbe22709ac` | `fd0c1c169a4d3b2d05c6d826c6fe10ff` |
 | `upsert_subscription_for` | — | `9f9b399ce3ca3421d1ccb32c4075d6ea` |
 | `grant_subscription_credits_for` | — | `5424905376fab9ff1b4c229c5dc0c0ce` |
+| `dodo_issue_checkout_nonce` | — | `ddfe1dc46a18fe7df7823eb09ffbe88f` |
+| `dodo_consume_checkout_nonce` | — | `08a15f9281430963565060ac12532b78` |
 
 Faylning oxiridagi "Verify" so'rovi — hamma ustun `true`. Orqaga qaytarish:
 `docs/sql/rollback_0144_dodo_payments.sql` (Dodo qatori bor ekan, rad etadi).
@@ -242,7 +248,11 @@ supabase secrets list --project-ref <REF>    # faqat nomlar
   so'rovga 500 qaytaradi (Dodo qayta yuboradi), hech narsa kreditlanmaydi.
 - `DODO_METADATA_SECRET` — bo'sh yoki GitHub'dagidan farqli bo'lsa: 500 / `rejected`, kredit yo'q.
 - `DODO_WEBHOOK_MODE` — aynan `live` bo'lmaguncha **test**: faqat `DODO_TEST_ORG_IDS` dagi
-  tashkilotlar kreditlanadi.
+  tashkilotlar kreditlanadi. ⚠️ U **har doim** Command Center'dagi `DODO_PAYMENTS_ENV` ga mos
+  bo'lsin (`test` ↔ `test`, `live` ↔ `live`): live checkout + test webhook = haqiqiy to'lovlar
+  kreditlanmaydi; test checkout + live webhook = test karta haqiqiy kredit beradi.
+- Bu ikki secret bo'lmasa ham refund, nizo va obunani bekor qilish ishlayveradi — faqat kredit
+  yoki tarif **beradigan** hodisalar kutadi (500, Dodo qayta yuboradi).
 
 `SUPABASE_URL` va `SUPABASE_SERVICE_ROLE_KEY` ni qo'ymang — Supabase o'zi beradi.
 Product id'lar GitHub variable'laridagi bilan **bir xil** bo'lsin: webhook'da yo'q mahsulot

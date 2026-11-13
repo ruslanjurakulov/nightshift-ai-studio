@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   DODO_PACKS,
@@ -62,7 +62,14 @@ function sign(id: string, ts: number, body: string, secret = SECRET): string {
 }
 
 /** Metadata as the Command Center's checkout signs it (lib/server/dodo-api.ts signedCheckoutMetadata). */
-function signedMeta(org: string, user: string | null, item: string, secret = META_SECRET, nonce = "0123456789abcdef0123456789abcdef") {
+function signedMeta(
+  org: string,
+  user: string | null,
+  item: string,
+  secret = META_SECRET,
+  // One checkout per (org, user, item) by default; a test that needs another checkout passes its own nonce.
+  nonce = createHash("md5").update(`${org}|${user ?? ""}|${item}`).digest("hex"),
+) {
   const sig = createHmac("sha256", secret).update(dodoMetadataMessage({ orgId: org, userId: user, item, nonce })).digest("hex");
   return { org_id: org, ...(user ? { user_id: user } : {}), nightshift_item: item, ns_nonce: nonce, ns_sig: sig };
 }
@@ -186,6 +193,10 @@ class FakeStore implements DodoStore {
   subs = new Map<string, DodoSubscriptionRow & { status: string; cancelAtPeriodEnd: boolean; customerId: string | null }>();
   grants: { paymentId: string; planId: string; periodEnd: string }[] = [];
   failNext: StoreError | Error | null = null;
+  /** dodo_checkout_nonces as 0144 keeps it: who the nonce was issued for, and what spent it. */
+  nonces = new Map<string, { key: string; consumer: string | null; expired?: boolean }>();
+  /** Nonces this deployment never issued (a blob signed with the right key but not by our checkout). */
+  unknownNonces = new Set<string>();
 
   private maybeFail() {
     if (this.failNext) {
@@ -230,6 +241,17 @@ class FakeStore implements DodoStore {
     const requested = Math.min(amount ?? bought - already, bought - already);
     this.refunds.set(id, { ext, amount: requested, reason });
     return { duplicate: false, requested, taken: requested, shortfall: 0 };
+  }
+  async consumeNonce(n: { nonce: string; orgId: string; userId: string | null; item: string; consumer: string }) {
+    if (this.unknownNonces.has(n.nonce)) return "unknown" as const;
+    const key = `${n.orgId}|${n.userId ?? ""}|${n.item}`;
+    const cur = this.nonces.get(n.nonce) ?? { key, consumer: null };
+    this.nonces.set(n.nonce, cur);
+    if (cur.key !== key) return "mismatch" as const;
+    if (cur.consumer) return cur.consumer === n.consumer ? ("ok" as const) : ("consumed" as const);
+    if (cur.expired) return "expired" as const;
+    cur.consumer = n.consumer;
+    return "ok" as const;
   }
   async findSubscription(id: string) {
     const s = this.subs.get(id);
@@ -795,7 +817,8 @@ describe("signed metadata (Dodo's static links let anyone write metadata)", () =
 
   it("verifies in constant time with the deployment's key, and says why it refuses", async () => {
     const key = dodoMetadataKey(META_SECRET)!;
-    expect(await verifyDodoMetadata(signedMeta(ORG, USER, "plan:pro"), key)).toEqual({ status: "valid", orgId: ORG, userId: USER, item: "plan:pro" });
+    const m = signedMeta(ORG, USER, "plan:pro");
+    expect(await verifyDodoMetadata(m, key)).toEqual({ status: "valid", orgId: ORG, userId: USER, item: "plan:pro", nonce: m.ns_nonce });
     expect(await verifyDodoMetadata({}, key)).toEqual({ status: "absent" });
     expect(await verifyDodoMetadata(null, key)).toEqual({ status: "absent" });
     expect(await verifyDodoMetadata({ org_id: ORG }, key)).toMatchObject({ status: "invalid" });
@@ -804,12 +827,86 @@ describe("signed metadata (Dodo's static links let anyone write metadata)", () =
     expect(dodoMetadataKey("with space " + "x".repeat(32))).toBeNull();
   });
 
-  it("refuses every delivery until DODO_METADATA_SECRET and DODO_TAX_MODE are set (Dodo retries)", async () => {
+  it("without DODO_METADATA_SECRET or DODO_TAX_MODE grants nothing (Dodo retries), but refunds, disputes and cancellations still land", async () => {
     const store = new FakeStore();
-    expect((await deliver(store, payment(), { metadataSecret: "" })).status).toBe(500);
-    expect((await deliver(store, payment(), { taxMode: null })).status).toBe(500);
-    expect(store.credited.size).toBe(0);
-    expect(store.events.size).toBe(0);
+    await deliver(store, payment(), { id: "msg_buy" });
+    await deliver(store, subscription("subscription.active"), { id: "msg_sub" });
+    // A new purchase, a new subscription and a plan payment wait.
+    expect((await deliver(store, payment({ payment_id: "pay_waiting000000000000" }), { id: "msg_a", metadataSecret: "" })).status).toBe(503);
+    expect((await deliver(store, payment({ payment_id: "pay_waiting000000000001" }), { id: "msg_b", taxMode: null })).status).toBe(503);
+    expect((await deliver(store, subscription("subscription.active", { subscription_id: "sub_NewWhileUnset0001" }), { id: "msg_c", metadataSecret: "" })).status).toBe(503);
+    expect((await deliver(store, planPayment(), { id: "msg_d", taxMode: null })).status).toBe(503);
+    expect(store.credited.size).toBe(1);
+    // Taking back and ending go through.
+    expect((await deliver(store, refund({ is_partial: true, amount: 270 }), { id: "msg_e", metadataSecret: "", taxMode: null })).body).toMatchObject({ status: "processed" });
+    expect((await deliver(store, dispute("dispute.lost", { amount: "540" }), { id: "msg_f", metadataSecret: "", taxMode: null })).body).toMatchObject({ status: "processed" });
+    const cancel = await deliver(store, subscription("subscription.cancelled", { status: "cancelled" }), { id: "msg_g", metadataSecret: "", taxMode: null });
+    expect(cancel.body).toMatchObject({ status: "processed" });
+    expect(store.subs.get(SUB)?.status).toBe("canceled");
+  });
+});
+
+describe("a signed blob is good for one purchase (security review M1)", () => {
+  it("the reviewer's attack: org A's pack:starter blob on a static-link Business subscription with the victim's customer is refused", async () => {
+    const store = new FakeStore();
+    const attack = subscription("subscription.active", {
+      metadata: signedMeta(ORG, USER, "pack:starter"),
+      product_id: PDT_PRO,
+      customer: { customer_id: "cus_VICTIM0000000000000", email: "victim@example.com", name: "Victim", metadata: {} },
+    });
+    expect((await deliver(store, attack)).body).toMatchObject({ status: "rejected" });
+    expect(store.subs.size).toBe(0);
+  });
+
+  it("a plan blob already spent by one subscription is refused on another (replayed on a static link)", async () => {
+    const store = new FakeStore();
+    await deliver(store, subscription("subscription.active"), { id: "msg_1" });
+    const replay = subscription("subscription.active", { subscription_id: "sub_ReplayedOnLink000001", customer: { customer_id: "cus_VICTIM0000000000000" } });
+    const res = await deliver(store, replay, { id: "msg_2" });
+    expect(res.body).toMatchObject({ status: "rejected" });
+    expect(store.events.get("msg_2")?.detail).toMatch(/nonce consumed/);
+    expect(store.subs.has("sub_ReplayedOnLink000001")).toBe(false);
+  });
+
+  it("a plan blob for another plan than the product is refused", async () => {
+    const store = new FakeStore();
+    expect((await deliver(store, subscription("subscription.active", { metadata: signedMeta(ORG, USER, "plan:creator") }))).body).toMatchObject({ status: "rejected" });
+    expect(store.subs.size).toBe(0);
+  });
+
+  it("a pack blob spent by one payment is refused on a second payment", async () => {
+    const store = new FakeStore();
+    await deliver(store, payment(), { id: "msg_1" });
+    const again = await deliver(store, payment({ payment_id: "pay_secondUSEofBLOB00000" }), { id: "msg_2" });
+    expect(again.body).toMatchObject({ status: "rejected" });
+    expect(store.events.get("msg_2")?.detail).toMatch(/nonce consumed/);
+    expect(total(store)).toBe(1000);
+  });
+
+  it("a nonce this deployment never issued, or one that expired, credits nothing", async () => {
+    for (const setup of ["unknown", "expired"] as const) {
+      const store = new FakeStore();
+      const meta = signedMeta(ORG, USER, "pack:starter");
+      if (setup === "unknown") store.unknownNonces.add(meta.ns_nonce);
+      else store.nonces.set(meta.ns_nonce, { key: `${ORG}|${USER}|pack:starter`, consumer: null, expired: true });
+      expect((await deliver(store, payment({ metadata: meta }))).body).toMatchObject({ status: "rejected" });
+      expect(store.credited.size).toBe(0);
+    }
+  });
+
+  it("a pack blob on a subscription payment credits nothing", async () => {
+    const store = new FakeStore();
+    await deliver(store, subscription("subscription.active"), { id: "msg_sub" });
+    expect((await deliver(store, planPayment({ metadata: signedMeta(ORG, USER, "pack:starter") }), { id: "msg_pay" })).body).toMatchObject({ status: "rejected" });
+    expect(store.grants).toEqual([]);
+  });
+
+  it("Dodo's retry of the same payment or subscription spends the same nonce again", async () => {
+    const store = new FakeStore();
+    store.failNext = new StoreError("db down", null);
+    expect((await deliver(store, payment(), { id: "msg_1" })).status).toBe(500);
+    expect((await deliver(store, payment(), { id: "msg_1" })).body).toMatchObject({ status: "processed" });
+    expect(total(store)).toBe(1000);
   });
 });
 

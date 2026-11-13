@@ -26,7 +26,10 @@
  *     metadata — WHO is paying, nothing more — SIGNED with DODO_METADATA_SECRET
  *     (ns_sig, HMAC-SHA256 over the fields and a nonce). Dodo's own static
  *     payment links accept metadata_* in the URL, so unsigned metadata is
- *     anyone's: it never names an organization here (verifyDodoMetadata).
+ *     anyone's: it never names an organization here (verifyDodoMetadata). The
+ *     signed nonce is one the Command Center issued (dodo_checkout_nonces,
+ *     0144) and is spent once, by one pack payment or one new subscription,
+ *     so a signed blob cannot be replayed on a static link either.
  *   - Test mode on a production database credits only the workspaces in
  *     DODO_TEST_ORG_IDS (DODO_WEBHOOK_MODE is `test` unless it says `live`):
  *     a public test card must not buy real credits. The credits come from the
@@ -307,8 +310,22 @@ export const DODO_STATUS_MAP: Readonly<Record<string, SubscriptionStatus>> = {
 
 export type DodoDecision =
   | { kind: "ignore"; detail: string }
+  /** The deployment is not finished (a secret missing): answered 500, so Dodo delivers it again once it is. */
+  | { kind: "retry"; detail: string }
   | { kind: "reject"; detail: string; orgId: string | null; transactionId: string | null; currency: string | null; amountMinor: number | null }
-  | { kind: "purchase"; orgId: string; userId: string | null; transactionId: string; credits: number; currency: string; amountMinor: number; note: string }
+  | {
+      kind: "purchase";
+      orgId: string;
+      userId: string | null;
+      transactionId: string;
+      credits: number;
+      currency: string;
+      amountMinor: number;
+      note: string;
+      /** The signed item and nonce: spent once for this payment before anything is credited. */
+      item: string;
+      nonce: string;
+    }
   | {
       kind: "subscription_payment";
       orgId: string | null;
@@ -328,6 +345,10 @@ export type DodoDecision =
   | {
       kind: "subscription_state";
       orgId: string | null;
+      /** What the metadata signed, when it did: a NEW subscription needs it (its item and nonce). */
+      signed: { userId: string | null; item: string; nonce: string } | null;
+      /** The metadata secret is not set: a subscription not recorded yet cannot be created (retry); a recorded one still moves. */
+      unconfigured: boolean;
       subscriptionId: string;
       customerId: string | null;
       planId: string | null;
@@ -449,7 +470,9 @@ export function dodoMetadataMessage(f: { orgId: string; userId: string | null; i
 export type DodoMetadata =
   | { status: "absent" }
   | { status: "invalid"; reason: string }
-  | { status: "valid"; orgId: string; userId: string | null; item: string };
+  | { status: "valid"; orgId: string; userId: string | null; item: string; nonce: string }
+  /** DODO_METADATA_SECRET is not set: nothing that GRANTS can be decided (Dodo retries); taking back still works. */
+  | { status: "unconfigured" };
 
 function hexToBytes(hex: string): Uint8Array {
   const out = new Uint8Array(hex.length / 2);
@@ -484,7 +507,7 @@ export async function verifyDodoMetadata(raw: unknown, key: Uint8Array): Promise
   const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
   const data = new TextEncoder().encode(dodoMetadataMessage({ orgId, userId, item, nonce }));
   if (!(await crypto.subtle.verify("HMAC", cryptoKey, hexToBytes(sig), data))) return { status: "invalid", reason: "signature mismatch" };
-  return { status: "valid", orgId, userId, item };
+  return { status: "valid", orgId, userId, item, nonce };
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -514,7 +537,7 @@ export function decideDodoPayment(
   packs: DodoPackTable,
   plans: DodoPlanTable,
   meta: DodoMetadata,
-  taxMode: DodoTaxMode,
+  taxMode: DodoTaxMode | null,
 ): DodoDecision {
   const paymentRaw = str(data.payment_id);
   const transactionId = paymentRaw && PAYMENT_ID_RE.test(paymentRaw) ? paymentRaw : null;
@@ -529,6 +552,8 @@ export function decideDodoPayment(
   if (!transactionId) return reject("payment without a valid payment_id");
   if (str(data.status) !== "succeeded") return { kind: "ignore", detail: `payment status ${String(data.status)}` };
   if (data.is_update_payment_method === true) return { kind: "ignore", detail: "a payment-method update, not a purchase" };
+  if (meta.status === "unconfigured" || !taxMode)
+    return { kind: "retry", detail: "DODO_METADATA_SECRET or DODO_TAX_MODE is not set — nothing is credited until it is; Dodo retries" };
   if (meta.status === "invalid") return reject(`paid, but the metadata is not this deployment's (${meta.reason}) — not credited`);
   if (currency !== "USD") return reject("paid, but not in USD — not credited (adaptive or localized pricing must stay off)");
   if (total === null || total <= 0) return reject("paid, but total_amount is zero or cannot be read — not credited");
@@ -543,6 +568,8 @@ export function decideDodoPayment(
 
   if (subRaw) {
     if (!SUBSCRIPTION_ID_RE.test(subRaw)) return reject("paid plan with a malformed subscription id — not credited");
+    // A pack's blob belongs on a one-time payment only.
+    if (meta.status === "valid" && !meta.item.startsWith("plan:")) return reject(`paid plan, but the signed item is ${meta.item} — not credited`);
     const chargeType = str(data.charge_type);
     if (chargeType !== "new" && chargeType !== "renewal") {
       return reject(
@@ -595,7 +622,7 @@ export function decideDodoPayment(
   if (!amountMatches(total, tax, expected, taxMode))
     return reject(`paid ${total} (tax ${tax ?? "none"}) USD cents, but the catalog price is ${expected} (${taxMode} of tax) — not credited`);
   const note = [`Dodo ${transactionId}: ${lines.join(", ")}`, userId ? `bought by user ${userId}` : null].filter(Boolean).join(" · ");
-  return { kind: "purchase", orgId: meta.orgId, userId, transactionId, credits, currency, amountMinor: total, note };
+  return { kind: "purchase", orgId: meta.orgId, userId, transactionId, credits, currency, amountMinor: total, note, item: meta.item, nonce: meta.nonce };
 }
 
 /** subscription.* -> the subscription's state as Dodo now reports it. */
@@ -604,6 +631,7 @@ export function decideDodoSubscription(event: DodoEvent, plans: DodoPlanTable, m
   const subRaw = str(data.subscription_id);
   // A signed organization, or none: then only an existing row (created from a signed event) says who it belongs to.
   const orgId = meta.status === "valid" ? meta.orgId : null;
+  const signed = meta.status === "valid" ? { userId: meta.userId, item: meta.item, nonce: meta.nonce } : null;
   if (!subRaw || !SUBSCRIPTION_ID_RE.test(subRaw))
     return { kind: "reject", detail: "subscription without a valid id", orgId, transactionId: null, currency: null, amountMinor: null };
   if (meta.status === "invalid")
@@ -622,9 +650,20 @@ export function decideDodoSubscription(event: DodoEvent, plans: DodoPlanTable, m
   const productId = productRaw && DODO_PRODUCT_ID_RE.test(productRaw) ? productRaw : null;
   const plan = productId ? plans.get(productId) : undefined;
   const customerRaw = str(obj(data.customer).customer_id);
+  if (signed && !signed.item.startsWith("plan:"))
+    return {
+      kind: "reject",
+      detail: `subscription ${subRaw} carries the signed item ${signed.item}, not a plan — not recorded`,
+      orgId: null,
+      transactionId: null,
+      currency: null,
+      amountMinor: null,
+    };
   return {
     kind: "subscription_state",
     orgId,
+    signed,
+    unconfigured: meta.status === "unconfigured",
     subscriptionId: subRaw,
     customerId: customerRaw && CUSTOMER_ID_RE.test(customerRaw) ? customerRaw : null,
     // A product this deployment no longer maps must not stop a cancellation from landing: the plan is left as it
@@ -719,7 +758,7 @@ export function decideDodoEvent(
   packs: DodoPackTable,
   plans: DodoPlanTable,
   meta: DodoMetadata,
-  taxMode: DodoTaxMode,
+  taxMode: DodoTaxMode | null,
 ): DodoDecision {
   if ((DODO_SUBSCRIPTION_EVENTS as readonly string[]).includes(event.eventType)) return decideDodoSubscription(event, plans, meta);
   switch (event.eventType) {
@@ -761,6 +800,15 @@ export interface DodoStore {
     reason: "refund" | "chargeback",
   ): Promise<{ duplicate: boolean; requested: number; taken: number; shortfall: number }>;
   findSubscription(subscriptionId: string): Promise<DodoSubscriptionRow | null>;
+  /** dodo_consume_checkout_nonce (0144): spend a checkout nonce once, for one payment or one new subscription. */
+  consumeNonce(n: {
+    nonce: string;
+    orgId: string;
+    userId: string | null;
+    item: string;
+    consumer: string;
+    occurredAt: string | null;
+  }): Promise<NonceAnswer>;
   upsertSubscription(s: {
     orgId: string;
     subscriptionId: string;
@@ -785,6 +833,8 @@ export interface DodoStore {
     productId: string | null;
   }): Promise<{ duplicate: boolean; granted: number }>;
 }
+
+export type NonceAnswer = "ok" | "unknown" | "expired" | "consumed" | "mismatch";
 
 /** SQLSTATEs that retrying cannot fix (the same set as Paddle's): the event is recorded as rejected. */
 const PERMANENT_CODES = new Set(["23505", "22023", "P0002"]);
@@ -822,13 +872,11 @@ export async function handleDodoWebhook(
     log.error("dodo-webhook: DODO_WEBHOOK_SECRET is not set to a whsec_ signing secret — every delivery is refused");
     return { status: 500, body: { error: "webhook not configured" } };
   }
+  // Without these, nothing that GRANTS is decided (a `retry`, answered 500: Dodo delivers it again once the owner sets them);
+  // refunds, disputes and changes to a subscription already recorded still land, so money taken back is never held up.
   const metadataKey = dodoMetadataKey(deps.metadataSecret);
-  if (!metadataKey || !deps.taxMode) {
-    // 500 rather than `rejected`: Dodo retries for about a day, so a delivery made before the owner finished the
-    // setup is credited once it is fixed, instead of needing a person.
-    log.error("dodo-webhook: DODO_METADATA_SECRET (32+ characters) or DODO_TAX_MODE (inclusive | exclusive) is not set — every delivery is refused");
-    return { status: 500, body: { error: "webhook not configured" } };
-  }
+  if (!metadataKey || !deps.taxMode)
+    log.error("dodo-webhook: DODO_METADATA_SECRET (32+ characters) or DODO_TAX_MODE (inclusive | exclusive) is not set — nothing is credited");
   if (req.rawBody.length > MAX_BODY_BYTES) return { status: 413, body: { error: "payload too large" } };
 
   const nowS = Math.floor((deps.now ? deps.now() : Date.now()) / 1000);
@@ -847,10 +895,10 @@ export async function handleDodoWebhook(
     const prior = await deps.store.eventStatus(event.eventId);
     if (prior && prior !== "failed") return { status: 200, body: { ok: true, duplicate: true, status: prior } };
 
-    const meta = await verifyDodoMetadata(event.data.metadata, metadataKey);
+    const meta: DodoMetadata = metadataKey ? await verifyDodoMetadata(event.data.metadata, metadataKey) : { status: "unconfigured" };
     const decision = decideDodoEvent(event, deps.packs, deps.plans, meta, deps.taxMode);
     const allowed = (orgId: string) => deps.mode === "live" || deps.testOrgs.has(orgId);
-    const record = await execute(decision, deps.store, deps.plans, log, event.eventId, deps.taxMode, allowed);
+    const record = await execute(decision, deps.store, deps.plans, log, event.eventId, deps.taxMode, allowed, event.occurredAt);
     await deps.store.recordEvent({ ...base, ...record.row });
     if (record.row.status === "rejected" || record.httpStatus >= 500) {
       log.warn(`dodo-webhook: ${event.eventId} ${record.row.status} — ${record.row.detail}`);
@@ -887,13 +935,17 @@ async function execute(
   plans: DodoPlanTable,
   log: Logger,
   eventId: string,
-  taxMode: DodoTaxMode,
+  taxMode: DodoTaxMode | null,
   /** Live: every organization. Test: only DODO_TEST_ORG_IDS. Taking credits back (refunds, disputes) is never gated. */
   allowed: (orgId: string) => boolean,
+  occurredAt: string | null,
 ): Promise<{ httpStatus: number; row: RecordFields }> {
   switch (decision.kind) {
     case "ignore":
       return { httpStatus: 200, row: { status: "ignored", detail: decision.detail } };
+
+    case "retry":
+      return { httpStatus: 503, row: { status: "failed", detail: decision.detail } };
 
     case "reject":
       return {
@@ -914,6 +966,16 @@ async function execute(
         return { httpStatus: 200, row: { status: "rejected", detail: "paid, but the organization does not exist — not credited", ...money } };
       if (!allowed(decision.orgId)) return { httpStatus: 200, row: { status: "rejected", detail: TEST_ONLY, ...money } };
       try {
+        const spent = await store.consumeNonce({
+          nonce: decision.nonce,
+          orgId: decision.orgId,
+          userId: decision.userId,
+          item: decision.item,
+          consumer: decision.transactionId,
+          occurredAt,
+        });
+        if (spent !== "ok")
+          return { httpStatus: 200, row: { status: "rejected", detail: `checkout nonce ${spent} — not credited (a replayed or foreign blob)`, ...money } };
         const res = await store.addPurchasedCredits(decision.orgId, decision.credits, decision.transactionId, decision.note);
         log.info(`dodo-webhook: ${eventId} ${res.duplicate ? "already credited" : `credited ${decision.credits}`}`);
         return {
@@ -933,8 +995,17 @@ async function execute(
     }
 
     case "subscription_state": {
-      const row = decision.orgId ? null : await store.findSubscription(decision.subscriptionId);
-      const orgId = decision.orgId ?? row?.orgId ?? null;
+      const row = await store.findSubscription(decision.subscriptionId);
+      if (!row && decision.unconfigured) {
+        return { httpStatus: 503, row: { status: "failed", detail: "DODO_METADATA_SECRET is not set — a new subscription waits; Dodo retries" } };
+      }
+      if (row && decision.orgId && decision.orgId !== row.orgId) {
+        return {
+          httpStatus: 200,
+          row: { status: "rejected", detail: `subscription ${decision.subscriptionId} is recorded for another organization — not moved`, orgId: null },
+        };
+      }
+      const orgId = row?.orgId ?? decision.orgId ?? null;
       if (!orgId || !(await store.orgExists(orgId))) {
         return {
           httpStatus: 200,
@@ -943,6 +1014,33 @@ async function execute(
       }
       if (!allowed(orgId)) return { httpStatus: 200, row: { status: "rejected", detail: TEST_ONLY, orgId } };
       try {
+        if (!row) {
+          // A NEW subscription: the signed item must be this product's plan, and the checkout's nonce is spent here, once.
+          const signed = decision.signed;
+          if (!signed || !decision.planId || signed.item !== `plan:${decision.planId}`) {
+            return {
+              httpStatus: 200,
+              row: {
+                status: "rejected",
+                detail: `subscription ${decision.subscriptionId}: the signed item ${signed?.item ?? "(none)"} is not plan ${decision.planId ?? "(unmapped product)"} — not recorded`,
+                orgId,
+              },
+            };
+          }
+          const spent = await store.consumeNonce({
+            nonce: signed.nonce,
+            orgId,
+            userId: signed.userId,
+            item: signed.item,
+            consumer: decision.subscriptionId,
+            occurredAt: decision.occurredAt,
+          });
+          if (spent !== "ok")
+            return {
+              httpStatus: 200,
+              row: { status: "rejected", detail: `subscription ${decision.subscriptionId}: checkout nonce ${spent} — not recorded`, orgId },
+            };
+        }
         const res = await store.upsertSubscription({
           orgId,
           subscriptionId: decision.subscriptionId,
@@ -999,6 +1097,7 @@ async function execute(
         return { httpStatus: 200, row: { status: "rejected", detail: `paid plan, but its product is not plan ${sub.planId} on this deployment — not credited`, orgId, ...money } };
       if (decision.cartProducts.some((p) => p !== sub.productId))
         return { httpStatus: 200, row: { status: "rejected", detail: "paid plan whose cart names another product than the subscription — not credited", orgId, ...money } };
+      if (!taxMode) return { httpStatus: 503, row: { status: "failed", detail: "DODO_TAX_MODE is not set — nothing is credited; Dodo retries", ...money } };
       if (!amountMatches(decision.amountMinor, decision.taxMinor, planEntry.usdCents, taxMode))
         return {
           httpStatus: 200,
@@ -1204,6 +1303,18 @@ export function createDodoRestStore(opts: { url: string; serviceKey: string; fet
       );
       const n = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0));
       return { duplicate: res.duplicate === true, requested: n(res.requested), taken: n(res.taken), shortfall: n(res.shortfall) };
+    },
+    async consumeNonce(n) {
+      const res = await rpc("dodo_consume_checkout_nonce", {
+        p_nonce: n.nonce,
+        p_org: n.orgId,
+        p_user: n.userId,
+        p_item: n.item,
+        p_consumer: n.consumer,
+        p_at: n.occurredAt,
+      });
+      const v = typeof res === "string" ? res : null;
+      return v === "ok" || v === "unknown" || v === "expired" || v === "consumed" || v === "mismatch" ? v : "unknown";
     },
     async findSubscription(subscriptionId) {
       const rows = await select(
