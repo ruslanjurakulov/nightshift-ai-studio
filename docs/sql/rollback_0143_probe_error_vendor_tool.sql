@@ -1,11 +1,11 @@
--- rollback_0140_probe_error_vendor_tool.sql — takes migration 0140 (the probe log's vendor_tool_unsupported word) out again.
+-- rollback_0143_probe_error_vendor_tool.sql — takes migration 0143 (the probe log's vendor_tool_unsupported word) out again.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- WHAT IS LOST: nothing. 0140 only widened one check constraint on public.model_probe_runs.
+-- WHAT IS LOST: nothing. 0143 only widened one check constraint on public.model_probe_runs.
 --
 -- WHAT IT DOES, in one transaction:
 --   0. REFUSES (changes nothing) if the log already holds a row with error_code 'vendor_tool_unsupported': the probe log is append-only
---      and 0035's rule would not accept that row. Deploy the code without the word first, or keep 0140.
+--      and 0035's rule would not accept that row. Deploy the code without the word first, or keep 0143.
 --   1. Puts 0035's check back word for word.
 --   2. Asserts the end state: the check is 0035's rule exactly, as Postgres prints it back.
 
@@ -15,7 +15,7 @@ set local lock_timeout = '5s';
 do $$
 begin
   if exists (select 1 from public.model_probe_runs where error_code = 'vendor_tool_unsupported') then
-    raise exception 'rollback 0140: the probe log holds vendor_tool_unsupported rows, which 0035''s check refuses; keep 0140';
+    raise exception 'rollback 0143: the probe log holds vendor_tool_unsupported rows, which 0035''s check refuses; keep 0143';
   end if;
 end $$;
 
@@ -33,7 +33,7 @@ begin
     from pg_constraint c
    where c.conrelid = 'public.model_probe_runs'::regclass and c.conname = 'model_probe_runs_error_code_check';
   if def is distinct from 'CHECK (((ok AND (error_code IS NULL) AND (error IS NULL)) OR ((NOT ok) AND (error_code = ANY (ARRAY[''not_configured''::text, ''auth''::text, ''quota''::text, ''rate_limited''::text, ''bad_request''::text, ''policy''::text, ''not_found''::text, ''unavailable''::text, ''bad_response''::text, ''timeout''::text])))))' then
-    raise exception 'rollback 0140: model_probe_runs_error_code_check is not 0035''s rule (%)', def;
+    raise exception 'rollback 0143: model_probe_runs_error_code_check is not 0035''s rule (%)', def;
   end if;
 end $$;
 

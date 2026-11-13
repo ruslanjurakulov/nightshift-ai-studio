@@ -149,7 +149,7 @@ E_UNAVAILABLE = "unavailable"         # vendor 5xx, outage, network   → retry 
 E_BAD_RESPONSE = "bad_response"       # 2xx we do not understand      → adapter needs a fix
 #: The vendor refused an option the adapter sends through one of its tools (a 400 naming ``param: "tools"``): the
 #: request is a bad request for THIS model, but the fix is the adapter's or the option's, not the prompt's. Never retried
-#: without the tool (that would quietly deliver something other than what was asked). Migration 0140.
+#: without the tool (that would quietly deliver something other than what was asked). Migration 0143.
 E_VENDOR_TOOL_UNSUPPORTED = "vendor_tool_unsupported"
 ERROR_CODES = (E_NOT_CONFIGURED, E_AUTH, E_QUOTA, E_RATE_LIMITED, E_BAD_REQUEST, E_POLICY,
                E_NOT_FOUND, E_UNAVAILABLE, E_BAD_RESPONSE, E_VENDOR_TOOL_UNSUPPORTED)

@@ -205,7 +205,7 @@ carries `"operator_preview": true`:
    - **What changed.** The adapter now answers a 400 naming `param: "tools"` as `vendor_tool_unsupported`, with a
      message that says the size / aspect ratio option was refused and nothing was charged. It does NOT retry without the
      tool: that would return a picture in the vendor's default shape, not the one the person asked for. The probe no
-     longer names an aspect ratio, so it sends no `tools` (migration 0140 lets the probe log store the new code).
+     longer names an aspect ratio, so it sends no `tools` (migration 0143 lets the probe log store the new code).
    - **Second probe, 2026-11-12 20:40Z** (run 43302357299, this branch): the cheapest valid call, with no tool:
      `{"model": "muse-image-1.0", "store": false, "input": "a red apple on a white table"}`. Result: `ok
      grounded-image-1.0`, one image, $0.01. The endpoint, the key, `store: false` and the `image_generation_call` answer

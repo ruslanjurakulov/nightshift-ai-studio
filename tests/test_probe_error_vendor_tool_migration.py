@@ -1,4 +1,4 @@
-"""supabase/migrations/0140_probe_error_vendor_tool.sql — the probe log accepts every typed code the adapters can raise.
+"""supabase/migrations/0143_probe_error_vendor_tool.sql — the probe log accepts every typed code the adapters can raise.
 
 What would break without these tests: a code added to ``ERROR_CODES`` (modules/capabilities/base.py) that the probe log's check
 constraint refuses. ``record_model_probe`` (0035) inserts the code as given, so the probe of a model failing with that code could not
@@ -15,8 +15,8 @@ from modules.capabilities.base import E_VENDOR_TOOL_UNSUPPORTED, ERROR_CODES
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-TEXT = (MIG / "0140_probe_error_vendor_tool.sql").read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0140_probe_error_vendor_tool.sql").read_text(encoding="utf-8")
+TEXT = (MIG / "0143_probe_error_vendor_tool.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0143_probe_error_vendor_tool.sql").read_text(encoding="utf-8")
 M0035 = (MIG / "0035_model_registry.sql").read_text(encoding="utf-8")
 NAME = "model_probe_runs_error_code_check"
 
@@ -55,7 +55,7 @@ def newest() -> str:
 
 class Check(unittest.TestCase):
     def test_the_newest_check_lists_exactly_the_adapter_codes_and_the_probe_tools_timeout(self):
-        self.assertEqual(newest(), "0140_probe_error_vendor_tool.sql")
+        self.assertEqual(newest(), "0143_probe_error_vendor_tool.sql")
         self.assertEqual(words(TEXT), set(ERROR_CODES) | {"timeout"})
         self.assertIn(E_VENDOR_TOOL_UNSUPPORTED, words(TEXT))
 

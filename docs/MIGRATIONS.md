@@ -841,24 +841,6 @@ and nothing changes for anyone until a registry entry carries `"operator_preview
   (a non-admin and an admin in a customer's organization are refused; the operator is quoted at cost and holds nothing; every other quote is
   byte for byte 0125's; the drift guard, the rollback and the order), `command-center/tests/operator-preview.test.tsx` (the badge, the list).
 
-## The probe log names a refused vendor tool (0140)
-
-0140 (`0140_probe_error_vendor_tool.sql`) is **live on apply**: it replaces ONE check constraint, `model_probe_runs_error_code_check` (0035),
-with the same rule plus one word, `vendor_tool_unsupported`. No table, column, row, function or grant changes.
-
-- **Why.** The first probe of `grounded-image-1.0` (run 43286239903, 2026-11-12) was answered HTTP 400 "Unsupported tool type:
-  'image_generation'" with `param: "tools"`. The adapter now raises a typed code for that answer (`E_VENDOR_TOOL_UNSUPPORTED` in
-  `modules/capabilities/base.py` `ERROR_CODES`), and `record_model_probe` inserts the code as given: without 0140 such a probe could not be
-  recorded at all. Job rows (0036) already take any `^[a-z0-9_]{1,64}$` word; the Studio shows it as "These settings were not accepted".
-- **Safe to apply.** The new rule accepts every row the old one did. Apply as ONE transaction (`set local lock_timeout`); the last block
-  compares the whole constraint, as Postgres prints it back, to the expected rule (checked on a PostgreSQL 16 server: apply, re-apply,
-  rollback, re-apply, and a tampered copy that stops).
-- **Undo.** `docs/sql/rollback_0140_probe_error_vendor_tool.sql` (owner-applied): refuses while the log holds a `vendor_tool_unsupported`
-  row, then puts 0035's words back and checks the printed rule the same way.
-- **Numbering.** 0140, after 0139. It names nothing of 0139's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
-- **Tests.** `tests/test_probe_error_vendor_tool_migration.py` (the newest check lists exactly `ERROR_CODES` and `timeout`; nothing else
-  changes; the rollback).
-
 ## A model blocked by country cannot be put on sale (0142)
 
 0142 (`0142_country_block_before_sale.sql`) is **live on apply** and changes no row: it adds one CHECK to `model_registry`,
@@ -884,3 +866,23 @@ with the same rule plus one word, `vendor_tool_unsupported`. No table, column, r
   (the platform admin, the service role and the owner refused beta and ga for a verified, priced, ungated model with a list; the same
   model goes on sale without one; a sync refused whole; hidden, disabled, `[]` and null allowed; the pre-check; replay; rollback and
   re-apply), `tests/test_geoip_build.py` (the file rule).
+
+## The probe log names a refused vendor tool (0143)
+
+0143 (`0143_probe_error_vendor_tool.sql`) is **live on apply**: it replaces ONE check constraint, `model_probe_runs_error_code_check` (0035),
+with the same rule plus one word, `vendor_tool_unsupported`. No table, column, row, function or grant changes.
+
+- **Why.** The first probe of `grounded-image-1.0` (run 43286239903, 2026-11-12) was answered HTTP 400 "Unsupported tool type:
+  'image_generation'" with `param: "tools"`. The adapter now raises a typed code for that answer (`E_VENDOR_TOOL_UNSUPPORTED` in
+  `modules/capabilities/base.py` `ERROR_CODES`), and `record_model_probe` inserts the code as given: without 0143 such a probe could not be
+  recorded at all. Job rows (0036) already take any `^[a-z0-9_]{1,64}$` word; the Studio shows it as "These settings were not accepted".
+- **Safe to apply.** The new rule accepts every row the old one did. Apply as ONE transaction (`set local lock_timeout`); the last block
+  compares the whole constraint, as Postgres prints it back, to the expected rule (checked on a PostgreSQL 16 server: apply, re-apply,
+  rollback, re-apply, and a tampered copy that stops).
+- **Undo.** `docs/sql/rollback_0143_probe_error_vendor_tool.sql` (owner-applied): refuses while the log holds a `vendor_tool_unsupported`
+  row, then puts 0035's words back and checks the printed rule the same way.
+- **Numbering.** 0143, after 0142. It was written as 0140, but 0142 merged and was applied to the live database first. The
+  Supabase integration applies a merged migration only if its number is above the last one applied, so 0140 would never run;
+  0143 is the next free number. It names nothing of 0139's or 0142's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Tests.** `tests/test_probe_error_vendor_tool_migration.py` (the newest check lists exactly `ERROR_CODES` and `timeout`; nothing else
+  changes; the rollback).
