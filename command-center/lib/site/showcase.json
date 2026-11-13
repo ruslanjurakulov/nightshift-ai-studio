@@ -227,6 +227,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "5784577f-f034-4170-b8f9-ca645375ec1b",
+      "assetId": "898e63ea-d7f2-5451-a021-6a208ea8c3b8",
+      "sha256": "7e60cfec7155912f10abba9622d7d39ebfaaf58bde702e3a94dc8c7512ecc660",
+      "modelId": "minimax-h3-lite",
+      "modelName": "MiniMax H3 Lite",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Macro shot of a wooden weaving loom: vivid saffron, indigo and crimson threads being woven, the shuttle glides through and the beater presses the weft tight, soft warm side light, shallow depth of field, slow motion, tactile detail, no people faces. Audio: rhythmic wooden clack of the loom, no music.",
+      "createdAt": "2026-11-13T17:44:33Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Lite",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:15:27Z"
     }
   ]
 }
