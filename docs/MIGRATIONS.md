@@ -1174,3 +1174,36 @@ model marked `operator_preview`) of a model priced by quality.
   tier is medium and the job carries it; an unoffered tier is `invalid_params`, an unpriced listed one `unpriced`; everyone 0139 refuses
   is still refused; a model on sale is never quoted at cost; a tier row wins; a video entry "by quality" stays `unpriced`; with 0153
   rolled back only these answers change; the lab chain helpers; order, drift guard and rollback on a scratch database).
+
+## A quote refuses a shape the model does not list (0155)
+
+0155 (`0155_shape_offered_by_model.sql`) is **live on apply** and writes no row. It replaces ONE function, `creative_price`, on 0153's
+body plus one hunk, and changes an answer only for a request that names an `aspect_ratio` the model's spec does not list for that
+capability: a request the worker already refuses before it calls a vendor.
+
+- **Why.** On 2026-11-13 `ideogram-4` and `ideogram-4.5` t2i jobs with `{"aspect_ratio": "16:9"}` were quoted and created, and the
+  worker then failed them (`aspect ratio 16:9 is not offered for t2i by ideogram-4`). `creative_params_problem` only checks that a shape
+  looks like `16:9`, and `creative_price` read the model's own list for `expand` (0099) and `video_reframe` (0100) only, so the first
+  reader for `t2i`, `t2v`, `edit` and `i2v` was the worker, after the job and its hold (`docs/research/ideogram-shapes-2026-11-13.md`).
+- **The rule.** A named `aspect_ratio` must be in `spec.aspect_ratios_by_capability[<capability>]` when that names some, else in
+  `spec.aspect_ratios`: exactly the worker's `ModelEntry.aspects_for` (an empty narrowing reads as none). An empty list refuses every
+  shape, and so does a spec with no list. Refused `invalid_params`, "`<model>` does not offer the `<shape>` shape for `<capability>`".
+  No shape named: unchanged. The router (0075 / 0088) treats a `creative_price` refusal as "not a candidate", so a routed request skips
+  a model that cannot make the shape instead of being routed to it and failed.
+- **Before it helps.** The list is the one `tools/probe_models.py --sync` copied into `model_registry.spec` from
+  `schemas/model_registry.json`. Run a sync after merging (the Probe models workflow does one): until then the database reads the lists
+  of the last sync (for `ideogram-4` and `ideogram-4.5`, the old empty ones, which already refuse every shape: the same answer the
+  worker gave, only earlier).
+- **Drift guard and end state.** The live `creative_price` must be 0153's body (`28130a014027e6ad0b7876a78d69a396`) or 0155's
+  (`48105e11fbd820b6f103c19b8fd1e693`); 0149's body is refused (0153 must come first). The last block asserts the body, no API role
+  grant, the pinned search_path, the three guards and the shape check. Apply as ONE transaction.
+- **Order.** 0155 sits on 0153's `creative_price` and refuses to apply without it. 0153's replay and rollback refuse 0155's body: run
+  `docs/sql/rollback_0155_shape_offered_by_model.sql` first (it puts 0153's body back byte for byte). The lab takes 0155 off before
+  0153 (`sec_db.take_off_0153` calls `take_off_0155`; `take_off_0149` and `take_off_0139` recognise 0155's body; `sec_db.ON_0153`, and
+  `ON_0149`, `ON_0139` and `ON_0125` list it last). Numbering: 0155; 0154 is reserved by other work. The numbering tests of 0127, 0131
+  and 0133 list it as reviewed.
+- **Tests.** `tests/test_shape_offered_by_model_migration.py` (the hunk, the list is the worker's own for every registry entry, the
+  hashes, the rollback, the lab chain, every synced row states its list), `tests/security/test_sec_shape_offered_by_model.py` (a listed
+  shape is quoted and an unlisted one refused by name; an empty or missing list refuses every shape; a capability narrowing; the
+  operator preview held to the same list; a refused shape never becomes a job or a hold; with 0155 rolled back the same job is queued
+  and every other answer is 0153's; order, drift guard and rollback on a scratch database).
