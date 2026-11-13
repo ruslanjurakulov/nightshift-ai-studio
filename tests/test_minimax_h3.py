@@ -14,8 +14,8 @@ What would break without these tests:
 * a clip fetched from a host that is not MiniMax's, or a failed download reported
   as "nothing happened" when MiniMax had finished and billed;
 * a message that tells a person a failed task was not billed (MiniMax does not say so);
-* a model whose terms nobody has decided becoming sellable, or a gate cleared beyond what MiniMax's
-  written answer of 2026-11-13 names (H3 Max and Hailuo 2.3 stay gated).
+* a gate cleared without the written answer and the owner's decision it rests on being recorded, or a
+  cleared model becoming sellable by the registry alone (availability and the price stay the database's).
 """
 
 from __future__ import annotations
@@ -65,9 +65,7 @@ MP4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x00" * 2048
 H3, HS, LITE, MAX = "minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max"
 NEW_IDS = (H3, HS, LITE, MAX)
 PROBE_IDS = (*NEW_IDS, "minimax-hailuo-2.3")        # the Hailuo entry shares the Terms
-ANSWERED = (H3, HS, LITE)                           # MiniMax's e-mail of 2026-11-13 names them; it settles use, not resale
-UNANSWERED = (MAX, "minimax-hailuo-2.3")
-STILL_GATED = PROBE_IDS                              # every MiniMax entry, until the pre-sale list is done
+ANSWERED = PROBE_IDS     # the owner's 2026-11-11 question named them; MiniMax's 2026-11-13 answer, and the owner cleared all
 CREATE = "/v2/video_generation"
 QUERY = "/v2/query/video_generation/"
 
@@ -153,34 +151,32 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertIn("guardian", notes, mid)
             self.assertNotIn("could not be read", notes, mid)          # the stale claim is gone
 
-    def test_the_email_is_recorded_where_it_reaches_and_the_gate_still_stands(self):
-        # MiniMax's e-mail of 2026-11-13 names "Video model H3" and answers ownership and the revenue thresholds. It says
-        # nothing about reselling (ToS 7(c)), and the operator preview (0139) works with a gate. Clearing the gate on it would
-        # leave availability as the only lock between a credit_prices row and a sale nobody checked (Lens on PR 712).
+    def test_the_gate_is_cleared_on_the_written_answer_and_the_notes_say_what_it_rests_on(self):
+        # The owner asked MiniMax on 2026-11-11 whether selling Hailuo 2.3, H3, H3 Lite and H3 Max to our users for credits
+        # inside our app is allowed under 7(c); api@minimaxi.com answered on 2026-11-13 with revenue thresholds only, and the
+        # owner cleared every MiniMax video model on it. The notes keep the question, the answer and what it does not quote,
+        # so nobody later reads the clearing as a lawyer's reading of 7(c).
         for mid in ANSWERED:
             e = self.r[mid]
-            self.assertEqual(e.terms_gate, "terms_review_required", mid)
+            self.assertIsNone(e.terms_gate, mid)
             notes = e.raw["terms_notes"]
             text = " ".join(notes)
             for words in ("api@minimaxi.com", "2026-11-13 12:15 UTC+5", "belong to the users themselves",
                           "annual commercial revenue exceeds 20 million USD", "exceeds 1 million USD",
-                          "https://platform.minimax.io/console/license", "owner decided on 2026-11-13"):
+                          "https://platform.minimax.io/console/license", "owner decided on 2026-11-13",
+                          "question of 2026-11-11", "Hailuo 2.3, H3, H3 Lite and H3 Max", "does not quote ToS 7(c)",
+                          "Before a sale", "privacy-notice line", "Uzbekistan billing"):
                 self.assertIn(words, text, (mid, words))
-            # What the clearing does not rest on is said too, so nobody reads the e-mail as a reading of 7(c).
-            self.assertIn("does not quote ToS 7(c)", text, mid)
-            self.assertIn("terms_gate stays until", text, mid)
-            self.assertNotIn("terms_gate is cleared", text, mid)
+            self.assertNotIn("Why the gate stays open", text, mid)
+            self.assertNotIn("Not sellable until decided", text, mid)
             self.assertTrue(all(len(n) <= 300 for n in notes), mid)
-        for mid in UNANSWERED:
-            self.assertEqual(self.r[mid].terms_gate, "terms_review_required", mid)
-            self.assertNotIn("api@minimaxi.com", " ".join(self.r[mid].raw["terms_notes"]), mid)
 
     def test_the_terms_gate_reaches_the_database_row(self):
-        # sellable_models() (migration 0035) refuses any row whose spec.terms_gate is non-empty, and 0035's terms_before_sale
-        # refuses beta/ga for it: two locks, whatever a credit_prices row says. The sync never writes availability.
+        # The cleared gate reaches the database row, and nothing else does: the sync never writes availability or
+        # verified_at, so a cleared model stays hidden until the database says otherwise (and no credit_prices row exists).
         rows = {row["id"]: row for row in reg.sync_rows(list(self.r.values()))}
-        for mid in STILL_GATED:
-            self.assertEqual(rows[mid]["spec"]["terms_gate"], "terms_review_required", mid)
+        for mid in ANSWERED:
+            self.assertIsNone(rows[mid]["spec"]["terms_gate"], mid)
             for banned in ("availability", "verified_at"):
                 self.assertNotIn(banned, rows[mid], mid)
 
@@ -226,7 +222,7 @@ class RegistryEntryTests(unittest.TestCase):
             p = self.r[mid].raw["pricing"]
             self.assertFalse(p["confirmed"], mid)
             self.assertEqual(p["source_url"], "https://platform.minimax.io/docs/pricing/overview", mid)
-            self.assertEqual(p["as_of"], "2026-11-13" if mid in ANSWERED else "2026-10-25", mid)
+            self.assertEqual(p["as_of"], "2026-11-13" if mid in (H3, HS, LITE) else "2026-10-25", mid)
             self.assertIn("ESTIMATE", p["note"], mid)
             self.assertEqual(p["variants"]["by"], "resolution", mid)
             self.assertEqual(p["variants"]["prices"], want[mid], mid)
@@ -782,10 +778,10 @@ class EndToEndTests(VendorCase):
 
 
 class ProbeSkipsGatedTests(unittest.TestCase):
-    """``--all`` (and the probe workflow with an empty model input) never makes a paid call to
-    the models still gated (H3 Max, Hailuo 2.3); since the gate was cleared for H3, Highspeed and
-    Lite on 2026-11-13, ``--all`` probes those three like any ungated model (a manual run only:
-    the workflow has no schedule). Naming one still probes it, and only it."""
+    """``--all`` (and the probe workflow with an empty model input) never makes a paid call to a
+    gated model. Since the owner cleared every MiniMax video model on 2026-11-13, ``--all`` probes
+    them like any ungated model (a manual run only: the workflow has no schedule). Naming one
+    still probes it, and only it."""
 
     ENV = {name: "k" * 24 for cls in ADAPTERS.values() for name in cls.key_env}
 
@@ -806,21 +802,22 @@ class ProbeSkipsGatedTests(unittest.TestCase):
             code = probe_models.main(argv, env=self.ENV, db=db, stream=out)
         return code, called, out.getvalue()
 
-    def test_all_skips_the_gated_ones_and_says_so(self):
+    def test_all_skips_the_gated_ones_and_no_minimax_model_is_among_them(self):
         from tools import probe_models
 
         entries = list(reg.registry().values())
         chosen = {e.id for e in probe_models.select(entries, [], None, True)}
-        self.assertFalse(chosen & set(STILL_GATED), chosen & set(STILL_GATED))   # no paid MiniMax call from --all
-        for cap in ("t2v", "i2v", "t2i"):
-            self.assertFalse({e.id for e in probe_models.select(entries, [], cap, True)} & set(STILL_GATED), cap)
+        self.assertFalse([e.id for e in entries if e.id in chosen and e.terms_gate])
+        live = {mid for mid in PROBE_IDS if not self.r_entry(mid).shut_down()}
+        self.assertEqual(chosen & live, live)
         code, called, text = self.run_main(["--all", "--brief"])
         self.assertEqual(code, 0)
-        self.assertTrue(called)
-        self.assertFalse(set(called) & set(STILL_GATED), set(called) & set(STILL_GATED))
-        for mid in STILL_GATED:
-            self.assertIn(f"gated {mid}", text)                    # said in the log, nothing else about it
-            self.assertNotIn(f"ok {mid}", text)
+        self.assertFalse([e.id for e in entries if e.id in called and e.terms_gate])
+        for mid in PROBE_IDS:
+            self.assertNotIn(f"gated {mid}", text)
+
+    def r_entry(self, mid):
+        return reg.registry()[mid]
 
     def test_naming_one_probes_it_and_only_it(self):
         for mid in PROBE_IDS:
