@@ -68,3 +68,72 @@ def test_record_never_raises_on_failing_fetcher():
     sync = mock.Mock()
     assert pb.record(sync=sync, fetchers=[boom]) == 0
     sync.upsert.assert_not_called()
+
+
+# ── Runway: GET /v1/organization -> creditBalance (docs.dev.runwayml.com/api.md, read 2026-11-13) ──
+
+def test_parse_runway_reads_the_documented_credit_balance_only():
+    snap = pb.parse_runway({"creditBalance": 915, "tier": {"maxMonthlyCreditSpend": 10000, "models": {}}, "usage": {"models": {}}})
+    assert (snap.provider, snap.metric, snap.remaining, snap.unit) == ("runway", "credits", 915.0, "credits")
+    # The tier's monthly purchase ceiling is not an allowance: storing it as `total` would draw a meter against the wrong figure.
+    assert snap.total is None
+    # A zero balance is a real, documented answer ("minimum 0"), not a missing one.
+    assert pb.parse_runway({"creditBalance": 0}).remaining == 0
+
+
+def test_parse_runway_unknown_is_no_snapshot_never_zero():
+    for bad in ({}, {"creditBalance": None}, {"creditBalance": "lots"}, {"creditBalance": -5}, {"creditBalance": True},
+                {"credit_balance": 915}, ["creditBalance", 915], None):
+        assert pb.parse_runway(bad) is None, bad
+
+
+def test_runway_fetch_sends_the_key_and_version_header_to_the_fixed_url_only(monkeypatch):
+    monkeypatch.setenv("RUNWAYML_API_SECRET", "key_runway_TESTVALUE")
+    resp = mock.Mock(status_code=200)
+    resp.json.return_value = {"creditBalance": 915}
+    with mock.patch.object(pb.requests, "get", return_value=resp) as get:
+        snap = pb.fetch_runway()
+    assert snap.remaining == 915
+    (url,), kw = get.call_args
+    assert url == "https://api.dev.runwayml.com/v1/organization"
+    assert kw["headers"]["Authorization"] == "Bearer key_runway_TESTVALUE"
+    assert kw["headers"]["X-Runway-Version"] == "2024-11-06"
+    assert kw["timeout"] == pb._TIMEOUT
+
+
+def test_runway_without_a_key_makes_no_request(monkeypatch):
+    monkeypatch.delenv("RUNWAYML_API_SECRET", raising=False)
+    monkeypatch.delenv("RUNWAY_API_KEY", raising=False)
+    with mock.patch.object(pb.requests, "get") as get:
+        assert pb.fetch_runway() is None
+        get.assert_not_called()
+
+
+def test_runway_failure_is_skipped_and_the_key_never_reaches_the_log(monkeypatch, caplog):
+    secret = "key_runway_SUPERSECRET_0123456789"
+    monkeypatch.setenv("RUNWAYML_API_SECRET", secret)
+    for status in (401, 429, 500):
+        with mock.patch.object(pb.requests, "get", return_value=mock.Mock(status_code=status)), caplog.at_level(logging.DEBUG):
+            assert pb.fetch_runway() is None
+    with mock.patch.object(pb.requests, "get", side_effect=ConnectionError(f"proxy said {secret}")), caplog.at_level(logging.DEBUG):
+        assert pb.fetch_runway() is None
+    bad_json = mock.Mock(status_code=200)
+    bad_json.json.side_effect = ValueError(secret)
+    with mock.patch.object(pb.requests, "get", return_value=bad_json), caplog.at_level(logging.DEBUG):
+        assert pb.fetch_runway() is None
+    assert secret not in caplog.text
+    assert secret[:12] not in caplog.text
+
+
+def test_runway_is_one_of_the_balance_fetchers_and_its_snapshot_is_written():
+    assert pb.fetch_runway in pb.FETCHERS
+    sync = mock.Mock()
+    sync.upsert.return_value = 1
+    snap = pb.parse_runway({"creditBalance": 915})
+    assert pb.record(sync=sync, fetchers=[lambda: snap]) == 1
+    table, rows = sync.upsert.call_args_list[0].args
+    assert table == "provider_balances"
+    assert rows == [{"provider": "runway", "metric": "credits", "remaining": 915.0, "total": None, "unit": "credits",
+                     "tier": None, "resets_at": None, "source": "api"}]
+    # No low-credit alert is invented for Runway: the only alert rule is ElevenLabs'.
+    assert [c.args[0] for c in sync.upsert.call_args_list] == ["provider_balances"]

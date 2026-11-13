@@ -1,0 +1,55 @@
+import type { BillingLedgerDictionary } from "./en";
+
+/**
+ * «Toʻlov» sahifasida har bir provayder qatoridagi egasining hisobi: qancha sotib olingan, qancha sarflangan (konveyer, Studiya,
+ * sinovlar) va qancha qolgan. Manba — ./en.ts.
+ */
+export const billingLedgerUz: BillingLedgerDictionary = {
+  bought: "Sotib olingan",
+  boughtNone: "toʻldirish qayd etilmagan",
+  boughtCount: "toʻldirishlar: {n}, birinchisi {date}",
+  credits: "kredit: {n}",
+  usedSince: "{date} dan beri sarflangan (UTC)",
+  usedLast30: "Sarflangan, oxirgi 30 kun",
+  left: "Qoldi",
+  leftReported: "provayder maʼlumoti, {when}",
+  leftEstimate: "taxmin: sotib olingan minus sarflangan",
+  leftUnknown: {
+    unread: "nomaʼlum: toʻlov maʼlumotlarini oʻqib boʻlmadi",
+    no_topup: "nomaʼlum: toʻldirish qayd etilmagan, provayder balansni bildirmaydi",
+    used_unknown: "nomaʼlum: sarfning bir qismi narxsiz",
+    negative: "nomaʼlum: qayd etilgan toʻldirishlardan koʻproq sarflangan",
+  },
+  sources: { pipeline: "Konveyer", studio: "Studiya", probes: "Sinovlar" },
+  state: {
+    unread: "oʻqib boʻlmadi",
+    untracked: "qayd etilmaydi",
+    notUsed: "ishlatilmaydi",
+    none: "yoʻq",
+    partial: "tarix toʻliq oʻqilmadi",
+  },
+  atLeast: "kamida {usd}",
+  estimate: "taxmin",
+  usdUnknown: "{qty} {unit}, USD narxi nomaʼlum",
+  rowsUsdUnknown: "{unit}: {n} qator, USD narxi nomaʼlum",
+  billingUnknown: "pul olingan boʻlishi mumkin boʻlgan muvaffaqiyatsiz sinovlar: {n}",
+  units: {
+    second: "s",
+    image: "rasm",
+    character: "belgi",
+    request: "soʻrov",
+    credits: "kredit",
+    tokens: "token",
+    probe: "sinov",
+    tts_characters: "belgi",
+    gemini_input_tokens: "token",
+    gemini_output_tokens: "token",
+    video_gen_clips: "klip",
+    image_generations: "rasm",
+  },
+  pipelineLastDay: "Konveyer, soʻnggi {n} kun",
+  pipelineLastDays: "Konveyer, soʻnggi {n} kun",
+  pipeline30: "Konveyer, 30 kun",
+  headlinePipelineOnly: "faqat konveyer: Studiya va sinovlar har bir provayder qatorida",
+  noBillingLink: "toʻlov sahifasi tekshirilmagan",
+};

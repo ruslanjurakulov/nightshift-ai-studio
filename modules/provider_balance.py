@@ -10,6 +10,10 @@ Only providers that expose a balance endpoint are read:
   * ElevenLabs — ``GET /v1/user/subscription`` → character_count / character_limit
     (credits), next reset, tier.
   * Leonardo   — ``GET /api/rest/v1/me`` → API paid + subscription tokens.
+  * Runway     — ``GET /v1/organization`` (header ``X-Runway-Version: 2024-11-06``)
+    → ``creditBalance``, "the number of credits remaining in the organization
+    account" (docs.dev.runwayml.com/api.md, read 2026-11-13). Credits are bought
+    at $0.01 each in Runway's developer portal (guides/pricing, same day).
 
 Every other provider has no balance API (Gemini bills through Google Cloud,
 video providers through their own dashboards), so nothing is written for them
@@ -123,6 +127,21 @@ def parse_leonardo(data) -> Optional[BalanceSnapshot]:
     )
 
 
+def parse_runway(data) -> Optional[BalanceSnapshot]:
+    """Build a snapshot from a Runway ``/v1/organization`` payload, or None.
+
+    Only ``creditBalance`` is read: the documented integer >= 0. A missing,
+    negative or non-numeric figure is no snapshot (unknown), never 0 credits.
+    The tier's ``maxMonthlyCreditSpend`` is a purchase ceiling, not an
+    allowance, so it is not stored as ``total``."""
+    if not isinstance(data, dict):
+        return None
+    balance = _num(data.get("creditBalance"))
+    if balance is None or balance < 0:
+        return None
+    return BalanceSnapshot(provider="runway", metric="credits", remaining=balance, total=None, unit="credits")
+
+
 def _get_json(url: str, headers: dict, provider: str):
     try:
         resp = requests.get(url, headers=headers, timeout=_TIMEOUT)
@@ -161,7 +180,24 @@ def fetch_leonardo() -> Optional[BalanceSnapshot]:
     return parse_leonardo(data)
 
 
-FETCHERS: List[Callable[[], Optional[BalanceSnapshot]]] = [fetch_elevenlabs, fetch_leonardo]
+#: Runway's API version header; the same one modules/capabilities/video.py sends.
+RUNWAY_API_VERSION = "2024-11-06"
+
+
+def fetch_runway() -> Optional[BalanceSnapshot]:
+    # The adapter's names, in its order (modules/capabilities/video.py RunwayAdapter.key_env).
+    key = (os.getenv("RUNWAYML_API_SECRET", "") or os.getenv("RUNWAY_API_KEY", "")).strip()
+    if not key:
+        return None
+    data = _get_json(
+        "https://api.dev.runwayml.com/v1/organization",
+        {"Authorization": f"Bearer {key}", "X-Runway-Version": RUNWAY_API_VERSION, "accept": "application/json"},
+        "runway",
+    )
+    return parse_runway(data)
+
+
+FETCHERS: List[Callable[[], Optional[BalanceSnapshot]]] = [fetch_elevenlabs, fetch_leonardo, fetch_runway]
 
 
 def low_credit_threshold() -> float:

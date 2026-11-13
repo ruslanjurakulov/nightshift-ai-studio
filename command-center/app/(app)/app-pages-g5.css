@@ -149,7 +149,12 @@ select.ns-field { padding-right: 12px; }
 .g5-prov-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 @media (max-width: 639px) {
   .g5-prov-facts { grid-template-columns: 1fr 1fr; }
+  /* Three source lines do not fit half of a 360px row: "Used" takes the whole width. */
+  .g5-ledger-used { grid-column: 1 / -1; }
 }
+/* The owner's ledger: the small print under a fact (when, how many, where from). */
+.g5-prov-facts dd.g5-ledger-sub { margin-top: 2px; font-size: 0.8125rem; font-weight: 400; line-height: 1.45; color: var(--color-muted); }
+.g5-prov-facts dd[data-source] .g5-k { margin-right: 4px; }
 .g5-prov-act { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
 .g5-prov-price { flex: 1 1 14rem; max-width: 26rem; }
 @media (min-width: 720px) {

@@ -14,6 +14,7 @@ import { ownerRpcRu } from "./owner-rpc/ru";
 import { marketingRu } from "./marketing/ru";
 import { modelSwitchRu } from "./model-switch/ru";
 import { modelBudgetRu } from "./model-budget/ru";
+import { billingLedgerRu } from "./billing-ledger/ru";
 import { modelKeysRu } from "./model-keys/ru";
 import { operatorCustomersRu } from "./operator-customers/ru";
 import { seriesPlanRu } from "./series-plan/ru";
@@ -56,6 +57,8 @@ export const ru: Dictionary = {
   modelSwitch: modelSwitchRu,
   studioHome: studioHomeRu,
   modelBudget: modelBudgetRu,
+  /** The owner's per-provider ledger on the Billing page: ./billing-ledger/ru.ts. */
+  billingLedger: billingLedgerRu,
   modelKeys: modelKeysRu,
   /** The operator's Customers page (migration 0138): ./operator-customers/ru.ts. */
   customers: operatorCustomersRu,

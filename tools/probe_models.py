@@ -150,7 +150,7 @@ class RegistryDB:
             raise RuntimeError(f"{fn}: could not reach the database ({type(e).__name__})") from None
         if r.status_code >= 300:
             hint = " — is migration 0035 applied?" if r.status_code in (404, 400) else ""
-            raise RuntimeError(f"{fn}: HTTP {r.status_code}{hint}")
+            raise RpcError(f"{fn}: HTTP {r.status_code}{hint}", r.status_code)
         return r.json()
 
     def sync(self, rows: List[dict]) -> int:
@@ -158,11 +158,33 @@ class RegistryDB:
 
     def record(self, *, model: str, adapter: str, vendor_model: str, capability: str, ok: bool,
                error_code: Optional[str], error: Optional[str], latency_ms: int,
-               output_bytes: Optional[int], probed_by: str) -> int:
-        return int(self.rpc("record_model_probe", {
+               output_bytes: Optional[int], probed_by: str, vendor_credits: Optional[float] = None) -> int:
+        payload = {
             "p_model": model, "p_adapter": adapter, "p_vendor_model": vendor_model,
             "p_capability": capability, "p_ok": ok, "p_error_code": error_code, "p_error": error,
-            "p_latency_ms": latency_ms, "p_output_bytes": output_bytes, "p_probed_by": probed_by}))
+            "p_latency_ms": latency_ms, "p_output_bytes": output_bytes, "p_probed_by": probed_by}
+        # Outside 0152's rule (0 to 1,000,000) the figure is not a bill anyone could have paid for a probe: the probe is still
+        # recorded, without it, instead of the whole row being refused.
+        if vendor_credits is None or not 0 <= vendor_credits <= 1_000_000:
+            return int(self.rpc("record_model_probe", payload))
+        try:
+            # 0152's eleven-argument form: the vendor's own bill for this probe is kept with the row, for the Billing page.
+            return int(self.rpc("record_model_probe", {**payload, "p_vendor_credits": vendor_credits}))
+        except RpcError as e:
+            # 404 is PostgREST's "no function with these argument names": 0152 is not applied yet (or the schema cache is stale),
+            # and nothing was written. Recording the probe without the figure cannot duplicate a row; any other refusal is real.
+            if e.status != 404:
+                raise
+            logger.warning("record_model_probe: the vendor's credits for %s were not stored (apply migration 0152)", model)
+            return int(self.rpc("record_model_probe", payload))
+
+
+class RpcError(RuntimeError):
+    """A database refusal, with its HTTP status (the message carries no URL, key or body)."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
 
 
 # ── one probe ───────────────────────────────────────────────────────────────
@@ -454,7 +476,7 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
                 db.record(model=e.id, adapter=e.adapter, vendor_model=e.vendor_model_for(cap),
                           capability=cap, ok=res.ok, error_code=res.code,
                           error=res.message or None, latency_ms=res.latency_ms,
-                          output_bytes=res.output_bytes, probed_by=args.by[:120])
+                          output_bytes=res.output_bytes, probed_by=args.by[:120], vendor_credits=res.credits)
                 if args.brief:
                     code = res.code if res.code in BRIEF_CODES else "other"
                     extra = f" credits={res.credits:g}" if res.ok and res.credits is not None else ""

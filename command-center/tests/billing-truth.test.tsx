@@ -3,9 +3,12 @@
  * computed to "$0 burn" and "not in use" (the old "lasts never"); a negative ledger became "0 days"; Anthropic and OpenAI,
  * whose spend is not recorded at all, read as "used nothing"; a provider that tops itself up got a days-left alarm.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { en } from "../lib/i18n/en";
+import { BILLED_PROVIDERS } from "../lib/billing";
 import { EMPTY, FAILED, esc, type StubResult } from "./helpers/supabaseStub";
 import { arg, has as called, recordingSupabase, type Call, type Res } from "./helpers/recordingStub";
 
@@ -44,14 +47,17 @@ const NOW = Date.now();
 const iso = (daysAgo: number) => new Date(NOW - daysAgo * 86_400_000).toISOString();
 const has = (html: string, text: string) => html.includes(esc(text));
 
-type Tables = Record<string, StubResult>;
+/** A table's scripted answer, or a function of the calls the query made (to answer by the columns it selected). */
+type Tables = Record<string, StubResult | ((calls: Call[]) => Res)>;
 /** What a `video_costs` page request resolves to; defaults to the table's scripted answer. */
 let costPage: ((calls: Call[]) => Res) | null = null;
 let stub = recordingSupabase(() => ({ data: [], error: null }));
 async function page(tables: Tables): Promise<string> {
   stub = recordingSupabase((table, calls) => {
     if (table === "video_costs" && costPage) return costPage(calls);
-    return (tables[table] as Res | undefined) ?? (EMPTY as Res);
+    const answer = tables[table];
+    if (typeof answer === "function") return answer(calls);
+    return (answer as Res | undefined) ?? (EMPTY as Res);
   });
   state.client = stub.client;
   return renderToStaticMarkup(await BillingPage());
@@ -67,7 +73,7 @@ afterEach(() => vi.useRealTimers());
 /** What the "Lasts" line of a provider card says. */
 function lasts(html: string, name: string): string {
   const text = card(html, name).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  const m = text.match(new RegExp(`${en.billing.lasts}\\s+(.*?)\\s+(Price per|Save)`));
+  const m = text.match(new RegExp(`${en.billing.lasts}\\s+(.*?)\\s+(Price per|Save|Pay)`));
   expect(m, `${name} lasts`).toBeTruthy();
   return m![1].trim();
 }
@@ -187,10 +193,11 @@ describe("what the page asks the database (recorded)", () => {
     const since = Date.parse(String(arg(first, "gte", 1)));
     expect(Math.abs(since - (NOW - 90 * 86_400_000))).toBeLessThan(2000);
   });
-  it("it reads back to the earliest top-up (so its balance is true)", async () => {
+  it("it reads back to the start of the earliest top-up's UTC day (so its balance, and that day's use, are true)", async () => {
     await page({ provider_topups: ok([{ provider: "kling", amount_usd: 50, paid_at: iso(120) }]) });
     const since = Date.parse(String(arg(stub.of("video_costs")[0], "gte", 1)));
-    expect(Math.abs(since - (NOW - 120 * 86_400_000))).toBeLessThan(2000);
+    const day = Math.floor((NOW - 120 * 86_400_000) / 86_400_000) * 86_400_000;
+    expect(since).toBe(day);
   });
   it("but never past 180 days, and says so; the balance that depends on the older top-up is unknown", async () => {
     const html = await page({
@@ -223,7 +230,7 @@ describe("the ledger is only as fresh as the nightly mirror", () => {
       ]),
       provider_billing_settings: ok([{ provider: "kling", usd_per_unit: 1, include_in_bulk: true, card_saved_on_provider: false, auto_recharge_on_provider: false, low_balance_days: 3 }]),
     });
-    expect(has(card(html, "Kling"), en.ownerTruth.usedLastDays.replace("{n}", "2"))).toBe(true);
+    expect(has(card(html, "Kling"), en.billingLedger.pipelineLastDays.replace("{n}", "2"))).toBe(true);
     // 10 clips in 2 days at $1 is $5 a day, not $0.33
     expect(card(html, "Kling")).toContain("$5.00");
   });
@@ -255,7 +262,7 @@ describe("the headline", () => {
   });
   it("a single day of history reads 'last 1 day', not 'last 1 days'", async () => {
     const html = await page({ video_costs: ok([full("broll:kling", 5, 0.3, 1)]), provider_billing_settings: settings("kling") });
-    expect(has(html, en.ownerTruth.usedLastDay.replace("{n}", "1"))).toBe(true);
+    expect(has(html, en.billingLedger.pipelineLastDay.replace("{n}", "1"))).toBe(true);
     expect(stat(html)).not.toMatch(/last 1 days/);
   });
   it("'Nothing is running out' only when every provider is known not to be", async () => {
@@ -265,7 +272,8 @@ describe("the headline", () => {
     expect(text).toContain(en.billing.statFirstOut);
   });
   it("...and says it when they all are (never used with a balance, tops itself up, not tracked)", async () => {
-    const providers = ["elevenlabs", "gemini", "minimax", "kling", "veo", "seedance", "wan", "higgsfield", "leonardo"];
+    // Every provider whose spend is recorded somewhere (all but Anthropic and OpenAI, which read "not tracked").
+    const providers = BILLED_PROVIDERS.filter((p) => p.tracked !== false).map((p) => p.id);
     const html = await page({
       video_costs: ok([full("broll:other", 1, 1, 1)]),
       provider_billing_settings: ok(providers.map((provider) => ({ provider, usd_per_unit: 1, include_in_bulk: true, card_saved_on_provider: true, auto_recharge_on_provider: true, low_balance_days: 3 }))),
@@ -302,6 +310,100 @@ describe("a ledger that was cut: the window never reaches before the oldest row 
       provider_topups: ok([{ provider: "kling", amount_usd: 50, paid_at: iso(100) }]),
       provider_billing_settings: ok([{ provider: "kling", usd_per_unit: 1, include_in_bulk: true, card_saved_on_provider: false, auto_recharge_on_provider: false, low_balance_days: 3 }]),
     });
-    expect(has(card(html, "Kling"), en.ownerTruth.usedLastDays.replace("{n}", "2"))).toBe(true);
+    expect(has(card(html, "Kling"), en.billingLedger.pipelineLastDays.replace("{n}", "2"))).toBe(true);
+  });
+});
+
+describe("the owner's ledger: bought, used by pipeline / Studio / probes, left", () => {
+  const registry = JSON.parse(readFileSync(join(__dirname, "..", "..", "schemas", "model_registry.json"), "utf8")) as {
+    models: Array<Record<string, unknown> & { id: string; provider: string }>;
+  };
+  const COLUMNS = new Set(["id", "display_name", "provider", "adapter", "capabilities", "credit_unit", "entitlement"]);
+  // model_registry_admin() answers the static columns and `spec` (everything else), as sync_model_registry stored them.
+  const REGISTRY = ok(
+    registry.models.map((m) => ({ id: m.id, provider: m.provider, spec: Object.fromEntries(Object.entries(m).filter(([k]) => !COLUMNS.has(k))) })),
+  );
+  const TOPUP = ok([{ provider: "runway", amount_usd: 10, paid_at: iso(0) }]);
+  const PROBES = [
+    { model_id: "runway-gen4.5", ok: true, error_code: null, created_at: iso(0), vendor_credits: 60 },
+    { model_id: "runway-gen4-turbo", ok: true, error_code: null, created_at: iso(0), vendor_credits: 25 },
+  ];
+  const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  const selected = (calls: Call[]) => String(calls.find(([m]) => m === "select")?.[1][0] ?? "");
+
+  it("Runway after the owner's first top-up and two probes: $10 = 1,000 credits bought, 85 used by probes, 915 left (estimate)", async () => {
+    const html = await page({ provider_topups: TOPUP, model_probe_runs: ok(PROBES), model_registry_admin: REGISTRY });
+    const runway = text(card(html, "Runway"));
+    expect(runway).toContain("$10.00 · 1,000 credits");
+    expect(runway).toContain(`${en.billingLedger.sources.probes} $0.850 · 85 credits`);
+    expect(runway).toContain(`${en.billingLedger.sources.studio} ${en.billingLedger.state.none}`);
+    expect(runway).toContain(`${en.billingLedger.sources.pipeline} ${en.billingLedger.state.notUsed}`);
+    expect(runway).toContain("$9.15 · 915 credits");
+    expect(runway).toContain(en.billingLedger.leftEstimate);
+    // Runway bills nothing the pipeline does: no price field that would change nothing; its own portal is the billing link.
+    expect(runway).not.toContain("Price per");
+    expect(card(html, "Runway")).toContain('href="https://dev.runway.com/"');
+    expect(html).not.toContain("data-read-error");
+    // A provider with money on record comes before the two dozen with nothing.
+    expect(html.indexOf(">Runway</h3>")).toBeLessThan(html.indexOf(">ElevenLabs</h3>"));
+    // $9.15 at $0.85 a day.
+    expect(lasts(html, "Runway")).toBe(en.billing.days.replace("{n}", "10"));
+  });
+
+  it("Runway's own reported balance wins, with when it was read", async () => {
+    const snap = { provider: "runway", metric: "credits", remaining: 915, total: null, unit: "credits", tier: null, resets_at: null, source: "api", checked_at: iso(0.01) };
+    const html = await page({ provider_topups: TOPUP, model_probe_runs: ok(PROBES), model_registry_admin: REGISTRY, provider_balances: ok([snap]) });
+    const runway = text(card(html, "Runway"));
+    expect(runway).toContain("915 credits · $9.15");
+    expect(runway).toContain(en.billingLedger.leftReported.replace("{when}", ""));
+    expect(runway).not.toContain(en.billingLedger.leftEstimate);
+  });
+
+  it("before migration 0152 the probes are read again without vendor_credits and priced from the registry, labelled an estimate", async () => {
+    const html = await page({
+      provider_topups: TOPUP,
+      model_registry_admin: REGISTRY,
+      model_probe_runs: (calls) =>
+        selected(calls).includes("vendor_credits")
+          ? { data: null, error: { code: "42703", message: "column model_probe_runs.vendor_credits does not exist" } }
+          : { data: PROBES.map((p) => ({ model_id: p.model_id, ok: p.ok, error_code: p.error_code, created_at: p.created_at })), error: null },
+    });
+    expect(stub.of("model_probe_runs").map((q) => selected(q.calls).includes("vendor_credits"))).toEqual([true, false]);
+    const runway = text(card(html, "Runway"));
+    expect(runway).toContain(`${en.billingLedger.sources.probes} $0.850 · 85 credits · ${en.billingLedger.estimate}`);
+    expect(html).not.toContain("data-read-error");
+  });
+
+  it("a Studio read that failed is 'could not read', the total is unknown and the page says so; never $0", async () => {
+    const html = await page({ provider_topups: TOPUP, model_probe_runs: ok(PROBES), model_registry_admin: REGISTRY, creative_job_costs: FAILED });
+    expect(html).toContain("data-read-error");
+    const runway = text(card(html, "Runway"));
+    expect(runway).toContain(`${en.billingLedger.sources.studio} ${en.billingLedger.state.unread}`);
+    expect(runway).toContain(en.billingLedger.atLeast.replace("{usd}", "$0.850"));
+    expect(runway).toContain(en.billingLedger.leftUnknown.used_unknown);
+    expect(lasts(html, "Runway")).toBe(en.billing.unknown);
+  });
+
+  it("the registry could not be read: probes cannot be attributed, so they are unknown, and the page says so", async () => {
+    const html = await page({ provider_topups: TOPUP, model_probe_runs: ok(PROBES), model_registry_admin: FAILED });
+    expect(html).toContain("data-read-error");
+    expect(text(card(html, "Runway"))).toContain(`${en.billingLedger.sources.probes} ${en.billingLedger.state.unread}`);
+  });
+
+  it("Studio and probes are read over the same window as the pipeline ledger", async () => {
+    await page({ provider_topups: TOPUP, model_registry_admin: REGISTRY });
+    const since = arg(stub.of("video_costs")[0], "gte", 1);
+    expect(arg(stub.of("creative_job_costs")[0], "gte", 1)).toBe(since);
+    expect(arg(stub.of("model_probe_runs")[0], "gte", 1)).toBe(since);
+    expect(arg(stub.of("creative_job_costs")[0], "gte", 0)).toBe("recorded_at");
+    expect(arg(stub.of("model_probe_runs")[0], "gte", 0)).toBe("created_at");
+  });
+
+  it("a provider with nothing on record says 'no top-up recorded' and why its balance is unknown", async () => {
+    const html = await page({ model_registry_admin: REGISTRY });
+    const krea = text(card(html, "Krea"));
+    expect(krea).toContain(en.billingLedger.boughtNone);
+    expect(krea).toContain(en.billingLedger.leftUnknown.no_topup);
+    expect(krea).not.toMatch(/\$0\.00/);
   });
 });

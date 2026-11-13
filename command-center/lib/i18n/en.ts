@@ -14,6 +14,7 @@ import { ownerRpcEn } from "./owner-rpc/en";
 import { marketingEn } from "./marketing/en";
 import { modelSwitchEn } from "./model-switch/en";
 import { modelBudgetEn } from "./model-budget/en";
+import { billingLedgerEn } from "./billing-ledger/en";
 import { modelKeysEn } from "./model-keys/en";
 import { operatorCustomersEn } from "./operator-customers/en";
 import { seriesPlanEn } from "./series-plan/en";
@@ -64,6 +65,8 @@ export const en = {
   modelSwitch: modelSwitchEn,
   studioHome: studioHomeEn,
   modelBudget: modelBudgetEn,
+  /** The owner's per-provider ledger on the Billing page: ./billing-ledger/en.ts. */
+  billingLedger: billingLedgerEn,
   modelKeys: modelKeysEn,
   /** The operator's Customers page (migration 0138): ./operator-customers/en.ts. */
   customers: operatorCustomersEn,
