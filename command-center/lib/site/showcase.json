@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "ec9a7c43-0304-4da7-943a-134a259e4f90",
+      "assetId": "ad4eabac-1424-54bc-be7d-8ccfa600028a",
+      "sha256": "b5eeca036647ac675865cdf653ce07c4638154ffe55c272c5e395e5d14936820",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical phone video filmed by a passer-by at street level on a busy city avenue: a ginger cat, at colossal scale and taller than the buildings, walks slowly down the street between the towers. Cars stop, tiny people look up and point, pigeons scatter. Handheld camera with natural shake that tilts up to follow it, bright slightly overexposed daylight, believable scale and real-world physics, photoreal. No text, no captions.",
+      "createdAt": "2026-11-13T21:50:35Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:06:14Z"
     }
   ]
 }
