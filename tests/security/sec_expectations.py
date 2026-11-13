@@ -686,3 +686,8 @@ sec_mcp_free_tier_0147.extend(TABLES, FUNCTIONS)
 import sec_model_probe_seconds_0151  # noqa: E402
 
 sec_model_probe_seconds_0151.extend(TABLES, FUNCTIONS)
+
+# Migration 0157 (the Credits page's Dodo purchase history: an owner/admin reads their own organization's credited payments): tests/security/sec_dodo_history_0157.py
+import sec_dodo_history_0157  # noqa: E402
+
+sec_dodo_history_0157.extend(TABLES, FUNCTIONS)

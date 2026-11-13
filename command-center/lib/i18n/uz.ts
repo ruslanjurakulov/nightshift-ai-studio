@@ -15,6 +15,7 @@ import { marketingUz } from "./marketing/uz";
 import { modelSwitchUz } from "./model-switch/uz";
 import { modelBudgetUz } from "./model-budget/uz";
 import { billingLedgerUz } from "./billing-ledger/uz";
+import { addCreditsUz } from "./add-credits/uz";
 import { modelKeysUz } from "./model-keys/uz";
 import { operatorCustomersUz } from "./operator-customers/uz";
 import { seriesPlanUz } from "./series-plan/uz";
@@ -59,6 +60,7 @@ export const uz: Dictionary = {
   modelBudget: modelBudgetUz,
   /** The per-provider ledger the owner reads on the Billing page: ./billing-ledger/uz.ts. */
   billingLedger: billingLedgerUz,
+  addCredits: addCreditsUz,
   modelKeys: modelKeysUz,
   /** «Mijozlar» sahifasi (0138-migratsiya): ./operator-customers/uz.ts. */
   customers: operatorCustomersUz,

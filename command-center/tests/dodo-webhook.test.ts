@@ -1,8 +1,11 @@
 import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  DODO_AMOUNT,
   DODO_PACKS,
   DODO_PLAN_PRICES,
+  dodoAmountFromItem,
+  dodoAmountProductFromEnv,
   MAX_BODY_BYTES,
   StoreError,
   amountMatches,
@@ -28,7 +31,7 @@ import {
   type PurchaseRecord,
 } from "../../supabase/functions/_shared/dodo";
 import { CREDIT_PACKS as PADDLE_WEBHOOK_PACKS } from "../../supabase/functions/_shared/paddle";
-import { DODO_CATALOG_PACKS as APP_PACKS, DODO_CATALOG_PLAN_PRICES as APP_PLAN_PRICES } from "@/lib/dodo";
+import { DODO_AMOUNT as APP_AMOUNT, DODO_CATALOG_PACKS as APP_PACKS, DODO_CATALOG_PLAN_PRICES as APP_PLAN_PRICES, dodoItemKey } from "@/lib/dodo";
 
 // The Dodo webhook's logic (supabase/functions/_shared/dodo.ts) is runtime-neutral, so it is tested here with the
 // Command Center's tooling, the same way as Paddle's. The payloads below are built from the field lists and the
@@ -45,6 +48,8 @@ const USER = "11111111-1111-4111-8111-111111111111";
 const PDT_STARTER = "pdt_0NVbdIG3JNg9Yc8ey5JHW";
 const PDT_STUDIO = "pdt_STUDIOpack00000000000";
 const PDT_PRO = "pdt_PROplan00000000000000";
+/** The Pay What You Want product typed amounts are charged under (DODO_PRODUCT_AMOUNT). */
+const PDT_AMOUNT = "pdt_PWYWamount0000000000";
 const PAY = "pay_gr4RizvMOXFJ6xca3y2tU";
 const PAY2 = "pay_secondPAYMENT000000000";
 const SUB = "sub_Iuaq622bbmmfOGrVTqdXv";
@@ -299,6 +304,7 @@ function deliver(
     taxMode?: DodoTaxMode | null;
     mode?: DodoWebhookMode;
     testOrgs?: string[];
+    amountProduct?: string | null;
   } = {},
 ) {
   const id = opts.id ?? "msg_2KWPBgLlAfxdpx2AI54pPJ85f4W";
@@ -318,6 +324,7 @@ function deliver(
       testOrgs: new Set(opts.testOrgs ?? []),
       packs,
       plans,
+      amountProduct: opts.amountProduct === undefined ? PDT_AMOUNT : opts.amountProduct,
       store,
       now: () => opts.now ?? NOW_MS,
       log: quiet,
@@ -1001,5 +1008,179 @@ describe("the REST store", () => {
     expect(err).toBeInstanceOf(StoreError);
     expect((err as StoreError).code).toBe("22023");
     expect(String(err)).not.toContain("service-key-secret");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// A typed amount (the "Add credits" sheet): what would break without these is the one case where the BUYER picks the price.
+// A static Pay What You Want link (paymentAmount=…) lets anyone choose what to pay; the credits must still come only from the
+// cents our server signed, and only when Dodo reports exactly those cents paid.
+// ───────────────────────────────────────────────────────────────────────────
+
+const PAY_AMT = "pay_TypedAMOUNT00000000001";
+
+/** payment.succeeded for a typed $25.00, tax-exclusive by default: $25.00 + $2.00 tax. */
+function amountPayment(cents = 2500, overrides: Record<string, unknown> = {}, signedCents: number | string = cents) {
+  return payment({
+    payment_id: PAY_AMT,
+    total_amount: cents + 200,
+    tax: 200,
+    metadata: signedMeta(ORG, USER, `pack:amount_${signedCents}`),
+    product_cart: [{ product_id: PDT_AMOUNT, quantity: 1 }],
+    ...overrides,
+  });
+}
+
+describe("a typed amount", () => {
+  it("is the same offer on both sides: 1 credit per US cent, $5 to $300, presets $10 / $20 / $50 / $100", () => {
+    expect(APP_AMOUNT).toEqual(DODO_AMOUNT);
+    expect(DODO_AMOUNT).toEqual({ creditsPerCent: 1, minCents: 500, maxCents: 30000, presetsCents: [1000, 2000, 5000, 10000] });
+    // The base rate is the Starter pack's own: a typed $10 buys exactly what the Starter pack buys.
+    const starter = DODO_PACKS.find((p) => p.id === "starter")!;
+    expect(starter.usdCents * DODO_AMOUNT.creditsPerCent).toBe(starter.credits);
+    // No pack can be read as a typed amount, or the other way round.
+    expect(DODO_PACKS.some((p) => p.id.startsWith("amount_"))).toBe(false);
+  });
+
+  it("signs exactly the item the webhook reads, and only its one canonical spelling inside the bounds", () => {
+    expect(dodoItemKey({ kind: "amount", usdCents: 2500 })).toBe("pack:amount_2500");
+    expect(dodoAmountFromItem("pack:amount_2500")).toBe(2500);
+    expect(dodoAmountFromItem("pack:amount_500")).toBe(500);
+    expect(dodoAmountFromItem("pack:amount_30000")).toBe(30000);
+    for (const bad of ["pack:amount_499", "pack:amount_30001", "pack:amount_02500", "pack:amount_2500.5", "pack:amount_-2500", "pack:amount_", "plan:amount_2500", "amount:2500", "pack:starter", null])
+      expect(dodoAmountFromItem(bad)).toBeNull();
+  });
+
+  it("credits the signed cents, tax-exclusive: $25.00 + $2.00 tax = 2,500 credits", async () => {
+    const store = new FakeStore();
+    const res = await deliver(store, amountPayment(2500), { taxMode: "exclusive" });
+    expect(res.status).toBe(200);
+    expect(store.credited.get(PAY_AMT)).toEqual({ org: ORG, credits: 2500 });
+    expect([...store.events.values()][0]).toMatchObject({ status: "processed", credits: 2500, amountMinor: 2700, currency: "USD" });
+    // The nonce spent is the one the checkout issued for THIS item, so the database binds the amount too.
+    expect([...store.nonces.values()][0].key).toBe(`${ORG}|${USER}|pack:amount_2500`);
+  });
+
+  it("credits the signed cents, tax-inclusive: $25.00 with $1.85 tax inside = 2,500 credits", async () => {
+    const store = new FakeStore();
+    const res = await deliver(store, amountPayment(2500, { total_amount: 2500, tax: 185 }), { taxMode: "inclusive" });
+    expect(res.status).toBe(200);
+    expect(store.credited.get(PAY_AMT)?.credits).toBe(2500);
+  });
+
+  it("applies the tax mode strictly: the other shape of the same money is not credited", async () => {
+    const inclusive = new FakeStore();
+    await deliver(inclusive, amountPayment(2500), { taxMode: "inclusive" }); // total 2700 is not 2500
+    expect(inclusive.credited.size).toBe(0);
+    const exclusive = new FakeStore();
+    await deliver(exclusive, amountPayment(2500, { total_amount: 2500, tax: 185 }), { taxMode: "exclusive" }); // 2315 is not 2500
+    expect(exclusive.credited.size).toBe(0);
+  });
+
+  it("the buyer's own price on a static PWYW link is never what is credited: paid ≠ signed is rejected and recorded", async () => {
+    for (const paid of [500, 2499, 2501, 30000]) {
+      const store = new FakeStore();
+      const res = await deliver(store, amountPayment(2500, { total_amount: paid + 200, tax: 200 }));
+      expect(res.status).toBe(200);
+      expect(store.credited.size).toBe(0);
+      const row = [...store.events.values()][0];
+      expect(row.status).toBe("rejected");
+      expect(row.detail).toContain("signed amount is 2500");
+      expect(row.amountMinor).toBe(paid + 200);
+      // Rejected before the nonce is touched: the real checkout's payment can still arrive and be credited.
+      expect(store.nonces.size).toBe(0);
+    }
+  });
+
+  it("a signed amount edited in the metadata (a bigger number under our signature) names no organization", async () => {
+    const store = new FakeStore();
+    const meta = { ...signedMeta(ORG, USER, "pack:amount_500"), nightshift_item: "pack:amount_30000" };
+    await deliver(store, amountPayment(30000, { metadata: meta }));
+    expect(store.credited.size).toBe(0);
+    const row = [...store.events.values()][0];
+    expect(row).toMatchObject({ status: "rejected", orgId: null });
+    expect(row.detail).toContain("signature mismatch");
+  });
+
+  it("an amount outside the bounds is not credited even under a valid signature", async () => {
+    for (const signed of [100, 499, 30001, "02500"]) {
+      const store = new FakeStore();
+      const cents = typeof signed === "number" ? signed : 2500;
+      await deliver(store, amountPayment(cents, {}, signed));
+      expect(store.credited.size).toBe(0);
+      expect([...store.events.values()][0].status).toBe("rejected");
+    }
+  });
+
+  it("a typed amount's blob on a pack product, or a pack's blob on the PWYW product, is not credited", async () => {
+    const onPack = new FakeStore();
+    await deliver(onPack, amountPayment(1000, { product_cart: [{ product_id: PDT_STARTER, quantity: 1 }], total_amount: 1080, tax: 80 }));
+    expect(onPack.credited.size).toBe(0);
+    expect([...onPack.events.values()][0].detail).toContain("signed item is pack:amount_1000");
+    const packOnPwyw = new FakeStore();
+    await deliver(packOnPwyw, payment({ product_cart: [{ product_id: PDT_AMOUNT, quantity: 1 }] }));
+    expect(packOnPwyw.credited.size).toBe(0);
+    expect([...packOnPwyw.events.values()][0].detail).toContain("custom-amount product, but the signed item is pack:starter");
+  });
+
+  it("quantity 2 (twice the signed amount) or a second line is not credited", async () => {
+    const two = new FakeStore();
+    await deliver(two, amountPayment(2500, { product_cart: [{ product_id: PDT_AMOUNT, quantity: 2 }], total_amount: 5200, tax: 200 }));
+    expect(two.credited.size).toBe(0);
+    const lines = new FakeStore();
+    await deliver(lines, amountPayment(2500, { product_cart: [{ product_id: PDT_AMOUNT, quantity: 1 }, { product_id: PDT_STARTER, quantity: 1 }] }));
+    expect(lines.credited.size).toBe(0);
+  });
+
+  it("without DODO_PRODUCT_AMOUNT on the webhook, a typed amount is not credited (never read as some pack)", async () => {
+    const store = new FakeStore();
+    await deliver(store, amountPayment(2500), { amountProduct: null });
+    expect(store.credited.size).toBe(0);
+    expect([...store.events.values()][0].detail).toContain("is not a credit pack on this deployment");
+  });
+
+  it("a duplicate delivery credits once: the same webhook id replayed, and the same payment under a second webhook id", async () => {
+    const store = new FakeStore();
+    await deliver(store, amountPayment(2500), { id: "msg_amt_1" });
+    const replay = await deliver(store, amountPayment(2500), { id: "msg_amt_1" });
+    const again = await deliver(store, amountPayment(2500), { id: "msg_amt_2" });
+    expect(replay.body).toMatchObject({ duplicate: true });
+    expect(again.status).toBe(200);
+    expect(store.events.get("msg_amt_2")?.status).toBe("duplicate");
+    expect(total(store)).toBe(2500);
+  });
+
+  it("the same signed blob paid twice (a second payment on a static link) is refused: the nonce is spent once", async () => {
+    const store = new FakeStore();
+    await deliver(store, amountPayment(2500), { id: "msg_amt_a" });
+    await deliver(store, amountPayment(2500, { payment_id: "pay_SecondPAYMENTonLINK0001" }), { id: "msg_amt_b" });
+    expect(total(store)).toBe(2500);
+    expect(store.events.get("msg_amt_b")).toMatchObject({ status: "rejected" });
+    expect(store.events.get("msg_amt_b")?.detail).toContain("nonce consumed");
+  });
+
+  it("test mode credits a typed amount only for an allow-listed workspace", async () => {
+    const off = new FakeStore();
+    await deliver(off, amountPayment(2500), { mode: "test", testOrgs: [OTHER_ORG] });
+    expect(off.credited.size).toBe(0);
+    const on = new FakeStore();
+    await deliver(on, amountPayment(2500), { mode: "test", testOrgs: [ORG] });
+    expect(on.credited.get(PAY_AMT)?.credits).toBe(2500);
+  });
+
+  it("a partial refund of a typed amount takes back credits in proportion to the money", async () => {
+    const store = new FakeStore();
+    await deliver(store, amountPayment(2500), { id: "msg_amt_pay" });
+    await deliver(store, refund({ payment_id: PAY_AMT, is_partial: true, amount: 1350 }), { id: "msg_amt_ref" });
+    // 1350 of 2700 charged = half: 1250 of the 2500 credits.
+    expect(store.refunds.get("dodo_refund:ref_0001")?.amount).toBe(1250);
+  });
+
+  it("reads DODO_PRODUCT_AMOUNT only when it is a product id of its own", () => {
+    expect(dodoAmountProductFromEnv((n) => ({ DODO_PRODUCT_AMOUNT: PDT_AMOUNT })[n], packs, plans)).toBe(PDT_AMOUNT);
+    expect(dodoAmountProductFromEnv((n) => ({ DODO_PRODUCT_AMOUNT: PDT_STARTER })[n], packs, plans)).toBeNull();
+    expect(dodoAmountProductFromEnv((n) => ({ DODO_PRODUCT_AMOUNT: PDT_PRO })[n], packs, plans)).toBeNull();
+    expect(dodoAmountProductFromEnv((n) => ({ DODO_PRODUCT_AMOUNT: "pri_paddle0000000000" })[n], packs, plans)).toBeNull();
+    expect(dodoAmountProductFromEnv(() => undefined, packs, plans)).toBeNull();
   });
 });
