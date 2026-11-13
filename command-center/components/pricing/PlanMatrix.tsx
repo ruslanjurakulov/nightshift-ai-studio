@@ -46,9 +46,12 @@ export function PlanMatrix({
   rates = null,
   signedIn,
   subscribeHref,
+  testMode = false,
 }: {
   matrix: Matrix;
   perMinute: number | null;
+  /** Dodo Payments in test mode (PAYMENTS_PROVIDER=dodo): the same badge as Paddle's sandbox. */
+  testMode?: boolean;
   /** Today's generation prices (lib/plans generationRates); null = unknown, no equivalents shown. */
   rates?: GenerationRates | null;
   signedIn: boolean;
@@ -88,7 +91,7 @@ export function PlanMatrix({
 
   return (
     <div className="flex flex-col gap-3">
-      {environment === "sandbox" && (
+      {(environment === "sandbox" || testMode) && (
         <span className="st-tag self-start" style={{ color: "var(--ns-caution)", borderColor: "currentColor" }}>
           {t.pricing.sandbox}
         </span>

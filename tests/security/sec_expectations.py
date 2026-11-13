@@ -671,3 +671,8 @@ sec_operator_customers_0138.extend(TABLES, FUNCTIONS)
 import sec_made_for_kids_0145  # noqa: E402
 
 sec_made_for_kids_0145.extend(TABLES, FUNCTIONS)
+
+# Migration 0146 (Dodo Payments next to Paddle: the provider checks and the two provider-aware subscription functions): tests/security/sec_dodo_0146.py
+import sec_dodo_0146  # noqa: E402
+
+sec_dodo_0146.extend(TABLES, FUNCTIONS)

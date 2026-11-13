@@ -17,6 +17,9 @@ import { Chip } from "@/components/ui/Chip";
 import { PriceButton } from "@/components/ui/PriceButton";
 import { Timecode } from "@/components/ui/Timecode";
 import { assignTop } from "@/components/view-mode/frame-nav";
+import { useChannelPath } from "@/lib/channels-client";
+import { openDodoCheckout, takeDodoReturn } from "@/lib/dodo-client";
+import type { DodoView } from "@/lib/dodo";
 
 /** A "{n} credits a month" line with its figure in the counter face. */
 function withFigure(template: string, value: number, locale: string) {
@@ -54,6 +57,7 @@ export function PlanPanel({
   email,
   plansUnread = false,
   rates = null,
+  dodo = null,
 }: {
   summary: BillingSummary | null;
   matrix: PlanMatrix | null;
@@ -65,6 +69,9 @@ export function PlanPanel({
   plansUnread?: boolean;
   /** Today's generation prices, for each plan's "≈ N images" line; null = not shown. */
   rates?: GenerationRates | null;
+  /** Set when this deployment sells through Dodo Payments (PAYMENTS_PROVIDER=dodo): Subscribe asks the server for a
+   *  Dodo checkout by plan id instead of opening Paddle's overlay. Absent (the default), this panel is Paddle's, unchanged. */
+  dodo?: DodoView | null;
 }) {
   const { t, locale } = useI18n();
   const p = t.plans;
@@ -76,6 +83,7 @@ export function PlanPanel({
   const phaseRef = useRef<Phase>("idle");
   const tries = useRef(0);
   const live = Boolean(summary?.subscription?.live);
+  const path = useChannelPath();
 
   const go = useCallback((next: Phase) => {
     phaseRef.current = next;
@@ -150,6 +158,24 @@ export function PlanPanel({
     } catch {
       go("load_failed");
     }
+  }
+
+  // Back from a Dodo checkout: wait for the webhook's subscription the same way as after Paddle's overlay.
+  useEffect(() => {
+    if (!dodo) return;
+    const state = takeDodoReturn("plan");
+    if (state === "cancelled") go("cancelled");
+    else if (state === "return") {
+      tries.current = 0;
+      go("paid");
+    }
+  }, [dodo, go]);
+
+  async function subscribeDodo(planId: string) {
+    if (phaseRef.current === "opening") return;
+    go("opening");
+    const res = await openDodoCheckout({ kind: "plan", id: planId }, path("/credits"), null);
+    if (res !== "redirecting") go(res === "already_subscribed" ? "error" : "load_failed");
   }
 
   async function manage() {
@@ -259,7 +285,7 @@ export function PlanPanel({
               const price = columnPrice(col, prices, prices === null && access === "allowed");
               const priceText = price.kind === "preview" || price.kind === "display" ? price.text : null;
               const current = col.id === currentId;
-              const canBuy = access === "allowed" && Boolean(col.priceId) && !current;
+              const canBuy = access === "allowed" && (dodo ? dodo.plans.includes(col.id) : Boolean(col.priceId)) && !current;
               return (
                 <li
                   key={col.id}
@@ -307,7 +333,7 @@ export function PlanPanel({
                     <PriceButton
                       tone="quiet"
                       className="mt-auto"
-                      onClick={() => col.priceId && subscribe(col.priceId)}
+                      onClick={() => (dodo ? subscribeDodo(col.id) : col.priceId && subscribe(col.priceId))}
                       disabled={phase === "opening"}
                       label={phase === "opening" ? cp.opening : p.subscribe}
                       priceText={priceText}

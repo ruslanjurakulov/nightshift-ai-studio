@@ -9,8 +9,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { isCreditExempt } from "@/lib/credits";
 import { atLeast } from "@/lib/auth/roles-shared";
-import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
-import { PLAN_ENV, planMatrix, subscribeAccess } from "@/lib/plans";
+import { siteBuyAccess, sitePlanMatrix } from "@/lib/server/payments";
+import { subscribeAccess } from "@/lib/plans";
 import { freeGaps, offerUpgrade } from "@/lib/usage";
 import { planValue, readBillingSummary, readPlanCatalog } from "@/lib/server/plans";
 import { readUsageSummary } from "@/lib/server/usage";
@@ -37,7 +37,7 @@ export const revalidate = 0;
  */
 export default async function UsagePage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const [org, supabase] = await Promise.all([getOrgContext(), createClient()]);
   const header = <PageHeader icon="usage" title={t.usage.title} subtitle={t.usage.subtitle} actions={<CreditsLink />} />;
   const note = (text: React.ReactNode) => (
@@ -95,10 +95,10 @@ export default async function UsagePage() {
     );
   }
 
-  const matrix = planMatrix(planValue(catalogRead), PLAN_ENV, paddleClient);
+  const matrix = sitePlanMatrix(planValue(catalogRead), locale, orgId);
   // The same two rules the Credits page uses to show packs and plan cards, so
   // a link here never points at a section that is not there.
-  const canBuy = buyAccess(orgId, role, paddleConfig) === "allowed";
+  const canBuy = siteBuyAccess(orgId, role) === "allowed";
   const planAccess = billingRead.state === "failed" ? "hidden" : subscribeAccess(orgId, role, matrix, planValue(billingRead));
   const canUpgrade = planAccess !== "hidden" && offerUpgrade(summary, matrix);
 
