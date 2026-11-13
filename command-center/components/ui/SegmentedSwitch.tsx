@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useSlidingIndicator } from "@/components/ui/useSlidingIndicator";
 
 /**
  * The mode switcher (the reference products' header dropdown, drawn as a row
@@ -12,6 +13,9 @@ import { useRef, type KeyboardEvent, type ReactNode } from "react";
  * `${idPrefix}-${value}` so the panel they switch can name them. `value` may be
  * null when the current mode belongs to another group of keys (the tool row
  * under the switch): then no key is lit and the first is the tab stop.
+ *
+ * The lit key is drawn by one glass plate that slides between keys
+ * (useSlidingIndicator); with no key lit there is no plate.
  */
 export function SegmentedSwitch<T extends string>({
   label,
@@ -37,6 +41,8 @@ export function SegmentedSwitch<T extends string>({
   className?: string;
 }) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const track = useRef<HTMLDivElement>(null);
+  useSlidingIndicator(track, ":scope > button", value);
   const enabled = options.map((o, i) => (o.disabled ? -1 : i)).filter((i) => i >= 0);
   const found = options.findIndex((o) => o.value === value);
   const current = found >= 0 ? found : -1;
@@ -58,6 +64,7 @@ export function SegmentedSwitch<T extends string>({
 
   return (
     <div
+      ref={track}
       role={tabs ? "tablist" : "radiogroup"}
       aria-label={label}
       className={`ns-seg${className ? ` ${className}` : ""}`}

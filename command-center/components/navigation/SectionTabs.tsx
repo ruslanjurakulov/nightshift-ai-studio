@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { tabsFor } from "@/lib/navigation";
 import { useShell } from "@/components/shell/ShellContext";
+import { useSlidingIndicator } from "@/components/ui/useSlidingIndicator";
 
 /**
  * Bring the current tab into view inside the strip, sideways only. It does not
@@ -44,6 +45,10 @@ export function SectionTabs() {
   const group = tabsFor(section, features);
   const nav = useRef<HTMLElement>(null);
   const mounted = useRef(false);
+  const track = useRef<HTMLUListElement>(null);
+  // One glass plate under the current tab. The strip is remounted on every route change, so it is remembered per
+  // group: the plate starts under the tab you left and travels to the one you opened.
+  useSlidingIndicator(track, ":scope > li > a", pathname, group ? `section-tabs:${group.items.map((i) => i.key).join(",")}` : undefined);
   // On a narrow screen the strip scrolls sideways: show the tab you are on, on arrival and on every route change.
   useEffect(() => {
     if (nav.current) revealCurrentTab(nav.current, mounted.current);
@@ -62,7 +67,7 @@ export function SectionTabs() {
       className="ns-tabs mb-6 overflow-x-auto"
     >
       {/* Underlined tabs, as the public Studio card draws them: the current screen carries the amber line. */}
-      <ul className="flex w-max gap-1">
+      <ul ref={track} className="ns-tabs-track flex w-max gap-1">
         {group.items.map(({ href, key }) => {
           const active = "/" + section === href;
           return (

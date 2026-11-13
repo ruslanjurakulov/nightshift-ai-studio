@@ -1,0 +1,673 @@
+/* ── The signed-in app's keys, in glass ───────────────────────────────────────
+   The owner asked for every button in the app to read as one material: a
+   translucent, frosted key with a lit rim, a highlight that follows the
+   pointer, a small lift on hover and a press-in on click (the "Liquid Glass"
+   idea, drawn with our own CSS). It is done HERE, on the shared key classes
+   (.btn-*, .ns-chip, .ns-seg, PriceButton, the Studio keys, the top bar's
+   credit key, the section tabs), so every screen that already uses them takes
+   it without a page edit. Tokens: app/glass.css, shared with the public site.
+
+   Why the rules look the way they do:
+   - Every selector starts with :where(body:has(.app-shell)). This file stays
+     loaded after a client-side navigation from the app to a public page, and
+     the public pages use some of the same class names (.btn-sky): the scope
+     keeps the glass inside the app, and :where() adds no specificity.
+   - Each state rule mirrors the specificity of the rule in globals.css /
+     app-redesign.css it replaces and comes after it (this file is imported
+     last by app/(app)/layout.tsx). A page's own stylesheet loads later still,
+     so a page that deliberately restyles a key (.g5-quiet-keys .btn-primary)
+     keeps doing so.
+   - The surface is one background stack read from custom properties
+     (--g-bg), so a state changes a colour, never the stack, and an inline
+     style a component sets on purpose still wins.
+   - No position, padding or size change except a 1px edge where a key had
+     none, taken back out of its padding: nothing moves when this loads, and
+     hover/press move by transform only (no layout).
+   - Pointer highlight: --glass-x/--glass-y are written by ONE delegated,
+     rAF-throttled listener (components/ui/GlassPointer.tsx), and only for a
+     mouse or pen; the highlight is drawn only for (hover: hover) and
+     (pointer: fine). Lift, press and highlight all sit inside
+     prefers-reduced-motion: no-preference. */
+
+@property --g-tint {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+@property --g-sheen {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+/* ── 1. The recipe, on every key ───────────────────────────────────────────── */
+:where(body:has(.app-shell)) .btn-primary,
+:where(body:has(.app-shell)) .btn-quiet,
+:where(body:has(.app-shell)) .btn-danger,
+:where(body:has(.app-shell)) .btn-sky,
+:where(body:has(.app-shell)) .shell-pill,
+:where(body:has(.app-shell)) .ns-chip,
+:where(body:has(.app-shell)) .studio-chip,
+:where(body:has(.app-shell)) .ns-price-button,
+:where(body:has(.app-shell)) .studio-cta,
+:where(body:has(.app-shell)) .ns-tab-create {
+  --g-tint: var(--glass-tint);
+  --g-tint-hover: var(--glass-tint-hover);
+  --g-sheen-on: var(--glass-sheen);
+  --g-gloss: var(--glass-gloss);
+  --g-edge-hi: var(--glass-edge-hi);
+  --g-edge-lo: var(--glass-edge-lo);
+  --g-rim-hi: var(--glass-rim-hi);
+  --g-rim-lo: var(--glass-rim-lo);
+  --g-shadow: var(--glass-shadow);
+  --g-shadow-hover: var(--glass-shadow-hover);
+  /* The surface, top to bottom: the highlight under the pointer (transparent
+     until hovered), the specular band on the top half, the tint. */
+  --g-bg:
+    radial-gradient(var(--glass-spot) circle at var(--glass-x, 50%) var(--glass-y, 50%), var(--g-sheen), transparent 72%),
+    linear-gradient(180deg, var(--g-gloss), transparent 46%),
+    linear-gradient(var(--g-tint), var(--g-tint));
+  /* The rim: lit along the top and left, shaded along the bottom and right. */
+  --g-ring:
+    inset 0 1px 0 var(--g-rim-hi),
+    inset 1px 0 0 color-mix(in srgb, var(--g-rim-hi) 50%, transparent),
+    inset 0 -1px 0 var(--g-rim-lo),
+    inset -1px 0 0 color-mix(in srgb, var(--g-rim-lo) 50%, transparent);
+  /* The edge catches the light the same way: brighter top/left than bottom/right. */
+  --g-edge: var(--g-edge-hi) var(--g-edge-lo) var(--g-edge-lo) var(--g-edge-hi);
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--g-edge);
+  background: var(--g-bg);
+  background-clip: padding-box;
+  box-shadow: var(--g-ring), var(--g-shadow);
+  transition:
+    transform var(--glass-dur) var(--glass-spring),
+    box-shadow var(--ns-dur-2) var(--ns-ease),
+    border-color var(--ns-dur-1) var(--ns-ease),
+    color var(--ns-dur-1) var(--ns-ease),
+    --g-tint var(--ns-dur-2) var(--ns-ease),
+    --g-sheen var(--ns-dur-2) var(--ns-ease);
+}
+/* The 1px edge on keys that had none, given back from their padding. */
+:where(body:has(.app-shell)) .btn-primary { padding-inline: calc(1.25rem - 1px); }
+:where(body:has(.app-shell)) .studio-cta { padding-inline: 19px; }
+
+/* Frosted only where the browser can frost; elsewhere the same key, solid. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :where(body:has(.app-shell)) .btn-primary,
+  :where(body:has(.app-shell)) .btn-quiet,
+  :where(body:has(.app-shell)) .btn-danger,
+  :where(body:has(.app-shell)) .btn-sky,
+  :where(body:has(.app-shell)) .shell-pill,
+  :where(body:has(.app-shell)) .ns-chip,
+  :where(body:has(.app-shell)) .studio-chip,
+  :where(body:has(.app-shell)) .ns-price-button,
+  :where(body:has(.app-shell)) .studio-cta,
+  :where(body:has(.app-shell)) .ns-tab-create,
+  :where(body:has(.app-shell)) .ns-seg,
+  :where(body:has(.app-shell)) .studio-seg {
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :where(body:has(.app-shell)) .btn-quiet,
+  :where(body:has(.app-shell)) .btn-sky,
+  :where(body:has(.app-shell)) .shell-pill,
+  :where(body:has(.app-shell)) .ns-chip,
+  :where(body:has(.app-shell)) .studio-chip,
+  :where(body:has(.app-shell)) .ns-price-button[data-tone="quiet"] {
+    --g-tint: var(--glass-solid);
+    --g-tint-hover: var(--ns-key-hi);
+  }
+}
+
+/* ── 2. Tinted glass: the brand key and the destructive confirm ────────────── */
+/* .btn-sky.is-solid is restated whole: two older rules of its specificity set
+   its fill, edge and shadow, and this one has to come after both. */
+:where(body:has(.app-shell)) .btn-primary,
+:where(body:has(.app-shell)) .studio-cta,
+:where(body:has(.app-shell)) .ns-price-button,
+:where(body:has(.app-shell)) .btn-sky.is-solid,
+:where(body:has(.app-shell)) .ns-tab-create {
+  --g-tint: var(--glass-primary);
+  --g-tint-hover: var(--glass-primary);
+  --g-sheen-on: var(--glass-primary-sheen);
+  --g-gloss: var(--glass-primary-gloss);
+  --g-edge-hi: var(--glass-primary-edge-hi);
+  --g-edge-lo: var(--glass-primary-edge-lo);
+  --g-rim-hi: rgb(255 255 255 / 0.28);
+  --g-rim-lo: rgb(0 0 0 / 0.2);
+  --g-shadow: var(--glass-primary-glow);
+  --g-shadow-hover: var(--glass-primary-glow), 0 12px 28px -12px var(--ns-lit-glow);
+  color: var(--glass-primary-fg);
+  border-color: var(--g-edge);
+  background: var(--g-bg);
+  background-clip: padding-box;
+  box-shadow: var(--g-ring), var(--g-shadow);
+}
+/* The phone tab bar's Create key keeps the ring that cuts it out of the bar. */
+:where(body:has(.app-shell)) .ns-tab-create {
+  box-shadow: 0 0 0 4px var(--color-panel), var(--g-ring), var(--g-shadow);
+}
+:where(body:has(.app-shell)) .btn-danger {
+  --g-tint: var(--glass-danger);
+  --g-tint-hover: var(--glass-danger);
+  --g-sheen-on: var(--glass-danger-sheen);
+  --g-gloss: rgb(255 255 255 / 0.14);
+  --g-edge-hi: var(--glass-danger-edge-hi);
+  --g-edge-lo: var(--glass-danger-edge-lo);
+  --g-rim-hi: rgb(255 255 255 / 0.26);
+  --g-rim-lo: rgb(0 0 0 / 0.2);
+  --g-shadow: var(--glass-danger-glow);
+  --g-shadow-hover: var(--glass-danger-glow);
+  color: var(--glass-danger-fg);
+}
+/* A row's "Delete" before its confirm: neutral glass, red legend, a red-tinted
+   highlight (a white one would cost the red legend its contrast in the dark). */
+:where(body:has(.app-shell)) .btn-danger-quiet {
+  --g-sheen-on: color-mix(in srgb, var(--ns-tally) 12%, transparent);
+  --g-tint-hover: var(--glass-tint);
+}
+
+/* ── 3. The outlined key (.btn-sky) and its variants ───────────────────────── */
+/* Two older rules per variant set the edge colour at a higher specificity
+   than .btn-sky alone, so each variant restates it. */
+:where(body:has(.app-shell)) .btn-sky.is-quiet { color: var(--color-muted); border-color: var(--g-edge); }
+:where(body:has(.app-shell)) .btn-sky.ghost { color: var(--color-fg); border-color: var(--g-edge); }
+/* The top bar's quiet keys were bare; now they are the same glass as the credit key beside them. */
+:where(body:has(.app-shell)) .shell-topbar .btn-sky.is-quiet,
+:where(body:has(.app-shell)) .shell-topbar .btn-sky.ghost {
+  border-color: var(--g-edge);
+  background: var(--g-bg);
+  background-clip: padding-box;
+}
+/* The sweep that filled the key from below is gone; its layer (::before)
+   carries the hover instead: the brighter tint and the pointer highlight,
+   faded in. So a menu row whose background a component sets inline still
+   lights under the pointer. One selector per older ::before rule it replaces. */
+:where(body:has(.app-shell)) .btn-sky::before,
+:where(body:has(.app-shell)) .btn-sky.ghost::before,
+:where(body:has(.app-shell)) .btn-sky.is-quiet::before,
+:where(body:has(.app-shell)) .btn-sky.is-solid::before,
+:where(body:has(.app-shell)) .shell-topbar .btn-sky.is-quiet::before {
+  display: block;
+  transform: none;
+  opacity: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(var(--glass-spot) circle at var(--glass-x, 50%) var(--glass-y, 50%), var(--g-sheen-on), transparent 72%),
+    linear-gradient(var(--g-tint-hover), var(--g-tint-hover));
+  transition: opacity var(--ns-dur-2) var(--ns-ease);
+}
+:where(body:has(.app-shell)) .btn-sky:hover::before,
+:where(body:has(.app-shell)) .btn-sky:disabled::before { transform: none; }
+
+/* A key that is a row of a list (a menu, a picker): bare until pointed at or
+   chosen, then a glass plate. A list of glass keys would be a wall of edges,
+   and a popover is already the one lifted surface. */
+:where(body:has(.app-shell)) li > .btn-sky.w-full,
+:where(body:has(.app-shell)) .btn-sky[role="option"],
+:where(body:has(.app-shell)) .btn-sky[role="menuitem"],
+:where(body:has(.app-shell)) .shell-topbar li > .btn-sky.w-full,
+:where(body:has(.app-shell)) .shell-topbar .btn-sky[role="option"],
+:where(body:has(.app-shell)) .shell-topbar .btn-sky[role="menuitem"] {
+  --g-tint: transparent;
+  --g-gloss: transparent;
+  --g-shadow: 0 0 #0000;
+  border-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:where(body:has(.app-shell)) li > .btn-sky.w-full::before,
+:where(body:has(.app-shell)) .btn-sky[role="option"]::before,
+:where(body:has(.app-shell)) .btn-sky[role="menuitem"]::before {
+  box-shadow: inset 0 1px 0 var(--glass-rim-hi), inset 0 0 0 1px var(--glass-edge-hi);
+}
+:where(body:has(.app-shell)) li > .btn-sky.w-full:is([aria-selected="true"], [aria-current="true"], [aria-current="page"]),
+:where(body:has(.app-shell)) .btn-sky[role="option"][aria-selected="true"],
+:where(body:has(.app-shell)) .shell-topbar .btn-sky[role="option"][aria-selected="true"] {
+  --g-tint: var(--glass-tint-strong);
+  border-color: var(--g-edge);
+  box-shadow: inset 0 1px 0 var(--g-rim-hi), inset 0 -1px 0 var(--g-rim-lo);
+}
+
+/* ── 4. Chosen and lit states ──────────────────────────────────────────────── */
+/* A pressed chip / a chosen radio chip: amber glass, amber edge, the lamp still fills (on is never colour alone). */
+:where(body:has(.app-shell)) .studio-chip[aria-pressed="true"],
+:where(body:has(.app-shell)) .ns-chip[aria-pressed="true"],
+:where(body:has(.app-shell)) .ns-chip[role="radio"][aria-checked="true"],
+:where(body:has(.app-shell)) .ns-chip[data-radio][data-on="true"] {
+  --g-tint: var(--glass-select);
+  --g-tint-hover: var(--glass-select);
+  --g-edge-hi: var(--ns-amber-ink);
+  --g-edge-lo: var(--ns-amber-ink);
+  color: var(--color-fg);
+  background: var(--g-bg);
+  background-clip: padding-box;
+  border-color: var(--g-edge);
+}
+:where(body:has(.app-shell)) .ns-chip[data-tone="lit"] { --g-edge-hi: var(--ns-amber-ink); --g-edge-lo: var(--ns-amber-ink); }
+:where(body:has(.app-shell)) .ns-chip[data-tone="warn"] { --g-edge-hi: var(--ns-caution); --g-edge-lo: var(--ns-caution); }
+:where(body:has(.app-shell)) .ns-chip[data-tone] { border-color: var(--g-edge); }
+/* A chip that is a readout, not a key: the glass without the hover. */
+:where(body:has(.app-shell)) .ns-chip[data-plain="true"],
+:where(body:has(.app-shell)) .ns-chip[data-plain="true"]:hover {
+  --g-shadow: 0 0 #0000;
+  background: var(--g-bg);
+  background-clip: padding-box;
+  transform: none;
+}
+/* A key whose menu is open: lit like a hovered key, with the indigo edge. */
+:where(body:has(.app-shell)) .shell-pill[aria-expanded="true"],
+:where(body:has(.app-shell)) .btn-sky[aria-expanded="true"],
+:where(body:has(.app-shell)) .btn-quiet[aria-expanded="true"],
+:where(body:has(.app-shell)) .shell-topbar .btn-sky[aria-expanded="true"] {
+  --g-tint: var(--g-tint-hover);
+  border-color: var(--ns-act);
+  background: var(--g-bg);
+  background-clip: padding-box;
+}
+/* The quiet price key (PriceButton tone="quiet"): neutral glass with the legend in ink. */
+:where(body:has(.app-shell)) .ns-price-button[data-tone="quiet"] {
+  --g-tint: var(--glass-tint);
+  --g-tint-hover: var(--glass-tint-hover);
+  --g-sheen-on: var(--glass-sheen);
+  --g-gloss: var(--glass-gloss);
+  --g-edge-hi: var(--glass-edge-hi);
+  --g-edge-lo: var(--glass-edge-lo);
+  --g-rim-hi: var(--glass-rim-hi);
+  --g-rim-lo: var(--glass-rim-lo);
+  --g-shadow: var(--glass-shadow);
+  --g-shadow-hover: var(--glass-shadow-hover);
+  color: var(--color-fg);
+  border-color: var(--g-edge);
+  background: var(--g-bg);
+  background-clip: padding-box;
+  box-shadow: var(--g-ring), var(--g-shadow);
+}
+
+/* ── 5. Hover, focus, press ────────────────────────────────────────────────── */
+/* The older hovers (a flat fill, a brightness filter) also match on a touch
+   screen, where a tap leaves :hover behind: re-pointed at the glass first, at
+   their own specificity, so a tapped key never turns into the old flat one. */
+:where(body:has(.app-shell)) .btn-primary:hover:not([aria-disabled="true"]),
+:where(body:has(.app-shell)) .btn-quiet:hover,
+:where(body:has(.app-shell)) .shell-pill:hover,
+:where(body:has(.app-shell)) .studio-chip:hover,
+:where(body:has(.app-shell)) .ns-chip:hover,
+:where(body:has(.app-shell)) .ns-price-button:hover:not(:disabled),
+:where(body:has(.app-shell)) .btn-sky.is-solid:hover,
+:where(body:has(.app-shell)) .studio-cta:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--g-bg);
+  background-clip: padding-box;
+  filter: none;
+}
+:where(body:has(.app-shell)) .btn-quiet:hover,
+:where(body:has(.app-shell)) .shell-pill:hover { border-color: var(--g-edge); }
+:where(body:has(.app-shell)) .btn-danger:hover:not(:disabled),
+:where(body:has(.app-shell)) .btn-danger:active:not(:disabled) { filter: none; }
+:where(body:has(.app-shell)) .btn-sky:hover { color: var(--color-fg); }
+:where(body:has(.app-shell)) .btn-sky.is-solid:hover { color: var(--glass-primary-fg); }
+
+/* The state change (a brighter tint, the indigo edge on a neutral key) is not
+   motion, so it holds for everyone with a pointer that hovers; the lift, the
+   press and the highlight under the pointer are motion, so they are further
+   down, behind no-preference. */
+@media (hover: hover) {
+  :where(body:has(.app-shell)) .btn-primary:hover:not([aria-disabled="true"]):not(:disabled),
+  :where(body:has(.app-shell)) .studio-cta:hover:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .ns-price-button:hover:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .btn-danger:hover:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .ns-tab-create:hover:not([aria-disabled="true"]) {
+    --g-tint: var(--g-tint-hover);
+    --g-shadow: var(--g-shadow-hover);
+    color: var(--glass-primary-fg);
+    background: var(--g-bg);
+    background-clip: padding-box;
+    box-shadow: var(--g-ring), var(--g-shadow);
+    filter: none;
+  }
+  :where(body:has(.app-shell)) .ns-tab-create:hover:not([aria-disabled="true"]) {
+    box-shadow: 0 0 0 4px var(--color-panel), var(--g-ring), var(--g-shadow);
+  }
+  :where(body:has(.app-shell)) .btn-danger:hover:not(:disabled):not([aria-disabled="true"]) { color: var(--glass-danger-fg); }
+  :where(body:has(.app-shell)) .btn-quiet:hover:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .shell-pill:hover:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]),
+  :where(body:has(.app-shell)) .ns-chip:hover:not(:disabled):not([data-plain]),
+  :where(body:has(.app-shell)) .ns-price-button[data-tone="quiet"]:hover:not(:disabled):not([aria-disabled="true"]) {
+    --g-tint: var(--g-tint-hover);
+    --g-shadow: var(--g-shadow-hover);
+    --g-edge-hi: var(--ns-act);
+    --g-edge-lo: var(--ns-act);
+    color: var(--color-fg);
+    background: var(--g-bg);
+    background-clip: padding-box;
+    border-color: var(--g-edge);
+    box-shadow: var(--g-ring), var(--g-shadow);
+  }
+  /* A chosen chip keeps its amber edge under the pointer: the edge says "on". */
+  :where(body:has(.app-shell)) .ns-chip[aria-pressed="true"]:hover:not(:disabled):not([data-plain]),
+  :where(body:has(.app-shell)) .studio-chip[aria-pressed="true"]:hover:not(:disabled):not([data-plain]),
+  :where(body:has(.app-shell)) .ns-chip[role="radio"][aria-checked="true"]:hover:not(:disabled):not([data-plain]),
+  :where(body:has(.app-shell)) .ns-chip[data-radio][data-on="true"]:hover:not(:disabled):not([data-plain]) {
+    --g-edge-hi: var(--ns-amber-ink);
+    --g-edge-lo: var(--ns-amber-ink);
+  }
+  /* The red legend stays red, and the edge it takes is red, not indigo. */
+  :where(body:has(.app-shell)) .btn-quiet.btn-danger-quiet:hover:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .btn-sky.btn-danger-quiet:hover:not(:disabled):not([aria-disabled="true"]) {
+    --g-edge-hi: var(--ns-tally);
+    --g-edge-lo: var(--ns-tally);
+    color: var(--color-fail);
+    border-color: var(--g-edge);
+  }
+  :where(body:has(.app-shell)) .btn-sky:hover:not(:disabled):not([aria-disabled="true"])::before { opacity: 1; }
+  :where(body:has(.app-shell)) .btn-sky:hover:not(:disabled):not([aria-disabled="true"]) {
+    --g-shadow: var(--g-shadow-hover);
+    border-color: var(--ns-act);
+    box-shadow: var(--g-ring), var(--g-shadow);
+  }
+  :where(body:has(.app-shell)) .btn-sky.is-solid:hover:not(:disabled):not([aria-disabled="true"]) { border-color: var(--glass-primary-edge-hi); }
+  :where(body:has(.app-shell)) li > .btn-sky.w-full:hover:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .btn-sky[role="option"]:hover:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .btn-sky[role="menuitem"]:hover:not(:disabled):not([aria-disabled="true"]) {
+    border-color: transparent;
+    box-shadow: none;
+  }
+}
+/* Keyboard focus: the same lit tint as a hover, under the global focus ring. */
+:where(body:has(.app-shell)) .btn-quiet:focus-visible,
+:where(body:has(.app-shell)) .btn-sky:focus-visible,
+:where(body:has(.app-shell)) .shell-pill:focus-visible,
+:where(body:has(.app-shell)) .ns-chip:focus-visible,
+:where(body:has(.app-shell)) .studio-chip:focus-visible {
+  --g-tint: var(--g-tint-hover);
+}
+:where(body:has(.app-shell)) .btn-sky:focus-visible::before { opacity: 1; }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The highlight that follows the pointer: a mouse or a pen, never a finger. */
+  @media (hover: hover) and (pointer: fine) {
+    :where(body:has(.app-shell)) .btn-primary:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .btn-quiet:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .btn-danger:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .shell-pill:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .ns-chip:hover:not(:disabled):not([data-plain]),
+    :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]),
+    :where(body:has(.app-shell)) .ns-price-button:hover:not(:disabled):not([aria-disabled="true"]),
+    :where(body:has(.app-shell)) .studio-cta:hover:not(:disabled):not([aria-disabled="true"]),
+    :where(body:has(.app-shell)) .ns-tab-create:hover:not([aria-disabled="true"]) {
+      --g-sheen: var(--g-sheen-on);
+    }
+  }
+  /* Lift on hover, press in on click: transform only, so nothing around the key moves. */
+  @media (hover: hover) {
+    :where(body:has(.app-shell)) .btn-primary:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .btn-quiet:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .btn-danger:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .btn-sky:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .shell-pill:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .ns-chip:hover:not(:disabled):not([data-plain]),
+    :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]),
+    :where(body:has(.app-shell)) .ns-price-button:hover:not(:disabled):not([aria-disabled="true"]),
+    :where(body:has(.app-shell)) .studio-cta:hover:not(:disabled):not([aria-disabled="true"]) {
+      transform: translateY(-1px);
+    }
+    :where(body:has(.app-shell)) li > .btn-sky.w-full:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .btn-sky[role="option"]:hover:not([aria-disabled="true"]):not(:disabled),
+    :where(body:has(.app-shell)) .btn-sky[role="menuitem"]:hover:not([aria-disabled="true"]):not(:disabled) {
+      transform: none;
+    }
+  }
+  :where(body:has(.app-shell)) .btn-primary:active:not([aria-disabled="true"]):not(:disabled),
+  :where(body:has(.app-shell)) .btn-quiet:active:not([aria-disabled="true"]):not(:disabled),
+  :where(body:has(.app-shell)) .btn-danger:active:not([aria-disabled="true"]):not(:disabled),
+  :where(body:has(.app-shell)) .btn-sky:active:not([aria-disabled="true"]):not(:disabled),
+  :where(body:has(.app-shell)) .shell-pill:active:not([aria-disabled="true"]):not(:disabled),
+  :where(body:has(.app-shell)) .ns-chip:active:not(:disabled):not([data-plain]),
+  :where(body:has(.app-shell)) .studio-chip:active:not(:disabled):not([data-plain]),
+  :where(body:has(.app-shell)) .ns-price-button:active:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .studio-cta:active:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .ns-tab-create:active:not([aria-disabled="true"]):not(:disabled) {
+    --g-shadow: var(--glass-press);
+    transform: translateY(0) scale(0.98);
+    transition-duration: var(--ns-dur-1);
+  }
+}
+/* Reduced motion: the older press transforms (a 1px drop, a 0.965 squeeze) are motion too. */
+@media (prefers-reduced-motion: reduce) {
+  :where(body:has(.app-shell)) .btn-primary:active,
+  :where(body:has(.app-shell)) .btn-sky:active,
+  :where(body:has(.app-shell)) .studio-cta:active:not(:disabled),
+  :where(body:has(.app-shell)) .ns-price-button:active:not(:disabled) { transform: none; }
+}
+
+/* ── 6. Disabled stays disabled ────────────────────────────────────────────── */
+/* No frost, no rim, no highlight, no lift: a flat, quiet key, so a key that
+   cannot be pressed never shimmers as if it could. aria-disabled counts the
+   same as disabled. A key that is waiting rather than refused (the price is
+   still loading) keeps its colour and only dims, as before. */
+:where(body:has(.app-shell)) .btn-primary:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .btn-quiet:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .btn-danger:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .btn-sky:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .shell-pill:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .ns-chip:is(:disabled, [aria-disabled="true"], [data-disabled="true"]),
+:where(body:has(.app-shell)) .studio-chip:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .ns-price-button:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .studio-cta:is(:disabled, [aria-disabled="true"]) {
+  --g-sheen: transparent;
+  --g-gloss: transparent;
+  --g-rim-hi: transparent;
+  --g-rim-lo: transparent;
+  --g-shadow: 0 0 #0000;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  transform: none;
+  cursor: not-allowed;
+}
+:where(body:has(.app-shell)) .btn-sky:is(:disabled, [aria-disabled="true"])::before { opacity: 0; }
+/* The neutral keys, refused: no glass at all, a hairline and a muted legend, so they read as unavailable at a glance. */
+:where(body:has(.app-shell)) .btn-quiet:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .btn-sky:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .shell-pill:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .ns-chip:is(:disabled, [aria-disabled="true"], [data-disabled="true"]),
+:where(body:has(.app-shell)) .studio-chip:is(:disabled, [aria-disabled="true"]) {
+  --g-tint: transparent;
+  --g-edge-hi: var(--color-border);
+  --g-edge-lo: var(--color-border);
+  color: var(--color-muted);
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+/* The filled keys, refused: the flat field and a muted legend (as PriceButton and the Studio key already were). */
+:where(body:has(.app-shell)) .btn-primary:is(:disabled, [aria-disabled="true"]):not([data-price-hold]),
+:where(body:has(.app-shell)) .studio-cta:is(:disabled, [aria-disabled="true"]):not(.fl-go[aria-disabled="true"]),
+:where(body:has(.app-shell)) .ns-price-button:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .btn-sky.is-solid:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .btn-danger:is(:disabled, [aria-disabled="true"]) {
+  --g-tint: var(--studio-field);
+  --g-edge-hi: var(--color-border);
+  --g-edge-lo: var(--color-border);
+  color: var(--color-muted);
+  background: var(--g-bg);
+  background-clip: padding-box;
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+:where(body:has(.app-shell)) .ns-price-button:is(:disabled, [aria-disabled="true"]) .ns-price-tag { color: var(--color-muted); }
+/* Waiting, not refused (CreateStudio's confirm, Run now's price hold): its colour, flat, dimmed by the existing rule. */
+:where(body:has(.app-shell)) .btn-primary[data-price-hold][aria-disabled="true"],
+:where(body:has(.app-shell)) .studio-cta.fl-go[aria-disabled="true"] { cursor: progress; }
+
+/* ── 7. Segmented switches: a recessed glass track, one plate that slides ──── */
+/* The track is a groove (darker, shadowed inside); the chosen key is the raised
+   plate. With components/ui/useSlidingIndicator measuring the chosen key, the
+   plate is ONE element (the track's ::before) that travels between keys: its
+   leading edge moves first and its trailing edge follows, on the glass spring,
+   so it stretches toward the new key and settles. Before that runs (server
+   render, no script) the chosen key draws its own plate, in the same place. */
+:where(body:has(.app-shell)) .ns-seg,
+:where(body:has(.app-shell)) .studio-seg {
+  position: relative;
+  isolation: isolate;
+  border-color: var(--glass-edge-lo) var(--glass-edge-hi) var(--glass-edge-hi) var(--glass-edge-lo);
+  background: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box;
+  box-shadow: inset 0 1px 2px var(--glass-rim-lo), inset 0 -1px 0 color-mix(in srgb, var(--glass-rim-hi) 60%, transparent);
+}
+:where(body:has(.app-shell)) .studio-seg > button[aria-pressed="true"],
+:where(body:has(.app-shell)) .ns-seg > button[aria-pressed="true"],
+:where(body:has(.app-shell)) .ns-seg > button[aria-checked="true"],
+:where(body:has(.app-shell)) .ns-seg > button[aria-selected="true"],
+:where(body:has(.app-shell)) .ns-seg[data-indicator]::before {
+  background:
+    linear-gradient(180deg, var(--glass-gloss), transparent 50%),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong));
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim-hi),
+    inset 0 -2px 0 var(--ns-amber),
+    0 0 0 1px var(--glass-edge-hi),
+    var(--glass-shadow);
+}
+:where(body:has(.app-shell)) .ns-seg[data-indicator] > button[aria-pressed="true"],
+:where(body:has(.app-shell)) .ns-seg[data-indicator] > button[aria-checked="true"],
+:where(body:has(.app-shell)) .ns-seg[data-indicator] > button[aria-selected="true"] {
+  background: transparent;
+  box-shadow: none;
+}
+:where(body:has(.app-shell)) .ns-seg[data-indicator]::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: var(--ns-ind-t, 2px);
+  bottom: var(--ns-ind-b, 2px);
+  left: var(--ns-ind-l, 0px);
+  right: var(--ns-ind-r, 0px);
+  border-radius: var(--ns-r-chip);
+  pointer-events: none;
+}
+@media (hover: hover) {
+  :where(body:has(.app-shell)) .ns-seg > button:hover:not(:disabled):not([aria-checked="true"]):not([aria-selected="true"]),
+  :where(body:has(.app-shell)) .studio-seg > button:hover:not(:disabled):not([aria-pressed="true"]) {
+    background: var(--glass-tint-hover);
+  }
+}
+:where(body:has(.app-shell)) .ns-seg > button:disabled,
+:where(body:has(.app-shell)) .studio-seg > button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* ── 8. Section tabs (Studio's screens): the same travelling plate ─────────── */
+:where(body:has(.app-shell)) .ns-tabs-track {
+  position: relative;
+  isolation: isolate;
+}
+:where(body:has(.app-shell)) .ns-tabs-track[data-indicator]::before,
+:where(body:has(.app-shell)) .ns-tabs-track[data-indicator]::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  left: var(--ns-ind-l, 0px);
+  right: var(--ns-ind-r, 0px);
+}
+/* The plate behind the current tab, inset from the strip's rule. */
+:where(body:has(.app-shell)) .ns-tabs-track[data-indicator]::before {
+  z-index: -1;
+  top: calc(var(--ns-ind-t, 0px) + 4px);
+  bottom: calc(var(--ns-ind-b, 0px) + 6px);
+  border-radius: var(--ns-r-key);
+  background:
+    linear-gradient(180deg, var(--glass-gloss), transparent 50%),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong));
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim-hi),
+    inset 0 -1px 0 var(--glass-rim-lo),
+    0 0 0 1px var(--glass-edge-hi),
+    var(--glass-shadow);
+}
+/* The amber line under it, on the strip's rule: it travels with the plate. */
+:where(body:has(.app-shell)) .ns-tabs-track[data-indicator]::after {
+  bottom: 0;
+  height: 2px;
+  margin-inline: 14px;
+  border-radius: 2px;
+  background: var(--ns-amber);
+}
+:where(body:has(.app-shell)) .ns-tabs-track[data-indicator] .ns-tabs-link[aria-current="page"]::after { display: none; }
+@media (hover: hover) {
+  :where(body:has(.app-shell)) .ns-tabs-link:not([aria-current="page"]):hover {
+    background: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box;
+    border-radius: var(--ns-r-key);
+  }
+}
+
+/* The travel itself, shared by both: the edge on the side of travel leads,
+   the far edge follows a beat later, so the plate stretches and settles.
+   data-ind-instant (a resize, a font arriving) places it without travel. */
+:where(body:has(.app-shell)) .ns-seg[data-indicator]::before,
+:where(body:has(.app-shell)) .ns-tabs-track[data-indicator]::before,
+:where(body:has(.app-shell)) .ns-tabs-track[data-indicator]::after {
+  transition:
+    left 420ms var(--glass-spring),
+    right 420ms var(--glass-spring),
+    top 240ms var(--ns-ease),
+    bottom 240ms var(--ns-ease);
+}
+:where(body:has(.app-shell)) [data-ind-dir="fwd"]::before,
+:where(body:has(.app-shell)) [data-ind-dir="fwd"]::after {
+  transition-duration: 440ms, 280ms, 240ms, 240ms;
+}
+:where(body:has(.app-shell)) [data-ind-dir="back"]::before,
+:where(body:has(.app-shell)) [data-ind-dir="back"]::after {
+  transition-duration: 280ms, 440ms, 240ms, 240ms;
+}
+:where(body:has(.app-shell)) [data-ind-instant]::before,
+:where(body:has(.app-shell)) [data-ind-instant]::after { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  :where(body:has(.app-shell)) .ns-seg[data-indicator]::before,
+  :where(body:has(.app-shell)) .ns-tabs-track[data-indicator]::before,
+  :where(body:has(.app-shell)) .ns-tabs-track[data-indicator]::after { transition: none; }
+}
+
+/* ── 9. The selection plates that already travel (sidebar, phone tab bar) ──── */
+/* Motion's shared-layout plate (components/motion/SharedLayout) keeps its
+   spring; it takes the glass rim, so the rail's lit row is the same material. */
+:where(body:has(.app-shell)) .shell-sidebar .ns-plate,
+:where(body:has(.app-shell)) .ns-plate.is-tab {
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim-hi),
+    inset 0 -1px 0 var(--glass-rim-lo),
+    0 0 0 1px color-mix(in srgb, var(--ns-act) 22%, transparent);
+}
+/* The Studio's tool tabs: the chosen one is a raised glass plate. */
+:where(body:has(.app-shell)) .studio-tab[aria-selected="true"] {
+  border-color: var(--glass-edge-hi) var(--glass-edge-lo) var(--glass-edge-lo) var(--glass-edge-hi);
+  background:
+    linear-gradient(180deg, var(--glass-gloss), transparent 50%),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong));
+  box-shadow: inset 0 1px 0 var(--glass-rim-hi), inset 0 -1px 0 var(--glass-rim-lo), var(--glass-shadow);
+}
+@media (hover: hover) {
+  :where(body:has(.app-shell)) .studio-tab:not([aria-selected="true"]):hover { background: var(--glass-tint-hover); }
+}
+
+/* A reader who asked for less transparency: solid keys, no frost. */
+@media (prefers-reduced-transparency: reduce) {
+  :where(body:has(.app-shell)) .btn-primary,
+  :where(body:has(.app-shell)) .btn-quiet,
+  :where(body:has(.app-shell)) .btn-danger,
+  :where(body:has(.app-shell)) .btn-sky,
+  :where(body:has(.app-shell)) .shell-pill,
+  :where(body:has(.app-shell)) .ns-chip,
+  :where(body:has(.app-shell)) .studio-chip,
+  :where(body:has(.app-shell)) .ns-price-button,
+  :where(body:has(.app-shell)) .studio-cta,
+  :where(body:has(.app-shell)) .ns-tab-create,
+  :where(body:has(.app-shell)) .ns-seg,
+  :where(body:has(.app-shell)) .studio-seg {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

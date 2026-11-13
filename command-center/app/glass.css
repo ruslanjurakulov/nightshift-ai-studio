@@ -1,0 +1,187 @@
+/* ── Glass: the shared tokens (site and app) ─────────────────────────────────
+   One set of names for the translucent key the owner asked for ("Liquid Glass"
+   in spirit, our own CSS, no Apple asset): the public site (components/site)
+   and the signed-in app (app/(app)/app-glass.css) both read these, so a key on
+   /pricing and a key on /chronos/home are cut from the same glass.
+
+   Imported once, by the root layout, right after globals.css: the theme tokens
+   below follow the same three-state resolution as globals.css (light by
+   default, dark by preference unless the viewer chose light, an explicit
+   choice wins, and a [data-theme-scope] specimen box carries its own).
+
+   What a glass surface is made of, and which token draws it:
+   - a translucent tint ............ --glass-tint (-hover, -strong for a raised plate)
+   - frosted backdrop .............. --glass-blur, --glass-saturate (only where
+                                     backdrop-filter exists; otherwise --glass-solid)
+   - a specular band on the top half --glass-gloss
+   - an inner rim .................. --glass-rim-hi (top/left), --glass-rim-lo (bottom/right)
+   - a light-catching 1px edge ..... --glass-edge-hi (top/left), --glass-edge-lo (bottom/right)
+   - the highlight under the pointer --glass-sheen, radius --glass-spot, at
+                                     --glass-x/--glass-y (set per element by
+                                     components/ui/GlassPointer)
+   - shadows ....................... --glass-shadow, --glass-shadow-hover, --glass-press
+   - motion ........................ --glass-spring, --glass-dur
+
+   Contrast is the tint's job, not the blur's: every tint was chosen so the
+   app's text colours keep 4.5:1 over the app's grounds with the hover sheen at
+   its peak (numbers in the PR that introduced this file). The white that makes
+   glass read as glass costs a light-on-dark legend contrast, so the dark
+   tints are thin and the dark sheen is faint on purpose. */
+
+/* The cascade-layer order Tailwind declares, restated: harmless when this file
+   follows globals.css (the order is already set), and it keeps `components`
+   from being declared before `base` if a bundle ever put this file first. */
+@layer theme, base, components, utilities;
+
+:root {
+  --glass-blur: 12px;
+  --glass-saturate: 160%;
+  --glass-spot: 96px;
+  /* A spring that settles past its mark and back: a key lifting, a plate
+     arriving under the new tab. */
+  --glass-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --glass-dur: 240ms;
+}
+
+/* Light — glass on the proof sheet: white, nearly opaque, edged in ink. */
+:root,
+:root[data-theme="light"],
+[data-theme-scope="light"] {
+  --glass-tint: rgb(255 255 255 / 0.55);
+  --glass-tint-hover: rgb(255 255 255 / 0.78);
+  --glass-tint-strong: rgb(255 255 255 / 0.9);
+  --glass-solid: #ffffff;
+  --glass-gloss: rgb(255 255 255 / 0.75);
+  --glass-rim-hi: rgb(255 255 255 / 0.95);
+  --glass-rim-lo: rgb(27 26 23 / 0.07);
+  --glass-edge-hi: rgb(27 26 23 / 0.12);
+  --glass-edge-lo: rgb(27 26 23 / 0.24);
+  /* White would vanish on white paper: on the proof sheet the highlight is a breath of the indigo. */
+  --glass-sheen: rgb(79 70 229 / 0.07);
+  --glass-shadow: 0 1px 2px rgb(27 26 23 / 0.06), 0 4px 12px -6px rgb(27 26 23 / 0.16);
+  --glass-shadow-hover: 0 2px 4px rgb(27 26 23 / 0.06), 0 10px 22px -10px rgb(27 26 23 / 0.28);
+  --glass-press: inset 0 1px 3px rgb(27 26 23 / 0.18);
+  /* Tinted glass: the brand key and the destructive confirm keep their colour,
+     as glass that is nearly opaque, so white keeps 5:1 on it with the sheen up. */
+  --glass-primary: rgb(67 56 202 / 0.92);
+  --glass-primary-fg: #ffffff;
+  --glass-primary-gloss: rgb(255 255 255 / 0.18);
+  --glass-primary-sheen: rgb(255 255 255 / 0.08);
+  --glass-primary-edge-hi: #8b84f0;
+  --glass-primary-edge-lo: #2f279c;
+  --glass-primary-glow: 0 1px 2px rgb(49 40 160 / 0.25), 0 8px 20px -8px rgb(79 70 229 / 0.55);
+  --glass-danger: rgb(185 52 31 / 0.94);
+  --glass-danger-fg: #ffffff;
+  --glass-danger-sheen: rgb(255 255 255 / 0.06);
+  --glass-danger-edge-hi: #e0806f;
+  --glass-danger-edge-lo: #8a2414;
+  --glass-danger-glow: 0 1px 2px rgb(120 30 15 / 0.25), 0 8px 20px -8px rgb(185 52 31 / 0.5);
+  /* The chosen one of a set (a pressed chip, the current tab): amber in the glass. */
+  --glass-select: color-mix(in srgb, #f29a1e 18%, rgb(255 255 255 / 0.78));
+}
+
+/* Dark — glass in the control room: a thin film of light over the console. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --glass-tint: rgb(255 255 255 / 0.05);
+    --glass-tint-hover: rgb(255 255 255 / 0.08);
+    --glass-tint-strong: rgb(255 255 255 / 0.11);
+    --glass-solid: #25231f;
+    --glass-gloss: rgb(255 255 255 / 0.1);
+    --glass-rim-hi: rgb(255 255 255 / 0.16);
+    --glass-rim-lo: rgb(0 0 0 / 0.35);
+    --glass-edge-hi: rgb(255 255 255 / 0.2);
+    --glass-edge-lo: rgb(255 255 255 / 0.07);
+    --glass-sheen: rgb(255 255 255 / 0.07);
+    --glass-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 16px -8px rgb(0 0 0 / 0.6);
+    --glass-shadow-hover: 0 2px 4px rgb(0 0 0 / 0.3), 0 12px 26px -10px rgb(0 0 0 / 0.7);
+    --glass-press: inset 0 1px 3px rgb(0 0 0 / 0.5);
+    --glass-primary: rgb(91 78 233 / 0.92);
+    --glass-primary-fg: #ffffff;
+    --glass-primary-gloss: rgb(255 255 255 / 0.14);
+    --glass-primary-sheen: rgb(255 255 255 / 0.06);
+    --glass-primary-edge-hi: #a39cff;
+    --glass-primary-edge-lo: #3a2fb0;
+    --glass-primary-glow: 0 1px 2px rgb(0 0 0 / 0.35), 0 10px 24px -8px rgb(101 88 245 / 0.6);
+    --glass-danger: rgb(255 110 94 / 0.94);
+    --glass-danger-fg: #1a0a07;
+    --glass-danger-sheen: rgb(255 255 255 / 0.08);
+    --glass-danger-edge-hi: #ffb0a6;
+    --glass-danger-edge-lo: #b8473a;
+    --glass-danger-glow: 0 1px 2px rgb(0 0 0 / 0.35), 0 10px 24px -8px rgb(255 110 94 / 0.45);
+    --glass-select: color-mix(in srgb, #ffa940 14%, rgb(255 255 255 / 0.05));
+  }
+}
+:root[data-theme="dark"],
+[data-theme-scope="dark"] {
+  --glass-tint: rgb(255 255 255 / 0.05);
+  --glass-tint-hover: rgb(255 255 255 / 0.08);
+  --glass-tint-strong: rgb(255 255 255 / 0.11);
+  --glass-solid: #25231f;
+  --glass-gloss: rgb(255 255 255 / 0.1);
+  --glass-rim-hi: rgb(255 255 255 / 0.16);
+  --glass-rim-lo: rgb(0 0 0 / 0.35);
+  --glass-edge-hi: rgb(255 255 255 / 0.2);
+  --glass-edge-lo: rgb(255 255 255 / 0.07);
+  --glass-sheen: rgb(255 255 255 / 0.07);
+  --glass-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 16px -8px rgb(0 0 0 / 0.6);
+  --glass-shadow-hover: 0 2px 4px rgb(0 0 0 / 0.3), 0 12px 26px -10px rgb(0 0 0 / 0.7);
+  --glass-press: inset 0 1px 3px rgb(0 0 0 / 0.5);
+  --glass-primary: rgb(91 78 233 / 0.92);
+  --glass-primary-fg: #ffffff;
+  --glass-primary-gloss: rgb(255 255 255 / 0.14);
+  --glass-primary-sheen: rgb(255 255 255 / 0.06);
+  --glass-primary-edge-hi: #a39cff;
+  --glass-primary-edge-lo: #3a2fb0;
+  --glass-primary-glow: 0 1px 2px rgb(0 0 0 / 0.35), 0 10px 24px -8px rgb(101 88 245 / 0.6);
+  --glass-danger: rgb(255 110 94 / 0.94);
+  --glass-danger-fg: #1a0a07;
+  --glass-danger-sheen: rgb(255 255 255 / 0.08);
+  --glass-danger-edge-hi: #ffb0a6;
+  --glass-danger-edge-lo: #b8473a;
+  --glass-danger-glow: 0 1px 2px rgb(0 0 0 / 0.35), 0 10px 24px -8px rgb(255 110 94 / 0.45);
+  --glass-select: color-mix(in srgb, #ffa940 14%, rgb(255 255 255 / 0.05));
+}
+
+/* A reader who asked the system for less transparency gets the solid key. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-tint: var(--glass-solid);
+    --glass-tint-hover: var(--glass-solid);
+    --glass-tint-strong: var(--glass-solid);
+    --glass-blur: 0px;
+  }
+}
+
+/* `.ns-glass`: the generic surface, for anything that opts in by class (the
+   public site's keys). The app's shared key classes get the same recipe from
+   app/(app)/app-glass.css without a class added to every button. Layered, so
+   a page's own utilities still win, as they do on the public pages. */
+@layer components {
+  .ns-glass {
+    border: 1px solid;
+    border-color: var(--glass-edge-hi) var(--glass-edge-lo) var(--glass-edge-lo) var(--glass-edge-hi);
+    background:
+      radial-gradient(var(--glass-spot) circle at var(--glass-x, 50%) var(--glass-y, 50%), var(--glass-sheen), transparent 72%) padding-box no-repeat,
+      linear-gradient(180deg, var(--glass-gloss), transparent 52%) padding-box,
+      linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box;
+    background-size: 0 0, auto, auto;
+    box-shadow:
+      inset 0 1px 0 var(--glass-rim-hi),
+      inset 1px 0 0 color-mix(in srgb, var(--glass-rim-hi) 55%, transparent),
+      inset 0 -1px 0 var(--glass-rim-lo),
+      var(--glass-shadow);
+  }
+  @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+    .ns-glass:hover { background-size: auto, auto, auto; }
+  }
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .ns-glass {
+      -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+      backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    }
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .ns-glass { --glass-tint: var(--glass-solid); }
+  }
+}

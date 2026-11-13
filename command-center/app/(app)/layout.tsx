@@ -43,8 +43,11 @@ import { SkipLink } from "@/components/shell/SkipLink";
 import { adsFactoryEnabled } from "@/lib/adsFactory/flag";
 import { characterStudioEnabled } from "@/lib/characterStudio/model";
 import { ShellOffsets } from "@/components/shell/ShellOffsets";
+import { GlassPointer } from "@/components/ui/GlassPointer";
 import "./app-redesign.css";
 import "./app-pages-1.css";
+// Last: the glass keys restate rules of the two files above at their own specificity, so they must follow them.
+import "./app-glass.css";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // No backend means no account and nothing to show. A built site then answers
@@ -196,6 +199,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}
             <SkipLink />
             <ShellOffsets />
+            {/* One delegated listener for every glass key's pointer highlight (app-glass.css). */}
+            <GlassPointer />
             <NeuralBackdrop dim />
             {operator ? (
               <div className="relative z-10 flex min-h-svh flex-col">
