@@ -1391,6 +1391,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T21:23:48Z"
+    },
+    {
+      "jobId": "9930ee16-a09b-4d55-aefe-5c2cb6f189de",
+      "assetId": "92fc2c92-9c97-5946-9e39-02eff77b571d",
+      "sha256": "187ea27dbfbbfa2471da0fc8646d276c4cba05c83ea5e556b5a5401a49f1448b",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "A frozen moment in time: a skateboarder mid-jump over a puddle, completely still in mid-action, with droplets, dust and hair hanging motionless in the air. The camera makes one smooth 360-degree orbit around the frozen scene at eye level, showing it from every side, while nothing in the scene moves. Crisp detail, cinematic lighting, shallow depth of field, photoreal, no motion blur, no text.",
+      "createdAt": "2026-11-13T22:21:35Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:50:43Z"
     }
   ]
 }
