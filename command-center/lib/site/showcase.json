@@ -227,6 +227,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "64a7c2b8-a6c1-4359-9961-a1a2760f1cbf",
+      "assetId": "437ebfbd-c70a-5271-8140-60934ac623b1",
+      "sha256": "b26a216718169dedc581746863e348a108391d7ebcc63867419cc7d45cd43abc",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Cinematic wide photograph of a huge full moon rising behind a lone silhouetted hilltop tree, deep blue night sky with faint stars, thin luminous clouds crossing the moon, telephoto compression, crisp detail, quiet and majestic, no text.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:09:12Z"
     }
   ]
 }
