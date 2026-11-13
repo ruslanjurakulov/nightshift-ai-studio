@@ -227,6 +227,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "639bbde5-dc70-4954-b71d-54db6a5b3ea9",
+      "assetId": "6c65025b-0a61-5f1f-8889-3ac1b31dec75",
+      "sha256": "763728c3edb21804ed6a12cae4ee5e3f105398e7eaefd645af99f37d23474221",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Wide cinematic landscape photograph of rolling green hills and a winding river valley at sunrise, low mist pooling in the folds, soft golden backlight, a few trees on the ridgelines, painterly depth, no text.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:54:31Z"
     }
   ]
 }
