@@ -62,6 +62,7 @@ from typing import Callable, Optional
 
 import config
 from modules import cost_ledger, image_providers
+from modules.gemini_stages import GeminiDailyQuotaError
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +248,15 @@ def preflight(agent) -> None:
         raise ThumbnailConceptUnavailable(
             "preflight", f"{s.image_provider!r} is not an image adapter this pipeline has",
             f"set agent_config.thumbnail_concept.image_provider to one of: {choices}")
+    from modules.thumbnail_overlay import STYLES
+
+    raw = getattr(agent, "thumbnail_concept", None)
+    style = str((raw if isinstance(raw, dict) else {}).get("overlay_style") or "").strip()
+    if style and style.lower() not in STYLES:
+        # A style the channel asked for and we cannot draw is not quietly replaced by the planner's pick.
+        raise ThumbnailConceptUnavailable(
+            "preflight", f"agent_config.thumbnail_concept.overlay_style {style!r} is not a headline style",
+            f"set it to one of: {', '.join(STYLES)}, or remove it to let the planner choose")
     problem = model_problem(s.image_provider, s.image_model)
     if problem:
         raise ThumbnailConceptUnavailable(
@@ -457,6 +467,8 @@ def validate_concept(raw, *, settings: ConceptSettings, headline: str, checked: 
             problems.append("baked_text is at most 4 words")
         if any(q in baked for q in _QUOTES):
             problems.append("baked_text may not contain quotes")
+        if baked and not re.fullmatch(r"[\w\s\-!?.,:%]+", baked):
+            problems.append("baked_text may hold only letters, digits, spaces and - ! ? . , : %")
         if baked and not is_checked_phrase(baked, checked):
             problems.append("baked_text must be consecutive words of the fact-checked overlay text or title")
 
@@ -741,7 +753,7 @@ def _planner_failure(e: Exception) -> tuple:
     name = type(e).__name__
     code = getattr(e, "code", None)
     text = str(e).lower()
-    if name == "GeminiDailyQuotaError":
+    if isinstance(e, GeminiDailyQuotaError) or name == "GeminiDailyQuotaError":
         return ("the script model's daily quota is spent",
                 "wait for the daily reset (or raise the quota in Google AI Studio), then re-run")
     if code in (401, 403) or "api key not valid" in text or "api_key_invalid" in text or "permission" in text:
@@ -802,7 +814,11 @@ def make_concept_thumbnails(agent, script, out_dir: Path, arms, *, gen: Callable
             reply = gen(prompt, PLAN_SYSTEM)
         except Exception as e:
             reason, remedy = _planner_failure(e)
-            raise ThumbnailConceptUnavailable("plan", reason, remedy, record=record) from None
+            stop = ThumbnailConceptUnavailable("plan", reason, remedy, record=record)
+            if isinstance(e, GeminiDailyQuotaError):
+                # Kept as the cause: the pipeline exits with the quota code (GEMINI_QUOTA_EXIT) for it.
+                raise stop from e
+            raise stop from None
         finally:
             # The caller cleared the engine's last response before this call, so
             # what is there now is this call's own (even when reading .text raised).
@@ -833,7 +849,8 @@ def make_concept_thumbnails(agent, script, out_dir: Path, arms, *, gen: Callable
                 record=record)
         # A soft miss here stops the step: the adapter must not log that it fell back to stock.
         client.soft_failure_note = "the concept thumbnail step stops"
-        model_called = str(getattr(client, "model", "") or getattr(client, "model_id", "") or "")
+        # An empty id (Leonardo with no LEONARDO_MODEL_ID) means the vendor picks: say so, not "".
+        model_called = str(getattr(client, "model", "") or getattr(client, "model_id", "") or "") or "provider default"
         record["image_model"] = model_called
         prompts = {}
         for arm, variant in variants.items():

@@ -215,6 +215,11 @@ class ConceptValidation(unittest.TestCase):
                 tc.validate_concept(concept_dict(framing="news_lower_third", baked_text=invented),
                                     settings=allowed, headline=HEADLINE, checked=checked)
             self.assertIn("fact-checked", " ".join(cm.exception.problems))
+        for markup in ("<b>LOCKED</b>", "STILL\u202eLOCKED", "STILL;LOCKED"):
+            with self.subTest(baked=markup), self.assertRaises(tc.ConceptInvalid) as cm:
+                tc.validate_concept(concept_dict(framing="news_lower_third", baked_text=markup), settings=allowed,
+                                    headline=HEADLINE, checked=checked + (markup,))
+            self.assertIn("only letters", " ".join(cm.exception.problems))
         ok = tc.validate_concept(concept_dict(framing="day_badge", baked_text="Vanished From"),
                                  settings=allowed, headline=HEADLINE, checked=checked)
         self.assertEqual(ok.baked_text, "Vanished From")
@@ -348,6 +353,42 @@ class UnavailableModelStops(unittest.TestCase):
         self.assertEqual(cm.exception.stage, "plan")
         self.assertIn("GEMINI_API_KEY", cm.exception.remedy)
         self.assertEqual(metered, [1])  # whatever response the engine kept is still metered
+
+    def test_an_overlay_style_we_cannot_draw_stops_at_preflight(self):
+        with patch.object(tc.config, "BFL_API_KEY", "k", create=True), \
+                patch.object(tc.config, "GEMINI_API_KEY", "g", create=True):
+            with self.assertRaises(tc.ThumbnailConceptUnavailable) as cm:
+                tc.preflight(agent(overlay_style="comic"))
+            self.assertEqual(cm.exception.stage, "preflight")
+            self.assertIn("pill", cm.exception.remedy)
+            tc.preflight(agent(overlay_style=" Marker "))
+            tc.preflight(agent(overlay_style=""))
+
+    def test_a_spent_daily_quota_keeps_the_quota_error_as_the_cause(self):
+        from modules.gemini_stages import GeminiDailyQuotaError
+
+        def spent(prompt, system):
+            raise GeminiDailyQuotaError("gemini-x", 3600.0, "script")
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(tc.config, "BFL_API_KEY", "k", create=True), \
+                patch.object(tc.config, "GEMINI_API_KEY", "g", create=True):
+            with self.assertRaises(tc.ThumbnailConceptUnavailable) as cm:
+                tc.make_concept_thumbnails(agent(), Script(), Path(d), ("A", "B"), gen=spent, client=FakeClient())
+        self.assertIsInstance(cm.exception.__cause__, GeminiDailyQuotaError)
+        self.assertIn("daily reset", cm.exception.remedy)
+
+    def test_an_empty_leonardo_model_is_recorded_as_the_provider_default(self):
+        class NoModel(FakeClient):
+            model = ""
+            model_id = ""
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(tc.config, "LEONARDO_API_KEY", "k", create=True), \
+                patch.object(tc.config, "GEMINI_API_KEY", "g", create=True):
+            if not SCALABLE:
+                self.skipTest("needs a scalable font")
+            result = tc.make_concept_thumbnails(agent(image_provider="leonardo"), Script(), Path(d), ("A", "B"),
+                                                gen=lambda p, s: plan_json(), client=NoModel(image=hero_image()))
+        self.assertEqual(result.record["image_model"], "provider default")
 
     def test_the_channel_model_is_pinned_not_the_run_wide_one(self):
         with patch.object(image_providers.config, "BFL_API_KEY", "k", create=True), \
@@ -695,7 +736,7 @@ patches = [
     patch.object(main, "ThumbnailGenerator", FakeThumbs),
     patch.object(main.video_ir, "write_for_run", return_value=None),
 ]
-if sys.argv[4] in ("concept_ok", "concept_spy"):
+if sys.argv[4] in ("concept_ok", "concept_spy", "concept_quota"):
     from PIL import Image, ImageDraw
 
     class Client:
@@ -714,6 +755,9 @@ if sys.argv[4] in ("concept_ok", "concept_spy"):
             self.last_response = None
         def _gen(self, prompt, system=None):
             out["planner_calls"] += 1
+            if sys.argv[4] == "concept_quota":
+                from modules.gemini_stages import GeminiDailyQuotaError
+                raise GeminiDailyQuotaError("gemini-x", 3600.0, "script")
             self.last_response = SimpleNamespace(usage_metadata=SimpleNamespace(
                 prompt_token_count=1200, candidates_token_count=400))
             return sys.argv[5]
@@ -804,7 +848,7 @@ class PipelineStopsOnAnUnavailableModel(unittest.TestCase):
         self.assertTrue(all(c["passed"] for c in record["readability"].values()))
         # What the step bought is in the run's ledger, under its own stages.
         concept_costs = sorted([u, q] for u, q, stage in out["costs"]
-                               if stage in ("thumbnail_concept", "thumbnail:flux"))
+                               if stage in ("thumbnail_concept", "image:flux"))
         self.assertEqual(concept_costs, [["gemini_input_tokens", 1200], ["gemini_output_tokens", 400],
                                          ["image_generations", 1], ["image_generations", 1]])
         self.assertIsNone(record["expected_cost"]["usd"])  # no rate configured: unknown, not $0
@@ -815,6 +859,14 @@ class PipelineStopsOnAnUnavailableModel(unittest.TestCase):
         self.assertEqual(out["raised"][0], "SpendLimitExceeded", out.get("tb"))
         self.assertEqual((out["planner_calls"], out["image_calls"], out["voice_built"]), (0, [], False))
 
+    def test_a_spent_planner_quota_stops_with_the_quota_error_and_is_recorded(self):
+        # main() maps GeminiDailyQuotaError to GEMINI_QUOTA_EXIT (80), as for the fact-check stage.
+        out = drive(CONCEPT, mode="concept_quota", plan=plan_json(), env=FLUX_KEY)
+        self.assertEqual(out["raised"][0], "GeminiDailyQuotaError", out.get("tb"))
+        self.assertEqual((out["planner_calls"], out["image_calls"], out["voice_built"]), (1, [], False))
+        failed = [e for e in out["events"] if e["agent"] == "thumbnail_concept"]
+        self.assertEqual(json.loads(failed[0]["metadata"])["stage"], "thumbnail_concept:plan")
+
     @unittest.skipUnless(SCALABLE, "needs a scalable font, as the real renderer does")
     def test_a_headline_too_long_to_letter_stops_before_anything_is_spent(self):
         out = drive(CONCEPT, mode="concept_spy", plan=plan_json(), env=FLUX_KEY,
@@ -822,7 +874,7 @@ class PipelineStopsOnAnUnavailableModel(unittest.TestCase):
         self.assertEqual(out["raised"][0], "ThumbnailConceptUnavailable", out.get("tb"))
         self.assertIn("too long", out["raised"][1])
         self.assertEqual((out["planner_calls"], out["image_calls"], out["voice_built"]), (0, [], False))
-        self.assertFalse([c for c in out["costs"] if str(c[2]).startswith("thumbnail")])
+        self.assertFalse([c for c in out["costs"] if str(c[2]).startswith(("thumbnail", "image:"))])
         failed = [e for e in out["events"] if e["agent"] == "thumbnail_concept"]
         self.assertEqual(json.loads(failed[0]["metadata"])["stage"], "thumbnail_concept:headline")
 

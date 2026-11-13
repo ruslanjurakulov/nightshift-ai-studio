@@ -766,7 +766,8 @@ def _concept_thumbnails(ctx, costs, script, slug, channel_id, engine):
         return thumbnail_concept.make_concept_thumbnails(
             ctx.agent, script, ThumbnailGenerator(slug).out_dir, arms, gen=planner._gen,
             on_planner_response=lambda: costs.add_gemini_usage(planner.last_response, stage="thumbnail_concept"),
-            on_image=lambda provider: costs.add(IMAGE_GENERATIONS, 1, stage=f"thumbnail:{provider}"),
+            # "image:<provider>", like the stills: provider spend (0106) and unit economics split images by that prefix.
+            on_image=lambda provider: costs.add(IMAGE_GENERATIONS, 1, stage=f"image:{provider}"),
             language=getattr(ctx.agent, "language", ""), title=script.title, channel_id=str(channel_id),
             planned=planned)
     except thumbnail_concept.ThumbnailConceptUnavailable as e:
@@ -775,6 +776,10 @@ def _concept_thumbnails(ctx, costs, script, slug, channel_id, engine):
                     channel_id=channel_id,
                     metadata={**e.record, "error": str(e), "stage": f"thumbnail_concept:{e.stage}"})
         _flush_costs(costs, slug)
+        if isinstance(e.__cause__, gemini_stages.GeminiDailyQuotaError):
+            # The planner's daily quota is spent: the same stop as the fact-check's (exit 80, the runners release the
+            # hold and say why). The stop is recorded above; the quota error is what the exit code is chosen by.
+            raise e.__cause__
         raise
 
 
