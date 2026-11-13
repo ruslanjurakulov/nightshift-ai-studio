@@ -8,6 +8,8 @@ import { atLeast } from "@/lib/auth/roles-shared";
 import { paddleClient } from "@/lib/paddle";
 import { paddleApi } from "@/lib/server/paddle-api";
 import { paymentsProvider } from "@/lib/server/payments";
+import { docsOrigin } from "@/lib/api/docs-origin";
+import { mcpOauthLive } from "@/lib/mcp-oauth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -40,7 +42,8 @@ export default async function DevelopersPage() {
           // API balance top-ups are a Paddle custom-amount transaction; there is no Dodo equivalent yet
           // (docs/DODO_SETUP.md, open questions), so with PAYMENTS_PROVIDER=dodo the console says "not available yet".
           topup={paymentsProvider() !== "dodo" && paddleApi && paddleClient ? paddleClient : null}
-          connectedApps={<ConnectedApps />}
+          // The "Add to …" buttons start a sign-in, so they exist only while the server takes one (lib/mcp-oauth.ts).
+          connectedApps={<ConnectedApps mcpUrl={`${docsOrigin()}/api/mcp`} oauthLive={mcpOauthLive()} />}
         />
       )}
     </div>

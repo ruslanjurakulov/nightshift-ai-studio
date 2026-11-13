@@ -2,16 +2,20 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import {
-  CHATGPT_DEVMODE_GUIDE,
   MCP_CLIENTS,
+  MCP_GUIDES,
   MCP_TOOL_IDS,
   claudeConnectorLink,
+  installLink,
+  vscodeWebInstallLink,
+  type InstallLink,
   type McpClient,
 } from "@/lib/dev/mcp-clients";
 import type { DevDictionary } from "@/lib/i18n/dev";
 import { BrandLogo, BrandSprite, logoTile } from "@/components/docs/BrandLogo";
 import { ConnectCard, type ConnectTab } from "@/components/docs/ConnectCard";
 import { Field } from "@/components/docs/Field";
+import { InstallButton } from "@/components/docs/InstallButton";
 import { McpAfter, McpLanding } from "@/components/docs/McpLanding";
 import { McpClientProvider } from "@/components/docs/McpClientContext";
 import { DevNav, DocSection, Statement, Table, type ScrollLabels } from "@/components/docs/doc-parts";
@@ -32,35 +36,51 @@ import { MotionToggle } from "@/components/site/MotionToggle";
  *
  * What it promises is only what exists. The server takes API keys today; the
  * sign-in (OAuth) flow is switched on by MCP_OAUTH_LIVE (lib/mcp-oauth.ts).
- * Until then the Claude and ChatGPT tabs say "Coming soon" and every other tab
- * shows its API-key steps. No error codes or internal mechanics appear here.
+ * Until then the sign-in-only tabs (ChatGPT, Claude, Gemini, Grok) say "Coming soon",
+ * every other tab shows its API-key steps, and no "Add to …" button is drawn:
+ * each one starts a sign-in the server would not yet accept. No error codes or
+ * internal mechanics appear here.
  */
 
 type Action =
   | { kind: "url"; text: string }
   | { kind: "code"; text: string }
   | { kind: "link"; href: string; label: string }
+  | { kind: "install"; link: InstallLink; label: string; hint?: string; extra?: { link: InstallLink; label: string } }
   | null;
 
+/** A tab's sign-in words (dev.mcp.oauth[id]): the install button's label, what it needs, a second link, a footnote. */
+type OauthWords = { button?: string; hint?: string; extra?: string; note?: string; steps: { title: string; body: string }[] };
+
 /** The copyable server address, the command or the button each of a tab's three steps pins to its bottom. */
-function oauthActions(id: string, url: string, client: McpClient, button: string): [Action, Action, Action] {
+function oauthActions(id: string, url: string, client: McpClient, o: OauthWords): [Action, Action, Action] {
+  const snippet: Action = { kind: "code", text: client.oauthSnippet?.(url) ?? "" };
+  // The one-click button leads; the steps by hand are the next step, right beside it, because none of these links has
+  // been tried end to end and a custom-scheme link does nothing where the app is not installed.
+  const install = (extra?: InstallLink): Action => {
+    const link = installLink(id, url);
+    if (!link) return null;
+    return { kind: "install", link, label: o.button ?? "", hint: o.hint, extra: extra && o.extra ? { link: extra, label: o.extra } : undefined };
+  };
   switch (id) {
-    case "claude":
-      return [{ kind: "url", text: url }, { kind: "link", href: claudeConnectorLink(url), label: button }, null];
     case "chatgpt":
-      return [{ kind: "link", href: CHATGPT_DEVMODE_GUIDE, label: button }, { kind: "url", text: url }, null];
-    case "claude-code":
-      return [{ kind: "code", text: client.oauthSnippet?.(url) ?? "" }, null, null];
-    case "openclaw":
-      return [{ kind: "code", text: client.oauthSnippet?.(url) ?? "" }, null, { kind: "code", text: "openclaw mcp login nightshift" }];
+    case "gemini":
+    case "grok":
+      // No documented install link: the vendor's own guide, then the address to paste.
+      return [{ kind: "link", href: MCP_GUIDES[id], label: o.button ?? "" }, { kind: "url", text: url }, null];
+    case "claude":
+      return [install({ href: claudeConnectorLink(url, "organization"), opens: "web" }), { kind: "url", text: url }, null];
     case "cursor":
-      return [null, { kind: "code", text: client.oauthSnippet?.(url) ?? "" }, null];
-    case "hermes":
-      return [{ kind: "code", text: client.oauthSnippet?.(url) ?? "" }, null, { kind: "code", text: "hermes mcp login nightshift" }];
+      return [install(), snippet, null];
+    case "vscode":
+      return [install({ href: vscodeWebInstallLink(url, "insiders"), opens: "web" }), snippet, null];
     default:
       return [null, null, null];
   }
 }
+
+/** Where a "Coming soon" tab points while the sign-in is off: the two that work today with an API key. */
+const SOON_GOTO = ["cursor", "vscode"];
 
 export function McpPage({
   dev,
@@ -112,6 +132,13 @@ export function McpPage({
                 {a?.kind === "code" && (
                   <Field kind="code" text={a.text} name={`${tabLabel} · ${s.title}`} scrollLabel={labels.code} copy={dev.ui} />
                 )}
+                {a?.kind === "install" && (
+                  <div className="st-install">
+                    <InstallButton link={a.link} label={a.label} newTab={dev.ui.newTab} className="st-key" size="sm" />
+                    {a.extra && <InstallButton link={a.extra.link} label={a.extra.label} newTab={dev.ui.newTab} className="st-key" size="sm" tone="quiet" />}
+                    {a.hint && <p className="st-small st-install-hint">{a.hint}</p>}
+                  </div>
+                )}
                 {a?.kind === "link" && (
                   <a href={a.href} className="st-key" data-size="sm" target="_blank" rel="noopener noreferrer">
                     {a.label}
@@ -144,13 +171,13 @@ export function McpPage({
   }
 
   const tabs: ConnectTab[] = MCP_CLIENTS.map((client): ConnectTab => {
-    const base = { id: client.id, glyph: <BrandLogo id={client.id} />, tile: logoTile(client.id), group: client.group, label: client.id === "other" ? dev.ui.other : client.label };
+    const base = { id: client.id, glyph: <BrandLogo id={client.id} />, tile: logoTile(client.id), group: "primary" as const, label: client.label };
     // Connector-only tabs: the real steps when sign-in is live, an honest "Coming soon" until then.
     if (client.oauthOnly) {
-      const o = c.oauth[client.id as "claude" | "chatgpt"];
+      const o = c.oauth[client.id as "chatgpt" | "claude" | "gemini" | "grok"];
       if (!oauthLive) {
-        const soon = c.soon[client.id as "claude" | "chatgpt"];
-        const goto = client.id === "claude" ? ["claude-code", "claude-desktop"] : ["cursor", "other"];
+        const soon = c.soon[client.id as "chatgpt" | "claude" | "gemini" | "grok"];
+        const goto = SOON_GOTO;
         return {
           ...base,
           soon: {
@@ -160,7 +187,7 @@ export function McpPage({
             use: c.soon.use,
             goto: goto.map((g) => {
               const t = MCP_CLIENTS.find((x) => x.id === g)!;
-              return { id: g, label: g === "other" ? dev.ui.other : t.label };
+              return { id: g, label: t.label };
             }),
           },
         };
@@ -169,8 +196,8 @@ export function McpPage({
         ...base,
         panel: (
           <>
-            {stepsList(client.label, o.steps, oauthActions(client.id, url, client, o.button))}
-            {o.note && (
+            {stepsList(client.label, o.steps, oauthActions(client.id, url, client, o))}
+            {"note" in o && o.note && (
               <div className="st-panel-foot">
                 <p className="st-small">{o.note}</p>
               </div>
@@ -180,13 +207,18 @@ export function McpPage({
       };
     }
     // Clients with a sign-in variant lead with it once it is live, and keep the key under a disclosure.
-    const o = (c.oauth as Record<string, { button?: string; note?: string; steps: { title: string; body: string }[] }>)[client.id];
+    const o = (c.oauth as Record<string, OauthWords>)[client.id];
     if (oauthLive && o && client.oauthSnippet) {
       return {
         ...base,
         panel: (
           <>
-            {stepsList(client.label, o.steps, oauthActions(client.id, url, client, o.button ?? ""))}
+            {stepsList(client.label, o.steps, oauthActions(client.id, url, client, o))}
+            {o.note && (
+              <div className="st-panel-foot">
+                <p className="st-small">{o.note}</p>
+              </div>
+            )}
             <details className="st-keyalt">
               <summary>{c.apiKeyInstead}</summary>
               <p className="st-small">{c.apiKeyInsteadBody}</p>
@@ -199,13 +231,14 @@ export function McpPage({
     return { ...base, panel: keyPanel(client) };
   });
 
-  const defaultTab = oauthLive ? "claude" : "claude-code";
+  // The first tab that connects: ChatGPT once the sign-in is live, Cursor (an API key) until then.
+  const defaultTab = oauthLive ? "chatgpt" : "cursor";
   const open = initialTab && tabs.some((t) => t.id === initialTab) ? initialTab : defaultTab;
-  const firstSix = ["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"].map((id) => MCP_CLIENTS.find((x) => x.id === id)!).filter((x) => oauthLive || !x.oauthOnly).map((x) => x.label);
+  const worksWith = MCP_CLIENTS.filter((x) => oauthLive || !x.oauthOnly).map((x) => x.label);
 
   // With the sign-in off (MCP_OAUTH_LIVE) Claude and ChatGPT are "coming soon": nothing on the page may read as if they connect today.
   const soonIds = oauthLive ? [] : MCP_CLIENTS.filter((x) => x.oauthOnly).map((x) => x.id);
-  const names = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, x.id === "other" ? dev.ui.other : x.label]));
+  const names = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, x.label]));
   const marks = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, <span key={x.id} className="st-pill-glyph" data-tile={logoTile(x.id)}><BrandLogo id={x.id} /></span>]));
 
   return (
@@ -216,7 +249,7 @@ export function McpPage({
         <div className="st-wrap st-mcphero-in">
           <DevNav nav={dev.nav} current="mcp" showCli={showCli} />
           <p className="sr-only">
-            {c.worksWith}: {firstSix.join(", ")}
+            {c.worksWith}: {worksWith.join(", ")}
           </p>
           <div className="nx-mcp-top">
             <div className={bleed ? "nx-mcp-copy nx-bleed-panel" : "nx-mcp-copy"}>

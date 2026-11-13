@@ -1,4 +1,4 @@
-import { MessageSquare, Monitor, Plug, SquareTerminal, type LucideIcon } from "lucide-react";
+import { MessageSquare, Plug, type LucideIcon } from "lucide-react";
 import { BRAND_ART } from "@/lib/dev/brand-logos-art";
 import { brandLogo, logoShown, shownSymbols } from "@/lib/dev/brand-logos";
 
@@ -26,18 +26,14 @@ export function BrandSprite({ ids }: { ids: readonly string[] }) {
 /**
  * The neutral glyph for a client whose own mark may not be shown (lib/dev/brand-logos.ts
  * says why, per client): the same plain icon set the site already uses, in the same
- * tile, so a missing logo never reads as a placeholder or as a mis-typed name — a chat
- * bubble for a chat app, a terminal prompt for the command-line agents, a monitor for
- * the desktop app, a plug for "any other client".
+ * tile, so a missing logo never reads as a placeholder or as a mis-typed name: a chat
+ * bubble for the chat apps (Gemini and Grok always, Claude if the owner's gate is
+ * turned off), a plug for anything else.
  */
 const GLYPH: Record<string, LucideIcon> = {
   claude: MessageSquare,
-  "claude-code": SquareTerminal,
-  "gemini-cli": SquareTerminal,
-  codex: SquareTerminal,
-  hermes: SquareTerminal,
-  "claude-desktop": Monitor,
-  other: Plug,
+  gemini: MessageSquare,
+  grok: MessageSquare,
 };
 
 /**

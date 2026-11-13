@@ -4516,6 +4516,12 @@ export const en = {
     loadFailed: "Couldn't load your connected apps. Try again.",
     notMigrated: "Connecting apps is not set up on this database yet (migration 0093).",
     actionFailed: "That did not work. Nothing was changed. Try again.",
+    addTitle: "Add an assistant",
+    addLead: "Each button opens the assistant’s own install prompt: you confirm there, then sign in to Nightshift and set the app’s monthly limit. Cursor and VS Code open only if the app is on this computer. ChatGPT, Gemini and Grok have no install button: follow their steps.",
+    addTo: "Add to {app}",
+    addSteps: "Steps by hand",
+    addUrl: "Server address",
+    newTab: "(opens in a new tab)",
   },
   developers: {
     title: "Developers",

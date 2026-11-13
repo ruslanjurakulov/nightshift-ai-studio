@@ -133,7 +133,7 @@ describe("one page for every tab", () => {
       const d = doc(page("en", tab));
       return ["every-title", "examples-title", "explore-title"].map((id) => d.getElementById(id)?.closest("section")?.textContent);
     };
-    expect(strip("cursor")).toEqual(strip("hermes"));
+    expect(strip("cursor")).toEqual(strip("vscode"));
   });
 });
 
@@ -240,8 +240,10 @@ describe("with sign-in off the page never promises an app connection", () => {
 
   it.each(LOCALES)("%s: the page description does not say Claude or ChatGPT connect while the flag is off", (locale) => {
     const m = devDictionaries[locale].mcp;
-    expect(m.signinOff.description).not.toMatch(/(?:Connect|Подключите)\s+Claude,\s+ChatGPT/);
-    expect(m.meta.description).toMatch(/Claude, ChatGPT/);
+    // While off, the description opens with what connects today (Cursor and VS Code), never with the chat apps.
+    expect(m.signinOff.description).not.toMatch(/^(?:Connect|Подключите)?\s*(?:ChatGPT|Claude|Gemini|Grok)/);
+    expect(m.signinOff.description).toMatch(/Cursor/);
+    expect(m.meta.description).toMatch(/ChatGPT, Claude, Gemini, Grok, Cursor/);
   });
 });
 
@@ -249,7 +251,7 @@ describe("the tab id from the address", () => {
   it("an unknown or inherited name ('constructor') opens the default tab, never throws", () => {
     for (const tab of ["constructor", "__proto__", "toString", "nope"]) {
       const d = doc(page("en", tab));
-      expect(d.querySelector(".st-pill[aria-selected='true']")?.getAttribute("data-id"), tab).toBe("claude-code");
+      expect(d.querySelector(".st-pill[aria-selected='true']")?.getAttribute("data-id"), tab).toBe("cursor");
     }
   });
 });
