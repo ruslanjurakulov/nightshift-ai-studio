@@ -822,7 +822,8 @@ and nothing changes for anyone until a registry entry carries `"operator_preview
   nothing (`reserve_credits` answers exempt, `credit_ref` stays NULL, the finish captures nothing), and only a platform admin may start a job
   there. A preview with a `credit_prices` row is quoted at it; one without is quoted at the vendor's cost from the registry
   (`pricing.provider_usd_per_unit` x 100, no margin, floored at `job_minimum` like every quote) as the job's record only. No price row is
-  written, so nothing goes on sale. A model priced by variant or with no stated cost stays `unpriced`. The quote carries `"preview": true`.
+  written, so nothing goes on sale. A model priced by variant or with no stated cost stays `unpriced` (by resolution: since 0149, below,
+  the quoted resolution's figure). The quote carries `"preview": true`.
   A plan entitlement (`models_image:basic` ...) is not asked of a preview: the exempt organization has no plan.
 - **The list.** `operator_preview_models(p_org)` (granted to `authenticated`) answers the same models with the public half of spec, and no
   rows to anyone else. The create page asks for it only for the platform operator in the operator's organization and passes the result to
@@ -1044,3 +1045,35 @@ unchanged.
   and caps, connect-and-revoke past the daily cap and the collection a day later, the workspace cap, a race at the cap, each plan's
   value through rollback, the spend-limit sentences, rollback and re-apply, the drift guard), `tests/security/test_sec_mcp_oauth.py` (0093's
   attacks, now against the 0147 rule), `command-center/tests/mcp-assistant-session.test.ts`.
+
+## Operator preview priced by resolution (0149)
+
+0149 (`0149_preview_price_by_resolution.sql`) is **live on apply** and writes no row. It replaces ONE function, `creative_price`, on 0139's
+body plus two hunks, and changes an answer only for 0139's preview (the platform operator, in the credits-exempt organization, a hidden
+model marked `operator_preview`) of a model priced by resolution.
+
+- **Why.** 0139 quotes a preview with no `credit_prices` row at the vendor's cost only when the registry states one flat figure. Every
+  MiniMax H3 video entry is priced by resolution (`pricing.variants.by = "resolution"`), so every preview quote of them was `unpriced`:
+  a model listed as available whose every generation was refused.
+- **The rate.** No variants: `provider_usd_per_unit`, as in 0139. By resolution: `variants.prices[<resolution>]`, where the resolution is
+  the one 0070's video settings already settle on for every quote (the request's, else the pinned `default_resolution` only when the
+  request names none). It is the one the quote names, the job carries and the worker sends. A listed resolution without its own figure
+  (or with a figure that is not a number, 0, or over 100) is `unpriced`; it is never mapped to another resolution or to
+  `provider_usd_per_unit`. Any other `variants.by` stays `unpriced`. Same conversion as 0139 (x 100, no margin, `job_minimum` floor);
+  a `credit_prices` row for the variant still wins; who may preview is 0139's rule, not replaced.
+- **Known gap, not changed here.** `creative_params_problem` (0126's body) accepts a named resolution only from 480p 540p 720p 1080p 1440p
+  2160p. A request that names `768p` or `2k` is refused `invalid_params` before the model is read. 768p is reached as the pinned default
+  (the Studio sends no resolution); H3's 2k is not reachable. `tests/security/test_sec_preview_price_by_resolution.py` pins this as a
+  strict xfail.
+- **Drift guard and end state.** The live `creative_price` must be 0139's body (`ae28b700503542701ee0ac63a67df36e`) or 0149's
+  (`728241a09e56f65e19efc460afea7355`). The last block asserts the body, no API role grant, the pinned search_path and the three guards.
+  Apply as ONE transaction.
+- **Order.** 0149 sits on 0139's `creative_price` and refuses to apply without 0139. 0139's replay and rollback refuse 0149's body: run
+  `docs/sql/rollback_0149_preview_price_by_resolution.sql` first (it puts 0139's body back byte for byte). The lab takes 0149 off before
+  0139 (`sec_db.take_off_0139` calls `take_off_0149`; `sec_db.ON_0139`, and `ON_0125` now lists both). The numbering tests of 0127, 0131
+  and 0133 list it as reviewed.
+- **Tests.** `tests/test_preview_price_by_resolution_migration.py` (the hunks, the hashes, the rollback, the lab chain, the registry
+  entries it turns on), `tests/security/test_sec_preview_price_by_resolution.py` (480p and 768p quote their own costs; no resolution is
+  the pinned default and the job carries it; an unlisted resolution is `invalid_params`, a listed unpriced one `unpriced`; everyone 0139
+  refuses is still refused; a model on sale is never quoted at cost; a variant row wins; other `variants.by` stay `unpriced`; with 0149
+  rolled back only these answers change; order, drift guard and rollback on a scratch database).

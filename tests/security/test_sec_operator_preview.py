@@ -285,6 +285,8 @@ def test_every_other_quote_is_byte_for_byte_what_0125_answered(conn, sc):
         with_0139 = [_quote(conn, who, org, mid) for who, org, mid in calls]
         lists = [_list(conn, who, org) for who, org, _ in calls]
         _become(conn, None)
+        # 0149 sits on 0139's creative_price, and 0139's rollback refuses any other body: it comes off first.
+        conn.execute(sec_db.rollback_0149_body())
         conn.execute(sec_db.rollback_0139_body())
         without = [_quote(conn, who, org, mid) for who, org, mid in calls]
         assert with_0139 == without
@@ -330,7 +332,8 @@ def _scratch(files):
 
 
 def test_it_refuses_to_apply_before_0125_and_leaves_nothing_behind():
-    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name not in (M0125.name, MIGRATION.name)])
+    # 0149 sits on 0139 and refuses to apply without it: left out with it.
+    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name not in (M0125.name, MIGRATION.name, *sec_db.ON_0139)])
     try:
         with pytest.raises(Exception) as cm:
             d.su(MIGRATION.read_text(encoding="utf-8"))
@@ -341,7 +344,8 @@ def test_it_refuses_to_apply_before_0125_and_leaves_nothing_behind():
 
 
 def test_the_drift_guard_refuses_a_body_edited_by_hand_and_a_replay_changes_nothing():
-    admin, name, d = _scratch(sec_db.build_sequence())
+    # The chain up to this file: 0149 replaces creative_price on 0139's body, and this file's guard accepts only 0125's or its own.
+    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name not in sec_db.ON_0139])
     try:
         before = _md5(d)
         d.su(MIGRATION.read_text(encoding="utf-8"))                       # the replay
@@ -356,7 +360,7 @@ def test_the_drift_guard_refuses_a_body_edited_by_hand_and_a_replay_changes_noth
 
 
 def test_the_rollback_puts_0125s_body_back_byte_for_byte_and_the_file_applies_again():
-    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name != MIGRATION.name])
+    admin, name, d = _scratch([f for f in sec_db.build_sequence() if f.name not in (MIGRATION.name, *sec_db.ON_0139)])
     try:
         pre = _md5(d)
         assert pre == "e0c4a7806642086398558cf322c95a0d", "0125's body is the base"

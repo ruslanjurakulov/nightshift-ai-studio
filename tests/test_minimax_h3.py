@@ -180,16 +180,26 @@ class RegistryEntryTests(unittest.TestCase):
             for banned in ("availability", "verified_at"):
                 self.assertNotIn(banned, rows[mid], mid)
 
-    def test_no_minimax_model_is_previewed_while_its_price_is_by_resolution(self):
-        # 0139's creative_price uses the preview rate only when pricing has no variants, and every H3 entry is priced by
-        # resolution: a preview would show the operator a model whose every quote is refused 'unpriced'. A dead end shown as
-        # available. The trial waits for per-resolution preview pricing.
+    def test_the_h3_models_are_previewed_at_the_quoted_resolutions_figure_and_hailuo_is_not(self):
+        # 0149 prices an operator preview of a model priced by resolution at the vendor figure of the resolution quoted (the pinned
+        # default when the request names none, which is what the Studio sends). So each H3 entry is marked, and each must price its
+        # pinned resolution, or the preview would be a model whose every quote is refused 'unpriced': a dead end shown as available.
         rows = {row["id"]: row for row in reg.sync_rows(list(self.r.values()))}
-        for mid in PROBE_IDS:
-            self.assertIsNot(self.r[mid].raw.get("operator_preview", False), True, mid)
-            self.assertIsNot(rows[mid]["spec"].get("operator_preview", False), True, mid)
+        self.assertTrue((ROOT / "supabase" / "migrations" / "0149_preview_price_by_resolution.sql").is_file())
         for mid in NEW_IDS:
-            self.assertIn("variants", self.r[mid].raw["pricing"], mid)
+            self.assertIs(self.r[mid].raw.get("operator_preview"), True, mid)       # 0139 reads the JSON value true, nothing else
+            self.assertIs(rows[mid]["spec"].get("operator_preview"), True, mid)     # what --sync copies into model_registry.spec
+            p = self.r[mid].raw["pricing"]
+            self.assertEqual(p["variants"]["by"], "resolution", mid)
+            self.assertIsInstance(p["variants"]["prices"][self.r[mid].default_resolution], float, mid)
+            # a preview is the operator's own trial, never offered by the API or MCP
+            self.assertEqual(self.r[mid].raw["api_exposure"], "web_only", mid)
+        # Hailuo 2.3 is billed per clip and states no per-second figure and no variants: a preview could only answer 'unpriced'.
+        hailuo = self.r["minimax-hailuo-2.3"]
+        self.assertIsNot(hailuo.raw.get("operator_preview", False), True)
+        self.assertIsNot(rows["minimax-hailuo-2.3"]["spec"].get("operator_preview", False), True)
+        self.assertIsNone(hailuo.raw["pricing"]["provider_usd_per_unit"])
+        self.assertNotIn("variants", hailuo.raw["pricing"])
 
     def test_h3_max_says_it_is_a_fal_post_train_and_that_it_is_the_owners_call(self):
         notes = " ".join(self.r[MAX].raw["terms_notes"])
