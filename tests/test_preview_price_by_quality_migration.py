@@ -145,7 +145,7 @@ class PreviewPriceByQualityMigration(unittest.TestCase):
         self.assertEqual(numbers.count("0153"), 1)
         self.assertIn("0149", numbers)
         lab = (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8")
-        for needle in ("def take_off_0153(", "def put_back_0153(", "ON_0149 = (MIGRATION_0153.name,)",
+        for needle in ("def take_off_0153(", "def put_back_0153(", "ON_0149 = (MIGRATION_0153.name, *ON_0153)",
                        "ON_0139 = (MIGRATION_0149.name, *ON_0149)", "ON_0125 = (MIGRATION_0139.name, *ON_0139)"):
             self.assertIn(needle, lab)
         # take_off_0149 takes 0153 off first, and put_back_0149 puts it back: 0149's rollback and replay refuse 0153's body.
@@ -155,7 +155,8 @@ class PreviewPriceByQualityMigration(unittest.TestCase):
         self.assertIn("put_back_0153(session)", on)
         # take_off_0139 must still find the chain when the live body is 0153's (has_0149 compares 0149's hash only).
         off39 = lab[lab.index("def take_off_0139("):lab.index("def put_back_0139(")]
-        self.assertIn("if has_0149(session) or has_0153(session):", off39)
+        # (0156, on 0153's creative_price, is recognised too: tests/test_named_resolution_params_migration.py.)
+        self.assertIn("if has_0149(session) or has_0153(session)", off39)
 
 
 #: Every entry the registry marks operator_preview today. A new one is a decision (a hidden model the operator can run in the Studio),

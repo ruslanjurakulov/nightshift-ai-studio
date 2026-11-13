@@ -279,6 +279,8 @@ def test_with_0153_rolled_back_only_the_by_quality_preview_changes(conn, sc):
         ours = [(sc.operator, DEFAULT_ORG, FLARE, p) for p in (_params(), *(_params(quality=t) for t in TIERS))]
         with_0153 = [_quote(conn, *c) for c in others + ours]
         _become(conn, None)
+        # 0156 sits on 0153's creative_price, and 0153's rollback refuses any other body: it comes off first.
+        conn.execute(sec_db.rollback_0156_body())
         conn.execute(sec_db.rollback_0153_body())
         without = [_quote(conn, *c) for c in others + ours]
         n = len(others)
@@ -293,11 +295,14 @@ def test_the_lab_takes_the_whole_chain_off_and_puts_it_back_from_0153s_body(conn
     session = SimpleNamespace(conn=conn)
     with conn.transaction(force_rollback=True):
         _become(conn, None)
+        # 0156 sits on 0153's body (the lab applies every migration): take it off to start from 0153's, as this test is about.
+        conn.execute(sec_db.rollback_0156_body())
         assert sec_db.has_0153(conn) and not sec_db.has_0149(conn)
         sec_db.take_off_0139(session)
         assert _md5_conn(conn) == "e0c4a7806642086398558cf322c95a0d", "0125's body"
         sec_db.put_back_0139(session)
-        assert _md5_conn(conn) == sec_db.CREATIVE_PRICE_0153
+        # put_back_0139 puts the whole chain back, 0156 included
+        assert _md5_conn(conn) == sec_db.CREATIVE_PRICE_0156
 
 
 def _md5_conn(conn):
