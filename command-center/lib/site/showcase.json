@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "873c4424-4279-45a2-a548-cd11c1d6da26",
+      "assetId": "af272651-883d-57c7-9c56-455a890e8e36",
+      "sha256": "8713722fe14948affc9b15b80471cd46bb4a47ffdd5c75f03688f7d8ba64470d",
+      "modelId": "minimax-h3-highspeed",
+      "modelName": "MiniMax H3 Highspeed",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "A cosy café slowly tilts like a ship; cups, croissants and spoons slide across the tables and fall past a calm young woman who keeps reading her book, turns a page and sips her coffee as if nothing is happening. Surreal, playful, cinematic, warm morning light. Audio: clattering cups, soft jazz.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Highspeed",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:01:50Z"
     }
   ]
 }
