@@ -227,6 +227,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "de53f364-eaf7-4cd1-8d44-7b56b21b03b6",
+      "assetId": "bb50e092-bc9b-55b8-967f-29cf5deea830",
+      "sha256": "79cbc10c8b800b8819e4d65f42a82f3f295e535bcc79bad7d21d987da3db32f5",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Epic wide shot at golden-hour sunset: a colossal humpback whale glides slowly through a sea of glowing clouds above a modern city skyline, sunlight streaming through its fins, a flock of birds and a tiny airplane pass beneath it, people on a rooftop in silhouette point up. The camera tracks smoothly alongside the whale. Photorealistic, awe-inspiring scale, cinematic blockbuster look.",
+      "createdAt": "2026-11-13T17:46:16Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:18:16Z"
     }
   ]
 }
