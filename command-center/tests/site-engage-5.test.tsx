@@ -24,6 +24,7 @@ import { Landing } from "@/components/landing/Landing";
 import { CLIPS, SLOTS, slotClip } from "@/components/site/samples";
 import { setMotionPaused } from "@/lib/site/motion";
 import { buildCsp } from "@/lib/security/csp";
+import { GALLERY, SAMPLE_CARD, outsideGallery, shippedSamples, without } from "./helpers/showcase-scope";
 
 const ROOT = join(__dirname, "..");
 const SRC = CLIPS.caravan;
@@ -226,7 +227,9 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     const t = dictionaries[code];
     env();
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
-    const clipBoxes = [...container.querySelectorAll("[data-clip]")];
+    // The stock clips are the page's outside the model samples: a merged sample is a real generation, in its own card with its
+    // own badge (tests/site-showcase.test.tsx), and the gallery is the one place that may say it was made with Nightshift.
+    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]"));
     // The hero's footage is printed once (the card's picture, at every width: the phone panel's copy went when the studio backdrop took the panel), then the two showcases.
     expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["cloud", "pottery", "coast"]);
     for (const b of clipBoxes) {
@@ -235,9 +238,22 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
       expect(b.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(t.site.samples.clipTag);
       expect(b.querySelector("img")?.getAttribute("alt")).toBeTruthy();
     }
-    expect(container.querySelectorAll("video")).toHaveLength(3);
+    expect(outsideGallery(container.querySelectorAll("video"))).toHaveLength(3);
+    // Inside the gallery, a clip box is a sample's, never a stock one's: in its card, labelled AI-generated, with no stock label.
+    const { clips } = shippedSamples();
+    const sampleBoxes = [...container.querySelectorAll(`${GALLERY} [data-clip]`)];
+    expect(sampleBoxes).toHaveLength(clips);
+    for (const b of sampleBoxes) {
+      expect(b.getAttribute("data-clip")).toBe("sample");
+      expect(b.closest(SAMPLE_CARD)).toBeTruthy();
+      expect(b.querySelector(".nx-result-badge")?.textContent).toBe(t.site.gallery.badge);
+      expect(b.querySelector(".nx-result-badge[data-kind]")).toBeNull();
+    }
+    const sampleVideos = [...container.querySelectorAll(`${GALLERY} video`)];
+    expect(sampleVideos).toHaveLength(clips);
+    for (const v of sampleVideos) expect(v.closest("[data-clip='sample']")).toBeTruthy();
     expect(t.site.samples.clipTag).toMatch(code === "en" ? /^Example clip \(stock footage\)$/ : code === "ru" ? /^Пример клипа/ : /^Namuna klip/);
-    const text = container.textContent ?? "";
+    const text = without(container, GALLERY).textContent ?? "";
     expect(text).not.toMatch(/made with Nightshift|Nightshift made|Nightshift-generated/i);
   });
 
