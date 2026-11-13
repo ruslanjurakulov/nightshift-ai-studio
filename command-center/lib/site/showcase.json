@@ -39,6 +39,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T16:05:40Z"
+    },
+    {
+      "jobId": "f00c9666-0906-40cc-90d2-dd69680d5077",
+      "assetId": "3ccf9fa4-15d2-5fb6-a0ff-6603390887b1",
+      "sha256": "906e053b5c8f83c87ee7b73c844bf2b1f41d1d6bddd2dabf375d14bceafc2cbb",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "First-person POV, handheld action-camera footage walking into a bustling ancient Mediterranean harbor market at sunrise, about 2,000 years ago: wooden merchant ships with linen sails behind, stalls stacked with amphorae, figs and fish, merchants in wool tunics seen from behind and in profile calling out, a goat crossing the path, dust glowing in low golden light. Natural head bob, slight wide-angle distortion, documentary travel-vlog feel, 16mm lens.",
+      "createdAt": "2026-11-13T15:33:25Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:03:53Z"
     }
   ]
 }
