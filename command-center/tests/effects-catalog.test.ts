@@ -143,6 +143,12 @@ describe("the words", () => {
     expect(fillPrompt(giant, "a red fox")).toContain(": a red fox, at colossal scale");
     expect(fillPrompt(giant, "")).toContain(giant.slotHint!);
     expect(fillPrompt(giant, "  ")).not.toContain(SUBJECT_SLOT);
+    // `$&`, `$'` and `` $` `` are replacement patterns in String.replace: they must land as typed, never re-insert the slot or the template.
+    const dollars = "$&$'$`".repeat(20);
+    const filled = fillPrompt(giant, dollars);
+    expect(filled).not.toContain(SUBJECT_SLOT);
+    expect(filled).toContain(cleanSubject(dollars));
+    expect(filled.length).toBeLessThanOrEqual(giant.prompt.length - SUBJECT_SLOT.length + SUBJECT_MAX);
     const photo = effectById("photo-to-life")!;
     expect(fillPrompt(photo, "ignored")).toBe(photo.prompt);
   });
@@ -186,7 +192,7 @@ describe("which model an effect uses", () => {
 
   it("fills the composer with that model, the words, the shape and the length, and nothing that spends", () => {
     const p = effectPrefill(giant, "minimax-h3", "a red fox");
-    expect(p).toEqual({ capability: "t2v", model: "minimax-h3", prompt: fillPrompt(giant, "a red fox"), aspect: "9:16", duration: 10 });
+    expect(p).toEqual({ capability: "t2v", model: "minimax-h3", prompt: fillPrompt(giant, "a red fox"), aspect: "9:16", duration: 10, styleKitId: null });
     const burst = effectById("product-burst")!;
     expect(effectPrefill(burst, "minimax-h3", "", PIC)).toMatchObject({ capability: "i2v", sourceId: PIC, prompt: burst.prompt });
   });
@@ -279,6 +285,7 @@ describe("previews", () => {
 
   it("refuse a showcase entry made with other words, another tool or a model the effect does not list", () => {
     const entry = SHOWCASE_ENTRIES.find((s) => s.kind === "video");
+    expect(entry, "the gallery holds no video entry to test the refusals against").toBeTruthy();
     if (!entry) return;
     const files = { [entry.jobId]: { poster: "p", posterSm: "s", clip: { mp4: "a", webm: "b", smMp4: "c", smWebm: "d" } } };
     const as = (patch: Partial<Effect>): Effect => ({ ...effectById("product-burst")!, previewJobId: entry.jobId, ...patch });

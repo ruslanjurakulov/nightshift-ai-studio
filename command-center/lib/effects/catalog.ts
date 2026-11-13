@@ -173,7 +173,9 @@ export function cleanSubject(raw: unknown): string {
 export function fillPrompt(effect: Pick<Effect, "prompt" | "slotHint">, subject: string): string {
   if (!effect.prompt.includes(SUBJECT_SLOT)) return effect.prompt;
   const s = cleanSubject(subject);
-  return effect.prompt.replace(SUBJECT_SLOT, s || effect.slotHint || "[subject]");
+  // A function, not a string: with a string replacement, `$&`, `$'` and `` $` `` in the subject are expanded, which put the
+  // template's own {subject} back and grew a 424-character template past 5000 (Lens, PR #732).
+  return effect.prompt.replace(SUBJECT_SLOT, () => s || effect.slotHint || "[subject]");
 }
 
 /**
@@ -255,6 +257,8 @@ export function effectPrefill(effect: Effect, modelId: string, subject: string, 
     prompt: fillPrompt(effect, subject),
     aspect: effect.aspect,
     duration: effect.duration,
+    // The effect is its own words, shape and length: the channel's default style kit must not be added to it unseen.
+    styleKitId: null,
     ...(effect.input === "picture" ? { sourceId, factor: 2 as const } : {}),
   };
 }

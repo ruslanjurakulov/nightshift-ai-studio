@@ -30,7 +30,7 @@ export function EffectBanner({ effect, availability, subject }: { effect: Effect
 
   if (availability.state === "unavailable") {
     return (
-      <section aria-labelledby={titleId} className="fx-banner" data-effect={effect.id} data-state="unavailable" role="status">
+      <section aria-labelledby={titleId} className="fx-banner" data-effect={effect.id} data-state="unavailable">
         <EffectFrame effect={effect} label={fx} className="fx-frame fx-banner-art" />
         <div className="fx-banner-body">
           <p className="fx-kind">{fx.banner.label}</p>

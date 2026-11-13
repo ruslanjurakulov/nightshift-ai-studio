@@ -158,7 +158,9 @@ describe("the banner over the composer", () => {
   it("with none of its models open, says nothing was filled and offers only the way back or the plain form", () => {
     const giant = effectById("giant-in-the-city")!;
     render(withI18n(<EffectBanner effect={giant} availability={{ state: "unavailable" }} subject="" />));
-    const status = screen.getByRole("status");
+    const status = document.querySelector<HTMLElement>('[data-state="unavailable"]')!;
+    // Not a live region: it is drawn with the page, so role="status" would announce nothing and only hide the section's name.
+    expect(status.getAttribute("role")).toBeNull();
     expect(status.textContent).toContain(en.effects.banner.unavailableBody);
     expect(within(status).queryByRole("textbox")).toBeNull();
     const hrefs = within(status).getAllByRole("link").map((a) => a.getAttribute("href"));
