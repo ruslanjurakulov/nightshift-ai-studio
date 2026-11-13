@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "c7f8bb97-4725-4878-87a0-17d0b27027a6",
+      "assetId": "e73d75f5-ec8a-5bd6-af10-27741e1a3ae7",
+      "sha256": "adcbed23f93e7d6044e56951eddb82360cffb28f162f9bccef1e5279d8a55a8f",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Street-level cinematic shot at a city traffic light at dusk: a glossy pastel-pink sports car with no logos slowly melts like ice cream into a shiny puddle on the asphalt, pedestrians stare in disbelief; when the light turns green the puddle snaps back up into the car and it drives away. Photoreal, slow motion, wet reflections. Audio: city ambience, a gooey melt, an engine roar.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:48:19Z"
     }
   ]
 }
