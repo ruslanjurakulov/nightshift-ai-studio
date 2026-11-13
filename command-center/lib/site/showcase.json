@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "fcdba478-1a92-497d-adbb-1d2c9701e806",
+      "assetId": "b0f81d99-4170-5184-9fb4-a0a0fa2dbcc8",
+      "sha256": "0d81844a2c1eb2b8a2cd5e440396f052f0109aa3221c82098a980373e1f65535",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Wide cinematic shot: a whole city folds itself out of white paper at golden hour — origami skyscrapers unfold upward, bridges crease into place, paper cars roll out and a flock of paper cranes takes off across the sky; the camera glides forward through the newly folded streets. Magical, crisp paper texture, warm light. Audio: soft paper folding sounds, gentle wind.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:54:30Z"
     }
   ]
 }
