@@ -167,7 +167,7 @@
 /* A row's "Delete" before its confirm: neutral glass, red legend, a red-tinted
    highlight (a white one would cost the red legend its contrast in the dark). */
 :where(body:has(.app-shell)) .btn-danger-quiet {
-  --g-sheen-on: color-mix(in srgb, var(--ns-tally) 12%, transparent);
+  --g-sheen-on: color-mix(in srgb, var(--ns-tally) 5%, transparent); /* 12% measured 4.26:1 in the dark */
   --g-tint-hover: var(--glass-tint);
 }
 
@@ -388,6 +388,8 @@
   --g-tint: var(--g-tint-hover);
 }
 :where(body:has(.app-shell)) .btn-sky:focus-visible::before { opacity: 1; }
+/* The quiet key's muted legend measured 3.8:1 on the lit tint: focused, it takes the full ink, as on hover. */
+:where(body:has(.app-shell)) .btn-sky.is-quiet:focus-visible { color: var(--color-fg); }
 
 @media (prefers-reduced-motion: no-preference) {
   /* The highlight that follows the pointer: a mouse or a pen, never a finger. */
