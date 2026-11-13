@@ -39,6 +39,194 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T16:05:40Z"
+    },
+    {
+      "jobId": "f00c9666-0906-40cc-90d2-dd69680d5077",
+      "assetId": "3ccf9fa4-15d2-5fb6-a0ff-6603390887b1",
+      "sha256": "906e053b5c8f83c87ee7b73c844bf2b1f41d1d6bddd2dabf375d14bceafc2cbb",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "First-person POV, handheld action-camera footage walking into a bustling ancient Mediterranean harbor market at sunrise, about 2,000 years ago: wooden merchant ships with linen sails behind, stalls stacked with amphorae, figs and fish, merchants in wool tunics seen from behind and in profile calling out, a goat crossing the path, dust glowing in low golden light. Natural head bob, slight wide-angle distortion, documentary travel-vlog feel, 16mm lens.",
+      "createdAt": "2026-11-13T15:33:25Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:03:53Z"
+    },
+    {
+      "jobId": "bf349995-6836-47fe-9481-a433b4fccb04",
+      "assetId": "1fdcb965-54c2-5987-8ba5-dc5e313ff461",
+      "sha256": "240010693f0830b5f7ea1f4cba171bad81b10b4dbf83a6a6c63f928144d6d0f4",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Extreme close-up, vertical: a sharp chef's knife slowly slices through a dome cake made of translucent ruby-red glass on a white marble board. The blade crunches through with crisp crackling; the cut reveals a glowing layered interior of amber and pink glass like jelly, and thin shards tinkle onto the board. Soft diffused top light, glossy reflections, 100mm macro lens, shallow depth of field, static camera. Audio: crisp glass crunch, tinkling shards, no music.",
+      "createdAt": "2026-11-13T16:17:46Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:06:14Z"
+    },
+    {
+      "jobId": "826322ba-3ac9-4030-bc19-367b5ae1277a",
+      "assetId": "21af8bbf-dba8-5cde-b6f1-c371bbc8a2b2",
+      "sha256": "2ad03e430e6eaf7615ee2e2a1776fff6357276328dfb7ea14edc17a14795ede1",
+      "modelId": "minimax-h3-lite",
+      "modelName": "MiniMax H3 Lite",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Grainy black-and-white night-vision security camera footage, fixed high wide angle looking down on a suburban backyard. Three raccoons climb a children's plastic slide one after another and slide down; the last one tumbles off the end, rolls, gets up and runs back to the ladder for another turn. Infrared glow, slight fisheye distortion, compression artifacts, white timestamp \"02:14:37\" in the top corner, static camera. Audio: crickets, soft plastic thumps.",
+      "createdAt": "2026-11-13T16:17:46Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Lite",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:07:54Z"
+    },
+    {
+      "jobId": "0e7b89cb-282b-43b8-8777-55001b398f67",
+      "assetId": "a0ce87ee-c473-56e4-9c14-300ead2b4d7e",
+      "sha256": "f8b5924ee522f075330b293694036a8f6aaac1739ba1c296e4cf30eb0b3a7e96",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Inside a softly lit refrigerator at night, photorealistic anthropomorphic fruit characters with subtle expressive faces: a glossy lemon with wide, teary eyes turns slowly toward a ripe avocado sitting beside it on the glass shelf. The lemon whispers, \"You told me you were ripe.\" The avocado looks away, ashamed. Dramatic soap-opera close-up, slow push-in, cool blue fridge light with a warm rim light, condensation on the shelf, 85mm lens, shallow depth of field. Audio: a dramatic violin sting over a low fridge hum.",
+      "createdAt": "2026-11-13T16:24:04Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:09:19Z"
+    },
+    {
+      "jobId": "5778bf5a-f751-472b-bbc0-c59b10567d32",
+      "assetId": "46fd58c4-040d-5eea-a660-ca30b927b285",
+      "sha256": "d63f8375287ee68ffec37c5c9ed75943851012ceaec9f90376f78b2702436345",
+      "modelId": "minimax-h3-highspeed",
+      "modelName": "MiniMax H3 Highspeed",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Macro tilt-shift shot, vertical: on a real cast-iron pan on a kitchen stove, a team of thumb-sized chefs in white uniforms cook breakfast. Two roll a cherry tomato like a boulder, one cracks a quail egg as big as himself onto the sizzling pan, another flips a strip of bacon with full-body effort. Warm kitchen light, rising steam, 100mm macro, shallow depth of field, hyper-real miniature world. Audio: sizzling oil, tiny clinks.",
+      "createdAt": "2026-11-13T16:24:04Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Highspeed",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:11:01Z"
     }
   ]
 }

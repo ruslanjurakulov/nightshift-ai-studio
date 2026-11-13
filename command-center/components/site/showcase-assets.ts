@@ -11,7 +11,42 @@ import s0Mp4 from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-2548850382
 import s0Webm from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip.webm";
 import s0SmMp4 from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip-sm.mp4";
 import s0SmWebm from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip-sm.webm";
+import s1Poster from "@/components/site/showcase/f00c9666-0906-40cc-90d2-dd69680d5077/poster.webp";
+import s1PosterSm from "@/components/site/showcase/f00c9666-0906-40cc-90d2-dd69680d5077/poster-sm.webp";
+import s1Mp4 from "@/components/site/showcase/f00c9666-0906-40cc-90d2-dd69680d5077/clip.mp4";
+import s1Webm from "@/components/site/showcase/f00c9666-0906-40cc-90d2-dd69680d5077/clip.webm";
+import s1SmMp4 from "@/components/site/showcase/f00c9666-0906-40cc-90d2-dd69680d5077/clip-sm.mp4";
+import s1SmWebm from "@/components/site/showcase/f00c9666-0906-40cc-90d2-dd69680d5077/clip-sm.webm";
+import s2Poster from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/poster.webp";
+import s2PosterSm from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/poster-sm.webp";
+import s2Mp4 from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/clip.mp4";
+import s2Webm from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/clip.webm";
+import s2SmMp4 from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/clip-sm.mp4";
+import s2SmWebm from "@/components/site/showcase/bf349995-6836-47fe-9481-a433b4fccb04/clip-sm.webm";
+import s3Poster from "@/components/site/showcase/826322ba-3ac9-4030-bc19-367b5ae1277a/poster.webp";
+import s3PosterSm from "@/components/site/showcase/826322ba-3ac9-4030-bc19-367b5ae1277a/poster-sm.webp";
+import s3Mp4 from "@/components/site/showcase/826322ba-3ac9-4030-bc19-367b5ae1277a/clip.mp4";
+import s3Webm from "@/components/site/showcase/826322ba-3ac9-4030-bc19-367b5ae1277a/clip.webm";
+import s3SmMp4 from "@/components/site/showcase/826322ba-3ac9-4030-bc19-367b5ae1277a/clip-sm.mp4";
+import s3SmWebm from "@/components/site/showcase/826322ba-3ac9-4030-bc19-367b5ae1277a/clip-sm.webm";
+import s4Poster from "@/components/site/showcase/0e7b89cb-282b-43b8-8777-55001b398f67/poster.webp";
+import s4PosterSm from "@/components/site/showcase/0e7b89cb-282b-43b8-8777-55001b398f67/poster-sm.webp";
+import s4Mp4 from "@/components/site/showcase/0e7b89cb-282b-43b8-8777-55001b398f67/clip.mp4";
+import s4Webm from "@/components/site/showcase/0e7b89cb-282b-43b8-8777-55001b398f67/clip.webm";
+import s4SmMp4 from "@/components/site/showcase/0e7b89cb-282b-43b8-8777-55001b398f67/clip-sm.mp4";
+import s4SmWebm from "@/components/site/showcase/0e7b89cb-282b-43b8-8777-55001b398f67/clip-sm.webm";
+import s5Poster from "@/components/site/showcase/5778bf5a-f751-472b-bbc0-c59b10567d32/poster.webp";
+import s5PosterSm from "@/components/site/showcase/5778bf5a-f751-472b-bbc0-c59b10567d32/poster-sm.webp";
+import s5Mp4 from "@/components/site/showcase/5778bf5a-f751-472b-bbc0-c59b10567d32/clip.mp4";
+import s5Webm from "@/components/site/showcase/5778bf5a-f751-472b-bbc0-c59b10567d32/clip.webm";
+import s5SmMp4 from "@/components/site/showcase/5778bf5a-f751-472b-bbc0-c59b10567d32/clip-sm.mp4";
+import s5SmWebm from "@/components/site/showcase/5778bf5a-f751-472b-bbc0-c59b10567d32/clip-sm.webm";
 
 export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
   "a04d5d55-27ef-4cae-95a2-25488503829e": { poster: s0Poster.src, posterSm: s0PosterSm.src, clip: { mp4: s0Mp4, webm: s0Webm, smMp4: s0SmMp4, smWebm: s0SmWebm } },
+  "f00c9666-0906-40cc-90d2-dd69680d5077": { poster: s1Poster.src, posterSm: s1PosterSm.src, clip: { mp4: s1Mp4, webm: s1Webm, smMp4: s1SmMp4, smWebm: s1SmWebm } },
+  "bf349995-6836-47fe-9481-a433b4fccb04": { poster: s2Poster.src, posterSm: s2PosterSm.src, clip: { mp4: s2Mp4, webm: s2Webm, smMp4: s2SmMp4, smWebm: s2SmWebm } },
+  "826322ba-3ac9-4030-bc19-367b5ae1277a": { poster: s3Poster.src, posterSm: s3PosterSm.src, clip: { mp4: s3Mp4, webm: s3Webm, smMp4: s3SmMp4, smWebm: s3SmWebm } },
+  "0e7b89cb-282b-43b8-8777-55001b398f67": { poster: s4Poster.src, posterSm: s4PosterSm.src, clip: { mp4: s4Mp4, webm: s4Webm, smMp4: s4SmMp4, smWebm: s4SmWebm } },
+  "5778bf5a-f751-472b-bbc0-c59b10567d32": { poster: s5Poster.src, posterSm: s5PosterSm.src, clip: { mp4: s5Mp4, webm: s5Webm, smMp4: s5SmMp4, smWebm: s5SmWebm } },
 };
