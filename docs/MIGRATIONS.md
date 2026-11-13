@@ -1011,7 +1011,8 @@ unchanged.
   revoked grant 30 days, and the 20-connection cap counts live grants only, so register → Allow → redeem → revoke kept a registration
   alive a month per cycle; one Free account could fill a class's cap (vendor 60 000 in ~30 h, ordinary 20 000 in ~67 h) and close
   registration for everyone. Now `oauth_gc` (0093's body plus one hunk) also deletes a client whose every grant ended (revoked or past
-  its absolute expiry) more than 24 hours ago, with those grants, and `oauth_decide_authorization` refuses
+  its absolute expiry) more than 24 hours ago, with those grants (not while someone has its consent screen open, and not within a
+  day of its last authorization, so a vendor reusing one client id never turns a person's Allow into `expired`), and `oauth_decide_authorization` refuses
   `too_many_connections_today` after 50 approvals per person or 200 per workspace in a rolling day, revoked ones included (a
   per-workspace advisory lock keeps the counts exact). A class then holds the last 24 hours of registrations (48 000 vendor, 7 200
   ordinary, under the caps) plus at most 40 rows per account (20 live, 20 ended less than a day ago): a flood at the ceiling cannot

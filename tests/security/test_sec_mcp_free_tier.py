@@ -622,6 +622,41 @@ def test_connect_and_revoke_in_a_loop_stops_at_the_daily_cap_and_the_rows_go_a_d
     assert approve(db, uid)["ok"] is True
 
 
+def test_a_consent_in_progress_survives_the_collection_and_the_client_goes_once_it_expires(db):
+    # Delta review of #713: one person connected and revoked a day ago; another opens the consent screen on the SAME client (a
+    # vendor that reuses one client id, as ChatGPT does). A collection triggered by anyone's registration must not delete
+    # the client (that cascades to the open request and turns their Allow into `expired`).
+    first, _, _ = signup(db)
+    second, _, _ = signup(db)
+
+    def ended_a_day_ago():
+        c = connect(db, first)
+        db.user(first, "select public.oauth_revoke_grant(%s)", [c["grant"]])
+        age(db, 25, grants=[c["grant"]], clients=[c["client"]])
+        return c["client"]
+
+    def present(cid):
+        return db.su("select count(*) from public.oauth_clients where client_id = %s", [cid])[0][0] == 1
+
+    kept = ended_a_day_ago()
+    _, challenge = pkce()
+    _, secret = begin(db, second, kept, challenge)
+    client(db)  # someone else's registration runs the collector
+    db.su("select public.oauth_gc()")
+    assert present(kept)
+    dec = db.user(second, "select public.oauth_decide_authorization(%s, true, 500::numeric, %s)", [sha(secret), sha("code-" + secrets.token_urlsafe(16))])
+    assert dec["ok"] is True and dec["allowed"] is True, dec
+
+    gone = ended_a_day_ago()
+    _, challenge = pkce()
+    begin(db, second, gone, challenge)
+    db.su("select public.oauth_gc()")
+    assert present(gone)  # still on the consent screen
+    db.su("update public.oauth_auth_requests set expires_at = now() - interval '1 second' where client_id = %s", [gone])
+    db.su("select public.oauth_gc()")
+    assert not present(gone)  # the request expired: nothing keeps the client any more
+
+
 def test_a_workspace_is_capped_across_its_admins(db):
     uid, org, _ = signup(db)
     cap = limits(db)["max_new_grants_per_org_day"]

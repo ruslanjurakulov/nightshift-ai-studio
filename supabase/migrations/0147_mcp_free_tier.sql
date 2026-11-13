@@ -145,7 +145,7 @@ begin
       ['public.oauth_my_grants()', '1ce7826facd2f15a241d594bbed9768c', '595922d17683b2e0620612f60c5d10c3'],
       ['public.oauth_limits()', '26991d89b0f198dd4016b5156a8b0be1', 'c2d715dcc24280d63b065ca0bf6db92d'],
       ['public.oauth_register_client(text, text[], text)', '4ca23a05570337e930413dd109b7c78c', '51d0b4f6ee421aa0fd276b09c108da2f'],
-      ['public.oauth_gc()', '4db1c8c636cef1a4413c80a0cb48b9b5', 'db1e58fa3381bced067a36b44b476ebf'],
+      ['public.oauth_gc()', '4db1c8c636cef1a4413c80a0cb48b9b5', 'b5d0423a7df82812106021e05488d9ad'],
       ['public.api_create_video(text, text, jsonb, text, text, text)', 'c054107143ba7bbfaaaff861d5575ecb', 'cba47be1a674f5cea3b5d7443bc31bab'],
       ['public.api_request_download(text, text, text, text, text, text)', 'b89909c57a27a5ab7d0fa3368f1a3677', '055003f8a2fb5390bbd1b5f7820e6e2e']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(trio[1]);
@@ -729,6 +729,11 @@ begin
        and not exists (select 1 from public.oauth_grants g where g.client_id = c.client_id
                         and coalesce(g.revoked_at, 'infinity'::timestamptz) >= now() - interval '24 hours'
                         and g.absolute_expires_at >= now() - interval '24 hours')
+       -- Not while a person is on the consent screen for it (deleting the client would cascade to that request and turn
+       -- their Allow into `expired`: a vendor that reuses one client id, as ChatGPT does, reconnecting after a day), nor
+       -- within a day of its last authorization.
+       and not exists (select 1 from public.oauth_auth_requests r where r.client_id = c.client_id and r.expires_at > now())
+       and coalesce(c.last_authorized_at, c.created_at) < now() - interval '24 hours'
      limit 200);
   if cardinality(v_ended) > 0 then
     delete from public.oauth_grants g where g.client_id = any (v_ended)
@@ -1095,7 +1100,7 @@ begin
       ['public.oauth_ctx(text, text, text)', 'fe42c9e4f53a6c9aaba40077ce905cdc', ''],
       ['public.oauth_check_credit_put(uuid, text)', 'b50cfb0cfaa7d8a57512f3381d6b72e3', ''],
       ['public.oauth_check_credit_take(uuid, text)', '7092b99bdaef02719f247dcd26d77c08', ''],
-      ['public.oauth_gc()', 'db1e58fa3381bced067a36b44b476ebf', ''],
+      ['public.oauth_gc()', 'b5d0423a7df82812106021e05488d9ad', ''],
       ['public.oauth_check(text, text)', '7b53e3c9b4b6c6c74daa9eff3fe028bc', 'anon'],
       ['public.oauth_register_client(text, text[], text)', '51d0b4f6ee421aa0fd276b09c108da2f', 'anon'],
       ['public.oauth_exchange_code(text, uuid, text, text, text, text, text)', '1d682787edc3c06691d537cd65039842', 'anon'],
@@ -1167,6 +1172,14 @@ begin
      or not exists (select 1 from pg_constraint k where k.conrelid = 'public.oauth_check_credits'::regclass and k.contype = 'c'
                      and position('^req_[A-Za-z0-9]{24}$' in pg_get_constraintdef(k.oid)) > 0) then
     raise exception '0147 end state: oauth_check_credits is not (grant_id uuid -> oauth_grants on delete cascade, request_id text checked to the req_ shape, created_at), keyed by (grant_id, request_id)';
+  end if;
+  if (select array_agg(a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull order by a.attnum)
+        from pg_attribute a where a.attrelid = 'public.oauth_mcp_entitlement_before_0147'::regclass and a.attnum > 0 and not a.attisdropped)
+       is distinct from array['plan_id:text:true', 'value:jsonb:true', 'saved_at:timestamp with time zone:true']
+     or not exists (select 1 from pg_constraint k where k.conrelid = 'public.oauth_mcp_entitlement_before_0147'::regclass and k.contype = 'p'
+                     and (select array_agg(a.attname) from unnest(k.conkey) x(n)
+                            join pg_attribute a on a.attrelid = k.conrelid and a.attnum = x.n) = array['plan_id']::name[]) then
+    raise exception '0147 end state: oauth_mcp_entitlement_before_0147 is not (plan_id text primary key, value jsonb, saved_at)';
   end if;
   if not (select relrowsecurity from pg_class where oid = 'public.oauth_check_credits'::regclass)
      or not (select relrowsecurity from pg_class where oid = 'public.oauth_mcp_entitlement_before_0147'::regclass)

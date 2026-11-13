@@ -57,7 +57,7 @@ begin
       ['public.api_request_download(text, text, text, text, text, text)', '055003f8a2fb5390bbd1b5f7820e6e2e'],
       ['public.oauth_check_credit_put(uuid, text)', 'b50cfb0cfaa7d8a57512f3381d6b72e3'],
       ['public.oauth_check_credit_take(uuid, text)', '7092b99bdaef02719f247dcd26d77c08'],
-      ['public.oauth_gc()', 'db1e58fa3381bced067a36b44b476ebf']] loop
+      ['public.oauth_gc()', 'b5d0423a7df82812106021e05488d9ad']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(pair[1]);
     if h is distinct from pair[2] then
       raise exception 'rollback 0147: % is not 0147''s body (md5 %): read the live body first', pair[1], h;
