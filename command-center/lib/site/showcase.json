@@ -227,6 +227,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "f92a89ed-2145-4342-acd5-f24b8805a0f9",
+      "assetId": "45a5152e-9c55-55bd-8ee5-4d3a2dee19ee",
+      "sha256": "6f9e8885c1f557aa8d2cfb7f87ea9462ae056c56cd8342ca9ecd200593c0a0b0",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Premium 3D product commercial, wide shot: a sleek matte-black sneaker with no logo floats and slowly rotates in a dark studio, then bursts in slow motion into thousands of glowing neon paint droplets in electric blue, magenta and lime that swirl around the camera and snap back together into the shoe. Hard rim light, glossy reflections, ultra sharp, high-end ad energy. Audio: deep whoosh, liquid splash, bass hit.",
+      "createdAt": "2026-11-13T17:45:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:19:38Z"
     }
   ]
 }
