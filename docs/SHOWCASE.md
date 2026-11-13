@@ -4,8 +4,9 @@ The landing page's "Made with Nightshift" gallery shows real generations made in
 "AI-generated", names the model, links the maker's required credit (Runway: "Powered by Runway"), shows the prompt and the day
 it was made, and has a **Try this prompt** button (ru "Попробовать этот запрос", uz "Shu soʻrovni sinab koʻrish") that opens the
 Studio with that tool and prompt in the form, and with the model too when customers can use it. A model only the operator can
-try yet (registry `operator_preview`, today both Runway models) is left out of the link, and its card says "This model is coming
-to the Studio". A signed-out visitor goes through sign-up first; the form opens after /welcome. The button only fills the form:
+try yet (registry `operator_preview`, today both Runway models) is left out of the link, and its card says "This model is not
+in the Studio yet"; once a model is past its announced shutdown date, the same happens with "This model is no longer in the
+Studio". A signed-out visitor goes through sign-up first; the form opens after /welcome. The button only fills the form:
 nothing is priced or started until the person presses Generate and sees the price.
 
 The gallery is empty, and renders nothing, until the first sample is merged. The stock picture slots are unchanged; a later
@@ -29,7 +30,8 @@ change can point a slot at a sample.
    on the site after the next deploy.
 
 Running it again for the same job does nothing: a job already in the data file is a no-op, and a job with an open PR gets
-no second one (a branch left from an earlier run without an open PR gets its PR).
+no second one. A branch `showcase/<id>` left from an earlier run without an open PR (for example one you closed) stops the run
+with an error: delete the branch and run again. Run it from main; a run dispatched on another branch fails and says so.
 
 **One at a time:** every export edits the same two files (`showcase.json`, `showcase-assets.ts`), so two showcase PRs open at
 once conflict. Merge one before exporting the next.
@@ -40,7 +42,7 @@ Before it downloads anything: the id is a uuid and names the job or the library 
 operator's organization (`00000000-0000-0000-0000-000000000001`), is a generation and `completed`; no style kit; the model (the routed one on Auto) is
 in `schemas/model_registry.json`, its vendor terms are cleared (no `terms_gate`) and it is not past an announced
 `shutdown.on`; the output is a library file this job made, not deleted, an image or a video of at most
-30 s; every input picture is our AI art (matched by sha256) or the output of another completed operator job, followed back to
+30 s (measured with ffprobe on the downloaded file; a length that cannot be read is refused); every input picture is our AI art (matched by sha256) or the output of another completed operator job, followed back to
 its first picture. Then it downloads the file through the Library's own signed link (five minutes) and refuses it unless its
 sha256 is the stored one. It also refuses an entry the site would not show (a prompt over 4000 characters as the page counts
 them), rather than cutting it.

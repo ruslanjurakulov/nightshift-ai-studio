@@ -15,6 +15,7 @@ export const FIXTURE_ENTRY: ShowcaseEntry = {
   provider: "runway",
   // Runway's models are operator previews in the registry today (tests/site-showcase.test.tsx checks the flag matches).
   operatorPreview: true,
+  shutdownOn: null,
   attribution: { text: "Powered by Runway", url: "https://runway.com" },
   capability: "i2v",
   kind: "video",

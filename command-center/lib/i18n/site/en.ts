@@ -181,7 +181,7 @@ export const siteEn = {
   /**
    * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
    * here; each card names its own, from the data file. "Try this prompt" only opens the Studio form. Nothing here says a model is on
-   * sale: some samples are made with models only the operator can try yet (`coming` on their card).
+   * sale: some samples are made with models only the operator can try yet (`notInStudio` on their card).
    */
   gallery: {
     label: "Made in the Studio",
@@ -193,10 +193,12 @@ export const siteEn = {
     noPrompt: "No words: made from the picture alone.",
     made: "Made {date}",
     try: "Try this prompt",
-    /** The button's accessible name, so each card's button says which sample it opens. */
+    /** The button's accessible name where its link names the model too, so each card's button says which sample it opens. */
     tryAria: "Try this prompt: {model}",
     /** On a card whose model only the operator can try yet: its button opens the tool with the words, without the model. */
-    coming: "This model is coming to the Studio",
+    notInStudio: "This model is not in the Studio yet",
+    /** On a card whose model the vendor has shut down (its announced date has come): the button no longer names it. */
+    gone: "This model is no longer in the Studio",
     tryNote: "“Try this prompt” opens the Studio with that tool and those words. Before anything starts, the Studio shows which model it will use and the price.",
     tryNoteSignedOut: "“Try this prompt” asks you to create an account first, then opens the Studio with that tool and those words. Nothing starts until you press Generate there, and the price is shown before you do.",
     altClip: "AI-generated clip made by {model}",

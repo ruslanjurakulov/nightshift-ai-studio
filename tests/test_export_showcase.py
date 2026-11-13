@@ -115,6 +115,7 @@ class RefusalsTest(unittest.TestCase):
         self.assertEqual(p["createdAt"], "2026-11-12T09:30:00Z")
         # Runway's models are operator previews: the card will say "coming" and the link will not name the model.
         self.assertIs(p["operatorPreview"], True)
+        self.assertIsNone(p["shutdownOn"])
 
     def test_a_customers_job_is_never_ours_to_show(self):
         self.refused(world(org_id=CUSTOMER), "not_operator_org")
@@ -130,7 +131,10 @@ class RefusalsTest(unittest.TestCase):
     def test_a_model_past_its_announced_shutdown_is_refused_from_that_day(self):
         # openai-gpt-image-2: shutdown.on 2027-02-10 in the registry, no terms gate.
         self.assertEqual(REGISTRY["openai-gpt-image-2"]["shutdown"]["on"], "2027-02-10")
-        self.assertIs(plan(world(requested_model="openai-gpt-image-2"), today=date(2027, 2, 9))["operatorPreview"], False)
+        before = plan(world(requested_model="openai-gpt-image-2"), today=date(2027, 2, 9))
+        self.assertIs(before["operatorPreview"], False)
+        # Recorded, so the site's card stops naming the model from that day (lib/site/showcase.ts modelLeftOut).
+        self.assertEqual(before["shutdownOn"], "2027-02-10")
         with self.assertRaises(x.Refusal) as cm:
             plan(world(requested_model="openai-gpt-image-2"), today=date(2027, 2, 10))
         self.assertEqual(cm.exception.code, "model_shut_down")
@@ -215,6 +219,13 @@ class TextTest(unittest.TestCase):
         z = lambda *cps: "".join(chr(c) for c in cps)  # noqa: E731 — built from code points so the source shows what they are
         hidden = "lan" + z(0x200B) + "terns" + z(0xFEFF) + " " + z(0x2063) + "rise" + z(0xE0041, 0xE0042, 0x202E, 0x200E)
         self.assertEqual(x.clean_text(hidden, 100), "lanterns rise")
+        # The same set as the site's (lib/creative/improve.ts): soft hyphen, Arabic letter mark, Mongolian vowel separator,
+        # supplementary variation selectors, and runs of variation selectors.
+        more = "te" + z(0xAD) + "a" + z(0x61C) + z(0x180E) + " po" + z(0xE0100) + "t" + z(0xFE00, 0xFE01, 0xFE0F)
+        self.assertEqual(x.clean_text(more, 100), "tea pot")
+        # One variation selector after a symbol is how an emoji is written, and it stays.
+        heart = "love " + z(0x2764, 0xFE0F)
+        self.assertEqual(x.clean_text(heart, 100), heart)
 
     def test_the_cut_counts_as_the_page_does_and_never_halves_a_character(self):
         lantern = chr(0x1F3EE)
@@ -568,16 +579,31 @@ class WorkflowTest(unittest.TestCase):
     def test_only_an_open_pull_request_is_a_no_op(self):
         run = "\n".join(s.get("run", "") for s in self.doc["jobs"]["publish"]["steps"])
         self.assertIn('gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number -q length', run)
-        # The no-op exit comes before the branch check; a branch without an open PR still reaches `gh pr create`.
-        self.assertLess(run.index("exit 0"), run.index("branches/${branch}"))
-        self.assertGreater(run.index("gh pr create"), run.index("branches/${branch}"))
+        # The open PR is the only no-op; a branch left without one stops the run (it is never reused or its PR reopened).
         self.assertEqual(run.count("exit 0"), 1)
+        self.assertLess(run.index("exit 0"), run.index("branches/${branch}"))
+        branch_check = run[run.index("branches/${branch}"):]
+        self.assertIn("::error::branch ${branch} exists without an open pull request", branch_check)
+        self.assertLess(branch_check.index("exit 1"), branch_check.index("push origin"))
+        self.assertLess(branch_check.index("exit 1"), branch_check.index("gh pr create"))
 
-    def test_it_runs_only_from_main_with_pinned_installs_and_values_that_cannot_become_options(self):
+    def test_a_run_off_main_fails_red_instead_of_skipping_green(self):
         export = self.doc["jobs"]["export"]
-        self.assertEqual(export["if"], "github.ref == 'refs/heads/main'")
+        self.assertNotIn("if", export)
+        first = export["steps"][0]
+        self.assertEqual(first["if"], "github.ref != 'refs/heads/main'")
+        self.assertIn("::error::", first["run"])
+        self.assertIn("exit 1", first["run"])
+
+    def test_publish_commits_on_the_commit_the_export_read_not_on_main_as_it_is_now(self):
+        # A showcase PR merged between the two jobs would otherwise be reverted by this run's whole-file data file and module.
         checkout = next(s for s in self.doc["jobs"]["publish"]["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
-        self.assertEqual(checkout["with"]["ref"], "main")
+        self.assertEqual(checkout["with"]["ref"], "${{ github.sha }}")
+        export_checkout = next(s for s in self.doc["jobs"]["export"]["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        self.assertNotIn("ref", export_checkout.get("with") or {})
+
+    def test_installs_are_pinned_and_values_cannot_become_options(self):
+        export = self.doc["jobs"]["export"]
         runs = "\n".join(s.get("run", "") for s in export["steps"])
         self.assertIn("pip install -c constraints.txt", runs)
         for flag in ('--job-id="$JOB_ID"', '--slot="$SLOT"', '--caption="$CAPTION"'):
@@ -592,6 +618,57 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn("--verify-export", run)
 
 
+class ClipLengthTest(unittest.TestCase):
+    """The length is measured on the downloaded file; the row's duration_s may be null, and -t is only a backstop."""
+
+    class Done:
+        def __init__(self, code, out):
+            self.returncode, self.stdout = code, out
+
+    def measure(self, code, out):
+        return x.clip_seconds("ffprobe", Path("clip"), "video/mp4", run=lambda *a, **kw: self.Done(code, out))
+
+    def test_a_clip_within_the_limit_passes(self):
+        self.assertEqual(self.measure(0, b"5.041667\n"), 5.041667)
+
+    def test_a_clip_over_the_limit_is_refused_even_when_the_row_said_nothing(self):
+        with self.assertRaises(x.Refusal) as cm:
+            self.measure(0, b"31.5\n")
+        self.assertEqual(cm.exception.code, "clip_too_long")
+
+    def test_a_length_that_cannot_be_read_is_refused_not_trimmed(self):
+        for code, out in ((0, b"N/A\n"), (0, b""), (1, b"5.0\n"), (0, b"nan\n"), (0, b"0\n"), (0, b"inf\n")):
+            with self.subTest(out=out, code=code), self.assertRaises(x.Refusal) as cm:
+                self.measure(code, out)
+            self.assertEqual(cm.exception.code, "clip_length_unknown")
+
+    def test_a_missing_ffprobe_is_a_refusal(self):
+        def missing(*a, **kw):
+            raise FileNotFoundError("ffprobe")
+
+        with self.assertRaises(x.Refusal) as cm:
+            x.clip_seconds("ffprobe", Path("clip"), "video/mp4", run=missing)
+        self.assertEqual(cm.exception.code, "clip_length_unknown")
+
+    def test_derivatives_measure_first_and_write_nothing_when_refused(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        ran = []
+
+        def too_long(*a):
+            raise x.Refusal("clip_too_long", "x")
+
+        with self.assertRaises(x.Refusal):
+            x.make_derivatives(tmp / "src", "video", "video/mp4", tmp / "out", run=ran.append, measure=too_long)
+        self.assertEqual(ran, [])
+        self.assertFalse((tmp / "out").exists())
+
+    def test_the_probe_is_forced_to_the_files_type_and_reads_no_other_protocol(self):
+        cmd = x.probe_command("ffprobe", Path("clip"), "video/mp4")
+        self.assertEqual(cmd[cmd.index("-f") + 1], "mov")
+        self.assertEqual(cmd[cmd.index("-protocol_whitelist") + 1], "file")
+
+
 @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is not installed here")
 class DerivativesTest(unittest.TestCase):
     def test_a_real_clip_becomes_the_four_renditions_and_two_posters(self):
@@ -600,6 +677,7 @@ class DerivativesTest(unittest.TestCase):
         src = tmp / "src.mp4"
         subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=24:duration=1",
                         "-pix_fmt", "yuv420p", str(src)], check=True)
+        self.assertAlmostEqual(x.clip_seconds("ffprobe", src, "video/mp4"), 1.0, places=1)
         size = x.make_derivatives(src, "video", "video/mp4", tmp / "out")
         # No rendition runs past a sample's length, whatever the file says about itself.
         for cmd in x.video_commands("ffmpeg", src, "video/mp4", tmp / "out"):

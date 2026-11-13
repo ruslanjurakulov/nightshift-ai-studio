@@ -23,7 +23,7 @@ vi.mock("next/link", () => ({
 
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import raw from "@/lib/site/showcase.json";
-import { SHOWCASE_ENTRIES, parseShowcase, parseShowcaseEntry, showcaseModels } from "@/lib/site/showcase";
+import { SHOWCASE_ENTRIES, modelLeftOut, parseShowcase, parseShowcaseEntry, showcaseModels } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseGallery, showcaseItems } from "@/components/site/ShowcaseGallery";
 import { cutWords, signupTryHref, studioTryHref, tryHref } from "@/lib/site/showcase-link";
@@ -39,7 +39,7 @@ afterEach(cleanup);
 
 const ROOT = join(__dirname, "..");
 const REGISTRY = JSON.parse(readFileSync(join(ROOT, "..", "schemas", "model_registry.json"), "utf8")) as {
-  models: { id: string; display_name: string; provider: string; capabilities: string[]; attribution: { text: string; url: string } | null; operator_preview?: boolean; terms_gate?: string | null }[];
+  models: { id: string; display_name: string; provider: string; capabilities: string[]; attribution: { text: string; url: string } | null; operator_preview?: boolean; terms_gate?: string | null; shutdown?: { on: string } }[];
 };
 const MODELS = new Map(REGISTRY.models.map((m) => [m.id, m]));
 const t = dictionaries.en;
@@ -67,6 +67,10 @@ describe("the data file", () => {
       expect(e.operatorPreview, e.modelId).toBe(m!.operator_preview === true);
       // The export refuses a model whose vendor terms are not cleared for public display.
       expect(m!.terms_gate ?? null, e.modelId).toBeNull();
+      // The shutdown date is the registry's, and no sample on the site is of a model already shut down: retire the sample, or the
+      // card would advertise a model nobody can use (it already stops naming it in its link from that day).
+      expect(e.shutdownOn, e.modelId).toBe(m!.shutdown?.on ?? null);
+      if (e !== FIXTURE_ENTRY && e.shutdownOn) expect(e.shutdownOn > new Date().toISOString().slice(0, 10), `${e.modelId} is past its shutdown`).toBe(true);
       expect(e.jobId).toMatch(/^[0-9a-f-]{36}$/);
       expect(e.cost.usdEstimate === null || (typeof e.cost.usdEstimate === "number" && e.cost.usdEstimate >= 0)).toBe(true);
       if (e.cost.rows === 0) expect(e.cost.usdEstimate).toBeNull();
@@ -99,6 +103,8 @@ describe("the data file", () => {
       { ...FIXTURE_ENTRY, kind: "audio" },
       { ...FIXTURE_ENTRY, createdAt: "yesterday" },
       { ...FIXTURE_ENTRY, operatorPreview: undefined },
+      { ...FIXTURE_ENTRY, shutdownOn: undefined },
+      { ...FIXTURE_ENTRY, shutdownOn: "soon" },
       // Over the limit as the page counts it (UTF-16 units): 2001 emoji are 4002 units.
       { ...FIXTURE_ENTRY, prompt: "🏮".repeat(2001) },
     ];
@@ -132,11 +138,14 @@ describe("the gallery", () => {
     expect(card.textContent).toContain(FIXTURE_ENTRY.prompt);
     expect(card.querySelector("time")?.getAttribute("dateTime")).toBe(FIXTURE_ENTRY.createdAt);
     expect(card.querySelector("img")?.getAttribute("alt")).toContain("Runway Gen-4.5");
-    const tryIt = within(card).getByRole("link", { name: new RegExp(`^${d.site.gallery.try}`) });
+    // An operator preview: the card says, as a fact, that the model is not in the Studio, and the button neither names it in its
+    // link nor in its accessible name; it is its visible words, described by the sample's prompt.
+    const tryIt = within(card).getByRole("link", { name: d.site.gallery.try });
     expect(tryIt.getAttribute("href")).toBe(signupTryHref(FIXTURE_ENTRY));
     expect(tryIt.textContent).toBe(d.site.gallery.try);
-    // An operator preview: the card says the model is coming, and the button does not name it.
-    expect(card.querySelector(".nx-gallery-coming")?.textContent).toBe(d.site.gallery.coming);
+    expect(tryIt.hasAttribute("aria-label")).toBe(false);
+    expect(document.getElementById(tryIt.getAttribute("aria-describedby")!)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    expect(card.querySelector(".nx-gallery-unavailable")?.textContent).toBe(d.site.gallery.notInStudio);
     expect(tryIt.getAttribute("href")).not.toContain("model");
     // The heading and the note say what the section is, in this language.
     expect(container.querySelector("h2")?.textContent).toBe(d.site.gallery.title);
@@ -150,12 +159,29 @@ describe("the gallery", () => {
     expect(container.textContent).toContain(t.site.gallery.tryNote);
   });
 
-  it("a model customers can use: the card makes no coming-soon line and the button names the model", () => {
+  it("a model customers can use: no not-available line, and the button names the model in its link and its accessible name", () => {
     const onSale = { ...FIXTURE_ENTRY, modelId: "minimax-hailuo-2.3", modelName: "MiniMax Hailuo 2.3", provider: "minimax", operatorPreview: false, attribution: null };
     const { container } = render(<ShowcaseGallery t={t} locale="en" signedIn entries={[onSale]} files={FIXTURE_FILES} />);
-    expect(container.querySelector(".nx-gallery-coming")).toBeNull();
-    const u = new URL(container.querySelector(".nx-gallery-try")!.getAttribute("href")!, "https://x.test");
-    expect(u.searchParams.get("model")).toBe("minimax-hailuo-2.3");
+    expect(container.querySelector(".nx-gallery-unavailable")).toBeNull();
+    const btn = container.querySelector(".nx-gallery-try")!;
+    expect(new URL(btn.getAttribute("href")!, "https://x.test").searchParams.get("model")).toBe("minimax-hailuo-2.3");
+    expect(btn.getAttribute("aria-label")).toBe("Try this prompt: MiniMax Hailuo 2.3");
+  });
+
+  it("from the vendor's announced shutdown day, the card says the model is no longer in the Studio and stops naming it", () => {
+    const ending = { ...FIXTURE_ENTRY, modelId: "openai-gpt-image-2", modelName: "OpenAI GPT Image 2", provider: "openai", operatorPreview: false, attribution: null, capability: "t2i", shutdownOn: "2027-02-10" };
+    const before = render(<ShowcaseGallery t={t} locale="en" signedIn entries={[ending]} files={FIXTURE_FILES} now={new Date("2027-02-09T23:59:00Z")} />).container;
+    expect(before.querySelector(".nx-gallery-unavailable")).toBeNull();
+    expect(new URL(before.querySelector(".nx-gallery-try")!.getAttribute("href")!, "https://x.test").searchParams.get("model")).toBe("openai-gpt-image-2");
+    cleanup();
+    const after = render(<ShowcaseGallery t={t} locale="en" signedIn entries={[ending]} files={FIXTURE_FILES} now={new Date("2027-02-10T00:00:00Z")} />).container;
+    expect(after.querySelector(".nx-gallery-unavailable")?.textContent).toBe(t.site.gallery.gone);
+    const btn = after.querySelector(".nx-gallery-try")!;
+    expect(new URL(btn.getAttribute("href")!, "https://x.test").searchParams.has("model")).toBe(false);
+    expect(btn.hasAttribute("aria-label")).toBe(false);
+    expect(modelLeftOut(ending, new Date("2027-02-10T00:00:00Z"))).toBe("shut_down");
+    expect(modelLeftOut({ operatorPreview: true, shutdownOn: null })).toBe("preview");
+    expect(modelLeftOut({ operatorPreview: false, shutdownOn: null })).toBeNull();
   });
 
   it("a picture has no clip and no pause button; a sample without words says so instead of showing an empty quote", () => {
@@ -192,7 +218,9 @@ describe("the gallery", () => {
     expect(s.credits.generated).toMatch(AI);
     expect(s.gallery.altClip).toContain("{model}");
     expect(s.gallery.tryAria.startsWith(s.gallery.try)).toBe(true);
-    expect(s.gallery.coming).not.toMatch(PROVIDER_BRANDS);
+    expect(s.gallery.notInStudio + s.gallery.gone).not.toMatch(PROVIDER_BRANDS);
+    // Statements of fact, not promises (CLAUDE.md #5): nothing about when or whether it will come.
+    expect(s.gallery.notInStudio + s.gallery.gone).not.toMatch(/coming|soon|скоро|появится|tez orada|paydo/i);
     // The heading claims nothing about which models are on sale.
     expect(s.gallery.title).toContain("Nightshift");
   });
@@ -264,10 +292,16 @@ describe("Try it", () => {
     expect(new URL(studioTryHref({ ...sample, operatorPreview: false })!, "https://x.test").searchParams.get("model")).toBe(sample.modelId);
   });
 
-  it("zero-width and tag characters never travel in the words", () => {
-    const hidden = `lan${String.fromCodePoint(0x200b)}terns${String.fromCodePoint(0xfeff)} ${String.fromCodePoint(0x2063)}rise${String.fromCodePoint(0xe0041, 0xe0042)}`;
+  it("invisible characters never travel in the words: zero-width, tags, soft hyphen, letter marks, variation-selector runs", () => {
+    const c = (...cps: number[]) => String.fromCodePoint(...cps);
+    const hidden =
+      `lan${c(0x200b)}te${c(0xad)}rns${c(0xfeff)}${c(0x61c)}${c(0x180e)} ${c(0x2063)}ri${c(0xe0100)}se` +
+      `${c(0xe0041, 0xe0042)}${c(0xfe00, 0xfe01, 0xfe0f)}`;
     expect(new URL(studioTryHref({ ...sample, prompt: hidden })!, "https://x.test").searchParams.get("prompt")).toBe("lanterns rise");
     expect(prefillFromImprove(prefillFromQuery("t2v", undefined), { prompt: hidden })!.prompt).toBe("lanterns rise");
+    // One variation selector after a symbol is how an emoji is written, and it stays.
+    const heart = `love ${c(0x2764, 0xfe0f)}`;
+    expect(new URL(studioTryHref({ ...sample, prompt: heart })!, "https://x.test").searchParams.get("prompt")).toBe(heart);
   });
 
   it("a tool the Studio has no form for, or a malformed model id, gets no button", () => {

@@ -72,12 +72,15 @@ SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 MODEL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,39}$")
 SLOT_RE = re.compile(r"^[a-z][a-z0-9.-]{0,40}$")
 #: Never part of a prompt or a note on purpose, and the same set as lib/creative/improve.ts CONTROL: C0/C1 controls (not a line
-#: break or a tab), the bidi overrides and isolates, the zero-width characters and marks, the word joiner and invisible operators,
-#: the byte-order mark, and the tag characters (which can carry hidden text).
+#: break or a tab), the soft hyphen, the Arabic letter mark, the Mongolian vowel separator, the zero-width characters and marks,
+#: the bidi overrides and isolates, the word joiner and invisible operators, the byte-order mark, the tag characters (which can
+#: carry hidden text) and the supplementary variation selectors.
 CONTROL_RE = re.compile(
-    "[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u202a-\\u202e"
-    "\\u2060-\\u2064\\u2066-\\u2069\\ufeff\\U000e0000-\\U000e007f]"
+    "[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e"
+    "\u2060-\u2064\u2066-\u2069\ufeff\U000e0000-\U000e007f\U000e0100-\U000e01ef]"
 )
+#: A variation selector alone is ordinary (U+FE0F after a symbol makes it an emoji); a run of them carries nothing visible.
+VS_RUN_RE = re.compile("[\ufe00-\ufe0f]{2,}")
 
 #: How far back an input picture's own inputs are followed before the chain is refused as too long to vouch for.
 MAX_INPUT_DEPTH = 6
@@ -128,7 +131,7 @@ def clean_text(raw: Any, max_units: int) -> str:
         return ""
     out: List[str] = []
     n = 0
-    for ch in CONTROL_RE.sub("", raw).strip():
+    for ch in VS_RUN_RE.sub("", CONTROL_RE.sub("", raw)).strip():
         n += 2 if ord(ch) > 0xFFFF else 1
         if n > max_units:
             break
@@ -417,6 +420,9 @@ def plan_export(
         # Not on sale yet (the operator may try it): the card then claims nothing about the Studio offering it, and Try it opens
         # the tool without naming the model. tests/site-showcase.test.tsx keeps this equal to the registry's flag.
         "operatorPreview": spec.get("operator_preview") is True,
+        # The vendor's announced shutdown (or None): from that day the site's card stops naming the model in its link and says
+        # it is no longer in the Studio (lib/site/showcase.ts modelLeftOut).
+        "shutdownOn": str(shutdown["on"]) if shutdown and re.match(r"^\d{4}-\d{2}-\d{2}$", str(shutdown.get("on") or "")) else None,
         "attribution": {"text": attribution["text"], "url": attribution["url"]} if attribution and str(attribution.get("url", "")).startswith("https://") else None,
         "capability": str(job.get("capability")),
         "kind": kind,
@@ -502,7 +508,7 @@ def _run(argv: Sequence[str]) -> None:
 
 def video_commands(ffmpeg: str, src: Path, mime: str, out: Path) -> List[List[str]]:
     """The four renditions (the site's clip conventions, scripts/make-site-media.py) and the first frame, from one forced demuxer."""
-    # -t: never more than a sample may run, whatever the file claims about itself.
+    # -t: a backstop only (the length was measured first, clip_seconds); never more than a sample may run.
     base = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime], "-t", str(int(MAX_CLIP_SECONDS)), "-i", str(src)]
     cmds: List[List[str]] = []
     for suffix, w in WIDTHS.items():
@@ -529,7 +535,30 @@ def write_posters(still: Path, out: Path) -> Tuple[int, int]:
     return size
 
 
-def make_derivatives(src: Path, kind: str, mime: str, out: Path, ffmpeg: str = "ffmpeg", run: Callable[[Sequence[str]], None] = _run) -> Tuple[int, int]:
+def probe_command(ffprobe: str, src: Path, mime: str) -> List[str]:
+    return [ffprobe, "-v", "error", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime], "-show_entries", "format=duration", "-of", "csv=p=0", str(src)]
+
+
+def clip_seconds(ffprobe: str, src: Path, mime: str, run: Callable[..., "subprocess.CompletedProcess"] = subprocess.run) -> float:
+    """The downloaded clip's own length, measured, never the row's claim (duration_s may be null). A length that cannot be read is
+    a refusal: the site would otherwise show a clip cut short at the 30 s backstop without saying so."""
+    try:
+        proc = run(probe_command(ffprobe, src, mime), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=60)
+        seconds = float(proc.stdout.decode("ascii", "replace").strip().splitlines()[0]) if proc.returncode == 0 else float("nan")
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        seconds = float("nan")
+    if not (seconds == seconds and 0 < seconds < float("inf")):
+        raise Refusal("clip_length_unknown", "the clip's length could not be measured, so it is not shown (it could be cut short unseen)")
+    if seconds > MAX_CLIP_SECONDS:
+        raise Refusal("clip_too_long", f"the clip is {seconds:.1f} s; a sample is at most {MAX_CLIP_SECONDS:.0f} s")
+    return seconds
+
+
+def make_derivatives(src: Path, kind: str, mime: str, out: Path, ffmpeg: str = "ffmpeg", run: Callable[[Sequence[str]], None] = _run,
+                     ffprobe: str = "ffprobe", measure: Callable[[str, Path, str], float] = clip_seconds) -> Tuple[int, int]:
+    if kind == "video":
+        # Measured before anything is written; `-t` in the commands is only a backstop.
+        measure(ffprobe, src, mime)
     out.mkdir(parents=True, exist_ok=True)
     if kind == "video":
         for cmd in video_commands(ffmpeg, src, mime, out):
@@ -581,7 +610,7 @@ def dump_data(data: Mapping[str, Any]) -> str:
 
 
 def entry_from_plan(plan: Mapping[str, Any], size: Tuple[int, int], slot: Optional[str], caption: str, now: datetime) -> dict:
-    keep = ("jobId", "assetId", "sha256", "modelId", "modelName", "provider", "operatorPreview", "attribution", "capability", "kind", "prompt", "createdAt", "input", "endFrame", "cost")
+    keep = ("jobId", "assetId", "sha256", "modelId", "modelName", "provider", "operatorPreview", "shutdownOn", "attribution", "capability", "kind", "prompt", "createdAt", "input", "endFrame", "cost")
     entry = {k: plan[k] for k in keep}
     entry.update({"width": size[0], "height": size[1], "slot": slot, "caption": caption or None, "exportedAt": now.strftime("%Y-%m-%dT%H:%M:%SZ")})
     bad = entry_problem(entry)
@@ -605,7 +634,8 @@ def summary_markdown(entry: Mapping[str, Any]) -> str:
     lines = [
         f"- Job: `{entry['jobId']}` ({entry['capability']}, {entry['kind']}), created {entry['createdAt']}",
         f"- Model: {entry['modelName']} (`{entry['modelId']}`)" + (f", attribution: [{entry['attribution']['text']}]({entry['attribution']['url']})" if entry["attribution"] else ", no attribution required"),
-        "- In the Studio: " + ("not on sale yet (operator preview): the card says it is coming, and Try it opens the tool without it" if entry.get("operatorPreview") else "not an operator preview: Try it names this model (the Studio keeps it only if it offers it to that workspace)"),
+        "- In the Studio: " + ("not on sale yet (operator preview): the card says it is coming, and Try it opens the tool without it" if entry.get("operatorPreview") else "not an operator preview: Try it names this model (the Studio keeps it only if it offers it to that workspace)")
+        + (f"; the vendor announced its shutdown for {entry['shutdownOn']}, from when the card stops naming it" if entry.get("shutdownOn") else ""),
         f"- Input picture: {origin}" + (f"; end frame: {entry['endFrame']['kind']}" if entry.get("endFrame") else ""),
         f"- Provider cost (creative_job_costs): {usd}",
         f"- Vendor's own figure: {vendor}",
@@ -753,13 +783,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         origin = site_origin(os.environ.get("SITE_ORIGIN", ""))
         secret = os.environ.get("MEDIA_URL_SECRET", "")
         ffmpeg = os.environ.get("FFMPEG", "ffmpeg")
+        ffprobe = os.environ.get("FFPROBE", "ffprobe")
 
         def fetch(asset_id: str, mime: str, sha: str, dest: Path) -> int:
             return download(rest.session, origin, secret, asset_id, mime, sha, dest)
 
         entry = export(
             args.job_id, rest=rest, fetch=fetch, slot_raw=args.slot, caption_raw=args.caption,
-            derive=lambda src, kind, mime, out: make_derivatives(src, kind, mime, out, ffmpeg=ffmpeg),
+            derive=lambda src, kind, mime, out: make_derivatives(src, kind, mime, out, ffmpeg=ffmpeg, ffprobe=ffprobe),
         )
     except AlreadyThere as e:
         print(f"already a sample: job {e.args[0]} is in command-center/lib/site/showcase.json; nothing to do")

@@ -37,8 +37,6 @@ concurrency:
 
 jobs:
   export:
-    # Only from main: a run dispatched on another branch would export with that branch's tool and data file.
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -49,6 +47,14 @@ jobs:
       job_id: ${{ steps.export.outputs.job_id }}
 
     steps:
+      # Only from main: a run dispatched on another branch would export with that branch's tool and data file. It fails, red and
+      # saying why, rather than skipping and ending green (CLAUDE.md #6).
+      - name: Refuse a run not dispatched on main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run the Showcase asset workflow from main (Use workflow from: main); nothing was exported."
+          exit 1
+
       # The inputs arrive through env, never pasted into a script, and the id is refused unless it is a uuid.
       - name: Check the job id
         id: id
@@ -134,8 +140,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The branch is cut from main, whatever the run was dispatched on.
-          ref: main
+          # The very commit the export read the data file from (main at dispatch; the export job refuses any other branch). Not
+          # main as it is now: a showcase PR merged meanwhile would be reverted by this run's whole-file showcase.json and module.
+          # Committed on that base, a sample merged meanwhile shows up as a conflict on this PR instead.
+          ref: ${{ github.sha }}
           # The push below authenticates through gh's credential helper for that one command; nothing is stored in .git/config.
           persist-credentials: false
 
@@ -149,8 +157,9 @@ jobs:
           JOB_ID: ${{ needs.export.outputs.job_id }}
         run: python3 tools/export_showcase.py --job-id="$JOB_ID" --verify-export "$RUNNER_TEMP/export"
 
-      # Idempotent: an OPEN pull request for this job is the only no-op. A branch left from an earlier run whose PR was never
-      # opened (or was closed) gets its PR now, as it is; a new branch is pushed only when none exists. Nothing is force-pushed.
+      # Idempotent: an OPEN pull request for this job is the only no-op. A branch left from an earlier run without an open PR is
+      # an error, not reused: its files may not be this run's, its base is stale, and its PR may have been closed on purpose.
+      # The owner deletes the branch and runs again. Nothing is force-pushed.
       - name: Open a draft pull request
         env:
           GH_TOKEN: ${{ github.token }}
@@ -163,16 +172,16 @@ jobs:
             exit 0
           fi
           if gh api "repos/${GITHUB_REPOSITORY}/branches/${branch}" --silent 2>/dev/null; then
-            echo "::notice::The branch ${branch} exists from an earlier run but has no open pull request: opening one for it as it is."
-          else
-            cp -R "$RUNNER_TEMP/export/command-center/." command-center/
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git switch -c "$branch"
-            git add command-center/lib/site/showcase.json command-center/components/site/showcase-assets.ts "command-center/components/site/showcase/${JOB_ID}"
-            git commit -q -m "Showcase: sample from Studio job ${JOB_ID}"
-            git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin "HEAD:refs/heads/${branch}"
+            echo "::error::branch ${branch} exists without an open pull request — delete it and rerun."
+            exit 1
           fi
+          cp -R "$RUNNER_TEMP/export/command-center/." command-center/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add command-center/lib/site/showcase.json command-center/components/site/showcase-assets.ts "command-center/components/site/showcase/${JOB_ID}"
+          git commit -q -m "Showcase: sample from Studio job ${JOB_ID}"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin "HEAD:refs/heads/${branch}"
           {
             echo "A model sample for the public site, exported by the **Showcase asset** workflow (docs/SHOWCASE.md)."
             echo

@@ -57,6 +57,11 @@ export interface ShowcaseEntry {
    * tests/site-showcase.test.tsx fails when this and the registry disagree, so a model that goes on sale gets its link back.
    */
   operatorPreview: boolean;
+  /**
+   * The vendor's announced shutdown of the model (registry `shutdown.on`, YYYY-MM-DD), or null. From that day the card says the
+   * model is no longer in the Studio and its link stops naming it; the export refuses a model already past it.
+   */
+  shutdownOn: string | null;
   /** The credit line the maker requires (the registry's `attribution`), or null where it asks for none. */
   attribution: { text: string; url: string } | null;
   /** The Studio tool it was made with (i2v, t2v, t2i …). */
@@ -123,6 +128,8 @@ export function parseShowcaseEntry(v: unknown): ShowcaseEntry | null {
   if (!isObj(v)) return null;
   const { jobId, assetId, sha256, modelId, modelName, provider, operatorPreview, capability, kind, prompt, createdAt, width, height, exportedAt } = v;
   if (typeof operatorPreview !== "boolean") return null;
+  const shutdownOn = v.shutdownOn;
+  if (!(shutdownOn === null || (typeof shutdownOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(shutdownOn)))) return null;
   if (typeof jobId !== "string" || !UUID.test(jobId) || typeof assetId !== "string" || !UUID.test(assetId)) return null;
   if (typeof sha256 !== "string" || !SHA.test(sha256)) return null;
   if (typeof modelId !== "string" || !MODEL.test(modelId) || !str(modelName, 80) || typeof provider !== "string" || !/^[a-z0-9][a-z0-9._-]{0,39}$/.test(provider)) return null;
@@ -143,9 +150,19 @@ export function parseShowcaseEntry(v: unknown): ShowcaseEntry | null {
   if (!(v.slot === null || (typeof v.slot === "string" && /^[a-z][a-z0-9.-]{0,40}$/.test(v.slot)))) return null;
   if (!(v.caption === null || str(v.caption, 200))) return null;
   return {
-    jobId, assetId, sha256, modelId, modelName: modelName as string, provider, operatorPreview, attribution, capability, kind, prompt, createdAt, input: inp, endFrame: end, cost: c,
+    jobId, assetId, sha256, modelId, modelName: modelName as string, provider, operatorPreview, shutdownOn, attribution, capability, kind, prompt, createdAt, input: inp, endFrame: end, cost: c,
     width, height, slot: v.slot as string | null, caption: v.caption as string | null, exportedAt,
   };
+}
+
+/**
+ * Why a card must not name its model in "Try this prompt", or null when it may: the model is an operator preview (not in the
+ * Studio yet), or the vendor's announced shutdown day has come (no longer in the Studio). `today` is UTC, as the dates are.
+ */
+export function modelLeftOut(e: { operatorPreview?: boolean; shutdownOn?: string | null }, now: Date = new Date()): "preview" | "shut_down" | null {
+  if (e.shutdownOn && e.shutdownOn <= now.toISOString().slice(0, 10)) return "shut_down";
+  if (e.operatorPreview) return "preview";
+  return null;
 }
 
 /** Every well-formed entry, newest first, each job once. */

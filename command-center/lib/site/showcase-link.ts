@@ -13,15 +13,19 @@ import { STUDIO_TOOL_CAPS } from "@/lib/models-discovery";
 import { cleanLinkPrompt, isLinkPromptTool } from "@/lib/creative/improve";
 import { fitsAfterSignup } from "@/lib/safe-redirect";
 import { SIGNUP_PATH } from "@/lib/public-paths";
+import { modelLeftOut } from "@/lib/site/showcase";
 
-/** `operatorPreview`: the model is not on sale yet, so the link opens the tool with the words and does not name it. */
-type Sample = { capability: string; modelId: string; prompt: string; operatorPreview?: boolean };
+/**
+ * `operatorPreview` (not in the Studio yet) or a `shutdownOn` that has come (no longer in it): the link opens the tool with the
+ * words and does not name the model (lib/site/showcase.ts modelLeftOut).
+ */
+type Sample = { capability: string; modelId: string; prompt: string; operatorPreview?: boolean; shutdownOn?: string | null };
 
 /** The Studio form for a sample, under the all-channels workspace, with its words cut to `max` characters; null for a tool the Studio has no form for. */
-function studioPath(s: Sample, max: number): string | null {
+function studioPath(s: Sample, max: number, now: Date): string | null {
   if (!(STUDIO_TOOL_CAPS as readonly string[]).includes(s.capability) || !MODEL_ID_RE.test(s.modelId)) return null;
   const q = new URLSearchParams({ tool: s.capability });
-  if (!s.operatorPreview) q.set("model", s.modelId);
+  if (!modelLeftOut(s, now)) q.set("model", s.modelId);
   const words = isLinkPromptTool(s.capability) ? cleanLinkPrompt(s.capability, s.prompt) : "";
   const cut = cutWords(words, max);
   if (cut) q.set("prompt", cut);
@@ -38,16 +42,16 @@ export function cutWords(words: string, max: number): string {
 }
 
 /** The Studio form for a signed-in visitor: the whole of the words the Studio box takes from a link (lib/creative/improve). */
-export function studioTryHref(s: Sample): string | null {
-  return studioPath(s, Number.MAX_SAFE_INTEGER);
+export function studioTryHref(s: Sample, now: Date = new Date()): string | null {
+  return studioPath(s, Number.MAX_SAFE_INTEGER, now);
 }
 
 /**
  * Sign-up, then the Studio form. The words are cut (on a word) until the form still fits through the callback and /welcome; a sample
  * whose form would not fit even with no words gets sign-up with the tool and model alone.
  */
-export function signupTryHref(s: Sample): string | null {
-  const full = studioPath(s, Number.MAX_SAFE_INTEGER);
+export function signupTryHref(s: Sample, now: Date = new Date()): string | null {
+  const full = studioPath(s, Number.MAX_SAFE_INTEGER, now);
   if (!full) return null;
   let path: string = full;
   if (!fitsAfterSignup(path)) {
@@ -57,7 +61,7 @@ export function signupTryHref(s: Sample): string | null {
     let best: string | null = null;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      const p = studioPath(s, mid);
+      const p = studioPath(s, mid, now);
       if (p && fitsAfterSignup(p)) {
         best = p;
         lo = mid + 1;
@@ -71,6 +75,6 @@ export function signupTryHref(s: Sample): string | null {
   return `${SIGNUP_PATH}?next=${encodeURIComponent(path)}`;
 }
 
-export function tryHref(s: Sample, signedIn: boolean): string | null {
-  return signedIn ? studioTryHref(s) : signupTryHref(s);
+export function tryHref(s: Sample, signedIn: boolean, now: Date = new Date()): string | null {
+  return signedIn ? studioTryHref(s, now) : signupTryHref(s, now);
 }
