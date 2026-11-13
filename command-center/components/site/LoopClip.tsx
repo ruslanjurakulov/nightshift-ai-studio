@@ -10,7 +10,7 @@ type NetworkInformation = { saveData?: boolean; effectiveType?: string };
 export type ClipSources = { mp4: string; webm: string; smMp4: string; smWebm: string };
 
 /** Whether a clip may be fetched and played at all: never under reduced motion, never on Save-Data or a slow link. */
-function clipsAllowed(): boolean {
+export function clipsAllowed(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
   const c = (navigator as Navigator & { connection?: NetworkInformation }).connection;
