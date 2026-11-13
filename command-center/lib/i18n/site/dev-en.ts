@@ -223,7 +223,7 @@ export const devEn = {
         button: "Add to Claude",
         hint: "Opens Claude’s Add custom connector dialog with the name and address filled in; check them and press Add. Signed out? Claude asks you to sign in first.",
         extra: "Add for your organization",
-        note: "Under OAuth client keep “Register automatically”: “Use Claude’s published identity” does not work with Nightshift. The Free plan allows one custom connector. On Team and Enterprise only organization admins allowed to manage connectors can add one, with “Add for your organization”. Once added, the connector also works in Claude’s desktop and mobile apps.",
+        note: "Under OAuth client keep “Register automatically”: “Use Claude’s published identity” does not work with Nightshift. The Free plan allows one custom connector. On Team and Enterprise only the people who own the Claude organization (or, on Enterprise, a custom role allowed to manage connectors) can add one, with “Add for your organization”. Once added, the connector also works in Claude’s desktop and mobile apps.",
         steps: [
           { title: "Add Nightshift to Claude", body: "The button opens Claude on the web with everything filled in." },
           { title: "Or add it by hand", body: "In Claude open Customize → Connectors, press + Add, then Add custom connector. Name it Nightshift and paste this address." },

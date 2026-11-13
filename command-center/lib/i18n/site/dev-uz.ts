@@ -211,7 +211,7 @@ export const devUz: DevDictionary = {
         button: "Claude’ga qoʻshish",
         hint: "Claude’da nom va manzil toʻldirilgan Add custom connector oynasini ochadi; ularni tekshiring va Add ni bosing. Hisobga kirmagan boʻlsangiz, Claude avval kirishni soʻraydi.",
         extra: "Tashkilot uchun qoʻshish",
-        note: "OAuth client bandida “Register automatically” ni qoldiring: “Use Claude’s published identity” Nightshift bilan ishlamaydi. Free tarifida bitta oʻz konnektoringizni qoʻshish mumkin. Team va Enterprise’da uni faqat konnektorlarni boshqarish huquqi bor tashkilot administratorlari “Tashkilot uchun qoʻshish” tugmasi bilan qoʻshadi. Qoʻshilgandan keyin konnektor Claude’ning kompyuter va mobil ilovalarida ham ishlaydi.",
+        note: "OAuth client bandida “Register automatically” ni qoldiring: “Use Claude’s published identity” Nightshift bilan ishlamaydi. Free tarifida bitta oʻz konnektoringizni qoʻshish mumkin. Team va Enterprise’da uni faqat Claude tashkilotining egalari yoki Enterprise’da konnektorlarni boshqarishga ruxsat berilgan maxsus rol egalari “Tashkilot uchun qoʻshish” tugmasi bilan qoʻshadi. Qoʻshilgandan keyin konnektor Claude’ning kompyuter va mobil ilovalarida ham ishlaydi.",
         steps: [
           { title: "Nightshift’ni Claude’ga qoʻshing", body: "Tugma Claude’ni brauzerda hammasi toʻldirilgan holda ochadi." },
           { title: "Yoki qoʻlda qoʻshing", body: "Claude’da Customize → Connectors ni oching, + Add, keyin Add custom connector ni bosing. Unga Nightshift deb nom bering va shu manzilni qoʻying." },

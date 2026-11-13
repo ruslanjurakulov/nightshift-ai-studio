@@ -211,7 +211,7 @@ export const devRu: DevDictionary = {
         button: "Добавить в Claude",
         hint: "Откроет в Claude окно Add custom connector с уже заполненными именем и адресом; проверьте их и нажмите Add. Если вы не вошли, Claude сначала попросит войти.",
         extra: "Добавить для организации",
-        note: "В пункте OAuth client оставьте «Register automatically»: «Use Claude’s published identity» с Nightshift не работает. На тарифе Free можно добавить один свой коннектор. В Team и Enterprise его добавляют только администраторы организации с правом управлять коннекторами — кнопкой «Добавить для организации». После добавления коннектор работает и в настольном приложении Claude, и в мобильном приложении.",
+        note: "В пункте OAuth client оставьте «Register automatically»: «Use Claude’s published identity» с Nightshift не работает. На тарифе Free можно добавить один свой коннектор. В Team и Enterprise его добавляют только владельцы организации в Claude или, в Enterprise, пользователи со специальной ролью, которой разрешено управлять коннекторами, — кнопкой «Добавить для организации». После добавления коннектор работает и в настольном приложении Claude, и в мобильном приложении.",
         steps: [
           { title: "Добавьте Nightshift в Claude", body: "Кнопка откроет Claude в браузере, всё уже заполнено." },
           { title: "Или добавьте вручную", body: "В Claude откройте Customize → Connectors, нажмите + Add, затем Add custom connector. Назовите его Nightshift и вставьте этот адрес." },
