@@ -90,7 +90,9 @@ class Numbering(unittest.TestCase):
         # key) was reviewed the same way: it does not touch request_series_plan (0127's) or the planning tables, and names none of the
         # three words below; it sits on 0122's validator, so 0122's rollback and replay take it off first (tests/security/sec_db.py).
         # 0142 (one CHECK on model_registry: a model with blocked_countries cannot be beta or ga) was reviewed the same way.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0145", "0142")
+        # 0143 (the probe log's vendor_tool_unsupported word: one check constraint on model_probe_runs) was reviewed the same way: it
+        # names none of the three words below.
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

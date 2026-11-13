@@ -118,6 +118,7 @@ describe("jobs", () => {
 
   it("explains failures in plain words, never the internal code", () => {
     expect(failureReason(t, { status: "failed", error_code: "policy" })).toBe(t.gen.reasons.policy);
+    expect(failureReason(t, { status: "failed", error_code: "vendor_tool_unsupported" })).toBe(t.gen.reasons.bad_request);
     expect(failureReason(t, { status: "failed", error_code: "worker_lost" })).toBe(t.gen.reasons.service);
     expect(failureReason(t, { status: "expired", error_code: "not_picked_up" })).toBe(t.gen.reasons.expired);
     expect(failureReason(t, { status: "failed", error_code: "zzz_new" })).toBe(t.gen.reasons.generic);
