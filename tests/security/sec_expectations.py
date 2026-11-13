@@ -676,3 +676,8 @@ sec_made_for_kids_0145.extend(TABLES, FUNCTIONS)
 import sec_dodo_0146  # noqa: E402
 
 sec_dodo_0146.extend(TABLES, FUNCTIONS)
+
+# Migration 0147 (MCP over OAuth on every plan; oauth_check_credits, one rate unit per OAuth tool call): tests/security/sec_mcp_free_tier_0147.py
+import sec_mcp_free_tier_0147  # noqa: E402
+
+sec_mcp_free_tier_0147.extend(TABLES, FUNCTIONS)

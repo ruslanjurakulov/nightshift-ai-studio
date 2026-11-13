@@ -113,8 +113,16 @@ function oauthInstructions(has: (tool: string) => boolean): string {
 
 /** A log line's name for a thrown value: the class name when it is a plain identifier, never the message. */
 function thrownName(e: unknown): string {
-  const name = e instanceof Error ? e.name : typeof e;
-  return /^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(name) ? name : "error";
+  // The class (constructor.name), not e.name: `name` is an ordinary writable property that any thrower can fill with
+  // anything, message text included, while the constructor's name is the class that was thrown. Still allow-listed to a
+  // plain identifier, and read defensively (a Proxy or a getter can throw on the way).
+  let name: unknown;
+  try {
+    name = e !== null && typeof e === "object" ? (e as { constructor?: { name?: unknown } }).constructor?.name : typeof e;
+  } catch {
+    name = undefined;
+  }
+  return typeof name === "string" && /^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(name) ? name : "error";
 }
 
 export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer {
@@ -166,6 +174,10 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
   // no hook for an unregistered tool's call, so the tools/call handler it
   // installs (on the first registerTool below) is wrapped as it is installed;
   // everything else, and every granted tool, goes to the SDK unchanged.
+  // Checked against @modelcontextprotocol/sdk 1.32.0 (package-lock.json): McpServer.registerTool calls
+  // setToolRequestHandlers(), which installs the tools/call handler once, through this.server.setRequestHandler
+  // (dist/esm/server/mcp.js). A later SDK that installs it some other way would bypass this wrapper silently, so
+  // re-check this on every SDK upgrade; tests/mcp-assistant-session.test.ts ("a tool the grant lacks") fails if it does.
   if (oauth) {
     const low = server.server;
     const install = low.setRequestHandler.bind(low) as (schema: unknown, handler: (req: unknown, extra: unknown) => unknown) => void;

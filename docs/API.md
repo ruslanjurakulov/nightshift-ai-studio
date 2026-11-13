@@ -68,7 +68,11 @@ quoted for the requested length — never more than the hold.
 
 The exempt operator organization is tier 4, uncapped and never charged. An
 organization can set a lower monthly limit; each key can have its own. Spend
-this month = captured usage + holds still open. `lib/api/pricing.ts` is the
+this month = captured usage + holds still open. A refusal names where it is
+raised (0147): `402 monthly_limit_reached` points at Developers → Usage and
+billing → Monthly spend limit (up to the tier's cap, which rises with what has
+been paid in), `402 key_limit_reached` at Developers → API keys → Set limit on
+that key. `lib/api/pricing.ts` is the
 TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
 
 ## Security
@@ -255,6 +259,7 @@ unit = 'video_minute'` (platform owner/admin). Correct a balance with
 The same keys, limits and prices are available to AI assistants through the
 remote MCP server at `/api/mcp` — see `docs/MCP.md`. That server has a second
 door that is **not** the API: an AI app (Claude, ChatGPT, Cursor, …) can be
-connected with OAuth, without a key, on a paid plan, spending the workspace's
-site credits instead of this prepaid USD balance. Nothing connected that way
+connected with OAuth, without a key, on any plan (Free included since
+migration 0147), spending the workspace's site credits instead of this prepaid
+USD balance. Nothing connected that way
 can reach any function described here that moves the USD balance.
