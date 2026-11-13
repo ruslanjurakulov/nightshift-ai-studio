@@ -4503,6 +4503,12 @@ export const uz: Dictionary = {
     loadFailed: "Ulangan ilovalarni yuklab boʻlmadi. Qayta urinib koʻring.",
     notMigrated: "Ilovalarni ulash bu bazada hali sozlanmagan (0093-migratsiya).",
     actionFailed: "Boʻlmadi. Hech narsa oʻzgarmadi. Qayta urinib koʻring.",
+    addTitle: "Yordamchi qoʻshish",
+    addLead: "Har bir tugma yordamchining oʻz oʻrnatish oynasini ochadi: u yerda tasdiqlaysiz, keyin Nightshift’ga kirasiz va ilovaga oylik limit belgilaysiz. Cursor va VS Code faqat ilova shu kompyuterda boʻlsa ochiladi. ChatGPT, Gemini va Grok’da oʻrnatish tugmasi yoʻq: ularning qadamlariga amal qiling.",
+    addTo: "{app}’ga qoʻshish",
+    addSteps: "Qoʻlda, qadamma-qadam",
+    addUrl: "Server manzili",
+    newTab: "(yangi varaqda ochiladi)",
   },
   developers: {
     title: "Dasturchilar",

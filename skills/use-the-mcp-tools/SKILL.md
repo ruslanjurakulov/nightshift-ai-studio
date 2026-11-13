@@ -11,12 +11,13 @@ The MCP server at `https://nightshift-ai.studio/api/mcp` is the same API as the 
 
 ## Connect
 
-```bash
-claude mcp add --transport http nightshift https://nightshift-ai.studio/api/mcp \
-  --header "Authorization: Bearer $NIGHTSHIFT_API_KEY"
+Nightshift's own connect page (`/mcp`) lists the six assistants it supports, each with its steps. The chat apps there (ChatGPT, Claude and two more) connect with a sign-in (OAuth), once Nightshift has switched its sign-in on: the server URL alone, no header. Cursor and VS Code (GitHub Copilot) take the same URL with a sign-in, or an API key in a header:
+
+```json
+{ "mcpServers": { "nightshift": { "url": "https://nightshift-ai.studio/api/mcp", "headers": { "Authorization": "Bearer <your API key>" } } } }
 ```
 
-Cursor takes a `url` and `headers` entry in `mcp.json`. Claude Desktop and claude.ai custom connectors cannot send a static header, so Claude Desktop needs the `mcp-remote` bridge. ChatGPT cannot connect yet (it needs OAuth). Exact configs are in `docs/MCP.md`. The key never goes in the chat.
+(that is Cursor's `mcp.json`; VS Code's `.vscode/mcp.json` uses `servers`, `"type": "http"` and a password input for the key). Other clients that speak the MCP authorization flow can add the same URL and sign in. Exact configs, and the one-click "Add to" links, are in `docs/MCP.md`. The key never goes in the chat.
 
 ## The ten tools
 

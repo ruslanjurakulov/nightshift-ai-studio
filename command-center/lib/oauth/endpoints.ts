@@ -11,7 +11,7 @@
  */
 
 import type { Rpc } from "@/lib/api/operations";
-import { checkClientName, describeRedirect, normalizeResource, validateRedirectUri } from "@/lib/oauth/redirect";
+import { describeRedirect, registrationName, normalizeResource, validateRedirectUri } from "@/lib/oauth/redirect";
 import {
   CODE_RE,
   CODE_VERIFIER_RE,
@@ -88,8 +88,9 @@ export async function registerEndpoint(request: Request, deps: OauthDeps): Promi
   const list = [...new Set(uris as string[])];
   // The name a person will read on the consent screen: it must show something,
   // fit 80 characters and not pass itself off as Nightshift (lookalikes, leet,
-  // invisible and direction characters included). No name at all means the host.
-  const named = checkClientName(body.client_name);
+  // invisible and direction characters included). No name at all means the host. A trailing "(nightshift)" — the
+  // server name the person gave, as Claude Code appends it — is dropped first (registrationName says why).
+  const named = registrationName(body.client_name);
   if (!named.ok)
     return oauthError(
       "invalid_client_metadata",

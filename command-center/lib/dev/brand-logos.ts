@@ -68,8 +68,13 @@ export type BrandLogo = {
  * trademark risk himself ("nobody cares about my small site"). No vendor was asked and none gave
  * permission. This constant covers every mark whose status is "owner-accepted": Anthropic's Claude marks
  * (its guidelines, https://www.anthropic.com/legal/trademark-guidelines, allow use "only in materials we
- * approve beforehand"; requests go to marketing@anthropic.com), Google's Gemini CLI icon (the brand
- * resources are released only on application) and the Hermes icon (no policy published).
+ * approve beforehand"; requests go to marketing@anthropic.com). (It also covered the Gemini CLI and Hermes
+ * icons until those clients left the page.)
+ *
+ * Since 2026-11-13 the page names six clients only (lib/dev/mcp-clients.ts), so the register has six
+ * entries. The vendor files of the clients it dropped stay in brand/third-party and in the generated sprite
+ * sheet (brand-logos-art.ts, whose byte-for-byte tests read them); they are never drawn, because the page's
+ * sprite holds only the symbols of its own ids (shownSymbols).
  *
  * To take them all down: set it to false. The tabs and tiles fall back to the plain icons, with no other
  * change. The name is the original one; it now means "the owner accepted it".
@@ -81,6 +86,18 @@ export const OWNER_ACCEPTED_MARKS_SHOWN = ANTHROPIC_MARKS_APPROVED;
 const FETCHED = "2026-10-03" as const;
 
 export const BRAND_LOGOS: readonly BrandLogo[] = [
+  {
+    id: "chatgpt",
+    vendor: "OpenAI",
+    status: "official",
+    symbols: { light: "openai-light", dark: "openai-dark" },
+    tile: "theme",
+    source: "https://cdn.openai.com/brand/openai-logos.zip (linked as \"Download logos\" on https://openai.com/brand/): OpenAI Blossom, black and white",
+    guidelines: "https://openai.com/brand/ (usage terms)",
+    allowed:
+      "Use the logo only where it relates to OpenAI services, exactly as provided, no added colours or effects, with open space around it; do not feature it more prominently than our own marks; do not imply endorsement or confuse users about sponsorship. Black and white versions are provided. Permission requests: partnercomms@openai.com.",
+    fetched: FETCHED,
+  },
   {
     id: "claude",
     vendor: "Anthropic",
@@ -96,43 +113,27 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
       "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03 (no vendor permission obtained). The tab shows the press kit's Claude Spark as a loose glyph in the pill's text colour (the one-colour variant: the same shape, only the fill is the text colour); the hero tile shows the press-kit app icon, unmodified, at the tile's size.",
     fetched: FETCHED,
   },
-
   {
-    id: "chatgpt",
-    vendor: "OpenAI",
-    status: "official",
-    symbols: { light: "openai-light", dark: "openai-dark" },
+    id: "gemini",
+    vendor: "Google",
+    status: "fallback",
     tile: "theme",
-    source: "https://cdn.openai.com/brand/openai-logos.zip (linked as \"Download logos\" on https://openai.com/brand/): OpenAI Blossom, black and white",
-    guidelines: "https://openai.com/brand/ (usage terms)",
-    allowed:
-      "Use the logo only where it relates to OpenAI services, exactly as provided, no added colours or effects, with open space around it; do not feature it more prominently than our own marks; do not imply endorsement or confuse users about sponsorship. Black and white versions are provided. Permission requests: partnercomms@openai.com.",
-    fetched: FETCHED,
-  },
-  {
-    id: "claude-code",
-    vendor: "Anthropic",
-    status: "owner-accepted",
-    symbols: { any: "claude-spark-any" },
-    tile: "plain",
-    source: "https://www.anthropic.com/press-kit (zip: Claude logos / Claude Spark / Claude Spark - Clay.svg)",
-    guidelines: "https://www.anthropic.com/legal/trademark-guidelines",
-    allowed: "As for Claude: only with Anthropic's prior approval of the material; no alterations.",
+    source: "https://support.google.com/gemini/answer/17209137 (the connect steps; no asset was taken)",
+    guidelines: "https://partnermarketinghub.withgoogle.com/brands/google (Google releases brand assets only on application)",
+    allowed: "Nothing is assumed: the tab carries only the product's name and a plain icon.",
     reason:
-      "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03. The press kit's Claude Code logo is a seven-to-one lockup (the spark and the words \"Claude Code\"), which cannot sit in a square tile unchanged, so the tab carries the Claude Spark from the same kit, loose (no tile), in its own clay colour on every pill, selected or not.",
+      "Added on 2026-11-13. Google releases its marks only after an application, none was made, and the Gemini CLI icon the page once showed is not the Gemini app's mark, so the tab keeps the site's own chat icon.",
     fetched: FETCHED,
   },
-
   {
-    id: "openclaw",
-    vendor: "OpenClaw Foundation",
-    status: "official",
-    symbols: { any: "openclaw-any" },
+    id: "grok",
+    vendor: "xAI",
+    status: "fallback",
     tile: "theme",
-    source: "https://openclaw.ai/favicon.svg (the lobster; the same drawing as ui/public/favicon.svg in https://github.com/openclaw/openclaw)",
-    guidelines: "https://github.com/openclaw/openclaw/blob/main/LICENSE (MIT, © OpenClaw Foundation); no separate brand or trademark page was found at openclaw.ai, openclaw.org or in the repository",
-    allowed:
-      "The project is MIT licensed and publishes no brand restrictions that we could find. The mark is the project's own static lobster, unmodified, in its own colours. If the Foundation publishes a brand policy, follow it.",
+    source: "https://docs.x.ai/grok/connectors (the connect steps; no asset was taken)",
+    guidelines: "https://docs.x.ai (no brand or trademark page was read for this change)",
+    allowed: "Nothing is assumed: the tab carries only the product's name and a plain icon.",
+    reason: "Added on 2026-11-13. No official vector or brand rules were verified for it, so the tab keeps the site's own chat icon rather than a borrowed mark.",
     fetched: FETCHED,
   },
   {
@@ -148,20 +149,6 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
     fetched: FETCHED,
   },
   {
-    id: "hermes",
-    vendor: "Nous Research",
-    status: "owner-accepted",
-    symbols: { any: "hermes-any" },
-    tile: "bare",
-    source: "https://hermes-agent.nousresearch.com/icon.png (the Hermes Agent site's own icon, 48 px, byte for byte)",
-    guidelines: "https://github.com/NousResearch/hermes-agent/blob/main/LICENSE (MIT); no brand page or trademark policy published",
-    allowed: "No brand guideline published, so nothing is stated either way.",
-    reason:
-      "Shown without the vendor's permission: the site owner accepted the risk on 2026-10-03. The only official asset is the site's 48 px PNG icon, used as it is, at no more than its native size.",
-    fetched: FETCHED,
-  },
-
-  {
     id: "vscode",
     vendor: "Microsoft",
     status: "official",
@@ -171,116 +158,6 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
     guidelines: "https://code.visualstudio.com/brand",
     allowed:
       "OK: using the icon in documentation or a tutorial, a blog post or news article, and to link to code.visualstudio.com. Not OK: to promote your own product, to imply a Microsoft association, merchandise, building it into your logo, a lock-up with the name, or modifying it. Use the blue icon everywhere; the white one only when contrast is missing. Clear space of a quarter of the \"fish\" motif.",
-    fetched: FETCHED,
-  },
-  {
-    id: "windsurf",
-    vendor: "Windsurf",
-    status: "official",
-    symbols: { light: "windsurf-light", dark: "windsurf-dark" },
-    tile: "theme",
-    source: "https://windsurf.com/brand → \"Download Brand Assets\": https://exafunction.github.io/public/brand/windsurf-black-symbol.svg and windsurf-white-symbol.svg",
-    guidelines: "https://windsurf.com/brand",
-    allowed:
-      "The symbol is for space-limited layouts and logo grids. Do not outline it, apply effects, rotate or reverse it, use it without sufficient contrast, apply gradients or colour, or scale it without a locked aspect ratio; keep the prescribed spacing. Black and white versions are provided. Anything else: contact them with a mockup.",
-    fetched: FETCHED,
-  },
-  {
-    id: "cline",
-    vendor: "Cline Bot Inc.",
-    status: "official",
-    symbols: { light: "cline-light", dark: "cline-dark" },
-    tile: "theme",
-    source: "https://cline.bot/brand → cline-brand-assets.zip (https://cline.bot/assets/branding/brand/cline-brand-assets.zip): General Logos / Bot / SVG / BOT_LIGHT.svg and BOT_DARK.svg",
-    guidelines: "https://cline.bot/brand (README.txt in the zip: LIGHT and DARK name the intended background)",
-    allowed:
-      "Cline publishes the bot icon for download as its official brand asset in light and dark variants for the matching background; the page sets no further conditions.",
-    fetched: FETCHED,
-  },
-  {
-    id: "zed",
-    vendor: "Zed Industries",
-    status: "official",
-    symbols: { light: "zed-light", dark: "zed-dark" },
-    tile: "theme",
-    source: "https://zed.dev/brand (logomark, \"Copy SVG\"; the SVG text is in that page's own script): pure black and pure white",
-    guidelines: "https://zed.dev/brand",
-    allowed:
-      "The logo can be used in brand blue, full white or full black; do not render it in any other colour or with distorted sizes or dimensions. The editor is called \"Zed\", the company \"Zed Industries\".",
-    fetched: FETCHED,
-  },
-  {
-    id: "gemini-cli",
-    vendor: "Google",
-    status: "owner-accepted",
-    symbols: { any: "gemini-any" },
-    tile: "bare",
-    source: "https://geminicli.com/icon.png (the Gemini CLI site's own icon, 1645 px PNG; the page carries it scaled to 128 px and re-encoded as WebP)",
-    guidelines: "https://partnermarketinghub.withgoogle.com/brands/google/overview/ (Google Brand Resource Center: resources are released only after an application)",
-    allowed: "Google releases its brand resources only to applicants; no public terms for this icon were found.",
-    reason:
-      "Shown without Google's permission: the site owner accepted the risk on 2026-10-03. The picture is the Gemini CLI site's own icon, scaled down only.",
-    fetched: FETCHED,
-  },
-
-  {
-    id: "codex",
-    vendor: "OpenAI",
-    status: "official",
-    symbols: { light: "openai-light", dark: "openai-dark" },
-    tile: "theme",
-    source: "https://cdn.openai.com/brand/openai-logos.zip (OpenAI Blossom, black and white)",
-    guidelines: "https://openai.com/brand/ (usage terms)",
-    allowed:
-      "OpenAI's logo for an OpenAI service, under the same usage terms as the ChatGPT tab; its kit has no separate Codex mark, so the OpenAI Blossom stands for it.",
-    fetched: FETCHED,
-  },
-
-  {
-    id: "roo-code",
-    vendor: "Roo Code",
-    status: "official",
-    symbols: { any: "roo-any" },
-    tile: "paper",
-    source: "https://github.com/RooCodeInc/Roo-Code/blob/main/src/assets/icons/icon.svg (the extension's own icon)",
-    guidelines: "https://github.com/RooCodeInc/Roo-Code/blob/main/LICENSE (Apache-2.0); no brand page or trademark policy was found",
-    allowed:
-      "The repository is Apache-2.0 and publishes no brand restrictions that we could find. The icon is single-colour black, so it sits on a light tile in both themes, unmodified.",
-    fetched: FETCHED,
-  },
-  {
-    id: "warp",
-    vendor: "Warp",
-    status: "official",
-    symbols: { light: "warp-light", dark: "warp-dark" },
-    tile: "theme",
-    source: "https://www.warp.dev/press → \"Download\" under Logos (Google Drive folder \"Warp Logos\" → Glyph): Warp-Glyph-Black.svg and Warp-Glyph-White.svg",
-    guidelines: "https://www.warp.dev/press (\"logos, press images, and product images you are free to use in all publications\")",
-    allowed: "Warp offers its glyph in black and white for use in all publications.",
-    fetched: FETCHED,
-  },
-  {
-    id: "claude-desktop",
-    vendor: "Anthropic",
-    status: "owner-accepted",
-    symbols: { any: "claude-spark-mono" },
-    tile: "plain",
-    source: "https://www.anthropic.com/press-kit (Claude Spark, one colour; the press kit has no separate Claude Desktop mark)",
-    guidelines: "https://www.anthropic.com/legal/trademark-guidelines",
-    allowed: "As for Claude: only with Anthropic's prior approval of the material; no alterations.",
-    reason: "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03. The Claude Spark as a loose glyph in the pill's text colour (the one-colour variant: same shape, only the fill is the text colour); the press kit has no separate Claude Desktop mark.",
-    fetched: FETCHED,
-  },
-
-  {
-    id: "other",
-    vendor: "—",
-    status: "fallback",
-    tile: "theme",
-    source: "—",
-    guidelines: "—",
-    allowed: "Not a product: a plug glyph from the icon set the site already uses.",
-    reason: "\"Other\" is any client; it has no mark.",
     fetched: FETCHED,
   },
 ];

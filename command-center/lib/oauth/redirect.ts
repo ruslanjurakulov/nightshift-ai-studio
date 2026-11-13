@@ -153,6 +153,37 @@ export function checkClientName(raw: unknown): { ok: true; name: string | null }
   return { ok: true, name };
 }
 
+/**
+ * The name registration stores, which is not always the name that was sent.
+ *
+ * Some clients name themselves after the server the person added: Claude Code
+ * registers as "Claude Code (<server name>)", and every snippet on /mcp names
+ * the server `nightshift`, so the most common real client arrived as "Claude
+ * Code (nightshift)" and was refused as an impersonation (invalid_client_metadata,
+ * no sign-in possible). That name is the person's own label for our server, not
+ * the app claiming to be us, so ONE trailing "(…)" whose content folds to exactly
+ * the reserved word is dropped, and the app is registered under what is left
+ * ("Claude Code") — RFC 7591 3.2.1 lets a server replace a requested metadata
+ * value, and the answer echoes the name actually stored.
+ *
+ * What is left must pass checkClientName on its own, so the consent screen and
+ * Connected apps never show a name that reads as Nightshift: "Nightshift
+ * (nightshift)", "(nightshift)", "Nightshift Official", "Claude (Nightshift
+ * Official)" and every lookalike are still refused. The database's own check
+ * (oauth_client_name_problem, 0093) is unchanged and only ever sees the
+ * shortened name; it still refuses every name that contains the word.
+ */
+export function registrationName(raw: unknown): ReturnType<typeof checkClientName> {
+  if (typeof raw === "string" && raw.length <= 400) {
+    const m = /^(.*\S)\s*\(([^()]*)\)$/u.exec(visibleName(raw));
+    if (m && foldClientName(m[2]) === RESERVED_NAME) {
+      const rest = checkClientName(m[1]);
+      if (rest.ok && rest.name) return rest;
+    }
+  }
+  return checkClientName(raw);
+}
+
 /** An app's name as shown to a person (a second line of defence at display time): printable, bounded, host as fallback. */
 export function cleanClientName(raw: unknown, fallbackHost: string): string {
   const cleaned = visibleName(typeof raw === "string" ? raw : "").slice(0, MAX_CLIENT_NAME).trim();
