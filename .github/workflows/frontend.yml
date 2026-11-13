@@ -17,11 +17,17 @@ on:
     paths:
       - "command-center/**"
       - ".github/workflows/frontend.yml"
+      # The model pages' facts are a copy of the registry (command-center/lib/site/model-facts.json); a registry-only change
+      # must run tests/model-pages.test.tsx, which fails when the two disagree.
+      - "schemas/model_registry.json"
   pull_request:
     branches: [main]
     paths:
       - "command-center/**"
       - ".github/workflows/frontend.yml"
+      # The model pages' facts are a copy of the registry (command-center/lib/site/model-facts.json); a registry-only change
+      # must run tests/model-pages.test.tsx, which fails when the two disagree.
+      - "schemas/model_registry.json"
   workflow_dispatch:
 
 # A second push supersedes the first: only the newest commit on a branch is

@@ -13,7 +13,8 @@
  * flags that decide what the page says about availability. Never the vendor's price, the credit unit, terms notes or limits: a
  * provider cost is not our price, and a page that printed it would be quoting a number nobody sells at. Not the maker's credit
  * line either: by the owner's rule of 2026-11-13 no public surface shows a "Powered by" line or links to the maker; that credit
- * stays in the signed-in Studio, where the feature is offered.
+ * stays in the signed-in Studio, where the feature is offered. Nor the provider slug: no page uses it, and a public file that
+ * named whose model each one is would say more about our suppliers than the pages do.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -31,7 +32,6 @@ export function projectModel(m) {
   return {
     id: m.id,
     name: m.display_name,
-    provider: m.provider,
     output: m.output,
     capabilities: list(m.capabilities),
     aspectRatios: list(m.aspect_ratios),

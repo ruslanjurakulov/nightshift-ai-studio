@@ -3,7 +3,6 @@
     {
       "id": "ideogram-3",
       "name": "Ideogram 3",
-      "provider": "ideogram",
       "output": "image",
       "capabilities": [
         "t2i"
@@ -29,7 +28,6 @@
     {
       "id": "ideogram-4",
       "name": "Ideogram 4.0",
-      "provider": "ideogram",
       "output": "image",
       "capabilities": [
         "t2i"
@@ -63,7 +61,6 @@
     {
       "id": "ideogram-4.5",
       "name": "Ideogram 4.5",
-      "provider": "ideogram",
       "output": "image",
       "capabilities": [
         "t2i"
@@ -97,7 +94,6 @@
     {
       "id": "minimax-h3",
       "name": "MiniMax H3",
-      "provider": "minimax",
       "output": "video",
       "capabilities": [
         "t2v",
@@ -139,7 +135,6 @@
     {
       "id": "minimax-h3-highspeed",
       "name": "MiniMax H3 Highspeed",
-      "provider": "minimax",
       "output": "video",
       "capabilities": [
         "t2v",
@@ -181,7 +176,6 @@
     {
       "id": "minimax-h3-lite",
       "name": "MiniMax H3 Lite",
-      "provider": "minimax",
       "output": "video",
       "capabilities": [
         "t2v",
@@ -223,7 +217,6 @@
     {
       "id": "minimax-h3-max",
       "name": "MiniMax H3 Max",
-      "provider": "minimax",
       "output": "video",
       "capabilities": [
         "t2v",
@@ -264,7 +257,6 @@
     {
       "id": "runway-gen4.5",
       "name": "Runway Gen-4.5",
-      "provider": "runway",
       "output": "video",
       "capabilities": [
         "t2v",
@@ -298,7 +290,6 @@
     {
       "id": "runway-gen4-turbo",
       "name": "Runway Gen-4 Turbo",
-      "provider": "runway",
       "output": "video",
       "capabilities": [
         "i2v"

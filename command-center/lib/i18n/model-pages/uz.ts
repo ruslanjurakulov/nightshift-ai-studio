@@ -30,7 +30,7 @@ export const modelPagesUz: ModelPagesDictionary = {
   },
   availability: {
     title: "Studiyada",
-    preview: "Tez orada Studiyada. Hozircha uni faqat oʻz jamoamiz sinab koʻra oladi, u hali sotuvda emas.",
+    preview: "Hali Studiyada yoʻq. Hozircha uni faqat oʻz jamoamiz ishga tushira oladi.",
     gone: "Endi Studiyada yoʻq: ishlab chiqaruvchisi uni {date} kuni toʻxtatgan.",
     unknown: "Ish maydoningiz qaysi modellarni tanlay olishini va narxni Studiya hech narsa boshlanmasdan oldin koʻrsatadi.",
   },

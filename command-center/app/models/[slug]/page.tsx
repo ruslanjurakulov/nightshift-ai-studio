@@ -46,7 +46,11 @@ export default async function ModelRoute({ params }: { params: Promise<{ slug: s
   const { slug } = await params;
   const page = modelPageBySlug(slug);
   if (!page) notFound();
-  const [{ t, locale }, user] = await Promise.all([getDictionary(), getUser().catch(() => null)]);
+  // Who is asking decides one thing only: where "Use this prompt" goes (the Studio form signed in, sign-up first signed out).
+  // When the auth server cannot answer, the page is still the same public page, so it is served as signed out rather than as
+  // an error: the worst case is a signed-in visitor whose link goes to /signup, which sends a session to its home in the app
+  // (the words are not carried there). Nothing here is authorization; the Studio checks the session itself.
+  const [user, { t, locale }] = await Promise.all([getUser().catch(() => null), getDictionary()]);
   const m = t.site.modelPages;
   const ld = modelPageJsonLd({
     page,

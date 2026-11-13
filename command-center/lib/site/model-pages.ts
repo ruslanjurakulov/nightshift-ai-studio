@@ -22,7 +22,6 @@ export interface ModelFacts {
   id: string;
   /** The registry's display name. */
   name: string;
-  provider: string;
   output: "video" | "image";
   /** The Studio tools the adapter offers for it (t2v, i2v, t2i, edit …). */
   capabilities: string[];
@@ -48,10 +47,9 @@ const strs = (v: unknown, re: RegExp): v is string[] => Array.isArray(v) && v.ev
 /** One model's facts, or null when anything is missing or malformed (it then has no page at all, rather than a page that guesses). */
 export function parseModelFacts(v: unknown): ModelFacts | null {
   if (!isObj(v)) return null;
-  const { id, name, provider, output, capabilities, aspectRatios, aspectRatiosByCapability, resolutions, durationsS, imageRefsMax } = v;
+  const { id, name, output, capabilities, aspectRatios, aspectRatiosByCapability, resolutions, durationsS, imageRefsMax } = v;
   if (typeof id !== "string" || !/^[a-z0-9][a-z0-9.-]{1,39}$/.test(id)) return null;
   if (typeof name !== "string" || !name.trim() || name.length > 80) return null;
-  if (typeof provider !== "string" || !/^[a-z0-9][a-z0-9._-]{0,39}$/.test(provider)) return null;
   if (output !== "video" && output !== "image") return null;
   if (!strs(capabilities, CAP) || capabilities.length === 0 || !strs(aspectRatios, RATIO) || !strs(resolutions, RES)) return null;
   if (!Array.isArray(durationsS) || !durationsS.every((d) => typeof d === "number" && Number.isInteger(d) && d > 0 && d <= 600)) return null;
@@ -61,7 +59,7 @@ export function parseModelFacts(v: unknown): ModelFacts | null {
   const shutdownOn = v.shutdownOn;
   if (!(shutdownOn === null || (typeof shutdownOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(shutdownOn)))) return null;
   return {
-    id, name, provider, output, capabilities, aspectRatios, aspectRatiosByCapability: aspectRatiosByCapability as Record<string, string[]>,
+    id, name, output, capabilities, aspectRatios, aspectRatiosByCapability: aspectRatiosByCapability as Record<string, string[]>,
     resolutions, durationsS: durationsS as number[], imageRefsMax, endFrame: v.endFrame, audioOut: v.audioOut, operatorPreview: v.operatorPreview,
     shutdownOn,
   };
@@ -138,7 +136,7 @@ export function buildModelPages(
   return pages.sort((a, b) => b.samples.length - a.samples.length || a.facts.name.localeCompare(b.facts.name, "en"));
 }
 
-/** What the page says about the Studio: the model is coming (operator preview), gone (its shutdown day has come), or not known here. */
+/** What the page says about the Studio: not in it yet (operator preview: only our team runs it), gone (its shutdown day has come), or not known here. */
 export type ModelAvailability = "preview" | "shut_down" | "unknown";
 
 /**

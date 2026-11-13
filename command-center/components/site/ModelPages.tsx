@@ -190,7 +190,7 @@ function sourceOf(s: ModelSample, all: readonly ModelSample[]): ModelSample | nu
   return all.find((x) => x.e.jobId === id) ?? null;
 }
 
-/** The availability line: coming (operator preview), gone (shutdown day has come), or what the Studio shows (not known here). */
+/** The availability line: not in it yet (operator preview), gone (shutdown day has come), or what the Studio shows (not known here). */
 function availabilityLine(t: Dictionary, locale: Locale, f: ModelFacts, now: Date): string {
   const a = t.site.modelPages.availability;
   const state = modelAvailability(f, now);
@@ -271,7 +271,7 @@ function ModelTile({ t, page, heading }: { t: Dictionary; page: ModelPage; headi
         <p className="ml-tile-meta">
           {page.facts.output === "video" ? x.video : x.image} · {fmt(x.count, { n: String(page.samples.length) })}
         </p>
-        <Link href={page.path} className="nx-link" aria-label={fmt(x.openAria, { model: page.facts.name })}>
+        <Link href={page.path} prefetch={false} className="nx-link" aria-label={fmt(x.openAria, { model: page.facts.name })}>
           {x.open}
           <ArrowRight aria-hidden />
         </Link>

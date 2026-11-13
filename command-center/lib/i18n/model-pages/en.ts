@@ -34,8 +34,11 @@ export const modelPagesEn = {
   },
   availability: {
     title: "In the Studio",
-    /** The registry's operator preview: only the platform's own team may run it (migration 0139). */
-    preview: "Coming to the Studio. Only our own team can try it today, and it is not on sale yet.",
+    /**
+     * The registry's operator preview: only the platform's own team may run it (migration 0139). It says nothing about whether or
+     * when customers will get it, so the line promises no future.
+     */
+    preview: "Not in the Studio yet. Only our own team can run it today.",
     /** The vendor's announced shutdown day has come. {date} is that day. */
     gone: "No longer in the Studio: its maker shut it down on {date}.",
     /** Neither flag: the page cannot know what a workspace may choose (that is the database's answer, read signed in). */

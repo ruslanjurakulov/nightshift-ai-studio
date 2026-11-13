@@ -249,7 +249,7 @@ describe.each(LOCALES)("a model's page (%s)", (locale) => {
     }
   });
 
-  it("says today's truth about the Studio: every model is coming, none is on sale, none has a price", () => {
+  it("says today's truth about the Studio: no model is in it yet, none is on sale, none has a price", () => {
     const m = dictionaries[locale].site.modelPages;
     for (const p of MODEL_PAGES) {
       // Today every sampled model is an operator preview (the registry); the day one is not, this line says what changed.
