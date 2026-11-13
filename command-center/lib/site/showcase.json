@@ -893,6 +893,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "ced854a6-ba49-4668-b9dd-91ca46b72f6d",
+      "assetId": "47426118-3bfa-5acf-b9f3-87f56125dbaa",
+      "sha256": "7be5f1de2234a5a5debe1f5162e1589a2c1bb0600fd944016ca791e7977c68f4",
+      "modelId": "ideogram-4",
+      "modelName": "Ideogram 4.0",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Cinematic YouTube thumbnail, 16:9: a shocked young explorer with wide eyes and mouth open in the foreground, behind him a colossal ancient stone face emerging from a jungle cliff, golden rim light, bold saturated colors, big readable headline text \"IT WAS REAL\" on the right side. Hyper-detailed, high contrast.",
+      "createdAt": "2026-11-13T20:31:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "turbo",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:21:15Z"
     }
   ]
 }
