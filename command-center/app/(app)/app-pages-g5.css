@@ -351,5 +351,7 @@ select.ns-field { padding-right: 12px; }
 .g5-unknown { font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem); font-weight: 600; line-height: 1.2; letter-spacing: 0; overflow-wrap: break-word; min-width: 0; }
 .g5-figs > div, .g5-fig-v { min-width: 0; overflow-wrap: break-word; }
 /* While another key is the page's one filled primary, a key drawn by a shared component is shown quiet (styling only). */
-.g5-quiet-keys .btn-primary { background: transparent; color: var(--color-fg); box-shadow: none; border: 1px solid var(--ns-rule-strong); font-weight: 500; }
-.g5-quiet-keys .btn-primary:hover { background: var(--ns-act-soft); color: var(--color-fg); border-color: var(--ns-act); }
+/* The app's keys are glass (app-glass.css) and read their look from --g-* tokens: here the shared component's filled
+   key is handed the neutral glass, so its own hover (which outranks a page rule) stays quiet too. */
+.g5-quiet-keys .btn-primary { --g-tint: var(--glass-tint); --g-tint-hover: var(--glass-tint-hover); --g-sheen-on: var(--glass-sheen); --g-gloss: var(--glass-gloss); --g-edge-hi: var(--glass-edge-hi); --g-edge-lo: var(--glass-edge-lo); --g-rim-hi: var(--glass-rim-hi); --g-rim-lo: var(--glass-rim-lo); --g-shadow: var(--glass-shadow); --g-shadow-hover: var(--glass-shadow-hover); --g-fg: var(--color-fg); color: var(--g-fg); font-weight: 500; }
+.g5-quiet-keys .btn-primary:hover:not(:disabled):not([aria-disabled="true"]) { --g-edge-hi: var(--ns-act); --g-edge-lo: var(--ns-act); }
