@@ -227,6 +227,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9",
+      "assetId": "54e2e42c-7c52-5b0a-bc77-05dc818e7d53",
+      "sha256": "0a9c6131041438c2c8d1bab2687af14e5365dbd28e3bb6dade1a4f950668ffdc",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Handheld smartphone-style video on a busy sunny city street: a friendly golden retriever the size of a three-storey building walks calmly between the buildings, wagging its tail; pedestrians stop, laugh and film it on their phones, a bus passes under its belly. Realistic scale, viral social-media clip look, wide 16:9. Audio: crowd gasps and laughter, a deep happy woof.",
+      "createdAt": "2026-11-13T17:45:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:22:44Z"
     }
   ]
 }
