@@ -3319,6 +3319,7 @@ export const uz: Dictionary = {
       no_length: "Daqiqa boʻyicha hisoblash uchun davomiylikni tanlang (yoki kanalning maqsadli davomiyligini belgilang).",
       no_history: "Baholash uchun soʻnggi narxlangan videolar yoʻq.",
       unpriced_history: "Kanalning soʻnggi videolarida narxlanmagan xarajatlar bor, shuning uchun baholashga asos yoʻq.",
+      unpriced_concept_thumbnail: "Bu kanal konsept-muqovalar yaratadi, generatsiya qilingan rasmlar (image_generations) uchun esa hali kredit narxi belgilanmagan.",
     },
     floorApplied: "platforma minimumigacha oshirildi",
     insufficient: "Kredit yetarli emas: bu ishga tushirishga {needed} kerak, {available} mavjud.",

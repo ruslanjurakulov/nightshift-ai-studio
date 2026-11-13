@@ -32,14 +32,27 @@ A/B arms differ on ONE axis — the emotion when the concept has a face, else th
 camera take — so a winning arm says something about that axis, not about a
 random reroll.
 
+Before anything is paid for (``precheck``): the headline's word count, whether
+it fits the text side at a legible size, and its height at 120 px are known from
+the words alone, so a headline that cannot work stops the run there.
+
 Cost per video: one planner call (Gemini tokens, metered from the response) plus
-one image generation per A/B arm, priced from ``CHRONOS_PRICE_IMAGE_GENERATIONS``
-exactly like generated stills. With no rate configured the price is ``None`` —
-"unknown", never $0 (``expected_cost``).
+one image generation per A/B arm, priced from ``CHRONOS_PRICE_*`` exactly like
+generated stills. With no rate configured the price is ``None`` — "unknown",
+never $0 (``expected_cost``). The Command Center adds the images to a run's credit
+hold (lib/credits.ts ``withConceptThumbnail``).
+
+Who may turn it on: ``thumbnail_mode`` and ``thumbnail_concept`` are an
+organization administrator's to change (migration 0158).
+
+A plan and its clean images are reused only by a re-run of the SAME video (same
+channel, topic and script fingerprint); the run's folder is keyed by topic, and
+an operator's channels can share it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -166,20 +179,56 @@ class ConceptSettings:
     image_model: str = ""
     allow_faces: bool = False
     allow_baked_text: bool = False
+    #: A fixed headline style for the channel, overriding the planner's pick ("" = the planner's).
+    overlay_style: str = ""
 
 
 def settings_from_agent(agent) -> ConceptSettings:
     """Read the channel's ``thumbnail_mode`` and ``thumbnail_concept`` settings.
     Faces and baked text are off unless an explicit true turns them on: this is a
-    faceless pipeline, and an invented face is a choice a person makes."""
-    raw = dict(getattr(agent, "thumbnail_concept", None) or {})
+    faceless pipeline, and an invented face is a choice a person makes. Both keys
+    are an organization administrator's to change (migration 0158)."""
+    from modules.thumbnail_overlay import STYLES
+
+    raw = getattr(agent, "thumbnail_concept", None)
+    raw = dict(raw) if isinstance(raw, dict) else {}
+    style = str(raw.get("overlay_style") or "").strip().lower()
     return ConceptSettings(
         mode=normalize_mode(getattr(agent, "thumbnail_mode", MODE_FRAME)),
         image_provider=str(raw.get("image_provider") or "").strip().lower(),
         image_model=str(raw.get("image_model") or "").strip(),
         allow_faces=raw.get("allow_faces") is True,
         allow_baked_text=raw.get("allow_baked_text") is True,
+        overlay_style=style if style in STYLES else "",
     )
+
+
+#: What a model id for each adapter looks like. There is no list of every model a
+#: vendor sells in this repo (Scout has verified none), so this is a shape check:
+#: it catches a model of another provider (the usual mistake: an id copied from a
+#: different adapter) before anything is paid for. A typo inside a well-shaped id
+#: is still the vendor's to refuse, and that refusal stops the step by name.
+_MODEL_SHAPES = {
+    "gpt-image": (re.compile(r"^gpt-image-[a-z0-9.\-]+$"), "an OpenAI GPT Image id such as gpt-image-2"),
+    "nano-banana": (re.compile(r"^gemini-[a-z0-9.\-]*image[a-z0-9.\-]*$"),
+                    "a Gemini image model id such as gemini-3.1-flash-image-preview"),
+    "flux": (re.compile(r"^flux-[a-z0-9.\-]+$"), "a FLUX endpoint id such as flux-2-pro"),
+    "fal": (re.compile(r"^[a-z0-9][a-z0-9_.\-]*/[a-z0-9_.\-/]+$"), "a fal model path such as fal-ai/flux-2-pro"),
+    "leonardo": (re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+                 "a Leonardo model UUID"),
+}
+
+
+def model_problem(provider: str, model: str) -> Optional[str]:
+    """Why ``model`` cannot be this provider's model, or None. Empty = the adapter's default."""
+    if not model:
+        return None
+    if provider == "ideogram":
+        return "the Ideogram adapter has no model choice; leave image_model empty"
+    shape = _MODEL_SHAPES.get(provider)
+    if shape and not shape[0].match(model.lower()):
+        return f"{model!r} does not look like {shape[1]}"
+    return None
 
 
 def preflight(agent) -> None:
@@ -198,6 +247,12 @@ def preflight(agent) -> None:
         raise ThumbnailConceptUnavailable(
             "preflight", f"{s.image_provider!r} is not an image adapter this pipeline has",
             f"set agent_config.thumbnail_concept.image_provider to one of: {choices}")
+    problem = model_problem(s.image_provider, s.image_model)
+    if problem:
+        raise ThumbnailConceptUnavailable(
+            "preflight", f"agent_config.thumbnail_concept.image_model is not a {s.image_provider} model: {problem}",
+            "set image_model to a model of that provider, or leave it empty for the adapter's default "
+            f"({image_providers.DEFAULT_MODELS.get(s.image_provider) or 'LEONARDO_MODEL_ID'})")
     if not image_providers._key(s.image_provider):
         raise ThumbnailConceptUnavailable(
             "preflight", f"{s.image_provider} is the channel's thumbnail model but no API key is configured",
@@ -208,21 +263,60 @@ def preflight(agent) -> None:
             "set GEMINI_API_KEY on the worker")
 
 
-def expected_cost(arms: int) -> dict:
-    """What a concept thumbnail costs per video, from the ledger's own price source.
+def headline_of(script) -> str:
+    return " ".join(str(getattr(script, "thumbnail_overlay_text", "") or "").split())
 
-    ``image_usd`` is ``None`` when ``CHRONOS_PRICE_IMAGE_GENERATIONS`` is unset:
-    the quantity is known, the price is not, and it is never shown as 0."""
-    n = max(0, int(arms))
-    price = cost_ledger.unit_price(cost_ledger.IMAGE_GENERATIONS)
-    return {
-        "image_generations": n,
-        "usd_per_image": price,
-        "image_usd": round(n * price, 6) if price is not None else None,
-        "image_price_source": cost_ledger.price_env_var(cost_ledger.IMAGE_GENERATIONS),
-        "planner": "one script-model call; its tokens are metered from the response "
-                   "(CHRONOS_PRICE_GEMINI_INPUT_TOKENS / _OUTPUT_TOKENS)",
-    }
+
+def precheck(agent, script) -> dict:
+    """What can be known about the headline before anything is spent: its word
+    count, whether it fits the text side at a legible size (one long Uzbek or
+    Russian word can make that impossible), and its height at 120 px. Raises with
+    the remedy in concept mode; ``{}`` in frame mode. No request, no cost."""
+    if settings_from_agent(agent).mode != MODE_CONCEPT:
+        return {}
+    from modules import thumbnail_overlay as overlay
+
+    report = overlay.precheck_headline(headline_of(script))
+    if report["failures"]:
+        raise ThumbnailConceptUnavailable(
+            "headline", f"the script's thumbnail text cannot be lettered legibly at {overlay.SIDEBAR_W} px wide — "
+            + "; ".join(report["failures"]),
+            overlay.remedy_for(report["failures"]), record={"headline_precheck": report})
+    return report
+
+
+#: A ceiling on the planner's reply, for the spend guard's estimate only (a few
+#: concepts of short JSON fields; the ledger records what was really used).
+PLANNER_OUTPUT_TOKENS_CEILING = 3000
+
+
+def planned_units(agent, script, arms: int) -> list:
+    """``[(unit, quantity), ...]`` this step is about to buy, for the spend guard:
+    one image per arm and the planner call (input tokens estimated from the prompt
+    at about three characters a token, output at a ceiling)."""
+    settings = settings_from_agent(agent)
+    prompt = build_plan_prompt(script, language=str(getattr(agent, "language", "") or "English"), settings=settings)
+    return [(cost_ledger.IMAGE_GENERATIONS, max(0, int(arms))),
+            (cost_ledger.GEMINI_INPUT_TOKENS, (len(prompt) + len(PLAN_SYSTEM)) // 3 + 1),
+            (cost_ledger.GEMINI_OUTPUT_TOKENS, PLANNER_OUTPUT_TOKENS_CEILING)]
+
+
+def expected_cost(planned: list) -> dict:
+    """What a concept thumbnail costs per video, from the ledger's own price source
+    (``CHRONOS_PRICE_*``). A unit without a rate is listed in ``unpriced`` and makes
+    ``usd`` None — unknown, never 0 — and the run's spend cap cannot see it."""
+    lines, unpriced, total = [], [], 0.0
+    for unit, qty in planned:
+        price = cost_ledger.unit_price(unit)
+        usd = round(qty * price, 6) if price is not None else None
+        if usd is None:
+            unpriced.append(unit)
+        else:
+            total += usd
+        lines.append({"unit": unit, "quantity": qty, "usd_per_unit": price, "usd": usd,
+                      "price_source": cost_ledger.price_env_var(unit)})
+    return {"lines": lines, "unpriced": unpriced, "usd": None if unpriced else round(total, 6),
+            "note": "planner tokens are estimated before the call; the ledger records the metered ones"}
 
 
 # -- the concept -------------------------------------------------------------
@@ -285,8 +379,29 @@ def allowed_framings(settings: ConceptSettings) -> list:
     return out
 
 
-def validate_concept(raw, *, settings: ConceptSettings, headline: str) -> ThumbnailConcept:
-    """One concept from the planner, or ``ConceptInvalid`` listing every problem."""
+def _tokens(text) -> list:
+    return re.findall(r"\w+", str(text or "").casefold())
+
+
+def is_checked_phrase(text: str, checked: tuple) -> bool:
+    """True when ``text`` is a run of consecutive words of one of the ``checked``
+    texts (the fact-checked overlay text and title). The planner may pick which
+    words a lower third or badge shows; it may not write new ones, because words
+    drawn into the picture are a packaging claim nobody else checks."""
+    want = _tokens(text)
+    if not want:
+        return False
+    for phrase in checked:
+        have = _tokens(phrase)
+        for i in range(len(have) - len(want) + 1):
+            if have[i:i + len(want)] == want:
+                return True
+    return False
+
+
+def validate_concept(raw, *, settings: ConceptSettings, headline: str, checked: tuple = ()) -> ThumbnailConcept:
+    """One concept from the planner, or ``ConceptInvalid`` listing every problem.
+    ``checked`` are the fact-checked texts a baked label may quote from."""
     problems: list = []
     if not isinstance(raw, dict):
         raise ConceptInvalid(["a concept is not a JSON object"])
@@ -342,6 +457,8 @@ def validate_concept(raw, *, settings: ConceptSettings, headline: str) -> Thumbn
             problems.append("baked_text is at most 4 words")
         if any(q in baked for q in _QUOTES):
             problems.append("baked_text may not contain quotes")
+        if baked and not is_checked_phrase(baked, checked):
+            problems.append("baked_text must be consecutive words of the fact-checked overlay text or title")
 
     if problems:
         raise ConceptInvalid(problems)
@@ -353,7 +470,7 @@ def validate_concept(raw, *, settings: ConceptSettings, headline: str) -> Thumbn
     )
 
 
-def parse_plan(text: str, *, settings: ConceptSettings, headline: str) -> tuple:
+def parse_plan(text: str, *, settings: ConceptSettings, headline: str, checked: tuple = ()) -> tuple:
     """``(chosen concept, record)`` from the planner's reply.
 
     The planner's own pick must itself be valid. When it is not, the run does
@@ -375,10 +492,10 @@ def parse_plan(text: str, *, settings: ConceptSettings, headline: str) -> tuple:
         if i == chosen:
             continue
         try:
-            validate_concept(raw, settings=settings, headline=headline)
+            validate_concept(raw, settings=settings, headline=headline, checked=checked)
         except ConceptInvalid as e:
             rejected.append({"index": i, "problems": e.problems})
-    concept = validate_concept(concepts[chosen], settings=settings, headline=headline)
+    concept = validate_concept(concepts[chosen], settings=settings, headline=headline, checked=checked)
     record = {"brainstormed": len(concepts), "chosen_index": chosen,
               "why_chosen": " ".join(str(data.get("why_chosen") or "").split())[:_FIELD_MAX],
               "invalid_alternatives": len(rejected)}
@@ -417,8 +534,9 @@ def build_plan_prompt(script, *, language: str, settings: ConceptSettings, title
             "question; the picture must not repeat the words."
             if headline else
             "There is no headline for this video: return \"headline\": \"\" and let the picture alone open the question.")
-    baked = ("For social_card, news_lower_third or day_badge, \"baked_text\" holds the few words (at most 4, in "
-             f"{language}) that element shows; otherwise leave it empty." if settings.allow_baked_text else "")
+    baked = ("For social_card, news_lower_third or day_badge, \"baked_text\" holds the words that element shows: at "
+             "most 4 CONSECUTIVE words copied from the headline or the title above, never new words; otherwise "
+             "leave it empty." if settings.allow_baked_text else "")
     return (
         f"Title: {title or getattr(script, 'title', '')}\n"
         f"Topic: {getattr(script, 'topic', '')}\n"
@@ -542,7 +660,11 @@ def generate_clean(client, prompt: str, out_path: Path, *, provider: str, model:
         raise ThumbnailConceptUnavailable(
             "image", f"{provider} returned a file that is not an image ({type(e).__name__})",
             "re-run; if it repeats, check the provider's status page") from None
-    _cover(img).save(path, "JPEG", quality=95)
+    try:
+        _cover(img).save(path, "JPEG", quality=95)
+    except OSError as e:
+        raise ThumbnailConceptUnavailable("image", f"the generated image could not be saved ({type(e).__name__})",
+                                          "free disk space on the worker, then re-run") from None
     return Path(path)
 
 
@@ -564,80 +686,143 @@ class ConceptResult:
     record: dict = field(default_factory=dict)      # what the run report carries
 
 
-def _load_reusable(out_dir: Path, arms: list, headline: str, settings: ConceptSettings) -> Optional[tuple]:
-    """A plan and clean images a previous attempt of this same run already paid
-    for, when they match exactly (same arms, headline and model). Lettering and
-    the check are re-done; they cost nothing."""
-    plan = out_dir / PLAN_FILE
+def script_fingerprint(script) -> str:
+    """sha256 of what the picture is planned from: title, overlay text and every
+    section's narration. A plan is only ever reused for exactly this script."""
+    parts = [str(getattr(script, "title", "") or ""), headline_of(script)]
+    parts += [str(getattr(s, "narration", "") or "") for s in (getattr(script, "sections", None) or [])]
+    return hashlib.sha256(json.dumps(parts, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _clean_paths(out_dir: Path, arms: list) -> dict:
+    return {arm: out_dir / f"concept_{arm.lower()}_clean.jpg" for arm in arms}
+
+
+def forget_plan(out_dir) -> None:
+    """Remove the reusable plan and clean images (the run is done, or failed in a
+    way a re-run must not repeat). The lettered thumbnails stay: they are the record
+    of what shipped. Never raises: this is housekeeping."""
+    out_dir = Path(out_dir)
+    for path in [out_dir / PLAN_FILE, *out_dir.glob("concept_*_clean.jpg")]:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning("Could not remove %s (%s)", path.name, type(e).__name__)
+
+
+def _load_reusable(out_dir: Path, arms: list, headline: str, settings: ConceptSettings, *, channel_id: str,
+                   topic: str, fingerprint: str, checked: tuple) -> Optional[tuple]:
+    """A plan and clean images an earlier attempt of THIS run already paid for:
+    same channel, topic, script (fingerprint), arms, headline, provider and model.
+    The run folder is keyed by topic, and an operator's channels can share it, so
+    anything short of all of these is another video's picture. Lettering and the
+    check are re-done; they cost nothing."""
     try:
-        data = json.loads(plan.read_text(encoding="utf-8"))
+        data = json.loads((out_dir / PLAN_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    if not isinstance(data, dict) or data.get("arms") != arms or data.get("headline") != headline \
-            or data.get("image_provider") != settings.image_provider \
-            or data.get("image_model") != settings.image_model:
+    want = {"channel_id": channel_id, "topic": topic, "script_sha256": fingerprint, "arms": arms,
+            "headline": headline, "image_provider": settings.image_provider, "image_model": settings.image_model}
+    if not isinstance(data, dict) or any(data.get(k) != v for k, v in want.items()):
         return None
     try:
-        concept = validate_concept(data.get("concept"), settings=settings, headline=headline)
+        concept = validate_concept(data.get("concept"), settings=settings, headline=headline, checked=checked)
     except ConceptInvalid:
         return None
-    clean = {arm: out_dir / f"concept_{arm.lower()}_clean.jpg" for arm in arms}
+    clean = _clean_paths(out_dir, arms)
     if not all(p.exists() and p.stat().st_size > 0 for p in clean.values()):
         return None
-    return concept, dict(data.get("plan") or {}), clean
+    return concept, dict(data.get("plan") or {}), clean, str(data.get("model_called") or "")
+
+
+def _planner_failure(e: Exception) -> tuple:
+    """``(reason, remedy)`` for a failed planner call, by what it tells us: a key
+    the model refuses and a spent daily quota need opposite fixes (CLAUDE.md #6)."""
+    name = type(e).__name__
+    code = getattr(e, "code", None)
+    text = str(e).lower()
+    if name == "GeminiDailyQuotaError":
+        return ("the script model's daily quota is spent",
+                "wait for the daily reset (or raise the quota in Google AI Studio), then re-run")
+    if code in (401, 403) or "api key not valid" in text or "api_key_invalid" in text or "permission" in text:
+        return (f"the script model refused the key (HTTP {code})" if code else "the script model refused the key",
+                "check GEMINI_API_KEY on the worker")
+    if code == 429:
+        return ("the script model is rate limited", "re-run in a few minutes")
+    if isinstance(code, int) and code >= 500:
+        return (f"the script model is unavailable (HTTP {code})", "re-run later")
+    return (f"the planner call failed ({name})", "re-run; if it repeats, check the script model's status and key")
 
 
 def make_concept_thumbnails(agent, script, out_dir: Path, arms, *, gen: Callable[[str, Optional[str]], str],
                             on_planner_response: Optional[Callable[[], None]] = None,
                             on_image: Optional[Callable[[str], None]] = None,
-                            client=None, language: str = "", title: str = "") -> Optional[ConceptResult]:
+                            client=None, language: str = "", title: str = "", channel_id: str = "",
+                            planned: Optional[list] = None) -> Optional[ConceptResult]:
     """The whole concept step for one video. ``None`` in frame mode — no call,
     no file, no cost. Otherwise ``ConceptResult`` or ``ThumbnailConceptUnavailable``.
 
-    ``on_planner_response`` runs after the planner call (the caller meters its
-    tokens); ``on_image(provider)`` after each image that came back (the caller
-    records one ``image_generations``), so a stop half way keeps the record of
-    what was already paid for."""
+    ``on_planner_response`` runs once the planner call returned or raised (the
+    caller meters whatever response the engine kept, even one whose text could
+    not be read); ``on_image(provider)`` after each image that came back (the
+    caller records one ``image_generations``), so a stop half way keeps the record
+    of what was already paid for."""
     settings = settings_from_agent(agent)
     if settings.mode != MODE_CONCEPT:
         return None
     preflight(agent)
+    precheck(agent, script)
     arms = [str(a).strip().upper() for a in arms if str(a).strip()] or ["A"]
     out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    headline = " ".join(str(getattr(script, "thumbnail_overlay_text", "") or "").split())
+    headline = headline_of(script)
+    title = title or str(getattr(script, "title", "") or "")
+    topic = str(getattr(script, "topic", "") or "")
+    checked = tuple(t for t in (headline, title) if t)
+    fingerprint = script_fingerprint(script)
     language = language or str(getattr(agent, "language", "") or "English")
     record: dict = {"thumbnail_mode": MODE_CONCEPT, "image_provider": settings.image_provider,
-                    "image_model": settings.image_model or "adapter default",
-                    "expected_cost": expected_cost(len(arms)), "reused": False}
+                    "expected_cost": expected_cost(planned or planned_units(agent, script, len(arms))),
+                    "reused": False}
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise ThumbnailConceptUnavailable("files", f"the run folder could not be created ({type(e).__name__})",
+                                          "free disk space on the worker, then re-run", record=record) from None
 
-    reused = _load_reusable(out_dir, arms, headline, settings)
+    reused = _load_reusable(out_dir, arms, headline, settings, channel_id=channel_id, topic=topic,
+                            fingerprint=fingerprint, checked=checked)
     if reused:
-        concept, plan_record, clean = reused
-        record["reused"] = True
+        concept, plan_record, clean, model_called = reused
+        record.update(reused=True, image_model=model_called)
     else:
+        # Whatever is left from another script, channel or failed attempt is not ours to letter.
+        forget_plan(out_dir)
         prompt = build_plan_prompt(script, language=language, settings=settings, title=title)
         try:
             reply = gen(prompt, PLAN_SYSTEM)
         except Exception as e:
-            raise ThumbnailConceptUnavailable(
-                "plan", f"the planner call failed ({type(e).__name__})",
-                "re-run; if it repeats, check the script model's quota and key") from None
-        # Only after a reply: a raised call left the engine's last response
-        # pointing at the script, and metering it again would bill it twice.
-        if on_planner_response is not None:
-            on_planner_response()
+            reason, remedy = _planner_failure(e)
+            raise ThumbnailConceptUnavailable("plan", reason, remedy, record=record) from None
+        finally:
+            # The caller cleared the engine's last response before this call, so
+            # what is there now is this call's own (even when reading .text raised).
+            if on_planner_response is not None:
+                on_planner_response()
         try:
-            concept, plan_record = parse_plan(reply, settings=settings, headline=headline)
+            concept, plan_record = parse_plan(reply, settings=settings, headline=headline, checked=checked)
         except ConceptInvalid as e:
             raise ThumbnailConceptUnavailable(
                 "plan", "the planner's chosen concept is not usable: " + "; ".join(e.problems)[:600],
                 "re-run (the planner is asked again); if it repeats, set thumbnail_mode back to frame",
                 record={**record, "plan_problems": e.problems}) from None
-        clean = {}
+        clean, model_called = {}, ""
+    if settings.overlay_style:
+        # The channel fixed its headline style (thumbnail_concept.overlay_style): the planner's pick is not used.
+        concept = replace(concept, overlay_style=settings.overlay_style)
     axis, variants = ab_variants(concept, arms)
     record.update(plan=plan_record, concept=concept.to_dict(), ab_axis=axis,
-                  ab_values={arm: getattr(c, axis) for arm, c in variants.items()})
+                  ab_values={arm: getattr(c, axis) for arm, c in variants.items()},
+                  overlay_style_source="channel" if settings.overlay_style else "planner")
 
     if not reused:
         client = client or image_providers.client_for(settings.image_provider, settings.image_model)
@@ -646,44 +831,59 @@ def make_concept_thumbnails(agent, script, out_dir: Path, arms, *, gen: Callable
                 "image", f"no {settings.image_provider} client could be made (no API key)",
                 f"set {image_providers.KEY_ATTRS.get(settings.image_provider, 'the provider key')} on the worker",
                 record=record)
+        # A soft miss here stops the step: the adapter must not log that it fell back to stock.
+        client.soft_failure_note = "the concept thumbnail step stops"
+        model_called = str(getattr(client, "model", "") or getattr(client, "model_id", "") or "")
+        record["image_model"] = model_called
         prompts = {}
         for arm, variant in variants.items():
-            path = out_dir / f"concept_{arm.lower()}_clean.jpg"
+            path = _clean_paths(out_dir, [arm])[arm]
             prompts[arm] = build_image_prompt(variant, allow_baked_text=settings.allow_baked_text)
             try:
                 clean[arm] = generate_clean(client, prompts[arm], path, provider=settings.image_provider,
-                                            model=settings.image_model)
+                                            model=model_called)
             except ThumbnailConceptUnavailable as e:
                 e.record = {**record, "failed_arm": arm}
                 raise
             if on_image is not None:
                 on_image(settings.image_provider)
-        (out_dir / PLAN_FILE).write_text(json.dumps({
-            "arms": arms, "headline": headline, "image_provider": settings.image_provider,
-            "image_model": settings.image_model, "concept": concept.to_dict(), "plan": plan_record,
-            "prompts": prompts}, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            (out_dir / PLAN_FILE).write_text(json.dumps({
+                "channel_id": channel_id, "topic": topic, "script_sha256": fingerprint, "arms": arms,
+                "headline": headline, "image_provider": settings.image_provider, "image_model": settings.image_model,
+                "model_called": model_called, "concept": concept.to_dict(), "plan": plan_record,
+                "prompts": prompts}, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError as e:
+            # Not fatal for this attempt (the pictures are on disk); a re-run just cannot reuse them.
+            logger.warning("Concept plan not saved for reuse (%s)", type(e).__name__)
 
-    from PIL import Image
+    from PIL import Image, UnidentifiedImageError
     from modules import thumbnail_overlay as overlay
 
     paths, checks = {}, {}
-    for arm, variant in variants.items():
-        with Image.open(clean[arm]) as im:
-            clean_img = im.convert("RGB")
-        final, ground, layout = overlay.render_headline(clean_img, headline, style=variant.overlay_style,
-                                                        hero_side=variant.hero_side)
-        checks[arm] = overlay.readability(final, ground, clean_img, layout, hero_side=variant.hero_side,
-                                          headline=headline)
-        out = out_dir / f"thumbnail_{arm.lower()}.jpg"
-        final.save(out, "JPEG", quality=95)
-        overlay.sidebar_preview(final).save(out_dir / f"thumbnail_{arm.lower()}_120.png")
-        paths[arm] = out
+    try:
+        for arm, variant in variants.items():
+            with Image.open(clean[arm]) as im:
+                clean_img = im.convert("RGB")
+            final, ground, layout = overlay.render_headline(clean_img, headline, style=variant.overlay_style,
+                                                            hero_side=variant.hero_side)
+            checks[arm] = overlay.readability(final, ground, clean_img, layout, hero_side=variant.hero_side,
+                                              headline=headline)
+            out = out_dir / f"thumbnail_{arm.lower()}.jpg"
+            final.save(out, "JPEG", quality=95)
+            overlay.sidebar_preview(final).save(out_dir / f"thumbnail_{arm.lower()}_120.png")
+            paths[arm] = out
+    except (OSError, UnidentifiedImageError, ValueError) as e:
+        forget_plan(out_dir)
+        raise ThumbnailConceptUnavailable(
+            "letter", f"lettering or saving the thumbnail failed ({type(e).__name__})",
+            "free disk space on the worker and re-run; if it repeats, check the fonts (tools/setup_check.py)",
+            record={**record, "readability": checks}) from None
     record["readability"] = checks
     failed = {arm: c["failures"] for arm, c in checks.items() if not c["passed"]}
     if failed:
-        # A re-run must compose again, not re-letter the same pictures and fail
-        # the same way: the plan is no longer offered for reuse.
-        (out_dir / PLAN_FILE).unlink(missing_ok=True)
+        # A re-run must compose again, not re-letter the same pictures and fail the same way.
+        forget_plan(out_dir)
         reason = "; ".join(f"arm {arm}: " + ", ".join(f) for arm, f in failed.items())
         raise ThumbnailConceptUnavailable(
             "readability", f"the thumbnail does not read at {overlay.SIDEBAR_W} px wide — {reason}",

@@ -56,7 +56,7 @@ from modules.credential_health import (
     CredentialsMissing, check_run_credentials, placeholder_media_allowed, with_live_youtube_check)
 from modules.cost_ledger import (
     CostLedger, IMAGE_GENERATIONS, PEXELS_REQUESTS, RENDER_SECONDS, TTS_CHARACTERS,
-    UPLOAD_BYTES, VIDEO_GEN_CLIPS,
+    UPLOAD_BYTES, VIDEO_GEN_CLIPS, price_env_var,
 )
 from modules import budget
 from modules import disk_guard
@@ -748,14 +748,27 @@ def _concept_thumbnails(ctx, costs, script, slug, channel_id, engine):
     if thumbnail_concept.settings_from_agent(ctx.agent).mode != thumbnail_concept.MODE_CONCEPT:
         return None
     arms = _variant_arms()
-    _guard_spend(ctx, costs, "the concept thumbnail", planned=[(IMAGE_GENERATIONS, len(arms))])
-    planner = engine if engine is not None else ScriptEngine(channel=ctx)
     try:
+        # What the words alone decide (length, a word too long to letter legibly) is
+        # known now: stop before the spend check, the planner and the images.
+        thumbnail_concept.precheck(ctx.agent, script)
+        planned = thumbnail_concept.planned_units(ctx.agent, script, len(arms))
+        unpriced = thumbnail_concept.expected_cost(planned)["unpriced"]
+        if unpriced:
+            logger.warning("[channel: %s] Concept thumbnail: %s have no rate, so the run's spend cap cannot see "
+                           "them (unknown, not $0): set %s", channel_id, ", ".join(unpriced),
+                           ", ".join(price_env_var(u) for u in unpriced))
+        _guard_spend(ctx, costs, "the concept thumbnail", planned=planned)
+        planner = engine if engine is not None else ScriptEngine(channel=ctx)
+        # The planner's tokens are metered from the engine's last response; clear the
+        # script's, so a planner call that raises is never metered as the script again.
+        planner.last_response = None
         return thumbnail_concept.make_concept_thumbnails(
             ctx.agent, script, ThumbnailGenerator(slug).out_dir, arms, gen=planner._gen,
             on_planner_response=lambda: costs.add_gemini_usage(planner.last_response, stage="thumbnail_concept"),
             on_image=lambda provider: costs.add(IMAGE_GENERATIONS, 1, stage=f"thumbnail:{provider}"),
-            language=getattr(ctx.agent, "language", ""), title=script.title)
+            language=getattr(ctx.agent, "language", ""), title=script.title, channel_id=str(channel_id),
+            planned=planned)
     except thumbnail_concept.ThumbnailConceptUnavailable as e:
         logger.error("[channel: %s] %s", channel_id, e)
         events.emit(events.AGENT_FAILED, agent="thumbnail_concept", status=events.STATUS_FAILED,
@@ -2007,6 +2020,9 @@ def run(
             # blocked, held or failed run deliberately keeps its checkpoint, so
             # --resume can reuse the saved script instead of re-paying for it.
             run_checkpoint.clear(slug)
+            # And the concept thumbnail's reusable plan and clean images with it: the
+            # folder is keyed by topic, and a later video of the same topic must plan anew.
+            thumbnail_concept.forget_plan(ThumbnailGenerator(slug).out_dir)
 
             # If this run's series (else the channel's default) names a playlist,
             # add the freshly published video to it — a playlist keeps the series bingeable.

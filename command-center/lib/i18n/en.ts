@@ -3333,6 +3333,7 @@ export const en = {
       no_length: "Choose a length (or set the channel's target length) to price by the minute.",
       no_history: "No recent priced videos to estimate from.",
       unpriced_history: "This channel's recent videos have unpriced costs, so there is nothing to estimate from.",
+      unpriced_concept_thumbnail: "This channel makes concept thumbnails, and generated images (image_generations) have no credit price yet.",
     },
     floorApplied: "raised to the platform minimum",
     insufficient: "Not enough credits: this run needs {needed}, {available} available.",

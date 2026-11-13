@@ -104,6 +104,8 @@ def hero_image(side="right") -> Image.Image:
 
 
 class FakeClient:
+    model = "flux-2-pro"
+
     def __init__(self, image=None, raises=None):
         self.image, self.raises, self.prompts = image, raises, []
 
@@ -199,11 +201,26 @@ class ConceptValidation(unittest.TestCase):
         self.assertEqual(concept.emotion, "shock")
 
     def test_text_carrying_framings_need_the_channel_to_allow_baked_text(self):
-        self.assert_rejected(framing="news_lower_third", baked_text="BREAKING")
+        self.assert_rejected(framing="news_lower_third", baked_text="LOCKED")
         allowed = replace(FACELESS, allow_baked_text=True)
-        concept = tc.validate_concept(concept_dict(framing="news_lower_third", baked_text="BREAKING"),
-                                      settings=allowed, headline=HEADLINE)
-        self.assertEqual(concept.baked_text, "BREAKING")
+        concept = tc.validate_concept(concept_dict(framing="news_lower_third", baked_text="locked"),
+                                      settings=allowed, headline=HEADLINE, checked=(HEADLINE, Script.title))
+        self.assertEqual(concept.baked_text, "locked")
+
+    def test_baked_text_is_only_ever_words_of_the_fact_checked_texts(self):
+        allowed = replace(FACELESS, allow_baked_text=True)
+        checked = (HEADLINE, Script.title)
+        for invented in ("BREAKING", "MURDER CONFIRMED", "LOCKED STILL", "3 Men Murdered", "DAY 30"):
+            with self.subTest(baked=invented), self.assertRaises(tc.ConceptInvalid) as cm:
+                tc.validate_concept(concept_dict(framing="news_lower_third", baked_text=invented),
+                                    settings=allowed, headline=HEADLINE, checked=checked)
+            self.assertIn("fact-checked", " ".join(cm.exception.problems))
+        ok = tc.validate_concept(concept_dict(framing="day_badge", baked_text="Vanished From"),
+                                 settings=allowed, headline=HEADLINE, checked=checked)
+        self.assertEqual(ok.baked_text, "Vanished From")
+        with self.assertRaises(tc.ConceptInvalid):  # nothing checked: nothing may be baked
+            tc.validate_concept(concept_dict(framing="day_badge", baked_text="STILL"), settings=allowed,
+                                headline=HEADLINE)
 
     def test_lettering_asked_of_the_image_model_is_rejected(self):
         for hero in ('a door with "KEEP OUT" on it', "a sign that says DANGER", "a newspaper headline",
@@ -291,6 +308,47 @@ class UnavailableModelStops(unittest.TestCase):
                 patch.object(tc.config, "GEMINI_API_KEY", "g", create=True):
             tc.preflight(agent(image_provider="flux"))
 
+    def test_a_model_of_another_provider_stops_at_preflight_by_name(self):
+        with patch.object(tc.config, "BFL_API_KEY", "k", create=True), \
+                patch.object(tc.config, "GEMINI_API_KEY", "g", create=True), \
+                patch.object(tc.config, "IDEOGRAM_API_KEY", "k", create=True):
+            for provider, model in (("flux", "gpt-image-2"), ("flux", "fal-ai/flux-2-pro"), ("ideogram", "V_3")):
+                with self.subTest(provider=provider, model=model):
+                    with self.assertRaises(tc.ThumbnailConceptUnavailable) as cm:
+                        tc.preflight(agent(image_provider=provider, image_model=model))
+                    self.assertEqual(cm.exception.stage, "preflight")
+                    self.assertIn("image_model", cm.exception.reason)
+            tc.preflight(agent(image_provider="flux", image_model="flux-2-max"))
+            tc.preflight(agent(image_provider="flux"))
+        for provider, model in (("gpt-image", "gpt-image-2"), ("nano-banana", "gemini-3.1-flash-image-preview"),
+                                ("fal", "fal-ai/flux-2-pro"), ("leonardo", "6bef9f1b-29cb-40c7-b9df-32b51c1f67d3")):
+            self.assertIsNone(tc.model_problem(provider, model), (provider, model))
+
+    def test_planner_failures_name_the_right_remedy(self):
+        class KeyRefused(Exception):
+            code = 403
+
+        class Busy(Exception):
+            code = 429
+
+        GeminiDailyQuotaError = type("GeminiDailyQuotaError", (RuntimeError,), {})
+        self.assertIn("GEMINI_API_KEY", tc._planner_failure(KeyRefused("denied"))[1])
+        self.assertIn("daily reset", tc._planner_failure(GeminiDailyQuotaError("spent"))[1])
+        self.assertIn("few minutes", tc._planner_failure(Busy("slow down"))[1])
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(tc.config, "BFL_API_KEY", "k", create=True), \
+                patch.object(tc.config, "GEMINI_API_KEY", "g", create=True):
+            metered = []
+
+            def refused(prompt, system):
+                raise KeyRefused("API key not valid")
+            with self.assertRaises(tc.ThumbnailConceptUnavailable) as cm:
+                tc.make_concept_thumbnails(agent(), Script(), Path(d), ("A", "B"), gen=refused,
+                                           on_planner_response=lambda: metered.append(1), client=FakeClient())
+        self.assertEqual(cm.exception.stage, "plan")
+        self.assertIn("GEMINI_API_KEY", cm.exception.remedy)
+        self.assertEqual(metered, [1])  # whatever response the engine kept is still metered
+
     def test_the_channel_model_is_pinned_not_the_run_wide_one(self):
         with patch.object(image_providers.config, "BFL_API_KEY", "k", create=True), \
                 patch.object(image_providers.config, "IMAGE_MODEL", "gpt-image-2", create=True):
@@ -364,7 +422,9 @@ class ReadabilityGate(unittest.TestCase):
         self.assertFalse(report["passed"])
         self.assertLess(report["contrast"], ov.MIN_CONTRAST)
         self.assertTrue(any("contrast" in f for f in report["failures"]))
-        self.assertIn("plated", ov.remedy_for(report["failures"]))
+        self.assertIn("thumbnail_concept.overlay_style", ov.remedy_for(report["failures"]))
+        self.assertEqual(tc.settings_from_agent(agent(overlay_style="Marker")).overlay_style, "marker")
+        self.assertEqual(tc.settings_from_agent(agent(overlay_style="comic")).overlay_style, "")
 
     def test_a_flat_hero_and_text_over_the_hero_fail(self):
         flat = Image.new("RGB", (1280, 720), (120, 40, 160))
@@ -376,6 +436,36 @@ class ReadabilityGate(unittest.TestCase):
         self.assertIn("nearly flat", joined)
         self.assertIn("covers", joined)
         self.assertEqual(report["emotion"], "not measured (no face detector in this pipeline)")
+
+    @unittest.skipUnless(SCALABLE, "needs a scalable font, as the real renderer does")
+    def test_the_headline_is_checked_from_its_words_alone_before_anything_is_spent(self):
+        self.assertEqual(ov.precheck_headline(HEADLINE)["failures"], [])
+        self.assertEqual(ov.precheck_headline("Тайна маяка")["failures"], [])
+        long_word = ov.precheck_headline("Qoraqalpogʻistonning sirli shahri")
+        self.assertTrue(any("too long" in f and "QORAQALPOGʻISTONNING" in f for f in long_word["failures"]))
+        self.assertTrue(any("7 words" in f for f in ov.precheck_headline("one two three four five six seven")["failures"]))
+        self.assertIn("text-free", ov.precheck_headline("")["text"])
+
+        class LongScript(Script):
+            thumbnail_overlay_text = "ДОСТОПРИМЕЧАТЕЛЬНОСТИ невероятные"
+
+        def no_call(*a, **k):
+            raise AssertionError("nothing may be paid for a headline that cannot be lettered")
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(tc.config, "BFL_API_KEY", "k", create=True), \
+                patch.object(tc.config, "GEMINI_API_KEY", "g", create=True):
+            with self.assertRaises(tc.ThumbnailConceptUnavailable) as cm:
+                tc.make_concept_thumbnails(agent(), LongScript(), Path(d), ("A", "B"), gen=no_call,
+                                           on_planner_response=no_call, on_image=no_call,
+                                           client=FakeClient(raises=AssertionError("no image")))
+        self.assertEqual(cm.exception.stage, "headline")
+        self.assertIn("shorten", cm.exception.remedy)
+
+    def test_no_scalable_font_is_a_named_failure(self):
+        from PIL import ImageFont
+        report = ov.precheck_headline(HEADLINE, font_loader=lambda size: ImageFont.load_default_imagefont())
+        self.assertTrue(any("font" in f for f in report["failures"]))
+        self.assertIn("TrueType", ov.remedy_for(report["failures"]))
 
     def test_more_than_six_words_fails(self):
         clean = hero_image()
@@ -429,13 +519,14 @@ class OneAxisAB(unittest.TestCase):
 
 @unittest.skipUnless(SCALABLE, "needs a scalable font, as the real renderer does")
 class WholeStep(unittest.TestCase):
-    def run_step(self, out, client, gen=None, **kw):
+    def run_step(self, out, client, gen=None, script=None, channel_id="", **kw):
         images, metered = [], []
         with patch.object(tc.config, "BFL_API_KEY", "k", create=True), \
                 patch.object(tc.config, "GEMINI_API_KEY", "g", create=True):
             result = tc.make_concept_thumbnails(
-                agent(**kw), Script(), out, ("A", "B"), gen=gen or (lambda p, s: plan_json()),
-                on_planner_response=lambda: metered.append(1), on_image=images.append, client=client)
+                agent(**kw), script or Script(), out, ("A", "B"), gen=gen or (lambda p, s: plan_json()),
+                on_planner_response=lambda: metered.append(1), on_image=images.append,
+                client=client, channel_id=channel_id)
         return result, images, metered
 
     def test_two_arms_are_generated_lettered_checked_and_recorded(self):
@@ -462,6 +553,28 @@ class WholeStep(unittest.TestCase):
             again, images, metered = self.run_step(Path(d), FakeClient(raises=AssertionError("no")), gen=no_call)
             self.assertTrue(again.record["reused"])
             self.assertEqual((images, metered), ([], []))
+            self.assertEqual(again.record["image_model"], "flux-2-pro")  # what was called, not "adapter default"
+
+    def test_a_plan_is_never_reused_for_another_script_or_another_channel(self):
+        class Rewritten(Script):
+            sections = [type("S", (), {"narration": "A different account of the night."})()]
+
+        with tempfile.TemporaryDirectory() as d:
+            self.run_step(Path(d), FakeClient(image=hero_image()), channel_id="history")
+            for label, kw in (("another script", {"script": Rewritten(), "channel_id": "history"}),
+                              ("another channel", {"channel_id": "finance"})):
+                with self.subTest(label):
+                    client = FakeClient(image=hero_image())
+                    result, images, metered = self.run_step(Path(d), client, **kw)
+                    self.assertFalse(result.record["reused"])
+                    self.assertEqual((len(client.prompts), images, metered), (2, ["flux", "flux"], [1]))
+            plan = json.loads((Path(d) / tc.PLAN_FILE).read_text())
+            self.assertEqual((plan["channel_id"], plan["topic"]), ("finance", Script.topic))
+            self.assertEqual(plan["script_sha256"], tc.script_fingerprint(Script()))
+            tc.forget_plan(Path(d))
+            self.assertFalse((Path(d) / tc.PLAN_FILE).exists())
+            self.assertFalse(list(Path(d).glob("concept_*_clean.jpg")))
+            self.assertTrue((Path(d) / "thumbnail_a.jpg").exists())  # what shipped stays
 
     def test_a_generation_that_does_not_read_at_sidebar_size_stops_the_step(self):
         with tempfile.TemporaryDirectory() as d:
@@ -475,18 +588,43 @@ class WholeStep(unittest.TestCase):
             self.assertFalse((Path(d) / tc.PLAN_FILE).exists())
 
 
-class ExpectedCost(unittest.TestCase):
-    def test_no_rate_configured_is_unknown_not_zero(self):
-        with patch.dict(os.environ, {"CHRONOS_PRICE_IMAGE_GENERATIONS": ""}):
-            cost = tc.expected_cost(2)
-        self.assertEqual(cost["image_generations"], 2)
-        self.assertIsNone(cost["usd_per_image"])
-        self.assertIsNone(cost["image_usd"])
-        self.assertEqual(cost["image_price_source"], "CHRONOS_PRICE_IMAGE_GENERATIONS")
+class UploadForgetsThePlan(unittest.TestCase):
+    def test_a_published_run_drops_the_reusable_plan_with_its_checkpoint(self):
+        # The folder is keyed by topic: a later video of the same topic must never find this plan.
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        cleared = source.index("run_checkpoint.clear(slug)")
+        self.assertIn("thumbnail_concept.forget_plan(ThumbnailGenerator(slug).out_dir)", source[cleared:cleared + 400])
 
-    def test_a_configured_rate_prices_one_image_per_arm(self):
-        with patch.dict(os.environ, {"CHRONOS_PRICE_IMAGE_GENERATIONS": "0.04"}):
-            self.assertEqual(tc.expected_cost(3)["image_usd"], 0.12)
+
+class ExpectedCost(unittest.TestCase):
+    PRICES = ("CHRONOS_PRICE_IMAGE_GENERATIONS", "CHRONOS_PRICE_GEMINI_INPUT_TOKENS", "CHRONOS_PRICE_GEMINI_OUTPUT_TOKENS")
+
+    def test_the_planned_units_are_one_image_per_arm_and_the_planner_call(self):
+        planned = dict(tc.planned_units(agent(), Script(), 3))
+        self.assertEqual(planned["image_generations"], 3)
+        self.assertGreater(planned["gemini_input_tokens"], 100)
+        self.assertEqual(planned["gemini_output_tokens"], tc.PLANNER_OUTPUT_TOKENS_CEILING)
+
+    def test_no_rate_configured_is_unknown_not_zero(self):
+        with patch.dict(os.environ, {k: "" for k in self.PRICES}):
+            cost = tc.expected_cost(tc.planned_units(agent(), Script(), 2))
+        self.assertIsNone(cost["usd"])
+        self.assertEqual(sorted(cost["unpriced"]), ["gemini_input_tokens", "gemini_output_tokens", "image_generations"])
+        image = next(line for line in cost["lines"] if line["unit"] == "image_generations")
+        self.assertEqual((image["quantity"], image["usd"], image["price_source"]),
+                         (2, None, "CHRONOS_PRICE_IMAGE_GENERATIONS"))
+
+    def test_one_unpriced_unit_makes_the_total_unknown(self):
+        with patch.dict(os.environ, {"CHRONOS_PRICE_IMAGE_GENERATIONS": "0.04", "CHRONOS_PRICE_GEMINI_INPUT_TOKENS": "",
+                                     "CHRONOS_PRICE_GEMINI_OUTPUT_TOKENS": ""}):
+            cost = tc.expected_cost([("image_generations", 3), ("gemini_input_tokens", 1000)])
+        self.assertIsNone(cost["usd"])
+        self.assertEqual(cost["lines"][0]["usd"], 0.12)
+
+    def test_every_rate_configured_gives_a_total(self):
+        with patch.dict(os.environ, {"CHRONOS_PRICE_IMAGE_GENERATIONS": "0.04",
+                                     "CHRONOS_PRICE_GEMINI_INPUT_TOKENS": "0.000001"}):
+            self.assertEqual(tc.expected_cost([("image_generations", 3), ("gemini_input_tokens", 1000)])["usd"], 0.121)
 
 
 # -- the pipeline: a concept channel whose model is missing stops before the voice
@@ -506,9 +644,11 @@ from modules.state_store import StateStore
 
 ctx = ChannelContext.from_dict(row)
 work = Path(tempfile.mkdtemp())
+import atexit, shutil
+atexit.register(shutil.rmtree, work, True)
 os.chdir(work)
 db = Path(os.environ["CHRONOS_STATE_DB"])
-out = {"frame_requests": 0, "voice_built": False}
+out = {"frame_requests": 0, "voice_built": False, "planner_calls": 0, "image_calls": []}
 
 class FakeMixer:
     characters_synthesized = 10
@@ -555,10 +695,8 @@ patches = [
     patch.object(main, "ThumbnailGenerator", FakeThumbs),
     patch.object(main.video_ir, "write_for_run", return_value=None),
 ]
-if sys.argv[4] == "concept_ok":
+if sys.argv[4] in ("concept_ok", "concept_spy"):
     from PIL import Image, ImageDraw
-    out["planner_calls"] = 0
-    out["image_calls"] = []
 
     class Client:
         def generate(self, prompt, out_path, *, width, height):
@@ -576,6 +714,8 @@ if sys.argv[4] == "concept_ok":
             self.last_response = None
         def _gen(self, prompt, system=None):
             out["planner_calls"] += 1
+            self.last_response = SimpleNamespace(usage_metadata=SimpleNamespace(
+                prompt_token_count=1200, candidates_token_count=400))
             return sys.argv[5]
 
     patches += [patch.object(main, "ScriptEngine", FakeEngine),
@@ -588,6 +728,7 @@ except BaseException as e:
     out["raised"] = [type(e).__name__, str(e)]
     out["tb"] = traceback.format_exc()[-1500:]
 store = StateStore(db)
+out["costs"] = [[c["unit"], c["quantity"], c["stage"]] for c in store.list_video_costs()]
 out["events"] = [{"event": e["event"], "agent": e.get("agent"), "metadata": e["metadata"]}
                  for e in store.list_events(limit=500)
                  if str(e["event"]).startswith("thumbnail.") or e.get("agent") in ("media_preflight", "thumbnail_concept")]
@@ -595,22 +736,35 @@ print("RESULT " + json.dumps(out))
 """
 
 
-def drive(agent_config: dict, mode: str = "plain", plan: str = "", env: dict | None = None) -> dict:
+def drive(agent_config: dict, mode: str = "plain", plan: str = "", env: dict | None = None,
+          overlay: str | None = None) -> dict:
     row = {"channel_id": "news", "name": "news", "niche": "tech", "status": "ACTIVE",
            "agent_config": {"language": "English", **agent_config},
            "schedule_config": {"enabled": True, "publish_hour_utc": 15},
            "credential_ref": {"youtube_channel_id": "UCnews", "verified_at": "2026-09-01T00:00:00Z"}}
+    script = ROOT / "samples" / "demo_script.json"
+    tmp = tempfile.TemporaryDirectory()
+    if overlay is not None:
+        data = json.loads(script.read_text())
+        data["thumbnail_overlay_text"] = overlay
+        script = Path(tmp.name) / "script.json"
+        script.write_text(json.dumps(data))
+    state = Path(tmp.name) / "state.db"
     proc = subprocess.run(
-        [sys.executable, "-I", "-c", _CHILD, str(ROOT), json.dumps(row), str(ROOT / "samples" / "demo_script.json"),
-         mode, plan],
+        [sys.executable, "-I", "-c", _CHILD, str(ROOT), json.dumps(row), str(script), mode, plan],
         capture_output=True, text=True, timeout=300, cwd=tempfile.gettempdir(),
         env={"PATH": "/usr/bin:/bin", "HOME": tempfile.gettempdir(), "GEMINI_API_KEY": "not-a-real-key",
-             "PEXELS_API_KEY": "not-a-real-key", "CHRONOS_STATE_DB": str(Path(tempfile.mkdtemp()) / "state.db"),
+             "PEXELS_API_KEY": "not-a-real-key", "CHRONOS_STATE_DB": str(state),
              "NIGHTSHIFT_MIN_FREE_DISK_GB": "0", "NIGHTSHIFT_GROUNDED_FACTCHECK": "off",
              "NIGHTSHIFT_PACKAGING_REPAIR": "off", **(env or {})})
+    tmp.cleanup()
     line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT ")), None)
     assert line is not None, proc.stderr[-3000:]
     return json.loads(line[len("RESULT "):])
+
+
+CONCEPT = {"thumbnail_mode": "concept", "thumbnail_concept": {"image_provider": "flux"}}
+FLUX_KEY = {"BFL_API_KEY": "not-a-real-key"}
 
 
 class PipelineStopsOnAnUnavailableModel(unittest.TestCase):
@@ -636,8 +790,7 @@ class PipelineStopsOnAnUnavailableModel(unittest.TestCase):
 
     @unittest.skipUnless(SCALABLE, "needs a scalable font, as the real renderer does")
     def test_a_concept_channel_plans_and_generates_before_the_voice_and_ships_the_concept(self):
-        out = drive({"thumbnail_mode": "concept", "thumbnail_concept": {"image_provider": "flux"}},
-                    mode="concept_ok", plan=plan_json(), env={"BFL_API_KEY": "not-a-real-key"})
+        out = drive(CONCEPT, mode="concept_ok", plan=plan_json(), env=FLUX_KEY)
         self.assertEqual(out["raised"][0], "AvatarUnavailable", out.get("tb"))
         self.assertEqual(out["planner_calls"], 1)
         self.assertEqual(len(out["image_calls"]), 2)
@@ -649,6 +802,29 @@ class PipelineStopsOnAnUnavailableModel(unittest.TestCase):
         record = json.loads(done[0]["metadata"])
         self.assertEqual((record["thumbnail_mode"], record["ab_axis"]), ("concept", "camera_take"))
         self.assertTrue(all(c["passed"] for c in record["readability"].values()))
+        # What the step bought is in the run's ledger, under its own stages.
+        concept_costs = sorted([u, q] for u, q, stage in out["costs"]
+                               if stage in ("thumbnail_concept", "thumbnail:flux"))
+        self.assertEqual(concept_costs, [["gemini_input_tokens", 1200], ["gemini_output_tokens", 400],
+                                         ["image_generations", 1], ["image_generations", 1]])
+        self.assertIsNone(record["expected_cost"]["usd"])  # no rate configured: unknown, not $0
+
+    def test_the_spend_cap_is_checked_before_the_planner_is_called(self):
+        out = drive(CONCEPT, mode="concept_spy", plan=plan_json(),
+                    env={**FLUX_KEY, "CHRONOS_MAX_RUN_USD": "0.01", "CHRONOS_PRICE_IMAGE_GENERATIONS": "1"})
+        self.assertEqual(out["raised"][0], "SpendLimitExceeded", out.get("tb"))
+        self.assertEqual((out["planner_calls"], out["image_calls"], out["voice_built"]), (0, [], False))
+
+    @unittest.skipUnless(SCALABLE, "needs a scalable font, as the real renderer does")
+    def test_a_headline_too_long_to_letter_stops_before_anything_is_spent(self):
+        out = drive(CONCEPT, mode="concept_spy", plan=plan_json(), env=FLUX_KEY,
+                    overlay="Qoraqalpogʻistonning sirli shahri")
+        self.assertEqual(out["raised"][0], "ThumbnailConceptUnavailable", out.get("tb"))
+        self.assertIn("too long", out["raised"][1])
+        self.assertEqual((out["planner_calls"], out["image_calls"], out["voice_built"]), (0, [], False))
+        self.assertFalse([c for c in out["costs"] if str(c[2]).startswith("thumbnail")])
+        failed = [e for e in out["events"] if e["agent"] == "thumbnail_concept"]
+        self.assertEqual(json.loads(failed[0]["metadata"])["stage"], "thumbnail_concept:headline")
 
 
 if __name__ == "__main__":

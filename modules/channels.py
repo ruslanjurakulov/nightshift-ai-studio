@@ -302,9 +302,10 @@ class AgentConfig:
     # darkened video still it has always had. "concept" plans the picture with the
     # script model, generates it clean through the image adapter named in
     # thumbnail_concept.image_provider, and stops the run when that cannot be done
-    # — so it adds a cost per video and is only ever turned on by a person.
-    # thumbnail_concept also holds image_model, allow_faces and allow_baked_text
-    # (both off unless an explicit true). Stored in this blob — no migration.
+    # — so it adds a cost per video, and both keys are an organization
+    # administrator's to change (migration 0158 holds them against editors).
+    # thumbnail_concept also holds image_model, overlay_style, allow_faces and
+    # allow_baked_text (both off unless an explicit true). Stored in this blob.
     thumbnail_mode: str = "frame"
     thumbnail_concept: dict = field(default_factory=dict)
 

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from PIL import Image, ImageDraw, ImageFilter, ImageStat
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageStat
 
 from modules.thumbnail_generator import THUMBNAIL_H, THUMBNAIL_W, _load_font
 
@@ -137,6 +137,47 @@ def fit_headline(text: str, region: tuple, *, font_loader=_load_font) -> tuple:
         return lines, size
     font = font_loader(_FONT_MIN)
     return _wrap_to_width(probe, words, font, max_w)[:_MAX_LINES], _FONT_MIN
+
+
+def precheck_headline(text: str, *, font_loader=_load_font) -> dict:
+    """What the headline will measure at sidebar size, from the words alone,
+    before any picture exists: word count, whether it fits the text side in at
+    most three lines at a size that stays legible, and its glyph height at
+    SIDEBAR_W. The picture cannot change any of these, so a failure here is
+    known before the planner or the image model is paid. One long word (common
+    in Uzbek and Russian) that cannot fit at a legible size is named."""
+    words = (text or "").upper().split()
+    report: dict = {"width_px": SIDEBAR_W, "headline_words": len(words), "failures": []}
+    if not words:
+        report["text"] = "text-free: not measured (the script has no overlay text)"
+        return report
+    failures = report["failures"]
+    if len(words) > MAX_HEADLINE_WORDS:
+        failures.append(f"headline has {len(words)} words (at most {MAX_HEADLINE_WORDS} read at a glance)")
+    if not isinstance(font_loader(_FONT_MAX), ImageFont.FreeTypeFont):
+        failures.append("no scalable font on the worker: the headline would render at bitmap size")
+        return report
+    region = text_region("right")
+    max_w = region[2] - region[0]
+    probe = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    lines, size = fit_headline(" ".join(words), region, font_loader=font_loader)
+    font = font_loader(size)
+    # The smallest size whose capitals still reach MIN_TEXT_PX at sidebar width:
+    # a word wider than the text side even at that size can never be legible.
+    legible = next((s for s in range(_FONT_MIN, _FONT_MAX + 1, 2)
+                    if (lambda b: (b[3] - b[1]) * SIDEBAR_W / float(THUMBNAIL_W))(
+                        probe.textbbox((0, 0), "H", font=font_loader(s))) >= MIN_TEXT_PX), _FONT_MAX)
+    too_wide = [w for w in words if probe.textlength(w, font=font_loader(legible)) > max_w]
+    heights = [probe.textbbox((0, 0), ln, font=font)[3] - probe.textbbox((0, 0), ln, font=font)[1] for ln in lines]
+    text_px = round(max(heights or [0]) * SIDEBAR_W / float(THUMBNAIL_W), 2)
+    report.update(font_size=size, lines=len(lines), text_px=text_px, min_text_px=MIN_TEXT_PX)
+    if too_wide:
+        failures.append(f"the word {too_wide[0]!r} is too long to fit the text side at a legible size")
+    elif len(_wrap_to_width(probe, words, font, max_w)) > _MAX_LINES:
+        failures.append(f"the headline does not fit the text side in {_MAX_LINES} lines at a legible size")
+    if text_px < MIN_TEXT_PX:
+        failures.append(f"headline is {text_px} px tall at {SIDEBAR_W} px wide (needs {MIN_TEXT_PX})")
+    return report
 
 
 def _vignette(img: Image.Image, max_alpha: int = 110) -> Image.Image:
@@ -346,7 +387,7 @@ def readability(final: Image.Image, ground: Image.Image, clean: Image.Image, lay
 
     words = len((headline or "").split())
     if not words:
-        report.update(text="none (the script has no overlay text)", text_px=None, contrast=None)
+        report.update(text="text-free: not measured (the script has no overlay text)", text_px=None, contrast=None)
     else:
         report["headline_words"] = words
         if words > MAX_HEADLINE_WORDS:
@@ -399,10 +440,13 @@ def remedy_for(failures: list) -> str:
     """The fix for what failed, in the order a person would try it."""
     text = " ".join(failures)
     fixes = []
-    if "words" in text or "px tall" in text:
-        fixes.append("shorten the script's thumbnail text (at most 4 words reads best)")
+    if "font" in text:
+        fixes.append("install a bold TrueType font on the worker (tools/setup_check.py lists the paths tried)")
+    if "words" in text or "px tall" in text or "too long" in text or "does not fit" in text:
+        fixes.append("shorten the script's thumbnail text (at most 4 short words reads best)")
     if "contrast" in text:
-        fixes.append("use a plated headline style (pill or marker) or a darker palette on the text side")
+        fixes.append("set agent_config.thumbnail_concept.overlay_style to pill or marker (a plated style "
+                     "carries its own background)")
     if "hero side" in text or "covers" in text:
         fixes.append("re-run so the planner composes the hero larger on its third with a calmer background")
     if not fixes:
