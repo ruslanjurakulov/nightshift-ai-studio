@@ -57,7 +57,7 @@ export const uz: Dictionary = {
   modelSwitch: modelSwitchUz,
   studioHome: studioHomeUz,
   modelBudget: modelBudgetUz,
-  /** The owner's per-provider ledger on the Billing page: ./billing-ledger/uz.ts. */
+  /** The per-provider ledger the owner reads on the Billing page: ./billing-ledger/uz.ts. */
   billingLedger: billingLedgerUz,
   modelKeys: modelKeysUz,
   /** «Mijozlar» sahifasi (0138-migratsiya): ./operator-customers/uz.ts. */
