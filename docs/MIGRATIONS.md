@@ -1748,10 +1748,18 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   no `blocked_countries`, and `api_exposure` `web_only` (so the API and MCP never list them). The 68 terms-gated entries stay hidden;
   0035's CHECK would refuse the file if it tried otherwise.
 - **Prices.** The repository's convention (`docs/sql/prices_2026_10_01.sql`, `prices_defaults_2026_10_03.sql`): `credits_per_unit` is
-  the vendor figure in US cents, margin 1.5 for image and video, so every unit sells at 2.5x its registry figure, rounded up per job. A
-  model priced by variant has a row per variant (`model_<id>_<unit>_<768p|2k|480p|low|medium|high>`), which is all a quote of it reads;
-  its base row (what `sellable_models` joins to list it) is the default variant's figure. The figures are the registry's own list prices
-  (`confirmed: false`); the file compares each with the registry before it writes, and refuses if one moved.
+  the vendor figure in US cents, margin 1.5 for image and video, so every unit 0160 writes sells at 2.5x its registry figure, rounded
+  up per job; 1 credit spent buys at most US$0.004 of vendor cost. That is about 2.5x before fees for a credit bought at US$0.01,
+  about 2x for a bulk pack at US$0.008 and about 1.8x for the Studio plan at US$0.0072 a credit. A model priced by variant has a row per
+  variant (`model_<id>_<unit>_<768p|2k|480p|low|medium|high>`), which is all a quote of it reads; its base row (what `sellable_models`
+  joins to list it) is the default variant's figure. The figures are the registry's own list prices (`confirmed: false`); the file
+  compares each with the registry before it writes, and refuses if one moved.
+- **ideogram-3 keeps its existing live row**, 6 x 2.5 = 15 credits an image (the live database already has credits_per_unit 6, margin
+  1.5; 0160 never overwrites a row). The owner may lower it to 3 via a docs/sql script. The other four rows already live are at margin
+  1.5 too, so the never-below guard does not stop the apply.
+- **Each probe proved one call only.** MiniMax H3 and H3 Highspeed i2v at 768p, H3 Lite and H3 Max i2v at 480p, Runway gen4.5 and
+  gen4_turbo i2v, Ideogram 3 and 4 t2i, Ideogram 4.5 t2i at low. Not proven so far, yet sold at their own figures: every t2v call
+  (MiniMax, gen4.5), MiniMax H3 2k, H3 Highspeed 480p, H3 Lite 768p, H3 Max 768p, and Ideogram 4.5 medium and high.
 - **Entitlement: the diagnosis.** `creative_price` refuses every entitlement except `any` (NULL) and `paid`, for every organization
   whatever its plan; 0034's `model_tier_allowed()` and its plan tiers are seeded but never called (`entitlement_keys` marks
   `models_*` `planned`). Availability alone would sell to nobody, and would take the models from the operator (0139's preview passes
@@ -1761,10 +1769,11 @@ the rest in the ledger note as "already spent", for good. The customer's own API
 - **Free credits.** 100 welcome credits per mailbox (0042) buy at most US$0.40 of vendor cost at 2.5x. A failed or refused job returns its
   whole hold, so vendor money spent on a failed task (whether MiniMax bills one is not stated; not verified for Runway or Ideogram) is
   not bounded by those 100 credits. No cap is applied by this file.
-- **Drift guards.** Each of the nine must be present, the same adapter / vendor model / credit unit / variant set / default as written,
+- **Drift guards.** Each of the nine must be present, the same adapter / vendor model / credit unit / capabilities / variant set /
+  default as written, with no `spec.vendor_model_by_capability` (a capability calling another vendor model would sell at this figure),
   verified, ungated, not disabled, not shut down, web only, and carry either its old tier or NULL. A price row that already exists is
   never overwritten: kept when it sells at or above this file's price (with a NOTICE), refused when below. An empty registry (a fresh
-  deployment, the lab's build) writes nothing. The end state is asserted in the same block: every unit at 2.5x, the nine beta with NULL
+  deployment, the lab's build) writes nothing. The end state is asserted in the same block: every unit at 2.5x or more, the nine beta with NULL
   entitlement, listed by `sellable_models('web')` and not by `'api'` or `'mcp'`, nothing terms-gated on sale.
 - **Not checked by SQL (owner).** The Privacy Policy now names Ideogram, MiniMax and Runway as Studio processors and says MiniMax and
   Runway may use inputs and outputs to improve their models (the registry's "before a sale" note). Still open: Runway's photo-consent

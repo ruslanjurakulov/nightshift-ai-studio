@@ -297,6 +297,31 @@ def test_a_gate_set_on_one_of_the_nine_stops_the_apply(conn, sc):
         _refused(conn, "minimax-h3-max is terms-gated")
 
 
+def test_a_capability_a_resync_added_stops_the_apply_and_nothing_is_priced_or_opened(conn, sc):
+    # ideogram-3 re-synced with an edit capability: never probed or priced for it, so the t2i price must not sell it.
+    def edits(row):
+        if row["id"] == "ideogram-3":
+            row["capabilities"] = ["t2i", "edit"]
+    with conn.transaction(force_rollback=True):
+        _become(conn, None)
+        _seed(conn, mutate=edits)
+        _refused(conn, "ideogram-3 now offers")
+        assert conn.execute("select count(*) from public.credit_prices where note like '0160:%'").fetchone()[0] == 0
+        assert conn.execute("select count(*) from public.model_registry where id = any(%s) and availability <> 'hidden'",
+                            [NINE]).fetchone()[0] == 0
+
+
+def test_a_vendor_model_by_capability_stops_the_apply(conn, sc):
+    # gen4.5's t2v served by another (dearer) vendor model would be sold at gen4.5's figure; 0035 accepts either model's probe.
+    def split(row):
+        if row["id"] == "runway-gen4.5":
+            row["spec"]["vendor_model_by_capability"] = {"t2v": "gen4.5-pro"}
+    with conn.transaction(force_rollback=True):
+        _become(conn, None)
+        _seed(conn, mutate=split)
+        _refused(conn, "runway-gen4.5 calls another vendor model")
+
+
 def test_a_price_row_below_this_files_stops_the_apply_and_a_higher_one_is_kept(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)

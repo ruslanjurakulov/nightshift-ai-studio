@@ -80,6 +80,8 @@ class TheNine(unittest.TestCase):
             e = REGISTRY[m["id"]]
             self.assertEqual((m["adapter"], m["vendor_model"], m["credit_unit"]), (e["adapter"], e["vendor_model"], e["credit_unit"]), m["id"])
             self.assertEqual(m["by"], (e["pricing"].get("variants") or {}).get("by"), m["id"])
+            self.assertEqual(sorted(m["caps"]), sorted(e["capabilities"]), m["id"])
+            self.assertNotIn("vendor_model_by_capability", e, m["id"])
             if m["by"] == "resolution":
                 self.assertEqual(m["default"], e["default_resolution"], m["id"])
             if m["by"] == "quality":
@@ -89,7 +91,8 @@ class TheNine(unittest.TestCase):
 
     def test_the_file_refuses_what_it_cannot_see_in_the_registry(self):
         for phrase in ("verified_at is null or r.verified_probe_id is null", "spec ->> 'terms_gate'", "blocked_countries",
-                       "model_past_shutdown(r.spec)", "r.availability = 'disabled'", "<> 'web_only'"):
+                       "model_past_shutdown(r.spec)", "r.availability = 'disabled'", "<> 'web_only'",
+                       "r.capabilities @> want and r.capabilities <@ want", "r.spec ? 'vendor_model_by_capability'"):
             self.assertIn(phrase, CODE, phrase)
 
 

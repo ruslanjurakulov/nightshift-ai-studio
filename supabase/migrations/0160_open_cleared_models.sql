@@ -9,7 +9,8 @@
 -- WHAT GOES ON SALE (the owner's instruction of 2026-11-13, "open all the models", read against the owner's own gates)
 --   A model is opened only when ALL of these hold, and the file REFUSES to apply if one of the nine fails any of them (below):
 --     verified_at / verified_probe_id set (a successful model_probe_runs row, 0035), spec.terms_gate empty (the owner's legal gate),
---     the adapter and vendor model this file was written for, a vendor figure in spec.pricing for every priced variant, no
+--     the adapter, vendor model and capabilities this file was written for (and no spec.vendor_model_by_capability: one capability
+--     calling another vendor model would be sold at this file's figure), a vendor figure in spec.pricing for every priced variant, no
 --     blocked_countries (0142), not past an announced shutdown (0125), not `disabled` (the owner's off), api_exposure web_only.
 --   ideogram-3            image.ideogram        flat                      US$0.03 / image (Turbo)
 --   ideogram-4            image.ideogram_v4     flat                      US$0.03 / image (Turbo, 1K)
@@ -23,12 +24,19 @@
 --   Every figure is the registry's own (schemas/model_registry.json spec.pricing, `confirmed: false`: list prices the owner read on the
 --   vendor's page, not yet matched against a vendor bill). The drift guard compares each one with the number written here, so a
 --   registry figure that moved since this file was written stops the apply instead of selling at a price derived from the old one.
+--   EACH PROBE PROVED ONE CALL ONLY (the registry's probe entries): MiniMax H3 and H3 Highspeed i2v at 768p, H3 Lite and H3 Max i2v at
+--   480p, Runway gen4.5 and gen4_turbo i2v, Ideogram 3 and 4 t2i, Ideogram 4.5 t2i at low. Not proven by any probe so far, yet sold by
+--   this file at their own figures: every t2v call (MiniMax, gen4.5), MiniMax H3 2k, H3 Highspeed 480p, H3 Lite 768p, H3 Max 768p, and
+--   Ideogram 4.5 medium and high.
 --
 -- THE PRICE POLICY (docs/sql/prices_2026_10_01.sql and prices_defaults_2026_10_03.sql, the convention every quote reads)
 --   credits_per_unit = the vendor's cost in US cents (1 credit = 1 cent of cost); the customer pays credits_per_unit x (1 + margin);
---   margin 1.5 for image and video (2.0 is voice). So every unit here sells at 2.5x its vendor figure, rounded UP to the cent per job
---   (creative_price: credits_round_up), and floored at job_minimum. A credit retails at about US$0.01 (docs/BILLING_PLANS.md), so the
---   vendor's share of a paid credit is US$0.004.
+--   margin 1.5 for image and video (2.0 is voice). So every unit THIS FILE WRITES sells at 2.5x its vendor figure, rounded UP to the cent
+--   per job (creative_price: credits_round_up), and floored at job_minimum: 1 credit spent buys at most US$0.004 of vendor cost.
+--   What that leaves depends on what the credit was bought at: about US$0.01 a credit retail (docs/BILLING_PLANS.md) is 2.5x before
+--   fees; a bulk pack at US$0.008 and the Studio plan at US$0.0072 a credit are about 2x and 1.8x before fees, not 2.5x everywhere.
+--   An existing row is kept (see THE DRIFT GUARD ON PRICES): on the live database ideogram-3 already has credits_per_unit 6, margin 1.5,
+--   so ideogram-3 keeps its existing live row, 6 x 2.5 = 15 credits an image; the owner may lower it to 3 via a docs/sql script.
 --   A model priced by variant is charged ONLY by the variant's own row (creative_price: model_<id>_<unit>_<resolution|tier>, 0060 /
 --   0070), and a variant without a row is `unpriced`, never another variant's rate. Its base row (the model's credit_unit) is what
 --   sellable_models joins to list the model at all, and is the DEFAULT variant's price (768p; Ideogram 4.5's medium), the same figure
@@ -51,8 +59,8 @@
 --   the rollback, to be restored when tiers are enforced.
 --
 -- WHAT THE FREE SIGN-UP CREDITS CAN COST (stated, not capped here)
---   A new account gets 100 welcome credits once per mailbox (0027 / 0042: welcome_credit_claims). At 2.5x every unit here, 100 credits
---   buy at most US$0.40 of vendor cost per account (less after per-job rounding up). An invite reward (0092, off by default) adds 100
+--   A new account gets 100 welcome credits once per mailbox (0027 / 0042: welcome_credit_claims). Every unit here sells at 2.5x or more
+--   (ideogram-3 at 5x), so 100 credits buy at most US$0.40 of vendor cost per account (less after per-job rounding up). An invite reward (0092, off by default) adds 100
 --   credits per 5 joined accounts, at most US$0.08 more per account. A FAILED or refused job returns its whole hold (finish_creative_job),
 --   so if a vendor bills a failed or moderated task (MiniMax's pricing page does not say; not verified for Runway or Ideogram either),
 --   the same 100 credits can be used again and that vendor money is not bounded by the 100 credits. The PR proposes caps; none is applied.
@@ -99,26 +107,27 @@ end $$;
 -- One block: the data is written once, and the writes and the end state are checked in the same place.
 do $$
 declare
-  -- id, the call this file was written for, the tier it had (restored by the rollback), and how it is priced.
+  -- id, the call this file was written for (adapter, vendor model, unit, capabilities), the tier it had (restored by the
+  -- rollback), and how it is priced.
   models constant jsonb := $json$[
     {"id": "ideogram-3", "adapter": "image.ideogram", "vendor_model": "TURBO", "credit_unit": "model_ideogram_3_image",
-     "tier": "models_image:basic", "by": null, "default": null},
+     "caps": ["t2i"], "tier": "models_image:basic", "by": null, "default": null},
     {"id": "ideogram-4", "adapter": "image.ideogram_v4", "vendor_model": "turbo", "credit_unit": "model_ideogram_4_image",
-     "tier": "models_image:premium", "by": null, "default": null},
+     "caps": ["t2i"], "tier": "models_image:premium", "by": null, "default": null},
     {"id": "ideogram-4.5", "adapter": "image.ideogram_v4_5", "vendor_model": "ideogram-4-5", "credit_unit": "model_ideogram_4_5_image",
-     "tier": "models_image:premium", "by": "quality", "default": "medium"},
+     "caps": ["t2i"], "tier": "models_image:premium", "by": "quality", "default": "medium"},
     {"id": "minimax-h3", "adapter": "video.minimax_h3", "vendor_model": "MiniMax-H3", "credit_unit": "model_minimax_h3_second",
-     "tier": "models_video:premium", "by": "resolution", "default": "768p"},
+     "caps": ["t2v", "i2v"], "tier": "models_video:premium", "by": "resolution", "default": "768p"},
     {"id": "minimax-h3-highspeed", "adapter": "video.minimax_h3", "vendor_model": "MiniMax-H3-Highspeed",
-     "credit_unit": "model_minimax_h3_highspeed_second", "tier": "models_video:premium", "by": "resolution", "default": "768p"},
+     "credit_unit": "model_minimax_h3_highspeed_second", "caps": ["t2v", "i2v"], "tier": "models_video:premium", "by": "resolution", "default": "768p"},
     {"id": "minimax-h3-lite", "adapter": "video.minimax_h3", "vendor_model": "MiniMax-H3-Lite", "credit_unit": "model_minimax_h3_lite_second",
-     "tier": "models_video:basic", "by": "resolution", "default": "768p"},
+     "caps": ["t2v", "i2v"], "tier": "models_video:basic", "by": "resolution", "default": "768p"},
     {"id": "minimax-h3-max", "adapter": "video.minimax_h3", "vendor_model": "MiniMax-H3-Max", "credit_unit": "model_minimax_h3_max_second",
-     "tier": "models_video:premium", "by": "resolution", "default": "768p"},
+     "caps": ["t2v", "i2v"], "tier": "models_video:premium", "by": "resolution", "default": "768p"},
     {"id": "runway-gen4.5", "adapter": "video.runway", "vendor_model": "gen4.5", "credit_unit": "model_runway_gen4_5_second",
-     "tier": "models_video:ultra", "by": null, "default": null},
+     "caps": ["t2v", "i2v"], "tier": "models_video:ultra", "by": null, "default": null},
     {"id": "runway-gen4-turbo", "adapter": "video.runway", "vendor_model": "gen4_turbo", "credit_unit": "model_runway_gen4_turbo_second",
-     "tier": "models_video:premium", "by": null, "default": null}
+     "caps": ["i2v"], "tier": "models_video:premium", "by": null, "default": null}
   ]$json$::jsonb;
   -- Every unit a quote of the nine can read. variant null = the base row (the default variant's figure for a model priced by variant).
   prices constant jsonb := $json$[
@@ -207,6 +216,17 @@ begin
        or r.credit_unit is distinct from m ->> 'credit_unit' then
       raise exception '0160: % now calls % / % (unit %), not what this file priced: re-derive its prices', r.id, r.adapter,
         r.spec ->> 'vendor_model', r.credit_unit;
+    end if;
+    -- The same capabilities as written (as sets: the file's order is not the point). A capability a re-sync added was never priced
+    -- or proven here, and one served by another vendor model (vendor_model_by_capability, which 0035's guard accepts as proof)
+    -- would be sold at this file's figure for a different call.
+    want := array(select jsonb_array_elements_text(m -> 'caps'));
+    if not (r.capabilities @> want and r.capabilities <@ want) then
+      raise exception '0160: % now offers %, not the % this file priced: review the new capability before it is opened', r.id,
+        r.capabilities, want;
+    end if;
+    if r.spec ? 'vendor_model_by_capability' then
+      raise exception '0160: % calls another vendor model for some capability (spec.vendor_model_by_capability): this file priced one call', r.id;
     end if;
     if r.availability = 'disabled' then
       raise exception '0160: % is disabled (the owner''s off, or removed from the file): this file does not turn it back on', r.id;
