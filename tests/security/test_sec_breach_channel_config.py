@@ -346,8 +346,13 @@ def test_the_control_list_is_one_list(conn):
         return sorted(re.findall(r"'([a-z_]+)'", s))
 
     assert norm(inline) == norm(fn) == ["auto_publish", "publish_gate", "require_two_person_publish", "storyboard_review"]
+    # 0158 adds the two concept-thumbnail keys to the function (create_channel reads it); its own trigger holds them on
+    # UPDATE, so the inline list above stays 0086's four. tests/security/test_sec_thumbnail_concept_lock.py attacks them.
+    m158 = (REPO / "supabase" / "migrations" / "0158_thumbnail_concept_admin_lock.sql").read_text()
+    fn158 = re.search(r"channel_admin_controls\(\) returns text\[\].*?select array\[(.*?)\]::text\[\]", m158, re.S).group(1)
+    assert norm(fn158) == sorted(norm(fn) + ["thumbnail_concept", "thumbnail_mode"])
     with as_superuser(conn, commit=False) as su:
-        assert sorted(su.value("select public.channel_admin_controls()")) == norm(fn)
+        assert sorted(su.value("select public.channel_admin_controls()")) == norm(fn158)
 
 
 # ── BR-G-003: the controls that hold a render are an administrator's ─────────

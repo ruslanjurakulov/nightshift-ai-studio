@@ -6,7 +6,9 @@
  *
  * What would break if these failed: a place showing a sample under a stock label or a Pexels credit, or a stock picture inside a
  * sample's box; a place whose sample replaced its stock picture still crediting that picture in the footer, or a stock picture
- * still shown without its credit there; a pause button on a still; the sign-in stage reading the clock in the browser.
+ * still shown without its credit there; a pause button on a still; the sign-in stage reading the clock in the browser; a backdrop
+ * naming its model, offering its prompt, carrying a footnote, or crediting or linking its model's maker (the owner, 2026-11-13: a
+ * place's picture shows its AI-generated badge only).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -81,7 +83,7 @@ import { sceneMedia } from "@/components/docs/SampleFrame";
 import { stockInUse } from "@/components/site/stock-in-use";
 import { creditLine } from "@/lib/site/media";
 import { PROVIDER_BRANDS } from "./helpers/brands";
-import { SAMPLE_CARD, placeLabelProblems, without } from "./helpers/showcase-scope";
+import { SAMPLE_CARD, makerCreditProblems, placeLabelProblems, without } from "./helpers/showcase-scope";
 
 afterEach(() => {
   cleanup();
@@ -106,9 +108,17 @@ function stockIsCredited(container: Element) {
   expect(without(container, SAMPLE_CARD).innerHTML).not.toMatch(PROVIDER_BRANDS);
 }
 
+/** A place's sample is a backdrop: its badge, and no model name, prompt button, footnote, or maker's credit, anywhere on the page. */
+function backdropOnly(container: Element) {
+  for (const name of ["Runway Gen-4.5", "FLUX.2 Pro"]) expect(container.textContent).not.toContain(name);
+  expect(container.querySelector(".nx-ai-model, .nx-ai-try, .nx-ai-note")).toBeNull();
+  for (const w of [t.site.gallery.try, t.site.gallery.use, t.site.gallery.useNote]) expect(container.textContent).not.toContain(w);
+  expect(makerCreditProblems(container)).toEqual([]);
+}
+
 describe("the sign-in and sign-up stages", () => {
   beforeEach(screenStub);
-  it("sign-up plays the sample behind the stage, credits its model under it, and keeps its pause button; no stock word or Pexels credit", () => {
+  it("sign-up plays the sample behind the stage, labelled AI-generated only, and keeps its (keyboard) pause button; no stock word or Pexels credit", () => {
     const { container } = render(
       <AuthShell title="Create your account" mode="signup">
         <form />
@@ -117,20 +127,18 @@ describe("the sign-in and sign-up stages", () => {
     const aside = container.querySelector("aside.st-auth-aside") as HTMLElement;
     expect(aside.dataset.showcaseEntry).toBe(ids.clip);
     expect(aside.dataset.clip).toBe("sample");
-    expect(aside.querySelector(".nx-aside-note")?.textContent).toContain("Runway Gen-4.5");
-    expect(aside.querySelector(".nx-ai-attr")?.getAttribute("href")).toBe("https://runway.com");
-    // No "Try" on the stage (the visitor is signing up already), so the stage reads no clock in the browser.
-    expect(aside.querySelector(".nx-ai-try")).toBeNull();
-    expect(aside.querySelector(".nx-clip-pause")).not.toBeNull();
+    expect(aside.querySelector(".nx-aside-note")?.textContent).toBe(t.site.gallery.badge);
+    expect(aside.querySelector(".nx-clip-pause")?.textContent).toBe(t.site.fx.pause);
     const band = container.querySelector(".nx-auth-band") as HTMLElement;
     expect(band.dataset.showcaseEntry).toBe(ids.clip);
     expect(band.textContent).toContain(t.site.gallery.badge);
     expect(container.innerHTML).not.toMatch(/pexels/i);
     for (const w of [t.site.samples.tag, t.site.samples.frameTag, t.site.samples.clipTag]) expect(container.textContent).not.toContain(w);
     stockIsCredited(container);
+    backdropOnly(container);
   });
 
-  it("sign-in shows a still sample: labelled, credited, and no pause button", () => {
+  it("sign-in shows a still sample: labelled AI-generated only, and no pause button", () => {
     const { container } = render(
       <AuthShell title="Sign in">
         <form />
@@ -140,21 +148,22 @@ describe("the sign-in and sign-up stages", () => {
     expect(aside.dataset.showcaseEntry).toBe(ids.still);
     expect(aside.hasAttribute("data-clip")).toBe(false);
     expect(container.querySelector(".nx-clip-pause")).toBeNull();
-    expect(aside.querySelector(".nx-aside-note")?.textContent).toContain("FLUX.2 Pro");
+    expect(aside.querySelector(".nx-aside-note")?.textContent).toBe(t.site.gallery.badge);
     expect(container.innerHTML).not.toMatch(/pexels/i);
     stockIsCredited(container);
+    backdropOnly(container);
   });
 
-  it("the stage's credit takes no `now` default into a Client Component's link (AiCredit reads the clock only for a link)", () => {
+  it("no place reads the clock or builds a Studio link: the labels a place carries are its badge only", () => {
     const src = readFileSync(join(__dirname, "..", "components/site/PlaceFill.tsx"), "utf8");
-    expect(src).toContain("const leftOut = href ? modelLeftOut(entry, now) : null;");
+    expect(src).not.toMatch(/modelLeftOut|new Date\(|tryHref|<Link/);
     const shell = readFileSync(join(__dirname, "..", "components/auth/AuthShell.tsx"), "utf8");
-    expect(shell).not.toMatch(/href=\{|placeTry|tryHref/);
+    expect(shell).not.toMatch(/href=\{|placeTry|tryHref|AiCredit/);
   });
 });
 
 describe("/solutions", () => {
-  it("labels each audience's picture and the publish desk's frame as our sample, and credits it where its link can be pressed", async () => {
+  it("labels each audience's picture and the publish desk's frame as our sample, with its badge only and no footnote", async () => {
     const { container } = render(await SolutionsPage());
     const photos = [...container.querySelectorAll<HTMLElement>("figure.nx-aud-photo")];
     expect(photos.length).toBe(2);
@@ -165,15 +174,16 @@ describe("/solutions", () => {
     expect(frame.dataset.showcaseEntry).toBe(ids.clip);
     expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
     expect(container.querySelector(".st-signoff-caption")).toBeNull();
-    // All three pictures are ours here, so the note under them is the samples' sentence and not the stock one.
-    expect([...container.querySelectorAll(".nx-sol-ways > .nx-show-note")].map((n) => n.textContent)).toEqual([t.site.gallery.slotNote]);
-    // The desk is a role="img" figure, which hides links: the sample's credit and its button sit under it.
+    // All three pictures are ours here, so there is no note under them: the stock sentence would be false, and a sample has none.
+    expect(container.querySelectorAll(".nx-sol-ways > .nx-show-note")).toHaveLength(0);
+    // The desk is a role="img" figure, which hides its words from assistive tech: the sample's badge is said again under it.
     const credit = container.querySelector(".nx-place-credit") as HTMLElement;
     expect(credit.closest("figure")).toBeNull();
     expect(placeLabelProblems(credit, slotMedia("solutions.youtube-channels"), t.site)).toEqual([]);
-    expect(credit.querySelector(".nx-ai-try")?.textContent).toContain(t.site.gallery.use);
+    expect(credit.textContent).toBe(t.site.gallery.badge);
     expect(container.innerHTML).not.toMatch(/pexels/i);
     stockIsCredited(container);
+    backdropOnly(container);
   });
 });
 
@@ -185,9 +195,10 @@ describe("/mcp", () => {
     expect(panel.querySelector("img")?.getAttribute("data-sample-job")).toBe(ids.clip);
     expect(panel.querySelector(".nx-clip-pause")).not.toBeNull();
     stockIsCredited(container);
+    backdropOnly(container);
   });
 
-  it("an example card whose scene has a sample says AI-generated and names its model; the others keep their stock label and credit", () => {
+  it("an example card whose scene has a sample says AI-generated and nothing more; the others keep their stock label and credit", () => {
     const { container } = render(<McpLanding dev={devDictionaries.en} site={t.site} oauthLive={false} />);
     // The section's lead covers both kinds of picture once one card is ours (the stock-only lead would be false).
     expect(container.querySelector(".ml-examples-lead")?.textContent).toBe(devDictionaries.en.mcp.land.examples.leadSamples);
@@ -195,7 +206,8 @@ describe("/mcp", () => {
     expect(sceneMedia("hills").kind).toBe("ai");
     expect(hills.dataset.showcaseEntry).toBe(ids.still);
     expect(hills.querySelector(".ml-ex-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
-    expect(hills.textContent).toContain("FLUX.2 Pro");
+    expect(hills.textContent).not.toContain("FLUX.2 Pro");
+    backdropOnly(container);
     expect(hills.innerHTML).not.toMatch(/pexels/i);
     const waves = container.querySelector("[data-scene='waves']") as HTMLElement;
     const m = sceneMedia("waves");

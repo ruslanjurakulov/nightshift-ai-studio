@@ -59,6 +59,12 @@ stage), as **`--nx-glass-*`** (`--nx-glass-tint`, `-tint-hover`, `-solid`, `-glo
 shared tokens). On the public pages the sheen follows a mouse through attach.ts `attachGlassLight`, which writes
 `--glass-x`/`--glass-y` (the app's GlassPointer is mounted only by the app's layout); it also lights any `.ns-glass`.
 
+The landing's prompt composer (`.nx-pbar` in site-next.css, #734) reads the same shared names, not the `--nx-glass-*` layer:
+it sits over a clip and is dark in both themes, so it sets its own `--glass-blur`, `--glass-tint`, `--glass-sheen` and
+`--glass-x`/`--glass-y` on itself (scoped to that box), keeps local names for the parts #738 has none for (`--glass-bg`,
+`--glass-brightness`, `--glass-rim`, `--glass-shade`, `--glass-border`), and moves its own sheen; `attachGlassLight` does
+not touch it.
+
 - The recipe: a translucent fill, `backdrop-filter: blur() saturate()`, a bright specular edge top-left and a soft shade
   bottom-right drawn as inset shadows (never a border, so a pill that turns to glass on hover keeps its size), a sheen at
   rest above the pill that follows the pointer on hover, and an opaque `--glass-solid` (or `--nx-glass-solid`) fill under

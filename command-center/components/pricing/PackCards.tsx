@@ -87,7 +87,7 @@ export function PackCards({
               </div>
               {price.kind === "preview" || price.kind === "display" ? (
                 <span className="st-price-money">
-                  <span className="st-num block text-[24px]">{price.kind === "display" ? displayPriceText(price.text, locale) : price.text}</span>
+                  <span className="st-num block text-[24px]">{displayPriceText(price.text, locale)}</span>
                   <span className="st-small block">{p.oneTime}</span>
                 </span>
               ) : (

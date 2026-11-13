@@ -3,8 +3,7 @@ import type { Dictionary } from "@/lib/i18n";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ASPECT_RATIOS } from "@/lib/creative/studio";
 import { slotMedia } from "@/components/site/samples";
-import { AiCredit, PlaceFill, placeBox } from "@/components/site/PlaceFill";
-import { placeTry } from "@/components/site/place-try";
+import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { creditLine } from "@/lib/site/media";
 
 /**
@@ -135,7 +134,7 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
             </>
           )}
         </div>
-        {/* On a phone the frame is too small for three labels: its label and credit are a caption under it instead. A sample's model and credit are printed under the drawing, where its link can be pressed. */}
+        {/* On a phone the frame is too small for three labels: its label and credit are a caption under it instead. A sample's badge is printed again under the drawing, where assistive tech reads it. */}
         {m.kind === "stock" && (
           <p className="st-signoff-caption">
             <span data-kind="still">{m.footage ? t.site.samples.frameTag : t.site.samples.tag}</span>
@@ -158,10 +157,10 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
         </p>
       </div>
     </figure>
-    {/* A role="img" figure hides its links, so a sample's credit and "Try this prompt" sit under it, in the sample's own box. */}
+    {/* A role="img" figure hides its words from assistive tech, so the sample's AI-generated badge is said again under it, in the sample's own box. */}
     {m.kind === "ai" && (
       <p className="nx-place-credit" {...placeBox({ ...m, moving: false })}>
-        <AiCredit entry={m.entry} g={t.site.gallery} href={placeTry(m)} />
+        <AiBadge g={t.site.gallery} />
       </p>
     )}
     </>

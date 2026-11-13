@@ -7,10 +7,15 @@
  * the web copies under components/site/showcase/<job id>/ and regenerates components/site/showcase-assets.ts, which imports them.
  * The owner merges the PR it opens; nothing reaches the site before that.
  *
- * Why a model and its maker may be named here when the rest of the public site names none (tests/helpers/brands.ts): an entry IS a
- * generation by that model, made through our own adapter, so naming it is a fact and not a promise, and the maker's terms ask for the
- * credit (Runway: "Powered by Runway", linked). The name is allowed only inside an entry's own card; tests/site-showcase.test.tsx
- * pins that, and that every entry names a model in schemas/model_registry.json with the registry's attribution.
+ * Why a model may be named here when the rest of the public site names none (tests/helpers/brands.ts): an entry IS a generation by
+ * that model, made through our own adapter, so naming it is a fact and not a promise. The name is allowed only inside an entry's own
+ * card; tests/site-showcase.test.tsx pins that, and that every entry names a model in schemas/model_registry.json with the
+ * registry's attribution.
+ *
+ * The public site shows the AI-generated label and the model name only: no "Powered by" line and no link to a model's maker
+ * (owner decision 2026-11-13). The maker's required credit (Runway API Terms §1, Ideogram Developer API Agreement 2.3.1) is shown
+ * in the Studio, where the models are used (components/studio/ModelAttribution.tsx). `attribution` stays in the data so the
+ * export and the registry keep agreeing; no public surface renders it, and tests/site-showcase.test.tsx pins that.
  *
  * Kept free of file imports (those are components/site/showcase-assets.ts), so the tests and the footer can read it.
  */
@@ -62,7 +67,8 @@ export interface ShowcaseEntry {
    * model is no longer in the Studio and its link stops naming it; the export refuses a model already past it.
    */
   shutdownOn: string | null;
-  /** The credit line the maker requires (the registry's `attribution`), or null where it asks for none. */
+  /** The credit line the maker requires (the registry's `attribution`), or null where it asks for none. Kept as data only: the
+   *  public site never renders it; the Studio shows the maker's credit where the model is used (see the header). */
   attribution: { text: string; url: string } | null;
   /** The Studio tool it was made with (i2v, t2v, t2i …). */
   capability: string;

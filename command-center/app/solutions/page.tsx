@@ -13,7 +13,6 @@ import { ApiPicture, ComposerPicture, SignOffPicture } from "@/components/site/S
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { slotMedia, type SlotId } from "@/components/site/samples";
 import { PlaceFill, placeBox } from "@/components/site/PlaceFill";
-import { placeTry } from "@/components/site/place-try";
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
 export async function generateMetadata(): Promise<Metadata> {
@@ -93,7 +92,7 @@ export default async function SolutionsPage() {
             <div className="nx-aud-stage">
               {banner && (
                 <figure className="nx-aud-photo" {...placeBox(media)}>
-                  <PlaceFill media={media} s={t.site} tryHref={placeTry(media)} className="" sizes="(min-width: 860px) 560px, calc(100vw - 64px)" />
+                  <PlaceFill media={media} s={t.site} className="" sizes="(min-width: 860px) 560px, calc(100vw - 64px)" />
                 </figure>
               )}
               <Picture t={t} />
@@ -104,7 +103,8 @@ export default async function SolutionsPage() {
     ];
   });
   const kinds = (["solutions.youtube-channels", "solutions.creative-studio", "solutions.developers"] as const).map((x) => slotMedia(x).kind);
-  const notes = [kinds.includes("stock") ? t.site.samples.note : null, kinds.includes("ai") ? t.site.gallery.slotNote : null].filter((n): n is string => n !== null);
+  // Only the stock sentence: a sample behind an audience carries its AI-generated badge and no footnote (PlaceFill placeNote).
+  const notes = kinds.includes("stock") ? [t.site.samples.note] : [];
   return (
     <PublicShell t={t} current="solutions" fresh>
       <div className="nx-lit">
@@ -119,7 +119,7 @@ export default async function SolutionsPage() {
         </section>
         <section aria-label={s.slug} className="st-wrap nx-sol-ways">
           <AudienceTabs label={s.slug} tabs={tabs} />
-          {/* What the pictures above are, said once for the three: the stock sentence only while one of them is stock, the samples' while one is ours. */}
+          {/* What the pictures above are, said once for the three: the stock sentence, only while one of them is stock. */}
           {notes.map((n) => (
             <p key={n} className="nx-show-note">
               {n}
