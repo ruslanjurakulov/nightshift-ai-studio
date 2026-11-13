@@ -256,14 +256,17 @@ describe("the MCP page", () => {
     }
   });
 
-  it("says MCP sign-in needs a paid plan, that Free does not include it, and that keys and REST are billed separately (sign-in on)", () => {
+  // 0147: the sign-in door is open on every plan, Free included, and limited by credits (it was a paid-plan feature).
+  it("says MCP sign-in works on every plan including Free, spends credits, and that keys and REST are billed separately (sign-in on)", () => {
     const d = doc(mcp({ oauthLive: true }));
     const banner = d.querySelector(".st-banner")!;
-    expect(banner.textContent).toMatch(/paid plan/i);
-    expect(banner.textContent).toMatch(/Free/);
+    expect(banner.textContent).toMatch(/every plan, Free included/);
+    expect(banner.textContent).toMatch(/credits/);
     expect(banner.textContent).toMatch(/API keys/);
+    expect(banner.textContent).not.toMatch(/paid plan/i);
     expect(banner.querySelector('a[href="/pricing"]')).toBeTruthy();
-    expect(d.querySelector(".st-mcphero-paid")?.textContent).toMatch(/paid plan/i);
+    expect(d.querySelector(".st-mcphero-paid")?.textContent).toMatch(/every plan, Free included/);
+    expect(d.body.textContent).not.toMatch(/needs a paid plan|part of every paid plan/i);
   });
 
   it("with the sign-in off says only that keys work today and that the sign-in is coming soon, and still links the plans", () => {

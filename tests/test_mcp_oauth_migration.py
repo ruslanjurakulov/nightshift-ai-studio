@@ -118,6 +118,8 @@ class TokensNeverReachTheUsdBalance(unittest.TestCase):
         self.assertIn("credits_round_up", body)
 
     def test_the_entitlement_is_checked_on_every_call_and_at_each_door(self):
+        # 0093 as merged. 0147 takes this check out of every one of these functions (every plan may connect):
+        # tests/test_mcp_free_tier_migration.py pins that, and that 0147's bodies are exactly these minus it.
         self.assertIn("has_entitlement_internal(v_org, 'mcp')", function_body(SQL, "oauth_ctx"))
         for name in ("oauth_begin_authorization", "oauth_decide_authorization", "oauth_exchange_code", "oauth_refresh", "oauth_check"):
             self.assertRegex(function_body(SQL, name), r"has_entitlement_internal\(", f"{name} does not check the plan")

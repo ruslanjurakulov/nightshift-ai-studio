@@ -18,6 +18,7 @@ afterEach(() => {
 const text: ConsentText = {
   limitLabel: "Monthly limit", limitHint: "hint", limitInvalid: "Enter a whole number.", limitEcho: "{app} can spend {n} credits", limitEchoOne: "{app} one", limitEchoZero: "{app} zero",
   allow: "Allow", deny: "Deny", working: "Working", failed: "Failed", expired: "Expired", sessionEnded: "Signed out",
+  tooManyConnections: "Too many live", tooManyToday: "Too many today",
 };
 
 function setup() {
@@ -83,5 +84,22 @@ describe("Allow and Deny keep their places and their size", () => {
     expect(allow.compareDocumentPosition(deny) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(allow.getAttribute("data-block")).toBe("true");
     expect(deny.getAttribute("data-block")).toBe("true");
+  });
+});
+
+describe("a refused Allow names its remedy", () => {
+  it.each([
+    ["too_many_connections", "Too many live"],
+    ["too_many_connections_today", "Too many today"],
+    ["expired", "Expired"],
+    ["something_new", "Failed"],
+  ])("%s", async (code, shown) => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: code }), { status: 403, headers: { "content-type": "application/json" } })));
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", { value: { ...window.location, assign }, writable: true });
+    render(<ConsentForm secret="nso_rq_x" app="Some App" locale="en" defaultLimit={500} maxLimit={20000} text={text} />);
+    fireEvent.click(screen.getByRole("button", { name: "Allow" }));
+    expect(await screen.findByText(shown)).toBeTruthy();
+    expect(assign).not.toHaveBeenCalled();
   });
 });

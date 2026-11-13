@@ -29,6 +29,26 @@ export interface ConsentText {
   failed: string;
   expired: string;
   sessionEnded: string;
+  /** The person's live-connection cap (0093). */
+  tooManyConnections: string;
+  /** Connections approved in a rolling day, revoked ones included (0147). */
+  tooManyToday: string;
+}
+
+// A refusal names its remedy (rule 6); anything unknown is the generic "failed".
+function refusalText(error: string | undefined, text: ConsentText): string {
+  switch (error) {
+    case "expired":
+      return text.expired;
+    case "invalid_limit":
+      return text.limitInvalid;
+    case "too_many_connections":
+      return text.tooManyConnections;
+    case "too_many_connections_today":
+      return text.tooManyToday;
+    default:
+      return text.failed;
+  }
 }
 
 export function ConsentForm({
@@ -80,7 +100,7 @@ export function ConsentForm({
         window.location.assign(body.redirect);
         return;
       }
-      setError(body.error === "expired" ? text.expired : body.error === "invalid_limit" ? text.limitInvalid : text.failed);
+      setError(refusalText(body.error, text));
     } catch {
       setError(text.failed);
     }

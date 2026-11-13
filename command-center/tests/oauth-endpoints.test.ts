@@ -217,7 +217,8 @@ describe("POST /oauth/token — authorization_code", () => {
     expect(db.calls).toEqual([]);
   });
 
-  it("answers invalid_grant for a lapsed plan (the client starts over and the consent page explains), without spending anything", async () => {
+  // Since 0147 no database function answers subscription_required; one without 0147 (or after its rollback) still can.
+  it("answers invalid_grant when the database refuses for the plan (the client starts over and the consent page explains), without spending anything", async () => {
     const a = await approved();
     db.entitled = false;
     const res = await tokenEndpoint(form({ grant_type: "authorization_code", code: a.code, code_verifier: a.verifier, redirect_uri: a.redirect, client_id: a.clientId }), deps);

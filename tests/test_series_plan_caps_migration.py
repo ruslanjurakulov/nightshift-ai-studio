@@ -94,10 +94,11 @@ class Numbering(unittest.TestCase):
         # names none of the three words below.
         # 0146 (Dodo Payments next to Paddle: the payment tables' provider checks and 0034's two subscription functions) was reviewed the
         # same way: it names none of the three words below.
+        # 0147 (MCP over OAuth on every plan: 0093's and 0042's functions, oauth_check_credits, oauth_clients.vendor) was reviewed the
+        # same way: it names none of the three words below.
         # 0149 (an operator preview priced by resolution: creative_price on 0139's body only) was reviewed the same way: it names none
         # of the three words below.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146",
-                    "0149")
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

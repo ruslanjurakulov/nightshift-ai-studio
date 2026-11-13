@@ -223,9 +223,10 @@ export async function tokenEndpoint(request: Request, deps: OauthDeps): Promise<
     case "subscription_required":
       // invalid_grant is what every client knows how to answer: start over, and
       // the consent page then explains the plan. Nothing was spent in the database.
+      // Since 0147 every plan may connect; only a database without 0147 (or after its rollback) still answers this.
       return oauthError(
         "invalid_grant",
-        `Connecting an AI app to Nightshift needs a paid plan. Choose one at ${deps.origin}/pricing, then connect again.`,
+        `This workspace's current plan does not include connecting AI apps. See the plans at ${deps.origin}/pricing, then connect again.`,
       );
     case "invalid_target":
       return oauthError("invalid_target", `The resource must be ${deps.resource}.`);
