@@ -16,6 +16,8 @@ export type PromptBarCopy = {
   empty: string;
   noteIn: string;
   noteOut: string;
+  noteInClosed: string;
+  noteOutClosed: string;
   ideas: string;
 };
 
@@ -40,7 +42,21 @@ const MAX_LINES = 6;
  * Enter sends, Shift+Enter is a new line, Escape leaves the box. Create is off until this script runs, so no form is ever sent
  * that would drop the words. The light under the pointer is off on touch and under reduced motion.
  */
-export function PromptBar({ copy, ideas, signedIn = false }: { copy: PromptBarCopy; ideas: PromptIdea[]; signedIn?: boolean }) {
+export function PromptBar({
+  copy,
+  ideas,
+  signedIn = false,
+  studioOpen = false,
+}: {
+  copy: PromptBarCopy;
+  ideas: PromptIdea[];
+  signedIn?: boolean;
+  /**
+   * Whether any Studio model is on sale (lib/site/tool-samples.ts studioToolsOpen). Closed by default: the note then says the form
+   * opens but nothing can be made there today, rather than "nothing starts until you press Generate" (CLAUDE.md #5).
+   */
+  studioOpen?: boolean;
+}) {
   const id = useId();
   const box = useRef<HTMLTextAreaElement>(null);
   const form = useRef<HTMLFormElement>(null);
@@ -200,7 +216,7 @@ export function PromptBar({ copy, ideas, signedIn = false }: { copy: PromptBarCo
         </form>
       </div>
       <p id={`${id}-note`} className="nx-pbar-note">
-        {signedIn ? copy.noteIn : copy.noteOut}
+        {studioOpen ? (signedIn ? copy.noteIn : copy.noteOut) : signedIn ? copy.noteInClosed : copy.noteOutClosed}
       </p>
       {ideas.length > 0 && (
         <div className="nx-pbar-ideas">

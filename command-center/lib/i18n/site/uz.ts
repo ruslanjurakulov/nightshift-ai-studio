@@ -19,6 +19,7 @@ export const siteUz: SiteDictionary = {
     titleB: "Nashr qilishni siz bosasiz.",
     lead: "Nightshift’ga mavzu bering. U YouTube uchun video yozadi, ovozlaydi va montaj qiladi, soʻng roziligingizni kutadi. Narxni boshlashdan oldin koʻrasiz.",
     leadShort: "Bir jumladan klip va rasmlar yarating yoki Nightshift kanalingiz uchun keyingi videoni tayyorlab, qaroringizni kutsin.",
+    leadShortClosed: "Nightshift kanalingiz uchun keyingi videoni tayyorlab, qaroringizni kutsin; quyidagi klip va rasmlarni jamoamiz Studiyada yaratgan.",
     cta: "Bepul boshlash",
     secondary: "Narxlarni koʻrish",
     demo: "Namunani sinab koʻring",
@@ -177,7 +178,7 @@ export const siteUz: SiteDictionary = {
   gallery: {
     label: "Studiyada yaratilgan",
     title: "Nightshift’da yaratilgan",
-    lead: "Oʻzimizning Studiyamizdagi haqiqiy generatsiyalar. Har birida uni yaratgan model va unga berilgan soʻzlar koʻrsatilgan.",
+    lead: "Haqiqiy generatsiyalar: ularni jamoamiz Studiyada yaratgan. Har birida uni yaratgan model va unga berilgan soʻzlar koʻrsatilgan.",
     badge: "Sunʼiy intellekt yaratgan",
     model: "Model",
     prompt: "Soʻrov",
@@ -210,6 +211,8 @@ export const siteUz: SiteDictionary = {
     empty: "Avval bir-ikki soʻz yozing.",
     noteIn: "Studiyani soʻzlaringiz bilan ochadi. U yerda “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi.",
     noteOut: "Avval bepul roʻyxatdan oʻtasiz, soʻng Studiya soʻzlaringiz bilan ochiladi. “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi.",
+    noteInClosed: "Studiyani soʻzlaringiz bilan ochadi. Rasm va klip modellari hali sotuvda emas, shuning uchun bugun u yerda hech narsa yaratib boʻlmaydi.",
+    noteOutClosed: "Avval bepul roʻyxatdan oʻtasiz, soʻng Studiya soʻzlaringiz bilan ochiladi. Rasm va klip modellari hali sotuvda emas, shuning uchun bugun u yerda hech narsa yaratib boʻlmaydi.",
     ideas: "Haqiqiy soʻrovdan boshlang",
   },
   facts: {
@@ -283,6 +286,7 @@ export const siteUz: SiteDictionary = {
         pill: "Studiya",
         title: "Faqat bitta boʻlak kerakmi? Studiya tayyorlaydi.",
         body: "Bittadan rasm, klip yoki ovoz yarating, soʻng muharrirda birlashtiring. Har bir vosita narxi oʻz tugmasida turadi.",
+        bodyClosed: "Bittadan rasm, klip yoki ovoz, soʻng muharrirda birlashtirish. Uning modellari hali sotuvda emas: bu namunani jamoamiz yaratgan. Ular ochilganda tayyor boʻlish uchun roʻyxatdan oʻting.",
         cta: "Studiyani ochish",
         bubble: "Tong chogʻidagi tumanli togʻ vodiysi, yumshoq yorugʻlik, umumiy reja.",
         reply: "rasm yaratdi",
@@ -391,8 +395,8 @@ export const siteUz: SiteDictionary = {
   toolStrip: { title: "Nightshift nimalar yarata oladi" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "Studiyamizdagi haqiqiy natijalar",
-    note: "Vositada rasm yoki klip boʻlsa, u Studiyamizdagi haqiqiy topshiriq boʻlib, uni yaratgan model koʻrsatilgan. “Hozircha mavjud emas” belgisi bor vosita uchun bugun hech narsa sotilmaydi. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
+    label: "Jamoamiz Studiyada yaratgan haqiqiy natijalar",
+    note: "Vositada rasm yoki klip boʻlsa, u jamoamiz Studiyada bajargan haqiqiy topshiriq boʻlib, uni yaratgan model koʻrsatilgan. “Hozircha mavjud emas” belgisi bor vosita uchun bugun hech narsa sotilmaydi. Vosita ochilgach, narxi tugmasida boʻladi; kredit sarflamaydiganlari shunday deb yozilgan.",
     more: "Yana toʻrtta vositani koʻrsatish",
     less: "Kamroq koʻrsatish",
   },

@@ -21,7 +21,7 @@ import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { PromptBar, type PromptIdea } from "@/components/landing/PromptBar";
 import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
-import { STEP_PHONE_JOB } from "@/lib/site/tool-samples";
+import { STEP_PHONE_JOB, studioToolsOpen } from "@/lib/site/tool-samples";
 import { TypedText } from "@/components/site/TypedText";
 import { PROMPT_TOOLS, type PromptTool } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
@@ -142,9 +142,10 @@ function Hero({ t, formats }: { t: Dictionary; formats: LandingFormat[] }) {
         <h1 id="hero-title" className="nx-h1 nx-sh-h1">
           {h.titleA} <span className="nx-h1-b">{h.titleB}</span>
         </h1>
-        <p className="nx-sh-lead">{h.leadShort}</p>
+        {/* While no Studio model is on sale (lib/site/tool-samples.ts), the sentence offers no picture or clip a visitor can make. */}
+        <p className="nx-sh-lead">{studioToolsOpen() ? h.leadShort : h.leadShortClosed}</p>
         {/* Four starting points, one row: the first screen stays lean (the rest of the formats are in the gallery). */}
-        <PromptBar copy={t.site.prompt} ideas={ideas.slice(0, 4)} />
+        <PromptBar copy={t.site.prompt} ideas={ideas.slice(0, 4)} studioOpen={studioToolsOpen()} />
         <div className="nx-sh-actions">
           <Link href="/signup" className="nx-btn">
             {h.cta}

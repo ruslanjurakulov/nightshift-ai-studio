@@ -49,8 +49,8 @@ function SamplePic({ s, alt, anchor = false }: { s: Sample; alt: string; anchor?
  * output shows it: a picture the Image tool made, a clip the Video tool made, and for Animate the still and the clip made from
  * it, side by side. Each such tile is that sample's box (the only kind of element that may name a model), labelled
  * AI-generated with its model (no maker's credit on the public site: it is shown in the Studio), and it says when the model is not in
- * the Studio yet. A tool no customer can use today shows its icon and says "Not available yet" (the Studio's own words for it,
- * lib/i18n/availability): never a drawn result. A tool with no line in lib/site/tool-samples.ts is not drawn at all, because
+ * the Studio yet. A tool no customer can use today says "Not available yet" (the Studio's own words for it, lib/i18n/availability),
+ * beside our team's sample when it has one, or its icon: never a drawn result. A tool with no line in lib/site/tool-samples.ts is not drawn at all, because
  * nothing says whether it can be used (CLAUDE.md #5: an unknown is never shown as available). Tools with an output come first.
  * Each sample on the wall carries the id the model tiles link to. The Editor is a plain line under the wall. A Server Component.
  */
@@ -61,7 +61,8 @@ export function CapabilityWall({ t }: { t: Dictionary }) {
     .flatMap((tool) => {
       const def = TOOL_SAMPLES[tool.id];
       if (!(tool.id in TOOL_ICON) || !def) return [];
-      const out = def.inStudio ? sample(def.job) : null;
+      // Our team's sample is shown either way, labelled AI-generated; a closed tool also says "Not available yet".
+      const out = sample(def.job);
       const from = out ? sample(toolSource(out.e.jobId)) : null;
       return [{ tool, Icon: TOOL_ICON[tool.id], def, out, from }];
     })

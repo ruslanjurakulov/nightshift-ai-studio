@@ -22,7 +22,7 @@ import { LoopClip } from "@/components/site/LoopClip";
 import { StickyCta } from "@/components/site/StickyCta";
 import { Landing } from "@/components/landing/Landing";
 import { CLIPS, SLOTS, slotMedia, type PlaceDef } from "@/components/site/samples";
-import { TOOL_SAMPLES, toolSource } from "@/lib/site/tool-samples";
+import { TOOL_SAMPLES, studioToolsOpen, toolSource } from "@/lib/site/tool-samples";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { setMotionPaused } from "@/lib/site/motion";
 import { buildCsp } from "@/lib/security/csp";
@@ -347,11 +347,9 @@ describe("the capability wall (round 8, stock photographs replaced by AI-generat
       expect(tile.querySelector(".nx-wall-price")?.textContent ?? null).toBe(id === "styles" ? t.site.studio.free : null);
       // A tool no customer can use today says so in the Studio's own words (#735, lib/i18n/availability), and shows no output
       // (never a drawn result).
-      if (!def.inStudio) {
-        expect(tile.querySelector(".nx-wall-notyet")?.textContent).toBe(t.availability.notYet);
-        expect(tile.querySelector("img, video")).toBeNull();
-        expect(tile.hasAttribute("data-showcase-entry")).toBe(false);
-      } else expect(tile.querySelector(".nx-wall-notyet")).toBeNull();
+      // Our team's sample stays on a closed tool's tile, labelled AI-generated, beside the words.
+      if (!def.inStudio) expect(tile.querySelector(".nx-wall-notyet")?.textContent).toBe(t.availability.notYet);
+      else expect(tile.querySelector(".nx-wall-notyet")).toBeNull();
       // A real output is that sample's own box: its job, its model's name, AI-generated; lazy; Animate shows the still too.
       if (tile.hasAttribute("data-showcase-entry")) {
         expect(tile.dataset.showcaseEntry).toBe(def.job);
@@ -454,7 +452,15 @@ describe("the tool wall's lines", () => {
     expect(toolSource(TOOL_SAMPLES.animate.job)).toBeTruthy();
   });
 
-  it("a tool marked available has at least one registry model of its capability that is not terms-gated and not past its shutdown", () => {
+  // The live database on 2026-11-13 (a read-only check): all 82 model_registry rows availability='hidden', so no customer can make
+  // anything in the Studio. Flip a line, and this list, only when the owner opens a model of it (PR #736 / migration 0160).
+  it("says every tool is closed today, as the live database is (all models hidden, 2026-11-13), and the landing's copy follows", () => {
+    const open = Object.entries(TOOL_SAMPLES).filter(([, d]) => d.inStudio).map(([id]) => id);
+    expect(open).toEqual([]);
+    expect(studioToolsOpen()).toBe(false);
+  });
+
+  it("a tool marked available (none today) has at least one registry model of its capability that is not terms-gated and not past its shutdown", () => {
     for (const [tool, def] of Object.entries(TOOL_SAMPLES)) {
       if (!def.inStudio || def.capability === null) continue;
       const servable = REGISTRY.models.filter((m) => m.capabilities.includes(def.capability!) && !m.terms_gate && !(m.shutdown && m.shutdown.on <= today));

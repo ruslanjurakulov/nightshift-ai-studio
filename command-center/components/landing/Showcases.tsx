@@ -4,6 +4,7 @@ import { ClipPause } from "@/components/site/ClipPause";
 import { slotMedia, type SlotId } from "@/components/site/samples";
 import { PlaceFill, placeBox, placeNote } from "@/components/site/PlaceFill";
 import { ApprovalCard } from "@/components/landing/ApprovalCard";
+import { studioToolsOpen } from "@/lib/site/tool-samples";
 
 /**
  * The two things Nightshift is shown by: one section each. The Studio's picture is its slot (components/site/slots.ts SLOTS), a
@@ -55,7 +56,8 @@ export function Showcases({ t }: { t: Dictionary }) {
                     </h2>
                   </div>
                   <div className="nx-show-rest">
-                    <p className="nx-show-body">{item.body}</p>
+                    {/* The Studio band says its models are not on sale while none is (lib/site/tool-samples.ts studioToolsOpen). */}
+                    <p className="nx-show-body">{!studioToolsOpen() && "bodyClosed" in item ? item.bodyClosed : item.body}</p>
                     <Link href={href} className="nx-show-cta">
                       {item.cta}
                     </Link>

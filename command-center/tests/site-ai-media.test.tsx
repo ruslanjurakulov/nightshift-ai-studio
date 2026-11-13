@@ -305,8 +305,13 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(within(container).getByRole("button", { name: `${t.prompt.mode}: ${t.prompt.image}` })).toBeTruthy();
     fireEvent.keyDown(box, { key: "Enter" });
     expect(assign).toHaveBeenCalledWith(promptHref("t2i", "A lemon whispers to an avocado", false));
-    // The note says nothing starts here.
-    expect(container.textContent).toContain(t.prompt.noteOut);
+    // The note says nothing starts here, and, while no Studio model is on sale (the bar's default), that nothing can be made there
+    // today: never "press Generate" for a form with nothing to pick.
+    expect(container.textContent).toContain(t.prompt.noteOutClosed);
+    expect(container.textContent).not.toContain(t.prompt.noteOut);
+    cleanup();
+    const open = render(<PromptBar copy={t.prompt} ideas={[]} studioOpen />).container;
+    expect(open.textContent).toContain(t.prompt.noteOut);
   });
 
   // What would break: "+" saying "attach" and then opening a text-only form with nothing to attach to (the review of #734 found it).
@@ -521,7 +526,9 @@ describe("copy and config", () => {
     const s = dictionaries[code].site;
     for (const block of [s.prompt, s.facts, s.formats, s.models, s.approvalCard]) expect(JSON.stringify(block)).not.toMatch(PROVIDER_BRANDS);
     expect(s.formats.items.map((i) => i.id)).toEqual(FORMATS.map((f) => f.id));
-    for (const v of [s.approvalCard.figure, s.gallery.useNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut, s.hero.leadShort]) expect(v.trim().length).toBeGreaterThan(20);
+    for (const v of [s.approvalCard.figure, s.gallery.useNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut, s.prompt.noteInClosed, s.prompt.noteOutClosed, s.hero.leadShort, s.hero.leadShortClosed]) expect(v.trim().length).toBeGreaterThan(20);
+    // The closed words claim nothing a visitor can make today: no "press Generate", and they say the models are not on sale.
+    for (const v of [s.prompt.noteInClosed, s.prompt.noteOutClosed]) expect(v).not.toContain(dictionaries[code].gen.generate);
     // The formats are only their cards' words: the cards are drawn inside the gallery, under its own heading.
     expect(Object.keys(s.formats)).toEqual(["items"]);
     // The bar's note names the Studio's own button (ru «Создать», not «Сгенерировать»).
