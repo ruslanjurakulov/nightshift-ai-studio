@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "7ee6f783-7c3c-4265-ade8-88c64b674127",
+      "assetId": "77214cf3-9bee-5ffb-8195-dc2436f9f856",
+      "sha256": "d4265967b78a80157b17f705a04ff32f920088f6f6ba33b7ab90713cc9005a5d",
+      "modelId": "minimax-h3-highspeed",
+      "modelName": "MiniMax H3 Highspeed",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Premium tech commercial: a pair of unbranded matte-black over-ear headphones assembles itself in mid-air from floating parts — drivers, cushions, metal arms and screws drift in and click together in sequence in a clean dark studio, then the finished headphones spin to a hero pose with a soft blue rim light. Audio: precise mechanical clicks, a low synth swell.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Highspeed",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:00:25Z"
     }
   ]
 }
