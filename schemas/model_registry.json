@@ -1402,10 +1402,11 @@
       },
       "pricing": {
         "unit": "image",
-        "provider_usd_per_unit": null,
-        "source_url": null,
-        "as_of": null,
-        "confirmed": false
+        "provider_usd_per_unit": 0.03,
+        "source_url": "https://ideogram.ai/pricing/?pricing_tab=api",
+        "as_of": "2026-11-13",
+        "confirmed": false,
+        "note": "ESTIMATE: Ideogram 3.0 Turbo API list price, US$0.03 per image (the adapter sends rendering_speed TURBO), read by the owner in a browser on 2026-11-13; the page draws its table with a script a plain fetch is refused."
       },
       "credit_unit": "model_ideogram_3_image",
       "entitlement": "models_image:basic",
@@ -1419,6 +1420,7 @@
         "url": "https://ideogram.ai"
       },
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 2
@@ -1458,10 +1460,11 @@
       },
       "pricing": {
         "unit": "image",
-        "provider_usd_per_unit": null,
-        "source_url": null,
-        "as_of": null,
-        "confirmed": false
+        "provider_usd_per_unit": 0.03,
+        "source_url": "https://ideogram.ai/pricing/?pricing_tab=api",
+        "as_of": "2026-11-13",
+        "confirmed": false,
+        "note": "ESTIMATE: Ideogram 4.0 Turbo API list price, US$0.03 per image (the adapter sends rendering_speed TURBO), read by the owner in a browser on 2026-11-13; the page draws its table with a script a plain fetch is refused."
       },
       "credit_unit": "model_ideogram_4_image",
       "entitlement": "models_image:premium",
@@ -1475,6 +1478,7 @@
         "url": "https://ideogram.ai"
       },
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 2
