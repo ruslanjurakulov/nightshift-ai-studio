@@ -893,6 +893,504 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "9699e7fd-74a6-4d9e-8dcd-9dc88deec1d9",
+      "assetId": "5d425291-6c5d-5254-9e6c-b4ec90042228",
+      "sha256": "a2e186fdfad80738e2b12fd803858e6c043b7844bc4568e4e1ddcb2ef0f77c64",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Top-down shot of an open notebook on a wooden desk under a warm lamp. A pencil doodle of a small cartoon dragon blinks, wiggles, peels itself off the paper as a living paper creature, stretches its wings and flies in a loop around the desk lamp, leaving a trail of tiny glowing sparks. Playful, magical, crisp macro detail. Audio: paper rustle, tiny wing flaps, a cute roar.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:46:41Z"
+    },
+    {
+      "jobId": "c7f8bb97-4725-4878-87a0-17d0b27027a6",
+      "assetId": "e73d75f5-ec8a-5bd6-af10-27741e1a3ae7",
+      "sha256": "adcbed23f93e7d6044e56951eddb82360cffb28f162f9bccef1e5279d8a55a8f",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Street-level cinematic shot at a city traffic light at dusk: a glossy pastel-pink sports car with no logos slowly melts like ice cream into a shiny puddle on the asphalt, pedestrians stare in disbelief; when the light turns green the puddle snaps back up into the car and it drives away. Photoreal, slow motion, wet reflections. Audio: city ambience, a gooey melt, an engine roar.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:48:19Z"
+    },
+    {
+      "jobId": "d91578df-1084-4d2e-9273-bf52bd966118",
+      "assetId": "ade20755-463a-5756-a80a-7298d17caf3d",
+      "sha256": "0ee6bdc21bf1e6178e296ffdf2cc684e0857f0bdd2feb5c413b1271bf5d6343f",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical product commercial: a frosted block of ice on black glass cracks and shatters in extreme slow motion, revealing an unbranded aluminium soda can covered in condensation; a burst of fizz and droplets erupts upward and freezes in mid-air, sharp rim light, high-end ad energy. Audio: ice crack, can hiss, deep bass hit.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:50:35Z"
+    },
+    {
+      "jobId": "c2733488-980e-4a20-9a58-28401bbee8c4",
+      "assetId": "7e2e8c39-5b49-57f3-b141-f261e4e445d6",
+      "sha256": "b2dd84cabc074ace9f0a7d0669eb88a40872b933eebaaa3a3007af4014b0fa0c",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical phone-video look, rooftop party at night with string lights: a cool cat in sunglasses DJs behind turntables while a crowd of animals — a raccoon, a goose, a capybara and a fox — dance; the beat drops and confetti bursts over the city skyline. Fun, viral social clip energy. Audio: house beat drop, crowd cheering.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:52:50Z"
+    },
+    {
+      "jobId": "fcdba478-1a92-497d-adbb-1d2c9701e806",
+      "assetId": "b0f81d99-4170-5184-9fb4-a0a0fa2dbcc8",
+      "sha256": "0d81844a2c1eb2b8a2cd5e440396f052f0109aa3221c82098a980373e1f65535",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Wide cinematic shot: a whole city folds itself out of white paper at golden hour — origami skyscrapers unfold upward, bridges crease into place, paper cars roll out and a flock of paper cranes takes off across the sky; the camera glides forward through the newly folded streets. Magical, crisp paper texture, warm light. Audio: soft paper folding sounds, gentle wind.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:54:30Z"
+    },
+    {
+      "jobId": "f3583fdc-25c4-42cb-96ce-1d92d80cbf68",
+      "assetId": "3f16a5c9-ef8f-5008-984b-f6476031e7c0",
+      "sha256": "16bc3b8a5dc7df06a795bae3cad8cac485e02555df5007006140c4edab5439d3",
+      "modelId": "minimax-h3-lite",
+      "modelName": "MiniMax H3 Lite",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical macro tilt-shift shot: a crew of tiny construction workers in orange vests on miniature scaffolding repairs the cracked screen of a giant smartphone lying on a desk; one welds with bright sparks, two carry a glass panel, a tiny crane lifts a pixel. Playful, detailed, warm light. Audio: tiny hammering, welding hiss, cheerful whistles.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Lite",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:56:51Z"
+    },
+    {
+      "jobId": "c62d40e7-b1b5-4ba4-8bc9-487f9ef7382e",
+      "assetId": "69e4053f-71ef-573d-b846-f239d2cdc603",
+      "sha256": "0d2f721f1d8539539e5c6c993f71ff5eccf8b089b32c9dc6a4798b867ada61e6",
+      "modelId": "minimax-h3-lite",
+      "modelName": "MiniMax H3 Lite",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "A small glass jar sits on a dark kitchen table at night; inside it a miniature thunderstorm churns with dark clouds and rain, and bright lightning bolts flash inside the jar, lighting up the whole kitchen in white flashes; the camera slowly pushes in. Atmospheric, magical realism. Audio: tiny thunder rumbles, rain patter.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Lite",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:58:56Z"
+    },
+    {
+      "jobId": "7ee6f783-7c3c-4265-ade8-88c64b674127",
+      "assetId": "77214cf3-9bee-5ffb-8195-dc2436f9f856",
+      "sha256": "d4265967b78a80157b17f705a04ff32f920088f6f6ba33b7ab90713cc9005a5d",
+      "modelId": "minimax-h3-highspeed",
+      "modelName": "MiniMax H3 Highspeed",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Premium tech commercial: a pair of unbranded matte-black over-ear headphones assembles itself in mid-air from floating parts — drivers, cushions, metal arms and screws drift in and click together in sequence in a clean dark studio, then the finished headphones spin to a hero pose with a soft blue rim light. Audio: precise mechanical clicks, a low synth swell.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Highspeed",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:00:25Z"
+    },
+    {
+      "jobId": "4e85c7e4-fd1a-4771-97ee-66c1fb853367",
+      "assetId": "c93d2070-23c3-5b0c-a002-bf6f540eface",
+      "sha256": "02e80e273ced77ab85b6c9ecb12392ffd52bb7d88553e62700e354ce1408d0d2",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "One continuous shot: the camera plunges from Earth orbit through bright clouds, over a glittering night city grid, down between neon skyscrapers and lands at street level in front of a steaming street-food stall in the rain. Seamless, fast but smooth, photorealistic, epic scale.",
+      "createdAt": "2026-11-13T20:31:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:16:19Z"
+    },
+    {
+      "jobId": "3069ec2f-2f68-40a8-bcbe-fc4c5f9111bc",
+      "assetId": "54650bf2-fd78-52c5-b2b6-0a463424c9f7",
+      "sha256": "527ef06fdcd22b0613d2f46ba3bc1dff16ef5fdbd63f2fcb97341154dede2a34",
+      "modelId": "ideogram-4.5",
+      "modelName": "Ideogram 4.5",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Instagram-style product ad, vertical: an unbranded glass bottle of cold-brew coffee on ice cubes splashing, deep brown and cream palette, clean studio light, headline text reading \"WAKE UP LOUDER\" in heavy condensed type, small text \"cold brew, no compromise\". Premium advertising photography.",
+      "createdAt": "2026-11-13T20:31:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "ideogram-4-5",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2276,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:20:11Z"
+    },
+    {
+      "jobId": "ced854a6-ba49-4668-b9dd-91ca46b72f6d",
+      "assetId": "47426118-3bfa-5acf-b9f3-87f56125dbaa",
+      "sha256": "7be5f1de2234a5a5debe1f5162e1589a2c1bb0600fd944016ca791e7977c68f4",
+      "modelId": "ideogram-4",
+      "modelName": "Ideogram 4.0",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Cinematic YouTube thumbnail, 16:9: a shocked young explorer with wide eyes and mouth open in the foreground, behind him a colossal ancient stone face emerging from a jungle cliff, golden rim light, bold saturated colors, big readable headline text \"IT WAS REAL\" on the right side. Hyper-detailed, high contrast.",
+      "createdAt": "2026-11-13T20:31:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "turbo",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:21:15Z"
+    },
+    {
+      "jobId": "c808297a-8479-45fe-ae33-1c7688be7cb2",
+      "assetId": "aa1a55ad-bcdf-5aaf-97c6-c24a7b7d72dc",
+      "sha256": "93799e5f990c9d1dc60779945f8366d5589a7f6a3b08ce2c358656411cf24b79",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Playful 3D typographic artwork: the word \"NIGHTSHIFT\" built from glossy inflatable balloon letters floating over a midnight-blue city skyline, stars and neon reflections, soft studio lighting, high detail.",
+      "createdAt": "2026-11-13T20:31:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:22:29Z"
+    },
+    {
+      "jobId": "dcb96246-9379-4c3a-aa33-a8ee6bb7f846",
+      "assetId": "49fcc17b-cc36-59c2-bb40-75c402e63513",
+      "sha256": "fba8cc386604d24ea45aa4ddcc809fad816a3f09635434e775da8720facaf645",
+      "modelId": "runway-gen4-turbo",
+      "modelName": "Runway Gen-4 Turbo",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "The photo comes alive: heavy rain starts falling over the neon city, neon signs flicker on, light trails of traffic streak along the wet street far below, a flying drone crosses the frame, mist drifts between the towers. Camera slowly pushes in. Cinematic, photorealistic.",
+      "createdAt": "2026-11-13T20:45:38Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "1504b313-3a3c-4e78-bfda-5bca3ef7f3da",
+        "assetId": "263cbf6e-9d00-5f65-aebb-2683c97d0718"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4_turbo",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:23:48Z"
     }
   ]
 }

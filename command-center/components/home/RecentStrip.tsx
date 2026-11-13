@@ -10,6 +10,8 @@ import { useChannelPath } from "@/lib/channels-client";
 import { coerceJobs, isActiveStatus, kindLabel, statusView, truncate, type StudioJob } from "@/lib/creative/studio";
 import { fmt } from "@/lib/i18n";
 import { toolHref } from "@/lib/home";
+import { useShell } from "@/components/shell/ShellContext";
+import { toolOpen } from "@/lib/tool-availability";
 
 const SHOWN = 8;
 
@@ -39,6 +41,8 @@ export const KIND_ICON: Record<string, LucideIcon> = {
 export function RecentStrip({ orgId }: { orgId: string | null }) {
   const { t } = useI18n();
   const path = useChannelPath();
+  const { tools } = useShell();
+  const pictureOpen = toolOpen(tools, "t2i");
   const [jobs, setJobs] = useState<StudioJob[] | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "failed" | "unavailable">(orgId ? "loading" : "unavailable");
 
@@ -82,7 +86,8 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
 
       {making > 0 && (
         <p className="fl-hint" data-testid="home-making">
-          <StatusLamp tone="run" live label={making === 1 ? t.home.makingOne : fmt(t.home.makingMany, { n: making })} /> · {t.home.makingBody}
+          {/* "generations", not "clips": the strip counts pictures and voice-overs too. */}
+          <StatusLamp tone="run" live label={making === 1 ? t.home.makingOne : fmt(t.home.makingMany, { n: making })} /> · {making === 1 ? t.home.makingBody : t.home.makingBodyMany}
         </p>
       )}
 
@@ -106,11 +111,15 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-[var(--color-fg)]">{t.home.recentEmptyTitle}</p>
-            <p className="text-sm text-[var(--color-muted)]">{t.home.recentEmptyBody}</p>
+            {/* "Start with one picture" only while a picture can be made: otherwise it and its button promise a form with nothing
+                to pick (Home's note above says what works). */}
+            {pictureOpen && <p className="text-sm text-[var(--color-muted)]">{t.home.recentEmptyBody}</p>}
           </div>
-          <Link href={path(toolHref("t2i"))} className="btn-quiet text-sm">
-            {t.home.recentEmptyCta}
-          </Link>
+          {pictureOpen && (
+            <Link href={path(toolHref("t2i"))} className="btn-quiet text-sm">
+              {t.home.recentEmptyCta}
+            </Link>
+          )}
         </div>
       )}
 

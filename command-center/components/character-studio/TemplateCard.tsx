@@ -1,14 +1,16 @@
 "use client";
 
-import { Clock } from "lucide-react";
 import { fmt } from "@/lib/i18n";
 import type { CharacterStudioDictionary } from "@/lib/i18n/character-studio";
-import { MODEL_FACTS, MODEL_IDS, type SwapTemplate } from "@/lib/characterStudio/model";
+import { MODEL_FACTS, type SwapTemplate } from "@/lib/characterStudio/model";
+import { pluralText } from "@/lib/plural";
+import { modelsWithSample } from "@/components/character-studio/samples";
 
 /**
- * One gallery card (docs/CHARACTER_STUDIO.md, "Samples"): the example's title, one slot per model with the sample that model made from
- * this card's own words, and "Try", which opens the studio with those words. A slot with no sample yet says so ("Namuna tez orada"):
- * making one is a paid call the owner has not approved, and an empty slot never borrows another model's clip.
+ * One gallery card (docs/CHARACTER_STUDIO.md, "Samples"): the example's title, the samples the models made from this card's own
+ * words, and "Try", which opens the studio with those words. Only a model with a real sample has a slot: four "Sample coming soon"
+ * tiles read as a page that was never finished, and an empty slot never borrows another model's clip. A card with no sample at all is
+ * not drawn (CharacterStudio filters it).
  *
  * A sample plays from the public CDN (its web copy; the original stays in the private bucket). It is muted and never autoplays.
  */
@@ -28,26 +30,15 @@ export function TemplateCard({
     <li className="cs-card" data-template={template.slug}>
       <div className="cs-card-head">
         <h3 className="cs-h3">{title}</h3>
-        <span className="cs-small">{fmt(t.gallery.characters, { n: template.characters })}</span>
+        <span className="cs-small">{pluralText(t.gallery.characters, template.characters, locale)}</span>
       </div>
       <ul className="cs-samples">
-        {MODEL_IDS.map((model) => {
-          const sample = template.samples[model];
-          const name = MODEL_FACTS[model].name;
-          return (
-            <li key={model} className="cs-sample" data-model={model} data-empty={sample ? undefined : "true"}>
-              {sample ? (
-                <video className="cs-sample-video" src={sample.webUrl} poster={sample.posterUrl ?? undefined} controls muted playsInline preload="none" />
-              ) : (
-                <div className="cs-sample-empty" role="img" aria-label={t.gallery.sampleSoon}>
-                  <Clock aria-hidden="true" size={20} />
-                  <span>{t.gallery.sampleSoon}</span>
-                </div>
-              )}
-              <p className="cs-small">{fmt(t.gallery.sampleOf, { model: name })}</p>
-            </li>
-          );
-        })}
+        {modelsWithSample(template).map(({ model, sample }) => (
+          <li key={model} className="cs-sample" data-model={model}>
+            <video className="cs-sample-video" src={sample.webUrl} poster={sample.posterUrl ?? undefined} controls muted playsInline preload="none" />
+            <p className="cs-small">{fmt(t.gallery.sampleOf, { model: MODEL_FACTS[model].name })}</p>
+          </li>
+        ))}
       </ul>
       <p className="cs-small">{template.prompt}</p>
       <div className="cs-actions">
