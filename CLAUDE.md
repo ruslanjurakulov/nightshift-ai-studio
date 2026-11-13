@@ -180,6 +180,13 @@ the main session (**Atlas**), one feature per draft PR:
 | **Sentinel** | triages Breach/Lens findings, root cause, severity, the regression test |
 | **Pixel** | audits UI states, responsive layout, accessibility and en/ru/uz copy |
 
+Specialist reviewers, read-only, adapted from affaan-m/ecc (MIT; only these
+agent files were taken, no hooks or scripts — `.claude/agents/ECC-NOTICE.md`):
+**silent-failure-hunter** (rule 4: swallowed errors, quiet fallbacks),
+**database-reviewer** (Postgres/RLS/migrations), **typescript-reviewer**,
+**react-reviewer**, **python-reviewer**, **type-design-analyzer**,
+**pr-test-analyzer**. Lens may call on them for a second opinion on a diff.
+
 Pipeline per PR: Scout (when a provider is involved) → Forge → Lens → Probe →
 Breach → Sentinel → Forge fixes → Pixel (when there is UI) → Atlas final check
 → CI green → the owner is told it is ready. Every confirmed vulnerability
