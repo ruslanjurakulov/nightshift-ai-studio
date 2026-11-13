@@ -300,17 +300,60 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(box.getAttribute("aria-invalid")).toBe("true");
     fireEvent.click(within(container).getByRole("button", { name: "Fruit soap opera" }));
     expect(box.value).toBe("A lemon whispers to an avocado");
-    fireEvent.click(within(container).getByRole("button", { name: t.prompt.image }));
-    expect(within(container).getByRole("button", { name: t.prompt.image }).getAttribute("aria-pressed")).toBe("true");
+    // One small output key, not two chips: a video by default, a picture on a press.
+    fireEvent.click(within(container).getByRole("button", { name: `${t.prompt.mode}: ${t.prompt.video}` }));
+    expect(within(container).getByRole("button", { name: `${t.prompt.mode}: ${t.prompt.image}` })).toBeTruthy();
     fireEvent.keyDown(box, { key: "Enter" });
     expect(assign).toHaveBeenCalledWith(promptHref("t2i", "A lemon whispers to an avocado", false));
     // The note says nothing starts here.
     expect(container.textContent).toContain(t.prompt.noteOut);
   });
 
+  it("\"+\" (attach a picture or a video) needs an account: signed out it goes to sign-up with the words kept, and reads nothing from the device", () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    const t = dictionaries.en.site;
+    const { container } = render(<PromptBar copy={t.prompt} ideas={[]} />);
+    expect(container.querySelector("input[type='file']")).toBeNull();
+    const box = container.querySelector("textarea")!;
+    fireEvent.change(box, { target: { value: "lanterns over a lake" } });
+    fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOut }));
+    expect(assign).toHaveBeenCalledWith(promptHref("t2v", "lanterns over a lake", false));
+    expect(assign.mock.calls[0][0]).toMatch(/^\/signup\?next=/);
+    // With no words it is plain sign-up.
+    assign.mockClear();
+    fireEvent.change(box, { target: { value: "" } });
+    fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOut }));
+    expect(assign).toHaveBeenCalledWith("/signup");
+  });
+
+  it("docks to the bottom once its place has scrolled above the window, keeps that place's height, tells the page (the start bar steps aside), and undocks on the way back; Escape leaves the box", () => {
+    let cb: IntersectionObserverCallback = () => undefined;
+    vi.stubGlobal("IntersectionObserver", class { constructor(c: IntersectionObserverCallback) { cb = c; } observe() {} disconnect() {} unobserve() {} });
+    const t = dictionaries.en.site;
+    const { container } = render(<PromptBar copy={t.prompt} ideas={[]} />);
+    const form = container.querySelector("form.nx-pbar") as HTMLFormElement;
+    Object.defineProperty(form, "offsetHeight", { configurable: true, value: 64 });
+    expect(form.dataset.docked).toBe("false");
+    act(() => cb([{ isIntersecting: false, boundingClientRect: { bottom: -10 } } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(form.dataset.docked).toBe("true");
+    expect(document.documentElement.getAttribute("data-composer")).toBe("docked");
+    expect((container.querySelector(".nx-pbar-slot") as HTMLElement).style.minHeight).toBe("64px");
+    act(() => cb([{ isIntersecting: true, boundingClientRect: { bottom: 300 } } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(form.dataset.docked).toBe("false");
+    expect(document.documentElement.hasAttribute("data-composer")).toBe(false);
+    const box = container.querySelector("textarea")!;
+    box.focus();
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(document.activeElement).not.toBe(box);
+    expect(css).toMatch(/\.nx-pbar\[data-docked="true"\] \{ position: fixed;[^}]*env\(safe-area-inset-bottom\)/);
+    expect(css).toContain('html[data-composer="docked"] .nx-bar { display: none; }');
+    expect(css).toMatch(/@supports not \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\)/);
+  });
+
   it("before its script runs, Create is off (the server's markup), so no form is ever sent that would drop the words", () => {
     const html = renderToStaticMarkup(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />);
-    expect(html).toMatch(/<button type="submit" class="nx-pbar-go" disabled="">/);
+    expect(html).toMatch(/<button type="submit" class="nx-pbar-go"[^>]*disabled="">/);
     // Once it runs, Create is on (checked above by pressing it).
     expect(render(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />).container.querySelector(".nx-pbar-go")?.hasAttribute("disabled")).toBe(false);
   });

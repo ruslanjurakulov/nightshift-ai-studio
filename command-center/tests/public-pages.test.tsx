@@ -93,12 +93,13 @@ describe("public landing page", () => {
     // whatever the owner has merged.
     // The model tiles' small stills are their samples' posters, each inside that sample's box (checked below).
     const all = outsideGallery(container.querySelectorAll("img"));
-    const tiles = all.filter((i) => i.closest("#models"));
-    const imgs = all.filter((i) => !i.closest("#models"));
+    const tiles = all.filter((i) => i.closest("#models, #tools, .nx-step-live"));
+    const imgs = all.filter((i) => !i.closest("#models, #tools, .nx-step-live"));
     // The four slots (the first screen, the two showcases and the closing panel: a stock still with a data-sample, or one of our
     // samples with a data-sample-job inside its own box), and the AI-generated pictures (each with a data-art-id): the sample
     // thumbnail, the three steps' pictures and the eight tool tiles'.
-    expect(imgs.length).toBe(16);
+    // Round 10: no clay pictures for the steps and the tools (live pieces and real outputs instead, each in its sample's box).
+    expect(imgs.length).toBe(5);
     for (const img of imgs) {
       expect(img.getAttribute("data-sample") ?? img.getAttribute("data-art-id") ?? img.getAttribute("data-sample-job")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);

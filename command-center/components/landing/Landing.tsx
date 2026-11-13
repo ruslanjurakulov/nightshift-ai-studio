@@ -19,9 +19,10 @@ import { LANDING_SLOTS, slotJobs, slotMedia } from "@/components/site/samples";
 import { AiCredit, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { placeTry } from "@/components/site/place-try";
 import { PromptBar, type PromptIdea } from "@/components/landing/PromptBar";
-import { ArtSlotImg, slotArt } from "@/components/site/art";
 import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
+import { STEP_PHONE_JOB, TOOL_JOBS } from "@/lib/site/tool-samples";
+import { TypedText } from "@/components/site/TypedText";
 import { PROMPT_TOOLS, type PromptTool } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
@@ -74,7 +75,8 @@ export function Landing({
   dodo?: boolean;
 }) {
   // The samples the landing's own slots show are left out of its gallery, so no clip is on the page twice.
-  const inSlots = slotJobs(LANDING_SLOTS);
+  // Also the samples the tool wall and the steps show (lib/site/tool-samples.ts): the gallery leaves them all out.
+  const inSlots = [...slotJobs(LANDING_SLOTS), ...TOOL_JOBS];
   const gallery = showcaseItems().filter(({ e }) => !inSlots.includes(e.jobId));
   // Everything on the page that is one of our samples: the gallery's, then the slots' (each with its files). The facts count
   // these and the model tiles are built from these, so a tile's count and the facts can never disagree.
@@ -88,7 +90,7 @@ export function Landing({
       <ShowcaseGallery t={t} locale={locale} exclude={inSlots} formats={formats} />
       <ModelTiles t={t} items={onPage} />
       <Showcases t={t} />
-      <How t={t} />
+      <How t={t} locale={locale} anchor={anchor} />
       {showcase.length > 0 && (
         <div className="st-section">
           <div className="st-wrap">
@@ -287,7 +289,56 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
 }
 
 /** Three steps in a strip: a numeral, a title, a sentence (the last one is the person's own press), and under them what Nightshift can make, as a wall of eight icon tiles, one per tool. */
-function How({ t }: { t: Dictionary }) {
+/**
+ * The live piece above a step of "How it works", made of the product's own parts and words, never a drawing of a result:
+ * 1. the ask, typed as you watch (the chat card's own example ask; reduced motion or the pause switch show it whole);
+ * 2. the Generate key as the Studio draws it, with the price beside it only when the live price list holds one, else where it
+ *    will appear (never a default or a zero);
+ * 3. a phone with one of our vertical samples playing as a channel's video, under "Private on YouTube": an example, labelled
+ *    AI-generated with its model, in the sample's own box.
+ * The first two are pictures of a control, not controls: hidden from assistive tech (the step's words say it).
+ */
+function StepLive({ id, t, locale, anchor }: { id: string; t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
+  if (id === "topic") {
+    return (
+      <div className="nx-step-live" data-step="topic" aria-hidden>
+        <span className="nx-step-input">
+          <TypedText text={t.site.caps.items[0].bubble} />
+        </span>
+      </div>
+    );
+  }
+  if (id === "price") {
+    const a = t.site.anchor;
+    const price = anchor.site ? fmt(a.siteValue, { n: formatCredits(anchor.site.perMinute, locale), unit: creditUnit(anchor.site.perMinute, locale, t.shell.creditUnit) }) : null;
+    return (
+      <div className="nx-step-live" data-step="price" aria-hidden>
+        <span className="nx-step-key">{t.gen.generate}</span>
+        <span className="nx-step-price" data-known={price ? "true" : "false"}>
+          {price ?? t.site.how.priceLater}
+        </span>
+      </div>
+    );
+  }
+  const e = SHOWCASE_ENTRIES.find((x) => x.jobId === STEP_PHONE_JOB);
+  const f = e ? SHOWCASE_FILES[e.jobId] : undefined;
+  const approve = t.site.stage.steps.find((x) => x.id === "approve" && "lamp" in x) as { lamp: string } | undefined;
+  if (!e || !f) return null;
+  const clip = e.kind === "video" && f.clip !== null;
+  return (
+    <div className="nx-step-live" data-step="approve" data-showcase-entry={e.jobId} data-model={e.modelId}>
+      <span className="nx-step-phone" data-clip={clip ? "sample" : undefined}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={f.posterSm} width={e.width} height={e.height} alt={fmt(clip ? t.site.gallery.altClip : t.site.gallery.altImage, { model: e.modelName })} className="nx-step-shot nx-drift-pic" loading="lazy" decoding="async" />
+        {clip && <ShowcaseClip jobId={e.jobId} />}
+        {approve && <span className="nx-step-private">{approve.lamp}</span>}
+      </span>
+      <AiCredit entry={e} g={t.site.gallery} className="nx-ai-credit nx-step-credit" />
+    </div>
+  );
+}
+
+function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
   const h = t.site.how.simple;
   return (
     <section id="how" aria-labelledby="how-title" className="nx-section" data-tone="raised">
@@ -297,11 +348,10 @@ function How({ t }: { t: Dictionary }) {
         </h2>
         <ol className="nx-strip" aria-label={t.site.how.slug}>
           {h.steps.map((s, i) => {
-            // An optional picture above the numeral (components/site/art.tsx SLOT_ART): none is configured today, so the step is text.
-            const art = slotArt("step", s.id);
+            // A live piece of the product above each step (round 10): the ask being typed, the Generate key with its price, a channel's video waiting private.
             return (
               <li key={s.id} className="nx-strip-step">
-                {art && <ArtSlotImg slot={art} alt={t.site.art.alts[art.altKey]} className="nx-strip-pic" />}
+                <StepLive id={s.id} t={t} locale={locale} anchor={anchor} />
                 <span className="nx-strip-no" aria-hidden>
                   {i + 1}
                 </span>

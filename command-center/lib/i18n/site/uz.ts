@@ -167,9 +167,9 @@ export const siteUz: SiteDictionary = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Rasm mualliflari",
-    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Baʼzi rasmlar esa boshqacha: uch qadam va sakkiz vosita uchun rasmlar hamda namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvirlar. Bu bezak, mahsulotning skrinshotlari emas.",
+    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Bitta rasm boshqacha: amaliy misoldagi namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvir. Bu bezak, mahsulotning skrinshoti emas.",
     licence: "Pexels litsenziyasi",
-    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni koʻrsatilgan model berilgan soʻzlar boʻyicha yaratgan. Uch qadam va sakkiz vosita uchun rasmlar hamda namuna muqova Nightshift uchun bezak sifatida sunʼiy intellekt yaratgan tasvirlar, mahsulotning skrinshotlari emas.",
+    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni koʻrsatilgan model berilgan soʻzlar boʻyicha yaratgan. Amaliy misoldagi namuna muqova Nightshift uchun bezak sifatida sunʼiy intellekt yaratgan tasvir, mahsulotning skrinshoti emas.",
     generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni koʻrsatilgan model berilgan soʻzlar boʻyicha yaratgan.",
   },
   gallery: {
@@ -198,7 +198,8 @@ export const siteUz: SiteDictionary = {
   prompt: {
     label: "Qanday video yoki rasm kerakligini tasvirlang",
     placeholder: "Sahnani tasvirlang: kadrda nima bor, kamera qanday harakatlanadi, yorugʻlik qanday…",
-    tools: "Nima yaratamiz",
+    mode: "Nima yaratamiz",
+    attachOut: "Rasm yoki video biriktirish (avval bepul roʻyxatdan oʻting)",
     video: "Video",
     image: "Rasm",
     submit: "Yaratish",
@@ -344,6 +345,7 @@ export const siteUz: SiteDictionary = {
     ],
   },
   how: {
+    priceLater: "Narx shu yerda, boshlashdan oldin koʻrinadi",
     slug: "Video yoʻli",
     title: "Bitta efir rejasi — kanaldan YouTube’gacha.",
     lead: "Har bir qadam ishlayotganda koʻrinib turadi. Oxirgisi doim sizniki.",
@@ -385,8 +387,9 @@ export const siteUz: SiteDictionary = {
   toolStrip: { title: "Nightshift nimalar yarata oladi" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "Har bir vosita uchun sunʼiy intellekt yaratgan rasmlar",
-    note: "Rasmlar vositalarni bildiradi, xolos. Bular sunʼiy intellekt yaratgan bezak, vositalar yaratgan narsa emas. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
+    notYet: "Hozircha Studiyada yoʻq",
+    label: "Studiyamizdagi haqiqiy natijalar",
+    note: "Vositada rasm yoki klip boʻlsa, u Studiyamizdagi haqiqiy topshiriq boʻlib, uni yaratgan model koʻrsatilgan. “Hozircha Studiyada yoʻq” belgisi bor vositadan hali foydalanib boʻlmaydi. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
     more: "Yana toʻrtta vositani koʻrsatish",
     less: "Kamroq koʻrsatish",
   },

@@ -22,6 +22,7 @@ import { LoopClip } from "@/components/site/LoopClip";
 import { StickyCta } from "@/components/site/StickyCta";
 import { Landing } from "@/components/landing/Landing";
 import { CLIPS, SLOTS, slotMedia, type PlaceDef } from "@/components/site/samples";
+import { TOOL_SAMPLES } from "@/lib/site/tool-samples";
 import { setMotionPaused } from "@/lib/site/motion";
 import { buildCsp } from "@/lib/security/csp";
 import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, placeLabelProblems, without } from "./helpers/showcase-scope";
@@ -241,15 +242,15 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     if (fin.kind === "ai") expect(finCredit.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(fin.entry.jobId);
     else expect(finCredit.textContent).toMatch(/ \/ Pexels$/);
     // A box that plays something says what it plays: a stock clip by its name, a sample's as "sample".
-    // (The model tiles play their samples' loops too; each is inside its sample's box, checked in tests/site-ai-media.test.tsx.)
-    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]")).filter((b) => !b.closest("#models"));
+    // (The model tiles, the tool wall and the third step play samples' loops too, each inside its sample's box: checked on their own.)
+    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]")).filter((b) => !b.closest("#models, #tools, .nx-step-live"));
     const expected = (["hero", "show.studio", "show.approvals", "landing.final"] as const).flatMap((s) => {
       const m = slotMedia(s);
       return m.kind === "ai" ? (m.moving ? ["sample"] : []) : m.clip ? [m.clip] : [];
     });
     expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(expected);
     for (const b of clipBoxes) expect(b.querySelector("img")?.hasAttribute("alt")).toBe(true);
-    expect(outsideGallery(container.querySelectorAll("video")).filter((v) => !v.closest("#models"))).toHaveLength(expected.length);
+    expect(outsideGallery(container.querySelectorAll("video")).filter((v) => !v.closest("#models, #tools, .nx-step-live"))).toHaveLength(expected.length);
     // Inside the gallery, a clip box is a sample's, never a stock one's: in its card, labelled AI-generated, with no stock label.
     const { clips } = landingSamples();
     const sampleBoxes = [...container.querySelectorAll(`${GALLERY} [data-clip]`)];
@@ -321,18 +322,36 @@ describe("the capability wall (round 8, stock photographs replaced by AI-generat
     expect(wall.querySelector("h3")?.textContent).toBe(t.site.toolStrip.title);
     expect(wall.querySelector(".nx-wall-label")?.textContent).toBe(t.site.wall.label);
     expect(wall.querySelector(".nx-wall-note")?.textContent).toBe(t.site.wall.note);
-    const tiles = [...wall.querySelectorAll(".nx-wall-tile")];
+    const tiles = [...wall.querySelectorAll<HTMLElement>(".nx-wall-tile")];
     const named = t.site.studio.tools.filter((x) => x.id !== "editor");
-    expect(tiles.map((x) => x.querySelector(".nx-wall-name")?.textContent)).toEqual(named.map((x) => x.title));
-    expect(tiles.map((x) => x.querySelector(".nx-wall-body")?.textContent)).toEqual(named.map((x) => x.body));
-    for (const [i, tile] of tiles.entries()) {
-      const id = named[i].id;
+    // Round 10: every tool once, each with its own name and words; the tools with a real output first.
+    expect(tiles.map((x) => x.dataset.tool).sort()).toEqual(named.map((x) => x.id).sort());
+    const withOutput = tiles.map((x) => x.hasAttribute("data-showcase-entry"));
+    expect(withOutput).toEqual([...withOutput].sort((a, b) => Number(b) - Number(a)));
+    for (const tile of tiles) {
+      const id = tile.dataset.tool!;
+      const tool = named.find((x) => x.id === id)!;
+      const def = TOOL_SAMPLES[id];
+      expect(tile.querySelector(".nx-wall-name")?.textContent).toBe(tool.title);
+      expect(tile.querySelector(".nx-wall-body")?.textContent).toBe(tool.body);
       // Only the tool that costs no credits says so on its tile; the note says the rest once.
       expect(tile.querySelector(".nx-wall-price")?.textContent ?? null).toBe(id === "styles" ? t.site.studio.free : null);
-      // An AI-generated picture has no photographer to credit: no credit line; it is lazy and described (tests/site-art.test.tsx pins the alts and the icon fallback).
-      expect(tile.querySelector(".nx-wall-credit")).toBeNull();
-      expect(tile.querySelector("img")?.getAttribute("loading")).toBe("lazy");
-      expect(tile.querySelector("a, button, [tabindex]")).toBeNull();
+      // A tool no customer can use today says so, and shows no output (never a drawn result).
+      if (!def.inStudio) {
+        expect(tile.querySelector(".nx-wall-notyet")?.textContent).toBe(t.site.wall.notYet);
+        expect(tile.querySelector("img, video")).toBeNull();
+        expect(tile.hasAttribute("data-showcase-entry")).toBe(false);
+      } else expect(tile.querySelector(".nx-wall-notyet")).toBeNull();
+      // A real output is that sample's own box: its job, its model's name, AI-generated; lazy; Animate shows the still too.
+      if (tile.hasAttribute("data-showcase-entry")) {
+        expect(tile.dataset.showcaseEntry).toBe(def.job);
+        expect(tile.querySelector(".nx-wall-credit")?.textContent).toContain(t.site.gallery.badge);
+        for (const img of tile.querySelectorAll("img")) expect(img.getAttribute("loading")).toBe("lazy");
+        expect(tile.querySelectorAll(".nx-wall-frame img")).toHaveLength(def.from ? 2 : 1);
+      }
+      // Nothing on a tile is pressable but a sample's maker's credit.
+      for (const a of tile.querySelectorAll("a")) expect(a.classList.contains("nx-ai-attr")).toBe(true);
+      expect(tile.querySelector('button, [tabindex]:not([tabindex="-1"])')).toBeNull();
     }
     // The ninth tool, the Editor, is a plain line: it has no picture.
     expect(wall.querySelector(".nx-wall-editor")?.textContent).toContain(t.site.studio.tools.find((x) => x.id === "editor")!.title);
@@ -365,7 +384,8 @@ describe("the hero and the Try grid (round 5)", () => {
     const hero = container.querySelector("section.nx-sh")!;
     expect([...hero.children].map((c) => c.className)).toEqual(["nx-sh-media", "nx-wrap nx-sh-in", "nx-wrap nx-sh-foot"]);
     const order = [...hero.querySelector(".nx-sh-in")!.children].map((c) => c.className.split(" ")[0] || c.tagName);
-    expect(order).toEqual(["nx-h1", "nx-sh-lead", "nx-pbar", "nx-sh-actions"]);
+    // The composer's place (it docks to the bottom on scroll), then its note and the real prompts, which stay in the first screen.
+    expect(order).toEqual(["nx-h1", "nx-sh-lead", "nx-pbar-slot", "nx-pbar-note", "nx-pbar-ideas", "nx-sh-actions"]);
     // The headline is a display size above every section heading: on a desktop its smallest is above .nx-h2's largest.
     const h2max = Number(css.match(/\.nx-h2 \{[^}]*font-size: clamp\(\d+px, [\d.]+vw, (\d+)px\)/)![1]);
     const h1min = Number(css.match(/  \.nx-sh \.nx-sh-h1 \{ max-width: 16ch; font-size: clamp\((\d+)px/)![1]);
@@ -374,7 +394,7 @@ describe("the hero and the Try grid (round 5)", () => {
     const card = container.querySelector("#how figure.nx-chat")!;
     expect(card.querySelector("img, video, .nx-result-art")).toBeNull();
     // The box takes 16 px or more (no zoom on a phone), and the promises wrap in a row under the words.
-    expect(css).toMatch(/\.nx-pbar-box \{[^}]*font-size: 17px;/);
+    expect(css).toMatch(/\.nx-pbar-box \{[^}]*font-size: 16px;/);
     expect(css).toMatch(/\.nx-facts-more \.nx-trust \{ display: flex; flex-wrap: wrap;/);
   });
 

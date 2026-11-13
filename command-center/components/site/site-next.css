@@ -1481,22 +1481,57 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 /* From 1024 px the credit sits at the top right, over the picture and clear of the words (they start under it, on the left). */
 @media (min-width: 1024px) { .nx-sh-foot { position: absolute; top: 14px; left: 0; right: 0; justify-content: flex-end; padding-top: 0; } }
 
-/* The prompt bar: a glass panel over the picture, 16 px text and 44 px controls, the go key the page's gradient. */
-.nx-pbar { width: 100%; max-width: 760px; margin-top: 26px; padding: 12px; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(14, 14, 22, 0.7); box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08); -webkit-backdrop-filter: blur(18px) saturate(140%); backdrop-filter: blur(18px) saturate(140%); }
+/* The composer (components/landing/PromptBar.tsx): one glass box, "+" on the left, the box that grows to six lines, the output key
+   and the send key on the right. Liquid-glass recipe in our own CSS, with the variable names the site's shared glass uses
+   (--glass-*), so the two can be unified without a visible change: a translucent surface that blurs and brightens the clip behind
+   it, a darker tint under the words (white on it stays above 4.5:1 over the brightest frame), a bright rim top and left, a softer
+   shade bottom and right, a thin border that catches light, and a soft highlight under the pointer (two CSS variables, set at most
+   once a frame, never on touch or under reduced motion). Without backdrop-filter it is a solid dark surface. */
+.nx-pbar-slot { width: 100%; max-width: 768px; margin-top: 26px; }
+.nx-pbar {
+  --glass-bg: rgba(20, 20, 30, 0.46);
+  --glass-tint: rgba(6, 6, 12, 0.5);
+  --glass-blur: 22px;
+  --glass-saturate: 170%;
+  --glass-brightness: 1.08;
+  --glass-rim: rgba(255, 255, 255, 0.34);
+  --glass-shade: rgba(0, 0, 0, 0.35);
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --glass-x: 30%;
+  --glass-y: 0%;
+  position: relative; isolation: isolate; display: flex; align-items: flex-end; gap: 8px; width: 100%; padding: 8px; border-radius: 24px;
+  border: 1px solid var(--glass-border);
+  background:
+    radial-gradient(120px 80px at var(--glass-x) var(--glass-y), rgba(255, 255, 255, 0.14), transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 45%),
+    linear-gradient(var(--glass-tint), var(--glass-tint)),
+    var(--glass-bg);
+  box-shadow: inset 1px 1px 0 var(--glass-rim), inset -1px -1px 0 var(--glass-shade), inset 0 -10px 24px -16px rgba(255, 255, 255, 0.18), 0 18px 50px -20px rgba(0, 0, 0, 0.7);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .nx-pbar { --glass-bg: #15151c; --glass-tint: rgba(6, 6, 12, 0.3); } }
 .nx-pbar:focus-within { border-color: rgba(179, 172, 255, 0.85); }
-.nx-pbar-box { display: block; width: 100%; min-height: 60px; padding: 8px 10px; resize: none; border: 0; background: transparent; color: #fff; font: inherit; font-size: 17px; line-height: 1.45; }
-.nx-pbar-box::placeholder { color: rgba(255, 255, 255, 0.66); }
+.nx-pbar-box { flex: 1 1 auto; min-width: 0; height: 40px; min-height: 40px; max-height: 160px; padding: 8px 4px; resize: none; overflow-y: auto; border: 0; background: transparent; color: #fff; font: inherit; font-size: 16px; line-height: 24px; }
+.nx-pbar-box::placeholder { color: rgba(255, 255, 255, 0.7); }
 .nx-pbar-box:focus { outline: none; }
 .nx-pbar-box[aria-invalid="true"] { box-shadow: inset 0 -2px 0 #ffb3a6; }
-.nx-pbar-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
-.nx-pbar-tools { display: flex; gap: 8px; }
-.nx-pbar-tool { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.24); background: rgba(255, 255, 255, 0.06); color: #fff; font-size: 15px; font-weight: 500; cursor: pointer; }
-.nx-pbar-tool svg { width: 18px; height: 18px; }
-.nx-pbar-tool[aria-pressed="true"] { border-color: #fff; background: #fff; color: #0b0b10; }
-.nx-pbar-go { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; margin-left: auto; padding: 0 22px; border: 0; border-radius: 999px; background: linear-gradient(135deg, #a79cff 0%, #d08cff 52%, #ffb066 100%); color: #0b0b10; font-family: var(--font-display); font-size: 16px; font-weight: 600; cursor: pointer; box-shadow: 0 10px 30px -12px rgba(208, 140, 255, 0.8); }
-.nx-pbar-go svg { width: 18px; height: 18px; }
-.nx-pbar-go:disabled { opacity: 0.6; cursor: default; }
-.nx-pbar-tool:focus-visible, .nx-pbar-go:focus-visible, .nx-pbar-idea:focus-visible, .nx-ai-try:focus-visible, .nx-ai-attr:focus-visible, .nx-model-see:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
+/* The small keys are glass pills on the glass. */
+.nx-pbar-plus, .nx-pbar-mode, .nx-pbar-go { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 44px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.2); background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05)); box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.3), inset -1px -1px 0 rgba(0, 0, 0, 0.25); color: #fff; cursor: pointer; }
+.nx-pbar-plus svg, .nx-pbar-mode svg, .nx-pbar-go svg { width: 18px; height: 18px; }
+.nx-pbar-mode { padding: 0 12px; font-size: 14px; font-weight: 500; }
+.nx-pbar-go { border-color: transparent; background: linear-gradient(135deg, #a79cff 0%, #d08cff 52%, #ffb066 100%); color: #0b0b10; }
+.nx-pbar-go:disabled, .nx-pbar-plus:disabled { opacity: 0.6; cursor: default; }
+@media (max-width: 479px) { .nx-pbar-mode span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } .nx-pbar-mode { padding: 0; } }
+.nx-pbar-plus:focus-visible, .nx-pbar-mode:focus-visible, .nx-pbar-go:focus-visible, .nx-pbar-idea:focus-visible, .nx-ai-try:focus-visible, .nx-ai-attr:focus-visible, .nx-model-see:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
+/* Docked: the same box, fixed at the bottom centre over the safe area; its place in the first screen keeps its height. */
+/* The first screen is its own stacking context (isolation, for the picture under the words): while the composer is docked it is
+   lifted above the sections after it, so the fixed box paints over them. */
+.nx-hero.nx-sh:has(.nx-pbar[data-docked="true"]) { z-index: 40; }
+.nx-pbar[data-docked="true"] { position: fixed; z-index: 60; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); width: min(768px, calc(100% - 24px)); transform: translateX(-50%); }
+/* While it is docked the page's own start bar steps aside, and the page ends with room for it, so it never hides the last words. */
+html[data-composer="docked"] .nx-bar { display: none; }
+html[data-composer="docked"] .nx { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 .nx-pbar-err { margin: 8px 6px 0; font-size: 15px; color: #ffc2b8; }
 .nx-pbar-note { margin: 8px 6px 2px; font-size: 14px; line-height: 1.45; color: rgba(255, 255, 255, 0.78); }
 .nx-pbar-ideas { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
@@ -1543,7 +1578,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 .nx-how-chat { max-width: 560px; margin: 48px auto 0; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .nx-pbar-tool, .nx-pbar-go, .nx-pbar-idea { transition: background-color var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease); }
+  .nx-pbar-plus, .nx-pbar-mode, .nx-pbar-go, .nx-pbar-idea { transition: background-color var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease); }
   .nx-pbar-go:hover { transform: translateY(-1px); }
   .nx-gallery-card, .nx-model { transition: transform var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease); }
   .nx-gallery-card:hover, .nx-model:hover { transform: translateY(-3px); border-color: var(--ns-rule-strong); }
@@ -1570,7 +1605,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 
 /* In a credit drawn over a picture, the "Use this prompt" note is the button's description for assistive tech and is not printed
    on the picture (it would cover it); where the credit has room (the first screen, the gallery, under a showcase or the desk) it is. */
-.nx-result-ai .nx-ai-note, .ml-ex-credit .nx-ai-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.nx-result-ai .nx-ai-note, .ml-ex-credit .nx-ai-note, .nx-sh-credit .nx-ai-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* /mcp's header panel: the words fill its lower half, so a sample's credit sits at the top, between the badge and the pause button. */
 .nx-bleed .nx-result-ai { top: 12px; bottom: auto; left: auto; right: 64px; width: fit-content; max-width: calc(100% - 200px); }
 /* /mcp's example cards: the model and its maker's credit in one small pill under the badge. */
@@ -1586,3 +1621,37 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
   .nx-gallery-card:nth-child(2n) .nx-drift-pic, .nx-model:nth-child(2n) .nx-drift-pic { animation-direction: alternate-reverse; animation-duration: 19s; }
   [data-live="true"] > .nx-drift-pic { animation: none; }
 }
+
+/* ── "What Nightshift can make" with real outputs (components/landing/CapabilityWall.tsx) ──
+   A tile with an output shows it edge to edge in its frame (the frame's own aspect ratio, so nothing shifts); Animate splits the
+   frame: the still on the left, the clip made from it on the right. A tool not in the Studio shows its icon and says so. */
+.nx-wall-out { position: relative; display: block; width: 100%; height: 100%; overflow: hidden; }
+.nx-wall-frame:has(.nx-wall-out) { position: relative; aspect-ratio: 4 / 3; background: #12151c; }
+.nx-wall-frame[data-split="true"] { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.nx-wall-shot { display: block; width: 100%; height: 100%; object-fit: cover; }
+.nx-wall-out .nx-clip { inset: 0; width: 100%; height: 100%; }
+.nx-wall-notyet { justify-self: start; margin-top: 4px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); font-size: 13px; color: var(--ns-text-dim); }
+.nx-wall-credit { margin-top: 4px; font-size: 13px; color: var(--ns-text-dim); }
+.nx-wall-credit .nx-ai-attr { min-height: 24px; }
+.nx-wall-from, .nx-wall-model-note { font-size: 13px; line-height: 1.4; color: var(--ns-text-dim); }
+.nx-wall-from .nx-ai-attr { min-height: 24px; display: inline; }
+
+/* ── The live steps of "How it works" (components/landing/Landing.tsx StepLive): one fixed height each, so nothing shifts. ── */
+/* The live piece spans the step's row on a phone (the numeral and the words keep their two columns under it); from 860 px the three
+   stand side by side at one height, so the numerals line up. */
+.nx-step-live { grid-column: 1 / -1; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; margin-bottom: 14px; }
+@media (min-width: 860px) { .nx-step-live { min-height: 196px; } }
+/* With a live piece on top, a phone's step is one column: the piece, the numeral, the title, the words. */
+.nx-strip-step:has(.nx-step-live) { grid-template-columns: minmax(0, 1fr); }
+.nx-strip-step:has(.nx-step-live) > * { grid-column: 1; grid-row: auto; }
+.nx-step-input { display: block; min-height: 72px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--ns-rule); background: var(--ns-ground); font-size: 15px; line-height: 1.45; color: var(--ns-text); }
+.nx-step-key { align-self: flex-start; display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 14px; background: var(--st-lit-bg); color: var(--st-lit-fg); font-family: var(--font-display); font-size: 16px; font-weight: 600; }
+.nx-step-price { font-size: 14px; color: var(--ns-text-dim); }
+.nx-step-price[data-known="true"] { color: var(--ns-text); font-weight: 500; }
+.nx-step-live[data-step="approve"] { flex-direction: row; align-items: flex-end; justify-content: flex-start; gap: 14px; }
+.nx-step-phone { position: relative; flex: 0 0 104px; width: 104px; aspect-ratio: 9 / 16; overflow: hidden; border-radius: 18px; border: 3px solid #1b1b22; background: #0b0b10; box-shadow: 0 12px 30px -18px rgba(0, 0, 0, 0.6); }
+.nx-step-shot { display: block; width: 100%; height: 100%; object-fit: cover; }
+.nx-step-phone .nx-clip { inset: 0; width: 100%; height: 100%; }
+.nx-step-private { position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 2; padding: 3px 6px; border-radius: 8px; background: rgba(0, 0, 0, 0.8); font-size: 13px; line-height: 1.25; color: #fff; text-align: center; }
+.nx-step-credit { flex-direction: column; align-items: flex-start; font-size: 13px; color: var(--ns-text-dim); }
+.nx-step-credit .nx-ai-attr { min-height: 24px; }

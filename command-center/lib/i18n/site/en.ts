@@ -177,10 +177,10 @@ export const siteEn = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Image credits",
-    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. Some pictures are different: the pictures for the three steps and the eight tools, and the sample thumbnail, are AI-generated images made for Nightshift. They are decoration, not screenshots of the product.",
+    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. One picture is different: the sample thumbnail in the hands-on example is an AI-generated image made for Nightshift. It is decoration, not a screenshot of the product.",
     licence: "Pexels License",
     /** The lead once no page shows a stock picture any more (components/site/stock-in-use.ts is empty). */
-    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by the model named on it, with the words it was given. The pictures for the three steps and the eight tools, and the sample thumbnail, are AI-generated images made for Nightshift as decoration, not screenshots of the product.",
+    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by the model named on it, with the words it was given. The sample thumbnail in the hands-on example is an AI-generated image made for Nightshift as decoration, not a screenshot of the product.",
     /** Shown beside the stock credits while any sample (lib/site/showcase.json) is on the site, wherever it is shown. It names no model: each sample names its own. */
     generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by the model named on it, with the words it was given.",
   },
@@ -228,7 +228,8 @@ export const siteEn = {
   prompt: {
     label: "Describe the video or picture you want",
     placeholder: "Describe a scene: what we see, how the camera moves, the light…",
-    tools: "What to make",
+    mode: "What to make",
+    attachOut: "Attach a picture or a video (create a free account first)",
     video: "Video",
     image: "Image",
     submit: "Create",
@@ -384,6 +385,7 @@ export const siteEn = {
     ],
   },
   how: {
+    priceLater: "Price shown here before you start",
     slug: "How a video moves",
     title: "One rundown, from your channel to YouTube.",
     lead: "Each step is visible while it runs. The last one is always yours.",
@@ -426,8 +428,9 @@ export const siteEn = {
   toolStrip: { title: "What Nightshift can make" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "AI-generated pictures of each tool",
-    note: "The pictures stand for the tools. They are AI-generated decoration, not what the tools make. Each tool shows its price on its button, except the ones that cost no credits.",
+    notYet: "Not in the Studio yet",
+    label: "Real outputs, made in our Studio",
+    note: "Where a tool shows a picture or a clip, it is a real job from our Studio, labelled with the model that made it. A tool marked “Not in the Studio yet” cannot be used yet. Each tool shows its price on its button, except the ones that cost no credits.",
     more: "Show four more tools",
     less: "Show fewer tools",
   },
