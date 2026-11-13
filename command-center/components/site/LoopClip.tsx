@@ -71,11 +71,18 @@ export function LoopClip({
   early = false,
   position,
   compact = false,
+  together = false,
 }: {
   poster: string;
   early?: boolean;
   position?: string;
   compact?: boolean;
+  /**
+   * A grid of small loops (the gallery): on a screen of 860 px or more, each one plays while at least a quarter of it is in
+   * view, as an explore grid does, instead of only the one clip most on screen. Each is the 640 px file (`compact`). On a phone
+   * it is one clip at a time as everywhere else, because two at once cost a throttled phone half its frames.
+   */
+  together?: boolean;
 } & (
   | { clip: ClipId; sources?: undefined }
   /** A model sample's own files (components/site/showcase-assets.ts, read by ShowcaseClip): the same rules, other files. */
@@ -88,6 +95,9 @@ export function LoopClip({
   // A phone gets the 640 x 360 rendition (about a quarter of the bytes); a screen of 860 px or more the 1280 x 720 one.
   const [small, setSmall] = useState(false);
   const [wanted, setWanted] = useState(false);
+  // In a grid on a wide screen (`together`): whether this clip shows enough of itself to play, whichever clip leads.
+  const [grid, setGrid] = useState(false);
+  const [inView, setInView] = useState(false);
   const id = useRef<symbol>(null as unknown as symbol);
   if (!id.current) id.current = Symbol("clip");
   // Whether this clip is the one that shows most of itself right now.
@@ -95,9 +105,11 @@ export function LoopClip({
 
   useEffect(() => {
     if (!clipsAllowed()) return;
-    setSmall(compact || !window.matchMedia("(min-width: 860px)").matches);
+    const wide = window.matchMedia("(min-width: 860px)").matches;
+    setSmall(compact || together || !wide);
+    setGrid(together && wide);
     setAllowed(true);
-  }, [compact]);
+  }, [compact, together]);
 
   // When the clip may start: the first screen's after load and idle, the rest when they come near the screen.
   useEffect(() => {
@@ -105,12 +117,23 @@ export function LoopClip({
     if (!allowed || !v) return;
     const stops: Array<() => void> = [];
     if (typeof IntersectionObserver !== "undefined") {
-      const io = new IntersectionObserver(([e]) => setShown(id.current, e.intersectionRatio ?? (e.isIntersecting ? 1 : 0)), { threshold: [0, 0.05, 0.1, 0.25, 0.5, 0.75, 1] });
+      const io = new IntersectionObserver(
+        ([e]) => {
+          const ratio = e.intersectionRatio ?? (e.isIntersecting ? 1 : 0);
+          // A grid clip never takes the lead from the page's one big clip: it only plays while it is itself in view.
+          if (grid) setInView(ratio >= 0.25);
+          else setShown(id.current, ratio);
+        },
+        { threshold: [0, 0.05, 0.1, 0.25, 0.5, 0.75, 1] },
+      );
       io.observe(v);
       stops.push(() => {
         io.disconnect();
-        setShown(id.current, 0);
+        if (grid) setInView(false);
+        else setShown(id.current, 0);
       });
+    } else if (grid) {
+      setInView(true);
     } else {
       setShown(id.current, 1);
     }
@@ -134,20 +157,20 @@ export function LoopClip({
     v.addEventListener("playing", mark);
     stops.push(() => v.removeEventListener("playing", mark));
     return () => stops.forEach((s) => s());
-  }, [allowed, early]);
+  }, [allowed, early, grid]);
 
   // Play only while wanted, on screen, not paused by the visitor and with the tab showing.
   useEffect(() => {
     const v = ref.current;
     if (!allowed || !v) return;
     const sync = () => {
-      if (wanted && lead && !paused && document.visibilityState === "visible") void Promise.resolve(v.play()).catch(() => undefined);
+      if (wanted && (grid ? inView : lead) && !paused && document.visibilityState === "visible") void Promise.resolve(v.play()).catch(() => undefined);
       else v.pause();
     };
     sync();
     document.addEventListener("visibilitychange", sync);
     return () => document.removeEventListener("visibilitychange", sync);
-  }, [allowed, wanted, lead, paused]);
+  }, [allowed, wanted, lead, paused, grid, inView]);
 
   if (!allowed) return null;
   return (

@@ -26,6 +26,8 @@ import desert from "@/components/site/media/desert.webp";
 import desertSm from "@/components/site/media/desert-sm.webp";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 import { MEDIA, type MediaId } from "@/lib/site/media";
+import { SHOWCASE_ENTRIES, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
+import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 
 /**
  * The example frames on the public pages: stock photographs and footage by Pexels contributors, credited in
@@ -76,60 +78,78 @@ export function SampleImg({ id, alt = "", className, eager = false, position, si
 }
 
 /**
- * THE MEDIA SLOTS: which picture goes where. Every page asks for a slot by name (<SlotImg slot="hero" />), never for a
- * file, so swapping a picture, or putting a new one in a place, is one line here. A page never shows the same picture
- * twice, and /mcp's six scenes are six different ones.
+ * THE MEDIA SLOTS: which picture goes where. Every page asks for a slot by name, never for a file, so swapping a picture, or
+ * putting a new one in a place, is one line here. A page never shows the same picture twice.
  *
- * To add one: run it through scripts/make-site-media.py (OUT_STILLS), import both widths above, add it to SAMPLES and to
- * lib/site/media.ts (its credit), give it an alt in lib/i18n/site/{en,ru,uz}.ts (site.samples.alts), then point a slot at it.
+ * `ai` is the one line that puts one of OUR generations (lib/site/showcase.json, by its job id) in a slot instead of the stock
+ * picture. The slot then shows that sample with the sample's own labels (the AI badge, the model, the maker's credit, Try this
+ * prompt) and no Pexels credit (placeMedia below). Until that job's entry and files are merged the slot keeps its stock picture,
+ * so a slot is never empty and never points at a file that is not in the repository. With `ai` null, an entry exported with
+ * `--slot <name>` (tools/export_showcase.py) fills the slot the same way. `aiPosition` frames the sample in the slot's box.
+ *
+ * The stock fields are only the fallback. The footer lists only the stock pictures a page still shows
+ * (components/site/stock-in-use.ts), so a replaced one leaves the credits by itself; its files can then be deleted.
  */
 export const SLOTS = {
-  /** The landing's first screen (the chat card): the cloud-sea clip. */
-  hero: { id: "cloud", clip: "cloud" },
-  /** The landing's two showcases (a clip each), and the picture behind its closing panel. */
-  "show.studio": { id: "pottery", clip: "pottery" },
+  /** The landing's first screen: edge to edge behind the headline and the prompt bar. */
+  hero: { ai: null, id: "cloud", clip: "cloud" },
+  /** The landing's two showcases. */
+  "show.studio": { ai: null, id: "pottery", clip: "pottery" },
   /** The small lighthouse is at the top right of the footage: the wide picture is framed from the top. */
-  "show.approvals": { id: "coast", clip: "coast", position: "50% 6%" },
-  "landing.final": { id: "moon" },
-  /** The chat card on /pricing: lanterns floating on dark water. */
-  "pricing.card": { id: "floating", clip: "floating" },
-  /** /solutions: the publish desk's frame (channels), and one photograph or clip above each of the other two audiences. */
-  "solutions.youtube-channels": { id: "caravan", clip: "caravan" },
-  "solutions.creative-studio": { id: "loom", clip: "loom" },
-  "solutions.developers": { id: "citynight" },
-  /** The sign-in stage is a still (golden light over dunes); the sign-up stage plays the floating lanterns, behind a pause button. */
-  "auth.login": { id: "desert", position: "54% 50%" },
-  "auth.signup": { id: "floating", clip: "floating", position: "42% 50%" },
-  /** /mcp: the header panel plays the cloud-sea clip, framed on its dark ridge. */
-  "mcp.hero": { id: "cloud", clip: "cloud" },
-} as const satisfies Record<string, { id: SampleId; position?: string; clip?: ClipId }>;
+  "show.approvals": { ai: null, id: "coast", clip: "coast", position: "50% 6%" },
+  /** Behind the landing's closing panel. */
+  "landing.final": { ai: null, id: "moon" },
+  /** The chat card on /pricing. */
+  "pricing.card": { ai: null, id: "floating", clip: "floating" },
+  /** /solutions: the publish desk's frame (channels), and one picture above each of the other two audiences. */
+  "solutions.youtube-channels": { ai: null, id: "caravan", clip: "caravan" },
+  "solutions.creative-studio": { ai: null, id: "loom", clip: "loom" },
+  "solutions.developers": { ai: null, id: "citynight" },
+  /** The sign-in stage and the sign-up stage. */
+  "auth.login": { ai: null, id: "desert", position: "54% 50%" },
+  "auth.signup": { ai: null, id: "floating", clip: "floating", position: "42% 50%" },
+  /** /mcp: the header panel. */
+  "mcp.hero": { ai: null, id: "cloud", clip: "cloud" },
+} as const satisfies Record<string, PlaceDef>;
 export type SlotId = keyof typeof SLOTS;
 
-/** A slot's still. `alt` is the description for where the picture stands alone; empty where it is decorative. */
-export function SlotImg({ slot, alt = "", className, eager = false, sizes }: { slot: SlotId; alt?: string; className?: string; eager?: boolean; sizes?: string }) {
-  const s: { id: SampleId; position?: string } = SLOTS[slot];
-  return <SampleImg id={s.id} alt={alt} className={className} eager={eager} position={s.position} sizes={sizes} />;
+/** One place's line: the sample that fills it (`ai`, a showcase job id, or null) and the stock fallback (id, clip, position). */
+export type PlaceDef = { ai: string | null; aiPosition?: string; id: SampleId; position?: string; clip?: ClipId };
+
+/**
+ * What a place actually shows: one of our samples, labelled as an AI generation by its model, or the stock fallback, labelled
+ * as stock by its Pexels contributor. Never a mix: a stock label on an AI clip, or an AI label on stock footage, is a lie in
+ * either direction (CLAUDE.md #5), so every label on a slot is chosen from this and nothing else.
+ */
+export type PlaceMedia =
+  | { kind: "ai"; entry: ShowcaseEntry; files: ShowcaseFiles; moving: boolean; position?: string }
+  | { kind: "stock"; id: SampleId; footage: boolean; clip: ClipId | null; position?: string };
+
+/** The sample a line names (or, with `ai` null, the newest entry exported for `name`) when its entry and its files are both here; else the stock fallback. */
+export function placeMedia(
+  def: PlaceDef,
+  name: string | null,
+  entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES,
+  files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES,
+): PlaceMedia {
+  const entry = def.ai ? entries.find((e) => e.jobId === def.ai) : name ? entries.find((e) => e.slot === name) : undefined;
+  const f = entry ? files[entry.jobId] : undefined;
+  if (entry && f) return { kind: "ai", entry, files: f, moving: entry.kind === "video" && f.clip !== null, position: def.aiPosition };
+  return { kind: "stock", id: def.id, footage: MEDIA[def.id].kind === "video", clip: def.clip ?? null, position: def.position };
 }
 
-/** The description of a slot's still, from the dictionary's alts. */
-export function slotAlt(alts: Record<SampleId, string>, slot: SlotId): string {
-  return alts[SLOTS[slot].id];
+/** What a slot shows (placeMedia over its line). */
+export function slotMedia(slot: SlotId, entries?: readonly ShowcaseEntry[], files?: Readonly<Record<string, ShowcaseFiles>>): PlaceMedia {
+  return placeMedia(SLOTS[slot], slot, entries, files);
 }
 
-/** The clip a slot plays, if it has one. */
-export function slotClip(slot: SlotId): ClipId | null {
-  const s: { id: SampleId; clip?: ClipId } = SLOTS[slot];
-  return s.clip ?? null;
+/** The showcase jobs these slots show right now: a page leaves them out of its own gallery, so no clip is shown twice on it. */
+export function slotJobs(slots: readonly SlotId[], entries?: readonly ShowcaseEntry[], files?: Readonly<Record<string, ShowcaseFiles>>): string[] {
+  return slots.flatMap((s) => {
+    const m = slotMedia(s, entries, files);
+    return m.kind === "ai" ? [m.entry.jobId] : [];
+  });
 }
 
-/** Where a slot's picture (and its clip) is framed inside its box, when it is not the centre. */
-export function slotPosition(slot: SlotId): string | undefined {
-  const s: { id: SampleId; position?: string } = SLOTS[slot];
-  return s.position;
-}
-
-/** The slot's still's id, and whether it is a frame of footage (labelled "stock footage") or a photograph. */
-export function slotSample(slot: SlotId): { id: SampleId; footage: boolean } {
-  const id = SLOTS[slot].id;
-  return { id, footage: MEDIA[id].kind === "video" };
-}
+/** The landing's own slots (its gallery leaves out the samples they show). */
+export const LANDING_SLOTS = ["hero", "show.studio", "show.approvals", "landing.final"] as const satisfies readonly SlotId[];

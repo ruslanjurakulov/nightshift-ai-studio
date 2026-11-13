@@ -29,6 +29,10 @@ const REVEAL = [
   ".nx .st-section .st-wrap > *",
   ".nx .st-ways > *",
   ".nx .st-sol-list > li",
+  // The explore grid, the model tiles and the facts arrive one by one (each staggered by its index).
+  ".nx-gallery > li",
+  ".nx-models-grid > li",
+  ".nx-facts-list > li",
 ];
 
 export function SiteEffects() {

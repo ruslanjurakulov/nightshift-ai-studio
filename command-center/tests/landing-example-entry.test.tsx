@@ -43,7 +43,7 @@ const CLAIMS = {
 describe("landing hero → existing #try demo", () => {
   it.each(LOCALES)("%s: one primary button (sign-up), the example is a quiet anchor to #try", (locale) => {
     const { container } = renderLanding(locale);
-    const hero = container.querySelector(".nx-hero-copy") as HTMLElement;
+    const hero = container.querySelector(".nx-sh-in") as HTMLElement;
     expect(hero).toBeTruthy();
     const buttons = hero.querySelectorAll("a.nx-btn");
     expect(buttons).toHaveLength(1);
@@ -72,9 +72,9 @@ describe("landing hero → existing #try demo", () => {
     expect(sample.textContent).toMatch(NOT_CREATED[locale]);
     expect(sample.textContent).not.toMatch(CLAIMS[locale]);
     // Unchanged on this PR: the pricing link and the one place the free-credits promise is made.
-    const pricing = container.querySelector('.nx-hero-copy a.nx-link[href="/pricing"]');
+    const pricing = container.querySelector('.nx-sh-in a.nx-link[href="/pricing"]');
     expect(pricing?.textContent).toBe(t.site.hero.secondary);
-    const note = container.querySelector(".nx-hero-copy .nx-note");
+    const note = container.querySelector(".nx-sh-in .nx-note");
     expect(note?.textContent).toBe(fmt(t.site.hero.note, { n: String(WELCOME_CREDITS) }));
     expect(sample.textContent).not.toMatch(/\d/);
   });

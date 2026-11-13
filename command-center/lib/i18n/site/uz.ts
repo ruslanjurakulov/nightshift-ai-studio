@@ -48,6 +48,7 @@ export const siteUz: SiteDictionary = {
   stage: {
     figure: "Rasm: Nightshift’da video qanday tayyorlanadi. Mavzu berasiz, rejani koʻrasiz, tayyor videoni tasdiqlaysiz va nashr qilasiz. Undagi hamma narsa namuna.",
     tag: "Namuna",
+    bareNote: "Jarayon namunasi: siz soʻraysiz, Nightshift rejalashtiradi, videoni tayyorlaydi, uni YouTube’ga yopiq holda yuklaydi va sizni kutadi.",
     label: "Video yoʻli",
     steps: [
       { id: "brief", tab: "Mavzu", title: "Mavzuni ayting", body: "Bir qator yetarli. Yoki kanal oʻz yoʻnalishidan mavzu tanlasin.", field: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan", chips: ["Kanalingiz", "Sokin diktor"], key: "Reja tuzish" },
@@ -165,8 +166,9 @@ export const siteUz: SiteDictionary = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Rasm mualliflari",
-    lead: "Bu sahifalardagi har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Baʼzi rasmlar esa boshqacha: bosh ekran foni, uch qadam va sakkiz vosita uchun rasmlar hamda namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvirlar. Bu bezak, mahsulotning skrinshotlari emas.",
+    lead: "Bu sahifalardagi har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Baʼzi rasmlar esa boshqacha: uch qadam va sakkiz vosita uchun rasmlar hamda namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvirlar. Bu bezak, mahsulotning skrinshotlari emas.",
     licence: "Pexels litsenziyasi",
+    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni koʻrsatilgan model berilgan soʻzlar boʻyicha yaratgan. Uch qadam va sakkiz vosita uchun rasmlar hamda namuna muqova Nightshift uchun bezak sifatida sunʼiy intellekt yaratgan tasvirlar, mahsulotning skrinshotlari emas.",
     generated: "Yana bir istisno: “Studiyada yaratilgan” boʻlimidagi namunalarni sunʼiy intellekt yaratgan. Har biri oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, unda nomi koʻrsatilgan model tomonidan yaratilgan; har birida berilgan soʻzlar va yaratilgan sana koʻrinadi.",
   },
   gallery: {
@@ -186,6 +188,47 @@ export const siteUz: SiteDictionary = {
     tryNoteSignedOut: "“Shu soʻrovni sinab koʻrish” avval hisob yaratishni soʻraydi, soʻng Studiyani shu vosita va shu soʻzlar bilan ochadi. Studiyada “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi, narx esa oldindan koʻrinadi.",
     altClip: "Sunʼiy intellekt yaratgan klip: {model} modeli",
     altImage: "Sunʼiy intellekt yaratgan tasvir: {model} modeli",
+    slotNote: "Sunʼiy intellekt yaratgan: oʻzimizning Studiyamizdagi haqiqiy topshiriq, uni koʻrsatilgan model shu soʻrov boʻyicha yaratgan.",
+  },
+  prompt: {
+    label: "Qanday video yoki rasm kerakligini tasvirlang",
+    placeholder: "Sahnani tasvirlang: kadrda nima bor, kamera qanday harakatlanadi, yorugʻlik qanday…",
+    tools: "Nima yaratamiz",
+    video: "Video",
+    image: "Rasm",
+    submit: "Yaratish",
+    empty: "Avval bir-ikki soʻz yozing.",
+    noteIn: "Studiyani sizning soʻzlaringiz bilan ochadi. U yerda “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi, narxni esa oldindan koʻrasiz.",
+    noteOut: "Avval bepul hisob yaratasiz, soʻng Studiya sizning soʻzlaringiz bilan ochiladi. “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi, narxni esa oldindan koʻrasiz.",
+    ideas: "Haqiqiy soʻrovdan boshlang",
+  },
+  facts: {
+    label: "Bu sahifada nima bor",
+    samples: "Studiyamizdagi haqiqiy generatsiyalar",
+    models: "Ularni yaratgan modellar",
+    credits: "Roʻyxatdan oʻtganda bepul kreditlar",
+  },
+  formats: {
+    label: "Formatlar",
+    title: "Odamlar toʻxtab koʻradigan formatdan boshlang",
+    lead: "Har bir karta Studiyamizdagi haqiqiy klip. “Sinab koʻrish” Studiyani xuddi shu soʻzlar bilan ochadi: soʻzlarni oʻzgartiring va oʻzingiznikini yarating.",
+    try: "Sinab koʻrish",
+    tryAria: "Formatni sinab koʻrish: {format}",
+    items: [
+      { id: "product-ad", title: "Koʻcha boʻyi reklama", body: "Ulkan mahsulot haqiqiy koʻchaga tushadi, tashqi reklama kampaniyasidek suratga olingan." },
+      { id: "satisfying", title: "Zavqli makro", body: "Pichoq yaqin plandan kesilmaydigan narsani kesadi. Buni qayta-qayta koʻrishadi." },
+      { id: "cctv", title: "Kameraga tushib qoldi", body: "Kuzatuv kamerasining tungi yozuvi: hayvonlar nimadir qilyapti." },
+      { id: "miniature", title: "Kichkina dunyo", body: "Barmoqdek odamchalar haqiqiy oshxonada ishlayapti, tilt-shift." },
+      { id: "pov", title: "Vaqt boʻylab sayohat, birinchi shaxsdan", body: "Boshqa asrga kirib borish, sayohat vlogidek suratga olingan." },
+      { id: "soap", title: "Mevali serial", body: "Gapiradigan taomlar dramatik sahnada, mutlaqo jiddiy ijroda." },
+    ],
+  },
+  models: {
+    label: "Modellar",
+    title: "Bu namunalarni yaratgan modellar",
+    lead: "Har bir plitka shu sahifadagi namunani yaratgan model, uning ishlab chiqaruvchisi soʻragan imzo bilan. Studiyada hali tanlab boʻlmaydigan model buni ochiq aytadi.",
+    count: "Shu sahifadagi namunalar: {n}",
+    see: "Namunasini koʻrish",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {

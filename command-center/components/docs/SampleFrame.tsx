@@ -1,25 +1,25 @@
 import type { SceneKind } from "@/lib/dev/mcp-landing";
-import { SampleImg, type SampleId } from "@/components/site/samples";
-import type { ClipId } from "@/components/site/clip-assets";
+import { placeMedia, type PlaceDef, type PlaceMedia } from "@/components/site/samples";
+import type { ShowcaseEntry } from "@/lib/site/showcase";
 
 /**
- * The example frame behind each scene kind of the /mcp examples carousel (components/site/samples.tsx): stock photographs by
- * Pexels contributors (credited on each card, lib/site/media.ts), six different pictures, none of them one the page shows
- * anywhere else (the sixth is a looped clip). The box (an aspect-ratio box in the stylesheet) decides the layout; `position` is where each picture is
- * framed in the tall card.
+ * The picture behind each scene kind of the /mcp examples carousel, one line each in the same shape as the site's slots
+ * (components/site/samples.tsx PlaceDef): `ai` is the showcase job that fills the card (one of our generations, labelled with
+ * its model), and the rest is the stock fallback (a Pexels contributor's photograph, credited on the card) kept until that job's
+ * files are merged. Six different pictures, none of them one the page shows anywhere else. `position` is where each stock
+ * picture is framed in the tall card.
  */
-export const SCENE_SAMPLE: Record<SceneKind, { id: SampleId; position: string; clip?: ClipId }> = {
-  hills: { id: "valley", position: "30% 50%" },
-  waves: { id: "lighthouse", position: "58% 50%" },
-  city: { id: "market", position: "32% 50%" },
-  stars: { id: "moon", position: "90% 50%" },
-  rings: { id: "library", position: "50% 50%" },
-  // The one card that moves: a camel caravan on the sand, the same footage /solutions plays (a different page), framed on the camels.
-  dunes: { id: "caravan", position: "36% 50%", clip: "caravan" },
+export const SCENE_SAMPLE: Record<SceneKind, PlaceDef> = {
+  hills: { ai: null, id: "valley", position: "30% 50%" },
+  waves: { ai: null, id: "lighthouse", position: "58% 50%" },
+  city: { ai: null, id: "market", position: "32% 50%" },
+  stars: { ai: null, id: "moon", position: "90% 50%" },
+  rings: { ai: null, id: "library", position: "50% 50%" },
+  // The one stock card that moves: a camel caravan on the sand, the same footage /solutions plays (a different page), framed on the camels.
+  dunes: { ai: null, id: "caravan", position: "36% 50%", clip: "caravan" },
 };
 
-/** An example frame for a sample card. `alt` is descriptive: the picture stands alone in the examples carousel. */
-export function Scene({ kind, alt = "" }: { kind: SceneKind; alt?: string }) {
-  const s = SCENE_SAMPLE[kind];
-  return <SampleImg id={s.id} alt={alt} className="ml-scene" position={s.position} sizes="288px" />;
+/** What a scene's card shows (a sample or the stock fallback). */
+export function sceneMedia(kind: SceneKind, entries?: readonly ShowcaseEntry[]): PlaceMedia {
+  return placeMedia(SCENE_SAMPLE[kind], null, entries);
 }

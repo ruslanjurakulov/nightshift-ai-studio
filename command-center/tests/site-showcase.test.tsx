@@ -232,11 +232,30 @@ describe("the gallery", () => {
     expect(s.gallery.title).toContain("Nightshift");
   });
 
-  it("the stylesheet lays the cards out in one column on a phone and gives the credit link a touch-sized target", () => {
+  it("the stylesheet lays the cards out in one column on a phone (nothing scrolls sideways), a masonry above it, and gives the credit link a touch-sized target", () => {
     const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
     expect(css).toMatch(/\.nx-gallery \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
-    expect(css).toMatch(/@media \(min-width: 860px\) \{ \.nx-gallery \{ grid-template-columns: repeat\(2/);
+    expect(css).not.toMatch(/\.nx-gallery \{[^}]*overflow-x/);
+    expect(css).toMatch(/@media \(min-width: 600px\) \{\n  \.nx-gallery \{ display: block; columns: 2;/);
+    expect(css).toMatch(/\.nx-gallery-card \{ break-inside: avoid;/);
+    expect(css).toMatch(/@media \(min-width: 1100px\) \{ \.nx-gallery \{ columns: 3; \} \}/);
+    // The box takes the clip's own shape from the element; the stylesheet forces none.
+    expect(css).not.toMatch(/\.nx-gallery-pic \{[^}]*aspect-ratio/);
     expect(css).toMatch(/\.nx-gallery-attr \{[^}]*min-height: 44px/);
+  });
+
+  it("each card keeps its clip's own shape: a 9:16 sample stands tall, a 16:9 one lies wide, its box sized from the file before it loads", () => {
+    const tall = { ...FIXTURE_ENTRY, width: 1280, height: 2276 };
+    const { container } = render(<ShowcaseGallery t={t} locale="en" entries={[tall]} files={FIXTURE_FILES} />);
+    const card = container.querySelector(`#sample-${FIXTURE_JOB}`) as HTMLElement;
+    expect(card.dataset.shape).toBe("tall");
+    expect((card.querySelector(".nx-gallery-pic") as HTMLElement).style.aspectRatio).toBe("1280 / 2276");
+    cleanup();
+    const wide = render(<ShowcaseGallery t={t} locale="en" entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />).container;
+    expect((wide.querySelector(`#sample-${FIXTURE_JOB}`) as HTMLElement).dataset.shape).toBe("wide");
+    // A page that shows the sample in a slot leaves it out of its gallery (no clip twice on a page).
+    cleanup();
+    expect(render(<ShowcaseGallery t={t} locale="en" entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} exclude={[FIXTURE_JOB]} />).container.innerHTML).toBe("");
   });
 });
 
