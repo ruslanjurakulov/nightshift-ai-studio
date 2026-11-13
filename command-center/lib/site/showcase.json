@@ -227,6 +227,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8",
+      "assetId": "ba812699-099b-51c1-b60e-b5b32523829a",
+      "sha256": "68247f158216d31cb969bdce2dc7da53c4c941608326a57b0959d622edd3d4fa",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Slow cinematic drone glide over an endless sea of clouds at sunrise. Jagged dark mountain ridges rise through the cloud layer, golden light rakes across the cloud tops and thin mist streams over the ridges. One smooth, steady forward camera move, no cuts. Anamorphic 35mm film look, rich contrast, photorealistic, epic scale.",
+      "createdAt": "2026-11-13T17:42:47Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:48:27Z"
     }
   ]
 }
