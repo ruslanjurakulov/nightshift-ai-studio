@@ -108,7 +108,9 @@ class Numbering(unittest.TestCase):
         # these pins: nothing of 0131's or 0133's.
         # 0152 (the probe log's vendor_credits: one column on model_probe_runs, an eleven-argument record_model_probe) was reviewed
         # against these pins: nothing of 0131's or 0133's.
-        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152")], [], "a later number needs its own review of this file's pins")
+        # 0153 (an operator preview priced by quality: creative_price on 0149's body only) was reviewed against these pins: nothing
+        # of 0131's or 0133's.
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153")], [], "a later number needs its own review of this file's pins")
         later = (MIG / "0134_brand_scan_followup.sql").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertIn(GUARD["brand_scan_fail_locked"], later)
