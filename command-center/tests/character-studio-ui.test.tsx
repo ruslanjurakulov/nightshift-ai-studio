@@ -168,6 +168,21 @@ describe("the studio", () => {
     expect((screen.getByRole("button", { name: t.consent.submit }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("the default the first quote priced stays checked when a new quote stops pricing it: never moved without anyone choosing", async () => {
+    // Lens repro: Kling is checked by default and priced at 720p; at 1080p Kling's charge is null. Seedance must not become checked.
+    mount();
+    await openAndPick();
+    expect((screen.getByRole("radio", { name: /Kling/ }) as HTMLInputElement).checked).toBe(true);
+    answers.push((url) => url.includes("resolution=1080p")
+      ? { status: 200, body: { quote: { ...QUOTE, resolution: "1080p", models: [{ ...QUOTE.models[0], onSale: false, credits: null, hold: null }, QUOTE.models[1]] } } }
+      : undefined);
+    fireEvent.click(screen.getByRole("radio", { name: "1080p" }));
+    await waitFor(() => expect(screen.getByTestId("cs-cost-main").textContent).toBe("Kling 4.0 Omni is not on sale yet."));
+    expect((screen.getByRole("radio", { name: /Kling/ }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: /Seedance 2\.5/ }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("button", { name: t.consent.submit }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("a model the person chose stays chosen when a new quote stops pricing it: never swapped from under them", async () => {
     mount();
     await openAndPick();

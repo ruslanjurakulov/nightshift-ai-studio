@@ -13,9 +13,12 @@ const isOperator = vi.fn();
 vi.mock("@/lib/server/creative", () => ({ readStudioModels, loadOperatorPreviewModels }));
 vi.mock("@/lib/auth/org-roles", () => ({ isOperator }));
 vi.mock("@/lib/channel-tokens", () => ({ isOperatorOrg: (id: string | null) => id === "op-org" }));
+const readCustomerModels = vi.fn();
+vi.mock("@/lib/server/model-discovery", () => ({ readCustomerModels }));
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({}) }));
 
 const { readToolAvailability } = await import("../lib/server/tool-availability");
-const { featuredJob } = await import("../components/studio/JobFeed");
+const { featuredJob, latestFailedBehind } = await import("../components/studio/JobFeed");
 const { planDateLine } = await import("../components/credits/PlanPanel");
 const { inviteWorthShowing } = await import("../lib/friend-invites");
 const { en, ru, uz } = await import("../lib/i18n").then((m) => m.dictionaries);
@@ -26,6 +29,9 @@ beforeEach(() => {
   readStudioModels.mockReset();
   loadOperatorPreviewModels.mockReset();
   isOperator.mockReset();
+  readCustomerModels.mockReset();
+  // By default the catalog could not be read: nothing is taken out on a guess.
+  readCustomerModels.mockResolvedValue({ status: "error" });
 });
 
 describe("readToolAvailability", () => {
@@ -48,6 +54,20 @@ describe("readToolAvailability", () => {
     expect(isOperator).not.toHaveBeenCalled();
   });
 
+  it("leaves out a model the Models catalog calls 'Not on sale yet', so the sidebar and the catalog agree", async () => {
+    readStudioModels.mockResolvedValue([model("runway-upscale", ["video_upscale"]), model("pic", ["t2i"])]);
+    readCustomerModels.mockResolvedValue({
+      status: "ok",
+      pricesRead: true,
+      probesRead: false,
+      models: [{ id: "runway-upscale", state: "not_on_sale" }, { id: "pic", state: "available" }],
+    });
+    expect(await readToolAvailability("org-1")).toEqual({ state: "known", sold: ["t2i"] });
+    // The price list was not read: the catalog proves nothing about price, and nothing is taken out.
+    readCustomerModels.mockResolvedValue({ status: "ok", pricesRead: false, probesRead: false, models: [{ id: "runway-upscale", state: "available" }] });
+    expect(await readToolAvailability("org-1")).toEqual({ state: "known", sold: ["t2i", "video_upscale"] });
+  });
+
   it("adds the operator's previews only in the operator's own organization, as the create page does", async () => {
     readStudioModels.mockResolvedValue([]);
     loadOperatorPreviewModels.mockResolvedValue([{ ...model("p", ["video_upscale"]), preview: true }]);
@@ -66,6 +86,17 @@ describe("the Video desk's monitor", () => {
     expect(featuredJob([job("f", "failed"), job("ok", "completed")], "f")?.id).toBe("f");
     expect(featuredJob([job("f1", "failed"), job("f2", "failed")], null)?.id).toBe("f1");
     expect(featuredJob([], null)).toBeNull();
+  });
+
+  it("says when the person's newest press failed behind an older success, and not otherwise", () => {
+    const jobs = [job("f", "failed"), job("ok", "completed")];
+    expect(latestFailedBehind(jobs, featuredJob(jobs, null))?.id).toBe("f");
+    // Shown on the stage already (picked, or nothing else to show): no extra line.
+    expect(latestFailedBehind(jobs, featuredJob(jobs, "f"))).toBeNull();
+    expect(latestFailedBehind([job("f", "failed")], featuredJob([job("f", "failed")], null))).toBeNull();
+    // The newest succeeded: nothing to say even if an older one failed.
+    expect(latestFailedBehind([job("ok", "completed"), job("f", "failed")], featuredJob([job("ok", "completed"), job("f", "failed")], null))).toBeNull();
+    for (const d of [en, ru, uz]) expect(d.desk.latestFailed.trim()).not.toBe("");
   });
 });
 

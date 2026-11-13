@@ -122,8 +122,10 @@ export function CharacterStudio({
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState<ModelId>(MODEL_IDS[0]);
-  // Picked by the person (a radio pressed), not the page's default: only the default may move to a model the quote prices.
-  const [chosenByPerson, setChosenByPerson] = useState(false);
+  // Settled: the model shown checked is now the person's, whether they pressed it or the first priced quote placed it there. From
+  // then on nothing moves it (rule 4): a later quote that stops pricing it leaves it listed and checked, says "not on sale", and the
+  // button stays off. Only the page's opening default, before any quote priced something, may be moved.
+  const [settled, setSettled] = useState(false);
   const [resolution, setResolution] = useState<Resolution>("720p");
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [quoting, setQuoting] = useState<"idle" | "loading" | "error">("idle");
@@ -169,12 +171,15 @@ export function CharacterStudio({
   }, [orgId]);
 
   // The picker lists what this clip's quote prices (samples.ts listedModels), never a fixed list of names.
-  const listed = useMemo(() => listedModels(quote, model, chosenByPerson), [quote, model, chosenByPerson]);
+  const listed = useMemo(() => listedModels(quote, model, settled), [quote, model, settled]);
   useEffect(() => {
-    // The page's default model is not priced for this clip but another is: start on that one. A person's own choice is never moved.
-    if (!quote || chosenByPerson || listed.includes(model) || listed.length === 0) return;
-    setModel(listed[0]);
-  }, [quote, chosenByPerson, listed, model]);
+    // The first quote that prices anything: keep the default if it is priced, else start on the first priced one. Then settle.
+    if (!quote || settled) return;
+    const priced = listedModels(quote, model, false);
+    if (priced.length === 0) return;
+    if (!priced.includes(model)) setModel(priced[0]);
+    setSettled(true);
+  }, [quote, settled, model]);
   const gallery = useMemo(() => galleryTemplates(state.templates), [state.templates]);
 
   const chosen = quote?.models.find((m) => m.model === model);
@@ -338,7 +343,7 @@ export function CharacterStudio({
                       checked={model === m}
                       onChange={() => {
                         setModel(m);
-                        setChosenByPerson(true);
+                        setSettled(true);
                       }}
                     />
                     <span className="cs-model-body">

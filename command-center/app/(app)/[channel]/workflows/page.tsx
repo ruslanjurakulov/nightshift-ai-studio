@@ -8,7 +8,6 @@ import { getDictionary } from "@/lib/i18n/server";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
 import { loadStudioModels } from "@/lib/server/creative";
-import { GeoAttribution } from "@/components/legal/GeoAttribution";
 import { loadRuns, loadWorkflows } from "@/lib/server/workflows";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +52,6 @@ export default async function WorkflowsPage() {
         runs={runs.state === "ok" ? runs.value : []}
         canEdit={atLeast(role, "editor")}
       />
-      <GeoAttribution label={t.create.geoAttribution} />
     </div>
   );
 }

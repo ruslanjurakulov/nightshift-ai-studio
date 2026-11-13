@@ -73,6 +73,15 @@ export function featuredJob<J extends { id: string; status: string }>(jobs: read
   return jobs.find((j) => j.id === picked) ?? jobs.find((j) => !isUnsuccessful(j.status)) ?? jobs[0] ?? null;
 }
 
+/**
+ * The newest job, when it failed and is not the one on the stage: the stage then says so in a line with a way to show it, so a failed
+ * press is never hidden behind an older success (the failure is the person's latest act).
+ */
+export function latestFailedBehind<J extends { id: string; status: string }>(jobs: readonly J[], featured: J | null): J | null {
+  const newest = jobs[0];
+  return newest && isUnsuccessful(newest.status) && newest.id !== featured?.id ? newest : null;
+}
+
 /** Seconds since an ISO time, or null when it cannot be read (never a made-up 0). */
 export function elapsedSeconds(iso: string, now: number): number | null {
   const at = Date.parse(iso);
@@ -297,6 +306,7 @@ export function JobFeed({
 
   // The one shown large on a monitor or a light table (featuredJob below).
   const featured = variant === "monitor" || variant === "table" ? featuredJob(shown, featuredId) : null;
+  const latestFailed = featured ? latestFailedBehind(shown, featured) : null;
 
   /** What a job looks like: everything a card, the monitor and a strip frame draw from. */
   function look(job: StudioJob) {
@@ -879,6 +889,14 @@ export function JobFeed({
           )}
           {shown.length > 0 && variant === "monitor" && (
             <>
+              {latestFailed && (
+                <p className="m-0 text-sm text-[var(--color-warn)]" data-testid="stage-latest-failed">
+                  {t.desk.latestFailed}{" "}
+                  <button type="button" className="tap-link underline" onClick={() => setFeaturedId(latestFailed.id)}>
+                    {t.desk.showOnStage}
+                  </button>
+                </p>
+              )}
               {stage(featured)}
               {shown.length > 1 && (
                 <ul className="desk-strip" aria-label={t.desk.stripLabel}>
@@ -889,6 +907,14 @@ export function JobFeed({
           )}
           {shown.length > 0 && variant === "table" && (
             <>
+              {latestFailed && (
+                <p className="m-0 text-sm text-[var(--color-warn)]" data-testid="stage-latest-failed">
+                  {t.desk.latestFailed}{" "}
+                  <button type="button" className="tap-link underline" onClick={() => setFeaturedId(latestFailed.id)}>
+                    {t.desk.showOnStage}
+                  </button>
+                </p>
+              )}
               {stage(featured)}
               {rest.length > 0 && (
                 <ContactSheet label={heading} min={200} ragged>

@@ -51,6 +51,7 @@ import {
   closedTools,
   deskOpen,
   nothingOnSale,
+  onlyPriced,
   toolOpen,
   type ToolAvailability,
 } from "@/lib/tool-availability";
@@ -108,6 +109,8 @@ describe("the availability itself (pure)", () => {
     expect(deskOpen(PICTURES, "video")).toBe(false);
     expect(deskOpen(NONE, "overview")).toBe(true);
     expect(deskOpen(NONE, "youtube")).toBe(true);
+    expect(deskOpen(PICTURES, "effects")).toBe(false);
+    expect(deskOpen({ state: "known", sold: ["i2v"] }, "effects")).toBe(true);
     expect(closedTools(PICTURES, DESK_TOOLS.image)).toEqual(["describe"]);
   });
 
@@ -125,7 +128,8 @@ describe("the sidebar", () => {
     const image = screen.getByTestId("sidebar-desk-image");
     expect(image.tagName).toBe("A");
     expect(image.getAttribute("href")).toBe("/chronos/create?desk=image");
-    for (const d of ["video", "enhance", "voice"]) {
+    // Effects only fill the Video desk's composer, so they are closed with it.
+    for (const d of ["video", "effects", "enhance", "voice"]) {
       const row = screen.getByTestId(`sidebar-desk-${d}`);
       expect(row.tagName, d).not.toBe("A");
       expect(row.getAttribute("href")).toBeNull();
@@ -204,6 +208,12 @@ const card = (over: Partial<HomeChannel> = {}): HomeChannel => ({
 describe("Home", () => {
   beforeEach(() => {
     pathname = "/chronos/home";
+  });
+
+  it("keeps the onlyPriced rule: a model the catalog calls not on sale is not counted; an unread catalog takes nothing out", () => {
+    const models = [{ id: "a", capabilities: ["video_upscale"] }, { id: "b", capabilities: ["t2i"] }];
+    expect(onlyPriced(models, [{ id: "a", state: "not_on_sale" }]).map((m) => m.id)).toEqual(["b"]);
+    expect(onlyPriced(models, null).map((m) => m.id)).toEqual(["a", "b"]);
   });
 
   it("leaves out a quick tool with nothing on sale (\"Remove background\", \"Voice-over\") and keeps the ones on sale", () => {

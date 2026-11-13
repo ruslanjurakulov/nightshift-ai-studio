@@ -39,6 +39,17 @@ export function availabilityFromModels(models: readonly { capabilities: readonly
 }
 
 /**
+ * The models less the ones the Models catalog calls "Not on sale yet" (listed by the database, but the price list that was read has
+ * no rate for them; lib/models-discovery fromSellableRow). Without this the catalog said "Not on sale yet" while the sidebar called
+ * the same tool available. `catalog` null (not read): nothing is taken out on a guess.
+ */
+export function onlyPriced<M extends { id: string }>(models: readonly M[], catalog: readonly { id: string; state: string }[] | null): M[] {
+  if (!catalog) return [...models];
+  const unpriced = new Set(catalog.filter((m) => m.state === "not_on_sale").map((m) => m.id));
+  return models.filter((m) => !unpriced.has(m.id));
+}
+
+/**
  * Can this tool be used today? Unknown answers yes on purpose: the tool is
  * then drawn as it always was, never marked unavailable on a guess.
  */
@@ -58,6 +69,8 @@ export function toolClosed(av: ToolAvailability, capability: string): boolean {
  */
 export function deskOpen(av: ToolAvailability, desk: Desk): boolean {
   if (desk === "overview" || desk === "youtube") return true;
+  // Effects are cards that only fill the Video desk's composer (lib/effects/catalog.ts: t2v or i2v): open while that is.
+  if (desk === "effects") return deskOpen(av, "video");
   return DESK_TOOLS[desk].some((c) => toolOpen(av, c));
 }
 

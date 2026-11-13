@@ -121,7 +121,8 @@ export const readStudioModels = cache(async (): Promise<StudioModel[] | null> =>
  * sees any: operator_preview_models() answers rows only to a platform admin in the credits-exempt organization, and no rows to
  * everyone else. Without the migration, or on any error: none (never a crash, never a guess).
  */
-export async function loadOperatorPreviewModels(orgId: string): Promise<StudioModel[]> {
+// Memoised per request (React cache), like readStudioModels: the layout's availability marks and the create page both ask.
+export const loadOperatorPreviewModels = cache(async (orgId: string): Promise<StudioModel[]> => {
   try {
     const supabase = await createClient();
     if (!supabase) return [];
@@ -132,7 +133,7 @@ export async function loadOperatorPreviewModels(orgId: string): Promise<StudioMo
   } catch {
     return [];
   }
-}
+});
 
 /**
  * The models the open organization's members are not offered right now because the owner switched them off (migration 0124): ids only,

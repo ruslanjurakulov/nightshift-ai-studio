@@ -16,14 +16,15 @@ export function galleryTemplates<T extends Pick<SwapTemplate, "samples">>(templa
 }
 
 /**
- * The models the picker lists: the ones this clip's quote prices, plus the one the person chose themselves (so a choice is never
- * swapped out from under them; its cost line then says it is not on sale). Before a quote: none, the picker asks for a video first.
+ * The models the picker lists: the ones this clip's quote prices, plus the checked one once it is settled (pressed by the person, or
+ * placed by the first priced quote), so the checked model is never swapped out from under anyone; its cost line then says it is not
+ * on sale and the button stays off. Before a quote: none, the picker asks for a video first.
  */
 export function listedModels(
   quote: { models: readonly { model: ModelId; onSale: boolean }[] } | null,
   chosen: ModelId,
-  chosenByPerson: boolean,
+  keepChosen: boolean,
 ): ModelId[] {
   if (!quote) return [];
-  return MODEL_IDS.filter((m) => quote.models.some((q) => q.model === m && q.onSale) || (chosenByPerson && m === chosen));
+  return MODEL_IDS.filter((m) => quote.models.some((q) => q.model === m && q.onSale) || (keepChosen && m === chosen));
 }
