@@ -61,7 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const org = isSupabaseConfigured
     ? await getOrgContext()
-    : { supported: false, orgs: [], current: null };
+    : { supported: false, orgs: [], switchable: [], current: null };
 
   // Signed in, organizations exist (0018 applied), and this account belongs to
   // none: a new sign-up. Nothing in the app would show them anything — RLS
@@ -167,7 +167,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <Header
       channels={channels}
       selection={selection}
-      orgs={org.orgs}
+      // The orgs the caller may be IN, not every org they may read: a platform admin can read every customer's
+      // workspace, and those belong in the Customers section, not in this switcher (lib/orgs.ts switchableOrgs).
+      orgs={org.switchable}
       currentOrgId={org.current?.id ?? null}
       credits={credits}
       scope={scope}

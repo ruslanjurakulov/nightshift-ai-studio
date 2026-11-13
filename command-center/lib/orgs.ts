@@ -85,6 +85,58 @@ export function resolveCurrentOrg(
   return orgs.find((o) => o.is_default) ?? orgs[0];
 }
 
+/**
+ * Could the caller's own membership rows narrow `orgs` at all?
+ *
+ * `my_organizations()` answers "which organizations may this account open":
+ * its bound memberships, plus — for any platform role — the default org, plus
+ * — for a platform owner/admin — EVERY organization (accessible_org_ids,
+ * migration 0043). Only that last term adds orgs the caller is not a member
+ * of, and every account it applies to also gets the default org. So a list
+ * without the default org, or with one org only, is already exactly the
+ * caller's memberships (or just the default), and the membership read would
+ * change nothing: a customer's list is never narrowed, and no extra request is
+ * made for them.
+ */
+export function membershipCanNarrow(orgs: OrgSummary[]): boolean {
+  return orgs.length >= 2 && orgs.some((o) => o.is_default);
+}
+
+/**
+ * The organizations the header's switcher offers, and the only ones the
+ * dashboard may be "in" (resolveCurrentOrg runs over this list).
+ *
+ * The platform operator can READ every customer's workspace (support access,
+ * the Customers section, migration 0138), but opening one as the current org
+ * made their own Command Center act inside a customer's workspace and listed
+ * every customer in the switcher. So for them it is their own memberships plus
+ * the default org — reachable for every platform role even with no membership
+ * row, so an operator who belongs to nothing still lands somewhere instead of
+ * on /welcome. Everyone else gets `orgs` back unchanged (membershipCanNarrow).
+ *
+ * `memberIds` null means the membership read failed. That fails closed to the
+ * default org alone: listing every org would be the bug this fixes, and
+ * refusing everything would lock the operator out of their own Command Center
+ * over one failed read. Nothing is lost that was theirs — only the default org
+ * is offered until the next request reads memberships again.
+ */
+export function switchableOrgs(orgs: OrgSummary[], memberIds: ReadonlySet<string> | null): OrgSummary[] {
+  if (!membershipCanNarrow(orgs)) return orgs;
+  if (memberIds === null) return orgs.filter((o) => o.is_default);
+  return orgs.filter((o) => o.is_default || memberIds.has(o.id));
+}
+
+/** Org ids out of `org_members` rows; a malformed row is dropped, never guessed. */
+export function coerceMemberOrgIds(data: unknown): Set<string> | null {
+  if (!Array.isArray(data)) return null;
+  const ids = new Set<string>();
+  for (const row of data) {
+    const id = row && typeof row === "object" ? (row as Record<string, unknown>).org_id : undefined;
+    if (typeof id === "string" && id) ids.add(id);
+  }
+  return ids;
+}
+
 /** Trimmed name when it is acceptable, else null. Mirrors create_organization(). */
 export function validateOrgName(name: string): string | null {
   const trimmed = name.trim();

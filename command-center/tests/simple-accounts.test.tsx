@@ -127,7 +127,11 @@ describe("no screen touches the closed doors", () => {
         const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
         if (/rpc\(\s*["'`](invite_org_member|accept_org_invite|decline_org_invite|my_invites)["'`]/.test(code)) bad.push(`${f}: invite rpc`);
         if (/from\(\s*["'`]org_members["'`]\s*\)\s*\.\s*(insert|update|delete|upsert)/.test(code)) bad.push(`${f}: org_members write`);
-        if (/from\(\s*["'`]org_members["'`]\s*\)\s*\.\s*select/.test(code)) bad.push(`${f}: org_members read`);
+        // One read is not a team list: the caller's OWN org ids (lib/orgs-server.ts switchableFor), which keeps a
+        // platform admin's org switcher to the orgs they belong to. Any other column, or no user_id filter, is
+        // still a roster read and still refused.
+        if (/from\(\s*["'`]org_members["'`]\s*\)\s*\.\s*select(?!\(\s*["'`]org_id["'`]\s*\)\s*\.\s*eq\(\s*["'`]user_id["'`])/.test(code))
+          bad.push(`${f}: org_members read`);
       }
     }
     expect(bad).toEqual([]);

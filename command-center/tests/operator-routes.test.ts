@@ -26,7 +26,7 @@ const state: {
   clipExists: boolean;
 } = {
   user: null,
-  org: { supported: true, orgs: [], current: null },
+  org: { supported: true, orgs: [], switchable: [], current: null },
   platformAdmin: false,
   rate: { data: true, error: null },
   clipExists: false,
@@ -100,20 +100,20 @@ const VOICE = "abcdefghijklmnopqrst";
 /** A customer who signed up and owns their own organization. */
 function customerAdmin() {
   state.user = { id: "u-bob" };
-  state.org = { supported: true, orgs: [CUSTOMER_ORG], current: CUSTOMER_ORG };
+  state.org = { supported: true, orgs: [CUSTOMER_ORG], switchable: [CUSTOMER_ORG], current: CUSTOMER_ORG };
   state.platformAdmin = false;
 }
 
 /** Signed up, no organization at all. */
 function stranger() {
   state.user = { id: "u-sam" };
-  state.org = { supported: true, orgs: [], current: null };
+  state.org = { supported: true, orgs: [], switchable: [], current: null };
   state.platformAdmin = false;
 }
 
 function operator() {
   state.user = { id: "u-op" };
-  state.org = { supported: true, orgs: [CUSTOMER_ORG], current: CUSTOMER_ORG };
+  state.org = { supported: true, orgs: [CUSTOMER_ORG], switchable: [CUSTOMER_ORG], current: CUSTOMER_ORG };
   state.platformAdmin = true;
 }
 
@@ -173,7 +173,7 @@ describe("C7: the operator's configuration is the operator's", () => {
     customerAdmin();
     expect((await run.GET()).status).toBe(200);
     operator();
-    state.org = { supported: true, orgs: [], current: null };
+    state.org = { supported: true, orgs: [], switchable: [], current: null };
     expect((await run.GET()).status).toBe(200);
   });
 });

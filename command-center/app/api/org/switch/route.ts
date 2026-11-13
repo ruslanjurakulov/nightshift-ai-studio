@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { ORG_COOKIE, coerceOrgs } from "@/lib/orgs";
-import { ORG_COOKIE_OPTIONS } from "@/lib/orgs-server";
+import { ORG_COOKIE_OPTIONS, switchableFor } from "@/lib/orgs-server";
 import { ALL_CHANNELS_SLUG, CHANNEL_COOKIE } from "@/lib/channels";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { readBytesCapped } from "@/lib/server/json-body";
@@ -16,7 +16,7 @@ const MAX_BODY_BYTES = 1024;
 /**
  * Switch organization as a NAVIGATION: a same-origin `<form method="post">` (lib/context-switch.ts
  * `submitOrganizationSwitch`) sends `orgId`; the server checks the caller and their membership exactly as
- * /api/org/select does (`my_organizations()`), sets the organization cookie, forgets the remembered channel and
+ * /api/org/select does (`my_organizations()` narrowed by `switchableFor`), sets the organization cookie, forgets the remembered channel and
  * answers 303 to `/all-channels`, which the next request resolves under the NEW organization.
  *
  * Why a navigation: leaving the editor's project page runs its unsaved-changes prompt (`beforeunload`). A form
@@ -55,7 +55,9 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   const supabase = await createClient();
   if (!supabase) return back();
   const { data, error } = await supabase.rpc("my_organizations");
-  if (error || !coerceOrgs(data).some((o) => o.id === orgId)) return back();
+  if (error) return back();
+  // The same list /api/org/select checks: the caller's own organizations, not every one a platform admin can read.
+  if (!(await switchableFor(supabase, user.id, coerceOrgs(data))).some((o) => o.id === orgId)) return back();
 
   const response = NextResponse.redirect(new URL(`/${ALL_CHANNELS_SLUG}`, origin), 303);
   response.cookies.set(ORG_COOKIE, orgId, ORG_COOKIE_OPTIONS);
