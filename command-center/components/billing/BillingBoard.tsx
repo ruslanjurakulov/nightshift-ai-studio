@@ -47,6 +47,8 @@ export interface ProviderView {
   balanceUsd: number | null;
   /** "untracked": spend is not recorded here. "auto": the provider tops itself up. null: unknown. */
   daysLeft: number | "never" | "untracked" | "auto" | null;
+  /** `daysLeft` came from the owner's ledger and rests on an estimate (a list price, or bought minus used): the cell says so. */
+  daysLeftEstimate?: boolean;
   lowBalanceDays: number;
   includeInBulk: boolean;
   cardSaved: boolean;
@@ -256,6 +258,7 @@ export function sourceText(src: SourceUse, creditUsd: number | null, tl: Billing
   if (src.state === "unread") return tl.state.unread;
   if (src.state === "untracked") return tl.state.untracked;
   if (src.state === "not_used") return tl.state.notUsed;
+  if (src.state === "no_rows") return tl.state.noRows;
   if (src.state === "ok" && src.rows === 0) return tl.state.none;
   const bits: string[] = [];
   if (src.usd !== null) {
@@ -374,7 +377,7 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
           ? t.ownerTruth.autoRechargeOn
           : p.daysLeft === null
             ? t.billing.unknown
-            : fmt(t.billing.days, { n: Math.floor(p.daysLeft) });
+            : fmt(t.billing.days, { n: Math.floor(p.daysLeft) }) + (p.daysLeftEstimate ? ` · ${tl.estimate}` : "");
   const low = typeof p.daysLeft === "number" && p.daysLeft <= p.lowBalanceDays && !p.autoRecharge;
 
   return (

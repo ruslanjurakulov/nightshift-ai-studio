@@ -359,6 +359,7 @@ describe("providerLedger", () => {
     registry: PRICES,
     balances: [],
     balancesUnread: false,
+    pipelineNoRows: false,
     ...over,
   });
   // The owner's day: $10 = 1,000 credits bought (logged at 15:00), then the two probes Runway billed 60 and 25 credits for.
@@ -424,7 +425,7 @@ describe("providerLedger", () => {
     expect(l.sources.studio.unpriced).toEqual([{ unit: "second", quantity: 5, rows: 1 }]);
     expect(l.used.usd).toBeNull();
     expect(l.used.pricedUsd).toBeCloseTo(0.42);
-    expect(l.remaining).toEqual({ kind: "unknown", why: "used_unknown" });
+    expect(l.remaining).toEqual({ kind: "unknown", why: "used_unpriced" });
     expect(l.runsOut).toBeNull();
   });
 
@@ -436,7 +437,7 @@ describe("providerLedger", () => {
     ];
     const l = providerLedger(base("runway", { topups: [topup], probeRows: rows }));
     expect(l.sources.probes).toMatchObject({ usd: null, billingUnknown: 1, rows: 1 });
-    expect(l.remaining).toEqual({ kind: "unknown", why: "used_unknown" });
+    expect(l.remaining).toEqual({ kind: "unknown", why: "used_may_have_billed" });
     const refused = providerLedger(base("runway", { topups: [topup], probeRows: rows.slice(0, 2) }));
     expect(refused.sources.probes).toMatchObject({ usd: 0, rows: 0 });
   });
@@ -475,6 +476,39 @@ describe("providerLedger", () => {
     expect(cut.sources.pipeline).toMatchObject({ state: "partial", usd: null, pricedUsd: 2 });
     const unpriced = providerLedger(base("kling", { pipelineRows: [kling] }));
     expect(unpriced.sources.pipeline.unpriced).toEqual([{ unit: "video_gen_clips", quantity: 4, rows: 1 }]);
+  });
+
+  it("an empty pipeline ledger is 'no rows yet' for a vendor the pipeline bills, never a measured $0 (and never 'not in use')", () => {
+    const l = providerLedger(base("leonardo", { topups: [{ provider: "leonardo", amount_usd: 50, paid_at: at(1) }], pipelineNoRows: true }));
+    expect(l.sources.pipeline).toMatchObject({ state: "no_rows", usd: null });
+    expect(l.used.usd).toBeNull();
+    expect(l.remaining).toEqual({ kind: "unknown", why: "used_no_rows" });
+    expect(l.runsOut).toBeNull();
+    // A vendor the pipeline never calls is not affected by the pipeline ledger being empty.
+    expect(providerLedger(base("runway", { topups: [topup], probeRows: probes, pipelineNoRows: true })).sources.pipeline.state).toBe("not_used");
+  });
+
+  it("'left' says the first real cause of an unknown use: unread, then partial, untracked, no rows, unpriced, may have billed", async () => {
+    const { usedUnknownWhy } = await import("@/lib/billing");
+    const ok = { state: "ok" as const, rows: 1, usd: 1, pricedUsd: 1, estimate: false, unpriced: [], billingUnknown: 0 };
+    expect(usedUnknownWhy([ok, ok])).toBeNull();
+    expect(usedUnknownWhy([{ ...ok, state: "partial", usd: null }, { ...ok, state: "unread", usd: null }])).toBe("used_unread");
+    expect(usedUnknownWhy([{ ...ok, state: "partial", usd: null }, { ...ok, state: "untracked", usd: null }])).toBe("used_partial");
+    expect(usedUnknownWhy([{ ...ok, state: "untracked", usd: null }])).toBe("used_untracked");
+    expect(usedUnknownWhy([{ ...ok, usd: null, unpriced: [{ unit: "second", quantity: 5, rows: 1 }] }])).toBe("used_unpriced");
+    expect(usedUnknownWhy([{ ...ok, usd: null, billingUnknown: 1 }])).toBe("used_may_have_billed");
+    const unread = providerLedger(base("runway", { topups: [topup], studioUnread: true }));
+    expect(unread.remaining).toEqual({ kind: "unknown", why: "used_unread" });
+  });
+
+  it("the days left are an estimate when they rest on bought-minus-used or a list price, and measured on the provider's own figures", () => {
+    const snap = { provider: "runway", metric: "credits", remaining: 915, total: null, unit: "credits", tier: null, resets_at: null, source: "api", checked_at: at(17) };
+    expect(providerLedger(base("runway", { topups: [topup], probeRows: probes })).runsOutEstimate).toBe(true);
+    expect(providerLedger(base("runway", { topups: [topup], probeRows: probes, balances: [snap] })).runsOutEstimate).toBe(false);
+    const listPriced = probes.map((p) => ({ ...p, vendor_credits: null }));
+    expect(providerLedger(base("runway", { topups: [topup], probeRows: listPriced, balances: [snap] })).runsOutEstimate).toBe(true);
+    // No days, no label.
+    expect(providerLedger(base("runway", { probeRows: probes })).runsOutEstimate).toBe(false);
   });
 
   it("runs out: the remaining dollars at the pace of the last 30 days; nothing spent with a balance is 'never'", () => {

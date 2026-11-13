@@ -52,8 +52,7 @@ const DAY = 86_400_000;
 const HORIZON_DAYS = 180;
 type CostPageRow = LedgerRow & { id?: number; synced_at?: string | null };
 type StudioPageRow = StudioCostRow & { id?: number };
-/** Probes are few (a handful a day at most); past this many in the window the read is a floor and says so. */
-const PROBE_READ_LIMIT = 5000;
+type ProbePageRow = ProbeRunRow & { id?: number };
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -173,18 +172,28 @@ export default async function BillingPage() {
 
     if (operatorView) {
       // What Studio jobs and the probes spent at each provider (the pipeline ledger above never held either), over the same
-      // window, and the registry's prices for what has no bill. Platform-admin reads: RLS (0037, 0035) and the function's
-      // own check (model_registry_admin) refuse anyone else, so a failure here is "unknown", never an empty "$0".
-      const probeCols = "model_id,ok,error_code,created_at";
+      // window, and the registry's prices for what has no bill. Only a platform owner/admin reaches this line: guardOperatorPage()
+      // above answers 404 to anyone else (isOperator fails closed). That guard is what lets an empty list mean "none": RLS on
+      // creative_job_costs and model_probe_runs (0037, 0035) answers anyone else an EMPTY list, not an error. Only
+      // model_registry_admin() refuses with an error (42501). A failed read is "unknown", never an empty "$0".
+      // Paged like the pipeline ledger (lib/paged-read.ts): PostgREST answers at most max_rows (1,000 on Supabase) a request,
+      // whatever .limit() asks, so a single read could stop short without saying so.
+      const probeCols = "id,model_id,ok,error_code,created_at";
       const probeRead = (cols: string) =>
-        timed(
-          supabase
-            .from("model_probe_runs")
-            .select(cols)
-            .gte("created_at", sinceIso)
-            .order("created_at", { ascending: false })
-            .limit(PROBE_READ_LIMIT),
-        ) as unknown as PromiseLike<{ data: ProbeRunRow[] | null; error: { code?: string } | null }>;
+        readAllPages<ProbePageRow>(
+          (from, to) =>
+            timed(
+              supabase
+                .from("model_probe_runs")
+                .select(cols, from === 0 ? { count: "exact" } : undefined)
+                .gte("created_at", sinceIso)
+                .order("created_at", { ascending: false })
+                .order("id", { ascending: false })
+                .range(from, to),
+            ) as unknown as PromiseLike<{ data: ProbePageRow[] | null; error: unknown; count: number | null }>,
+          { keyOf: (r) => r.id },
+        );
+      const missingColumn = (e: unknown) => (e as { code?: string } | null)?.code === "42703";
       const [st, pr, reg] = await Promise.all([
         readAllPages<StudioPageRow>(
           (from, to) =>
@@ -201,16 +210,15 @@ export default async function BillingPage() {
         ),
         // vendor_credits arrives with migration 0152; before it the column is not there (42703) and the probes are read
         // without it, every one then priced from the registry and labelled an estimate.
-        Promise.resolve(probeRead(`${probeCols},vendor_credits`)).then((r) => (r?.error?.code === "42703" ? probeRead(probeCols) : r)),
+        probeRead(`${probeCols},vendor_credits`).then((r) => (missingColumn(r.error) ? probeRead(probeCols) : r)),
         timed(supabase.rpc("model_registry_admin")) as unknown as PromiseLike<{ data: unknown[] | null; error: unknown }>,
       ]);
       studioFailed = Boolean(st.error);
       studio = st.rows;
       studioFromMs = st.truncated ? (oldestRowMs(studio) ?? NOW) : sinceMs;
-      probesFailed = readFailed(pr);
-      probes = (pr?.data ?? []) as ProbeRunRow[];
-      probesFromMs =
-        probes.length >= PROBE_READ_LIMIT ? (oldestRowMs(probes.map((x) => ({ recorded_at: x.created_at }))) ?? NOW) : sinceMs;
+      probesFailed = Boolean(pr.error);
+      probes = pr.rows;
+      probesFromMs = pr.truncated ? (oldestRowMs(probes.map((x) => ({ recorded_at: x.created_at }))) ?? NOW) : sinceMs;
       registry = readFailed(reg) || !Array.isArray(reg?.data) ? null : registryPrices(reg.data);
     }
   }
@@ -288,6 +296,8 @@ export default async function BillingPage() {
       topupsUnread: topupsFailed,
       pipelineRows: costs,
       pipelineUnread: !supabase || costsFailed || settingsFailed,
+      // An empty pipeline ledger measured nothing (the mirror may not have run): "no rows yet", never a measured $0.
+      pipelineNoRows: !costsFailed && costs.length === 0,
       pipelineFromMs: coveredFromMs,
       usdPerUnit: price,
       studioRows: studio,
@@ -317,7 +327,10 @@ export default async function BillingPage() {
     // No balance known (no snapshot, no top-up logged, or a negative ledger) is unknown, even when nothing was spent:
     // "lasts never" is only true of a balance we can see.
     // The owner's ledger counts Studio and the probes too: when it knows what is left and the pace, it is the truer figure.
-    if (!autoRecharge && ledger.runsOut !== null) left = ledger.runsOut;
+    // Not when this provider's pipeline burn is unknown (an empty or failed ledger): the ledger would be counting the pipeline
+    // as nothing, and "not in use" would come back for a balance whose spend nobody measured.
+    const fromLedger = !autoRecharge && ledger.runsOut !== null && (p.pipeline === false || !burnUnknown);
+    if (fromLedger) left = ledger.runsOut;
 
     const pipelineUsed = p.pipeline !== false;
     return {
@@ -351,6 +364,7 @@ export default async function BillingPage() {
       pipeline: pipelineUsed,
       creditUsd: p.creditUsd ?? null,
       ledger,
+      daysLeftEstimate: fromLedger && ledger.runsOutEstimate,
     };
   });
   // Providers with money or use on record first, then the rest in the list's own order: two dozen rows of "none" would

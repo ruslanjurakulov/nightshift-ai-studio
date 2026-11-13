@@ -325,8 +325,8 @@ describe("the owner's ledger: bought, used by pipeline / Studio / probes, left",
   );
   const TOPUP = ok([{ provider: "runway", amount_usd: 10, paid_at: iso(0) }]);
   const PROBES = [
-    { model_id: "runway-gen4.5", ok: true, error_code: null, created_at: iso(0), vendor_credits: 60 },
-    { model_id: "runway-gen4-turbo", ok: true, error_code: null, created_at: iso(0), vendor_credits: 25 },
+    { id: 2, model_id: "runway-gen4.5", ok: true, error_code: null, created_at: iso(0), vendor_credits: 60 },
+    { id: 1, model_id: "runway-gen4-turbo", ok: true, error_code: null, created_at: iso(0), vendor_credits: 25 },
   ];
   const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   const selected = (calls: Call[]) => String(calls.find(([m]) => m === "select")?.[1][0] ?? "");
@@ -346,8 +346,8 @@ describe("the owner's ledger: bought, used by pipeline / Studio / probes, left",
     expect(html).not.toContain("data-read-error");
     // A provider with money on record comes before the two dozen with nothing.
     expect(html.indexOf(">Runway</h3>")).toBeLessThan(html.indexOf(">ElevenLabs</h3>"));
-    // $9.15 at $0.85 a day.
-    expect(lasts(html, "Runway")).toBe(en.billing.days.replace("{n}", "10"));
+    // $9.15 at $0.85 a day; "left" is bought minus used, so the days are an estimate and say so.
+    expect(lasts(html, "Runway")).toBe(`${en.billing.days.replace("{n}", "10")} · ${en.billingLedger.estimate}`);
   });
 
   it("Runway's own reported balance wins, with when it was read", async () => {
@@ -366,7 +366,7 @@ describe("the owner's ledger: bought, used by pipeline / Studio / probes, left",
       model_probe_runs: (calls) =>
         selected(calls).includes("vendor_credits")
           ? { data: null, error: { code: "42703", message: "column model_probe_runs.vendor_credits does not exist" } }
-          : { data: PROBES.map((p) => ({ model_id: p.model_id, ok: p.ok, error_code: p.error_code, created_at: p.created_at })), error: null },
+          : { data: PROBES.map((p) => ({ id: p.id, model_id: p.model_id, ok: p.ok, error_code: p.error_code, created_at: p.created_at })), error: null },
     });
     expect(stub.of("model_probe_runs").map((q) => selected(q.calls).includes("vendor_credits"))).toEqual([true, false]);
     const runway = text(card(html, "Runway"));
@@ -380,7 +380,7 @@ describe("the owner's ledger: bought, used by pipeline / Studio / probes, left",
     const runway = text(card(html, "Runway"));
     expect(runway).toContain(`${en.billingLedger.sources.studio} ${en.billingLedger.state.unread}`);
     expect(runway).toContain(en.billingLedger.atLeast.replace("{usd}", "$0.850"));
-    expect(runway).toContain(en.billingLedger.leftUnknown.used_unknown);
+    expect(runway).toContain(en.billingLedger.leftUnknown.used_unread);
     expect(lasts(html, "Runway")).toBe(en.billing.unknown);
   });
 
@@ -405,5 +405,42 @@ describe("the owner's ledger: bought, used by pipeline / Studio / probes, left",
     expect(krea).toContain(en.billingLedger.boughtNone);
     expect(krea).toContain(en.billingLedger.leftUnknown.no_topup);
     expect(krea).not.toMatch(/\$0\.00/);
+  });
+
+  it("an empty pipeline ledger is 'no rows yet', not a measured zero: a top-up with nothing measured never reads 'not in use'", async () => {
+    // Leonardo is billed by the pipeline only; $50 logged and the mirror has written no row yet.
+    const html = await page({ video_costs: ok([]), provider_topups: ok([{ provider: "leonardo", amount_usd: 50, paid_at: iso(2) }]), model_registry_admin: REGISTRY });
+    const leo = text(card(html, "Leonardo.Ai"));
+    expect(leo).toContain(`${en.billingLedger.sources.pipeline} ${en.billingLedger.state.noRows}`);
+    expect(leo).toContain(en.billingLedger.leftUnknown.used_no_rows);
+    expect(lasts(html, "Leonardo.Ai")).toBe(en.billing.unknown);
+    expect(has(card(html, "Leonardo.Ai"), en.billing.never)).toBe(false);
+  });
+
+  it("the probe log is read a page at a time with the exact count and the id tie-break: 1,200 probes are all counted", async () => {
+    const total = 1200;
+    const html = await page({
+      model_registry_admin: REGISTRY,
+      model_probe_runs: (calls) => {
+        // Like PostgREST behind Supabase's max_rows: never more than 1,000 rows, whatever was asked.
+        const [from, to] = (calls.find(([m]) => m === "range")?.[1] ?? [0, 999]) as [number, number];
+        const data = [];
+        for (let i = from; i <= Math.min(to, from + 999, total - 1); i++) {
+          data.push({ id: total - i, model_id: "runway-gen4-turbo", ok: true, error_code: null, created_at: iso(0.001 + i / 1e6), vendor_credits: 1 });
+        }
+        return { data, error: null, count: total };
+      },
+    });
+    const reads = stub.of("model_probe_runs", "range");
+    expect(reads.map((q) => arg(q, "range"))).toEqual([0, 500, 1000]);
+    expect(called(reads[0], "order", "id", { ascending: false })).toBe(true);
+    expect(JSON.stringify(reads[0].calls.find(([m]) => m === "select")?.[1][1])).toBe(JSON.stringify({ count: "exact" }));
+    expect(text(card(html, "Runway"))).toContain(`${en.billingLedger.sources.probes} $12.00 · 1,200 credits`);
+  });
+
+  it("the days left are not marked an estimate when they rest on Runway's own balance and its own bills", async () => {
+    const snap = { provider: "runway", metric: "credits", remaining: 915, total: null, unit: "credits", tier: null, resets_at: null, source: "api", checked_at: iso(0.01) };
+    const html = await page({ provider_topups: TOPUP, model_probe_runs: ok(PROBES), model_registry_admin: REGISTRY, provider_balances: ok([snap]) });
+    expect(lasts(html, "Runway")).toBe(en.billing.days.replace("{n}", "10"));
   });
 });

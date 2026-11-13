@@ -98,7 +98,9 @@ class Numbering(unittest.TestCase):
         # same way: it names none of the three words below.
         # 0149 (an operator preview priced by resolution: creative_price on 0139's body only) was reviewed the same way: it names none
         # of the three words below.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149")
+        # 0152 (the probe log's vendor_credits: one column on model_probe_runs, an eleven-argument record_model_probe) was reviewed the
+        # same way: it names none of the three words below.
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0152")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

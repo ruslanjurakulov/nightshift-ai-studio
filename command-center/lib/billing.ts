@@ -615,7 +615,12 @@ export type SourceState =
   /** This spend is not written anywhere (the Anthropic / OpenAI tokens of the pipeline). */
   | "untracked"
   /** The pipeline never calls this vendor: a true zero. */
-  | "not_used";
+  | "not_used"
+  /**
+   * The pipeline ledger read worked and holds no row at all: the nightly mirror may not have written yet, so nothing was
+   * measured. Unknown ("no rows yet"), never a measured zero (the page's headline says the same).
+   */
+  | "no_rows";
 
 export interface UnpricedPart {
   unit: string;
@@ -648,6 +653,8 @@ export interface LedgerInputs {
   /** Pipeline cost rows (video_costs), already read. */
   pipelineRows: CostRowLite[];
   pipelineUnread: boolean;
+  /** The whole pipeline ledger read came back empty (see SourceState "no_rows"). */
+  pipelineNoRows: boolean;
   /** The pipeline rows reach back to here; spend before it was not read. Null = as far back as needed. */
   pipelineFromMs: number | null;
   /** The operator's price per `unitLabel` (provider_billing_settings), or null. */
@@ -667,7 +674,27 @@ export interface LedgerInputs {
 export type Remaining =
   | { kind: "reported"; amount: number; unit: string; checkedAt: string; usd: number | null }
   | { kind: "estimate"; usd: number; credits: number | null }
-  | { kind: "unknown"; why: "unread" | "no_topup" | "used_unknown" | "negative" };
+  | { kind: "unknown"; why: "unread" | "no_topup" | "negative" | UsedUnknownWhy };
+
+/** Why "used" is unknown, so "left" can say it: the first cause found, in this order. */
+export type UsedUnknownWhy =
+  | "used_unread"
+  | "used_partial"
+  | "used_untracked"
+  | "used_no_rows"
+  | "used_unpriced"
+  | "used_may_have_billed";
+
+/** The cause that keeps the sum of these sources unknown, or null when it is known. */
+export function usedUnknownWhy(sources: readonly SourceUse[]): UsedUnknownWhy | null {
+  if (sources.every((s) => s.usd !== null)) return null;
+  if (sources.some((s) => s.state === "unread")) return "used_unread";
+  if (sources.some((s) => s.state === "partial")) return "used_partial";
+  if (sources.some((s) => s.state === "untracked")) return "used_untracked";
+  if (sources.some((s) => s.state === "no_rows")) return "used_no_rows";
+  if (sources.some((s) => s.unpriced.length > 0)) return "used_unpriced";
+  return "used_may_have_billed";
+}
 
 export type Bought =
   | { state: "ok"; usd: number; credits: number | null; count: number; firstMs: number }
@@ -697,6 +724,8 @@ export interface ProviderLedger {
   usdPerDay: number | null;
   /** daysLeft() of the remaining USD at that pace: a number, "never" when nothing is being spent, null when unknown. */
   runsOut: number | "never" | null;
+  /** `runsOut` rests on an estimate (a list price, or bought minus used rather than the provider's own balance). */
+  runsOutEstimate: boolean;
 }
 
 /** Probe failures where the vendor refused the key or the account before any work: nothing was made, nothing billed. */
@@ -749,6 +778,7 @@ function pipelineUse(x: LedgerInputs, start: number): SourceUse {
   if (p.pipeline === false) return emptySource("not_used");
   if (!isTracked(p)) return emptySource("untracked");
   if (x.pipelineUnread) return emptySource("unread");
+  if (x.pipelineNoRows) return emptySource("no_rows");
   let units = 0;
   let rows = 0;
   let unit = "";
@@ -862,7 +892,12 @@ export function providerLedger(x: LedgerInputs): ProviderLedger {
     // More spent than the top-ups recorded: a trial credit, an auto-recharge or a top-up never logged. Not "0 left".
     remaining = left < 0 ? { kind: "unknown", why: "negative" } : { kind: "estimate", usd: left, credits: p.creditUsd ? left / p.creditUsd : null };
   } else {
-    const why = x.topupsUnread || (x.balancesUnread && bought.state !== "ok") ? "unread" : bought.state === "none" ? "no_topup" : "used_unknown";
+    const why =
+      x.topupsUnread || (x.balancesUnread && bought.state !== "ok")
+        ? "unread"
+        : bought.state === "none"
+          ? "no_topup"
+          : (usedUnknownWhy([sources.pipeline, sources.studio, sources.probes]) ?? "used_unread");
     remaining = { kind: "unknown", why };
   }
 
@@ -872,5 +907,7 @@ export function providerLedger(x: LedgerInputs): ProviderLedger {
   const recent = paceFrom === startMs ? used : usedOf(Object.values(sourcesAt(paceFrom)), p.creditUsd);
   const usdPerDay = recent.usd === null ? null : recent.usd / Math.max(1, (x.now - paceFrom) / DAY_MS);
   const leftUsd = remaining.kind === "reported" || remaining.kind === "estimate" ? remaining.usd : null;
-  return { id: p.id, startMs, sinceTopup, bought, sources, used, remaining, usdPerDay, runsOut: daysLeft(leftUsd, usdPerDay) };
+  const runsOut = daysLeft(leftUsd, usdPerDay);
+  const runsOutEstimate = runsOut !== null && (recent.estimate || remaining.kind === "estimate");
+  return { id: p.id, startMs, sinceTopup, bought, sources, used, remaining, usdPerDay, runsOut, runsOutEstimate };
 }

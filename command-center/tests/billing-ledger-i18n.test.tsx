@@ -32,7 +32,7 @@ describe("billingLedger parity", () => {
     }
   });
   it.each(["ru", "uz"] as const)("%s says why a balance is unknown in its own words", (loc) => {
-    for (const why of ["unread", "no_topup", "used_unknown", "negative"] as const) {
+    for (const why of Object.keys(en.billingLedger.leftUnknown) as (keyof typeof en.billingLedger.leftUnknown)[]) {
       expect(dicts[loc].billingLedger.leftUnknown[why]).not.toBe(en.billingLedger.leftUnknown[why]);
     }
   });
