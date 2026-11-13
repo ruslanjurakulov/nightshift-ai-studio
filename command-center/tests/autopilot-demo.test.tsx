@@ -15,7 +15,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import type { ReactNode } from "react";
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, prefetch: _p, ...rest }: { href: string; children: ReactNode; prefetch?: boolean }) => (
+  default: ({ href, children, prefetch: _p, replace: _r, ...rest }: { href: string; children: ReactNode; prefetch?: boolean; replace?: boolean }) => (
     <a href={href} {...rest}>
       {children}
     </a>
@@ -31,6 +31,7 @@ import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 import { ShortsFeed } from "@/components/site/ShortsFeed";
 import { SITE_CLIPS_HAVE_SOUND, shortsItems } from "@/components/site/shorts";
 import type { ShowcaseEntry, ShowcaseFiles } from "@/lib/site/showcase";
+import { useClipsHeld } from "@/lib/site/clip-hold";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
 
@@ -135,7 +136,11 @@ describe("the walk-through on the page", () => {
     expect(all).toMatch(/asks the database again/);
     expect(all).toMatch(/reads the video back/);
     expect(all).toMatch(/only when YouTube’s answer says public/);
-    expect(all).toMatch(/Any failure leaves the video private/);
+    // Not "any failure leaves it private": after an ambiguous write the worker may only know what a failed read-back says
+    // (modules/visibility_publish.py readback_failed), so the copy promises private only before YouTube is asked.
+    expect(all).toMatch(/If anything fails before YouTube is asked, the video stays private; after that, the app records only what YouTube reports/);
+    expect(all).not.toMatch(/any failure leaves/i);
+    expect(readFileSync(join(REPO, "docs/APPROVE_PUBLISH_1B.md"), "utf8")).not.toMatch(/Every failure leaves the video private/);
     expect(siteAutopilotEn.demo.stages.find((s) => s.id === "approve")!.body).toMatch(/does not by itself change the video’s privacy/);
   });
 
@@ -220,6 +225,40 @@ describe("the Shorts feed", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(key);
     back.mockRestore();
+  });
+
+  it("holds the page still under it: the rest is inert, the gallery's clips stop, Escape works from <body>, one history entry", () => {
+    const s = dictionaries.en.site.autopilot.shorts;
+    function Probe() {
+      return <p data-testid="held">{useClipsHeld() ? "held" : "free"}</p>;
+    }
+    const outside = document.createElement("div");
+    outside.innerHTML = '<a href="/x">page link</a>';
+    document.body.appendChild(outside);
+    render(<Probe />);
+    renderFeed();
+    // The earlier tests mocked history.back, so their entry (with the marker) is still current here: start from a clean one.
+    window.history.replaceState(null, "");
+    const depth = window.history.length;
+    const key = screen.getByRole("button", { name: s.open });
+    fireEvent.click(key);
+    expect(window.history.length).toBe(depth + 1);
+    expect(screen.getByTestId("held").textContent).toBe("held");
+    const dialog = screen.getByRole("dialog");
+    expect(outside.inert).toBe(true);
+    expect(dialog.closest("[inert]")).toBeNull();
+    // A tap on the clip leaves focus on <body>; Escape still closes, and the page and its clips come back.
+    (document.activeElement as HTMLElement).blur();
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => window.dispatchEvent(new PopStateEvent("popstate")));
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(outside.inert).toBe(false);
+    expect(screen.getByTestId("held").textContent).toBe("free");
+    expect(document.activeElement).toBe(key);
+    back.mockRestore();
+    outside.remove();
   });
 
   it("keeps Tab inside the feed", () => {

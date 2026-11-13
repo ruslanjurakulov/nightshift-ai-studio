@@ -2,13 +2,14 @@
 
 import "./autopilot-demo.css";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { ArrowRight, ChevronDown, ChevronUp, Pause, Play, Smartphone, Volume2, VolumeX, X } from "lucide-react";
 import { fmt } from "@/lib/i18n/core";
 import type { SiteAutopilotDictionary } from "@/lib/i18n/site-autopilot/en";
 import type { SiteDictionary } from "@/lib/i18n/site/en";
 import { useMotionPaused } from "@/lib/site/motion";
+import { holdClips } from "@/lib/site/clip-hold";
 import type { ShortsItem } from "@/components/site/shorts";
 
 type NetworkInformation = { saveData?: boolean };
@@ -22,6 +23,17 @@ function autoplayAllowed(paused: boolean): boolean {
   if (paused || typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
   return !(navigator as Navigator & { connection?: NetworkInformation }).connection?.saveData;
+}
+
+/** Takes the feed's marker off the current history entry (before "Use this prompt" leaves the page). */
+function dropMarker() {
+  try {
+    const state = { ...((window.history.state as Record<string, unknown> | null) ?? {}) };
+    delete state[HISTORY_KEY];
+    window.history.replaceState(state, "");
+  } catch {
+    /* Nothing to drop. */
+  }
 }
 
 const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -54,7 +66,8 @@ export function ShortsFeed({ items, copy, g }: { items: readonly ShortsItem[]; c
   useEffect(() => {
     if (!open) return;
     try {
-      window.history.pushState({ ...(window.history.state ?? {}), [HISTORY_KEY]: true }, "");
+      // One entry per opening: an effect run twice (React's StrictMode in development) finds the marker and adds no second one.
+      if (!(window.history.state as Record<string, unknown> | null)?.[HISTORY_KEY]) window.history.pushState({ ...(window.history.state ?? {}), [HISTORY_KEY]: true }, "");
     } catch {
       /* A sandboxed frame may refuse; Escape and Close still work. */
     }
@@ -63,11 +76,12 @@ export function ShortsFeed({ items, copy, g }: { items: readonly ShortsItem[]; c
     const html = document.documentElement;
     const before = html.style.overflow;
     html.style.overflow = "hidden";
-    const back = opener.current;
+    // The gallery's clips under the feed stop while it is open (lib/site/clip-hold.ts), so only the feed's clip plays.
+    const release = holdClips();
     return () => {
       window.removeEventListener("popstate", onPop);
       html.style.overflow = before;
-      back?.focus();
+      release();
     };
   }, [open]);
 
@@ -79,12 +93,24 @@ export function ShortsFeed({ items, copy, g }: { items: readonly ShortsItem[]; c
         {copy.open}
       </button>
       <span className="nx-shorts-open-note">{fmt(copy.openNote, { n: String(items.length) })}</span>
-      {open && typeof document !== "undefined" && createPortal(<Feed items={items} copy={copy} g={g} onClose={close} />, document.body)}
+      {open && typeof document !== "undefined" && createPortal(<Feed items={items} copy={copy} g={g} onClose={close} returnTo={opener} />, document.body)}
     </div>
   );
 }
 
-function Feed({ items, copy, g, onClose }: { items: readonly ShortsItem[]; copy: SiteAutopilotDictionary["shorts"]; g: GalleryCopy; onClose: () => void }) {
+function Feed({
+  items,
+  copy,
+  g,
+  onClose,
+  returnTo,
+}: {
+  items: readonly ShortsItem[];
+  copy: SiteAutopilotDictionary["shorts"];
+  g: GalleryCopy;
+  onClose: () => void;
+  returnTo: RefObject<HTMLButtonElement | null>;
+}) {
   const paused = useMotionPaused();
   const [at, setAt] = useState(0);
   const [auto] = useState(() => autoplayAllowed(paused));
@@ -97,7 +123,19 @@ function Feed({ items, copy, g, onClose }: { items: readonly ShortsItem[]; copy:
   const videos = useRef(new Map<number, HTMLVideoElement>());
   const total = items.length;
 
-  useEffect(() => closeBtn.current?.focus(), []);
+  // The rest of the page is inert while the feed is open: a tap on the clip (which takes no focus) leaves focus on <body>, and
+  // the next Tab must still land inside the feed. On close the page comes back first, then focus returns to the opening key.
+  useEffect(() => {
+    const me = root.current;
+    const others = [...document.body.children].filter((el): el is HTMLElement => el instanceof HTMLElement && el !== me && !el.inert);
+    others.forEach((el) => (el.inert = true));
+    closeBtn.current?.focus();
+    const back = returnTo.current;
+    return () => {
+      others.forEach((el) => (el.inert = false));
+      back?.focus();
+    };
+  }, [returnTo]);
 
   // Which slide is on screen: the one at least 60% in view of the feed (a swipe ends on a snap point, so one always is).
   useEffect(() => {
@@ -141,7 +179,7 @@ function Feed({ items, copy, g, onClose }: { items: readonly ShortsItem[]; copy:
     setAt(next);
   };
 
-  const onKey = (ev: KeyboardEvent<HTMLDivElement>) => {
+  const onKey = (ev: KeyboardEvent) => {
     if (ev.key === "Escape") {
       ev.preventDefault();
       onClose();
@@ -161,15 +199,24 @@ function Feed({ items, copy, g, onClose }: { items: readonly ShortsItem[]; copy:
     if (ev.shiftKey && (document.activeElement === first || !root.current.contains(document.activeElement))) {
       ev.preventDefault();
       last.focus();
-    } else if (!ev.shiftKey && document.activeElement === last) {
+    } else if (!ev.shiftKey && (document.activeElement === last || !root.current.contains(document.activeElement))) {
       ev.preventDefault();
       first.focus();
     }
   };
 
+  // Keys are read on the document, not the dialog: after a tap on the clip focus is on <body>, and Escape must still close.
+  const keyRef = useRef(onKey);
+  keyRef.current = onKey;
+  useEffect(() => {
+    const k = (ev: KeyboardEvent) => keyRef.current(ev);
+    document.addEventListener("keydown", k);
+    return () => document.removeEventListener("keydown", k);
+  }, []);
+
   const cur = items[at];
   return (
-    <div ref={root} className="nx-shorts" role="dialog" aria-modal="true" aria-label={copy.dialog} onKeyDown={onKey}>
+    <div ref={root} className="nx-shorts" role="dialog" aria-modal="true" aria-label={copy.dialog}>
       <div className="nx-shorts-top">
         <p className="nx-shorts-pos" aria-live="polite">
           {fmt(copy.position, { n: String(at + 1), total: String(total) })}
@@ -239,9 +286,13 @@ function Feed({ items, copy, g, onClose }: { items: readonly ShortsItem[]; copy:
                 </p>
                 {it.href && (
                   <>
+                    {/* `replace`: the Studio takes the feed's own history entry, so Back from it returns to the page, not to a
+                        stale "feed open" entry; the marker is dropped first in case the navigation is a full load. */}
                     <Link
                       href={it.href}
                       prefetch={false}
+                      replace
+                      onClick={dropMarker}
                       className="nx-shorts-use"
                       aria-label={it.leftOut ? undefined : fmt(g.tryAria, { model: it.modelName })}
                       aria-describedby={it.leftOut ? `${promptId} shorts-use-${it.jobId}` : promptId}

@@ -16,7 +16,7 @@ export const siteAutopilotEn = {
     stepOf: "Step {n} of {total}",
     prev: "Previous stage",
     next: "Next stage",
-    fileTag: "Real file",
+    fileTag: "Sample file from our repository",
     mockTag: "Mock of the app’s screen",
     rulesTag: "How it works",
     fileNote: "Shown as written in the file, in English.",
@@ -122,7 +122,7 @@ export const siteAutopilotEn = {
         "With it on, approving one exact version queues one request.",
         "Just before acting, the worker asks the database again: still the approved version, the approval not expired, the publish check’s verdict stored and allowed, the switch still on.",
         "It asks YouTube once to make that video public, then reads the video back. The app says “Published” only when YouTube’s answer says public.",
-        "Any failure leaves the video private.",
+        "If anything fails before YouTube is asked, the video stays private; after that, the app records only what YouTube reports.",
       ],
     },
     cta: {

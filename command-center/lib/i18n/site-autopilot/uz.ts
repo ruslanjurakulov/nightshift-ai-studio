@@ -10,7 +10,7 @@ export const siteAutopilotUz: SiteAutopilotDictionary = {
     stepOf: "{total} qadamdan {n}-qadam",
     prev: "Oldingi bosqich",
     next: "Keyingi bosqich",
-    fileTag: "Haqiqiy fayl",
+    fileTag: "Repozitoriyimizdagi namunaviy fayl",
     mockTag: "Ilova ekranining maketi",
     rulesTag: "Qanday ishlaydi",
     fileNote: "Faylda qanday yozilgan boʻlsa, shunday, ingliz tilida koʻrsatilgan.",
@@ -116,7 +116,7 @@ export const siteAutopilotUz: SiteAutopilotDictionary = {
         "Sozlama yoqilganda aynan bitta versiyani tasdiqlash navbatga bitta soʻrov qoʻyadi.",
         "Harakatdan oldin ishlovchi maʼlumotlar bazasidan yana soʻraydi: bu hali ham tasdiqlangan versiyami, tasdiq muddati oʻtmaganmi, nashr tekshiruvining xulosasi saqlangan va ruxsat beradimi, kalit hali ham yoqilganmi.",
         "U YouTube’dan videoni ommaviy qilishni bir marta soʻraydi, soʻng videoni qayta oʻqiydi. Ilova “Nashr qilindi” deb faqat YouTube video ommaviy ekanini aytganda yozadi.",
-        "Har qanday nosozlikda video shaxsiy boʻlib qoladi.",
+        "YouTube’dan soʻralishidan oldin biror narsa ishlamasa, video shaxsiy boʻlib qoladi; undan keyin ilova faqat YouTube xabar qilgan narsani yozib qoʻyadi.",
       ],
     },
     cta: {

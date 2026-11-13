@@ -226,15 +226,17 @@
 }
 .nx-ap-row .nx-ap-private { margin-top: 0; }
 .nx-ap-private svg { width: 14px; height: 14px; }
+/* A drawing of the key, muted: the page's one primary colour belongs to its real actions, not to a picture of one. */
 .nx-ap-fakebtn {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 44px;
   margin-top: 14px;
+  border: 1px dashed var(--ns-rule-strong);
   border-radius: 999px;
-  background: var(--ns-cta-bg);
-  color: #ffffff;
+  background: var(--ns-key);
+  color: var(--ns-text-dim);
   font-weight: 600;
 }
 

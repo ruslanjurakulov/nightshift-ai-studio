@@ -31,7 +31,9 @@ queue worker) lets a worker act on that decision, **only on a channel whose admi
    video is still private; otherwise another closed word. `videos.privacy` follows the read-back alone. The panel says
    Queued / Published (only from that read-back) / Not published (reason in words) / Expired.
 
-Every failure leaves the video private, which is the safe state.
+If anything fails before YouTube is asked, the video stays private, which is the safe state. After the write is sent, the app
+records only what YouTube reports: when the read-back after a write fails (`readback_failed`), the request is claimed again and only
+READ (reconcile, below); until a read succeeds nobody knows whether the video is public, so check YouTube Studio.
 
 **A channel that requires a second person is excluded.** A channel with `agent_config.require_two_person_publish` on cannot have this
 switch turned ON (`two_person_required`), and a request on one (the requirement was added after the switch, or the database owner set the
