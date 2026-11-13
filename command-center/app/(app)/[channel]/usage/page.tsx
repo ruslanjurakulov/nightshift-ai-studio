@@ -95,7 +95,7 @@ export default async function UsagePage() {
     );
   }
 
-  const matrix = sitePlanMatrix(planValue(catalogRead), locale);
+  const matrix = sitePlanMatrix(planValue(catalogRead), locale, orgId);
   // The same two rules the Credits page uses to show packs and plan cards, so
   // a link here never points at a section that is not there.
   const canBuy = siteBuyAccess(orgId, role) === "allowed";

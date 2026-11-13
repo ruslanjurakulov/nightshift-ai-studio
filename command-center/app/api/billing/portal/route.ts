@@ -21,11 +21,19 @@ export const dynamic = "force-dynamic";
  * to Paddle. Nothing is changed here: every change happens in Paddle's portal
  * and comes back through the webhook.
  *
- * A subscription bought through Dodo Payments (0143, provider 'dodo') opens
+ * A subscription bought through Dodo Payments (0144, provider 'dodo') opens
  * Dodo's customer portal instead, with DODO_PAYMENTS_API_KEY — whatever
  * PAYMENTS_PROVIDER says today, because the portal belongs to the provider
  * that holds that subscription. With PAYMENTS_PROVIDER unset or `paddle` and
  * no Dodo subscription, every line below runs exactly as before.
+ *
+ * The Dodo customer id comes only from this organization's own subscription
+ * row, and the dodo-webhook writes a row (and its customer) only for an
+ * organization named by metadata this server signed (or for a subscription
+ * already recorded from such an event). Forged metadata on a static Dodo link
+ * therefore never puts someone else's customer, or their portal, here; and
+ * the checkout always creates a new Dodo customer for the signed-in user's
+ * own, non-editable e-mail (lib/server/dodo-api.ts).
  */
 export const POST = requireSameOrigin(async function POST(request: Request) {
   const user = await getUser();

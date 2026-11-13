@@ -16,6 +16,12 @@
 //                                 the Dodo product id (pdt_…) of each credit pack
 //   DODO_PLAN_<ID>                the Dodo product id of each monthly plan in the
 //                                 plans table, e.g. DODO_PLAN_PRO (creator, pro, studio)
+//   DODO_METADATA_SECRET          32+ characters, the SAME value as the Command Center's:
+//                                 the key checkout metadata is signed with (ns_sig)
+//   DODO_TAX_MODE                 inclusive | exclusive — how every product's price
+//                                 carries tax; unset = nothing is credited
+//   DODO_WEBHOOK_MODE             live, or anything else = test: in test mode only the
+//   DODO_TEST_ORG_IDS             organizations listed here (uuids) are credited
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 //                                 provided by Supabase to every Edge Function
 //
@@ -25,6 +31,10 @@
 
 import {
   createDodoRestStore,
+  dodoMetadataKey,
+  dodoTaxModeFromEnv,
+  dodoTestOrgsFromEnv,
+  dodoWebhookModeFromEnv,
   dodoPackTableFromEnv,
   dodoPlanTableFromEnv,
   dodoSigningKey,
@@ -39,10 +49,17 @@ const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const secret = env("DODO_WEBHOOK_SECRET") ?? "";
 const packs = dodoPackTableFromEnv(env);
 const plans = dodoPlanTableFromEnv(Object.entries(Deno.env.toObject()), packs);
+const metadataSecret = env("DODO_METADATA_SECRET") ?? "";
+const taxMode = dodoTaxModeFromEnv(env("DODO_TAX_MODE"));
+const mode = dodoWebhookModeFromEnv(env("DODO_WEBHOOK_MODE"));
+const testOrgs = dodoTestOrgsFromEnv(env("DODO_TEST_ORG_IDS"));
 
 // Said once at boot, by name only.
 if (!dodoSigningKey(secret)) console.error("dodo-webhook: DODO_WEBHOOK_SECRET is not a whsec_ signing secret — every delivery is refused");
 if (packs.size === 0) console.error("dodo-webhook: no DODO_PRODUCT_* is set to a valid product id — pack purchases cannot be credited");
+if (!dodoMetadataKey(metadataSecret)) console.error("dodo-webhook: DODO_METADATA_SECRET is not set (32+ characters) — every delivery is refused");
+if (!taxMode) console.error("dodo-webhook: DODO_TAX_MODE is not inclusive or exclusive — every delivery is refused");
+if (mode === "test") console.error(`dodo-webhook: TEST mode — only the ${testOrgs.size} organization(s) in DODO_TEST_ORG_IDS are credited`);
 
 const store = createDodoRestStore({ url: supabaseUrl, serviceKey });
 
@@ -69,7 +86,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         signature: req.headers.get("webhook-signature"),
       },
     },
-    { secret, packs, plans, store },
+    { secret, metadataSecret, taxMode, mode, testOrgs, packs, plans, store },
   );
   return Response.json(res.body, { status: res.status });
 });

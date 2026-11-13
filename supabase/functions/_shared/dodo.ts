@@ -23,12 +23,18 @@
  *
  *   - Nothing the browser sent decides an amount. The Command Center's server
  *     creates the checkout session and puts { org_id, user_id } into its
- *     metadata — WHO is paying, nothing more. The credits come from the
+ *     metadata — WHO is paying, nothing more — SIGNED with DODO_METADATA_SECRET
+ *     (ns_sig, HMAC-SHA256 over the fields and a nonce). Dodo's own static
+ *     payment links accept metadata_* in the URL, so unsigned metadata is
+ *     anyone's: it never names an organization here (verifyDodoMetadata).
+ *   - Test mode on a production database credits only the workspaces in
+ *     DODO_TEST_ORG_IDS (DODO_WEBHOOK_MODE is `test` unless it says `live`):
+ *     a public test card must not buy real credits. The credits come from the
  *     catalog by Dodo product id, and the amount Dodo charged must equal the
  *     catalog's price for that product, in USD, before anything is granted.
  *   - Every grant goes through the same database functions as Paddle's:
  *     add_purchased_credits (packs), grant_subscription_credits_for (plan
- *     periods, 0143: 0034's body under a provider) and refund_purchased_credits
+ *     periods, 0144: 0034's body under a provider) and refund_purchased_credits
  *     (refunds and lost disputes). The Dodo payment id is the external id, so
  *     a payment delivered twice, under two webhook ids, still credits once.
  *   - Idempotency by event: the Standard Webhooks `webhook-id` is the
@@ -95,7 +101,7 @@ export const DODO_PLAN_PRICES: Readonly<Record<string, number>> = {
 
 /** Dodo's documented examples: pdt_0NVbdIG3JNg9Yc8ey5JHW, pay_gr4RizvMOXFJ6xca3y2tU, sub_Iuaq622bbmmfOGrVTqdXv,
  *  cus_TV52uJWWXt2yIoBBxpjaa. The docs promise no length, so these accept 3-64 ASCII letters and digits after
- *  the prefix (0143's subscription checks say the same). */
+ *  the prefix (0144's subscription checks say the same). */
 export const DODO_PRODUCT_ID_RE = /^pdt_[A-Za-z0-9]{3,64}$/;
 const PAYMENT_ID_RE = /^pay_[A-Za-z0-9]{3,64}$/;
 const SUBSCRIPTION_ID_RE = /^sub_[A-Za-z0-9]{3,64}$/;
@@ -369,11 +375,6 @@ function isoTime(v: unknown): string | null {
   return s;
 }
 
-function uuidOf(v: unknown): string | null {
-  const s = str(v);
-  return s && UUID_RE.test(s) ? s.toLowerCase() : null;
-}
-
 /** The body: { business_id, type, timestamp, data }. Null when it is not one. */
 export function parseDodoEvent(rawBody: string, webhookId: string): DodoEvent | null {
   let json: unknown;
@@ -388,20 +389,117 @@ export function parseDodoEvent(rawBody: string, webhookId: string): DodoEvent | 
   return { eventId: webhookId, eventType, occurredAt: isoTime(o.timestamp), data: obj(o.data) };
 }
 
+/** How this deployment's Dodo prices carry tax: DODO_TAX_MODE, set to match every product in Dodo. */
+export type DodoTaxMode = "inclusive" | "exclusive";
+
+/** Exactly `inclusive` or `exclusive`; anything else (unset included) is null, and the webhook then credits nothing. */
+export function dodoTaxModeFromEnv(raw: string | null | undefined): DodoTaxMode | null {
+  return raw === "inclusive" || raw === "exclusive" ? raw : null;
+}
+
 /**
- * Does what Dodo charged pay exactly the catalog price? `total_amount` is
- * "including tax"; `tax` is the tax collected (nullable). Two shapes are
- * accepted, nothing else:
- *   tax-inclusive price: total_amount = the price (the tax is inside it);
- *   tax-exclusive price: total_amount − tax = the price.
- * Either way the amount paid net of tax is never less than the price the
- * credits stand for. A rounding surprise, a price changed in Dodo without a
- * code change, a localized or PPP price, an overridden amount: all rejected.
+ * Does what Dodo charged pay exactly the catalog price, in the ONE tax shape
+ * this deployment's products use? `total_amount` is "including tax"; `tax` is
+ * the tax collected (nullable, read as 0 when absent).
+ *   inclusive: total_amount = the price, the tax inside it (0 ≤ tax ≤ total).
+ *     The money kept net of tax is then below the price: that is what a
+ *     tax-inclusive price means, and the owner chose it.
+ *   exclusive: total_amount − tax = the price, exactly.
+ * Pinning the mode closes the gap where accepting both shapes let a mispriced
+ * tax-exclusive product whose price plus tax happened to equal the catalog
+ * price pass. A rounding surprise, a price changed in Dodo without a code
+ * change, a localized or PPP price, an overridden amount: all rejected.
  */
-export function amountMatches(totalMinor: number, taxMinor: number | null, expectedCents: number): boolean {
-  if (!Number.isSafeInteger(expectedCents) || expectedCents <= 0 || totalMinor <= 0) return false;
-  if (totalMinor === expectedCents) return true;
-  return taxMinor !== null && taxMinor >= 0 && totalMinor - taxMinor === expectedCents;
+export function amountMatches(totalMinor: number, taxMinor: number | null, expectedCents: number, mode: DodoTaxMode): boolean {
+  if (!Number.isSafeInteger(expectedCents) || expectedCents <= 0 || !Number.isSafeInteger(totalMinor) || totalMinor <= 0) return false;
+  const tax = taxMinor ?? 0;
+  if (!Number.isSafeInteger(tax) || tax < 0 || tax > totalMinor) return false;
+  return mode === "inclusive" ? totalMinor === expectedCents : totalMinor - tax === expectedCents;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Signed metadata
+// ───────────────────────────────────────────────────────────────────────────
+
+/** The signed fields' version tag: a change of format is a new tag, never a reinterpretation of an old signature. */
+export const DODO_METADATA_VERSION = "nightshift-dodo-v1";
+/** DODO_METADATA_SECRET is at least this long: a short or pasted-wrong value makes the webhook refuse every delivery. */
+export const DODO_METADATA_SECRET_MIN = 32;
+const ITEM_RE = /^(pack|plan):[a-z][a-z0-9_]{0,30}$/;
+const NONCE_RE = /^[0-9a-f]{32}$/;
+const META_SIG_RE = /^[0-9a-f]{64}$/;
+
+/** The HMAC key from DODO_METADATA_SECRET (its UTF-8 bytes), or null when it is unset, short or has white space in it. */
+export function dodoMetadataKey(secret: string | null | undefined): Uint8Array | null {
+  const s = secret ?? "";
+  if (s.length < DODO_METADATA_SECRET_MIN || /\s/.test(s)) return null;
+  return new TextEncoder().encode(s);
+}
+
+/**
+ * What is signed: the version, the organization, the user (empty when none),
+ * our item and a fresh nonce, joined by "|". None of them can contain "|"
+ * (uuids, `pack:starter`, hex), so no two field lists sign the same text.
+ * The Command Center (lib/server/dodo-api.ts) signs exactly this.
+ */
+export function dodoMetadataMessage(f: { orgId: string; userId: string | null; item: string; nonce: string }): string {
+  return [DODO_METADATA_VERSION, f.orgId, f.userId ?? "", f.item, f.nonce].join("|");
+}
+
+export type DodoMetadata =
+  | { status: "absent" }
+  | { status: "invalid"; reason: string }
+  | { status: "valid"; orgId: string; userId: string | null; item: string };
+
+function hexToBytes(hex: string): Uint8Array {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+/**
+ * The organization a payment or subscription names, only when this
+ * deployment's server signed it. `absent`: none of our fields is there (a
+ * renewal Dodo started, say — the subscription row then says who). `invalid`:
+ * any of our fields is there but the set is malformed or the signature does
+ * not verify — someone wrote metadata we did not. The comparison is
+ * SubtleCrypto's verify() (constant time).
+ */
+export async function verifyDodoMetadata(raw: unknown, key: Uint8Array): Promise<DodoMetadata> {
+  const m = obj(raw);
+  const present = (k: string) => m[k] !== undefined && m[k] !== null && m[k] !== "";
+  if (!["org_id", "user_id", "nightshift_item", "ns_nonce", "ns_sig"].some(present)) return { status: "absent" };
+  const orgRaw = str(m.org_id);
+  const orgId = orgRaw && UUID_RE.test(orgRaw) && orgRaw === orgRaw.toLowerCase() ? orgRaw : null;
+  const userRaw = present("user_id") ? str(m.user_id) : null;
+  const userId = userRaw && UUID_RE.test(userRaw) && userRaw === userRaw.toLowerCase() ? userRaw : null;
+  const item = str(m.nightshift_item);
+  const nonce = str(m.ns_nonce);
+  const sig = str(m.ns_sig);
+  if (!orgId) return { status: "invalid", reason: "no valid org_id" };
+  if (present("user_id") && !userId) return { status: "invalid", reason: "malformed user_id" };
+  if (!item || !ITEM_RE.test(item)) return { status: "invalid", reason: "malformed item" };
+  if (!nonce || !NONCE_RE.test(nonce)) return { status: "invalid", reason: "malformed nonce" };
+  if (!sig || !META_SIG_RE.test(sig)) return { status: "invalid", reason: "missing or malformed signature" };
+  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const data = new TextEncoder().encode(dodoMetadataMessage({ orgId, userId, item, nonce }));
+  if (!(await crypto.subtle.verify("HMAC", cryptoKey, hexToBytes(sig), data))) return { status: "invalid", reason: "signature mismatch" };
+  return { status: "valid", orgId, userId, item };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Test mode
+// ───────────────────────────────────────────────────────────────────────────
+
+/** DODO_WEBHOOK_MODE: `live` only when it says exactly that. Anything else is test, which credits allow-listed workspaces only. */
+export type DodoWebhookMode = "test" | "live";
+export function dodoWebhookModeFromEnv(raw: string | null | undefined): DodoWebhookMode {
+  return raw === "live" ? "live" : "test";
+}
+
+/** DODO_TEST_ORG_IDS: organization uuids separated by commas or white space; anything else in the list is skipped. */
+export function dodoTestOrgsFromEnv(raw: string | null | undefined): ReadonlySet<string> {
+  return new Set((raw ?? "").split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter((x) => UUID_RE.test(x)));
 }
 
 /** A payment that carries any discount. The checkout turns discount codes off (allow_discount_code: false). */
@@ -411,12 +509,18 @@ function discounted(data: Record<string, unknown>): boolean {
 }
 
 /** payment.succeeded -> a pack's credits, or a plan period to be checked against the subscription's plan. */
-export function decideDodoPayment(data: Record<string, unknown>, packs: DodoPackTable, plans: DodoPlanTable): DodoDecision {
+export function decideDodoPayment(
+  data: Record<string, unknown>,
+  packs: DodoPackTable,
+  plans: DodoPlanTable,
+  meta: DodoMetadata,
+  taxMode: DodoTaxMode,
+): DodoDecision {
   const paymentRaw = str(data.payment_id);
   const transactionId = paymentRaw && PAYMENT_ID_RE.test(paymentRaw) ? paymentRaw : null;
-  const meta = obj(data.metadata);
-  const orgId = uuidOf(meta.org_id);
-  const userId = uuidOf(meta.user_id);
+  // Only a signature of ours names an organization; forged metadata names none, not even in the audit row.
+  const orgId = meta.status === "valid" ? meta.orgId : null;
+  const userId = meta.status === "valid" ? meta.userId : null;
   const currency = currencyCode(data.currency);
   const total = minorInt(data.total_amount);
   const tax = data.tax === null || data.tax === undefined ? null : minorInt(data.tax);
@@ -425,6 +529,7 @@ export function decideDodoPayment(data: Record<string, unknown>, packs: DodoPack
   if (!transactionId) return reject("payment without a valid payment_id");
   if (str(data.status) !== "succeeded") return { kind: "ignore", detail: `payment status ${String(data.status)}` };
   if (data.is_update_payment_method === true) return { kind: "ignore", detail: "a payment-method update, not a purchase" };
+  if (meta.status === "invalid") return reject(`paid, but the metadata is not this deployment's (${meta.reason}) — not credited`);
   if (currency !== "USD") return reject("paid, but not in USD — not credited (adaptive or localized pricing must stay off)");
   if (total === null || total <= 0) return reject("paid, but total_amount is zero or cannot be read — not credited");
   if (data.tax !== null && data.tax !== undefined && tax === null) return reject("paid, but tax cannot be read — not credited");
@@ -474,35 +579,42 @@ export function decideDodoPayment(data: Record<string, unknown>, packs: DodoPack
     };
   }
 
-  if (!orgId) return reject("paid, but the metadata carries no organization id — not credited");
-  if (cart.length === 0) return reject("paid, but the payment names no product — not credited");
-  let credits = 0;
-  let expected = 0;
-  const lines: string[] = [];
-  for (const item of cart) {
-    const pid = str(item.product_id);
-    const pack = pid ? packs.get(pid) : undefined;
-    if (!pack) return reject(`paid, but product ${pid ?? "(none)"} is not a credit pack on this deployment — not credited`);
-    const qty = item.quantity;
-    if (typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 1000)
-      return reject("paid, but a line has an invalid quantity — not credited");
-    credits += pack.credits * qty;
-    expected += pack.usdCents * qty;
-    lines.push(`${qty}× ${pack.id}`);
-  }
-  if (!amountMatches(total, tax, expected))
-    return reject(`paid ${total} (tax ${tax ?? "none"}) USD cents, but the catalog price is ${expected} — not credited`);
+  if (meta.status !== "valid") return reject("paid, but the metadata carries no signed organization — not credited");
+  // Exactly the one line our checkout creates: the signed pack, quantity 1. A static payment link with another cart,
+  // even one reusing a signature of ours, is a person's case.
+  if (cart.length !== 1) return reject("paid, but the payment does not name exactly one product — not credited");
+  const line = cart[0];
+  const pid = str(line.product_id);
+  const pack = pid ? packs.get(pid) : undefined;
+  if (!pack) return reject(`paid, but product ${pid ?? "(none)"} is not a credit pack on this deployment — not credited`);
+  if (meta.item !== `pack:${pack.id}`) return reject(`paid for ${pack.id}, but the signed item is ${meta.item} — not credited`);
+  if (line.quantity !== 1) return reject("paid, but the line's quantity is not 1 — not credited");
+  const credits = pack.credits;
+  const expected = pack.usdCents;
+  const lines = [`1× ${pack.id}`];
+  if (!amountMatches(total, tax, expected, taxMode))
+    return reject(`paid ${total} (tax ${tax ?? "none"}) USD cents, but the catalog price is ${expected} (${taxMode} of tax) — not credited`);
   const note = [`Dodo ${transactionId}: ${lines.join(", ")}`, userId ? `bought by user ${userId}` : null].filter(Boolean).join(" · ");
-  return { kind: "purchase", orgId, userId, transactionId, credits, currency, amountMinor: total, note };
+  return { kind: "purchase", orgId: meta.orgId, userId, transactionId, credits, currency, amountMinor: total, note };
 }
 
 /** subscription.* -> the subscription's state as Dodo now reports it. */
-export function decideDodoSubscription(event: DodoEvent, plans: DodoPlanTable): DodoDecision {
+export function decideDodoSubscription(event: DodoEvent, plans: DodoPlanTable, meta: DodoMetadata): DodoDecision {
   const data = event.data;
   const subRaw = str(data.subscription_id);
-  const orgId = uuidOf(obj(data.metadata).org_id);
+  // A signed organization, or none: then only an existing row (created from a signed event) says who it belongs to.
+  const orgId = meta.status === "valid" ? meta.orgId : null;
   if (!subRaw || !SUBSCRIPTION_ID_RE.test(subRaw))
     return { kind: "reject", detail: "subscription without a valid id", orgId, transactionId: null, currency: null, amountMinor: null };
+  if (meta.status === "invalid")
+    return {
+      kind: "reject",
+      detail: `subscription ${subRaw} carries metadata that is not this deployment's (${meta.reason}) — not recorded`,
+      orgId: null,
+      transactionId: null,
+      currency: null,
+      amountMinor: null,
+    };
   const raw = str(data.status);
   const status = raw ? DODO_STATUS_MAP[raw] : undefined;
   if (!status) return { kind: "ignore", detail: `subscription status ${String(data.status)} is not handled` };
@@ -566,6 +678,18 @@ export function decideDodoDispute(eventType: string, data: Record<string, unknow
   const paymentId = str(data.payment_id);
   if (!disputeId || !OTHER_ID_RE.test(disputeId) || !paymentId || !PAYMENT_ID_RE.test(paymentId))
     return { kind: "reject", detail: "dispute without a valid dispute or payment id", orgId: null, transactionId: null, currency: null, amountMinor: null };
+  // "Disputes auto-resolved through Visa RDR appear as dispute.lost with is_resolved_by_rdr: true ... the refund was
+  // issued automatically" (dispute payload page). That money comes back as a refund, so reversing here too would count
+  // it twice; it is left for a person to check against the refund events instead.
+  if (data.is_resolved_by_rdr === true)
+    return {
+      kind: "reject",
+      detail: `dispute ${disputeId} was resolved by Visa RDR (a refund) — not reversed here; check that a refund.succeeded took the credits back`,
+      orgId: null,
+      transactionId: paymentId,
+      currency: currencyCode(data.currency),
+      amountMinor: null,
+    };
   if (eventType === "dispute.expired")
     return {
       kind: "reject",
@@ -590,11 +714,17 @@ export function decideDodoDispute(eventType: string, data: Record<string, unknow
   };
 }
 
-export function decideDodoEvent(event: DodoEvent, packs: DodoPackTable, plans: DodoPlanTable): DodoDecision {
-  if ((DODO_SUBSCRIPTION_EVENTS as readonly string[]).includes(event.eventType)) return decideDodoSubscription(event, plans);
+export function decideDodoEvent(
+  event: DodoEvent,
+  packs: DodoPackTable,
+  plans: DodoPlanTable,
+  meta: DodoMetadata,
+  taxMode: DodoTaxMode,
+): DodoDecision {
+  if ((DODO_SUBSCRIPTION_EVENTS as readonly string[]).includes(event.eventType)) return decideDodoSubscription(event, plans, meta);
   switch (event.eventType) {
     case "payment.succeeded":
-      return decideDodoPayment(event.data, packs, plans);
+      return decideDodoPayment(event.data, packs, plans, meta, taxMode);
     case "refund.succeeded":
       return decideDodoRefund(event.data);
     case "dispute.accepted":
@@ -670,6 +800,14 @@ export async function handleDodoWebhook(
   deps: {
     /** The endpoint's signing secret (whsec_…), DODO_WEBHOOK_SECRET. */
     secret: string;
+    /** DODO_METADATA_SECRET: the key the Command Center signs checkout metadata with. */
+    metadataSecret: string;
+    /** DODO_TAX_MODE: the one tax shape this deployment's products use. */
+    taxMode: DodoTaxMode | null;
+    /** DODO_WEBHOOK_MODE: `test` (the default) credits only `testOrgs`. */
+    mode: DodoWebhookMode;
+    /** DODO_TEST_ORG_IDS. */
+    testOrgs: ReadonlySet<string>;
     packs: DodoPackTable;
     plans: DodoPlanTable;
     store: DodoStore;
@@ -682,6 +820,13 @@ export async function handleDodoWebhook(
   const key = dodoSigningKey(deps.secret);
   if (!key) {
     log.error("dodo-webhook: DODO_WEBHOOK_SECRET is not set to a whsec_ signing secret — every delivery is refused");
+    return { status: 500, body: { error: "webhook not configured" } };
+  }
+  const metadataKey = dodoMetadataKey(deps.metadataSecret);
+  if (!metadataKey || !deps.taxMode) {
+    // 500 rather than `rejected`: Dodo retries for about a day, so a delivery made before the owner finished the
+    // setup is credited once it is fixed, instead of needing a person.
+    log.error("dodo-webhook: DODO_METADATA_SECRET (32+ characters) or DODO_TAX_MODE (inclusive | exclusive) is not set — every delivery is refused");
     return { status: 500, body: { error: "webhook not configured" } };
   }
   if (req.rawBody.length > MAX_BODY_BYTES) return { status: 413, body: { error: "payload too large" } };
@@ -702,8 +847,10 @@ export async function handleDodoWebhook(
     const prior = await deps.store.eventStatus(event.eventId);
     if (prior && prior !== "failed") return { status: 200, body: { ok: true, duplicate: true, status: prior } };
 
-    const decision = decideDodoEvent(event, deps.packs, deps.plans);
-    const record = await execute(decision, deps.store, deps.plans, log, event.eventId);
+    const meta = await verifyDodoMetadata(event.data.metadata, metadataKey);
+    const decision = decideDodoEvent(event, deps.packs, deps.plans, meta, deps.taxMode);
+    const allowed = (orgId: string) => deps.mode === "live" || deps.testOrgs.has(orgId);
+    const record = await execute(decision, deps.store, deps.plans, log, event.eventId, deps.taxMode, allowed);
     await deps.store.recordEvent({ ...base, ...record.row });
     if (record.row.status === "rejected" || record.httpStatus >= 500) {
       log.warn(`dodo-webhook: ${event.eventId} ${record.row.status} — ${record.row.detail}`);
@@ -731,12 +878,18 @@ function permanent(err: unknown): string | null {
   return err instanceof StoreError && err.code && PERMANENT_CODES.has(err.code) ? err.code : null;
 }
 
+/** Why a test-mode event changes nothing for a workspace that is not on the list. */
+const TEST_ONLY = "test mode: this organization is not in DODO_TEST_ORG_IDS — nothing granted (a test card must not buy real credits)";
+
 async function execute(
   decision: DodoDecision,
   store: DodoStore,
   plans: DodoPlanTable,
   log: Logger,
   eventId: string,
+  taxMode: DodoTaxMode,
+  /** Live: every organization. Test: only DODO_TEST_ORG_IDS. Taking credits back (refunds, disputes) is never gated. */
+  allowed: (orgId: string) => boolean,
 ): Promise<{ httpStatus: number; row: RecordFields }> {
   switch (decision.kind) {
     case "ignore":
@@ -759,6 +912,7 @@ async function execute(
       const money = { orgId: decision.orgId, transactionId: decision.transactionId, currency: decision.currency, amountMinor: decision.amountMinor };
       if (!(await store.orgExists(decision.orgId)))
         return { httpStatus: 200, row: { status: "rejected", detail: "paid, but the organization does not exist — not credited", ...money } };
+      if (!allowed(decision.orgId)) return { httpStatus: 200, row: { status: "rejected", detail: TEST_ONLY, ...money } };
       try {
         const res = await store.addPurchasedCredits(decision.orgId, decision.credits, decision.transactionId, decision.note);
         log.info(`dodo-webhook: ${eventId} ${res.duplicate ? "already credited" : `credited ${decision.credits}`}`);
@@ -787,6 +941,7 @@ async function execute(
           row: { status: "rejected", detail: `subscription ${decision.subscriptionId} names no known organization`, orgId: null },
         };
       }
+      if (!allowed(orgId)) return { httpStatus: 200, row: { status: "rejected", detail: TEST_ONLY, orgId } };
       try {
         const res = await store.upsertSubscription({
           orgId,
@@ -836,6 +991,7 @@ async function execute(
         return { httpStatus: 200, row: { status: "rejected", detail: "paid plan for a subscription of another organization — not credited", orgId: null, ...money } };
       if (!(await store.orgExists(orgId)))
         return { httpStatus: 200, row: { status: "rejected", detail: "paid plan, but no known organization — not credited", orgId: null, ...money } };
+      if (!allowed(orgId)) return { httpStatus: 200, row: { status: "rejected", detail: TEST_ONLY, orgId, ...money } };
       // The plan's price on this deployment, from the product the subscription row names (the row's plan is what
       // upsert_subscription_for recorded from Dodo's product_id).
       const planEntry = sub.productId ? plans.get(sub.productId) : undefined;
@@ -843,7 +999,7 @@ async function execute(
         return { httpStatus: 200, row: { status: "rejected", detail: `paid plan, but its product is not plan ${sub.planId} on this deployment — not credited`, orgId, ...money } };
       if (decision.cartProducts.some((p) => p !== sub.productId))
         return { httpStatus: 200, row: { status: "rejected", detail: "paid plan whose cart names another product than the subscription — not credited", orgId, ...money } };
-      if (!amountMatches(decision.amountMinor, decision.taxMinor, planEntry.usdCents))
+      if (!amountMatches(decision.amountMinor, decision.taxMinor, planEntry.usdCents, taxMode))
         return {
           httpStatus: 200,
           row: {

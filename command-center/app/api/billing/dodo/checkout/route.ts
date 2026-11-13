@@ -3,7 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isCreditExempt } from "@/lib/credits";
-import { RETURN_PATH_RE, parseCheckoutItem } from "@/lib/dodo";
+import { RETURN_PATH_RE, dodoSellsTo, parseCheckoutItem } from "@/lib/dodo";
 import { createDodoCheckout, dodoServer } from "@/lib/server/dodo-api";
 import { paymentsProvider } from "@/lib/server/payments";
 import { publicOrigin } from "@/lib/server/public-origin";
@@ -54,6 +54,10 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   const access = await requireOrgRole({ orgId }, "admin");
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
   if (isCreditExempt(orgId)) return NextResponse.json({ error: "exempt" }, { status: 409 });
+  // Test mode on a production database sells only to the allow-listed test workspaces (DODO_TEST_ORG_IDS).
+  if (!dodoSellsTo(cfg, orgId)) return NextResponse.json({ error: "test_mode_only" }, { status: 403 });
+  // The checkout's e-mail is the account's own and is not editable there (lib/server/dodo-api.ts).
+  if (!user.email) return NextResponse.json({ error: "email_required" }, { status: 409 });
 
   const productId = item.kind === "pack" ? cfg.packs[item.id] : cfg.plans[item.id];
   if (!productId) return NextResponse.json({ error: "not_on_sale" }, { status: 404 });
@@ -77,11 +81,12 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
     productId,
     orgId,
     userId: user.id,
-    email: user.email ?? null,
+    email: user.email,
     item,
-    // `item` tells the page which panel waits for the webhook (lib/dodo-client.ts takeDodoReturn); it decides no amount.
-    returnUrl: `${origin}${returnPath}?dodo=return&item=${item.kind}`,
-    cancelUrl: `${origin}${returnPath}?dodo=cancelled&item=${item.kind}`,
+    // Back through our own route (../return), which drops what Dodo appends (the customer's e-mail among it) and sends the
+    // browser on to the Credits page. `item` tells the page which panel waits for the webhook; it decides no amount.
+    returnUrl: `${origin}/api/billing/dodo/return?to=${encodeURIComponent(returnPath)}&dodo=return&item=${item.kind}`,
+    cancelUrl: `${origin}/api/billing/dodo/return?to=${encodeURIComponent(returnPath)}&dodo=cancelled&item=${item.kind}`,
   });
   if (!res.ok) {
     console.error(`[dodo-checkout] Dodo refused the checkout session (HTTP ${res.status})`);

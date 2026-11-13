@@ -57,6 +57,8 @@ const { DODO_CATALOG_PACKS, DODO_CATALOG_PLAN_PRICES, dodoBuyAccess, dodoHostedU
   "@/lib/dodo"
 );
 const { parseDodoReturn } = await import("@/lib/dodo-client");
+const { dodoMetadataKey, verifyDodoMetadata } = await import("../../supabase/functions/_shared/dodo");
+const dodoReturn = await import("../app/api/billing/dodo/return/route");
 const { sitePricing, sitePlanMatrix, siteBuyAccess } = await import("@/lib/server/payments");
 const { PRICING_ENV, resolvePricing } = await import("@/lib/pricing");
 const { PLAN_ENV, planMatrix } = await import("@/lib/plans");
@@ -72,7 +74,11 @@ const DODO_ENV = {
   DODO_PRODUCT_STARTER: PDT.starter,
   DODO_PRODUCT_STUDIO: PDT.studio,
   DODO_PLAN_PRO: PDT.pro,
+  DODO_METADATA_SECRET: "cc-metadata-secret-0123456789abcdef-xyz",
 };
+const TEST_ORG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+/** DODO_ENV with this test workspace allow-listed: test mode sells only to DODO_TEST_ORG_IDS. */
+const SELLING = { ...DODO_ENV, DODO_TEST_ORG_IDS: TEST_ORG };
 
 const fetchCalls: { url: string; init: RequestInit }[] = [];
 let dodoAnswer: () => Response = () => new Response(JSON.stringify({ session_id: "cks_1", checkout_url: "https://test.checkout.dodopayments.com/session/cks_1" }), { status: 200 });
@@ -83,7 +89,8 @@ function setEnv(vars: Record<string, string>) {
 
 beforeEach(() => {
   vi.unstubAllEnvs();
-  for (const k of ["PAYMENTS_PROVIDER", "APP_ORIGIN", ...Object.keys(DODO_ENV), "DODO_PRODUCT_CREATOR", "DODO_PLAN_CREATOR", "DODO_PLAN_STUDIO"]) vi.stubEnv(k, "");
+  for (const k of ["PAYMENTS_PROVIDER", "APP_ORIGIN", ...Object.keys(DODO_ENV), "DODO_TEST_ORG_IDS", "DODO_PRODUCT_CREATOR", "DODO_PLAN_CREATOR", "DODO_PLAN_STUDIO"])
+    vi.stubEnv(k, "");
   h.user = { id: "11111111-1111-4111-8111-111111111111", email: "owner@example.com" };
   h.orgId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   h.role = { ok: true, role: "owner" };
@@ -117,8 +124,9 @@ const sentBody = () => JSON.parse(String(fetchCalls[0].init.body)) as Record<str
 
 describe("PAYMENTS_PROVIDER", () => {
   it("is Dodo only for the exact word dodo; empty, paddle, a typo or another provider is Paddle", () => {
-    for (const v of [undefined, null, "", " ", "paddle", "PADDLE", "dod", "dodo-payments", "stripe", "dodo,paddle"]) expect(resolvePaymentsProvider(v)).toBe("paddle");
-    for (const v of ["dodo", " Dodo ", "DODO"]) expect(resolvePaymentsProvider(v)).toBe("dodo");
+    for (const v of [undefined, null, "", " ", "paddle", "PADDLE", "dod", "dodo-payments", "stripe", "dodo,paddle", " dodo", "dodo ", "Dodo", "DODO"])
+      expect(resolvePaymentsProvider(v)).toBe("paddle");
+    expect(resolvePaymentsProvider("dodo")).toBe("dodo");
   });
 
   it("unset or paddle: every page reads exactly what it read before the switch existed, Dodo settings or not", () => {
@@ -127,7 +135,7 @@ describe("PAYMENTS_PROVIDER", () => {
       matrix: planMatrix(null, PLAN_ENV, paddleClient),
       access: buyAccess(h.orgId, "owner", paddleConfig),
     };
-    for (const provider of ["", "paddle", "Paddle", "dodo-typo"]) {
+    for (const provider of ["", "paddle", "Paddle", "dodo-typo", "Dodo"]) {
       vi.stubEnv("PAYMENTS_PROVIDER", provider);
       setEnv(DODO_ENV); // configured but not switched on: ignored
       expect(sitePricing()).toStrictEqual(before.pricing);
@@ -139,7 +147,7 @@ describe("PAYMENTS_PROVIDER", () => {
 
   it("dodo: the catalog price, Dodo as the seller, the test badge, and no Paddle checkout", () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
-    setEnv(DODO_ENV);
+    setEnv(SELLING);
     const p = sitePricing();
     expect(p).toStrictEqual({
       source: "dodo",
@@ -153,6 +161,19 @@ describe("PAYMENTS_PROVIDER", () => {
     expect(siteBuyAccess(h.orgId, "owner")).toBe("allowed");
     expect(siteBuyAccess(h.orgId, "viewer")).toBe("admin_only");
     expect(siteBuyAccess("00000000-0000-0000-0000-000000000001", "owner")).toBe("hidden");
+  });
+
+  it("dodo in test mode: only an allow-listed workspace may buy; the public page still shows the catalog with the badge", () => {
+    vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
+    setEnv(DODO_ENV); // no DODO_TEST_ORG_IDS
+    expect(siteBuyAccess(h.orgId, "owner")).toBe("hidden");
+    expect(sitePricing().source).toBe("dodo");
+    vi.stubEnv("DODO_TEST_ORG_IDS", `bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb, ${TEST_ORG.toUpperCase()}`);
+    expect(siteBuyAccess(h.orgId, "owner")).toBe("allowed");
+    expect(siteBuyAccess("cccccccc-cccc-4ccc-8ccc-cccccccccccc", "owner")).toBe("hidden");
+    // Live sells to every workspace, the list or not.
+    setEnv({ DODO_PAYMENTS_ENV: "live", DODO_PAYMENTS_API_KEY: "dodo_live_" + "k".repeat(32), DODO_TEST_ORG_IDS: "" });
+    expect(siteBuyAccess("cccccccc-cccc-4ccc-8ccc-cccccccccccc", "owner")).toBe("allowed");
   });
 
   it("dodo but not configured: nothing on sale, never an invented price, and still not Paddle", () => {
@@ -196,10 +217,13 @@ describe("the Dodo settings (server only)", () => {
   it("needs a key and at least one product; test mode unless live is asked for", () => {
     expect(resolveDodoServer({})).toBeNull();
     expect(resolveDodoServer({ DODO_PAYMENTS_API_KEY: KEY })).toBeNull();
-    const cfg = resolveDodoServer({ DODO_PAYMENTS_API_KEY: KEY, DODO_PRODUCT_STARTER: PDT.starter })!;
+    const cfg = resolveDodoServer({ DODO_PAYMENTS_API_KEY: KEY, DODO_PRODUCT_STARTER: PDT.starter, DODO_METADATA_SECRET: DODO_ENV.DODO_METADATA_SECRET })!;
     expect(cfg.environment).toBe("test");
     expect(cfg.baseUrl).toBe("https://test.dodopayments.com");
     expect(resolveDodoServer({ ...DODO_ENV, DODO_PAYMENTS_ENV: "production" })).toBeNull();
+    // Without the metadata signing key the webhook would refuse every payment: nothing is sold.
+    expect(resolveDodoServer({ ...DODO_ENV, DODO_METADATA_SECRET: "" })).toBeNull();
+    expect(resolveDodoServer({ ...DODO_ENV, DODO_METADATA_SECRET: "x".repeat(31) })).toBeNull();
   });
 
   it("refuses a key of the other mode, so a half-done switch to live never opens the wrong checkout", () => {
@@ -220,6 +244,7 @@ describe("the Dodo settings (server only)", () => {
     const text = JSON.stringify(view);
     expect(text).not.toContain("pdt_");
     expect(text).not.toContain(KEY);
+    expect(text).not.toContain(DODO_ENV.DODO_METADATA_SECRET);
     expect(view).toEqual({ environment: "test", packs: [DODO_CATALOG_PACKS[0], DODO_CATALOG_PACKS[2]].map((p) => ({ ...p })), plans: ["pro"] });
   });
 
@@ -274,7 +299,7 @@ describe("POST /api/billing/dodo/checkout", () => {
 
   it("refuses a cross-origin request", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
-    setEnv(DODO_ENV);
+    setEnv(SELLING);
     const res = await checkout.POST(
       new Request("http://test.local/api/billing/dodo/checkout", {
         method: "POST",
@@ -289,37 +314,50 @@ describe("POST /api/billing/dodo/checkout", () => {
   it("creates a session for the configured product, with WHO in metadata and nothing the browser could price", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
     vi.stubEnv("APP_ORIGIN", "https://nightshift.example");
-    setEnv(DODO_ENV);
+    setEnv(SELLING);
     const res = await buy({ kind: "pack", id: "starter", return_path: "/all-channels/credits", amount: 1, product_id: "pdt_cheap000", quantity: 50 });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ url: "https://test.checkout.dodopayments.com/session/cks_1" });
     expect(fetchCalls).toHaveLength(1);
     expect(fetchCalls[0].url).toBe("https://test.dodopayments.com/checkouts");
     expect((fetchCalls[0].init.headers as Record<string, string>).Authorization).toBe(`Bearer ${KEY}`);
-    expect(sentBody()).toEqual({
+    const body = sentBody();
+    const meta = body.metadata as Record<string, string>;
+    expect(body).toEqual({
       product_cart: [{ product_id: PDT.starter, quantity: 1 }],
       customer: { email: "owner@example.com" },
-      metadata: { org_id: h.orgId, user_id: h.user!.id, nightshift_item: "pack:starter" },
-      return_url: "https://nightshift.example/all-channels/credits?dodo=return&item=pack",
-      cancel_url: "https://nightshift.example/all-channels/credits?dodo=cancelled&item=pack",
-      feature_flags: { allow_discount_code: false, allow_currency_selection: false },
+      metadata: { org_id: h.orgId, user_id: h.user!.id, nightshift_item: "pack:starter", ns_nonce: meta.ns_nonce, ns_sig: meta.ns_sig },
+      return_url: "https://nightshift.example/api/billing/dodo/return?to=%2Fall-channels%2Fcredits&dodo=return&item=pack",
+      cancel_url: "https://nightshift.example/api/billing/dodo/return?to=%2Fall-channels%2Fcredits&dodo=cancelled&item=pack",
+      feature_flags: { allow_discount_code: false, allow_currency_selection: false, allow_customer_editing_email: false, always_create_new_customer: true },
     });
+    // The metadata the webhook will verify: signed with the shared secret, a fresh nonce each time.
+    expect(meta.ns_nonce).toMatch(/^[0-9a-f]{32}$/);
+    expect(await verifyDodoMetadata(meta, dodoMetadataKey(DODO_ENV.DODO_METADATA_SECRET)!)).toEqual({
+      status: "valid",
+      orgId: h.orgId,
+      userId: h.user!.id,
+      item: "pack:starter",
+    });
+    expect((await verifyDodoMetadata(meta, dodoMetadataKey("another-secret-that-is-long-enough-000")!)).status).toBe("invalid");
+    await buy({ kind: "pack", id: "starter", return_path: "/all-channels/credits" });
+    expect((JSON.parse(String(fetchCalls[1].init.body)).metadata as Record<string, string>).ns_nonce).not.toBe(meta.ns_nonce);
     // No audit row: the database would refuse an action it does not list (tests/test_audit_actions.py).
     expect(h.audit).toEqual([]);
   });
 
   it("a plan gets no trial, whatever the product says", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
-    setEnv(DODO_ENV);
+    setEnv(SELLING);
     const res = await buy({ kind: "plan", id: "pro", return_path: "/my-channel/credits" });
     expect(res.status).toBe(200);
     expect(sentBody()).toMatchObject({ product_cart: [{ product_id: PDT.pro, quantity: 1 }], subscription_data: { trial_period_days: 0 } });
-    expect(String(sentBody().return_url)).toMatch(/\/my-channel\/credits\?dodo=return&item=plan$/);
+    expect(String(sentBody().return_url)).toMatch(/\/api\/billing\/dodo\/return\?to=%2Fmy-channel%2Fcredits&dodo=return&item=plan$/);
   });
 
   it("returns only to our own Credits page (no open redirect through Dodo)", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
-    setEnv(DODO_ENV);
+    setEnv(SELLING);
     for (const return_path of ["https://evil.example/credits", "//evil.example/x/credits", "/x/credits?next=//evil", "/x/settings", "/x/credits/../../y", ""]) {
       const res = await buy({ kind: "pack", id: "starter", return_path });
       expect(res.status, return_path).toBe(400);
@@ -329,7 +367,7 @@ describe("POST /api/billing/dodo/checkout", () => {
 
   it("refuses an item that is not ours or not on sale here", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
-    setEnv(DODO_ENV);
+    setEnv(SELLING);
     expect((await buy({ kind: "pack", id: PDT.starter, return_path: "/a/credits" })).status).toBe(400);
     expect((await buy({ kind: "pack", id: "creator", return_path: "/a/credits" })).status).toBe(404);
     expect((await buy({ kind: "plan", id: "creator", return_path: "/a/credits" })).status).toBe(404);
@@ -338,7 +376,7 @@ describe("POST /api/billing/dodo/checkout", () => {
 
   it("is refused to a signed-out visitor, a member who is not owner/admin, and the exempt operator organization", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
-    setEnv(DODO_ENV);
+    setEnv(SELLING);
     const ok = { kind: "pack", id: "starter", return_path: "/a/credits" };
     h.user = null;
     expect((await buy(ok)).status).toBe(401);
@@ -346,14 +384,22 @@ describe("POST /api/billing/dodo/checkout", () => {
     h.role = { ok: false, error: "forbidden", status: 403 };
     expect((await buy(ok)).status).toBe(403);
     h.role = { ok: true, role: "owner" };
+    h.user = { id: "11111111-1111-4111-8111-111111111111", email: "" };
+    expect((await buy(ok)).status).toBe(409); // no e-mail: the checkout's address is the account's own
+    h.user = { id: "11111111-1111-4111-8111-111111111111", email: "e@example.com" };
     h.orgId = "00000000-0000-0000-0000-000000000001";
     expect((await buy(ok)).status).toBe(409);
+    // Test mode: a workspace that is not allow-listed cannot open a checkout at all.
+    h.orgId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const refused = await buy(ok);
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toEqual({ error: "test_mode_only" });
     expect(fetchCalls).toHaveLength(0);
   });
 
   it("never opens a second subscription: a live one, or one that cannot be read, stops the checkout", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
-    setEnv(DODO_ENV);
+    setEnv(SELLING);
     h.subs = [{ id: 1 }];
     expect((await buy({ kind: "plan", id: "pro", return_path: "/a/credits" })).status).toBe(409);
     h.subs = [];
@@ -365,7 +411,7 @@ describe("POST /api/billing/dodo/checkout", () => {
   it("is not configured without a key, and a Dodo answer that is not Dodo's hosted URL is not followed", async () => {
     vi.stubEnv("PAYMENTS_PROVIDER", "dodo");
     expect((await buy({ kind: "pack", id: "starter", return_path: "/a/credits" })).status).toBe(503);
-    setEnv(DODO_ENV);
+    setEnv(SELLING);
     dodoAnswer = () => new Response(JSON.stringify({ checkout_url: "https://phish.example/pay" }), { status: 200 });
     expect((await buy({ kind: "pack", id: "starter", return_path: "/a/credits" })).status).toBe(502);
     dodoAnswer = () => new Response(JSON.stringify({ message: "nope" }), { status: 401 });
@@ -403,6 +449,36 @@ describe("POST /api/billing/portal", () => {
     h.subs = [{ provider: "dodo", provider_subscription_id: "sub_Iuaq622bbmmfOGrVTqdXv", provider_customer_id: "cus_TV52uJWWXt2yIoBBxpjaa", status: "active" }];
     dodoAnswer = () => new Response(JSON.stringify({ link: "https://phish.example/portal" }), { status: 200 });
     expect((await post(portal, "/api/billing/portal")).status).toBe(502);
+  });
+});
+
+describe("GET /api/billing/dodo/return", () => {
+  const back = (query: string) => dodoReturn.GET(new Request(`http://test.local/api/billing/dodo/return?${query}`));
+
+  it("drops everything Dodo appends but its status word, and goes on to our Credits page", async () => {
+    vi.stubEnv("APP_ORIGIN", "https://nightshift.example");
+    const res = await back("to=%2Fmy-channel%2Fcredits&dodo=return&item=pack&payment_id=pay_x&status=succeeded&email=buyer%40example.com");
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("https://nightshift.example/my-channel/credits?dodo=return&item=pack&status=succeeded");
+    expect(res.headers.get("location")).not.toContain("buyer");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("reads Dodo's parameters glued after a stray '?', and a cancel", async () => {
+    vi.stubEnv("APP_ORIGIN", "https://nightshift.example");
+    const glued = await back("to=%2Fmy-channel%2Fcredits&dodo=return&item=plan?subscription_id=sub_x&status=active&email=a%40b.c");
+    expect(glued.headers.get("location")).toBe("https://nightshift.example/my-channel/credits?dodo=return&item=plan&status=active");
+    const cancelled = await back("to=%2Fmy-channel%2Fcredits&dodo=cancelled&item=pack");
+    expect(cancelled.headers.get("location")).toBe("https://nightshift.example/my-channel/credits?dodo=cancelled&item=pack");
+  });
+
+  it("goes nowhere but our own Credits page", async () => {
+    for (const to of ["https%3A%2F%2Fevil.example%2Fcredits", "%2F%2Fevil.example%2Fx%2Fcredits", "%2Fx%2Fsettings", ""]) {
+      expect((await back(`to=${to}&dodo=return&item=pack`)).status, to).toBe(400);
+    }
+    expect((await back("to=%2Fx%2Fcredits&dodo=paid&item=pack")).status).toBe(400);
+    expect((await back("to=%2Fx%2Fcredits&dodo=return&item=gift")).status).toBe(400);
   });
 });
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DODO_BUYER_TERMS } from "@/lib/dodo";
 import { ArrowRight, ArrowUpRight, Check } from "lucide-react";
 import type { Dictionary, Locale } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
@@ -371,13 +372,10 @@ export function PricingView({
                 <Link href="/terms#credits" className="st-link">
                   {p.linkTerms}
                 </Link>
-                {/* Dodo's buyer terms have no URL in its documentation (open question in docs/DODO_SETUP.md): no link is better than a guessed one. */}
-                {!dodo && (
-                  <a href={PADDLE_BUYER_TERMS} target="_blank" rel="noopener noreferrer" className="st-link">
-                    {p.linkBuyerTerms}
-                    <ArrowUpRight aria-hidden />
-                  </a>
-                )}
+                <a href={dodo ? DODO_BUYER_TERMS : PADDLE_BUYER_TERMS} target="_blank" rel="noopener noreferrer" className="st-link">
+                  {dodo ? p.dodo.linkBuyerTerms : p.linkBuyerTerms}
+                  <ArrowUpRight aria-hidden />
+                </a>
                 <Link href="/privacy#processors" className="st-link">
                   {p.linkPrivacy}
                 </Link>

@@ -50,6 +50,7 @@ const DODO_ENV = {
   DODO_PRODUCT_CREATOR: "pdt_CREATORpack0000000000",
   DODO_PRODUCT_STUDIO: "pdt_STUDIOpack00000000000",
   DODO_PLAN_PRO: "pdt_PROplan00000000000000",
+  DODO_METADATA_SECRET: "cc-metadata-secret-0123456789abcdef-xyz",
 };
 const view = dodoView(resolveDodoServer(DODO_ENV))!;
 const liveView = { ...view, environment: "live" as const };
@@ -87,6 +88,8 @@ describe("/pricing", () => {
     expect(text).toContain("20,000 credits$160");
     expect(text).not.toMatch(/Paddle/);
     expect(screen.queryByText(t.pricing.linkBuyerTerms)).toBeNull();
+    // Dodo's own buyer terms are linked instead (owner-confirmed URL).
+    expect(screen.getByText(t.pricing.dodo.linkBuyerTerms).closest("a")?.getAttribute("href")).toBe("https://dodopayments.com/legal/buyer-terms");
   });
 
   it("with Dodo live: no test badge", () => {

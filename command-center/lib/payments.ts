@@ -5,7 +5,8 @@
  * The switch is the server-only variable PAYMENTS_PROVIDER, read per request
  * (lib/server/payments.ts), set from the repository variable of the same name
  * by deploy_web.yml like the NIGHTSHIFT_* switches. Only the exact word `dodo`
- * turns Dodo on; empty, `paddle`, or anything else is Paddle, so a typo can
+ * (lower case, nothing around it) turns Dodo on; empty, `paddle`, `Dodo`,
+ * ` dodo` or anything else is Paddle, so a typo can
  * never leave the site half on a provider nobody configured. Paddle's own
  * settings are then read exactly as before: the Paddle path does not consult
  * this module beyond "is it paddle".
@@ -21,7 +22,7 @@ import type { Pricing } from "@/lib/pricing";
 export type PaymentsProvider = "paddle" | "dodo";
 
 export function resolvePaymentsProvider(raw: string | undefined | null): PaymentsProvider {
-  return (raw ?? "").trim().toLowerCase() === "dodo" ? "dodo" : "paddle";
+  return raw === "dodo" ? "dodo" : "paddle";
 }
 
 /** A catalog price written the way an owner's display price is ("$10", "$12.50"), so every page formats it the same way. */

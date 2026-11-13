@@ -58,6 +58,10 @@ export interface DodoEnv {
   DODO_PLAN_CREATOR?: string;
   DODO_PLAN_PRO?: string;
   DODO_PLAN_STUDIO?: string;
+  /** 32+ characters, the SAME value as the dodo-webhook's: the key checkout metadata is signed with. */
+  DODO_METADATA_SECRET?: string;
+  /** In test mode, the only organizations that may buy (uuids, comma or space separated). */
+  DODO_TEST_ORG_IDS?: string;
 }
 
 const PACK_VAR: Record<DodoPackId, keyof DodoEnv> = {
@@ -81,6 +85,20 @@ export interface DodoServerConfig {
   packs: Partial<Record<DodoPackId, string>>;
   /** Our plan id -> Dodo product id. */
   plans: Record<string, string>;
+  /** The key the checkout metadata is signed with (server only, like the API key). */
+  metadataSecret: string;
+  /** Test mode: the organizations allowed to buy. Ignored live. */
+  testOrgs: ReadonlySet<string>;
+}
+
+/** Must equal DODO_METADATA_SECRET_MIN in supabase/functions/_shared/dodo.ts. */
+export const DODO_METADATA_SECRET_MIN = 32;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** DODO_TEST_ORG_IDS, as the webhook reads it (dodoTestOrgsFromEnv): uuids, lower case; anything else skipped. */
+export function parseTestOrgs(raw: string | undefined): ReadonlySet<string> {
+  return new Set((raw ?? "").split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter((x) => UUID_RE.test(x)));
 }
 
 /**
@@ -96,6 +114,9 @@ export function resolveDodoServer(env: DodoEnv): DodoServerConfig | null {
   const environment: DodoEnvironment | null = rawEnv === "" || rawEnv === "test" ? "test" : rawEnv === "live" ? "live" : null;
   const apiKey = (env.DODO_PAYMENTS_API_KEY ?? "").trim();
   if (!environment || apiKey.length < 20 || /\s/.test(apiKey)) return null;
+  // Without the signing key the webhook would refuse every payment this checkout opens: sell nothing instead.
+  const metadataSecret = env.DODO_METADATA_SECRET ?? "";
+  if (metadataSecret.length < DODO_METADATA_SECRET_MIN || /\s/.test(metadataSecret)) return null;
   if (/^dodo_(test|live)_/.test(apiKey) && apiKey.startsWith("dodo_live_") !== (environment === "live")) return null;
   const seen = new Set<string>();
   const take = (raw: string | undefined): string | null => {
@@ -115,7 +136,18 @@ export function resolveDodoServer(env: DodoEnv): DodoServerConfig | null {
     if (id && Number.isInteger(DODO_CATALOG_PLAN_PRICES[planId])) plans[planId] = id;
   }
   if (Object.keys(packs).length === 0 && Object.keys(plans).length === 0) return null;
-  return { apiKey, environment, baseUrl: DODO_BASE_URL[environment], packs, plans };
+  return { apiKey, environment, baseUrl: DODO_BASE_URL[environment], packs, plans, metadataSecret, testOrgs: parseTestOrgs(env.DODO_TEST_ORG_IDS) };
+}
+
+/**
+ * Whether this organization may buy here. Live: yes. Test mode on a real
+ * database: only the organizations in DODO_TEST_ORG_IDS — a test card is
+ * public (4242…), and a test purchase must not leave real credits or a plan
+ * on a customer's workspace. The webhook applies the same list.
+ */
+export function dodoSellsTo(cfg: DodoServerConfig | null, orgId: string | null | undefined): boolean {
+  if (!cfg || !orgId) return false;
+  return cfg.environment === "live" || cfg.testOrgs.has(orgId.toLowerCase());
 }
 
 /** What a page may know about Dodo: the mode (for the test badge) and WHICH items are on sale. No id, no key. */
@@ -123,6 +155,11 @@ export interface DodoView {
   environment: DodoEnvironment;
   packs: { id: DodoPackId; credits: number; usdCents: number }[];
   plans: string[];
+}
+
+/** The view for one organization's own pages: null (nothing on sale) where dodoSellsTo says no. */
+export function dodoViewFor(cfg: DodoServerConfig | null, orgId: string | null | undefined): DodoView | null {
+  return dodoSellsTo(cfg, orgId) ? dodoView(cfg) : null;
 }
 
 export function dodoView(cfg: DodoServerConfig | null): DodoView | null {
@@ -160,10 +197,44 @@ export function parseCheckoutItem(body: unknown): DodoCheckoutItem | null {
 /** The Credits page path the checkout returns to: /{channel}/credits, nothing else (no open redirect through Dodo). */
 export const RETURN_PATH_RE = /^\/[A-Za-z0-9_-]{1,80}\/credits$/;
 
-/** The metadata the session carries to the webhook. Ids only; the amount is never here. */
-export function dodoCheckoutMetadata(orgId: string, userId: string | null, item: DodoCheckoutItem): Record<string, string> {
-  return { org_id: orgId, ...(userId ? { user_id: userId } : {}), nightshift_item: `${item.kind}:${item.id}` };
+/** Must equal DODO_METADATA_VERSION in supabase/functions/_shared/dodo.ts. */
+export const DODO_METADATA_VERSION = "nightshift-dodo-v1";
+
+/**
+ * The text the checkout metadata's signature covers — byte for byte what the
+ * webhook's dodoMetadataMessage builds (a test signs here and verifies there).
+ */
+export function dodoMetadataMessage(f: { orgId: string; userId: string | null; item: string; nonce: string }): string {
+  return [DODO_METADATA_VERSION, f.orgId, f.userId ?? "", f.item, f.nonce].join("|");
 }
+
+/**
+ * The metadata the session carries to the webhook: ids only (the amount is
+ * never here), a nonce and their HMAC (lib/server/dodo-api.ts signs). The
+ * webhook names no organization from metadata it cannot verify: Dodo's static
+ * payment links let anyone write metadata_* fields.
+ */
+export function dodoCheckoutMetadata(
+  orgId: string,
+  userId: string | null,
+  item: DodoCheckoutItem,
+  nonce: string,
+  sig: string,
+): Record<string, string> {
+  return {
+    org_id: orgId,
+    ...(userId ? { user_id: userId } : {}),
+    nightshift_item: `${item.kind}:${item.id}`,
+    ns_nonce: nonce,
+    ns_sig: sig,
+  };
+}
+
+/** Dodo's buyer terms, linked where it sells (owner-confirmed 2026-11-13; on the live Terms since #700). */
+export const DODO_BUYER_TERMS = "https://dodopayments.com/legal/buyer-terms";
+
+/** The return statuses passed on to the page (Dodo's own words for a payment or a subscription); anything else is dropped. */
+export const RETURN_STATUS_RE = /^[a-z_]{1,40}$/;
 
 /** A URL Dodo answered with, only when it is https on Dodo's own domain (checkout_url, the portal link). */
 export function dodoHostedUrl(raw: unknown): string | null {

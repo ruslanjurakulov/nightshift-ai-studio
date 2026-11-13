@@ -7,6 +7,12 @@ import {
   StoreError,
   amountMatches,
   createDodoRestStore,
+  dodoMetadataKey,
+  dodoMetadataMessage,
+  dodoTaxModeFromEnv,
+  dodoTestOrgsFromEnv,
+  dodoWebhookModeFromEnv,
+  verifyDodoMetadata,
   dodoPackTableFromEnv,
   dodoPlanTableFromEnv,
   dodoSigningKey,
@@ -14,6 +20,8 @@ import {
   parseDodoSignatures,
   verifyDodoSignature,
   type DodoStore,
+  type DodoTaxMode,
+  type DodoWebhookMode,
   type DodoSubscriptionRow,
   type EventRecord,
   type EventStatus,
@@ -41,6 +49,7 @@ const PAY = "pay_gr4RizvMOXFJ6xca3y2tU";
 const PAY2 = "pay_secondPAYMENT000000000";
 const SUB = "sub_Iuaq622bbmmfOGrVTqdXv";
 const CUS = "cus_TV52uJWWXt2yIoBBxpjaa";
+const META_SECRET = "lab-metadata-secret-0123456789abcdef-xyz";
 const NOW_MS = 1_760_000_000_000;
 const NOW_S = NOW_MS / 1000;
 
@@ -50,6 +59,12 @@ const plans = dodoPlanTableFromEnv([["DODO_PLAN_PRO", PDT_PRO]], packs);
 function sign(id: string, ts: number, body: string, secret = SECRET): string {
   const key = Buffer.from(secret.replace(/^whsec_/, ""), "base64");
   return "v1," + createHmac("sha256", key).update(`${id}.${ts}.${body}`).digest("base64");
+}
+
+/** Metadata as the Command Center's checkout signs it (lib/server/dodo-api.ts signedCheckoutMetadata). */
+function signedMeta(org: string, user: string | null, item: string, secret = META_SECRET, nonce = "0123456789abcdef0123456789abcdef") {
+  const sig = createHmac("sha256", secret).update(dodoMetadataMessage({ orgId: org, userId: user, item, nonce })).digest("hex");
+  return { org_id: org, ...(user ? { user_id: user } : {}), nightshift_item: item, ns_nonce: nonce, ns_sig: sig };
 }
 
 function envelope(type: string, data: Record<string, unknown>, timestamp = "2026-11-12T10:00:00Z") {
@@ -71,7 +86,7 @@ function payment(overrides: Record<string, unknown> = {}) {
     settlement_currency: "USD",
     created_at: "2026-11-12T09:59:00Z",
     customer: { customer_id: CUS, email: "buyer@example.com", name: "Buyer", metadata: {} },
-    metadata: { org_id: ORG, user_id: USER },
+    metadata: signedMeta(ORG, USER, "pack:starter"),
     product_cart: [{ product_id: PDT_STARTER, quantity: 1 }],
     subscription_id: null,
     subscription_ids: [],
@@ -87,12 +102,13 @@ function payment(overrides: Record<string, unknown> = {}) {
   });
 }
 
-/** payment.succeeded for the first month of Pro ($49.00, tax-inclusive here). */
+/** payment.succeeded for the first month of Pro ($49.00 + $3.92 tax). */
 function planPayment(overrides: Record<string, unknown> = {}) {
   return payment({
     payment_id: PAY2,
-    total_amount: 4900,
-    tax: 817,
+    total_amount: 5292,
+    tax: 392,
+    metadata: signedMeta(ORG, USER, "plan:pro"),
     product_cart: null,
     subscription_id: SUB,
     subscription_ids: [SUB],
@@ -115,7 +131,7 @@ function subscription(type: string, overrides: Record<string, unknown> = {}, tim
       recurring_pre_tax_amount: 4900,
       tax_inclusive: true,
       customer: { customer_id: CUS, email: "buyer@example.com", name: "Buyer", metadata: {} },
-      metadata: { org_id: ORG, user_id: USER },
+      metadata: signedMeta(ORG, USER, "plan:pro"),
       previous_billing_date: "2026-11-12T10:00:00Z",
       next_billing_date: "2026-12-12T10:00:00Z",
       cancel_at_next_billing_date: false,
@@ -249,7 +265,19 @@ const quiet = { info() {}, warn() {}, error() {} };
 function deliver(
   store: FakeStore,
   body: string,
-  opts: { id?: string; ts?: number; signature?: string | null; secret?: string; method?: string; now?: number; headerId?: string | null } = {},
+  opts: {
+    id?: string;
+    ts?: number;
+    signature?: string | null;
+    secret?: string;
+    method?: string;
+    now?: number;
+    headerId?: string | null;
+    metadataSecret?: string;
+    taxMode?: DodoTaxMode | null;
+    mode?: DodoWebhookMode;
+    testOrgs?: string[];
+  } = {},
 ) {
   const id = opts.id ?? "msg_2KWPBgLlAfxdpx2AI54pPJ85f4W";
   const ts = opts.ts ?? NOW_S;
@@ -260,7 +288,18 @@ function deliver(
       rawBody: body,
       headers: { id: opts.headerId === undefined ? id : opts.headerId, timestamp: String(ts), signature },
     },
-    { secret: opts.secret ?? SECRET, packs, plans, store, now: () => opts.now ?? NOW_MS, log: quiet },
+    {
+      secret: opts.secret ?? SECRET,
+      metadataSecret: opts.metadataSecret ?? META_SECRET,
+      taxMode: opts.taxMode === undefined ? "exclusive" : opts.taxMode,
+      mode: opts.mode ?? "live",
+      testOrgs: new Set(opts.testOrgs ?? []),
+      packs,
+      plans,
+      store,
+      now: () => opts.now ?? NOW_MS,
+      log: quiet,
+    },
   );
 }
 
@@ -292,13 +331,25 @@ describe("the catalog", () => {
     expect([...t.entries()]).toEqual([[PDT_PRO, { planId: "pro", usdCents: 4900 }]]);
   });
 
-  it("accepts the two tax shapes and nothing else", () => {
-    expect(amountMatches(1000, 167, 1000)).toBe(true); // tax-inclusive
-    expect(amountMatches(1080, 80, 1000)).toBe(true); // tax-exclusive
-    expect(amountMatches(1080, null, 1000)).toBe(false);
-    expect(amountMatches(999, 0, 1000)).toBe(false);
-    expect(amountMatches(1080, 79, 1000)).toBe(false);
-    expect(amountMatches(0, 0, 0)).toBe(false);
+  it("checks exactly the ONE tax shape the deployment pins (DODO_TAX_MODE)", () => {
+    expect(amountMatches(1000, 167, 1000, "inclusive")).toBe(true);
+    expect(amountMatches(1000, null, 1000, "inclusive")).toBe(true);
+    expect(amountMatches(1080, 80, 1000, "inclusive")).toBe(false); // the exclusive shape is not accepted inclusive
+    expect(amountMatches(1000, 1001, 1000, "inclusive")).toBe(false); // tax larger than the total
+    expect(amountMatches(1080, 80, 1000, "exclusive")).toBe(true);
+    expect(amountMatches(1000, null, 1000, "exclusive")).toBe(true); // no tax collected
+    expect(amountMatches(1000, 167, 1000, "exclusive")).toBe(false); // the inclusive shape is not accepted exclusive
+    expect(amountMatches(1080, null, 1000, "exclusive")).toBe(false);
+    expect(amountMatches(999, 0, 1000, "exclusive")).toBe(false);
+    expect(amountMatches(1080, 79, 1000, "exclusive")).toBe(false);
+    expect(amountMatches(0, 0, 0, "exclusive")).toBe(false);
+    expect([dodoTaxModeFromEnv("inclusive"), dodoTaxModeFromEnv("exclusive"), dodoTaxModeFromEnv(""), dodoTaxModeFromEnv("Inclusive"), dodoTaxModeFromEnv(undefined)]).toEqual([
+      "inclusive",
+      "exclusive",
+      null,
+      null,
+      null,
+    ]);
   });
 });
 
@@ -375,7 +426,7 @@ describe("signature (Standard Webhooks)", () => {
     expect(await verifyDodoSignature(body, headers, key, NOW_S)).toBe("missing");
     const res = await handleDodoWebhook(
       { method: "POST", rawBody: body, headers },
-      { secret: SECRET, packs, plans, store, now: () => NOW_MS, log: quiet },
+      { secret: SECRET, metadataSecret: META_SECRET, taxMode: "exclusive", mode: "live", testOrgs: new Set(), packs, plans, store, now: () => NOW_MS, log: quiet },
     );
     expect(res.status).toBe(401);
     expect(store.credited.size).toBe(0);
@@ -440,12 +491,17 @@ describe("idempotency", () => {
 
 describe("payment.succeeded -> a credit pack", () => {
   it.each([
-    ["tax-exclusive ($10 + tax)", { total_amount: 1080, tax: 80 }, 1000],
-    ["tax-inclusive ($10 with tax inside)", { total_amount: 1000, tax: 167 }, 1000],
-    ["two Studio packs", { product_cart: [{ product_id: PDT_STUDIO, quantity: 2 }], total_amount: 32000, tax: 0 }, 40000],
-  ])("credits %s", async (_what, over, credits) => {
+    ["tax-exclusive ($10 + tax) on an exclusive deployment", { total_amount: 1080, tax: 80 }, 1000, "exclusive"],
+    ["tax-inclusive ($10 with tax inside) on an inclusive deployment", { total_amount: 1000, tax: 167 }, 1000, "inclusive"],
+    [
+      "a Studio pack, no tax",
+      { product_cart: [{ product_id: PDT_STUDIO, quantity: 1 }], total_amount: 16000, tax: 0, metadata: signedMeta(ORG, USER, "pack:studio") },
+      20000,
+      "exclusive",
+    ],
+  ] as const)("credits %s", async (_what, over, credits, taxMode) => {
     const store = new FakeStore();
-    const res = await deliver(store, payment(over));
+    const res = await deliver(store, payment(over), { taxMode });
     expect(res.body).toMatchObject({ status: "processed" });
     expect(store.credited.get(PAY)?.credits).toBe(credits);
     expect(store.events.get("msg_2KWPBgLlAfxdpx2AI54pPJ85f4W")).toMatchObject({ orgId: ORG, transactionId: PAY, currency: "USD", credits });
@@ -463,6 +519,8 @@ describe("payment.succeeded -> a credit pack", () => {
     ["a pack beside a stranger's product", { product_cart: [{ product_id: PDT_STARTER, quantity: 1 }, { product_id: "pdt_x000", quantity: 1 }] }],
     ["no product at all", { product_cart: null }],
     ["a zero total", { total_amount: 0, tax: 0 }],
+    ["the inclusive shape on an exclusive deployment", { total_amount: 1000, tax: 167 }],
+    ["two packs on one line", { product_cart: [{ product_id: PDT_STARTER, quantity: 2 }], total_amount: 2000, tax: 0 }],
     ["an unreadable tax", { tax: "80" }],
     ["a malformed payment id", { payment_id: "txn_01paddle00000000000000" }],
   ])("refuses %s (recorded rejected, nothing credited)", async (_what, over) => {
@@ -552,7 +610,7 @@ describe("subscriptions", () => {
   it("refuses a plan payment whose metadata names another organization than the subscription", async () => {
     const store = new FakeStore();
     await deliver(store, subscription("subscription.active"), { id: "msg_sub" });
-    const res = await deliver(store, planPayment({ metadata: { org_id: OTHER_ORG } }), { id: "msg_pay" });
+    const res = await deliver(store, planPayment({ metadata: signedMeta(OTHER_ORG, USER, "plan:pro") }), { id: "msg_pay" });
     expect(res.body).toMatchObject({ status: "rejected" });
     expect(store.grants).toEqual([]);
   });
@@ -675,6 +733,134 @@ describe("refunds and disputes", () => {
     await deliver(store, dispute("dispute.lost"), { id: "msg_dis" });
     const taken = [...store.refunds.values()].reduce((n, r) => n + (r.amount ?? 0), 0);
     expect(taken).toBe(1000);
+  });
+});
+
+describe("signed metadata (Dodo's static links let anyone write metadata)", () => {
+  const forged = [
+    ["unsigned (as a metadata_org_id= link would write it)", { org_id: ORG, user_id: USER }],
+    ["signed with another secret", signedMeta(ORG, USER, "pack:starter", "another-secret-that-is-long-enough-000")],
+    ["signed for one organization, naming another", { ...signedMeta(ORG, USER, "pack:starter"), org_id: OTHER_ORG }],
+    ["signed for one user, naming another", { ...signedMeta(ORG, USER, "pack:starter"), user_id: "22222222-2222-4222-8222-222222222222" }],
+    ["with a fresh nonce under the old signature", { ...signedMeta(ORG, USER, "pack:starter"), ns_nonce: "f".repeat(32) }],
+    ["without its signature", { ...signedMeta(ORG, USER, "pack:starter"), ns_sig: undefined }],
+    ["with a malformed signature", { ...signedMeta(ORG, USER, "pack:starter"), ns_sig: "zz" }],
+    ["in upper case", signedMeta(ORG.toUpperCase(), USER, "pack:starter")],
+  ] as const;
+
+  it.each(forged)("a pack payment with metadata %s credits nothing and names no organization", async (_what, metadata) => {
+    const store = new FakeStore();
+    const res = await deliver(store, payment({ metadata }));
+    expect(res.body).toMatchObject({ status: "rejected" });
+    expect(store.credited.size).toBe(0);
+    expect(store.events.get("msg_2KWPBgLlAfxdpx2AI54pPJ85f4W")?.orgId ?? null).toBeNull();
+  });
+
+  it("a pack payment whose signed item is another pack credits nothing", async () => {
+    const store = new FakeStore();
+    expect((await deliver(store, payment({ metadata: signedMeta(ORG, USER, "pack:studio") }))).body).toMatchObject({ status: "rejected" });
+    expect(store.credited.size).toBe(0);
+  });
+
+  it("a correctly signed payment is credited to the organization it names", async () => {
+    const store = new FakeStore();
+    expect((await deliver(store, payment({ metadata: signedMeta(OTHER_ORG, null, "pack:starter") }))).body).toMatchObject({ status: "processed" });
+    expect(store.credited.get(PAY)).toEqual({ org: OTHER_ORG, credits: 1000 });
+  });
+
+  it.each(forged)("a subscription with metadata %s is not recorded: no plan, no customer, no portal for anyone", async (_what, metadata) => {
+    const store = new FakeStore();
+    const res = await deliver(store, subscription("subscription.active", { metadata }));
+    expect(res.body).toMatchObject({ status: "rejected" });
+    expect(store.subs.size).toBe(0);
+  });
+
+  it("a later event of a recorded subscription without metadata is applied to the recorded organization only", async () => {
+    const store = new FakeStore();
+    await deliver(store, subscription("subscription.active"), { id: "msg_1" });
+    await deliver(store, subscription("subscription.updated", { metadata: {}, cancel_at_next_billing_date: true }), { id: "msg_2" });
+    expect(store.subs.get(SUB)).toMatchObject({ orgId: ORG, cancelAtPeriodEnd: true });
+    // The same subscription, signed for another organization: refused, the row stays ORG's.
+    const other = await deliver(store, subscription("subscription.updated", { metadata: signedMeta(OTHER_ORG, null, "plan:pro") }), { id: "msg_3" });
+    expect(other.body).toMatchObject({ status: "rejected" });
+    expect(store.subs.get(SUB)?.orgId).toBe(ORG);
+  });
+
+  it("a forged first payment of a forged subscription waits for a subscription that never lands", async () => {
+    const store = new FakeStore();
+    await deliver(store, subscription("subscription.active", { metadata: { org_id: OTHER_ORG } }), { id: "msg_sub" });
+    expect((await deliver(store, planPayment({ metadata: { org_id: OTHER_ORG } }), { id: "msg_pay" })).body).toMatchObject({ status: "rejected" });
+    expect(store.grants).toEqual([]);
+  });
+
+  it("verifies in constant time with the deployment's key, and says why it refuses", async () => {
+    const key = dodoMetadataKey(META_SECRET)!;
+    expect(await verifyDodoMetadata(signedMeta(ORG, USER, "plan:pro"), key)).toEqual({ status: "valid", orgId: ORG, userId: USER, item: "plan:pro" });
+    expect(await verifyDodoMetadata({}, key)).toEqual({ status: "absent" });
+    expect(await verifyDodoMetadata(null, key)).toEqual({ status: "absent" });
+    expect(await verifyDodoMetadata({ org_id: ORG }, key)).toMatchObject({ status: "invalid" });
+    expect(dodoMetadataKey("short")).toBeNull();
+    expect(dodoMetadataKey("x".repeat(31))).toBeNull();
+    expect(dodoMetadataKey("with space " + "x".repeat(32))).toBeNull();
+  });
+
+  it("refuses every delivery until DODO_METADATA_SECRET and DODO_TAX_MODE are set (Dodo retries)", async () => {
+    const store = new FakeStore();
+    expect((await deliver(store, payment(), { metadataSecret: "" })).status).toBe(500);
+    expect((await deliver(store, payment(), { taxMode: null })).status).toBe(500);
+    expect(store.credited.size).toBe(0);
+    expect(store.events.size).toBe(0);
+  });
+});
+
+describe("test mode on a production database", () => {
+  it("is the default: only `live` exactly is live", () => {
+    expect(["live", "Live", "", "test", "production", undefined].map((v) => dodoWebhookModeFromEnv(v))).toEqual(["live", "test", "test", "test", "test", "test"]);
+    expect([...dodoTestOrgsFromEnv(`${ORG.toUpperCase()}, nope ${OTHER_ORG}`)]).toEqual([ORG, OTHER_ORG]);
+  });
+
+  it("credits nothing to an organization that is not allow-listed: a public test card buys no real credits", async () => {
+    const store = new FakeStore();
+    const res = await deliver(store, payment(), { mode: "test", testOrgs: [] });
+    expect(res.body).toMatchObject({ status: "rejected" });
+    expect(store.events.get("msg_2KWPBgLlAfxdpx2AI54pPJ85f4W")?.detail).toMatch(/DODO_TEST_ORG_IDS/);
+    expect(store.credited.size).toBe(0);
+  });
+
+  it("records no plan for an organization that is not allow-listed", async () => {
+    const store = new FakeStore();
+    expect((await deliver(store, subscription("subscription.active"), { mode: "test", testOrgs: [OTHER_ORG] })).body).toMatchObject({ status: "rejected" });
+    expect(store.subs.size).toBe(0);
+  });
+
+  it("works end to end for an allow-listed test workspace, refunds included", async () => {
+    const store = new FakeStore();
+    const t = { mode: "test" as const, testOrgs: [ORG] };
+    expect((await deliver(store, payment(), { ...t, id: "msg_buy" })).body).toMatchObject({ status: "processed" });
+    await deliver(store, subscription("subscription.active"), { ...t, id: "msg_sub" });
+    expect((await deliver(store, planPayment(), { ...t, id: "msg_pay" })).body).toMatchObject({ status: "processed" });
+    expect((await deliver(store, refund(), { ...t, id: "msg_ref" })).body).toMatchObject({ status: "processed" });
+    expect(store.refunds.get("dodo_refund:ref_0001")?.amount).toBe(1000);
+  });
+});
+
+describe("refunds and disputes never count the same money twice", () => {
+  it("a dispute resolved by Visa RDR (a refund) takes nothing by itself and is left for a person", async () => {
+    const store = new FakeStore();
+    await deliver(store, payment(), { id: "msg_buy" });
+    const res = await deliver(store, dispute("dispute.lost", { is_resolved_by_rdr: true }), { id: "msg_dis" });
+    expect(res.body).toMatchObject({ status: "rejected" });
+    expect(store.refunds.size).toBe(0);
+  });
+
+  it("a partial refund, then a lost dispute of the whole payment, takes back only the remainder", async () => {
+    const store = new FakeStore();
+    await deliver(store, payment(), { id: "msg_buy" });
+    await deliver(store, refund({ is_partial: true, amount: 540 }), { id: "msg_ref" });
+    await deliver(store, dispute("dispute.lost", { amount: "1080" }), { id: "msg_dis" });
+    expect(store.refunds.get("dodo_refund:ref_0001")?.amount).toBe(500);
+    expect(store.refunds.get("dodo_dispute:dis_0001")?.amount).toBe(500);
+    expect([...store.refunds.values()].reduce((n, r) => n + (r.amount ?? 0), 0)).toBe(1000);
   });
 });
 

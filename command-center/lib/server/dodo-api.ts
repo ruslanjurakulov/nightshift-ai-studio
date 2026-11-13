@@ -1,8 +1,10 @@
 import "server-only";
+import { createHmac, randomBytes } from "node:crypto";
 import { fetchWithTimeout } from "@/lib/server/fetch-timeout";
 import {
   dodoCheckoutMetadata,
   dodoHostedUrl,
+  dodoMetadataMessage,
   dodoView,
   resolveDodoServer,
   type DodoCheckoutItem,
@@ -29,12 +31,29 @@ export function dodoServer(): DodoServerConfig | null {
     DODO_PLAN_CREATOR: process.env.DODO_PLAN_CREATOR,
     DODO_PLAN_PRO: process.env.DODO_PLAN_PRO,
     DODO_PLAN_STUDIO: process.env.DODO_PLAN_STUDIO,
+    DODO_METADATA_SECRET: process.env.DODO_METADATA_SECRET,
+    DODO_TEST_ORG_IDS: process.env.DODO_TEST_ORG_IDS,
   });
 }
 
 /** The mode DODO_PAYMENTS_ENV names (test unless it says live), for the badge even while nothing is configured. */
 export function dodoEnvironment(): "test" | "live" {
   return (process.env.DODO_PAYMENTS_ENV ?? "").trim().toLowerCase() === "live" ? "live" : "test";
+}
+
+/**
+ * The checkout metadata, signed: a fresh 128-bit nonce and the hex HMAC-SHA256
+ * of dodoMetadataMessage under DODO_METADATA_SECRET. The webhook verifies it in
+ * constant time and names no organization without it.
+ */
+export function signedCheckoutMetadata(cfg: DodoServerConfig, orgId: string, userId: string | null, item: DodoCheckoutItem): Record<string, string> {
+  const nonce = randomBytes(16).toString("hex");
+  const org = orgId.toLowerCase();
+  const user = userId ? userId.toLowerCase() : null;
+  const sig = createHmac("sha256", cfg.metadataSecret)
+    .update(dodoMetadataMessage({ orgId: org, userId: user, item: `${item.kind}:${item.id}`, nonce }))
+    .digest("hex");
+  return dodoCheckoutMetadata(org, user, item, nonce, sig);
 }
 
 /** What a page may show about Dodo (no key, no product id), or null when it is not configured. */
@@ -69,16 +88,24 @@ async function dodo(cfg: DodoServerConfig, path: string, init: RequestInit, doFe
  */
 export async function createDodoCheckout(
   cfg: DodoServerConfig,
-  args: { productId: string; orgId: string; userId: string | null; email: string | null; item: DodoCheckoutItem; returnUrl: string; cancelUrl: string },
+  args: { productId: string; orgId: string; userId: string | null; email: string; item: DodoCheckoutItem; returnUrl: string; cancelUrl: string },
   doFetch: FetchLike = fetchWithTimeout,
 ): Promise<{ ok: true; url: string } | { ok: false; status: number }> {
   const body = {
     product_cart: [{ product_id: args.productId, quantity: 1 }],
-    ...(args.email ? { customer: { email: args.email } } : {}),
-    metadata: dodoCheckoutMetadata(args.orgId, args.userId, args.item),
+    // The signed-in user's own address, not editable in the checkout, and always a NEW Dodo customer: Dodo otherwise
+    // attaches a session to an existing customer found by e-mail, so someone typing a victim's address could end up on
+    // the victim's customer (and its portal).
+    customer: { email: args.email },
+    metadata: signedCheckoutMetadata(cfg, args.orgId, args.userId, args.item),
     return_url: args.returnUrl,
     cancel_url: args.cancelUrl,
-    feature_flags: { allow_discount_code: false, allow_currency_selection: false },
+    feature_flags: {
+      allow_discount_code: false,
+      allow_currency_selection: false,
+      allow_customer_editing_email: false,
+      always_create_new_customer: true,
+    },
     // No trial, whatever the product in Dodo says: "trial_period_days ... overrides the trial period set in the product's
     // price" (checkout-sessions/create). A trial would give a plan's entitlements before anything was paid; credits come
     // only from a paid period (the webhook), so the owner's catalog has no trials (docs/BILLING_PLANS.md 3.2).

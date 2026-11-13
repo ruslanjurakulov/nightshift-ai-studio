@@ -14,10 +14,10 @@ import { UNIT_USD, chargePerUnit, coerceTransactions, inviteCardShown, isCreditE
 import { creditsEnforced, readCreditAccount, readCreditPriceList, readCreditPrices } from "@/lib/server/credits";
 import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, balanceSplit, generationRates, planMatrix, subscribeAccess } from "@/lib/plans";
-import { DODO_CATALOG_PLAN_PRICES, dodoBuyAccess } from "@/lib/dodo";
+import { DODO_CATALOG_PLAN_PRICES, dodoBuyAccess, dodoViewFor } from "@/lib/dodo";
 import { withDodoPlans } from "@/lib/payments";
 import { paymentsProvider } from "@/lib/server/payments";
-import { dodoPageView } from "@/lib/server/dodo-api";
+import { dodoServer } from "@/lib/server/dodo-api";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { readSellableModels } from "@/lib/creative/registry";
 import { planValue, readBillingSummary, readCreditLots, readPlanCatalog } from "@/lib/server/plans";
@@ -132,7 +132,10 @@ export default async function CreditsPage() {
   // PAYMENTS_PROVIDER (lib/payments.ts): `paddle` (empty, the default) reads exactly what it always read; `dodo` sells
   // the same packs and plans through Dodo's checkout instead, and Paddle's checkout is not offered at all.
   const dodoMode = paymentsProvider() === "dodo";
-  const dodo = dodoMode ? dodoPageView() : null;
+  // Test mode sells only to the allow-listed test workspaces (DODO_TEST_ORG_IDS); every other one sees nothing on sale.
+  const dodoCfg = dodoMode ? dodoServer() : null;
+  const dodo = dodoMode ? dodoViewFor(dodoCfg, orgId) : null;
+  const dodoTestOnly = dodoMode && dodoCfg !== null && dodo === null;
   const buy = dodoMode ? dodoBuyAccess(orgId, org.current.role, dodo) : buyAccess(orgId, org.current.role, paddleConfig);
   const catalog = planValue(catalogRead);
   const summary = planValue(summaryRead);
@@ -266,7 +269,9 @@ export default async function CreditsPage() {
             {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
           </p>
           {!(dodoMode ? dodo : paddleConfig) && !exempt && (
-            <p className="tnum text-xs text-[var(--color-muted)]">{dodoMode ? t.credits.buy.notConfiguredDodo : t.credits.buy.notConfigured}</p>
+            <p className="tnum text-xs text-[var(--color-muted)]">
+              {dodoTestOnly ? t.credits.buy.testOnlyDodo : dodoMode ? t.credits.buy.notConfiguredDodo : t.credits.buy.notConfigured}
+            </p>
           )}
           {rpcActive ? (
             <>

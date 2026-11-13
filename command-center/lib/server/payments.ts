@@ -1,11 +1,11 @@
 import "server-only";
 import type { Role } from "@/lib/auth/roles-shared";
 import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
-import { DODO_CATALOG_PLAN_PRICES, dodoBuyAccess } from "@/lib/dodo";
+import { DODO_CATALOG_PLAN_PRICES, dodoBuyAccess, dodoViewFor } from "@/lib/dodo";
 import { dodoPricing, resolvePaymentsProvider, withDodoPlans, type PaymentsProvider } from "@/lib/payments";
 import { PLAN_ENV, planMatrix, type PlanCatalog, type PlanMatrix } from "@/lib/plans";
 import { PRICING_ENV, resolvePricing, type Pricing } from "@/lib/pricing";
-import { dodoEnvironment, dodoPageView } from "@/lib/server/dodo-api";
+import { dodoEnvironment, dodoPageView, dodoServer } from "@/lib/server/dodo-api";
 
 /**
  * PAYMENTS_PROVIDER, read per request (a restart of the web container is
@@ -27,12 +27,17 @@ export function sitePricing(): Pricing {
   return paymentsProvider() === "dodo" ? dodoPricing(dodoPageView(), dodoEnvironment()) : resolvePricing(PRICING_ENV, paddleConfig);
 }
 
-export function sitePlanMatrix(catalog: PlanCatalog | null, locale: string): PlanMatrix | null {
-  return paymentsProvider() === "dodo"
-    ? withDodoPlans(planMatrix(catalog, PLAN_ENV, null), dodoPageView(), DODO_CATALOG_PLAN_PRICES, locale)
-    : planMatrix(catalog, PLAN_ENV, paddleClient);
+/**
+ * The plan matrix. `orgId` given (an organization's own page): with Dodo in test
+ * mode, plans are on sale only to an allow-listed organization (dodoViewFor).
+ * Omitted (the public pages): what is on sale here at all.
+ */
+export function sitePlanMatrix(catalog: PlanCatalog | null, locale: string, orgId?: string | null): PlanMatrix | null {
+  if (paymentsProvider() !== "dodo") return planMatrix(catalog, PLAN_ENV, paddleClient);
+  const view = orgId === undefined ? dodoPageView() : dodoViewFor(dodoServer(), orgId);
+  return withDodoPlans(planMatrix(catalog, PLAN_ENV, null), view, DODO_CATALOG_PLAN_PRICES, locale);
 }
 
 export function siteBuyAccess(orgId: string | null | undefined, role: Role | null | undefined): "hidden" | "admin_only" | "allowed" {
-  return paymentsProvider() === "dodo" ? dodoBuyAccess(orgId, role, dodoPageView()) : buyAccess(orgId, role, paddleConfig);
+  return paymentsProvider() === "dodo" ? dodoBuyAccess(orgId, role, dodoViewFor(dodoServer(), orgId)) : buyAccess(orgId, role, paddleConfig);
 }

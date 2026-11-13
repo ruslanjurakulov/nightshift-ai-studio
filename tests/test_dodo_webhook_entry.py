@@ -1,7 +1,7 @@
 """Selling through Dodo Payments: the properties that would quietly break if someone edited the files later.
 
 The behaviour is tested where it runs: the webhook's logic and the checkout route in the Command Center's vitest suite
-(command-center/tests/dodo-webhook.test.ts, dodo-checkout.test.ts, dodo-ui.test.tsx) and migration 0143 against a real
+(command-center/tests/dodo-webhook.test.ts, dodo-checkout.test.ts, dodo-ui.test.tsx) and migration 0144 against a real
 PostgreSQL (tests/security/test_sec_dodo_payments.py). These pin:
 
 * the webhook secret or the service key becoming something the Command Center reads, or the Dodo API key being read
@@ -44,6 +44,8 @@ class EdgeFunction(unittest.TestCase):
 
     def test_the_secret_and_the_service_key_are_read_only_here(self):
         self.assertIn('env("DODO_WEBHOOK_SECRET")', ENTRY)
+        for name in ("DODO_METADATA_SECRET", "DODO_TAX_MODE", "DODO_WEBHOOK_MODE", "DODO_TEST_ORG_IDS"):
+            self.assertIn(f'env("{name}")', ENTRY)
         self.assertIn('env("SUPABASE_SERVICE_ROLE_KEY")', ENTRY)
         # Nothing is logged but names and reasons: no template that interpolates the secret, a header or the body.
         for line in ENTRY.splitlines() + SHARED.splitlines():
@@ -67,9 +69,10 @@ class CommandCenter(unittest.TestCase):
                 self.assertNotIn("DODO_WEBHOOK_SECRET", text)
                 self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY", text)
 
-    def test_the_dodo_api_key_is_read_in_one_server_only_module(self):
-        readers = [path.relative_to(APP).as_posix() for path, text in app_sources() if "process.env.DODO_PAYMENTS_API_KEY" in text]
-        self.assertEqual(readers, ["lib/server/dodo-api.ts"])
+    def test_the_dodo_api_key_and_the_metadata_secret_are_read_in_one_server_only_module(self):
+        for name in ("DODO_PAYMENTS_API_KEY", "DODO_METADATA_SECRET"):
+            readers = [path.relative_to(APP).as_posix() for path, text in app_sources() if f"process.env.{name}" in text]
+            self.assertEqual(readers, ["lib/server/dodo-api.ts"], name)
         self.assertTrue((APP / "lib" / "server" / "dodo-api.ts").read_text(encoding="utf-8").startswith('import "server-only";'))
         self.assertTrue((APP / "lib" / "server" / "payments.ts").read_text(encoding="utf-8").startswith('import "server-only";'))
 
@@ -87,6 +90,9 @@ class Deploy(unittest.TestCase):
         for name in ("DODO_PRODUCT_STARTER", "DODO_PRODUCT_CREATOR", "DODO_PRODUCT_STUDIO", "DODO_PLAN_CREATOR", "DODO_PLAN_PRO", "DODO_PLAN_STUDIO", "DODO_PAYMENTS_ENV"):
             self.assertIn(f"WEBENV_{name}: ${{{{ vars.{name} }}}}\n", DEPLOY)
         self.assertNotIn("vars.DODO_PAYMENTS_API_KEY", DEPLOY)
+        self.assertIn("WEBENV_DODO_METADATA_SECRET: ${{ secrets.DODO_METADATA_SECRET }}\n", DEPLOY)
+        self.assertNotIn("vars.DODO_METADATA_SECRET", DEPLOY)
+        self.assertIn("WEBENV_DODO_TEST_ORG_IDS: ${{ vars.DODO_TEST_ORG_IDS }}\n", DEPLOY)
         self.assertNotIn("DODO_WEBHOOK_SECRET", DEPLOY)
         self.assertRegex(ENV_EXAMPLE, r"(?m)^PAYMENTS_PROVIDER=$")
 
@@ -94,7 +100,8 @@ class Deploy(unittest.TestCase):
 class SetupGuide(unittest.TestCase):
     def test_deploys_without_jwt_verification_and_sets_the_secrets_by_name(self):
         self.assertIn("supabase functions deploy dodo-webhook --no-verify-jwt", DOCS)
-        for name in ("DODO_WEBHOOK_SECRET", "DODO_PRODUCT_STARTER", "DODO_PLAN_PRO", "DODO_PAYMENTS_API_KEY", "PAYMENTS_PROVIDER"):
+        for name in ("DODO_WEBHOOK_SECRET", "DODO_PRODUCT_STARTER", "DODO_PLAN_PRO", "DODO_PAYMENTS_API_KEY", "PAYMENTS_PROVIDER",
+                     "DODO_METADATA_SECRET", "DODO_TAX_MODE", "DODO_WEBHOOK_MODE", "DODO_TEST_ORG_IDS"):
             self.assertIn(name, DOCS)
         self.assertNotRegex(DOCS, r"whsec_[A-Za-z0-9+/]{8,}|dodo_(test|live)_[A-Za-z0-9]{8,}")
 
