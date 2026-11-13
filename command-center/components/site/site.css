@@ -2169,7 +2169,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 /* A config block under the three steps, the card's full width; its lines scroll sideways (components/docs/Field.tsx). */
 .st-steps2-code { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 16px 20px 20px; border-top: 1px solid var(--ns-rule); }
 .st-steps2-code-label { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 14.5px; font-weight: 600; color: var(--ns-text); }
-.st-steps2-code-label .st-circle { width: 24px; height: 24px; font-size: 13px; }
+.st-steps2-code-label .st-circle { width: 24px; height: 24px; font-size: 14px; }
 /* The steps stay their own height, so the block sits right under them; the card's spare height (it is as tall as its tallest
    tab, so it never jumps) goes to the block, not to an empty band under the footnotes. */
 @media (min-width: 768px) {

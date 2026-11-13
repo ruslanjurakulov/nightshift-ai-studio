@@ -536,12 +536,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx-motion-btn svg { width: 16px; height: 16px; }
 .nx-motion-btn[aria-pressed="true"] { color: var(--ns-amber-ink); border-color: var(--ns-amber); background: var(--ns-select); }
 .nx-motion-btn:hover { color: var(--ns-text); border-color: var(--ns-rule-strong); }
-/* From 1024px the home hero is dark in both themes, and the switch under its chat card sits on it; it kept the page's muted
-   text (2.7 to 2.9:1 measured on the light theme). On the dark it takes the stage's own text colour. */
-@media (min-width: 1024px) {
-  .nx-hero .nx-motion-btn:not([aria-pressed="true"]) { color: var(--nx-stage-text); }
-  .nx-hero .nx-motion-btn:not([aria-pressed="true"]):hover { color: #fff; border-color: rgba(255, 255, 255, 0.4); }
-}
 @media (prefers-reduced-motion: reduce) {
   .nx-motion { display: none; }
 }

@@ -149,11 +149,6 @@ describe("one price formatter", () => {
 });
 
 describe("the rest of the audit", () => {
-  it("the home hero's pause switch takes the stage's text colour on the dark hero (it was 2.7 to 2.9:1)", () => {
-    expect(nextCss).toMatch(/@media \(min-width: 1024px\) \{\n {2}\.nx-hero \.nx-motion-btn:not\(\[aria-pressed="true"\]\) \{ color: var\(--nx-stage-text\); \}/);
-    expect(nextCss).toMatch(/--nx-stage-text: #f4f0e9;/);
-  });
-
   it("a monitor's second name ('Ваш канал') moves under the title instead of being cut", () => {
     const span = rule(siteCss, ".st-monitor-title span");
     expect(span).not.toMatch(/overflow:\s*hidden|text-overflow/);
