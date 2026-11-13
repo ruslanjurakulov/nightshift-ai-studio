@@ -227,6 +227,45 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "e57eb519-7be0-4b41-8a9a-b19c543dc63e",
+      "assetId": "50416870-a019-5e22-b500-735990c15a69",
+      "sha256": "09a8fdcb3363e3132bac95b53927000a3b1cae6c5af8862f4ae0b0fd1794f927",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "The little retro toy robot comes to life: its eyes light up orange, it looks at the camera, waves the tiny film clapperboard and claps it shut with a cheerful bounce, then rolls a little forward. Cute, playful, soft studio light, slight camera push-in. Audio: cheerful beeps, a crisp clapperboard snap.",
+      "createdAt": "2026-11-13T18:17:24Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "28f164dc-809f-49a3-b2e2-ef0bdf88519b",
+        "assetId": "e766a4be-cb70-5c11-b751-b71e3b196b9b"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1280,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:38:25Z"
     }
   ]
 }
