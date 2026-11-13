@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "c2733488-980e-4a20-9a58-28401bbee8c4",
+      "assetId": "7e2e8c39-5b49-57f3-b141-f261e4e445d6",
+      "sha256": "b2dd84cabc074ace9f0a7d0669eb88a40872b933eebaaa3a3007af4014b0fa0c",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical phone-video look, rooftop party at night with string lights: a cool cat in sunglasses DJs behind turntables while a crowd of animals — a raccoon, a goose, a capybara and a fox — dance; the beat drops and confetti bursts over the city skyline. Fun, viral social clip energy. Audio: house beat drop, crowd cheering.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:52:50Z"
     }
   ]
 }
