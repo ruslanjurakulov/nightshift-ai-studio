@@ -18,7 +18,7 @@ declare
   h text;
 begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.model_probe_seconds(text[])');
-  if h is not null and h <> '1a05990e1840630725b4b8dd87a13b20' then
+  if h is not null and h <> '265e5c68919c76546b60de9dd0972493' then
     raise exception 'rollback 0151: public.model_probe_seconds(text[]) is not 0151''s body (md5 %): a later change would be undone; read the live body first', h;
   end if;
 end $$;

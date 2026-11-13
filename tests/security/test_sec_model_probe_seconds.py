@@ -121,6 +121,38 @@ def test_the_newest_success_wins_and_a_failure_after_it_is_said(conn, sc):
         assert ok(ask(conn, sc.operator, [MODEL_GATED]))[0][5] is False
 
 
+def test_one_row_per_capability_so_a_newer_probe_of_another_capability_does_not_hide_this_one(conn, sc):
+    with scratch(conn):
+        # The model's newest probe is an i2v one; the t2i one (900 ms) is still the t2i seed.
+        probe(conn, MODEL_SOLD, latency=21521, capability="i2v", at="now() + interval '1 minute'")
+        rows = sorted(ok(ask(conn, sc.bob.actor, [MODEL_SOLD])))
+        assert rows == [(MODEL_SOLD, "i2v", Decimal("21.521"), None, True, False),
+                        (MODEL_SOLD, "t2i", Decimal("0.900"), None, True, False)], rows
+        # A failure is said for its own capability only.
+        probe(conn, MODEL_SOLD, ok=False, capability="i2v", at="now() + interval '2 minutes'")
+        flags = {r[1]: r[5] for r in ok(ask(conn, sc.bob.actor, [MODEL_SOLD]))}
+        assert flags == {"i2v": True, "t2i": False}, flags
+
+
+def test_a_model_the_owner_switched_off_is_hidden_from_customers_like_the_registry_itself(conn, sc):
+    """0124: with the switch enforced and the model off, model_registry_select shows a customer no row; neither may this."""
+    with scratch(conn):
+        conn.execute("update public.model_availability_settings set enforced = true")
+        conn.execute("insert into public.model_availability (scope, target, enabled, reason) values ('model', %s, false, 'terms_review')",
+                     [MODEL_SOLD])
+        conn.execute("select set_config('request.jwt.claims', %s, true)", [json.dumps(sc.bob.actor.claims())])
+        conn.execute("set local role authenticated")
+        try:
+            registry = Session(conn).run("select id from public.model_registry")
+        finally:
+            conn.execute("reset role")
+        assert registry.ok and registry.rows == [], registry  # the positive control: the switch is really on
+        for who in (sc.bob.actor, sc.alice.actor, sc.stranger):
+            assert ok(ask(conn, who, ALL)) == [], who.name
+        # The operator still reads it (the switch page and the preview).
+        assert [r[0] for r in ok(ask(conn, sc.operator, [MODEL_SOLD]))] == [MODEL_SOLD]
+
+
 def test_a_probe_of_another_vendor_model_is_not_this_models_speed(conn, sc):
     with scratch(conn):
         probe(conn, MODEL_SOLD, latency=5000, vendor="lab-model-OLD", at="now() + interval '1 minute'")

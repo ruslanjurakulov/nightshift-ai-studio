@@ -73,14 +73,24 @@ class ModelProbeSecondsMigration(unittest.TestCase):
         self.assertIn("and p.latency_ms > 0", b)
         self.assertIn("and p.adapter = r.adapter", b)
         self.assertIn("and p.vendor_model = coalesce(r.spec -> 'vendor_model_by_capability' ->> p.capability, r.spec ->> 'vendor_model')", b)
-        self.assertIn("order by p.created_at desc, p.id desc\n         limit 1", b)
+        # The newest success PER CAPABILITY: an i2v job keeps its seed when the newest probe of the model was a t2v one.
+        self.assertIn("select distinct on (p.capability) p.id, p.capability, p.latency_ms, p.created_at", b)
+        self.assertIn("order by p.capability, p.created_at desc, p.id desc) pr", b)
+        self.assertNotIn("limit 1", b)
 
     def test_a_failure_after_the_success_is_reported_for_the_same_capability(self):
         b = body()
         self.assertIn("and f.capability = pr.capability\n                      and not f.ok\n                      and (f.created_at, f.id) > (pr.created_at, pr.id)", b)
 
     def test_only_models_on_sale_unless_the_caller_is_a_platform_admin(self):
-        self.assertIn("and ((r.availability in ('beta', 'ga') and r.verified_at is not null) or public.is_platform_admin());", body())
+        self.assertIn("and ((r.availability in ('beta', 'ga') and r.verified_at is not null and public.model_is_available(r.id))\n"
+                      "            or public.is_platform_admin());", body())
+
+    def test_a_customer_sees_exactly_what_0124s_registry_policy_shows_the_owners_switch_included(self):
+        # 0124 replaced model_registry_select with this rule; a copy of 0035's older one would show a switched-off model.
+        m124 = next(MIG.glob("0124_*.sql")).read_text(encoding="utf-8")
+        self.assertIn("public.model_is_available(id)", m124.split("model_registry_select", 2)[-1])
+        self.assertIn("if to_regprocedure('public.model_is_available(text)') is null then\n    raise exception '0151 needs 0124", CODE)
 
     def test_the_clip_length_comes_only_from_a_probe_block_of_the_same_capability(self):
         b = body()

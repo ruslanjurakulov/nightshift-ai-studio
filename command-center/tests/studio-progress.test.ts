@@ -20,6 +20,8 @@ import {
   secondsBetween,
   PROBE_MAX_AGE_MS,
   coerceProbeSeed,
+  coerceProbeSeeds,
+  pickSeed,
   jobClipSeconds,
   seedExpectation,
   seedsFrom,
@@ -402,15 +404,37 @@ describe("the probe seed", () => {
   it("reads 0151's rows only for the models asked about, whole or not at all", () => {
     const row = { model_id: "vid-1", capability: "i2v", probe_seconds: 21.521, clip_seconds: 5, probed_at: at(0), failed_after: false };
     expect(seedsFrom([row], ["vid-1"])).toEqual({
-      "vid-1": { capability: "i2v", seconds: 21.521, clipSeconds: 5, probedAt: at(0), failedAfter: false },
+      "vid-1": [{ capability: "i2v", seconds: 21.521, clipSeconds: 5, probedAt: at(0), failedAfter: false }],
     });
     expect(seedsFrom([row], ["pic-1"])).toEqual({});
-    expect(seedsFrom([{ ...row, clip_seconds: null }], ["vid-1"])["vid-1"]!.clipSeconds).toBeNull();
+    expect(seedsFrom([{ ...row, clip_seconds: null }], ["vid-1"])["vid-1"]![0]!.clipSeconds).toBeNull();
     for (const bad of [{ probe_seconds: null }, { probe_seconds: "21" }, { capability: "I2V" }, { probed_at: "x" }, { failed_after: "false" }]) {
       expect(seedsFrom([{ ...row, ...bad }], ["vid-1"])).toEqual({});
     }
     expect(seedsFrom("nope", ["vid-1"])).toEqual({});
     expect(seedsFrom([null, 4], ["vid-1"])).toEqual({});
+  });
+
+  it("keeps one seed per capability, and the job's capability picks its own — a newer probe of another one never hides it", () => {
+    const row = { model_id: "vid-1", capability: "i2v", probe_seconds: 70.976, clip_seconds: 5, probed_at: at(-7200), failed_after: false };
+    const t2v = { ...row, capability: "t2v", probe_seconds: 40, clip_seconds: null, probed_at: at(-60) };
+    const seeds = seedsFrom([t2v, row], ["vid-1"])["vid-1"]!;
+    expect(seeds.map((s) => s.capability)).toEqual(["t2v", "i2v"]);
+    expect(pickSeed(seeds, "i2v")!.seconds).toBe(70.976);
+    expect(pickSeed(seeds, "t2v")!.seconds).toBe(40);
+    expect(pickSeed(seeds, "t2i")).toBeNull();
+    expect(pickSeed(undefined, "i2v")).toBeNull();
+    // An answer that ever repeats a capability keeps the newer probe, whatever the row order.
+    const older = { ...row, probe_seconds: 99, probed_at: at(-90_000) };
+    expect(pickSeed(seedsFrom([row, older], ["vid-1"])["vid-1"], "i2v")!.seconds).toBe(70.976);
+    expect(pickSeed(seedsFrom([older, row], ["vid-1"])["vid-1"], "i2v")!.seconds).toBe(70.976);
+    // And the browser reads the list the same way.
+    const sent = JSON.parse(JSON.stringify(seeds));
+    expect(coerceProbeSeeds(sent)).toEqual(seeds);
+    expect(coerceProbeSeeds([...sent, { capability: "i2v", seconds: "1" }, null])).toEqual(seeds);
+    expect(coerceProbeSeeds(sent[0])).toEqual([]);
+    // Through the reading: an i2v job uses the i2v seed even though the t2v probe is newer.
+    expect(video({ seed: pickSeed(seeds, "i2v"), now: T0 + 35_000 })).toMatchObject({ kind: "seeded", percent: 49 });
   });
 
   it("a seed sent to the browser is read again there, and anything malformed is none", () => {

@@ -23,7 +23,7 @@ export const studioProgressEn = {
   seededSpoken:
     "About {n}% done. An estimate from one test run of this model ({s} s, download included), not from jobs here and not a measurement.",
   seededScaledSpoken:
-    "About {n}% done. An estimate from one test run of this model: {s} s for a {probe} s clip, scaled to {clip} s. Not from jobs here and not a measurement.",
+    "About {n}% done. An estimate from one test run of this model: {s} s for a {probe} s clip, scaled to {clip} s on the assumption that time grows with clip length. Not from jobs here and not a measurement.",
   reported: "{n}%",
   reportedSpoken: "{n}% done, as the model reports it.",
   seconds: "{n} s",

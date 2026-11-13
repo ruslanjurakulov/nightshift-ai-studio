@@ -122,16 +122,29 @@ function seedOf(capability: unknown, seconds: unknown, clip: unknown, probedAt: 
   return { capability, seconds, clipSeconds: isSeconds(clip, CLIP_MAX_S) ? clip : null, probedAt, failedAfter };
 }
 
-/** 0151's rows (model_id, capability, probe_seconds, clip_seconds, probed_at, failed_after) → seeds of the models asked about. */
-export function seedsFrom(rows: unknown, asked: readonly string[]): Record<string, ProbeSeed> {
-  const out: Record<string, ProbeSeed> = {};
+/**
+ * A model's seeds, one per capability: a second one for a capability already there keeps the newer probe (0151 sends one per
+ * capability; this holds even if an answer ever repeats one), so which seed times a job never depends on row order.
+ */
+function withSeed(list: ProbeSeed[], seed: ProbeSeed): ProbeSeed[] {
+  const same = list.find((s) => s.capability === seed.capability);
+  if (!same) return [...list, seed];
+  return Date.parse(seed.probedAt) > Date.parse(same.probedAt) ? list.map((s) => (s === same ? seed : s)) : list;
+}
+
+/**
+ * 0151's rows (model_id, capability, probe_seconds, clip_seconds, probed_at, failed_after; one per model and capability probed) →
+ * each asked model's seeds, one per capability.
+ */
+export function seedsFrom(rows: unknown, asked: readonly string[]): Record<string, ProbeSeed[]> {
+  const out: Record<string, ProbeSeed[]> = {};
   if (!Array.isArray(rows)) return out;
   for (const r of rows) {
     if (!r || typeof r !== "object") continue;
     const x = r as Record<string, unknown>;
     if (typeof x.model_id !== "string" || !asked.includes(x.model_id)) continue;
     const seed = seedOf(x.capability, x.probe_seconds, x.clip_seconds, x.probed_at, x.failed_after);
-    if (seed) out[x.model_id] = seed;
+    if (seed) out[x.model_id] = withSeed(out[x.model_id] ?? [], seed);
   }
   return out;
 }
@@ -141,6 +154,22 @@ export function coerceProbeSeed(x: unknown): ProbeSeed | null {
   if (!x || typeof x !== "object" || Array.isArray(x)) return null;
   const s = x as Record<string, unknown>;
   return seedOf(s.capability, s.seconds, s.clipSeconds, s.probedAt, s.failedAfter);
+}
+
+/** A model's seeds as the route sends them (an array), read again in the browser: the ones that read whole, one per capability. */
+export function coerceProbeSeeds(x: unknown): ProbeSeed[] {
+  if (!Array.isArray(x)) return [];
+  let out: ProbeSeed[] = [];
+  for (const item of x) {
+    const seed = coerceProbeSeed(item);
+    if (seed) out = withSeed(out, seed);
+  }
+  return out;
+}
+
+/** The seed for a job's capability among its model's seeds; null when the model was never probed for it. */
+export function pickSeed(seeds: readonly ProbeSeed[] | null | undefined, capability: string): ProbeSeed | null {
+  return seeds?.find((s) => s.capability === capability) ?? null;
 }
 
 /** The clip length a job asked for (params.duration_s), or null when it named none readable. */

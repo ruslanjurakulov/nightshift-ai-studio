@@ -36,7 +36,8 @@ ROLLBACK = REPO / "docs" / "sql" / "rollback_0124_model_switch.sql"
 #: 0125 (a model past its shutdown date is not sold) sits on 0124's bodies and refuses to apply without 0124: "the sequence before 0124"
 #: leaves it out too, and a replay of 0124 on the full chain takes it off first (its own rollback) and puts it back.
 #: 0139 (the operator preview) sits on 0125's creative_price the same way, so it is left out too.
-BEFORE_0124_EXCLUDES = (MIGRATION.name, sec_db.MIGRATION_0125.name, *sec_db.ON_0125)
+#: 0151 (the Studio's probe seed) asks model_is_available() for a customer's rows and refuses to apply without 0124: left out too.
+BEFORE_0124_EXCLUDES = (MIGRATION.name, sec_db.MIGRATION_0125.name, *sec_db.ON_0125, *sec_db.ON_0124)
 
 ORG_A = "aaaaaaaa-0000-0000-0000-000000000124"
 ORG_B = "bbbbbbbb-0000-0000-0000-000000000124"

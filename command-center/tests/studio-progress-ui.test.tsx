@@ -177,6 +177,8 @@ describe("the placeholder", () => {
       render(withI18n(<GenerationPlaceholder job={clip(10)} samples={[60]} seed={PROBE} />, locale));
       const scaled = fmt(d.seededScaledSpoken, { n: 25, s: 60, probe: 5, clip: 10 });
       expect(scaled).not.toMatch(/[{}]/);
+      // The linear scaling is an assumption, and the sentence says so in each language (rule 5).
+      expect(scaled).toMatch({ en: /assumption/, ru: /допущени/, uz: /faraz/ }[locale]);
       expect(within(pill()!).getByText(scaled)).toBeTruthy();
       expect(within(pill()!).getByText(fmt(d.seeded, { n: 25 }))).toBeTruthy();
     },
@@ -545,14 +547,20 @@ describe("the history belongs to the organization it was read for", () => {
     const seed = { capability: "i2v", seconds: 70.976, clipSeconds: 5, probedAt: ago(60), failedAfter: false };
     fetchMock.mockImplementation((url: string) =>
       url.includes(`org_id=${ORG}`)
-        ? json({ durations: { "vid-1": [80], "vid-2": [] }, seeds: { "vid-1": seed, "vid-2": { ...seed, seconds: "70" } } })
+        ? json({
+            durations: { "vid-1": [80], "vid-2": [] },
+            seeds: { "vid-1": [seed, { ...seed, capability: "t2v", seconds: 40 }], "vid-2": [{ ...seed, seconds: "70" }] },
+          })
         : new Promise<Response>(() => undefined),
     );
     const { result, rerender } = renderHook(({ org }) => useModelDurations(org, ["vid-1", "vid-2"]), { initialProps: { org: ORG } });
-    await waitFor(() => expect(result.current.seed("vid-1")).toEqual(seed));
-    expect(result.current.seed("vid-2")).toBeNull();
+    await waitFor(() => expect(result.current.seed("vid-1", "i2v")).toEqual(seed));
+    // One seed per capability: the job's own picks it, and a capability never probed has none.
+    expect(result.current.seed("vid-1", "t2v")!.seconds).toBe(40);
+    expect(result.current.seed("vid-1", "t2i")).toBeNull();
+    expect(result.current.seed("vid-2", "i2v")).toBeNull();
     rerender({ org: OTHER });
-    expect(result.current.seed("vid-1")).toBeNull();
+    expect(result.current.seed("vid-1", "i2v")).toBeNull();
   });
 
   it("a model it was not asked about is 'not asked'; one it was asked about and has no answer for is 'unread'", () => {

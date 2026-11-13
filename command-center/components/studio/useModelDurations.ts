@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DURATION_MODELS_MAX } from "@/lib/creative/durations";
-import { coerceProbeSeed, type ProbeSeed } from "@/lib/creative/progress";
+import { coerceProbeSeeds, pickSeed, type ProbeSeed } from "@/lib/creative/progress";
 
 /** `{ durations: { model: number[] } }` → a map; anything else in the body is ignored, never guessed into a number. */
 export function coerceDurations(body: unknown): Map<string, number[]> {
@@ -15,14 +15,14 @@ export function coerceDurations(body: unknown): Map<string, number[]> {
   return out;
 }
 
-/** `{ seeds: { model: ProbeSeed } }` → a map of the seeds that read whole; a missing or malformed `seeds` is none. */
-export function coerceSeeds(body: unknown): Map<string, ProbeSeed> {
-  const out = new Map<string, ProbeSeed>();
+/** `{ seeds: { model: ProbeSeed[] } }` → a map of the seeds that read whole; a missing or malformed `seeds` is none. */
+export function coerceSeeds(body: unknown): Map<string, ProbeSeed[]> {
+  const out = new Map<string, ProbeSeed[]>();
   const s = body && typeof body === "object" ? (body as { seeds?: unknown }).seeds : null;
   if (!s || typeof s !== "object" || Array.isArray(s)) return out;
   for (const [model, x] of Object.entries(s as Record<string, unknown>)) {
-    const seed = coerceProbeSeed(x);
-    if (seed) out.set(model, seed);
+    const seeds = coerceProbeSeeds(x);
+    if (seeds.length > 0) out.set(model, seeds);
   }
   return out;
 }
@@ -31,8 +31,11 @@ export function coerceSeeds(body: unknown): Map<string, ProbeSeed> {
 export interface ModelDurations {
   /** The model's durations (s) when they were read; null otherwise. */
   samples(model: string): number[] | null;
-  /** The platform's test run of the model (0151), when the history here is short and the seed was read; null otherwise. */
-  seed(model: string): ProbeSeed | null;
+  /**
+   * The platform's test run of the model for this capability (0151), when the history here is short and the seed was read;
+   * null otherwise — and for a capability the model was never probed for.
+   */
+  seed(model: string, capability: string): ProbeSeed | null;
   /** Why `samples` is null: asked and not (yet) read — or never asked, past DURATION_MODELS_MAX models at once. */
   missing(model: string): "unread" | "not_asked";
 }
@@ -48,7 +51,7 @@ export interface ModelDurations {
  */
 export function useModelDurations(orgId: string, models: readonly string[]): ModelDurations {
   const key = [...new Set(models.filter(Boolean))].sort().slice(0, DURATION_MODELS_MAX).join(",");
-  const [read, setRead] = useState<{ org: string; map: Map<string, number[]>; seeds: Map<string, ProbeSeed> }>(() => ({
+  const [read, setRead] = useState<{ org: string; map: Map<string, number[]>; seeds: Map<string, ProbeSeed[]> }>(() => ({
     org: orgId,
     map: new Map(),
     seeds: new Map(),
@@ -85,10 +88,10 @@ export function useModelDurations(orgId: string, models: readonly string[]): Mod
   const asked = new Set(key ? key.split(",") : []);
   return {
     samples: (model) => map.get(model) ?? null,
-    seed: (model) => seeds.get(model) ?? null,
+    seed: (model, capability) => pickSeed(seeds.get(model), capability),
     missing: (model) => (asked.has(model) ? "unread" : "not_asked"),
   };
 }
 
 const EMPTY: ReadonlyMap<string, number[]> = new Map();
-const NO_SEEDS: ReadonlyMap<string, ProbeSeed> = new Map();
+const NO_SEEDS: ReadonlyMap<string, ProbeSeed[]> = new Map();

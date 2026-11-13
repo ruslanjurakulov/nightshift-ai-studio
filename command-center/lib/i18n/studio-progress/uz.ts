@@ -18,7 +18,7 @@ export const studioProgressUz: StudioProgressDictionary = {
   seededSpoken:
     "Taxminan {n}% bajarildi. Bu shu yerdagi ishlarga emas, ushbu modelning bitta sinov ishga tushirilishiga ({s} s, yuklab olish bilan birga) asoslangan taxmin, oʻlchov emas.",
   seededScaledSpoken:
-    "Taxminan {n}% bajarildi. Bu ushbu modelning bitta sinov ishga tushirilishiga asoslangan taxmin: {probe} s lik klip uchun {s} s, {clip} s ga moslab hisoblangan. Shu yerdagi ishlarga asoslanmagan va oʻlchov emas.",
+    "Taxminan {n}% bajarildi. Bu ushbu modelning bitta sinov ishga tushirilishiga asoslangan taxmin: {probe} s lik klip uchun {s} s, vaqt klip uzunligiga qarab oʻsadi degan farazga koʻra {clip} s ga moslab hisoblangan. Shu yerdagi ishlarga asoslanmagan va oʻlchov emas.",
   reported: "{n}%",
   reportedSpoken: "{n}% bajarildi — model maʼlumotiga koʻra.",
   seconds: "{n} s",

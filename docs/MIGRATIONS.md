@@ -1083,7 +1083,7 @@ model marked `operator_preview`) of a model priced by resolution.
 0151 (`0151_model_probe_seconds.sql`) is **live on apply and read-only**: it adds ONE function, `model_probe_seconds(p_models text[])`,
 and nothing else. A running generation's "~N%" in the Studio came only from the organization's own finished jobs on the same model (at
 least 3), so a just-added model showed seconds for its first three jobs everywhere. The function hands the Studio the newest
-successful probe of each model asked for (`model_probe_runs`, 0035): its wall time in seconds, its capability, the probe block's clip
+successful probe of each model asked for, one row per capability probed (`model_probe_runs`, 0035): its wall time in seconds, the probe block's clip
 length (`spec.probe.duration_s`, only for the same capability) and when it ran, plus `failed_after` when a probe of the same capability
 failed since. The Studio uses it as the expected time until the organization has 3 finished jobs of its own, and the pill says
 "test run" (rule 5).
@@ -1092,13 +1092,16 @@ failed since. The Studio uses it as the expected time until the organization has
   interval (and, for a voice tool, the short speech clip the probe makes first). Only a probe of the adapter and vendor model the
   registry calls today counts.
 - **Who sees what.** SECURITY DEFINER, pinned search_path; execute to `authenticated` only (not anon, not the service role). Probes are
-  platform-wide test calls: no organization's data. A customer gets rows only for models on sale (beta/ga and verified, what 0035's RLS
-  already shows them); a platform admin for any model (the 0139 preview). Never error text, bytes, prober, adapter or vendor model.
+  platform-wide test calls: no organization's data. A customer gets rows only for models on sale and not switched off by the owner
+  (beta/ga, verified and `model_is_available()`: exactly what 0124's `model_registry_select` shows them); a platform admin for any model
+  (the 0139 preview). Never error text, bytes, prober, adapter or vendor model. NEW for customers, for models on sale: the test run's
+  seconds, the probe's clip length, when it ran, and one boolean (`failed_after`) saying a probe of that capability failed since.
 - **Input.** At most 50 ids of the registry's id shape, no null, one dimension; otherwise `22023 invalid models`. The Studio asks for
   at most 4, and only for models with fewer than 3 finished jobs here.
 - **Without it.** The durations route reads a missing function (or any error) as "no seed": the pill counts seconds, as before.
-- **md5.** `model_probe_seconds` `1a05990e1840630725b4b8dd87a13b20` (drift guard, end state, rollback).
-- **Number.** 0151: 0147 and 0149 are open pull requests, 0148 and 0150 are reserved. Needs 0018 and 0035; names nothing of theirs.
+- **md5.** `model_probe_seconds` `265e5c68919c76546b60de9dd0972493` (drift guard, end state, rollback).
+- **Number.** 0151: 0147 and 0149 are merged on main and live, 0148 and 0150 are reserved. Needs 0018, 0035 and 0124; names nothing
+  of 0147's or 0149's.
   The numbering tests of 0127, 0131 and 0133 list it as reviewed.
 - **Undo.** `docs/sql/rollback_0151_model_probe_seconds.sql` (owner-applied): refuses a body that is not 0151's, drops the function.
 - **Tests.** `tests/test_model_probe_seconds_migration.py` (the text), `tests/security/test_sec_model_probe_seconds.py` (a real

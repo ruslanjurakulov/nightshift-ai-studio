@@ -20,7 +20,7 @@ export function parseModelList(raw: string | null): string[] | null {
 }
 
 /**
- * `{ durations: { [model]: seconds[] }, seeds?: { [model]: ProbeSeed } }`, durations newest first, at most
+ * `{ durations: { [model]: seconds[] }, seeds?: { [model]: ProbeSeed[] } }` (one seed per capability probed), durations newest first, at most
  * DURATION_SAMPLES each. A model whose read failed is left out (the placeholder then shows seconds, never a guessed
  * percentage); a missing 0036 is creative_unavailable.
  *

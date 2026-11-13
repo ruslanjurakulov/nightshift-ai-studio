@@ -149,10 +149,20 @@ describe("GET /api/creative/durations: the probe seed (0151)", () => {
       status: 200,
       body: {
         durations: { "vid-1": [60] },
-        seeds: { "vid-1": { capability: "i2v", seconds: 70.976, clipSeconds: 5, probedAt: "2026-11-10T09:00:00Z", failedAfter: false } },
+        seeds: { "vid-1": [{ capability: "i2v", seconds: 70.976, clipSeconds: 5, probedAt: "2026-11-10T09:00:00Z", failedAfter: false }] },
       },
     });
     expect(h.rpcs).toEqual([{ fn: "model_probe_seconds", args: { p_models: ["vid-1"] } }]);
+  });
+
+  it("one seed per capability the model was probed for: a newer t2v probe does not hide the i2v one", async () => {
+    h.seedRows = [SEED_ROW, { ...SEED_ROW, capability: "t2v", probe_seconds: 40, clip_seconds: null, probed_at: "2026-11-11T09:00:00Z" }];
+    h.rows = [];
+    const seeds = (await get(`org_id=${ORG}&models=vid-1`)).body.seeds as Record<string, { capability: string; seconds: number }[]>;
+    expect(seeds["vid-1"]!.map((s) => [s.capability, s.seconds])).toEqual([
+      ["i2v", 70.976],
+      ["t2v", 40],
+    ]);
   });
 
   it("a model with enough history of its own is not asked about: the workspace's median wins", async () => {

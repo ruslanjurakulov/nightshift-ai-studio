@@ -12,10 +12,10 @@
 -- which uses it as the expected duration until the organization has history of its own, and says on the pill that it is from a test
 -- run (rule 5: an estimate is never shown as a measurement of this job).
 --
--- WHAT ONE ROW SAYS (one per model asked for that has a usable probe; none for any other model)
+-- WHAT ONE ROW SAYS (one per model asked for AND capability it has a usable probe of; none for any other model)
 --   model_id       the model.
 --   capability     what the probe asked the model to do (t2i, i2v ...). The Studio never uses the seconds for another capability.
---   probe_seconds  the newest SUCCESSFUL probe's latency_ms / 1000, of a probe that called what the registry calls today (the same
+--   probe_seconds  the newest SUCCESSFUL probe of that capability: latency_ms / 1000, of a probe that called what the registry calls today (the same
 --                  adapter and the vendor model the registry names for that capability). It is the probe tool's wall time from submit
 --                  to the downloaded file (tools/probe_models.py run_probe: submit, poll, fetch), so it INCLUDES the download and the
 --                  poll interval, and for a voice tool the short speech clip the probe makes first. A job's own time is measured from
@@ -31,11 +31,13 @@
 --
 -- WHO MAY CALL IT, AND WHAT IT REVEALS. SECURITY DEFINER, because model_probe_runs and model_registry.spec are closed to every API role
 -- (0035: probe evidence and spec are platform-only). It reveals NO organization's data: probes are platform-wide test calls written by
--- the probe tool with the service key, and carry no prompt, result or price of anyone's. It returns only the five columns above (never
+-- the probe tool with the service key, and carry no prompt, result or price of anyone's. It returns only the six columns above (never
 -- error text, output bytes, who probed, the adapter, the vendor model or anything else of spec), and only for a model a signed-in user
--- can already see in the registry (beta or ga, and verified: 0035's RLS on model_registry), or for any model when the caller is a
--- platform owner or admin (is_platform_admin(): the operator's preview of a hidden model, 0139). So a customer learns nothing about a
--- model that is not on sale. It checks sign-in itself (auth.uid()) before it reads anything; execute is granted to `authenticated`
+-- can already see in the registry: beta or ga, verified, and not switched off by the owner (model_is_available(), the rule 0124 put
+-- into model_registry_select), or for any model when the caller is a platform owner or admin (is_platform_admin(): the operator's
+-- preview of a hidden model, 0139, and the switch page). So a customer learns nothing about a model that is not on sale. What a
+-- customer DOES learn that 0035 kept from them, for a model on sale: how long its test run took, the probe's clip length, when it ran,
+-- and one boolean saying a probe of that capability failed since (never which error, or how often). It checks sign-in itself (auth.uid()) before it reads anything; execute is granted to `authenticated`
 -- only (revoked from public, anon and service_role: the Command Center reads it with the member's own session and the ANON key, and
 -- the worker has no use for it). search_path is pinned. It writes, prices, spends and starts nothing.
 --
@@ -46,16 +48,19 @@
 -- missing function (42883 / PGRST202) or any other error leaves the seed out, and the pill shows the seconds since the job started, as
 -- before this file.
 --
--- REQUIRES 0018 (is_platform_admin) and 0035 (model_registry, model_probe_runs). Additive and idempotent: create-or-replace of a
--- function that did not exist; a replay changes nothing. Undo: docs/sql/rollback_0151_model_probe_seconds.sql (owner-applied).
+-- REQUIRES 0018 (is_platform_admin), 0035 (model_registry, model_probe_runs) and 0124 (model_is_available). Additive and idempotent:
+-- create-or-replace of a function that did not exist; a replay changes nothing. Undo: docs/sql/rollback_0151_model_probe_seconds.sql
+-- (owner-applied). Rolling 0124 back while this is applied leaves every call failing (model_is_available is gone; the Studio then
+-- shows seconds): take 0151 off first with its rollback.
 --
--- NUMBER. 0151. 0147 and 0149 are open pull requests and 0148 and 0150 are reserved by other work; this file names no object of
--- theirs. The highest number on main when it was written is 0146.
+-- NUMBER. 0151. 0147 (MCP free tier) and 0149 (preview price by resolution) are merged on main and live; 0148 and 0150 are reserved
+-- by other work. This file names no object of any of them.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: one row, all true.
 --   select to_regprocedure('public.model_probe_seconds(text[])') is null as function_is_new,
 --          to_regclass('public.model_probe_runs') is not null and to_regclass('public.model_registry') is not null as has_0035,
---          to_regprocedure('public.is_platform_admin()') is not null as has_0018;
+--          to_regprocedure('public.is_platform_admin()') is not null as has_0018,
+--          to_regprocedure('public.model_is_available(text)') is not null as has_0124;
 --
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 set local lock_timeout = '5s';
@@ -70,9 +75,12 @@ begin
   if to_regclass('public.model_registry') is null or to_regclass('public.model_probe_runs') is null then
     raise exception '0151 needs 0035_model_registry.sql: apply it first';
   end if;
+  if to_regprocedure('public.model_is_available(text)') is null then
+    raise exception '0151 needs 0124_model_switch.sql: apply it first';
+  end if;
   -- The one name this file creates: absent, or this file's own body (a replay).
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.model_probe_seconds(text[])');
-  if h is not null and h <> '1a05990e1840630725b4b8dd87a13b20' then
+  if h is not null and h <> '265e5c68919c76546b60de9dd0972493' then
     raise exception '0151 found public.model_probe_seconds(text[]) with a body that is not this file''s (md5 %): read the live body first', h;
   end if;
 end $$;
@@ -123,8 +131,9 @@ begin
                       and not f.ok
                       and (f.created_at, f.id) > (pr.created_at, pr.id))
       from public.model_registry r
+      -- One row per capability the model was probed for: an i2v job keeps its seed when the newest probe was a t2v one.
       cross join lateral (
-        select p.id, p.capability, p.latency_ms, p.created_at
+        select distinct on (p.capability) p.id, p.capability, p.latency_ms, p.created_at
           from public.model_probe_runs p
          where p.model_id = r.id
            and p.ok
@@ -133,15 +142,16 @@ begin
            -- probe timed something else.
            and p.adapter = r.adapter
            and p.vendor_model = coalesce(r.spec -> 'vendor_model_by_capability' ->> p.capability, r.spec ->> 'vendor_model')
-         order by p.created_at desc, p.id desc
-         limit 1) pr
+         order by p.capability, p.created_at desc, p.id desc) pr
      where r.id = any (p_models)
-       and ((r.availability in ('beta', 'ga') and r.verified_at is not null) or public.is_platform_admin());
+       -- What model_registry_select (0124) shows a customer, the owner's switch included; a platform admin, any model.
+       and ((r.availability in ('beta', 'ga') and r.verified_at is not null and public.model_is_available(r.id))
+            or public.is_platform_admin());
 end
 $$;
 
 comment on function public.model_probe_seconds(text[]) is
-  'Migration 0151: per model, the newest successful probe''s wall time (s, download included), its capability, the probe''s clip length, when it ran, and whether a probe failed since. Platform-wide test calls, no organization data; models on sale, or any model for a platform admin. The Studio''s progress pill seeds "~N%" from it until an organization has its own history.';
+  'Migration 0151: per model and capability, the newest successful probe''s wall time (s, download included), the probe''s clip length, when it ran, and whether a probe of that capability failed since. Platform-wide test calls, no organization data; models on sale and not switched off (0124), or any model for a platform admin. The Studio''s progress pill seeds "~N%" from it until an organization has its own history.';
 
 revoke all on function public.model_probe_seconds(text[]) from public, anon, authenticated, service_role;
 grant execute on function public.model_probe_seconds(text[]) to authenticated;
@@ -157,7 +167,7 @@ begin
   if fn is null then
     raise exception '0151 end state: public.model_probe_seconds(text[]) does not exist';
   end if;
-  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = fn) is distinct from '1a05990e1840630725b4b8dd87a13b20' then
+  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = fn) is distinct from '265e5c68919c76546b60de9dd0972493' then
     raise exception '0151 end state: public.model_probe_seconds(text[]) does not hold the body this file expects';
   end if;
   if not has_function_privilege('authenticated', fn, 'EXECUTE')
