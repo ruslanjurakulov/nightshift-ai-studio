@@ -104,6 +104,11 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 # The country table (docs/GEO_BLOCK.md): read from disk by lib/server/geo.ts, so not traced into standalone. About 2 MB.
 COPY --from=builder /app/data/geoip ./data/geoip
+# Same trap as public/ above: the deploy checks the repository out under umask 077, so the table arrives 0600 root and
+# `node` cannot read it. The server does not die then; it logs "the country table could not be read" and, in production,
+# hides every model with a country list from everyone (fail closed), which is how the operator's preview of such a model
+# vanished from the Studio. Readable, never writable.
+RUN chmod -R a+rX,go-w data/geoip
 RUN mkdir -p .next/cache && chown node:node .next/cache
 # Mount points of the media library's volumes (migration 0038). An empty named
 # volume takes the owner of the directory it is first mounted over, so both

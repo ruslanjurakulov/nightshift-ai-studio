@@ -81,6 +81,9 @@ export default async function CreatePage({
   // database answers no rows to anyone else; asking only here keeps every customer's page exactly as it was (one call fewer, too).
   // Only the generate panel gets them: the Assistant's plans and the automatic pick stay on the models that are on sale.
   const previews = operator && isOperatorOrg(genOrgId) && genOrgId ? await loadOperatorPreviewModels(genOrgId) : [];
+  // Both generate boxes get them: the overview's composer is the first one the operator meets, and without the previews it read
+  // "no model can do this" while the Image desk offered the model. The Assistant below keeps `models`, the ones on sale.
+  const panelModels = withPreviews(models, previews);
   // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
   const user = await getUser();
   // "Use in Studio" from the Style Library (/create?tool=t2i&style=<kit>) picks that
@@ -155,7 +158,7 @@ export default async function CreatePage({
       {desk === "overview" && (
         <StudioHome
           orgId={genOrgId}
-          models={models}
+          models={panelModels}
           unavailable={switchedOff}
           plans={plans}
           defaultStyleKitId={startKit}
@@ -176,7 +179,7 @@ export default async function CreatePage({
             key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}:${initial?.voiceId ?? ""}:${typeof q.template === "string" ? q.template : ""}`}
             desk={desk}
             orgId={genOrgId}
-            models={withPreviews(models, previews)}
+            models={panelModels}
             // The owner's switch (0124): a model the form came with that is off is named as such, never swapped for another.
             unavailable={switchedOff}
             initial={initial}

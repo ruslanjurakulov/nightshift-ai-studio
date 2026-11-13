@@ -131,6 +131,18 @@ class EnvTemplateTests(unittest.TestCase):
         self.assertLess(copy, chmod)
         self.assertLess(chmod, user)
 
+    def test_the_runtime_image_makes_the_country_table_readable_whatever_the_checkout_umask(self):
+        # The geo table is copied from the checkout too. Left 0600 root, `node` cannot read it, and in production every
+        # model with a country list is then hidden from everyone (lib/server/geo.ts fails closed): no error page, just
+        # "no model can do this". The modes must be fixed after the COPY and before the image drops to `node`.
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        runner = dockerfile[dockerfile.index("AS runner"):]
+        copy = runner.index("COPY --from=builder /app/data/geoip ./data/geoip")
+        chmod = runner.index("RUN chmod -R a+rX,go-w data/geoip")
+        user = runner.index("USER node")
+        self.assertLess(copy, chmod)
+        self.assertLess(chmod, user)
+
 
 def _docker_compose_available():
     if not shutil.which("docker"):
