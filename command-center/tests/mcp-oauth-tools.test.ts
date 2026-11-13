@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { oauthRefusalText, oauthRpc, OAUTH_TOOL_SCOPES } from "@/lib/api/mcp-oauth";
+import { missingScope, oauthRefusalText, oauthRpc, OAUTH_TOOL_SCOPES } from "@/lib/api/mcp-oauth";
 import { buildMcpServer, TOOL_NAMES } from "@/lib/api/mcp";
 import type { ApiCaller, Rpc } from "@/lib/api/operations";
 import type { ApiResult } from "@/lib/api/http";
@@ -44,7 +44,9 @@ describe("oauthRpc", () => {
     expect(calls).toEqual([{ fn: "api_request_publish", args: { p_key_hash: H, p_video_id: "v", p_account_ids: [], p_channel_ids: ["c"], p_request_id: "r" } }]);
   });
 
-  it("the publish_video TOOL with an idempotency_key works end to end for a connected app", async () => {
+  // The OAuth schema has no idempotency_key (and is strict, so the SDK refuses one); this calls the
+  // handler directly, past the schema, to pin that even then the key never reaches the database.
+  it("the publish_video TOOL handler never sends an idempotency key to the database for a connected app", async () => {
     const { calls, rpc } = recorder();
     const server = buildMcpServer(caller(rpc), { scopes: ["videos:publish"], origin: "https://nightshift-ai.studio" });
     const tool = (server as unknown as { _registeredTools: Record<string, { handler: (a: unknown, e: unknown) => Promise<{ isError?: boolean }> }> })._registeredTools.publish_video;
@@ -164,6 +166,28 @@ describe("refusals are written for a person", () => {
     expect(oauthRefusalText(fail("workspace_access_lost", {}, { status: 403 }), O)).toMatch(/connect the app again/);
     expect(oauthRefusalText(fail("rate_limit_exceeded", {}, { status: 429, retryAfter: 12 }), O)).toContain("12 seconds");
     for (const code of ["internal_error", "upstream_error", "api_unavailable"]) expect(oauthRefusalText(fail(code), O)).toMatch(/Nothing was started or charged/);
+  });
+  it("a refused publish names each target's reason: still being sent (do not repeat) or not a target it can use", () => {
+    const t = oauthRefusalText(
+      fail("publish_refused", { errors: [
+        { account_id: "3f1c2a4e-9b7d-4c1e-8a2f-0d5e6b7c8a91", error: "already_sending" },
+        { channel_id: "space-facts", error: "forbidden" },
+      ] }, { status: 409 }),
+      O,
+    );
+    expect(t).toMatch(/account 3f1c2a4e-9b7d-4c1e-8a2f-0d5e6b7c8a91: this video is already being sent there/);
+    expect(t).toMatch(/a new call would post the video a second time/);
+    expect(t).toMatch(/YouTube channel space-facts: this connection cannot publish there/);
+    expect(t).not.toContain("internal message");
+    expect(t).not.toMatch(INTERNAL);
+    // No per-target reasons (an older answer): the database's own sentence, never an empty text.
+    expect(oauthRefusalText(fail("publish_refused", {}, { status: 409 }), O)).toBe("internal message (publish_refused)");
+  });
+  it("missingScope: the permission a connection's tool needs, and nothing for a tool no connection is offered", () => {
+    expect(missingScope("create_video", ["videos:read"])).toBe("videos:create");
+    expect(missingScope("create_video", ["videos:create"])).toBeNull();
+    expect(missingScope("request_download", [])).toBeNull();
+    expect(missingScope("toString", [])).toBeNull();
   });
   it("never leaks the database's own words for the three limits", () => {
     for (const code of ["insufficient_credits", "connection_limit_reached", "run_limit_reached", "subscription_required"]) {

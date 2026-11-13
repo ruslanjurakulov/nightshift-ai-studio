@@ -30,12 +30,25 @@ limit, prepaid USD balance, holds and database checks as `/api/v1`.
 | `list_videos` | videos, newest first | — | — |
 | `get_video` | one video with its publish requests | — | — |
 | `list_connected_accounts` | publish targets (YouTube channels, Instagram / TikTok accounts) | — | — |
-| `publish_video` | cross-post a finished video; same gate and approvals as the site; YouTube uploads private. An OAuth connection does not use an idempotency key here (it is ignored): while a post to a target is still being sent, a repeat call is answered `already_sending`, but once it has finished a new call posts again | free | free |
-| `get_balance` | OAuth: credits available / held, plan, videos at once, this connection's limit and use. Key: API balance, month spend, tier | credits | USD cents |
-| `request_download`, `get_download` | HD MP4 of a video | **not offered to OAuth connections** (priced in USD cents from the API balance, file served by an API-key route) | site credit price × 1.5¢ |
+| `publish_video` | cross-post a finished video; same gate and approvals as the site; YouTube uploads private. An OAuth connection's schema has **no** `idempotency_key` (one sent anyway is refused as an unknown field): while a post to a target is still being sent, a repeat call is refused and the text says that target is already being sent, but once it has finished a new call posts again, and the tool's description says so. An API key keeps its optional `idempotency_key` | free | free |
+| `get_balance` | OAuth ("Get credit balance"): credits available / held, plan, videos at once, this connection's limit and use. Key ("Get API balance"): API balance, month spend, tier | credits | USD cents |
+| `request_download`, `get_download` | HD MP4 of a video | **not offered to OAuth connections** (priced in USD cents from the API balance, file served by an API-key route) | site credit price × `api_prices.download_cents_per_credit` (1.5¢ by default); the order's answer carries the price (`price_cents`), and no tool text states a rate |
 
 An OAuth connection is offered only the tools its permissions allow
-(`videos:read`, `videos:create`, `videos:publish`).
+(`videos:read`, `videos:create`, `videos:publish`), and the server's
+instructions name only those tools (a read-only connection is told it cannot
+create or publish, and that the person can reconnect it allowing that). A call
+to a connection tool the grant lacks (an assistant that remembers
+`create_video` from the docs) is not "tool not found": it is answered with the
+permission it needs and where the person reconnects (Developers → Connected
+apps), and reaches nothing. The paid-download tools stay unknown to every
+connection.
+
+Every tool that takes arguments refuses one it does not know, naming it
+(`list_videos({ channel })` used to be answered with every channel's videos).
+A tool whose database call throws answers the generic "could not complete this
+request" with the request id; it never says nothing happened (that is not
+known), and the server log names only the error's class, never its message.
 
 ### When a call is refused
 
@@ -56,6 +69,12 @@ these itself:
 * **no paid plan** (`subscription_required`): the connection is *paused*, not
   deleted. Choose a plan and it works again with no reconnecting. Free
   workspaces cannot approve a connection at all.
+* **a missing permission** (`insufficient_scope`): which one, and that the
+  person disconnects the app in Developers → Connected apps (`/developers`)
+  and connects it again, allowing it.
+* **a publish no target took** (`publish_refused`): each target with its
+  reason: already being sent (nothing to do; a later repeat would post again),
+  or not a publish target this connection can use.
 
 A video that cannot be paid for is refused **before** any work starts: nothing
 is held, queued or produced. A job already running is never stopped by a later
@@ -227,6 +246,15 @@ Nightshift is its own authorization server for its MCP resource.
 * **Revoke** `POST /oauth/revoke` (RFC 7009): either token ends the connection.
 * **Scopes**: `videos:read`, `videos:create`, `videos:publish`. Unknown words in
   a request are ignored; an empty request means all three.
+* **Rate limit**: 120 requests a minute per connection (`oauth_limits().rpm`).
+  Known and not yet fixed: a tool call currently counts **two** of them, one in
+  `oauth_check` (the route needs the token's resource and scopes before it can
+  build the server) and one in `oauth_ctx` (the tool's own database call). The
+  route cannot drop either without losing a check (`oauth_check` is the only
+  read of the resource binding; the tool functions are callable without it), so
+  the fix is a later migration: `oauth_check` leaves a single-use credit for
+  its (grant, request id), and the first `oauth_ctx` of that grant with that
+  request id consumes it instead of counting again.
 
 ### Plans and billing
 

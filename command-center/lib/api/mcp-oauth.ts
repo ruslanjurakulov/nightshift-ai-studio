@@ -46,11 +46,13 @@ export function oauthRpc(rpc: Rpc): Rpc {
   return async (fn, args) => {
     const { p_key_hash: hash, p_fingerprint: _fingerprint, ...rest } = args;
     void _fingerprint;
-    // Publishing needs no idempotency record of its own: a target that is
-    // already being sent to is answered "already_sending" by the database, so a
-    // retry can never publish twice. The API's idempotency table belongs to API
-    // keys (its rows are keyed by key id, which a token has none of), so the
-    // key and its fingerprint are not passed on; passing one made the call fail.
+    // A connection's publish has no idempotency record: the API's idempotency
+    // table belongs to API keys (its rows are keyed by key id, which a token
+    // has none of), so the key and its fingerprint are not passed on; passing
+    // one made the call fail. A target still being sent to is answered
+    // "already_sending" by the database, but once that post has finished a new
+    // call posts again, which is why the OAuth publish_video schema offers no
+    // idempotency_key at all (lib/api/mcp.ts).
     if (fn === "api_request_publish") {
       const { p_idem_key: _idem, ...noIdem } = rest;
       void _idem;
@@ -72,6 +74,50 @@ function credits(v: unknown): string {
 
 function plural(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
+}
+
+/**
+ * The permission a tool needs that this grant lacks, or null (granted, or not
+ * a connected-app tool at all). A tool the grant lacks is not listed, but an
+ * assistant may still call it (it remembers the tool from the docs or another
+ * connection): it is then told which permission is missing, not "not found".
+ */
+export function missingScope(tool: string, scopes: readonly string[]): McpScope | null {
+  // Own keys only: the tool name is the caller's input, and "toString" or
+  // "constructor" would otherwise find the object's prototype.
+  if (!Object.hasOwn(OAUTH_TOOL_SCOPES, tool)) return null;
+  const need = OAUTH_TOOL_SCOPES[tool as keyof typeof OAUTH_TOOL_SCOPES];
+  return scopes.includes(need) ? null : need;
+}
+
+/**
+ * publish_refused (0042 api_request_publish): no target took a request, and
+ * `errors` says why per target. Without these lines a duplicate reads exactly
+ * like a refusal, and an assistant that cannot tell them apart either gives up
+ * on a post that is on its way or retries one that, once finished, it would
+ * then post a second time.
+ */
+function publishRefusedText(errors: unknown): string | null {
+  if (!Array.isArray(errors) || errors.length === 0) return null;
+  const lines = errors.map((e) => {
+    const row = (e && typeof e === "object" ? e : {}) as { account_id?: unknown; channel_id?: unknown; error?: unknown };
+    const target = row.account_id != null ? `account ${String(row.account_id)}` : `YouTube channel ${String(row.channel_id ?? "?")}`;
+    switch (row.error) {
+      case "already_sending":
+        return (
+          `- ${target}: this video is already being sent there, so nothing new was recorded. Do not call publish_video ` +
+          `for it again: once that post has finished, a new call would post the video a second time.`
+        );
+      case "forbidden":
+        return (
+          `- ${target}: this connection cannot publish there. It is not one of this workspace's publish targets, ` +
+          `or the person who connected the app may not publish to it.`
+        );
+      default:
+        return `- ${target}: refused (${String(row.error ?? "no reason given")}).`;
+    }
+  });
+  return `No publish request was recorded for this video:\n${lines.join("\n")}`;
 }
 
 /**
@@ -125,8 +171,13 @@ export function oauthRefusalText(result: Extract<ApiResult, { ok: false }>, orig
       return "The person who connected this app no longer has access to its workspace. They need to connect the app again.";
     case "insufficient_scope": {
       const need = String(d.required_scope ?? "that permission");
-      return `This connection was not given the "${need}" permission. The person can disconnect it and connect it again, allowing that permission.`;
+      return (
+        `This connection was not given the "${need}" permission. The person can disconnect it in Developers → Connected apps ` +
+        `at ${origin}/developers and connect it again, allowing that permission.`
+      );
     }
+    case "publish_refused":
+      return publishRefusedText(d.errors) ?? `${result.message} (${result.code})`;
     case "rate_limit_exceeded":
       return `Too many requests in a short time. Wait ${Math.max(1, Math.ceil(result.retryAfter ?? 30))} seconds and try again.`;
     case "pricing_unavailable":
