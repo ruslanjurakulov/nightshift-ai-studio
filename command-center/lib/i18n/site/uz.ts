@@ -186,6 +186,8 @@ export const siteUz: SiteDictionary = {
     tryNoteSignedOut: "“Shu soʻrovni sinab koʻrish” avval hisob yaratishni soʻraydi, soʻng Studiyani shu vosita va shu soʻzlar bilan ochadi. Studiyada “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi, narx esa oldindan koʻrinadi.",
     altClip: "Sunʼiy intellekt yaratgan klip: {model} modeli",
     altImage: "Sunʼiy intellekt yaratgan tasvir: {model} modeli",
+    source: "Shu rasmdan yaratilgan:",
+    altSource: "Bu klip yaratilgan, sunʼiy intellekt yaratgan tasvir: {model} modeli",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {

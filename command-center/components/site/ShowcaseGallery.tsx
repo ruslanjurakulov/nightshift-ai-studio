@@ -54,6 +54,10 @@ export function ShowcaseGallery({
   const items = showcaseItems(entries, files);
   if (items.length === 0) return null;
   const g = t.site.gallery;
+  // An animation of one of our own pictures reads as a trick without the picture it started from. Shown only when that picture is
+  // itself a sample here (its file is in the repository and its own card names its model); any other input is not shown.
+  const byJob = new Map(items.map((it) => [it.e.jobId, it]));
+  const sourceOf = (e: ShowcaseEntry) => (e.kind === "video" && e.input.kind === "operator_job" ? byJob.get(e.input.jobId) ?? null : null);
   return (
     <section id="samples" aria-labelledby="samples-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
@@ -68,6 +72,7 @@ export function ShowcaseGallery({
             const leftOut = modelLeftOut(e, now);
             const promptId = `sample-prompt-${e.jobId}`;
             const clip = e.kind === "video" && f.clip !== null;
+            const source = sourceOf(e);
             return (
               <li key={e.jobId} className="nx-gallery-card" data-showcase-entry={e.jobId} data-model={e.modelId}>
                 <div className="nx-gallery-pic" data-clip={clip ? "sample" : undefined}>
@@ -97,6 +102,31 @@ export function ShowcaseGallery({
                     </a>
                   )}
                   {leftOut && <p className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</p>}
+                  {source && (
+                    <figure className="nx-gallery-source" data-source-entry={source.e.jobId}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={source.f.posterSm}
+                        width={source.e.width}
+                        height={source.e.height}
+                        alt={fmt(g.altSource, { model: source.e.modelName })}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                      <figcaption>
+                        <span className="nx-gallery-key">{g.source}</span> <strong>{source.e.modelName}</strong>
+                        {/* The picture is the other maker's output, shown here too, so its credit travels with it. */}
+                        {source.e.attribution && (
+                          <>
+                            {" "}
+                            <a href={source.e.attribution.url} target="_blank" rel="noopener noreferrer" className="nx-gallery-attr">
+                              {source.e.attribution.text}
+                            </a>
+                          </>
+                        )}
+                      </figcaption>
+                    </figure>
+                  )}
                   <p className="nx-gallery-key">{g.prompt}</p>
                   <p id={promptId} className="nx-gallery-prompt">{e.prompt.trim() ? e.prompt : g.noPrompt}</p>
                   <p className="nx-gallery-date">

@@ -45,7 +45,8 @@ PRICES = {"low": 1, "medium": 4, "high": 16}
 
 
 def _spec(qualities):
-    spec = {"vendor_model": "acme-img", "output": "image", "pricing": {"unit": "image"}}
+    # The shapes it makes, as every registry row states them: 0155's quote refuses a shape the spec does not list.
+    spec = {"vendor_model": "acme-img", "output": "image", "pricing": {"unit": "image"}, "aspect_ratios": ["16:9", "9:16", "1:1"]}
     if qualities:
         spec["qualities"] = qualities
         spec["pricing"]["variants"] = {"by": "quality", "prices": {q: None for q in qualities}}

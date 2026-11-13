@@ -41,6 +41,76 @@ import s5Mp4 from "@/components/site/showcase/5778bf5a-f751-472b-bbc0-c59b10567d
 import s5Webm from "@/components/site/showcase/5778bf5a-f751-472b-bbc0-c59b10567d32/clip.webm";
 import s5SmMp4 from "@/components/site/showcase/5778bf5a-f751-472b-bbc0-c59b10567d32/clip-sm.mp4";
 import s5SmWebm from "@/components/site/showcase/5778bf5a-f751-472b-bbc0-c59b10567d32/clip-sm.webm";
+import s6Poster from "@/components/site/showcase/de53f364-eaf7-4cd1-8d44-7b56b21b03b6/poster.webp";
+import s6PosterSm from "@/components/site/showcase/de53f364-eaf7-4cd1-8d44-7b56b21b03b6/poster-sm.webp";
+import s6Mp4 from "@/components/site/showcase/de53f364-eaf7-4cd1-8d44-7b56b21b03b6/clip.mp4";
+import s6Webm from "@/components/site/showcase/de53f364-eaf7-4cd1-8d44-7b56b21b03b6/clip.webm";
+import s6SmMp4 from "@/components/site/showcase/de53f364-eaf7-4cd1-8d44-7b56b21b03b6/clip-sm.mp4";
+import s6SmWebm from "@/components/site/showcase/de53f364-eaf7-4cd1-8d44-7b56b21b03b6/clip-sm.webm";
+import s7Poster from "@/components/site/showcase/f92a89ed-2145-4342-acd5-f24b8805a0f9/poster.webp";
+import s7PosterSm from "@/components/site/showcase/f92a89ed-2145-4342-acd5-f24b8805a0f9/poster-sm.webp";
+import s7Mp4 from "@/components/site/showcase/f92a89ed-2145-4342-acd5-f24b8805a0f9/clip.mp4";
+import s7Webm from "@/components/site/showcase/f92a89ed-2145-4342-acd5-f24b8805a0f9/clip.webm";
+import s7SmMp4 from "@/components/site/showcase/f92a89ed-2145-4342-acd5-f24b8805a0f9/clip-sm.mp4";
+import s7SmWebm from "@/components/site/showcase/f92a89ed-2145-4342-acd5-f24b8805a0f9/clip-sm.webm";
+import s8Poster from "@/components/site/showcase/01c9f1f0-d54b-4fd3-a88f-ddf459aece73/poster.webp";
+import s8PosterSm from "@/components/site/showcase/01c9f1f0-d54b-4fd3-a88f-ddf459aece73/poster-sm.webp";
+import s8Mp4 from "@/components/site/showcase/01c9f1f0-d54b-4fd3-a88f-ddf459aece73/clip.mp4";
+import s8Webm from "@/components/site/showcase/01c9f1f0-d54b-4fd3-a88f-ddf459aece73/clip.webm";
+import s8SmMp4 from "@/components/site/showcase/01c9f1f0-d54b-4fd3-a88f-ddf459aece73/clip-sm.mp4";
+import s8SmWebm from "@/components/site/showcase/01c9f1f0-d54b-4fd3-a88f-ddf459aece73/clip-sm.webm";
+import s9Poster from "@/components/site/showcase/b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9/poster.webp";
+import s9PosterSm from "@/components/site/showcase/b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9/poster-sm.webp";
+import s9Mp4 from "@/components/site/showcase/b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9/clip.mp4";
+import s9Webm from "@/components/site/showcase/b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9/clip.webm";
+import s9SmMp4 from "@/components/site/showcase/b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9/clip-sm.mp4";
+import s9SmWebm from "@/components/site/showcase/b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9/clip-sm.webm";
+import s10Poster from "@/components/site/showcase/a6768488-04c6-4325-9465-62d61f888a70/poster.webp";
+import s10PosterSm from "@/components/site/showcase/a6768488-04c6-4325-9465-62d61f888a70/poster-sm.webp";
+import s10Mp4 from "@/components/site/showcase/a6768488-04c6-4325-9465-62d61f888a70/clip.mp4";
+import s10Webm from "@/components/site/showcase/a6768488-04c6-4325-9465-62d61f888a70/clip.webm";
+import s10SmMp4 from "@/components/site/showcase/a6768488-04c6-4325-9465-62d61f888a70/clip-sm.mp4";
+import s10SmWebm from "@/components/site/showcase/a6768488-04c6-4325-9465-62d61f888a70/clip-sm.webm";
+import s11Poster from "@/components/site/showcase/9a52ebf1-bbe3-473c-b77c-7553bc18e0d8/poster.webp";
+import s11PosterSm from "@/components/site/showcase/9a52ebf1-bbe3-473c-b77c-7553bc18e0d8/poster-sm.webp";
+import s11Mp4 from "@/components/site/showcase/9a52ebf1-bbe3-473c-b77c-7553bc18e0d8/clip.mp4";
+import s11Webm from "@/components/site/showcase/9a52ebf1-bbe3-473c-b77c-7553bc18e0d8/clip.webm";
+import s11SmMp4 from "@/components/site/showcase/9a52ebf1-bbe3-473c-b77c-7553bc18e0d8/clip-sm.mp4";
+import s11SmWebm from "@/components/site/showcase/9a52ebf1-bbe3-473c-b77c-7553bc18e0d8/clip-sm.webm";
+import s12Poster from "@/components/site/showcase/ab0bcba2-8374-465d-b505-8dac19977948/poster.webp";
+import s12PosterSm from "@/components/site/showcase/ab0bcba2-8374-465d-b505-8dac19977948/poster-sm.webp";
+import s12Mp4 from "@/components/site/showcase/ab0bcba2-8374-465d-b505-8dac19977948/clip.mp4";
+import s12Webm from "@/components/site/showcase/ab0bcba2-8374-465d-b505-8dac19977948/clip.webm";
+import s12SmMp4 from "@/components/site/showcase/ab0bcba2-8374-465d-b505-8dac19977948/clip-sm.mp4";
+import s12SmWebm from "@/components/site/showcase/ab0bcba2-8374-465d-b505-8dac19977948/clip-sm.webm";
+import s13Poster from "@/components/site/showcase/fc1fad12-16de-4cd5-9cd9-e77ed245f469/poster.webp";
+import s13PosterSm from "@/components/site/showcase/fc1fad12-16de-4cd5-9cd9-e77ed245f469/poster-sm.webp";
+import s13Mp4 from "@/components/site/showcase/fc1fad12-16de-4cd5-9cd9-e77ed245f469/clip.mp4";
+import s13Webm from "@/components/site/showcase/fc1fad12-16de-4cd5-9cd9-e77ed245f469/clip.webm";
+import s13SmMp4 from "@/components/site/showcase/fc1fad12-16de-4cd5-9cd9-e77ed245f469/clip-sm.mp4";
+import s13SmWebm from "@/components/site/showcase/fc1fad12-16de-4cd5-9cd9-e77ed245f469/clip-sm.webm";
+import s14Poster from "@/components/site/showcase/ab7cc0e2-8040-4643-8e14-74219fc1d8e2/poster.webp";
+import s14PosterSm from "@/components/site/showcase/ab7cc0e2-8040-4643-8e14-74219fc1d8e2/poster-sm.webp";
+import s14Mp4 from "@/components/site/showcase/ab7cc0e2-8040-4643-8e14-74219fc1d8e2/clip.mp4";
+import s14Webm from "@/components/site/showcase/ab7cc0e2-8040-4643-8e14-74219fc1d8e2/clip.webm";
+import s14SmMp4 from "@/components/site/showcase/ab7cc0e2-8040-4643-8e14-74219fc1d8e2/clip-sm.mp4";
+import s14SmWebm from "@/components/site/showcase/ab7cc0e2-8040-4643-8e14-74219fc1d8e2/clip-sm.webm";
+import s15Poster from "@/components/site/showcase/e3da9148-f2f8-443e-95b1-8ed36ef3dea4/poster.webp";
+import s15PosterSm from "@/components/site/showcase/e3da9148-f2f8-443e-95b1-8ed36ef3dea4/poster-sm.webp";
+import s16Poster from "@/components/site/showcase/28f164dc-809f-49a3-b2e2-ef0bdf88519b/poster.webp";
+import s16PosterSm from "@/components/site/showcase/28f164dc-809f-49a3-b2e2-ef0bdf88519b/poster-sm.webp";
+import s17Poster from "@/components/site/showcase/f17146fd-054c-4970-9dac-f7a0dc929bd6/poster.webp";
+import s17PosterSm from "@/components/site/showcase/f17146fd-054c-4970-9dac-f7a0dc929bd6/poster-sm.webp";
+import s18Poster from "@/components/site/showcase/1b3d5f4b-f4f2-4e92-84db-77908a36df2a/poster.webp";
+import s18PosterSm from "@/components/site/showcase/1b3d5f4b-f4f2-4e92-84db-77908a36df2a/poster-sm.webp";
+import s19Poster from "@/components/site/showcase/639bbde5-dc70-4954-b71d-54db6a5b3ea9/poster.webp";
+import s19PosterSm from "@/components/site/showcase/639bbde5-dc70-4954-b71d-54db6a5b3ea9/poster-sm.webp";
+import s20Poster from "@/components/site/showcase/1504b313-3a3c-4e78-bfda-5bca3ef7f3da/poster.webp";
+import s20PosterSm from "@/components/site/showcase/1504b313-3a3c-4e78-bfda-5bca3ef7f3da/poster-sm.webp";
+import s21Poster from "@/components/site/showcase/64a7c2b8-a6c1-4359-9961-a1a2760f1cbf/poster.webp";
+import s21PosterSm from "@/components/site/showcase/64a7c2b8-a6c1-4359-9961-a1a2760f1cbf/poster-sm.webp";
+import s22Poster from "@/components/site/showcase/38c427b0-c41b-4d16-86ca-14dc2e69ec27/poster.webp";
+import s22PosterSm from "@/components/site/showcase/38c427b0-c41b-4d16-86ca-14dc2e69ec27/poster-sm.webp";
 
 export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
   "a04d5d55-27ef-4cae-95a2-25488503829e": { poster: s0Poster.src, posterSm: s0PosterSm.src, clip: { mp4: s0Mp4, webm: s0Webm, smMp4: s0SmMp4, smWebm: s0SmWebm } },
@@ -49,4 +119,21 @@ export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
   "826322ba-3ac9-4030-bc19-367b5ae1277a": { poster: s3Poster.src, posterSm: s3PosterSm.src, clip: { mp4: s3Mp4, webm: s3Webm, smMp4: s3SmMp4, smWebm: s3SmWebm } },
   "0e7b89cb-282b-43b8-8777-55001b398f67": { poster: s4Poster.src, posterSm: s4PosterSm.src, clip: { mp4: s4Mp4, webm: s4Webm, smMp4: s4SmMp4, smWebm: s4SmWebm } },
   "5778bf5a-f751-472b-bbc0-c59b10567d32": { poster: s5Poster.src, posterSm: s5PosterSm.src, clip: { mp4: s5Mp4, webm: s5Webm, smMp4: s5SmMp4, smWebm: s5SmWebm } },
+  "de53f364-eaf7-4cd1-8d44-7b56b21b03b6": { poster: s6Poster.src, posterSm: s6PosterSm.src, clip: { mp4: s6Mp4, webm: s6Webm, smMp4: s6SmMp4, smWebm: s6SmWebm } },
+  "f92a89ed-2145-4342-acd5-f24b8805a0f9": { poster: s7Poster.src, posterSm: s7PosterSm.src, clip: { mp4: s7Mp4, webm: s7Webm, smMp4: s7SmMp4, smWebm: s7SmWebm } },
+  "01c9f1f0-d54b-4fd3-a88f-ddf459aece73": { poster: s8Poster.src, posterSm: s8PosterSm.src, clip: { mp4: s8Mp4, webm: s8Webm, smMp4: s8SmMp4, smWebm: s8SmWebm } },
+  "b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9": { poster: s9Poster.src, posterSm: s9PosterSm.src, clip: { mp4: s9Mp4, webm: s9Webm, smMp4: s9SmMp4, smWebm: s9SmWebm } },
+  "a6768488-04c6-4325-9465-62d61f888a70": { poster: s10Poster.src, posterSm: s10PosterSm.src, clip: { mp4: s10Mp4, webm: s10Webm, smMp4: s10SmMp4, smWebm: s10SmWebm } },
+  "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8": { poster: s11Poster.src, posterSm: s11PosterSm.src, clip: { mp4: s11Mp4, webm: s11Webm, smMp4: s11SmMp4, smWebm: s11SmWebm } },
+  "ab0bcba2-8374-465d-b505-8dac19977948": { poster: s12Poster.src, posterSm: s12PosterSm.src, clip: { mp4: s12Mp4, webm: s12Webm, smMp4: s12SmMp4, smWebm: s12SmWebm } },
+  "fc1fad12-16de-4cd5-9cd9-e77ed245f469": { poster: s13Poster.src, posterSm: s13PosterSm.src, clip: { mp4: s13Mp4, webm: s13Webm, smMp4: s13SmMp4, smWebm: s13SmWebm } },
+  "ab7cc0e2-8040-4643-8e14-74219fc1d8e2": { poster: s14Poster.src, posterSm: s14PosterSm.src, clip: { mp4: s14Mp4, webm: s14Webm, smMp4: s14SmMp4, smWebm: s14SmWebm } },
+  "e3da9148-f2f8-443e-95b1-8ed36ef3dea4": { poster: s15Poster.src, posterSm: s15PosterSm.src, clip: null },
+  "28f164dc-809f-49a3-b2e2-ef0bdf88519b": { poster: s16Poster.src, posterSm: s16PosterSm.src, clip: null },
+  "f17146fd-054c-4970-9dac-f7a0dc929bd6": { poster: s17Poster.src, posterSm: s17PosterSm.src, clip: null },
+  "1b3d5f4b-f4f2-4e92-84db-77908a36df2a": { poster: s18Poster.src, posterSm: s18PosterSm.src, clip: null },
+  "639bbde5-dc70-4954-b71d-54db6a5b3ea9": { poster: s19Poster.src, posterSm: s19PosterSm.src, clip: null },
+  "1504b313-3a3c-4e78-bfda-5bca3ef7f3da": { poster: s20Poster.src, posterSm: s20PosterSm.src, clip: null },
+  "64a7c2b8-a6c1-4359-9961-a1a2760f1cbf": { poster: s21Poster.src, posterSm: s21PosterSm.src, clip: null },
+  "38c427b0-c41b-4d16-86ca-14dc2e69ec27": { poster: s22Poster.src, posterSm: s22PosterSm.src, clip: null },
 };

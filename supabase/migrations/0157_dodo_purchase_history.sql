@@ -45,9 +45,9 @@
 -- Additive and idempotent: create-or-replace of a function that did not exist; a replay changes nothing. Undo:
 -- docs/sql/rollback_0157_dodo_purchase_history.sql (owner-applied).
 --
--- NUMBER. 0157 (first written as 0154). 0155 (#728) and 0156 (claude/named-resolution-params) are held by other work, and the
--- Supabase integration refuses a number below the latest applied one. It names no object of 0147 to 0153 (0155 and 0156 are not on
--- this branch; it creates one new function and replaces nothing, so it cannot collide with them unless they create the same name).
+-- NUMBER. 0157 (first written as 0154). 0155 (#728) is merged and 0156 (#730) merges before this, and the Supabase integration
+-- refuses a number below the latest applied one. It names no object of 0147 to 0155 (0156 is not on this branch; this file creates
+-- one new function and replaces nothing, so it cannot collide with it unless it creates the same name).
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: one row, all true.
 --   select to_regprocedure('public.dodo_purchase_history(uuid, text)') is null as function_is_new,
