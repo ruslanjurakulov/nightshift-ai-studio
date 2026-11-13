@@ -17,7 +17,12 @@ The request is the smallest one the image-generation guide shows working, and no
   whose ``content`` is an ``input_text`` part followed by ``input_image`` parts (base64 data URLs);
 * ``tools: [{"type": "image_generation", "size": "WxH"}]`` only when the job names an aspect ratio ("``size`` sets
   the aspect ratio, not the exact pixel size"; "aspect ratios beyond 16:1 return 400"). Left out, it is the vendor's
-  default shape. ``output_format`` is not sent: the vendor's default (webp) is kept, and the bytes decide the type;
+  default shape. ``output_format`` is not sent: the vendor's default (webp) is kept, and the bytes decide the type.
+  The first real probe (2026-11-12) was answered HTTP 400 ``Unsupported tool type: 'image_generation'`` with
+  ``param: "tools"``: that answer is ``vendor_tool_unsupported`` (``TOOL_REFUSED``), never retried without the tool,
+  because the picture would come back in a shape the person did not ask for. Until a probe proves the tool, the registry
+  entry lists no aspect ratios, so the Studio offers and sends none and the registry refuses one before any call;
+  ``SPECS`` keeps the documented shapes for the day the tool is accepted;
 * ``safety_identifier``: the job's opaque end-user id, when it is a plain token of at most 64 characters.
 
 The answer is read from ``output[]``: every ``image_generation_call`` item carries its picture as base64 in
@@ -38,9 +43,12 @@ Obligations this adapter carries (Model API ToS, AUP, Geographic Use Policy):
   that reads as a real or famous person, a deepfake or a child is refused before any call, with the same keyword
   screen Character Studio uses (``modules.character_swap.PROMPT_PATTERNS``, migration 0137). It is keyword-weak by
   design; the pictures themselves are not screened.
-* Geography: the Geographic Use Policy bars Muse Image in India (2.2) and every Restricted Territory (3). The repository
-  has no signal of the requester's country (no GeoIP, no CDN country header, no country on the account), so nothing
-  here can block by country. The entry stays unsellable until that gap is closed (docs/research/meta-muse-image-first-party.md).
+* Geography: the Geographic Use Policy (https://dev.meta.ai/legal/geographic-use-policy, "Last updated: November 9,
+  2026", read 2026-11-12) bars every Restricted Territory (3) for all models. Its model-specific list (2.2) no longer
+  names Muse Image (only Muse Wonder and Muse Wonder Full, in South Korea); the 2026-10-12 version barred it in India.
+  The registry row's ``blocked_countries`` lists those territories, and the web routes refuse them by requester country
+  (docs/GEO_BLOCK.md, #695). The database does not know the country yet, so 0142 keeps a row with that list off sale and the
+  entry stays hidden until it does (docs/research/meta-muse-image-first-party.md). Nothing in this adapter checks the country.
 """
 
 from __future__ import annotations
@@ -63,6 +71,7 @@ from modules.capabilities.base import (
     E_QUOTA,
     E_RATE_LIMITED,
     E_UNAVAILABLE,
+    E_VENDOR_TOOL_UNSUPPORTED,
     EDIT,
     T2I,
     AdapterError,
@@ -100,6 +109,11 @@ MAX_IMAGE_BYTES = 15 * 1024 * 1024
 MAX_TOTAL_IMAGE_BYTES = 36 * 1024 * 1024
 _FAILED = ("failed", "cancelled", "incomplete")
 _POLICY_CODES = ("content_policy_violation", "image_content_policy_violation")
+#: What a person reads when the vendor refuses the ``image_generation`` tool (a 400 naming ``param: "tools"``). A refused
+#: request makes no picture, and the vendor's pricing page bills generated pictures only. It names no remedy: the registry
+#: entry offers no aspect ratio while the tool is refused (so the Studio sends none), and nothing else can be changed here.
+TOOL_REFUSED = ("the vendor refused the size / aspect ratio option for this model, so no picture was made and nothing "
+                "was charged")
 
 
 def _debrand(text: str) -> str:
@@ -281,6 +295,10 @@ class MuseImageAdapter(SafeResultMixin, HttpAdapter):
         kind = str(err.get("type") or "").lower()
         if code in _POLICY_CODES:
             return E_POLICY
+        if status == 400 and str(err.get("param") or "").lower() == "tools":
+            # "Unsupported tool type: 'image_generation'" (param "tools"), the first probe's answer: the vendor refused the
+            # tool that carries the aspect ratio, not the prompt. Its own code: the remedy is the option, not the words.
+            return E_VENDOR_TOOL_UNSUPPORTED
         if code == "invalid_api_key" or kind == "authentication_error":
             return E_AUTH
         if kind == "billing_error" or code.startswith("billing_") or status == 402:
@@ -331,6 +349,10 @@ class MuseImageAdapter(SafeResultMixin, HttpAdapter):
             data = self.submit_json(f"{self.base_url}/responses", self.body(request, vendor_model), what="generate")
             return ProviderTask(self.key, vendor_model, None, outputs=self._images(data))
         except AdapterError as e:
+            if e.code == E_VENDOR_TOOL_UNSUPPORTED:
+                # A clear sentence first, then the vendor's own words (scrubbed, de-branded) for the operator's log.
+                e = AdapterError(e.code, f"{TOOL_REFUSED} ({e.message})", http_status=e.http_status,
+                                 not_accepted=e.not_accepted)
             raise _plain(e) from None
 
     def _images(self, data) -> List[Output]:

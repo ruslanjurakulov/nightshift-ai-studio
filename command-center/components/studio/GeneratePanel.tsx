@@ -268,6 +268,8 @@ export function GeneratePanel({
   const effectiveQ = !routed && takesQuality(capability) ? effectiveQuality(current, quality) : null;
   // A soundtrack choice only for a video tool on a model that sells it; another model never gets one.
   const effectiveSnd = !routed && takesSound(capability) ? effectiveSound(current, sound) : null;
+  // A model whose spec lists no aspect ratio makes its own shape: no shape is offered or sent for it (Auto: not known, as above).
+  const shapeless = !routed && (capability === "t2i" || capability === "t2v") && current?.fixedShape === true;
   const form = {
     capability,
     prompt,
@@ -285,6 +287,7 @@ export function GeneratePanel({
     describeLanguage,
     quality: effectiveQ,
     audio: effectiveSnd,
+    noAspect: shapeless,
   };
   const params = useMemo(
     () =>
@@ -305,8 +308,9 @@ export function GeneratePanel({
         describeLanguage,
         quality: effectiveQ,
         audio: effectiveSnd,
+        noAspect: shapeless,
       }),
-    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, describeLanguage, effectiveQ, effectiveSnd],
+    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, describeLanguage, effectiveQ, effectiveSnd, shapeless],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -586,7 +590,7 @@ export function GeneratePanel({
   }
 
   const hasSettings =
-    capability === "t2i" ||
+    (capability === "t2i" && !shapeless) ||
     capability === "t2v" ||
     capability === "i2v" ||
     capability === "upscale" ||
@@ -608,6 +612,7 @@ export function GeneratePanel({
   const settings = hasSettings ? (
     <div className="flex flex-wrap items-center gap-2">
       {(capability === "t2i" || capability === "t2v") &&
+        !shapeless &&
         seg(t.gen.aspectLabel, arrange ? null : RectangleHorizontal, ASPECT_RATIOS, aspect, setAspect, aspectText, true)}
       {(capability === "t2v" || capability === "i2v") &&
         seg(t.gen.durationLabel, Clock, VIDEO_DURATIONS, duration, setDuration, durationText)}
@@ -1372,7 +1377,7 @@ export function GeneratePanel({
     };
     // The settings key's own words: what is set now (the shape, the length, the size), never a price.
     const summary = [
-      capability === "t2i" || capability === "t2v" ? aspect : null,
+      (capability === "t2i" || capability === "t2v") && !shapeless ? aspect : null,
       capability === "t2v" || capability === "i2v" ? fmt(t.gen.seconds, { n: duration }) : null,
       capability === "upscale" ? fmt(t.gen.factor, { n: factor }) : null,
       effectiveTarget ? effectiveTarget.replace(/k$/, "K") : null,
