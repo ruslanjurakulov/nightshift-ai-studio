@@ -5,6 +5,8 @@
  * along on every picture job, and a model that refuses the option behind the shape (the first probe of the hidden grounded
  * picture model, 2026-11-12: its vendor refused the tool that carries the shape) failed every job.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -193,6 +195,88 @@ describe("the model's spec decides", () => {
     ).not.toHaveProperty("fixedShape");
     // The sellable rows did not answer: nothing is assumed.
     expect(withTiers([base], null)[0]).not.toHaveProperty("fixedShape");
+  });
+});
+
+// The real registry file: the entries that list no shape today. All four older ones were hidden and never probed on
+// 2026-11-13 (no Studio job could reach them yet); once they are on sale they get no shape, the call their adapters make.
+type Entry = { id: string; capabilities: string[]; aspect_ratios: string[] };
+const REGISTRY = JSON.parse(
+  readFileSync(
+    join(__dirname, "..", "..", "schemas", "model_registry.json"),
+    "utf8",
+  ),
+) as { models: Entry[] };
+const entry = (id: string): Entry => {
+  const e = REGISTRY.models.find((m) => m.id === id);
+  if (!e) throw new Error(`${id} is not in the registry`);
+  return e;
+};
+// What sellable_models() / operator_preview_models() hand the Studio: the id and the public half of spec.
+const asStudio = (e: Entry): StudioModel =>
+  withTiers(
+    [
+      {
+        id: e.id,
+        displayName: e.id,
+        capabilities: e.capabilities,
+        beta: false,
+      },
+    ],
+    [{ id: e.id, spec: { aspect_ratios: e.aspect_ratios } }],
+  )[0];
+
+describe("the registry entries that list no shape", () => {
+  it.each([
+    ["grounded-image-1.0", "t2i"],
+    ["ideogram-4", "t2i"],
+    ["minimax-hailuo-2.3", "t2v"],
+    ["flux-3-video", "t2v"],
+    ["pika-2.5", "t2v"],
+  ] as const)("%s is sent no aspect_ratio for %s", (id, capability) => {
+    const e = entry(id);
+    expect(e.aspect_ratios).toEqual([]);
+    expect(e.capabilities).toContain(capability);
+    const model = asStudio(e);
+    expect(model.fixedShape).toBe(true);
+    const params = buildParams(
+      form({ capability, noAspect: model.fixedShape }),
+    );
+    expect(params).not.toHaveProperty("aspect_ratio");
+    expect(params).toMatchObject({ prompt: "a red apple" });
+  });
+
+  it("an entry that lists shapes keeps them", () => {
+    const shaped = REGISTRY.models.find(
+      (m) => m.capabilities.includes("t2i") && m.aspect_ratios.includes("16:9"),
+    );
+    expect(shaped).toBeTruthy();
+    const model = asStudio(shaped as Entry);
+    expect(model).not.toHaveProperty("fixedShape");
+    expect(buildParams(form({ noAspect: model.fixedShape }))).toEqual({
+      prompt: "a red apple",
+      aspect_ratio: "16:9",
+    });
+  });
+
+  it("the panel sends ideogram-4 no shape", async () => {
+    render(
+      withI18n(
+        <GeneratePanel orgId={ORG} models={[asStudio(entry("ideogram-4"))]} />,
+      ),
+    );
+    expect(screen.queryByRole("group", { name: t.gen.aspectLabel })).toBeNull();
+    fireEvent.change(
+      document.getElementById("gen-prompt") as HTMLTextAreaElement,
+      { target: { value: "a red kite" } },
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Generate · 1 credits/ }),
+    );
+    await waitFor(() => expect(creates()).toHaveLength(1));
+    expect(
+      JSON.parse(String((creates()[0][1] as RequestInit).body)).params,
+    ).toEqual({ prompt: "a red kite" });
   });
 });
 
