@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "c62d40e7-b1b5-4ba4-8bc9-487f9ef7382e",
+      "assetId": "69e4053f-71ef-573d-b846-f239d2cdc603",
+      "sha256": "0d2f721f1d8539539e5c6c993f71ff5eccf8b089b32c9dc6a4798b867ada61e6",
+      "modelId": "minimax-h3-lite",
+      "modelName": "MiniMax H3 Lite",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "A small glass jar sits on a dark kitchen table at night; inside it a miniature thunderstorm churns with dark clouds and rain, and bright lightning bolts flash inside the jar, lighting up the whole kitchen in white flashes; the camera slowly pushes in. Atmospheric, magical realism. Audio: tiny thunder rumbles, rain patter.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Lite",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:58:56Z"
     }
   ]
 }
