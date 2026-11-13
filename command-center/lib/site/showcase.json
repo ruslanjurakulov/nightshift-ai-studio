@@ -39,6 +39,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T16:05:40Z"
+    },
+    {
+      "jobId": "5778bf5a-f751-472b-bbc0-c59b10567d32",
+      "assetId": "46fd58c4-040d-5eea-a660-ca30b927b285",
+      "sha256": "d63f8375287ee68ffec37c5c9ed75943851012ceaec9f90376f78b2702436345",
+      "modelId": "minimax-h3-highspeed",
+      "modelName": "MiniMax H3 Highspeed",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Macro tilt-shift shot, vertical: on a real cast-iron pan on a kitchen stove, a team of thumb-sized chefs in white uniforms cook breakfast. Two roll a cherry tomato like a boulder, one cracks a quail egg as big as himself onto the sizzling pan, another flips a strip of bacon with full-body effort. Warm kitchen light, rising steam, 100mm macro, shallow depth of field, hyper-real miniature world. Audio: sizzling oil, tiny clinks.",
+      "createdAt": "2026-11-13T16:24:04Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Highspeed",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:11:01Z"
     }
   ]
 }
