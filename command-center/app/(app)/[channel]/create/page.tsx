@@ -28,7 +28,6 @@ import { DeskBar, YouTubeDesk, type CreditsReading, type ProjectsReading } from 
 import { createClient, getUser } from "@/lib/supabase/server";
 import { readCreditAccount } from "@/lib/server/credits";
 import { loadEditorProjects } from "@/lib/server/editor";
-import { GeoAttribution } from "@/components/legal/GeoAttribution";
 import { effectFromQuery, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
 import { EffectBanner } from "@/components/effects/EffectBanner";
 import { EffectsDesk } from "@/components/effects/EffectsDesk";
@@ -219,8 +218,8 @@ export default async function CreatePage({
           <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>
         ))}
       {desk === "youtube" && <YouTubeDesk run={run} />}
-      {/* The pickers above are filtered by the request's country once a model has a country list (docs/GEO_BLOCK.md). */}
-      {isMediaDesk(desk) && <GeoAttribution label={t.create.geoAttribution} />}
+      {/* The pickers above are filtered by the request's country once a model has a country list: the (app) layout carries the
+          DB-IP credit for every page (docs/GEO_BLOCK.md). */}
     </div>
   );
 }

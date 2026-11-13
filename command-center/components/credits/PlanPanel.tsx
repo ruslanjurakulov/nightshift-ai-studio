@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, ExternalLink } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
-import { fmt } from "@/lib/i18n";
+import { fmt, type Dictionary } from "@/lib/i18n";
 import { resolvedTheme } from "@/lib/theme";
 import { checkoutCustomData, paddleLocale } from "@/lib/paddle";
 import { columnPrice, type BillingSummary, type GenerationRates, type PlanMatrix, type SubscribeAccess } from "@/lib/plans";
@@ -48,6 +48,23 @@ const POLL_TRIES = 20;
  * anything: the webhook does, and this component waits for the plan to show
  * up. The customer-facing copy names no payment provider.
  */
+/**
+ * "Renews 1 Dec" / "Ends 1 Dec" under the plan, or words when the period's end is not known: the line read "Renews –" (a dash where
+ * a date belongs reads as a broken page, and a date must never be guessed). Null without a subscription.
+ */
+export function planDateLine(
+  p: Pick<Dictionary["plans"], "renews" | "renewsUnknown" | "endsOn" | "endsUnknown">,
+  sub: { status: string; cancelAtPeriodEnd: boolean; periodEnd: string | null } | null,
+  locale: string,
+): string | null {
+  if (!sub) return null;
+  const ends = sub.status === "canceled" || sub.cancelAtPeriodEnd;
+  const known = sub.periodEnd !== null && Number.isFinite(new Date(sub.periodEnd).getTime());
+  if (!known) return ends ? p.endsUnknown : p.renewsUnknown;
+  const date = shortDate(sub.periodEnd, locale);
+  return fmt(ends ? p.endsOn : p.renews, { date });
+}
+
 export function PlanPanel({
   summary,
   matrix,
@@ -199,11 +216,7 @@ export function PlanPanel({
   const planName = summary?.plan?.name ?? t.common.unknown;
   const currentId = summary?.plan?.id ?? null;
   const statusText = sub ? p.status[sub.status] : null;
-  const dateLine = !sub
-    ? null
-    : sub.status === "canceled" || sub.cancelAtPeriodEnd
-      ? fmt(p.endsOn, { date: shortDate(sub.periodEnd, locale) })
-      : fmt(p.renews, { date: shortDate(sub.periodEnd, locale) });
+  const dateLine = planDateLine(p, sub, locale);
   const message: Partial<Record<Phase, { text: string; ok?: boolean }>> = {
     paid: { text: cp.planPaid, ok: true },
     arrived: { text: cp.planArrived, ok: true },

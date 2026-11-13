@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -70,9 +71,46 @@ export async function creativeSession(): Promise<
  * or a failed read is "nothing to pick", never a crash.
  */
 export async function loadStudioModels(orgId: string | null = null): Promise<StudioModel[]> {
+  return withLocks((await readStudioModels()) ?? [], orgId);
+}
+
+/**
+ * Which models this organization cannot buy, by creative_price's own rule (modelLock): the picker then starts on one it can, and
+ * names the reason on the others instead of a red refusal. Purchases are read only when a model needs one (`paid`); without an
+ * organization (or on a failed read) a `paid` model is not shown locked (unknown is not a refusal), while a plan-tier model is
+ * refused for everyone and is shown so. The tool-availability marks read readStudioModels without locks, as before.
+ */
+async function withLocks(models: StudioModel[], orgId: string | null): Promise<StudioModel[]> {
+  if (models.length === 0) return models;
+  let purchased: boolean | null = null;
+  if (orgId && models.some((m) => m.entitlement === "paid")) {
+    try {
+      const supabase = await createClient();
+      purchased = supabase ? await readPurchased(supabase, orgId) : null;
+    } catch {
+      purchased = null;
+    }
+  }
+  return models.map((m) => {
+    const lock = modelLock(m.entitlement, purchased);
+    return lock ? { ...m, lock } : m;
+  });
+}
+
+/**
+ * The same list, with a failed read kept apart from an empty one: null = the
+ * registry could not be read (no client, an error), [] = read, nothing on sale.
+ * The tool-availability marks (lib/server/tool-availability.ts) need the
+ * difference: "could not read" must never be drawn as "not available"
+ * (CLAUDE.md rule 5).
+ *
+ * Memoised per request (React cache): the layout's availability marks and the
+ * page's own Studio read the same rows, so one request makes one read.
+ */
+export const readStudioModels = cache(async (): Promise<StudioModel[] | null> => {
   try {
     const supabase = await createClient();
-    if (!supabase) return [];
+    if (!supabase) return null;
     const { data, error } = await supabase
       .from("model_registry")
       .select("id,display_name,capabilities,availability,verified_at")
@@ -80,7 +118,7 @@ export async function loadStudioModels(orgId: string | null = null): Promise<Stu
       .not("verified_at", "is", null)
       .order("display_name", { ascending: true })
       .limit(200);
-    if (error) return [];
+    if (error) return null;
     const models = coerceModels(data);
     if (models.length === 0) return models;
     // The speed and quality marks live in spec, which members cannot read
@@ -93,28 +131,22 @@ export async function loadStudioModels(orgId: string | null = null): Promise<Stu
     const shown = withoutSwitchedOff(models, await readSwitchedOffIds(supabase));
     // sellable_models() also knows what the policy cannot: a vendor's announced shutdown date (migration 0125) ends a sale. When it answered,
     // the picker offers only what it lists; no migration and no policy change, and a failed call leaves the list as it was.
-    const marked = marks.error ? shown : withTiers(onlySellable(shown, marks.data), marks.data);
-    // Which of them this organization cannot buy, by creative_price's own rule (modelLock): the picker then starts on one it can,
-    // and names the reason on the others instead of a red refusal. Purchases are read only when a model needs one.
-    const purchased = marked.some((m) => m.entitlement === "paid") ? await readPurchased(supabase, orgId) : null;
-    const offered = marked.map((m) => {
-      const lock = modelLock(m.entitlement, purchased);
-      return lock ? { ...m, lock } : m;
-    });
+    const offered = marks.error ? shown : withTiers(onlySellable(shown, marks.data), marks.data);
     // A model whose vendor forbids the country this request comes from is not offered (docs/GEO_BLOCK.md); the quote and the
     // create routes refuse it too. Reads nothing while no model has a country list.
     return await hideBlockedModelsHere(offered);
   } catch {
-    return [];
+    return null;
   }
-}
+});
 
 /**
  * The hidden models the platform operator may try in this organization (migration 0139), marked `preview`. The database decides who
  * sees any: operator_preview_models() answers rows only to a platform admin in the credits-exempt organization, and no rows to
  * everyone else. Without the migration, or on any error: none (never a crash, never a guess).
  */
-export async function loadOperatorPreviewModels(orgId: string): Promise<StudioModel[]> {
+// Memoised per request (React cache), like readStudioModels: the layout's availability marks and the create page both ask.
+export const loadOperatorPreviewModels = cache(async (orgId: string): Promise<StudioModel[]> => {
   try {
     const supabase = await createClient();
     if (!supabase) return [];
@@ -125,7 +157,7 @@ export async function loadOperatorPreviewModels(orgId: string): Promise<StudioMo
   } catch {
     return [];
   }
-}
+});
 
 /**
  * The models the open organization's members are not offered right now because the owner switched them off (migration 0124): ids only,
