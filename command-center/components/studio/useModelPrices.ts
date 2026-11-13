@@ -7,7 +7,8 @@ import { asCreativeError, SHEET_PRICE_MAX, type ImageQuality, type StudioCapabil
 export type ModelPrice =
   | { status: "quoting" }
   | { status: "ready"; credits: number }
-  | { status: "error"; code: CreativeError };
+  // `detail`: the database's own sentence, when the route passed one (it tells two entitlement refusals apart).
+  | { status: "error"; code: CreativeError; detail?: string };
 
 const SHEET_QUOTE_DELAY_MS = 250;
 
@@ -29,11 +30,11 @@ async function askPrice(
       body: JSON.stringify({ org_id: orgId, capability, model, params }),
       signal,
     });
-    const body = (await res.json().catch(() => ({}))) as { quote?: { credits?: unknown }; error?: unknown };
+    const body = (await res.json().catch(() => ({}))) as { quote?: { credits?: unknown }; error?: unknown; detail?: unknown };
     const credits = body.quote?.credits;
     return res.ok && typeof credits === "number" && Number.isFinite(credits)
       ? { status: "ready", credits }
-      : { status: "error", code: asCreativeError(body.error) };
+      : { status: "error", code: asCreativeError(body.error), ...(typeof body.detail === "string" ? { detail: body.detail } : {}) };
   } catch {
     return signal.aborted ? null : { status: "error", code: "failed" };
   }

@@ -45,6 +45,7 @@ export function ModelSheet({
   onClose,
   returnTo,
   buyHref,
+  pricedAt,
 }: {
   capability: StudioCapability;
   models: StudioModel[];
@@ -58,6 +59,8 @@ export function ModelSheet({
   returnTo?: React.RefObject<HTMLElement | null>;
   /** The top-ups (Credits page): a model that opens after a first purchase links there. */
   buyHref?: string;
+  /** Per model: the settings its price was asked at, when they are not the form's (its own shape or length), already worded. */
+  pricedAt?: Record<string, string>;
 }) {
   const { t, fmt, locale } = useI18n();
   const g = t.gen;
@@ -137,11 +140,12 @@ export function ModelSheet({
     }
   }
 
-  // The lock a row shows: the one the page read (modelLock), or the one its quote answered (entitlement_required).
+  // The lock a row shows: the one the page read (modelLock), or the one its quote answered (entitlement_required), told apart by
+  // the model's entitlement or the database's own sentence. Neither known: no guess, the row shows the generic sentence instead.
   const lockOf = (m: StudioModel): ModelLock | null => {
     if (m.lock) return m.lock;
     const p = prices[m.id];
-    return p?.status === "error" && p.code === "entitlement_required" ? (entitlementReason(m.entitlement) ?? "not_on_sale") : null;
+    return p?.status === "error" && p.code === "entitlement_required" ? entitlementReason(m.entitlement, p.detail) : null;
   };
   // "Last proven working" from the registry's verified_at, in the reader's language; nothing when it is not known.
   const verified = (iso: string | null | undefined): string | null => {
@@ -156,7 +160,8 @@ export function ModelSheet({
     if (!p) return { text: priceHint ?? g.sheetPriceLater, tone: "muted" };
     if (p.status === "quoting") return { text: g.sheetPricing, tone: "muted" };
     if (p.status === "ready") return { text: fmt(g.sheetCredits, { n: formatCredits(p.credits, locale) }), tone: "fg" };
-    return { text: apiErrorMessage(t, p.code), tone: "fail" };
+    // A refusal of the sale is not a failure of the model: muted, like a lock.
+    return { text: apiErrorMessage(t, p.code), tone: p.code === "entitlement_required" ? "muted" : "fail" };
   };
 
   if (typeof document === "undefined") return null;
@@ -307,6 +312,12 @@ export function ModelSheet({
                       data-price={m.id}
                     >
                       {price.text}
+                      {price.tone === "fg" && pricedAt?.[m.id] && (
+                        // Asked at this model's own settings, not the form's: say which, beside the number.
+                        <span className="block text-xs font-normal text-[var(--color-muted)]" data-priced-at={m.id}>
+                          {fmt(g.sheetAt, { settings: pricedAt[m.id] })}
+                        </span>
+                      )}
                     </span>
                   )}
                 </li>

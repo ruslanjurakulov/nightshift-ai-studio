@@ -315,6 +315,24 @@ export function GeneratePanel({
   const defaultRes = current?.defaultResolution ?? null;
   const shownRes = resolution && resolutions.includes(resolution) ? resolution : defaultRes;
   const effectiveRes = resolutions.length > 0 && shownRes && shownRes !== defaultRes ? shownRes : null;
+  // A model whose spec lists no clip length at all cannot be sold a clip (0159 refuses every length): no price is asked for a
+  // stand-in length, the reason is named instead.
+  const noLength = clip && !routed && !!current && Array.isArray(current.durations) && current.durations.length === 0;
+  // What was asked for (a retried job, a link, a setting kept from another model) and is NOT what will be sent: said in one line,
+  // never changed silently (CLAUDE.md #4).
+  const snapped: Array<[string, string]> = [];
+  if (textShape && !shapeless && shapeList.length > 0 && aspect !== effectiveAspect) snapped.push([aspect, effectiveAspect]);
+  if (clip && lengths.length > 0 && duration !== effectiveSeconds)
+    snapped.push([fmt(t.gen.seconds, { n: duration }), fmt(t.gen.seconds, { n: effectiveSeconds })]);
+  if (clip && !routed && current && resolution && resolution !== shownRes)
+    snapped.push([resolutionLabel(resolution), shownRes ? resolutionLabel(shownRes) : t.gen.snapModelDefault]);
+  const snapText = snapped.length
+    ? fmt(routed ? t.gen.snapAuto : t.gen.snapNote, {
+        model: current?.displayName ?? "",
+        from: snapped.map((s) => s[0]).join(", "),
+        to: snapped.map((s) => s[1]).join(", "),
+      })
+    : null;
   const form = {
     capability,
     prompt,
@@ -377,7 +395,7 @@ export function GeneratePanel({
   }, []);
 
   useEffect(() => {
-    if (!ready || (!routed && !effectiveModel) || locked) {
+    if (!ready || (!routed && !effectiveModel) || locked || noLength) {
       setQuote({ status: "idle" });
       return;
     }
@@ -414,7 +432,7 @@ export function GeneratePanel({
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [orgId, capability, effectiveModel, paramsKey, ready, requote, routed, modelNames, locked]);
+  }, [orgId, capability, effectiveModel, paramsKey, ready, requote, routed, modelNames, locked, noLength]);
 
   // "Use as picture": applied once per request, never on the mount that a
   // template or Try again caused (that request was already used or cleared).
@@ -429,6 +447,26 @@ export function GeneratePanel({
     setNotice(null);
   }, [sourceRequest, tools]);
 
+  // Each model's own shape, length and resolution for the sheet's prices, and, where they are not the form's, those settings in
+  // words beside its price ("at 8 s · 16:9"): a number asked at other settings is never shown as if it were this form's.
+  const sheetSettings =
+    textShape || clip
+      ? Object.fromEntries(
+          available.map((m) => [m.id, modelSettings(m, capability, effectiveAspect, effectiveSeconds, m.id === effectiveModel ? effectiveRes : null)]),
+        )
+      : undefined;
+  const sentAspect = shapeless ? null : effectiveAspect;
+  const pricedAt = sheetSettings
+    ? Object.fromEntries(
+        Object.entries(sheetSettings).flatMap(([id, s]) => {
+          const parts: string[] = [];
+          if (typeof s.duration_s === "number" && s.duration_s !== effectiveSeconds) parts.push(fmt(t.gen.seconds, { n: s.duration_s }));
+          if ("aspect_ratio" in s && s.aspect_ratio !== sentAspect && typeof s.aspect_ratio === "string") parts.push(s.aspect_ratio);
+          if (typeof s.resolution === "string" && s.resolution !== effectiveRes) parts.push(resolutionLabel(s.resolution));
+          return parts.length ? [[id, parts.join(" · ")]] : [];
+        }),
+      )
+    : undefined;
   // The sheet's prices: the same settings, each model, only while it is open.
   const sheetParams = sheetOpen ? sheetQuoteParams(form) : null;
   const prices = useModelPrices({
@@ -440,12 +478,7 @@ export function GeneratePanel({
     selectedId: effectiveModel,
     params: sheetParams,
     // Each model at ITS shape, length and resolution (the ones it would be sent if picked).
-    settingsFor:
-      textShape || clip
-        ? Object.fromEntries(
-            available.map((m) => [m.id, modelSettings(m, capability, effectiveAspect, effectiveSeconds, m.id === effectiveModel ? effectiveRes : null)]),
-          )
-        : undefined,
+    settingsFor: sheetSettings,
     // Each model is priced at ITS tier: a model without tiers is asked without one.
     // Likewise its soundtrack: a model that offers no choice is asked without one.
     soundFor: takesSound(capability) ? Object.fromEntries(available.map((m) => [m.id, effectiveSound(m, sound)])) : undefined,
@@ -536,7 +569,9 @@ export function GeneratePanel({
         // The balance this page knew was not the database's: read it again.
         if (code === "insufficient_credits") void refreshCredits(orgId);
         // A model no plan opens gets no plan dialog (it would offer plans that do not open it): the sentence says so.
-        const noOffer = code === "entitlement_required" && entitlementReason(current?.entitlement, detail) === "not_on_sale";
+        // Under Auto the hand-picked model is not the one refused: only the database's sentence tells.
+        const noOffer =
+          code === "entitlement_required" && entitlementReason(routed ? undefined : current?.entitlement, detail) === "not_on_sale";
         if (plans && isUpsellCode(code) && !noOffer) setUpsell({ refusal: refusalFrom(code, body), open: true });
       }
     } catch {
@@ -548,11 +583,12 @@ export function GeneratePanel({
   }
 
   const disabled =
-    submitting || quote.status !== "ready" || !ready || quoteSpent || !!locked || (routed ? !quote.routed : !effectiveModel);
+    submitting || quote.status !== "ready" || !ready || quoteSpent || !!locked || noLength || (routed ? !quote.routed : !effectiveModel);
   const errorCode = notice?.kind === "error" ? notice.code : quote.status === "error" ? quote.code : null;
   const errorDetail = notice?.kind === "error" ? notice.detail : quote.status === "error" ? quote.detail : undefined;
   // An entitlement refusal in its own words: a first purchase opens it, or nothing does yet (entitlementReason).
-  const entReason = errorCode === "entitlement_required" ? entitlementReason(current?.entitlement, errorDetail) : null;
+  const entReason =
+    errorCode === "entitlement_required" ? entitlementReason(routed ? undefined : current?.entitlement, errorDetail) : null;
   // The price is more than the credits this organization has available (lib/credits-live, the header's reading): the key says
   // how many are missing and opens the top-ups instead of pressing into a refusal. The database's 402 stays the backstop.
   const live = useLiveCredits(orgId);
@@ -567,7 +603,9 @@ export function GeneratePanel({
   // An AI edit tool nobody sells yet (no proven, priced model): the plain truth, not a generic "no model".
   const blockedText = pickedOff
     ? t.modelSwitch.studio.offBody
-    : blocked === "no_model" && isAiEdit(capability)
+    : noLength && current
+      ? fmt(t.gen.noLength, { model: current.displayName })
+      : blocked === "no_model" && isAiEdit(capability)
       ? t.gen.notAvailableYet
       : blocked
         ? t.gen.blocked[blocked]
@@ -747,6 +785,11 @@ export function GeneratePanel({
       {routed && (textShape || clip) && (
         <span className="basis-full text-xs text-[var(--color-muted)]" data-testid="gen-auto-settings">
           {t.gen.autoSettingsNote}
+        </span>
+      )}
+      {snapText && !composer && (
+        <span className="basis-full text-xs text-[var(--color-muted)]" data-testid="gen-snap-note" aria-live="polite">
+          {snapText}
         </span>
       )}
       {capability === "upscale" &&
@@ -1520,6 +1563,7 @@ export function GeneratePanel({
           prices={prices}
           priceHint={sheetParams ? null : blockedText}
           buyHref={path(UPSELL_LINKS.topups)}
+          pricedAt={pricedAt}
           onSelect={(id) => {
             setModel(id);
             // A model picked by hand is the model: Auto is off.
@@ -1785,6 +1829,14 @@ export function GeneratePanel({
             {th.enterHint}
           </span>
         </div>
+        {snapText && (
+          // The composer folds its settings away: the change is said under the box, where it is seen.
+          <div className="sc-foot">
+            <span className="text-xs text-[var(--color-muted)]" data-testid="gen-snap-note" aria-live="polite">
+              {snapText}
+            </span>
+          </div>
+        )}
         {makerLine && (
           <div className="sc-foot">
             <ModelAttribution attribution={makerLine} />

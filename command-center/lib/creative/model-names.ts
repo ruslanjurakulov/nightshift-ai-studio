@@ -1,6 +1,7 @@
 /**
  * Every model's display name, by id: the TWIN of `id` / `display_name` in schemas/model_registry.json (the web image is built from
- * command-center/ alone, so the file cannot be imported; tests/model-names.test.ts compares the two and fails on any drift).
+ * command-center/ alone, so the file cannot be imported; command-center/tests/studio-model-driven.test.tsx compares the two and fails on any
+ * drift, and .github/workflows/frontend.yml runs on a change to the registry file for that reason).
  *
  * WHY: a member reads only the registry rows on sale (0035's RLS), so a job made with a model that is no longer sold (Veo 3.1 after
  * its shutdown date) was labelled with its raw id, "veo-3.1" (Pixel audit, 2026-11-13). A name is public (the Models page and the

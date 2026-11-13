@@ -43,6 +43,7 @@ import {
 } from "@/lib/creative/operations";
 import { VOICES } from "@/lib/ttsModels";
 import { registryName } from "@/lib/creative/model-names";
+import { planGate } from "@/lib/models-discovery";
 import { formatCredits } from "@/lib/credits";
 import { formatTimecode } from "@/components/ui/Timecode";
 import { fmt } from "@/lib/i18n/core";
@@ -396,9 +397,12 @@ export type ModelLock = "first_purchase" | "not_on_sale";
  * then a `paid` model is NOT shown locked (unknown is not a refusal; the quote answers). A preview (0139) skips the plan rule.
  */
 export function modelLock(entitlement: string | null | undefined, purchased: boolean | null, preview = false): ModelLock | null {
-  if (preview || !entitlement || entitlement === "any") return null;
-  if (entitlement === "paid") return purchased === false ? "first_purchase" : null;
-  return "not_on_sale";
+  if (preview) return null;
+  // The Models catalog's reading of the same rule (lib/models-discovery planGate), so the two pages cannot drift apart.
+  const gate = planGate(entitlement ?? null, purchased);
+  if (!gate) return null;
+  if (gate.kind === "first_purchase") return gate.known ? "first_purchase" : null;
+  return gate.kind === "not_open" ? "not_on_sale" : null;
 }
 
 /**
@@ -492,6 +496,17 @@ export function modelSettings(
 /** The shape kept when the model changes: the one picked if the list has it, else 16:9 if it does, else the list's first. */
 export function snapShape(value: string, list: readonly string[]): string {
   if (list.includes(value)) return value;
+  // The orientation is kept: a tall shape goes to the tallest the model lists, a wide one to the widest (a 9:16 never turns into
+  // 16:9 while the model makes some tall shape). A square, or no shape of the same orientation, goes to 16:9 when listed, else the
+  // list's first. The panel says so whenever the shape changes (snapNote).
+  const ratio = (s: string) => {
+    const [w, h] = s.split(":").map(Number);
+    return w && h ? w / h : 1;
+  };
+  const r = ratio(value);
+  const same = list.filter((s) => (r > 1 ? ratio(s) > 1 : r < 1 ? ratio(s) < 1 : false));
+  if (same.length) return same.reduce((best, s) => (r > 1 ? ratio(s) > ratio(best) : ratio(s) < ratio(best)) ? s : best, same[0]);
+  if (r === 1 && list.includes("1:1")) return "1:1";
   return list.includes("16:9") ? "16:9" : (list[0] ?? value);
 }
 
@@ -540,7 +555,7 @@ export function capabilityLine(t: Dictionary, m: StudioModel, cap: string): stri
   return parts.join(" · ");
 }
 
-const tier =(v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5 ? v : null);
+const tier = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5 ? v : null);
 
 /**
  * spec.attribution as a link the Studio may render, or null. Only an https URL is ever an href (the schema allows nothing else, and a

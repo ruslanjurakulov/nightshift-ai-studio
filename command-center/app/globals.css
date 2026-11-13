@@ -2433,7 +2433,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   .ns-seg > button,
   .ns-chip:not([data-plain]),
   .ns-price-button[data-size="md"] { min-height: 44px; }
-  .studio-seg > button { min-height: 44px; }
+  .studio-seg > button,
+  .studio-seg-select > select { min-height: 44px; }
 }
 
 /* A chip that is a radio's label (the editor's speed, transition and caption

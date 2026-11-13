@@ -6,7 +6,7 @@ import { withPreviews } from "@/lib/creative/studio";
 import { loadOperatorPreviewModels, readStudioModels } from "@/lib/server/creative";
 import { readCustomerModels } from "@/lib/server/model-discovery";
 import { createClient } from "@/lib/supabase/server";
-import { availabilityFromModels, onlyPriced, UNKNOWN_TOOLS, type ToolAvailability } from "@/lib/tool-availability";
+import { availabilityFromModels, onlyOpenToSome, onlyPriced, UNKNOWN_TOOLS, type ToolAvailability } from "@/lib/tool-availability";
 
 /**
  * The catalog's own verdict per model (lib/models-discovery fromSellableRow, the Models page's read): which models the price list,
@@ -41,7 +41,8 @@ export const readToolAvailability = cache(async (orgId: string | null): Promise<
     const previewsFor = async () => (isOperatorOrg(orgId) && (await isOperator()) ? await loadOperatorPreviewModels(orgId) : []);
     const [models, catalog, previews] = await Promise.all([readStudioModels(), readCatalogStates(orgId), previewsFor()]);
     if (models === null) return UNKNOWN_TOOLS;
-    return availabilityFromModels(withPreviews(onlyPriced(models, catalog), previews));
+    // Less any model no organization can buy (a plan-tier entitlement: creative_price refuses it for everyone).
+    return availabilityFromModels(withPreviews(onlyOpenToSome(onlyPriced(models, catalog)), previews));
   } catch {
     return UNKNOWN_TOOLS;
   }

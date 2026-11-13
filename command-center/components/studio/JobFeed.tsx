@@ -199,6 +199,10 @@ export function JobFeed({
   // The jobs seen working at the last read: when one of them is no longer working, its hold was charged or released, so the
   // header's credits are read again (lib/credits-live.ts). null = no read yet (a page that opens on finished jobs re-reads nothing).
   const workingIds = useRef<ReadonlySet<string> | null>(null);
+  // Another desk's tools are other jobs: what was seen working before is not this list's.
+  useEffect(() => {
+    workingIds.current = null;
+  }, [capabilityKey]);
   const load = useCallback(async () => {
     const mine = ++seq.current;
     try {
