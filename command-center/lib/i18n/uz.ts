@@ -3686,6 +3686,7 @@ export const uz: Dictionary = {
     beta: "beta",
     preview: "Sinov",
     previewHint: "Bu modelni faqat siz koʻrasiz. U mijozlarga hali taklif qilinmagan va tashkilotingizdan buning uchun haq olinmaydi.",
+    attributionOpens: "{text}: model yaratuvchisining sayti, yangi varaqda ochiladi",
     noModels: "Hozircha tanlash uchun hech narsa yoʻq: hech bir model buni hozir qila olmaydi.",
     generate: "Yaratish",
     generatePriced: "Yaratish · {n} kredit",

@@ -7,6 +7,7 @@ import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Timecode } from "@/components/ui/Timecode";
 import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
 import { BeforeAfter } from "@/components/studio/BeforeAfter";
+import { ModelAttribution } from "@/components/studio/ModelAttribution";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { SendToEditor, isSendKind } from "@/components/editor/SendToEditor";
 import { useLibraryImages } from "@/components/studio/useLibraryImages";
@@ -238,6 +239,8 @@ export function JobFeed({
   }
 
   const names = new Map(models.map((m) => [m.id, m.displayName]));
+  // The maker's required credit line, per model (Runway: "Powered by Runway"), shown with what that model made or is making.
+  const makerLines = new Map(models.flatMap((m) => (m.attribution ? [[m.id, m.attribution] as const] : [])));
   const mine = (j: StudioJob) => !capabilities || capabilities.includes(j.capability);
   const shown = (jobs ?? []).filter((j) => mine(j) && !dismissed.includes(j.id)).slice(0, limit);
   const pairs = new Map(
@@ -514,6 +517,7 @@ export function JobFeed({
           <span aria-hidden>·</span>
           <span className="tnum">{creditsLine(t, job, locale)}</span>
         </p>
+        {!isUnsuccessful(job.status) && <ModelAttribution attribution={makerLines.get(jobModel(job))} />}
         {fellBackLine(t, job, names) && (
           <p className="text-xs leading-snug text-[var(--color-muted)]" data-testid="job-fell-back">
             {fellBackLine(t, job, names)}

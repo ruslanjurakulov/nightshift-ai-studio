@@ -303,6 +303,11 @@ export interface StudioModel {
    */
   preview?: boolean;
   /**
+   * The credit line the model's maker requires wherever it is offered and wherever its results appear (spec.attribution: Runway's
+   * Terms of Use §1 ask for "Powered by Runway" linking runway.com). Absent = the maker asks for none, or the spec was not read.
+   */
+  attribution?: { text: string; url: string };
+  /**
    * The plan entitlement the model needs (0035: `paid`, `any`, `key` or
    * `key:value`), from sellable_models(); null = none, absent = not read. Only
    * the plan dialog reads it, to name what would unlock a refused model.
@@ -311,6 +316,22 @@ export interface StudioModel {
 }
 
 const tier = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5 ? v : null);
+
+/**
+ * spec.attribution as a link the Studio may render, or null. Only an https URL is ever an href (the schema allows nothing else, and a
+ * row that says otherwise is not trusted to put a `javascript:` link in front of a member); the words are the maker's, shown as given.
+ */
+export function modelAttribution(v: unknown): { text: string; url: string } | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const { text, url } = v as Record<string, unknown>;
+  if (typeof text !== "string" || !text.trim() || text.length > 60 || typeof url !== "string") return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && !u.username && !u.password ? { text: text.trim(), url: u.href } : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Adds the registry's speed and quality marks (sellable_models() rows) to the
@@ -340,7 +361,19 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
   if (!Array.isArray(sellable)) return models;
   type Marks = Pick<
     StudioModel,
-    "qualityTier" | "speedTier" | "entitlement" | "endFrame" | "upscaleTargets" | "maxSourceSeconds" | "qualities" | "soundChoice" | "expandAspects" | "relightLooks" | "reframeAspects" | "fixedShape"
+    | "qualityTier"
+    | "speedTier"
+    | "entitlement"
+    | "endFrame"
+    | "upscaleTargets"
+    | "maxSourceSeconds"
+    | "qualities"
+    | "soundChoice"
+    | "expandAspects"
+    | "relightLooks"
+    | "reframeAspects"
+    | "fixedShape"
+    | "attribution"
   >;
   const marks = new Map<string, Marks>();
   for (const r of sellable) {
@@ -366,6 +399,7 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
     const looks = Array.isArray(spec.relight_looks) ? RELIGHT_LOOKS.filter((l) => (spec.relight_looks as unknown[]).includes(l)) : [];
     // In the canonical order, so the selector reads low, medium, high whatever the row's order.
     const tiers = Array.isArray(spec.qualities) ? IMAGE_QUALITIES.filter((q) => (spec.qualities as unknown[]).includes(q)) : [];
+    const makerLine = modelAttribution(spec.attribution);
     // Only what the spec states: a model that says nothing about the video
     // tools carries nothing for them (absent reads as "no").
     marks.set(row.id, {
@@ -384,6 +418,7 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
       ...(typeof longest === "number" && Number.isInteger(longest) && longest > 0 ? { maxSourceSeconds: longest } : {}),
       // Only a list the spec states and leaves empty: a spec that says nothing about shapes keeps the shape picker.
       ...(Array.isArray(spec.aspect_ratios) && spec.aspect_ratios.length === 0 ? { fixedShape: true } : {}),
+      ...(makerLine ? { attribution: makerLine } : {}),
     });
   }
   return models.map((m) => {

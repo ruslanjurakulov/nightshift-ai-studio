@@ -11,6 +11,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { SourcePicker } from "@/components/studio/SourcePicker";
 import { ModelSheet } from "@/components/studio/ModelSheet";
 import { TierMarks } from "@/components/studio/TierMarks";
+import { ModelAttribution } from "@/components/studio/ModelAttribution";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { useModelPrices, useSoundPrices, useTierPrices } from "@/components/studio/useModelPrices";
 import { useStyleKits } from "@/components/studio/useStyleKits";
@@ -676,6 +677,13 @@ export function GeneratePanel({
 
   // Auto's quote, in words: "Auto picked X for N credits" and why.
   const autoLine = routed && quote.status === "ready" && quote.routed ? routedLine(t, quote.routed, quote.credits, locale) : null;
+  // The maker's required credit line for the model that will make it (Runway: "Powered by Runway"). Auto's is known only once the
+  // quote names its pick; until then no line is guessed.
+  const makerLine = routed
+    ? quote.status === "ready" && quote.routed
+      ? models.find((m) => m.id === quote.routed?.model)?.attribution
+      : undefined
+    : current?.attribution;
   // The model: what will make it, how fast, how good — and a way to change it.
   const modelBlock = pickedOff ? (
     <div className="studio-field flex items-center gap-3 p-3" data-testid="gen-model-off">
@@ -1310,6 +1318,7 @@ export function GeneratePanel({
         icon={<span aria-hidden className={`ns-rec${quote.status === "quoting" || submitting ? " pulse" : ""}`} />}
       />
       {status}
+      <ModelAttribution attribution={makerLine} className="self-center" />
     </div>
   );
 
@@ -1582,6 +1591,11 @@ export function GeneratePanel({
             {th.enterHint}
           </span>
         </div>
+        {makerLine && (
+          <div className="sc-foot">
+            <ModelAttribution attribution={makerLine} />
+          </div>
+        )}
         {dialogs}
       </section>
     );

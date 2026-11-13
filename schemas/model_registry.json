@@ -2624,18 +2624,19 @@
       "audio_out": false,
       "async": true,
       "api_documented": {
-        "url": "https://docs.dev.runwayml.com/guides/using-the-api/",
-        "checked_at": "2026-09-30",
-        "source": "vendor_sdk",
-        "evidence": "runwayml/sdk-python: text_to_video gen4.5 ratios 1280:720|720:1280, image_to_video six ratios, X-Runway-Version 2024-11-06"
+        "url": "https://docs.dev.runwayml.com/api.md",
+        "checked_at": "2026-11-13",
+        "source": "vendor_docs_search",
+        "evidence": "Runway API reference (docs.dev.runwayml.com/api.md, read 2026-11-13): POST /v1/image_to_video and /v1/text_to_video, header X-Runway-Version 2024-11-06, model gen4.5, duration integer 2-10 (required), i2v ratio 1280:720|720:1280|1104:832|960:960|832:1104|1584:672, promptImage position first; no audio; GET /v1/tasks/{id}",
+        "note": "task status PENDING|THROTTLED|RUNNING|SUCCEEDED|FAILED|CANCELLED; text_to_video takes 1280:720|720:1280 only"
       },
       "pricing": {
         "unit": "second",
         "provider_usd_per_unit": 0.12,
         "source_url": "https://docs.dev.runwayml.com/guides/pricing",
-        "as_of": "2026-09-30",
+        "as_of": "2026-11-13",
         "confirmed": false,
-        "note": "12 credits/s at $0.01 per credit (search extract)"
+        "note": "'$0.01 per credit', gen4.5 12 credits per second (pricing page, read 2026-11-13). A page figure: confirmed stays false until a probe's cost.credits matches it"
       },
       "credit_unit": "model_runway_gen4_5_second",
       "entitlement": "models_video:ultra",
@@ -2643,13 +2644,20 @@
       "terms_notes": [
         "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",
         "Runway Terms of Use (runway.com/terms-of-use, 'Last updated October 23, 2026', read 2026-11-11) §1: the APIs may be used to 'make that functionality available to end users as part of Your Application', which must 'prominently display \"Powered by Runway\" and link to runway.com'.",
-        "Same terms §1.3(a): 'you shall not license, sell, rent, lease, transfer, assign, reproduce, distribute, host, or similarly exploit any Services except as permitted through the APIs'; §2.1: API keys 'are for your use only'. Hence api_exposure web_only."
+        "Same terms §1.3(a): 'you shall not license, sell, rent, lease, transfer, assign, reproduce, distribute, host, or similarly exploit any Services except as permitted through the APIs'; §2.1: API keys 'are for your use only'. Hence api_exposure web_only.",
+        "Runway Terms of Use (runway.com/terms-of-use, 'Last updated October 23, 2026', read 2026-11-13) §4.4: outputs may be used commercially, but 'Inputs and Outputs may be used by the Company to train and improve its AI models' (perpetual licence). Before a sale: a privacy-notice line, or Enterprise.",
+        "Runway Enterprise Terms (runway.com/enterprise-terms, 'Last updated June 1, 2026', read 2026-11-13) §5.2: Runway may not use Customer Content as training data. The alternative to the §4.4 training licence is that contract (the owner's choice).",
+        "Same Terms of Use (read 2026-11-13) §2.2: users must be 13 or older, and under 18 only with a parent's or guardian's permission. Our user terms must carry the same age rule before a sale.",
+        "Same Terms of Use (read 2026-11-13) §4.2: no photograph of another person without that person's permission. Before a sale the i2v upload needs a photo-consent confirmation in the UI.",
+        "Same Terms of Use (read 2026-11-13) §18.12: no export to US-embargoed countries. The terms name no list, so blocked_countries is not set; decide the list before a sale.",
+        "Same Terms of Use (read 2026-11-13) §1: 'Powered by Runway' linking runway.com is still required. The Studio shows attribution beside the model in the composer and on each job card."
       ],
       "attribution": {
         "text": "Powered by Runway",
         "url": "https://runway.com"
       },
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 1000,
         "max_concurrent_per_org": 1
@@ -2657,10 +2665,11 @@
       "quality_tier": 5,
       "speed_tier": 2,
       "probe": {
-        "capability": "t2v",
-        "prompt": "a paper boat drifting on a calm lake",
+        "capability": "i2v",
+        "prompt": "slow push in",
         "aspect_ratio": "16:9",
-        "duration_s": 5
+        "duration_s": 5,
+        "input_image": "generated"
       }
     },
     {
@@ -2692,19 +2701,19 @@
       "audio_out": false,
       "async": true,
       "api_documented": {
-        "url": "https://docs.dev.runwayml.com/guides/using-the-api/",
-        "checked_at": "2026-09-30",
-        "source": "vendor_sdk",
-        "evidence": "runwayml/sdk-python: image_to_video gen4_turbo",
-        "note": "image-to-video only"
+        "url": "https://docs.dev.runwayml.com/api.md",
+        "checked_at": "2026-11-13",
+        "source": "vendor_docs_search",
+        "evidence": "Runway API reference (docs.dev.runwayml.com/api.md, read 2026-11-13): POST /v1/image_to_video, header X-Runway-Version 2024-11-06, model gen4_turbo, duration integer 2-10, ratio 1280:720|720:1280|1104:832|832:1104|960:960|1584:672, promptImage position first; no audio; GET /v1/tasks/{id}",
+        "note": "image-to-video only; task status PENDING|THROTTLED|RUNNING|SUCCEEDED|FAILED|CANCELLED"
       },
       "pricing": {
         "unit": "second",
         "provider_usd_per_unit": 0.05,
         "source_url": "https://docs.dev.runwayml.com/guides/pricing",
-        "as_of": "2026-09-30",
+        "as_of": "2026-11-13",
         "confirmed": false,
-        "note": "5 credits/s at $0.01 per credit, minimum 10 credits per task (search extract)"
+        "note": "'$0.01 per credit', gen4_turbo 5 credits per second (pricing page, read 2026-11-13; the old 'minimum 10 credits per task' note is no longer on it). confirmed stays false until a probe's cost.credits matches"
       },
       "credit_unit": "model_runway_gen4_turbo_second",
       "entitlement": "models_video:premium",
@@ -2712,13 +2721,20 @@
       "terms_notes": [
         "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",
         "Runway Terms of Use (runway.com/terms-of-use, 'Last updated October 23, 2026', read 2026-11-11) §1: the APIs may be used to 'make that functionality available to end users as part of Your Application', which must 'prominently display \"Powered by Runway\" and link to runway.com'.",
-        "Same terms §1.3(a): 'you shall not license, sell, rent, lease, transfer, assign, reproduce, distribute, host, or similarly exploit any Services except as permitted through the APIs'; §2.1: API keys 'are for your use only'. Hence api_exposure web_only."
+        "Same terms §1.3(a): 'you shall not license, sell, rent, lease, transfer, assign, reproduce, distribute, host, or similarly exploit any Services except as permitted through the APIs'; §2.1: API keys 'are for your use only'. Hence api_exposure web_only.",
+        "Runway Terms of Use (runway.com/terms-of-use, 'Last updated October 23, 2026', read 2026-11-13) §4.4: outputs may be used commercially, but 'Inputs and Outputs may be used by the Company to train and improve its AI models' (perpetual licence). Before a sale: a privacy-notice line, or Enterprise.",
+        "Runway Enterprise Terms (runway.com/enterprise-terms, 'Last updated June 1, 2026', read 2026-11-13) §5.2: Runway may not use Customer Content as training data. The alternative to the §4.4 training licence is that contract (the owner's choice).",
+        "Same Terms of Use (read 2026-11-13) §2.2: users must be 13 or older, and under 18 only with a parent's or guardian's permission. Our user terms must carry the same age rule before a sale.",
+        "Same Terms of Use (read 2026-11-13) §4.2: no photograph of another person without that person's permission. Before a sale the i2v upload needs a photo-consent confirmation in the UI.",
+        "Same Terms of Use (read 2026-11-13) §18.12: no export to US-embargoed countries. The terms name no list, so blocked_countries is not set; decide the list before a sale.",
+        "Same Terms of Use (read 2026-11-13) §1: 'Powered by Runway' linking runway.com is still required. The Studio shows attribution beside the model in the composer and on each job card."
       ],
       "attribution": {
         "text": "Powered by Runway",
         "url": "https://runway.com"
       },
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 1000,
         "max_concurrent_per_org": 1
