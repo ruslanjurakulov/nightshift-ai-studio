@@ -10,6 +10,7 @@ import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
 import { Showcases } from "@/components/landing/Showcases";
 import { ShowcaseGallery } from "@/components/site/ShowcaseGallery";
+import { EffectsGallery } from "@/components/site/EffectsGallery";
 import { TryDemo } from "@/components/landing/TryDemo";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
@@ -70,6 +71,8 @@ export function Landing({
       <Showcases t={t} />
       {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
       <ShowcaseGallery t={t} locale={locale} />
+      {/* Named one-press shots that open the Studio's video form (lib/effects/catalog.ts); it names no model. */}
+      <EffectsGallery t={t} />
       {showcase.length > 0 && (
         <div className="st-section">
           <div className="st-wrap">

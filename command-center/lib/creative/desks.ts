@@ -15,8 +15,11 @@ import { PANEL_CAPABILITIES, isStudioCapability, type StudioCapability } from "@
 export const MEDIA_DESKS = ["video", "image", "enhance", "voice"] as const;
 export type MediaDesk = (typeof MEDIA_DESKS)[number];
 
-/** Every place on /create: the overview, the four composer desks, and the YouTube video run. */
-export const DESKS = ["overview", ...MEDIA_DESKS, "youtube"] as const;
+/**
+ * Every place on /create: the overview, the four composer desks, the Effects gallery (lib/effects/catalog.ts: cards that only
+ * link into the Video desk's composer, so it sits beside Video) and the YouTube video run.
+ */
+export const DESKS = ["overview", "video", "effects", "image", "enhance", "voice", "youtube"] as const satisfies readonly ("overview" | "effects" | "youtube" | MediaDesk)[];
 export type Desk = (typeof DESKS)[number];
 
 /** Which tools each composer desk offers, in the order its tabs show them. */
