@@ -16,6 +16,8 @@
 //                                 the Dodo product id (pdt_…) of each credit pack
 //   DODO_PLAN_<ID>                the Dodo product id of each monthly plan in the
 //                                 plans table, e.g. DODO_PLAN_PRO (creator, pro, studio)
+//   DODO_PRODUCT_AMOUNT           the one-time Pay What You Want product (pdt_…) a typed
+//                                 amount is charged under; unset = typed amounts are not credited
 //   DODO_METADATA_SECRET          32+ characters, the SAME value as the Command Center's:
 //                                 the key checkout metadata is signed with (ns_sig)
 //   DODO_TAX_MODE                 inclusive | exclusive — how every product's price
@@ -31,6 +33,7 @@
 
 import {
   createDodoRestStore,
+  dodoAmountProductFromEnv,
   dodoMetadataKey,
   dodoTaxModeFromEnv,
   dodoTestOrgsFromEnv,
@@ -49,6 +52,7 @@ const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const secret = env("DODO_WEBHOOK_SECRET") ?? "";
 const packs = dodoPackTableFromEnv(env);
 const plans = dodoPlanTableFromEnv(Object.entries(Deno.env.toObject()), packs);
+const amountProduct = dodoAmountProductFromEnv(env, packs, plans);
 const metadataSecret = env("DODO_METADATA_SECRET") ?? "";
 const taxMode = dodoTaxModeFromEnv(env("DODO_TAX_MODE"));
 const mode = dodoWebhookModeFromEnv(env("DODO_WEBHOOK_MODE"));
@@ -59,6 +63,7 @@ if (!dodoSigningKey(secret)) console.error("dodo-webhook: DODO_WEBHOOK_SECRET is
 if (packs.size === 0) console.error("dodo-webhook: no DODO_PRODUCT_* is set to a valid product id — pack purchases cannot be credited");
 if (!dodoMetadataKey(metadataSecret)) console.error("dodo-webhook: DODO_METADATA_SECRET is not set (32+ characters) — nothing is credited until it is set; refunds and disputes still land");
 if (!taxMode) console.error("dodo-webhook: DODO_TAX_MODE is not inclusive or exclusive — nothing is credited until it is set; refunds and disputes still land");
+if (!amountProduct) console.warn("dodo-webhook: DODO_PRODUCT_AMOUNT is not a product id of its own — typed (custom-amount) purchases cannot be credited");
 if (mode === "test") console.error(`dodo-webhook: TEST mode — only the ${testOrgs.size} organization(s) in DODO_TEST_ORG_IDS are credited`);
 
 const store = createDodoRestStore({ url: supabaseUrl, serviceKey });
@@ -86,7 +91,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         signature: req.headers.get("webhook-signature"),
       },
     },
-    { secret, metadataSecret, taxMode, mode, testOrgs, packs, plans, store },
+    { secret, metadataSecret, taxMode, mode, testOrgs, packs, plans, amountProduct, store },
   );
   return Response.json(res.body, { status: res.status });
 });
