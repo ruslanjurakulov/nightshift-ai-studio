@@ -1,5 +1,6 @@
 import { studioHomeUz } from "./studio-home/uz";
 import { improveUz } from "./improve/uz";
+import { studioProgressUz } from "./studio-progress/uz";
 import { notifyChannelsUz } from "./notify-channels/uz";
 import { aiLabelUz } from "./ai-label/uz";
 import { madeForKidsUz } from "./made-for-kids/uz";
@@ -69,6 +70,7 @@ export const uz: Dictionary = {
   adsFactory: adsFactoryUz,
   reviewPage: reviewPageUz,
   improveAi: improveUz,
+  studioProgress: studioProgressUz,
   brand: {
     name: "Nightshift",
     tagline: "Boshqaruv markazi",

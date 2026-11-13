@@ -31,6 +31,21 @@ export function creativeDb(supabase: SupabaseClient): CreativeDb {
       const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
       return { data, error };
     },
+    async jobDurations(orgId, model, limit) {
+      // The model that made a job is its routed model (0075), or the requested one on a row from before routing.
+      // `model` is shape-checked by the caller (lowercase letters, digits, dots and dashes), and quoted here besides.
+      const { data, error } = await supabase
+        .from("creative_jobs")
+        .select("started_at,finished_at")
+        .eq("org_id", orgId)
+        .eq("status", "completed")
+        .not("started_at", "is", null)
+        .not("finished_at", "is", null)
+        .or(`routed_model.eq."${model}",and(routed_model.is.null,requested_model.eq."${model}")`)
+        .order("finished_at", { ascending: false })
+        .limit(limit);
+      return { data, error };
+    },
   };
 }
 
