@@ -227,6 +227,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "01c9f1f0-d54b-4fd3-a88f-ddf459aece73",
+      "assetId": "cf9e6cf2-85e3-5e38-8466-6148f1cd7d5a",
+      "sha256": "c79b6d22f70860bb64952fea1546f4d18a2ac2aad87703f338e322cb251665f5",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Macro shot of a glass snow globe on a dark desk; inside it a tiny neon city at night is alive: miniature flying cars streak between skyscrapers, lights flicker, snow swirls. The camera pushes in smoothly through the glass into the tiny streets. Magical, hyper-detailed, cinematic, wide 16:9. Audio: soft magical chimes and a distant city hum.",
+      "createdAt": "2026-11-13T17:45:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:21:08Z"
     }
   ]
 }
