@@ -7,16 +7,17 @@ key and a secret) and prove, with a real credit ledger behind them:
 
 * nothing in the OAuth tables is reachable by any API role;
 * registration is hostile-input safe (redirect URIs, floods, caps, cleanup);
-* consent: Free gets no code, a redirect that is not an exact match gets nothing,
+* consent: every plan may approve (0147; Free got no code under 0093), a redirect that is not an exact match gets nothing,
   a request is single-use and only its own person can decide it;
 * codes are single-use (a replay revokes what the first use made), bound to
   client, redirect and PKCE, and refresh tokens rotate with reuse detection;
 * a token reaches only the allow-listed endpoints and only its own workspace;
   it can never touch the USD API balance, even by calling api_* directly;
-* MCP is a subscription feature, re-checked live on every call and refresh;
+* MCP is on every plan since 0147 (0093 made it a subscription feature): a lapsed plan pauses nothing, and the
+  credits a video holds are the limit (test_sec_mcp_free_tier.py attacks that side);
 * a connected app's video is paid in site credits through the same hold as the
   app's, capped per connection under concurrency, never free when unpriced;
-* revoking, expiring, losing the plan or the person deleting the account kills
+* revoking, expiring, losing the workspace or the person deleting the account kills
   the connection at once; the API-key door is unchanged.
 
 Runs in its own scratch database (it commits).
@@ -48,6 +49,7 @@ RESOURCE = "https://nightshift-ai.studio/api/mcp"
 REDIRECT = "https://claude.ai/api/mcp/auth_callback"
 LOOPBACK = "http://127.0.0.1:33418/callback"
 KEY_A = "key-a-d3"
+ORDINARY = "https://app.example.com/cb"  # not a vendor's callback: the ordinary registration class (0147)
 
 
 def sha(s):
@@ -444,17 +446,19 @@ def test_registration_bounds_the_name_and_the_uri_count(db):
 
 
 def test_registration_is_rate_limited_per_address_and_globally(db):
+    # The ordinary class (any redirect that is not a vendor's own callback) keeps 0093's limits; the vendor class has its
+    # own since 0147 (test_sec_mcp_free_tier.py).
     ip = "198.18.0." + uuid.uuid4().hex[:6]
-    results = [register(db, ip=ip) for _ in range(12)]
+    results = [register(db, uris=(ORDINARY,), ip=ip) for _ in range(12)]
     assert sum(1 for r in results if r["ok"]) == 10
     assert all(r["error"] == "rate_limited" for r in results if not r["ok"])
     # The global ceiling: another address is refused once the hour's budget is spent.
     db.su("update public.oauth_clients set created_at = now()")  # everything counts in this hour
-    have = db.su("select count(*) from public.oauth_clients")[0][0]
+    have = db.su("select count(*) from public.oauth_clients where not vendor")[0][0]
     db.su("insert into public.oauth_clients (client_name, redirect_uris, ip_hash) "
           "select 'flood', array['https://f.example.com/cb'], %s from generate_series(1, greatest(0, 300 - %s))",
           [sha("x" * 3), have])
-    assert register(db, ip="192.0.2.77" + uuid.uuid4().hex[:4])["error"] == "rate_limited"
+    assert register(db, uris=(ORDINARY,), ip="192.0.2.77" + uuid.uuid4().hex[:4])["error"] == "rate_limited"
     db.su("delete from public.oauth_clients where client_name = 'flood'")
 
 
@@ -470,16 +474,16 @@ def test_never_used_registrations_are_collected_and_used_ones_are_kept(db):
 
 # ── consent ─────────────────────────────────────────────────────────────────
 
-def test_a_free_workspace_gets_a_plain_answer_and_no_request_row(db):
+def test_a_free_workspace_gets_the_consent_screen_and_can_allow(db):
+    # 0147: every plan may connect (0093 gave Free a plain "needs a plan" answer and no request row).
     cid = client(db)
-    before = db.su("select count(*) from public.oauth_auth_requests")[0][0]
+    before = db.su("select count(*) from public.oauth_auth_requests where user_id=%s", [UF])[0][0]
     res, secret = begin(db, UF, cid)
-    assert res["ok"] and res["entitled"] is False and res["plan"] == "free", res
-    assert db.su("select count(*) from public.oauth_auth_requests")[0][0] == before
-    # With no row there is nothing to decide: no code can come out of it.
+    assert res["ok"] and res["entitled"] is True and res["plan"] == "free" and res["scopes"], res
+    assert db.su("select count(*) from public.oauth_auth_requests where user_id=%s", [UF])[0][0] == before + 1
     dec, _ = decide(db, UF, secret)
-    assert dec == {"ok": False, "error": "expired"}
-    assert db.su("select count(*) from public.oauth_codes c join public.oauth_grants g on g.id = c.grant_id where g.user_id=%s", [UF])[0][0] == 0
+    assert dec["ok"] and dec["allowed"], dec
+    assert db.su("select count(*) from public.oauth_codes c join public.oauth_grants g on g.id = c.grant_id where g.user_id=%s", [UF])[0][0] >= 1
 
 
 @pytest.mark.parametrize("redirect", [
@@ -590,13 +594,14 @@ def test_a_person_cannot_hold_more_than_twenty_connections(db):
     db.su("delete from public.oauth_grants where user_id=%s", [UB])
 
 
-def test_the_plan_lapsing_between_screen_and_allow_issues_no_code(db):
+def test_the_plan_lapsing_between_screen_and_allow_still_issues_the_code(db):
+    # 0147: the plan is not a condition of connecting any more (0093 answered subscription_required here).
     cid = client(db)
     _, secret = begin(db, UB, cid)
     set_plan(db, ORG_B, "canceled")
     try:
         dec, _ = decide(db, UB, secret)
-        assert dec == {"ok": False, "error": "subscription_required"}
+        assert dec["ok"] and dec["allowed"], dec
     finally:
         set_plan(db, ORG_B, "active")
 
@@ -684,18 +689,17 @@ def test_a_code_lives_sixty_seconds(db):
     assert secs == 60
 
 
-def test_free_cannot_redeem_even_a_code_made_while_subscribed(db):
+def test_a_code_made_while_subscribed_is_redeemed_after_the_plan_lapses(db):
+    # 0147: a lapsed plan no longer refuses the token endpoint (0093: subscription_required).
     cid = client(db)
     verifier, challenge = pkce()
     _, secret = begin(db, UB, cid, challenge=challenge)
     _, code = decide(db, UB, secret)
     set_plan(db, ORG_B, "canceled")
     try:
-        assert exchange(db, code, cid, verifier)[0] == {"ok": False, "error": "subscription_required"}
+        assert exchange(db, code, cid, verifier)[0]["ok"] is True
     finally:
         set_plan(db, ORG_B, "active")
-    # Nothing was spent: renewing the plan and trying again works.
-    assert exchange(db, code, cid, verifier)[0]["ok"] is True
 
 
 def test_garbage_input_to_the_token_functions_is_refused_not_raised(db):
@@ -920,35 +924,32 @@ def test_an_api_key_hash_is_not_a_token_and_a_token_hash_is_not_a_key(db):
     assert r["error"]["code"] == "insufficient_scope"
 
 
-# ── the subscription gate, live ─────────────────────────────────────────────
+# ── no plan gate since 0147 ─────────────────────────────────────────────────
 
-def test_a_cancelled_subscription_stops_the_next_call_and_renewing_brings_it_back(db):
+def test_a_cancelled_subscription_pauses_nothing(db):
+    # 0147: every plan may connect, so a lapsed plan leaves the connection working (0093 paused it with
+    # subscription_required on every call). What a video may spend is the credit rule (test_sec_mcp_free_tier.py).
     c = connect(db, UB)
-    assert db.anon("select public.api_list_channels(%s,null)", [sha(c["at"])])["ok"] is True
     set_plan(db, ORG_B, "canceled")
     try:
         for q in ("select public.api_list_channels(%s,null)", "select public.api_get_video(%s,'vid-b',null)",
                   "select public.oauth_get_balance(%s,null)"):
             r = db.anon(q, [sha(c["at"])])
-            assert r["status"] == 403 and r["error"]["code"] == "subscription_required", r
-        r = create(db, c, channel="chan-b")
-        assert r["error"]["code"] == "subscription_required"
-        assert db.anon("select public.oauth_check(%s,null)", [sha(c["at"])])["data"]["entitled"] is False
-        # The refresh token is refused but NOT spent.
-        assert refresh(db, c["rt"], c["client"])[0] == {"ok": False, "error": "subscription_required"}
+            assert r["ok"] is True, (q, r)
+        r = create(db, c, channel="chan-b", params={"duration": 60})
+        assert r["ok"] is True, r
+        assert db.anon("select public.oauth_check(%s,null)", [sha(c["at"])])["data"]["entitled"] is True
+        assert refresh(db, c["rt"], c["client"])[0]["ok"] is True
         mine = db.user(UB, "select public.oauth_my_grants()")
-        assert [g["status"] for g in mine if g["id"] == c["grant"]] == ["paused_plan"]
+        assert [g["status"] for g in mine if g["id"] == c["grant"]] == ["active"]
     finally:
         set_plan(db, ORG_B, "active")
-    assert db.anon("select public.api_list_channels(%s,null)", [sha(c["at"])])["ok"] is True
-    assert refresh(db, c["rt"], c["client"])[0]["ok"] is True
 
 
-def test_a_workspace_with_packs_but_no_subscription_is_not_entitled(db):
+def test_a_workspace_with_packs_but_no_subscription_may_connect(db):
     cid = client(db)
     res, _ = begin(db, UF, cid)
-    assert res["entitled"] is False
-    assert db.su("select public.has_entitlement_internal(%s,'mcp')", [ORG_F])[0][0] is False
+    assert res["entitled"] is True and res["plan"] == "free"
 
 
 def test_the_operators_own_organization_is_exempt_from_the_plan_and_from_holds(db):
@@ -960,10 +961,11 @@ def test_the_operators_own_organization_is_exempt_from_the_plan_and_from_holds(d
     assert db.su("select credit_ref from public.render_jobs where id=%s", [r["data"]["job_id"]])[0][0] is None
 
 
-def test_the_mcp_entitlement_is_enforced_for_every_paid_plan_and_not_for_free(db):
+def test_the_mcp_entitlement_is_retired_true_for_every_plan_and_checked_nowhere(db):
+    # 0093 enforced it (Free false); 0147 sets it back to `planned` and true everywhere.
     rows = dict(db.su("select plan_id, value::text from public.plan_entitlements where key='mcp'"))
-    assert rows["free"] == "false" and rows["creator"] == "true" and rows["pro"] == "true" and rows["studio"] == "true"
-    assert db.su("select status from public.entitlement_keys where key='mcp'")[0][0] == "enforced"
+    assert rows == {"free": "true", "creator": "true", "pro": "true", "studio": "true"}
+    assert db.su("select status from public.entitlement_keys where key='mcp'")[0][0] == "planned"
 
 
 # ── paying in site credits ──────────────────────────────────────────────────
@@ -1243,7 +1245,12 @@ def test_replaying_the_migration_twice_changes_nothing(db):
              db.su("select pepper from public.oauth_settings")[0][0])
     assert before == after
     assert db.anon("select public.oauth_check(%s,null)", [sha(c["at"])])["ok"] is True
+    # A replay of 0093 puts its own bodies and its `enforced` back: 0147 goes on again after it (docs/MIGRATIONS.md).
     assert db.su("select status from public.entitlement_keys where key='mcp'")[0][0] == "enforced"
+    later = sec_db.MIGRATIONS / "0147_mcp_free_tier.sql"
+    if later.exists():
+        sec_db.apply_files(db.dsn, [later])
+        assert db.su("select status from public.entitlement_keys where key='mcp'")[0][0] == "planned"
 
 
 # ── Lens-386A: PKCE is checked by the database, a limit of 0 is read-only for the operator too,
@@ -1296,10 +1303,10 @@ def test_a_refused_registration_does_not_run_the_collector(db):
     db.su("insert into public.oauth_clients (client_name, redirect_uris, ip_hash) "
           "select 'flood2', array['https://f2.example.com/cb'], %s from generate_series(1, 300)", [sha("f2")])
     try:
-        assert register(db, ip=ip)["error"] == "rate_limited"
+        assert register(db, uris=(ORDINARY,), ip=ip)["error"] == "rate_limited"
         assert db.su("select count(*) from public.oauth_clients where client_id=%s", [stale])[0][0] == 1, \
             "a refused call must not scan and delete (it is the unauthenticated flood's cheapest lever)"
     finally:
         db.su("delete from public.oauth_clients where client_name = 'flood2'")
-    assert register(db, ip=ip)["ok"] is True  # an accepted call still collects
+    assert register(db, uris=(ORDINARY,), ip=ip)["ok"] is True  # an accepted call still collects
     assert db.su("select count(*) from public.oauth_clients where client_id=%s", [stale])[0][0] == 0

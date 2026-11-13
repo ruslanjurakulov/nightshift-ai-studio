@@ -12,7 +12,7 @@ billing:
 | :-- | :-- | :-- |
 | For | people using Claude, ChatGPT, Cursor, … | developers' own code and agents |
 | Sign-in | the person signs in and approves on a Nightshift screen; no key is ever pasted | `Authorization: Bearer nsk_live_…` |
-| Needs | a paid plan (Plus, Pro or Business): entitlement `mcp` | the API activated (`docs/API.md`) |
+| Needs | any plan, Free included (migration 0147); what it can make is limited by the workspace's credits | the API activated (`docs/API.md`) |
 | Pays with | the workspace's **site credits**, the same price and the same hold as a video made in the app | the separate **prepaid USD API balance** |
 | Limit | a **monthly credit limit per connection**, set by the person on the consent screen | per-key limit, tier limits |
 | Revoked | Developers → Connected apps → Disconnect (immediate) | Developers → API keys |
@@ -32,7 +32,7 @@ limit, prepaid USD balance, holds and database checks as `/api/v1`.
 | `list_connected_accounts` | publish targets (YouTube channels, Instagram / TikTok accounts) | — | — |
 | `publish_video` | cross-post a finished video; same gate and approvals as the site; YouTube uploads private. An OAuth connection's schema has **no** `idempotency_key` (one sent anyway is refused as an unknown field): while a post to a target is still being sent, a repeat call is refused and the text says that target is already being sent, but once it has finished a new call posts again, and the tool's description says so. An API key keeps its optional `idempotency_key` | free | free |
 | `get_balance` | OAuth ("Get credit balance"): credits available / held, plan, videos at once, this connection's limit and use. Key ("Get API balance"): API balance, month spend, tier | credits | USD cents |
-| `request_download`, `get_download` | HD MP4 of a video | **not offered to OAuth connections** (priced in USD cents from the API balance, file served by an API-key route) | site credit price × `api_prices.download_cents_per_credit` (1.5¢ by default); the order's answer carries the price (`price_cents`), and no tool text states a rate |
+| `request_download`, `get_download` | HD MP4 of a video | **not offered to OAuth connections** (priced in USD cents from the API balance, file served by an API-key route) | site credit price × the `api_prices` row with `unit = 'download_cents_per_credit'` (1.5¢ by default); the order's answer carries the price (`price_cents`), and no tool text states a rate |
 
 An OAuth connection is offered only the tools its permissions allow
 (`videos:read`, `videos:create`, `videos:publish`), and the server's
@@ -61,14 +61,16 @@ these itself:
   credits (`/credits`) and one to choose a plan with more (`/pricing`). After
   the person buys credits or upgrades, **the same connection works on the very
   next call**: nothing needs to be connected again (credits and plan are read
-  live on every call).
+  live on every call). This is the only thing standing between a Free workspace
+  and a video: welcome credits, top-up packs and plan credits all count.
 * **the connection's monthly limit**: its limit and use, and that only the
   person can raise it in Developers → Connected apps (`/developers`).
 * **the plan's videos-at-once limit**: wait about a minute, or choose a plan
   that runs more at once.
-* **no paid plan** (`subscription_required`): the connection is *paused*, not
-  deleted. Choose a plan and it works again with no reconnecting. Free
-  workspaces cannot approve a connection at all.
+* **the plan does not include it** (`subscription_required`): since 0147 no
+  plan pauses a connection and the database never answers this. A database
+  without 0147 (or after its rollback) still can: the connection is *paused*,
+  not deleted, and works again with no reconnecting once the plan includes it.
 * **a missing permission** (`insufficient_scope`): which one, and that the
   person disconnects the app in Developers → Connected apps (`/developers`)
   and connects it again, allowing it.
@@ -244,7 +246,8 @@ Cursor and VS Code take one ("Use an API key instead" under their sign-in steps)
 address it returns to, when it was connected and last used, its monthly limit
 and what it spent this month, and a **Disconnect** button (and Disconnect
 all). The limit can be raised or lowered there; the assistant has no tool for
-it. A connection whose plan lapsed shows **Paused: a paid plan is required**.
+it. Every live connection shows **Active** (since 0147 a plan never pauses one; on a database that still gates by plan it
+would show **Paused: not included in the current plan**).
 Deleting the account removes every connection with it.
 
 ## How it works (MCP authorization, spec 2026-07-28)
@@ -272,8 +275,18 @@ Nightshift is its own authorization server for its MCP resource.
   `(nightshift)` is dropped and the rest registered, because Claude Code names itself
   `Claude Code (<server name>)` and our snippets name the server `nightshift`; it is registered and shown
   as "Claude Code". What is left must pass the rule on its own, so "Nightshift (nightshift)" and every
-  lookalike are still refused, and the database's check is unchanged. 10 registrations per address and 300 in total per hour, 20 000
-  rows; an app nobody ever approves is deleted after a day. Client ID Metadata
+  lookalike are still refused, and the database's check is unchanged. An app nobody ever approves is deleted after a day, and
+  (0147) so is one whose every connection ended (revoked, or past its 90 days) more than a day ago, with those connections: a
+  revoked connection no longer keeps its registration alive for a month. An app whose connection ended that long ago is added
+  again in the assistant (Claude registers anew on every connection anyway).
+  Two classes, each with its own budgets (0147): a registration whose **every** redirect URI is an AI vendor's own callback
+  (`https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/connector_platform_oauth_redirect`,
+  `https://chatgpt.com/connector/oauth/<id>`, Grok's `https://grok.com/connectors-oauth-exchange-code/`, Gemini's
+  `https://oauth-redirect.googleusercontent.com/r/<segment>` and `/a/<segment>`, one path segment) may make 300 per address and 2 000 in total per hour, up to 60 000 rows, because
+  Claude registers a new client on every fresh connection from Anthropic's shared servers and ChatGPT once per server connection
+  (with one budget for all, the 11th person an hour was refused); every other registration keeps 10 per address and 300 in total
+  per hour, 20 000 rows. A vendor-class client's code can only ever be delivered to that vendor's callback, so the class gains an
+  attacker nothing but rows, and its hourly ceiling times the one-day collection stays under its row cap. Client ID Metadata
   Documents are **not** implemented (they need SSRF-safe fetching of a
   client-supplied URL); the metadata says `client_id_metadata_document_supported: false`.
 * **Authorize** `/oauth/authorize`: signed out goes to `/login` and comes back to
@@ -282,11 +295,16 @@ Nightshift is its own authorization server for its MCP resource.
   they match nothing is redirected. The consent screen shows the app's name
   *together with the host it will return to*, the workspace, the exact
   permissions and a mandatory monthly credit limit (default 500, maximum
-  20 000, whole credits). A Free workspace sees "needs a paid plan" and no code
-  can exist. Allow/Deny is a same-origin JSON POST with a single-use secret
+  20 000, whole credits). Every plan, Free included, gets this screen (0147); it
+  says that what the app makes is paid from the workspace's credits. Allow/Deny is a same-origin JSON POST with a single-use secret
   bound to that person, `Origin` and `Sec-Fetch-Site` checks, and the page is
   never framed (`frame-ancestors 'none'`, `X-Frame-Options: DENY`). The answer
-  carries `code`, `state` and `iss` (RFC 9207).
+  carries `code`, `state` and `iss` (RFC 9207). Allow is refused, with the remedy
+  on the screen, when the person already has 20 live connections
+  (`too_many_connections`: disconnect one in Developers → Connected apps), or when
+  50 connections for that person or 200 for that workspace were approved in the
+  last 24 hours, disconnected ones included (`too_many_connections_today`, 0147:
+  try again later; the connected apps keep working).
 * **Token** `POST /oauth/token`: `authorization_code` (PKCE `S256` only; the
   code lives 60 seconds, is single-use, and is bound to client, redirect URI,
   challenge, person and resource; a replay revokes what the first use made) and
@@ -299,24 +317,30 @@ Nightshift is its own authorization server for its MCP resource.
 * **Revoke** `POST /oauth/revoke` (RFC 7009): either token ends the connection.
 * **Scopes**: `videos:read`, `videos:create`, `videos:publish`. Unknown words in
   a request are ignored; an empty request means all three.
-* **Rate limit**: 120 requests a minute per connection (`oauth_limits().rpm`).
-  Known and not yet fixed: a tool call currently counts **two** of them, one in
-  `oauth_check` (the route needs the token's resource and scopes before it can
-  build the server) and one in `oauth_ctx` (the tool's own database call). The
-  route cannot drop either without losing a check (`oauth_check` is the only
-  read of the resource binding; the tool functions are callable without it), so
-  the fix is a later migration: `oauth_check` leaves a single-use credit for
-  its (grant, request id), and the first `oauth_ctx` of that grant with that
-  request id consumes it instead of counting again.
+* **Rate limit**: 120 requests a minute per connection (`oauth_limits().rpm`),
+  and since 0147 a tool call costs **one** of them. The route still calls
+  `oauth_check` first (the only read of the token's resource binding and
+  scopes), which counts the request and, only when it lets it through, leaves a
+  single-use credit for (grant, request id) in `oauth_check_credits`; the first
+  `oauth_ctx` of that grant with that request id takes it (one `DELETE ...
+  RETURNING`, younger than a minute) and reads the minute's count instead of
+  counting again. A batch of N tool calls costs N units, like the API-key door;
+  a direct caller with a forged or reused request id gains at most the one call
+  its own counted check paid for. Before 0147 a tool call cost two units.
 
 ### Plans and billing
 
-`mcp` is an entitlement of the plan (migration 0093 makes it *enforced*):
-Plus, Pro and Business have it, Free does not, and a workspace that only
-bought credit packs is on the Free plan and is **not** entitled. It is one row
-per plan in `plan_entitlements`; the operator's own organization is exempt.
-It is checked at the consent screen, at the token and refresh endpoints and on
-**every call**. A connection spends the workspace's credits through
+Connecting an app is open on **every plan**, Free included (migration 0147;
+0093 had made it a paid-plan entitlement, `mcp`). 0147 takes the plan check
+out of every OAuth function and sets `mcp` back to `planned` (checked nowhere,
+never advertised), true for every plan, so the pricing matrix and the Usage
+page no longer list it. What limits a connection is credits, live on every
+call: a video is held through `reserve_credits()`, refused with
+`insufficient_credits` before anything is held when the workspace has too
+few, and the same connection works on its next call once credits are added (a
+pack or a plan). The videos-at-once limit of the plan, the connection's own
+monthly limit, the rate limit, scopes and revocation all still apply; the
+operator's own organization is exempt. A connection spends the workspace's credits through
 `reserve_credits()` and the `render_jobs` payment guard exactly as a video made
 in the app, capped per connection under the credit account's row lock so
 concurrent calls cannot exceed the limit. An unpriced video is refused, never
@@ -330,6 +354,11 @@ the database directly: `api_begin` hands a hash that is not an API key to
   grants, codes, tokens, runs, rate counters: RLS on, no grants to any API
   role), `oauth_*` security-definer functions, the entitlement flip, the audit
   actions, and `api_begin` = 0062's body plus one branch.
+* `supabase/migrations/0147_mcp_free_tier.sql` — every plan may connect (the plan
+  check out of seven 0093 functions, `mcp` back to `planned`), one rate unit per
+  tool call (`oauth_check_credits`), the vendor registration class
+  (`oauth_clients.vendor`), and the API key's spend-limit sentences
+  (`docs/MIGRATIONS.md`; undo: `docs/sql/rollback_0147_mcp_free_tier.sql`).
 * `command-center/app/api/mcp/route.ts` — POST/GET/DELETE. A `nsk_live_` key goes
   the old way; an `nso_at_…` token is checked with `oauth_check`, its resource
   and scopes validated, and a server built with only the tools it may use.
@@ -344,7 +373,8 @@ the database directly: `api_begin` hands a hash that is not an API key to
   `tests/test_mcp_oauth_migration.py`, the Postgres lab
   `tests/security/test_sec_mcp_oauth.py` (no table access, hostile redirect
   URIs, code double-spend, refresh race, registration floods, the spend limit
-  under concurrency, cross-tenant, entitlement, replay-twice), and the
+  under concurrency, cross-tenant, replay-twice), `tests/security/test_sec_mcp_free_tier.py`
+  (Free approves and spends, the rate credit, vendor registrations, rollback), and the
   end-to-end rig `tests/oauth_e2e/run.sh`: the **official MCP SDK client** does
   discovery, registration, PKCE, consent, token, tools, refresh and revoke
   against the real Command Center and a Postgres built from the migrations.

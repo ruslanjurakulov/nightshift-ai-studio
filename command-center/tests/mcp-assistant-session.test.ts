@@ -41,7 +41,7 @@ const db = vi.hoisted(() => {
     /** fn -> a PostgREST-level error (the call did not reach the function's body). */
     pgError: {} as Record<string, { code?: string; message?: string }>,
     /** fn -> the rpc itself throws (a client library bug, a dropped socket). */
-    throwOn: {} as Record<string, string>,
+    throwOn: {} as Record<string, string | Error>,
     oauth: { scopes: ["videos:read", "videos:create", "videos:publish"] as string[], checkAnswer: null as unknown, resource: "" },
     apiCents: { balance: 1000, reserved: 0, monthSpend: 0, cap: 10000 },
     credits: { balance: 400, reserved: 0, limit: 500, spent: 0, runLimit: 2 },
@@ -99,7 +99,8 @@ const OAUTH_SCOPE_OF: Record<string, string> = {
 
 const fakeRpc: Rpc = async (fn, args) => {
   db.calls.push({ fn, args });
-  if (db.throwOn[fn]) throw new Error(db.throwOn[fn]);
+  const toThrow = db.throwOn[fn];
+  if (toThrow) throw typeof toThrow === "string" ? new Error(toThrow) : toThrow;
   if (db.pgError[fn]) return { data: null, error: db.pgError[fn] };
   const viaToken = "p_token_hash" in args || ("p_key_hash" in args && args.p_key_hash === TOKEN_HASH);
   if (viaToken && fn !== "oauth_check") {
@@ -230,7 +231,7 @@ function createVideo(viaToken: boolean, a: Record<string, unknown>): unknown {
     // api_video_price: $1.20 a minute, $0.60 minimum (0031 seed).
     const price = Math.max(60, Math.ceil((secs * 120) / 60));
     if (db.apiCents.monthSpend + price > db.apiCents.cap)
-      return err(402, "monthly_limit_reached", "This video would take the organization past its monthly API spend limit.", {
+      return err(402, "monthly_limit_reached", "This video would take the organization past its monthly API spend limit. An owner or admin can raise it in the Developer console: Developers → Usage and billing → Monthly spend limit (up to the usage tier's cap; paying more into the API balance raises the tier).", {
         limit_cents: db.apiCents.cap, month_spend_cents: db.apiCents.monthSpend, price_cents: price,
       });
     if (db.apiCents.balance - db.apiCents.reserved < price)
@@ -739,7 +740,9 @@ describe("refusals as an assistant hits them (tool errors that name the next ste
     await client.close();
   });
 
-  it("OAuth, plan lapsed: the handshake still works, every tool says the connection is paused and how to resume", async () => {
+  // Since 0147 no plan pauses a connection; this is what an app still hears from a database without 0147 (or after its
+  // rollback): the plan named as the reason, never as "a paid plan" by name, and the way back.
+  it("OAuth, a database that still gates by plan: the handshake works, every tool says the connection is paused and how to resume", async () => {
     for (const fn of Object.keys(OAUTH_SCOPE_OF))
       db.refuse[fn] = { status: 403, error: { code: "subscription_required", message: "Connected apps need a paid plan. This connection is paused until the workspace has one." } };
     const client = await connect(TOKEN);
@@ -747,7 +750,8 @@ describe("refusals as an assistant hits them (tool errors that name the next ste
     for (const [name, args] of [["list_channels", {}], ["create_video", { channel_id: "history-uz" }], ["get_balance", {}]] as const) {
       const r = await call(client, name, args);
       expect(r.isError, name).toBe(true);
-      expect(text(r), name).toMatch(/paid plan \(Plus, Pro or Business\).*paused.*\/pricing.*no need to connect the app again/s);
+      expect(text(r), name).toMatch(/not included in this workspace.s current plan.*paused.*\/pricing.*no need to connect the app again/s);
+      expect(text(r), name).not.toMatch(/paid plan|Plus, Pro|Business/);
     }
     await client.close();
   });
@@ -1028,6 +1032,32 @@ describe("refusals as an assistant hits them (tool errors that name the next ste
     });
   }
 
+  // #707 review: the log names the thrown CLASS. e.name is a writable property a thrower can fill with message text;
+  // constructor.name is the class, still allow-listed to a plain identifier.
+  it("the log line names the error's class, never a name the thrower wrote into it", async () => {
+    class PgTimeout extends Error {}
+    const odd = new PgTimeout("x");
+    odd.name = "host=10.0.0.5 password=hunter2";
+    const renamed = new TypeError("y");
+    renamed.name = "Error: connect 10.0.0.5";
+    const bare = Object.assign(Object.create(null), { name: "hunter2" });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const client = await connect(KEY);
+      for (const [err, want] of [[odd, "PgTimeout"], [renamed, "TypeError"], [bare, "error"], ["plain", "Error"]] as const) {
+        logged.mockClear();
+        db.throwOn.api_list_channels = err as string | Error;
+        await call(client, "list_channels");
+        const lines = logged.mock.calls.map((c) => c.map(String).join(" "));
+        expect(lines.some((l) => new RegExp(`\\[mcp\\] req_\\S+ tool list_channels threw ${want}$`).test(l)), want).toBe(true);
+        for (const l of lines) expect(l).not.toMatch(/hunter2|10\.0\.0\.5/);
+      }
+      await client.close();
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
   // Was a bug: list_videos (and get_job_status, get_video, publish_video) had non-strict schemas, so a
   // misspelt argument was silently DROPPED: list_videos({ channel: "history-uz" }) listed every channel's
   // videos as if no filter had been asked for. create_video was strict for exactly this reason, and REST
@@ -1100,15 +1130,17 @@ describe("API key refusals name the remedy (CLAUDE.md rule 6)", () => {
     expect(msgs.length).toBeGreaterThan(0);
     for (const m of msgs) expect(m).toMatch(/Top up/);
   });
-  // BUG (low, rule 6): the API key's two spend-limit refusals say what happened but not what to do
-  // (0042_web_api_hardening.sql:533-541): "This video would take the organization past its monthly API spend
-  // limit." / "…this key past its own monthly spend limit." The MCP tool passes the sentence through, so the
-  // assistant cannot tell the developer where the limit is raised (Developer console -> API: monthly limit;
-  // the key's own limit). A new migration should restate api_create_video / api_request_download with it.
-  it.fails.each(["monthly_limit_reached", "key_limit_reached"])("%s says where the limit is raised", (code) => {
+  // Was a bug (low, rule 6; #707 bug 9): the API key's two spend-limit refusals said what happened but not what to do
+  // (0042_web_api_hardening.sql:533-541), and the MCP tool passes the sentence through, so the assistant could not tell
+  // the developer where the limit is raised. 0147 restates api_create_video / api_request_download with the place.
+  it.each(["monthly_limit_reached", "key_limit_reached"])("%s says where the limit is raised", (code) => {
     const msgs = lastMigrationMessages(code);
-    expect(msgs.length).toBeGreaterThan(0);
-    for (const m of msgs) expect(m).toMatch(/Developer console|raise|Developers/i);
+    expect(msgs.length).toBe(2); // a video and a download
+    for (const m of msgs) expect(m).toMatch(/An owner or admin can raise .* in the Developer console: Developers → /);
+  });
+  it("the org limit names the Usage and billing tab, the key limit the key's own Set limit", () => {
+    for (const m of lastMigrationMessages("monthly_limit_reached")) expect(m).toContain("Developers → Usage and billing → Monthly spend limit");
+    for (const m of lastMigrationMessages("key_limit_reached")) expect(m).toContain("Developers → API keys → Set limit on this key");
   });
 });
 

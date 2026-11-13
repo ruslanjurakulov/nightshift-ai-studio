@@ -2309,6 +2309,7 @@
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 7000,
         "max_concurrent_per_org": 2
@@ -2407,6 +2408,7 @@
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 7000,
         "max_concurrent_per_org": 2
@@ -2505,6 +2507,7 @@
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 7000,
         "max_concurrent_per_org": 2
@@ -2602,6 +2605,7 @@
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "limits": {
         "max_prompt_chars": 7000,
         "max_concurrent_per_org": 2
@@ -2828,8 +2832,9 @@
       },
       "credit_unit": "model_runway_video_upscale_second",
       "entitlement": "models_video:premium",
-      "terms_gate": null,
+      "terms_gate": "terms_review_required",
       "terms_notes": [
+        "Owner's rule (2026-11-13): through Runway's API we use only Runway's own models. This is Magnific's upscaler resold by Runway, a middleman whose margin stacks on ours; wire Magnific or Freepik's own API instead. Gated so it is never sold.",
         "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",
         "Runway Terms of Use (runway.com/terms-of-use, 'Last updated October 23, 2026', read 2026-11-11) §1: the APIs may be used to 'make that functionality available to end users as part of Your Application', which must 'prominently display \"Powered by Runway\" and link to runway.com'.",
         "Same terms §1.3(a): 'you shall not license, sell, rent, lease, transfer, assign, reproduce, distribute, host, or similarly exploit any Services except as permitted through the APIs'; §2.1: API keys 'are for your use only'. Hence api_exposure web_only."

@@ -252,13 +252,28 @@ describe("a whole client, through the handlers", () => {
     }
   });
 
-  it("a Free workspace gets the paid-plan screen and no secret, so no code can exist", async () => {
+  it("a Free workspace gets the consent screen with Allow, and is told its credits pay for what the app makes (0147)", async () => {
+    h.db.plan = "free";
+    const reg = await register(new Request(ORIGIN, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: "A", redirect_uris: [REDIRECT] }) }));
+    const clientId = ((await reg.json()) as { client_id: string }).client_id;
+    const page = await AuthorizePage({ searchParams: Promise.resolve({ response_type: "code", client_id: clientId, redirect_uri: REDIRECT, code_challenge: "A".repeat(43), code_challenge_method: "S256" }) });
+    const text = allText(page).join(" ");
+    expect(find(page, (p) => typeof p.secret === "string")).not.toBeNull();
+    expect(text).toContain("On every plan, Free included, what it makes is paid from this workspace's credits");
+    expect(text).not.toMatch(/paid plan|does not include connecting/);
+    expect(h.db.requests.size).toBe(1);
+  });
+
+  // Since 0147 every plan may approve (the default fake answers entitled: true for every workspace). A database that still
+  // gates by plan (before 0147, or after its rollback) answers entitled: false: the page says the plan does not include it.
+  it("a database that still gates by plan: the plan screen and no secret, so no code can exist", async () => {
     h.db.entitled = false;
     const reg = await register(new Request(ORIGIN, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: "A", redirect_uris: [REDIRECT] }) }));
     const clientId = ((await reg.json()) as { client_id: string }).client_id;
     const page = await AuthorizePage({ searchParams: Promise.resolve({ response_type: "code", client_id: clientId, redirect_uri: REDIRECT, code_challenge: "A".repeat(43), code_challenge_method: "S256" }) });
     const text = allText(page).join(" ");
-    expect(text).toContain("needs a paid plan");
+    expect(text).toContain("does not include connecting AI apps");
+    expect(text).not.toMatch(/paid plan|Plus, Pro/);
     expect(find(page, (p) => p.href === "/pricing")).not.toBeNull();
     expect(find(page, (p) => typeof p.secret === "string")).toBeNull();
     expect(h.db.requests.size).toBe(0);
@@ -293,13 +308,13 @@ describe("a whole client, through the handlers", () => {
 });
 
 describe("plans and billing, as the assistant sees them", () => {
-  it("a lapsed plan: the handshake works, every call says a paid plan is needed, and the same connection works again when the plan returns", async () => {
+  it("a database that still gates by plan: the handshake works, every call says the plan does not include it, and the same connection works again", async () => {
     const t = await connect();
     h.db.entitled = false;
     expect((await textOf(await mcp(rpcReq(list, t.access_token)))).tools.length).toBeGreaterThan(0);
     const r = await textOf(await mcp(rpcReq(call("create_video", { channel_id: "e2e-channel", duration: 60 }), t.access_token)));
     expect(r.isError).toBe(true);
-    expect(r.text).toContain("needs a paid plan");
+    expect(r.text).toContain("current plan, so this connection is paused");
     expect(r.text).toContain(ORIGIN + "/pricing");
     expect(r.text).toContain("no need to connect the app again");
     const refresh = await tokenRoute(form({ grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: t.clientId }));

@@ -822,7 +822,8 @@ and nothing changes for anyone until a registry entry carries `"operator_preview
   nothing (`reserve_credits` answers exempt, `credit_ref` stays NULL, the finish captures nothing), and only a platform admin may start a job
   there. A preview with a `credit_prices` row is quoted at it; one without is quoted at the vendor's cost from the registry
   (`pricing.provider_usd_per_unit` x 100, no margin, floored at `job_minimum` like every quote) as the job's record only. No price row is
-  written, so nothing goes on sale. A model priced by variant or with no stated cost stays `unpriced`. The quote carries `"preview": true`.
+  written, so nothing goes on sale. A model priced by variant or with no stated cost stays `unpriced` (by resolution: since 0149, below,
+  the quoted resolution's figure). The quote carries `"preview": true`.
   A plan entitlement (`models_image:basic` ...) is not asked of a preview: the exempt organization has no plan.
 - **The list.** `operator_preview_models(p_org)` (granted to `authenticated`) answers the same models with the public half of spec, and no
   rows to anyone else. The create page asks for it only for the platform operator in the operator's organization and passes the result to
@@ -975,6 +976,107 @@ customer reaches Dodo until the Command Center's `PAYMENTS_PROVIDER` is `dodo` a
 - **Tests.** `tests/test_dodo_payments_migration.py` (the hunks, the pins, the wrappers, the rollback), `tests/security/test_sec_dodo_payments.py`
   (a real PostgreSQL: grants, the Dodo money path through the shared ledger functions, the Paddle path identical with and without 0146,
   the checks, the drift guard, the rollback and the re-apply), `command-center/tests/dodo-webhook.test.ts` (the webhook).
+
+## Connecting an AI app on every plan; one rate unit per tool call; vendor registrations; spend-limit remedies (0147)
+
+0147 (`0147_mcp_free_tier.sql`, `docs/MCP.md`) is **live on apply**. Owner decision 2026-11-13: "Connect an app" (MCP over OAuth,
+0093) is open on every plan, Free included, and limited only by site credits; the API-key door (prepaid USD balance, activation) is
+unchanged.
+
+- **The plan gate goes.** `mcp` (0034, enforced by 0093) was read by exactly seven functions, all 0093's: `oauth_ctx` (every call),
+  `oauth_begin_authorization` (Free got no request row), `oauth_decide_authorization`, `oauth_exchange_code`, `oauth_refresh`
+  (`subscription_required`), `oauth_check` (`entitled`) and `oauth_my_grants` (`paused_plan`); nothing else reads it. Each is 0093's
+  body minus that check (`entitled` stays `true` in the answers, `status` stays `active`, for the shapes). The key goes back to
+  `planned` (checked nowhere, never advertised), true for every plan and by default, so the pricing matrix and the Usage page stop
+  saying "Free: no". Taking the check out, rather than setting Free's row to true, is deliberate: the rule is about the door, and a
+  per-plan row would let a new plan, the default plan a lapsed subscription falls to, or one UPDATE close it again.
+- **What still limits a connection.** `reserve_credits` inside 0094's `oauth_create_video` (`insufficient_credits` before anything is
+  held; welcome, pack and plan credits all count, under the workspace's own "use extra credits" switch), the per-connection monthly
+  limit, videos at once by plan, 120 requests a minute, scopes, revocation, the workspace membership check. A pack or a plan makes
+  the same connection work on its next call; a connection 0093 had paused works again with no reconnect.
+- **One rate unit per tool call** (#707). `oauth_check_credits (grant_id, request_id, created_at)`, primary key (grant, request id),
+  RLS on, no API role privilege (service_role included). `oauth_check` puts one credit (`oauth_check_credit_put`) only after it counted
+  and let the request through, for the route's id shape `^req_[A-Za-z0-9]{24}$`, `on conflict do nothing`, pruning that grant's
+  credits older than 2 minutes. `oauth_ctx` takes it (`oauth_check_credit_take`, one `DELETE ... RETURNING`, younger than a minute)
+  and then READS the minute's count (keeping `v_used > v_rpm`) instead of taking a second unit; otherwise it counts as before. Every
+  check still costs one unit and frees at most one later call. The foreign key to `oauth_grants` is deferrable only so the end-state
+  block can exercise the helpers on a made-up grant inside a block it rolls back (a cascade is never deferred).
+- **Vendor registrations.** Claude registers a new client on every fresh connection from Anthropic's shared servers, and ChatGPT once
+  per MCP server connection, so 0093's 10 registrations per address an hour throttled the 11th person. A registration whose every
+  redirect URI is a vendor's own callback (`claude.ai/api/mcp/auth_callback`, `chatgpt.com/connector_platform_oauth_redirect`,
+  `chatgpt.com/connector/oauth/<id>`, `grok.com/connectors-oauth-exchange-code/`, `oauth-redirect.googleusercontent.com/r/<segment>`
+  and `/a/<segment>`; Google's `-sandbox` / `-test` hosts stay ordinary) is its own class: `oauth_clients.vendor` (generated by `oauth_vendor_callbacks_only`), 300 an
+  address an hour, 2 000 an hour in total, a 60 000-row cap. The ordinary class keeps 0093's 10 / 300 / 20 000 over ordinary rows only.
+  A vendor-class code can only ever go to the vendor's callback, so the class gains an attacker nothing but rows.
+- **Rows stay bounded now that Free can approve** (review of #713). 0093's collector never took a client that had a grant and kept a
+  revoked grant 30 days, and the 20-connection cap counts live grants only, so register → Allow → redeem → revoke kept a registration
+  alive a month per cycle; one Free account could fill a class's cap (vendor 60 000 in ~30 h, ordinary 20 000 in ~67 h) and close
+  registration for everyone. Now `oauth_gc` (0093's body plus one hunk) also deletes a client whose every grant ended (revoked or past
+  its absolute expiry) more than 24 hours ago, with those grants (not while someone has its consent screen open, and not within a
+  day of its last authorization, so a vendor reusing one client id never turns a person's Allow into `expired`), and `oauth_decide_authorization` refuses
+  `too_many_connections_today` after 50 approvals per person or 200 per workspace in a rolling day, revoked ones included (a
+  per-workspace advisory lock keeps the counts exact). A class then holds the last 24 hours of registrations (48 000 vendor, 7 200
+  ordinary, under the caps) plus at most 40 rows per account (20 live, 20 ended less than a day ago): a flood at the ceiling cannot
+  fill it. Two indexes on `oauth_grants` (client; org, created) serve the collector and the counts. The consent screen names both
+  refusals (`too_many_connections` and `too_many_connections_today`) in en/ru/uz. Cost: an app whose connection ended more than a
+  day ago is an unknown client and is added again (Claude registers anew on every connection anyway).
+- **One fixed minute can see ~240 tool calls.** A check admitted at the end of one minute leaves a credit its call may spend in the
+  next; the sustained rate stays 120 a minute and every call that makes a video stays bound by credits and the connection's limit.
+- **Spend-limit remedies** (#707 bug 9). `api_create_video` and `api_request_download` are 0042's bodies with the
+  `monthly_limit_reached` and `key_limit_reached` sentences naming where the limit is raised (Developer console: Developers → Usage
+  and billing → Monthly spend limit; Developers → API keys → Set limit on this key). Codes, details and every other line are 0042's.
+- **Drift guard and end state.** Each of the twelve replaced functions (`oauth_gc` included) must hold its 0093 / 0042 body or
+  0147's (md5s in the file). The end-state block asserts bodies, SECURITY DEFINER, the pinned search_path, grants, the tables' RLS and
+  privileges, the SHAPE of every `if not exists` object (the generated `vendor` expression; `oauth_check_credits` columns, key,
+  cascade and check), the daily caps and indexes, the retired entitlement and the registration class, and exercises the credit: the first call of a checked request is free, a second call with
+  the same request id is counted, another id shape earns nothing, a credit older than a minute is not taken. Apply as ONE transaction.
+- **Number.** 0147: live is at 0146; 0148 is reserved by another branch. Names nothing of 0143's, 0145's or 0146's.
+- **Replay.** `create or replace`, `if not exists`, revoke then grant: a replay changes nothing. Re-running 0093 after 0147 puts 0093's
+  bodies and its `enforced` back (Free pauses again): re-apply 0147 after it.
+- **Undo.** `docs/sql/rollback_0147_mcp_free_tier.sql` (owner-applied): refuses unless every function is 0147's body, puts 0093's and
+  0042's bodies back byte for byte (0093's `oauth_gc` too), drops the credits, the helpers, `oauth_clients.vendor` and the two indexes,
+  and restores the entitlement: the key as 0093 left it, and each plan's value as 0147 found it, from
+  `oauth_mcp_entitlement_before_0147` (0147 saved it before setting every plan true; the rollback restores it and drops the table).
+  After it, Free connections are paused again and a vendor's server is throttled at 10 an hour again. Registration can be closed
+  for a while after it: 0093 counts every row against one 300-an-hour / 20 000-row budget (the file's header has the read-only query).
+- **Tests.** `tests/test_mcp_free_tier_migration.py` (the hunks, the md5 pins, the grants, the rollback),
+  `tests/security/test_sec_mcp_free_tier.py` (a real PostgreSQL: Free approves and spends welcome, pack and plan credits, the limits
+  that stay, the rate credit under forgery, refusal and a race, the 120-a-minute boundary, vendor and ordinary registration budgets
+  and caps, connect-and-revoke past the daily cap and the collection a day later, the workspace cap, a race at the cap, each plan's
+  value through rollback, the spend-limit sentences, rollback and re-apply, the drift guard), `tests/security/test_sec_mcp_oauth.py` (0093's
+  attacks, now against the 0147 rule), `command-center/tests/mcp-assistant-session.test.ts`.
+
+## Operator preview priced by resolution (0149)
+
+0149 (`0149_preview_price_by_resolution.sql`) is **live on apply** and writes no row. It replaces ONE function, `creative_price`, on 0139's
+body plus two hunks, and changes an answer only for 0139's preview (the platform operator, in the credits-exempt organization, a hidden
+model marked `operator_preview`) of a model priced by resolution.
+
+- **Why.** 0139 quotes a preview with no `credit_prices` row at the vendor's cost only when the registry states one flat figure. Every
+  MiniMax H3 video entry is priced by resolution (`pricing.variants.by = "resolution"`), so every preview quote of them was `unpriced`:
+  a model listed as available whose every generation was refused.
+- **The rate.** No variants: `provider_usd_per_unit`, as in 0139. By resolution: `variants.prices[<resolution>]`, where the resolution is
+  the one 0070's video settings already settle on for every quote (the request's, else the pinned `default_resolution` only when the
+  request names none). It is the one the quote names, the job carries and the worker sends. A listed resolution without its own figure
+  (or with a figure that is not a number, 0, or over 100) is `unpriced`; it is never mapped to another resolution or to
+  `provider_usd_per_unit`. Any other `variants.by` stays `unpriced`. Same conversion as 0139 (x 100, no margin, `job_minimum` floor);
+  a `credit_prices` row for the variant still wins; who may preview is 0139's rule, not replaced.
+- **Known gap, not changed here.** `creative_params_problem` (0126's body) accepts a named resolution only from 480p 540p 720p 1080p 1440p
+  2160p. A request that names `768p` or `2k` is refused `invalid_params` before the model is read. 768p is reached as the pinned default
+  (the Studio sends no resolution); H3's 2k is not reachable. `tests/security/test_sec_preview_price_by_resolution.py` pins this as a
+  strict xfail.
+- **Drift guard and end state.** The live `creative_price` must be 0139's body (`ae28b700503542701ee0ac63a67df36e`) or 0149's
+  (`728241a09e56f65e19efc460afea7355`). The last block asserts the body, no API role grant, the pinned search_path and the three guards.
+  Apply as ONE transaction.
+- **Order.** 0149 sits on 0139's `creative_price` and refuses to apply without 0139. 0139's replay and rollback refuse 0149's body: run
+  `docs/sql/rollback_0149_preview_price_by_resolution.sql` first (it puts 0139's body back byte for byte). The lab takes 0149 off before
+  0139 (`sec_db.take_off_0139` calls `take_off_0149`; `sec_db.ON_0139`, and `ON_0125` now lists both). The numbering tests of 0127, 0131
+  and 0133 list it as reviewed.
+- **Tests.** `tests/test_preview_price_by_resolution_migration.py` (the hunks, the hashes, the rollback, the lab chain, the registry
+  entries it turns on), `tests/security/test_sec_preview_price_by_resolution.py` (480p and 768p quote their own costs; no resolution is
+  the pinned default and the job carries it; an unlisted resolution is `invalid_params`, a listed unpriced one `unpriced`; everyone 0139
+  refuses is still refused; a model on sale is never quoted at cost; a variant row wins; other `variants.by` stay `unpriced`; with 0149
+  rolled back only these answers change; order, drift guard and rollback on a scratch database).
 
 ## The Studio's progress seed from a probe (0151)
 

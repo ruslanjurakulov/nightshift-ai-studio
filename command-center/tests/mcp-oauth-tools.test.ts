@@ -160,7 +160,8 @@ describe("refusals are written for a person", () => {
     expect(t).not.toMatch(INTERNAL);
   });
   it("a paused plan, a dead connection, a missing permission, a lost workspace and a flood each say what to do", () => {
-    expect(oauthRefusalText(fail("subscription_required", {}, { status: 403 }), O)).toMatch(/paid plan.*pricing.*no need to connect the app again/s);
+    expect(oauthRefusalText(fail("subscription_required", {}, { status: 403 }), O)).toMatch(/current plan, so this connection is paused.*pricing.*no need to connect the app again/s);
+    expect(oauthRefusalText(fail("subscription_required", {}, { status: 403 }), O)).not.toMatch(/paid plan|Plus|Business/);
     expect(oauthRefusalText(fail("invalid_api_key", {}, { status: 401 }), O)).toMatch(/connect the app to Nightshift again/);
     expect(oauthRefusalText(fail("insufficient_scope", { required_scope: "videos:create" }, { status: 403 }), O)).toContain('"videos:create"');
     expect(oauthRefusalText(fail("workspace_access_lost", {}, { status: 403 }), O)).toMatch(/connect the app again/);

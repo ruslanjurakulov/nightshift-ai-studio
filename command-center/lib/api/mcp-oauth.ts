@@ -160,9 +160,12 @@ export function oauthRefusalText(result: Extract<ApiResult, { ok: false }>, orig
       );
     }
     case "subscription_required":
+      // Since 0147 every plan may connect and no database function answers this. It is still what a database without
+      // 0147 (or after its rollback) answers, so it says what that database decided, the plan, without naming plans
+      // the owner may rename, and the way back.
       return (
-        `Connecting AI apps needs a paid plan (Plus, Pro or Business), and this workspace does not have one right now, so this connection is paused. ` +
-        `The person can choose a plan at ${origin}/pricing. As soon as the plan is active this same connection works again, with no need to connect the app again.`
+        `Connecting AI apps is not included in this workspace's current plan, so this connection is paused. ` +
+        `The person can see the plans at ${origin}/pricing. As soon as the workspace's plan includes it, this same connection works again, with no need to connect the app again.`
       );
     case "invalid_api_key":
     case "invalid_token":

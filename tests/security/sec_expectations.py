@@ -677,6 +677,11 @@ import sec_dodo_0146  # noqa: E402
 
 sec_dodo_0146.extend(TABLES, FUNCTIONS)
 
+# Migration 0147 (MCP over OAuth on every plan; oauth_check_credits, one rate unit per OAuth tool call): tests/security/sec_mcp_free_tier_0147.py
+import sec_mcp_free_tier_0147  # noqa: E402
+
+sec_mcp_free_tier_0147.extend(TABLES, FUNCTIONS)
+
 # Migration 0151 (the Studio's progress seed: the newest successful probe's seconds per model, signed-in only): tests/security/sec_model_probe_seconds_0151.py
 import sec_model_probe_seconds_0151  # noqa: E402
 
