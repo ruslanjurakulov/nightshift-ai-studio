@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "9699e7fd-74a6-4d9e-8dcd-9dc88deec1d9",
+      "assetId": "5d425291-6c5d-5254-9e6c-b4ec90042228",
+      "sha256": "a2e186fdfad80738e2b12fd803858e6c043b7844bc4568e4e1ddcb2ef0f77c64",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Top-down shot of an open notebook on a wooden desk under a warm lamp. A pencil doodle of a small cartoon dragon blinks, wiggles, peels itself off the paper as a living paper creature, stretches its wings and flies in a loop around the desk lamp, leaving a trail of tiny glowing sparks. Playful, magical, crisp macro detail. Audio: paper rustle, tiny wing flaps, a cute roar.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:46:41Z"
     }
   ]
 }
