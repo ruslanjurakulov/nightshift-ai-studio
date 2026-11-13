@@ -39,6 +39,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T16:05:40Z"
+    },
+    {
+      "jobId": "826322ba-3ac9-4030-bc19-367b5ae1277a",
+      "assetId": "21af8bbf-dba8-5cde-b6f1-c371bbc8a2b2",
+      "sha256": "2ad03e430e6eaf7615ee2e2a1776fff6357276328dfb7ea14edc17a14795ede1",
+      "modelId": "minimax-h3-lite",
+      "modelName": "MiniMax H3 Lite",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Grainy black-and-white night-vision security camera footage, fixed high wide angle looking down on a suburban backyard. Three raccoons climb a children's plastic slide one after another and slide down; the last one tumbles off the end, rolls, gets up and runs back to the ladder for another turn. Infrared glow, slight fisheye distortion, compression artifacts, white timestamp \"02:14:37\" in the top corner, static camera. Audio: crickets, soft plastic thumps.",
+      "createdAt": "2026-11-13T16:17:46Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Lite",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T17:07:54Z"
     }
   ]
 }
