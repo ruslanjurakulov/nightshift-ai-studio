@@ -203,6 +203,9 @@ export const siteEn = {
     tryNoteSignedOut: "“Try this prompt” asks you to create an account first, then opens the Studio with that tool and those words. Nothing starts until you press Generate there, and the price is shown before you do.",
     altClip: "AI-generated clip made by {model}",
     altImage: "AI-generated picture made by {model}",
+    /** On a clip animated from one of the samples' own pictures: that picture, small, with the model that made it. */
+    source: "Made from this picture:",
+    altSource: "The AI-generated picture this clip was made from, made by {model}",
   },
   /** The AI-generated pictures (lib/site/art.ts): the backdrop of the hero is decorative and has no description; the thumbnail is described, and says what it is. The eleven step and tool entries describe the pictures in components/site/art.tsx SLOT_ART: check each against its real picture when one changes. */
   art: {

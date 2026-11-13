@@ -1426,3 +1426,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 .nx-gallery-date { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
 .nx-gallery-unavailable { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
 .nx-gallery-try { margin-top: 8px; }
+/* A clip animated from one of the samples' pictures: that picture beside its maker, small enough not to compete with the clip. */
+.nx-gallery-source { display: flex; align-items: center; gap: 12px; margin: 0; min-width: 0; }
+.nx-gallery-source img { flex: none; width: 96px; height: auto; border-radius: 10px; border: 1px solid var(--ns-rule); }
+.nx-gallery-source figcaption { min-width: 0; font-size: 15px; color: var(--ns-text); overflow-wrap: anywhere; }
