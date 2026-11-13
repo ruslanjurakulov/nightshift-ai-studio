@@ -26,6 +26,7 @@ import { thumbWords } from "@/components/site/BrandArt";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import type { MoneyAnchor } from "@/lib/landing";
 import { PROVIDER_BRANDS } from "./helpers/brands";
+import { GALLERY, SAMPLE_CARD, outsideGallery, shippedSamples, without } from "./helpers/showcase-scope";
 
 afterEach(() => {
   cleanup();
@@ -245,9 +246,13 @@ describe("the landing page's reasons to stay", () => {
     expect(bar.querySelector("button")!.getAttribute("aria-label")).toBe(t.bar.dismiss);
 
     // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of three
-    // (the hero's switch under the card and the two showcases' clip pictures carry the same switch), and all three agree.
+    // (the hero's switch under the card and the two showcases' clip pictures carry the same switch). Each merged model sample
+    // that plays a clip carries it too, on its picture inside the gallery, and every one of them agrees.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
-    expect(all()).toHaveLength(3);
+    expect(outsideGallery(all())).toHaveLength(3);
+    const inGallery = all().filter((b) => b.closest(GALLERY));
+    expect(inGallery).toHaveLength(shippedSamples().clips);
+    for (const b of inGallery) expect(b.closest(SAMPLE_CARD)).toBeTruthy();
     const toggle = container.querySelector(".nx-motion-btn") as HTMLElement;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);
@@ -263,9 +268,12 @@ describe("the landing page's reasons to stay", () => {
     const t = dictionaries.en.site;
     const trust = container.querySelector(".nx-trust") as HTMLElement;
     expect([...trust.querySelectorAll("li")].map((li) => li.textContent)).toEqual(t.rules.items.map((i) => i.title));
-    const text = container.textContent ?? "";
+    // A merged model sample quotes the words its job was given ("stars over a lake" is a prompt, not a rating), so those quotes
+    // are left out of the claims; everything the page says in its own words, the gallery's included, is read.
+    const text = without(container, ".nx-gallery-prompt").textContent ?? "";
     expect(text).not.toMatch(/trusted by|testimonials?\b|customers\b|\breviews?\b|\brated\b|\bstars?\b|\d+\s*(?:\+|k|m)?\s*(?:users|creators|channels|people)|only \d+|ends in|left today/i);
-    expect(text).not.toMatch(PROVIDER_BRANDS);
+    // A sample's card names its model (tests/site-showcase.test.tsx pins how); nothing else does.
+    expect(without(container, SAMPLE_CARD).textContent).not.toMatch(PROVIDER_BRANDS);
   });
 
   it("labels every example frame as an example and describes it (en, ru, uz)", () => {
