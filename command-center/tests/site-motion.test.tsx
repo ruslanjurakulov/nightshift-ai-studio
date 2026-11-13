@@ -476,7 +476,8 @@ describe("the models strip", () => {
     const strip = container.querySelector(".nx-marquee");
     if (strip) {
       expect(strip.closest("section")).toBeNull();
-      expect(strip.previousElementSibling?.id).toBe("samples");
+      // After the explore grid (and the effects, when the page has them), right before the model tiles.
+      expect(["samples", "effects"]).toContain(strip.previousElementSibling?.id);
       const models = container.querySelector("#models");
       if (models) expect(strip.nextElementSibling).toBe(models);
     }

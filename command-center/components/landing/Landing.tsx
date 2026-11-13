@@ -10,6 +10,7 @@ import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
 import { Showcases } from "@/components/landing/Showcases";
 import { ShowcaseGallery, showcaseItems, type LandingFormat } from "@/components/site/ShowcaseGallery";
+import { EffectsGallery } from "@/components/site/EffectsGallery";
 import { TryDemo } from "@/components/landing/TryDemo";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
@@ -87,7 +88,10 @@ export function Landing({
       <Facts t={t} locale={locale} anchor={anchor} entries={onPage.map(({ e }) => e)} />
       {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
       <ShowcaseGallery t={t} locale={locale} exclude={inSlots} formats={formats} />
+      {/* Named one-press shots that open the Studio's video form (lib/effects/catalog.ts); it names no model. */}
+      <EffectsGallery t={t} />
       <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} />
+
       <ModelTiles t={t} items={onPage} />
       <Showcases t={t} />
       <How t={t} />

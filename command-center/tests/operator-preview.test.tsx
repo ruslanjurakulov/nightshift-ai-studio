@@ -76,7 +76,11 @@ describe("preview rows from operator_preview_models()", () => {
     expect(page.match(/withPreviews\(/g)).toHaveLength(1);
     expect(page).toContain("const panelModels = withPreviews(models, previews);");
     // Both generate boxes (the overview's composer and the desks' panel) get them; the overview's composer was missing them.
-    expect(page.match(/models=\{panelModels\}/g)).toHaveLength(2);
+    // The Effects desk gets the same list (lib/effects/catalog.ts): an effect may name a preview model only where the panel it
+    // opens offers that model, and the effect's own banner resolves over panelModels too.
+    expect(page.match(/models=\{panelModels\}/g)).toHaveLength(3);
+    expect(page).toContain("<EffectsDesk models={panelModels} />");
+    expect(page).toContain("resolveEffect(effectAsk.effect, panelModels)");
     // The Assistant plans only with the models on sale.
     expect(page).toMatch(/const assistant: AssistantData = \{\s*orgId: genOrgId,\s*models,/);
   });
