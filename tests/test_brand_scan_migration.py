@@ -94,9 +94,11 @@ class Numbering(unittest.TestCase):
         # against these pins: nothing of 0131's or 0133's.
         # 0142 (one CHECK on model_registry: a model with blocked_countries cannot be beta or ga) was reviewed against these pins:
         # nothing of 0131's or 0133's.
+        # 0143 (the probe log's vendor_tool_unsupported word: one check constraint on model_probe_runs) was reviewed against these pins:
+        # nothing of 0131's or 0133's.
         # 0144 (Dodo Payments next to Paddle: the payment tables' provider checks and 0034's two subscription functions) was reviewed
         # against these pins: nothing of 0131's or 0133's.
-        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0144")], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0144")], [], "a later number needs its own review of this file's pins")
         later = (MIG / "0134_brand_scan_followup.sql").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertIn(GUARD["brand_scan_fail_locked"], later)

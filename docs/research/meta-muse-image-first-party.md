@@ -1,7 +1,8 @@
 # Meta Model API, Muse Image: first-party adapter (dark)
 
 Researched 2026-11-12 from Meta's official pages only: the dev.meta.ai docs (each page read as markdown by appending
-`.md`), and the legal pages (Terms of Service updated 2026-10-09, Geographic Use Policy updated 2026-10-12). **No
+`.md`), and the legal pages (Terms of Service updated 2026-10-09; Geographic Use Policy updated 2026-10-12, re-read 2026-11-12 at its
+2026-11-09 update, see "Geography"). **No
 endpoint was called. There is no key yet.**
 
 Where it lives:
@@ -82,6 +83,7 @@ Sources: `/docs/image-generation`, `/docs/api-reference/responses/schemas`, `/do
 | 402 `billing_error` | `quota` |
 | 403 | `auth` (the key lacks the model) |
 | 404 `model_not_found`, or a 404 with an empty body | `not_found` |
+| 400 with `param: "tools"` (the first probe: "Unsupported tool type: 'image_generation'") | `vendor_tool_unsupported` |
 | 413 `payload_too_large`, 415 `unsupported_media_type` | `bad_request` |
 | 429 `rate_limit_exceeded` | `rate_limited` |
 | 500 and 503 (`service_overloaded`, `backend_unavailable`, `server_shutting_down`) | `unavailable` |
@@ -134,12 +136,12 @@ SPEND, as for every adapter.
 
 ## Geography: the gap
 
-The Geographic Use Policy has two lists:
+The Geographic Use Policy (<https://dev.meta.ai/legal/geographic-use-policy>, "Last updated: November 9, 2026", re-read
+2026-11-12) has two lists:
 
-- 2.2: Muse Image is unavailable in **India** (the 2026-10-12 version). **Updated 2026-11-09**
-  (<https://dev.meta.ai/legal/geographic-use-policy>, read 2026-11-12): 2.2 now bars only Muse Wonder and Muse Wonder Full,
-  in South Korea. India is no longer barred for Muse Image, and the registry row no longer lists it.
-- 3: the Restricted Territories are Afghanistan, Belarus, Cambodia, China / Hong Kong / Macau, Cuba, Eritrea,
+- 2.2, model-specific availability: only "Muse Wonder: South Korea" and "Muse Wonder Full: South Korea". **Muse Image is
+  no longer listed.** The 2026-10-12 version read for this note first barred Muse Image in India; that ban is gone, and the registry row no longer lists India.
+- 3: the Restricted Territories, unchanged by the 2026-11-09 update, are Afghanistan, Belarus, Cambodia, China / Hong Kong / Macau, Cuba, Eritrea,
   Ethiopia, Haiti, Iran, Iraq, Libya, Myanmar, Nicaragua, North Korea, Pakistan, Russia, Somalia, Syria,
   Crimea / Donetsk / Luhansk, Venezuela and Western Sahara.
 
@@ -157,8 +159,8 @@ The only "country" fields are the YouTube channel's own `snippet.country`, which
 not where the requester is, and the operator's legal country (`NEXT_PUBLIC_LEGAL_COUNTRY`).
 
 (Since then, pull request #695 added a GeoIP check in the web routes, docs/GEO_BLOCK.md; the database still does not
-know the country, so the entry stays off sale.) As instructed, no GeoIP was built at the time. The entry stays terms-gated, so it cannot be sold, until a person decides how to
-meet 2.2 and 3. Two possible ways:
+know the country, so the entry stays off sale.) As instructed, no GeoIP was built at the time. The entry stays terms-gated, so it
+cannot be sold, until a person decides how to meet 3 (2.2 no longer names Muse Image). Two possible ways:
 
 - a CDN or reverse-proxy country header, checked by the database function that quotes a job;
 - a country recorded on the account and checked at quote time.
@@ -188,8 +190,32 @@ carries `"operator_preview": true`:
 ## Open questions
 
 1. **Responses API vs. the images endpoints.** The adapter uses `/v1/responses` because of `store: false`. The
-   Responses reference schema (`/docs/api-reference/responses/schemas`) does not list the `image_generation` tool or
-   the `image_generation_call` item. Only the image-generation guide shows them. Confirm with the first probe.
+   Responses reference schema (`/docs/api-reference/responses/schemas`, re-read 2026-11-12 after the probe) does not list
+   the `image_generation` tool: its `ToolsArray` is `FunctionTool | ComputerTool | WebSearchTool | ToolSearchToolParam`,
+   and `image_generation_call` appears only in the prose of `instructions`, not as an item type. Only the
+   image-generation guide shows the tool ("include an `image_generation` tool in `tools` and set its fields", with
+   `size`, and "Muse Image accepts only the `image_generation` tool").
+   - **First probe, 2026-11-12 19:05Z** (Actions "Probe models", run 43286239903): it sent
+     `{"model": "muse-image-1.0", "store": false, "input": "a red apple on a white table", "tools": [{"type":
+     "image_generation", "size": "1024x1024"}]}` (the probe named `aspect_ratio: "1:1"`). Answer, after 450 ms: HTTP 400
+     `{"error": {"code": null, "message": "Unsupported tool type: 'image_generation'", "param": "tools", "type":
+     "invalid_request_error"}}`. A 400 is not billed (pricing page). Re-read the same day, the guide still shows exactly
+     this tool shape and does not explain the error; the Responses reference still does not list the tool. The likely
+     reading: the guide is ahead of the API.
+   - **What changed.** The adapter now answers a 400 naming `param: "tools"` as `vendor_tool_unsupported`, with a
+     message that says the size / aspect ratio option was refused and nothing was charged. It does NOT retry without the
+     tool: that would return a picture in the vendor's default shape, not the one the person asked for. The probe no
+     longer names an aspect ratio, so it sends no `tools` (migration 0143 lets the probe log store the new code).
+   - **Second probe, 2026-11-12 20:40Z** (run 43302357299, this branch): the cheapest valid call, with no tool:
+     `{"model": "muse-image-1.0", "store": false, "input": "a red apple on a white table"}`. Result: `ok
+     grounded-image-1.0`, one image, $0.01. The endpoint, the key, `store: false` and the `image_generation_call` answer
+     are confirmed. Only the tool is in question.
+   - **So no shape is offered.** Until a probe proves the tool, the registry entry lists no `aspect_ratios`. The Studio
+     then offers no shape for this model and sends none (`fixedShape` in `command-center/lib/creative/studio.ts`), and
+     the registry refuses a job that names one before any call. The picture comes back in the model's default shape.
+     The adapter keeps the documented shapes (`SPECS`) and still sends the tool for a named shape, for the day the tool
+     is accepted. Changing `aspect_ratios` does not reset the model's verification: the registry guard (0100's
+     `model_registry_guard`) watches `aspect_ratios_by_capability.expand` / `.video_reframe`, not `aspect_ratios`.
 2. How many `input_image` parts the Responses API takes for Muse Image (10 is the images-edit bound).
 3. Whether the answer can carry several images for one prompt (nothing sets `n` there), and whether each is billed.
 4. The native pixel resolution. It is not documented, so no image size is offered or priced.
