@@ -17,6 +17,9 @@ import type { AccountPlan } from "@/lib/account";
 import { aside as MAside, nav as MNav } from "motion/react-m";
 import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
 import { useSidebar } from "@/components/shell/SidebarState";
+import { useShell } from "@/components/shell/ShellContext";
+import { deskOpen } from "@/lib/tool-availability";
+import "@/components/studio/availability.css";
 
 /** One lit plate for the whole sidebar: it slides from the row you left to the row you opened. */
 const PLATE = "sidebar-current";
@@ -141,7 +144,8 @@ function CurrentRows({ collapsed }: { collapsed: boolean }) {
 }
 
 function SidebarRows({ current, collapsed }: { current: string | null; collapsed: boolean }) {
-  const { t } = useI18n();
+  const { t, fmt } = useI18n();
+  const { tools } = useShell();
   const path = useChannelPath();
   const { home, work } = CUSTOMER_SIDEBAR;
   const HomeIcon = ICONS[home.key];
@@ -163,14 +167,41 @@ function SidebarRows({ current, collapsed }: { current: string | null; collapsed
         {DESKS.map((d: Desk) => {
           const Icon = DESK_ICONS[d];
           const on = current === `desk:${d}`;
+          const closed = !deskOpen(tools, d);
+          const name = t.desk.names[d];
+          // A desk with nothing on sale is said to be so, and is not a link: it would open a form with nothing to pick. The
+          // current one (opened by a typed or old link) stays a link, so the row still says where you are.
+          if (closed && !on) {
+            const label = fmt(t.availability.rowLabel, { name });
+            return (
+              <li key={d}>
+                <span className="shell-link" data-unavailable="true" data-tip={collapsed ? label : undefined} data-testid={`sidebar-desk-${d}`}>
+                  <span aria-hidden className="shell-tile">
+                    <Icon className="size-3.5" strokeWidth={2} />
+                  </span>
+                  <span className={collapsed ? "sr-only" : "flex min-w-0 flex-col"}>
+                    <span className="truncate">{name}</span>
+                    <span className="shell-soon truncate">{t.availability.notYet}</span>
+                  </span>
+                </span>
+              </li>
+            );
+          }
           return (
             <li key={d}>
-              <Link href={path(deskHref(d))} aria-current={on ? "page" : undefined} className={rowClass(on)} data-tip={collapsed ? t.desk.names[d] : undefined}>
+              <Link href={path(deskHref(d))} aria-current={on ? "page" : undefined} className={rowClass(on)} data-tip={collapsed ? (closed ? fmt(t.availability.rowLabel, { name }) : name) : undefined} data-testid={`sidebar-desk-${d}`}>
                 {on && <Plate id={PLATE} />}
                 <span aria-hidden className="shell-tile">
                   <Icon className="size-3.5" strokeWidth={2} />
                 </span>
-                <span className={collapsed ? "sr-only" : "truncate"}>{t.desk.names[d]}</span>
+                {closed ? (
+                  <span className={collapsed ? "sr-only" : "flex min-w-0 flex-col"}>
+                    <span className="truncate">{name}</span>
+                    <span className="shell-soon truncate">{t.availability.notYet}</span>
+                  </span>
+                ) : (
+                  <span className={collapsed ? "sr-only" : "truncate"}>{name}</span>
+                )}
               </Link>
             </li>
           );

@@ -28,7 +28,9 @@ import { DeskBar, YouTubeDesk, type CreditsReading, type ProjectsReading } from 
 import { createClient, getUser } from "@/lib/supabase/server";
 import { readCreditAccount } from "@/lib/server/credits";
 import { loadEditorProjects } from "@/lib/server/editor";
-import { GeoAttribution } from "@/components/legal/GeoAttribution";
+import { effectFromQuery, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
+import { EffectBanner } from "@/components/effects/EffectBanner";
+import { EffectsDesk } from "@/components/effects/EffectsDesk";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -88,6 +90,15 @@ export default async function CreatePage({
   // Both generate boxes get them: the overview's composer is the first one the operator meets, and without the previews it read
   // "no model can do this" while the Image desk offered the model. The Assistant below keeps `models`, the ones on sale.
   const panelModels = withPreviews(models, previews);
+  // An effect (lib/effects/catalog.ts, /create?tool=t2v&effect=<id>) fills the same form with its words, shape, length and the
+  // first of its models that this workspace is offered — the same list the panel gets, previews included only for the operator.
+  // With none of its models offered it fills nothing and the banner says so; it is never pointed at another model.
+  const effectAsk = genOrgId ? effectFromQuery(q) : null;
+  const effectPick = effectAsk ? resolveEffect(effectAsk.effect, panelModels) : null;
+  const formInitial =
+    effectAsk && effectPick?.state === "ready"
+      ? effectPrefill(effectAsk.effect, effectPick.modelId, effectAsk.subject, effectAsk.sourceId)
+      : initial;
   // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
   const user = await getUser();
   // "Use in Studio" from the Style Library (/create?tool=t2i&style=<kit>) picks that
@@ -174,19 +185,25 @@ export default async function CreatePage({
           assistant={assistant}
         />
       )}
+      {desk === "effects" &&
+        (genOrgId ? <EffectsDesk models={panelModels} /> : <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.effects.desk.noOrg}</p>)}
+      {isMediaDesk(desk) && effectAsk && effectPick && (
+        <EffectBanner effect={effectAsk.effect} availability={effectPick} subject={effectAsk.subject} />
+      )}
       {isMediaDesk(desk) &&
+        effectPick?.state !== "unavailable" &&
         (genOrgId ? (
           // Keyed by the desk and the link's tool and picture: moving between the
           // sidebar's rows is a client navigation to the same page, and without a
           // new key the panel would keep the tool it already had.
           <GenerateSection
-            key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}:${initial?.auto ? "auto" : ""}:${initial?.voiceId ?? ""}:${typeof q.template === "string" ? q.template : ""}:${initial?.prompt ?? ""}`}
+            key={`${desk}:${formInitial?.capability ?? ""}:${formInitial?.sourceId ?? ""}:${askedStyle ?? ""}:${formInitial?.model ?? ""}:${formInitial?.auto ? "auto" : ""}:${formInitial?.voiceId ?? ""}:${typeof q.template === "string" ? q.template : ""}:${effectAsk?.effect.id ?? ""}:${formInitial?.prompt ?? ""}`}
             desk={desk}
             orgId={genOrgId}
             models={panelModels}
             // The owner's switch (0124): a model the form came with that is off is named as such, never swapped for another.
             unavailable={switchedOff}
-            initial={initial}
+            initial={formInitial}
             // The channel's look (0047) is the starting style; the panel uses it
             // only if it is one of the organization's kits as loaded.
             defaultStyleKitId={startKit}
@@ -201,8 +218,8 @@ export default async function CreatePage({
           <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>
         ))}
       {desk === "youtube" && <YouTubeDesk run={run} />}
-      {/* The pickers above are filtered by the request's country once a model has a country list (docs/GEO_BLOCK.md). */}
-      {isMediaDesk(desk) && <GeoAttribution label={t.create.geoAttribution} />}
+      {/* The pickers above are filtered by the request's country once a model has a country list: the (app) layout carries the
+          DB-IP credit for every page (docs/GEO_BLOCK.md). */}
     </div>
   );
 }

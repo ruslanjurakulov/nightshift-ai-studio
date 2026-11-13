@@ -4,7 +4,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), usePathname: () => "/chronos/home" }));
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { SkipLink } from "@/components/shell/SkipLink";
