@@ -227,6 +227,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "e3da9148-f2f8-443e-95b1-8ed36ef3dea4",
+      "assetId": "9283b527-51ec-5f5a-97b0-125d6aea3cc8",
+      "sha256": "492837bf5c409487bd4493648e623ca0eeaf272c6bb3087630d745a6b9bc9782",
+      "modelId": "ideogram-4",
+      "modelName": "Ideogram 4.0",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Luxury perfume bottle of faceted amber glass standing on wet black stone, splashes of water frozen mid-air around it, dramatic rim light, dark moody background, high-end product advertising photograph, no readable text or logos.",
+      "createdAt": "2026-11-13T17:45:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1600,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:10:22Z"
     }
   ]
 }
