@@ -8,7 +8,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { loadSellableModels } from "@/lib/creative/registry";
-import { loadAiToolAvailability } from "@/lib/server/ai-tools";
+import { loadAiToolAvailability, loadImproveModels } from "@/lib/server/ai-tools";
 import { parseIdParam } from "@/lib/creative/improve";
 import {
   loadEditorImages,
@@ -53,7 +53,7 @@ export default async function EditorProjectPage({
   if (project.state === "not_found") notFound();
   if (project.state === "not_available") return note(t.editor.notEnabled);
   if (project.state !== "ok") return note(t.editor.readFailed);
-  const [videos, sounds, images, sellable, aiTools] = await Promise.all([
+  const [videos, sounds, images, sellable, aiTools, aiModels] = await Promise.all([
     loadEditorVideos(project.value.orgId),
     loadEditorSounds(project.value.orgId),
     loadEditorImages(project.value.orgId),
@@ -62,6 +62,8 @@ export default async function EditorProjectPage({
     loadSellableModels("captions"),
     // "Improve with AI" on a clip or picture: which tools are sold here (the Studio prices them).
     loadAiToolAvailability(),
+    // ...and the Studio's models for each, to pick before the Studio opens (it prices them).
+    loadImproveModels(project.value.orgId),
   ]);
   const q = (await searchParams) ?? {};
   const focus = Array.isArray(q.focus) ? q.focus[0] : q.focus;
@@ -96,6 +98,7 @@ export default async function EditorProjectPage({
         captionModelsStatus={captionModelsStatus}
         userId={user?.id ?? ""}
         aiTools={aiTools}
+        aiModels={aiModels}
         offerAssetId={parseIdParam(q.add)}
         focusPanel={focus === "captions" ? "captions" : null}
         multiRatio={p.multiRatio}

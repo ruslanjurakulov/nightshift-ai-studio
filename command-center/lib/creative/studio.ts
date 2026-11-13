@@ -866,6 +866,9 @@ export interface StudioJob {
   result: Record<string, unknown> | null;
   result_asset_ids: string[];
   created_at: string;
+  /** 0036: when a worker claimed it (null while it waits in line) and when it ended. They time the placeholder's estimate. */
+  started_at?: string | null;
+  finished_at?: string | null;
 }
 
 const num = (v: unknown): number | null => {
@@ -905,6 +908,8 @@ export function coerceJobs(rows: unknown): StudioJob[] {
       result,
       result_asset_ids: Array.isArray(j.result_asset_ids) ? j.result_asset_ids.filter((x): x is string => typeof x === "string") : [],
       created_at: typeof j.created_at === "string" ? j.created_at : "",
+      started_at: typeof j.started_at === "string" ? j.started_at : null,
+      finished_at: typeof j.finished_at === "string" ? j.finished_at : null,
     });
   }
   return out;
@@ -1116,14 +1121,25 @@ export function outputKind(capability: string): "image" | "video" | "audio" | "t
   return "image";
 }
 
-/** The card's shape: the shape that was asked for, else square (a picture tool keeps its own). */
+const RATIO = /^(\d{1,2}):(\d{1,2})$/;
+
+/**
+ * The card's shape, the same while the job works (the placeholder) and once it is done (the result), so the result
+ * appears in the place the placeholder held. The shape the form sent when it sent one (an expand's 4:3 included).
+ * A model that takes no shape (StudioModel.fixedShape: the picture comes back in the model's own) and the picture
+ * tools that keep their source's shape send none: then a neutral 3:2 for a picture and 16:9 for a clip. That is a
+ * PLACEHOLDER shape, not a promise about the file — grounded-image-1.0 returned 1920x1280 in practice, which 3:2
+ * happens to match, and a finished picture is fitted into the frame either way. A sound or a description: a wide bar.
+ */
 export function cardAspect(job: Pick<StudioJob, "capability" | "params">): string {
   const kind = outputKind(job.capability);
   if (kind === "audio" || kind === "text") return "16 / 7";
   const a = job.params.aspect_ratio;
-  if (a === "16:9") return "16 / 9";
-  if (a === "9:16") return "9 / 16";
-  return "1 / 1";
+  const m = typeof a === "string" ? RATIO.exec(a) : null;
+  const w = m ? Number(m[1]) : 0;
+  const h = m ? Number(m[2]) : 0;
+  if (w > 0 && h > 0) return `${w} / ${h}`;
+  return kind === "video" ? "16 / 9" : "3 / 2";
 }
 
 /**
@@ -1150,6 +1166,8 @@ export function edgeFacts(t: Dictionary, job: StudioJob, locale = "en"): string[
 export interface StudioPrefill {
   capability: StudioCapability;
   model: string;
+  /** 0075: start with "Auto" on (the database picks the model at the quote). Only where the panel offers Auto. */
+  auto?: boolean;
   prompt: string;
   aspect: AspectRatio;
   duration: VideoDuration;

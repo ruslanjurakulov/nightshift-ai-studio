@@ -10,6 +10,8 @@ import { BeforeAfter } from "@/components/studio/BeforeAfter";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { SendToEditor, isSendKind } from "@/components/editor/SendToEditor";
 import { useLibraryImages } from "@/components/studio/useLibraryImages";
+import { GenerationPlaceholder } from "@/components/studio/GenerationPlaceholder";
+import { useModelDurations } from "@/components/studio/useModelDurations";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { editorAddHref } from "@/lib/creative/improve";
@@ -152,6 +154,7 @@ export function JobFeed({
   const [copied, setCopied] = useState<{ id: string; ok: boolean } | null>(null);
   const [featuredId, setFeaturedId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [seenWorking, setSeenWorking] = useState<ReadonlySet<string>>(() => new Set());
   const seq = useRef(0);
   const capabilityKey = capabilities ? capabilities.join(",") : "";
   const onLoadedRef = useRef(onLoaded);
@@ -179,6 +182,12 @@ export function JobFeed({
       if (res.ok) {
         const list = coerceJobs(body.jobs);
         setJobs(list);
+        // Jobs seen working while this page was open: when one finishes, its result fades in where its placeholder
+        // was. A result that was already done when the page loaded is simply drawn.
+        setSeenWorking((prev) => {
+          const add = list.filter((j) => isActiveStatus(j.status) && !prev.has(j.id));
+          return add.length ? new Set([...prev, ...add.map((j) => j.id)]) : prev;
+        });
         setState("ok");
         onLoadedRef.current?.(list);
       } else {
@@ -257,6 +266,12 @@ export function JobFeed({
   const libraryKey = [...[...pairs.values()].map((p) => p.after), ...results, ...described].join(",");
   const library = useLibraryImages(orgId, { enabled: libraryKey !== "", key: libraryKey });
   const pictures = new Map(library.images.map((i) => [i.id, i.viewUrl ?? i.thumbUrl]));
+  // The history a working job's estimate is read from: only for models of jobs a worker has started (a job in line
+  // has no "since it started" to compare).
+  const durations = useModelDurations(
+    orgId,
+    shown.filter((j) => isActiveStatus(j.status) && j.status !== "queued" && j.started_at).map(jobModel),
+  );
   const chip = "studio-chip tap";
   // Square keys on the picture: named for screen readers and on hover; 44px on a phone.
   const onMedia = "studio-on-media tap-icon press grid size-9 place-items-center rounded-[var(--ns-r-key)] max-sm:size-11";
@@ -283,8 +298,34 @@ export function JobFeed({
     return { prompt, done, href, before, after, kind, preview, describedPic, alt, Icon };
   }
 
-  function media(job: StudioJob, { large = false, thumb = false }: { large?: boolean; thumb?: boolean } = {}): ReactNode {
-    const { done, href, before, after, kind, preview, describedPic, alt, Icon } = look(job);
+  /**
+   * What a frame shows. A picture, clip or sound still being made — or one that ended without a result — is the
+   * placeholder in the result's own shape (GenerationPlaceholder); a description keeps the picture it describes as its
+   * frame. A result that finishes while the page is open fades in where its placeholder was.
+   */
+  function media(job: StudioJob, opts: { large?: boolean; thumb?: boolean } = {}): ReactNode {
+    const { kind } = look(job);
+    const size = opts.thumb ? "thumb" : opts.large ? "stage" : "card";
+    const aspect = size === "stage" ? cardAspect(job) : undefined;
+    if (kind !== "text") {
+      if (isActiveStatus(job.status))
+        return <GenerationPlaceholder job={job} samples={durations.get(jobModel(job)) ?? null} size={size} aspect={aspect} />;
+      if (isUnsuccessful(job.status))
+        return <GenerationPlaceholder job={job} samples={null} size={size} aspect={aspect} failure={opts.thumb ? null : failureReason(t, job)} />;
+    }
+    const result = drawn(job, opts);
+    if (job.status === "completed" && kind !== "text" && seenWorking.has(job.id)) {
+      if (result) return <span className="gen-reveal">{result}</span>;
+      // Done, and the library read that brings its picture is still on its way: hold the place rather than flash an icon.
+      if ((kind === "image" || kind === "video") && library.state === "loading")
+        return <GenerationPlaceholder job={job} samples={null} size={size} aspect={aspect} ready />;
+    }
+    return result ?? fallback(job, opts);
+  }
+
+  /** A finished (or described) result as it is drawn, or null when there is nothing to draw. */
+  function drawn(job: StudioJob, { large = false, thumb = false }: { large?: boolean; thumb?: boolean } = {}): ReactNode | null {
+    const { done, href, before, after, kind, preview, describedPic, alt } = look(job);
     if (large && isActiveStatus(job.status)) {
       // Nothing to show yet: the monitor says what it is doing and for how long, in its own light.
       const sv = statusView(t, job.status);
@@ -348,6 +389,12 @@ export function JobFeed({
         <video src={href as string} muted playsInline preload="metadata" aria-label={alt} className="h-full w-full object-cover" />
       );
     }
+    return null;
+  }
+
+  /** Nothing to draw: the kind's own mark (a description's that lost its picture, a sound, a file the library cannot show). */
+  function fallback(job: StudioJob, { large = false }: { large?: boolean; thumb?: boolean } = {}): ReactNode {
+    const { kind, Icon } = look(job);
     return (
       <span
         className={`flex h-full w-full flex-col items-center justify-center gap-2 text-[var(--color-muted)]${isActiveStatus(job.status) && !large ? " skeleton rounded-none" : ""}`}
@@ -502,6 +549,8 @@ export function JobFeed({
   /** Model and credits, the failure and its remedy, and Cancel / Try again / Dismiss. */
   function facts(job: StudioJob): ReactNode {
     const retry = isUnsuccessful(job.status) ? prefillFromJob(job) : null;
+    // The placeholder in the frame already says why (every kind but a description, which keeps its picture there).
+    const reasonInFrame = outputKind(job.capability) !== "text";
     return (
       <>
         {job.capability === "dub" && isDubLanguage(job.params.target_language) && (
@@ -520,9 +569,7 @@ export function JobFeed({
           </p>
         )}
         {isUnsuccessful(job.status) && (
-          <p className="text-xs text-[var(--color-muted)]">
-            {failureReason(t, job)} {t.gen.returnedNote}
-          </p>
+          <p className="text-xs text-[var(--color-muted)]">{reasonInFrame ? t.gen.returnedNote : `${failureReason(t, job)} ${t.gen.returnedNote}`}</p>
         )}
         {cancelError?.id === job.id && <p className="text-xs text-[var(--color-fail)]">{apiErrorMessage(t, cancelError.code)}</p>}
         {(job.status === "queued" || retry || isUnsuccessful(job.status)) && (
@@ -670,8 +717,23 @@ export function JobFeed({
             {since(job)}
           </div>
           {prompt && <p className="studio-clamp-2 break-words text-sm leading-snug text-[var(--color-fg)]">{truncate(prompt, 200)}</p>}
+          {/* A take on its way, or one that ended without a recording: a wide bar where its player will be. */}
+          {(isActiveStatus(job.status) || isUnsuccessful(job.status)) && (
+            <GenerationPlaceholder
+              job={job}
+              samples={isActiveStatus(job.status) ? (durations.get(jobModel(job)) ?? null) : null}
+              size="bar"
+              failure={isUnsuccessful(job.status) ? failureReason(t, job) : null}
+            />
+          )}
           {src ? (
-            <audio controls preload="none" src={src} className="desk-take-audio" aria-label={fmt(t.desk.playTake, { n })} />
+            <audio
+              controls
+              preload="none"
+              src={src}
+              className={`desk-take-audio${seenWorking.has(job.id) ? " gen-fade-in" : ""}`}
+              aria-label={fmt(t.desk.playTake, { n })}
+            />
           ) : done ? (
             <Link href={path("/library")} className="tap-link w-fit text-xs text-[var(--color-primary)] underline">
               {t.gen.openLibrary}

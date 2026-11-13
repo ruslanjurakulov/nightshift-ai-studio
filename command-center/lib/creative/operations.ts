@@ -24,6 +24,12 @@ export interface CreativeDb {
   readJob(id: string): Promise<DbAnswer>;
   /** The newest creative_jobs rows of one org, read through RLS; only these tools' when `capabilities` is given. */
   listJobs(orgId: string, limit: number, capabilities?: readonly CreativeCapability[]): Promise<DbAnswer>;
+  /**
+   * The start and end times of one model's newest COMPLETED jobs in one org, read through RLS (members). Only the
+   * Studio's placeholder asks, to estimate how far along a running job is (lib/creative/durations.ts). Optional so a
+   * door that never answers it (the public API's) needs no stub.
+   */
+  jobDurations?(orgId: string, model: string, limit: number): Promise<DbAnswer>;
 }
 
 export interface CreativeResult {
@@ -279,7 +285,7 @@ const MAX_PARAMS_BYTES = 16_384;
 
 /** What a member sees of a job. Never the worker's id or the provider's task id. */
 export const JOB_COLUMNS =
-  "id,org_id,kind,capability,mode,requested_model,routed_model,fallback_from,fallback_reason,params,status,payer,quoted_credits,charged_credits,error_code,error,result,result_asset_ids,expires_at,created_at,updated_at,finished_at";
+  "id,org_id,kind,capability,mode,requested_model,routed_model,fallback_from,fallback_reason,params,status,payer,quoted_credits,charged_credits,error_code,error,result,result_asset_ids,expires_at,created_at,updated_at,started_at,finished_at";
 
 function fail(status: number, error: CreativeError, extra: Record<string, unknown> = {}): CreativeResult {
   return { status, body: { error, ...extra } };

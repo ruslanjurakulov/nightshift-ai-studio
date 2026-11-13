@@ -14,6 +14,8 @@
  * entry opens the editor on its Captions panel instead of a link here.
  */
 import { isUuid } from "@/lib/creative/operations";
+import { MODEL_ID_RE } from "@/lib/models-admin";
+import { modelsFor, promptRule, wordsMax, type StudioModel, type StudioPrefill } from "@/lib/creative/studio";
 
 export type ImproveKind = "image" | "video" | "audio";
 
@@ -45,17 +47,91 @@ export function isStudioTool(tool: ImproveTool): tool is ImproveStudioTool {
 }
 
 /**
+ * The most words "Improve with AI" carries into the Studio. They travel in the address, so they are held well under
+ * what a proxy or a browser would cut (the Studio's own box takes up to 4000, and the person can keep typing there).
+ */
+export const IMPROVE_PROMPT_MAX = 1000;
+
+/** The words' limit for one tool: the smaller of the address's and the tool's own (lib/creative/studio wordsMax). */
+export function improvePromptMax(tool: ImproveStudioTool): number {
+  return Math.min(IMPROVE_PROMPT_MAX, wordsMax(tool));
+}
+
+/**
+ * Whether the tool is asked by words — the same rule the Studio's box follows (lib/creative/studio promptRule):
+ * "required" (edit by prompt), "optional" (upscale, animate) or "none" (cut out, the video and voice tools, captions).
+ */
+export function improveWords(tool: ImproveTool): "required" | "optional" | "none" {
+  return isStudioTool(tool) ? promptRule(tool) : "none";
+}
+
+/** "Auto" as the address carries it: the database picks the model at the Studio's quote (0075). */
+export const AUTO_MODEL = "auto";
+
+// Control characters other than a line break and a tab: never part of what a person typed on purpose.
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+
+/**
+ * Typed words as the address may carry them: control characters out, trimmed, cut to the tool's limit. Empty for a
+ * tool that takes no words — the Studio sends none for it, and the database would refuse them.
+ */
+export function cleanImprovePrompt(tool: ImproveStudioTool, raw: unknown): string {
+  if (typeof raw !== "string" || improveWords(tool) === "none") return "";
+  return raw.replace(CONTROL, "").trim().slice(0, improvePromptMax(tool)).trim();
+}
+
+/**
  * The Studio link (without the channel prefix) that opens `tool` with the file
  * chosen. null for captions (not a Studio tool) and for an id that is not a
  * well-formed file id (the Studio would refuse it). `project` is an editor
  * project the person came from: the Studio then offers "Add to project" on the
- * finished result and a way back.
+ * finished result and a way back. `model` (an id, or "auto") and `prompt` (the
+ * words typed in the panel) only fill the Studio's form: it keeps a model only if
+ * it offers it for that tool, and nothing is priced until it shows its own price.
  */
-export function improveHref(tool: ImproveTool, assetId: string, project?: string | null): string | null {
+export function improveHref(
+  tool: ImproveTool,
+  assetId: string,
+  project?: string | null,
+  pick: { model?: string | null; prompt?: string | null } = {},
+): string | null {
   if (!isStudioTool(tool) || !isUuid(assetId)) return null;
   const q = new URLSearchParams({ tool, source: assetId });
   if (project && isUuid(project)) q.set("project", project);
+  if (pick.model && (pick.model === AUTO_MODEL || MODEL_ID_RE.test(pick.model))) q.set("model", pick.model);
+  const words = cleanImprovePrompt(tool, pick.prompt);
+  if (words) q.set("prompt", words);
   return `/create?${q.toString()}`;
+}
+
+/**
+ * The models the panel may offer for a tool: the Studio's own list for that capability, in its order. null = the
+ * list was not read (the Studio picks). "Auto" is offered where the Studio offers it: more than one model to choose.
+ */
+export function improveModels(models: readonly StudioModel[] | null, tool: ImproveTool): { models: StudioModel[]; auto: boolean } | null {
+  if (models === null) return null;
+  if (!isStudioTool(tool)) return { models: [], auto: false };
+  const list = modelsFor([...models], tool);
+  return { models: list, auto: list.length > 1 };
+}
+
+const one = (v: unknown) => (Array.isArray(v) ? v[0] : v);
+
+/**
+ * The create page's half of the link: `model=auto` starts the form on Auto, and `prompt` fills the box — cleaned and
+ * bounded exactly as the link was built, and only for a tool that takes words. A form that already has words (a
+ * template) keeps them. It fills the form and nothing else: no price, no hold, no start (CLAUDE.md #3).
+ */
+export function prefillFromImprove(initial: StudioPrefill | null, q: { model?: unknown; prompt?: unknown }): StudioPrefill | null {
+  if (!initial) return initial;
+  let out = initial;
+  if (one(q.model) === AUTO_MODEL) out = { ...out, model: "", auto: true };
+  const tool = out.capability as string;
+  if (!out.prompt && (IMPROVE_STUDIO_TOOLS as readonly string[]).includes(tool)) {
+    const words = cleanImprovePrompt(tool as ImproveStudioTool, one(q.prompt));
+    if (words) out = { ...out, prompt: words };
+  }
+  return out;
 }
 
 /**

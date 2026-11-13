@@ -1,5 +1,6 @@
 import { studioHomeEn } from "./studio-home/en";
 import { improveEn } from "./improve/en";
+import { studioProgressEn } from "./studio-progress/en";
 import { notifyChannelsEn } from "./notify-channels/en";
 import { aiLabelEn } from "./ai-label/en";
 import { madeForKidsEn } from "./made-for-kids/en";
@@ -77,6 +78,7 @@ export const en = {
   adsFactory: adsFactoryEn,
   reviewPage: reviewPageEn,
   improveAi: improveEn,
+  studioProgress: studioProgressEn,
   brand: {
     name: "Nightshift",
     tagline: "Command center",
