@@ -343,8 +343,9 @@ describe("the capability wall (round 8, stock photographs replaced by AI-generat
       const def = TOOL_SAMPLES[id];
       expect(tile.querySelector(".nx-wall-name")?.textContent).toBe(tool.title);
       expect(tile.querySelector(".nx-wall-body")?.textContent).toBe(tool.body);
-      // Only the tool that costs no credits says so on its tile; the note says the rest once.
-      expect(tile.querySelector(".nx-wall-price")?.textContent ?? null).toBe(id === "styles" ? t.site.studio.free : null);
+      // Only the tool that costs no credits says so on its tile, and only while it can be used: "No credits" beside "Not available
+      // yet" would read as on offer. The note says the rest once.
+      expect(tile.querySelector(".nx-wall-price")?.textContent ?? null).toBe(id === "styles" && def.inStudio ? t.site.studio.free : null);
       // A tool no customer can use today says so in the Studio's own words (#735, lib/i18n/availability), and shows no output
       // (never a drawn result).
       // Our team's sample stays on a closed tool's tile, labelled AI-generated, beside the words.

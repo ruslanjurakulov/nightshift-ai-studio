@@ -12,6 +12,8 @@ export type PromptBarCopy = {
   mode: string;
   attachOut: string;
   attachIn: string;
+  attachOutClosed: string;
+  attachInClosed: string;
   submit: string;
   empty: string;
   noteIn: string;
@@ -146,7 +148,8 @@ export function PromptBar({
     if (!ready) return;
     window.location.assign(attachHref(words, signedIn));
   };
-  const attachLabel = signedIn ? copy.attachIn : copy.attachOut;
+  // While no Studio model is on sale it promises no video: it says what the form is and that it is not on sale yet.
+  const attachLabel = studioOpen ? (signedIn ? copy.attachIn : copy.attachOut) : signedIn ? copy.attachInClosed : copy.attachOutClosed;
 
   const ModeIcon = tool === "t2v" ? Clapperboard : ImageIcon;
 

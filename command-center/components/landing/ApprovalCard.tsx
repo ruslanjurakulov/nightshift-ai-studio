@@ -22,10 +22,12 @@ export function ApprovalCard({ t }: { t: Dictionary }) {
   const entry = SHOWCASE_ENTRIES.find((e) => e.jobId === APPROVAL_THUMB_JOB);
   const files = entry ? SHOWCASE_FILES[entry.jobId] : undefined;
   return (
-    <div className="nx-approve-art" role="img" aria-label={t.site.approvalCard.figure}>
+    // The model tiles link to the thumbnail's sample here (#sample-<job>): the anchor is on the described image, not inside the
+    // aria-hidden drawing, so a jump lands on something assistive tech can read.
+    <div className="nx-approve-art" role="img" aria-label={t.site.approvalCard.figure} id={entry && files ? `sample-${entry.jobId}` : undefined}>
       <div className="nx-approve-card" aria-hidden>
         <span className="nx-approve-tag">{st.tag}</span>
-        <span className="nx-approve-thumb" {...(entry && files ? { id: `sample-${entry.jobId}`, "data-showcase-entry": entry.jobId, "data-model": entry.modelId } : {})}>
+        <span className="nx-approve-thumb" {...(entry && files ? { "data-showcase-entry": entry.jobId, "data-model": entry.modelId } : {})}>
           {entry && files && (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}

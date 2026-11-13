@@ -1484,9 +1484,10 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 @media (min-width: 1024px) { .nx-sh-foot { position: absolute; top: 14px; left: 0; right: 0; justify-content: flex-end; padding-top: 0; } }
 
 /* The composer (components/landing/PromptBar.tsx): one glass box, "+" on the left, the box that grows to six lines, the output key
-   and the send key on the right. Liquid-glass recipe in our own CSS, its variables scoped to .nx-pbar. They are NOT yet the
-   shared glass's names: app/glass.css (#738, not on main as of 2026-11-13) will own --glass-*; when it lands, switch this box to
-   its names (--glass-saturate, --glass-sheen, --glass-x/--glass-y) and drop the local ones it does not define. A translucent surface that blurs and brightens the clip behind
+   and the send key on the right. Liquid-glass recipe in our own CSS, its variables set on .nx-pbar itself. app/glass.css (#738)
+   now owns the shared --glass-* names on :root (a light-theme button recipe); the ones redefined here (--glass-blur, --glass-saturate,
+   --glass-tint) shadow it inside this box only, for a dark glass over a clip. Moving this box onto #738's names (--glass-saturate,
+   --glass-sheen, --glass-x/--glass-y) and dropping the local ones it does not define is a follow-up. A translucent surface that blurs and brightens the clip behind
    it, a darker tint under the words (white on it stays above 4.5:1 over the brightest frame), a bright rim top and left, a softer
    shade bottom and right, a thin border that catches light, and a soft highlight under the pointer (two CSS variables, set at most
    once a frame, never on touch or under reduced motion). Without backdrop-filter it is a solid dark surface. */

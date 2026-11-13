@@ -92,7 +92,8 @@ export function CapabilityWall({ t }: { t: Dictionary }) {
               <b className="nx-wall-name">{tool.title}</b>
               <span className="nx-wall-body">{tool.body}</span>
               {!def.inStudio && <small className="nx-wall-notyet">{t.availability.notYet}</small>}
-              {FREE.has(tool.id) && <small className="nx-wall-price">{st.free}</small>}
+              {/* A price line only on a tool that can be used: "No credits" beside "Not available yet" would read as on offer. */}
+              {def.inStudio && FREE.has(tool.id) && <small className="nx-wall-price">{st.free}</small>}
               {out && <AiCredit entry={out.e} g={g} className="nx-ai-credit nx-wall-credit" />}
               {from && (
                 <small className="nx-wall-from">

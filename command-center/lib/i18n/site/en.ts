@@ -238,6 +238,9 @@ export const siteEn = {
     /** "+" opens the Studio's picture-to-video form (lib/site/prompt-link.ts attachHref), through free sign-up when signed out. */
     attachOut: "Attach a picture to make a video from it (free sign-up first)",
     attachIn: "Attach a picture to make a video from it",
+    /** attachOut / attachIn while no Studio model is on sale (lib/site/tool-samples.ts studioToolsOpen): no promise of a video. */
+    attachOutClosed: "Attach a picture (sign up first; picture-to-video is not on sale yet)",
+    attachInClosed: "Attach a picture (picture-to-video is not on sale yet)",
     video: "Video",
     image: "Image",
     submit: "Create",

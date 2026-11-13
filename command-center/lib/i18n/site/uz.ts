@@ -205,6 +205,8 @@ export const siteUz: SiteDictionary = {
     mode: "Nima yaratamiz",
     attachOut: "Rasm biriktirib, undan video yaratish (avval bepul roʻyxatdan oʻting)",
     attachIn: "Rasm biriktirib, undan video yaratish",
+    attachOutClosed: "Rasm biriktirish (avval roʻyxatdan oʻting; rasmdan video hali sotuvda emas)",
+    attachInClosed: "Rasm biriktirish (rasmdan video hali sotuvda emas)",
     video: "Video",
     image: "Rasm",
     submit: "Yaratish",

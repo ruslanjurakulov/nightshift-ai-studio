@@ -323,7 +323,9 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(container.querySelector("input[type='file']")).toBeNull();
     const box = container.querySelector("textarea")!;
     fireEvent.change(box, { target: { value: "lanterns over a lake" } });
-    fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOut }));
+    // The bar is closed by default (no Studio model on sale): the label promises no video, and says sign-up comes first.
+    expect(within(container).queryByRole("button", { name: t.prompt.attachOut })).toBeNull();
+    fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOutClosed }));
     expect(assign).toHaveBeenCalledWith(attachHref("lanterns over a lake", false));
     const href = assign.mock.calls[0][0] as string;
     expect(href).toMatch(/^\/signup\?next=/);
@@ -338,20 +340,31 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     // With no words it still opens that form, through sign-up.
     assign.mockClear();
     fireEvent.change(box, { target: { value: "" } });
-    fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOut }));
+    fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOutClosed }));
     expect(new URL(new URL(assign.mock.calls[0][0], "https://x.test").searchParams.get("next")!, "https://x.test").searchParams.get("tool")).toBe("i2v");
     // Signed in it is the form itself, and the label does not ask for a sign-up.
     cleanup();
     assign.mockClear();
     const signedIn = render(<PromptBar copy={t.prompt} ideas={[]} signedIn />).container;
-    fireEvent.click(within(signedIn).getByRole("button", { name: t.prompt.attachIn }));
+    fireEvent.click(within(signedIn).getByRole("button", { name: t.prompt.attachInClosed }));
     expect(assign).toHaveBeenCalledWith(attachHref("", true));
     expect(attachHref("", true).startsWith("/signup")).toBe(false);
-    // The words say what happens, in every language: a picture, a video from it, and (signed out) sign-up first.
+    // Once a model is on sale the label says what the form does.
+    cleanup();
+    expect(within(render(<PromptBar copy={t.prompt} ideas={[]} studioOpen />).container).getByRole("button", { name: t.prompt.attachOut })).toBeTruthy();
+    cleanup();
+    expect(within(render(<PromptBar copy={t.prompt} ideas={[]} studioOpen signedIn />).container).getByRole("button", { name: t.prompt.attachIn })).toBeTruthy();
+    // The words say what happens, in every language: a picture, a video from it once open, and (signed out) sign-up first; closed,
+    // a picture and that picture-to-video is not on sale yet, never the open promise.
     for (const code of LOCALES.map((l) => l.code)) {
       const c = dictionaries[code].site.prompt;
       expect(c.attachOut.startsWith(c.attachIn)).toBe(true);
       expect(c.attachOut.length).toBeGreaterThan(c.attachIn.length);
+      expect(c.attachOutClosed.length).toBeGreaterThan(c.attachInClosed.length);
+      for (const closed of [c.attachOutClosed, c.attachInClosed]) {
+        expect(closed).not.toContain(c.attachIn);
+        expect(closed).toMatch(/not on sale yet|пока не продаётся|hali sotuvda emas/);
+      }
     }
   });
 
@@ -451,6 +464,40 @@ describe("the gallery's clips on a wide screen", () => {
   // The owner wants no visible pause button (2026-11-13): a pointer pauses by tapping what moves, a keyboard by the focus-revealed
   // switch (ClipPause, MotionToggle). What would break (WCAG 2.2.2): a pointer with no way to stop motion, which the review of #734
   // found under Save-Data, where no clip plays but the posters drift; a tap on a link or button that also flips the switch.
+  // What would break (the final review of #734): double-clicking a word of the headline to select it flipped the page's pause.
+  it("a double-click that selects a word in a tap area leaves the switch as it was; a triple-click changes nothing more", () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    const { container } = render(
+      <div>
+        <LoopClip sources={FIXTURE_FILES[FIXTURE_JOB].clip!} poster="/p.webp" />
+        <section className="nx-sh">
+          <h1>Words over the clip</h1>
+        </section>
+      </div>,
+    );
+    const h1 = container.querySelector("h1")!;
+    const paused = () => document.documentElement.getAttribute("data-motion") === "paused";
+    expect(paused()).toBe(false);
+    // A browser sends a double-click as click (detail 1), click (detail 2), then dblclick.
+    act(() => fireEvent.click(h1, { detail: 1 }));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(h1, { detail: 2 }));
+    expect(paused()).toBe(false);
+    act(() => fireEvent.click(h1, { detail: 3 }));
+    expect(paused()).toBe(false);
+    // The same from a paused page: the double-click leaves it paused.
+    act(() => fireEvent.click(h1, { detail: 1 }));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(h1, { detail: 1 }));
+    act(() => fireEvent.click(h1, { detail: 2 }));
+    expect(paused()).toBe(true);
+    // A lone detail-2 click with no flip just before it (a slow second click) does nothing.
+    act(() => fireEvent.click(h1, { detail: 2 }));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(h1, { detail: 1 }));
+    expect(paused()).toBe(false);
+  });
+
   it("a tap on a clip's box, a drifting poster or the first screen pauses the page's motion and a second resumes it, clip playing or not; a tap on a control does nothing", () => {
     vi.stubGlobal("matchMedia", (q: string) => ({ matches: !q.includes("reduce") && q.includes("min-width"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
     vi.stubGlobal("IntersectionObserver", undefined);

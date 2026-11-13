@@ -80,16 +80,31 @@ const TAP_AREAS = "[data-clip], .nx-drift-pic, .nx-sh, .nx-lit, .st-auth-aside, 
 /** What a tap in such an area belongs to rather than to the switch: a control, the composer's form, or anything focusable. */
 const CONTROLS = "a, button, input, select, textarea, label, summary, form, [role='button'], [contenteditable='true'], [tabindex]:not([tabindex='-1'])";
 
+/** When the last tap flipped the switch (ms), so the second click of a double-click can take it back. */
+let lastFlip = 0;
+/** A double-click arrives as two clicks, the second with detail 2, well inside this. */
+const DOUBLE_MS = 800;
+
 /** One click on the page decides: in a motion area, not on a control, not the end of a text selection, and motion not reduced. */
 export function motionTap(ev: MouseEvent): void {
   if (ev.defaultPrevented || ev.button !== 0) return;
   const target = ev.target;
   if (!(target instanceof Element) || !target.closest(TAP_AREAS) || target.closest(CONTROLS)) return;
+  // A double-click selects a word (the hero headline is in a tap area): its first click flipped the switch, so the second takes the
+  // flip back; a triple-click (a paragraph) changes nothing more. Checked before the selection, which the double-click just made.
+  if (ev.detail > 1) {
+    if (ev.detail === 2 && lastFlip && Date.now() - lastFlip < DOUBLE_MS) {
+      lastFlip = 0;
+      setMotionPaused(!paused);
+    }
+    return;
+  }
   if (window.getSelection?.()?.isCollapsed === false) return;
   // Under reduced motion nothing moves: a tap would only flip a remembered state nobody can see.
   if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   start();
   setMotionPaused(!paused);
+  lastFlip = Date.now();
 }
 
 let tapUsers = 0;
