@@ -17,6 +17,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => null }));
 
 import {
+  DISCOVERY_STATES,
   INPUT_KINDS,
   NO_FILTERS,
   PICTURE_MIME,
@@ -288,16 +289,32 @@ describe("availability", () => {
     const basic = fromSellableRow(sellable({ entitlement: "models_image:basic" }), {})!;
     expect(basic.state).toBe("unavailable");
     expect(basic.reasons).toEqual([{ kind: "not_open", key: "models_image", value: "basic" }]);
-    expect(fromSellableRow(sellable(), {})!.state).toBe("available");
-    expect(fromSellableRow(sellable({ entitlement: "any" }), {})!.state).toBe("available");
+    expect(fromSellableRow(sellable(), null)!.state).toBe("available");
+    expect(fromSellableRow(sellable({ entitlement: "any" }), null)!.state).toBe("available");
   });
 
   it("opens a paid model once the organization has bought (or is exempt), and gates it until then", () => {
-    expect(fromSellableRow(sellable({ entitlement: "paid" }), {}, true)!.state).toBe("available");
-    const before = fromSellableRow(sellable({ entitlement: "paid" }), {}, false)!;
+    expect(fromSellableRow(sellable({ entitlement: "paid" }), null, true)!.state).toBe("available");
+    const before = fromSellableRow(sellable({ entitlement: "paid" }), null, false)!;
     expect(before.state).toBe("plan_gated");
     expect(before.reasons).toEqual([{ kind: "first_purchase", known: true }]);
-    expect(fromSellableRow(sellable({ entitlement: "paid" }), {}, null)!.reasons).toEqual([{ kind: "first_purchase", known: false }]);
+    expect(fromSellableRow(sellable({ entitlement: "paid" }), null, null)!.reasons).toEqual([{ kind: "first_purchase", known: false }]);
+  });
+
+  it("a model the database lists but the price list (read) has no rate for is not on sale: never 'Available' beside 'not priced yet'", () => {
+    const unpriced = fromSellableRow(sellable({ capabilities: ["video_upscale"] }), { some_other_unit: 1 })!;
+    expect(unpriced.state).toBe("not_on_sale");
+    expect(unpriced.reasons[0]).toEqual({ kind: "unpriced" });
+    expect(lowestRate(unpriced.price)).toBeNull();
+    // Priced: on sale. Unread list: nothing proved either way, so the price does not decide the state.
+    const priced = fromSellableRow(sellable(), { model_vid_a_second_720p_silent: 2 })!;
+    expect(priced.state).toBe("available");
+    expect(fromSellableRow(sellable(), null)!.state).toBe("available");
+    // A plan gate that already closes it stays the reason.
+    expect(fromSellableRow(sellable({ entitlement: "models_image:basic" }), {})!.state).toBe("unavailable");
+    expect(DISCOVERY_STATES).toContain("not_on_sale");
+    for (const d of [en, ru, uz]) expect(d.modelDiscovery.states.not_on_sale.trim()).not.toBe("");
+    expect(en.modelDiscovery.states.not_on_sale).toBe("Not on sale yet");
   });
 
   it("never turns a row sellable_models() could not have returned into a model", () => {
@@ -373,9 +390,9 @@ describe("publicSpecOf", () => {
 
 describe("search and filters", () => {
   const models: DiscoveryModel[] = [
-    fromSellableRow(sellable(), {})!,
-    fromSellableRow(sellable({ id: "img-b", display_name: "Img B", provider: "openai", capabilities: ["t2i", "edit"], spec: imageSpec, entitlement: "models_image:premium" }), {})!,
-    fromSellableRow(sellable({ id: "cap-a", display_name: "Scribe", provider: "elevenlabs", capabilities: ["captions"], spec: captionSpec }), {})!,
+    fromSellableRow(sellable(), null)!,
+    fromSellableRow(sellable({ id: "img-b", display_name: "Img B", provider: "openai", capabilities: ["t2i", "edit"], spec: imageSpec, entitlement: "models_image:premium" }), null)!,
+    fromSellableRow(sellable({ id: "cap-a", display_name: "Scribe", provider: "elevenlabs", capabilities: ["captions"], spec: captionSpec }), null)!,
   ];
   const f = (over: Partial<Filters>): Filters => ({ ...NO_FILTERS, ...over });
 
@@ -691,7 +708,7 @@ describe("readPurchased", () => {
             ? { data: purchases, error: null }
             : name === "credits_exempt"
               ? { data: false, error: null }
-              : { data: [], error: null },
+              : { data: [{ unit: "model_vid_a_second_720p_silent", credits_per_unit: 2.6, margin: 0, note: null }], error: null },
       );
     const bought = await readCustomerModels(script([{ id: 1 }]) as never, "org-1");
     expect(bought.status === "ok" && bought.models[0].state).toBe("available");

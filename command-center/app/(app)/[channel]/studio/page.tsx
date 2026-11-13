@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * Studio Canvas — the channel's visual identity in one place: a gallery of
+ * Brand look (formerly "Studio Canvas": "Studio" also named the hub and Character Studio) — the channel's visual identity in one place: a gallery of
  * style presets (the same catalog the bot expands, modules/style_presets.py)
  * and the autopilot's latest auto-picked topic. Applying a preset writes it to
  * the scoped channel; the pipeline reads that as the channel's base visual style
