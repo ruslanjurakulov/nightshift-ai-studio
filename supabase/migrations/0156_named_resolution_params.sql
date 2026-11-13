@@ -8,8 +8,8 @@
 -- THE EVIDENCE (live database, 2026-11-13). A t2v job for minimax-h3-max or minimax-h3 with params {"resolution": "768p", ...} is refused
 -- at quote and at create with `NS400 invalid_params: resolution must be one of 480p 540p 720p 1080p 1440p 2160p`, raised by
 -- creative_params_problem (called by creative_price before any model is read). The same request without `resolution` is quoted, and the job
--- is stored with resolution 768p (0070 writes the model's pinned default_resolution into the job). The model's credit unit is
--- model_minimax_h3_max_second_768p, and the registry prices MiniMax H3 by resolution variants {"768p", "2k"}.
+-- is stored with resolution 768p (0070 writes the model's pinned default_resolution into the job). The model's credit unit is the 768p
+-- variant of its per-second unit (model_<id>_second_768p), and the registry prices MiniMax H3 by resolution variants {"768p", "2k"}.
 --
 -- THE DIAGNOSIS. creative_params_problem's resolution check is a closed list of six names from 0036's day, unchanged through 0126 (the
 -- latest body). 0070 added the model's own list (spec.resolutions, checked in creative_price: "does not offer") and 0149 priced an
@@ -824,6 +824,6 @@ end $$;
 --   not exists (select 1 from public.credit_prices where unit like 'model\_minimax\_h3%') as nothing_minimax_on_sale;
 --
 -- And the bug itself, as the platform operator in the credits-exempt organization (expected: a quote whose resolution is 768p and whose
--- unit is model_minimax_h3_max_second_768p, "preview": true; and 2k on minimax-h3 likewise):
+-- unit is the 768p variant of the per-second unit, "preview": true; and 2k on minimax-h3 likewise):
 --   select public.quote_creative_job('<exempt org id>', 't2v', 'minimax-h3-max',
 --          '{"prompt": "a lighthouse at dawn", "duration_s": 6, "resolution": "768p"}'::jsonb);
