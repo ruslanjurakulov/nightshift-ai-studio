@@ -13,7 +13,8 @@ import { ClipPause } from "@/components/site/ClipPause";
  * and links, so a screen reader hears each model once, as before this strip existed. The list is printed twice so the loop
  * is seamless; under reduced motion the copy is not drawn and the names sit still in a row. It stops on hover and with the
  * page's pause switch (lib/site/motion.ts), and carries its own pause key (outside the hidden part), because the page's other
- * switches are only there when something else on it moves.
+ * switches are only there when something else on it moves. That key is for the keyboard only: the public site shows no pause
+ * button (the owner's rule), so site-motion.css keeps it invisible until it has the keyboard's focus.
  */
 export function ModelMarquee({ entries, pause }: { entries: readonly ShowcaseEntry[]; pause: string }) {
   const byModel = new Map<string, ShowcaseEntry>();

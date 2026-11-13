@@ -165,6 +165,10 @@ describe("site-motion.css", () => {
     expect(readFileSync(join(ROOT, "components/site/SiteEffects.tsx"), "utf8")).toContain('".ml-land .ml-land-in > *"');
   });
 
+  it("shows no pause button: the strip's key is invisible until the keyboard focuses it", () => {
+    expect(src).toMatch(/\.nx-marquee \.nx-clip-pause:not\(:focus-visible\) \{ opacity: 0; clip-path: inset\(50%\); pointer-events: none; \}/);
+  });
+
   it("leaves the focus ring alone: no outline is set or removed here", () => {
     expect(src).not.toMatch(/\boutline(?:-[a-z]+)?\s*:/);
     expect(src).not.toMatch(/:focus(?!-visible)/);
