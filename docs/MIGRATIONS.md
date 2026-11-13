@@ -823,7 +823,7 @@ and nothing changes for anyone until a registry entry carries `"operator_preview
   there. A preview with a `credit_prices` row is quoted at it; one without is quoted at the vendor's cost from the registry
   (`pricing.provider_usd_per_unit` x 100, no margin, floored at `job_minimum` like every quote) as the job's record only. No price row is
   written, so nothing goes on sale. A model priced by variant or with no stated cost stays `unpriced` (by resolution: since 0149, below,
-  the quoted resolution's figure). The quote carries `"preview": true`.
+  the quoted resolution's figure; by quality: since 0153, the quoted tier's figure). The quote carries `"preview": true`.
   A plan entitlement (`models_image:basic` ...) is not asked of a preview: the exempt organization has no plan.
 - **The list.** `operator_preview_models(p_org)` (granted to `authenticated`) answers the same models with the public half of spec, and no
   rows to anyone else. The create page asks for it only for the platform operator in the operator's organization and passes the result to
@@ -1138,3 +1138,39 @@ with an eleventh argument, `p_vendor_credits numeric`. 0035's ten-argument form,
   service-only grants, the rollback; the writer: figure sent only when reported, the 404 fallback writes one row, other refusals raise),
   `tests/security/test_sec_probe_vendor_credits.py` (service-only execute, the ten-argument call still works, verification unchanged,
   out-of-range figures refused, append-only, a customer reads no probe row).
+
+## Operator preview priced by quality (0153)
+
+0153 (`0153_preview_price_by_quality.sql`) is **live on apply** and writes no row. It replaces ONE function, `creative_price`, on 0149's
+body plus two hunks, and changes an answer only for 0139's preview (the platform operator, in the credits-exempt organization, a hidden
+model marked `operator_preview`) of a model priced by quality.
+
+- **Why.** 0139 quotes a preview with no `credit_prices` row at the vendor's cost from one flat figure, and 0149 added the quoted
+  resolution's figure. An image model priced by quality tier (`pricing.variants.by = "quality"`: the OpenAI GPT Image entries) still had
+  no figure a preview could read, so every preview quote of it was `unpriced`.
+- **The rate.** By quality: `variants.prices[<tier>]`, where the tier is the one 0060's quality settings already settle on for `t2i` and
+  `edit` (the request's `quality`, else `medium` only when the request names none). It is the one the quote names, the job carries and the
+  worker sends. A tier the model does not list is `invalid_params` (unchanged), and so is no tier on a model that does not list `medium`.
+  A listed tier without its own figure (null, not a number, 0, or over 100) is `unpriced`; it is never mapped to another tier or to
+  `provider_usd_per_unit`. A capability that settles no tier (video) stays `unpriced`. 0149's two sources are unchanged. Same conversion
+  (x 100, no margin, `job_minimum` floor); a `credit_prices` row for the tier still wins; who may preview is 0139's rule, not replaced.
+- **No registry entry is turned on by it yet.** The owner asked to preview `openai-gpt-image-2.5-flare`, `openai-gpt-image-2.5-sunburst`,
+  `ideogram-3` and `ideogram-4`, but none of them states a figure this rate can read: the OpenAI tiers are all `null` (OpenAI bills GPT
+  Image 2.5 by token, and its model page says the GPT Image 2 calculator does not estimate GPT-Image-2.5 token use, so there is no
+  per-image figure to copy), and the Ideogram entries have no figure (Ideogram's API price table at https://ideogram.ai/api-pricing is
+  drawn in the browser by a script that a plain fetch is refused, so it could not be read, 2026-11-13). Marking any of them would be a
+  model shown as available whose every generation is refused, so none is marked and none is given a guessed figure.
+  `tests/test_preview_price_by_quality_migration.py` pins the preview set and refuses a marked entry whose figures do not resolve.
+- **Drift guard and end state.** The live `creative_price` must be 0149's body (`728241a09e56f65e19efc460afea7355`) or 0153's
+  (`28130a014027e6ad0b7876a78d69a396`); 0139's body is refused (0149 must come first). The last block asserts the body, no API role
+  grant, the pinned search_path and the three guards. Apply as ONE transaction.
+- **Order.** 0153 sits on 0149's `creative_price` and refuses to apply without it. 0149's replay and rollback refuse 0153's body: run
+  `docs/sql/rollback_0153_preview_price_by_quality.sql` first (it puts 0149's body back byte for byte). The lab takes 0153 off before
+  0149 (`sec_db.take_off_0149` calls `take_off_0153`; `take_off_0139` now also recognises 0153's body; `sec_db.ON_0149`, and `ON_0139`
+  and `ON_0125` list it last). Numbering: 0153; 0148 and 0150 are reserved by other work. The numbering tests of 0127, 0131 and 0133
+  list it as reviewed.
+- **Tests.** `tests/test_preview_price_by_quality_migration.py` (the hunks, the tier is the quote's own, the hashes, the rollback, the
+  lab chain, the preview set), `tests/security/test_sec_preview_price_by_quality.py` (low, medium and high quote their own costs; no
+  tier is medium and the job carries it; an unoffered tier is `invalid_params`, an unpriced listed one `unpriced`; everyone 0139 refuses
+  is still refused; a model on sale is never quoted at cost; a tier row wins; a video entry "by quality" stays `unpriced`; with 0153
+  rolled back only these answers change; the lab chain helpers; order, drift guard and rollback on a scratch database).

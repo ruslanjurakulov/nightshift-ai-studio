@@ -21,7 +21,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-import { dictionaries, LOCALES } from "@/lib/i18n";
+import { dictionaries, fmt, LOCALES } from "@/lib/i18n";
 import raw from "@/lib/site/showcase.json";
 import { SHOWCASE_ENTRIES, modelLeftOut, parseShowcase, parseShowcaseEntry, showcaseModels } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
@@ -33,6 +33,7 @@ import { prefillFromImprove, IMPROVE_PROMPT_MAX } from "@/lib/creative/improve";
 import { prefillFromQuery } from "@/lib/creative/studio";
 import { SLOTS } from "@/components/site/samples";
 import { PROVIDER_BRANDS } from "./helpers/brands";
+import { GALLERY, SAMPLE_CARD, without } from "./helpers/showcase-scope";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
 
 afterEach(cleanup);
@@ -45,10 +46,15 @@ const MODELS = new Map(REGISTRY.models.map((m) => [m.id, m]));
 const t = dictionaries.en;
 
 describe("the data file", () => {
-  it("ships empty: no sample exists until a real job is exported and merged", () => {
-    expect((raw as { entries: unknown[] }).entries).toEqual([]);
-    expect(SHOWCASE_ENTRIES).toEqual([]);
-    expect(SHOWCASE_FILES).toEqual({});
+  // It shipped empty, and the first export (#720) made a test that said so fail: what holds for any number of entries is that
+  // the page shows every one of them, each as what it is.
+  it("shows every shipped entry, and a video's plays its own clip while a picture's has none, never from off-site", () => {
+    expect(showcaseItems().map(({ e }) => e.jobId)).toEqual(SHOWCASE_ENTRIES.map((e) => e.jobId));
+    for (const e of SHOWCASE_ENTRIES) {
+      const clip = SHOWCASE_FILES[e.jobId].clip;
+      expect(clip === null, e.jobId).toBe(e.kind === "image");
+      for (const src of Object.values(clip ?? {})) expect(src, e.jobId).not.toMatch(/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i);
+    }
   });
 
   it("drops no entry it holds: every entry parses (a malformed one would vanish from the site unseen)", () => {
@@ -118,10 +124,11 @@ describe("the data file", () => {
 
 describe("the gallery", () => {
   it("renders nothing with no entry, or with entries whose files are missing (never a placeholder)", () => {
-    expect(render(<ShowcaseGallery t={t} locale="en" />).container.innerHTML).toBe("");
+    expect(render(<ShowcaseGallery t={t} locale="en" entries={[]} />).container.innerHTML).toBe("");
     cleanup();
     expect(render(<ShowcaseGallery t={t} locale="en" entries={[FIXTURE_ENTRY]} files={{}} />).container.innerHTML).toBe("");
-    expect(showcaseItems()).toEqual([]);
+    expect(showcaseItems([], SHOWCASE_FILES)).toEqual([]);
+    expect(showcaseItems(SHOWCASE_ENTRIES, {})).toEqual([]);
   });
 
   it.each(LOCALES.map((l) => l.code))("%s: one entry shows the badge, the model and its credit link, the prompt, the date and Try this prompt", (code) => {
@@ -230,6 +237,72 @@ describe("the gallery", () => {
     expect(css).toMatch(/\.nx-gallery \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
     expect(css).toMatch(/@media \(min-width: 860px\) \{ \.nx-gallery \{ grid-template-columns: repeat\(2/);
     expect(css).toMatch(/\.nx-gallery-attr \{[^}]*min-height: 44px/);
+  });
+});
+
+/**
+ * The gallery over the real data file, not the fixture: the page-wide tests (public-pages, site-engage, site-engage-5) read the
+ * page with the gallery or its cards taken out, so this is where what the cards themselves say is held, for whatever the owner
+ * has merged. With nothing merged it renders nothing.
+ */
+describe("the shipped samples", () => {
+  it.each(LOCALES.map((l) => l.code))("%s: a card names a model only as its registry name, credit, picture description and button; is labelled AI-generated; and claims no stock", (code) => {
+    const d = dictionaries[code];
+    const g = d.site.gallery;
+    const { container } = render(<ShowcaseGallery t={d} locale={code} />);
+    const items = showcaseItems();
+    if (items.length === 0) {
+      expect(container.innerHTML).toBe("");
+      return;
+    }
+    const section = container.querySelector(GALLERY) as HTMLElement;
+    expect(section).toBeTruthy();
+    // The section's own words (heading, lead, notes) name no model; only the cards do.
+    expect(without(section, SAMPLE_CARD).innerHTML).not.toMatch(PROVIDER_BRANDS);
+    const cards = [...section.querySelectorAll<HTMLElement>(SAMPLE_CARD)];
+    expect(cards.map((c) => c.dataset.showcaseEntry)).toEqual(items.map(({ e }) => e.jobId));
+    for (const card of cards) {
+      const { e, f } = items.find(({ e }) => e.jobId === card.dataset.showcaseEntry)!;
+      const m = MODELS.get(e.modelId);
+      if (!m) throw new Error(`${e.jobId}: ${e.modelId} is not in schemas/model_registry.json`);
+      expect(card.dataset.model).toBe(m.id);
+      const clip = e.kind === "video" && f.clip !== null;
+
+      // Labelled as an AI generation, on the picture, clip or not; and nothing on it says stock or names a photographer.
+      expect(card.querySelector(".nx-result-badge")?.textContent, e.jobId).toBe(g.badge);
+      expect(card.querySelector(".nx-gallery-pic")?.getAttribute("data-clip") ?? null).toBe(clip ? "sample" : null);
+      expect(card.querySelector("[data-sample], [data-art-id], [data-kind], .nx-result-credit, .nx-show-note")).toBeNull();
+      const s = d.site.samples;
+      for (const stock of [s.tag, s.frameTag, s.clipTag, s.note]) expect(card.textContent).not.toContain(stock);
+      expect(card.innerHTML).not.toMatch(/pexels/i);
+
+      // Every place the card may name its model, each exactly as the registry has it; with those taken out, nothing names one
+      // (the prompt included: the words a job was given are shown, and they must not name a model or maker either).
+      const rest = card.cloneNode(true) as HTMLElement;
+      rest.removeAttribute("data-model");
+      const name = rest.querySelector(".nx-gallery-model strong")!;
+      expect(name.textContent).toBe(m.display_name);
+      name.remove();
+      const credit = rest.querySelector(".nx-gallery-attr");
+      if (m.attribution) {
+        expect(credit?.textContent).toBe(m.attribution.text);
+        expect(credit?.getAttribute("href")).toBe(m.attribution.url);
+        credit!.remove();
+      } else expect(credit).toBeNull();
+      const img = rest.querySelector("img")!;
+      expect(img.getAttribute("alt")).toBe(fmt(clip ? g.altClip : g.altImage, { model: m.display_name }));
+      img.removeAttribute("alt");
+      const tryIt = rest.querySelector(".nx-gallery-try");
+      expect(tryIt?.getAttribute("href") ?? null).toBe(tryHref(e, false));
+      if (tryIt) {
+        const label = tryIt.getAttribute("aria-label");
+        expect(label).toBe(modelLeftOut(e) ? null : fmt(g.tryAria, { model: m.display_name }));
+        tryIt.removeAttribute("aria-label");
+        tryIt.removeAttribute("href");
+      }
+      expect(rest.textContent, e.jobId).not.toMatch(PROVIDER_BRANDS);
+      expect(rest.innerHTML, e.jobId).not.toMatch(PROVIDER_BRANDS);
+    }
   });
 });
 

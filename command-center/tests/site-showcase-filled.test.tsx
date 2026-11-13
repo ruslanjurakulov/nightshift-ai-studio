@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The site the day the first model sample is merged, simulated: the data file and its generated module hold the test fixture
- * (the real ones ship empty). Pins what changes then and what must not: the landing shows the gallery after the showcases, the
+ * (in place of the real ones, whatever they hold). Pins what changes then and what must not: the landing shows the gallery after the showcases, the
  * footer's credits say some samples are AI-generated, and NO model or maker is named anywhere on the page but inside the sample's
  * own card. Plus /welcome's last button, which opens the Studio form a visitor asked for before signing up.
  */

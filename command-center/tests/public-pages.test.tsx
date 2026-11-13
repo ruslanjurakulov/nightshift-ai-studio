@@ -24,6 +24,7 @@ import type { MoneyAnchor, PricingTeaser } from "@/lib/landing";
 import { WELCOME_CREDITS, resolvePricing, type Pricing } from "@/lib/pricing";
 import { coercePlanCatalog, creditEquivalents, planMatrix, type GenerationRates } from "@/lib/plans";
 import { PROVIDER_BRANDS } from "./helpers/brands";
+import { GALLERY, SAMPLE_CARD, outsideGallery, shippedSamples, without } from "./helpers/showcase-scope";
 
 afterEach(cleanup);
 
@@ -86,7 +87,9 @@ describe("public landing page", () => {
 
   it("uses only the labelled example stills for pictures: same-origin, described, and none of them a video or a real result", () => {
     const { container } = renderLanding({ kind: "announced" });
-    const imgs = [...container.querySelectorAll("img")];
+    // Outside the model samples (each a real generation, never a stock example: tests/site-showcase.test.tsx), whose number is
+    // whatever the owner has merged.
+    const imgs = outsideGallery(container.querySelectorAll("img"));
     // The hero card's footage frame (at every width), the two showcases and the closing panel's photograph (stock stills, each with a data-sample),
     // and the AI-generated pictures (each with a data-art-id): the hero's two backdrops (wide, and the phone's portrait cut), the sample thumbnail, the three steps' pictures and the eight tool tiles'.
     expect(imgs.length).toBe(18);
@@ -96,8 +99,23 @@ describe("public landing page", () => {
     }
     expect(imgs.filter((i) => i.getAttribute("data-sample"))).toHaveLength(4);
     // The two <picture>s are the hero's backdrops: each fetches only in its own range of widths.
-    expect(container.querySelectorAll("video, audio")).toHaveLength(0);
-    expect(container.querySelectorAll("picture")).toHaveLength(2);
+    expect(outsideGallery(container.querySelectorAll("video, audio"))).toHaveLength(0);
+    expect(outsideGallery(container.querySelectorAll("picture"))).toHaveLength(2);
+    // The gallery's pictures: one per shipped sample, each in its own card, same-origin, lazy, and never marked as a stock
+    // example or as the site's own decoration. With no sample merged there is no gallery at all.
+    const shipped = shippedSamples();
+    const gallery = container.querySelector(GALLERY);
+    expect(gallery === null).toBe(shipped.cards === 0);
+    const samplePics = [...(gallery?.querySelectorAll("img") ?? [])];
+    expect(samplePics).toHaveLength(shipped.cards);
+    for (const img of samplePics) {
+      expect(img.closest(SAMPLE_CARD)).toBeTruthy();
+      expect(img.hasAttribute("data-sample") || img.hasAttribute("data-art-id")).toBe(false);
+      expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
+      expect(img.getAttribute("loading")).toBe("lazy");
+    }
+    // A sample's clip is the only moving picture the gallery may hold.
+    for (const v of gallery?.querySelectorAll("video, audio") ?? []) expect(v.tagName).toBe("VIDEO");
     // The first screen's pictures are the eager ones: the card's cloud still and the two backdrops (one of them a blank GIF at any given width).
     const eager = imgs.filter((i) => i.getAttribute("loading") === "eager");
     expect(eager).toHaveLength(3);
@@ -293,8 +311,11 @@ describe("public landing page", () => {
 
   it.each(["en", "ru", "uz"] as const)("names no AI provider or competitor anywhere on the page (%s)", (locale) => {
     const { container } = renderLanding({ kind: "announced" }, locale);
-    expect(container.textContent).not.toMatch(PROVIDER_BRANDS);
-    expect(container.innerHTML).not.toMatch(PROVIDER_BRANDS);
+    // A sample's own card names the model that made it, and only as tests/site-showcase.test.tsx allows; the rest of the page,
+    // the gallery's heading and notes included, names none.
+    const page = without(container, SAMPLE_CARD);
+    expect(page.textContent).not.toMatch(PROVIDER_BRANDS);
+    expect(page.innerHTML).not.toMatch(PROVIDER_BRANDS);
   });
 });
 
