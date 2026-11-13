@@ -1258,14 +1258,14 @@ option {
   color: var(--color-fg);
 }
 .btn-sky.ghost::before { background: var(--color-panel-2); }
-.btn-sky.ghost:hover { color: var(--color-primary); box-shadow: none; }
+.btn-sky.ghost:hover:where(:not(:disabled, [aria-disabled="true"])) { color: var(--color-primary); box-shadow: none; }
 /* Quiet enough for a bar full of controls, and still the same sweep. */
 .btn-sky.is-quiet {
   border-color: var(--color-border);
   color: var(--color-muted);
 }
 .btn-sky.is-quiet::before { background: var(--color-panel-2); }
-.btn-sky.is-quiet:hover { color: var(--color-fg); border-color: var(--color-primary); box-shadow: none; }
+.btn-sky.is-quiet:hover:where(:not(:disabled, [aria-disabled="true"])) { color: var(--color-fg); border-color: var(--color-primary); box-shadow: none; }
 /* The arrow leans into the direction of travel. */
 .btn-sky .btn-arrow { transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.25, 1); }
 .btn-sky:hover .btn-arrow { transform: translateX(4px); }

@@ -1,8 +1,10 @@
 /* ── Glass: the shared tokens (site and app) ─────────────────────────────────
    One set of names for the translucent key the owner asked for ("Liquid Glass"
-   in spirit, our own CSS, no Apple asset): the public site (components/site)
-   and the signed-in app (app/(app)/app-glass.css) both read these, so a key on
-   /pricing and a key on /chronos/home are cut from the same glass.
+   in spirit, our own CSS, no Apple asset). The signed-in app reads them
+   (app/(app)/app-glass.css); the public site is meant to read the same names
+   (components/site, its motion work), so a key on /pricing and a key in the
+   app are cut from the same glass. Keep the names stable: other stylesheets
+   depend on them.
 
    Imported once, by the root layout, right after globals.css: the theme tokens
    below follow the same three-state resolution as globals.css (light by
@@ -17,16 +19,19 @@
    - an inner rim .................. --glass-rim-hi (top/left), --glass-rim-lo (bottom/right)
    - a light-catching 1px edge ..... --glass-edge-hi (top/left), --glass-edge-lo (bottom/right)
    - the highlight under the pointer --glass-sheen, radius --glass-spot, at
-                                     --glass-x/--glass-y (set per element by
-                                     components/ui/GlassPointer)
+                                     --glass-x/--glass-y, written per element by
+                                     components/ui/GlassPointer, which only the
+                                     app's layout mounts (elsewhere the highlight
+                                     sits at the key's centre)
    - shadows ....................... --glass-shadow, --glass-shadow-hover, --glass-press
    - motion ........................ --glass-spring, --glass-dur
 
    Contrast is the tint's job, not the blur's: every tint was chosen so the
-   app's text colours keep 4.5:1 over the app's grounds with the hover sheen at
-   its peak (numbers in the PR that introduced this file). The white that makes
-   glass read as glass costs a light-on-dark legend contrast, so the dark
-   tints are thin and the dark sheen is faint on purpose. */
+   app's legends keep 4.5:1 over the app's grounds with the hover sheen at its
+   peak (measured on the rendered keys; numbers in PR #738). White costs a
+   light legend its contrast, so the dark tints are thin and the dark sheen is
+   faint on purpose; on paper a white sheen would not show at all, so the
+   light one is a breath of indigo. */
 
 /* The cascade-layer order Tailwind declares, restated: harmless when this file
    follows globals.css (the order is already set), and it keeps `components`
@@ -143,9 +148,16 @@
   --glass-select: color-mix(in srgb, #ffa940 14%, rgb(255 255 255 / 0.05));
 }
 
-/* A reader who asked the system for less transparency gets the solid key. */
+/* A reader who asked the system for less transparency gets the solid key.
+   Every selector the theme blocks above use is matched here at the same or a
+   higher specificity, and later: a bare :root lost to the dark blocks
+   (:root:not([data-theme="light"]), :root[data-theme="dark"]) and to a
+   [data-theme-scope] box, so the reader got glass anyway. */
 @media (prefers-reduced-transparency: reduce) {
-  :root {
+  :root,
+  :root:not([data-theme="light"]),
+  :root[data-theme],
+  [data-theme-scope] {
     --glass-tint: var(--glass-solid);
     --glass-tint-hover: var(--glass-solid);
     --glass-tint-strong: var(--glass-solid);

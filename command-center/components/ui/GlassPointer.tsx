@@ -24,8 +24,9 @@ export const GLASS_POINTER_SELECTOR = [
 
 const REDUCED = "(prefers-reduced-motion: reduce)";
 
+// A radio chip (a label around its input) says it is refused with data-disabled; a button with disabled or aria-disabled.
 function refused(el: Element): boolean {
-  return el.matches(':disabled, [aria-disabled="true"]');
+  return el.matches(':disabled, [aria-disabled="true"], [data-disabled="true"]');
 }
 
 /**

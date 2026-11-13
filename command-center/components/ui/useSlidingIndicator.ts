@@ -41,9 +41,9 @@ function apply(track: HTMLElement, box: IndicatorBox) {
 }
 
 function flushStyle(track: HTMLElement) {
-  // Reading the pseudo-element's computed box makes the browser resolve the
-  // style it has now, so the next write is a change it transitions from.
-  void getComputedStyle(track, "::before").left;
+  // A layout read makes the browser resolve the style it has now (the track's
+  // pseudo-elements included), so the next write is a change it transitions from.
+  void track.offsetWidth;
 }
 
 /**
@@ -59,12 +59,15 @@ function flushStyle(track: HTMLElement) {
  * a reader without script see the same thing, and nothing shifts.
  *
  * `selected` is whatever identifies the chosen item (its value, its href);
+ * `itemsKey` names the set of items (their values and labels), so a switch
+ * whose options change is measured again and its new items are observed;
  * `memoryKey`, when given, lets a remounted strip start from where it was.
  */
 export function useSlidingIndicator(
   ref: RefObject<HTMLElement | null>,
   items: string,
   selected: unknown,
+  itemsKey: string,
   memoryKey?: string,
 ) {
   useLayoutEffect(() => {
@@ -95,7 +98,7 @@ export function useSlidingIndicator(
     apply(track, box);
     track.setAttribute("data-indicator", "");
     if (memoryKey) lastBox.set(memoryKey, box);
-  }, [ref, items, selected, memoryKey]);
+  }, [ref, items, selected, itemsKey, memoryKey]);
 
   // Re-place, without travel, whenever the track or its items change size.
   useLayoutEffect(() => {
@@ -121,7 +124,7 @@ export function useSlidingIndicator(
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [ref, items, memoryKey]);
+  }, [ref, items, itemsKey, memoryKey]);
 }
 
 /** Test seam: forget every remembered strip. */

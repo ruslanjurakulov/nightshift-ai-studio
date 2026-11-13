@@ -48,7 +48,8 @@ export function SectionTabs() {
   const track = useRef<HTMLUListElement>(null);
   // One glass plate under the current tab. The strip is remounted on every route change, so it is remembered per
   // group: the plate starts under the tab you left and travels to the one you opened.
-  useSlidingIndicator(track, ":scope > li > a", pathname, group ? `section-tabs:${group.items.map((i) => i.key).join(",")}` : undefined);
+  const tabKeys = group ? group.items.map((i) => i.key).join(",") : "";
+  useSlidingIndicator(track, ":scope > li > a", pathname, `${tabKeys}|${t.nav.sections}`, group ? `section-tabs:${tabKeys}` : undefined);
   // On a narrow screen the strip scrolls sideways: show the tab you are on, on arrival and on every route change.
   useEffect(() => {
     if (nav.current) revealCurrentTab(nav.current, mounted.current);

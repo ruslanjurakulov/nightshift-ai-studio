@@ -42,7 +42,7 @@ export function SegmentedSwitch<T extends string>({
 }) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   const track = useRef<HTMLDivElement>(null);
-  useSlidingIndicator(track, ":scope > button", value);
+  useSlidingIndicator(track, ":scope > button", value, JSON.stringify(options.map((o) => [o.value, o.label, Boolean(o.disabled)])));
   const enabled = options.map((o, i) => (o.disabled ? -1 : i)).filter((i) => i >= 0);
   const found = options.findIndex((o) => o.value === value);
   const current = found >= 0 ? found : -1;

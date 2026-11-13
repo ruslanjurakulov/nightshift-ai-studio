@@ -93,6 +93,92 @@ describe("app-glass.css", () => {
   });
 });
 
+/** Ids, then classes/attributes/pseudo-classes, then types: enough of CSS specificity for these selectors. */
+function specificity(sel: string): [number, number, number] {
+  let s = sel.replace(/::[a-z-]+/g, "");
+  const out: [number, number, number] = [0, 0, 0];
+  // :where() counts nothing; :not()/:is() count their most specific argument.
+  s = s.replace(/:where\((?:[^()]|\([^()]*\))*\)/g, "");
+  s = s.replace(/:(not|is)\(((?:[^()]|\([^()]*\))*)\)/g, (_, __, args: string) => {
+    const best = args.split(/,(?![^(]*\))/).map((a) => specificity(a.trim())).sort((a, b) => b[0] - a[0] || b[1] - a[1] || b[2] - a[2])[0];
+    out[0] += best[0];
+    out[1] += best[1];
+    out[2] += best[2];
+    return "";
+  });
+  out[0] += (s.match(/#[\w-]+/g) ?? []).length;
+  out[1] += (s.match(/\.[\w-]+|\[[^\]]+\]|:[\w-]+/g) ?? []).length;
+  out[2] += (s.replace(/\[[^\]]+\]/g, "").match(/(^|[\s>+~])[a-z][\w-]*/gi) ?? []).length;
+  return out;
+}
+const cmp = (a: number[], b: number[]) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+
+describe("a key that cannot be pressed does not answer the pointer", () => {
+  // The positive form of a refused state: a rule written FOR a refused key (to cancel an older hover), not a hover OF one.
+  const targetsRefused = (sel: string) => /(^|[^(])(:disabled|\[aria-disabled="true"\]|\[data-disabled="true"\])/.test(sel.replace(/:not\((?:[^()]|\([^()]*\))*\)/g, ""));
+
+  it("every :hover and :active rule excludes disabled and aria-disabled keys, and data-disabled chips", () => {
+    const missing: string[] = [];
+    for (const sel of selectors(APP_GLASS)) {
+      if (!/:(hover|active)\b/.test(sel) || targetsRefused(sel)) continue;
+      const need = [":not(:disabled)", ':not([aria-disabled="true"])'];
+      if (/\.(ns-chip|studio-chip)\b/.test(sel)) need.push(':not([data-disabled="true"])');
+      if (need.some((n) => !sel.includes(n))) missing.push(sel);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("the older outlined-key hovers skip a refused key too, without gaining specificity", () => {
+    const globals = read("app/globals.css");
+    const redesign = read("app/(app)/app-redesign.css");
+    for (const [css, sel] of [
+      [globals, ".btn-sky.ghost:hover"],
+      [globals, ".btn-sky.is-quiet:hover"],
+      [redesign, ".btn-sky.ghost:hover"],
+      [redesign, ".btn-sky.is-quiet:hover"],
+    ] as const) {
+      expect(css, sel).toContain(`${sel}:where(:not(:disabled, [aria-disabled="true"]))`);
+    }
+  });
+
+  it("a key waiting for its price is the only aria-disabled primary that keeps its colour", () => {
+    expect(APP_GLASS).toContain('.btn-primary:is(:disabled, [aria-disabled="true"]):not([data-price-hold="loading"])');
+    expect(APP_GLASS).not.toMatch(/data-price-hold\]/);
+  });
+});
+
+describe("page stylesheets that quiet a shared key", () => {
+  // A page rule (0,2,0) cannot outrank the glass hover (0,4,0+); it hands the key the neutral glass through tokens instead.
+  for (const [file, sel] of [
+    ["app/(app)/app-pages-g5.css", ".g5-quiet-keys .btn-primary"],
+    ["app/(app)/app-pages-g3.css", ".g3-comment .ns-price-button"],
+  ] as const) {
+    it(`${sel} sets the neutral glass tokens, so its hover stays quiet`, () => {
+      const css = read(file);
+      const rule = css.match(new RegExp(`${sel.replace(/[.[\]()]/g, "\\$&")} \\{([^}]*)\\}`));
+      expect(rule, sel).not.toBeNull();
+      for (const decl of ["--g-tint: var(--glass-tint)", "--g-tint-hover: var(--glass-tint-hover)", "--g-edge-hi: var(--glass-edge-hi)", "--g-fg: var(--color-fg)"]) {
+        expect(rule![1], decl).toContain(decl);
+      }
+      // A literal fill here would be overruled by the glass hover; the tokens are what it reads.
+      expect(rule![1]).not.toMatch(/(^|;)\s*background:/);
+    });
+  }
+
+  it("the filled keys' hover takes its legend colour from --g-fg, never a literal", () => {
+    const hover = APP_GLASS.match(/\.btn-primary:hover:not\(\[aria-disabled="true"\]\):not\(:disabled\),[\s\S]*?\{([^}]*)\}/g)!;
+    const filled = hover.find((r) => r.includes("--g-tint: var(--g-tint-hover)"));
+    expect(filled).toBeDefined();
+    expect(filled).toContain("color: var(--g-fg)");
+    expect(filled).not.toContain("color: var(--glass-primary-fg)");
+  });
+
+  it("a medium PriceButton gives its 1px edge back from its outer legends, so it is not 2px wider", () => {
+    expect(APP_GLASS).toContain('.ns-price-button[data-size="md"] > .ns-price-label:first-child { padding-left: calc(1.25rem - 1px); }');
+    expect(APP_GLASS).toContain('.ns-price-button[data-size="md"] > .ns-price-tag:last-child { padding-right: calc(1rem - 1px); }');
+  });
+});
+
 describe("glass tokens", () => {
   const NAMES = [
     "--glass-tint",
@@ -127,8 +213,45 @@ describe("glass tokens", () => {
     }
   });
 
-  it("gives up the translucency for a reader who asked for less of it", () => {
-    expect(TOKENS).toMatch(/@media \(prefers-reduced-transparency: reduce\)[\s\S]*--glass-tint: var\(--glass-solid\)/);
+  it("gives up the translucency for a reader who asked for less of it, whatever the theme", () => {
+    // The cascade outcome, worked out per element: under reduced transparency (and a dark preference, the case a bare
+    // :root lost), the reduced block must win on the root in every theme state and on a specimen box, by coming later
+    // with at least the specificity of every theme rule that sets --glass-tint there.
+    const rt = TOKENS.indexOf("@media (prefers-reduced-transparency: reduce)");
+    expect(rt).toBeGreaterThan(-1);
+    const clean = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const rulesSetting = (css: string) =>
+      [...clean(css).matchAll(/([^{};]+)\{([^{}]*)\}/g)]
+        .filter((m) => /--glass-tint:/.test(m[2]) && !m[1].trim().startsWith("@"))
+        .flatMap((m) => m[1].split(/,(?![^(]*\))/).map((x) => x.trim()));
+    const themed = rulesSetting(TOKENS.slice(0, rt)).filter((x) => x !== ".ns-glass");
+    const reduced = rulesSetting(TOKENS.slice(rt, TOKENS.indexOf("}", TOKENS.indexOf("--glass-blur: 0px")) + 1));
+    expect(reduced.length).toBeGreaterThan(0);
+    const specimen = (theme: string) => {
+      const box = document.body.appendChild(document.createElement("div"));
+      box.setAttribute("data-theme-scope", theme);
+      return box;
+    };
+    const states: Array<[string, () => Element]> = [
+      ["no choice", () => document.documentElement],
+      ["chose light", () => (document.documentElement.setAttribute("data-theme", "light"), document.documentElement)],
+      ["chose dark", () => (document.documentElement.setAttribute("data-theme", "dark"), document.documentElement)],
+      ["light specimen", () => specimen("light")],
+      ["dark specimen", () => specimen("dark")],
+    ];
+    for (const [name, make] of states) {
+      document.documentElement.removeAttribute("data-theme");
+      document.body.innerHTML = "";
+      const el = make();
+      const best = (list: string[]) => list.filter((x) => el.matches(x)).map(specificity).sort((a, b) => cmp(b, a))[0];
+      const theme = best(themed);
+      const mine = best(reduced);
+      expect(theme, `${name}: a theme rule sets the tint`).toBeDefined();
+      expect(mine, `${name}: the reduced block reaches it`).toBeDefined();
+      expect(cmp(mine!, theme!), `${name}: reduced ${mine} vs theme ${theme}`).toBeGreaterThanOrEqual(0);
+    }
+    document.documentElement.removeAttribute("data-theme");
+    document.body.innerHTML = "";
   });
 });
 
@@ -195,7 +318,12 @@ describe("attachGlassPointer", () => {
   });
 
   it("leaves a key that cannot be pressed alone (disabled and aria-disabled)", () => {
-    for (const html of ['<button class="btn-primary" disabled>Go</button>', '<button class="btn-primary" aria-disabled="true">Go</button>']) {
+    for (const html of [
+      '<button class="btn-primary" disabled>Go</button>',
+      '<button class="btn-primary" aria-disabled="true">Go</button>',
+      // A radio chip is a label around its input; it says "refused" with data-disabled (FxControls, ExportRatioPicker…).
+      '<label class="ns-chip" data-radio="" data-disabled="true"><input type="radio" disabled>4K</label>',
+    ]) {
       const el = key(html);
       const detach = attachGlassPointer(window);
       move(el, 120, 60);

@@ -92,6 +92,10 @@
 /* The 1px edge on keys that had none, given back from their padding. */
 :where(body:has(.app-shell)) .btn-primary { padding-inline: calc(1.25rem - 1px); }
 :where(body:has(.app-shell)) .studio-cta { padding-inline: 19px; }
+/* PriceButton pads its legends, not itself: the md key sizes to them, so its outer legends give the 1px back. */
+:where(body:has(.app-shell)) .ns-price-button[data-size="md"] > .ns-price-label:first-child { padding-left: calc(1.25rem - 1px); }
+:where(body:has(.app-shell)) .ns-price-button[data-size="md"] > .ns-price-label:last-child { padding-right: calc(1.25rem - 1px); }
+:where(body:has(.app-shell)) .ns-price-button[data-size="md"] > .ns-price-tag:last-child { padding-right: calc(1rem - 1px); }
 
 /* Frosted only where the browser can frost; elsewhere the same key, solid. */
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -141,7 +145,8 @@
   --g-rim-lo: rgb(0 0 0 / 0.2);
   --g-shadow: var(--glass-primary-glow);
   --g-shadow-hover: var(--glass-primary-glow), 0 12px 28px -12px var(--ns-lit-glow);
-  color: var(--glass-primary-fg);
+  --g-fg: var(--glass-primary-fg);
+  color: var(--g-fg);
   border-color: var(--g-edge);
   background: var(--g-bg);
   background-clip: padding-box;
@@ -162,7 +167,8 @@
   --g-rim-lo: rgb(0 0 0 / 0.2);
   --g-shadow: var(--glass-danger-glow);
   --g-shadow-hover: var(--glass-danger-glow);
-  color: var(--glass-danger-fg);
+  --g-fg: var(--glass-danger-fg);
+  color: var(--g-fg);
 }
 /* A row's "Delete" before its confirm: neutral glass, red legend, a red-tinted
    highlight (a white one would cost the red legend its contrast in the dark). */
@@ -201,7 +207,7 @@
     linear-gradient(var(--g-tint-hover), var(--g-tint-hover));
   transition: opacity var(--ns-dur-2) var(--ns-ease);
 }
-:where(body:has(.app-shell)) .btn-sky:hover::before,
+:where(body:has(.app-shell)) .btn-sky:hover:not(:disabled):not([aria-disabled="true"])::before,
 :where(body:has(.app-shell)) .btn-sky:disabled::before { transform: none; }
 
 /* A key that is a row of a list (a menu, a picker): bare until pointed at or
@@ -254,7 +260,7 @@
 :where(body:has(.app-shell)) .ns-chip[data-tone] { border-color: var(--g-edge); }
 /* A chip that is a readout, not a key: the glass without the hover. */
 :where(body:has(.app-shell)) .ns-chip[data-plain="true"],
-:where(body:has(.app-shell)) .ns-chip[data-plain="true"]:hover {
+:where(body:has(.app-shell)) .ns-chip[data-plain="true"]:hover:not(:disabled):not([aria-disabled="true"]):not([data-disabled="true"]) {
   --g-shadow: 0 0 #0000;
   background: var(--g-bg);
   background-clip: padding-box;
@@ -282,7 +288,8 @@
   --g-rim-lo: var(--glass-rim-lo);
   --g-shadow: var(--glass-shadow);
   --g-shadow-hover: var(--glass-shadow-hover);
-  color: var(--color-fg);
+  --g-fg: var(--color-fg);
+  color: var(--g-fg);
   border-color: var(--g-edge);
   background: var(--g-bg);
   background-clip: padding-box;
@@ -293,24 +300,24 @@
 /* The older hovers (a flat fill, a brightness filter) also match on a touch
    screen, where a tap leaves :hover behind: re-pointed at the glass first, at
    their own specificity, so a tapped key never turns into the old flat one. */
-:where(body:has(.app-shell)) .btn-primary:hover:not([aria-disabled="true"]),
-:where(body:has(.app-shell)) .btn-quiet:hover,
-:where(body:has(.app-shell)) .shell-pill:hover,
-:where(body:has(.app-shell)) .studio-chip:hover,
-:where(body:has(.app-shell)) .ns-chip:hover,
-:where(body:has(.app-shell)) .ns-price-button:hover:not(:disabled),
-:where(body:has(.app-shell)) .btn-sky.is-solid:hover,
+:where(body:has(.app-shell)) .btn-primary:hover:not([aria-disabled="true"]):not(:disabled),
+:where(body:has(.app-shell)) .btn-quiet:hover:not(:disabled):not([aria-disabled="true"]),
+:where(body:has(.app-shell)) .shell-pill:hover:not(:disabled):not([aria-disabled="true"]),
+:where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([aria-disabled="true"]):not([data-disabled="true"]),
+:where(body:has(.app-shell)) .ns-chip:hover:not(:disabled):not([aria-disabled="true"]):not([data-disabled="true"]),
+:where(body:has(.app-shell)) .ns-price-button:hover:not(:disabled):not([aria-disabled="true"]),
+:where(body:has(.app-shell)) .btn-sky.is-solid:hover:not(:disabled):not([aria-disabled="true"]),
 :where(body:has(.app-shell)) .studio-cta:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--g-bg);
   background-clip: padding-box;
   filter: none;
 }
-:where(body:has(.app-shell)) .btn-quiet:hover,
-:where(body:has(.app-shell)) .shell-pill:hover { border-color: var(--g-edge); }
-:where(body:has(.app-shell)) .btn-danger:hover:not(:disabled),
-:where(body:has(.app-shell)) .btn-danger:active:not(:disabled) { filter: none; }
-:where(body:has(.app-shell)) .btn-sky:hover { color: var(--color-fg); }
-:where(body:has(.app-shell)) .btn-sky.is-solid:hover { color: var(--glass-primary-fg); }
+:where(body:has(.app-shell)) .btn-quiet:hover:not(:disabled):not([aria-disabled="true"]),
+:where(body:has(.app-shell)) .shell-pill:hover:not(:disabled):not([aria-disabled="true"]) { border-color: var(--g-edge); }
+:where(body:has(.app-shell)) .btn-danger:hover:not(:disabled):not([aria-disabled="true"]),
+:where(body:has(.app-shell)) .btn-danger:active:not(:disabled):not([aria-disabled="true"]) { filter: none; }
+:where(body:has(.app-shell)) .btn-sky:hover:not(:disabled):not([aria-disabled="true"]) { color: var(--color-fg); }
+:where(body:has(.app-shell)) .btn-sky.is-solid:hover:not(:disabled):not([aria-disabled="true"]) { color: var(--g-fg); }
 
 /* The state change (a brighter tint, the indigo edge on a neutral key) is not
    motion, so it holds for everyone with a pointer that hovers; the lift, the
@@ -321,23 +328,23 @@
   :where(body:has(.app-shell)) .studio-cta:hover:not(:disabled):not([aria-disabled="true"]),
   :where(body:has(.app-shell)) .ns-price-button:hover:not(:disabled):not([aria-disabled="true"]),
   :where(body:has(.app-shell)) .btn-danger:hover:not(:disabled):not([aria-disabled="true"]),
-  :where(body:has(.app-shell)) .ns-tab-create:hover:not([aria-disabled="true"]) {
+  :where(body:has(.app-shell)) .ns-tab-create:hover:not([aria-disabled="true"]):not(:disabled) {
     --g-tint: var(--g-tint-hover);
     --g-shadow: var(--g-shadow-hover);
-    color: var(--glass-primary-fg);
+    color: var(--g-fg);
     background: var(--g-bg);
     background-clip: padding-box;
     box-shadow: var(--g-ring), var(--g-shadow);
     filter: none;
   }
-  :where(body:has(.app-shell)) .ns-tab-create:hover:not([aria-disabled="true"]) {
+  :where(body:has(.app-shell)) .ns-tab-create:hover:not([aria-disabled="true"]):not(:disabled) {
     box-shadow: 0 0 0 4px var(--color-panel), var(--g-ring), var(--g-shadow);
   }
-  :where(body:has(.app-shell)) .btn-danger:hover:not(:disabled):not([aria-disabled="true"]) { color: var(--glass-danger-fg); }
+  :where(body:has(.app-shell)) .btn-danger:hover:not(:disabled):not([aria-disabled="true"]) { color: var(--g-fg); }
   :where(body:has(.app-shell)) .btn-quiet:hover:not(:disabled):not([aria-disabled="true"]),
   :where(body:has(.app-shell)) .shell-pill:hover:not(:disabled):not([aria-disabled="true"]),
-  :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]),
-  :where(body:has(.app-shell)) .ns-chip:hover:not(:disabled):not([data-plain]),
+  :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
+  :where(body:has(.app-shell)) .ns-chip:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
   :where(body:has(.app-shell)) .ns-price-button[data-tone="quiet"]:hover:not(:disabled):not([aria-disabled="true"]) {
     --g-tint: var(--g-tint-hover);
     --g-shadow: var(--g-shadow-hover);
@@ -350,10 +357,10 @@
     box-shadow: var(--g-ring), var(--g-shadow);
   }
   /* A chosen chip keeps its amber edge under the pointer: the edge says "on". */
-  :where(body:has(.app-shell)) .ns-chip[aria-pressed="true"]:hover:not(:disabled):not([data-plain]),
-  :where(body:has(.app-shell)) .studio-chip[aria-pressed="true"]:hover:not(:disabled):not([data-plain]),
-  :where(body:has(.app-shell)) .ns-chip[role="radio"][aria-checked="true"]:hover:not(:disabled):not([data-plain]),
-  :where(body:has(.app-shell)) .ns-chip[data-radio][data-on="true"]:hover:not(:disabled):not([data-plain]) {
+  :where(body:has(.app-shell)) .ns-chip[aria-pressed="true"]:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
+  :where(body:has(.app-shell)) .studio-chip[aria-pressed="true"]:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
+  :where(body:has(.app-shell)) .ns-chip[role="radio"][aria-checked="true"]:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
+  :where(body:has(.app-shell)) .ns-chip[data-radio][data-on="true"]:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]) {
     --g-edge-hi: var(--ns-amber-ink);
     --g-edge-lo: var(--ns-amber-ink);
   }
@@ -398,11 +405,11 @@
     :where(body:has(.app-shell)) .btn-quiet:hover:not([aria-disabled="true"]):not(:disabled),
     :where(body:has(.app-shell)) .btn-danger:hover:not([aria-disabled="true"]):not(:disabled),
     :where(body:has(.app-shell)) .shell-pill:hover:not([aria-disabled="true"]):not(:disabled),
-    :where(body:has(.app-shell)) .ns-chip:hover:not(:disabled):not([data-plain]),
-    :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]),
+    :where(body:has(.app-shell)) .ns-chip:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
+    :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
     :where(body:has(.app-shell)) .ns-price-button:hover:not(:disabled):not([aria-disabled="true"]),
     :where(body:has(.app-shell)) .studio-cta:hover:not(:disabled):not([aria-disabled="true"]),
-    :where(body:has(.app-shell)) .ns-tab-create:hover:not([aria-disabled="true"]) {
+    :where(body:has(.app-shell)) .ns-tab-create:hover:not([aria-disabled="true"]):not(:disabled) {
       --g-sheen: var(--g-sheen-on);
     }
   }
@@ -413,8 +420,8 @@
     :where(body:has(.app-shell)) .btn-danger:hover:not([aria-disabled="true"]):not(:disabled),
     :where(body:has(.app-shell)) .btn-sky:hover:not([aria-disabled="true"]):not(:disabled),
     :where(body:has(.app-shell)) .shell-pill:hover:not([aria-disabled="true"]):not(:disabled),
-    :where(body:has(.app-shell)) .ns-chip:hover:not(:disabled):not([data-plain]),
-    :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]),
+    :where(body:has(.app-shell)) .ns-chip:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
+    :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
     :where(body:has(.app-shell)) .ns-price-button:hover:not(:disabled):not([aria-disabled="true"]),
     :where(body:has(.app-shell)) .studio-cta:hover:not(:disabled):not([aria-disabled="true"]) {
       transform: translateY(-1px);
@@ -430,8 +437,8 @@
   :where(body:has(.app-shell)) .btn-danger:active:not([aria-disabled="true"]):not(:disabled),
   :where(body:has(.app-shell)) .btn-sky:active:not([aria-disabled="true"]):not(:disabled),
   :where(body:has(.app-shell)) .shell-pill:active:not([aria-disabled="true"]):not(:disabled),
-  :where(body:has(.app-shell)) .ns-chip:active:not(:disabled):not([data-plain]),
-  :where(body:has(.app-shell)) .studio-chip:active:not(:disabled):not([data-plain]),
+  :where(body:has(.app-shell)) .ns-chip:active:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
+  :where(body:has(.app-shell)) .studio-chip:active:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
   :where(body:has(.app-shell)) .ns-price-button:active:not(:disabled):not([aria-disabled="true"]),
   :where(body:has(.app-shell)) .studio-cta:active:not(:disabled):not([aria-disabled="true"]),
   :where(body:has(.app-shell)) .ns-tab-create:active:not([aria-disabled="true"]):not(:disabled) {
@@ -442,10 +449,10 @@
 }
 /* Reduced motion: the older press transforms (a 1px drop, a 0.965 squeeze) are motion too. */
 @media (prefers-reduced-motion: reduce) {
-  :where(body:has(.app-shell)) .btn-primary:active,
-  :where(body:has(.app-shell)) .btn-sky:active,
-  :where(body:has(.app-shell)) .studio-cta:active:not(:disabled),
-  :where(body:has(.app-shell)) .ns-price-button:active:not(:disabled) { transform: none; }
+  :where(body:has(.app-shell)) .btn-primary:active:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .btn-sky:active:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .studio-cta:active:not(:disabled):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .ns-price-button:active:not(:disabled):not([aria-disabled="true"]) { transform: none; }
 }
 
 /* ── 6. Disabled stays disabled ────────────────────────────────────────────── */
@@ -459,7 +466,7 @@
 :where(body:has(.app-shell)) .btn-sky:is(:disabled, [aria-disabled="true"]),
 :where(body:has(.app-shell)) .shell-pill:is(:disabled, [aria-disabled="true"]),
 :where(body:has(.app-shell)) .ns-chip:is(:disabled, [aria-disabled="true"], [data-disabled="true"]),
-:where(body:has(.app-shell)) .studio-chip:is(:disabled, [aria-disabled="true"]),
+:where(body:has(.app-shell)) .studio-chip:is(:disabled, [aria-disabled="true"], [data-disabled="true"]),
 :where(body:has(.app-shell)) .ns-price-button:is(:disabled, [aria-disabled="true"]),
 :where(body:has(.app-shell)) .studio-cta:is(:disabled, [aria-disabled="true"]) {
   --g-sheen: transparent;
@@ -469,8 +476,20 @@
   --g-shadow: 0 0 #0000;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+  /* The older hovers still match a refused key (the glass ones above exclude
+     it): its own flat surface, at the same specificity and later. */
+  background: var(--g-bg);
+  background-clip: padding-box;
+  filter: none;
   transform: none;
   cursor: not-allowed;
+}
+/* The two older hovers that outrank the rule above on an aria-disabled key. */
+:where(body:has(.app-shell)) .ns-price-button[aria-disabled="true"]:hover,
+:where(body:has(.app-shell)) .btn-danger[aria-disabled="true"]:hover {
+  background: var(--g-bg);
+  background-clip: padding-box;
+  filter: none;
 }
 :where(body:has(.app-shell)) .btn-sky:is(:disabled, [aria-disabled="true"])::before { opacity: 0; }
 /* The neutral keys, refused: no glass at all, a hairline and a muted legend, so they read as unavailable at a glance. */
@@ -478,7 +497,7 @@
 :where(body:has(.app-shell)) .btn-sky:is(:disabled, [aria-disabled="true"]),
 :where(body:has(.app-shell)) .shell-pill:is(:disabled, [aria-disabled="true"]),
 :where(body:has(.app-shell)) .ns-chip:is(:disabled, [aria-disabled="true"], [data-disabled="true"]),
-:where(body:has(.app-shell)) .studio-chip:is(:disabled, [aria-disabled="true"]) {
+:where(body:has(.app-shell)) .studio-chip:is(:disabled, [aria-disabled="true"], [data-disabled="true"]) {
   --g-tint: transparent;
   --g-edge-hi: var(--color-border);
   --g-edge-lo: var(--color-border);
@@ -487,7 +506,7 @@
   box-shadow: none;
 }
 /* The filled keys, refused: the flat field and a muted legend (as PriceButton and the Studio key already were). */
-:where(body:has(.app-shell)) .btn-primary:is(:disabled, [aria-disabled="true"]):not([data-price-hold]),
+:where(body:has(.app-shell)) .btn-primary:is(:disabled, [aria-disabled="true"]):not([data-price-hold="loading"]),
 :where(body:has(.app-shell)) .studio-cta:is(:disabled, [aria-disabled="true"]):not(.fl-go[aria-disabled="true"]),
 :where(body:has(.app-shell)) .ns-price-button:is(:disabled, [aria-disabled="true"]),
 :where(body:has(.app-shell)) .btn-sky.is-solid:is(:disabled, [aria-disabled="true"]),
@@ -503,7 +522,7 @@
 }
 :where(body:has(.app-shell)) .ns-price-button:is(:disabled, [aria-disabled="true"]) .ns-price-tag { color: var(--color-muted); }
 /* Waiting, not refused (CreateStudio's confirm, Run now's price hold): its colour, flat, dimmed by the existing rule. */
-:where(body:has(.app-shell)) .btn-primary[data-price-hold][aria-disabled="true"],
+:where(body:has(.app-shell)) .btn-primary[data-price-hold="loading"][aria-disabled="true"],
 :where(body:has(.app-shell)) .studio-cta.fl-go[aria-disabled="true"] { cursor: progress; }
 
 /* ── 7. Segmented switches: a recessed glass track, one plate that slides ──── */
@@ -553,8 +572,8 @@
   pointer-events: none;
 }
 @media (hover: hover) {
-  :where(body:has(.app-shell)) .ns-seg > button:hover:not(:disabled):not([aria-checked="true"]):not([aria-selected="true"]),
-  :where(body:has(.app-shell)) .studio-seg > button:hover:not(:disabled):not([aria-pressed="true"]) {
+  :where(body:has(.app-shell)) .ns-seg > button:hover:not(:disabled):not([aria-checked="true"]):not([aria-selected="true"]):not([aria-pressed="true"]):not([aria-disabled="true"]),
+  :where(body:has(.app-shell)) .studio-seg > button:hover:not(:disabled):not([aria-pressed="true"]):not([aria-disabled="true"]) {
     background: var(--glass-tint-hover);
   }
 }
@@ -574,7 +593,16 @@
   left: var(--ns-ind-l, 0px);
   right: var(--ns-ind-r, 0px);
 }
-/* The plate behind the current tab, inset from the strip's rule. */
+/* The plate behind the current tab, inset from the strip's rule. Until the
+   indicator has measured (server render, no script) the current tab draws the
+   same plate itself, in the same place, so nothing appears or moves on hydration. */
+:where(body:has(.app-shell)) .ns-tabs-track:not([data-indicator]) .ns-tabs-link[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  inset: 4px 0 6px;
+  pointer-events: none;
+}
+:where(body:has(.app-shell)) .ns-tabs-track:not([data-indicator]) .ns-tabs-link[aria-current="page"]::before,
 :where(body:has(.app-shell)) .ns-tabs-track[data-indicator]::before {
   z-index: -1;
   top: calc(var(--ns-ind-t, 0px) + 4px);
@@ -599,7 +627,7 @@
 }
 :where(body:has(.app-shell)) .ns-tabs-track[data-indicator] .ns-tabs-link[aria-current="page"]::after { display: none; }
 @media (hover: hover) {
-  :where(body:has(.app-shell)) .ns-tabs-link:not([aria-current="page"]):hover {
+  :where(body:has(.app-shell)) .ns-tabs-link:not([aria-current="page"]):hover:not(:disabled):not([aria-disabled="true"]) {
     background: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box;
     border-radius: var(--ns-r-key);
   }
@@ -652,7 +680,7 @@
   box-shadow: inset 0 1px 0 var(--glass-rim-hi), inset 0 -1px 0 var(--glass-rim-lo), var(--glass-shadow);
 }
 @media (hover: hover) {
-  :where(body:has(.app-shell)) .studio-tab:not([aria-selected="true"]):hover { background: var(--glass-tint-hover); }
+  :where(body:has(.app-shell)) .studio-tab:not([aria-selected="true"]):hover:not(:disabled):not([aria-disabled="true"]) { background: var(--glass-tint-hover); }
 }
 
 /* A reader who asked for less transparency: solid keys, no frost. */
