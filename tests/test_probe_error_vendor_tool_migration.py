@@ -31,6 +31,19 @@ def words(sql: str) -> set:
     return set(re.findall(r"'([a-z0-9_]+)'", m.group(1)))
 
 
+def ordered(sql: str) -> list:
+    m = re.search(rf"add constraint {NAME}\s+check \((.*?)\);", code(sql), re.S)
+    assert m, NAME
+    return re.findall(r"'([a-z0-9_]+)'", m.group(1))
+
+
+def printed(sql: str) -> list:
+    """The words of the end-state assert: ``def is distinct from 'CHECK (... ARRAY[''word''::text, ...])'``."""
+    m = re.search(r"if def is distinct from '(CHECK .*?)' then", code(sql))
+    assert m, "the end-state assert compares the whole printed rule"
+    return re.findall(r"''([a-z0-9_]+)''::text", m.group(1))
+
+
 def newest() -> str:
     found = None
     for path in sorted(MIG.glob("*.sql")):
@@ -62,7 +75,13 @@ class Check(unittest.TestCase):
         self.assertIn("LIVE ON APPLY", TEXT)
         self.assertIn("APPLY AS ONE TRANSACTION", TEXT)
         self.assertIn("set local lock_timeout", code(TEXT))
-        self.assertIn("position('vendor_tool_unsupported' in def) = 0", code(TEXT))
+        # The end state is the whole rule as Postgres prints it back, the same words in the same order as the add constraint.
+        self.assertEqual(printed(TEXT), ordered(TEXT))
+
+    def test_the_printed_rule_lists_the_same_words_as_the_constraint(self):
+        self.assertEqual(set(printed(TEXT)), words(TEXT))
+        self.assertEqual(set(printed(ROLLBACK)), words(ROLLBACK))
+        self.assertEqual(printed(ROLLBACK), ordered(ROLLBACK))
 
 
 class Rollback(unittest.TestCase):

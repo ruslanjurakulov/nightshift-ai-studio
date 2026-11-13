@@ -7,7 +7,7 @@
 --   0. REFUSES (changes nothing) if the log already holds a row with error_code 'vendor_tool_unsupported': the probe log is append-only
 --      and 0035's rule would not accept that row. Deploy the code without the word first, or keep 0140.
 --   1. Puts 0035's check back word for word.
---   2. Asserts the end state: the check no longer accepts the word.
+--   2. Asserts the end state: the check is 0035's rule exactly, as Postgres prints it back.
 
 begin;
 set local lock_timeout = '5s';
@@ -32,7 +32,7 @@ begin
   select pg_get_constraintdef(c.oid) into def
     from pg_constraint c
    where c.conrelid = 'public.model_probe_runs'::regclass and c.conname = 'model_probe_runs_error_code_check';
-  if def is null or position('vendor_tool_unsupported' in def) > 0 then
+  if def is distinct from 'CHECK (((ok AND (error_code IS NULL) AND (error IS NULL)) OR ((NOT ok) AND (error_code = ANY (ARRAY[''not_configured''::text, ''auth''::text, ''quota''::text, ''rate_limited''::text, ''bad_request''::text, ''policy''::text, ''not_found''::text, ''unavailable''::text, ''bad_response''::text, ''timeout''::text])))))' then
     raise exception 'rollback 0140: model_probe_runs_error_code_check is not 0035''s rule (%)', def;
   end if;
 end $$;

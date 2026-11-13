@@ -189,23 +189,32 @@ carries `"operator_preview": true`:
 ## Open questions
 
 1. **Responses API vs. the images endpoints.** The adapter uses `/v1/responses` because of `store: false`. The
-   Responses reference schema (`/docs/api-reference/responses/schemas`) does not list the `image_generation` tool or
-   the `image_generation_call` item. Only the image-generation guide shows them.
+   Responses reference schema (`/docs/api-reference/responses/schemas`, re-read 2026-11-12 after the probe) does not list
+   the `image_generation` tool: its `ToolsArray` is `FunctionTool | ComputerTool | WebSearchTool | ToolSearchToolParam`,
+   and `image_generation_call` appears only in the prose of `instructions`, not as an item type. Only the
+   image-generation guide shows the tool ("include an `image_generation` tool in `tools` and set its fields", with
+   `size`, and "Muse Image accepts only the `image_generation` tool").
    - **First probe, 2026-11-12 19:05Z** (Actions "Probe models", run 43286239903): it sent
      `{"model": "muse-image-1.0", "store": false, "input": "a red apple on a white table", "tools": [{"type":
      "image_generation", "size": "1024x1024"}]}` (the probe named `aspect_ratio: "1:1"`). Answer, after 450 ms: HTTP 400
      `{"error": {"code": null, "message": "Unsupported tool type: 'image_generation'", "param": "tools", "type":
-     "invalid_request_error"}}`. A 400 is not billed (pricing page). The guide and the Responses reference read the same
-     day still show exactly this tool shape, and do not explain the error.
+     "invalid_request_error"}}`. A 400 is not billed (pricing page). Re-read the same day, the guide still shows exactly
+     this tool shape and does not explain the error; the Responses reference still does not list the tool. The likely
+     reading: the guide is ahead of the API.
    - **What changed.** The adapter now answers a 400 naming `param: "tools"` as `vendor_tool_unsupported`, with a
      message that says the size / aspect ratio option was refused and nothing was charged. It does NOT retry without the
      tool: that would return a picture in the vendor's default shape, not the one the person asked for. The probe no
      longer names an aspect ratio, so it sends no `tools` (migration 0140 lets the probe log store the new code).
-   - **What the next probe tests.** The cheapest valid call, with no tool: `{"model": "muse-image-1.0", "store":
-     false, "input": "a red apple on a white table"}`, the plain text-to-image request the guide shows. If it succeeds,
-     the endpoint, the key, `store: false` and the `image_generation_call` answer are confirmed, and only the tool is in
-     question: a job that names an aspect ratio will fail with `vendor_tool_unsupported` until the vendor accepts the
-     tool or documents another way to set the shape. If it fails too, the error says what else is wrong.
+   - **Second probe, 2026-11-12 20:40Z** (run 43302357299, this branch): the cheapest valid call, with no tool:
+     `{"model": "muse-image-1.0", "store": false, "input": "a red apple on a white table"}`. Result: `ok
+     grounded-image-1.0`, one image, $0.01. The endpoint, the key, `store: false` and the `image_generation_call` answer
+     are confirmed. Only the tool is in question.
+   - **So no shape is offered.** Until a probe proves the tool, the registry entry lists no `aspect_ratios`. The Studio
+     then offers no shape for this model and sends none (`fixedShape` in `command-center/lib/creative/studio.ts`), and
+     the registry refuses a job that names one before any call. The picture comes back in the model's default shape.
+     The adapter keeps the documented shapes (`SPECS`) and still sends the tool for a named shape, for the day the tool
+     is accepted. Changing `aspect_ratios` does not reset the model's verification: the registry guard (0100's
+     `model_registry_guard`) watches `aspect_ratios_by_capability.expand` / `.video_reframe`, not `aspect_ratios`.
 2. How many `input_image` parts the Responses API takes for Muse Image (10 is the images-edit bound).
 3. Whether the answer can carry several images for one prompt (nothing sets `n` there), and whether each is billed.
 4. The native pixel resolution. It is not documented, so no image size is offered or priced.

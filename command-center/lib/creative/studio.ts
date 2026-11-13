@@ -291,6 +291,12 @@ export interface StudioModel {
    */
   soundChoice?: boolean;
   /**
+   * The model takes no aspect ratio: its spec states an EMPTY aspect_ratios list (the picture comes back in the model's own shape).
+   * The Studio then offers no shape for a text picture / text video and sends none (buildParams). Absent = the spec was not read or
+   * lists shapes: the shape is offered and sent as before.
+   */
+  fixedShape?: boolean;
+  /**
    * 0139: a hidden model the platform operator may try in the operator's own (credits-exempt) organization before it is offered to
    * anyone. Only operator_preview_models() sets it, and that answers no rows to everyone else; the quote and the create ask the
    * database again, so the flag only decides the badge.
@@ -334,7 +340,7 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
   if (!Array.isArray(sellable)) return models;
   type Marks = Pick<
     StudioModel,
-    "qualityTier" | "speedTier" | "entitlement" | "endFrame" | "upscaleTargets" | "maxSourceSeconds" | "qualities" | "soundChoice" | "expandAspects" | "relightLooks" | "reframeAspects"
+    "qualityTier" | "speedTier" | "entitlement" | "endFrame" | "upscaleTargets" | "maxSourceSeconds" | "qualities" | "soundChoice" | "expandAspects" | "relightLooks" | "reframeAspects" | "fixedShape"
   >;
   const marks = new Map<string, Marks>();
   for (const r of sellable) {
@@ -376,6 +382,8 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
         ? { soundChoice: true }
         : {}),
       ...(typeof longest === "number" && Number.isInteger(longest) && longest > 0 ? { maxSourceSeconds: longest } : {}),
+      // Only a list the spec states and leaves empty: a spec that says nothing about shapes keeps the shape picker.
+      ...(Array.isArray(spec.aspect_ratios) && spec.aspect_ratios.length === 0 ? { fixedShape: true } : {}),
     });
   }
   return models.map((m) => {
@@ -482,6 +490,12 @@ export interface StudioForm {
    * null / absent = the key is left out (silent).
    */
   audio?: boolean | null;
+  /**
+   * The picked model takes no aspect ratio (StudioModel.fixedShape): a text picture / text video is sent without one, so the
+   * model makes its own shape. The panel passes it for the hand-picked model only (Auto's model is not known before the quote).
+   * null / absent = the aspect is sent as before.
+   */
+  noAspect?: boolean | null;
 }
 
 type ParamKey = (typeof PARAM_KEYS)[number];
@@ -507,9 +521,9 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
   const source = form.sourceId ?? "";
   switch (form.capability) {
     case "t2i":
-      return { prompt, aspect_ratio: form.aspect };
+      return form.noAspect === true ? { prompt } : { prompt, aspect_ratio: form.aspect };
     case "t2v":
-      return { prompt, aspect_ratio: form.aspect, duration_s: form.duration };
+      return form.noAspect === true ? { prompt, duration_s: form.duration } : { prompt, aspect_ratio: form.aspect, duration_s: form.duration };
     case "edit":
       return { prompt, source_asset_id: source };
     case "i2v":

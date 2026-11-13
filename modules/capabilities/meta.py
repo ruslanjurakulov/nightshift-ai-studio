@@ -20,7 +20,9 @@ The request is the smallest one the image-generation guide shows working, and no
   default shape. ``output_format`` is not sent: the vendor's default (webp) is kept, and the bytes decide the type.
   The first real probe (2026-11-12) was answered HTTP 400 ``Unsupported tool type: 'image_generation'`` with
   ``param: "tools"``: that answer is ``vendor_tool_unsupported`` (``TOOL_REFUSED``), never retried without the tool,
-  because the picture would come back in a shape the person did not ask for;
+  because the picture would come back in a shape the person did not ask for. Until a probe proves the tool, the registry
+  entry lists no aspect ratios, so the Studio offers and sends none and the registry refuses one before any call;
+  ``SPECS`` keeps the documented shapes for the day the tool is accepted;
 * ``safety_identifier``: the job's opaque end-user id, when it is a plain token of at most 64 characters.
 
 The answer is read from ``output[]``: every ``image_generation_call`` item carries its picture as base64 in
@@ -107,9 +109,10 @@ MAX_TOTAL_IMAGE_BYTES = 36 * 1024 * 1024
 _FAILED = ("failed", "cancelled", "incomplete")
 _POLICY_CODES = ("content_policy_violation", "image_content_policy_violation")
 #: What a person reads when the vendor refuses the ``image_generation`` tool (a 400 naming ``param: "tools"``). A refused
-#: request makes no picture, and the vendor's pricing page bills generated pictures only.
+#: request makes no picture, and the vendor's pricing page bills generated pictures only. It names no remedy: the registry
+#: entry offers no aspect ratio while the tool is refused (so the Studio sends none), and nothing else can be changed here.
 TOOL_REFUSED = ("the vendor refused the size / aspect ratio option for this model, so no picture was made and nothing "
-                "was charged; try again without choosing an aspect ratio")
+                "was charged")
 
 
 def _debrand(text: str) -> str:

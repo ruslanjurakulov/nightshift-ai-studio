@@ -32,7 +32,8 @@ alter table public.model_probe_runs add constraint model_probe_runs_error_code_c
                                        'policy', 'not_found', 'unavailable', 'bad_response', 'vendor_tool_unsupported',
                                        'timeout')));
 
--- 2. The end state: the constraint exists and accepts the new word.
+-- 2. The end state: the constraint is exactly the rule above, as Postgres prints it back (checked against a PostgreSQL 16
+--    server, 2026-11-12), so a word that is missing, misspelt or extra stops the transaction.
 do $$
 declare
   def text;
@@ -40,7 +41,7 @@ begin
   select pg_get_constraintdef(c.oid) into def
     from pg_constraint c
    where c.conrelid = 'public.model_probe_runs'::regclass and c.conname = 'model_probe_runs_error_code_check';
-  if def is null or position('vendor_tool_unsupported' in def) = 0 then
-    raise exception '0140: model_probe_runs_error_code_check does not accept vendor_tool_unsupported (%)', def;
+  if def is distinct from 'CHECK (((ok AND (error_code IS NULL) AND (error IS NULL)) OR ((NOT ok) AND (error_code = ANY (ARRAY[''not_configured''::text, ''auth''::text, ''quota''::text, ''rate_limited''::text, ''bad_request''::text, ''policy''::text, ''not_found''::text, ''unavailable''::text, ''bad_response''::text, ''vendor_tool_unsupported''::text, ''timeout''::text])))))' then
+    raise exception '0140: model_probe_runs_error_code_check is not the expected rule (%)', def;
   end if;
 end $$;

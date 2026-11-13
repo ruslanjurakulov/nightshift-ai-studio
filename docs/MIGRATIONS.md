@@ -851,9 +851,10 @@ with the same rule plus one word, `vendor_tool_unsupported`. No table, column, r
   `modules/capabilities/base.py` `ERROR_CODES`), and `record_model_probe` inserts the code as given: without 0140 such a probe could not be
   recorded at all. Job rows (0036) already take any `^[a-z0-9_]{1,64}$` word; the Studio shows it as "These settings were not accepted".
 - **Safe to apply.** The new rule accepts every row the old one did. Apply as ONE transaction (`set local lock_timeout`); the last block
-  asserts the constraint accepts the word.
+  compares the whole constraint, as Postgres prints it back, to the expected rule (checked on a PostgreSQL 16 server: apply, re-apply,
+  rollback, re-apply, and a tampered copy that stops).
 - **Undo.** `docs/sql/rollback_0140_probe_error_vendor_tool.sql` (owner-applied): refuses while the log holds a `vendor_tool_unsupported`
-  row, then puts 0035's words back.
+  row, then puts 0035's words back and checks the printed rule the same way.
 - **Numbering.** 0140, after 0139. It names nothing of 0139's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
 - **Tests.** `tests/test_probe_error_vendor_tool_migration.py` (the newest check lists exactly `ERROR_CODES` and `timeout`; nothing else
   changes; the rollback).

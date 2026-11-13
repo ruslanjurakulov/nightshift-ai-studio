@@ -537,9 +537,13 @@ class RegistryEntryTests(unittest.TestCase):
         self.assertIsInstance(bridge.adapter, MuseImageAdapter)
         self.assertIs(ADAPTERS["image.meta"], MuseImageAdapter)
 
-    def test_what_the_registry_offers_is_what_the_adapter_will_send(self):
+    def test_the_registry_offers_no_aspect_ratio_while_the_vendor_refuses_the_tool(self):
+        # The tool that carries the shape was refused (run 43286239903); the probe without it passed (run 43302357299). Until a
+        # probe proves the tool, no shape is offered, so the Studio sends none. The adapter keeps the documented shapes.
+        self.assertEqual(tuple(self.e.aspect_ratios), ())
+        self.assertEqual(self.e.aspects_for(T2I), ())
+        self.assertEqual(self.e.aspects_for(EDIT), ())
         ratios = MuseImageAdapter.SPECS[VENDOR]["ratios"]
-        self.assertEqual(list(self.e.aspect_ratios), list(ratios))
         for r in ratios:
             self.assertIsNotNone(ratio_size(r), r)
         self.assertEqual(tuple(self.e.image_sizes), ())                   # no resolution is promised
@@ -552,7 +556,8 @@ class RegistryEntryTests(unittest.TestCase):
         self.assertEqual((probe.capability, probe.aspect_ratio, probe.image_size), (T2I, None, None))
         self.assertEqual(probe.prompt, "a red apple on a white table")
         self.assertEqual(a.problems(probe, self.e), [])
-        self.assertEqual(a.problems(t2i(aspect_ratio="1:1"), self.e), [])   # a ratio is still offered and accepted
+        # A job that names a shape is refused before any call (nothing is sent, nothing is bought), never sent the tool.
+        self.assertTrue(any("not offered" in p for p in a.problems(t2i(aspect_ratio="1:1"), self.e)))
         for bad in (t2i(image_size="1K"), t2i(aspect_ratio="17:1"), t2i(quality="low"),
                     t2i(prompt="a famous singer on stage")):
             self.assertTrue(a.problems(bad, self.e), bad)

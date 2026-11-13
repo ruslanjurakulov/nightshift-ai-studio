@@ -4207,19 +4207,7 @@
       "inputs": {
         "image_refs_max": 10
       },
-      "aspect_ratios": [
-        "1:1",
-        "16:9",
-        "9:16",
-        "4:3",
-        "3:4",
-        "3:2",
-        "2:3",
-        "21:9",
-        "9:21",
-        "4:5",
-        "5:4"
-      ],
+      "aspect_ratios": [],
       "resolutions": [],
       "durations_s": [],
       "audio_out": false,
@@ -4229,7 +4217,7 @@
         "checked_at": "2026-11-12",
         "source": "vendor_docs_search",
         "evidence": "dev.meta.ai image-generation, Responses and Images API schemas, error-handling, pricing-rate-limits, models and authentication pages read in full 2026-11-12 as markdown, not search extracts. No endpoint was called (no key).",
-        "note": "Called on POST /v1/responses with store false (a Responses-only field; the images endpoints reject unknown fields). The pixel resolution is not documented, so no image size is offered."
+        "note": "Called on POST /v1/responses with store false (a Responses-only field; the images endpoints reject unknown fields). No image size: the resolution is undocumented. No aspect ratio until a probe proves the image_generation tool (refused, run 43286239903; the probe without it passed, run 43302357299)."
       },
       "pricing": {
         "unit": "image",
