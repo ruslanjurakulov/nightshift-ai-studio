@@ -308,6 +308,18 @@ describe("Auto in the composer", () => {
     expect(quotes.at(-1)).not.toHaveProperty("mode");
   });
 
+  it("a link from 'Improve with AI' with Auto picked starts the form on Auto, with the words it carried; nothing starts", async () => {
+    render(
+      withI18n(
+        <GeneratePanel orgId={ORG} models={MODELS} initial={{ capability: "t2i", model: "", auto: true, prompt: "a red kite", aspect: "16:9", duration: 5 }} />,
+      ),
+    );
+    expect(screen.getByRole("button", { name: t.gen.router.autoLabel }).getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByRole("textbox", { name: t.gen.promptLabel }) as HTMLTextAreaElement).value).toBe("a red kite");
+    await screen.findByText("Auto picked Picture Fine for 9 credits", undefined, { timeout: 2000 });
+    expect(creates()).toEqual([]);
+  });
+
   it("is not offered where there is nothing to choose", () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
     fireEvent.click(screen.getByRole("tab", { name: t.gen.tabs.tts }));

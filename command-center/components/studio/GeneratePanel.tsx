@@ -198,7 +198,8 @@ export function GeneratePanel({
   const [model, setModel] = useState(initial?.model ?? "");
   // 0075: "Auto" lets the database pick the model (mode auto). The quote names
   // the pick and its price; the press sends both back. Off = the picked model, exactly.
-  const [auto, setAuto] = useState(false);
+  // A link may start it on ("Improve with AI" with Auto picked); it only counts where Auto is offered (`routed` below).
+  const [auto, setAuto] = useState(initial?.auto === true);
   const [sourceId, setSourceId] = useState<string | null>(initial?.sourceId ?? null);
   const [factor, setFactor] = useState<UpscaleFactor>(initial?.factor ?? 2);
   // A retried job keeps its own choice (even "none"); a fresh form starts from the channel's look.

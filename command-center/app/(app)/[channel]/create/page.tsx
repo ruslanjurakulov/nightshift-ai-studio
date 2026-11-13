@@ -15,7 +15,7 @@ import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } fr
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery, withPreviews } from "@/lib/creative/studio";
-import { parseIdParam } from "@/lib/creative/improve";
+import { parseIdParam, prefillFromImprove } from "@/lib/creative/improve";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { presetPrefill } from "@/lib/presets";
 import { StudioHome, type AssistantData } from "@/components/studio/StudioHome";
@@ -72,7 +72,11 @@ export default async function CreatePage({
   // "Use in Studio" from the Models catalog (/create?tool=t2v&model=<id>) also picks
   // that model — shape-checked here; the panel keeps it only if it offers it for the tool.
   // The Presets gallery adds a template or a voice (lib/presets): it fills the same form.
-  const initial = prefillModel(presetPrefill(dna.withStudio(prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool)), q), q.model);
+  // "Improve with AI" (lib/creative/improve) adds `model=auto` and the words typed in its panel: they only fill the form.
+  const initial = prefillFromImprove(
+    prefillModel(presetPrefill(dna.withStudio(prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool)), q), q.model),
+    q,
+  );
   // Home's composer: topic, length and language for the channel run below.
   // Fills the form; Create still shows the price and asks before it runs.
   const runInitial = runPrefillFromQuery(q);
@@ -176,7 +180,7 @@ export default async function CreatePage({
           // sidebar's rows is a client navigation to the same page, and without a
           // new key the panel would keep the tool it already had.
           <GenerateSection
-            key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}:${initial?.voiceId ?? ""}:${typeof q.template === "string" ? q.template : ""}`}
+            key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}:${initial?.auto ? "auto" : ""}:${initial?.voiceId ?? ""}:${typeof q.template === "string" ? q.template : ""}:${initial?.prompt ?? ""}`}
             desk={desk}
             orgId={genOrgId}
             models={panelModels}

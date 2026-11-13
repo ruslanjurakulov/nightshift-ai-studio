@@ -1,5 +1,6 @@
 import { studioHomeRu } from "./studio-home/ru";
 import { improveRu } from "./improve/ru";
+import { studioProgressRu } from "./studio-progress/ru";
 import { notifyChannelsRu } from "./notify-channels/ru";
 import { aiLabelRu } from "./ai-label/ru";
 import { madeForKidsRu } from "./made-for-kids/ru";
@@ -69,6 +70,7 @@ export const ru: Dictionary = {
   adsFactory: adsFactoryRu,
   reviewPage: reviewPageRu,
   improveAi: improveRu,
+  studioProgress: studioProgressRu,
   brand: {
     name: "Nightshift",
     tagline: "Центр управления",

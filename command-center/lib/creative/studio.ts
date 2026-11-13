@@ -901,6 +901,9 @@ export interface StudioJob {
   result: Record<string, unknown> | null;
   result_asset_ids: string[];
   created_at: string;
+  /** 0036: when a worker claimed it (null while it waits in line) and when it ended. They time the placeholder's estimate. */
+  started_at?: string | null;
+  finished_at?: string | null;
 }
 
 const num = (v: unknown): number | null => {
@@ -940,6 +943,8 @@ export function coerceJobs(rows: unknown): StudioJob[] {
       result,
       result_asset_ids: Array.isArray(j.result_asset_ids) ? j.result_asset_ids.filter((x): x is string => typeof x === "string") : [],
       created_at: typeof j.created_at === "string" ? j.created_at : "",
+      started_at: typeof j.started_at === "string" ? j.started_at : null,
+      finished_at: typeof j.finished_at === "string" ? j.finished_at : null,
     });
   }
   return out;
@@ -1151,14 +1156,36 @@ export function outputKind(capability: string): "image" | "video" | "audio" | "t
   return "image";
 }
 
-/** The card's shape: the shape that was asked for, else square (a picture tool keeps its own). */
-export function cardAspect(job: Pick<StudioJob, "capability" | "params">): string {
+const RATIO = /^(\d{1,2}):(\d{1,2})$/;
+
+/**
+ * The card's shape. `asked`: it is the shape the form sent (an expand's 4:3 included), which the result comes back in,
+ * so the placeholder and the finished card are the same frame and the result appears in the place it held.
+ *
+ * Without one — a model that takes no shape (StudioModel.fixedShape: the picture comes back in the model's own) and
+ * the tools that keep their source's shape (upscale, edit, remove_bg, relight, i2v, video_upscale) — the shape is not
+ * known until the file is, and the two states differ on purpose:
+ *  - working (the placeholder): a neutral 3:2 for a picture, 16:9 for a clip, so something the size of a likely
+ *    result holds its place — grounded-image-1.0 returned 1920x1280 in practice, which 3:2 happens to match;
+ *  - ended: the square every such card always had. A finished card is drawn object-cover; a guessed 3:2 or 16:9
+ *    frame would crop a portrait upscale or a square cut-out to a strip of its middle. The result fades into the
+ *    square from the placeholder (JobFeed's gen-reveal), which is a change of frame, not a jump inside one.
+ * A sound or a description: a wide bar, either way.
+ */
+export function cardShape(job: Pick<StudioJob, "capability" | "params" | "status">): { aspect: string; asked: boolean } {
   const kind = outputKind(job.capability);
-  if (kind === "audio" || kind === "text") return "16 / 7";
+  if (kind === "audio" || kind === "text") return { aspect: "16 / 7", asked: false };
   const a = job.params.aspect_ratio;
-  if (a === "16:9") return "16 / 9";
-  if (a === "9:16") return "9 / 16";
-  return "1 / 1";
+  const m = typeof a === "string" ? RATIO.exec(a) : null;
+  const w = m ? Number(m[1]) : 0;
+  const h = m ? Number(m[2]) : 0;
+  if (w > 0 && h > 0) return { aspect: `${w} / ${h}`, asked: true };
+  if (!isActiveStatus(job.status)) return { aspect: "1 / 1", asked: false };
+  return { aspect: kind === "video" ? "16 / 9" : "3 / 2", asked: false };
+}
+
+export function cardAspect(job: Pick<StudioJob, "capability" | "params" | "status">): string {
+  return cardShape(job).aspect;
 }
 
 /**
@@ -1185,6 +1212,8 @@ export function edgeFacts(t: Dictionary, job: StudioJob, locale = "en"): string[
 export interface StudioPrefill {
   capability: StudioCapability;
   model: string;
+  /** 0075: start with "Auto" on (the database picks the model at the quote). Only where the panel offers Auto. */
+  auto?: boolean;
   prompt: string;
   aspect: AspectRatio;
   duration: VideoDuration;

@@ -15,6 +15,7 @@ import { KIND_ICON } from "./kindIcon";
 import { SendToEditor, isSendKind } from "@/components/editor/SendToEditor";
 import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
 import { isImproveKind } from "@/lib/creative/improve";
+import type { StudioModel } from "@/lib/creative/studio";
 import { isEditableMime } from "@/lib/imageEditor/state";
 
 /** Keys inside these keep their own meaning (a video's arrows seek, a field's arrows move the caret). */
@@ -52,6 +53,7 @@ export function MediaViewer({
   folderName,
   orgId,
   aiTools = null,
+  aiModels = null,
   imageEditor = false,
 }: {
   items: readonly LibraryAsset[];
@@ -67,6 +69,8 @@ export function MediaViewer({
   orgId?: string;
   /** The AI tools sold here (lib/server/ai-tools); null = not known. Drives "Improve with AI". */
   aiTools?: readonly string[] | null;
+  /** The Studio's models for those tools; null = not known (the Studio picks). */
+  aiModels?: readonly StudioModel[] | null;
   /** NIGHTSHIFT_IMAGE_EDITOR, read on the server by the page (never a NEXT_PUBLIC value). Off: no "Edit" link at all. */
   imageEditor?: boolean;
 }) {
@@ -282,19 +286,23 @@ export function MediaViewer({
             )}
 
             <div className="flex flex-col gap-2">
+              {/* Keyed apart from SendToEditor below: both once carried key={asset.id}, and two siblings with one key made
+                  React keep the previous file's button on every move to another file (three stacked after two moves,
+                  each opening the Studio for a file no longer on screen). The key still resets the panel per file. */}
               {isImproveKind(asset.kind) && (
                 <ImproveWithAi
-                  key={asset.id}
+                  key={`improve:${asset.id}`}
                   assetId={asset.id}
                   kind={asset.kind}
                   name={asset.name}
                   available={aiTools}
+                  models={aiModels}
                   orgId={orgId}
                   onOpenChange={setImproving}
                 />
               )}
               {orgId && isSendKind(asset.kind) && (
-                <SendToEditor key={asset.id} orgId={orgId} assetId={asset.id} kind={asset.kind} name={asset.name} onOpenChange={setSending} />
+                <SendToEditor key={`send:${asset.id}`} orgId={orgId} assetId={asset.id} kind={asset.kind} name={asset.name} onOpenChange={setSending} />
               )}
               {canEdit && (
                 <Link

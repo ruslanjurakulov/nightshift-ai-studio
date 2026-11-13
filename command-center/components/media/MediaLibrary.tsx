@@ -27,6 +27,7 @@ import { LibrarySkeleton } from "./LibrarySkeleton";
 import { MediaViewer } from "./MediaViewer";
 import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
 import { isImproveKind } from "@/lib/creative/improve";
+import type { StudioModel } from "@/lib/creative/studio";
 import { FolderRail } from "./FolderRail";
 import { FolderMenu } from "./FolderMenu";
 import { DeleteFolderDialog, FolderNameDialog } from "./FolderDialogs";
@@ -123,11 +124,14 @@ export function MediaLibrary({
   canEditFolders = true,
   initialView,
   aiTools = null,
+  aiModels = null,
   imageEditor = false,
 }: {
   orgId: string;
   /** The AI tools sold here (lib/server/ai-tools); null = not known. Drives the tiles' "Improve with AI". */
   aiTools?: readonly string[] | null;
+  /** The Studio's models for those tools (lib/server/ai-tools loadImproveModels); null = not known (the Studio picks). */
+  aiModels?: readonly StudioModel[] | null;
   /** NIGHTSHIFT_IMAGE_EDITOR as the server read it; passed on to the viewer's "Edit" link. Default off. */
   imageEditor?: boolean;
   initial?: MediaLibraryData | null;
@@ -1171,6 +1175,7 @@ export function MediaLibrary({
                               kind={a.kind}
                               name={a.name}
                               available={aiTools}
+                              models={aiModels}
                               orgId={orgId}
                               variant="icon"
                               className="studio-on-media tap-icon press grid size-9 place-items-center rounded-[var(--ns-r-key)] max-sm:size-11 pointer-coarse:size-11"
@@ -1280,6 +1285,7 @@ export function MediaLibrary({
           folderName={foldersOn ? folderName : undefined}
           orgId={orgId}
           aiTools={aiTools}
+          aiModels={aiModels}
           imageEditor={imageEditor}
         />
       )}
