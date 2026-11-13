@@ -38,6 +38,7 @@ import type { StudioModel } from "@/lib/creative/studio";
 import { EffectsDesk } from "@/components/effects/EffectsDesk";
 import { EffectBanner } from "@/components/effects/EffectBanner";
 import { EffectArt } from "@/components/effects/EffectArt";
+import { effectSample } from "@/components/effects/EffectFrame";
 import { EffectsGallery } from "@/components/site/EffectsGallery";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 
@@ -63,6 +64,30 @@ afterEach(() => {
 });
 
 const card = (id: string) => document.querySelector(`[data-effect="${id}"]`) as HTMLElement;
+// Which effects have a real sample is data (lib/effects/effects.json previewJobId, checked in effects-catalog.test.ts), so the
+// cards are checked against it: a card that showed a sample it does not have, or hid one it has, fails either way.
+const SAMPLED = EFFECTS.filter((e) => effectSample(e));
+const DRAWN = EFFECTS.filter((e) => !effectSample(e));
+
+/** A card with a sample says so in words and shows that sample's own first frame; a card without one is the drawing and says so. */
+function expectFrame(c: HTMLElement, e: (typeof EFFECTS)[number], words: { noSample: string; sample: string }) {
+  const s = effectSample(e);
+  if (s) {
+    expect(within(c).getByText(words.sample), e.id).toBeTruthy();
+    expect(within(c).queryByText(words.noSample), e.id).toBeNull();
+    expect(c.querySelector(".fx-art"), e.id).toBeNull();
+    const poster = c.querySelector(`[data-sample="${s.entry.jobId}"] img`);
+    expect(poster, e.id).toBeTruthy();
+    // Under vitest an image import is a bare string, so `.src` is undefined (as in site-showcase.test.tsx); next build gives a path.
+    expect(poster!.getAttribute("src") ?? null, e.id).toBe(s.files.posterSm ?? null);
+  } else {
+    expect(within(c).getByText(words.noSample), e.id).toBeTruthy();
+    expect(within(c).queryByText(words.sample), e.id).toBeNull();
+    expect(c.querySelector(".fx-art")?.getAttribute("aria-hidden"), e.id).toBe("true");
+    expect(c.querySelector("[data-sample]"), e.id).toBeNull();
+    expect(c.querySelector("video"), e.id).toBeNull();
+  }
+}
 
 describe("the Studio's Effects desk", () => {
   it("with no model of an effect offered, says so and offers a disabled button, not a link", () => {
@@ -109,14 +134,9 @@ describe("the Studio's Effects desk", () => {
     }
   });
 
-  it("says on every card, in words, that the moving picture is a drawing until a real sample exists", () => {
+  it("says on every card, in words, that the moving picture is a drawing until a real sample exists, and which is a real one", () => {
     render(withI18n(<EffectsDesk models={OPERATOR} />));
-    for (const e of EFFECTS) {
-      const c = card(e.id);
-      expect(within(c).getByText(en.effects.noSample)).toBeTruthy();
-      expect(c.querySelector(".fx-art")?.getAttribute("aria-hidden")).toBe("true");
-      expect(c.querySelector("video")).toBeNull();
-    }
+    for (const e of EFFECTS) expectFrame(card(e.id), e, en.effects);
   });
 
   it("speaks Russian and Uzbek too", () => {
@@ -183,15 +203,27 @@ describe("the public Effects section", () => {
         expect(links[i].getAttribute("href")).toBe(publicEffectHref(e));
         expect(links[i].getAttribute("aria-label")).toBe(fmt(t.effects.site.useAria, { name: t.effects.items[e.id].name }));
       });
-      expect(within(section as HTMLElement).getAllByText(t.effects.noSample)).toHaveLength(EFFECTS.length);
+      // A sample shown here is labelled as one and still names no model or maker (the brand checks above ran with it on the page).
+      expect(within(section as HTMLElement).queryAllByText(t.effects.noSample)).toHaveLength(DRAWN.length);
+      expect(within(section as HTMLElement).queryAllByText(t.effects.sample)).toHaveLength(SAMPLED.length);
+      for (const e of EFFECTS) expectFrame(card(e.id), e, t.effects);
       unmount();
     }
   });
 
-  it("draws each card in its effect's own shape, so the grid mixes portrait, square and wide", () => {
-    const { container } = render(<EffectsGallery t={en} />);
-    const ratios = [...container.querySelectorAll<HTMLElement>(".fx-frame")].map((f) => f.style.aspectRatio);
-    expect(new Set(ratios)).toEqual(new Set(["9 / 16", "1 / 1", "16 / 9"]));
+  it("draws each card in its effect's own shape, or its sample's real one, so the grid mixes portrait, square and wide", () => {
+    render(<EffectsGallery t={en} />);
+    const RATIO = { "16:9": "16 / 9", "9:16": "9 / 16", "1:1": "1 / 1" } as const;
+    const shapes = new Set<string>();
+    for (const e of EFFECTS) {
+      const s = effectSample(e);
+      // A sample is never squeezed into the shape the effect asked for: the card takes the clip's own size.
+      const want = s ? `${s.entry.width} / ${s.entry.height}` : RATIO[e.aspect];
+      expect(card(e.id).querySelector<HTMLElement>(".fx-frame")!.style.aspectRatio, e.id).toBe(want);
+      const [w, h] = s ? [s.entry.width, s.entry.height] : e.aspect.split(":").map(Number);
+      shapes.add(w > h ? "wide" : w < h ? "portrait" : "square");
+    }
+    expect(shapes).toEqual(new Set(["portrait", "square", "wide"]));
   });
 });
 

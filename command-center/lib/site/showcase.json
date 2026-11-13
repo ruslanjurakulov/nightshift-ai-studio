@@ -1391,6 +1391,194 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T21:23:48Z"
+    },
+    {
+      "jobId": "ec9a7c43-0304-4da7-943a-134a259e4f90",
+      "assetId": "ad4eabac-1424-54bc-be7d-8ccfa600028a",
+      "sha256": "b5eeca036647ac675865cdf653ce07c4638154ffe55c272c5e395e5d14936820",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical phone video filmed by a passer-by at street level on a busy city avenue: a ginger cat, at colossal scale and taller than the buildings, walks slowly down the street between the towers. Cars stop, tiny people look up and point, pigeons scatter. Handheld camera with natural shake that tilts up to follow it, bright slightly overexposed daylight, believable scale and real-world physics, photoreal. No text, no captions.",
+      "createdAt": "2026-11-13T21:50:35Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:06:14Z"
+    },
+    {
+      "jobId": "dd553f69-beb4-4f89-9722-91ad95a9d2cc",
+      "assetId": "f7a63347-4abb-5ac7-824c-a7d4a4cad0e9",
+      "sha256": "e78ab9ed16ca0f2023fa5b3289a47413bb2f3b08faa9740bbb8ecf9d4367ff28",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Close-up of a glass snow globe on a wooden table by a window at dusk. Inside the globe is a tiny, perfectly detailed miniature world of a tiny volcano erupting. A hand gently lifts the globe and shakes it; snowflakes swirl around the miniature and slowly settle while warm fairy lights glow in the background bokeh. Macro lens, shallow depth of field, soft cinematic light, realistic glass refraction, cosy mood. No text.",
+      "createdAt": "2026-11-13T21:50:35Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1280,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:08:06Z"
+    },
+    {
+      "jobId": "9b0f23e8-e22b-4a27-b957-3aade8572fbd",
+      "assetId": "2a9a9ae0-5058-5601-af77-b5119f0384cf",
+      "sha256": "b4b3ff0fedf89283db64a08a57122366b4d1303b83f393b9350d48a5f3993aea",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Extreme macro close-up, oddly satisfying: glossy pink clay sculpts itself on a clean turntable. It flows, folds and smooths into a perfect symmetrical shape with crisp edges, as if shaped by invisible hands, then holds still for a beat. Slow, smooth, continuous motion, soft diffused studio light, rich texture detail, shallow depth of field, calm and hypnotic, seamless loop. No hands, no tools, no text.",
+      "createdAt": "2026-11-13T21:50:35Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1280,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:15:49Z"
+    },
+    {
+      "jobId": "6a94865b-ac2f-4b1f-b273-fd4b10c8c477",
+      "assetId": "97417825-a6ad-56fd-be61-b1e57aced8c1",
+      "sha256": "a348cf5325a59ab95e67be1edb7b356a3eaacd1225265edcf59f914c3d6e9b10",
+      "modelId": "runway-gen4.5",
+      "modelName": "Runway Gen-4.5",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "One continuous camera move with no cuts: the shot opens in orbit high above the Earth at sunrise, then dives straight down through thin clouds, over the landscape and the rooftops, and lands smoothly at street level in the old town of Bukhara, ending on a calm eye-level view of everyday life there. Smooth motion that accelerates and then slows gently at the end, realistic geography and light, photoreal, cinematic. No text, no map labels.",
+      "createdAt": "2026-11-13T21:50:35Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4.5",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:17:50Z"
+    },
+    {
+      "jobId": "9930ee16-a09b-4d55-aefe-5c2cb6f189de",
+      "assetId": "92fc2c92-9c97-5946-9e39-02eff77b571d",
+      "sha256": "187ea27dbfbbfa2471da0fc8646d276c4cba05c83ea5e556b5a5401a49f1448b",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "A frozen moment in time: a skateboarder mid-jump over a puddle, completely still in mid-action, with droplets, dust and hair hanging motionless in the air. The camera makes one smooth 360-degree orbit around the frozen scene at eye level, showing it from every side, while nothing in the scene moves. Crisp detail, cinematic lighting, shallow depth of field, photoreal, no motion blur, no text.",
+      "createdAt": "2026-11-13T22:21:35Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:50:43Z"
     }
   ]
 }
