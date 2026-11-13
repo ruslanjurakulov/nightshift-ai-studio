@@ -227,6 +227,45 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "fc1fad12-16de-4cd5-9cd9-e77ed245f469",
+      "assetId": "b5778484-8b74-5b82-aa2d-4f7f8f2645b6",
+      "sha256": "2fe0212969aa31dff00ff6a2affe13fd5022a6abfa0d5027b269b71ad9b31357",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "The perfume bottle comes alive: amber liquid inside swirls and glows, a slow wave of water rises and wraps around the bottle in a glossy spiral, droplets hang in the air and sparkle, then the camera slowly orbits around it. Luxury commercial, dramatic rim light, slow motion. Audio: deep elegant whoosh, water shimmer, no music.",
+      "createdAt": "2026-11-13T18:17:24Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "e3da9148-f2f8-443e-95b1-8ed36ef3dea4",
+        "assetId": "9283b527-51ec-5f5a-97b0-125d6aea3cc8"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1600,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:37:05Z"
     }
   ]
 }
