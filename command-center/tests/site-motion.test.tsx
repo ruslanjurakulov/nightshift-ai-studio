@@ -202,25 +202,36 @@ describe("site-motion.css", () => {
 
 describe("the glass", () => {
   const src = noComments(css);
-  const recipeAt = src.indexOf(".st .ns-glass,\n");
+  const recipeAt = src.indexOf(".st .st-nav[data-glass]::before,\n");
   const recipe = src.slice(recipeAt, src.indexOf("}", recipeAt));
 
-  it("is one recipe, shared through the ns-glass class and the --glass-* tokens, with a fallback without backdrop-filter", () => {
+  it("reads app/glass.css's shared tokens and never redefines one; public-only values are --nx-glass-*", () => {
     expect(recipeAt).toBeGreaterThan(-1);
-    for (const sel of [".st .st-nav[data-glass]::before", ".nx .nx-cta", '.st .st-key[data-tone="quiet"]', ".st .st-signin:hover"]) expect(recipe).toContain(sel);
-    for (const t of ["--glass-tint", "--glass-edge-hi", "--glass-edge-lo", "--glass-rim-lo", "--glass-glow", "--glass-blur", "--glass-sat", "--glass-shadow"]) {
-      expect(recipe, t).toContain(`var(${t})`);
-      expect(src, t).toMatch(new RegExp(`\\.st \\{[^}]*${t}:`));
-    }
-    expect(recipe).toContain("backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat))");
+    for (const sel of [".nx .nx-cta", '.st .st-key[data-tone="quiet"]', ".st .st-signin:hover", ".nx-final .nx-actions .nx-link"]) expect(recipe).toContain(sel);
+    // app/glass.css owns the names (and `.ns-glass`): nothing here sets a --glass-* token or styles .ns-glass.
+    expect(src).not.toMatch(/(?:^|[\s{;])--glass-[a-z-]+\s*:/);
+    expect(src).not.toMatch(/\.ns-glass\b/);
+    for (const old of ["--glass-sat)", "--glass-glow", "--hx", "--hy"]) expect(src, old).not.toContain(old);
+    for (const t of ["--glass-blur", "--glass-saturate", "--glass-x", "--glass-y", "--glass-spot"]) expect(recipe, t).toContain(`var(${t}`);
+    for (const t of ["tint", "sheen", "gloss", "edge-hi", "edge-lo", "rim-hi", "rim-lo", "shadow"]) expect(recipe, t).toContain(`var(--nx-glass-${t}, var(--glass-${t}))`);
+    const shared = readFileSync(join(ROOT, "app/glass.css"), "utf8");
+    for (const t of ["--glass-tint", "--glass-tint-hover", "--glass-solid", "--glass-gloss", "--glass-sheen", "--glass-saturate", "--glass-spot"]) expect(shared, t).toContain(`${t}:`);
+    expect(recipe).toContain("backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate))");
     const fallback = src.slice(src.indexOf("@supports not ((backdrop-filter"));
-    expect(fallback.slice(0, fallback.indexOf("}")) ).toContain(".st .ns-glass");
-    expect(fallback).toMatch(/background-color: var\(--glass-solid\)/);
+    expect(fallback.slice(0, fallback.indexOf("}"))).toMatch(/background-color: var\(--nx-glass-solid, var\(--glass-solid\)\)/);
     // The edge is inset shadows, never a border, so turning to glass on hover changes no box's size.
     expect(recipe).not.toMatch(/\bborder(?:-width|-style)?\s*:\s*\d/);
     expect(recipe).toContain("border-color: transparent");
-    // The stages that are dark in both themes and the dark theme get the dark glass.
-    expect(src).toMatch(/:root\[data-theme="dark"\] \.st, \.st \.nx-sh, \.st \.nx-final/);
+    // The stages that are dark in both themes carry the dark public values.
+    expect(src).toMatch(/\.st \.nx-sh, \.st \.nx-final, [^{]*\{\s*--nx-glass-tint:/);
+  });
+
+  it("honours prefers-reduced-transparency: the stages' pills and the scrolled header go solid", () => {
+    const less = mediaBlocks(src, "prefers-reduced-transparency: reduce").join("\n");
+    expect(less).toContain("--nx-glass-tint: var(--nx-glass-solid)");
+    expect(less).toContain("--nx-glass-tint-hover: var(--nx-glass-solid)");
+    // (Nested inside the header's own 1024 px block.)
+    expect(src).toMatch(/@media \(prefers-reduced-transparency: reduce\) \{\s*\.st \.st-header\[data-scrolled\]::before \{ background-color: var\(--ns-ground\); -webkit-backdrop-filter: none; backdrop-filter: none; \}/);
   });
 
   it("keeps the primary key's colour and its white label above 4.5:1 under the hover light", () => {
@@ -273,11 +284,11 @@ describe("the glass", () => {
     const key = document.querySelector<HTMLElement>(".st-key")!;
     const off = attachGlassLight();
     pointer("pointermove", key, "touch");
-    expect(key.style.getPropertyValue("--hx")).toBe("");
+    expect(key.style.getPropertyValue("--glass-x")).toBe("");
     pointer("pointermove", key, "mouse");
-    expect(key.style.getPropertyValue("--hx")).not.toBe("");
+    expect(key.style.getPropertyValue("--glass-x")).not.toBe("");
     off();
-    expect(key.style.getPropertyValue("--hx")).toBe("");
+    expect(key.style.getPropertyValue("--glass-x")).toBe("");
   });
 });
 

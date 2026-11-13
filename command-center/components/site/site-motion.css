@@ -76,52 +76,36 @@
   }
 }
 
-/* ── Glass: one recipe for every translucent pill on the public site ──────────────────────────────────────────────────────
-   Shared with the docked prompt composer: put the class `ns-glass` on an element inside the public frame (`.st`), or read
-   the tokens below. Tokens (set on .st; re-set for the dark theme and for the stages that are dark in both themes):
-     --glass-tint        the pill's fill            --glass-solid    the fill where backdrop-filter is not supported
-     --glass-edge-hi     edge, top and left         --glass-edge-lo  edge all round (light catches the top left)
-     --glass-rim-hi      the inner specular rim     --glass-rim-lo   the inner shade, bottom right
-     --glass-glow        the light under the pointer (at --hx/--hy, written by attach.ts attachGlassLight; at rest above it)
-     --glass-blur, --glass-sat, --glass-shadow
-   The words on a pill keep the page's text colour: the fill is within a few percent of the ground under it, so text keeps
-   4.5:1 or better in both themes and on the stages. */
-.st {
-  --glass-tint: rgba(255, 255, 255, 0.56);
-  --glass-solid: rgba(255, 255, 255, 0.92);
-  --glass-edge-hi: rgba(255, 255, 255, 0.95);
-  --glass-edge-lo: rgba(27, 26, 23, 0.12);
-  --glass-rim-hi: rgba(255, 255, 255, 0.9);
-  --glass-rim-lo: rgba(27, 26, 23, 0.07);
-  --glass-glow: rgba(255, 255, 255, 0.75);
-  --glass-blur: 16px;
-  --glass-sat: 180%;
-  --glass-shadow: 0 8px 22px -14px rgba(27, 26, 23, 0.35);
+/* ── Glass on the public site ─────────────────────────────────────────────────────────────────────────────────────────────
+   The tokens and the generic `.ns-glass` surface are app/glass.css's (one owner for site and app: --glass-tint, -tint-hover,
+   -solid, -gloss, -rim-hi/-lo, -edge-hi/-lo, -sheen, -spot, -blur, -saturate, -shadow; --glass-x/--glass-y place the sheen).
+   This file only applies them to the public site's own pills, and adds the one thing the site needs that the app does not:
+   the stages that are dark in both themes (the hero, the explore grid, the closing panel, the sign-in stage ...). There a
+   light-theme pill would be a white slab over a photograph, so those boxes set public-only values, --nx-glass-*, which the
+   rules below read first and fall back from to the shared names. Nothing here redefines a --glass-* token.
+   On the public pages the sheen follows a mouse through attach.ts attachGlassLight (the app's GlassPointer is mounted only by
+   the app's layout); it writes the same --glass-x/--glass-y. */
+.st .nx-sh, .st .nx-final, .st .nx-section#samples, .st .nx-marquee, .st .st-auth-aside, .st .nx-auth-band, .st .nx-show-card {
+  --nx-glass-tint: rgb(255 255 255 / 0.07);
+  --nx-glass-tint-hover: rgb(255 255 255 / 0.12);
+  --nx-glass-solid: #25231f;
+  --nx-glass-gloss: rgb(255 255 255 / 0.1);
+  --nx-glass-rim-hi: rgb(255 255 255 / 0.18);
+  --nx-glass-rim-lo: rgb(0 0 0 / 0.35);
+  --nx-glass-edge-hi: rgb(255 255 255 / 0.3);
+  --nx-glass-edge-lo: rgb(255 255 255 / 0.08);
+  --nx-glass-sheen: rgb(255 255 255 / 0.1);
+  --nx-glass-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 20px -10px rgb(0 0 0 / 0.65);
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .st {
-    --glass-tint: rgba(255, 255, 255, 0.07);
-    --glass-solid: rgba(38, 36, 33, 0.94);
-    --glass-edge-hi: rgba(255, 255, 255, 0.3);
-    --glass-edge-lo: rgba(255, 255, 255, 0.08);
-    --glass-rim-hi: rgba(255, 255, 255, 0.22);
-    --glass-rim-lo: rgba(0, 0, 0, 0.4);
-    --glass-glow: rgba(255, 255, 255, 0.16);
-    --glass-shadow: 0 10px 26px -14px rgba(0, 0, 0, 0.7);
+/* Less transparency asked for: the stages' pills are solid too (app/glass.css does the same for the shared tokens). */
+@media (prefers-reduced-transparency: reduce) {
+  .st .nx-sh, .st .nx-final, .st .nx-section#samples, .st .nx-marquee, .st .st-auth-aside, .st .nx-auth-band, .st .nx-show-card {
+    --nx-glass-tint: var(--nx-glass-solid);
+    --nx-glass-tint-hover: var(--nx-glass-solid);
   }
 }
-:root[data-theme="dark"] .st, .st .nx-sh, .st .nx-final, .st .nx-section#samples, .st .nx-marquee, .st .st-auth-aside, .st .nx-auth-band, .st .nx-show-card {
-  --glass-tint: rgba(255, 255, 255, 0.07);
-  --glass-solid: rgba(38, 36, 33, 0.94);
-  --glass-edge-hi: rgba(255, 255, 255, 0.3);
-  --glass-edge-lo: rgba(255, 255, 255, 0.08);
-  --glass-rim-hi: rgba(255, 255, 255, 0.22);
-  --glass-rim-lo: rgba(0, 0, 0, 0.4);
-  --glass-glow: rgba(255, 255, 255, 0.16);
-  --glass-shadow: 0 10px 26px -14px rgba(0, 0, 0, 0.7);
-}
-/* The recipe. One rule, so the composer, the ghost keys and the nav's indicator cannot drift apart. */
-.st .ns-glass,
+/* The site's pills. Their edge is drawn inside the box (inset shadows), never as a border, so a link that turns to glass on
+   hover keeps its size to the pixel: a border appearing on hover would move what is next to it. */
 .st .st-nav[data-glass]::before,
 .st .st-nav:not([data-glass]) a:hover,
 .st .st-signin:hover,
@@ -130,23 +114,28 @@
 .nx .nx-show-cta,
 .nx .nx-ai-try,
 .nx-final .nx-actions .nx-link {
-  /* The edge is drawn inside the box (inset shadows), never as a border, so a pill that turns to glass on hover keeps its size
-     to the pixel: a border that appears on hover would move what is next to it. */
   border-color: transparent;
   border-radius: 999px;
-  background-color: var(--glass-tint);
-  background-image: radial-gradient(120px circle at var(--hx, 30%) var(--hy, -60%), var(--glass-glow), transparent 70%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  box-shadow: inset 1px 1.5px 0 var(--glass-edge-hi), inset -1px -1.5px 0 var(--glass-rim-lo), inset 0 0 0 1px var(--glass-edge-lo), inset 0 8px 14px -10px var(--glass-rim-hi), var(--glass-shadow);
+  background-color: var(--nx-glass-tint, var(--glass-tint));
+  background-image:
+    radial-gradient(var(--glass-spot, 96px) circle at var(--glass-x, 50%) var(--glass-y, -40%), var(--nx-glass-sheen, var(--glass-sheen)), transparent 72%),
+    linear-gradient(180deg, var(--nx-glass-gloss, var(--glass-gloss)), transparent 52%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow:
+    inset 1px 1px 0 var(--nx-glass-edge-hi, var(--glass-edge-hi)),
+    inset -1px -1px 0 var(--nx-glass-edge-lo, var(--glass-edge-lo)),
+    inset 0 2px 0 -1px var(--nx-glass-rim-hi, var(--glass-rim-hi)),
+    inset 0 -2px 0 -1px var(--nx-glass-rim-lo, var(--glass-rim-lo)),
+    var(--nx-glass-shadow, var(--glass-shadow));
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .st .ns-glass, .st .st-nav[data-glass]::before, .st .st-nav:not([data-glass]) a:hover, .st .st-signin:hover, .nx .nx-cta,
-  .st .st-key[data-tone="quiet"], .nx .nx-show-cta, .nx .nx-ai-try, .nx-final .nx-actions .nx-link { background-color: var(--glass-solid); }
+  .st .st-nav[data-glass]::before, .st .st-nav:not([data-glass]) a:hover, .st .st-signin:hover, .nx .nx-cta,
+  .st .st-key[data-tone="quiet"], .nx .nx-show-cta, .nx .nx-ai-try, .nx-final .nx-actions .nx-link { background-color: var(--nx-glass-solid, var(--glass-solid)); }
 }
-/* Hovered, a ghost pill fills a little more (still within a few percent of its ground). */
-.nx .nx-cta:hover, .st .st-key[data-tone="quiet"]:hover, .nx .nx-show-cta:hover, .nx .nx-ai-try:hover, .nx-final .nx-actions .nx-link:hover { background-color: color-mix(in srgb, var(--glass-tint), var(--glass-glow) 30%); border-color: transparent; }
-.st .st-key[data-tone="quiet"]:focus-visible { box-shadow: inset 1px 1.5px 0 var(--glass-edge-hi), inset 0 0 0 1px var(--glass-edge-lo); }
+/* Hovered, a ghost pill takes the hover tint (still within a few percent of its ground, so its words keep their contrast). */
+.nx .nx-cta:hover, .st .st-key[data-tone="quiet"]:hover, .nx .nx-show-cta:hover, .nx .nx-ai-try:hover, .nx-final .nx-actions .nx-link:hover { background-color: var(--nx-glass-tint-hover, var(--glass-tint-hover)); border-color: transparent; }
+.st .st-key[data-tone="quiet"]:focus-visible { box-shadow: inset 1px 1px 0 var(--glass-edge-hi), inset -1px -1px 0 var(--glass-edge-lo); }
 /* The closing panel's secondary actions: a glass pill instead of an underlined word, 48 px tall. */
 .nx-final .nx-actions .nx-link { min-height: 48px; padding: 0 22px; color: #fff; text-decoration: none; }
 .nx-final .nx-actions .nx-link:hover { color: #fff; }
@@ -159,7 +148,7 @@
    and a small light under the pointer, kept faint (10 %) so its white label stays above 4.5:1 at the brightest spot. */
 @media (hover: hover) {
   .nx-btn:hover:not(:focus-visible), .st .st-key:not([data-tone]):hover:not(:focus-visible) {
-    background-image: radial-gradient(90px circle at var(--hx, 50%) var(--hy, -40%), rgba(255, 255, 255, 0.1), transparent 70%);
+    background-image: radial-gradient(90px circle at var(--glass-x, 50%) var(--glass-y, -40%), rgba(255, 255, 255, 0.1), transparent 70%);
     /* And a wider, softer glow (never while focused: the focus ring's page-coloured gap is drawn with box-shadow). */
     box-shadow: 0 0 0 1px var(--st-lit-edge), inset 1px 1px 0 rgba(255, 255, 255, 0.42), inset -1px -1px 0 rgba(0, 0, 0, 0.2), 0 16px 40px -12px var(--st-lit-glow), 0 0 32px -6px color-mix(in srgb, var(--st-lit-glow) 70%, transparent);
   }
@@ -366,6 +355,10 @@
     backdrop-filter: blur(18px) saturate(160%);
     box-shadow: inset 0 -1px 0 var(--ns-rule), 0 14px 32px -24px rgba(0, 0, 0, 0.5);
     transform: scaleY(0.88);
+  }
+  /* Less transparency asked for: the slimmer bar stays, solid. */
+  @media (prefers-reduced-transparency: reduce) {
+    .st .st-header[data-scrolled]::before { background-color: var(--ns-ground); -webkit-backdrop-filter: none; backdrop-filter: none; }
   }
   .st .st-header[data-scrolled] .st-header-row { translate: 0 -4px; }
   /* The strip under the slimmer bar is see-through, so it does not catch clicks either: the bar's own boxes stay clickable

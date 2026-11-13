@@ -288,8 +288,8 @@ export function attachNavGlass(doc: Document = document): Cleanup {
   };
   const hide = (nav: HTMLElement) => {
     nav.removeAttribute("data-ind");
-    nav.style.removeProperty("--hx");
-    nav.style.removeProperty("--hy");
+    nav.style.removeProperty("--glass-x");
+    nav.style.removeProperty("--glass-y");
   };
   const linkIn = (e: Event) => {
     const a = (e.target as Element | null)?.closest?.<HTMLElement>(".st-nav a") ?? null;
@@ -320,8 +320,8 @@ export function attachNavGlass(doc: Document = document): Cleanup {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       const r = hit.a.getBoundingClientRect();
-      hit.nav.style.setProperty("--hx", `${Math.round(clientX - r.left)}px`);
-      hit.nav.style.setProperty("--hy", `${Math.round(clientY - r.top)}px`);
+      hit.nav.style.setProperty("--glass-x", `${Math.round(clientX - r.left)}px`);
+      hit.nav.style.setProperty("--glass-y", `${Math.round(clientY - r.top)}px`);
     });
   };
   const onFocusIn = (e: FocusEvent) => {
@@ -354,7 +354,7 @@ export function attachNavGlass(doc: Document = document): Cleanup {
   };
 }
 
-/** The keys and pills whose glass carries a light under the pointer (site-motion.css reads --hx/--hy). */
+/** The keys and pills whose glass carries a light under the pointer (site-motion.css and app/glass.css read --glass-x/--glass-y). */
 const GLASSY = ".ns-glass, .nx-btn, .st-key, .nx-cta, .st-signin, .nx-show-cta, .nx-ai-try, .nx-final .nx-actions .nx-link";
 
 /** 8. The light inside a glass pill or a key follows a mouse (rAF-throttled), and goes back to rest when the pointer leaves. */
@@ -364,8 +364,8 @@ export function attachGlassLight(doc: Document = document): Cleanup {
   const rest = () => {
     cancelAnimationFrame(frame);
     if (!lit) return;
-    lit.style.removeProperty("--hx");
-    lit.style.removeProperty("--hy");
+    lit.style.removeProperty("--glass-x");
+    lit.style.removeProperty("--glass-y");
     lit = null;
   };
   const onMove = (e: PointerEvent) => {
@@ -378,8 +378,8 @@ export function attachGlassLight(doc: Document = document): Cleanup {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       const r = el.getBoundingClientRect();
-      el.style.setProperty("--hx", `${Math.round(clientX - r.left)}px`);
-      el.style.setProperty("--hy", `${Math.round(clientY - r.top)}px`);
+      el.style.setProperty("--glass-x", `${Math.round(clientX - r.left)}px`);
+      el.style.setProperty("--glass-y", `${Math.round(clientY - r.top)}px`);
     });
   };
   const onOut = (e: PointerEvent) => {

@@ -48,17 +48,21 @@ larger than 1280.
 
 ## Glass (the owner's "Liquid Glass" request)
 
-One recipe in `site-motion.css` ("Glass: one recipe ..."), shared by everything translucent on the public site, including the
-docked prompt composer: put the class **`ns-glass`** on an element inside the public frame (`.st`), or read the tokens
-**`--glass-tint`, `--glass-solid`, `--glass-edge-hi`, `--glass-edge-lo`, `--glass-rim-hi`, `--glass-rim-lo`, `--glass-glow`,
-`--glass-blur`, `--glass-sat`, `--glass-shadow`** (set on `.st`, re-set for the dark theme and for the stages that are dark in
-both themes). The light inside a pill follows a mouse through `--hx`/`--hy` (attach.ts `attachGlassLight`, which also lights
-any `.ns-glass`).
+The glass tokens and the generic `.ns-glass` surface belong to **`app/glass.css`** (#738), one owner for the site and the
+app: `--glass-tint`, `--glass-tint-hover`, `--glass-solid`, `--glass-gloss`, `--glass-rim-hi`/`-lo`, `--glass-edge-hi`/`-lo`,
+`--glass-sheen`, `--glass-spot`, `--glass-blur`, `--glass-saturate`, `--glass-shadow`, with the sheen placed at
+`--glass-x`/`--glass-y`. `site-motion.css` redefines none of them. It applies them to the site's own pills and adds
+public-only values for the stages that are dark in both themes (the hero, the explore grid, the closing panel, the sign-in
+stage), as **`--nx-glass-*`** (`--nx-glass-tint`, `-tint-hover`, `-solid`, `-gloss`, `-rim-hi`/`-lo`, `-edge-hi`/`-lo`,
+`-sheen`, `-shadow`); each rule reads the `--nx-glass-*` value first and falls back to the shared name. Under
+`prefers-reduced-transparency` those stage pills and the scrolled header turn solid (app/glass.css does the same for the
+shared tokens). On the public pages the sheen follows a mouse through attach.ts `attachGlassLight`, which writes
+`--glass-x`/`--glass-y` (the app's GlassPointer is mounted only by the app's layout); it also lights any `.ns-glass`.
 
 - The recipe: a translucent fill, `backdrop-filter: blur() saturate()`, a bright specular edge top-left and a soft shade
-  bottom-right drawn as inset shadows (never a border, so a pill that turns to glass on hover keeps its size), a soft light
-  at rest above the pill that follows the pointer on hover, and an opaque `--glass-solid` fill under `@supports not
-  (backdrop-filter)`.
+  bottom-right drawn as inset shadows (never a border, so a pill that turns to glass on hover keeps its size), a sheen at
+  rest above the pill that follows the pointer on hover, and an opaque `--glass-solid` (or `--nx-glass-solid`) fill under
+  `@supports not (backdrop-filter)`.
 - The header's links share one glass indicator that slides and stretches to the hovered link or the link the keyboard
   focused (`:focus-visible`; the 3 px focus ring stays), on a spring-like curve; a tap never moves it; under reduced motion
   it appears without sliding. Without JavaScript each link takes the glass on hover.
