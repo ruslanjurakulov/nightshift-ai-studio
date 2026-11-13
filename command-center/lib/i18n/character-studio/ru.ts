@@ -13,14 +13,15 @@ export const characterStudioRu: CharacterStudioDictionary = {
   notAvailable: "Студия героев ещё не настроена на этом сервере.",
   retry: "Повторить",
   loading: "Загрузка…",
+  studioHeading: "Сделать замену",
+  openStudio: "Начать замену",
 
   gallery: {
     heading: "Начните с примера",
-    sampleSoon: "Пример скоро появится",
     sampleOf: "Сделано с {model}",
     try: "Попробовать",
     tryHint: "Откроет студию со словами этого примера. Видео и картинки — ваши.",
-    characters: "Героев: {n}",
+    characters: { one: "{n} герой", few: "{n} героя", many: "{n} героев", other: "{n} героя" },
   },
 
   cost: {
@@ -45,6 +46,8 @@ export const characterStudioRu: CharacterStudioDictionary = {
     ownClipsOnly: "Только для роликов, сделанных здесь за последние 30 дней: модель не принимает лица реальных людей.",
     pictures: "До {n} картинок.",
     notOnSale: "Пока не продаётся",
+    pickVideoFirst: "Выберите видео ниже: здесь появятся модели, которые могут его сделать, — каждая со своей ценой за этот ролик.",
+    noneOnSale: "Для этого ролика пока не продаётся ни одна модель, поэтому замену начать нельзя.",
   },
 
   inputs: {

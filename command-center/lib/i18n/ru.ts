@@ -22,6 +22,7 @@ import { seriesPlanRu } from "./series-plan/ru";
 import { ownerTruthRu } from "./owner-truth/ru";
 import { connectPickerRu } from "./connect-picker/ru";
 import { presetsRu } from "./presets/ru";
+import { availabilityRu } from "./availability/ru";
 import { effectsRu } from "./effects/ru";
 import type { Dictionary } from "./index";
 import { siteRu } from "./site/ru";
@@ -50,6 +51,7 @@ import { adsFactoryRu } from "./ads-factory/ru";
 export const ru: Dictionary = {
   site: siteRu,
   presets: presetsRu,
+  availability: availabilityRu,
   effects: effectsRu,
   libraryUx: libraryUxRu,
   ownerShell: ownerShellRu,
@@ -123,7 +125,7 @@ export const ru: Dictionary = {
     margin: "Маржа",
     customers: "Клиенты",
     billing: "Оплата",
-    studio: "Студия",
+    studio: "Облик бренда",
     library: "Медиатека",
     styles: "Стили",
     inbox: "Входящие",
@@ -1576,7 +1578,7 @@ export const ru: Dictionary = {
     setupNote: "Задайте SLACK_WEBHOOK_URL и RESEND_API_KEY как секреты GitHub Actions, а ALERT_EMAIL_TO / ALERT_EMAIL_FROM как переменные Actions в репозитории бота (та же передача секретов, что и на странице «Провайдеры»). Доставка с реальными данными происходит там, где доступна эта секретная среда — в конвейере Actions; эта страница подтверждает настройку и ведёт ленту.",
   },
   studio: {
-    title: "Студия",
+    title: "Облик бренда",
     subtitle: "Визуальная идентичность канала в одном месте — выберите стиль, и весь конвейер последует ему.",
     presetsTitle: "Пресеты стиля",
     presetsHint: "Выберите образ для этого канала, и следующие видео будут ему следовать. Свой стиль, написанный вручную, работает как прежде.",
@@ -3343,6 +3345,7 @@ export const ru: Dictionary = {
     create: "Создать мою ссылку",
     creating: "Создаём…",
     closed: "Приглашения ещё не открыты. Кнопка заработает, когда они откроются.",
+    closedShort: "Приглашения ещё не открыты. Когда откроются, ссылку-приглашение можно будет создать здесь.",
     createFailed: "Не удалось создать ссылку. Попробуйте ещё раз чуть позже.",
     linkLabel: "Ваша ссылка-приглашение",
     copy: "Копировать",
@@ -4203,7 +4206,9 @@ export const ru: Dictionary = {
     lotsReadFailed: "Не удалось прочитать партии кредитов, поэтому они не перечислены. Ничего не списано и не изменено — повторите чуть позже.",
     status: { active: "Активен", trialing: "Пробный период", past_due: "Платёж не прошёл", paused: "Приостановлен", canceled: "Отменён" },
     renews: "Продлится {date}",
+    renewsUnknown: "Дата продления неизвестна",
     endsOn: "Закончится {date} — больше списаний не будет",
+    endsUnknown: "Дата окончания неизвестна — больше списаний не будет",
     pastDue: "Последний платёж не прошёл. Paddle повторит попытку в течение нескольких дней; обновите карту в «Управлении подпиской», чтобы сохранить тариф.",
     planCredits: "Кредиты тарифа",
     topupCredits: "Кредиты пакетов",
@@ -4263,6 +4268,7 @@ export const ru: Dictionary = {
     noOrg: "Откройте или создайте организацию, чтобы пользоваться медиатекой.",
     readFailed: "Не удалось прочитать медиатеку. Обновите страницу, чтобы повторить.",
     empty: "Здесь пока пусто. Загрузите изображение, видео, аудиофайл или дорожку субтитров.",
+    emptyCreate: "Создать что-нибудь в разделе «Создать»",
     upload: "Загрузить файл",
     uploading: "Загрузка {name} — {pct}%",
     accepted: "JPEG, PNG, WebP, GIF, HEIC, HEIF · MP4, MOV, WebM, MKV · MP3, M4A, WAV, OGG, FLAC, AAC · VTT, SRT",
@@ -4724,6 +4730,7 @@ export const ru: Dictionary = {
     since: "Прошло",
     sinceSpoken: "{n} секунд с момента запроса",
     showOnStage: "Показать крупно",
+    latestFailed: "Последняя генерация не завершилась.",
     stripLabel: "Всё, что сделано здесь",
     playTake: "Прослушать дубль {n}",
     openOnDesk: "Открыть «{desk}»",
@@ -4879,9 +4886,10 @@ export const ru: Dictionary = {
     readyBody: "Готовые видео и раскадровки ждут вас. Ничего не загружается и не публикуется, пока вы не решите.",
     readyAcross: "Распределены по каналам ({n}): здесь откроется первый, остальные — в «Видео» своих каналов.",
     reviewNow: "Посмотреть",
-    makingOne: "Создаётся клип",
-    makingMany: "Клипов в работе: {n}",
-    makingBody: "Он появится ниже, когда будет готов.",
+    makingOne: "Генерация в работе",
+    makingMany: "Генераций в работе: {n}",
+    makingBody: "Она появится ниже, когда будет готова.",
+    makingBodyMany: "Они появятся ниже, когда будут готовы.",
     videosTitle: "Ваши видео",
     videosAll: "Все",
     videosEmpty: "Видео пока нет. Создайте первое выше.",
@@ -5768,7 +5776,7 @@ export const ru: Dictionary = {
     any: "Любой",
     inputs: { text: "Текст", image: "Картинку", video: "Видео", audio: "Аудио" },
     outputs: { image: "Картинку", video: "Видео", audio: "Аудио", text: "Текст" },
-    states: { available: "Доступна", needs_probe: "Нужна проверка", plan_gated: "По тарифу", unavailable: "Недоступна" },
+    states: { available: "Доступна", needs_probe: "Нужна проверка", plan_gated: "По тарифу", not_on_sale: "Пока не продаётся", unavailable: "Недоступна" },
     clearFilters: "Сбросить фильтры",
     resultCount: "{n} из {total}",
     resultsLabel: "Модели",
