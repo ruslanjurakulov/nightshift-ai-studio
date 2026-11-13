@@ -112,9 +112,11 @@ class Numbering(unittest.TestCase):
         # of 0131's or 0133's.
         # 0155 (a quote refuses a shape the model does not list: creative_price on 0153's body only) was reviewed against these
         # pins: nothing of 0131's or 0133's.
+        # 0156 (a model's own resolution names: creative_params_problem on 0126's body, creative_price on 0155's) was reviewed against
+        # these pins: nothing of 0131's or 0133's.
         # 0157 (the Credits page's Dodo purchase history: one read-only function over payment_events and dodo_checkout_nonces) was
         # reviewed against these pins: nothing of 0131's or 0133's.
-        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0157")], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157")], [], "a later number needs its own review of this file's pins")
         later = (MIG / "0134_brand_scan_followup.sql").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertIn(GUARD["brand_scan_fail_locked"], later)
