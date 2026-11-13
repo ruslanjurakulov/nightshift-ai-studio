@@ -22,6 +22,8 @@ import { seriesPlanUz } from "./series-plan/uz";
 import { ownerTruthUz } from "./owner-truth/uz";
 import { connectPickerUz } from "./connect-picker/uz";
 import { presetsUz } from "./presets/uz";
+import { availabilityUz } from "./availability/uz";
+import { effectsUz } from "./effects/uz";
 import type { Dictionary } from "./index";
 import { siteUz } from "./site/uz";
 import { overlayUz } from "./overlay/uz";
@@ -49,6 +51,8 @@ import { adsFactoryUz } from "./ads-factory/uz";
 export const uz: Dictionary = {
   site: siteUz,
   presets: presetsUz,
+  availability: availabilityUz,
+  effects: effectsUz,
   libraryUx: libraryUxUz,
   ownerShell: ownerShellUz,
   ownerSafety: ownerSafetyUz,
@@ -121,7 +125,7 @@ export const uz: Dictionary = {
     margin: "Marja",
     customers: "Mijozlar",
     billing: "Toʻlovlar",
-    studio: "Studiya",
+    studio: "Brend koʻrinishi",
     library: "Mediateka",
     styles: "Uslublar",
     inbox: "Kiruvchi xabarlar",
@@ -1574,7 +1578,7 @@ export const uz: Dictionary = {
     setupNote: "SLACK_WEBHOOK_URL va RESEND_API_KEY ni GitHub Actions sirlari sifatida, ALERT_EMAIL_TO / ALERT_EMAIL_FROM ni esa Actions oʻzgaruvchilari sifatida bot repozitoriyasida belgilang (Provayderlar sahifasi ishlatadigan oʻsha sir uzatish). Haqiqiy hisob maʼlumotlari bilan yetkazish oʻsha sir muhiti mavjud joyda — Actions quvurida — sodir boʻladi; bu sahifa sozlamani tasdiqlaydi va tasmani yuritadi.",
   },
   studio: {
-    title: "Studiya",
+    title: "Brend koʻrinishi",
     subtitle: "Kanalning vizual oʻziga xosligi bir joyda — uslubni tanlang, butun quvur unga ergashadi.",
     presetsTitle: "Uslub presetlari",
     presetsHint: "Shu kanal uchun uslubni tanlang, keyingi videolar unga amal qiladi. Oʻzingiz yozgan uslub avvalgidek ishlaydi.",
@@ -3341,6 +3345,7 @@ export const uz: Dictionary = {
     create: "Havolamni yaratish",
     creating: "Yaratilmoqda…",
     closed: "Takliflar hali ochilmagan. Ochilganda tugma ishga tushadi.",
+    closedShort: "Takliflar hali ochilmagan. Ochilganda taklif havolangiz shu yerda yaratiladi.",
     createFailed: "Havola yaratilmadi. Birozdan keyin qayta urinib koʻring.",
     linkLabel: "Sizning taklif havolangiz",
     copy: "Nusxalash",
@@ -4201,7 +4206,9 @@ export const uz: Dictionary = {
     lotsReadFailed: "Kredit partiyalarini oʻqib boʻlmadi, shuning uchun ular roʻyxatga olinmadi. Hech narsa yechilmadi va oʻzgartirilmadi — birozdan soʻng qayta urinib koʻring.",
     status: { active: "Faol", trialing: "Sinov davri", past_due: "Toʻlov oʻtmadi", paused: "Toʻxtatilgan", canceled: "Bekor qilingan" },
     renews: "{date} da yangilanadi",
+    renewsUnknown: "Yangilanish sanasi nomaʼlum",
     endsOn: "{date} da tugaydi — boshqa toʻlov olinmaydi",
+    endsUnknown: "Tugash sanasi nomaʼlum — boshqa toʻlov olinmaydi",
     pastDue: "Oxirgi toʻlov oʻtmadi. Paddle bir necha kun qayta urinadi; tarifni saqlash uchun «Obunani boshqarish» da kartani yangilang.",
     planCredits: "Tarif kreditlari",
     topupCredits: "Paket kreditlari",
@@ -4261,6 +4268,7 @@ export const uz: Dictionary = {
     noOrg: "Mediatekadan foydalanish uchun tashkilot oching yoki yarating.",
     readFailed: "Mediatekani hozir oʻqib boʻlmadi. Qayta urinish uchun sahifani yangilang.",
     empty: "Hozircha boʻsh. Rasm, video, audio fayl yoki subtitr yoʻlagini yuklang.",
+    emptyCreate: "«Yaratish» boʻlimida biror narsa yarating",
     upload: "Fayl yuklash",
     uploading: "{name} yuklanmoqda — {pct}%",
     accepted: "JPEG, PNG, WebP, GIF, HEIC, HEIF · MP4, MOV, WebM, MKV · MP3, M4A, WAV, OGG, FLAC, AAC · VTT, SRT",
@@ -4639,10 +4647,11 @@ export const uz: Dictionary = {
   },
   desk: {
     nav: "Studiya boʻlimlari",
-    names: { overview: "Umumiy koʻrinish", video: "Video", image: "Rasm", enhance: "Kuchaytirish", voice: "Ovoz", youtube: "YouTube video" },
+    names: { overview: "Umumiy koʻrinish", video: "Video", effects: "Effektlar", image: "Rasm", enhance: "Kuchaytirish", voice: "Ovoz", youtube: "YouTube video" },
     keySub: {
       overview: "Soʻnggi ishlar",
       video: "Soʻzdan yoki rasmdan",
+      effects: "Tayyor usullar",
       image: "Yaratish · tahrir · tavsif",
       enhance: "Kattalashtirish · qirqish",
       voice: "Nutq · ovoz · dublyaj",
@@ -4651,6 +4660,7 @@ export const uz: Dictionary = {
     blurbs: {
       overview: "Nima kerakligini yozing, ish turini tanlang yoki misoldan boshlang. Narx boshlanishdan oldin tugmada koʻrinadi.",
       video: "Soʻzdan yoki rasmdan 5 yoki 10 soniyalik kliplar. Har birining narxi yaratilishidan oldin koʻrinadi.",
+      effects: "Video formasini siz uchun toʻldiradigan tayyor usullar. Siz obyekt yoki rasm qoʻshasiz; narx biror narsa yaratilishidan oldin koʻrinadi.",
       image: "Yangi rasmlar, rasmingizga tahrir va rasmni qayta promptga oʻgirish.",
       enhance: "Rasm yoki videoni tiniqroq va kattaroq qilish yoki obyektni fonidan qirqib olish.",
       voice: "Ssenariydan nutq, yozuvga yangi ovoz yoki boshqa tilga dublyaj.",
@@ -4720,6 +4730,7 @@ export const uz: Dictionary = {
     since: "Oʻtdi",
     sinceSpoken: "Soʻralganidan beri {n} soniya",
     showOnStage: "Katta koʻrsatish",
+    latestFailed: "Oxirgi generatsiya yakunlanmadi.",
     stripLabel: "Shu yerda qilingan hamma narsa",
     playTake: "{n}-dublni tinglash",
     openOnDesk: "«{desk}»ni ochish",
@@ -4875,9 +4886,10 @@ export const uz: Dictionary = {
     readyBody: "Tayyor videolar va raskadrovkalar sizni kutmoqda. Siz qaror qilmaguningizcha hech narsa yuklanmaydi va nashr etilmaydi.",
     readyAcross: "{n} ta kanalga tarqalgan: bu birinchisini ochadi, qolganlari oʻz «Videolar» boʻlimida.",
     reviewNow: "Koʻrib chiqish",
-    makingOne: "Klip tayyorlanmoqda",
-    makingMany: "{n} ta klip tayyorlanmoqda",
+    makingOne: "Generatsiya tayyorlanmoqda",
+    makingMany: "{n} ta generatsiya tayyorlanmoqda",
     makingBody: "Tayyor boʻlgach, u pastda paydo boʻladi.",
+    makingBodyMany: "Tayyor boʻlgach, ular pastda paydo boʻladi.",
     videosTitle: "Videolaringiz",
     videosAll: "Hammasi",
     videosEmpty: "Hali video yoʻq. Birinchisini yuqorida yarating.",
@@ -5764,7 +5776,7 @@ export const uz: Dictionary = {
     any: "Istalgan",
     inputs: { text: "Matn", image: "Rasm", video: "Video", audio: "Audio" },
     outputs: { image: "Rasm", video: "Video", audio: "Audio", text: "Matn" },
-    states: { available: "Mavjud", needs_probe: "Sinov kerak", plan_gated: "Tarif boʻyicha", unavailable: "Mavjud emas" },
+    states: { available: "Mavjud", needs_probe: "Sinov kerak", plan_gated: "Tarif boʻyicha", not_on_sale: "Hozircha sotuvda emas", unavailable: "Mavjud emas" },
     clearFilters: "Filtrlarni tozalash",
     resultCount: "{total} tadan {n} ta",
     resultsLabel: "Modellar",

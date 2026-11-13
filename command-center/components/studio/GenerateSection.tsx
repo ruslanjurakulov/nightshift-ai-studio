@@ -11,6 +11,9 @@ import type { UpsellCatalog } from "@/lib/upsell";
 import type { StudioDna } from "@/lib/channel-dna";
 import { DESK_TOOLS, type MediaDesk } from "@/lib/creative/desks";
 import type { FeedVariant } from "@/components/studio/JobFeed";
+import { useShell } from "@/components/shell/ShellContext";
+import { DeskAvailabilityNote, NothingOnSaleNote } from "@/components/studio/Availability";
+import { toolOpen } from "@/lib/tool-availability";
 import "@/components/studio/desk.css";
 
 /** How each desk shows what it made (components/studio/JobFeed variants). */
@@ -72,6 +75,7 @@ export function GenerateSection({
   const { t, locale } = useI18n();
   const top = useRef<HTMLDivElement>(null);
   const path = useChannelPath();
+  const { tools: availability } = useShell();
 
   const toComposer = () => top.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
 
@@ -127,8 +131,11 @@ export function GenerateSection({
     return (
       <div className="flex flex-col gap-4">
       {fromProject}
+      {/* Which of this desk's tools have nothing on sale, said before a tab is pressed (lib/tool-availability.ts). */}
+      <DeskAvailabilityNote desk={desk} />
       <div className="desk-layout" data-desk={desk} style={dock}>
-        <div ref={top} className="desk-layout-composer scroll-mt-7" data-testid="gen-composer">
+        {/* id="prompt": the target of "Skip to the prompt" (components/shell/SkipLink). */}
+        <div ref={top} id="prompt" className="desk-layout-composer scroll-mt-7" data-testid="gen-composer">
           {panel}
         </div>
         <div className="desk-layout-canvas flex min-w-0 flex-col gap-6" data-testid="gen-canvas">
@@ -150,7 +157,8 @@ export function GenerateSection({
             project={project}
           />
           {/* Starting points come after the results: the monitor or the table is what the desk is for. */}
-          <TemplateGallery onPick={fill} only={tools} />
+          {/* A starter for a tool with nothing on sale would only fill a form that cannot be sent: not offered. */}
+          <TemplateGallery onPick={fill} only={tools.filter((c) => toolOpen(availability, c))} />
         </div>
       </div>
       </div>
@@ -160,9 +168,11 @@ export function GenerateSection({
   return (
     <div className="flex flex-col gap-4">
     {fromProject}
+    <NothingOnSaleNote />
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(340px,384px)_minmax(0,1fr)]" style={dock}>
       <div
         ref={top}
+        id="prompt"
         className="scroll-mt-7 lg:sticky lg:top-[96px] lg:max-h-[calc(100dvh-112px)] lg:overflow-y-auto lg:rounded-[var(--ns-r-sheet)]"
         data-testid="gen-composer"
       >

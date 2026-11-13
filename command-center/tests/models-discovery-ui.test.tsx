@@ -216,10 +216,20 @@ describe("ModelDiscovery", () => {
     mount();
     const select = screen.getByLabelText(c.stateLabel) as HTMLSelectElement;
     // A customer is offered the states their models have, not ones that cannot occur.
-    expect([...select.options].map((o) => o.value)).toEqual(["all", "available", "unavailable"]);
+    expect([...select.options].map((o) => o.value)).toEqual(["all", "available", "not_on_sale", "unavailable"]);
     fireEvent.change(select, { target: { value: "available" } });
     expect(screen.queryByRole("button", { name: "Details: Pic N" })).toBeNull();
     expect(screen.getAllByRole("combobox")).toHaveLength(3);
+  });
+
+  it("an unpriced model reads 'Not on sale yet', never 'Available' beside 'not priced yet', and offers no Studio action", () => {
+    expect(speech.state).toBe("not_on_sale");
+    mount([speech]);
+    expect(screen.getAllByText(c.states.not_on_sale).length).toBeGreaterThan(0);
+    expect(screen.queryByText(c.states.available)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Details: Talk A" }));
+    const pane = screen.getByRole("complementary", { name: c.details });
+    expect(within(pane).queryByRole("link", { name: c.useInStudio })).toBeNull();
   });
 
   it("reads the picked model in full: settings, rate and the Studio action", () => {

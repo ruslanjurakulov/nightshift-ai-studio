@@ -106,6 +106,8 @@ describe("loading: a skeleton until the list arrives, never an empty state", () 
     expect(empty).not.toBeNull();
     expect(within(empty).getByText(tm.empty)).toBeTruthy();
     expect(within(empty).getByText(tm.upload)).toBeTruthy();
+    // The other way in, never a dead end (also where nothing can be uploaded): what is made in Create lands here.
+    expect(within(empty).getByRole("link", { name: tm.emptyCreate }).getAttribute("href")).toBe("/x/create");
     expect(container.querySelector("[data-library-skeleton]")).toBeNull();
   });
 
