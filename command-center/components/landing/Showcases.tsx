@@ -5,7 +5,7 @@ import { slotMedia, type SlotId } from "@/components/site/samples";
 import { AiCredit, PlaceFill, placeBox, placeNote } from "@/components/site/PlaceFill";
 import { placeTry } from "@/components/site/place-try";
 
-/** The two things Nightshift is shown by: one section each, one picture each, never the same picture twice (components/site/samples.tsx SLOTS). */
+/** The two things Nightshift is shown by: one section each, one picture each, never the same picture twice (components/site/slots.ts SLOTS). */
 const SHOWS: { id: "studio" | "approvals"; slot: SlotId; href: string }[] = [
   { id: "studio", slot: "show.studio", href: "/signup" },
   { id: "approvals", slot: "show.approvals", href: "/solutions/youtube-channels" },

@@ -217,6 +217,9 @@ export const siteEn = {
     useNote: "Opens the Studio with these words on a model it offers; the Studio shows which one, and the price, before anything starts.",
     /** Beside a page's picture when it is one of our samples (components/site/samples.tsx slotMedia), in place of the stock sentence. */
     slotNote: "AI-generated: a real job from our own Studio, made by the model named on it from the words it was given.",
+    /** On a clip animated from one of the samples' own pictures: that picture, small, with the model that made it. */
+    source: "Made from this picture:",
+    altSource: "The AI-generated picture this clip was made from, made by {model}",
   },
   /**
    * The landing's prompt bar (components/landing/PromptBar.tsx): it only opens the Studio form with the words and the tool.

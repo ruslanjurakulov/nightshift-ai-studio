@@ -65,9 +65,15 @@ export function ShowcaseGallery({
   exclude?: readonly string[];
   formats?: readonly LandingFormat[];
 }) {
-  const items = showcaseItems(entries, files).filter(({ e }) => !exclude.includes(e.jobId));
+  const all = showcaseItems(entries, files);
+  const items = all.filter(({ e }) => !exclude.includes(e.jobId));
   if (items.length === 0) return null;
   const g = t.site.gallery;
+  // An animation of one of our own pictures reads as a trick without the picture it started from. Shown only when that picture is
+  // itself a sample here (its file is in the repository and its own card names its model); any other input is not shown.
+  // Looked up among every sample, so a picture the page shows in a slot (and leaves out of the grid) still credits the clip made from it.
+  const byJob = new Map(all.map((it) => [it.e.jobId, it]));
+  const sourceOf = (e: ShowcaseEntry) => (e.kind === "video" && e.input.kind === "operator_job" ? byJob.get(e.input.jobId) ?? null : null);
   return (
     <section id="samples" aria-labelledby="samples-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
@@ -84,6 +90,7 @@ export function ShowcaseGallery({
             const clip = e.kind === "video" && f.clip !== null;
             const format = formats.find((x) => x.job === e.jobId);
             const shape = e.height > e.width * 1.15 ? "tall" : e.width > e.height * 1.15 ? "wide" : "square";
+            const source = sourceOf(e);
             return (
               <li key={e.jobId} id={`sample-${e.jobId}`} className="nx-gallery-card" data-showcase-entry={e.jobId} data-model={e.modelId} data-shape={shape}>
                 <div className="nx-gallery-pic" data-clip={clip ? "sample" : undefined} style={{ aspectRatio: `${e.width} / ${e.height}` }}>
@@ -95,7 +102,7 @@ export function ShowcaseGallery({
                     width={e.width}
                     height={e.height}
                     alt={fmt(clip ? g.altClip : g.altImage, { model: e.modelName })}
-                    className="nx-art"
+                    className="nx-art nx-drift-pic"
                     loading="lazy"
                     decoding="async"
                   />
@@ -119,6 +126,31 @@ export function ShowcaseGallery({
                     </a>
                   )}
                   {leftOut && <p className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</p>}
+                  {source && (
+                    <figure className="nx-gallery-source" data-source-entry={source.e.jobId}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={source.f.posterSm}
+                        width={source.e.width}
+                        height={source.e.height}
+                        alt={fmt(g.altSource, { model: source.e.modelName })}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                      <figcaption>
+                        <span className="nx-gallery-key">{g.source}</span> <strong>{source.e.modelName}</strong>
+                        {/* The picture is the other maker's output, shown here too, so its credit travels with it. */}
+                        {source.e.attribution && (
+                          <>
+                            {" "}
+                            <a href={source.e.attribution.url} target="_blank" rel="noopener noreferrer" className="nx-gallery-attr">
+                              {source.e.attribution.text}
+                            </a>
+                          </>
+                        )}
+                      </figcaption>
+                    </figure>
+                  )}
                   <p className="nx-gallery-key">{g.prompt}</p>
                   <p id={promptId} className="nx-gallery-prompt">{e.prompt.trim() ? e.prompt : g.noPrompt}</p>
                   <p className="nx-gallery-date">

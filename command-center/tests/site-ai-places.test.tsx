@@ -32,8 +32,8 @@ vi.mock("@/components/site/showcase-assets", async () => {
   return { SHOWCASE_FILES: { ...FIXTURE_FILES, [ids.still]: { ...FIXTURE_FILES[FIXTURE_JOB], clip: null } } };
 });
 // The slots and scenes as they will be once their `ai` lines are set: the module's own objects, so slotMedia and sceneMedia read them.
-vi.mock("@/components/site/samples", async (orig) => {
-  const m = await orig<typeof import("@/components/site/samples")>();
+vi.mock("@/components/site/slots", async (orig) => {
+  const m = await orig<typeof import("@/components/site/slots")>();
   const S = m.SLOTS as unknown as Record<string, { ai: string | null }>;
   for (const k of ["auth.signup", "solutions.youtube-channels", "solutions.creative-studio", "mcp.hero"]) S[k] = { ...S[k], ai: ids.clip };
   for (const k of ["auth.login", "solutions.developers"]) S[k] = { ...S[k], ai: ids.still };

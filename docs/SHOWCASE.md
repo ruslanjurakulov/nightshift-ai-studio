@@ -13,7 +13,7 @@ The gallery is empty, and renders nothing, until the first sample is merged.
 
 ## Putting a sample in a picture slot
 
-Every picture place on the public site is a line in `command-center/components/site/samples.tsx` `SLOTS` (and, for /mcp's
+Every picture place on the public site is a line in `command-center/components/site/slots.ts` `SLOTS` (and, for /mcp's
 example cards, `components/docs/SampleFrame.tsx` `SCENE_SAMPLE`). A line's `ai` is the job id of the sample that fills it:
 
 ```ts

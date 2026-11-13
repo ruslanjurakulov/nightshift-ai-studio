@@ -25,6 +25,7 @@ import { FORMATS } from "@/lib/site/formats";
 import { PROMPT_TOOLS, type PromptTool } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
@@ -255,8 +256,12 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
             const leftOut = modelLeftOut(e);
             return (
               <li key={e.modelId} className="nx-model" data-showcase-entry={e.jobId} data-model={e.modelId} data-spot>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={f.posterSm} width={e.width} height={e.height} alt="" className="nx-model-pic" loading="lazy" decoding="async" />
+                {/* The model's sample, alive: its loop plays with the grid's rules (LoopClip `together`), a still drifts slowly. */}
+                <div className="nx-model-media" data-clip={e.kind === "video" && f.clip ? "sample" : undefined}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={f.posterSm} width={e.width} height={e.height} alt="" className="nx-model-pic nx-drift-pic" loading="lazy" decoding="async" />
+                  {e.kind === "video" && f.clip && <ShowcaseClip jobId={e.jobId} together />}
+                </div>
                 <div className="nx-model-body">
                   <span className="nx-ai-badge">{g.badge}</span>
                   <h3 className="nx-model-name">{e.modelName}</h3>

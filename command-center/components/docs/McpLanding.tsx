@@ -77,7 +77,7 @@ export function McpLanding({ dev, site, oauthLive }: { dev: DevDictionary; site?
                       <span className="ml-ex-badge" data-kind="ai">
                         {site!.gallery.badge}
                       </span>
-                      <AiCredit entry={pic.entry} g={site!.gallery} scope={`mcp-${scene}`} className="nx-ai-credit ml-ex-credit" />
+                      <AiCredit entry={pic.entry} g={site!.gallery} badge={false} scope={`mcp-${scene}`} className="nx-ai-credit ml-ex-credit" />
                     </>
                   ) : (
                     <>

@@ -192,6 +192,8 @@ export const siteUz: SiteDictionary = {
     use: "Shu soʻrovdan foydalanish",
     useNote: "Studiyani shu soʻzlar bilan undagi modellardan birida ochadi; qaysi biri va narxi qancha ekanini Studiya boshlashdan oldin koʻrsatadi.",
     slotNote: "Sunʼiy intellekt yaratgan: oʻzimizning Studiyamizdagi haqiqiy topshiriq, uni koʻrsatilgan model shu soʻrov boʻyicha yaratgan.",
+    source: "Shu rasmdan yaratilgan:",
+    altSource: "Bu klip yaratilgan, sunʼiy intellekt yaratgan tasvir: {model} modeli",
   },
   prompt: {
     label: "Qanday video yoki rasm kerakligini tasvirlang",

@@ -6,7 +6,7 @@
  */
 import type { MediaId } from "@/lib/site/media";
 import { MEDIA_IDS } from "@/lib/site/media";
-import { SLOTS, slotMedia, type SlotId } from "@/components/site/samples";
+import { SLOTS, slotMedia, type SlotId } from "@/components/site/slots";
 import { SCENE_SAMPLE, sceneMedia } from "@/components/docs/SampleFrame";
 import type { SceneKind } from "@/lib/dev/mcp-landing";
 

@@ -30,17 +30,32 @@ export function outsideGallery<T extends Element>(els: Iterable<T>): T[] {
   return [...els].filter((e) => !e.closest(GALLERY));
 }
 
-/** The samples the shipped data file shows (an entry whose files are missing is never shown), and how many of them play a clip. */
-export function shippedSamples(): { cards: number; clips: number } {
+/**
+ * The samples the shipped data file shows (an entry whose files are missing is never shown), how many of them play a clip, and
+ * how many clips also show the sample picture they were animated from (a second, smaller picture in that card).
+ */
+export function shippedSamples(): { cards: number; clips: number; sources: number } {
   const items = showcaseItems();
-  return { cards: items.length, clips: items.filter(({ e, f }) => e.kind === "video" && f.clip !== null).length };
+  const jobs = new Set(items.map(({ e }) => e.jobId));
+  return {
+    cards: items.length,
+    clips: items.filter(({ e, f }) => e.kind === "video" && f.clip !== null).length,
+    sources: items.filter(({ e }) => e.kind === "video" && e.input.kind === "operator_job" && jobs.has(e.input.jobId)).length,
+  };
 }
 
 /** The same for the landing, whose gallery leaves out the samples its own slots show (so no clip is on the page twice). */
-export function landingSamples(): { cards: number; clips: number } {
+export function landingSamples(): { cards: number; clips: number; sources: number } {
   const inSlots = slotJobs(LANDING_SLOTS);
-  const items = showcaseItems().filter(({ e }) => !inSlots.includes(e.jobId));
-  return { cards: items.length, clips: items.filter(({ e, f }) => e.kind === "video" && f.clip !== null).length };
+  const all = showcaseItems();
+  const jobs = new Set(all.map(({ e }) => e.jobId));
+  const items = all.filter(({ e }) => !inSlots.includes(e.jobId));
+  return {
+    cards: items.length,
+    clips: items.filter(({ e, f }) => e.kind === "video" && f.clip !== null).length,
+    // A card's source picture is looked up among every sample, the slots' included (ShowcaseGallery byJob).
+    sources: items.filter(({ e }) => e.kind === "video" && e.input.kind === "operator_job" && jobs.has(e.input.jobId)).length,
+  };
 }
 
 /**

@@ -36,6 +36,14 @@ vi.mock("@/components/site/showcase-assets", async () => {
   const { FIXTURE_FILES, FIXTURE_JOB } = await import("./fixtures/showcase-entry");
   return { SHOWCASE_FILES: { ...FIXTURE_FILES, "0d0d0d0d-1111-4222-8333-444455556666": FIXTURE_FILES[FIXTURE_JOB] } };
 });
+// The hero's line as it is before its id is set (`ai` null), so the fixture's `slot: "hero"` export fills it; every other slot names a
+// real job that is not in this fixture data, so it shows its stock fallback here.
+vi.mock("@/components/site/slots", async (orig) => {
+  const m = await orig<typeof import("@/components/site/slots")>();
+  const S = m.SLOTS as unknown as Record<string, { ai: string | null }>;
+  S.hero = { ...S.hero, ai: null };
+  return m;
+});
 vi.mock("@/components/site/stock-in-use", async (orig) => {
   const real = await orig<typeof import("@/components/site/stock-in-use")>();
   return { stockInUse: () => (state.noStock ? [] : real.stockInUse()) };
@@ -119,7 +127,7 @@ describe("a slot is one line: a sample when it is merged, the stock picture unti
       if (s.ai !== null) expect(s.ai, name).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     }
     // tools/export_showcase.py slot_names(): two-space keys, each opening a "{", between these two markers.
-    const src = readFileSync(join(ROOT, "components/site/samples.tsx"), "utf8");
+    const src = readFileSync(join(ROOT, "components/site/slots.ts"), "utf8");
     const block = src.slice(src.indexOf("export const SLOTS = {"), src.indexOf("} as const", src.indexOf("export const SLOTS = {")));
     const names = [...block.matchAll(/^\s{2}(?:"([^"]+)"|([A-Za-z0-9_]+)):\s*\{/gm)].map((m) => m[1] ?? m[2]);
     expect(names).toEqual(Object.keys(SLOTS));
@@ -188,6 +196,20 @@ describe("the landing with a sample in its hero slot", () => {
     expect(tile.querySelector(".nx-gallery-unavailable")?.textContent).toBe(t.site.gallery.notInStudio);
     expect(tile.querySelector(`a[href="#sample-${OTHER}"]`)?.textContent).toBe(t.site.models.see);
     expect(tile.textContent).not.toMatch(/\$|€|credit|new\b/i);
+  });
+
+  it("nothing in the grid or the tiles looks dead: each tile plays its sample's loop like the grid, and every poster drifts until its clip plays, stopped by the pause switch and absent under reduced motion", () => {
+    const { container } = landing();
+    for (const tile of container.querySelectorAll<HTMLElement>("#models .nx-model")) {
+      expect(tile.querySelector(".nx-model-media")?.getAttribute("data-clip")).toBe("sample");
+      expect(tile.querySelector("img")?.classList.contains("nx-drift-pic")).toBe(true);
+    }
+    for (const img of container.querySelectorAll(`${GALLERY} .nx-gallery-pic > img`)) expect(img.classList.contains("nx-drift-pic")).toBe(true);
+    const src = readFileSync(join(ROOT, "components/landing/Landing.tsx"), "utf8");
+    expect(src).toContain("<ShowcaseClip jobId={e.jobId} together />");
+    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\n  \.nx-drift-pic \{ animation: nx-poster-drift 16s ease-in-out infinite alternate;/);
+    expect(css).toContain('html[data-motion="paused"] .nx-drift-pic { animation-play-state: paused !important; }');
+    expect(css).toContain('[data-live="true"] > .nx-drift-pic { animation: none; }');
   });
 
   it("the explore grid is dark, keeps each clip's shape and plays the clips in view together on a wide screen", () => {
@@ -312,7 +334,7 @@ describe("the gallery's clips on a wide screen", () => {
   it("play while each is in view, without waiting to lead, and use the small file; never under reduced motion", () => {
     const observers: { cb: IntersectionObserverCallback }[] = [];
     const stub = (reduce: boolean) => {
-      vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") ? reduce : q.includes("min-width: 860px"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+      vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") ? reduce : q.includes("min-width"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
       vi.stubGlobal(
         "IntersectionObserver",
         class {

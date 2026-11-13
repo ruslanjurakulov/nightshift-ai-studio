@@ -241,14 +241,15 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     if (fin.kind === "ai") expect(finCredit.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(fin.entry.jobId);
     else expect(finCredit.textContent).toMatch(/ \/ Pexels$/);
     // A box that plays something says what it plays: a stock clip by its name, a sample's as "sample".
-    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]"));
+    // (The model tiles play their samples' loops too; each is inside its sample's box, checked in tests/site-ai-media.test.tsx.)
+    const clipBoxes = outsideGallery(container.querySelectorAll("[data-clip]")).filter((b) => !b.closest("#models"));
     const expected = (["hero", "show.studio", "show.approvals", "landing.final"] as const).flatMap((s) => {
       const m = slotMedia(s);
       return m.kind === "ai" ? (m.moving ? ["sample"] : []) : m.clip ? [m.clip] : [];
     });
     expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(expected);
     for (const b of clipBoxes) expect(b.querySelector("img")?.hasAttribute("alt")).toBe(true);
-    expect(outsideGallery(container.querySelectorAll("video"))).toHaveLength(expected.length);
+    expect(outsideGallery(container.querySelectorAll("video")).filter((v) => !v.closest("#models"))).toHaveLength(expected.length);
     // Inside the gallery, a clip box is a sample's, never a stock one's: in its card, labelled AI-generated, with no stock label.
     const { clips } = landingSamples();
     const sampleBoxes = [...container.querySelectorAll(`${GALLERY} [data-clip]`)];
