@@ -6,6 +6,7 @@ import { isCreditExempt } from "@/lib/credits";
 import { DODO_PAYMENT_ID_RE, dodoServer, fetchDodoInvoicePdf } from "@/lib/server/dodo-api";
 import { dodoPaymentIsOrgs } from "@/lib/server/dodo-history";
 import { paymentsProvider } from "@/lib/server/payments";
+import { DODO_INVOICE_RATE, rateRefusal, takeWebRate } from "@/lib/server/web-rate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,14 @@ export async function GET(request: Request) {
   const payment = new URL(request.url).searchParams.get("payment") ?? "";
   if (!DODO_PAYMENT_ID_RE.test(payment)) return NextResponse.json({ error: "bad_request" }, { status: 400, headers: NO_STORE });
 
+  // Per person, before the organization, the ownership check or Dodo is asked: Dodo's 20-a-minute per IP is this whole server's,
+  // shared by every tenant (DODO_INVOICE_RATE). An unknown count is a refusal, never a pass (takeWebRate).
+  const rate = await takeWebRate(user.id, DODO_INVOICE_RATE);
+  if (rate !== "ok") {
+    const refusal = rateRefusal(rate, DODO_INVOICE_RATE);
+    return NextResponse.json(refusal.body, { status: refusal.status, headers: { ...NO_STORE, ...refusal.headers } });
+  }
+
   const org = await getOrgContext();
   const orgId = org.supported ? org.current?.id ?? null : null;
   if (!orgId) return NextResponse.json({ error: "no_organization" }, { status: 400, headers: NO_STORE });
@@ -50,13 +59,16 @@ export async function GET(request: Request) {
   const owned = await dodoPaymentIsOrgs(db, orgId, payment);
   // Unknown is not "yours": nothing is fetched until the database says so.
   if (owned === "missing") return NextResponse.json({ error: "history_not_migrated" }, { status: 503, headers: NO_STORE });
+  // The database's own refusal (42501: not an owner/admin there, whatever the session said) is a refusal, not an outage.
+  if (owned === "forbidden") return NextResponse.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
   if (owned === "unknown") return NextResponse.json({ error: "history_unavailable" }, { status: 503, headers: NO_STORE });
   if (owned === "no") return NextResponse.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
 
   const answer = await fetchDodoInvoicePdf(cfg, payment);
   if (!answer.ok) {
     if (answer.reason === "rate_limited")
-      return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { ...NO_STORE, "Retry-After": "60" } });
+      // Dodo's own limit, named apart from ours (DODO_INVOICE_RATE answers "rate_limited"): the page says whose it is.
+      return NextResponse.json({ error: "invoice_rate_limited" }, { status: 429, headers: { ...NO_STORE, "Retry-After": "60" } });
     if (answer.reason === "not_found") return NextResponse.json({ error: "invoice_not_found" }, { status: 404, headers: NO_STORE });
     console.error("[dodo-invoice] Dodo did not return an invoice PDF");
     return NextResponse.json({ error: "invoice_failed" }, { status: 502, headers: NO_STORE });

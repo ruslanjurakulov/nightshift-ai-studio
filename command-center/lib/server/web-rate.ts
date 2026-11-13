@@ -53,6 +53,14 @@ export const EDITOR_QUOTE_RATE: RateRule = { bucket: "editor.quote", max: 120, w
 /** "Open in editor" sends (POST): 120 per 10 minutes = 12 a minute. */
 export const EDITOR_SEND_RATE: RateRule = { bucket: "editor.send", max: 120, windowSeconds: 600 };
 
+/**
+ * Dodo invoice downloads (GET /api/billing/dodo/invoice) per person: 5 a minute. Dodo limits its invoice endpoint to 5 a
+ * minute per payment and 20 a minute per client IP (api-reference/introduction, "Invoice Downloads"), and every tenant's
+ * request leaves from this one server, so without a per-person cap one admin clicking (or a script) could spend the whole
+ * server's allowance for everybody.
+ */
+export const DODO_INVOICE_RATE: RateRule = { bucket: "dodo.invoice", max: 5, windowSeconds: 60 };
+
 const local = new Map<string, { start: number; count: number; end: number }>();
 /** Past this many entries a call first drops every window that has already ended, so a long-lived process that sees
  *  many distinct people does not keep a row for each one forever. */

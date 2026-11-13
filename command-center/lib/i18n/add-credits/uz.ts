@@ -19,7 +19,9 @@ export const addCreditsUz: AddCreditsDictionary = {
   total: "Jami",
   totalUnknown: "—",
   taxNote: "Narx AQSH dollarida. Soliq boʻlsa, uni Dodo Payments hisoblaydi va toʻlashdan oldin toʻlov sahifasida koʻrsatadi.",
-  rate: "Bu narxda $1 = {n} kredit. Quyidagi paketlar har dollarga koʻproq kredit beradi.",
+  rate: "Bu narxda $1 = {n} kredit.",
+  ratePacks: "Quyida belgilangan paketlar har dollarga koʻproq kredit beradi.",
+  keepAmount: "Dodo sahifasida aynan shu summa turishi kerak. Uni u yerda oʻzgartirmang: boshqa summadagi toʻlov kreditlanmaydi va qaytarilishi kerak boʻladi.",
   invalid: {
     empty: "Summani kiriting.",
     format: "Dollar va sentda yozing, masalan 25 yoki 25.50.",
@@ -32,7 +34,7 @@ export const addCreditsUz: AddCreditsDictionary = {
   tooMany: "Bugun toʻlov sahifasi juda koʻp marta ochildi. Ertaga qayta urinib koʻring yoki qoʻllab-quvvatlash xizmatiga yozing.",
   notOnSale: "Bu hozir sotuvda yoʻq. Sahifani yangilab, qayta urinib koʻring.",
   packsTitle: "Paketlar · foydaliroq",
-  packsLead: "Katta paketlar har dollarga ixtiyoriy summadan koʻproq kredit beradi.",
+  packsLead: "Bonusli paketlar har dollarga ixtiyoriy summadan koʻproq kredit beradi.",
   bonus: "+{pct}% kredit",
   history: {
     title: "Xaridlar tarixi",
@@ -66,6 +68,8 @@ export const addCreditsUz: AddCreditsDictionary = {
       rate_limited: "Dodo daqiqasiga bir necha marta hisob-faktura beradi. Bir daqiqadan keyin qayta urinib koʻring.",
       not_found: "Dodo bu toʻlov uchun hali hisob-faktura bermagan. Keyinroq urinib koʻring yoki toʻlov chekidagi havoladan foydalaning.",
       failed: "Hisob-fakturani olib boʻlmadi. Qayta urinib koʻring yoki toʻlov chekidagi havoladan foydalaning.",
+      unavailable: "Bu hisob-fakturani shu ish maydonidan ochib boʻlmaydi. Sahifani yangilang; oʻzgarmasa, toʻlov chekidagi havoladan foydalaning.",
+      busy: "Bir daqiqada juda koʻp hisob-faktura yuklandi. Bir daqiqa kutib, qayta urinib koʻring.",
     },
   },
 };

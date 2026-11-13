@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
   rpcCalls: [] as { fn: string; args: unknown }[],
   /** What dodo_purchase_history answers (0157). */
   history: { data: [] as unknown, error: null as null | { code: string; message: string } },
+  /** What take_web_rate answers (0042): true = within the limit. */
+  rate: { data: true as unknown, error: null as null | { code: string; message: string } },
   subsError: null as { message: string } | null,
   audit: [] as unknown[],
   getUserCalls: 0,
@@ -37,6 +39,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     rpc: async (fn: string, args: unknown) => {
       h.rpcCalls.push({ fn, args });
+      if (fn === "take_web_rate") return h.rate;
       return fn === "dodo_purchase_history" ? h.history : h.nonce;
     },
     from: () => {
@@ -113,6 +116,7 @@ beforeEach(() => {
   h.getUserCalls = 0;
   h.nonce = { data: "0123456789abcdef0123456789abcdef", error: null };
   h.history = { data: [], error: null };
+  h.rate = { data: true, error: null };
   h.rpcCalls = [];
   fetchCalls.length = 0;
   dodoAnswer = () =>
@@ -722,7 +726,11 @@ describe("GET /api/billing/dodo/invoice", () => {
     expect(res.headers.get("content-type")).toBe("application/pdf");
     expect(res.headers.get("content-disposition")).toBe(`attachment; filename="invoice-${OWN_PAY}.pdf"`);
     expect(res.headers.get("cache-control")).toContain("no-store");
-    expect(h.rpcCalls).toEqual([{ fn: "dodo_purchase_history", args: { p_org: h.orgId, p_payment: OWN_PAY } }]);
+    // The per-person limit first, then the ownership check, then Dodo.
+    expect(h.rpcCalls).toEqual([
+      { fn: "take_web_rate", args: { p_bucket: "dodo.invoice", p_max: 5, p_window_seconds: 60 } },
+      { fn: "dodo_purchase_history", args: { p_org: h.orgId, p_payment: OWN_PAY } },
+    ]);
     expect(fetchCalls.map((c) => c.url)).toEqual([`https://test.dodopayments.com/invoices/payments/${OWN_PAY}`]);
     expect((fetchCalls[0].init.headers as Record<string, string>).Authorization).toBe(`Bearer ${KEY}`);
   });
@@ -732,7 +740,23 @@ describe("GET /api/billing/dodo/invoice", () => {
     expect((await getInvoice("pay_SomeoneElses000000001")).status).toBe(404);
     h.history = { data: null, error: { code: "PGRST202", message: "Could not find the function" } };
     expect((await getInvoice(OWN_PAY)).status).toBe(503);
+    h.history = { data: null, error: { code: "57014", message: "statement timeout" } };
+    expect((await getInvoice(OWN_PAY)).status).toBe(503);
+    // The database's own refusal is a refusal (403), not an outage.
     h.history = { data: null, error: { code: "42501", message: "only an owner" } };
+    const refused = await getInvoice(OWN_PAY);
+    expect([refused.status, await refused.json()]).toEqual([403, { error: "forbidden" }]);
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("over the per-person limit: 429 before the ownership check, and no Dodo call", async () => {
+    h.rate = { data: false, error: null };
+    const res = await getInvoice(OWN_PAY);
+    expect([res.status, res.headers.get("retry-after"), await res.json()]).toEqual([429, "60", { error: "rate_limited" }]);
+    expect(h.rpcCalls.map((c) => c.fn)).toEqual(["take_web_rate"]);
+    expect(fetchCalls).toHaveLength(0);
+    // An unknown count is not permission: 503, still no Dodo call.
+    h.rate = { data: null, error: { code: "57014", message: "statement timeout" } };
     expect((await getInvoice(OWN_PAY)).status).toBe(503);
     expect(fetchCalls).toHaveLength(0);
   });
@@ -762,13 +786,56 @@ describe("GET /api/billing/dodo/invoice", () => {
   it("says Dodo's limit as a limit, a missing invoice as missing, and passes on nothing that is not a PDF", async () => {
     dodoAnswer = () => new Response("slow down", { status: 429 });
     const limited = await getInvoice(OWN_PAY);
-    expect([limited.status, limited.headers.get("retry-after")]).toEqual([429, "60"]);
+    expect([limited.status, limited.headers.get("retry-after"), await limited.json()]).toEqual([429, "60", { error: "invoice_rate_limited" }]);
     dodoAnswer = () => new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
-    expect((await getInvoice(OWN_PAY)).status).toBe(404);
+    const missing = await getInvoice(OWN_PAY);
+    expect([missing.status, await missing.json()]).toEqual([404, { error: "invoice_not_found" }]);
     dodoAnswer = () => new Response("<html>login</html>", { status: 200, headers: { "content-type": "text/html" } });
     expect((await getInvoice(OWN_PAY)).status).toBe(502);
     dodoAnswer = () => new Response("x", { status: 200, headers: { "content-type": "application/pdf", "content-length": String(6 * 1024 * 1024) } });
     expect((await getInvoice(OWN_PAY)).status).toBe(502);
+  });
+
+  it("a chunked 6 MB answer with no Content-Length is cut off at the cap and refused (502), not read whole", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const chunk = new Uint8Array(256 * 1024);
+    dodoAnswer = () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (pulled >= 24) return controller.close(); // 24 × 256 KB = 6 MB
+            pulled += 1;
+            controller.enqueue(chunk);
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/pdf" } },
+      );
+    const res = await getInvoice(OWN_PAY);
+    expect(res.status).toBe(502);
+    expect(cancelled).toBe(true);
+    // 5 MB is 20 chunks: it stops on the first chunk past the cap, never pulling the rest.
+    expect(pulled).toBeLessThanOrEqual(22);
+  });
+
+  it("a PDF under the cap arrives whole, however it is chunked", async () => {
+    const parts = [new Uint8Array([0x25, 0x50]), new Uint8Array([0x44, 0x46, 0x2d])];
+    dodoAnswer = () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const p of parts) controller.enqueue(p);
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/pdf" } },
+      );
+    const res = await getInvoice(OWN_PAY);
+    expect(res.status).toBe(200);
+    expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([0x25, 0x50, 0x44, 0x46, 0x2d]);
   });
 
   it("fetchDodoInvoicePdf asks only for a well-formed payment id", async () => {

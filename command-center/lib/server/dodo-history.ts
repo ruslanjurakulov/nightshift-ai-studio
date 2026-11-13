@@ -19,12 +19,16 @@ export async function readDodoPurchaseHistory(supabase: SupabaseClient, orgId: s
 
 /**
  * Whether one payment credited this organization (the invoice route asks before it calls Dodo). `missing` when 0157 is not
- * applied; `unknown` for any other error: neither is a yes.
+ * applied; `forbidden` when the database refuses the caller (42501); `unknown` for any other error: none of them is a yes.
  */
-export async function dodoPaymentIsOrgs(supabase: SupabaseClient, orgId: string, paymentId: string): Promise<"yes" | "no" | "missing" | "unknown"> {
+export async function dodoPaymentIsOrgs(
+  supabase: SupabaseClient,
+  orgId: string,
+  paymentId: string,
+): Promise<"yes" | "no" | "missing" | "forbidden" | "unknown"> {
   try {
     const { data, error } = await supabase.rpc("dodo_purchase_history", { p_org: orgId, p_payment: paymentId });
-    if (error) return historyMissing(error) ? "missing" : "unknown";
+    if (error) return historyMissing(error) ? "missing" : (error as { code?: string }).code === "42501" ? "forbidden" : "unknown";
     return coercePurchaseRows(data).some((r) => r.paymentId === paymentId) ? "yes" : "no";
   } catch {
     return "unknown";

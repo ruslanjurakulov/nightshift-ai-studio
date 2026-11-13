@@ -114,6 +114,7 @@ export function DodoBuyCredits({
     not_on_sale: { text: ac.notOnSale },
   };
   const amount = view.amount;
+  const packsBetter = amount !== null && view.packs.some((p) => packBonusPercent(p, amount.creditsPerCent) !== null);
   const msg = message[phase];
   const validity =
     packValidMonths === undefined ? cp.packTermsBase : packValidMonths === null ? cp.packTermsNever : fmt(cp.packTermsMonths, { months: packValidMonths });
@@ -150,12 +151,21 @@ export function DodoBuyCredits({
         </Link>
       </p>
 
-      {amount && <AddCreditsSheet amount={amount} busy={phase === "opening"} onSubmit={(usdCents) => open({ kind: "amount", usdCents })} />}
+      {amount && (
+        <AddCreditsSheet
+          amount={amount}
+          busy={phase === "opening"}
+          packsBetter={packsBetter}
+          onSubmit={(usdCents) => open({ kind: "amount", usdCents })}
+        />
+      )}
 
+      {/* "Better value" is claimed only when some pack on sale here really gives more than the typed rate; Starter is the
+          same rate, so a panel of Starter alone is just "Top-up packs", and only a card with a bonus chip claims anything. */}
       {amount && view.packs.length > 0 && (
         <div className="flex flex-col gap-1">
-          <h3 className="text-[15px] font-medium">{ac.packsTitle}</h3>
-          <p className="text-sm font-light text-[var(--color-muted)]">{ac.packsLead}</p>
+          <h3 className="text-[15px] font-medium">{packsBetter ? ac.packsTitle : cp.packsTitle}</h3>
+          {packsBetter && <p className="text-sm font-light text-[var(--color-muted)]">{ac.packsLead}</p>}
         </div>
       )}
 

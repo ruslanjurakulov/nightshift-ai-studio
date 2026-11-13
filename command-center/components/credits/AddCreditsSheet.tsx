@@ -33,10 +33,13 @@ export function AddCreditsSheet({
   amount,
   busy,
   onSubmit,
+  packsBetter = false,
 }: {
   amount: DodoAmountView;
   busy: boolean;
   onSubmit: (usdCents: number) => void;
+  /** Some pack on sale here gives more credits per dollar than this rate (packBonusPercent); only then is it said. */
+  packsBetter?: boolean;
 }) {
   const { t, locale } = useI18n();
   const ac = t.addCredits;
@@ -175,8 +178,11 @@ export function AddCreditsSheet({
             </dl>
             <p className="text-xs leading-relaxed text-[var(--color-muted)]">
               {ac.taxNote} {fmt(ac.rate, { n: String(100 * amount.creditsPerCent) })}
+              {packsBetter ? ` ${ac.ratePacks}` : ""}
             </p>
-            <p className="text-xs leading-relaxed text-[var(--color-muted)]">{ac.payWith}</p>
+            <p className="text-xs leading-relaxed text-[var(--color-muted)]">
+              {ac.payWith} {ac.keepAmount}
+            </p>
 
             <PriceButton
               type="submit"

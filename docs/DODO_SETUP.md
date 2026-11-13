@@ -347,12 +347,21 @@ Test karta: `4242 4242 4242 4242`, muddati `06/32`, CVV `123` (rad etiladigan ka
       "Jami $25.50". Tugma "Processing…" deydi, Dodo sahifasida summa $25.50 (+ soliq). To'lovdan keyin
       balans +2 550; `payment_events` da `processed`, `credits = 2550`. $4.99 va $300.01 — sahifa
       xabar beradi, tugma bosilmaydi. "Avtomatik to'ldirish" yorlig'i — faqat "hozircha mavjud emas".
+- [ ] **Dodo sahifasida summani o'zgartirish.** "Kredit qo'shish" → $25.50 → Dodo'ning to'lov sahifasida
+      summani o'zgartirishga urinib ko'ring (agar Dodo bunga yo'l qo'ysa — hujjat "When `amount` is provided,
+      the checkout uses that exact amount" deydi, ya'ni o'zgartirib bo'lmasligi kerak) va to'lang. Kutilgan:
+      to'lov `rejected` ("signed amount is 2550"), kredit **yo'q** — bu to'lovni Dodo'da **refund qiling**.
+      Agar sahifa summani o'zgartirishga ruxsat bersa, buni yozib qo'ying: Credits sahifasi allaqachon "Dodo
+      sahifasida summani o'zgartirmang" deydi, lekin ruxsat bo'lsa har bir shunday to'lov odam ishi bo'ladi.
 - [ ] **Statik PWYW havolasi, boshqa narx.** Dodo → Products → PWYW mahsuloti → havola, Advanced Settings
       → Payment amount `5.00`, URL'ga yuqoridagi xariddagi imzolangan metadata'ni qo'shib to'lang —
       `rejected` ("signed amount is …"), kredit yo'q. Refund qiling.
 - [ ] **Xaridlar tarixi.** Credits pastida "Xaridlar tarixi": har bir to'lov bir marta, sana, nima, kredit,
       summa (soliq bilan), holat; qisman refunddan keyin "Partly refunded". "Download" — Dodo'ning PDF
-      hisob-fakturasi. Bir daqiqada 5 martadan ko'p bossangiz — "try again in a minute" (Dodo limiti).
+      hisob-fakturasi. Bir daqiqada 5 martadan ko'p bossangiz — "Too many invoice downloads in a minute"
+      (bizning odam boshiga limit, `dodo.invoice`, 5/daqiqa: Dodo'ning IP boshiga 20/daqiqa limiti butun server
+      uchun bitta, shuning uchun bitta admin uni hammaga tugatib qo'ymasin). Boshqa tashkilotning to'lov ID'si —
+      "can't be opened from this workspace", Dodo'ga so'rov yuborilmaydi.
 - [ ] **Soxta metadata.** Dodo dashboard'dagi statik to'lov havolasi bilan (metadata'siz yoki
       `metadata_org_id=…` bilan) to'lang — `payment_events` da `rejected` ("not this deployment's"),
       kredit yo'q. Refund qiling.

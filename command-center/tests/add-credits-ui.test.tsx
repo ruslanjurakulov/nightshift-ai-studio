@@ -191,8 +191,34 @@ describe("the Add credits sheet", () => {
     expect(container.textContent).toContain("+11% credits");
     expect(container.textContent).toContain("+25% credits");
     expect(DODO_CATALOG_PACKS.map((p) => packBonusPercent(p))).toEqual([null, 11, 25]);
+    expect(container.textContent).toContain(ac.packsLead);
+    expect(sheet().textContent).toContain(ac.ratePacks);
+    // Only the cards with a bonus claim one: Starter is the typed rate.
+    const cards = screen.getAllByRole("listitem");
+    expect(cards.map((c) => /\+\d+% credits/.test(c.textContent ?? ""))).toEqual([false, true, true]);
     // Buying a pack still names the pack, never an amount.
     expect(screen.getAllByRole("button", { name: new RegExp(t.creditsPage.buy) })).toHaveLength(3);
+  });
+
+  it("claims no better value where no pack gives one: Starter alone, or no packs at all", () => {
+    const starterOnly = dodoView(resolveDodoServer({ ...ENV, DODO_PRODUCT_CREATOR: "", DODO_PRODUCT_STUDIO: "" }))!;
+    const { container } = renderSheet(starterOnly);
+    expect(container.textContent).not.toContain(ac.packsTitle);
+    expect(container.textContent).not.toContain(ac.packsLead);
+    expect(sheet().textContent).not.toContain(ac.ratePacks);
+    expect(container.textContent).not.toMatch(/\+\d+% credits/);
+    expect(screen.getByRole("heading", { name: t.creditsPage.packsTitle })).toBeTruthy();
+    cleanup();
+    const noPacks = dodoView(resolveDodoServer({ ...ENV, DODO_PRODUCT_STARTER: "", DODO_PRODUCT_CREATOR: "", DODO_PRODUCT_STUDIO: "" }))!;
+    const second = renderSheet(noPacks);
+    expect(second.container.textContent).not.toContain(ac.ratePacks);
+    expect(second.container.textContent).not.toContain(ac.packsTitle);
+    expect(second.container.textContent).toContain(ac.rate.replace("{n}", "100"));
+  });
+
+  it("tells the buyer not to change the amount on Dodo's page", () => {
+    renderSheet();
+    expect(sheet().textContent).toContain(ac.keepAmount);
   });
 
   it("is not there without the PWYW product: the panel is the packs, as before, with no bonus chips", () => {
@@ -285,14 +311,32 @@ describe("the purchase history", () => {
     expect(fetchCalls.map((c) => c.url)).toEqual(["/api/billing/dodo/invoice?payment=pay_Starter00000000001"]);
     expect(screen.getByRole("button", { name: ac.history.preparing })).toBeTruthy();
     await act(async () => {
-      release(new Response("slow down", { status: 429 }));
+      release(new Response(JSON.stringify({ error: "invoice_rate_limited" }), { status: 429 }));
     });
     expect(screen.getByRole("alert").textContent).toBe(ac.history.invoiceError.rate_limited);
     // And it can be asked again.
-    answer = async () => new Response("{}", { status: 404 });
+    answer = async () => new Response(JSON.stringify({ error: "invoice_not_found" }), { status: 404 });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: ac.history.download }));
     });
     expect(screen.getByRole("alert").textContent).toBe(ac.history.invoiceError.not_found);
+  });
+
+  it("tells our own refusals apart from Dodo's: not this workspace's, Dodo not selling, our per-person limit", async () => {
+    renderHistory({ state: "ok", rows: rows.slice(1, 2) });
+    const cases: [Response, string][] = [
+      [new Response(JSON.stringify({ error: "not_found" }), { status: 404 }), ac.history.invoiceError.unavailable],
+      [new Response(JSON.stringify({ error: "forbidden" }), { status: 403 }), ac.history.invoiceError.unavailable],
+      [new Response(JSON.stringify({ error: "rate_limited" }), { status: 429 }), ac.history.invoiceError.busy],
+      [new Response(JSON.stringify({ error: "invoice_failed" }), { status: 502 }), ac.history.invoiceError.failed],
+      [new Response("not json", { status: 404 }), ac.history.invoiceError.unavailable],
+    ];
+    for (const [response, message] of cases) {
+      answer = async () => response;
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: ac.history.download }));
+      });
+      expect(screen.getByRole("alert").textContent).toBe(message);
+    }
   });
 });

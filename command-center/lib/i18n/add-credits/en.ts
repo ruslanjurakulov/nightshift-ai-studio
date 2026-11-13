@@ -21,7 +21,11 @@ export const addCreditsEn = {
   total: "Total",
   totalUnknown: "—",
   taxNote: "Price in US dollars. Any tax is calculated by Dodo Payments and shown on the checkout page before you pay.",
-  rate: "At this rate $1 = {n} credits. The packs below give more credits per dollar.",
+  rate: "At this rate $1 = {n} credits.",
+  /** Only when some pack below really gives more than the typed rate (packBonusPercent). */
+  ratePacks: "The packs marked below give more credits per dollar.",
+  /** Dodo's docs: "When amount is provided, the checkout uses that exact amount"; said in case its page ever lets it be edited. */
+  keepAmount: "Dodo's page should show exactly this amount. Don't change it there: a payment of a different amount isn't credited and has to be refunded.",
   invalid: {
     empty: "Enter an amount.",
     format: "Enter dollars and cents, like 25 or 25.50.",
@@ -34,7 +38,7 @@ export const addCreditsEn = {
   tooMany: "The checkout was opened too many times today. Try again tomorrow, or contact support.",
   notOnSale: "This isn't on sale right now. Refresh the page and try again.",
   packsTitle: "Packs · better value",
-  packsLead: "Larger packs give more credits per dollar than a typed amount.",
+  packsLead: "The packs marked with a bonus give more credits per dollar than a typed amount.",
   bonus: "+{pct}% credits",
   history: {
     title: "Purchase history",
@@ -68,6 +72,8 @@ export const addCreditsEn = {
       rate_limited: "Dodo allows only a few invoice downloads a minute. Try again in a minute.",
       not_found: "Dodo has no invoice for this payment yet. Try again later, or use the link in your payment receipt.",
       failed: "Couldn't get the invoice. Try again, or use the link in your payment receipt.",
+      unavailable: "This invoice can't be opened from this workspace. Refresh the page; if it stays, use the link in your payment receipt.",
+      busy: "Too many invoice downloads in a minute. Wait a minute and try again.",
     },
   },
 };

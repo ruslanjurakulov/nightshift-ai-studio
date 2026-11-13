@@ -18,7 +18,8 @@ import { Timecode } from "@/components/ui/Timecode";
  * this workspace's before it asks Dodo; a refusal is said in words, and the row can be tried again.
  */
 
-type InvoiceState = { busy: true } | { busy: false; error: "rate_limited" | "not_found" | "failed" | null };
+type InvoiceError = "rate_limited" | "not_found" | "failed" | "unavailable" | "busy";
+type InvoiceState = { busy: true } | { busy: false; error: InvoiceError | null };
 
 function amountText(row: DodoPurchaseRow, locale: string, unknown: string): string {
   // The webhook credits USD payments only, so another currency cannot be a credited row; were one there, its minor units are not
@@ -42,7 +43,7 @@ export function DodoPurchaseHistory({ read }: { read: DodoHistoryRead }) {
   async function download(paymentId: string) {
     if (invoices[paymentId]?.busy) return;
     setInvoices((s) => ({ ...s, [paymentId]: { busy: true } }));
-    let error: "rate_limited" | "not_found" | "failed" | null = "failed";
+    let error: InvoiceError | null = "failed";
     try {
       const res = await fetch(`/api/billing/dodo/invoice?payment=${encodeURIComponent(paymentId)}`, { cache: "no-store" });
       if (res.ok && (res.headers.get("content-type") ?? "").startsWith("application/pdf")) {
@@ -57,10 +58,13 @@ export function DodoPurchaseHistory({ read }: { read: DodoHistoryRead }) {
         // Revoked after the click has been handed to the browser's download.
         setTimeout(() => URL.revokeObjectURL(url), 10_000);
         error = null;
-      } else if (res.status === 429) {
-        error = "rate_limited";
-      } else if (res.status === 404) {
-        error = "not_found";
+      } else {
+        // The route says whose refusal it is: Dodo's own (no invoice yet, its limit) or ours (not this workspace's payment,
+        // Dodo not selling here, our per-person limit). Each has a different remedy.
+        const code = ((await res.json().catch(() => ({}))) as { error?: unknown }).error;
+        if (res.status === 429) error = code === "invoice_rate_limited" ? "rate_limited" : "busy";
+        else if (res.status === 404 && code === "invoice_not_found") error = "not_found";
+        else if (res.status === 404 || res.status === 403) error = "unavailable";
       }
     } catch {
       error = "failed";

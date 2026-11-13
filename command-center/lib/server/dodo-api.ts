@@ -206,11 +206,43 @@ export async function fetchDodoInvoicePdf(cfg: DodoServerConfig, paymentId: stri
   if (res.status === 404) return { ok: false, reason: "not_found" };
   const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
   const declared = Number(res.headers.get("content-length") ?? "0");
-  if (res.status !== 200 || type !== "application/pdf" || !(declared <= DODO_INVOICE_MAX_BYTES)) return { ok: false, reason: "failed" };
-  try {
-    const pdf = await res.arrayBuffer();
-    return pdf.byteLength > 0 && pdf.byteLength <= DODO_INVOICE_MAX_BYTES ? { ok: true, pdf } : { ok: false, reason: "failed" };
-  } catch {
+  if (res.status !== 200 || type !== "application/pdf" || !(declared <= DODO_INVOICE_MAX_BYTES)) {
+    await res.body?.cancel().catch(() => undefined);
     return { ok: false, reason: "failed" };
   }
+  const pdf = await readCapped(res, DODO_INVOICE_MAX_BYTES);
+  return pdf && pdf.byteLength > 0 ? { ok: true, pdf } : { ok: false, reason: "failed" };
+}
+
+/**
+ * The body, read chunk by chunk and given up (the stream cancelled) as soon as it passes `max` bytes. A chunked answer has
+ * no Content-Length, and arrayBuffer() would hold all of it before any cap could be applied. Null past the cap or on error.
+ */
+export async function readCapped(res: Response, max: number): Promise<ArrayBuffer | null> {
+  const reader = res.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > max) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    await reader.cancel().catch(() => undefined);
+    return null;
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
+  }
+  return out.buffer;
 }
