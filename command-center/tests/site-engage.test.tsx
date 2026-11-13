@@ -338,7 +338,10 @@ describe("the stock-picture disclosure is printed, not only labelled", () => {
 
   it("has no rails and no comparison any more: nothing scrolls sideways on the landing and nothing is shown twice", () => {
     const { container } = landing();
-    for (const sel of ["#examples", ".nx-caps", "#compare", ".nx-gal", "[aria-roledescription='carousel']", ".nx-tiles", ".nx-rules-rail"]) expect(container.querySelector(sel), sel).toBeNull();
+    for (const sel of ["#examples", ".nx-caps", "#compare", ".nx-gal", ".nx-tiles", ".nx-rules-rail"]) expect(container.querySelector(sel), sel).toBeNull();
+    // The one carousel the owner asked back for (2026-11-13) is the samples' coverflow, which scrolls nothing sideways (its stage
+    // clips the side cards); the stock-picture rails stay gone.
+    for (const c of container.querySelectorAll("[aria-roledescription='carousel']")) expect(c.closest("section#watch[data-sample-section]"), "carousel").toBeTruthy();
     // The first screen, the Studio showcase, the approval screen's thumbnail and the closing panel: four different pictures (a
     // stock still or a sample each).
     const used = [...container.querySelectorAll(".nx-sh-media img, section.nx-show img, .nx-final img")].map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-sample-job"));
