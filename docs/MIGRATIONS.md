@@ -1107,3 +1107,34 @@ failed since. The Studio uses it as the expected time until the organization has
 - **Tests.** `tests/test_model_probe_seconds_migration.py` (the text), `tests/security/test_sec_model_probe_seconds.py` (a real
   PostgreSQL: grants, visibility, which probe, the clip length, the bounds, replay and rollback), `command-center/tests/studio-progress.test.ts`,
   `durations-route.test.ts` and `studio-progress-ui.test.tsx` (the seed's use in the pill).
+
+## The probe log keeps the vendor's own bill for a probe (0152)
+
+0152 (`0152_probe_vendor_credits.sql`) is **live on apply** and additive: one nullable column, `model_probe_runs.vendor_credits`
+(no default, so no row is rewritten; NULL or 0 to 1,000,000, NaN and Infinity refused), and one NEW overload of `record_model_probe`
+with an eleventh argument, `p_vendor_credits numeric`. 0035's ten-argument form, every grant, policy, trigger and row are untouched.
+
+- **Why.** Runway reports `cost.credits` on a finished task; the first probes (2026-11-13) cost 60 (gen4.5, 5 s) and 25 (gen4_turbo,
+  5 s) credits, and the figure lived only in the workflow log. The Billing page now counts probes per provider
+  (`command-center/lib/billing.ts` `providerLedger`): a stored figure is the vendor's bill; without one, the probe is priced from the
+  registry and labelled an estimate.
+- **No default on the new argument, on purpose.** With a default, a ten-argument call would match both overloads and Postgres would
+  refuse it as ambiguous, breaking the probe tool of the previous release and the security lab. A ten-argument call reaches 0035's
+  function; an eleven-argument call reaches 0152's, whose body is 0035's word for word plus the column (the static test compares them).
+- **The writer before 0152 is applied.** `tools/probe_models.py` sends `p_vendor_credits` only when the vendor reported a figure (0 to
+  1,000,000). Against a database without 0152, or a stale PostgREST schema cache, that call answers **404** (no function with these
+  argument names) and nothing was written; the tool then records the same probe once through the ten-argument form and logs that the
+  figure was not stored ("apply migration 0152"). This is the harmless-fallback case above: the first call wrote no row, so the
+  append-only log cannot get a duplicate. Any other refusal is raised, not retried. The Billing page reads `vendor_credits` and, on
+  42703 (column not there), reads the probes again without it.
+- **Who may call it.** The service role only (EXECUTE revoked from public, anon and authenticated), SECURITY DEFINER with a pinned
+  search_path, like 0035's. The last block asserts the column, the grants, the definer and search_path, and that 0035's form still
+  exists. Apply as ONE transaction (`set local lock_timeout`).
+- **Undo.** `docs/sql/rollback_0152_probe_vendor_credits.sql` (owner-applied): drops the eleven-argument overload, the check and the
+  column (the figures recorded since 0152 are lost; the probe rows stay). Deploy a probe tool that no longer sends the figure first.
+- **Numbering.** 0152; 0148, 0150 and 0151 are reserved by other work. The numbering tests of 0127, 0131 and 0133 list it as reviewed:
+  it names nothing of theirs.
+- **Tests.** `tests/test_probe_vendor_credits_migration.py` (the column and rule, no default, the body equals 0035's plus the column,
+  service-only grants, the rollback; the writer: figure sent only when reported, the 404 fallback writes one row, other refusals raise),
+  `tests/security/test_sec_probe_vendor_credits.py` (service-only execute, the ten-argument call still works, verification unchanged,
+  out-of-range figures refused, append-only, a customer reads no probe row).

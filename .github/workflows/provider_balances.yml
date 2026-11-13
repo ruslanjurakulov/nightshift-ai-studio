@@ -1,7 +1,7 @@
 name: Provider Balances
 
 # Snapshots what is left on each paid provider account (ElevenLabs credits,
-# Leonardo API tokens) into Supabase for the Command Center's Billing page.
+# Leonardo API tokens, Runway credits) into Supabase for the Command Center's Billing page.
 # Read-only against the providers: it spends nothing and publishes nothing.
 # The daily video run also records a snapshot at its end; this keeps the page
 # fresh between runs and lets the page's "Refresh" button dispatch it.
@@ -38,6 +38,8 @@ jobs:
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
+          # GET /v1/organization reads creditBalance; it spends nothing.
+          RUNWAYML_API_SECRET: ${{ secrets.RUNWAYML_API_SECRET }}
           ELEVENLABS_LOW_CREDITS: ${{ vars.ELEVENLABS_LOW_CREDITS }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

@@ -148,10 +148,14 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
         />
       </label>
       <div className="g5-actions">
-        <a href={p.billingUrl} target="_blank" rel="noopener noreferrer" className="btn-quiet">
-          {fmt(t.billing.payOpen, { name: p.name })}
-          <ExternalLink className="size-4" aria-hidden />
-        </a>
+        {p.billingUrl ? (
+          <a href={p.billingUrl} target="_blank" rel="noopener noreferrer" className="btn-quiet">
+            {fmt(t.billing.payOpen, { name: p.name })}
+            <ExternalLink className="size-4" aria-hidden />
+          </a>
+        ) : (
+          <span className="g5-note">{t.billingLedger.noBillingLink}</span>
+        )}
         {valid && <CopyButton value={value.toFixed(2)} />}
         <button
           type="button"
@@ -196,7 +200,7 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
   const [step, setStep] = useState<number | null>(null);
   // The walk is a copy taken when it starts: changing the horizon or ticking a
   // provider mid-way must not shift which provider and amount the next step records.
-  const [walk, setWalk] = useState<{ id: string; name: string; billingUrl: string; amount: number }[]>([]);
+  const [walk, setWalk] = useState<{ id: string; name: string; billingUrl: string | null; amount: number }[]>([]);
   const [paidCount, setPaidCount] = useState(0);
   const [busy, setBusy] = useState(false);
 
@@ -379,10 +383,14 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
           </p>
           <p className="g5-note">{fmt(t.billing.payCards, { name: current.name })}</p>
           <div className="g5-actions">
-            <a href={current.billingUrl} target="_blank" rel="noopener noreferrer" className="btn-primary">
-              {fmt(t.billing.payOpen, { name: current.name })}
-              <ExternalLink className="size-4" aria-hidden />
-            </a>
+            {current.billingUrl ? (
+              <a href={current.billingUrl} target="_blank" rel="noopener noreferrer" className="btn-primary">
+                {fmt(t.billing.payOpen, { name: current.name })}
+                <ExternalLink className="size-4" aria-hidden />
+              </a>
+            ) : (
+              <span className="g5-note">{t.billingLedger.noBillingLink}</span>
+            )}
             <CopyButton value={current.amount.toFixed(2)} />
             <button type="button" onClick={confirmStep} disabled={busy} aria-busy={busy} className="btn-quiet disabled:opacity-55">
               {busy && <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />}

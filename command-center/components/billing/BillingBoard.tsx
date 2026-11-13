@@ -11,16 +11,18 @@ import { Meter } from "@/components/ui/Meter";
 import { StateBlock } from "@/components/states/StateBlock";
 import { relativeTime } from "@/lib/format";
 import { formatNumber, formatUsdOwner } from "@/lib/number-format";
-import { planTopups, type ElevenLabsRunway } from "@/lib/billing";
+import { planTopups, type ElevenLabsRunway, type ProviderLedger, type SourceUse } from "@/lib/billing";
 import { BulkPay, PayPanel } from "@/components/billing/TopupControls";
 import { postOperator } from "@/lib/operator-post";
 import { operatorFailureText } from "@/lib/setup-errors";
+import type { BillingLedgerDictionary } from "@/lib/i18n/billing-ledger/en";
 
 /** One paid provider, already derived on the server (see billing/page.tsx). */
 export interface ProviderView {
   id: string;
   name: string;
-  billingUrl: string;
+  /** Null when no billing page was verified in the vendor's own docs: no link is shown rather than a guess. */
+  billingUrl: string | null;
   unitLabel: string;
   keySet: boolean;
   /** The key-name read (GitHub) failed: the lamp says "unknown", not "key missing". */
@@ -45,10 +47,18 @@ export interface ProviderView {
   balanceUsd: number | null;
   /** "untracked": spend is not recorded here. "auto": the provider tops itself up. null: unknown. */
   daysLeft: number | "never" | "untracked" | "auto" | null;
+  /** `daysLeft` came from the owner's ledger and rests on an estimate (a list price, or bought minus used): the cell says so. */
+  daysLeftEstimate?: boolean;
   lowBalanceDays: number;
   includeInBulk: boolean;
   cardSaved: boolean;
   autoRecharge: boolean;
+  /** False when the YouTube pipeline never calls this vendor (Studio and probes only): no pipeline figure, no pipeline price. */
+  pipeline?: boolean;
+  /** USD per vendor credit (Runway's $0.01), or null when the vendor sells none at a fixed price. */
+  creditUsd?: number | null;
+  /** The owner's ledger: bought, used by source, left (lib/billing.ts providerLedger). Absent: the page did not compute one. */
+  ledger?: ProviderLedger;
 }
 
 export type RunwayView = ElevenLabsRunway & {
@@ -129,6 +139,8 @@ export function BillingBoard({
               ? t.common.couldNotRead
               : [
                   partial ? t.billing.partialNote : "",
+                  // The headline is the pipeline's ledger; Studio and the probes are counted on each provider's row.
+                  t.billingLedger.headlinePipelineOnly,
                   basisDays > 0 && basisDays < 30 ? fmt(basisDays === 1 ? t.ownerTruth.basedOnDay : t.ownerTruth.basedOnDays, { n: basisDays }) : "",
                   // The cost ledger is mirrored nightly: say how old it is.
                   lastSync ? fmt(t.ownerTruth.lastSync, { when: lastSync }) : spendNoRows ? "" : t.ownerTruth.syncUnknown,
@@ -233,8 +245,100 @@ function ElevenLabsPanel({ runway, unknown }: { runway: RunwayView | null; unkno
   );
 }
 
+/** The vendor's word for a unit, in the owner's language; a unit the dictionary does not know is shown as stored. */
+function unitWord(units: Record<string, string>, unit: string): string {
+  return Object.prototype.hasOwnProperty.call(units, unit) ? units[unit] : unit;
+}
+
+/** A UTC calendar day, as the ledger counts days ("2026-11-13"): the same text on the server and in the browser. */
+const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** One source of use (pipeline, Studio, probes) as one line: a figure, or exactly why there is none. */
+export function sourceText(src: SourceUse, creditUsd: number | null, tl: BillingLedgerDictionary, locale: string): string {
+  if (src.state === "unread") return tl.state.unread;
+  if (src.state === "untracked") return tl.state.untracked;
+  if (src.state === "not_used") return tl.state.notUsed;
+  if (src.state === "no_rows") return tl.state.noRows;
+  if (src.state === "ok" && src.rows === 0) return tl.state.none;
+  const bits: string[] = [];
+  if (src.usd !== null) {
+    bits.push(usd(src.usd, locale));
+    if (creditUsd) bits.push(fmt(tl.credits, { n: formatNumber(src.usd / creditUsd, locale, 2) }));
+  } else if (src.pricedUsd > 0) {
+    bits.push(fmt(tl.atLeast, { usd: usd(src.pricedUsd, locale) }));
+  }
+  if (src.estimate) bits.push(tl.estimate);
+  for (const u of src.unpriced) {
+    bits.push(
+      u.quantity !== null
+        ? fmt(tl.usdUnknown, { qty: formatNumber(u.quantity, locale, 2), unit: unitWord(tl.units, u.unit) })
+        : fmt(tl.rowsUsdUnknown, { unit: unitWord(tl.units, u.unit), n: u.rows }),
+    );
+  }
+  if (src.billingUnknown > 0) bits.push(fmt(tl.billingUnknown, { n: src.billingUnknown }));
+  if (src.state === "partial") bits.push(tl.state.partial);
+  return bits.join(" · ");
+}
+
+/** Bought, used (with its three sources) and left: the owner's ledger of one provider. Every unknown says why. */
+function LedgerFacts({ ledger, creditUsd }: { ledger: ProviderLedger; creditUsd: number | null }) {
+  const { t, locale } = useI18n();
+  const tl = t.billingLedger;
+  const credits = (usdValue: number) => (creditUsd ? fmt(tl.credits, { n: formatNumber(usdValue / creditUsd, locale, 2) }) : "");
+  const join = (...parts: string[]) => parts.filter(Boolean).join(" · ");
+
+  const b = ledger.bought;
+  const bought = b.state === "unread" ? tl.state.unread : b.state === "none" ? tl.boughtNone : join(usd(b.usd, locale), credits(b.usd));
+
+  const sources = [ledger.sources.pipeline, ledger.sources.studio, ledger.sources.probes];
+  const nothing = sources.every((s) => s.state === "not_used" || (s.state === "ok" && s.rows === 0));
+  const u = ledger.used;
+  const used =
+    u.usd !== null
+      ? nothing
+        ? tl.state.none
+        : join(usd(u.usd, locale), credits(u.usd), u.estimate ? tl.estimate : "")
+      : u.pricedUsd > 0
+        ? fmt(tl.atLeast, { usd: usd(u.pricedUsd, locale) })
+        : t.billing.unknown;
+
+  const r = ledger.remaining;
+  const left =
+    r.kind === "reported"
+      ? join(`${formatNumber(r.amount, locale, 2)} ${unitWord(tl.units, r.unit)}`, r.usd !== null ? usd(r.usd, locale) : "")
+      : r.kind === "estimate"
+        ? join(usd(r.usd, locale), credits(r.usd))
+        : tl.leftUnknown[r.why];
+
+  return (
+    <>
+      <div>
+        <dt className="g5-k">{tl.bought}</dt>
+        <dd>{bought}</dd>
+        {b.state === "ok" && <dd className="g5-ledger-sub">{fmt(tl.boughtCount, { n: b.count, date: utcDay(b.firstMs) })}</dd>}
+      </div>
+      <div className="g5-ledger-used">
+        <dt className="g5-k">{ledger.sinceTopup ? fmt(tl.usedSince, { date: utcDay(ledger.startMs) }) : tl.usedLast30}</dt>
+        <dd>{used}</dd>
+        {(["pipeline", "studio", "probes"] as const).map((k) => (
+          <dd key={k} className="g5-ledger-sub" data-source={k}>
+            <span className="g5-k">{tl.sources[k]}</span> {sourceText(ledger.sources[k], creditUsd, tl, locale)}
+          </dd>
+        ))}
+      </div>
+      <div>
+        <dt className="g5-k">{tl.left}</dt>
+        <dd>{left}</dd>
+        {r.kind === "reported" && <dd className="g5-ledger-sub">{fmt(tl.leftReported, { when: relativeTime(r.checkedAt, locale) })}</dd>}
+        {r.kind === "estimate" && <dd className="g5-ledger-sub">{tl.leftEstimate}</dd>}
+      </div>
+    </>
+  );
+}
+
 function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
   const { t, locale } = useI18n();
+  const tl = t.billingLedger;
   const [price, setPrice] = useState(p.price === null ? "" : String(p.price));
   const [state, setState] = useState<"idle" | "busy" | "ok" | "fail">("idle");
   const [failWhy, setFailWhy] = useState<string | null>(null);
@@ -273,7 +377,7 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
           ? t.ownerTruth.autoRechargeOn
           : p.daysLeft === null
             ? t.billing.unknown
-            : fmt(t.billing.days, { n: Math.floor(p.daysLeft) });
+            : fmt(t.billing.days, { n: Math.floor(p.daysLeft) }) + (p.daysLeftEstimate ? ` · ${tl.estimate}` : "");
   const low = typeof p.daysLeft === "number" && p.daysLeft <= p.lowBalanceDays && !p.autoRecharge;
 
   return (
@@ -288,29 +392,38 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
         />
       </div>
       <dl className="g5-prov-facts">
-        <div>
-          <dt className="g5-k">{t.billing.balance}</dt>
-          <dd>{balance}</dd>
-        </div>
-        <div>
-          <dt className="g5-k">
-            {p.windowDays !== undefined && p.windowDays < 29.5 ? fmt(Math.round(p.windowDays) <= 1 ? t.ownerTruth.usedLastDay : t.ownerTruth.usedLastDays, { n: Math.max(1, Math.round(p.windowDays)) }) : t.billing.usage30}
-          </dt>
-          <dd>
-            {p.tracked === false
-              ? t.ownerTruth.notTracked
-              : p.units30 === null
-                ? t.billing.unknown
-                : n0(p.units30, locale)}
-            {p.units30 !== null && p.usdPerDay !== null && p.usdPerDay > 0 ? ` · ${usd(p.usdPerDay, locale)}${t.billing.perDay}` : ""}
-          </dd>
-        </div>
+        {p.ledger ? (
+          <LedgerFacts ledger={p.ledger} creditUsd={p.creditUsd ?? null} />
+        ) : (
+          <div>
+            <dt className="g5-k">{t.billing.balance}</dt>
+            <dd>{balance}</dd>
+          </div>
+        )}
+        {/* The pipeline's own pace (units and dollars a day). A vendor it never calls has no such line: its ledger already says so. */}
+        {p.pipeline !== false && (
+          <div>
+            <dt className="g5-k">
+              {p.windowDays !== undefined && p.windowDays < 29.5 ? fmt(Math.round(p.windowDays) <= 1 ? tl.pipelineLastDay : tl.pipelineLastDays, { n: Math.max(1, Math.round(p.windowDays)) }) : tl.pipeline30}
+            </dt>
+            <dd>
+              {p.tracked === false
+                ? t.ownerTruth.notTracked
+                : p.units30 === null
+                  ? t.billing.unknown
+                  : n0(p.units30, locale)}
+              {p.units30 !== null && p.usdPerDay !== null && p.usdPerDay > 0 ? ` · ${usd(p.usdPerDay, locale)}${t.billing.perDay}` : ""}
+            </dd>
+          </div>
+        )}
         <div>
           <dt className="g5-k">{t.billing.lasts}</dt>
           <dd style={{ color: low ? "var(--color-warn)" : undefined }}>{lasts}</dd>
         </div>
       </dl>
       <div className="g5-prov-act">
+      {/* A price per pipeline unit means nothing for a vendor the pipeline never calls: no field that changes nothing. */}
+      {p.pipeline !== false && (
       <div className="g5-prov-price">
         <label className="g5-field">
           <span className="g5-k">{fmt(t.billing.price, { unit: p.unitLabel })}</span>
@@ -332,14 +445,19 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
           {state === "ok" ? t.billing.saved : t.billing.save}
         </button>
       </div>
+      )}
       <div className="g5-prov-end">
         <button type="button" onClick={() => setPaying((v) => !v)} aria-expanded={paying} className="btn-quiet">
           {t.billing.pay}
         </button>
-        <a href={p.billingUrl} target="_blank" rel="noopener noreferrer" className="g5-link">
-          {t.billing.openBilling}
-          <ExternalLink className="size-4" aria-hidden />
-        </a>
+        {p.billingUrl ? (
+          <a href={p.billingUrl} target="_blank" rel="noopener noreferrer" className="g5-link">
+            {t.billing.openBilling}
+            <ExternalLink className="size-4" aria-hidden />
+          </a>
+        ) : (
+          <span className="g5-note">{tl.noBillingLink}</span>
+        )}
       </div>
       </div>
       {state === "fail" && (

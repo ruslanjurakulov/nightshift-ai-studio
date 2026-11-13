@@ -6,6 +6,7 @@ import { StateBlock } from "@/components/states/StateBlock";
 import "../../app-pages-g5.css";
 import { getDictionary } from "@/lib/i18n/server";
 import { PROVIDERS } from "@/lib/providers";
+import { MODEL_KEY_PROVIDERS } from "@/lib/model-keys";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
 import { BillingBoard, type ProviderView, type RunwayView } from "@/components/billing/BillingBoard";
 import { UnitEconomicsCard } from "@/components/billing/UnitEconomicsCard";
@@ -34,8 +35,15 @@ import {
   oldestRowMs,
   providerBurn,
   providerHistoryStart,
+  providerLedger,
+  REGISTRY_BILLING,
+  registryPrices,
+  utcDayStart,
   type BalanceRow,
   type BillingSettingsRow,
+  type ProbeRunRow,
+  type RegistryPrice,
+  type StudioCostRow,
   type TopupRow,
 } from "@/lib/billing";
 
@@ -43,6 +51,8 @@ import {
 const DAY = 86_400_000;
 const HORIZON_DAYS = 180;
 type CostPageRow = LedgerRow & { id?: number; synced_at?: string | null };
+type StudioPageRow = StudioCostRow & { id?: number };
+type ProbePageRow = ProbeRunRow & { id?: number };
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -54,7 +64,9 @@ export const revalidate = 0;
  * channel), so this page reads spend across all channels rather than the
  * selected one. Balances come from `provider_balances` (written by the pipeline
  * with the provider's own API); providers without a balance API are tracked
- * from the operator's confirmed top-ups. See lib/billing.ts for the rules.
+ * from the operator's confirmed top-ups. Each provider row also carries the
+ * owner's ledger: bought, used by the pipeline, Studio (`creative_job_costs`)
+ * and the probes (`model_probe_runs`), and what is left. See lib/billing.ts.
  */
 export default async function BillingPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
@@ -85,6 +97,14 @@ export default async function BillingPage() {
   let coveredFromMs: number | null = null;
   // The newest time the nightly mirror wrote a cost row: the ledger is only as fresh as this.
   let lastSyncMs: number | null = null;
+  // Studio and probe spend, and the registry's list prices for what has no bill (operator view only).
+  let studio: StudioPageRow[] = [];
+  let studioFailed = false;
+  let studioFromMs: number | null = null;
+  let probes: ProbeRunRow[] = [];
+  let probesFailed = false;
+  let probesFromMs: number | null = null;
+  let registry: RegistryPrice[] | null = null;
 
   // Provider accounts are the platform operator's (0018 gives them to the
   // default organization). Inside any other organization — including when a
@@ -114,7 +134,8 @@ export default async function BillingPage() {
 
     const firstTopup = Math.min(Infinity, ...topups.map((x) => Date.parse(x.paid_at)).filter(Number.isFinite));
     // Back 90 days, or to the earliest top-up so its balance is true, but never past 180 days (a long look-back is a long read).
-    const wantMs = Math.min(NOW - 90 * DAY, Number.isFinite(firstTopup) ? firstTopup : Infinity);
+    // From the start of that top-up's UTC day: the owner's ledger counts the whole day a top-up was made (lib/billing.ts).
+    const wantMs = Math.min(NOW - 90 * DAY, Number.isFinite(firstTopup) ? utcDayStart(firstTopup) : Infinity);
     const sinceMs = Math.max(wantMs, NOW - HORIZON_DAYS * DAY);
     horizonCapped = wantMs < sinceMs;
     const sinceIso = new Date(sinceMs).toISOString();
@@ -148,6 +169,58 @@ export default async function BillingPage() {
     }
     // Spend is complete from here on: back to the cut-off, or only as far as the oldest row when the read stopped short.
     coveredFromMs = costsCut ? (oldestRowMs(costs) ?? NOW) : sinceMs;
+
+    if (operatorView) {
+      // What Studio jobs and the probes spent at each provider (the pipeline ledger above never held either), over the same
+      // window, and the registry's prices for what has no bill. Only a platform owner/admin reaches this line: guardOperatorPage()
+      // above answers 404 to anyone else (isOperator fails closed). That guard is what lets an empty list mean "none": RLS on
+      // creative_job_costs and model_probe_runs (0037, 0035) answers anyone else an EMPTY list, not an error. Only
+      // model_registry_admin() refuses with an error (42501). A failed read is "unknown", never an empty "$0".
+      // Paged like the pipeline ledger (lib/paged-read.ts): PostgREST answers at most max_rows (1,000 on Supabase) a request,
+      // whatever .limit() asks, so a single read could stop short without saying so.
+      const probeCols = "id,model_id,ok,error_code,created_at";
+      const probeRead = (cols: string) =>
+        readAllPages<ProbePageRow>(
+          (from, to) =>
+            timed(
+              supabase
+                .from("model_probe_runs")
+                .select(cols, from === 0 ? { count: "exact" } : undefined)
+                .gte("created_at", sinceIso)
+                .order("created_at", { ascending: false })
+                .order("id", { ascending: false })
+                .range(from, to),
+            ) as unknown as PromiseLike<{ data: ProbePageRow[] | null; error: unknown; count: number | null }>,
+          { keyOf: (r) => r.id },
+        );
+      const missingColumn = (e: unknown) => (e as { code?: string } | null)?.code === "42703";
+      const [st, pr, reg] = await Promise.all([
+        readAllPages<StudioPageRow>(
+          (from, to) =>
+            timed(
+              supabase
+                .from("creative_job_costs")
+                .select("id,provider,vendor_model,unit,quantity,usd_estimate,recorded_at", from === 0 ? { count: "exact" } : undefined)
+                .gte("recorded_at", sinceIso)
+                .order("recorded_at", { ascending: false })
+                .order("id", { ascending: false })
+                .range(from, to),
+            ) as unknown as PromiseLike<{ data: StudioPageRow[] | null; error: unknown; count: number | null }>,
+          { keyOf: (r) => r.id },
+        ),
+        // vendor_credits arrives with migration 0152; before it the column is not there (42703) and the probes are read
+        // without it, every one then priced from the registry and labelled an estimate.
+        probeRead(`${probeCols},vendor_credits`).then((r) => (missingColumn(r.error) ? probeRead(probeCols) : r)),
+        timed(supabase.rpc("model_registry_admin")) as unknown as PromiseLike<{ data: unknown[] | null; error: unknown }>,
+      ]);
+      studioFailed = Boolean(st.error);
+      studio = st.rows;
+      studioFromMs = st.truncated ? (oldestRowMs(studio) ?? NOW) : sinceMs;
+      probesFailed = Boolean(pr.error);
+      probes = pr.rows;
+      probesFromMs = pr.truncated ? (oldestRowMs(probes.map((x) => ({ recorded_at: x.created_at }))) ?? NOW) : sinceMs;
+      registry = readFailed(reg) || !Array.isArray(reg?.data) ? null : registryPrices(reg.data);
+    }
   }
 
   // Unit economics is per channel (a price per video is a property of what the
@@ -187,6 +260,14 @@ export default async function BillingPage() {
     }
   }
   const secretOf = new Map(PROVIDERS.map((p) => [p.id, p.secretName]));
+  // A registry vendor's own row (Runway, Krea...) has no entry in lib/providers.ts: its key names are lib/model-keys.ts's.
+  const vendorOf = new Map(Object.entries(REGISTRY_BILLING).map(([vendor, id]) => [id, vendor]));
+  const keySetOf = (id: string): boolean => {
+    const secret = secretOf.get(id);
+    if (secret) return configured.has(secret);
+    const sets = MODEL_KEY_PROVIDERS.find((m) => m.id === vendorOf.get(id))?.envSets ?? [];
+    return sets.some((names) => names.length > 0 && names.every((n) => configured.has(n)));
+  };
 
   const firstTopupOf = (id: string): number | null => {
     const t = topups.filter((x) => x.provider === id).map((x) => Date.parse(x.paid_at)).filter(Number.isFinite);
@@ -208,6 +289,27 @@ export default async function BillingPage() {
     const start = costsCut && coveredFromMs !== null ? Math.max(ownStart ?? coveredFromMs, coveredFromMs) : ownStart;
     const burn = providerBurn(p, costs, price, 30, NOW, start);
     const snap = balancesFailed ? null : latestBalance(balances, p.id);
+    const ledger = providerLedger({
+      provider: p,
+      now: NOW,
+      topups,
+      topupsUnread: topupsFailed,
+      pipelineRows: costs,
+      pipelineUnread: !supabase || costsFailed || settingsFailed,
+      // An empty pipeline ledger measured nothing (the mirror may not have run): "no rows yet", never a measured $0.
+      pipelineNoRows: !costsFailed && costs.length === 0,
+      pipelineFromMs: coveredFromMs,
+      usdPerUnit: price,
+      studioRows: studio,
+      studioUnread: !supabase || !operatorView || studioFailed,
+      studioFromMs,
+      probeRows: probes,
+      probesUnread: !supabase || !operatorView || probesFailed,
+      probesFromMs,
+      registry,
+      balances,
+      balancesUnread: !supabase || balancesFailed,
+    });
     const ledgerUsd =
       usageUnknown || topupsFailed ? null : ledgerBalanceUsd(p, topups, costs, price, coveredFromMs);
 
@@ -224,18 +326,23 @@ export default async function BillingPage() {
     else if (ledgerUsd !== null) left = daysLeft(ledgerUsd, burn.usdPerDay);
     // No balance known (no snapshot, no top-up logged, or a negative ledger) is unknown, even when nothing was spent:
     // "lasts never" is only true of a balance we can see.
+    // The owner's ledger counts Studio and the probes too: when it knows what is left and the pace, it is the truer figure.
+    // Not when this provider's pipeline burn is unknown (an empty or failed ledger): the ledger would be counting the pipeline
+    // as nothing, and "not in use" would come back for a balance whose spend nobody measured.
+    const fromLedger = !autoRecharge && ledger.runsOut !== null && (p.pipeline === false || !burnUnknown);
+    if (fromLedger) left = ledger.runsOut;
 
-    const secret = secretOf.get(p.id);
+    const pipelineUsed = p.pipeline !== false;
     return {
       id: p.id,
       name: p.name,
       billingUrl: p.billingUrl,
       unitLabel: p.unitLabel,
-      keySet: secret ? configured.has(secret) : false,
+      keySet: keySetOf(p.id),
       keyUnknown: keysUnknown,
       price: settingsFailed ? null : price,
       tracked,
-      units30: burnUnknown || !tracked ? null : burn.units,
+      units30: burnUnknown || !tracked || !pipelineUsed ? null : burn.units,
       windowDays: burn.windowDays,
       usdPerDay: burnUnknown || !tracked ? null : burn.usdPerDay,
       apiBalance: snap
@@ -254,8 +361,20 @@ export default async function BillingPage() {
       includeInBulk: st?.include_in_bulk ?? true,
       cardSaved: st?.card_saved_on_provider ?? false,
       autoRecharge,
+      pipeline: pipelineUsed,
+      creditUsd: p.creditUsd ?? null,
+      ledger,
+      daysLeftEstimate: fromLedger && ledger.runsOutEstimate,
     };
   });
+  // Providers with money or use on record first, then the rest in the list's own order: two dozen rows of "none" would
+  // otherwise bury the one the owner just paid.
+  const active = (v: ProviderView) =>
+    v.ledger !== undefined &&
+    (v.ledger.bought.state === "ok" ||
+      v.ledger.remaining.kind === "reported" ||
+      Object.values(v.ledger.sources).some((src) => src.rows > 0));
+  views.sort((a, b) => Number(active(b)) - Number(active(a)));
 
   const eleven = latestBalance(balances, "elevenlabs");
   const runway: RunwayView | null =
@@ -292,7 +411,7 @@ export default async function BillingPage() {
           </StateBlock>
         </section>
       )}
-      {(costsFailed || settingsFailed || balancesFailed || topupsFailed) && (
+      {(costsFailed || settingsFailed || balancesFailed || topupsFailed || studioFailed || probesFailed || (operatorView && Boolean(supabase) && registry === null)) && (
         <section className="panel">
           <ErrorState message={tt.billingReadFailed} />
         </section>
