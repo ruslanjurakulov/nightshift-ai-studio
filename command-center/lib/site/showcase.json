@@ -893,6 +893,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "dd5f927f-6bfd-400c-b873-5a6f90c0003d",
+      "assetId": "d0e4fdd4-d612-5bd7-a562-29a58671e6a4",
+      "sha256": "649e96d8baac8a9954c6a008a8932286453f99e113d279ef112922769366df02",
+      "modelId": "ideogram-4.5",
+      "modelName": "Ideogram 4.5",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Bold retro-futurist movie poster: a cat astronaut standing on a red Martian dune under two moons, dramatic lighting, grain texture, large title text at the top reading \"ONE PROMPT AWAY\" and a small tagline at the bottom reading \"made in a single sentence\". Vivid orange and teal palette.",
+      "createdAt": "2026-11-13T20:31:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "ideogram-4-5",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:19:06Z"
     }
   ]
 }
