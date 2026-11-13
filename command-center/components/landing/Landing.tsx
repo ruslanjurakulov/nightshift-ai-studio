@@ -25,6 +25,7 @@ import { FORMATS } from "@/lib/site/formats";
 import { PROMPT_TOOLS, type PromptTool } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
@@ -76,16 +77,18 @@ export function Landing({
   // The samples the landing's own slots show are left out of its gallery, so no clip is on the page twice.
   const inSlots = slotJobs(LANDING_SLOTS);
   const gallery = showcaseItems().filter(({ e }) => !inSlots.includes(e.jobId));
-  const onPage = [...gallery.map(({ e }) => e), ...SHOWCASE_ENTRIES.filter((e) => inSlots.includes(e.jobId))];
+  // Everything on the page that is one of our samples: the gallery's, then the slots' (each with its files). The facts count
+  // these and the model tiles are built from these, so a tile's count and the facts can never disagree.
+  const onPage = [...gallery, ...showcaseItems().filter(({ e }) => inSlots.includes(e.jobId))];
   const formats = formatsFor(t);
   return (
     <div className="lp-root">
-      <Hero t={t} locale={locale} anchor={anchor} formats={formats} />
-      <Facts t={t} locale={locale} entries={onPage} />
+      <Hero t={t} formats={formats} />
+      <Facts t={t} locale={locale} anchor={anchor} entries={onPage.map(({ e }) => e)} />
       {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
       <ShowcaseGallery t={t} locale={locale} exclude={inSlots} formats={formats} />
-      <ModelMarquee entries={gallery.map(({ e }) => e)} pause={t.site.fx.pause} />
-      <ModelTiles t={t} items={gallery} />
+      <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} />
+      <ModelTiles t={t} items={onPage} />
       <Showcases t={t} />
       <How t={t} />
       {showcase.length > 0 && (
@@ -114,64 +117,42 @@ function formatsFor(t: Dictionary): LandingFormat[] {
 }
 
 /**
- * The first screen, as an AI studio's is: the hero slot's picture edge to edge (one of our generations once its job is merged,
- * labelled with its model and "Try this prompt"; until then the stock fallback, labelled stock), under a veil that keeps the words
- * at 4.5:1; the promise, the prompt bar (it only opens the Studio form) with real prompts to start from, the button, and the
- * three promises. The picture is the page's LCP: eager, high priority, its clip started only after load and idle.
+ * The first screen, lean as an AI studio's is: the hero slot's picture edge to edge (one of our generations once its job is
+ * merged, labelled with its model; until then the stock fallback, labelled stock), under a veil that keeps the words at 4.5:1;
+ * the headline, one sentence, the prompt bar (it only opens the Studio form) with real prompts to start from, one primary and
+ * one secondary action. The welcome grant, the price and the three promises are just under it (Facts). The picture is the
+ * page's LCP: eager, high priority, its clip started only after load and idle.
  */
-function Hero({ t, locale, anchor, formats }: { t: Dictionary; locale: Locale; anchor: MoneyAnchor; formats: LandingFormat[] }) {
+function Hero({ t, formats }: { t: Dictionary; formats: LandingFormat[] }) {
   const h = t.site.hero;
-  const a = t.site.anchor;
   const m = slotMedia("hero");
   const moving = m.kind === "ai" ? m.moving : m.clip !== null;
-  // The one price a visitor can know before signing up, said above the fold, and
-  // only when the live price list says it: never a default, never a zero.
-  const price = anchor.site
-    ? `${a.siteLabel}: ${fmt(a.siteValue, { n: formatCredits(anchor.site.perMinute, locale), unit: creditUnit(anchor.site.perMinute, locale, t.shell.creditUnit) })}`
-    : null;
   const ideas: PromptIdea[] = formats.flatMap(({ id, title, entry }) =>
     (PROMPT_TOOLS as readonly string[]).includes(entry.capability) && entry.prompt.trim() ? [{ id, label: title, tool: entry.capability as PromptTool, prompt: entry.prompt }] : [],
   );
   return (
     <section aria-labelledby="hero-title" className="nx-hero nx-sh">
-      <div className="nx-sh-media" {...placeBox(m)}>
+      <div className="nx-sh-media" {...placeBox(m, true)}>
         <PlaceFill media={m} s={t.site} eager early labels={false} sizes="100vw" />
       </div>
       <div className="nx-wrap nx-sh-in">
-        <p className="nx-pill">
-          <span aria-hidden className="nx-pill-dot" />
-          {h.kicker}
-        </p>
         <h1 id="hero-title" className="nx-h1 nx-sh-h1">
           {h.titleA} <span className="nx-h1-b">{h.titleB}</span>
         </h1>
-        <p className="nx-sh-lead">{h.lead}</p>
-        <PromptBar copy={t.site.prompt} ideas={ideas} />
+        <p className="nx-sh-lead">{h.leadShort}</p>
+        {/* Four starting points, one row: the first screen stays lean (the rest of the formats are in the gallery). */}
+        <PromptBar copy={t.site.prompt} ideas={ideas.slice(0, 4)} />
         <div className="nx-sh-actions">
           <Link href="/signup" className="nx-btn">
             {h.cta}
             <ArrowRight aria-hidden />
           </Link>
-          <Link href="/pricing" className="nx-link">
-            {h.secondary}
-          </Link>
-          {/* Not a second button: it jumps to the plan demo below, which shows a plan and creates nothing. */}
+          {/* The one secondary action, and not a second button: it jumps to the plan demo below, which shows a plan and creates nothing. */}
           <a href="#try" className="nx-sample">
             <span className="nx-sample-label">{h.demo}</span>
             <span className="nx-sample-note">{h.demoNote}</span>
           </a>
         </div>
-        <p className="nx-note">{fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}</p>
-        {price && <p className="nx-price">{price}</p>}
-        {/* The three things a visitor most wants settled, each backed by what the code does. */}
-        <ul className="nx-trust" aria-label={t.site.rules.slug}>
-          {t.site.rules.items.map((item) => (
-            <li key={item.id}>
-              <Check aria-hidden />
-              {item.title}
-            </li>
-          ))}
-        </ul>
       </div>
       <div className="nx-wrap nx-sh-foot">
         {/* What the picture behind the words is, on it: our sample's model and credit, or the stock contributor's. */}
@@ -198,9 +179,19 @@ function Hero({ t, locale, anchor, formats }: { t: Dictionary; locale: Locale; a
   );
 }
 
-/** Three facts counted from what the page holds (the samples on it, the models that made them) and the welcome grant; a count of zero is left out, never shown as a claim. */
-function Facts({ t, locale, entries }: { t: Dictionary; locale: Locale; entries: readonly ShowcaseEntry[] }) {
+/**
+ * Just under the first screen: three facts counted from what the page holds (the samples on it, the models that made them) and
+ * the welcome grant, a count of zero left out, never shown as a claim; then the welcome grant's terms, the one price a visitor can
+ * know before signing up (only when the live price list says it: never a default, never a zero), the three promises the page
+ * keeps, and the way to the prices.
+ */
+function Facts({ t, locale, anchor, entries }: { t: Dictionary; locale: Locale; anchor: MoneyAnchor; entries: readonly ShowcaseEntry[] }) {
   const f = t.site.facts;
+  const h = t.site.hero;
+  const a = t.site.anchor;
+  const price = anchor.site
+    ? `${a.siteLabel}: ${fmt(a.siteValue, { n: formatCredits(anchor.site.perMinute, locale), unit: creditUnit(anchor.site.perMinute, locale, t.shell.creditUnit) })}`
+    : null;
   const items = [
     { id: "samples", n: entries.length, label: f.samples },
     { id: "models", n: showcaseModels(entries).length, label: f.models },
@@ -208,17 +199,35 @@ function Facts({ t, locale, entries }: { t: Dictionary; locale: Locale; entries:
   ].filter((i) => i.n > 0);
   return (
     <section aria-label={f.label} className="nx-facts">
-      <ul className="nx-wrap nx-facts-list">
-        {items.map((i) => (
-          <li key={i.id} data-fact={i.id}>
-            {/* data-count: the count-up's target (components/site/motion/attach.ts); the text stays the server's number. */}
-            <span className="nx-facts-n" data-count={i.n}>
-              {formatCredits(i.n, locale)}
-            </span>
-            <span className="nx-facts-l">{i.label}</span>
-          </li>
-        ))}
-      </ul>
+      <div className="nx-wrap">
+        <ul className="nx-facts-list">
+          {items.map((i) => (
+            <li key={i.id} data-fact={i.id}>
+              {/* data-count: the count-up's target (components/site/motion/attach.ts); the text stays the server's number. */}
+              <span className="nx-facts-n" data-count={i.n}>
+                {formatCredits(i.n, locale)}
+              </span>
+              <span className="nx-facts-l">{i.label}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="nx-facts-more">
+          <p className="nx-note">{fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}</p>
+          {price && <p className="nx-price">{price}</p>}
+          {/* The three things a visitor most wants settled, each backed by what the code does. */}
+          <ul className="nx-trust" aria-label={t.site.rules.slug}>
+            {t.site.rules.items.map((item) => (
+              <li key={item.id}>
+                <Check aria-hidden />
+                {item.title}
+              </li>
+            ))}
+          </ul>
+          <Link href="/pricing" className="nx-link">
+            {h.secondary}
+          </Link>
+        </div>
+      </div>
     </section>
   );
 }
@@ -252,8 +261,12 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
             const leftOut = modelLeftOut(e);
             return (
               <li key={e.modelId} className="nx-model" data-showcase-entry={e.jobId} data-model={e.modelId} data-spot>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={f.posterSm} width={e.width} height={e.height} alt="" className="nx-model-pic" loading="lazy" decoding="async" />
+                {/* The model's sample, alive: its loop plays with the grid's rules (LoopClip `together`), a still drifts slowly. */}
+                <div className="nx-model-media" data-clip={e.kind === "video" && f.clip ? "sample" : undefined}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={f.posterSm} width={e.width} height={e.height} alt="" className="nx-model-pic nx-drift-pic" loading="lazy" decoding="async" />
+                  {e.kind === "video" && f.clip && <ShowcaseClip jobId={e.jobId} together />}
+                </div>
                 <div className="nx-model-body">
                   <span className="nx-ai-badge">{g.badge}</span>
                   <h3 className="nx-model-name">{e.modelName}</h3>
@@ -386,7 +399,7 @@ function FinalCta({ t }: { t: Dictionary }) {
   return (
     <section aria-labelledby="final-title" className="nx-final-wrap">
       <div className="nx-wrap">
-        <div className="nx-final" {...placeBox(m)}>
+        <div className="nx-final" {...placeBox(m, true)}>
           {/* The slot's picture (or its loop) behind the closing words: decorative, so no description; what it is is printed on it. */}
           <PlaceFill media={m} s={t.site} alt="" className="nx-final-pic" labels={false} sizes="(min-width: 1240px) 1160px, 100vw" />
           {m.kind === "ai" ? (

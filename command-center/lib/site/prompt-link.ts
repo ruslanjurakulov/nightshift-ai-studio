@@ -6,7 +6,7 @@
  *
  * Kept free of the Studio's own modules (the bar is client code and those pull in the model tables); the Studio cleans and bounds
  * the words again when it reads them from the link (lib/creative/improve prefillFromImprove), so this only has to keep the link
- * short and free of control characters. tests/site-prompt-bar.test.ts holds the constants below equal to the Studio's.
+ * short and free of control characters. tests/site-ai-media.test.tsx holds the constants below equal to the Studio's.
  */
 import { STUDIO_NEXT_PREFIX, fitsAfterSignup } from "@/lib/safe-redirect";
 

@@ -1,5 +1,6 @@
 /**
- * The landing's format cards (components/landing/Formats.tsx): one line per format, naming the showcase job (lib/site/showcase.json)
+ * The landing's formats (shown on the gallery card of the sample that shows each one, components/site/ShowcaseGallery.tsx, and as the
+ * prompt bar's chips): one line per format, naming the showcase job (lib/site/showcase.json)
  * whose clip shows it. A card appears only while that job's entry and files are merged, so a format is never a placeholder; the
  * card's title and line (lib/i18n/site/*.ts site.formats.items, same ids) describe that clip, so change them together.
  */

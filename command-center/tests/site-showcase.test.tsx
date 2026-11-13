@@ -146,12 +146,17 @@ describe("the gallery", () => {
     expect(card.querySelector("time")?.getAttribute("dateTime")).toBe(FIXTURE_ENTRY.createdAt);
     expect(card.querySelector("img")?.getAttribute("alt")).toContain("Runway Gen-4.5");
     // An operator preview: the card says, as a fact, that the model is not in the Studio, and the button neither names it in its
-    // link nor in its accessible name; it is its visible words, described by the sample's prompt.
-    const tryIt = within(card).getByRole("link", { name: d.site.gallery.try });
+    // link nor in its accessible name. It says "Use this prompt" (never "try" a model its link will not open), and a visible note,
+    // which also describes the button with the sample's prompt, says the words run on a model the Studio offers.
+    const tryIt = within(card).getByRole("link", { name: d.site.gallery.use });
+    expect(within(card).queryByRole("link", { name: d.site.gallery.try })).toBeNull();
     expect(tryIt.getAttribute("href")).toBe(signupTryHref(FIXTURE_ENTRY));
-    expect(tryIt.textContent).toBe(d.site.gallery.try);
+    expect(tryIt.textContent).toBe(d.site.gallery.use);
     expect(tryIt.hasAttribute("aria-label")).toBe(false);
-    expect(document.getElementById(tryIt.getAttribute("aria-describedby")!)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    const [promptId, noteId] = tryIt.getAttribute("aria-describedby")!.split(" ");
+    expect(document.getElementById(promptId)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    expect(document.getElementById(noteId)?.textContent).toBe(d.site.gallery.useNote);
+    expect(card.querySelector(".nx-gallery-use")?.textContent).toBe(d.site.gallery.useNote);
     expect(card.querySelector(".nx-gallery-unavailable")?.textContent).toBe(d.site.gallery.notInStudio);
     expect(tryIt.getAttribute("href")).not.toContain("model");
     // The heading and the note say what the section is, in this language.
@@ -202,6 +207,31 @@ describe("the gallery", () => {
     expect(container.querySelector(".nx-gallery-prompt")?.textContent).toBe(t.site.gallery.noPrompt);
   });
 
+  it.each(LOCALES.map((l) => l.code))("%s: a clip animated from another sample's picture shows that picture, its model and its maker's credit; any other input shows none", (code) => {
+    const d = dictionaries[code];
+    const stillJob = "0d0d0d0d-1111-4222-8333-444455556666";
+    const still = { ...FIXTURE_ENTRY, jobId: stillJob, kind: "image" as const, capability: "t2i", modelId: "ideogram-3", modelName: "Ideogram 3", provider: "ideogram", attribution: { text: "Powered by Ideogram", url: "https://ideogram.ai" }, input: { kind: "none" as const }, width: 1280, height: 718 };
+    const alive = { ...FIXTURE_ENTRY, input: { kind: "operator_job" as const, jobId: stillJob, assetId: "0e0e0e0e-1111-4222-8333-444455556666" } };
+    const files = { ...FIXTURE_FILES, [stillJob]: { poster: "/still.webp", posterSm: "/still-sm.webp", clip: null } };
+    const { container } = render(<ShowcaseGallery t={d} locale={code} entries={[alive, still]} files={files} />);
+    const card = container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
+    const fig = card.querySelector(".nx-gallery-source") as HTMLElement;
+    expect(fig.dataset.sourceEntry).toBe(stillJob);
+    const img = fig.querySelector("img")!;
+    expect(img.getAttribute("src")).toBe("/still-sm.webp");
+    expect(img.getAttribute("alt")).toBe(fmt(d.site.gallery.altSource, { model: "Ideogram 3" }));
+    expect(fig.textContent).toContain(d.site.gallery.source);
+    expect(within(fig).getByRole("link", { name: "Powered by Ideogram" }).getAttribute("href")).toBe("https://ideogram.ai");
+    // The clip's own credit is still the clip's maker's.
+    expect(within(card).getByRole("link", { name: "Powered by Runway" })).toBeTruthy();
+    // The picture's own card shows no source, and neither does an animation of site art or of a job that is not a sample here.
+    expect(container.querySelector(`[data-showcase-entry="${stillJob}"] .nx-gallery-source`)).toBeNull();
+    cleanup();
+    expect(render(<ShowcaseGallery t={d} locale={code} entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />).container.querySelector(".nx-gallery-source")).toBeNull();
+    cleanup();
+    expect(render(<ShowcaseGallery t={d} locale={code} entries={[alive]} files={FIXTURE_FILES} />).container.querySelector(".nx-gallery-source")).toBeNull();
+  });
+
   it("is the only place a model is named: outside the entry cards the section names no provider, and each card's model is a registry model with a job id", () => {
     const { container } = render(<ShowcaseGallery t={t} locale="en" entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />);
     const cards = [...container.querySelectorAll<HTMLElement>("[data-showcase-entry]")];
@@ -227,7 +257,10 @@ describe("the gallery", () => {
     expect(s.gallery.tryAria.startsWith(s.gallery.try)).toBe(true);
     expect(s.gallery.notInStudio + s.gallery.gone).not.toMatch(PROVIDER_BRANDS);
     // Statements of fact, not promises (CLAUDE.md #5): nothing about when or whether it will come.
-    expect(s.gallery.notInStudio + s.gallery.gone).not.toMatch(/coming|soon|скоро|появится|tez orada|paydo/i);
+    expect(s.gallery.notInStudio + s.gallery.gone + s.gallery.useNote).not.toMatch(/coming|soon|скоро|появится|tez orada|paydo/i);
+    // A button that does not open the sample's model says "use" the words, not "try" them; it is another word from "try".
+    expect(s.gallery.use).not.toBe(s.gallery.try);
+    expect(s.gallery.useNote).not.toMatch(PROVIDER_BRANDS);
     // The heading claims nothing about which models are on sale.
     expect(s.gallery.title).toContain("Nightshift");
   });
@@ -299,6 +332,22 @@ describe("the shipped samples", () => {
       // (the prompt included: the words a job was given are shown, and they must not name a model or maker either).
       const rest = card.cloneNode(true) as HTMLElement;
       rest.removeAttribute("data-model");
+      // A clip animated from another sample's picture shows that picture: named, credited and described exactly as that picture's
+      // own card is, and only when the input really is that sample's job.
+      const fig = rest.querySelector<HTMLElement>(".nx-gallery-source");
+      const src = e.kind === "video" && e.input.kind === "operator_job" ? items.find((it) => it.e.jobId === (e.input as { jobId: string }).jobId) : undefined;
+      expect(fig?.dataset.sourceEntry ?? null, e.jobId).toBe(src?.e.jobId ?? null);
+      if (fig && src) {
+        const sm = MODELS.get(src.e.modelId)!;
+        expect(fig.querySelector("strong")?.textContent).toBe(sm.display_name);
+        // (Under vitest an imported file has no .src, so both sides are empty there; next build fills them.)
+        expect(fig.querySelector("img")?.getAttribute("src") ?? null).toBe(src.f.posterSm ?? null);
+        expect(fig.querySelector("img")?.getAttribute("alt")).toBe(fmt(g.altSource, { model: sm.display_name }));
+        const sc = fig.querySelector(".nx-gallery-attr");
+        expect(sc?.textContent ?? null).toBe(sm.attribution?.text ?? null);
+        expect(sc?.getAttribute("href") ?? null).toBe(sm.attribution?.url ?? null);
+        fig.remove();
+      }
       const name = rest.querySelector(".nx-gallery-model strong")!;
       expect(name.textContent).toBe(m.display_name);
       name.remove();

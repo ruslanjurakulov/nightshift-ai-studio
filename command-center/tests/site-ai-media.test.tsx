@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, within } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 
 const state = vi.hoisted(() => ({ noStock: false }));
@@ -34,6 +35,14 @@ vi.mock("@/lib/site/showcase.json", async () => {
 vi.mock("@/components/site/showcase-assets", async () => {
   const { FIXTURE_FILES, FIXTURE_JOB } = await import("./fixtures/showcase-entry");
   return { SHOWCASE_FILES: { ...FIXTURE_FILES, "0d0d0d0d-1111-4222-8333-444455556666": FIXTURE_FILES[FIXTURE_JOB] } };
+});
+// The hero's line as it is before its id is set (`ai` null), so the fixture's `slot: "hero"` export fills it; every other slot names a
+// real job that is not in this fixture data, so it shows its stock fallback here.
+vi.mock("@/components/site/slots", async (orig) => {
+  const m = await orig<typeof import("@/components/site/slots")>();
+  const S = m.SLOTS as unknown as Record<string, { ai: string | null }>;
+  S.hero = { ...S.hero, ai: null };
+  return m;
 });
 vi.mock("@/components/site/stock-in-use", async (orig) => {
   const real = await orig<typeof import("@/components/site/stock-in-use")>();
@@ -118,7 +127,7 @@ describe("a slot is one line: a sample when it is merged, the stock picture unti
       if (s.ai !== null) expect(s.ai, name).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     }
     // tools/export_showcase.py slot_names(): two-space keys, each opening a "{", between these two markers.
-    const src = readFileSync(join(ROOT, "components/site/samples.tsx"), "utf8");
+    const src = readFileSync(join(ROOT, "components/site/slots.ts"), "utf8");
     const block = src.slice(src.indexOf("export const SLOTS = {"), src.indexOf("} as const", src.indexOf("export const SLOTS = {")));
     const names = [...block.matchAll(/^\s{2}(?:"([^"]+)"|([A-Za-z0-9_]+)):\s*\{/gm)].map((m) => m[1] ?? m[2]);
     expect(names).toEqual(Object.keys(SLOTS));
@@ -140,9 +149,14 @@ describe("the landing with a sample in its hero slot", () => {
     expect(img.hasAttribute("data-sample")).toBe(false);
     const credit = container.querySelector(".nx-sh-credit") as HTMLElement;
     expect(placeLabelProblems(credit, m, t.site)).toEqual([]);
-    const tryIt = within(credit).getByRole("link", { name: t.site.gallery.try });
+    // The fixture's model is an operator preview: the link does not open it, so the button says "Use this prompt" (never "try"
+    // a model it will not run), and a visible note says the words run on a model the Studio offers.
+    const tryIt = within(credit).getByRole("link", { name: t.site.gallery.use });
     expect(tryIt.getAttribute("href")!.startsWith("/signup?next=")).toBe(true);
-    expect(document.getElementById(tryIt.getAttribute("aria-describedby")!)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    expect(within(credit).queryByRole("link", { name: t.site.gallery.try })).toBeNull();
+    const [promptId, noteId] = tryIt.getAttribute("aria-describedby")!.split(" ");
+    expect(document.getElementById(promptId)?.textContent).toBe(FIXTURE_ENTRY.prompt);
+    expect(document.getElementById(noteId)?.textContent).toBe(t.site.gallery.useNote);
     // The hero's sample is not shown again in the gallery; the other sample is.
     expect(slotJobs(LANDING_SLOTS)).toEqual([FIXTURE_JOB]);
     expect(container.querySelector(`${GALLERY} [data-showcase-entry="${FIXTURE_JOB}"]`)).toBeNull();
@@ -158,12 +172,23 @@ describe("the landing with a sample in its hero slot", () => {
     expect(facts).toEqual({ samples: "2", models: "2", credits: String(WELCOME_CREDITS) });
   });
 
-  it("gives each model of the gallery one tile, inside its sample's box, with the maker's credit where there is one, the truth about the Studio and no price", () => {
+  it("gives each model of a sample anywhere on the page one tile (as many as the facts count), inside its sample's box, with the maker's credit where there is one, the truth about the Studio and no price", () => {
     const t = dictionaries.en;
     const { container } = landing();
     const tiles = [...container.querySelectorAll<HTMLElement>("#models .nx-model")];
-    // The gallery shows one sample (the other is the hero's): one model.
-    expect(tiles.map((x) => x.dataset.model)).toEqual(["minimax-h3"]);
+    // The gallery's sample, then the hero's: two models, the number the facts row says.
+    expect(tiles.map((x) => x.dataset.model)).toEqual(["minimax-h3", "runway-gen4.5"]);
+    expect(container.querySelector("[data-fact='models'] .nx-facts-n")?.textContent).toBe(String(tiles.length));
+    // Each tile links to its sample on this page: the gallery card, or the box of the slot that shows it (the hero).
+    for (const tile of tiles) {
+      const href = tile.querySelector(".nx-model-see")!.getAttribute("href")!;
+      expect(href).toBe(`#sample-${tile.dataset.showcaseEntry}`);
+      expect(container.querySelectorAll(href)).toHaveLength(1);
+    }
+    expect(container.querySelector(`#sample-${FIXTURE_JOB}`)?.matches(".nx-sh-media")).toBe(true);
+    const runway = tiles[1];
+    expect(runway.querySelector(".nx-model-count")?.textContent).toBe(fmt(t.site.models.count, { n: "1" }));
+    expect(runway.querySelector(".nx-ai-attr")?.getAttribute("href")).toBe("https://runway.com");
     const tile = tiles[0];
     expect(tile.dataset.showcaseEntry).toBe(OTHER);
     expect(tile.querySelector(".nx-model-name")?.textContent).toBe("MiniMax H3");
@@ -171,6 +196,20 @@ describe("the landing with a sample in its hero slot", () => {
     expect(tile.querySelector(".nx-gallery-unavailable")?.textContent).toBe(t.site.gallery.notInStudio);
     expect(tile.querySelector(`a[href="#sample-${OTHER}"]`)?.textContent).toBe(t.site.models.see);
     expect(tile.textContent).not.toMatch(/\$|€|credit|new\b/i);
+  });
+
+  it("nothing in the grid or the tiles looks dead: each tile plays its sample's loop like the grid, and every poster drifts until its clip plays, stopped by the pause switch and absent under reduced motion", () => {
+    const { container } = landing();
+    for (const tile of container.querySelectorAll<HTMLElement>("#models .nx-model")) {
+      expect(tile.querySelector(".nx-model-media")?.getAttribute("data-clip")).toBe("sample");
+      expect(tile.querySelector("img")?.classList.contains("nx-drift-pic")).toBe(true);
+    }
+    for (const img of container.querySelectorAll(`${GALLERY} .nx-gallery-pic > img`)) expect(img.classList.contains("nx-drift-pic")).toBe(true);
+    const src = readFileSync(join(ROOT, "components/landing/Landing.tsx"), "utf8");
+    expect(src).toContain("<ShowcaseClip jobId={e.jobId} together />");
+    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\n  \.nx-drift-pic \{ animation: nx-poster-drift 16s ease-in-out infinite alternate;/);
+    expect(css).toContain('html[data-motion="paused"] .nx-drift-pic { animation-play-state: paused !important; }');
+    expect(css).toContain('[data-live="true"] > .nx-drift-pic { animation: none; }');
   });
 
   it("the explore grid is dark, keeps each clip's shape and plays the clips in view together on a wide screen", () => {
@@ -269,11 +308,18 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(container.textContent).toContain(t.prompt.noteOut);
   });
 
+  it("before its script runs, Create is off (the server's markup), so no form is ever sent that would drop the words", () => {
+    const html = renderToStaticMarkup(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />);
+    expect(html).toMatch(/<button type="submit" class="nx-pbar-go" disabled="">/);
+    // Once it runs, Create is on (checked above by pressing it).
+    expect(render(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />).container.querySelector(".nx-pbar-go")?.hasAttribute("disabled")).toBe(false);
+  });
+
   it("is fed only real prompts on the landing: each chip is a format whose sample is merged, with that sample's words", () => {
     const { container } = landing();
     const chips = [...container.querySelectorAll(".nx-pbar-idea")].map((b) => b.textContent);
     const merged = FORMATS.filter((f) => SHOWCASE_ENTRIES.some((e) => e.jobId === f.job));
-    expect(chips).toEqual(merged.map((f) => dictionaries.en.site.formats.items.find((i) => i.id === f.id)!.title));
+    expect(chips).toEqual(merged.slice(0, 4).map((f) => dictionaries.en.site.formats.items.find((i) => i.id === f.id)!.title));
   });
 });
 
@@ -288,7 +334,7 @@ describe("the gallery's clips on a wide screen", () => {
   it("play while each is in view, without waiting to lead, and use the small file; never under reduced motion", () => {
     const observers: { cb: IntersectionObserverCallback }[] = [];
     const stub = (reduce: boolean) => {
-      vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") ? reduce : q.includes("min-width: 860px"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+      vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") ? reduce : q.includes("min-width"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
       vi.stubGlobal(
         "IntersectionObserver",
         class {
@@ -324,9 +370,13 @@ describe("copy and config", () => {
     const s = dictionaries[code].site;
     for (const block of [s.prompt, s.facts, s.formats, s.models]) expect(JSON.stringify(block)).not.toMatch(PROVIDER_BRANDS);
     expect(s.formats.items.map((i) => i.id)).toEqual(FORMATS.map((f) => f.id));
-    for (const v of [s.gallery.slotNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut]) expect(v.trim().length).toBeGreaterThan(20);
+    for (const v of [s.gallery.slotNote, s.gallery.useNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut, s.hero.leadShort]) expect(v.trim().length).toBeGreaterThan(20);
+    // The formats are only their cards' words: the cards are drawn inside the gallery, under its own heading.
+    expect(Object.keys(s.formats)).toEqual(["items"]);
+    // The bar's note names the Studio's own button (ru «Создать», not «Сгенерировать»).
+    expect(s.prompt.noteIn).toContain(dictionaries[code].gen.generate);
+    expect(s.prompt.noteOut).toContain(dictionaries[code].gen.generate);
     expect(s.models.count).toContain("{n}");
-    expect(s.formats.tryAria).toContain("{format}");
     // Facts are statements, not promises or claims about other people.
     expect(JSON.stringify(s.facts)).not.toMatch(/users|customers|creators|пользовател|клиент|foydalanuvchi|mijoz/i);
   });

@@ -53,6 +53,13 @@ describe("landing hero → existing #try demo", () => {
     expect(sample.getAttribute("href")).toBe("#try");
     expect(sample.classList.contains("nx-btn")).toBe(false);
     expect(sample.querySelector(".nx-sample-label")?.textContent).toBe(dictionaries[locale].site.hero.demo);
+    // Lean, as an AI studio's first screen is: the headline, one sentence, the prompt bar and these two actions. No pill, no
+    // price, no promises list and no third link above the fold (they are just under it, in .nx-facts).
+    const h = dictionaries[locale].site.hero;
+    expect(hero.querySelectorAll("a")).toHaveLength(2);
+    expect(hero.querySelector(".nx-pill, .nx-note, .nx-price, .nx-trust")).toBeNull();
+    expect(hero.querySelector(".nx-sh-lead")?.textContent).toBe(h.leadShort);
+    expect(h.leadShort.split(/[.!?](?:\s|$)/).filter((x) => x.trim()).length).toBe(1);
   });
 
   it.each(LOCALES)("%s: #try is exactly one labelled section, the same one the anchor targets", (locale) => {
@@ -71,10 +78,10 @@ describe("landing hero → existing #try demo", () => {
     const sample = container.querySelector("a.nx-sample") as HTMLElement;
     expect(sample.textContent).toMatch(NOT_CREATED[locale]);
     expect(sample.textContent).not.toMatch(CLAIMS[locale]);
-    // Unchanged on this PR: the pricing link and the one place the free-credits promise is made.
-    const pricing = container.querySelector('.nx-sh-in a.nx-link[href="/pricing"]');
+    // The pricing link and the one place the free-credits promise is made: just under the first screen (round 10, a lean hero).
+    const pricing = container.querySelector('.nx-facts a.nx-link[href="/pricing"]');
     expect(pricing?.textContent).toBe(t.site.hero.secondary);
-    const note = container.querySelector(".nx-sh-in .nx-note");
+    const note = container.querySelector(".nx-facts .nx-note");
     expect(note?.textContent).toBe(fmt(t.site.hero.note, { n: String(WELCOME_CREDITS) }));
     expect(sample.textContent).not.toMatch(/\d/);
   });

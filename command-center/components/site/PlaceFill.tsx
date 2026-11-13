@@ -13,7 +13,7 @@ type Site = Dictionary["site"];
 /** The words a place needs to label what it shows: the stock labels and credit template, and the sample labels (the public sign-in dictionary carries exactly these, lib/i18n/public.ts). */
 export type PlaceCopy = {
   samples: Pick<Site["samples"], "tag" | "frameTag" | "clipTag" | "credit" | "alts">;
-  gallery: Pick<Site["gallery"], "badge" | "try" | "tryAria" | "noPrompt" | "altClip" | "altImage">;
+  gallery: Pick<Site["gallery"], "badge" | "try" | "tryAria" | "use" | "useNote" | "noPrompt" | "altClip" | "altImage">;
 };
 
 /**
@@ -21,9 +21,16 @@ export type PlaceCopy = {
  * it is the one kind of element on the public site that may name a model, because it IS a generation by that model
  * (tests/helpers/brands.ts, tests/helpers/showcase-scope.ts). A stock box says which footage it plays, as before.
  */
-export function placeBox(m: PlaceMedia): Record<string, string | undefined> {
+export function placeBox(m: PlaceMedia, anchor = false): Record<string, string | undefined> {
   return m.kind === "ai"
-    ? { "data-media": "ai", "data-clip": m.moving ? "sample" : undefined, "data-showcase-entry": m.entry.jobId, "data-model": m.entry.modelId }
+    ? {
+        "data-media": "ai",
+        "data-clip": m.moving ? "sample" : undefined,
+        "data-showcase-entry": m.entry.jobId,
+        "data-model": m.entry.modelId,
+        // The landing's model tiles link down to a sample; a sample shown in a slot is reached at its box (one box per page has it).
+        id: anchor ? `sample-${m.entry.jobId}` : undefined,
+      }
     : { "data-media": "stock", "data-clip": m.clip ?? undefined };
 }
 
@@ -67,8 +74,11 @@ export function AiCredit({
   /** False where the place already prints the "AI-generated" badge on the picture. */
   badge?: boolean;
 }) {
-  const leftOut = modelLeftOut(entry, now);
+  // Only a link needs the date (whether the model may be named in it). A place with no link (the sign-in stage, rendered in the
+  // browser too) reads no clock, so its server and client markup cannot disagree.
+  const leftOut = href ? modelLeftOut(entry, now) : null;
   const promptId = `${scope}-prompt-${entry.jobId}`;
+  const noteId = `${scope}-use-${entry.jobId}`;
   return (
     <span className={className}>
       {badge && <span className="nx-ai-badge">{g.badge}</span>}
@@ -83,10 +93,16 @@ export function AiCredit({
           <span id={promptId} className="sr-only">
             {entry.prompt.trim() ? entry.prompt : g.noPrompt}
           </span>
-          <Link href={href} prefetch={false} className="nx-ai-try" aria-label={leftOut ? undefined : fmt(g.tryAria, { model: entry.modelName })} aria-describedby={promptId}>
-            {g.try}
+          {/* A model customers cannot choose is not in the link: the button says "use" the words, and the note says which model runs them. */}
+          <Link href={href} prefetch={false} className="nx-ai-try" aria-label={leftOut ? undefined : fmt(g.tryAria, { model: entry.modelName })} aria-describedby={leftOut ? `${promptId} ${noteId}` : promptId}>
+            {leftOut ? g.use : g.try}
             <ArrowRight aria-hidden />
           </Link>
+          {leftOut && (
+            <span id={noteId} className="nx-ai-note">
+              {g.useNote}
+            </span>
+          )}
         </>
       )}
     </span>

@@ -5,7 +5,7 @@ import { slotMedia, type SlotId } from "@/components/site/samples";
 import { AiCredit, PlaceFill, placeBox, placeNote } from "@/components/site/PlaceFill";
 import { placeTry } from "@/components/site/place-try";
 
-/** The two things Nightshift is shown by: one section each, one picture each, never the same picture twice (components/site/samples.tsx SLOTS). */
+/** The two things Nightshift is shown by: one section each, one picture each, never the same picture twice (components/site/slots.ts SLOTS). */
 const SHOWS: { id: "studio" | "approvals"; slot: SlotId; href: string }[] = [
   { id: "studio", slot: "show.studio", href: "/signup" },
   { id: "approvals", slot: "show.approvals", href: "/solutions/youtube-channels" },
@@ -30,7 +30,7 @@ export function Showcases({ t }: { t: Dictionary }) {
           <section key={id} id={id} aria-labelledby={`show-${id}-title`} className="nx-show">
             <div className="nx-wrap">
               <div className="nx-show-card">
-                <div className="nx-show-pic" {...placeBox(media)}>
+                <div className="nx-show-pic" {...placeBox(media, true)}>
                   <PlaceFill media={media} s={t.site} tryHref={placeTry(media)} sizes="(min-width: 1240px) 1160px, 100vw" />
                   {moving && <ClipPause label={t.site.fx.pause} />}
                 </div>

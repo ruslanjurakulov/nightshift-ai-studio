@@ -58,7 +58,7 @@ export function McpLanding({ dev, site, oauthLive }: { dev: DevDictionary; site?
                 {l.examples.title}
               </h2>
             </div>
-            <p className="ml-land-lead ml-examples-lead">{l.examples.lead}</p>
+            <p className="ml-land-lead ml-examples-lead">{site && EXAMPLE_SCENES.some((x) => sceneMedia(x).kind === "ai") ? l.examples.leadSamples : l.examples.lead}</p>
           </div>
         </div>
         <div className="ml-land-bleed">
@@ -77,7 +77,7 @@ export function McpLanding({ dev, site, oauthLive }: { dev: DevDictionary; site?
                       <span className="ml-ex-badge" data-kind="ai">
                         {site!.gallery.badge}
                       </span>
-                      <AiCredit entry={pic.entry} g={site!.gallery} scope={`mcp-${scene}`} className="nx-ai-credit ml-ex-credit" />
+                      <AiCredit entry={pic.entry} g={site!.gallery} badge={false} scope={`mcp-${scene}`} className="nx-ai-credit ml-ex-credit" />
                     </>
                   ) : (
                     <>

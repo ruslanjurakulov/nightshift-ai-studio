@@ -543,7 +543,8 @@ html[data-motion="paused"] .nx-fx-blob,
 html[data-motion="paused"] .nx-dot,
 html[data-motion="paused"] .nx-art-glow, html[data-motion="paused"] .nx-art-ring,
 html[data-motion="paused"] .nx-art-star, html[data-motion="paused"] .nx-art-playhead, html[data-motion="paused"] .nx-art-pulse, html[data-motion="paused"] .nx-art-svg *,
-html[data-motion="paused"] .nx .ns-lamp[data-live="true"] { animation-play-state: paused !important; }
+html[data-motion="paused"] .nx .ns-lamp[data-live="true"],
+html[data-motion="paused"] .nx-drift-pic { animation-play-state: paused !important; }
 /* Hero reassurance: the three promises, said before the first scroll. */
 .nx-trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 24px; margin: 24px 0 0; padding: 0; list-style: none; }
 .nx-trust li { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: 15px; font-weight: 500; color: var(--ns-text); }
@@ -1456,20 +1457,25 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 .nx-sh .nx-sh-h1 { order: 0; margin: 18px 0 0; max-width: 13ch; font-size: clamp(46px, 12vw, 112px); line-height: 0.98; letter-spacing: -0.045em; text-shadow: 0 2px 32px rgba(0, 0, 0, 0.45); }
 html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size: clamp(38px, 9.4vw, 88px); }
 @media (min-width: 1024px) {
-  .nx-sh .nx-sh-h1 { max-width: 16ch; font-size: clamp(60px, 6.2vw, 100px); }
-  html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { font-size: clamp(52px, 5.6vw, 88px); }
+  /* A display size well above the section headings (.nx-h2 tops out at 64 px): the first screen is one statement. */
+  .nx-sh .nx-sh-h1 { max-width: 16ch; font-size: clamp(76px, 7.2vw, 116px); }
+  html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { font-size: clamp(60px, 5.8vw, 92px); }
 }
 .nx-sh-lead { margin: 18px 0 0; max-width: 34em; font-size: 17px; line-height: 1.5; color: rgba(255, 255, 255, 0.9); }
 @media (min-width: 640px) { .nx-sh-lead { font-size: 20px; } }
 .nx-sh-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; margin-top: 22px; }
 .nx-sh-actions .nx-sample { padding-inline: 0; text-align: left; align-items: flex-start; }
-.nx-sh .nx-note { margin: 16px 0 0; font-size: 15px; color: rgba(255, 255, 255, 0.85); }
-.nx-sh .nx-price { margin: 6px 0 0; font-size: 15px; color: rgba(255, 255, 255, 0.85); }
-.nx-sh .nx-trust { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 4px 20px; margin: 14px 0 0; padding: 0; list-style: none; }
-.nx-sh .nx-trust li { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: 15px; color: rgba(255, 255, 255, 0.9); }
-.nx-sh .nx-trust svg { width: 16px; height: 16px; color: #5ee0a0; }
+/* The welcome grant, the price and the promises, just under the first screen (Landing.tsx Facts), on the page's own tokens. */
+.nx-facts-more { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 28px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--ns-rule); }
+.nx-facts-more .nx-note { margin: 0; font-size: 15px; color: var(--ns-text-dim); }
+.nx-facts-more .nx-price { margin: 0; font-size: 15px; color: var(--ns-text-dim); }
+.nx-facts-more .nx-trust { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 4px 20px; margin: 0; padding: 0; list-style: none; }
+.nx-facts-more .nx-trust li { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: 15px; color: var(--ns-text); }
+.nx-facts-more .nx-trust svg { width: 16px; height: 16px; color: var(--ns-go); }
+.nx-ai-note { flex-basis: 100%; font-size: 13px; line-height: 1.4; }
+.nx-gallery-use { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ns-text-dim); }
 .nx-sh-foot { position: relative; z-index: 1; margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 28px; color: #fff; }
-.nx-sh-credit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: 100%; margin: 0; padding: 4px 8px; border-radius: 22px; background: rgba(0, 0, 0, 0.62); font-size: 14px; }
+.nx-sh-credit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: min(100%, 520px); margin: 0; padding: 4px 8px; border-radius: 22px; background: rgba(0, 0, 0, 0.62); font-size: 14px; }
 .nx-sh-credit .nx-result-badge, .nx-sh-credit .nx-result-credit { position: static; max-width: none; padding: 3px 4px; background: none; }
 .nx-sh-foot .nx-motion { margin: 0; }
 /* From 1024 px the credit sits at the top right, over the picture and clear of the words (they start under it, on the left). */
@@ -1489,14 +1495,13 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 .nx-pbar-tool[aria-pressed="true"] { border-color: #fff; background: #fff; color: #0b0b10; }
 .nx-pbar-go { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; margin-left: auto; padding: 0 22px; border: 0; border-radius: 999px; background: linear-gradient(135deg, #a79cff 0%, #d08cff 52%, #ffb066 100%); color: #0b0b10; font-family: var(--font-display); font-size: 16px; font-weight: 600; cursor: pointer; box-shadow: 0 10px 30px -12px rgba(208, 140, 255, 0.8); }
 .nx-pbar-go svg { width: 18px; height: 18px; }
+.nx-pbar-go:disabled { opacity: 0.6; cursor: default; }
 .nx-pbar-tool:focus-visible, .nx-pbar-go:focus-visible, .nx-pbar-idea:focus-visible, .nx-ai-try:focus-visible, .nx-ai-attr:focus-visible, .nx-model-see:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
 .nx-pbar-err { margin: 8px 6px 0; font-size: 15px; color: #ffc2b8; }
 .nx-pbar-note { margin: 8px 6px 2px; font-size: 14px; line-height: 1.45; color: rgba(255, 255, 255, 0.78); }
 .nx-pbar-ideas { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .nx-pbar-ideas-label { margin-inline: 6px; font-size: 14px; color: rgba(255, 255, 255, 0.78); }
 .nx-pbar-ideas ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
-/* A phone shows the first four, so the bar stays within the first screen; nothing scrolls sideways. */
-@media (max-width: 639px) { .nx-pbar-ideas li:nth-child(n+5) { display: none; } }
 .nx-pbar-idea { flex: 0 0 auto; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px dashed rgba(255, 255, 255, 0.34); background: transparent; color: rgba(255, 255, 255, 0.94); font-size: 14px; white-space: nowrap; cursor: pointer; }
 .nx-pbar-idea:hover { border-style: solid; border-color: #fff; }
 
@@ -1523,7 +1528,9 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 
 /* The model tiles: a small still of the model's sample beside its name, its maker's credit and a link down to the sample. */
 .nx-models-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 16px; margin: 36px 0 0; padding: 0; list-style: none; }
-.nx-model { position: relative; display: flex; align-items: flex-start; gap: 14px; min-width: 0; padding: 14px; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-ground); }
+.nx-model-media { position: relative; flex: 0 0 76px; width: 76px; height: 104px; overflow: hidden; border-radius: 12px; background: #12151c; }
+.nx-model-pic { display: block; width: 100%; height: 100%; object-fit: cover; }
+.nx-model-media .nx-clip { inset: 0; width: 100%; height: 100%; }
 .nx-model-pic { flex: 0 0 76px; width: 76px; height: 104px; object-fit: cover; border-radius: 12px; background: #12151c; }
 .nx-model-body { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
 .nx-model-name { margin: 8px 0 0; font-family: var(--font-display); font-size: 19px; font-weight: 600; letter-spacing: -0.01em; color: var(--ns-text); overflow-wrap: anywhere; }
@@ -1555,3 +1562,27 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 @media (max-width: 859px) { .nx-show-pic .nx-result-ai { display: none; } }
 @media (min-width: 860px) { .nx-show-pic .nx-result-ai { left: auto; right: 72px; width: fit-content; max-width: 52%; } .nx-show-credit { display: none; } }
 .nx-show-pic .nx-result-badge[data-kind="ai"] { top: 16px; left: 16px; }
+
+/* A clip animated from one of the samples' pictures: that picture beside its maker, small enough not to compete with the clip. */
+.nx-gallery-source { display: flex; align-items: center; gap: 12px; margin: 0; min-width: 0; }
+.nx-gallery-source img { flex: none; width: 96px; height: auto; border-radius: 10px; border: 1px solid var(--ns-rule); }
+.nx-gallery-source figcaption { min-width: 0; font-size: 15px; color: var(--ns-text); overflow-wrap: anywhere; }
+
+/* In a credit drawn over a picture, the "Use this prompt" note is the button's description for assistive tech and is not printed
+   on the picture (it would cover it); where the credit has room (the first screen, the gallery, under a showcase or the desk) it is. */
+.nx-result-ai .nx-ai-note, .ml-ex-credit .nx-ai-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* /mcp's header panel: the words fill its lower half, so a sample's credit sits at the top, between the badge and the pause button. */
+.nx-bleed .nx-result-ai { top: 12px; bottom: auto; left: auto; right: 64px; width: fit-content; max-width: calc(100% - 200px); }
+/* /mcp's example cards: the model and its maker's credit in one small pill under the badge. */
+.ml-ex-credit.nx-ai-credit { gap: 0 8px; border-radius: 14px; }
+.ml-ex-credit .nx-ai-attr { min-height: 24px; }
+
+/* The explore grid and the model tiles never look dead: every poster drifts slowly (a Ken-Burns push) until its own clip plays
+   over it (data-live), and a still keeps drifting. The box clips it (overflow hidden), so nothing around it moves. Stopped by the
+   page's pause switch (the shared paused rule above) and absent under reduced motion. */
+@keyframes nx-poster-drift { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.08) translate3d(-1.5%, -1%, 0); } }
+@media (prefers-reduced-motion: no-preference) {
+  .nx-drift-pic { animation: nx-poster-drift 16s ease-in-out infinite alternate; transform-origin: 50% 40%; }
+  .nx-gallery-card:nth-child(2n) .nx-drift-pic, .nx-model:nth-child(2n) .nx-drift-pic { animation-direction: alternate-reverse; animation-duration: 19s; }
+  [data-live="true"] > .nx-drift-pic { animation: none; }
+}

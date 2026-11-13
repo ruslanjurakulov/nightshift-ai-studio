@@ -26,6 +26,7 @@ import { coercePlanCatalog, creditEquivalents, planMatrix, type GenerationRates 
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, placeLabelProblems, without } from "./helpers/showcase-scope";
 import { slotMedia } from "@/components/site/samples";
+import { stockInUse } from "@/components/site/stock-in-use";
 
 afterEach(cleanup);
 
@@ -104,6 +105,8 @@ describe("public landing page", () => {
       if (img.hasAttribute("data-sample-job")) expect(img.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(img.getAttribute("data-sample-job"));
     }
     expect(imgs.filter((i) => i.getAttribute("data-sample") || i.getAttribute("data-sample-job"))).toHaveLength(4);
+    // Every stock picture shown is one the footer credits (components/site/stock-in-use.ts).
+    for (const img of container.querySelectorAll("[data-sample]")) expect(stockInUse() as string[]).toContain(img.getAttribute("data-sample"));
     for (const img of tiles) {
       expect(img.closest(SAMPLE_CARD)).toBeTruthy();
       expect(img.getAttribute("loading")).toBe("lazy");
@@ -118,7 +121,8 @@ describe("public landing page", () => {
     const gallery = container.querySelector(GALLERY);
     expect(gallery === null).toBe(shipped.cards === 0);
     const samplePics = [...(gallery?.querySelectorAll("img") ?? [])];
-    expect(samplePics).toHaveLength(shipped.cards);
+    // One per card, and one more in each card whose clip was animated from another sample's picture (that picture, small).
+    expect(samplePics).toHaveLength(shipped.cards + shipped.sources);
     for (const img of samplePics) {
       expect(img.closest(SAMPLE_CARD)).toBeTruthy();
       expect(img.hasAttribute("data-sample") || img.hasAttribute("data-art-id")).toBe(false);
@@ -272,18 +276,19 @@ describe("public landing page", () => {
     expect(container.textContent).toContain("A video in the app: 60 credits a minute of finished video");
   });
 
-  it("says the one known price above the fold, only when the live price list holds it", () => {
+  it("says the one known price just under the first screen (round 10: the hero holds only the headline, the bar and two actions), only when the live price list holds it", () => {
     const priced = renderLanding({ kind: "announced" }, "en", {
       pack: { kind: "none" },
       api: null,
       site: { perMinute: 60, minimum: 30, usd: null },
     });
-    const hero = priced.container.querySelector(".nx-hero")!;
-    expect(hero.querySelector(".nx-price")?.textContent).toBe("A video in the app: 60 credits a minute of finished video");
+    const facts = priced.container.querySelector(".nx-facts")!;
+    expect(priced.container.querySelector(".nx-hero .nx-price")).toBeNull();
+    expect(facts.querySelector(".nx-price")?.textContent).toBe("A video in the app: 60 credits a minute of finished video");
     cleanup();
     // No list, no line: the hero never prints a default or a zero.
     const unpriced = renderLanding({ kind: "announced" });
-    expect(unpriced.container.querySelector(".nx-hero .nx-price")).toBeNull();
+    expect(unpriced.container.querySelector(".nx-price")).toBeNull();
   });
 
   it("prints exactly the price the data holds", () => {
@@ -418,7 +423,8 @@ describe("public pricing page", () => {
     const plans = planMatrix(catalog(), { NEXT_PUBLIC_PLAN_DISPLAY_CREATOR: "$12" }, null);
     const pricing = resolvePricing({ NEXT_PUBLIC_PRICE_DISPLAY_STARTER: "$5" }, null);
     const { container } = renderPricing({ pricing, plans }, locale);
-    expect(container.innerHTML).not.toMatch(PROVIDER_BRANDS);
+    // The chat card's picture is a sample once its slot has one, and a sample's box names its model (tests/site-showcase.test.tsx).
+    expect(without(container, SAMPLE_CARD).innerHTML).not.toMatch(PROVIDER_BRANDS);
   });
 
   it("shows no Monthly / Yearly switch, because the plan data holds monthly prices only", () => {
@@ -447,7 +453,8 @@ describe("public pricing page", () => {
     const rates = { perMinute: 25, jobMinimum: 30 };
     const generationRates: GenerationRates = { image: 4, shortVideo: { credits: 40, seconds: 5 }, videoMinute: 25 };
     const { container } = renderPricing({ pricing, plans, signedIn: true, rates, generationRates, expiry: { kind: "months", months: 12 } });
-    const text = container.textContent ?? "";
+    // A sample's box (the chat card's picture, once its slot has one) names its model, whose name may hold a number ("H3"): not a figure.
+    const text = without(container, SAMPLE_CARD).textContent ?? "";
 
     // Every figure the page was handed, and every figure derived from them.
     const allowed = new Set<number>([12, 5, WELCOME_CREDITS, 25, 30, 4, 40]);
@@ -523,7 +530,11 @@ describe("the pricing page, product first (round 3)", () => {
     const kids = [...hero.children].map((c) => c.className);
     expect(kids).toEqual(["nx-pr-copy", "nx-pr-calc", "nx-pr-actions"]);
     expect(container.querySelectorAll("figure.nx-chat")).toHaveLength(1);
-    expect(container.querySelector("figure.nx-chat img")?.getAttribute("data-sample")).toBe("floating");
+    // The card's picture is the "pricing.card" slot's: our sample once its id is set, the stock lanterns before.
+    const pm = slotMedia("pricing.card");
+    const pic = container.querySelector("figure.nx-chat img")!;
+    expect(pm.kind === "ai" ? pic.getAttribute("data-sample-job") : pic.getAttribute("data-sample")).toBe(pm.kind === "ai" ? pm.entry.jobId : "floating");
+    expect(placeLabelProblems(container.querySelector("figure.nx-chat .nx-result-art")!, pm, dictionaries.en.site)).toEqual([]);
     expect(screen.queryByText(dictionaries.en.pricing.ratesTitle)).toBeNull();
   });
 });

@@ -79,9 +79,10 @@ export function LoopClip({
   position?: string;
   compact?: boolean;
   /**
-   * A grid of small loops (the gallery): on a screen of 860 px or more, each one plays while at least a quarter of it is in
-   * view, as an explore grid does, instead of only the one clip most on screen. Each is the 640 px file (`compact`). On a phone
-   * it is one clip at a time as everywhere else, because two at once cost a throttled phone half its frames.
+   * A grid of small loops (the gallery, the model tiles): on a screen of 768 px or more, each one plays while at least a quarter
+   * of it is in view, as an explore grid does, instead of only the one clip most on screen. Each is the 640 px file. On a phone it
+   * is one clip at a time as everywhere else, because two at once cost a throttled phone half its frames; the others' posters
+   * drift slowly instead (.nx-drift-pic in site-next.css), so no card looks dead.
    */
   together?: boolean;
 } & (
@@ -117,7 +118,8 @@ export function LoopClip({
         fast: !c?.effectiveType || c.effectiveType === "4g",
       }),
     );
-    setGrid(together && wide);
+    // A grid plays all its clips in view from a tablet up (each is the small file); a phone keeps one at a time.
+    setGrid(together && window.matchMedia("(min-width: 768px)").matches);
     setAllowed(true);
   }, [compact, together, sources.lg]);
 
