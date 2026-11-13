@@ -6,7 +6,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 
@@ -207,6 +207,60 @@ describe("the public Effects section", () => {
       expect(within(section as HTMLElement).queryAllByText(t.effects.noSample)).toHaveLength(DRAWN.length);
       expect(within(section as HTMLElement).queryAllByText(t.effects.sample)).toHaveLength(SAMPLED.length);
       for (const e of EFFECTS) expectFrame(card(e.id), e, t.effects);
+      unmount();
+    }
+  });
+
+  // The landing's page-wide media counts (tests/public-pages.test.tsx, tests/site-engage*.test.tsx) skip this section
+  // (helpers/showcase-scope.ts EFFECTS_SECTION), because how many samples it holds is data. So everything it may show is pinned
+  // here instead, with the clips really rendered (a browser that allows motion), not only their posters.
+  it("shows only its effects' own samples: one same-origin, lazy, decorative poster and one silent clip each, and no button", () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    // jsdom has no media playback (as in tests/site-engage-5.test.tsx).
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    onTestFinished(() => {
+      play.mockRestore();
+      pause.mockRestore();
+    });
+    for (const locale of ["en", "ru", "uz"] as const) {
+      const t = dictionaries[locale];
+      const { container, unmount } = render(<EffectsGallery t={t} />);
+      const section = container.querySelector<HTMLElement>("section#effects")!;
+      const imgs = [...section.querySelectorAll("img")];
+      expect(imgs).toHaveLength(SAMPLED.length);
+      expect(section.querySelectorAll("video")).toHaveLength(SAMPLED.length);
+      // No stock picture, no site decoration, no other media, and nothing to press but each card's one link (no pause button:
+      // the page's own "Pause motion" switch stops these clips, the owner's rule of 2026-11-13).
+      expect(section.querySelectorAll("audio, picture, iframe, [data-art-id], [data-clip], [data-showcase-entry]")).toHaveLength(0);
+      expect(section.querySelectorAll("button")).toHaveLength(0);
+      for (const img of imgs) expect(img.closest("[data-effect]"), "a picture outside any card").toBeTruthy();
+      for (const e of SAMPLED) {
+        const s = effectSample(e)!;
+        const frame = card(e.id).querySelector<HTMLElement>(".fx-frame")!;
+        // The frame names its sample by job id, never a stock id (public-pages reads data-sample as one outside this section).
+        expect(frame.getAttribute("data-sample"), e.id).toBe(e.previewJobId);
+        const img = frame.querySelector("img")!;
+        // Decorative (alt=""): the frame's badge says in words that this is a real result, and the card's heading names the effect.
+        expect(img.getAttribute("alt"), e.id).toBe("");
+        expect(within(frame).getByText(t.effects.sample)).toBeTruthy();
+        expect(img.getAttribute("loading"), e.id).toBe("lazy");
+        expect(img.getAttribute("src") ?? "", e.id).not.toMatch(/^(https?:)?\/\//);
+        const videos = frame.querySelectorAll("video");
+        expect(videos, e.id).toHaveLength(1);
+        const v = videos[0];
+        expect(v.muted, e.id).toBe(true);
+        expect(v.getAttribute("aria-hidden"), e.id).toBe("true");
+        expect(v.getAttribute("preload"), e.id).toBe("none");
+        const own = Object.values(s.files.clip!);
+        const srcs = [...v.querySelectorAll("source")].map((x) => x.getAttribute("src") ?? "");
+        expect(srcs.length, e.id).toBeGreaterThan(0);
+        for (const src of srcs) {
+          expect(own, `${e.id}: ${src} is not its own sample's file`).toContain(src);
+          expect(src, e.id).not.toMatch(/^(https?:)?\/\//);
+        }
+      }
+      for (const e of DRAWN) expect(card(e.id).querySelector("img, video"), e.id).toBeNull();
       unmount();
     }
   });

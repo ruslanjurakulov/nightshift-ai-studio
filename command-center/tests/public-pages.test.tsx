@@ -106,7 +106,8 @@ describe("public landing page", () => {
     }
     expect(imgs.filter((i) => i.getAttribute("data-sample") || i.getAttribute("data-sample-job"))).toHaveLength(4);
     // Every stock picture shown is one the footer credits (components/site/stock-in-use.ts).
-    for (const img of container.querySelectorAll("[data-sample]")) expect(stockInUse() as string[]).toContain(img.getAttribute("data-sample"));
+    // (An Effects card's frame carries its sample's job id in data-sample, never a stock id: tests/effects-ui.test.tsx.)
+    for (const img of outsideGallery(container.querySelectorAll("[data-sample]"))) expect(stockInUse() as string[]).toContain(img.getAttribute("data-sample"));
     for (const img of tiles) {
       expect(img.closest(SAMPLE_CARD)).toBeTruthy();
       expect(img.getAttribute("loading")).toBe("lazy");
