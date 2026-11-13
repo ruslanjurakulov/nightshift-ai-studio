@@ -30,7 +30,9 @@ import { STILL_MS, beforeAfterPairs, carouselOrder, clock, firstSentence, ringIn
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
 import { PHONE_TURNS, pickTurns } from "@/components/site/clip-turns";
 import { SampleCarousel, SampleCompare, SampleTicker, sampleSectionJobs } from "@/components/site/landing-samples";
-import { LANDING_SLOTS, slotJobs } from "@/components/site/slots";
+import { LANDING_LEFT_OUT, landingExcludedJobs } from "@/components/site/slots";
+import { TOOL_JOBS } from "@/lib/site/tool-samples";
+import { holdClips } from "@/lib/site/clip-hold";
 import { setMotionPaused, useMotionPaused } from "@/lib/site/motion";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { without } from "./helpers/showcase-scope";
@@ -71,9 +73,9 @@ afterEach(() => {
 });
 
 const items = showcaseItems();
-// What the landing leaves out of every sample section (its slots), and the carousel's own order after picture → video and the
-// ticker have taken theirs.
-const SLOT_JOBS = slotJobs(LANDING_SLOTS);
+// What the landing leaves out of every sample section (landingExcludedJobs: its places and the owner's left-out samples), and the
+// carousel's own order after picture → video and the ticker have taken theirs.
+const SLOT_JOBS = landingExcludedJobs();
 const shown = items.filter(({ e }) => !SLOT_JOBS.includes(e.jobId));
 const carouselJobs = () => {
   const elsewhere = [...SLOT_JOBS, ...sampleSectionJobs(SLOT_JOBS)];
@@ -439,6 +441,33 @@ describe("no clip twice, and every file ours", () => {
     const off = carousel[0];
     const { container: again } = render(<SampleCarousel t={t} locale="en" exclude={[...SLOT_JOBS, off]} />);
     expect(again.querySelector(`[data-showcase-entry="${off}"]`)).toBeNull();
+  });
+
+  it("by default they leave out what the landing's gallery leaves out: the tool wall's pair and the sea and sky samples", () => {
+    const { container } = render(
+      <>
+        <SampleTicker t={t} locale="en" />
+        <SampleCarousel t={t} locale="en" />
+        <SampleCompare t={t} locale="en" />
+      </>,
+    );
+    for (const job of [...LANDING_LEFT_OUT, ...TOOL_JOBS]) {
+      expect(container.querySelector(`[data-showcase-entry="${job}"]`), job).toBeNull();
+      expect(container.querySelector(`[data-source-entry="${job}"]`), job).toBeNull();
+    }
+  });
+
+  it("while the Shorts feed holds the page's loops, no player here has a turn and the carousel does not move", () => {
+    env();
+    const { container } = render(<SampleCarousel t={t} locale="en" />);
+    expect(container.querySelector(".nxc")!.getAttribute("data-run")).toBe("true");
+    let release = () => {};
+    act(() => {
+      release = holdClips();
+    });
+    expect(container.querySelector(".nxc")!.getAttribute("data-run")).toBe("false");
+    act(() => release());
+    expect(container.querySelector(".nxc")!.getAttribute("data-run")).toBe("true");
   });
 
   it("every picture is same-origin and lazy, and every clip sits inside its own sample's box", () => {

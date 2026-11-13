@@ -196,10 +196,8 @@ export const devEn = {
     soon: {
       badge: "Coming soon",
       use: "Works today with an API key:",
-      claude: { title: "Claude will connect with a sign-in", body: "Adding Nightshift to Claude by its server address and a sign-in is not switched on yet, so there is nothing to add in Claude today. Nightshift’s server takes API keys for now." },
-      gemini: { title: "Gemini will connect with a sign-in", body: "Adding Nightshift to Gemini by its server address and a sign-in is not switched on yet, so there is nothing to add in Gemini today. Nightshift’s server takes API keys for now." },
-      grok: { title: "Grok will connect with a sign-in", body: "Adding Nightshift to Grok by its server address and a sign-in is not switched on yet, so there is nothing to add in Grok today. Nightshift’s server takes API keys for now." },
-      chatgpt: { title: "ChatGPT will connect with a sign-in", body: "Adding Nightshift to ChatGPT by its server address and a sign-in is not switched on yet, so there is nothing to add in ChatGPT today. Nightshift’s server takes API keys for now." },
+      noteTitle: "Sign-in is coming for these assistants",
+      noteBody: "ChatGPT, Claude, Gemini and Grok connect with a sign-in rather than a key. It is not switched on yet, so there is nothing to add in them today. Cursor and VS Code work now with an API key.",
     },
     steps: [
       { id: "key", title: "Create a key", body: "In the Command Center open Developers → API keys. Copy the key; it is shown once." },
@@ -412,7 +410,7 @@ export const devEn = {
         title: "What you can ask for",
         lead: "Six sample asks, each with an example frame. The frames are stock photos and footage from Pexels contributors, credited on each card; one of them moves (the contributor’s footage, looped). They show the idea, not real output.",
         /** The lead once any card shows one of our samples (components/docs/SampleFrame.tsx `ai`): it covers both kinds of picture. */
-        leadSamples: "Six sample asks, each over a picture. A picture labelled AI-generated is a real job from our own Studio, made by the model named on it; one labelled a stock example is a Pexels contributor’s, credited on its card. They show the idea, not the result of these asks.",
+        leadSamples: "Six sample asks, each over a picture. A picture labelled AI-generated is a real job from our own Studio; one labelled a stock example is a Pexels contributor’s, credited on its card. They show the idea, not the result of these asks.",
         region: "Examples of what to ask for",
         track: "Example cards, scroll sideways",
         prev: "Previous example",

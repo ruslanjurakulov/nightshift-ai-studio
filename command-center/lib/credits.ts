@@ -221,7 +221,7 @@ export function videoCredits(v: Pick<VideoEconomics, "drivers">, prices: PriceMa
 }
 
 export type EstimateBasis = "per_minute" | "history_minute" | "history_video" | "unknown";
-export type EstimateGap = "no_prices" | "no_length" | "no_history" | "unpriced_history";
+export type EstimateGap = "no_prices" | "no_length" | "no_history" | "unpriced_history" | "unpriced_concept_thumbnail";
 
 export interface CreditEstimate {
   /** Credits to hold for this run, or null when there is no honest basis. */
@@ -282,6 +282,34 @@ export function estimateRunCredits(input: {
     if (p90 !== null) return finish(p90 * minutes, "history_minute", rates.length, null);
   }
   return finish(percentile(priced.map((p) => p.credits), 0.9), "history_video", priced.length, null);
+}
+
+/** The ledger unit a generated image is recorded under (modules/cost_ledger.py IMAGE_GENERATIONS). */
+export const UNIT_IMAGE_GENERATIONS = "image_generations";
+/** The most images a concept-thumbnail run generates: one per A/B arm, and the worker clamps the arms to 2..4
+ *  (config.THUMBNAIL_VARIANT_COUNT). The browser cannot see the worker's setting, so a hold takes the ceiling. */
+export const CONCEPT_THUMBNAIL_MAX_IMAGES = 4;
+
+/** Whether a channel's agent_config turns concept thumbnails on — read like modules/thumbnail_concept.py
+ *  normalize_mode: only the text "concept" (case and surrounding white space ignored); anything else is frame mode. */
+export function conceptThumbnailOn(agentConfig: unknown): boolean {
+  if (!agentConfig || typeof agentConfig !== "object" || Array.isArray(agentConfig)) return false;
+  const mode = (agentConfig as Record<string, unknown>).thumbnail_mode;
+  return typeof mode === "string" && mode.trim().toLowerCase() === "concept";
+}
+
+/**
+ * A run of a concept-thumbnail channel also pays for one generated image per A/B arm (migration 0158 makes the
+ * switch an administrator's). The estimate gets that ceiling on top, at the `image_generations` price. Without
+ * that price there is no honest number: the estimate is null with its own gap, never the old number that leaves
+ * the images out. The planner's one Gemini call is a script-model call like the others the basis already covers.
+ * A frame-mode channel, or an estimate that is already null, is returned unchanged.
+ */
+export function withConceptThumbnail(estimate: CreditEstimate, agentConfig: unknown, prices: PriceMap): CreditEstimate {
+  if (!conceptThumbnailOn(agentConfig) || estimate.credits === null) return estimate;
+  const price = prices[UNIT_IMAGE_GENERATIONS];
+  if (!price) return { credits: null, basis: "unknown", sample: estimate.sample, floorApplied: false, gap: "unpriced_concept_thumbnail" };
+  return { ...estimate, credits: roundUpCredits(estimate.credits + charge(price, CONCEPT_THUMBNAIL_MAX_IMAGES)) };
 }
 
 /** The most episodes a series has (modules/series_planner.py MAX_EPISODES). */

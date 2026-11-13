@@ -240,6 +240,26 @@ def get_client():
     return client if client.api_key else None
 
 
+def client_for(provider: str, model: str = ""):
+    """A client for ``provider`` with ``model`` pinned (empty: that provider's own
+    default), or ``None`` when the provider is unknown or has no key.
+
+    For a caller with its own per-channel choice (modules/thumbnail_concept.py):
+    ``get_client`` follows the run-wide ``CHRONOS_IMAGE_PROVIDER`` and its
+    ``CHRONOS_IMAGE_MODEL``, which may name a model of a different provider."""
+    cls = _CLIENTS.get((provider or "").strip().lower())
+    if cls is None:
+        return None
+    client = cls()
+    if not client.api_key:
+        return None
+    if cls is LeonardoClient:
+        client.model_id = model or getattr(config, "LEONARDO_MODEL_ID", "")
+    else:
+        client.model = model or DEFAULT_MODELS.get(client.provider_id, "")
+    return client
+
+
 def _aspect(width: int, height: int) -> str:
     """"16:9"-style ratio for the providers that take one instead of pixels."""
     if width <= 0 or height <= 0:
@@ -260,6 +280,9 @@ class _Base:
     """Shared plumbing: a session, a download, and base64 → file. Never raises."""
 
     name = "image"
+    #: What happens after a soft miss, for the log line. Stills fall back to stock;
+    #: a caller with no fallback (the concept thumbnail) sets its own words.
+    soft_failure_note = "using stock image instead"
 
     def __init__(self, *, api_key: Optional[str] = None, timeout: int = 60):
         provider = self.provider_id
@@ -277,8 +300,8 @@ class _Base:
             _raise_if_refused(self.name, self.model, e)
         # The exception text of requests never carries our header values; the
         # key is only ever in headers.
-        logger.warning("%s %s failed (%s: %s) — using stock image instead",
-                       self.name, what, type(e).__name__, e)
+        logger.warning("%s %s failed (%s: %s) — %s",
+                       self.name, what, type(e).__name__, e, self.soft_failure_note)
 
     def _download(self, url: str, dest: Path, headers: Optional[dict] = None) -> Optional[Path]:
         try:
@@ -520,6 +543,8 @@ class LeonardoClient:
     first image. Matches ``generate(prompt, out_path) -> Optional[Path]``. Never
     raises."""
 
+    soft_failure_note = "using stock image instead"
+
     def __init__(self, *, api_key: Optional[str] = None, timeout: int = 30):
         self.api_key = api_key if api_key is not None else getattr(config, "LEONARDO_API_KEY", "")
         self.base_url = getattr(config, "LEONARDO_BASE_URL", "https://cloud.leonardo.ai/api/rest/v1").rstrip("/")
@@ -543,8 +568,8 @@ class LeonardoClient:
             data = resp.json()
         except Exception as e:
             _raise_if_refused("Leonardo", self.model_id, e)
-            logger.warning("Leonardo submit failed (%s: %s) — using stock image instead",
-                           type(e).__name__, e)
+            logger.warning("Leonardo submit failed (%s: %s) — %s",
+                           type(e).__name__, e, self.soft_failure_note)
             return None
         # The id sits under `sdGenerationJob` in Leonardo's response.
         job = data.get("sdGenerationJob") if isinstance(data.get("sdGenerationJob"), dict) else data

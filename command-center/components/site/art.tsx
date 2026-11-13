@@ -1,16 +1,5 @@
 import heroNight from "@/components/site/art/hero-night.webp";
 import heroNightSm from "@/components/site/art/hero-night-sm.webp";
-import artStep1 from "@/components/site/art/step-1.webp";
-import artStep2 from "@/components/site/art/step-2.webp";
-import artStep3 from "@/components/site/art/step-3.webp";
-import artToolImage from "@/components/site/art/tool-image.webp";
-import artToolVideo from "@/components/site/art/tool-video.webp";
-import artToolVoice from "@/components/site/art/tool-voice.webp";
-import artToolEdit from "@/components/site/art/tool-edit.webp";
-import artToolAnimate from "@/components/site/art/tool-animate.webp";
-import artToolUpscale from "@/components/site/art/tool-upscale.webp";
-import artToolCutout from "@/components/site/art/tool-cutout.webp";
-import artToolStyles from "@/components/site/art/tool-styles.webp";
 import thumbSilkroad from "@/components/site/art/thumb-silkroad.webp";
 import { ART_SIZE, SLOT_DEFS, type SlotSlug, type THUMB_ART } from "@/lib/site/art";
 
@@ -51,17 +40,19 @@ export interface SlotArt {
   altKey: SlotSlug;
 }
 const SLOT_FILES: Record<SlotSlug, Img | null> = {
-  "step-1": artStep1,
-  "step-2": artStep2,
-  "step-3": artStep3,
-  "tool-image": artToolImage,
-  "tool-video": artToolVideo,
-  "tool-voice": artToolVoice,
-  "tool-edit": artToolEdit,
-  "tool-animate": artToolAnimate,
-  "tool-upscale": artToolUpscale,
-  "tool-cutout": artToolCutout,
-  "tool-styles": artToolStyles,
+  // Round 10: the steps show live pieces of the product and the tool tiles real outputs (components/landing/Landing.tsx How,
+  // components/landing/CapabilityWall.tsx), so the clay pictures are no longer shown. The files stay under art/ for another use.
+  "step-1": null,
+  "step-2": null,
+  "step-3": null,
+  "tool-image": null,
+  "tool-video": null,
+  "tool-voice": null,
+  "tool-edit": null,
+  "tool-animate": null,
+  "tool-upscale": null,
+  "tool-cutout": null,
+  "tool-styles": null,
 };
 export const SLOT_ART: readonly SlotArt[] = SLOT_DEFS.map((d) => ({ ...d, src: SLOT_FILES[d.slug] }));
 

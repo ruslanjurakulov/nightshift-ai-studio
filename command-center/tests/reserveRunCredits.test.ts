@@ -306,3 +306,56 @@ describe("reserveRunCredits: a replay is answered before the price is compared",
     expect(lookups).toHaveLength(0);
   });
 });
+
+/**
+ * Concept thumbnails (modules/thumbnail_concept.py, migration 0158): a run of a channel with thumbnail_mode "concept"
+ * also pays for one generated image per A/B arm. What would break without these: the hold leaving those images out
+ * (the run capped at a hold that never covered them), a frame channel's hold changing, or a missing image price being
+ * read as 0 instead of "no estimate".
+ */
+describe("reserveRunCredits: concept thumbnails are in the hold", () => {
+  const prices = {
+    credit_prices: [
+      { unit: "video_minute", credits_per_unit: 12, margin: 0 },
+      { unit: "job_minimum", credits_per_unit: 5, margin: 0 },
+      { unit: "image_generations", credits_per_unit: 3, margin: 0 },
+    ],
+  };
+
+  it("a concept channel holds the run plus the ceiling of four images", async () => {
+    const { client, rpc } = fakeSupabase({ target_duration_seconds: 180, thumbnail_mode: " Concept " }, { rows: prices });
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj")).toMatchObject({ ok: true, durationS: 180 });
+    // 3 minutes at 12, plus 4 images at 3.
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_amount: 36 + 4 * 3 });
+  });
+
+  it("a frame channel's hold is exactly what it was", async () => {
+    for (const mode of [undefined, "frame", "conceptual", true]) {
+      const { client, rpc } = fakeSupabase({ target_duration_seconds: 180, thumbnail_mode: mode }, { rows: prices });
+      await reserveRunCredits(client, "ch-a", undefined, "rj");
+      expect(rpc.mock.calls[0][1]).toMatchObject({ p_amount: 36 });
+    }
+  });
+
+  it("a concept channel with no image price is refused with its own gap, and nothing is held", async () => {
+    const { client, rpc } = fakeSupabase({ target_duration_seconds: 180, thumbnail_mode: "concept" });
+    const res = await reserveRunCredits(client, "ch-a", undefined, "rj");
+    expect(res).toEqual({
+      ok: false,
+      status: 409,
+      body: { error: "credit_estimate_unavailable", gap: "unpriced_concept_thumbnail" },
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("the add-on reads the switch the way the worker does", async () => {
+    const { conceptThumbnailOn, withConceptThumbnail } = await import("../lib/credits");
+    expect(conceptThumbnailOn({ thumbnail_mode: "concept" })).toBe(true);
+    expect(conceptThumbnailOn({ thumbnail_mode: "CONCEPT\n" })).toBe(true);
+    for (const cfg of [null, [], "concept", {}, { thumbnail_mode: "frame" }, { thumbnail_mode: 1 }]) {
+      expect(conceptThumbnailOn(cfg)).toBe(false);
+    }
+    const none = { credits: null, basis: "unknown" as const, sample: 0, floorApplied: false, gap: "no_prices" as const };
+    expect(withConceptThumbnail(none, { thumbnail_mode: "concept" }, {})).toBe(none);
+  });
+});

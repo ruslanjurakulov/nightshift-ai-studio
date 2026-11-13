@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
+import { useClipsHeld } from "@/lib/site/clip-hold";
 
 /**
  * Which of the landing's sample players (the carousel, the picture-to-video slider, the prompt ticker) may play right now.
@@ -9,6 +10,10 @@ import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
  * plays one clip there (its leader). So on a phone these players share ONE turn between them, and the page never decodes more than
  * two videos at once; from a tablet up they share three. The turn goes to the players that want to play and show most of
  * themselves (at least a fifth); the rest hold their still. Pure arithmetic in `pickTurns`, the store around it below.
+ *
+ * It sits beside the page's other two holds and answers to both: the visitor's pause switch (lib/site/motion.ts; each player
+ * reads it) and the Shorts feed's hold (lib/site/clip-hold.ts, which LoopClip obeys too): while the feed is open over the page,
+ * no player here has a turn, so only the feed's clip decodes.
  */
 export const PHONE_TURNS = 1;
 export const WIDE_TURNS = 3;
@@ -47,6 +52,7 @@ export function useClipTurn(box: RefObject<Element | null>, want: boolean): bool
   if (!id.current) id.current = Symbol("player");
   const me = id.current;
   const has = useSyncExternalStore(subscribe, () => granted.has(me), () => false);
+  const held = useClipsHeld();
 
   useEffect(() => {
     const el = box.current;
@@ -85,7 +91,7 @@ export function useClipTurn(box: RefObject<Element | null>, want: boolean): bool
     settle();
   }, [want, me]);
 
-  return has;
+  return has && !held;
 }
 
 /** Whether the visitor asked for reduced motion, following the setting live. False on the server. */

@@ -10,7 +10,7 @@
  */
 import type { Dictionary } from "@/lib/i18n";
 import { creditLine } from "@/lib/site/media";
-import { LANDING_SLOTS, slotJobs, type PlaceMedia } from "@/components/site/samples";
+import { landingExcludedJobs, type PlaceMedia } from "@/components/site/samples";
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
 
 /** The gallery's root. It renders only when a sample whose files are in the repository exists. */
@@ -52,7 +52,7 @@ export function shippedSamples(): { cards: number; clips: number; sources: numbe
 
 /** The same for the landing, whose gallery leaves out the samples its own slots show (so no clip is on the page twice). */
 export function landingSamples(): { cards: number; clips: number; sources: number } {
-  const inSlots = slotJobs(LANDING_SLOTS);
+  const inSlots = landingExcludedJobs();
   const all = showcaseItems();
   const jobs = new Set(all.map(({ e }) => e.jobId));
   const items = all.filter(({ e }) => !inSlots.includes(e.jobId));
@@ -66,10 +66,11 @@ export function landingSamples(): { cards: number; clips: number; sources: numbe
 
 /**
  * What is wrong with the labels of a place that shows `m` (components/site/samples.tsx slotMedia), or [] when nothing is. One of
- * our samples says AI-generated, names its model (in a box marked as that sample, the only place a model may be named) and carries
- * its maker's credit as a link, and says nothing about stock; a stock picture says it is a stock example and credits its Pexels
- * contributor, and says nothing about AI. Tests call it for whatever the slots hold, so they pass before and after a sample
- * replaces a stock picture, and fail on a label that lies in either direction.
+ * our samples, in a box marked as that sample, says AI-generated and nothing more: no model name, no "Try this prompt" or "Use
+ * this prompt", no footnote, no maker's credit or "Powered by" (a place's picture is the backdrop for copy about something else,
+ * owner 2026-11-13), and nothing about stock. A stock picture says it is a stock example and credits its Pexels contributor, and
+ * says nothing about AI. Tests call it for whatever the slots hold, so they pass before and after a sample replaces a stock
+ * picture, and fail on a label that lies in either direction.
  */
 export function placeLabelProblems(el: Element, m: PlaceMedia, site: Dictionary["site"]): string[] {
   const out: string[] = [];
@@ -79,8 +80,11 @@ export function placeLabelProblems(el: Element, m: PlaceMedia, site: Dictionary[
     const box = el.closest(SAMPLE_CARD);
     if (box?.getAttribute("data-showcase-entry") !== m.entry.jobId) out.push("not inside its sample's box");
     if (!text.includes(site.gallery.badge)) out.push("no AI-generated badge");
-    if (!text.includes(m.entry.modelName)) out.push("does not name its model");
-    if (m.entry.attribution && !el.querySelector(`a[href="${m.entry.attribution.url}"]`)) out.push("no maker's credit link");
+    if (text.includes(m.entry.modelName)) out.push("names its model");
+    if (el.querySelector(".nx-ai-model")) out.push("has a model label");
+    if (el.querySelector(".nx-ai-try") || text.includes(site.gallery.try) || text.includes(site.gallery.use)) out.push("offers its prompt");
+    if (text.includes(site.gallery.useNote)) out.push("has a footnote");
+    out.push(...makerCreditProblems(el));
     for (const w of [s.tag, s.frameTag, s.clipTag]) if (text.includes(w)) out.push(`says "${w}"`);
     if (/pexels/i.test(el.innerHTML)) out.push("mentions Pexels");
   } else {
@@ -93,5 +97,20 @@ export function placeLabelProblems(el: Element, m: PlaceMedia, site: Dictionary[
     if (credit !== creditLine(m.id, s.credit)) out.push(`credit is ${credit}`);
     if (text.includes(site.gallery.badge)) out.push("says AI-generated");
   }
+  return out;
+}
+
+/**
+ * A model maker's credit on a public surface, which the owner decided the public site does not carry (2026-11-13): the maker's
+ * required credit is shown in the Studio, where the models are used (components/studio/ModelAttribution.tsx). [] when there is none.
+ */
+export function makerCreditProblems(el: Element): string[] {
+  const out: string[] = [];
+  for (const a of el.querySelectorAll("a[href]")) {
+    const href = a.getAttribute("href") ?? "";
+    if (/runway/i.test(href)) out.push(`links ${href}`);
+    if (/ideogram/i.test(href)) out.push(`links ${href}`);
+  }
+  if (/powered by/i.test(el.textContent ?? "")) out.push('says "Powered by"');
   return out;
 }

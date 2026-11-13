@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { nextFocusIndex } from "@/lib/feedback";
 import { creditUnit, formatCredits } from "@/lib/credits";
+import { displayPriceText } from "@/lib/pricing";
 import { UPSELL_LINKS, upsellView, type Refusal, type UpsellCatalog, type UpsellKey, type UpsellView } from "@/lib/upsell";
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -222,7 +223,7 @@ export function PlanUpsellDialog({
                       <span className="text-sm text-[var(--color-fg)]">
                         {p.price ? (
                           <>
-                            <span className="tnum font-semibold">{p.price}</span>{" "}
+                            <span className="tnum font-semibold">{displayPriceText(p.price, locale)}</span>{" "}
                             <span className="text-[var(--color-muted)]">{u.perMonth}</span>
                           </>
                         ) : (

@@ -7,14 +7,16 @@ import type { ClipId } from "@/components/site/clip-assets";
 import { MEDIA, type MediaId } from "@/lib/site/media";
 import { SHOWCASE_ENTRIES, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import { TOOL_JOBS } from "@/lib/site/tool-samples";
 
 /**
  * THE MEDIA SLOTS: which picture goes where. Every page asks for a slot by name, never for a file, so swapping a picture, or
  * putting a new one in a place, is one line here. A page never shows the same picture twice.
  *
  * `ai` is the one line that puts one of OUR generations (lib/site/showcase.json, by its job id) in a slot instead of the stock
- * picture. The slot then shows that sample with the sample's own labels (the AI badge, the model, the maker's credit, Try this
- * prompt) and no Pexels credit (placeMedia below). Until that job's entry and files are merged the slot keeps its stock picture,
+ * picture. The slot then shows that sample with its AI-generated badge only (no model name, no Try this prompt, no footnote: a
+ * slot's picture is a backdrop for copy about something else, owner 2026-11-13; the model and the prompt are on the sample's own
+ * gallery card) and no Pexels credit (placeMedia below). Until that job's entry and files are merged the slot keeps its stock picture,
  * so a slot is never empty and never points at a file that is not in the repository. With `ai` null, an entry exported with
  * `--slot <name>` (tools/export_showcase.py) fills the slot the same way. `aiPosition` frames the sample in the slot's box.
  *
@@ -24,10 +26,11 @@ import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 export const SLOTS = {
   /** The landing's first screen: edge to edge behind the headline and the prompt bar. */
   hero: { ai: "de53f364-eaf7-4cd1-8d44-7b56b21b03b6", id: "cloud", clip: "cloud" },
-  /** The landing's two showcases. */
+  /**
+   * The landing's Studio showcase: a product commercial, what the Studio makes. The Approvals showcase has no slot: a wave under
+   * "Nothing airs until you say so" illustrated nothing, so it is a drawn approval screen (components/landing/ApprovalCard.tsx).
+   */
   "show.studio": { ai: "f92a89ed-2145-4342-acd5-f24b8805a0f9", id: "pottery", clip: "pottery" },
-  /** The small lighthouse is at the top right of the footage: the wide picture is framed from the top. */
-  "show.approvals": { ai: "ab7cc0e2-8040-4643-8e14-74219fc1d8e2", id: "coast", clip: "coast", position: "50% 6%" },
   /** Behind the landing's closing panel. */
   "landing.final": { ai: "01c9f1f0-d54b-4fd3-a88f-ddf459aece73", id: "moon" },
   /** The chat card on /pricing. */
@@ -38,9 +41,10 @@ export const SLOTS = {
   "solutions.developers": { ai: "1504b313-3a3c-4e78-bfda-5bca3ef7f3da", id: "citynight" },
   /** The sign-in stage and the sign-up stage. */
   "auth.login": { ai: "38c427b0-c41b-4d16-86ca-14dc2e69ec27", id: "desert", position: "54% 50%" },
-  "auth.signup": { ai: "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8", id: "floating", clip: "floating", position: "42% 50%" },
-  /** /mcp: the header panel. */
-  "mcp.hero": { ai: "ab0bcba2-8374-465d-b505-8dac19977948", id: "cloud", clip: "cloud" },
+  /** Not another sea of clouds (the site read as "all sea", owner 2026-11-13): the dark chocolate pour keeps the words readable. */
+  "auth.signup": { ai: "a6768488-04c6-4325-9465-62d61f888a70", id: "floating", clip: "floating", position: "42% 50%" },
+  /** /mcp: the header panel. The snow globe's neon city, not a coast road: /mcp already shows the waves scene. */
+  "mcp.hero": { ai: "01c9f1f0-d54b-4fd3-a88f-ddf459aece73", id: "cloud", clip: "cloud" },
 } as const satisfies Record<string, PlaceDef>;
 export type SlotId = keyof typeof SLOTS;
 
@@ -83,4 +87,35 @@ export function slotJobs(slots: readonly SlotId[], entries?: readonly ShowcaseEn
 }
 
 /** The landing's own slots (its gallery leaves out the samples they show). */
-export const LANDING_SLOTS = ["hero", "show.studio", "show.approvals", "landing.final"] as const satisfies readonly SlotId[];
+export const LANDING_SLOTS = ["hero", "show.studio", "landing.final"] as const satisfies readonly SlotId[];
+
+/**
+ * Samples the landing's gallery leaves out although no slot shows them: more sea, sky and surf. The first screen is a whale in a sea
+ * of clouds and the tool wall's Animate tile is water around a bottle; with these as well the page read as "all sea" (owner,
+ * 2026-11-13). The wave and the lighthouse it was animated from, the drone over the clouds, the coast road. Their entries stay
+ * in the data file; this only keeps them off the landing.
+ */
+export const LANDING_LEFT_OUT: readonly string[] = [
+  "ab7cc0e2-8040-4643-8e14-74219fc1d8e2",
+  "f17146fd-054c-4970-9dac-f7a0dc929bd6",
+  "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8",
+  "ab0bcba2-8374-465d-b505-8dac19977948",
+];
+
+/**
+ * The samples a landing place shows: its slots, the tool wall, the steps and the approval screen (lib/site/tool-samples.ts). They
+ * are on the page, so they count in its facts and model tiles; a sample surface leaves them out so nothing is shown twice.
+ * Functions, not constants, so they read the slots and the data file as they are when called.
+ */
+export function landingPlacedJobs(): string[] {
+  return [...slotJobs(LANDING_SLOTS), ...TOOL_JOBS];
+}
+
+/**
+ * THE landing exclusion list: every sample the landing's sample surfaces (the gallery, and any carousel, ticker or comparison built
+ * on the showcase data) must leave out: the placed samples (landingPlacedJobs) and the repeated sea and sky ones (LANDING_LEFT_OUT).
+ * One list, so a new surface cannot show a sample twice or bring the sea back.
+ */
+export function landingExcludedJobs(): string[] {
+  return [...landingPlacedJobs(), ...LANDING_LEFT_OUT];
+}

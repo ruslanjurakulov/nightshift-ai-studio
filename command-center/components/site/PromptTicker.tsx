@@ -5,6 +5,7 @@ import { ArrowRight, Pause, Play } from "lucide-react";
 import { fmt } from "@/lib/i18n/core";
 import { firstSentence, ringIndex, type SampleSlide } from "@/lib/site/carousel";
 import { useMotionPaused } from "@/lib/site/motion";
+import { useClipsHeld } from "@/lib/site/clip-hold";
 import type { SiteCarouselDictionary } from "@/lib/i18n/site-carousel";
 import { clipsAllowed } from "@/components/site/LoopClip";
 import { usePageVisible, useReducedMotion, useClipTurn } from "@/components/site/clip-turns";
@@ -40,6 +41,8 @@ export function PromptTicker({ items, copy, g }: { items: SampleSlide[]; copy: S
   const [held, setHeld] = useState(false);
   const reduced = useReducedMotion();
   const pagePaused = useMotionPaused();
+  // The Shorts feed is open over the page (lib/site/clip-hold.ts): the ticker waits under it as the page's loops do.
+  const feedOpen = useClipsHeld();
   const visible = usePageVisible();
 
   useEffect(() => {
@@ -54,7 +57,7 @@ export function PromptTicker({ items, copy, g }: { items: SampleSlide[]; copy: S
     return () => io.disconnect();
   }, []);
 
-  const auto = mounted && !reduced && !pagePaused && !held && visible && inView;
+  const auto = mounted && !reduced && !pagePaused && !held && !feedOpen && visible && inView;
   const s = items[i] ?? items[0];
   const line = s ? firstSentence(s.prompt) : { text: "", cut: false };
   const chars = Array.from(line.text);

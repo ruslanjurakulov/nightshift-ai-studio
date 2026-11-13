@@ -2,7 +2,9 @@
 /**
  * The public site's model samples (lib/site/showcase.ts, components/site/ShowcaseGallery.tsx, lib/site/showcase-link.ts).
  *
- * What would break if these failed: a sample naming a model the registry does not have, or without the maker's required credit;
+ * What would break if these failed: a sample naming a model the registry does not have, or a public card that links a model's
+ * maker or says "Powered by" (the owner decided the public site shows the AI-generated label and the model name only, 2026-11-13;
+ * the maker's required credit is shown in the Studio, where the models are used, tests/model-attribution.test.tsx);
  * a cost of 0 standing in for "unknown"; a card pointing at files that are not in the repository; a model name leaking out of its
  * own card onto the rest of the site; a placeholder gallery with nothing real in it; a "Try it" that sends a visitor off-site,
  * spends anything, or loses the words on the way through sign-up.
@@ -33,7 +35,7 @@ import { prefillFromImprove, IMPROVE_PROMPT_MAX } from "@/lib/creative/improve";
 import { prefillFromQuery } from "@/lib/creative/studio";
 import { SLOTS } from "@/components/site/samples";
 import { PROVIDER_BRANDS } from "./helpers/brands";
-import { GALLERY, SAMPLE_CARD, without } from "./helpers/showcase-scope";
+import { GALLERY, SAMPLE_CARD, makerCreditProblems, without } from "./helpers/showcase-scope";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
 
 afterEach(cleanup);
@@ -131,17 +133,17 @@ describe("the gallery", () => {
     expect(showcaseItems(SHOWCASE_ENTRIES, {})).toEqual([]);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: one entry shows the badge, the model and its credit link, the prompt, the date and Try this prompt", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: one entry shows the badge, the model, the prompt, the date and Try this prompt, and no maker's credit", (code) => {
     const d = dictionaries[code];
     const { container } = render(<ShowcaseGallery t={d} locale={code} entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />);
     const card = container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
     expect(card).toBeTruthy();
     expect(card.querySelector(".nx-result-badge")?.textContent).toBe(d.site.gallery.badge);
     expect(card.textContent).toContain("Runway Gen-4.5");
-    const credit = within(card).getByRole("link", { name: "Powered by Runway" });
-    expect(credit.getAttribute("href")).toBe("https://runway.com");
-    expect(credit.getAttribute("target")).toBe("_blank");
-    expect(credit.getAttribute("rel")).toBe("noopener noreferrer");
+    // The entry carries Runway's credit as data (the registry's attribution); the public card does not render it.
+    expect(FIXTURE_ENTRY.attribution).not.toBeNull();
+    expect(makerCreditProblems(container)).toEqual([]);
+    expect(within(card).queryByRole("link", { name: /powered by/i })).toBeNull();
     expect(card.textContent).toContain(FIXTURE_ENTRY.prompt);
     expect(card.querySelector("time")?.getAttribute("dateTime")).toBe(FIXTURE_ENTRY.createdAt);
     expect(card.querySelector("img")?.getAttribute("alt")).toContain("Runway Gen-4.5");
@@ -203,11 +205,10 @@ describe("the gallery", () => {
     expect(container.querySelector("video")).toBeNull();
     expect(container.querySelector(".nx-clip-pause")).toBeNull();
     expect(container.querySelector(".nx-gallery-pic")?.hasAttribute("data-clip")).toBe(false);
-    expect(container.querySelector(".nx-gallery-attr")).toBeNull();
     expect(container.querySelector(".nx-gallery-prompt")?.textContent).toBe(t.site.gallery.noPrompt);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: a clip animated from another sample's picture shows that picture, its model and its maker's credit; any other input shows none", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: a clip animated from another sample's picture shows that picture and its model, no maker's credit; any other input shows none", (code) => {
     const d = dictionaries[code];
     const stillJob = "0d0d0d0d-1111-4222-8333-444455556666";
     const still = { ...FIXTURE_ENTRY, jobId: stillJob, kind: "image" as const, capability: "t2i", modelId: "ideogram-3", modelName: "Ideogram 3", provider: "ideogram", attribution: { text: "Powered by Ideogram", url: "https://ideogram.ai" }, input: { kind: "none" as const }, width: 1280, height: 718 };
@@ -221,9 +222,9 @@ describe("the gallery", () => {
     expect(img.getAttribute("src")).toBe("/still-sm.webp");
     expect(img.getAttribute("alt")).toBe(fmt(d.site.gallery.altSource, { model: "Ideogram 3" }));
     expect(fig.textContent).toContain(d.site.gallery.source);
-    expect(within(fig).getByRole("link", { name: "Powered by Ideogram" }).getAttribute("href")).toBe("https://ideogram.ai");
-    // The clip's own credit is still the clip's maker's.
-    expect(within(card).getByRole("link", { name: "Powered by Runway" })).toBeTruthy();
+    expect(fig.querySelector("strong")?.textContent).toBe("Ideogram 3");
+    // Neither the picture's maker nor the clip's is linked or credited on the public card.
+    expect(makerCreditProblems(container)).toEqual([]);
     // The picture's own card shows no source, and neither does an animation of site art or of a job that is not a sample here.
     expect(container.querySelector(`[data-showcase-entry="${stillJob}"] .nx-gallery-source`)).toBeNull();
     cleanup();
@@ -265,7 +266,7 @@ describe("the gallery", () => {
     expect(s.gallery.title).toContain("Nightshift");
   });
 
-  it("the stylesheet lays the cards out in one column on a phone (nothing scrolls sideways), a masonry above it, and gives the credit link a touch-sized target", () => {
+  it("the stylesheet lays the cards out in one column on a phone (nothing scrolls sideways), a masonry above it, and styles no maker's credit link", () => {
     const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
     expect(css).toMatch(/\.nx-gallery \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
     expect(css).not.toMatch(/\.nx-gallery \{[^}]*overflow-x/);
@@ -274,7 +275,7 @@ describe("the gallery", () => {
     expect(css).toMatch(/@media \(min-width: 1100px\) \{ \.nx-gallery \{ columns: 3; \} \}/);
     // The box takes the clip's own shape from the element; the stylesheet forces none.
     expect(css).not.toMatch(/\.nx-gallery-pic \{[^}]*aspect-ratio/);
-    expect(css).toMatch(/\.nx-gallery-attr \{[^}]*min-height: 44px/);
+    expect(css).not.toMatch(/\.nx-gallery-attr|\.nx-ai-attr/);
   });
 
   it("each card keeps its clip's own shape: a 9:16 sample stands tall, a 16:9 one lies wide, its box sized from the file before it loads", () => {
@@ -298,7 +299,7 @@ describe("the gallery", () => {
  * has merged. With nothing merged it renders nothing.
  */
 describe("the shipped samples", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: a card names a model only as its registry name, credit, picture description and button; is labelled AI-generated; and claims no stock", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: a card names a model only as its registry name, picture description and button; is labelled AI-generated; credits no maker; and claims no stock", (code) => {
     const d = dictionaries[code];
     const g = d.site.gallery;
     const { container } = render(<ShowcaseGallery t={d} locale={code} />);
@@ -343,20 +344,13 @@ describe("the shipped samples", () => {
         // (Under vitest an imported file has no .src, so both sides are empty there; next build fills them.)
         expect(fig.querySelector("img")?.getAttribute("src") ?? null).toBe(src.f.posterSm ?? null);
         expect(fig.querySelector("img")?.getAttribute("alt")).toBe(fmt(g.altSource, { model: sm.display_name }));
-        const sc = fig.querySelector(".nx-gallery-attr");
-        expect(sc?.textContent ?? null).toBe(sm.attribution?.text ?? null);
-        expect(sc?.getAttribute("href") ?? null).toBe(sm.attribution?.url ?? null);
         fig.remove();
       }
       const name = rest.querySelector(".nx-gallery-model strong")!;
       expect(name.textContent).toBe(m.display_name);
       name.remove();
-      const credit = rest.querySelector(".nx-gallery-attr");
-      if (m.attribution) {
-        expect(credit?.textContent).toBe(m.attribution.text);
-        expect(credit?.getAttribute("href")).toBe(m.attribution.url);
-        credit!.remove();
-      } else expect(credit).toBeNull();
+      // The maker's credit (Runway's and Ideogram's included) is data only: no link to a maker, no "Powered by".
+      expect(makerCreditProblems(card), e.jobId).toEqual([]);
       const img = rest.querySelector("img")!;
       expect(img.getAttribute("alt")).toBe(fmt(clip ? g.altClip : g.altImage, { model: m.display_name }));
       img.removeAttribute("alt");

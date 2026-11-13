@@ -114,27 +114,31 @@ describe("/mcp", () => {
   const doc = (oauthLive: boolean, locale: Locale = "en") => new DOMParser().parseFromString(html(oauthLive, locale), "text/html");
   const panel = (d: Document, id: string) => d.getElementById(d.querySelector(`[role="tab"][data-id="${id}"]`)!.getAttribute("aria-controls")!)!;
 
-  it.each(LOCALES)("(%s) six tabs in the owner's order, and no other assistant is named anywhere on the page", (locale) => {
+  it.each(LOCALES)("(%s) six assistants in the owner's order (tabs with the sign-in live; Cursor and VS Code tabs and the other four in the note without it), and no other assistant is named anywhere on the page", (locale) => {
     for (const oauthLive of [false, true]) {
       const d = doc(oauthLive, locale);
-      expect([...d.querySelectorAll('[role="tab"].st-pill')].map((t) => t.getAttribute("data-id"))).toEqual(SIX);
+      const tabs = [...d.querySelectorAll('[role="tab"].st-pill')].map((t) => t.getAttribute("data-id"));
+      const noted = [...d.querySelectorAll(".st-cc-soon-list li")].map((li) => li.getAttribute("data-id"));
+      expect(tabs).toEqual(oauthLive ? SIX : ["cursor", "vscode"]);
+      expect(noted).toEqual(oauthLive ? [] : ["chatgpt", "claude", "gemini", "grok"]);
+      expect(SIX.filter((id) => tabs.includes(id) || noted.includes(id))).toEqual(SIX);
       const text = d.body.textContent ?? "";
       for (const gone of ["Claude Code", "OpenClaw", "Hermes", "Windsurf", "Gemini CLI", "Codex", "Zed", "Warp", "Cline", "Goose", "Roo Code", "LM Studio", "Raycast", "Claude Desktop", "mcp-remote"])
         expect(text, `${locale} ${oauthLive} ${gone}`).not.toContain(gone);
     }
   });
 
-  it.each(LOCALES)("(%s) flag off: no Add-to button and no install link anywhere; the four sign-in tabs say Coming soon and point at Cursor and VS Code", (locale) => {
+  it.each(LOCALES)("(%s) flag off: no Add-to button and no install link anywhere; the four sign-in assistants are one Coming soon note that names Cursor and VS Code", (locale) => {
     const page = html(false, locale);
     for (const needle of ["cursor://", "vscode:", "vscode-insiders:", "vscode.dev/redirect", "claude.ai/customize", "claude.ai/admin-settings", "st-install", 'data-opens="', "developers.openai.com", "support.google.com", "docs.x.ai"])
       expect(page, needle).not.toContain(needle);
     const d = doc(false, locale);
-    for (const id of ["chatgpt", "claude", "gemini", "grok"]) {
-      expect(panel(d, id).querySelector(".st-soon"), id).toBeTruthy();
-      expect(panel(d, id).textContent, id).toContain(devDictionaries[locale].mcp.soon.badge);
-      expect(panel(d, id).querySelector("a"), id).toBeNull();
-      expect(panel(d, id).textContent, id).toContain("VS Code (GitHub Copilot)");
-    }
+    const note = d.querySelector(".st-cc-soon")!;
+    expect(note.textContent).toContain(devDictionaries[locale].mcp.soon.badge);
+    expect(note.querySelector("a, button")).toBeNull();
+    expect(note.textContent).toContain("Cursor");
+    expect(note.textContent).toContain("VS Code");
+    for (const id of ["chatgpt", "claude", "gemini", "grok"]) expect(d.querySelector(`[role="tab"][data-id="${id}"]`), id).toBeNull();
     expect(panel(d, "cursor").textContent).toContain("<your API key>");
   });
 
@@ -148,8 +152,8 @@ describe("/mcp", () => {
       expect(key.getAttribute("href"), id).toBe(installLink(id, PROD)!.href);
       expect(key.textContent, id).toContain(words[id].button);
       expect(p.querySelector(".st-install-hint")?.textContent, id).toBe(words[id].hint);
-      // The way by hand: the server address or the config to paste, in the next step.
-      expect(p.querySelectorAll(".st-step2")[1].textContent, id).toMatch(/nightshift-ai\.studio\/api\/mcp/);
+      // The way by hand: the server address in the next step, or the config to paste in the block under the steps.
+      expect(`${p.querySelectorAll(".st-step2")[1].textContent}${p.querySelector(":scope > .st-steps2-code")?.textContent ?? ""}`, id).toMatch(/nightshift-ai\.studio\/api\/mcp/);
       // No vendor mark on a button: a generic icon and the product's name in text.
       expect(key.querySelector("use"), id).toBeNull();
     }
