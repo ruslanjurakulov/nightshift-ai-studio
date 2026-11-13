@@ -893,6 +893,48 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "dcb96246-9379-4c3a-aa33-a8ee6bb7f846",
+      "assetId": "49fcc17b-cc36-59c2-bb40-75c402e63513",
+      "sha256": "fba8cc386604d24ea45aa4ddcc809fad816a3f09635434e775da8720facaf645",
+      "modelId": "runway-gen4-turbo",
+      "modelName": "Runway Gen-4 Turbo",
+      "provider": "runway",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runway.com"
+      },
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "The photo comes alive: heavy rain starts falling over the neon city, neon signs flicker on, light trails of traffic streak along the wet street far below, a flying drone crosses the frame, mist drifts between the towers. Camera slowly pushes in. Cinematic, photorealistic.",
+      "createdAt": "2026-11-13T20:45:38Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "1504b313-3a3c-4e78-bfda-5bca3ef7f3da",
+        "assetId": "263cbf6e-9d00-5f65-aebb-2683c97d0718"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "runway",
+            "vendorModel": "gen4_turbo",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 720,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:23:48Z"
     }
   ]
 }
