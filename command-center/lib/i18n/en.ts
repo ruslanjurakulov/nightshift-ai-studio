@@ -22,6 +22,7 @@ import { seriesPlanEn } from "./series-plan/en";
 import { ownerTruthEn } from "./owner-truth/en";
 import { connectPickerEn } from "./connect-picker/en";
 import { presetsEn } from "./presets/en";
+import { effectsEn } from "./effects/en";
 import { siteEn } from "./site/en";
 import { overlayEn } from "./overlay/en";
 import { shapesEn } from "./shapes/en";
@@ -57,6 +58,8 @@ export const en = {
   /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
   site: siteEn,
   presets: presetsEn,
+  /** Effects (lib/effects/catalog.ts): ./effects/en.ts. */
+  effects: effectsEn,
   libraryUx: libraryUxEn,
   ownerShell: ownerShellEn,
   ownerSafety: ownerSafetyEn,
@@ -4655,10 +4658,11 @@ export const en = {
   },
   desk: {
     nav: "Studio sections",
-    names: { overview: "Overview", video: "Video", image: "Image", enhance: "Enhance", voice: "Voice", youtube: "YouTube video" },
+    names: { overview: "Overview", video: "Video", effects: "Effects", image: "Image", enhance: "Enhance", voice: "Voice", youtube: "YouTube video" },
     keySub: {
       overview: "Recent work",
       video: "Words or a picture",
+      effects: "Named shots",
       image: "Make · edit · describe",
       enhance: "Upscale · cut out",
       voice: "Speech · voice · dub",
@@ -4667,6 +4671,7 @@ export const en = {
     blurbs: {
       overview: "Write what you want, pick a kind of work, or start from an example. The price is on the button before anything starts.",
       video: "Clips of 5 or 10 seconds, from words or from a picture. Each one shows its price before it is made.",
+      effects: "Named shots that fill the video form for you. You add the subject or the picture; the price shows before anything is made.",
       image: "New pictures, edits to a picture you have, and a picture read back as a prompt.",
       enhance: "Make a picture or a video sharper and larger, or cut the subject out of its background.",
       voice: "Speech from a script, a new voice on a recording, or a dub into another language.",
