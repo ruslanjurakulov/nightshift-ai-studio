@@ -152,6 +152,53 @@ describe("the placeholder", () => {
     }
   });
 
+  // 0151: a model with too little history here, timed by the platform's own test run of it.
+  const PROBE = { capability: "i2v", seconds: 60, clipSeconds: 5, probedAt: ago(3600), failedAfter: false };
+  const clip = (duration_s: number) => job({ capability: "i2v", requested_model: "vid-1", params: { prompt: "push in", duration_s } });
+
+  it.each(["en", "ru", "uz"] as const)(
+    "%s: a test-run estimate says so on the pill and in the sentence, and is never the history's wording",
+    (locale) => {
+      const d = dictionaries[locale].studioProgress;
+      // 30 s along, a 60 s probe for the same 5 s: ~50%.
+      const { unmount } = render(withI18n(<GenerationPlaceholder job={clip(5)} samples={[60]} seed={PROBE} />, locale));
+      const p = pill()!;
+      expect(p.dataset.kind).toBe("seeded");
+      const text = fmt(d.seeded, { n: 50 });
+      expect(text).not.toBe(fmt(d.estimate, { n: 50 }));
+      expect(within(p).getByText(text).getAttribute("aria-hidden")).toBe("true");
+      const spoken = fmt(d.seededSpoken, { n: 50, s: 60 });
+      expect(spoken).not.toMatch(/[{}]/);
+      expect(within(p).getByText(spoken).className).toBe("sr-only");
+      expect(within(p).getByText(text).getAttribute("title")).toBe(spoken);
+      expect(within(p).queryByText(fmt(d.estimateSpoken, { n: 50, count: 1 }))).toBeNull();
+      unmount();
+      // A 10 s clip from a 5 s probe: expected 120 s, so ~25%, and the sentence names both lengths.
+      render(withI18n(<GenerationPlaceholder job={clip(10)} samples={[60]} seed={PROBE} />, locale));
+      const scaled = fmt(d.seededScaledSpoken, { n: 25, s: 60, probe: 5, clip: 10 });
+      expect(scaled).not.toMatch(/[{}]/);
+      expect(within(pill()!).getByText(scaled)).toBeTruthy();
+      expect(within(pill()!).getByText(fmt(d.seeded, { n: 25 }))).toBeTruthy();
+    },
+  );
+
+  it("a seed for another capability, or one that failed since, shows no percentage at all", () => {
+    const { container, unmount } = render(
+      withI18n(<GenerationPlaceholder job={job({ capability: "t2v", params: { duration_s: 5 } })} samples={[60]} seed={PROBE} />),
+    );
+    expect(pill()!.dataset.kind).toBe("elapsed");
+    expect(container.textContent).not.toMatch(/%/);
+    unmount();
+    const failed = render(withI18n(<GenerationPlaceholder job={clip(5)} samples={[60]} seed={{ ...PROBE, failedAfter: true }} />));
+    expect(failed.container.textContent).not.toMatch(/%/);
+  });
+
+  it("with three finished jobs here the workspace's own median is shown, not the test run", () => {
+    render(withI18n(<GenerationPlaceholder job={clip(5)} samples={[60, 60, 60]} seed={{ ...PROBE, seconds: 6 }} />));
+    expect(pill()!.dataset.kind).toBe("estimate");
+    expect(within(pill()!).getByText("~50%")).toBeTruthy();
+  });
+
   it("counts from the server's clock when given its offset: a browser a minute fast does not age the job", () => {
     render(withI18n(<GenerationPlaceholder job={job()} samples={null} clockOffset={-60_000} />));
     // 30 s by the server's clock is −30 s by this one: never a negative, and never 90 s.
@@ -491,6 +538,21 @@ describe("the history belongs to the organization it was read for", () => {
       `/api/creative/durations?org_id=${ORG}&models=pic-1`,
       `/api/creative/durations?org_id=${OTHER}&models=pic-1`,
     ]);
+  });
+
+  it("carries the probe seed the route sent, drops a malformed one, and forgets it on a switch of organization", async () => {
+    const OTHER = "22222222-2222-4222-8222-222222222222";
+    const seed = { capability: "i2v", seconds: 70.976, clipSeconds: 5, probedAt: ago(60), failedAfter: false };
+    fetchMock.mockImplementation((url: string) =>
+      url.includes(`org_id=${ORG}`)
+        ? json({ durations: { "vid-1": [80], "vid-2": [] }, seeds: { "vid-1": seed, "vid-2": { ...seed, seconds: "70" } } })
+        : new Promise<Response>(() => undefined),
+    );
+    const { result, rerender } = renderHook(({ org }) => useModelDurations(org, ["vid-1", "vid-2"]), { initialProps: { org: ORG } });
+    await waitFor(() => expect(result.current.seed("vid-1")).toEqual(seed));
+    expect(result.current.seed("vid-2")).toBeNull();
+    rerender({ org: OTHER });
+    expect(result.current.seed("vid-1")).toBeNull();
   });
 
   it("a model it was not asked about is 'not asked'; one it was asked about and has no answer for is 'unread'", () => {

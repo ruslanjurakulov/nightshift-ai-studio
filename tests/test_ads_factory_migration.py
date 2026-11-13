@@ -131,7 +131,9 @@ class Numbering(unittest.TestCase):
         # model_probe_runs and nothing else; it reads, replaces and alters nothing of 0131's.
         # 0146 (Dodo Payments next to Paddle) was reviewed the same way: the payment tables' provider checks and the two subscription
         # functions of 0034 only; it reads, replaces and alters nothing of 0131's.
-        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146")], [], "a later number needs its own review of this file's pins")
+        # 0151 (the Studio's progress seed: one read-only function over model_registry and model_probe_runs) was reviewed the same
+        # way: it reads, replaces and alters nothing of 0131's.
+        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0151")], [], "a later number needs its own review of this file's pins")
         later = next(MIG.glob("0134_*.sql")).read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertNotRegex(code(later), r"\balter table\b")

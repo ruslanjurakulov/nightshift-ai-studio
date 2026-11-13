@@ -676,3 +676,8 @@ sec_made_for_kids_0145.extend(TABLES, FUNCTIONS)
 import sec_dodo_0146  # noqa: E402
 
 sec_dodo_0146.extend(TABLES, FUNCTIONS)
+
+# Migration 0151 (the Studio's progress seed: the newest successful probe's seconds per model, signed-in only): tests/security/sec_model_probe_seconds_0151.py
+import sec_model_probe_seconds_0151  # noqa: E402
+
+sec_model_probe_seconds_0151.extend(TABLES, FUNCTIONS)

@@ -975,3 +975,30 @@ customer reaches Dodo until the Command Center's `PAYMENTS_PROVIDER` is `dodo` a
 - **Tests.** `tests/test_dodo_payments_migration.py` (the hunks, the pins, the wrappers, the rollback), `tests/security/test_sec_dodo_payments.py`
   (a real PostgreSQL: grants, the Dodo money path through the shared ledger functions, the Paddle path identical with and without 0146,
   the checks, the drift guard, the rollback and the re-apply), `command-center/tests/dodo-webhook.test.ts` (the webhook).
+
+## The Studio's progress seed from a probe (0151)
+
+0151 (`0151_model_probe_seconds.sql`) is **live on apply and read-only**: it adds ONE function, `model_probe_seconds(p_models text[])`,
+and nothing else. A running generation's "~N%" in the Studio came only from the organization's own finished jobs on the same model (at
+least 3), so a just-added model showed seconds for its first three jobs everywhere. The function hands the Studio the newest
+successful probe of each model asked for (`model_probe_runs`, 0035): its wall time in seconds, its capability, the probe block's clip
+length (`spec.probe.duration_s`, only for the same capability) and when it ran, plus `failed_after` when a probe of the same capability
+failed since. The Studio uses it as the expected time until the organization has 3 finished jobs of its own, and the pill says
+"test run" (rule 5).
+
+- **What the number is.** `tools/probe_models.py` times submit → poll → download, so the seconds INCLUDE the download and the poll
+  interval (and, for a voice tool, the short speech clip the probe makes first). Only a probe of the adapter and vendor model the
+  registry calls today counts.
+- **Who sees what.** SECURITY DEFINER, pinned search_path; execute to `authenticated` only (not anon, not the service role). Probes are
+  platform-wide test calls: no organization's data. A customer gets rows only for models on sale (beta/ga and verified, what 0035's RLS
+  already shows them); a platform admin for any model (the 0139 preview). Never error text, bytes, prober, adapter or vendor model.
+- **Input.** At most 50 ids of the registry's id shape, no null, one dimension; otherwise `22023 invalid models`. The Studio asks for
+  at most 4, and only for models with fewer than 3 finished jobs here.
+- **Without it.** The durations route reads a missing function (or any error) as "no seed": the pill counts seconds, as before.
+- **md5.** `model_probe_seconds` `1a05990e1840630725b4b8dd87a13b20` (drift guard, end state, rollback).
+- **Number.** 0151: 0147 and 0149 are open pull requests, 0148 and 0150 are reserved. Needs 0018 and 0035; names nothing of theirs.
+  The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0151_model_probe_seconds.sql` (owner-applied): refuses a body that is not 0151's, drops the function.
+- **Tests.** `tests/test_model_probe_seconds_migration.py` (the text), `tests/security/test_sec_model_probe_seconds.py` (a real
+  PostgreSQL: grants, visibility, which probe, the clip length, the bounds, replay and rollback), `command-center/tests/studio-progress.test.ts`,
+  `durations-route.test.ts` and `studio-progress-ui.test.tsx` (the seed's use in the pill).

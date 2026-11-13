@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DURATION_MODELS_MAX } from "@/lib/creative/durations";
+import { coerceProbeSeed, type ProbeSeed } from "@/lib/creative/progress";
 
 /** `{ durations: { model: number[] } }` → a map; anything else in the body is ignored, never guessed into a number. */
 export function coerceDurations(body: unknown): Map<string, number[]> {
@@ -14,10 +15,24 @@ export function coerceDurations(body: unknown): Map<string, number[]> {
   return out;
 }
 
+/** `{ seeds: { model: ProbeSeed } }` → a map of the seeds that read whole; a missing or malformed `seeds` is none. */
+export function coerceSeeds(body: unknown): Map<string, ProbeSeed> {
+  const out = new Map<string, ProbeSeed>();
+  const s = body && typeof body === "object" ? (body as { seeds?: unknown }).seeds : null;
+  if (!s || typeof s !== "object" || Array.isArray(s)) return out;
+  for (const [model, x] of Object.entries(s as Record<string, unknown>)) {
+    const seed = coerceProbeSeed(x);
+    if (seed) out.set(model, seed);
+  }
+  return out;
+}
+
 /** What the feed knows of a model's history here: its durations, or why there are none (the pill says which). */
 export interface ModelDurations {
   /** The model's durations (s) when they were read; null otherwise. */
   samples(model: string): number[] | null;
+  /** The platform's test run of the model (0151), when the history here is short and the seed was read; null otherwise. */
+  seed(model: string): ProbeSeed | null;
   /** Why `samples` is null: asked and not (yet) read — or never asked, past DURATION_MODELS_MAX models at once. */
   missing(model: string): "unread" | "not_asked";
 }
@@ -33,7 +48,11 @@ export interface ModelDurations {
  */
 export function useModelDurations(orgId: string, models: readonly string[]): ModelDurations {
   const key = [...new Set(models.filter(Boolean))].sort().slice(0, DURATION_MODELS_MAX).join(",");
-  const [read, setRead] = useState<{ org: string; map: Map<string, number[]> }>(() => ({ org: orgId, map: new Map() }));
+  const [read, setRead] = useState<{ org: string; map: Map<string, number[]>; seeds: Map<string, ProbeSeed> }>(() => ({
+    org: orgId,
+    map: new Map(),
+    seeds: new Map(),
+  }));
   useEffect(() => {
     if (!key) return;
     let live = true;
@@ -43,8 +62,16 @@ export function useModelDurations(orgId: string, models: readonly string[]): Mod
           cache: "no-store",
         });
         if (!res.ok || !live) return;
-        const got = coerceDurations(await res.json().catch(() => null));
-        if (live) setRead((prev) => ({ org: orgId, map: new Map([...(prev.org === orgId ? prev.map : []), ...got]) }));
+        const body: unknown = await res.json().catch(() => null);
+        const got = coerceDurations(body);
+        const seeds = coerceSeeds(body);
+        if (live)
+          setRead((prev) => {
+            const same = prev.org === orgId;
+            // A model read again replaces its seed too: one whose history here has since grown long enough is sent none.
+            const kept = same ? [...prev.seeds].filter(([m]) => !got.has(m)) : [];
+            return { org: orgId, map: new Map([...(same ? prev.map : []), ...got]), seeds: new Map([...kept, ...seeds]) };
+          });
       } catch {
         // Unread: the placeholders keep showing seconds.
       }
@@ -54,11 +81,14 @@ export function useModelDurations(orgId: string, models: readonly string[]): Mod
     };
   }, [orgId, key]);
   const map = read.org === orgId ? read.map : EMPTY;
+  const seeds = read.org === orgId ? read.seeds : NO_SEEDS;
   const asked = new Set(key ? key.split(",") : []);
   return {
     samples: (model) => map.get(model) ?? null,
+    seed: (model) => seeds.get(model) ?? null,
     missing: (model) => (asked.has(model) ? "unread" : "not_asked"),
   };
 }
 
 const EMPTY: ReadonlyMap<string, number[]> = new Map();
+const NO_SEEDS: ReadonlyMap<string, ProbeSeed> = new Map();

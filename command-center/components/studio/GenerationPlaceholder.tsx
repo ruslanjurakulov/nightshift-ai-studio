@@ -4,7 +4,15 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { isActiveStatus, kindLabel, statusView, type StudioJob } from "@/lib/creative/studio";
-import { MIN_SAMPLES, jobPhase, progressReading, type NoEstimate, type ProgressReading } from "@/lib/creative/progress";
+import {
+  MIN_SAMPLES,
+  jobClipSeconds,
+  jobPhase,
+  progressReading,
+  type NoEstimate,
+  type ProbeSeed,
+  type ProgressReading,
+} from "@/lib/creative/progress";
 import { DURATION_MODELS_MAX } from "@/lib/creative/durations";
 import "@/components/studio/generation-placeholder.css";
 
@@ -42,6 +50,14 @@ export function pillWords(
 ): { text: string; spoken: string } | null {
   const tp = t.studioProgress;
   if (r.kind === "estimate") return { text: fmt(tp.estimate, { n: r.percent }), spoken: fmt(tp.estimateSpoken, { n: r.percent, count: r.samples }) };
+  if (r.kind === "seeded") {
+    // Said apart from the history estimate on the pill itself, not only in the sentence: a test run is not this workspace's jobs.
+    const spoken =
+      r.scaled && r.probeClip !== null && r.clip !== null
+        ? fmt(tp.seededScaledSpoken, { n: r.percent, s: r.probeSeconds, probe: r.probeClip, clip: r.clip })
+        : fmt(tp.seededSpoken, { n: r.percent, s: r.probeSeconds });
+    return { text: fmt(tp.seeded, { n: r.percent }), spoken };
+  }
   if (r.kind === "reported") return { text: fmt(tp.reported, { n: r.percent }), spoken: fmt(tp.reportedSpoken, { n: r.percent }) };
   if (r.kind === "elapsed") {
     const text = r.seconds < 60 ? fmt(tp.seconds, { n: r.seconds }) : fmt(tp.minutes, { m: Math.floor(r.seconds / 60), s: r.seconds % 60 });
@@ -61,8 +77,9 @@ export type PlaceholderSize = "card" | "stage" | "thumb" | "bar";
  * in a slow wave from the centre, the job's phase above with a live lamp, and a pill with how far along it is.
  *
  * Everything it says is read from the job's own row, which the feed polls — so a refresh mid-job draws the same
- * thing, and nothing here is kept in the page. The pill is an estimate only when there is history to estimate from
- * (lib/creative/progress.ts), always with "~"; otherwise it counts seconds. The phase line is the polite live region
+ * thing, and nothing here is kept in the page. The pill is an estimate only when there is something to estimate from
+ * (lib/creative/progress.ts) — this workspace's history, or else the platform's test run of the model, marked as one —
+ * always with "~"; otherwise it counts seconds. The phase line is the polite live region
  * (a phase change is news); the pill is not, so a screen reader is not read a number every second.
  *
  * `failure`: the reason the feed already gives for a job that ended without a result. `ready`: the job is done but
@@ -77,12 +94,15 @@ export function GenerationPlaceholder({
   aspect,
   missing = "unread",
   clockOffset = 0,
+  seed = null,
 }: {
   /** The result's shape (cardAspect), for the stage, which has no shape of its own to fill. */
   aspect?: string;
-  job: Pick<StudioJob, "status" | "capability" | "created_at" | "started_at">;
+  job: Pick<StudioJob, "status" | "capability" | "created_at" | "started_at"> & { params?: StudioJob["params"] };
   /** This model's recent durations here (s); null = none read, and `missing` says why. */
   samples: readonly number[] | null;
+  /** The platform's test run of this model (0151): the expected time while `samples` were read and are too few. */
+  seed?: ProbeSeed | null;
   missing?: Exclude<NoEstimate, "few">;
   /** The server's clock minus this browser's (ms, lib/creative/progress clockOffset): the row's times are the server's. */
   clockOffset?: number;
@@ -98,8 +118,18 @@ export function GenerationPlaceholder({
   const phase = ready ? "done" : jobPhase(job.status);
   const sv = statusView(t, job.status);
   // No provider reports progress into creative_jobs today (0036 has no column for it), so nothing is passed as
-  // `reported`: the pill is the history estimate or the seconds, and says which.
-  const reading = progressReading({ status: job.status, startedAt: job.started_at, createdAt: job.created_at, now: now + clockOffset, samples, missing });
+  // `reported`: the pill is the history estimate, the test-run estimate or the seconds, and says which.
+  const reading = progressReading({
+    status: job.status,
+    startedAt: job.started_at,
+    createdAt: job.created_at,
+    now: now + clockOffset,
+    samples,
+    missing,
+    seed,
+    capability: job.capability,
+    clipSeconds: jobClipSeconds(job.params),
+  });
   const pill = active ? pillWords(t, fmt, reading) : null;
   const failed = !active && !ready;
   const words = ready ? tp.loadingResult : tp.phase[phase];

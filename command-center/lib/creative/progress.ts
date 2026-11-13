@@ -7,7 +7,8 @@
  * column and modules/creative_worker.py records only the phase. So a percentage is an ESTIMATE from this
  * organization's own finished jobs on the same model — the time since this one started over the median time those
  * took — always printed with "~" and capped below 100 until the database says the job is done. With too little
- * history there is no percentage at all, only the seconds since it started.
+ * history the expected time is the platform's own test run of the model (migration 0151's probe seed), said as such
+ * on the pill and only for the capability that was tested; without that either, only the seconds since it started.
  */
 import { isActiveStatus } from "@/lib/creative/studio";
 
@@ -83,9 +84,113 @@ export function durationsFrom(rows: unknown): number[] {
 export type NoEstimate = "few" | "unread" | "not_asked";
 
 /**
+ * A probe older than this seeds nothing. Probes are run by hand (.github/workflows/probe_models.yml has no schedule), and a
+ * vendor's queue times and model versions move: a month is the longest a single test call is taken to describe the model's
+ * speed today. Past it the pill counts seconds again until the owner re-probes or this organization has its own history.
+ */
+export const PROBE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** A probe time stamped further in the future than this is a clock or a row not to believe, not a fresh probe. */
+export const PROBE_FUTURE_SLACK_MS = 60 * 1000;
+/** The capabilities whose length is asked for in seconds (params.duration_s): the only ones a probe's time is scaled for. */
+export const CLIP_CAPABILITIES: readonly string[] = ["t2v", "i2v"];
+/** A clip length beyond this is not one any model makes; the same bound 0151 puts on the probe block's. */
+const CLIP_MAX_S = 3600;
+
+/**
+ * The platform's own test run of a model (0151 model_probe_seconds): the newest successful probe's wall time — submit to the
+ * downloaded file, so it INCLUDES the download and the probe tool's poll interval — the capability it tested, the clip
+ * length the probe asked for (null when it named none), when it ran, and whether a probe of that capability failed since.
+ */
+export interface ProbeSeed {
+  capability: string;
+  seconds: number;
+  clipSeconds: number | null;
+  probedAt: string;
+  failedAfter: boolean;
+}
+
+const CAPABILITY_RE = /^[a-z][a-z0-9_]{0,31}$/;
+const isSeconds = (x: unknown, max: number): x is number => typeof x === "number" && Number.isFinite(x) && x > 0 && x <= max;
+
+/** One seed from its fields; null when any is unreadable — a seed is used whole or not at all, never patched with a guess. */
+function seedOf(capability: unknown, seconds: unknown, clip: unknown, probedAt: unknown, failedAfter: unknown): ProbeSeed | null {
+  if (typeof capability !== "string" || !CAPABILITY_RE.test(capability)) return null;
+  if (!isSeconds(seconds, SAMPLE_MAX_S)) return null;
+  if (typeof probedAt !== "string" || !Number.isFinite(Date.parse(probedAt))) return null;
+  // "Did it fail since?" unanswered is not "no": without a clear false there is no seed.
+  if (typeof failedAfter !== "boolean") return null;
+  return { capability, seconds, clipSeconds: isSeconds(clip, CLIP_MAX_S) ? clip : null, probedAt, failedAfter };
+}
+
+/** 0151's rows (model_id, capability, probe_seconds, clip_seconds, probed_at, failed_after) → seeds of the models asked about. */
+export function seedsFrom(rows: unknown, asked: readonly string[]): Record<string, ProbeSeed> {
+  const out: Record<string, ProbeSeed> = {};
+  if (!Array.isArray(rows)) return out;
+  for (const r of rows) {
+    if (!r || typeof r !== "object") continue;
+    const x = r as Record<string, unknown>;
+    if (typeof x.model_id !== "string" || !asked.includes(x.model_id)) continue;
+    const seed = seedOf(x.capability, x.probe_seconds, x.clip_seconds, x.probed_at, x.failed_after);
+    if (seed) out[x.model_id] = seed;
+  }
+  return out;
+}
+
+/** A seed as the durations route sends it, read again in the browser (anything else in the body is ignored). */
+export function coerceProbeSeed(x: unknown): ProbeSeed | null {
+  if (!x || typeof x !== "object" || Array.isArray(x)) return null;
+  const s = x as Record<string, unknown>;
+  return seedOf(s.capability, s.seconds, s.clipSeconds, s.probedAt, s.failedAfter);
+}
+
+/** The clip length a job asked for (params.duration_s), or null when it named none readable. */
+export function jobClipSeconds(params: Record<string, unknown> | null | undefined): number | null {
+  const d = params?.duration_s;
+  return isSeconds(d, CLIP_MAX_S) ? d : null;
+}
+
+/**
+ * How long a job is expected to take from a probe seed, or null when the seed may not stand in for one: none, a failure
+ * since, another capability than the one tested (an i2v probe says nothing about t2v), older than PROBE_MAX_AGE_MS or
+ * from the future, or unreadable.
+ *
+ * ASSUMPTION, not a measurement: for a video, time is taken to grow in proportion to the clip's length — a 10 s clip
+ * twice a 5 s probe's time. Real jobs carry a fixed part (the queue, the upload of the first frame, the download) that
+ * does not grow, so this over-expects long clips. It is only ever an estimate, printed with "~" and capped, and it gives
+ * way to the organization's own median as soon as there are MIN_SAMPLES finished jobs. Scaled only when both lengths are
+ * known; otherwise the probe's time as it is.
+ */
+export function seedExpectation(
+  seed: ProbeSeed | null | undefined,
+  job: { capability: string; clipSeconds: number | null | undefined },
+  now: number,
+): { seconds: number; scaled: boolean } | null {
+  if (!seed || seed.failedAfter !== false) return null;
+  if (!isSeconds(seed.seconds, SAMPLE_MAX_S) || seed.capability !== job.capability) return null;
+  const at = Date.parse(seed.probedAt);
+  if (!Number.isFinite(at) || !Number.isFinite(now)) return null;
+  const age = now - at;
+  if (age > PROBE_MAX_AGE_MS || age < -PROBE_FUTURE_SLACK_MS) return null;
+  const clip = job.clipSeconds;
+  const probeClip = seed.clipSeconds;
+  if (CLIP_CAPABILITIES.includes(job.capability) && isSeconds(clip, CLIP_MAX_S) && isSeconds(probeClip, CLIP_MAX_S) && clip !== probeClip) {
+    return { seconds: (seed.seconds * clip) / probeClip, scaled: true };
+  }
+  return { seconds: seed.seconds, scaled: false };
+}
+
+/** The probe's seconds as said: tenths below 10 s (a 0.9 s picture is not "1 s" or "0 s"), whole seconds above. */
+function saidSeconds(s: number): number {
+  return s < 10 ? Math.round(s * 10) / 10 : Math.round(s);
+}
+
+/**
  * What the pill may say.
  * - `reported`: a number the provider itself reported (none does today; see the file's head) — printed without "~".
  * - `estimate`: ~N% from this organization's history on the model, N ≤ ESTIMATE_CAP.
+ * - `seeded`: ~N% from the platform's test run of the model (ProbeSeed), N ≤ ESTIMATE_CAP, when the history here was read
+ *   and is too short. `probeSeconds` is the test run's time as said; `scaled` when it was scaled from the probe's clip
+ *   length (`probeClip`) to this job's (`clip`).
  * - `elapsed`: seconds. `since` says from what: the job's start (`started`), or when it was asked for (`asked`) — in
  *   line (`waiting`), or started without a recorded start time. `history` says why there is no estimate; null when
  *   none was looked for (counting from the ask, there is no "since it started" to set against a median).
@@ -94,6 +199,7 @@ export type NoEstimate = "few" | "unread" | "not_asked";
 export type ProgressReading =
   | { kind: "reported"; percent: number }
   | { kind: "estimate"; percent: number; samples: number }
+  | { kind: "seeded"; percent: number; probeSeconds: number; scaled: boolean; probeClip: number | null; clip: number | null }
   | { kind: "elapsed"; seconds: number; waiting: boolean; since: "started" | "asked"; history: NoEstimate | null }
   | { kind: "none" };
 
@@ -105,6 +211,9 @@ export function progressReading({
   samples,
   missing = "unread",
   reported = null,
+  seed = null,
+  capability = "",
+  clipSeconds = null,
 }: {
   status: string;
   startedAt: string | null | undefined;
@@ -117,6 +226,11 @@ export function progressReading({
   missing?: Exclude<NoEstimate, "few">;
   /** A fraction 0..1 the provider reported for THIS job, when one ever does. */
   reported?: number | null;
+  /** The platform's test run of the model (0151), used only while `samples` were read and are too few. */
+  seed?: ProbeSeed | null;
+  /** The job's capability and the clip length it asked for: a seed stands in only for the capability it tested. */
+  capability?: string;
+  clipSeconds?: number | null;
 }): ProgressReading {
   if (!isActiveStatus(status)) return { kind: "none" };
   if (typeof reported === "number" && Number.isFinite(reported) && reported >= 0 && reported <= 1) {
@@ -131,7 +245,20 @@ export function progressReading({
   if (samples === null) return { kind: "elapsed", seconds: ran, waiting: false, since: "started", history: missing };
   const valid = samples.filter((x) => Number.isFinite(x) && x > 0);
   const m = valid.length >= MIN_SAMPLES ? median(valid) : null;
-  if (m === null) return { kind: "elapsed", seconds: ran, waiting: false, since: "started", history: "few" };
+  if (m === null) {
+    // History unread is never seeded (the branch above): "too few jobs here" is then a claim nobody checked, and the org
+    // may well have its own median waiting. Read and short, the test run stands in until there are MIN_SAMPLES.
+    const expected = seedExpectation(seed, { capability, clipSeconds }, now);
+    if (expected === null) return { kind: "elapsed", seconds: ran, waiting: false, since: "started", history: "few" };
+    return {
+      kind: "seeded",
+      percent: Math.min(ESTIMATE_CAP, Math.floor((ran / expected.seconds) * 100)),
+      probeSeconds: saidSeconds(seed!.seconds),
+      scaled: expected.scaled,
+      probeClip: expected.scaled ? seed!.clipSeconds : null,
+      clip: expected.scaled ? (clipSeconds ?? null) : null,
+    };
+  }
   return { kind: "estimate", percent: Math.min(ESTIMATE_CAP, Math.floor((ran / m) * 100)), samples: valid.length };
 }
 
