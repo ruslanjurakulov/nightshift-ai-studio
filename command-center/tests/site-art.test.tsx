@@ -156,12 +156,14 @@ describe("the hero's backdrop", () => {
     expect(phone).toMatch(/rgba\(6, 6, 12, 0\.9\) 100%\)/);
   });
 
-  it("is printed twice in the page: the wide one in the hero, the phone's in the dark panel before the pill", () => {
+  // Round 10: the hero slot's own picture (one of our samples once merged) took the first screen edge to edge, so the backdrop is
+  // no longer printed on the landing, and the credits no longer say there is one.
+  it("is no longer on the landing, and the credits do not claim it", () => {
     const { container } = landing();
     const hero = container.querySelector("section.nx-hero")!;
-    expect(hero.firstElementChild?.matches("picture.nx-hero-bg-wide")).toBe(true);
-    expect(hero.querySelector(".nx-fx")).not.toBeNull();
-    expect(hero.querySelector(".nx-hero-top")?.firstElementChild?.matches("picture.nx-hero-bg-phone")).toBe(true);
+    expect(hero.querySelector("picture.nx-hero-bg-wide, picture.nx-hero-bg-phone, [data-art-id^='hero-night']")).toBeNull();
+    expect(hero.firstElementChild?.matches(".nx-sh-media")).toBe(true);
+    for (const l of LOCALES) expect(dictionaries[l.code].site.credits.lead).not.toMatch(/hero’s backdrop|фон главного экрана|bosh ekran foni/);
   });
 });
 

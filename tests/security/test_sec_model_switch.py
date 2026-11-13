@@ -1027,6 +1027,7 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
     # 0125 sits on 0124's bodies; 0124's drift guard refuses any other text, so take 0125 off for the replay and put it back.
     # 0139 sits on 0125's creative_price, and 0125's rollback refuses any other body: it comes off first and goes back last.
     # 0149 sits on 0139's the same way, 0153 on 0149's and 0155 on 0153's: off before it, back after it.
+    db.su(sec_db.rollback_0156_body())  # 0156 sits on 0155's creative_price: off first
     db.su(sec_db.rollback_0155_body())
     db.su(sec_db.rollback_0153_body())
     db.su(sec_db.rollback_0149_body())
@@ -1042,6 +1043,7 @@ def test_a_replay_changes_nothing_and_never_undoes_what_the_owner_set(db):
         db.su(sec_db.MIGRATION_0149.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0153.read_text(encoding="utf-8"))
         db.su(sec_db.MIGRATION_0155.read_text(encoding="utf-8"))
+        db.su(sec_db.MIGRATION_0156.read_text(encoding="utf-8"))
     assert db.su("select enforced from public.model_availability_settings") == [(True,)], "the seed row is on conflict do nothing"
     assert db.su("select enabled, reason, note from public.model_availability where target = 'img-z2'") == [(False, "other", "kept")]
 

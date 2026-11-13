@@ -151,7 +151,7 @@ class ShapeOfferedByModelMigration(unittest.TestCase):
         self.assertEqual(numbers.count("0155"), 1)
         self.assertIn("0153", numbers)
         lab = (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8")
-        for needle in ("def take_off_0155(", "def put_back_0155(", "ON_0153 = (MIGRATION_0155.name,)",
+        for needle in ("def take_off_0155(", "def put_back_0155(", "ON_0153 = (MIGRATION_0155.name, *ON_0155)",
                        "ON_0149 = (MIGRATION_0153.name, *ON_0153)", "ON_0139 = (MIGRATION_0149.name, *ON_0149)"):
             self.assertIn(needle, lab)
         # take_off_0153 takes 0155 off first, and put_back_0153 puts it back: 0153's rollback and replay refuse 0155's body.
@@ -161,9 +161,10 @@ class ShapeOfferedByModelMigration(unittest.TestCase):
         self.assertIn("put_back_0155(session)", on)
         # take_off_0149 and take_off_0139 must still find the chain when the live body is 0155's.
         off49 = lab[lab.index("def take_off_0149("):lab.index("def put_back_0149(")]
-        self.assertIn("if has_0153(session) or has_0155(session):", off49)
+        # (0156, on 0155's creative_price, is recognised too: tests/test_named_resolution_params_migration.py.)
+        self.assertIn("if has_0153(session) or has_0155(session)", off49)
         off39 = lab[lab.index("def take_off_0139("):lab.index("def put_back_0139(")]
-        self.assertIn("or has_0155(session):", off39)
+        self.assertIn("or has_0155(session)", off39)
 
 
 class EveryEntryStatesItsShapes(unittest.TestCase):

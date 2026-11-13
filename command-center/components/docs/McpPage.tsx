@@ -12,6 +12,7 @@ import {
   type McpClient,
 } from "@/lib/dev/mcp-clients";
 import type { DevDictionary } from "@/lib/i18n/dev";
+import type { Dictionary } from "@/lib/i18n";
 import { BrandLogo, BrandSprite, logoTile } from "@/components/docs/BrandLogo";
 import { ConnectCard, type ConnectTab } from "@/components/docs/ConnectCard";
 import { Field } from "@/components/docs/Field";
@@ -90,6 +91,7 @@ export function McpPage({
   chat,
   bleed,
   pause,
+  site,
 }: {
   dev: DevDictionary;
   origin: string;
@@ -105,6 +107,8 @@ export function McpPage({
   bleed?: ReactNode;
   /** The pause switch's label (the site's "Pause motion"): the card's drawing moves, so the page offers the switch. */
   pause?: string;
+  /** The site dictionary, for a scene card that shows one of our samples (its AI-generated label and model credit). */
+  site?: Dictionary["site"];
 }) {
   const c = dev.mcp;
   const url = `${origin}/api/mcp`;
@@ -313,7 +317,7 @@ export function McpPage({
         </div>
       </section>
 
-      <McpLanding dev={dev} oauthLive={oauthLive} />
+      <McpLanding dev={dev} site={site} oauthLive={oauthLive} />
 
       <DocSection id="tools" no={1} title={c.tools.slug}>
         <Statement>{c.tools.title}</Statement>

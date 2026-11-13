@@ -25,7 +25,7 @@ import citynightSm from "@/components/site/media/citynight-sm.webp";
 import desert from "@/components/site/media/desert.webp";
 import desertSm from "@/components/site/media/desert-sm.webp";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
-import { MEDIA, type MediaId } from "@/lib/site/media";
+import type { MediaId } from "@/lib/site/media";
 
 /**
  * The example frames on the public pages: stock photographs and footage by Pexels contributors, credited in
@@ -75,61 +75,5 @@ export function SampleImg({ id, alt = "", className, eager = false, position, si
   );
 }
 
-/**
- * THE MEDIA SLOTS: which picture goes where. Every page asks for a slot by name (<SlotImg slot="hero" />), never for a
- * file, so swapping a picture, or putting a new one in a place, is one line here. A page never shows the same picture
- * twice, and /mcp's six scenes are six different ones.
- *
- * To add one: run it through scripts/make-site-media.py (OUT_STILLS), import both widths above, add it to SAMPLES and to
- * lib/site/media.ts (its credit), give it an alt in lib/i18n/site/{en,ru,uz}.ts (site.samples.alts), then point a slot at it.
- */
-export const SLOTS = {
-  /** The landing's first screen (the chat card): the cloud-sea clip. */
-  hero: { id: "cloud", clip: "cloud" },
-  /** The landing's two showcases (a clip each), and the picture behind its closing panel. */
-  "show.studio": { id: "pottery", clip: "pottery" },
-  /** The small lighthouse is at the top right of the footage: the wide picture is framed from the top. */
-  "show.approvals": { id: "coast", clip: "coast", position: "50% 6%" },
-  "landing.final": { id: "moon" },
-  /** The chat card on /pricing: lanterns floating on dark water. */
-  "pricing.card": { id: "floating", clip: "floating" },
-  /** /solutions: the publish desk's frame (channels), and one photograph or clip above each of the other two audiences. */
-  "solutions.youtube-channels": { id: "caravan", clip: "caravan" },
-  "solutions.creative-studio": { id: "loom", clip: "loom" },
-  "solutions.developers": { id: "citynight" },
-  /** The sign-in stage is a still (golden light over dunes); the sign-up stage plays the floating lanterns, behind a pause button. */
-  "auth.login": { id: "desert", position: "54% 50%" },
-  "auth.signup": { id: "floating", clip: "floating", position: "42% 50%" },
-  /** /mcp: the header panel plays the cloud-sea clip, framed on its dark ridge. */
-  "mcp.hero": { id: "cloud", clip: "cloud" },
-} as const satisfies Record<string, { id: SampleId; position?: string; clip?: ClipId }>;
-export type SlotId = keyof typeof SLOTS;
-
-/** A slot's still. `alt` is the description for where the picture stands alone; empty where it is decorative. */
-export function SlotImg({ slot, alt = "", className, eager = false, sizes }: { slot: SlotId; alt?: string; className?: string; eager?: boolean; sizes?: string }) {
-  const s: { id: SampleId; position?: string } = SLOTS[slot];
-  return <SampleImg id={s.id} alt={alt} className={className} eager={eager} position={s.position} sizes={sizes} />;
-}
-
-/** The description of a slot's still, from the dictionary's alts. */
-export function slotAlt(alts: Record<SampleId, string>, slot: SlotId): string {
-  return alts[SLOTS[slot].id];
-}
-
-/** The clip a slot plays, if it has one. */
-export function slotClip(slot: SlotId): ClipId | null {
-  const s: { id: SampleId; clip?: ClipId } = SLOTS[slot];
-  return s.clip ?? null;
-}
-
-/** Where a slot's picture (and its clip) is framed inside its box, when it is not the centre. */
-export function slotPosition(slot: SlotId): string | undefined {
-  const s: { id: SampleId; position?: string } = SLOTS[slot];
-  return s.position;
-}
-
-/** The slot's still's id, and whether it is a frame of footage (labelled "stock footage") or a photograph. */
-export function slotSample(slot: SlotId): { id: SampleId; footage: boolean } {
-  const id = SLOTS[slot].id;
-  return { id, footage: MEDIA[id].kind === "video" };
-}
+/** The places and what each shows (components/site/slots.ts), here too so a page imports one module for its pictures. */
+export { SLOTS, LANDING_SLOTS, placeMedia, slotJobs, slotMedia, type PlaceDef, type PlaceMedia, type SlotId } from "@/components/site/slots";

@@ -413,6 +413,8 @@ export const devEn = {
         label: "Examples",
         title: "What you can ask for",
         lead: "Six sample asks, each with an example frame. The frames are stock photos and footage from Pexels contributors, credited on each card; one of them moves (the contributor’s footage, looped). They show the idea, not real output.",
+        /** The lead once any card shows one of our samples (components/docs/SampleFrame.tsx `ai`): it covers both kinds of picture. */
+        leadSamples: "Six sample asks, each over a picture. A picture labelled AI-generated is a real job from our own Studio, made by the model named on it; one labelled a stock example is a Pexels contributor’s, credited on its card. They show the idea, not the result of these asks.",
         region: "Examples of what to ask for",
         track: "Example cards, scroll sideways",
         prev: "Previous example",
