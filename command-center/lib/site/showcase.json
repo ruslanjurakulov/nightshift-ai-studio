@@ -227,6 +227,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:11:01Z"
+    },
+    {
+      "jobId": "a6768488-04c6-4325-9465-62d61f888a70",
+      "assetId": "ec6373fd-be12-57d1-8208-bffe99840243",
+      "sha256": "82ad20f3e039719f0c252bc94455335dd7555de22b4550013154ef0ac39824ff",
+      "modelId": "minimax-h3-max",
+      "modelName": "MiniMax H3 Max",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Oddly satisfying macro food commercial: glossy molten dark chocolate pours onto a white marble surface and sculpts itself into a perfect chocolate rose whose petals unfurl and bloom, a dusting of gold flakes falls and sparkles. Soft top light, mirror-like gloss, slow motion, wide 16:9. Audio: thick silky pour, soft crackle, no music.",
+      "createdAt": "2026-11-13T17:45:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Max",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T18:24:07Z"
     }
   ]
 }
