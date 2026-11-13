@@ -6,6 +6,7 @@ import { JOB_COLUMNS, type CreativeDb, type CreativeResult } from "@/lib/creativ
 import { coerceModels, coercePreviewModels, onlySellable, withTiers, type StudioModel } from "@/lib/creative/studio";
 import { withoutSwitchedOff } from "@/lib/model-switch";
 import { readSwitchedOffIds } from "@/lib/server/model-switch";
+import { hideBlockedModelsHere } from "@/lib/server/geo";
 
 /**
  * The creative operations' database door for the web: the signed-in user's
@@ -76,7 +77,10 @@ export async function loadStudioModels(): Promise<StudioModel[]> {
     const shown = withoutSwitchedOff(models, await readSwitchedOffIds(supabase));
     // sellable_models() also knows what the policy cannot: a vendor's announced shutdown date (migration 0125) ends a sale. When it answered,
     // the picker offers only what it lists; no migration and no policy change, and a failed call leaves the list as it was.
-    return marks.error ? shown : withTiers(onlySellable(shown, marks.data), marks.data);
+    const offered = marks.error ? shown : withTiers(onlySellable(shown, marks.data), marks.data);
+    // A model whose vendor forbids the country this request comes from is not offered (docs/GEO_BLOCK.md); the quote and the
+    // create routes refuse it too. Reads nothing while no model has a country list.
+    return await hideBlockedModelsHere(offered);
   } catch {
     return [];
   }
@@ -93,7 +97,8 @@ export async function loadOperatorPreviewModels(orgId: string): Promise<StudioMo
     if (!supabase) return [];
     const { data, error } = await supabase.rpc("operator_preview_models", { p_org: orgId });
     if (error) return [];
-    return coercePreviewModels(data);
+    // A preview is hidden where its vendor forbids it, like a model on sale (docs/GEO_BLOCK.md); the routes refuse it too.
+    return await hideBlockedModelsHere(coercePreviewModels(data));
   } catch {
     return [];
   }

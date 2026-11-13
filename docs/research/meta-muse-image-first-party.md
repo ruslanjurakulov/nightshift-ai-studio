@@ -140,7 +140,7 @@ The Geographic Use Policy (<https://dev.meta.ai/legal/geographic-use-policy>, "L
 2026-11-12) has two lists:
 
 - 2.2, model-specific availability: only "Muse Wonder: South Korea" and "Muse Wonder Full: South Korea". **Muse Image is
-  no longer listed.** The 2026-10-12 version read for this note first barred Muse Image in India; that ban is gone.
+  no longer listed.** The 2026-10-12 version read for this note first barred Muse Image in India; that ban is gone, and the registry row no longer lists India.
 - 3: the Restricted Territories, unchanged by the 2026-11-09 update, are Afghanistan, Belarus, Cambodia, China / Hong Kong / Macau, Cuba, Eritrea,
   Ethiopia, Haiti, Iran, Iraq, Libya, Myanmar, Nicaragua, North Korea, Pakistan, Russia, Somalia, Syria,
   Crimea / Donetsk / Luhansk, Venezuela and Western Sahara.
@@ -158,8 +158,9 @@ What was checked, all 2026-11-12:
 The only "country" fields are the YouTube channel's own `snippet.country`, which says where a channel claims to be,
 not where the requester is, and the operator's legal country (`NEXT_PUBLIC_LEGAL_COUNTRY`).
 
-As instructed, no GeoIP was built. The entry stays terms-gated, so it cannot be sold, until a person decides how to
-meet 3 (2.2 no longer names Muse Image). Two possible ways:
+(Since then, pull request #695 added a GeoIP check in the web routes, docs/GEO_BLOCK.md; the database still does not
+know the country, so the entry stays off sale.) As instructed, no GeoIP was built at the time. The entry stays terms-gated, so it
+cannot be sold, until a person decides how to meet 3 (2.2 no longer names Muse Image). Two possible ways:
 
 - a CDN or reverse-proxy country header, checked by the database function that quotes a job;
 - a country recorded on the account and checked at quote time.

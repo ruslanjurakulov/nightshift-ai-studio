@@ -17,7 +17,7 @@ function ask(body: unknown, headers: Record<string, string> = {}, raw?: string) 
   return POST(
     new Request("https://nightshift.test/api/handle-available", {
       method: "POST",
-      headers: { "content-type": "application/json", origin: "https://nightshift.test", "x-forwarded-for": "203.0.113.7", ...headers },
+      headers: { "content-type": "application/json", origin: "https://nightshift.test", "x-nightshift-client-ip": "203.0.113.7", ...headers },
       body: raw ?? JSON.stringify(body),
     }),
   );
@@ -78,7 +78,7 @@ describe("POST /api/handle-available (the sign-up form's check)", () => {
     expect(over.status).toBe(429);
     expect(over.headers.get("retry-after")).toBe("60");
     expect(await json(over)).toEqual({ error: "rate_limited" });
-    expect((await ask({ handle: "ana.k" }, { "x-forwarded-for": "198.51.100.9" })).status).toBe(200);
+    expect((await ask({ handle: "ana.k" }, { "x-nightshift-client-ip": "198.51.100.9" })).status).toBe(200);
   });
 
   it("refuses a body that is not JSON or is too big", async () => {
@@ -99,17 +99,24 @@ describe("the per-address memory", () => {
     expect(handleCheckSize()).toBeLessThanOrEqual(HANDLE_CHECK_MAX_KEYS);
   });
 
-  it("keys on the platform's own header first, then Cloudflare's, then the first forwarded address", () => {
-    const h = (o: Record<string, string>) => handleCheckKey(new Headers(o));
-    expect(h({ "x-vercel-forwarded-for": "203.0.113.1", "x-forwarded-for": "6.6.6.6", "cf-connecting-ip": "7.7.7.7" })).toBe("203.0.113.1");
-    expect(h({ "cf-connecting-ip": "7.7.7.7", "x-forwarded-for": "6.6.6.6" })).toBe("7.7.7.7");
-    expect(h({ "x-forwarded-for": "6.6.6.6, 10.0.0.1" })).toBe("6.6.6.6");
+  it("keys on the one header our own proxy writes, and on no header a visitor can send (ledger BR-L-192)", () => {
+    const h = (o: Record<string, string>, onVercel = false) => handleCheckKey(new Headers(o), onVercel);
+    const spoofable = { "x-forwarded-for": "6.6.6.6", "cf-connecting-ip": "7.7.7.7", "x-real-ip": "8.8.8.8", "x-vercel-forwarded-for": "9.9.9.9" };
+    expect(h({ ...spoofable, "x-nightshift-client-ip": "203.0.113.1" })).toBe("203.0.113.1");
+    // Behind Caddy that header is always there; without it nothing a client sent is believed.
+    expect(h(spoofable)).toBe("unknown");
     expect(h({})).toBe("unknown");
-    expect(h({ "x-forwarded-for": "x".repeat(200) }).length).toBe(64);
+    // A list or garbage is not an address the proxy wrote.
+    expect(h({ "x-nightshift-client-ip": "6.6.6.6, 10.0.0.1" })).toBe("unknown");
+    expect(h({ "x-nightshift-client-ip": "x".repeat(200) })).toBe("unknown");
+    // On a Vercel deploy there is no Caddy: the platform's own header, and never ours (a visitor could send it there).
+    expect(h({ ...spoofable, "x-nightshift-client-ip": "203.0.113.1" }, true)).toBe("9.9.9.9");
+    expect(h({ "x-nightshift-client-ip": "203.0.113.1", "x-forwarded-for": "6.6.6.6" }, true)).toBe("unknown");
   });
 
-  it("the route limits by that key, not by a spoofable forwarded header when the platform sent its own", async () => {
-    for (let i = 0; i < HANDLE_CHECK_LIMIT.max; i++) await ask({ handle: "ana.k" }, { "x-vercel-forwarded-for": "203.0.113.50", "x-forwarded-for": `9.9.9.${i}` });
-    expect((await ask({ handle: "ana.k" }, { "x-vercel-forwarded-for": "203.0.113.50", "x-forwarded-for": "9.9.9.250" })).status).toBe(429);
+  it("the route limits by that key, whatever forwarded headers the visitor rotates", async () => {
+    for (let i = 0; i < HANDLE_CHECK_LIMIT.max; i++)
+      await ask({ handle: "ana.k" }, { "x-nightshift-client-ip": "203.0.113.50", "x-forwarded-for": `9.9.9.${i}`, "cf-connecting-ip": `7.7.7.${i}` });
+    expect((await ask({ handle: "ana.k" }, { "x-nightshift-client-ip": "203.0.113.50", "x-forwarded-for": "9.9.9.250", "cf-connecting-ip": "7.7.7.250" })).status).toBe(429);
   });
 });

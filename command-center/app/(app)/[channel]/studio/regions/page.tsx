@@ -10,6 +10,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { getChannelContext } from "@/lib/channels-server";
 import { channelPath } from "@/lib/channels";
 import { loadStudioModels } from "@/lib/server/creative";
+import { GeoAttribution } from "@/components/legal/GeoAttribution";
 import { regionEditorEnabled } from "@/lib/regionEdit/flag";
 import { editModels } from "@/lib/regionEdit/quote";
 import { MAX_REGIONS } from "@/lib/regionEdit/geometry";
@@ -38,6 +39,7 @@ export default async function RegionEditorPage() {
     <div className="rhythm ns-open stagger-enter">
       {header}
       <RegionEditor orgId={org.current.id} models={models} libraryHref={channelPath(slug, "/library")} creditsHref={channelPath(slug, "/credits")} />
+      <GeoAttribution label={t.create.geoAttribution} />
     </div>
   );
 }

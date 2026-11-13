@@ -46,8 +46,9 @@ Obligations this adapter carries (Model API ToS, AUP, Geographic Use Policy):
 * Geography: the Geographic Use Policy (https://dev.meta.ai/legal/geographic-use-policy, "Last updated: November 9,
   2026", read 2026-11-12) bars every Restricted Territory (3) for all models. Its model-specific list (2.2) no longer
   names Muse Image (only Muse Wonder and Muse Wonder Full, in South Korea); the 2026-10-12 version barred it in India.
-  The repository has no signal of the requester's country (no GeoIP, no CDN country header, no country on the account), so nothing
-  here can block by country. The entry stays unsellable until that gap is closed (docs/research/meta-muse-image-first-party.md).
+  The registry row's ``blocked_countries`` lists those territories, and the web routes refuse them by requester country
+  (docs/GEO_BLOCK.md, #695). The database does not know the country yet, so 0142 keeps a row with that list off sale and the
+  entry stays hidden until it does (docs/research/meta-muse-image-first-party.md). Nothing in this adapter checks the country.
 """
 
 from __future__ import annotations
