@@ -74,7 +74,11 @@ describe("preview rows from operator_preview_models()", () => {
     const page = readFileSync(join(__dirname, "..", "app", "(app)", "[channel]", "create", "page.tsx"), "utf8");
     expect(page).toContain("const previews = operator && isOperatorOrg(genOrgId) && genOrgId ? await loadOperatorPreviewModels(genOrgId) : [];");
     expect(page.match(/withPreviews\(/g)).toHaveLength(1);
-    expect(page).toContain("models={withPreviews(models, previews)}");
+    expect(page).toContain("const panelModels = withPreviews(models, previews);");
+    // Both generate boxes (the overview's composer and the desks' panel) get them; the overview's composer was missing them.
+    expect(page.match(/models=\{panelModels\}/g)).toHaveLength(2);
+    // The Assistant plans only with the models on sale.
+    expect(page).toMatch(/const assistant: AssistantData = \{\s*orgId: genOrgId,\s*models,/);
   });
 });
 
