@@ -37,7 +37,7 @@ export function PlanCompare({ matrix, titleId }: { matrix: Matrix; titleId: stri
             </th>
             {matrix.columns.map((c) => (
               <th key={c.id} scope="col" className="st-price-name px-5 py-4">
-                {c.name}
+                {c.isDefault ? p.freeName : c.name}
               </th>
             ))}
           </tr>

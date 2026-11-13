@@ -13,6 +13,8 @@ export const siteUz: SiteDictionary = {
     api: "API",
     signIn: "Kirish",
     start: "Bepul boshlash",
+    menu: "Menyu",
+    menuClose: "Menyuni yopish",
   },
   hero: {
     kicker: "Yuzli va yuzsiz YouTube kanallari uchun",

@@ -21,6 +21,8 @@ export const siteEn = {
     api: "API",
     signIn: "Sign in",
     start: "Start free",
+    menu: "Menu",
+    menuClose: "Close menu",
   },
   hero: {
     kicker: "For YouTube channels, faceless or not",

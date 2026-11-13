@@ -48,6 +48,8 @@
 /* ── Frame: header, footer, shared scale ─────────────────────────────── */
 .nx .st-header { border-bottom-color: transparent; }
 .nx .st-header-row, .nx .st-header-row > .st-brand, .nx .st-header-tools { min-height: 68px; }
+/* A phone's bar is one row (components/legal/PublicMenu.tsx): 63px and the header's 1px rule, 64px in all. */
+@media (max-width: 767px) { .nx .st-header-row, .nx .st-header-row > .st-brand, .nx .st-header-tools { min-height: 63px; } }
 .nx .st-nav a { font-weight: 500; }
 .nx .st-key { border-radius: 14px; }
 .nx .st-footer { border-top: 1px solid var(--ns-rule); }
@@ -1339,8 +1341,12 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
 
 
 /* The phone band's brand and credit share the bottom edge, and a credit with a longer name ran into the brand: the credit keeps the corner, the brand moves up a row. */
-.nx-auth-band { padding-bottom: 92px; min-height: 224px; }
+.nx-auth-band { min-height: 224px; }
 .nx-auth-band .st-brand { bottom: 50px; }
+/* The brand row is 44px from 50px up (94px), so 92px left the card's lower edge on the wordmark at 390px in English: 104px
+   keeps 10px between them. The "Example" tag sits on the card's left, clear of the pause button in the band's top-right corner. */
+.nx-auth-band { padding-bottom: 104px; }
+.nx-auth-band .nx-fcard .nx-demo-tag { right: auto; left: 18px; }
 @media (max-width: 639px) { html:is([lang="ru"], [lang="uz"]) .nx-auth-band { min-height: 268px; } html:is([lang="ru"], [lang="uz"]) .nx-auth-band[data-clip] { min-height: 308px; } }
 
 /* ── Round 9, review: the picture panels have their own pause button (WCAG 2.2.2), top right, clear of the badge (top left), the credit (bottom right) and the pill ── */
