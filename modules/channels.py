@@ -292,6 +292,11 @@ class AgentConfig:
     # quota (playlistItems.insert is 50 units). Anything that is not a playlist id
     # reads as empty. Stored in this blob — no migration.
     playlist_id: str = ""
+    # YouTube's "made for kids" default for this channel's videos (modules/made_for_kids.py). On, every video of the
+    # channel is kids content and is declared made for kids; off (the default), a video is declared made for kids only
+    # when it comes from the kids format, a kids series or a kids look. Only an explicit true turns it on. Stored in this
+    # blob, so no migration.
+    made_for_kids: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -320,6 +325,7 @@ class AgentConfig:
             "ai_disclosure_line": self.ai_disclosure_line,
             "ai_disclosure_text": self.ai_disclosure_text,
             "playlist_id": self.playlist_id,
+            "made_for_kids": self.made_for_kids,
         }
 
     @staticmethod
@@ -371,6 +377,7 @@ class AgentConfig:
             ai_disclosure_line=ai_disclosure.normalize_line_flag(d.get("ai_disclosure_line")),
             ai_disclosure_text=ai_disclosure.normalize_text(d.get("ai_disclosure_text")),
             playlist_id=clean_playlist_id(d.get("playlist_id")),
+            made_for_kids=(True if d.get("made_for_kids") is True else False),
         )
 
 

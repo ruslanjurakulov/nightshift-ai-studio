@@ -61,13 +61,16 @@ ROLLBACK_0121 = REPO / "docs" / "sql" / "rollback_0121_voice_job_gates.sql"
 def take_off_0121(session) -> None:
     """0121 replaces claim_voice_job() and channel_voice_config_problem() on 0117's bodies and adds three functions. A test that replays
     0117 or applies its rollback on a database that has 0121 takes 0121 off first with its own rollback, and puts it back with
-    put_back_0121 where the chain goes on."""
+    put_back_0121 where the chain goes on. 0145 sits on 0117's audit_action_allowed(), so it comes off here too (every replay of 0117
+    goes through this helper) and goes back with put_back_0121."""
+    take_off_0145(session)
     text = ROLLBACK_0121.read_text(encoding="utf-8")
     session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
 def put_back_0121(session) -> None:
     session.conn.execute(MIGRATION_0121.read_text(encoding="utf-8"))
+    put_back_0145(session)
 
 
 MIGRATION_0122 = MIGRATIONS / "0122_series_template_carrier.sql"
@@ -78,7 +81,9 @@ def take_off_0122(session) -> None:
     """0122 replaces render_job_params_valid(), render_jobs_payment_guard(), series_plans_terms_frozen() and request_series_plan() on 0120's
     bodies, and 0120 (and its rollback) refuse any other body. A test that replays 0120 or applies its rollback on a database that has 0122
     takes 0122 off first with its own rollback, and puts it back with put_back_0122 where the chain goes on. 0127 sits on 0122's
-    request_series_plan(), and 0122's rollback refuses any other body, so 0127 comes off first when it is there."""
+    request_series_plan(), and 0122's rollback refuses any other body, so 0127 comes off first when it is there. 0145 sits on 0122's
+    render_job_params_valid(): it comes off first too, and goes back with put_back_0122."""
+    take_off_0145(session)
     if _has_0127(session):
         take_off_0127(session)
     text = ROLLBACK_0122.read_text(encoding="utf-8")
@@ -88,6 +93,40 @@ def take_off_0122(session) -> None:
 def put_back_0122(session) -> None:
     session.conn.execute(MIGRATION_0122.read_text(encoding="utf-8"))
     put_back_0127(session)
+    put_back_0145(session)
+
+
+MIGRATION_0145 = MIGRATIONS / "0145_made_for_kids.sql"
+ROLLBACK_0145 = REPO / "docs" / "sql" / "rollback_0145_made_for_kids.sql"
+#: The bodies 0145 replaces, as 0122, 0117 and 0116 left them: 0145 goes back on only on top of all three (tests/test_made_for_kids_migration.py
+#: pins the same two hashes in the file's drift guard).
+_BEFORE_0145 = {"public.render_job_params_valid(jsonb, text)": "a9367e46ea79e8d57ce1c876333b5508",
+                "public.audit_action_allowed(text)": "d622e052a695fef125d3b2b621cdda27",
+                "public.approve_video_publish(text, text, jsonb)": "0e9a1608120a5fb7b48eab1c6cb08ee0"}
+
+
+def _live_md5(session, signature: str):
+    row = session.conn.execute("select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(%s)",
+                               [signature]).fetchone()
+    return row[0] if row else None
+
+
+def take_off_0145(session) -> None:
+    """0145 replaces render_job_params_valid() on 0122's body, audit_action_allowed() on 0117's, approve_video_publish() on 0116's and 0076's render_jobs_insert policy, and
+    adds set_video_made_for_kids(); 0122, 0117 and their rollbacks refuse any other body. Taken off with its own rollback when it is there
+    (the columns stay, as the rollback keeps them); put back with put_back_0145."""
+    if session.conn.execute("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean, text)') is not null").fetchone()[0]:
+        text = ROLLBACK_0145.read_text(encoding="utf-8")
+        session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0145(session) -> None:
+    """0145 again, once the chain under it is whole again (0122's and 0117's bodies live) and it is not on already: the helpers that take
+    0121 or 0122 off and on call this, in whichever order a test puts them back."""
+    if session.conn.execute("select to_regprocedure('public.set_video_made_for_kids(text, boolean, boolean, text)') is not null").fetchone()[0]:
+        return
+    if all(_live_md5(session, sig) == h for sig, h in _BEFORE_0145.items()):
+        session.conn.execute(MIGRATION_0145.read_text(encoding="utf-8"))
 
 
 MIGRATION_0127 = MIGRATIONS / "0127_series_plan_caps.sql"
@@ -101,13 +140,16 @@ def _has_0127(session) -> bool:
 def take_off_0127(session) -> None:
     """0127 replaces request_series_plan() on 0122's body (and adds series_plan_cap_settings), and 0122 (and its rollback) refuse any other
     body. A test that replays 0122 or applies its rollback on a database that has 0127 takes 0127 off first with its own rollback, and puts
-    it back with put_back_0127 where the chain goes on."""
+    it back with put_back_0127 where the chain goes on. Every test that reaches 0122's bodies comes through here, and 0145 sits on 0122's
+    render_job_params_valid(), so it comes off first too (and goes back with put_back_0127)."""
+    take_off_0145(session)
     text = ROLLBACK_0127.read_text(encoding="utf-8")
     session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
 def put_back_0127(session) -> None:
     session.conn.execute(MIGRATION_0127.read_text(encoding="utf-8"))
+    put_back_0145(session)
 
 
 MIGRATION_0131 = MIGRATIONS / "0131_ads_factory.sql"

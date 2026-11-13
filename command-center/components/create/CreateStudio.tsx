@@ -17,6 +17,7 @@ import { IMAGE_GENERATORS } from "@/lib/imageProviders";
 import { TTS_MODELS, TTS_MODEL_LABELS, VOICES, isVoiceId } from "@/lib/ttsModels";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 import type { RunPrefill } from "@/lib/home";
+import { MadeForKidsSwitch } from "@/components/review/MadeForKidsSwitch";
 import type { RunDna } from "@/lib/channel-dna";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
 import { StatusLamp } from "@/components/ui/StatusLamp";
@@ -114,6 +115,10 @@ export function CreateStudio({
   const [customVoice, setCustomVoice] = useState("");
   // "platform:id" of the account this video is for, or "" (none chosen).
   const [target, setTarget] = useState("");
+  // YouTube's "made for kids" for this run (0145). On when the form came from the Kids story format; turning it off then
+  // asks first. Off sends nothing: the channel, its series and its look still make kids content made for kids.
+  const kidsFormat = initial?.madeForKids === true;
+  const [madeForKids, setMadeForKids] = useState(kidsFormat);
   // The unfinished-draft memory (lib/create-draft.ts) needs to know whose form this is: user + organization + channel.
   // Without all three nothing is kept or restored.
   // What the form starts with when no draft applies: Discard goes back to exactly this.
@@ -274,6 +279,7 @@ export function CreateStudio({
       ...(ttsModel ? { tts_model: ttsModel } : {}),
       ...(voiceId && isVoiceId(voiceId) ? { voice_id: voiceId } : {}),
       ...(target ? { publish_hint: target } : {}),
+      ...(madeForKids ? { made_for_kids: true } : {}),
     };
   }
 
@@ -690,6 +696,17 @@ export function CreateStudio({
             )}
           </div>
         </details>
+      </section>
+
+      {/* Who the video is for: YouTube's "made for kids" (lib/madeForKids.ts). */}
+      <section className="fl-card" aria-label={t.madeForKids.label}>
+        <MadeForKidsSwitch
+          id="create-made-for-kids"
+          checked={madeForKids}
+          kids={kidsFormat}
+          note={t.madeForKids.createNote}
+          onChange={(next) => setMadeForKids(next)}
+        />
       </section>
 
       {/* 3 — the price, said plainly before the button; 4 — the one button. */}

@@ -64,6 +64,23 @@ KEEP_PER_CHANNEL = 5
 # a held video still awaiting review must not lose its only copy to newer holds. Ceiling: 5 uploaded + 5 held.
 KEEP_HELD_PER_CHANNEL = 5
 
+#: Migration 0145: the video's YouTube "made for kids" declaration and whether it is kids content (modules/made_for_kids.py).
+#: A person's confirmation (made_for_kids_off_by / _at) and answer (made_for_kids_answered_by / _at) are only ever CLEARED here,
+#: with a new cut: it is a new video to answer for. Only set_video_made_for_kids sets them.
+COLUMNS_0145 = ("made_for_kids", "kids_content", "made_for_kids_off_by", "made_for_kids_off_at",
+                "made_for_kids_answered_by", "made_for_kids_answered_at", "made_for_kids_answered_cut_sha256")
+
+
+def made_for_kids_columns(decision) -> dict:
+    """The 0145 columns for a run's decision. A new cut is the run's detection again, not anybody's answer: a person's
+    earlier answer and "not for kids" were about a cut that is gone, so both are cleared with it (the review panel asks again,
+    and approve_video_publish refuses until it is answered)."""
+    return {"made_for_kids": bool(decision.value), "kids_content": bool(decision.kids_content),
+            "made_for_kids_off_by": None, "made_for_kids_off_at": None,
+            "made_for_kids_answered_by": None, "made_for_kids_answered_at": None,
+            "made_for_kids_answered_cut_sha256": None}
+
+
 # Migration 0112: a person's approval (videos.approved_cut_sha256 and who/when/until) is for one cut. Recording a cut
 # clears it, whatever the review state is set to; the database function approve_video_publish is the only writer of it.
 NO_APPROVAL = {
@@ -87,6 +104,10 @@ def _ffmpeg_exe() -> str | None:
 
 class VideoReview:
     """Uploads previews and prunes old ones. Disabled, and harmless, without keys."""
+
+    #: The last failed write was PostgREST saying a column does not exist (an un-migrated database): its answer, which names
+    #: the column; False for any other outcome.
+    _missing_column = False
 
     def __init__(self, url: str | None = None, service_key: str | None = None):
         self.url = (url if url is not None else os.getenv("SUPABASE_URL", "")).rstrip("/")
@@ -361,9 +382,15 @@ class VideoReview:
                 timeout=30,
             )
             if resp.status_code >= 300:
+                from modules.held_video import _is_missing_column
+
+                # Which column PostgREST says is missing (PGRST204 / 42703 name it), so a missing `manifest` is not
+                # answered by dropping the made-for-kids declaration.
+                self._missing_column = str(resp.text or "") if _is_missing_column(resp) else False
                 logger.warning("Could not record review columns for %s (HTTP %s)",
                                row.get("video_id"), resp.status_code)
                 return False
+            self._missing_column = False
             return True
         except Exception as e:
             logger.warning("Could not record review columns for %s (%s)",
@@ -385,6 +412,7 @@ class VideoReview:
         topic: str | None = None,
         slug: str | None = None,
         gate_verdict: dict | None = None,
+        made_for_kids=None,
     ) -> None:
         """Upload the preview and attach the script to the row.
 
@@ -430,6 +458,11 @@ class VideoReview:
         is a new cut being recorded, and it sets ``review_state`` back to pending for a channel that does not publish
         on its own. A verdict that is not known is sent as NULL, which reads "unknown", never "passed".
 
+        ``made_for_kids`` (a ``modules.made_for_kids.Decision``) is recorded as ``videos.made_for_kids`` and
+        ``videos.kids_content`` (migration 0145): what the run declared, and whether the video is kids content. The
+        review panel shows it, and a cross-post or the publish-when-approved worker sends the same. A database without
+        0145 takes the rest of the row (the two columns are dropped and the write retried, as the 0112 ones are).
+
         Idempotent (same key, same values), and never raises.
         """
         if not self.enabled:
@@ -457,6 +490,12 @@ class VideoReview:
             row["cut_sha256"] = held_video.cut_sha256(video_path)
             row["gate_verdict"] = gate_verdict if isinstance(gate_verdict, dict) else None
             row.update(NO_APPROVAL)
+            # A new cut is a new question whoever records it: a person's answer was about the cut that is gone.
+            from modules.held_video import NO_ANSWER
+
+            row.update(NO_ANSWER)
+            if made_for_kids is not None:
+                row.update(made_for_kids_columns(made_for_kids))
             if manifest:
                 from modules import video_ir
 
@@ -465,6 +504,13 @@ class VideoReview:
             if scenes:
                 row["scenes"] = scenes
             ok = self._upsert_video(row)
+            if not ok and self._missing_column and any(c in self._missing_column for c in COLUMNS_0145) \
+                    and any(k in row for k in COLUMNS_0145):
+                # A database without 0145 (PostgREST said a column is missing, and nothing else): the declaration has
+                # nowhere to go, the rest of the row still does. Any other refusal (a check, a bad value) is not
+                # "retry without the declaration": a row must never land without it because the write was refused.
+                row = {k: v for k, v in row.items() if k not in COLUMNS_0145}
+                ok = self._upsert_video(row)
             if not ok:
                 # An un-migrated database (no `manifest` column, or no 0112 columns) rejects the whole
                 # write; retry without the missing columns so the preview/script still land.

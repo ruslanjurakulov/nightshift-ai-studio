@@ -2,6 +2,7 @@ import { studioHomeEn } from "./studio-home/en";
 import { improveEn } from "./improve/en";
 import { notifyChannelsEn } from "./notify-channels/en";
 import { aiLabelEn } from "./ai-label/en";
+import { madeForKidsEn } from "./made-for-kids/en";
 import { channelRiskEn } from "./channel-risk/en";
 import { customVoiceEn } from "./custom-voice/en";
 import { libraryUxEn } from "./library-ux/en";
@@ -2215,7 +2216,7 @@ export const en = {
     notAvailableYet: "Not available yet. It would start a paid render, and this page cannot show its price yet, so the button does nothing for now.",
     approving: "Approving…",
     queueHint: "Approving records your decision for this exact version of the video. It does not make the video public: videos are uploaded as private, and you make one public on YouTube.",
-    autoHint: "This channel publishes on its own, so there is nothing to approve. The gate still runs in front of it.",
+    autoHint: "This video was recorded as approved by automatic publishing, with no person's approval, so it cannot be approved here. Check its audience and make it public in YouTube Studio.",
     approvedBy: "Approved by {who} on {when}. The video was uploaded as private; approving does not make it public.",
     approvedAnon: "Approved on {when}. The video was uploaded as private; approving does not make it public.",
     approvedHolds: "The approval is for this exact version of the video and holds for 24 hours, until {until}. If the video is rendered or repaired again, it ends.",
@@ -2241,6 +2242,7 @@ export const en = {
       gate_unknown: "No publish gate verdict was stored for this video, so it cannot be approved here. That is unknown, not a pass. You can still make it public in YouTube Studio.",
       no_preview: "No preview was kept for this video, so there is nothing to watch and approve.",
       cut_unknown: "This video was uploaded before approvals could be recorded, so it cannot be approved here. You can still make it public in YouTube Studio.",
+      audience_unanswered: "Answer who this video is for first: is it made for kids? YouTube requires the answer before a video goes public.",
       not_admin: "Only the people who manage this workspace can approve a video.",
       not_member: "This channel belongs to a customer's workspace. Only that workspace's own team can approve its videos.",
     },
@@ -2249,7 +2251,7 @@ export const en = {
       rate_limited: "Too many tries. Wait a few minutes and try again.",
       bad_hash: "This page does not know which version of the video it shows. Reload it and try again.",
       ack_required: "Tick the box to confirm that you checked rights and AI-content labels.",
-      already_approved: "This video needs no approval: its channel publishes on its own.",
+      already_approved: "This video was recorded as approved by automatic publishing, so it cannot be approved here.",
       video_not_found: "That video no longer exists.",
       not_uploaded: "This video has not been uploaded to YouTube, so it cannot be approved.",
       gate_blocked: "The publish gate blocked this video, so it cannot be approved.",
@@ -2257,6 +2259,7 @@ export const en = {
       rejected: "This video was rejected in review, so it cannot be approved.",
       no_preview: "No preview was kept for this video, so it cannot be approved.",
       cut_unknown: "This video was uploaded before approvals could be recorded, so it cannot be approved here.",
+      audience_unanswered: "Answer who this video is for first (made for kids, yes or no). Nothing was approved.",
       cut_changed: "This video changed after you opened the page. Reload it, watch it again and approve the new version.",
       forbidden: "You are not allowed to approve this video.",
       not_found: "That video was not found.",
@@ -2427,6 +2430,7 @@ export const en = {
       awaiting_two_person: "Refused: this channel needs a second person's approval for this video first.",
       account_not_connected: "Refused: the account is not connected any more — reconnect it.",
       already_on_channel: "Refused: the video is already on this channel.",
+      made_for_kids_unconfirmed: "Refused: this is kids content declared not made for kids, and nobody confirmed it. Set the audience on the video's review page, then send again.",
       master_not_available: "Refused: the full-quality render is not on the worker.",
       unknown_duration: "Refused: the video's length could not be read.",
       too_long: "Refused: too long for this platform.",
@@ -3140,6 +3144,7 @@ export const en = {
   },
   notifyChannels: notifyChannelsEn,
   aiLabel: aiLabelEn,
+  madeForKids: madeForKidsEn,
   channelRisk: channelRiskEn,
   customVoice: customVoiceEn,
   accountSecurity: {

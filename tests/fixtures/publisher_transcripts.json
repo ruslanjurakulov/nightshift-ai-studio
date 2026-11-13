@@ -2820,7 +2820,8 @@
     },
     "private",
     [
-     "ai_disclosure"
+     "ai_disclosure",
+     "made_for_kids"
     ],
     [
      true,
@@ -3329,7 +3330,9 @@
      "title": "The Fall of Rome"
     },
     "private",
-    [],
+    [
+     "made_for_kids"
+    ],
     null
    ],
    [
@@ -3452,7 +3455,8 @@
     },
     "private",
     [
-     "ai_disclosure"
+     "ai_disclosure",
+     "made_for_kids"
     ],
     [
      true,
@@ -3581,7 +3585,9 @@
      "title": "The Fall of Rome"
     },
     "private",
-    [],
+    [
+     "made_for_kids"
+    ],
     null
    ],
    [
@@ -3704,7 +3710,8 @@
     },
     "private",
     [
-     "ai_disclosure"
+     "ai_disclosure",
+     "made_for_kids"
     ],
     [
      true,

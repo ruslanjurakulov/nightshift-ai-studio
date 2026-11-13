@@ -2,6 +2,7 @@ import { studioHomeUz } from "./studio-home/uz";
 import { improveUz } from "./improve/uz";
 import { notifyChannelsUz } from "./notify-channels/uz";
 import { aiLabelUz } from "./ai-label/uz";
+import { madeForKidsUz } from "./made-for-kids/uz";
 import { channelRiskUz } from "./channel-risk/uz";
 import { customVoiceUz } from "./custom-voice/uz";
 import { libraryUxUz } from "./library-ux/uz";
@@ -2203,7 +2204,7 @@ export const uz: Dictionary = {
     notAvailableYet: "Hozircha mavjud emas. U pullik renderni boshlaydi, narxini esa bu sahifa hozircha koʻrsata olmaydi, shuning uchun tugma hozircha hech narsa qilmaydi.",
     approving: "Tasdiqlanmoqda…",
     queueHint: "Tasdiqlash qaroringizni videoning aynan shu versiyasi uchun yozib qoʻyadi. U videoni ommaviy qilmaydi: videolar shaxsiy holda yuklanadi, ommaviy qilish esa YouTube’da bajariladi.",
-    autoHint: "Bu kanal oʻzi nashr qiladi, shuning uchun tasdiqlash kerak emas. Darvoza baribir oldinda ishlaydi.",
+    autoHint: "Bu video odam tasdigʻisiz, avto nashr orqali tasdiqlangan deb yozilgan, shuning uchun uni bu yerda tasdiqlab boʻlmaydi. Auditoriyasini tekshiring va uni YouTube Studio’da ommaviy qiling.",
     approvedBy: "{who} tasdiqladi, {when}. Video shaxsiy holda yuklangan; tasdiqlash uni ommaviy qilmaydi.",
     approvedAnon: "Tasdiqlandi, {when}. Video shaxsiy holda yuklangan; tasdiqlash uni ommaviy qilmaydi.",
     approvedHolds: "Tasdiq videoning aynan shu versiyasi uchun va 24 soat, {until} gacha amal qiladi. Video qayta renderlansa yoki tuzatilsa, u tugaydi.",
@@ -2229,6 +2230,7 @@ export const uz: Dictionary = {
       gate_unknown: "Bu video uchun nashr darvozasi xulosasi saqlanmagan, shuning uchun uni bu yerda tasdiqlab boʻlmaydi. Bu — nomaʼlum, oʻtgan degani emas. Uni baribir YouTube Studio’da ommaviy qilish mumkin.",
       no_preview: "Bu video uchun koʻrish nusxasi saqlanmagan: koʻrib tasdiqlaydigan narsa yoʻq.",
       cut_unknown: "Bu video tasdiqlar yozib boriladigan boʻlishidan oldin yuklangan, shuning uchun uni bu yerda tasdiqlab boʻlmaydi. Uni baribir YouTube Studio’da ommaviy qilish mumkin.",
+      audience_unanswered: "Avval bu video kim uchun ekanini belgilang: u bolalar uchun moʻljallanganmi? YouTube video ommaviy boʻlishidan oldin javobni talab qiladi.",
       not_admin: "Videoni faqat bu ish maydonini boshqaradigan odamlar tasdiqlay oladi.",
       not_member: "Bu kanal mijozning ish maydoniga tegishli. Uning videolarini faqat shu ish maydonining oʻz jamoasi tasdiqlaydi.",
     },
@@ -2237,7 +2239,7 @@ export const uz: Dictionary = {
       rate_limited: "Urinishlar juda koʻp. Bir necha daqiqa kutib, qayta urinib koʻring.",
       bad_hash: "Sahifa videoning qaysi versiyasini koʻrsatayotganini bilmaydi. Uni qayta yuklab, yana urinib koʻring.",
       ack_required: "Huquqlar va sunʼiy intellekt kontenti belgilarini tekshirganingizni katakcha bilan tasdiqlang.",
-      already_approved: "Bu videoga tasdiq kerak emas: uning kanali oʻzi nashr qiladi.",
+      already_approved: "Bu video avto nashr orqali tasdiqlangan deb yozilgan, shuning uchun uni bu yerda tasdiqlab boʻlmaydi.",
       video_not_found: "Bunday video endi yoʻq.",
       not_uploaded: "Bu video YouTube’ga yuklanmagan, shuning uchun uni tasdiqlab boʻlmaydi.",
       gate_blocked: "Nashr darvozasi bu videoni blokladi, shuning uchun uni tasdiqlab boʻlmaydi.",
@@ -2245,6 +2247,7 @@ export const uz: Dictionary = {
       rejected: "Bu video koʻrib chiqishda rad etilgan, shuning uchun uni tasdiqlab boʻlmaydi.",
       no_preview: "Bu video uchun koʻrish nusxasi saqlanmagan, shuning uchun uni tasdiqlab boʻlmaydi.",
       cut_unknown: "Bu video tasdiqlar yozib boriladigan boʻlishidan oldin yuklangan, shuning uchun uni bu yerda tasdiqlab boʻlmaydi.",
+      audience_unanswered: "Avval bu video kim uchun ekanini belgilang (bolalar uchun: ha yoki yoʻq). Hech narsa tasdiqlanmadi.",
       cut_changed: "Siz sahifani ochganingizdan keyin video oʻzgardi. Sahifani qayta yuklang, videoni yana koʻring va yangi versiyani tasdiqlang.",
       forbidden: "Bu videoni tasdiqlashga ruxsatingiz yoʻq.",
       not_found: "Video topilmadi.",
@@ -2415,6 +2418,7 @@ export const uz: Dictionary = {
       awaiting_two_person: "Rad etildi: bu kanalda avval ikkinchi shaxsning tasdigʻi kerak.",
       account_not_connected: "Rad etildi: akkaunt endi ulanmagan — qayta ulang.",
       already_on_channel: "Rad etildi: video bu kanalda allaqachon bor.",
+      made_for_kids_unconfirmed: "Rad etildi: bu bolalar uchun kontent, lekin bolalar uchun emas deb belgilangan va buni hech kim tasdiqlamagan. Videoni tekshirish sahifasida auditoriyani belgilang va qayta yuboring.",
       master_not_available: "Rad etildi: videoning toʻliq sifatli nusxasi workerʼda yoʻq.",
       unknown_duration: "Rad etildi: video uzunligini aniqlab boʻlmadi.",
       too_long: "Rad etildi: bu platforma uchun juda uzun.",
@@ -3128,6 +3132,7 @@ export const uz: Dictionary = {
   },
   notifyChannels: notifyChannelsUz,
   aiLabel: aiLabelUz,
+  madeForKids: madeForKidsUz,
   channelRisk: channelRiskUz,
   customVoice: customVoiceUz,
   accountSecurity: {

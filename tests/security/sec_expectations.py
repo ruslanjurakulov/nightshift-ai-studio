@@ -667,6 +667,11 @@ import sec_operator_customers_0138  # noqa: E402
 
 sec_operator_customers_0138.extend(TABLES, FUNCTIONS)
 
+# Migration 0145 (YouTube's "made for kids" declaration per video; a run's made_for_kids): tests/security/sec_made_for_kids_0145.py
+import sec_made_for_kids_0145  # noqa: E402
+
+sec_made_for_kids_0145.extend(TABLES, FUNCTIONS)
+
 # Migration 0144 (Dodo Payments next to Paddle: the provider checks and the two provider-aware subscription functions): tests/security/sec_dodo_0144.py
 import sec_dodo_0144  # noqa: E402
 

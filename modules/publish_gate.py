@@ -112,6 +112,8 @@ class GateDecision:
     #: blocks), fragments left unverified (a warning), unresolved (the checker
     #: could not read its own batch) and numbers the narration never says.
     fact_check: Optional[dict] = None
+    #: The video's "made for kids" declaration (modules/made_for_kids.Decision.to_metadata), when one was passed in.
+    made_for_kids: Optional[dict] = None
 
     @property
     def allowed(self) -> bool:
@@ -132,6 +134,8 @@ class GateDecision:
             meta["rights"] = self.rights
         if self.fact_check is not None:
             meta["fact_check"] = self.fact_check
+        if self.made_for_kids is not None:
+            meta["made_for_kids"] = self.made_for_kids
         return meta
 
 
@@ -197,6 +201,9 @@ def evaluate(
     claims=None,
     language=None,
     grounding: Optional[dict] = None,
+    made_for_kids=None,
+    visibility: Optional[str] = None,
+    audience_answered: bool = False,
 ) -> GateDecision:
     """Decide whether this video may be uploaded.
 
@@ -218,8 +225,20 @@ def evaluate(
     already produced a video. A check that cannot run is recorded as a warning
     and does NOT block — refusing to publish because a checker was broken would
     turn every checker outage into an outage of the whole channel.
+
+    ``made_for_kids`` is the video's declaration (``modules.made_for_kids.Decision``). Kids content declared "not made for
+    kids" with nobody's confirmation blocks (``made_for_kids_unconfirmed``). That check runs even on a channel that turned
+    the gate off: it is YouTube's and the law's requirement, not one of our quality checks, and no channel setting may
+    send it. It can only ever block; None (no decision passed) runs nothing, as before.
+
+    ``visibility`` is the privacy the upload will ask for. Public or unlisted with no person's answer to "is this made for
+    kids?" (``audience_answered``) blocks (``audience_unanswered``): a video a viewer can watch is declared by a person, never
+    by the detection alone. main.py uploads private until then (made_for_kids.privacy_until_answered), so this is the backstop
+    that holds a path which forgot to; like the check above it runs on every channel. None runs nothing.
     """
     decision = GateDecision()
+    _check_made_for_kids(decision, made_for_kids)
+    _check_audience_answered(decision, visibility, audience_answered)
     config = GateConfig.from_channel(channel)
     if not config.enabled:
         decision.warnings.append("gate_disabled_for_channel")
@@ -233,6 +252,32 @@ def evaluate(
     _check_originality(decision, config, topic or getattr(script, "topic", ""), originality)
     _check_rights(decision, config, ir_project)
     return decision
+
+
+def _check_made_for_kids(decision: GateDecision, made_for_kids) -> None:
+    if made_for_kids is None:
+        return
+    decision.checks_run.append("made_for_kids")
+    try:
+        decision.made_for_kids = made_for_kids.to_metadata()
+        refused = bool(made_for_kids.refused)
+    except Exception:
+        # Not a Decision: the declaration cannot be read, and an unreadable declaration is not "not for kids".
+        decision.blocks.append("made_for_kids_unknown")
+        return
+    if refused:
+        logger.error("Publish gate: this video is kids content (%s) and is declared NOT made for kids without a "
+                     "person's confirmation — blocked", ", ".join(made_for_kids.sources) or "unknown source")
+        decision.blocks.append("made_for_kids_unconfirmed")
+
+
+def _check_audience_answered(decision: GateDecision, visibility, answered: bool) -> None:
+    if visibility is None:
+        return
+    decision.checks_run.append("audience_answered")
+    if str(visibility).strip().lower() != "private" and answered is not True:
+        logger.error("Publish gate: this upload would be %s before a person answered who the video is for — blocked", visibility)
+        decision.blocks.append("audience_unanswered")
 
 
 def evaluate_fact_check(*, script, fact_results, channel=None,

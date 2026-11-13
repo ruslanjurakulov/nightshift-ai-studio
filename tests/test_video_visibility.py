@@ -38,6 +38,9 @@ def _held_runner(**over):
         section_claims=[], fact_results=[], channel_id="news", slug="the-lost-city",
         topic="The lost city", published_title="The Lost City", ir_project=None,
         video_path=Path("/out/final_video.mp4"), packaging_repair_record=None,
+        # The run's "made for kids" decision (main.py Stage 0e). None records nothing, as a run before 0145 did;
+        # tests/test_made_for_kids.py runs this same closure with a decision.
+        kids_decision=None,
     )
     ns.update(over)
     exec(compile(ast.Module(body=[fn], type_ignores=[]), str(MAIN), "exec"), ns)

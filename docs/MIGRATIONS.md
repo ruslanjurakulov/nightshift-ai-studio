@@ -887,6 +887,55 @@ with the same rule plus one word, `vendor_tool_unsupported`. No table, column, r
 - **Tests.** `tests/test_probe_error_vendor_tool_migration.py` (the newest check lists exactly `ERROR_CODES` and `timeout`; nothing else
   changes; the rollback).
 
+## YouTube's "made for kids" declaration (0145)
+
+0145 (`0145_made_for_kids.sql`, `modules/made_for_kids.py`) is **live on apply**. Every upload used to send
+`status.selfDeclaredMadeForKids: false`, while the product offers a Kids story format, kids looks and kids channels: a children's video
+declared "not made for kids" breaks YouTube's policy and COPPA. The pipeline now decides the declaration per run (the run's own
+`made_for_kids`, a series whose format names kids, a channel DNA look of the Style Library that is made for children only (an explicit list, not the `kids` browsing tag), or the channel's
+`agent_config.made_for_kids`, which needs no migration); this file gives that decision a record and a person a way to change it.
+
+- **Adds** seven nullable columns on `videos`: `made_for_kids`, `kids_content` (the pipeline's), `made_for_kids_off_by` and
+  `made_for_kids_off_at` (who confirmed "not made for kids" for kids content, and when), with `videos_made_for_kids_confirmed_check`:
+  kids content is declared not for kids only with a confirmation, and a confirmation exists only for that, for every writer.
+- **The audience is a person's answer** (the owner's decision on PR #699). `made_for_kids_answered_by` / `_at` record who answered
+  "is this video made for kids?" on the review page, and when; the pipeline's detection is shown there as a hint only, never as a
+  chosen answer. `approve_video_publish` (0116's body plus one block) refuses `audience_unanswered` until a person has answered, so
+  nothing is approved, or queued to go public, on the detection alone. The private upload still carries the detection (the field is
+  set at insert); the publish-when-approved write sends the answer, correcting YouTube when the two differ, and refuses a video with
+  no answer. A run with auto publish on uploads private until then (`made_for_kids.privacy_until_answered`, and the publish gate's
+  `audience_unanswered` block as the backstop); such an upload is recorded PENDING, not "approved with nobody behind it", so
+  the review panel offers Approve. The answer is bound to one cut: `made_for_kids_answered_cut_sha256`, which
+  `set_video_made_for_kids(video, value, confirm_off, cut)` takes (it refuses `cut_changed` for a cut the row no longer
+  holds), and approval and the worker count an answer only for the cut they act on. Every writer of a new cut clears it
+  (`video_review.record`, `held_video.record_held` and `promote`).
+- **Adds** `set_video_made_for_kids(p_video_id, p_made_for_kids, p_confirm_off)` (signed-in users only; the approver's rule of 0112;
+  rate limited; refuses `already_public`, `approval_live`, `confirm_required`; audited as `video.made_for_kids`).
+- **Replaces** `render_job_params_valid` (0122's body plus `made_for_kids`, true only, never on a repair), `audit_action_allowed`
+  (0117's plus `video.made_for_kids`), `approve_video_publish` (0116's plus the answer check) and the `render_jobs_insert` policy
+  (0076's plus the key), each its predecessor plus marked lines.
+- **Where the declaration goes.** The pipeline's upload and its Short (`modules/youtube_uploader.py`), a cross-post to another channel
+  (`modules/social_publish.py`, refused as `made_for_kids_unconfirmed`), and the publish-when-approved write (`modules/visibility_publish.py`,
+  which sends the recorded value instead of the one read back). The publish gate blocks `made_for_kids_unconfirmed` on every channel,
+  including one that turned the gate off. Instagram and TikTok have no such field in the APIs this repo uses, and are unchanged.
+- **Drift guard.** Refuses (changes nothing) if a replaced body is neither its predecessor's nor 0145's, or if
+  `set_video_made_for_kids` exists with another body; the last block asserts every body by md5, the grants, the columns, the check, the
+  policy and the validator's answers.
+- **Apply as ONE transaction.** `set local lock_timeout = '5s'`.
+- **Undo together with the code.** The rollback must ship with the revert of this PR's code, not alone: the worker's
+  `declared_for_kids` refuses a video that has the 0145 columns and no answer for its cut, and with the rollback applied
+  nothing can write an answer any more, so every publish-when-approved request would be refused (and the review panel would
+  offer a question it cannot save). Revert the code first or in the same deploy.
+- **Undo.** `docs/sql/rollback_0145_made_for_kids.sql` (owner-applied): refuses a body that is not 0145's and a queued or running job that
+  carries `made_for_kids`; restores the three predecessors byte for byte and drops the function. It keeps the columns and their check:
+  the record of who confirmed what is not erased.
+- **Tests.** `tests/test_made_for_kids_migration.py` (the file, pinned), `tests/test_made_for_kids.py` (every upload body) and
+  `tests/security/test_sec_made_for_kids.py` (the lab). 0145 sits on 0122's and 0117's bodies, so the lab's `take_off_0121`,
+  `take_off_0122` and `take_off_0127` take it off first and their `put_back_*` put it back (`tests/security/sec_db.py`).
+- **Numbering.** 0145: merged migrations apply to live in ascending order and main ends at 0143 (#701, after #695's
+  0142); 0144 is the Dodo payments branch's. None of them names anything of this file's. The numbering tests of 0127, 0131 and 0133 list
+  it as reviewed.
+
 ## Dodo Payments next to Paddle (0144)
 
 0144 (`0144_dodo_payments.sql`, `docs/DODO_SETUP.md`) lets the payment tables and the two subscription functions carry a second

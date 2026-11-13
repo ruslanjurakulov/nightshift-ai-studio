@@ -204,7 +204,11 @@ class YoutubeTargetLabel(YoutubeFlowTests):
     def test_unlabelled_upload_calls_the_uploader_exactly_as_before(self):
         out, up, _ = self.run_yt(STOCK, events=CLEAN)
         self.assertEqual(out, "published")
-        self.assertEqual(up.kwargs, {})
+        # No AI decision is handed over. The one thing every upload now carries is who the video is for (modules/made_for_kids.py):
+        # this video recorded nothing and the channel is not a kids channel, so it declares "not made for kids", as it always did.
+        self.assertEqual(set(up.kwargs), {"made_for_kids"})
+        self.assertFalse(up.kwargs["made_for_kids"].value)
+        self.assertFalse(up.kwargs["made_for_kids"].kids_content)
         self.assertNotIn(ad.STANDARD_LINES["en"], up.calls[0][1].description)
 
 

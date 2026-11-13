@@ -25,7 +25,11 @@ the one change this feature exists for: ``videos.update`` with ``status.privacyS
 5. ``videos.update(part="status")`` ONCE, with the video's current writable status fields and ``privacyStatus`` public
    (the call replaces every field of the part it names, so the rest is sent back as read; never ``snippet``). If the fresh
    read did not contain ``selfDeclaredMadeForKids`` and a ``privacyStatus`` the call is not made (``status_unreadable``):
-   a status object without them would reset them. The request is marked ``submitting`` in the database right before, by
+   a status object without them would reset them. One field is not simply sent back: ``selfDeclaredMadeForKids`` is the
+   declaration RECORDED for the video (migration 0145: what its upload declared, or what a person decided on the review
+   page) when there is one, and the one read otherwise; a video nobody has answered for, and kids content recorded "not made
+   for kids" with nobody's confirmation, are refused (``gate_blocked``) and a record that cannot be read is retried, never guessed
+   (``declared_for_kids``, modules/made_for_kids.py). The request is marked ``submitting`` in the database right before, by
    the function that makes the last check.
 6. THE ANSWER IS NOT BELIEVED: the privacy is READ BACK. ``applied`` only when YouTube then says ``public``. A call that
    succeeded while the video stays private (an API project that has not passed YouTube's compliance audit gets its videos
@@ -185,6 +189,26 @@ class VisibilityStore:
             raise RuntimeError(f"{name}: HTTP {r.status_code}")   # the status only, never the body
         return r.json()
 
+    def kids_record(self, video_id: str) -> dict:
+        """The video's "made for kids" record (migration 0145), {} on a database without those columns. Any other failure
+        raises: the declaration a video goes public with is never guessed."""
+        r = self.http().get(f"{self.url}/rest/v1/videos",
+                            params={"select": "video_id,made_for_kids,kids_content,made_for_kids_off_by,made_for_kids_answered_by,"
+                                              "made_for_kids_answered_cut_sha256",
+                                    "video_id": f"eq.{video_id}", "limit": "1"},
+                            headers={"apikey": self._key, "Authorization": f"Bearer {self._key}"}, timeout=self._timeout)
+        if r.status_code == 400:
+            try:
+                code = str((r.json() or {}).get("code") or "")
+            except Exception:
+                code = ""
+            if code in ("42703", "PGRST204"):
+                return {}
+        if r.status_code >= 300:
+            raise RuntimeError(f"videos (made for kids): HTTP {r.status_code}")
+        rows = r.json() or []
+        return rows[0] if rows and isinstance(rows[0], dict) else {}
+
     def claim(self, worker_id: str) -> Optional[dict]:
         out = self._rpc("claim_visibility_request", {"p_worker": worker_id})
         return out if isinstance(out, dict) and out.get("id") else None
@@ -240,12 +264,17 @@ def status_readable(current: Optional[Mapping]) -> bool:
             and current.get("privacyStatus") in PRIVACIES)
 
 
-def writable_status(current: Optional[Mapping], privacy: str = "public") -> dict:
+def writable_status(current: Optional[Mapping], privacy: str = "public", made_for_kids: Optional[bool] = None) -> dict:
     """The ``status`` object videos.update gets: what was read (writable fields only), privacy set, ``publishAt`` never.
-    Never built from a read that lacked the made-for-kids declaration or the privacy (ValueError)."""
+    Never built from a read that lacked the made-for-kids declaration or the privacy (ValueError).
+
+    ``made_for_kids`` is the video's recorded declaration (migration 0145: what the upload declared, or what a person
+    decided on the review page). A boolean replaces the one read; None sends back what was read, as before."""
     if not status_readable(current):
         raise ValueError("the video's status was not read in full")
     body = {k: current[k] for k in WRITABLE_STATUS if k in current}
+    if isinstance(made_for_kids, bool):
+        body["selfDeclaredMadeForKids"] = made_for_kids
     body["privacyStatus"] = privacy
     return body
 
@@ -269,10 +298,41 @@ class YouTubeVisibility:
             True, str(sn.get("channelId") or ""), privacy if privacy in ("private", "unlisted", "public") else None,
             str(st.get("uploadStatus") or ""), str(st.get("rejectionReason") or ""), bool(st.get("publishAt")), st)
 
-    def make_public(self, video_id: str, current_status: Optional[Mapping]) -> None:
+    def make_public(self, video_id: str, current_status: Optional[Mapping], made_for_kids: Optional[bool] = None) -> None:
         # part="status" only: naming snippet would overwrite the title, description and tags.
         self.service.videos().update(
-            part="status", body={"id": video_id, "status": writable_status(current_status, "public")}).execute()
+            part="status",
+            body={"id": video_id, "status": writable_status(current_status, "public", made_for_kids)}).execute()
+
+
+def declared_for_kids(store, video_id: str, channel, cut: str = "") -> Optional[bool]:
+    """What the video goes public declaring (modules/made_for_kids.py), or None to send back what YouTube holds (a video
+    recorded before 0145 on a channel whose default is off). Raises ``Stop`` (gate_blocked) for kids content declared "not
+    for kids" with nobody's confirmation, and ``Retry`` when the record cannot be read: never a guess."""
+    from modules import made_for_kids as mfk  # noqa: PLC0415
+
+    read = getattr(store, "kids_record", None)
+    try:
+        row = (read(video_id) if read is not None else {}) or {}
+    except Exception as e:
+        logger.info("visibility: the made-for-kids record could not be read (%s)", type(e).__name__)
+        raise Retry("worker_error") from None
+    if "made_for_kids_answered_by" in row and (not row.get("made_for_kids_answered_by")
+                                                or row.get("made_for_kids_answered_cut_sha256") != cut):
+        # 0145: approving needs a person's answer FOR THIS CUT (the one the approval names), so an approval without one is
+        # one that predates it or was forged, and an answer about another cut is about another video. The detection is not
+        # an answer: nothing goes public on it.
+        logger.warning("visibility: video %s goes public only with a person's answer about the approved cut; it has none",
+                       video_id)
+        raise refused("gate_blocked")
+    decision = mfk.for_video(row, channel)
+    if decision.refused:
+        logger.warning("visibility: video %s is kids content declared not made for kids without a confirmation (%s)",
+                       video_id, mfk.REFUSAL)
+        raise refused("gate_blocked")
+    if isinstance(row.get("made_for_kids"), bool) or mfk.channel_default(channel):
+        return decision.value
+    return None
 
 
 def _reasons(exc) -> set:
@@ -473,6 +533,8 @@ def process_request(
             raise refused("privacy_changed")
         if not status_readable(state.status):
             raise refused("status_unreadable")
+        # The audience it goes public for: the declaration recorded for it, never a guess (before the budget and the marker).
+        for_kids = declared_for_kids(store, video_id, channel, cut)
 
         # Immediately before acting: the budget for the write, then the database's LAST check and the marker "the write may be
         # sent", in one step (the video can change, an approval end or the switch be turned off while YouTube is being read).
@@ -493,7 +555,7 @@ def process_request(
             raise Stop(marked)             # a closed word: nothing was sent
         update_error = None
         try:
-            yt.make_public(video_id, state.status)
+            yt.make_public(video_id, state.status, for_kids)
         except Exception as e:
             update_error = http_error("update", e)
             if not isinstance(update_error, Retry):
