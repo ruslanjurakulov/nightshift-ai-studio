@@ -893,6 +893,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "c808297a-8479-45fe-ae33-1c7688be7cb2",
+      "assetId": "aa1a55ad-bcdf-5aaf-97c6-c24a7b7d72dc",
+      "sha256": "93799e5f990c9d1dc60779945f8366d5589a7f6a3b08ce2c358656411cf24b79",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Playful 3D typographic artwork: the word \"NIGHTSHIFT\" built from glossy inflatable balloon letters floating over a midnight-blue city skyline, stars and neon reflections, soft studio lighting, high detail.",
+      "createdAt": "2026-11-13T20:31:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 718,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:22:29Z"
     }
   ]
 }
