@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "9b0f23e8-e22b-4a27-b957-3aade8572fbd",
+      "assetId": "2a9a9ae0-5058-5601-af77-b5119f0384cf",
+      "sha256": "b4b3ff0fedf89283db64a08a57122366b4d1303b83f393b9350d48a5f3993aea",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Extreme macro close-up, oddly satisfying: glossy pink clay sculpts itself on a clean turntable. It flows, folds and smooths into a perfect symmetrical shape with crisp edges, as if shaped by invisible hands, then holds still for a beat. Slow, smooth, continuous motion, soft diffused studio light, rich texture detail, shallow depth of field, calm and hypnotic, seamless loop. No hands, no tools, no text.",
+      "createdAt": "2026-11-13T21:50:35Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1280,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T22:15:49Z"
     }
   ]
 }
