@@ -600,8 +600,8 @@ declared "not made for kids" breaks YouTube's policy and COPPA. The pipeline now
   `tests/security/test_sec_made_for_kids.py` (the lab). 0141 sits on 0122's and 0117's bodies, so the lab's `take_off_0121`,
   `take_off_0122` and `take_off_0127` take it off first and their `put_back_*` put it back (`tests/security/sec_db.py`).
 - **Numbering.** 0141, after 0139 (the operator's preview, which replaces `creative_price` only and names nothing of this file's); 0140
-  is taken by PR #701 (model_probe_runs' error codes), which names nothing of this file's either. The numbering tests of 0127, 0131
-  and 0133 list it as reviewed.
+  is taken by PR #701 (model_probe_runs' error codes) and 0142 (#695, a CHECK on model_registry) is merged; neither names
+  anything of this file's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
 
 ## The operator's Customers page (0138)
 
@@ -889,3 +889,29 @@ and nothing changes for anyone until a registry entry carries `"operator_preview
 - **Tests.** `tests/test_operator_preview_migration.py` (the hunks, the hashes, the rollback, the grants), `tests/security/test_sec_operator_preview.py`
   (a non-admin and an admin in a customer's organization are refused; the operator is quoted at cost and holds nothing; every other quote is
   byte for byte 0125's; the drift guard, the rollback and the order), `command-center/tests/operator-preview.test.tsx` (the badge, the list).
+
+## A model blocked by country cannot be put on sale (0142)
+
+0142 (`0142_country_block_before_sale.sql`) is **live on apply** and changes no row: it adds one CHECK to `model_registry`,
+`model_registry_countries_before_sale`: `availability not in ('beta','ga')` or `spec.blocked_countries` is absent, JSON null or `[]`.
+
+- **Why.** The country check of `docs/GEO_BLOCK.md` runs in the Next.js routes only. `create_creative_job` (0075),
+  `start_workflow_run` (0073) and `advance_workflow_run` (0074) are granted to `authenticated`, so a signed-in user can call them
+  directly and skip it. Until the database refuses by country itself (a follow-up: a server-attested country passed in, or those
+  functions revoked from `authenticated` behind a server-only wrapper), a model with a country list must never be on sale.
+- **Why a CHECK, and why in the database.** `availability` is not in the registry file: the database owns it, and a platform admin
+  may change it (0035's column grant). A validator rule alone could not stop that, so the file rule (`modules/model_registry.py`:
+  `blocked_countries` needs a `terms_gate`, which 0035's `terms_before_sale` already keeps off sale) is doubled here. A CHECK, like
+  0035's `verified_before_sale` and `terms_before_sale`, binds every path: the admin's update, the service role, the SQL editor, a later
+  function. A sync that gives an on-sale model a country list is refused whole (23514). `hidden` and `disabled` stay allowed, so the
+  operator preview (0139) keeps working.
+- **Before applying.** The file refuses, naming them, if a model on sale already carries a list (none does: the only one,
+  `grounded-image-1.0`, is hidden). End state: the CHECK exists once and is validated. Apply as ONE transaction.
+- **Undo.** `docs/sql/rollback_0142_country_block_before_sale.sql` drops the CHECK. Run it only once the database refuses by country.
+- **Numbering.** 0142: main ends at 0139; on open branches 0140 is `claude/meta-probe-no-tools` (#701), 0141 is #699 (made for kids)
+  and `claude/youtube-one-org` (to be renumbered), 0143 is `claude/payments-dodo`. It touches no object of theirs. The numbering tests
+  of 0127, 0131 and 0133 list it as reviewed.
+- **Tests.** `tests/test_country_block_migration.py` (the one CHECK, the guards, the rollback), `tests/security/test_sec_country_block.py`
+  (the platform admin, the service role and the owner refused beta and ga for a verified, priced, ungated model with a list; the same
+  model goes on sale without one; a sync refused whole; hidden, disabled, `[]` and null allowed; the pre-check; replay; rollback and
+  re-apply), `tests/test_geoip_build.py` (the file rule).

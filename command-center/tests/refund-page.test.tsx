@@ -5,12 +5,12 @@ import { createElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 /**
- * /refund: the Refund Policy Paddle's seller verification asks for as a public
- * page of its own, beside the Terms and the Privacy Policy. It must open signed
- * out, in every language, be linked from the public footer and from Terms 8.6,
- * and say nothing the Terms do not: Paddle decides refunds under its Buyer
- * Terms and the law, a refund removes unused credits, a failed run's hold comes
- * back on its own, and a plan can be cancelled any time.
+ * /refund: the Refund Policy the merchant of record's review (Dodo Payments)
+ * reads as a public page of its own, beside the Terms and the Privacy Policy.
+ * It must open signed out, in every language, be linked from the public footer
+ * and from Terms 8.6, and say nothing the Terms do not: Dodo decides refunds
+ * under its Buyer Terms and the law, a refund removes unused credits, a failed
+ * run's hold comes back on its own, and a plan can be cancelled any time.
  */
 
 vi.mock("server-only", () => ({}));
@@ -52,7 +52,7 @@ afterEach(() => {
 });
 
 const LOCALES = ["en", "ru", "uz"] as const;
-const BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
+const BUYER_TERMS = "https://dodopayments.com/legal/buyer-terms";
 const ORIGIN = "https://nightshift.example";
 
 function strings(block: LegalBlock): string[] {
@@ -95,10 +95,10 @@ describe.each(LOCALES)("/refund renders (%s)", (locale) => {
     expect(text).toContain(t.legal.placeholder.contactEmail);
   });
 
-  it("links Paddle's Buyer Terms, paddle.net and the Terms' credits section, and the footer links back to /refund", async () => {
+  it("links Dodo's Buyer Terms and the Terms' credits section, no Paddle page, and the footer links back to /refund", async () => {
     const html = await pageHtml(locale);
     expect(html).toContain(`href="${BUYER_TERMS}"`);
-    expect(html).toContain('href="https://paddle.net"');
+    expect(html).not.toMatch(/href="https:\/\/[^"]*paddle/);
     expect(html).toContain('href="/terms#credits"');
     expect(html).toContain('href="/refund"');
   });
@@ -125,15 +125,18 @@ describe.each(LOCALES)("what the Refund Policy says (%s)", (locale) => {
     expect(hrefsOf(refund).sort()).toEqual(hrefsOf(LEGAL_TEXTS.en.refund).sort());
   });
 
-  it("names Paddle as Merchant of Record, links its Buyer Terms, and offers all three ways to ask", () => {
+  it("names Dodo Payments as Merchant of Record, links its Buyer Terms, and offers both ways to ask", () => {
     expect(text).toContain("Merchant of Record");
+    expect(text).toContain("Dodo Payments");
     expect(hrefsOf(refund)).toContain(BUYER_TERMS);
-    expect(hrefsOf(refund)).toContain("https://paddle.net");
+    expect(hrefsOf(refund).filter((h) => h.includes("paddle"))).toEqual([]);
     const ask = refund.sections.find((s) => s.id === "how-to-ask")!;
     const list = ask.body.find((b): b is { list: string[] } => typeof b === "object" && "list" in b)!;
-    expect(list.list).toHaveLength(3);
+    expect(list.list).toHaveLength(2);
     expect(list.list[0]).toContain("{contactEmail}");
-    expect(list.list.some((l) => l.includes("Paddle"))).toBe(true);
+    expect(list.list[1]).toContain("Dodo Payments");
+    // Dodo's own buyer support page (dodopayments.com/support/why-has-dodo-payments-charged-me) sends buyers to this portal.
+    expect(list.list[1]).toContain("(https://customer.dodopayments.com)");
   });
 
   // The Terms define no refund window, so the policy must not invent one: no "14 days", "14 дней", "14 kun".

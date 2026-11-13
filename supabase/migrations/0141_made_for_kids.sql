@@ -43,7 +43,8 @@
 -- withholds an approval. A run's `made_for_kids` can only turn the declaration ON. Nothing calls YouTube.
 --
 -- NUMBER. 0141: the highest on main is 0139 (the operator's preview of a hidden model, #694), which replaces creative_price only and
--- names nothing of this file's; 0140 is taken by PR #701 (model_probe_runs' error codes), which names nothing of this file's either. 0135 is unused.
+-- names nothing of this file's; 0140 is taken by PR #701 (model_probe_runs' error codes) and 0142 (#695, a CHECK on model_registry)
+-- is merged: neither names anything of this file's, so the three apply in any order. 0135 is unused.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only, the SQL editor on the live project). md5 of each body with every run of white space read
 -- as one space; the file checks them itself and raises on any other value:

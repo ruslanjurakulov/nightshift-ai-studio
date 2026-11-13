@@ -9,11 +9,17 @@ olinadi (qarang: `docs/ROADMAP_SAAS.md`).
 Tuzilishi:
 
 ```
-Brauzer ──HTTPS──> Cloudflare (proxy, DNS) ──HTTPS──> Caddy :443 ──> web :3000 (Next.js)
-                                                     (sertifikat,          (faqat ichki
-                                                      headerlar, gzip)      Docker tarmog'ida)
+Brauzer ──HTTPS──> Caddy :443 ──> web :3000 (Next.js)
+                   (sertifikat,          (faqat ichki
+                    headerlar, gzip)      Docker tarmog'ida)
 Supabase (Postgres + Auth + Realtime) o'zgarmaydi — brauzer unga to'g'ridan-to'g'ri ulanadi.
 ```
+
+Hozir oldinda proxy yo'q (2026-11-12 da tekshirilgan): domen DNS'i Porkbun nameserverlarida, `A` yozuvi to'g'ridan-to'g'ri
+serverga qaraydi, `AAAA` yo'q. Shuning uchun Caddy ko'radigan ulanish manzili tashrif buyuruvchining o'zi, va
+`deploy/Caddyfile` uni `X-Nightshift-Client-IP` headeriga yozadi (`docs/GEO_BLOCK.md`). Quyidagi 5- va 8-bo'limlar
+Cloudflare bilan variantni tasvirlaydi; u yoqilsa, o'sha header ham birga o'zgarishi kerak (aks holda manzil
+Cloudflare'niki bo'lib qoladi).
 
 Fayllar:
 

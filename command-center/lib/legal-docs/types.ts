@@ -45,7 +45,7 @@ export interface LegalTexts {
   privacy: LegalDocument;
   terms: LegalDocument;
   /**
-   * The Refund Policy (/refund). Paddle's seller verification asks for one as
+   * The Refund Policy (/refund). The merchant of record's review asks for one as
    * its own public page; it restates Terms section 8 (8.1, 8.3, 8.4, 8.6, 8.7)
    * and adds no promise the Terms do not make.
    */

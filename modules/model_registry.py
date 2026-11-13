@@ -620,6 +620,15 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             if u in seen_units:
                 errors.append(_err(mid, f"credit unit {u} collides with another model"))
             seen_units.add(u)
+        if m.get("blocked_countries") and m["api_exposure"] != "web_only":
+            # The country is read from the visitor's address (docs/GEO_BLOCK.md). The API and MCP sell to a server, whose
+            # address says nothing about the person behind it, so a model sold by country is never offered there.
+            errors.append(_err(mid, "blocked_countries needs api_exposure web_only"))
+        if m.get("blocked_countries") and not m.get("terms_gate"):
+            # The country is checked in the web routes only; a signed-in user can call create_creative_job and the workflow
+            # functions directly (docs/GEO_BLOCK.md "What it cannot do"). Until the database refuses by country, a model with a
+            # country list stays off sale: a terms_gate keeps it hidden (0035), and 0142 refuses beta/ga for it in the database too.
+            errors.append(_err(mid, "blocked_countries needs a terms_gate until the database checks the country"))
         ent = m["entitlement"]
         if ent and ent.split(":")[0] != f"models_{m['output']}":
             errors.append(_err(mid, "entitlement category must match the output"))

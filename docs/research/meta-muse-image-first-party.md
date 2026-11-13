@@ -136,7 +136,9 @@ SPEND, as for every adapter.
 
 The Geographic Use Policy has two lists:
 
-- 2.2: Muse Image is unavailable in **India**.
+- 2.2: Muse Image is unavailable in **India** (the 2026-10-12 version). **Updated 2026-11-09**
+  (<https://dev.meta.ai/legal/geographic-use-policy>, read 2026-11-12): 2.2 now bars only Muse Wonder and Muse Wonder Full,
+  in South Korea. India is no longer barred for Muse Image, and the registry row no longer lists it.
 - 3: the Restricted Territories are Afghanistan, Belarus, Cambodia, China / Hong Kong / Macau, Cuba, Eritrea,
   Ethiopia, Haiti, Iran, Iraq, Libya, Myanmar, Nicaragua, North Korea, Pakistan, Russia, Somalia, Syria,
   Crimea / Donetsk / Luhansk, Venezuela and Western Sahara.
@@ -154,7 +156,8 @@ What was checked, all 2026-11-12:
 The only "country" fields are the YouTube channel's own `snippet.country`, which says where a channel claims to be,
 not where the requester is, and the operator's legal country (`NEXT_PUBLIC_LEGAL_COUNTRY`).
 
-As instructed, no GeoIP was built. The entry stays terms-gated, so it cannot be sold, until a person decides how to
+(Since then, pull request #695 added a GeoIP check in the web routes, docs/GEO_BLOCK.md; the database still does not
+know the country, so the entry stays off sale.) As instructed, no GeoIP was built at the time. The entry stays terms-gated, so it cannot be sold, until a person decides how to
 meet 2.2 and 3. Two possible ways:
 
 - a CDN or reverse-proxy country header, checked by the database function that quotes a job;
@@ -162,38 +165,25 @@ meet 2.2 and 3. Two possible ways:
 
 Either one needs its own PR, and probably a migration.
 
-## Operator-only first run: what exists, and what does not
+## Operator-only first run
 
 The owner wants the first real run to be the platform operator making pictures in the site's own image studio, while
-the model stays hidden from customers. **The repository has no operator-preview path for a hidden model in the job
-and money flow:**
+the model stays hidden from customers. Migration 0139 (`docs/MIGRATIONS.md`) built that path, and this entry now
+carries `"operator_preview": true`:
 
-- `creative_price` and `create_creative_job` (latest in 0125) quote a model only when it is `beta` or `ga` and has
-  `verified_at`. That holds for every caller, platform administrators included.
-- A CHECK on `model_registry` (0035) refuses `beta` or `ga` while `spec.terms_gate` is set.
-- An unpriced unit is refused as `unpriced`.
-- A platform administrator can read hidden rows (RLS) but cannot start a job on one.
-- **What does exist:**
-  - the owner's probe: Actions, then "Probe models", naming `grounded-image-1.0`. It runs one real call ($0.01) and
-    records it in `model_probe_runs` and `verified_at`. It checks the API, not the site flow, and the picture does
-    not reach the library.
-  - `credits_exempt(org)` (0020): the operator's own organization never pays. This is the repository's one defined
-    zero-price path.
-
-**Smallest safe option (not built; it needs a migration that touches the quote and job functions):**
-
-- an `operator_preview` flag in the registry entry's spec;
-- `creative_price` and `create_creative_job` would accept such a model while it is still `hidden`, only when all of
-  these hold:
-  - it has `verified_at` (after the owner's probe);
-  - the caller `is_platform_admin()`;
-  - the organization is `credits_exempt`.
-- Everything else is unchanged: the same quote, hold, capture and refund path, with no new bypass, and the existing
-  zero for the operator's organization.
-- The unit still needs a `credit_prices` row for the quote to compute. The owner would set one.
-- `sellable_models` would list the model only for that caller.
-
-It waits for the owner's go-ahead.
+- **Who.** Only a platform owner or admin, in the operator's own credits-exempt organization. Every other caller is
+  answered `model_not_sellable`, as before. The model is not offered through the API, MCP, the Assistant or an
+  automatic pick, and `sellable_models` does not list it. The rule lives in `creative_price`, so the operator's own
+  signed-in requests elsewhere (a workflow step or a creative job naming the model) are accepted too, in the exempt
+  organization only; a step that runs without the operator's sign-in is refused.
+- **Money.** The exempt organization holds and pays nothing. With no `credit_prices` row the job is recorded at the
+  vendor's cost ($0.01 an image, an estimate from the vendor's page). The vendor bills the owner's key for every
+  picture.
+- **Before the first picture.** The entry must be synced and verified by one real probe: Actions, then "Probe
+  models", naming `grounded-image-1.0` (one paid call, about $0.01). `--all` skips it because its terms gate is still set (not cleared).
+  Until a probe has succeeded the preview is refused like any unverified model.
+- **What stays closed.** `availability` is `hidden`, the terms gate is still set and there is no credit price: no
+  customer can see, quote or run the model. The gate's conditions in `terms_notes` are unchanged.
 
 ## Open questions
 

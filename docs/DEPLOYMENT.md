@@ -1,23 +1,13 @@
 # Deployment & Go-Live Checklist
 
-> **Status: code complete, never run live.**
-> All pipeline code is written and covered by **234 passing tests**, but the
-> system has **never executed against real credentials** — there have been
-> **zero GitHub Actions runs**, and the required secrets/variables are not yet
-> set. Nothing here is a code change; every item below is an **operator/credential
-> task** the repo owner performs once to make the bot actually operate.
-
-> **⚠️ Read this before you finish the checklist.**
-> The YouTube upload in `main.py` is **UNCONDITIONAL** once a run reaches Stage 8.
-> The pipeline tracks a `HUMAN_APPROVAL` stage (`modules/pipeline_stages.py`) and
-> ships `tools/approve_run.py`, but **that approval gate is intentionally NOT
-> wired to publishing** — `main.py` uploads regardless of whether a run was
-> approved (see the comments in `main.py` around Stage 8 and the docstring of
-> `tools/approve_run.py`). The only thing that stops an upload is the `--no-upload`
-> flag or a missing/invalid YouTube token. **Completing this checklist means the
-> daily job WILL upload real videos to your channel on its next scheduled run.**
-> Be deliberate: keep `YOUTUBE_PRIVACY=private` until you have watched the first
-> few outputs end to end.
+> **Historical (corrected 2026-11-12).** This checklist was written before the first live run and
+> describes the original GitHub Actions setup of the pipeline. Two of its claims are no longer true:
+> the pipeline has run on GitHub Actions since, and the YouTube upload is **not** unconditional. The
+> publish gate (`modules/publish_gate.py`) runs before every upload and can only block it, uploads are
+> private by default, and per-channel auto publish and approval rules sit on top of the gate. The
+> `HUMAN_APPROVAL` stage in `modules/pipeline_stages.py` and `tools/approve_run.py` are an audit trail
+> only. The current map is [ARCHITECTURE.md](ARCHITECTURE.md); the web app's deploy is
+> [DEPLOY_AX42.md](DEPLOY_AX42.md).
 
 ---
 

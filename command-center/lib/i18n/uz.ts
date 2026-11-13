@@ -931,6 +931,8 @@ export const uz: Dictionary = {
   },
   create: {
     title: "Yaratish",
+    // The DB-IP licence (CC BY 4.0) asks for this credit, linked to db-ip.com, on a page that uses its data (docs/GEO_BLOCK.md).
+    geoAttribution: "IP geolokatsiyasi: DB-IP",
     subtitle: "Mavzu yozing, sozlamalarni belgilang va «Yaratish» bosing — run pipelineʼda boshlanadi, jarayoni pastda koʻrinadi.",
     pickChannel: "Yaratish uchun bitta kanalni tanlang (chap-yuqoridagi almashtirgich).",
     needsAdmin: "Bu ish maydonida video yaratishga ruxsatingiz yoʻq.",
@@ -3547,6 +3549,7 @@ export const uz: Dictionary = {
       idempotency_conflict: "Bu soʻrov boshqa generatsiya uchun ishlatilgan. Sahifani yangilang.",
       model_not_sellable: "Bu model hozir mavjud emas.",
       model_temporarily_off: "Bu model vaqtincha mavjud emas. Hech narsa yechilmadi. Boshqa modelni tanlang yoki keyinroq urinib koʻring.",
+      country_blocked: "Bu model sizning hududingizda mavjud emas. Hech narsa yechilmadi. Roʻyxatdan boshqa modelni tanlang.",
       entitlement_required: "Bu model tashkilotingiz birinchi marta kredit sotib olgandan keyin ochiladi.",
       unpriced: "Bu modelning hali narxi yoʻq, shuning uchun uni ishlatib boʻlmaydi.",
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",

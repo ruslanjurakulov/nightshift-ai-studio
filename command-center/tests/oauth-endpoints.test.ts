@@ -106,8 +106,11 @@ describe("POST /oauth/register (RFC 7591, public clients only)", () => {
   });
 
   it("passes the caller's address to the per-address limit, and answers 429 when the database says so", async () => {
-    await registerEndpoint(json(good, { "cf-connecting-ip": "203.0.113.9" }), deps);
+    // Only the header our own proxy writes names the caller; cf-connecting-ip and x-forwarded-for are a client's to send (BR-L-192).
+    await registerEndpoint(json(good, { "x-nightshift-client-ip": "203.0.113.9", "cf-connecting-ip": "6.6.6.6", "x-forwarded-for": "7.7.7.7" }), deps);
     expect(db.calls[0].args.p_ip).toBe("203.0.113.9");
+    await registerEndpoint(json(good, { "cf-connecting-ip": "6.6.6.6", "x-forwarded-for": "7.7.7.7" }), deps);
+    expect(db.calls[1].args.p_ip).toBe("unknown");
     deps.rpc = async () => ({ data: { ok: false, error: "rate_limited", description: "later" }, error: null });
     const res = await registerEndpoint(json(good), deps);
     expect(res.status).toBe(429);
