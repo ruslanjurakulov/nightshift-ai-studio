@@ -7,6 +7,7 @@ import { modelLeftOut, type ShowcaseEntry } from "@/lib/site/showcase";
 import { LoopClip } from "@/components/site/LoopClip";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { SAMPLES, SampleImg, type PlaceMedia } from "@/components/site/samples";
+import { posterSrcSet } from "@/lib/site/renditions";
 
 type Site = Dictionary["site"];
 /** The words a place needs to label what it shows: the stock labels and credit template, and the sample labels (the public sign-in dictionary carries exactly these, lib/i18n/public.ts). */
@@ -131,7 +132,7 @@ export function PlaceFill({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={files.poster}
-          srcSet={`${files.posterSm} 640w, ${files.poster} 1280w`}
+          srcSet={posterSrcSet(files)}
           sizes={sizes}
           width={entry.width}
           height={entry.height}

@@ -33,6 +33,8 @@ const REVEAL = [
   ".nx-gallery > li",
   ".nx-models-grid > li",
   ".nx-facts-list > li",
+  // /mcp is on the site's older frame (no .nx); its sections arrive the same way (site-motion.css draws the reveal there).
+  ".ml-land .ml-land-in > *",
 ];
 
 export function SiteEffects() {

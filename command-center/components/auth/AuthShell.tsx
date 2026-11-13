@@ -18,6 +18,8 @@ import { creditLine } from "@/lib/site/media";
 import { FlowCard } from "@/components/auth/FlowCard";
 import "@/components/site/site.css";
 import "@/components/site/site-next.css";
+import "@/components/site/site-motion.css";
+import { SiteMotion } from "@/components/site/motion/SiteMotion";
 
 /**
  * The frame around sign-in, sign-up and the email confirmation: on a wide
@@ -123,6 +125,7 @@ export function AuthShell({
 
         <LegalFooter />
       </main>
+      <SiteMotion />
     </div>
   );
 }

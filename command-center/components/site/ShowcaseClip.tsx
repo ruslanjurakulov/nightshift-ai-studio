@@ -26,5 +26,7 @@ export function ShowcaseClip({
 }) {
   const files = SHOWCASE_FILES[jobId];
   if (!files?.clip) return null;
-  return <LoopClip sources={files.clip} poster={files.posterSm} compact={compact} early={early} position={position} together={together} />;
+  // A sample whose model made a larger clip offers it to a wide screen (lib/site/renditions.ts); the 1280 file is the fallback.
+  const sources = files.lg?.clip ? { ...files.clip, lg: files.lg.clip } : files.clip;
+  return <LoopClip sources={sources} poster={files.posterSm} compact={compact} early={early} position={position} together={together} />;
 }

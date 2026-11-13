@@ -28,6 +28,7 @@ import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
+import { ModelMarquee } from "@/components/site/motion/ModelMarquee";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
@@ -83,6 +84,7 @@ export function Landing({
       <Facts t={t} locale={locale} entries={onPage} />
       {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
       <ShowcaseGallery t={t} locale={locale} exclude={inSlots} formats={formats} />
+      <ModelMarquee entries={gallery.map(({ e }) => e)} pause={t.site.fx.pause} />
       <ModelTiles t={t} items={gallery} />
       <Showcases t={t} />
       <How t={t} />
@@ -209,7 +211,10 @@ function Facts({ t, locale, entries }: { t: Dictionary; locale: Locale; entries:
       <ul className="nx-wrap nx-facts-list">
         {items.map((i) => (
           <li key={i.id} data-fact={i.id}>
-            <span className="nx-facts-n">{formatCredits(i.n, locale)}</span>
+            {/* data-count: the count-up's target (components/site/motion/attach.ts); the text stays the server's number. */}
+            <span className="nx-facts-n" data-count={i.n}>
+              {formatCredits(i.n, locale)}
+            </span>
             <span className="nx-facts-l">{i.label}</span>
           </li>
         ))}

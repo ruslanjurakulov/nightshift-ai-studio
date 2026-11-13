@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useMotionPaused } from "@/lib/site/motion";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
+import { clipRendition } from "@/lib/site/renditions";
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string };
 
-/** The four renditions of one loop: 1280 and 640 wide, each in WebM and MP4. */
-export type ClipSources = { mp4: string; webm: string; smMp4: string; smWebm: string };
+/** The four renditions of one loop: 1280 and 640 wide, each in WebM and MP4; and a larger one only where the source was larger (never an upscale). */
+export type ClipSources = { mp4: string; webm: string; smMp4: string; smWebm: string; lg?: { mp4: string; webm: string } };
 
 /** Whether a clip may be fetched and played at all: never under reduced motion, never on Save-Data or a slow link. */
 function clipsAllowed(): boolean {
@@ -92,8 +93,9 @@ export function LoopClip({
   const ref = useRef<HTMLVideoElement>(null);
   const paused = useMotionPaused();
   const [allowed, setAllowed] = useState(false);
-  // A phone gets the 640 x 360 rendition (about a quarter of the bytes); a screen of 860 px or more the 1280 x 720 one.
-  const [small, setSmall] = useState(false);
+  // A phone gets the 640 x 360 rendition (about a quarter of the bytes); a screen of 860 px or more the 1280 x 720 one, and a
+  // sample with a larger file (`sources.lg`) that one on a screen with the pixels for it (lib/site/renditions.ts).
+  const [size, setSize] = useState<"sm" | "md" | "lg">("md");
   const [wanted, setWanted] = useState(false);
   // In a grid on a wide screen (`together`): whether this clip shows enough of itself to play, whichever clip leads.
   const [grid, setGrid] = useState(false);
@@ -106,10 +108,18 @@ export function LoopClip({
   useEffect(() => {
     if (!clipsAllowed()) return;
     const wide = window.matchMedia("(min-width: 860px)").matches;
-    setSmall(compact || together || !wide);
+    const c = (navigator as Navigator & { connection?: NetworkInformation }).connection;
+    setSize(
+      clipRendition({
+        small: compact || together || !wide,
+        hasLarge: Boolean(sources.lg),
+        devicePixels: window.innerWidth * (window.devicePixelRatio || 1),
+        fast: !c?.effectiveType || c.effectiveType === "4g",
+      }),
+    );
     setGrid(together && wide);
     setAllowed(true);
-  }, [compact, together]);
+  }, [compact, together, sources.lg]);
 
   // When the clip may start: the first screen's after load and idle, the rest when they come near the screen.
   useEffect(() => {
@@ -175,8 +185,8 @@ export function LoopClip({
   if (!allowed) return null;
   return (
     <video ref={ref} className="nx-clip" muted loop playsInline preload="none" poster={poster} disablePictureInPicture aria-hidden tabIndex={-1} style={position ? { objectPosition: position } : undefined}>
-      <source src={small ? sources.smWebm : sources.webm} type="video/webm" />
-      <source src={small ? sources.smMp4 : sources.mp4} type="video/mp4" />
+      <source src={size === "sm" ? sources.smWebm : size === "lg" && sources.lg ? sources.lg.webm : sources.webm} type="video/webm" />
+      <source src={size === "sm" ? sources.smMp4 : size === "lg" && sources.lg ? sources.lg.mp4 : sources.mp4} type="video/mp4" />
     </video>
   );
 }

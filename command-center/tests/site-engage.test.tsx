@@ -250,7 +250,10 @@ describe("the landing page's reasons to stay", () => {
     // (the hero's switch under the card and the two showcases' clip pictures carry the same switch). Each merged model sample
     // that plays a clip carries it too, on its picture inside the gallery, and every one of them agrees.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
-    expect(outsideGallery(all())).toHaveLength(3);
+    // The models strip (components/site/motion/ModelMarquee.tsx) moves by itself, so it carries the same switch, once.
+    const inStrip = all().filter((b) => b.closest(".nx-marquee"));
+    expect(inStrip).toHaveLength(container.querySelector(".nx-marquee") ? 1 : 0);
+    expect(outsideGallery(all()).filter((b) => !b.closest(".nx-marquee"))).toHaveLength(3);
     const inGallery = all().filter((b) => b.closest(GALLERY));
     expect(inGallery).toHaveLength(landingSamples().clips);
     for (const b of inGallery) expect(b.closest(SAMPLE_CARD)).toBeTruthy();

@@ -6,6 +6,7 @@ import { tryHref } from "@/lib/site/showcase-link";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { ClipPause } from "@/components/site/ClipPause";
+import { posterSrcSet } from "@/lib/site/renditions";
 
 /** The day a sample was made, in the page's language (UTC, so the server and every visitor read the same day). */
 function madeOn(iso: string, locale: Locale): string {
@@ -90,7 +91,7 @@ export function ShowcaseGallery({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={f.poster}
-                    srcSet={`${f.posterSm} 640w, ${f.poster} 1280w`}
+                    srcSet={posterSrcSet(f)}
                     sizes="(min-width: 1024px) 400px, (min-width: 600px) 50vw, 100vw"
                     width={e.width}
                     height={e.height}
