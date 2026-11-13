@@ -36,7 +36,10 @@ import {
  *
  * "See the price" (or Enter) only OPENS the existing Studio tool with the file, tool, model and words filled in. The
  * price is the Studio's own quote and nothing starts until the person presses its priced Generate: nothing in this
- * component prices, holds, starts or spends anything, and it makes no request at all (CLAUDE.md #3).
+ * component prices, holds, starts or spends anything (CLAUDE.md #3). It sends nothing while the panel is open: the
+ * send key is a Link with prefetch off, because its href carries the typed words (`prompt=`) and changes on every
+ * keystroke — a production prefetch would render the Studio route's layout (session and organization reads) for each
+ * one and write the half-typed words into the access log. The one request is the navigation itself, on a press.
  *
  * Captions are made in the editor: from the editor (`onCaptions`) the entry jumps to the Captions panel; from the
  * library (`orgId`) it opens the usual "Open in editor" dialog and the editor then opens on that panel.
@@ -349,6 +352,7 @@ function ImprovePanel({
                     <Link
                       ref={sendRef}
                       href={path(href as string)}
+                      prefetch={false}
                       aria-label={fmt(tp.sendFor, { tool: toolLabel })}
                       className="btn-primary ml-auto min-h-11 shrink-0 gap-2 text-sm"
                       data-testid="improve-send"

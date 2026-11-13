@@ -3,7 +3,8 @@
  * "Improve with AI" — one button, and the panel it opens: a tool (only the ones that fit the file, the unavailable
  * ones listed as such), a model (the Studio's own list for that tool, "Auto" where the Studio offers it), and what
  * should change (Enter goes, Shift+Enter is a new line). The send key only OPENS the Studio with all of that filled in:
- * the panel makes no request at all, so nothing is priced, held or spent from it (CLAUDE.md #3).
+ * the panel sends no request of its own (the send link does not prefetch), so nothing is priced, held or spent from
+ * it (CLAUDE.md #3).
  *
  * It also pins the library viewer's "three identical buttons": ImproveWithAi and SendToEditor were siblings with the
  * same key (the file's id), so React kept the previous file's button on every move to another file.
@@ -17,9 +18,10 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/chronos/library",
   useSearchParams: () => new URLSearchParams(),
 }));
+// `prefetch` is surfaced (it is not an <a> attribute): "default" when the caller left Next's production prefetch on.
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
-    <a href={href} data-next-link="" {...rest}>
+  default: ({ href, children, prefetch, ...rest }: { href: string; children: ReactNode; prefetch?: boolean | null }) => (
+    <a href={href} data-next-link="" data-prefetch={prefetch === undefined ? "default" : String(prefetch)} {...rest}>
       {children}
     </a>
   ),
@@ -299,6 +301,19 @@ describe("nothing is priced, held or spent from the panel", () => {
     fireEvent.click(link);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(link.getAttribute("href")).toMatch(/^\/chronos\/create\?/);
+  });
+
+  it("the send link never prefetches, so the words typed so far are not requested on each keystroke", () => {
+    // Next 15 prefetches a visible <Link> in production whenever its href changes; this href carries `prompt=`.
+    mount(<ImproveWithAi assetId={FILE} kind="image" available={null} models={MODELS} />);
+    const dialog = openPanel();
+    pick(dialog, "edit");
+    for (const typed of ["m", "mo", "mov", "move the sky"]) {
+      fireEvent.change(words(dialog), { target: { value: typed } });
+      expect(query(dialog).get("prompt")).toBe(typed);
+      expect(send(dialog).dataset.prefetch).toBe("false");
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
