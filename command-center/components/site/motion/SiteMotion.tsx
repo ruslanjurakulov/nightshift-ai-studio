@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { attachCountUp, attachHeader, attachMagnetic, attachNavBusy, attachParallax, attachSpotlight } from "@/components/site/motion/attach";
+import { attachCountUp, attachGlassLight, attachHeader, attachMagnetic, attachNavBusy, attachNavGlass, attachParallax, attachSpotlight } from "@/components/site/motion/attach";
 
 /**
  * The public pages' motion and interaction layer, mounted once by PublicShell and AuthShell beside SiteEffects (which keeps the
@@ -14,7 +14,7 @@ import { attachCountUp, attachHeader, attachMagnetic, attachNavBusy, attachParal
 export function SiteMotion() {
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const stops = [attachHeader(), attachNavBusy(), attachMagnetic(), attachParallax(), attachSpotlight(), attachCountUp()];
+    const stops = [attachHeader(), attachNavBusy(), attachNavGlass(), attachGlassLight(), attachMagnetic(), attachParallax(), attachSpotlight(), attachCountUp()];
     return () => stops.forEach((s) => s());
   }, []);
 

@@ -58,8 +58,6 @@
     transform: translateX(-120%);
   }
   .nx-btn:not([data-busy]):hover::after, .st .st-key:not([data-tone]):not([data-busy]):hover::after { transform: translateX(120%); transition: transform 900ms cubic-bezier(0.2, 0.7, 0.2, 1); }
-  /* A wider, softer glow than the base hover's (never while focused: the focus gap's ring is drawn with box-shadow). */
-  .nx-btn:hover:not(:focus-visible) { box-shadow: 0 0 0 1px var(--st-lit-edge), inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 16px 40px -12px var(--st-lit-glow), 0 0 32px -6px color-mix(in srgb, var(--st-lit-glow) 70%, transparent); }
 }
 @keyframes nx-edge-turn { to { --nx-a: 360deg; } }
 
@@ -73,22 +71,118 @@
   }
 }
 
-/* Secondary keys over the dark first screen and the closing panel: a glass pill instead of an underlined word. 48 px tall. */
-.nx-sh-actions .nx-link, .nx-final .nx-actions .nx-link {
-  min-height: 48px;
-  padding: 0 22px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.08);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
-  backdrop-filter: blur(12px) saturate(140%);
-  color: #fff;
-  text-decoration: none;
+/* ── Glass: one recipe for every translucent pill on the public site ──────────────────────────────────────────────────────
+   Shared with the docked prompt composer: put the class `ns-glass` on an element inside the public frame (`.st`), or read
+   the tokens below. Tokens (set on .st; re-set for the dark theme and for the stages that are dark in both themes):
+     --glass-tint        the pill's fill            --glass-solid    the fill where backdrop-filter is not supported
+     --glass-edge-hi     edge, top and left         --glass-edge-lo  edge all round (light catches the top left)
+     --glass-rim-hi      the inner specular rim     --glass-rim-lo   the inner shade, bottom right
+     --glass-glow        the light under the pointer (at --hx/--hy, written by attach.ts attachGlassLight; at rest above it)
+     --glass-blur, --glass-sat, --glass-shadow
+   The words on a pill keep the page's text colour: the fill is within a few percent of the ground under it, so text keeps
+   4.5:1 or better in both themes and on the stages. */
+.st {
+  --glass-tint: rgba(255, 255, 255, 0.56);
+  --glass-solid: rgba(255, 255, 255, 0.92);
+  --glass-edge-hi: rgba(255, 255, 255, 0.95);
+  --glass-edge-lo: rgba(27, 26, 23, 0.12);
+  --glass-rim-hi: rgba(255, 255, 255, 0.9);
+  --glass-rim-lo: rgba(27, 26, 23, 0.07);
+  --glass-glow: rgba(255, 255, 255, 0.75);
+  --glass-blur: 16px;
+  --glass-sat: 180%;
+  --glass-shadow: 0 8px 22px -14px rgba(27, 26, 23, 0.35);
 }
-.nx-sh-actions .nx-link:hover, .nx-final .nx-actions .nx-link:hover { border-color: rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.16); color: #fff; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .st {
+    --glass-tint: rgba(255, 255, 255, 0.07);
+    --glass-solid: rgba(38, 36, 33, 0.94);
+    --glass-edge-hi: rgba(255, 255, 255, 0.3);
+    --glass-edge-lo: rgba(255, 255, 255, 0.08);
+    --glass-rim-hi: rgba(255, 255, 255, 0.22);
+    --glass-rim-lo: rgba(0, 0, 0, 0.4);
+    --glass-glow: rgba(255, 255, 255, 0.16);
+    --glass-shadow: 0 10px 26px -14px rgba(0, 0, 0, 0.7);
+  }
+}
+:root[data-theme="dark"] .st, .st .nx-sh, .st .nx-final, .st .nx-section#samples, .st .nx-marquee, .st .st-auth-aside, .st .nx-auth-band, .st .nx-show-card {
+  --glass-tint: rgba(255, 255, 255, 0.07);
+  --glass-solid: rgba(38, 36, 33, 0.94);
+  --glass-edge-hi: rgba(255, 255, 255, 0.3);
+  --glass-edge-lo: rgba(255, 255, 255, 0.08);
+  --glass-rim-hi: rgba(255, 255, 255, 0.22);
+  --glass-rim-lo: rgba(0, 0, 0, 0.4);
+  --glass-glow: rgba(255, 255, 255, 0.16);
+  --glass-shadow: 0 10px 26px -14px rgba(0, 0, 0, 0.7);
+}
+/* The recipe. One rule, so the composer, the ghost keys and the nav's indicator cannot drift apart. */
+.st .ns-glass,
+.st .st-nav[data-glass]::before,
+.st .st-nav:not([data-glass]) a:hover,
+.st .st-signin:hover,
+.nx .nx-cta,
+.st .st-key[data-tone="quiet"],
+.nx .nx-show-cta,
+.nx .nx-ai-try,
+.nx-final .nx-actions .nx-link {
+  /* The edge is drawn inside the box (inset shadows), never as a border, so a pill that turns to glass on hover keeps its size
+     to the pixel: a border that appears on hover would move what is next to it. */
+  border-color: transparent;
+  border-radius: 999px;
+  background-color: var(--glass-tint);
+  background-image: radial-gradient(120px circle at var(--hx, 30%) var(--hy, -60%), var(--glass-glow), transparent 70%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: inset 1px 1.5px 0 var(--glass-edge-hi), inset -1px -1.5px 0 var(--glass-rim-lo), inset 0 0 0 1px var(--glass-edge-lo), inset 0 8px 14px -10px var(--glass-rim-hi), var(--glass-shadow);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .st .ns-glass, .st .st-nav[data-glass]::before, .st .st-nav:not([data-glass]) a:hover, .st .st-signin:hover, .nx .nx-cta,
+  .st .st-key[data-tone="quiet"], .nx .nx-show-cta, .nx .nx-ai-try, .nx-final .nx-actions .nx-link { background-color: var(--glass-solid); }
+}
+/* Hovered, a ghost pill fills a little more (still within a few percent of its ground). */
+.nx .nx-cta:hover, .st .st-key[data-tone="quiet"]:hover, .nx .nx-show-cta:hover, .nx .nx-ai-try:hover, .nx-final .nx-actions .nx-link:hover { background-color: color-mix(in srgb, var(--glass-tint), var(--glass-glow) 30%); border-color: transparent; }
+.st .st-key[data-tone="quiet"]:focus-visible { box-shadow: inset 1px 1.5px 0 var(--glass-edge-hi), inset 0 0 0 1px var(--glass-edge-lo); }
+/* The closing panel's secondary actions: a glass pill instead of an underlined word, 48 px tall. */
+.nx-final .nx-actions .nx-link { min-height: 48px; padding: 0 22px; color: #fff; text-decoration: none; }
+.nx-final .nx-actions .nx-link:hover { color: #fff; }
 @media (prefers-reduced-motion: no-preference) {
-  .nx-sh-actions .nx-link, .nx-final .nx-actions .nx-link { transition: background-color var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease); }
-  .nx-sh-actions .nx-link:active, .nx-final .nx-actions .nx-link:active { transform: scale(0.97); }
+  .nx .nx-cta, .st .st-key[data-tone="quiet"], .nx .nx-show-cta, .nx .nx-ai-try, .nx-final .nx-actions .nx-link { transition: background-color var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), box-shadow var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease); }
+  .nx .nx-cta:active, .nx-final .nx-actions .nx-link:active { transform: scale(0.97); }
+}
+
+/* The primary key keeps its colour; on hover it takes the glass rim (a bright top-left inner edge, a soft bottom-right shade)
+   and a small light under the pointer, kept faint (10 %) so its white label stays above 4.5:1 at the brightest spot. */
+@media (hover: hover) {
+  .nx-btn:hover:not(:focus-visible), .st .st-key:not([data-tone]):hover:not(:focus-visible) {
+    background-image: radial-gradient(90px circle at var(--hx, 50%) var(--hy, -40%), rgba(255, 255, 255, 0.1), transparent 70%);
+    /* And a wider, softer glow (never while focused: the focus ring's page-coloured gap is drawn with box-shadow). */
+    box-shadow: 0 0 0 1px var(--st-lit-edge), inset 1px 1px 0 rgba(255, 255, 255, 0.42), inset -1px -1px 0 rgba(0, 0, 0, 0.2), 0 16px 40px -12px var(--st-lit-glow), 0 0 32px -6px color-mix(in srgb, var(--st-lit-glow) 70%, transparent);
+  }
+}
+
+/* The header's links share one glass indicator that slides and stretches to the link under the pointer or the keyboard's
+   focus (attach.ts attachNavGlass writes its place and size and sets data-glass; without the script each link takes the glass
+   itself on hover). It is an absolutely placed layer behind the words: its size moves nothing else on the page. */
+.st .st-nav { position: relative; isolation: isolate; }
+.st .st-nav[data-glass]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: var(--ind-w, 0px);
+  height: var(--ind-h, 44px);
+  transform: translate(var(--ind-x, 0px), var(--ind-y, 0px));
+  opacity: 0;
+  pointer-events: none;
+}
+.st .st-nav[data-ind]::before { opacity: 1; }
+.st .st-nav[data-glass] a:hover, .st .st-nav[data-glass] a:focus-visible { background: transparent; color: var(--ns-text); }
+@media (prefers-reduced-motion: no-preference) {
+  /* A spring-like curve (a small overshoot, then it settles), so moving across the links reads as one drop of glass. */
+  .st .st-nav[data-glass]::before { transition: transform 460ms cubic-bezier(0.34, 1.32, 0.64, 1), width 460ms cubic-bezier(0.34, 1.32, 0.64, 1), height 460ms cubic-bezier(0.34, 1.32, 0.64, 1), opacity 200ms var(--ns-ease); }
+  /* Appearing from nothing it fades in where it is, rather than sliding in from the nav's corner. */
+  .st .st-nav[data-ind-snap]::before { transition: opacity 200ms var(--ns-ease); }
 }
 
 /* "Loading": a key whose page is on its way (attach.ts attachNavBusy) shows a small ring in place of its arrow; a key with no

@@ -35,7 +35,7 @@ vi.mock("next/link", () => ({
 import { dictionaries } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import { ModelMarquee } from "@/components/site/motion/ModelMarquee";
-import { attachCountUp, attachMagnetic, attachNavBusy, clearBusy } from "@/components/site/motion/attach";
+import { attachCountUp, attachGlassLight, attachMagnetic, attachNavBusy, attachNavGlass, clearBusy } from "@/components/site/motion/attach";
 import { MAGNET_MAX, PARALLAX_MAX, magnetOffset, parallaxOffset } from "@/components/site/motion/geometry";
 import { willNavigate } from "@/components/site/motion/nav-intent";
 import { LARGE_CLIP_FROM, clipRendition, posterSrcSet } from "@/lib/site/renditions";
@@ -119,7 +119,9 @@ describe("site-motion.css", () => {
     }
     // And the scripts ask the same question (env.ts richPointer) and only follow a mouse or a pen.
     const attach = readFileSync(join(ROOT, "components/site/motion/attach.ts"), "utf8");
-    expect((attach.match(/pointerType !== "mouse" && e\.pointerType !== "pen"/g) ?? []).length).toBe(3);
+    // Every pointer listener (pull, parallax, spotlight, the nav's glass and its light, the keys' light) checks it.
+    expect((attach.match(/pointerType !== "mouse" && e\.pointerType !== "pen"/g) ?? []).length).toBe(6);
+    expect((attach.match(/addEventListener\("pointer(?:move|over)"/g) ?? []).length).toBe(6);
     expect(readFileSync(join(ROOT, "components/site/motion/env.ts"), "utf8")).toContain('"(hover: hover) and (pointer: fine) and (min-width: 1024px)"');
   });
 
@@ -128,10 +130,13 @@ describe("site-motion.css", () => {
       const props = [...kf.matchAll(/([a-z-]+)\s*:/g)].map((m) => m[1]);
       for (const p of props) expect(["transform", "scale", "translate", "opacity", "--nx-a", "--nx-n"], `${p} in ${kf.slice(0, 30)}`).toContain(p);
     }
-    for (const m of src.matchAll(/\btransition\s*:\s*([^;]+);/g)) {
-      const props = m[1].split(/,(?![^(]*\))/).map((part) => part.trim().split(/\s+/)[0]);
-      for (const p of props) expect(["transform", "scale", "translate", "opacity", "background-color", "border-color", "color", "box-shadow", "--nx-n"], p).toContain(p);
+    for (const m of src.matchAll(/([^{}]+)\{[^{}]*?\btransition\s*:\s*([^;]+);/g)) {
+      const props = m[2].split(/,(?![^(]*\))/).map((part) => part.trim().split(/\s+/)[0]);
+      // The nav's glass indicator stretches to the link's width: it is an absolutely placed pseudo-element behind the words.
+      const allowed = m[1].trim() === ".st .st-nav[data-glass]::before" ? ["width", "height"] : [];
+      for (const p of props) expect(["transform", "scale", "translate", "opacity", "background-color", "border-color", "color", "box-shadow", "--nx-n", ...allowed], `${p} on ${m[1].trim()}`).toContain(p);
     }
+    expect(src).toMatch(/\.st \.st-nav\[data-glass\]::before \{[^}]*position: absolute;/);
     // The header's slimmer bar is a scaled backdrop and lifted contents; its box keeps its height.
     const header = mediaBlocks(src, "min-width: 1024px").join("\n");
     expect(header).toMatch(/\.st-header\[data-scrolled\]::before \{[^}]*transform: scaleY\(0\.88\)/);
@@ -162,7 +167,7 @@ describe("site-motion.css", () => {
 
   it("leaves the focus ring alone: no outline is set or removed here", () => {
     expect(src).not.toMatch(/\boutline(?:-[a-z]+)?\s*:/);
-    expect(src).not.toMatch(/:focus(?!-visible\))/);
+    expect(src).not.toMatch(/:focus(?!-visible)/);
   });
 
   it("is loaded by both public frames, after the sheets it builds on, and both mount the script half", () => {
@@ -171,6 +176,87 @@ describe("site-motion.css", () => {
       expect(s.indexOf('import "@/components/site/site-motion.css"'), f).toBeGreaterThan(s.indexOf('import "@/components/site/site-next.css"'));
       expect(s, f).toContain("<SiteMotion />");
     }
+  });
+});
+
+describe("the glass", () => {
+  const src = noComments(css);
+  const recipeAt = src.indexOf(".st .ns-glass,\n");
+  const recipe = src.slice(recipeAt, src.indexOf("}", recipeAt));
+
+  it("is one recipe, shared through the ns-glass class and the --glass-* tokens, with a fallback without backdrop-filter", () => {
+    expect(recipeAt).toBeGreaterThan(-1);
+    for (const sel of [".st .st-nav[data-glass]::before", ".nx .nx-cta", '.st .st-key[data-tone="quiet"]', ".st .st-signin:hover"]) expect(recipe).toContain(sel);
+    for (const t of ["--glass-tint", "--glass-edge-hi", "--glass-edge-lo", "--glass-rim-lo", "--glass-glow", "--glass-blur", "--glass-sat", "--glass-shadow"]) {
+      expect(recipe, t).toContain(`var(${t})`);
+      expect(src, t).toMatch(new RegExp(`\\.st \\{[^}]*${t}:`));
+    }
+    expect(recipe).toContain("backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat))");
+    const fallback = src.slice(src.indexOf("@supports not ((backdrop-filter"));
+    expect(fallback.slice(0, fallback.indexOf("}")) ).toContain(".st .ns-glass");
+    expect(fallback).toMatch(/background-color: var\(--glass-solid\)/);
+    // The edge is inset shadows, never a border, so turning to glass on hover changes no box's size.
+    expect(recipe).not.toMatch(/\bborder(?:-width|-style)?\s*:\s*\d/);
+    expect(recipe).toContain("border-color: transparent");
+    // The stages that are dark in both themes and the dark theme get the dark glass.
+    expect(src).toMatch(/:root\[data-theme="dark"\] \.st, \.st \.nx-sh, \.st \.nx-final/);
+  });
+
+  it("keeps the primary key's colour and its white label above 4.5:1 under the hover light", () => {
+    const hover = mediaBlocks(src, "hover: hover").join("\n");
+    const light = hover.match(/\.nx-btn:hover:not\(:focus-visible\)[^{]*\{[^}]*?rgba\(255, 255, 255, ([\d.]+)\), transparent/);
+    expect(light).toBeTruthy();
+    // White over the lit key (#5b4ee9 in the dark theme, the darkest hover) mixed with this much white.
+    const a = Number(light![1]);
+    const mix = [0x5b, 0x4e, 0xe9].map((c) => c + (255 - c) * a);
+    const lin = mix.map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    const L = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+    expect(1.05 / (L + 0.05)).toBeGreaterThanOrEqual(4.5);
+    expect(hover).not.toMatch(/\.nx-btn:hover[^{]*\{[^}]*background(?:-color)?\s*:/);
+  });
+
+  it("slides one indicator to the hovered or keyboard-focused link, never for a tap, and lets go", () => {
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    device(DESKTOP);
+    document.body.innerHTML = `<nav class="st-nav"><a href="/a">A</a><a href="/b">Bee</a></nav><p id="out">x</p>`;
+    const [a, b] = [...document.querySelectorAll<HTMLAnchorElement>(".st-nav a")];
+    Object.defineProperty(a, "offsetLeft", { value: 0 });
+    Object.defineProperty(a, "offsetWidth", { value: 40 });
+    Object.defineProperty(b, "offsetLeft", { value: 42 });
+    Object.defineProperty(b, "offsetWidth", { value: 70 });
+    const nav = document.querySelector<HTMLElement>(".st-nav")!;
+    const pointer = (type: string, el: Element, pointerType: string, related: Element | null = null) => {
+      const e = new MouseEvent(type, { bubbles: true, relatedTarget: related });
+      Object.defineProperty(e, "pointerType", { value: pointerType });
+      el.dispatchEvent(e);
+    };
+    const stop = attachNavGlass();
+    expect(nav.hasAttribute("data-glass")).toBe(true);
+    pointer("pointerover", a, "touch");
+    expect(nav.hasAttribute("data-ind")).toBe(false);
+    pointer("pointerover", a, "mouse");
+    expect(nav.hasAttribute("data-ind")).toBe(true);
+    expect(nav.style.getPropertyValue("--ind-w")).toBe("40px");
+    pointer("pointerout", a, "mouse", b);
+    pointer("pointerover", b, "mouse");
+    expect([nav.style.getPropertyValue("--ind-x"), nav.style.getPropertyValue("--ind-w")]).toEqual(["42px", "70px"]);
+    pointer("pointerout", b, "mouse", document.getElementById("out"));
+    expect(nav.hasAttribute("data-ind")).toBe(false);
+    stop();
+    expect(nav.hasAttribute("data-glass")).toBe(false);
+    // The light inside a key follows a mouse only.
+    document.body.innerHTML = `<a class="st-key" href="/signup">Start</a>`;
+    const key = document.querySelector<HTMLElement>(".st-key")!;
+    const off = attachGlassLight();
+    pointer("pointermove", key, "touch");
+    expect(key.style.getPropertyValue("--hx")).toBe("");
+    pointer("pointermove", key, "mouse");
+    expect(key.style.getPropertyValue("--hx")).not.toBe("");
+    off();
+    expect(key.style.getPropertyValue("--hx")).toBe("");
   });
 });
 

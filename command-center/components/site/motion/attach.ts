@@ -237,3 +237,133 @@ export function attachNavBusy(doc: Document = document, win: Window = window): C
     clearBusy(doc);
   };
 }
+
+/**
+ * 7. The header's links share one glass indicator (site-motion.css, ".st-nav[data-glass]::before") that slides and stretches
+ * to the link under a mouse or the link the keyboard focused. The script writes the link's place and size relative to the nav
+ * (offsetLeft/offsetTop, which a transform does not change) and sets data-glass, which hands the hover look from each link to
+ * the indicator. A tap never moves it (it is not a hover), and focus moves it only for a visible focus (`:focus-visible`), so
+ * the keyboard's ring and the glass agree. The light inside it follows the pointer, on a fine pointer with motion allowed.
+ */
+export function attachNavGlass(doc: Document = document): Cleanup {
+  const navs = [...doc.querySelectorAll<HTMLElement>(".st-nav")];
+  if (navs.length === 0) return () => undefined;
+  let frame = 0;
+  const show = (nav: HTMLElement, a: HTMLElement) => {
+    const fresh = !nav.hasAttribute("data-ind");
+    // Appearing from nothing it fades in where it is; only a move from one link to the next slides.
+    if (fresh) nav.setAttribute("data-ind-snap", "");
+    nav.style.setProperty("--ind-x", `${a.offsetLeft}px`);
+    nav.style.setProperty("--ind-y", `${a.offsetTop}px`);
+    nav.style.setProperty("--ind-w", `${a.offsetWidth}px`);
+    nav.style.setProperty("--ind-h", `${a.offsetHeight}px`);
+    nav.setAttribute("data-ind", "");
+    if (fresh) requestAnimationFrame(() => requestAnimationFrame(() => nav.removeAttribute("data-ind-snap")));
+  };
+  const hide = (nav: HTMLElement) => {
+    nav.removeAttribute("data-ind");
+    nav.style.removeProperty("--hx");
+    nav.style.removeProperty("--hy");
+  };
+  const linkIn = (e: Event) => {
+    const a = (e.target as Element | null)?.closest?.<HTMLElement>(".st-nav a") ?? null;
+    return a ? { a, nav: a.closest<HTMLElement>(".st-nav")! } : null;
+  };
+  const onOver = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse" && e.pointerType !== "pen") return;
+    const hit = linkIn(e);
+    if (hit) show(hit.nav, hit.a);
+  };
+  const onOut = (e: PointerEvent) => {
+    const nav = (e.target as Element | null)?.closest?.<HTMLElement>(".st-nav") ?? null;
+    if (!nav) return;
+    const to = e.relatedTarget as Element | null;
+    // Still on a link of the same nav: the next pointerover moves it. Between two links (the gap) or off the nav: it goes.
+    if (to && to.closest?.(".st-nav a") && nav.contains(to)) return;
+    if (nav.contains(doc.activeElement) && (doc.activeElement as Element).matches?.(":focus-visible")) {
+      show(nav, doc.activeElement as HTMLElement);
+      return;
+    }
+    hide(nav);
+  };
+  const onMove = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse" && e.pointerType !== "pen") return;
+    const hit = linkIn(e);
+    if (!hit || !richPointer() || !motionAllowed()) return;
+    const { clientX, clientY } = e;
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      const r = hit.a.getBoundingClientRect();
+      hit.nav.style.setProperty("--hx", `${Math.round(clientX - r.left)}px`);
+      hit.nav.style.setProperty("--hy", `${Math.round(clientY - r.top)}px`);
+    });
+  };
+  const onFocusIn = (e: FocusEvent) => {
+    const hit = linkIn(e);
+    if (hit && hit.a.matches(":focus-visible")) show(hit.nav, hit.a);
+  };
+  const onFocusOut = (e: FocusEvent) => {
+    const nav = (e.target as Element | null)?.closest?.<HTMLElement>(".st-nav") ?? null;
+    if (nav && !nav.contains(e.relatedTarget as Node | null)) hide(nav);
+  };
+  navs.forEach((n) => n.setAttribute("data-glass", ""));
+  doc.addEventListener("pointerover", onOver, { passive: true });
+  doc.addEventListener("pointerout", onOut, { passive: true });
+  doc.addEventListener("pointermove", onMove, { passive: true });
+  doc.addEventListener("focusin", onFocusIn);
+  doc.addEventListener("focusout", onFocusOut);
+  return () => {
+    doc.removeEventListener("pointerover", onOver);
+    doc.removeEventListener("pointerout", onOut);
+    doc.removeEventListener("pointermove", onMove);
+    doc.removeEventListener("focusin", onFocusIn);
+    doc.removeEventListener("focusout", onFocusOut);
+    cancelAnimationFrame(frame);
+    navs.forEach((n) => {
+      hide(n);
+      n.removeAttribute("data-glass");
+      n.removeAttribute("data-ind-snap");
+      for (const v of ["--ind-x", "--ind-y", "--ind-w", "--ind-h"]) n.style.removeProperty(v);
+    });
+  };
+}
+
+/** The keys and pills whose glass carries a light under the pointer (site-motion.css reads --hx/--hy). */
+const GLASSY = ".ns-glass, .nx-btn, .st-key, .nx-cta, .st-signin, .nx-show-cta, .nx-ai-try, .nx-final .nx-actions .nx-link";
+
+/** 8. The light inside a glass pill or a key follows a mouse (rAF-throttled), and goes back to rest when the pointer leaves. */
+export function attachGlassLight(doc: Document = document): Cleanup {
+  let lit: HTMLElement | null = null;
+  let frame = 0;
+  const rest = () => {
+    cancelAnimationFrame(frame);
+    if (!lit) return;
+    lit.style.removeProperty("--hx");
+    lit.style.removeProperty("--hy");
+    lit = null;
+  };
+  const onMove = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse" && e.pointerType !== "pen") return;
+    const el = (e.target as Element | null)?.closest?.<HTMLElement>(GLASSY) ?? null;
+    if (el !== lit) rest();
+    if (!el || !richPointer() || !motionAllowed()) return;
+    lit = el;
+    const { clientX, clientY } = e;
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      const r = el.getBoundingClientRect();
+      el.style.setProperty("--hx", `${Math.round(clientX - r.left)}px`);
+      el.style.setProperty("--hy", `${Math.round(clientY - r.top)}px`);
+    });
+  };
+  const onOut = (e: PointerEvent) => {
+    if (!e.relatedTarget) rest();
+  };
+  doc.addEventListener("pointermove", onMove, { passive: true });
+  doc.addEventListener("pointerout", onOut, { passive: true });
+  return () => {
+    doc.removeEventListener("pointermove", onMove);
+    doc.removeEventListener("pointerout", onOut);
+    rest();
+  };
+}

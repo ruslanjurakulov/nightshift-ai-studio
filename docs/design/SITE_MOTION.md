@@ -43,3 +43,23 @@ true width when the model made one; `lib/site/renditions.ts` then adds it to the
 with at least 1600 device pixels across and a fast link. No entry has one today, and nothing is upscaled: the exporter
 (`tools/export_showcase.py`) still writes the 640 and 1280 files only, and emitting `lg` is a follow-up once a model's real
 output is larger than 1280.
+
+## Glass (the owner's "Liquid Glass" request)
+
+One recipe in `site-motion.css` ("Glass: one recipe ..."), shared by everything translucent on the public site, including the
+docked prompt composer: put the class **`ns-glass`** on an element inside the public frame (`.st`), or read the tokens
+**`--glass-tint`, `--glass-solid`, `--glass-edge-hi`, `--glass-edge-lo`, `--glass-rim-hi`, `--glass-rim-lo`, `--glass-glow`,
+`--glass-blur`, `--glass-sat`, `--glass-shadow`** (set on `.st`, re-set for the dark theme and for the stages that are dark in
+both themes). The light inside a pill follows a mouse through `--hx`/`--hy` (attach.ts `attachGlassLight`, which also lights
+any `.ns-glass`).
+
+- The recipe: a translucent fill, `backdrop-filter: blur() saturate()`, a bright specular edge top-left and a soft shade
+  bottom-right drawn as inset shadows (never a border, so a pill that turns to glass on hover keeps its size), a soft light
+  at rest above the pill that follows the pointer on hover, and an opaque `--glass-solid` fill under `@supports not
+  (backdrop-filter)`.
+- The header's links share one glass indicator that slides and stretches to the hovered link or the link the keyboard
+  focused (`:focus-visible`; the 3 px focus ring stays), on a spring-like curve; a tap never moves it; under reduced motion
+  it appears without sliding. Without JavaScript each link takes the glass on hover.
+- Ghost and secondary keys (`.nx-cta`, quiet `.st-key`, `.nx-show-cta`, "Try this prompt", the closing panel's links, Sign in
+  on hover) are glass pills; the primary key keeps its colour and gains the rim and a faint light (10 % white, so its white
+  label stays above 4.5:1, a test computes it).
