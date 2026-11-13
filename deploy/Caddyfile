@@ -4,13 +4,14 @@
 # docker-compose.yml, which interpolates them from /opt/nightshift/.env.web
 # (production: DOMAIN=nightshift-ai.studio).
 #
-# Cloudflare: the A record is Proxied (orange cloud) and SSL/TLS mode is
-# "Full (strict)". Caddy holds a real Let's Encrypt certificate for {$DOMAIN},
-# which is what "strict" verifies. "Flexible" would make Cloudflare talk plain
-# HTTP to this server, and Caddy's HTTP->HTTPS redirect would then loop.
-# Keep Cloudflare's "Always Use HTTPS" off: Caddy redirects to HTTPS itself and
-# leaves /.well-known/acme-challenge/ reachable over HTTP, which is how the
-# certificate is issued and renewed through the proxy.
+# No proxy is in front of this server: the domain's A record points straight at
+# it (read 2026-11-12: Porkbun nameservers, one A record, no AAAA). Caddy holds
+# a real Let's Encrypt certificate for {$DOMAIN}, redirects HTTP to HTTPS itself
+# and leaves /.well-known/acme-challenge/ reachable over HTTP, which is how the
+# certificate is issued and renewed. So the peer of every connection is the
+# visitor (or their VPN), and X-Nightshift-Client-IP below is that address.
+# If a proxy or CDN is ever put in front, that line must change with it
+# (docs/GEO_BLOCK.md): the peer would then be the proxy, not the visitor.
 
 {
 	email {$ACME_EMAIL}
@@ -64,6 +65,15 @@
 	# the app sent: always exactly one X-Frame-Options line.
 	@notFrame not header Sec-Fetch-Dest iframe
 	header @notFrame >X-Frame-Options "DENY"
+
+	# Whose address a request came from (docs/GEO_BLOCK.md: a model whose vendor
+	# forbids some countries), in ONE header the app reads and no client can
+	# choose: request_header replaces whatever the client sent with the address
+	# of the peer that opened this connection. Nothing in front of Caddy is
+	# trusted to name another address (there is nothing in front), so
+	# CF-Connecting-IP, X-Real-IP and X-Forwarded-For from a client change
+	# nothing here. X-Forwarded-For is still Caddy's own, as before.
+	request_header X-Nightshift-Client-IP {remote_host}
 
 	# `web` is reachable only on the compose network; it publishes no port of
 	# its own, so this is the only way in. Caddy passes the original Host and

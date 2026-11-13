@@ -9,6 +9,7 @@ import {
   type MyInvite,
 } from "@/lib/friend-invites";
 import { isMissingFunction } from "@/lib/orgs";
+import { ON_VERCEL, clientAddressKey } from "@/lib/geo/client-ip";
 
 /**
  * The server half of Invite friends (migration 0092).
@@ -50,10 +51,13 @@ export function takeVisit(key: string, now = Date.now()): boolean {
   return next.count <= INVITE_VISIT_LIMIT.max;
 }
 
-/** The address a request came from, for the visit rate only. Never stored, never logged. */
-export function visitorKey(headers: Headers): string {
-  const forwarded = headers.get("x-vercel-forwarded-for") ?? headers.get("x-forwarded-for") ?? "";
-  return forwarded.split(",")[0]?.trim() || "unknown";
+/**
+ * The address a request came from, for the visit rate only. Never stored, never logged. The one header our own proxy writes, or
+ * the platform's own on a Vercel deploy (lib/geo/client-ip.ts): a header a visitor can send is never read, so a visitor cannot
+ * pick a fresh bucket per request.
+ */
+export function visitorKey(headers: Pick<Headers, "get">, onVercel: boolean = ON_VERCEL): string {
+  return clientAddressKey(headers, onVercel).slice(0, 64);
 }
 
 /** Is this link live? (anon-callable boolean, friend_invite_peek). Any failure is "no". */

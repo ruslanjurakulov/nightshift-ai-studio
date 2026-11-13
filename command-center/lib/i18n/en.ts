@@ -941,6 +941,8 @@ export const en = {
   },
   create: {
     title: "Create",
+    // The DB-IP licence (CC BY 4.0) asks for this credit, linked to db-ip.com, on a page that uses its data (docs/GEO_BLOCK.md).
+    geoAttribution: "IP Geolocation by DB-IP",
     subtitle: "Type a topic, set the controls, and Create — the run starts on the pipeline and its progress appears below.",
     pickChannel: "Pick a single channel (top-left switcher) to create for it.",
     needsAdmin: "You don't have access to create videos in this workspace.",
@@ -3556,6 +3558,7 @@ export const en = {
       idempotency_conflict: "This request was already used for a different generation. Reload the page.",
       model_not_sellable: "This model is not available right now.",
       model_temporarily_off: "This model is temporarily unavailable. Nothing was charged. Choose another model, or try again later.",
+      country_blocked: "This model is not available in your region. Nothing was charged. Choose another model from the list.",
       entitlement_required: "This model is available after your organization's first credit purchase.",
       unpriced: "This model has no price yet, so it cannot be used.",
       capability_not_supported: "This kind of generation is not available yet.",

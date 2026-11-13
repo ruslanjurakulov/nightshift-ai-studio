@@ -454,8 +454,8 @@ describe("public footer", () => {
     expect(screen.getByRole("link", { name: t.legal.privacy }).getAttribute("href")).toBe("/privacy");
     expect(screen.getByRole("link", { name: t.legal.terms }).getAttribute("href")).toBe("/terms");
     expect(screen.getByRole("link", { name: t.legal.refund }).getAttribute("href")).toBe("/refund");
-    const contact = screen.getByRole("link", { name: t.landing.footer.contact }).getAttribute("href") ?? "";
-    expect(contact === "/terms#contact" || contact.startsWith("mailto:")).toBe(true);
+    // The operator-details card on the Terms, where the address is printed (tests/legal-contact.test.tsx).
+    expect(screen.getByRole("link", { name: t.site.footer.contact }).getAttribute("href")).toBe("/terms#contact-details");
   });
 });
 

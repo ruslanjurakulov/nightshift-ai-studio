@@ -246,6 +246,8 @@ export const CREATIVE_ERRORS = [
   "model_not_sellable",
   // 0124: the owner switched this model (or its provider) off for now; nothing was held or charged.
   "model_temporarily_off",
+  // The model is not offered where this request comes from (lib/server/geo.ts, docs/GEO_BLOCK.md); nothing was quoted or held.
+  "country_blocked",
   "entitlement_required",
   "unpriced",
   "capability_not_supported",
