@@ -893,6 +893,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "f3583fdc-25c4-42cb-96ce-1d92d80cbf68",
+      "assetId": "3f16a5c9-ef8f-5008-984b-f6476031e7c0",
+      "sha256": "16bc3b8a5dc7df06a795bae3cad8cac485e02555df5007006140c4edab5439d3",
+      "modelId": "minimax-h3-lite",
+      "modelName": "MiniMax H3 Lite",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical macro tilt-shift shot: a crew of tiny construction workers in orange vests on miniature scaffolding repairs the cracked screen of a giant smartphone lying on a desk; one welds with bright sparks, two carry a glass panel, a tiny crane lifts a pixel. Playful, detailed, warm light. Audio: tiny hammering, welding hiss, cheerful whistles.",
+      "createdAt": "2026-11-13T20:30:54Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3-Lite",
+            "unit": "second",
+            "quantity": 5.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T20:56:51Z"
     }
   ]
 }
