@@ -403,6 +403,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # MCP over OAuth (0093): tests/security/sec_mcp_oauth_0093.py — one row in each OAuth table.
     import sec_mcp_oauth_0093
     sec_mcp_oauth_0093.seed(conn, sc)
+    # One rate credit for that connection (0147): tests/security/sec_mcp_free_tier_0147.py.
+    import sec_mcp_free_tier_0147
+    sec_mcp_free_tier_0147.seed(conn, sc)
     # A LEGACY pending invite into org A, addressed to Ivan's email: written as the
     # database owner, because since 0091 no API role can create one (and the
     # migration deleted every one that existed). It is kept so the lab keeps

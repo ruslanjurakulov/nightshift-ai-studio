@@ -174,6 +174,17 @@ describe("MCP over OAuth is a plan feature (0093)", () => {
   });
 });
 
+describe("MCP over OAuth on every plan (0147)", () => {
+  const sql = readFileSync(join(__dirname, "..", "..", "supabase/migrations/0147_mcp_free_tier.sql"), "utf8");
+
+  it("retires `mcp` to planned and true for every plan, so the pricing matrix never says Free lacks it", () => {
+    expect(sql).toMatch(/update public\.entitlement_keys\s+set status = 'planned', default_value = 'true'::jsonb,[\s\S]*?where key = 'mcp';/);
+    expect(sql).toContain("update public.plan_entitlements set value = 'true'::jsonb where key = 'mcp'");
+    // planned keys are never matrix rows, whatever their values.
+    expect(planMatrix(catalog, env, PADDLE)!.rows.map((r) => r.key)).not.toContain("mcp");
+  });
+});
+
 describe("billing summary and access", () => {
   const live = coerceBillingSummary({
     exempt: false,

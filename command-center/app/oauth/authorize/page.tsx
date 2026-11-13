@@ -28,9 +28,12 @@ type Raw = Record<string, string | string[] | undefined>;
  * In order: sign-in (a signed-out visitor goes to /login and comes back to this
  * exact request); the app and its return address are checked by the database
  * against what the app registered, EXACTLY — until they match nothing is ever
- * redirected anywhere, the person just sees an error page; a Free workspace is
- * told it needs a paid plan and no request is made at all (so no code can ever
- * exist for it); otherwise the consent screen, which names the app as it
+ * redirected anywhere, the person just sees an error page; every plan, Free
+ * included, gets the consent screen (migration 0147: what an app makes is
+ * limited by the workspace's credits, not by its plan; a database that still
+ * gates by plan, before 0147 or after its rollback, answers entitled: false,
+ * and then the person is told the plan does not include it and no request is
+ * made at all, so no code can exist); the consent screen names the app as it
  * registered itself TOGETHER WITH the host it will send the person back to (so
  * a lookalike name is visible), the workspace, the exact permissions and a
  * mandatory monthly spending limit. The screen's Allow/Deny posts to
@@ -141,6 +144,8 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
           <p className="fl-hint">
             <strong className="font-semibold text-[var(--ns-text)]">{o.cannotTitle}</strong> {o.cannot}
           </p>
+          {/* Free can approve since 0147: say up front that credits, not the plan, are what this app's videos need. */}
+          {!view.exempt && view.scopes.includes("videos:create") && <p className="fl-hint">{o.creditsNote}</p>}
         </section>
 
       <ConsentForm

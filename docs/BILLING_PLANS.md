@@ -77,10 +77,10 @@ Yakuniy narxni **siz** Paddle'da qo'yasiz; kredit miqdorini bazada o'zgartirasiz
 | `models_image` / `models_video` / `models_audio` | basic | premium | all | all | planned |
 | `series`, `channel_dna`, `thumbnail_studio` | – | ✓ | ✓ | ✓ | planned |
 | `autopilot`, `workflows`, `repurposing` | – | – | ✓ | ✓ | planned |
-| `mcp` — AI ilovalarni (Claude, ChatGPT va boshqalar) OAuth bilan ulash | – | ✓ | ✓ | ✓ | **enforced** (0093) |
+| `mcp` — AI ilovalarni (Claude, ChatGPT va boshqalar) OAuth bilan ulash | ✓ | ✓ | ✓ | ✓ | planned (0147; 0093 da enforced edi) |
 
 - **enforced** — bugun tekshiriladi va `/pricing` sahifasida ko'rsatiladi.
-- **`mcp`** (0093) — obuna xususiyati: Free ham, faqat paket sotib olgan (obunasi yo'q) mijoz ham ulay olmaydi; Plus, Pro, Business ulaydi. Ulangan ilova **sayt kreditlarini** sarflaydi (API'ning dollar balansini emas), har bir ulanish uchun oylik kredit limiti bilan. Tekshiruv uch joyda: rozilik sahifasida, token/refresh endpointlarida va **har bir chaqiruvda**; obuna bekor bo'lsa, ulanish "to'xtatilgan" bo'ladi va tarif qaytganda qayta ulanmasdan ishlaydi. Qaysi tariflarda borligi — `plan_entitlements` dagi bitta qator: `update plan_entitlements set value = 'false' where plan_id = 'creator' and key = 'mcp';`
+- **`mcp`** (0093 → 0147) — egasining qarori (2026-11-13): AI ilovani OAuth bilan ulash **har qanday tarifda**, Free ham, ishlaydi va faqat **sayt kreditlari** bilan cheklanadi (API'ning dollar balansi emas). 0147 tarif tekshiruvini barcha OAuth funksiyalaridan olib tashladi va `mcp` ni yana `planned` qildi (hech qayerda tekshirilmaydi, `/pricing` da ko'rsatilmaydi), hamma tariflar uchun `true`. Video `reserve_credits()` orqali band qilinadi: kredit yetmasa, hech narsa band qilinmasdan `insufficient_credits` bilan rad etiladi; xush kelibsiz kreditlari, paketlar va tarif kreditlari hisoblanadi. Paket yoki tarif qo'shilsa, o'sha ulanish keyingi chaqiruvdan ishlaydi. Qolgan cheklovlar o'zgarmadi: har bir ulanishning oylik kredit limiti, tarifning bir vaqtdagi videolar soni, daqiqasiga 120 so'rov, ruxsatlar va uzish. Bu qoidani tarif qatori bilan emas, kod bilan qo'ydik: yangi tarif yoki bitta UPDATE eshikni yana yopib qo'ymasligi uchun. Qaytarish: `docs/sql/rollback_0147_mcp_free_tier.sql`.
 - **planned** — bazada saqlanadi, lekin hali hech narsa tekshirmaydi, shuning
   uchun **sahifada ko'rsatilmaydi** (va'da qilinmagan narsani sotmaymiz). Funksiya
   tayyor bo'lganda, uni tekshiradigan kod bilan **bir PR'da** `status` ni

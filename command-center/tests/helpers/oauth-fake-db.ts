@@ -30,6 +30,8 @@ export class FakeOauthDb {
   requests = new Map<string, { clientId: string; redirect: string; challenge: string; state: string | null; scopes: string[]; resource: string }>();
   now = 1_000_000;
   entitled = true;
+  /** The workspace's plan as oauth_begin_authorization names it; since 0147 a "free" one is entitled too. */
+  plan = "creator";
   credits = { available: 400, held: 0 };
   spent = 0;
   runLimit = 2;
@@ -61,7 +63,7 @@ export class FakeOauthDb {
       clientId: a.clientId, redirect: a.redirectUri, challenge: a.codeChallenge, state: a.state,
       scopes: ["videos:read", "videos:create", "videos:publish"], resource: a.resource,
     });
-    return { ok: true, entitled: true, client_name: c.name, redirect_uri: a.redirectUri, workspace_name: "Alice Studio", plan: "creator",
+    return { ok: true, entitled: true, client_name: c.name, redirect_uri: a.redirectUri, workspace_name: "Alice Studio", plan: this.plan,
       scopes: ["videos:read", "videos:create", "videos:publish"], default_limit_credits: 500, max_limit_credits: 20000, exempt: false };
   }
 

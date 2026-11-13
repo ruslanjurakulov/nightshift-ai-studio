@@ -13,9 +13,11 @@ import { cleanClientName, describeRedirect } from "@/lib/oauth/redirect";
  * Connected apps (migration 0093): the AI apps this person allowed to use
  * their workspace, each with what it may spend this month and a button that
  * ends it at once. Read and written through the person's own session and the
- * oauth_* functions, which show them only their own connections. A connection
- * whose plan lapsed reads "paused", not nothing: it works again, without
- * reconnecting, when a plan returns. Raising a limit is only possible here —
+ * oauth_* functions, which show them only their own connections. Since 0147
+ * every plan may connect and the database answers "active" for every live
+ * connection; a database that still gates by plan (before 0147, or after its
+ * rollback) answers "paused_plan", which reads "paused", not nothing: it works
+ * again, without reconnecting, once the plan includes it. Raising a limit is only possible here —
  * the app has no way to.
  */
 
