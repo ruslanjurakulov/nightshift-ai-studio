@@ -275,7 +275,10 @@ Nightshift is its own authorization server for its MCP resource.
   `(nightshift)` is dropped and the rest registered, because Claude Code names itself
   `Claude Code (<server name>)` and our snippets name the server `nightshift`; it is registered and shown
   as "Claude Code". What is left must pass the rule on its own, so "Nightshift (nightshift)" and every
-  lookalike are still refused, and the database's check is unchanged. An app nobody ever approves is deleted after a day.
+  lookalike are still refused, and the database's check is unchanged. An app nobody ever approves is deleted after a day, and
+  (0147) so is one whose every connection ended (revoked, or past its 90 days) more than a day ago, with those connections: a
+  revoked connection no longer keeps its registration alive for a month. An app whose connection ended that long ago is added
+  again in the assistant (Claude registers anew on every connection anyway).
   Two classes, each with its own budgets (0147): a registration whose **every** redirect URI is an AI vendor's own callback
   (`https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/connector_platform_oauth_redirect`,
   `https://chatgpt.com/connector/oauth/<id>`, Grok's `https://grok.com/connectors-oauth-exchange-code/`, Gemini's
@@ -296,7 +299,12 @@ Nightshift is its own authorization server for its MCP resource.
   says that what the app makes is paid from the workspace's credits. Allow/Deny is a same-origin JSON POST with a single-use secret
   bound to that person, `Origin` and `Sec-Fetch-Site` checks, and the page is
   never framed (`frame-ancestors 'none'`, `X-Frame-Options: DENY`). The answer
-  carries `code`, `state` and `iss` (RFC 9207).
+  carries `code`, `state` and `iss` (RFC 9207). Allow is refused, with the remedy
+  on the screen, when the person already has 20 live connections
+  (`too_many_connections`: disconnect one in Developers → Connected apps), or when
+  50 connections for that person or 200 for that workspace were approved in the
+  last 24 hours, disconnected ones included (`too_many_connections_today`, 0147:
+  try again later; the connected apps keep working).
 * **Token** `POST /oauth/token`: `authorization_code` (PKCE `S256` only; the
   code lives 60 seconds, is single-use, and is bound to client, redirect URI,
   challenge, person and resource; a replay revokes what the first use made) and

@@ -5,7 +5,19 @@
 -- undo: there is no switch. After it, a Free (or pack-only) workspace's connections are PAUSED again (`subscription_required`
 -- on every call, `paused_plan` in Developers -> Connected apps) until it has a plan, Free cannot approve a new one, every OAuth
 -- tool call costs two rate units again, and the API key's spend-limit refusals lose their remedy sentence. Nothing is deleted
--- but the rate credits (a few minutes' worth, harmless to lose).
+-- but the rate credits (a few minutes' worth, harmless to lose). The daily connection caps go, and the collector keeps a
+-- revoked connection's registration 30 days again (0093).
+--
+-- REGISTRATION MAY BE CLOSED FOR A WHILE AFTERWARDS. 0093's oauth_register_client counts every row against ONE budget: 300
+-- registrations an hour in total and 20 000 rows. 0147 let AI vendors' registrations have their own (2 000 an hour, 60 000
+-- rows), so if more than 300 registrations were made in the last hour, every registration (Claude's, ChatGPT's, Cursor's ...)
+-- is refused `rate_limited` until the hour has passed; if more than 20 000 rows exist, registration answers "closed" until
+-- 0093's collector brings them under (registrations nobody approved go after a day, others 30 days after their last use).
+-- Read first, in the SQL editor:
+--   select count(*) as rows, count(*) filter (where created_at > now() - interval '1 hour') as last_hour from public.oauth_clients;
+-- If `rows` is over 20 000, decide before applying whether to wait for a quiet day or to delete registrations nobody approved:
+--   delete from public.oauth_clients c where c.last_authorized_at is null and c.created_at < now() - interval '1 hour'
+--      and not exists (select 1 from public.oauth_grants g where g.client_id = c.client_id);
 --
 -- WHAT IT DOES, in one transaction:
 --   0. REFUSES (changes nothing) when a function of 0147 is not 0147's body (a later change would be undone).
@@ -15,7 +27,9 @@
 --   2. Drops oauth_check_credit_put, oauth_check_credit_take and oauth_check_credits, and oauth_clients.vendor (with its index)
 --      and oauth_vendor_callbacks_only: registrations are counted in one class again (10 an address, 300 an hour, 20 000 rows),
 --      so a vendor's shared server is throttled at 10 people an hour again.
---   3. Puts the `mcp` entitlement back as 0093 left it: enforced, default false, Free false (the paid plans keep true).
+--   3. Puts the `mcp` entitlement back: the key as 0093 left it (enforced, default false), and every plan's value as 0147 found
+--      it (saved in oauth_mcp_entitlement_before_0147, so a plan an admin had set false is false again), then drops that table.
+--      Puts oauth_gc back to 0093's body and drops 0147's two indexes on oauth_grants.
 --   4. Asserts the end state (0093's and 0042's md5s, nothing of 0147 left).
 --
 -- tests/security/test_sec_mcp_free_tier.py applies this file to a lab database and then re-applies 0147.
@@ -32,25 +46,51 @@ begin
       ['public.oauth_ctx(text, text, text)', 'fe42c9e4f53a6c9aaba40077ce905cdc'],
       ['public.oauth_check(text, text)', '7b53e3c9b4b6c6c74daa9eff3fe028bc'],
       ['public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text)', '1d77b561efdb9347dc9465e66fa87e8c'],
-      ['public.oauth_decide_authorization(text, boolean, numeric, text)', '33d52fcbee5e6b27ed7edcac8be93d15'],
+      ['public.oauth_decide_authorization(text, boolean, numeric, text)', '3b5236152d66117425e44e2d5132b9eb'],
       ['public.oauth_exchange_code(text, uuid, text, text, text, text, text)', '1d682787edc3c06691d537cd65039842'],
       ['public.oauth_refresh(text, uuid, text, text, text)', '3d8ff8c8084563f79ab7d09cfd87a2a6'],
       ['public.oauth_my_grants()', '595922d17683b2e0620612f60c5d10c3'],
-      ['public.oauth_limits()', 'e49fb50fbe306e0d727836239baab57a'],
+      ['public.oauth_limits()', 'c2d715dcc24280d63b065ca0bf6db92d'],
       ['public.oauth_register_client(text, text[], text)', '51d0b4f6ee421aa0fd276b09c108da2f'],
       ['public.oauth_vendor_callbacks_only(text[])', 'e4c9b0824b91bc3c6ff3b10e91934a74'],
       ['public.api_create_video(text, text, jsonb, text, text, text)', 'cba47be1a674f5cea3b5d7443bc31bab'],
       ['public.api_request_download(text, text, text, text, text, text)', '055003f8a2fb5390bbd1b5f7820e6e2e'],
       ['public.oauth_check_credit_put(uuid, text)', 'b50cfb0cfaa7d8a57512f3381d6b72e3'],
-      ['public.oauth_check_credit_take(uuid, text)', '7092b99bdaef02719f247dcd26d77c08']] loop
+      ['public.oauth_check_credit_take(uuid, text)', '7092b99bdaef02719f247dcd26d77c08'],
+      ['public.oauth_gc()', 'db1e58fa3381bced067a36b44b476ebf']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(pair[1]);
     if h is distinct from pair[2] then
       raise exception 'rollback 0147: % is not 0147''s body (md5 %): read the live body first', pair[1], h;
     end if;
   end loop;
+  if to_regclass('public.oauth_mcp_entitlement_before_0147') is null then
+    raise exception 'rollback 0147: oauth_mcp_entitlement_before_0147 (each plan''s mcp value before 0147) is missing, so the values cannot be put back: read it first';
+  end if;
 end $$;
 
 -- 1. 0093's and 0042's bodies, as those migrations wrote them.
+
+create or replace function public.oauth_gc() returns void
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+begin
+  delete from public.oauth_auth_requests where ctid in (
+    select ctid from public.oauth_auth_requests where expires_at < now() limit 200);
+  delete from public.oauth_grants where ctid in (
+    select ctid from public.oauth_grants
+     where (activated_at is null and created_at < now() - interval '1 hour')
+        or (revoked_at is not null and revoked_at < now() - interval '30 days')
+        or absolute_expires_at < now() - interval '30 days'
+     limit 200);
+  delete from public.oauth_tokens where ctid in (
+    select ctid from public.oauth_tokens where expires_at < now() - interval '1 day' limit 500);
+  delete from public.oauth_clients c where c.ctid in (
+    select c2.ctid from public.oauth_clients c2
+     where c2.created_at < now() - interval '24 hours'
+       and coalesce(c2.last_authorized_at, c2.created_at) < now() - case when c2.last_authorized_at is null then interval '24 hours' else interval '30 days' end
+       and not exists (select 1 from public.oauth_grants g where g.client_id = c2.client_id)
+     limit 200);
+end
+$$;
 
 create or replace function public.oauth_ctx(p_hash text, p_endpoint text, p_request_id text) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -770,6 +810,9 @@ revoke all on function public.oauth_my_grants() from public, anon, authenticated
 grant execute on function public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text) to authenticated;
 grant execute on function public.oauth_decide_authorization(text, boolean, numeric, text) to authenticated;
 grant execute on function public.oauth_my_grants() to authenticated;
+revoke all on function public.oauth_gc() from public, anon, authenticated, service_role;
+drop index if exists public.oauth_grants_client_idx;
+drop index if exists public.oauth_grants_org_created_idx;
 
 -- 2. The rate credits: nothing calls the helpers any more.
 drop function if exists public.oauth_check_credit_put(uuid, text);
@@ -784,7 +827,18 @@ update public.entitlement_keys
    set status = 'enforced', default_value = 'false'::jsonb,
        note = 'May connect an AI app to the MCP server with OAuth (oauth_ctx, oauth_begin_authorization). It spends the workspace''s site credits, capped per connection; the API-key door is separate.'
  where key = 'mcp';
-update public.plan_entitlements set value = 'false'::jsonb where key = 'mcp' and plan_id = 'free';
+update public.plan_entitlements p set value = b.value
+  from public.oauth_mcp_entitlement_before_0147 b
+ where p.key = 'mcp' and p.plan_id = b.plan_id and p.value is distinct from b.value;
+do $$
+begin
+  if exists (select 1 from public.oauth_mcp_entitlement_before_0147 b
+               join public.plan_entitlements p on p.plan_id = b.plan_id and p.key = 'mcp'
+              where p.value is distinct from b.value) then
+    raise exception 'rollback 0147: a plan''s mcp value was not put back';
+  end if;
+end $$;
+drop table public.oauth_mcp_entitlement_before_0147;
 
 -- 4. End state.
 do $$
@@ -801,6 +855,7 @@ begin
       ['public.oauth_my_grants()', '1ce7826facd2f15a241d594bbed9768c'],
       ['public.oauth_limits()', '26991d89b0f198dd4016b5156a8b0be1'],
       ['public.oauth_register_client(text, text[], text)', '4ca23a05570337e930413dd109b7c78c'],
+      ['public.oauth_gc()', '4db1c8c636cef1a4413c80a0cb48b9b5'],
       ['public.api_create_video(text, text, jsonb, text, text, text)', 'c054107143ba7bbfaaaff861d5575ecb'],
       ['public.api_request_download(text, text, text, text, text, text)', 'b89909c57a27a5ab7d0fa3368f1a3677']] loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(pair[1])) is distinct from pair[2] then
@@ -811,12 +866,14 @@ begin
      or to_regprocedure('public.oauth_check_credit_take(uuid, text)') is not null
      or to_regclass('public.oauth_check_credits') is not null
      or to_regprocedure('public.oauth_vendor_callbacks_only(text[])') is not null
+     or to_regclass('public.oauth_mcp_entitlement_before_0147') is not null
+     or to_regclass('public.oauth_grants_client_idx') is not null or to_regclass('public.oauth_grants_org_created_idx') is not null
      or exists (select 1 from pg_attribute where attrelid = 'public.oauth_clients'::regclass and attname = 'vendor' and not attisdropped) then
     raise exception 'rollback 0147 end state: an object of 0147 is still there';
   end if;
   if (select status from public.entitlement_keys where key = 'mcp') is distinct from 'enforced'
-     or (select value from public.plan_entitlements where key = 'mcp' and plan_id = 'free') is distinct from 'false'::jsonb then
-    raise exception 'rollback 0147 end state: the mcp entitlement is not back as 0093 left it';
+     or (select default_value from public.entitlement_keys where key = 'mcp') is distinct from 'false'::jsonb then
+    raise exception 'rollback 0147 end state: the mcp entitlement key is not back as 0093 left it';
   end if;
 end $$;
 

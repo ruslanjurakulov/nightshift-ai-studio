@@ -4478,6 +4478,8 @@ export const en = {
     failed: "Something went wrong and nothing was connected. Reload this page and try again.",
     expired: "This request has expired or was already used. Go back to the app and start the connection again.",
     sessionEnded: "You were signed out. Sign in and start the connection again.",
+    tooManyConnections: "Nothing was connected: you already have as many apps connected as one person can. Disconnect one you no longer use in Developers → Connected apps, then start the connection again from the app.",
+    tooManyToday: "Nothing was connected: too many connections were approved for you or this workspace in the last 24 hours, counting ones that were disconnected again. The limit is a rolling day, so try again later; the apps already connected keep working.",
     needsPlanTitle: "This workspace's plan does not include connecting AI apps",
     needsPlanBody: "{app} asked to connect to the workspace “{workspace}”, whose current plan does not include connecting AI apps. Nothing was connected and no permission was given.",
     creditsNote: "On every plan, Free included, what it makes is paid from this workspace's credits: welcome credits, top-up packs and plan credits all count. When there are not enough, it is told so before anything starts and nothing is charged; you can add credits or choose a plan, and it works again on its next request.",

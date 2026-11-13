@@ -4464,6 +4464,8 @@ export const uz: Dictionary = {
     failed: "Xatolik yuz berdi, hech narsa ulanmadi. Sahifani qayta yuklab, qayta urinib koʻring.",
     expired: "Soʻrov eskirgan yoki allaqachon ishlatilgan. Ilovaga qayting va ulanishni qaytadan boshlang.",
     sessionEnded: "Akkauntdan chiqib ketdingiz. Kiring va ulanishni qaytadan boshlang.",
+    tooManyConnections: "Hech narsa ulanmadi: bir kishi ulashi mumkin boʻlgan barcha ilovalar allaqachon ulangan. Keraksizini “Dasturchilar” → “Ulangan ilovalar” boʻlimida uzing va ulanishni ilovadan qaytadan boshlang.",
+    tooManyToday: "Hech narsa ulanmadi: soʻnggi 24 soatda siz yoki bu ish maydoni uchun juda koʻp ulanish tasdiqlangan, keyin uzilganlari ham hisobga olinadi. Limit oxirgi 24 soat boʻyicha hisoblanadi, keyinroq urinib koʻring; ulangan ilovalar ishlashda davom etadi.",
     needsPlanTitle: "Bu ish maydonining tarifiga AI ilovalarni ulash kirmaydi",
     needsPlanBody: "{app} “{workspace}” ish maydoniga ulanishni soʻradi, lekin uning hozirgi tarifiga AI ilovalarni ulash kirmaydi. Hech narsa ulanmadi va hech qanday ruxsat berilmadi.",
     creditsNote: "Har qanday tarifda, jumladan Free tarifida ham, u yaratgan narsa shu ish maydonining kreditlaridan toʻlanadi: xush kelibsiz kreditlari, paketlar va tarif kreditlari hisoblanadi. Kredit yetmasa, unga ish boshlanishidan oldin aytiladi va hech narsa yechilmaydi; siz kredit qoʻshishingiz yoki tarif tanlashingiz mumkin, keyingi soʻrovdan u yana ishlaydi.",

@@ -9,7 +9,9 @@ One new table, Service(): oauth_check_credits holds one credit per (connection, 
 through; no API role reads or writes it (RLS on, every privilege revoked, service_role included, like every 0093 table). Three new
 functions, all internal (no API role may call them): oauth_check_credit_put (called by oauth_check), oauth_check_credit_take
 (called by oauth_ctx) and oauth_vendor_callbacks_only, which generates oauth_clients.vendor (the registration's
-class: every redirect URI an AI vendor's own callback). The nine 0093 functions and the two 0042 functions it replaces keep their 0093 / 0042 declarations.
+class: every redirect URI an AI vendor's own callback). A second new table, Service(): oauth_mcp_entitlement_before_0147 keeps
+each plan's `mcp` value as 0147 found it, for the rollback only. The ten 0093 functions (oauth_gc among them) and the two 0042
+functions it replaces keep their 0093 / 0042 declarations.
 The named attacks are in test_sec_mcp_free_tier.py, in a scratch database of its own.
 """
 
@@ -21,6 +23,8 @@ def extend(tables: dict, functions: dict) -> None:
 
     tables.update({
         "oauth_check_credits": Service(),
+        # Each plan's `mcp` value before 0147, read only by the rollback (which restores and drops it).
+        "oauth_mcp_entitlement_before_0147": Service(),
     })
     functions.update({
         "oauth_check_credit_put": SERVICE,

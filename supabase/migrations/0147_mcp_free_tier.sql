@@ -46,6 +46,9 @@
 --    Invariant: every oauth_check still costs one unit and makes at most ONE later call free. A batch of N tool calls costs N
 --    units (the API-key door's count); calling the functions directly with a forged or reused request id gains at most the one
 --    call its own counted check paid for. Pruned per grant, a grant holds at most about two minutes of admitted checks.
+--    One fixed minute can SEE up to about 240 tool calls: a check admitted at 0:59 leaves a credit its call may spend at
+--    1:00, inside the next minute's 120. Over any two minutes the count stays 240 (120 a minute sustained), and every call
+--    that makes a video is still bound by the workspace's credits and the connection's monthly limit.
 --
 -- 4. AN AI VENDOR'S SHARED SERVERS CAN REGISTER FOR EVERY PERSON (dynamic client registration, RFC 7591)
 --    Evidence (vendor documentation, checked before this was built): Claude registers a NEW client on every fresh connection
@@ -64,21 +67,45 @@
 --    It gets 300 an address an hour, 2 000 an hour in total and its own 60 000-row cap; the ordinary class keeps exactly 0093's
 --    10 / 300 / 20 000, counted over ordinary rows only, so neither class can spend the other's budget. Why that is not an abuse
 --    hole: the code of a vendor-class client can only ever be delivered to the vendor's own callback (0093 matches it exactly),
---    so registering one gains an attacker nothing but a row, and rows stay bounded: the hourly ceiling times 24 hours (0093's
---    collector deletes a registration nobody approved after a day, 200 per accepted registration) is 48 000, under the cap, so a
---    flood held at the ceiling cannot fill the class and lock it out. Saturating the vendor ceiling takes 7 addresses where the
+--    so registering one gains an attacker nothing but a row. Saturating the vendor ceiling takes 7 addresses where the
 --    ordinary one took 30: the hourly ceiling is the trade-off, one number in oauth_limits().
 --    oauth_register_client is 0093's body with four hunks (the class, the per-class counts, the per-class row cap);
---    oauth_limits gains the three numbers. oauth_gc is unchanged.
+--    oauth_limits gains the three numbers.
+--
+-- 5. ROWS STAY BOUNDED NOW THAT FREE CAN APPROVE (review of #713)
+--    Found: 0093's collector (oauth_gc) deletes a registration nobody approved after a day, but never one that has a grant,
+--    and keeps a revoked grant 30 days; the 20-connection cap counts live grants only. So register, approve, redeem the code
+--    (the attacker holds the PKCE verifier), revoke, repeat: every cycle kept a registration alive a month. Before 0147 that
+--    needed a paid plan; with Free able to approve, one free account could fill a class's row cap (the vendor's 60 000 in
+--    about 30 hours at its ceiling, the ordinary 20 000 in about 67) and close registration for every real user for a month.
+--    Two changes, both needed:
+--      a. oauth_gc (0093's body plus one hunk) also deletes a client whose EVERY grant ended (revoked, or past its absolute
+--         expiry) more than 24 hours ago, with those grants. Chosen over "revoked grants stop counting" because that would
+--         leave the rows themselves unbounded (the hourly ceiling times 30 days is 1.4 million vendor rows), and over
+--         shortening every revoked grant's 30 days because a client with one live grant must keep its rows. Nothing reads an
+--         ended grant: its tokens are revoked or expired, its runs (idempotency, the monthly limit) matter only while it can
+--         call, and the audit log keeps mcp.connect / mcp.disconnect by id. The cost: an app whose connection was revoked
+--         more than a day ago is an unknown client; Claude registers anew on every connection anyway, ChatGPT and others are
+--         re-added (0093 already dropped such a client 30 days after its last authorization).
+--      b. oauth_decide_authorization refuses a new connection (`too_many_connections_today`) once 50 were approved by that
+--         person, or 200 in that workspace, in the last 24 hours, revoked ones included. 50 is far above a real person:
+--         Claude makes one connection per fresh connect, and 20 can be live at once; 200 is four admins at that pace. It caps
+--         how fast one account can make rows at all; the per-workspace lock makes the counts exact under concurrent approvals.
+--    What a class can hold now: registrations made in the last 24 hours (hourly ceiling x 24: 48 000 vendor, 7 200
+--    ordinary, both under their caps), plus clients that still have a live grant or one that ended less than a day ago,
+--    which is at most 20 live + 20 just-ended per account. So a flood held at the ceiling cannot fill a class; filling one
+--    takes roughly 300 accounts each holding its 20 live connections, the same exposure a paid plan had before (visible in
+--    oauth_grants, and revoking them frees the rows a day later).
 --
 -- REPLACES (md5 drift guard: the earlier body, or this file's own on a replay; whitespace runs read as one space)
 --   oauth_ctx, oauth_check, oauth_begin_authorization, oauth_decide_authorization, oauth_exchange_code, oauth_refresh,
---   oauth_my_grants, oauth_limits, oauth_register_client (0093; never redefined since), api_create_video, api_request_download (0042; never redefined since).
+--   oauth_my_grants, oauth_limits, oauth_register_client, oauth_gc (0093; never redefined since), api_create_video, api_request_download (0042; never redefined since).
 --   Signatures, SECURITY DEFINER, the pinned search_path and the grants stay as those migrations made them (restated below).
 -- ADDS: oauth_check_credits, oauth_check_credit_put / _take, oauth_vendor_callbacks_only, the generated column
---   oauth_clients.vendor and its index.
+--   oauth_clients.vendor and its index, two indexes on oauth_grants (client_id; org_id, created_at) for the collector and
+--   the daily counts, and oauth_mcp_entitlement_before_0147 (each plan's `mcp` value before this file, for the rollback).
 -- NOT CHANGED: oauth_create_video / oauth_get_balance (0094), oauth_get_job (0111), api_begin (0093), oauth_rate_take,
---   oauth_token_state, oauth_gc, oauth_redirect_uri_ok, the credit ledger, the audit list, any other table or column of 0093.
+--   oauth_token_state, oauth_redirect_uri_ok, the credit ledger, the audit list, any other table or column of 0093.
 --
 -- NUMBER. 0147: live is at 0146 (#702, 2026-11-13); 0148 is reserved by another branch. Names nothing of 0143's, 0145's or
 -- 0146's. Needs 0034, 0042, 0093 (and 0094 for the credit refusal the connection relies on).
@@ -112,12 +139,13 @@ begin
       ['public.oauth_ctx(text, text, text)', 'bcd7e88f9a62af2ebdf3623dca73c014', 'fe42c9e4f53a6c9aaba40077ce905cdc'],
       ['public.oauth_check(text, text)', '43271cf097d7e56cada31febe5eb0efe', '7b53e3c9b4b6c6c74daa9eff3fe028bc'],
       ['public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text)', 'df8f5a04ee8ee2188502ad3c69382d52', '1d77b561efdb9347dc9465e66fa87e8c'],
-      ['public.oauth_decide_authorization(text, boolean, numeric, text)', '84227fee357456de62c5b22e7a4d30d6', '33d52fcbee5e6b27ed7edcac8be93d15'],
+      ['public.oauth_decide_authorization(text, boolean, numeric, text)', '84227fee357456de62c5b22e7a4d30d6', '3b5236152d66117425e44e2d5132b9eb'],
       ['public.oauth_exchange_code(text, uuid, text, text, text, text, text)', '991015aa1d7bf75ad9396382b55c9e07', '1d682787edc3c06691d537cd65039842'],
       ['public.oauth_refresh(text, uuid, text, text, text)', '5e6602cf0b679ccc06b151a1c3c2c7f4', '3d8ff8c8084563f79ab7d09cfd87a2a6'],
       ['public.oauth_my_grants()', '1ce7826facd2f15a241d594bbed9768c', '595922d17683b2e0620612f60c5d10c3'],
-      ['public.oauth_limits()', '26991d89b0f198dd4016b5156a8b0be1', 'e49fb50fbe306e0d727836239baab57a'],
+      ['public.oauth_limits()', '26991d89b0f198dd4016b5156a8b0be1', 'c2d715dcc24280d63b065ca0bf6db92d'],
       ['public.oauth_register_client(text, text[], text)', '4ca23a05570337e930413dd109b7c78c', '51d0b4f6ee421aa0fd276b09c108da2f'],
+      ['public.oauth_gc()', '4db1c8c636cef1a4413c80a0cb48b9b5', 'db1e58fa3381bced067a36b44b476ebf'],
       ['public.api_create_video(text, text, jsonb, text, text, text)', 'c054107143ba7bbfaaaff861d5575ecb', 'cba47be1a674f5cea3b5d7443bc31bab'],
       ['public.api_request_download(text, text, text, text, text, text)', 'b89909c57a27a5ab7d0fa3368f1a3677', '055003f8a2fb5390bbd1b5f7820e6e2e']] loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(trio[1]);
@@ -205,10 +233,17 @@ create or replace function public.oauth_vendor_callbacks_only(p text[]) returns 
 $$;
 revoke all on function public.oauth_vendor_callbacks_only(text[]) from public, anon, authenticated, service_role;
 
--- Generated, so the class is always what the stored URIs say; existing rows are classed when the column is added.
+-- Generated, so the class is always what the stored URIs say; existing rows are classed when the column is added. STORED: the
+-- value is computed when a row is written, so a later create-or-replace of oauth_vendor_callbacks_only does NOT reclassify
+-- rows already there (PostgreSQL does not recompute a stored column when the function changes). A later change to the
+-- class must rewrite the column itself (for example `update public.oauth_clients set redirect_uris = redirect_uris`).
 alter table public.oauth_clients
   add column if not exists vendor boolean generated always as (public.oauth_vendor_callbacks_only(redirect_uris)) stored;
 create index if not exists oauth_clients_vendor_idx on public.oauth_clients (vendor, created_at);
+-- The collector looks up a client's grants (0093 had no index on it), and oauth_decide_authorization counts a workspace's
+-- connections of the last day.
+create index if not exists oauth_grants_client_idx on public.oauth_grants (client_id);
+create index if not exists oauth_grants_org_created_idx on public.oauth_grants (org_id, created_at);
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 2. 0093's OAuth functions: no plan gate; oauth_check leaves the credit, oauth_ctx takes it; registration by class
@@ -430,9 +465,20 @@ begin
   if not public.is_org_member(r.org_id, 'admin') then
     return jsonb_build_object('ok', false, 'error', 'forbidden');
   end if;
+  -- 0147: one approval at a time per workspace, so two concurrent approvals cannot both pass the counts below.
+  perform pg_advisory_xact_lock(hashtextextended('oauth_decide:' || r.org_id::text, 0));
   if (select count(*) from public.oauth_grants where user_id = v_user and revoked_at is null
          and absolute_expires_at > now()) >= (lim ->> 'max_grants_per_user')::int then
     return jsonb_build_object('ok', false, 'error', 'too_many_connections');
+  end if;
+  -- 0147: the live cap above does not count a revoked connection, and a revoked one kept its registration alive, so with
+  -- Free able to approve, approve-redeem-revoke made rows for nothing. Connections approved in the last 24 hours, revoked
+  -- ones included, are capped per person and per workspace (the collector frees an ended one's rows a day later).
+  if (select count(*) from public.oauth_grants where user_id = v_user and created_at > now() - interval '24 hours')
+       >= (lim ->> 'max_new_grants_per_user_day')::int
+     or (select count(*) from public.oauth_grants where org_id = r.org_id and created_at > now() - interval '24 hours')
+       >= (lim ->> 'max_new_grants_per_org_day')::int then
+    return jsonb_build_object('ok', false, 'error', 'too_many_connections_today');
   end if;
 
   insert into public.oauth_grants (user_id, org_id, client_id, scopes, resource, monthly_limit_credits)
@@ -592,7 +638,10 @@ create or replace function public.oauth_limits() returns jsonb
     -- 0147: a registration whose every redirect URI is an AI vendor's own callback (oauth_vendor_callbacks_only) is its
     -- own class: the vendor's shared servers register for every person (Claude on each fresh connection), so 10 an
     -- address throttled the 11th person an hour. Hourly ceiling x the collector's 24 hours stays under the class's row cap.
-    'register_vendor_per_ip_hour', 300, 'register_vendor_global_hour', 2000, 'max_vendor_clients', 60000)
+    'register_vendor_per_ip_hour', 300, 'register_vendor_global_hour', 2000, 'max_vendor_clients', 60000,
+    -- 0147: connections approved per person and per workspace in a rolling day, revoked ones included. With Free able to
+    -- approve, approve-and-revoke must not be a free way to make rows (oauth_decide_authorization, oauth_gc).
+    'max_new_grants_per_user_day', 50, 'max_new_grants_per_org_day', 200)
 $$;
 
 create or replace function public.oauth_register_client(p_name text, p_redirect_uris text[], p_ip text)
@@ -649,6 +698,56 @@ begin
   insert into public.oauth_clients (client_name, redirect_uris, ip_hash)
   values (v_name, v_uris, v_ip) returning client_id into v_id;
   return jsonb_build_object('ok', true, 'client_id', v_id, 'client_name', v_name, 'redirect_uris', to_jsonb(v_uris));
+end
+$$;
+
+-- 0093's collector, plus: a client whose every grant ended more than a day ago goes too (header, section 5).
+create or replace function public.oauth_gc() returns void
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_ended uuid[];
+begin
+  delete from public.oauth_auth_requests where ctid in (
+    select ctid from public.oauth_auth_requests where expires_at < now() limit 200);
+  delete from public.oauth_grants where ctid in (
+    select ctid from public.oauth_grants
+     where (activated_at is null and created_at < now() - interval '1 hour')
+        or (revoked_at is not null and revoked_at < now() - interval '30 days')
+        or absolute_expires_at < now() - interval '30 days'
+     limit 200);
+  delete from public.oauth_tokens where ctid in (
+    select ctid from public.oauth_tokens where expires_at < now() - interval '1 day' limit 500);
+  -- 0147: a client whose EVERY grant ended (revoked, or past its absolute expiry) more than 24 hours ago goes, with those
+  -- grants. 0093 kept a revoked grant 30 days and never collected a client that had one, so approve-redeem-revoke kept a
+  -- registration alive a month, and with Free able to approve one account could fill a class's row cap. Nothing reads an
+  -- ended grant (its tokens are dead; its runs matter only while it can call; the audit log keeps it by id). Only grants
+  -- that ended are deleted, so a grant made meanwhile for the same client stays, and so does its client.
+  v_ended := array(
+    select c.client_id from public.oauth_clients c
+     where c.created_at < now() - interval '24 hours'
+       and exists (select 1 from public.oauth_grants g where g.client_id = c.client_id)
+       and not exists (select 1 from public.oauth_grants g where g.client_id = c.client_id
+                        and coalesce(g.revoked_at, 'infinity'::timestamptz) >= now() - interval '24 hours'
+                        and g.absolute_expires_at >= now() - interval '24 hours')
+     limit 200);
+  if cardinality(v_ended) > 0 then
+    delete from public.oauth_grants g where g.client_id = any (v_ended)
+       and (g.revoked_at < now() - interval '24 hours' or g.absolute_expires_at < now() - interval '24 hours');
+    begin
+      delete from public.oauth_clients c where c.client_id = any (v_ended)
+         and not exists (select 1 from public.oauth_grants g where g.client_id = c.client_id);
+    exception when foreign_key_violation then
+      -- A connection approved for one of them while this ran: it keeps its client, and housekeeping never fails the
+      -- registration or exchange that called it.
+      null;
+    end;
+  end if;
+  delete from public.oauth_clients c where c.ctid in (
+    select c2.ctid from public.oauth_clients c2
+     where c2.created_at < now() - interval '24 hours'
+       and coalesce(c2.last_authorized_at, c2.created_at) < now() - case when c2.last_authorized_at is null then interval '24 hours' else interval '30 days' end
+       and not exists (select 1 from public.oauth_grants g where g.client_id = c2.client_id)
+     limit 200);
 end
 $$;
 
@@ -934,6 +1033,21 @@ update public.entitlement_keys
    set status = 'planned', default_value = 'true'::jsonb,
        note = '0147: checked nowhere. Connecting an AI app with OAuth is open to every plan and limited by site credits (reserve_credits) and each connection''s monthly limit. 0093 checked it per plan.'
  where key = 'mcp';
+-- Each plan's value as it was, kept for the rollback: an admin may have set a paid plan false, and the rollback must put that
+-- back rather than guess. On a replay nothing already saved is overwritten (`do nothing`), so the record is always the value
+-- before 0147 first touched it. RLS on and no API role, like every table of 0093.
+create table if not exists public.oauth_mcp_entitlement_before_0147 (
+  plan_id  text primary key,
+  value    jsonb not null,
+  saved_at timestamptz not null default now()
+);
+alter table public.oauth_mcp_entitlement_before_0147 enable row level security;
+revoke all on table public.oauth_mcp_entitlement_before_0147 from public, anon, authenticated, service_role;
+comment on table public.oauth_mcp_entitlement_before_0147 is
+  '0147: each plan''s `mcp` entitlement value before 0147 set it true; read only by docs/sql/rollback_0147_mcp_free_tier.sql, which restores and drops it.';
+insert into public.oauth_mcp_entitlement_before_0147 (plan_id, value)
+select plan_id, value from public.plan_entitlements where key = 'mcp'
+on conflict (plan_id) do nothing;
 update public.plan_entitlements set value = 'true'::jsonb where key = 'mcp' and value is distinct from 'true'::jsonb;
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -945,6 +1059,7 @@ revoke all on function public.oauth_check_credit_take(uuid, text) from public, a
 revoke all on function public.oauth_ctx(text, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_limits() from public, anon, authenticated, service_role;
 revoke all on function public.oauth_vendor_callbacks_only(text[]) from public, anon, authenticated, service_role;
+revoke all on function public.oauth_gc() from public, anon, authenticated, service_role;
 
 revoke all on function public.oauth_check(text, text) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_register_client(text, text[], text) from public, anon, authenticated, service_role;
@@ -980,6 +1095,7 @@ begin
       ['public.oauth_ctx(text, text, text)', 'fe42c9e4f53a6c9aaba40077ce905cdc', ''],
       ['public.oauth_check_credit_put(uuid, text)', 'b50cfb0cfaa7d8a57512f3381d6b72e3', ''],
       ['public.oauth_check_credit_take(uuid, text)', '7092b99bdaef02719f247dcd26d77c08', ''],
+      ['public.oauth_gc()', 'db1e58fa3381bced067a36b44b476ebf', ''],
       ['public.oauth_check(text, text)', '7b53e3c9b4b6c6c74daa9eff3fe028bc', 'anon'],
       ['public.oauth_register_client(text, text[], text)', '51d0b4f6ee421aa0fd276b09c108da2f', 'anon'],
       ['public.oauth_exchange_code(text, uuid, text, text, text, text, text)', '1d682787edc3c06691d537cd65039842', 'anon'],
@@ -987,7 +1103,7 @@ begin
       ['public.api_create_video(text, text, jsonb, text, text, text)', 'cba47be1a674f5cea3b5d7443bc31bab', 'anon'],
       ['public.api_request_download(text, text, text, text, text, text)', '055003f8a2fb5390bbd1b5f7820e6e2e', 'anon'],
       ['public.oauth_begin_authorization(uuid, text, text, text, text, text, text, text)', '1d77b561efdb9347dc9465e66fa87e8c', 'authenticated'],
-      ['public.oauth_decide_authorization(text, boolean, numeric, text)', '33d52fcbee5e6b27ed7edcac8be93d15', 'authenticated'],
+      ['public.oauth_decide_authorization(text, boolean, numeric, text)', '3b5236152d66117425e44e2d5132b9eb', 'authenticated'],
       ['public.oauth_my_grants()', '595922d17683b2e0620612f60c5d10c3', 'authenticated']] loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(pair[1])) is distinct from pair[2] then
       raise exception '0147 end state: % does not hold the body this file expects', pair[1];
@@ -1005,7 +1121,7 @@ begin
   end loop;
   -- The two plain helpers (not definers): this file's bodies, and no API role may call them.
   foreach pair slice 1 in array array[
-      ['public.oauth_limits()', 'e49fb50fbe306e0d727836239baab57a'],
+      ['public.oauth_limits()', 'c2d715dcc24280d63b065ca0bf6db92d'],
       ['public.oauth_vendor_callbacks_only(text[])', 'e4c9b0824b91bc3c6ff3b10e91934a74']] loop
     if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(pair[1])) is distinct from pair[2]
        or has_function_privilege('anon', pair[1], 'EXECUTE') or has_function_privilege('authenticated', pair[1], 'EXECUTE')
@@ -1029,11 +1145,40 @@ begin
      or public.oauth_vendor_callbacks_only(array[]::text[]) then
     raise exception '0147 end state: the vendor class of a registration is not what this file defines';
   end if;
+  -- `if not exists` objects are skipped when a name is already there, so their SHAPE is asserted, not only their presence.
+  if (select pg_get_expr(d.adbin, d.adrelid) from pg_attrdef d
+        join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+       where d.adrelid = 'public.oauth_clients'::regclass and a.attname = 'vendor')
+       is distinct from 'oauth_vendor_callbacks_only(redirect_uris)'
+     or (select format_type(atttypid, atttypmod) from pg_attribute
+          where attrelid = 'public.oauth_clients'::regclass and attname = 'vendor' and not attisdropped) is distinct from 'boolean' then
+    raise exception '0147 end state: oauth_clients.vendor is not the boolean generated from oauth_vendor_callbacks_only(redirect_uris)';
+  end if;
+  if (select array_agg(a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull order by a.attnum)
+        from pg_attribute a where a.attrelid = 'public.oauth_check_credits'::regclass and a.attnum > 0 and not a.attisdropped)
+       is distinct from array['grant_id:uuid:true', 'request_id:text:true', 'created_at:timestamp with time zone:true']
+     or not exists (select 1 from pg_constraint k where k.conrelid = 'public.oauth_check_credits'::regclass and k.contype = 'p'
+                     and (select array_agg(a.attname order by x.ord) from unnest(k.conkey) with ordinality x(n, ord)
+                            join pg_attribute a on a.attrelid = k.conrelid and a.attnum = x.n) = array['grant_id', 'request_id']::name[])
+     or not exists (select 1 from pg_constraint k where k.conrelid = 'public.oauth_check_credits'::regclass and k.contype = 'f'
+                     and k.confrelid = 'public.oauth_grants'::regclass and k.confdeltype = 'c'
+                     and (select array_agg(a.attname) from unnest(k.conkey) x(n)
+                            join pg_attribute a on a.attrelid = k.conrelid and a.attnum = x.n) = array['grant_id']::name[])
+     or not exists (select 1 from pg_constraint k where k.conrelid = 'public.oauth_check_credits'::regclass and k.contype = 'c'
+                     and position('^req_[A-Za-z0-9]{24}$' in pg_get_constraintdef(k.oid)) > 0) then
+    raise exception '0147 end state: oauth_check_credits is not (grant_id uuid -> oauth_grants on delete cascade, request_id text checked to the req_ shape, created_at), keyed by (grant_id, request_id)';
+  end if;
   if not (select relrowsecurity from pg_class where oid = 'public.oauth_check_credits'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.oauth_mcp_entitlement_before_0147'::regclass)
      or exists (select 1 from information_schema.role_table_grants
-                 where table_schema = 'public' and table_name = 'oauth_check_credits'
+                 where table_schema = 'public' and table_name in ('oauth_check_credits', 'oauth_mcp_entitlement_before_0147')
                    and grantee in ('PUBLIC', 'anon', 'authenticated', 'service_role')) then
-    raise exception '0147 end state: oauth_check_credits must have RLS on and no API role privilege';
+    raise exception '0147 end state: oauth_check_credits and oauth_mcp_entitlement_before_0147 must have RLS on and no API role privilege';
+  end if;
+  if to_regclass('public.oauth_grants_client_idx') is null or to_regclass('public.oauth_grants_org_created_idx') is null
+     or (public.oauth_limits() ->> 'max_new_grants_per_user_day')::int <> 50
+     or (public.oauth_limits() ->> 'max_new_grants_per_org_day')::int <> 200 then
+    raise exception '0147 end state: the daily connection caps or the collector''s indexes are missing';
   end if;
   if (select status from public.entitlement_keys where key = 'mcp') is distinct from 'planned'
      or exists (select 1 from public.plan_entitlements where key = 'mcp' and value is distinct from 'true'::jsonb) then
@@ -1084,6 +1229,10 @@ end $$;
 --     and position('Developers → Usage and billing' in pg_get_functiondef('public.api_request_download(text,text,text,text,text,text)'::regprocedure)) > 0
 --     as spend_limits_name_the_remedy,
 --   (select attgenerated = 's' from pg_attribute where attrelid = 'public.oauth_clients'::regclass and attname = 'vendor')
---     and (public.oauth_limits() ->> 'register_vendor_per_ip_hour')::int = 300 as vendor_registrations_classed;
+--     and (public.oauth_limits() ->> 'register_vendor_per_ip_hour')::int = 300 as vendor_registrations_classed,
+--   (public.oauth_limits() ->> 'max_new_grants_per_user_day')::int = 50
+--     and position('too_many_connections_today' in pg_get_functiondef('public.oauth_decide_authorization(text,boolean,numeric,text)'::regprocedure)) > 0
+--     and position('v_ended' in pg_get_functiondef('public.oauth_gc()'::regprocedure)) > 0 as revoked_connections_do_not_pin_rows,
+--   (select count(*) from public.oauth_mcp_entitlement_before_0147) > 0 as plan_values_saved_for_the_rollback;
 -- The second oauth_ctx of one request id being counted is asserted by the end-state block above on every apply, and with real
 -- grants and tokens by tests/security/test_sec_mcp_free_tier.py.

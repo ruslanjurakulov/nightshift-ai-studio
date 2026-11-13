@@ -167,6 +167,8 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
           failed: o.failed,
           expired: o.expired,
           sessionEnded: o.sessionEnded,
+          tooManyConnections: o.tooManyConnections,
+          tooManyToday: o.tooManyToday,
         }}
       />
       </div>

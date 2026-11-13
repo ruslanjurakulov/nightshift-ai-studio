@@ -567,6 +567,100 @@ def test_the_row_caps_are_per_class_and_the_ceiling_times_a_day_stays_under_the_
         db.su("delete from public.oauth_clients where client_name = 'vendor-cap'")
 
 
+# ── rows stay bounded now that Free can approve (review of #713) ─────────────────────────────────────────────
+
+def approve(db, uid, cid=None):
+    """Begin and Allow on the consent screen, without redeeming the code: what one decision answers."""
+    cid = cid or client(db)
+    _, challenge = pkce()
+    _, secret = begin(db, uid, cid, challenge)
+    return db.user(uid, "select public.oauth_decide_authorization(%s, true, 500::numeric, %s)", [sha(secret), sha("code-" + secrets.token_urlsafe(16))])
+
+
+def age(db, hours, grants=(), clients=()):
+    """Move rows back in time, as if `hours` had passed since they were made."""
+    db.su("update public.oauth_grants set created_at = created_at - make_interval(hours => %s), "
+          "activated_at = activated_at - make_interval(hours => %s), revoked_at = revoked_at - make_interval(hours => %s) "
+          "where id = any(%s::uuid[])", [hours, hours, hours, list(grants)])
+    db.su("update public.oauth_clients set created_at = created_at - make_interval(hours => %s), "
+          "last_authorized_at = last_authorized_at - make_interval(hours => %s) where client_id = any(%s::uuid[])",
+          [hours, hours, list(clients)])
+
+
+def test_connect_and_revoke_in_a_loop_stops_at_the_daily_cap_and_the_rows_go_a_day_later(db):
+    # The reviewer's loop: register (a vendor callback), Allow, redeem the code, revoke. Under 0093 every cycle kept its
+    # registration alive 30 days (the collector never took a client with a grant), and the live cap (20) never bit.
+    uid, org, _ = signup(db)
+    cap = limits(db)["max_new_grants_per_user_day"]
+    assert cap == 50
+    cycles = []
+    for _ in range(cap):
+        c = connect(db, uid)
+        assert db.user(uid, "select public.oauth_revoke_grant(%s)", [c["grant"]]) is True
+        cycles.append(c)
+    assert db.su("select bool_and(vendor) from public.oauth_clients where client_id = any(%s::uuid[])", [[c["client"] for c in cycles]])[0][0]
+    refused = approve(db, uid)
+    assert refused == {"ok": False, "error": "too_many_connections_today"}, refused
+    assert db.su("select count(*) from public.oauth_grants where user_id = %s", [uid])[0][0] == cap  # the refusal made nothing
+
+    # A client with a live grant, and one whose grant ended only an hour ago, must survive the collection below.
+    db.su("delete from public.oauth_grants where user_id = %s and id <> all(%s::uuid[])", [uid, [c["grant"] for c in cycles[:48]]])
+    live = connect(db, uid)
+    recent = connect(db, uid)
+    db.user(uid, "select public.oauth_revoke_grant(%s)", [recent["grant"]])
+    ended = cycles[:48]
+    age(db, 25, grants=[c["grant"] for c in ended] + [live["grant"], recent["grant"]],
+        clients=[c["client"] for c in ended] + [live["client"], recent["client"]])
+    db.su("update public.oauth_grants set revoked_at = now() - interval '1 hour' where id = %s", [recent["grant"]])
+    db.su("select public.oauth_gc()")
+    left = {r[0] for r in db.su("select client_id::text from public.oauth_clients where client_id = any(%s::uuid[])",
+                                 [[c["client"] for c in ended] + [live["client"], recent["client"]]])}
+    assert left == {live["client"], recent["client"]}, len(left)
+    assert db.su("select count(*) from public.oauth_grants where id = any(%s::uuid[])", [[c["grant"] for c in ended]])[0][0] == 0
+    assert list_channels(db, live, rid())["ok"] is True  # the live connection is untouched
+    # A day on, the person may connect again: the cap is a rolling day, not a ban.
+    assert approve(db, uid)["ok"] is True
+
+
+def test_a_workspace_is_capped_across_its_admins(db):
+    uid, org, _ = signup(db)
+    cap = limits(db)["max_new_grants_per_org_day"]
+    assert cap == 200
+    cid = client(db)
+    others = [str(uuid.uuid4()) for _ in range(5)]
+    for o in others:  # 5 admins x 40 = the workspace's 200, each under the per-person 50
+        db.su("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())", [o, f"adm-{o[:8]}@example.test"])
+        db.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, 'admin')", [org, o, f"adm-{o[:8]}@example.test"])
+        db.su("insert into public.oauth_grants (user_id, org_id, client_id, scopes, resource, monthly_limit_credits, activated_at, revoked_at) "
+              "select %s, %s, %s, array['videos:read'], %s, 0, now(), now() from generate_series(1, 40)", [o, org, cid, RESOURCE])
+    assert approve(db, uid) == {"ok": False, "error": "too_many_connections_today"}
+    other_uid, _, _ = signup(db)
+    assert approve(db, other_uid)["ok"] is True  # another workspace is not affected
+    db.su("delete from public.oauth_grants where org_id = %s", [org])
+
+
+def test_two_approvals_racing_at_the_cap_let_exactly_one_through(db):
+    uid, org, _ = signup(db)
+    cid = client(db)
+    db.su("insert into public.oauth_grants (user_id, org_id, client_id, scopes, resource, monthly_limit_credits, activated_at, revoked_at) "
+          "select %s, %s, %s, array['videos:read'], %s, 0, now(), now() from generate_series(1, %s)",
+          [uid, org, cid, RESOURCE, limits(db)["max_new_grants_per_user_day"] - 1])
+    secrets_ = []
+    for _ in range(2):
+        _, challenge = pkce()
+        _, secret = begin(db, uid, client(db), challenge)
+        secrets_.append(secret)
+    barrier = threading.Barrier(2)
+
+    def go(secret):
+        barrier.wait()
+        return db.user(uid, "select public.oauth_decide_authorization(%s, true, 500::numeric, %s)", [sha(secret), sha("code-" + secrets.token_urlsafe(16))])
+
+    with cf.ThreadPoolExecutor(2) as ex:
+        answers = list(ex.map(go, secrets_))
+    assert sorted(a.get("error", "ok") for a in answers) == ["ok", "too_many_connections_today"], answers
+
+
 # ── the API key's spend limits name the remedy; everything else is 0042's ─────────────────────────────────────
 
 def test_the_key_limit_refusal_names_where_it_is_raised(db):
@@ -631,6 +725,26 @@ def test_the_rollback_puts_0093_back_and_0147_brings_the_free_connection_back_wi
         db.apply(MIGRATION)
     assert list_channels(db, c, rid())["ok"] is True  # the same token, no reconnect
     assert [g["status"] for g in db.user(uid, "select public.oauth_my_grants()")] == ["active"]
+
+
+def test_the_rollback_puts_back_each_plans_own_mcp_value_not_a_guess(db):
+    # Before 0147 an admin had set a paid plan false; 0147 made it true; the rollback must make it false again.
+    db.apply(ROLLBACK)
+    try:
+        db.su("update public.plan_entitlements set value = 'false'::jsonb where key = 'mcp' and plan_id = 'pro'")
+        db.apply(MIGRATION)
+        assert db.su("select value from public.plan_entitlements where key = 'mcp' and plan_id = 'pro'")[0][0] is True
+        assert db.su("select value from public.oauth_mcp_entitlement_before_0147 where plan_id = 'pro'")[0][0] is False
+        db.apply(MIGRATION)  # a replay keeps the first record
+        assert db.su("select value from public.oauth_mcp_entitlement_before_0147 where plan_id = 'pro'")[0][0] is False
+        db.apply(ROLLBACK)
+        vals = dict(db.su("select plan_id, value from public.plan_entitlements where key = 'mcp'"))
+        assert vals["pro"] is False and vals["free"] is False and vals["creator"] is True, vals
+        assert db.su("select to_regclass('public.oauth_mcp_entitlement_before_0147') is null")[0][0] is True
+        db.su("update public.plan_entitlements set value = 'true'::jsonb where key = 'mcp' and plan_id = 'pro'")
+    finally:
+        db.apply(MIGRATION)
+    assert db.su("select bool_and(value = 'true'::jsonb) from public.plan_entitlements where key = 'mcp'")[0][0] is True
 
 
 def test_the_rollback_refuses_a_body_that_is_not_0147s(db):

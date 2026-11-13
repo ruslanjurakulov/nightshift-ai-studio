@@ -95,6 +95,21 @@ HUNKS = {
         ("  if not public.has_entitlement_internal(r.org_id, 'mcp') then\n"
          "    return jsonb_build_object('ok', false, 'error', 'subscription_required');\n"
          "  end if;\n", NO_PLAN_CHECK),
+        ("    return jsonb_build_object('ok', false, 'error', 'forbidden');\n  end if;\n",
+         "    return jsonb_build_object('ok', false, 'error', 'forbidden');\n  end if;\n"
+         "  -- 0147: one approval at a time per workspace, so two concurrent approvals cannot both pass the counts below.\n"
+         "  perform pg_advisory_xact_lock(hashtextextended('oauth_decide:' || r.org_id::text, 0));\n"),
+        ("    return jsonb_build_object('ok', false, 'error', 'too_many_connections');\n  end if;\n",
+         "    return jsonb_build_object('ok', false, 'error', 'too_many_connections');\n  end if;\n"
+         "  -- 0147: the live cap above does not count a revoked connection, and a revoked one kept its registration alive, so with\n"
+         "  -- Free able to approve, approve-redeem-revoke made rows for nothing. Connections approved in the last 24 hours, revoked\n"
+         "  -- ones included, are capped per person and per workspace (the collector frees an ended one's rows a day later).\n"
+         "  if (select count(*) from public.oauth_grants where user_id = v_user and created_at > now() - interval '24 hours')\n"
+         "       >= (lim ->> 'max_new_grants_per_user_day')::int\n"
+         "     or (select count(*) from public.oauth_grants where org_id = r.org_id and created_at > now() - interval '24 hours')\n"
+         "       >= (lim ->> 'max_new_grants_per_org_day')::int then\n"
+         "    return jsonb_build_object('ok', false, 'error', 'too_many_connections_today');\n"
+         "  end if;\n"),
     ]),
     "oauth_exchange_code": ("0093", [
         ("  if not public.has_entitlement_internal(g.org_id, 'mcp') then\n"
@@ -121,7 +136,10 @@ HUNKS = {
          "    -- 0147: a registration whose every redirect URI is an AI vendor's own callback (oauth_vendor_callbacks_only) is its\n"
          "    -- own class: the vendor's shared servers register for every person (Claude on each fresh connection), so 10 an\n"
          "    -- address throttled the 11th person an hour. Hourly ceiling x the collector's 24 hours stays under the class's row cap.\n"
-         "    'register_vendor_per_ip_hour', 300, 'register_vendor_global_hour', 2000, 'max_vendor_clients', 60000)\n"),
+         "    'register_vendor_per_ip_hour', 300, 'register_vendor_global_hour', 2000, 'max_vendor_clients', 60000,\n"
+         "    -- 0147: connections approved per person and per workspace in a rolling day, revoked ones included. With Free able to\n"
+         "    -- approve, approve-and-revoke must not be a free way to make rows (oauth_decide_authorization, oauth_gc).\n"
+         "    'max_new_grants_per_user_day', 50, 'max_new_grants_per_org_day', 200)\n"),
     ]),
     "oauth_register_client": ("0093", [
         ("  v_id    uuid;\nbegin\n", "  v_id    uuid;\n  v_vendor boolean;\nbegin\n"),
@@ -141,6 +159,45 @@ HUNKS = {
         ("  if (select count(*) from public.oauth_clients) >= (lim ->> 'max_clients')::int then\n",
          "  if (select count(*) from public.oauth_clients where vendor = v_vendor)\n"
          "       >= (lim ->> case when v_vendor then 'max_vendor_clients' else 'max_clients' end)::int then\n"),
+    ]),
+    "oauth_gc": ("0093", [
+        (
+         "  language plpgsql volatile security definer set search_path = public, pg_temp as $$\n"
+         "begin\n",
+         "  language plpgsql volatile security definer set search_path = public, pg_temp as $$\n"
+         "declare\n"
+         "  v_ended uuid[];\n"
+         "begin\n"),
+        (
+         "  delete from public.oauth_clients c where c.ctid in (\n"
+         "    select c2.ctid from public.oauth_clients c2\n",
+         "  -- 0147: a client whose EVERY grant ended (revoked, or past its absolute expiry) more than 24 hours ago goes, with those\n"
+         "  -- grants. 0093 kept a revoked grant 30 days and never collected a client that had one, so approve-redeem-revoke kept a\n"
+         "  -- registration alive a month, and with Free able to approve one account could fill a class's row cap. Nothing reads an\n"
+         "  -- ended grant (its tokens are dead; its runs matter only while it can call; the audit log keeps it by id). Only grants\n"
+         "  -- that ended are deleted, so a grant made meanwhile for the same client stays, and so does its client.\n"
+         "  v_ended := array(\n"
+         "    select c.client_id from public.oauth_clients c\n"
+         "     where c.created_at < now() - interval '24 hours'\n"
+         "       and exists (select 1 from public.oauth_grants g where g.client_id = c.client_id)\n"
+         "       and not exists (select 1 from public.oauth_grants g where g.client_id = c.client_id\n"
+         "                        and coalesce(g.revoked_at, 'infinity'::timestamptz) >= now() - interval '24 hours'\n"
+         "                        and g.absolute_expires_at >= now() - interval '24 hours')\n"
+         "     limit 200);\n"
+         "  if cardinality(v_ended) > 0 then\n"
+         "    delete from public.oauth_grants g where g.client_id = any (v_ended)\n"
+         "       and (g.revoked_at < now() - interval '24 hours' or g.absolute_expires_at < now() - interval '24 hours');\n"
+         "    begin\n"
+         "      delete from public.oauth_clients c where c.client_id = any (v_ended)\n"
+         "         and not exists (select 1 from public.oauth_grants g where g.client_id = c.client_id);\n"
+         "    exception when foreign_key_violation then\n"
+         "      -- A connection approved for one of them while this ran: it keeps its client, and housekeeping never fails the\n"
+         "      -- registration or exchange that called it.\n"
+         "      null;\n"
+         "    end;\n"
+         "  end if;\n"
+         "  delete from public.oauth_clients c where c.ctid in (\n"
+         "    select c2.ctid from public.oauth_clients c2\n"),
     ]),
     "api_create_video": ("0042", [
         ("'This video would take the organization past its monthly API spend limit.',",
@@ -169,6 +226,7 @@ PINS = {
     "oauth_my_grants": ("1ce7826facd2f15a241d594bbed9768c", None),
     "oauth_limits": ("26991d89b0f198dd4016b5156a8b0be1", None),
     "oauth_register_client": ("4ca23a05570337e930413dd109b7c78c", None),
+    "oauth_gc": ("4db1c8c636cef1a4413c80a0cb48b9b5", None),
     "api_create_video": ("c054107143ba7bbfaaaff861d5575ecb", None),
     "api_request_download": ("b89909c57a27a5ab7d0fa3368f1a3677", None),
 }
@@ -294,7 +352,25 @@ class VendorRegistrations(unittest.TestCase):
         # A flood held at the hourly ceiling for the collector's 24 hours cannot fill the class.
         self.assertLess(nums["register_vendor_global_hour"] * 24, nums["max_vendor_clients"])
         self.assertIn("c2.created_at < now() - interval '24 hours'", definition(M0093, "oauth_gc"))
-        self.assertNotRegex(code(M0147), r"function public\.oauth_gc\(")
+
+    def test_a_revoked_connection_does_not_keep_its_registration_alive_a_month(self):
+        # Review of #713: approve-redeem-revoke kept a client 30 days (0093's collector never took a client with a grant).
+        gc = code(definition(M0147, "oauth_gc"))
+        self.assertIn("coalesce(g.revoked_at, 'infinity'::timestamptz) >= now() - interval '24 hours'", gc)
+        self.assertIn("g.absolute_expires_at >= now() - interval '24 hours'", gc)
+        # Only ended grants are deleted, and a client is deleted only once no grant of it is left.
+        self.assertIn("and (g.revoked_at < now() - interval '24 hours' or g.absolute_expires_at < now() - interval '24 hours');", gc)
+        self.assertIn("and not exists (select 1 from public.oauth_grants g where g.client_id = c.client_id);", gc)
+        self.assertIn("exception when foreign_key_violation then", gc)
+
+    def test_connections_approved_in_a_day_are_capped_revoked_ones_included(self):
+        lim = definition(M0147, "oauth_limits")
+        self.assertIn("'max_new_grants_per_user_day', 50, 'max_new_grants_per_org_day', 200)", lim)
+        dec = code(definition(M0147, "oauth_decide_authorization"))
+        daily = dec[dec.index("'max_new_grants_per_user_day'") - 200:dec.index("'too_many_connections_today'")]
+        self.assertNotIn("revoked_at", daily)  # revoked connections count
+        self.assertLess(dec.index("pg_advisory_xact_lock("), dec.index("'too_many_connections'"))
+        self.assertLess(dec.index("'too_many_connections_today'"), dec.index("insert into public.oauth_grants"))
 
     def test_the_class_is_generated_from_the_stored_uris_and_every_uri_must_be_a_vendor_callback(self):
         self.assertIn("add column if not exists vendor boolean generated always as (public.oauth_vendor_callbacks_only(redirect_uris)) stored", M0147)
@@ -334,7 +410,15 @@ class Rollback(unittest.TestCase):
         self.assertIn("drop function if exists public.oauth_check_credit_put(uuid, text);", ROLLBACK)
         self.assertIn("drop function if exists public.oauth_check_credit_take(uuid, text);", ROLLBACK)
         self.assertIn("set status = 'enforced'", ROLLBACK)
-        self.assertIn("value = 'false'::jsonb where key = 'mcp' and plan_id = 'free'", ROLLBACK)
+        # Each plan's value as 0147 found it, not a guess (an admin may have set a paid plan false).
+        self.assertIn("insert into public.oauth_mcp_entitlement_before_0147 (plan_id, value)\n"
+                      "select plan_id, value from public.plan_entitlements where key = 'mcp'\non conflict (plan_id) do nothing;", M0147)
+        self.assertLess(M0147.index("insert into public.oauth_mcp_entitlement_before_0147"),
+                        M0147.index("update public.plan_entitlements set value = 'true'::jsonb"))
+        self.assertIn("from public.oauth_mcp_entitlement_before_0147 b\n where p.key = 'mcp' and p.plan_id = b.plan_id", ROLLBACK)
+        self.assertIn("drop table public.oauth_mcp_entitlement_before_0147;", ROLLBACK)
+        self.assertNotIn("plan_id = 'free'", code(ROLLBACK))
+        self.assertIn("REGISTRATION MAY BE CLOSED FOR A WHILE AFTERWARDS", ROLLBACK)
         self.assertTrue(ROLLBACK.lstrip().splitlines()[0].startswith("-- rollback_0147"))
         self.assertIn("\nbegin;\n", ROLLBACK)
         self.assertTrue(ROLLBACK.rstrip().endswith("commit;"))
