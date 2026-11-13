@@ -893,6 +893,46 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T17:49:51Z"
+    },
+    {
+      "jobId": "3069ec2f-2f68-40a8-bcbe-fc4c5f9111bc",
+      "assetId": "54650bf2-fd78-52c5-b2b6-0a463424c9f7",
+      "sha256": "527ef06fdcd22b0613d2f46ba3bc1dff16ef5fdbd63f2fcb97341154dede2a34",
+      "modelId": "ideogram-4.5",
+      "modelName": "Ideogram 4.5",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Instagram-style product ad, vertical: an unbranded glass bottle of cold-brew coffee on ice cubes splashing, deep brown and cream palette, clean studio light, headline text reading \"WAKE UP LOUDER\" in heavy condensed type, small text \"cold brew, no compromise\". Premium advertising photography.",
+      "createdAt": "2026-11-13T20:31:10Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "ideogram-4-5",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2276,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-13T21:20:11Z"
     }
   ]
 }

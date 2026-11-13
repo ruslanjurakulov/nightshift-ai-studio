@@ -111,6 +111,8 @@ import s21Poster from "@/components/site/showcase/64a7c2b8-a6c1-4359-9961-a1a276
 import s21PosterSm from "@/components/site/showcase/64a7c2b8-a6c1-4359-9961-a1a2760f1cbf/poster-sm.webp";
 import s22Poster from "@/components/site/showcase/38c427b0-c41b-4d16-86ca-14dc2e69ec27/poster.webp";
 import s22PosterSm from "@/components/site/showcase/38c427b0-c41b-4d16-86ca-14dc2e69ec27/poster-sm.webp";
+import s23Poster from "@/components/site/showcase/3069ec2f-2f68-40a8-bcbe-fc4c5f9111bc/poster.webp";
+import s23PosterSm from "@/components/site/showcase/3069ec2f-2f68-40a8-bcbe-fc4c5f9111bc/poster-sm.webp";
 
 export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
   "a04d5d55-27ef-4cae-95a2-25488503829e": { poster: s0Poster.src, posterSm: s0PosterSm.src, clip: { mp4: s0Mp4, webm: s0Webm, smMp4: s0SmMp4, smWebm: s0SmWebm } },
@@ -136,4 +138,5 @@ export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
   "1504b313-3a3c-4e78-bfda-5bca3ef7f3da": { poster: s20Poster.src, posterSm: s20PosterSm.src, clip: null },
   "64a7c2b8-a6c1-4359-9961-a1a2760f1cbf": { poster: s21Poster.src, posterSm: s21PosterSm.src, clip: null },
   "38c427b0-c41b-4d16-86ca-14dc2e69ec27": { poster: s22Poster.src, posterSm: s22PosterSm.src, clip: null },
+  "3069ec2f-2f68-40a8-bcbe-fc4c5f9111bc": { poster: s23Poster.src, posterSm: s23PosterSm.src, clip: null },
 };
