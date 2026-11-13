@@ -1484,10 +1484,11 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 @media (min-width: 1024px) { .nx-sh-foot { position: absolute; top: 14px; left: 0; right: 0; justify-content: flex-end; padding-top: 0; } }
 
 /* The composer (components/landing/PromptBar.tsx): one glass box, "+" on the left, the box that grows to six lines, the output key
-   and the send key on the right. Liquid-glass recipe in our own CSS, its variables set on .nx-pbar itself. app/glass.css (#738)
-   now owns the shared --glass-* names on :root (a light-theme button recipe); the ones redefined here (--glass-blur, --glass-saturate,
-   --glass-tint) shadow it inside this box only, for a dark glass over a clip. Moving this box onto #738's names (--glass-saturate,
-   --glass-sheen, --glass-x/--glass-y) and dropping the local ones it does not define is a follow-up. A translucent surface that blurs and brightens the clip behind
+   and the send key on the right. Liquid glass on app/glass.css's names (#738): it takes the shared --glass-saturate as it is, and
+   uses --glass-sheen for the highlight under the pointer at --glass-x/--glass-y (the same two variables .ns-glass reads, written
+   by PromptBar). The box is always dark over a clip whatever the theme, so it sets its own --glass-blur, --glass-tint and
+   --glass-sheen on itself (the shared light-theme tint would wash the words out), and keeps the parts #738 has no name for
+   (--glass-bg, --glass-brightness, --glass-rim, --glass-shade, --glass-border) local. A translucent surface that blurs and brightens the clip behind
    it, a darker tint under the words (white on it stays above 4.5:1 over the brightest frame), a bright rim top and left, a softer
    shade bottom and right, a thin border that catches light, and a soft highlight under the pointer (two CSS variables, set at most
    once a frame, never on touch or under reduced motion). Without backdrop-filter it is a solid dark surface. */
@@ -1496,17 +1497,17 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
   --glass-bg: rgba(20, 20, 30, 0.46);
   --glass-tint: rgba(6, 6, 12, 0.5);
   --glass-blur: 22px;
-  --glass-saturate: 170%;
   --glass-brightness: 1.08;
   --glass-rim: rgba(255, 255, 255, 0.34);
   --glass-shade: rgba(0, 0, 0, 0.35);
   --glass-border: rgba(255, 255, 255, 0.22);
+  --glass-sheen: rgba(255, 255, 255, 0.14);
   --glass-x: 30%;
   --glass-y: 0%;
   position: relative; isolation: isolate; display: flex; align-items: flex-end; gap: 8px; width: 100%; padding: 8px; border-radius: 24px;
   border: 1px solid var(--glass-border);
   background:
-    radial-gradient(120px 80px at var(--glass-x) var(--glass-y), rgba(255, 255, 255, 0.14), transparent 70%),
+    radial-gradient(120px 80px at var(--glass-x) var(--glass-y), var(--glass-sheen), transparent 70%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 45%),
     linear-gradient(var(--glass-tint), var(--glass-tint)),
     var(--glass-bg);
