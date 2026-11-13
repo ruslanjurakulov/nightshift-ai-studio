@@ -46,28 +46,30 @@ def code(sql: str) -> str:
 GC_0147 = "b5d0423a7df82812106021e05488d9ad"
 LIFETIME = "max(least(coalesce(g.revoked_at, 'infinity'::timestamptz), g.absolute_expires_at))"
 HUNKS = [
-    ("declare\n  v_ended uuid[];\nbegin\n", "declare\n  v_ended uuid[];\n  v_kept  uuid[];\nbegin\n"),
     ("  v_ended := array(\n    select c.client_id from public.oauth_clients c\n     where c.created_at < now() - interval '24 hours'\n",
      "  -- 0161: ChatGPT registers ONE client per MCP server connection and signs in with it again after a disconnect or the\n"
      "  -- 90-day cap (OpenAI's auth guide: delete it and the person gets invalid_client and must re-create the plugin). So a\n"
-     "  -- ChatGPT-only client is not taken here for 30 days after the person's last connection with it ended, 0093's own\n"
-     "  -- retention of an ended grant (after that the grant goes, and the last delete below takes the client). At most 3 such\n"
-     "  -- clients a person, newest ended first, so approve-redeem-revoke cannot pin more rows than 0147 allowed.\n"
-     "  v_kept := array(\n"
-     "    select k.client_id from (\n"
-     "      select g.client_id,\n"
-     "             row_number() over (partition by g.user_id\n"
-     f"                                order by {LIFETIME} desc,\n"
-     "                                         g.client_id) as n\n"
-     "        from public.oauth_grants g\n"
-     "        join public.oauth_clients c on c.client_id = g.client_id\n"
-     "       where c.vendor and public.oauth_chatgpt_callbacks_only(c.redirect_uris) and g.activated_at is not null\n"
-     "       group by g.user_id, g.client_id\n"
-     f"      having {LIFETIME} < now()\n"
-     f"         and {LIFETIME} >= now() - interval '30 days'\n"
-     "    ) k where k.n <= 3);\n"
-     "  v_ended := array(\n    select c.client_id from public.oauth_clients c\n     where c.created_at < now() - interval '24 hours'\n"
-     "       and c.client_id <> all (v_kept)\n"),
+     "  -- ChatGPT-only client (oauth_clients.chatgpt) is not taken here for 30 days after the person's last connection with it\n"
+     "  -- ended, 0093's own retention of an ended grant (after that the grant goes, and the last delete below takes the client).\n"
+     "  -- At most 3 such clients a person, newest ended first, so approve-redeem-revoke cannot pin more than 3 rows an account.\n"
+     "  -- A left anti-join over the stored flag, not a per-row helper call and not an array test per candidate: both made a\n"
+     "  -- collection under a ChatGPT-class flood ten times slower than 0147's (Breach on #744).\n"
+     "  v_ended := array(\n"
+     "    with kept as (\n"
+     "      select k.client_id from (\n"
+     "        select g.client_id,\n"
+     f"               row_number() over (partition by g.user_id order by {LIFETIME} desc, g.client_id) as n\n"
+     "          from public.oauth_grants g\n"
+     "          join public.oauth_clients kc on kc.client_id = g.client_id\n"
+     "         where kc.chatgpt and g.activated_at is not null\n"
+     "         group by g.user_id, g.client_id\n"
+     f"        having {LIFETIME} < now()\n"
+     f"           and {LIFETIME} >= now() - interval '30 days'\n"
+     "      ) k where k.n <= 3)\n"
+     "    select c.client_id from public.oauth_clients c\n"
+     "      left join kept on kept.client_id = c.client_id\n"
+     "     where c.created_at < now() - interval '24 hours'\n"
+     "       and kept.client_id is null\n"),
 ]
 
 
@@ -91,7 +93,12 @@ class BuiltOn0147(unittest.TestCase):
     def test_it_defines_exactly_the_collector_and_the_helper(self):
         self.assertEqual(sorted(re.findall(r"create or replace function public\.(\w+)\(", code(M0161))),
                          ["oauth_chatgpt_callbacks_only", "oauth_gc"])
-        self.assertNotRegex(code(M0161), r"(?i)\b(create|alter|drop)\s+(table|policy|trigger|index)\b")
+        # Besides the two functions: exactly the stored flag and its partial index (the collector's cost fix), nothing else.
+        self.assertNotRegex(code(M0161), r"(?i)\b(create\s+table|create\s+policy|create\s+trigger|drop\s+\w+)\b")
+        self.assertEqual(re.findall(r"(?i)\balter\s+table\s+(\S+)", code(M0161)), ["public.oauth_clients"])
+        self.assertIn("add column if not exists chatgpt boolean generated always as (public.oauth_chatgpt_callbacks_only(redirect_uris)) stored;", M0161)
+        self.assertEqual(re.findall(r"(?i)create\s+index\s+if\s+not\s+exists\s+(\w+)", code(M0161)), ["oauth_clients_chatgpt_idx"])
+        self.assertIn("on public.oauth_clients (client_id) where chatgpt;", M0161)
 
     def test_the_md5_pins_describe_the_bodies(self):
         self.assertEqual(pg_md5(definition(M0147, "oauth_gc")), GC_0147)
@@ -119,8 +126,13 @@ class TheExceptionIsChatGPTsAndSmall(unittest.TestCase):
 
     def test_kept_means_30_days_3_a_person_redeemed_grants_only(self):
         gc = code(definition(M0161, "oauth_gc"))
-        self.assertIn("interval '30 days'", gc.split("v_kept := array(", 1)[1].split("v_ended := array(", 1)[0])
+        self.assertIn("interval '30 days'", gc.split("with kept as (", 1)[1].split("left join kept", 1)[0])
         self.assertIn("k.n <= 3", gc)
+        # The cost fix (Breach on #744): the kept set reads the stored flag, never the helper per row, and is an anti-join.
+        self.assertNotIn("oauth_chatgpt_callbacks_only", gc)
+        self.assertIn("kc.chatgpt", gc)
+        self.assertNotIn("v_kept", gc)
+        self.assertNotRegex(gc, r"<>\s*all\s*\(")
         self.assertIn("g.activated_at is not null", gc)
         # 0093's 30-day retention of an ended grant is what ends a kept client; it must still be there, unchanged.
         self.assertIn("or (revoked_at is not null and revoked_at < now() - interval '30 days')", gc)
@@ -131,6 +143,11 @@ class TheRollbackAndTheDoc(unittest.TestCase):
     def test_the_rollback_puts_0147s_body_back_verbatim_and_drops_the_helper(self):
         self.assertEqual(definition(ROLLBACK, "oauth_gc"), definition(M0147, "oauth_gc"))
         self.assertIn("drop function if exists public.oauth_chatgpt_callbacks_only(text[]);", ROLLBACK)
+        # The column depends on the helper, so it (and its index) go first.
+        order = [ROLLBACK.index(s) for s in ("drop index if exists public.oauth_clients_chatgpt_idx;",
+                                             "alter table public.oauth_clients drop column if exists chatgpt;",
+                                             "drop function if exists public.oauth_chatgpt_callbacks_only(text[]);")]
+        self.assertEqual(order, sorted(order))
         self.assertIn(GC_0147, ROLLBACK)
         self.assertTrue(ROLLBACK.rstrip().endswith("commit;") and "\nbegin;\n" in ROLLBACK)
 

@@ -24,26 +24,37 @@
 --   rules take it exactly as before: the ended grant goes at 30 days, then the client with no grant left.
 --   Why 30 days: it is how long 0093 already keeps an ended grant, so no other branch changes and no row lives longer than
 --   0093 would have kept it. Why 3 a person: 0147 section 5 closed approve-redeem-revoke loops that pinned rows (50 a day a
---   person); with a 30-day window and no bound, one free account could pin 1 500 vendor rows and 40 accounts the whole
---   vendor class (60 000, which Claude needs on every connection). With 3, the same takes 20 000 accounts, well past 0147's
---   own bound (about 300 accounts each holding 20 live connections). Who gains what: nothing new. A ChatGPT-class client's
+--   person); with a 30-day window and no bound, one free account could pin 1 500 vendor rows. The vendor class holds 60 000
+--   rows (Claude needs one on every connection); registrations at their hourly ceiling hold 48 000 of them for a day, which
+--   leaves about 12 000 that an attacker must fill with rows that outlive a day. Under 0147 an account can hold its 20 live
+--   connections plus those that ended in the last day, about 40 rows, so roughly 300 accounts fill it; 0161 adds at most 3
+--   kept rows an account (about 43), so roughly 280. Live connections stay the larger lever: kept clients alone would need
+--   about 4 000 accounts. Who gains what: nothing new. A ChatGPT-class client's
 --   code can only ever be delivered to ChatGPT's callback (0093 matches it exactly), and a kept client gives nobody a
 --   connection: every sign-in still shows the consent screen and needs the person's Allow.
 --   NOT covered, on purpose: a ChatGPT client nobody ever approved is still deleted after a day (0093); keeping those
 --   longer would let 2 000 unapproved registrations an hour fill the vendor cap. If ChatGPT registered and its first
 --   sign-in comes more than a day later, the person re-creates the plugin, and the error page now says so.
 --
--- ADDS: oauth_chatgpt_callbacks_only(text[]) (immutable, internal: no API role may call it).
+-- COST: the collector runs on every registration and code exchange. Its kept set reads a STORED flag
+--   (oauth_clients.chatgpt, generated from oauth_chatgpt_callbacks_only like 0147's `vendor`) through a partial index, and
+--   is a left anti-join, not a per-row helper call or an array test per candidate. Measured with 7 000 people holding 6
+--   ended ChatGPT clients each (42 000 rows): a first version of this file took 0.5 to 1 s a collection against 0147's 60
+--   to 110 ms; the helper call alone cost 290 ms of it, the flag 75 ms.
+--
+-- ADDS: oauth_chatgpt_callbacks_only(text[]) (immutable, internal: no API role may call it); the generated column
+--   oauth_clients.chatgpt and the partial index oauth_clients_chatgpt_idx.
 -- REPLACES (md5 drift guard: 0147's body, or this file's own on a replay; whitespace runs read as one space):
 --   oauth_gc (0147; never redefined since). Signature, SECURITY DEFINER, the pinned search_path and the grants (none) stay.
--- NOT CHANGED: every other 0093 / 0147 function, oauth_limits(), the vendor class and its budgets, every table and grant.
+-- NOT CHANGED: every other 0093 / 0147 function, oauth_limits(), the vendor class and its budgets, every grant; no other
+--   table or column.
 --
 -- NUMBER. 0161, assigned to this branch: 0157 is the latest on main, 0158 to 0160 belong to other branches. Needs 0093 and
 --   0147; names nothing of 0149's to 0157's.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
 --   select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = 'public.oauth_gc()'::regprocedure;
---   expected BEFORE b5d0423a7df82812106021e05488d9ad (0147), AFTER ad18c0ed443ca49fd2943c1325bac788 (this file).
+--   expected BEFORE b5d0423a7df82812106021e05488d9ad (0147), AFTER d9262c411e083e9f8d970224a6cad17c (this file).
 -- Undo: docs/sql/rollback_0161_mcp_chatgpt_client.sql (owner-applied). Re-running 0147 after this file is refused by 0147's
 --   own drift guard (oauth_gc is not a body it knows): undo 0161 first, re-run 0147, then apply 0161 again.
 
@@ -62,7 +73,7 @@ begin
     raise exception '0161 needs the vendor registration class: apply 0147_mcp_free_tier.sql first';
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_gc()');
-  if h is null or h <> all (array['b5d0423a7df82812106021e05488d9ad', 'ad18c0ed443ca49fd2943c1325bac788']) then
+  if h is null or h <> all (array['b5d0423a7df82812106021e05488d9ad', 'd9262c411e083e9f8d970224a6cad17c']) then
     raise exception '0161 found public.oauth_gc() with a body that is neither 0147''s nor 0161''s (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_chatgpt_callbacks_only(text[])');
@@ -89,6 +100,12 @@ create or replace function public.oauth_chatgpt_callbacks_only(p text[]) returns
 $$;
 revoke all on function public.oauth_chatgpt_callbacks_only(text[]) from public, anon, authenticated, service_role;
 
+-- Stored, like 0147's `vendor`, so the collector reads a flag instead of calling the helper for every grant; existing rows
+-- are classed when the column is added. A later create-or-replace of the helper does NOT reclassify stored rows.
+alter table public.oauth_clients
+  add column if not exists chatgpt boolean generated always as (public.oauth_chatgpt_callbacks_only(redirect_uris)) stored;
+create index if not exists oauth_clients_chatgpt_idx on public.oauth_clients (client_id) where chatgpt;
+
 -- ───────────────────────────────────────────────────────────────────────────
 -- 2. The collector: 0147's body plus the ChatGPT hunk (header)
 -- ───────────────────────────────────────────────────────────────────────────
@@ -98,7 +115,6 @@ create or replace function public.oauth_gc() returns void
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   v_ended uuid[];
-  v_kept  uuid[];
 begin
   delete from public.oauth_auth_requests where ctid in (
     select ctid from public.oauth_auth_requests where expires_at < now() limit 200);
@@ -117,26 +133,27 @@ begin
   -- that ended are deleted, so a grant made meanwhile for the same client stays, and so does its client.
   -- 0161: ChatGPT registers ONE client per MCP server connection and signs in with it again after a disconnect or the
   -- 90-day cap (OpenAI's auth guide: delete it and the person gets invalid_client and must re-create the plugin). So a
-  -- ChatGPT-only client is not taken here for 30 days after the person's last connection with it ended, 0093's own
-  -- retention of an ended grant (after that the grant goes, and the last delete below takes the client). At most 3 such
-  -- clients a person, newest ended first, so approve-redeem-revoke cannot pin more rows than 0147 allowed.
-  v_kept := array(
-    select k.client_id from (
-      select g.client_id,
-             row_number() over (partition by g.user_id
-                                order by max(least(coalesce(g.revoked_at, 'infinity'::timestamptz), g.absolute_expires_at)) desc,
-                                         g.client_id) as n
-        from public.oauth_grants g
-        join public.oauth_clients c on c.client_id = g.client_id
-       where c.vendor and public.oauth_chatgpt_callbacks_only(c.redirect_uris) and g.activated_at is not null
-       group by g.user_id, g.client_id
-      having max(least(coalesce(g.revoked_at, 'infinity'::timestamptz), g.absolute_expires_at)) < now()
-         and max(least(coalesce(g.revoked_at, 'infinity'::timestamptz), g.absolute_expires_at)) >= now() - interval '30 days'
-    ) k where k.n <= 3);
+  -- ChatGPT-only client (oauth_clients.chatgpt) is not taken here for 30 days after the person's last connection with it
+  -- ended, 0093's own retention of an ended grant (after that the grant goes, and the last delete below takes the client).
+  -- At most 3 such clients a person, newest ended first, so approve-redeem-revoke cannot pin more than 3 rows an account.
+  -- A left anti-join over the stored flag, not a per-row helper call and not an array test per candidate: both made a
+  -- collection under a ChatGPT-class flood ten times slower than 0147's (Breach on #744).
   v_ended := array(
+    with kept as (
+      select k.client_id from (
+        select g.client_id,
+               row_number() over (partition by g.user_id order by max(least(coalesce(g.revoked_at, 'infinity'::timestamptz), g.absolute_expires_at)) desc, g.client_id) as n
+          from public.oauth_grants g
+          join public.oauth_clients kc on kc.client_id = g.client_id
+         where kc.chatgpt and g.activated_at is not null
+         group by g.user_id, g.client_id
+        having max(least(coalesce(g.revoked_at, 'infinity'::timestamptz), g.absolute_expires_at)) < now()
+           and max(least(coalesce(g.revoked_at, 'infinity'::timestamptz), g.absolute_expires_at)) >= now() - interval '30 days'
+      ) k where k.n <= 3)
     select c.client_id from public.oauth_clients c
+      left join kept on kept.client_id = c.client_id
      where c.created_at < now() - interval '24 hours'
-       and c.client_id <> all (v_kept)
+       and kept.client_id is null
        and exists (select 1 from public.oauth_grants g where g.client_id = c.client_id)
        and not exists (select 1 from public.oauth_grants g where g.client_id = c.client_id
                         and coalesce(g.revoked_at, 'infinity'::timestamptz) >= now() - interval '24 hours'
@@ -175,7 +192,7 @@ revoke all on function public.oauth_gc() from public, anon, authenticated, servi
 
 do $$
 begin
-  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure('public.oauth_gc()')) is distinct from 'ad18c0ed443ca49fd2943c1325bac788' then
+  if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure('public.oauth_gc()')) is distinct from 'd9262c411e083e9f8d970224a6cad17c' then
     raise exception '0161 end state: public.oauth_gc() does not hold the body this file expects';
   end if;
   if exists (select 1 from pg_proc p where p.oid = 'public.oauth_gc()'::regprocedure
@@ -209,6 +226,18 @@ begin
      or public.oauth_chatgpt_callbacks_only(array[]::text[]) then
     raise exception '0161 end state: which registrations are ChatGPT''s is not what this file defines';
   end if;
+  -- `if not exists` skips a name already there, so the column's SHAPE and the index are asserted, not only their presence.
+  if (select pg_get_expr(d.adbin, d.adrelid) from pg_attrdef d
+        join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+       where d.adrelid = 'public.oauth_clients'::regclass and a.attname = 'chatgpt')
+       is distinct from 'oauth_chatgpt_callbacks_only(redirect_uris)'
+     or (select attgenerated from pg_attribute where attrelid = 'public.oauth_clients'::regclass and attname = 'chatgpt') is distinct from 's'
+     or (select format_type(atttypid, atttypmod) from pg_attribute
+          where attrelid = 'public.oauth_clients'::regclass and attname = 'chatgpt' and not attisdropped) is distinct from 'boolean'
+     or (select pg_get_expr(i.indpred, i.indrelid) from pg_index i where i.indexrelid = to_regclass('public.oauth_clients_chatgpt_idx'))
+       is distinct from 'chatgpt' then
+    raise exception '0161 end state: oauth_clients.chatgpt is not the boolean generated from oauth_chatgpt_callbacks_only(redirect_uris), or its partial index is missing';
+  end if;
   -- Every ChatGPT callback is also a vendor callback (the collector reads both), so the ChatGPT rule only narrows 0147's class.
   if not public.oauth_vendor_callbacks_only(array['https://chatgpt.com/connector_platform_oauth_redirect', 'https://chatgpt.com/connector/oauth/abc_D-1']) then
     raise exception '0161 end state: ChatGPT''s callbacks are not in 0147''s vendor class';
@@ -220,9 +249,11 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
 --   md5(regexp_replace((select prosrc from pg_proc where oid = 'public.oauth_gc()'::regprocedure), '\s+', ' ', 'g'))
---     = 'ad18c0ed443ca49fd2943c1325bac788' as collector_is_0161s,
---   position('v_kept' in pg_get_functiondef('public.oauth_gc()'::regprocedure)) > 0
+--     = 'd9262c411e083e9f8d970224a6cad17c' as collector_is_0161s,
+--   position('kc.chatgpt' in pg_get_functiondef('public.oauth_gc()'::regprocedure)) > 0
 --     and position('v_ended' in pg_get_functiondef('public.oauth_gc()'::regprocedure)) > 0 as chatgpt_kept_and_ended_rows_still_go,
+--   (select attgenerated = 's' from pg_attribute where attrelid = 'public.oauth_clients'::regclass and attname = 'chatgpt')
+--     and to_regclass('public.oauth_clients_chatgpt_idx') is not null as chatgpt_flag_stored,
 --   public.oauth_chatgpt_callbacks_only(array['https://chatgpt.com/connector_platform_oauth_redirect'])
 --     and not public.oauth_chatgpt_callbacks_only(array['https://claude.ai/api/mcp/auth_callback']) as chatgpt_class_exact,
 --   not has_function_privilege('anon', 'public.oauth_chatgpt_callbacks_only(text[])', 'EXECUTE')

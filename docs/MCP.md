@@ -192,9 +192,12 @@ OpenAI's guide: https://developers.openai.com/api/docs/guides/custom-mcp-server
    dynamic registration: Nightshift registers ChatGPT itself and publishes no
    Client ID Metadata Document.
 3. Confirm **I understand and want to continue**, sign in and approve on the
-   Nightshift page when it opens (sign in if asked, check that it names ChatGPT and
-   `chatgpt.com`, choose the monthly credit limit: default 500, up to 20 000,
-   0 means read-only; **Allow**), then press **Create as a plugin** and install it.
+   Nightshift page when it opens (sign in if asked; it should name ChatGPT and
+   `chatgpt.com`, which confirms the kind of app and where it returns, not whose
+   ChatGPT account asked: the name is whatever the registrant chose, so approve only
+   a sign-in you started yourself a moment ago; choose the monthly credit limit:
+   default 500, up to 20 000, 0 means read-only; **Allow**), then press
+   **Create as a plugin** and install it.
 4. In a chat type **@** and pick the Nightshift plugin. Read tools run at once;
    `create_video` and `publish_video` ask for confirmation (they carry no
    `readOnlyHint`). Check each action before you approve it.

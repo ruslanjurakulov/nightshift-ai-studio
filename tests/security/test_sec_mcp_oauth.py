@@ -1255,7 +1255,7 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     chatgpt = sec_db.MIGRATIONS / "0161_mcp_chatgpt_client.sql"
     if chatgpt.exists():
         sec_db.apply_files(db.dsn, [chatgpt])
-        assert db.su("select position('v_kept' in pg_get_functiondef('public.oauth_gc()'::regprocedure)) > 0")[0][0] is True
+        assert db.su("select position('kc.chatgpt' in pg_get_functiondef('public.oauth_gc()'::regprocedure)) > 0")[0][0] is True
 
 
 # ── Lens-386A: PKCE is checked by the database, a limit of 0 is read-only for the operator too,

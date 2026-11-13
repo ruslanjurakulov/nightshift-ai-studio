@@ -8,8 +8,9 @@
 -- WHAT IT DOES, in one transaction:
 --   0. REFUSES (changes nothing) if public.oauth_gc() is not 0161's body (a later change would be undone).
 --   1. Puts 0147's oauth_gc back, verbatim, with 0147's grants (none).
---   2. Drops public.oauth_chatgpt_callbacks_only(text[]) (only 0161's collector read it).
---   3. Asserts the end state: oauth_gc is 0147's body and an internal SECURITY DEFINER, and the helper is gone.
+--   2. Drops the index oauth_clients_chatgpt_idx, the generated column oauth_clients.chatgpt, then
+--      public.oauth_chatgpt_callbacks_only(text[]) (only 0161's collector read them; the column is recomputable).
+--   3. Asserts the end state: oauth_gc is 0147's body and an internal SECURITY DEFINER; the helper, column and index are gone.
 
 begin;
 set local lock_timeout = '5s';
@@ -19,7 +20,7 @@ declare
   h text;
 begin
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.oauth_gc()');
-  if h is distinct from 'ad18c0ed443ca49fd2943c1325bac788' then
+  if h is distinct from 'd9262c411e083e9f8d970224a6cad17c' then
     raise exception 'rollback 0161: public.oauth_gc() is not 0161''s body (md5 %): a later change would be undone; read the live body first', h;
   end if;
 end $$;
@@ -81,6 +82,8 @@ $$;
 
 revoke all on function public.oauth_gc() from public, anon, authenticated, service_role;
 
+drop index if exists public.oauth_clients_chatgpt_idx;
+alter table public.oauth_clients drop column if exists chatgpt;
 drop function if exists public.oauth_chatgpt_callbacks_only(text[]);
 
 do $$
@@ -95,8 +98,10 @@ begin
      or has_function_privilege('service_role', 'public.oauth_gc()', 'EXECUTE') then
     raise exception 'rollback 0161 end state: public.oauth_gc() is not 0147''s internal SECURITY DEFINER body';
   end if;
-  if to_regprocedure('public.oauth_chatgpt_callbacks_only(text[])') is not null then
-    raise exception 'rollback 0161 end state: public.oauth_chatgpt_callbacks_only(text[]) is still there';
+  if to_regprocedure('public.oauth_chatgpt_callbacks_only(text[])') is not null
+     or to_regclass('public.oauth_clients_chatgpt_idx') is not null
+     or exists (select 1 from pg_attribute where attrelid = 'public.oauth_clients'::regclass and attname = 'chatgpt' and not attisdropped) then
+    raise exception 'rollback 0161 end state: oauth_chatgpt_callbacks_only, oauth_clients.chatgpt or its index is still there';
   end if;
 end $$;
 

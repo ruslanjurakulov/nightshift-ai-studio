@@ -247,7 +247,10 @@ export function McpPage({
   // The first tab that connects: ChatGPT once the sign-in is live, Cursor (an API key) until then.
   const defaultTab = oauthLive ? "chatgpt" : "cursor";
   const open = initialTab && tabs.some((t) => t.id === initialTab) ? initialTab : defaultTab;
-  const worksWith = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) !== "soon").map((x) => x.label);
+  // "Works with" names only what has been seen to connect (rule 5): a "ready" assistant meets its vendor's published rules
+  // but nobody has connected the product itself yet, so it gets its own line, and an "unverified" one is named on neither.
+  const worksWith = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "available").map((x) => x.label);
+  const readyWith = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "ready").map((x) => x.label);
 
   // With the sign-in off (MCP_OAUTH_LIVE) Claude and ChatGPT are "coming soon": nothing on the page may read as if they connect today.
   const soonIds = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "soon").map((x) => x.id);
@@ -264,6 +267,11 @@ export function McpPage({
           <p className="sr-only">
             {c.worksWith}: {worksWith.join(", ")}
           </p>
+          {readyWith.length > 0 && (
+            <p className="sr-only">
+              {c.ready.badge}: {readyWith.join(", ")}
+            </p>
+          )}
           <div className="nx-mcp-top">
             <div className={bleed ? "nx-mcp-copy nx-bleed-panel" : "nx-mcp-copy"}>
               {bleed}

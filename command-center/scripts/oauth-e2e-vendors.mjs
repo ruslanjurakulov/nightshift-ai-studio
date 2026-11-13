@@ -3,7 +3,7 @@
  * played by the OFFICIAL MCP SDK client (discovery, dynamic client registration, PKCE, token, MCP calls) with each vendor's
  * own callback address and registration, and by raw HTTP for what the SDK does not check itself.
  *
- *   node scripts/oauth-e2e-vendors.mjs http://localhost:3100 'sb-127-auth-token=…' 'postgresql://…/ns_oauth_e2e'
+ *   node scripts/oauth-e2e-vendors.mjs http://localhost:3100 'sb-127-auth-token=…' 'postgresql://…/ns_oauth_e2e' [chatgpt,claude]
  *
  * What each vendor documents and this script reproduces (read 2026-11-13; lib/dev/mcp-availability.ts, docs/MCP.md):
  *  - ChatGPT (https://developers.openai.com/plugins/build/auth): DCR once per connection, then the SAME client id for every
@@ -26,7 +26,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import assert from "node:assert/strict";
 
-const [BASE = "http://localhost:3100", COOKIE = "", DSN = ""] = process.argv.slice(2);
+const [BASE = "http://localhost:3100", COOKIE = "", DSN = "", ONLY = "chatgpt,claude"] = process.argv.slice(2);
 const MCP = new URL("/api/mcp", BASE);
 const log = (...a) => console.log("•", ...a);
 const sql = (q) => execFileSync("psql", [DSN, "-v", "ON_ERROR_STOP=1", "-Atc", q], { encoding: "utf8" }).trim();
@@ -268,8 +268,9 @@ async function main() {
   assert.ok(meta.registration_endpoint && meta.code_challenge_methods_supported.includes("S256") && meta.token_endpoint_auth_methods_supported.includes("none"));
   assert.ok(!meta.scopes_supported.includes("openid"), "no OIDC scopes: ChatGPT would request them by default");
 
-  // E2E_VENDORS=claude runs one vendor's flows (a small sandbox may not hold `next dev` for both); the reconnect checks below always run.
-  const only = (process.env.E2E_VENDORS ?? "chatgpt,claude").split(",");
+  // A fourth argument, e.g. `claude`, runs one vendor's flows (a small sandbox may not hold `next dev` for both); the reconnect
+  // checks below always run. An argument, not an environment variable: this is a test harness, not app configuration.
+  const only = ONLY.split(",");
   for (const v of VENDORS.filter((x) => only.includes(x.id))) {
     const { provider: p } = await vendorFlow(v, meta);
     const clientId = p._info.client_id;
