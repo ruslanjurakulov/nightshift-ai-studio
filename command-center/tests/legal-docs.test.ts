@@ -139,6 +139,27 @@ describe("legal texts", () => {
     });
   }
 
+  // docs/GEO_BLOCK.md: a model sold by country is hidden and refused by the country of the request's IP address. The policy must say
+  // what is looked up, why, where, and that this check stores nothing; the DB-IP licence asks for its credit, linked.
+  for (const [locale, texts] of Object.entries(LEGAL_TEXTS)) {
+    it(`${locale}: the Privacy Policy says the request's country is looked up from its IP address, why, and that it is not stored`, () => {
+      const collect = texts.privacy.sections.find((s) => s.id === "information-we-collect")!;
+      const said = allText({ ...texts.privacy, sections: [collect] }).filter((p) => p.includes("https://db-ip.com"));
+      expect(said).toHaveLength(1);
+      const words = {
+        en: ["IP address", "country", "on our own server", "sent to no one", "stores neither the address nor the country", "VPN"],
+        ru: ["IP-адрес", "стран", "на нашем собственном сервере", "никому не передаётся", "не сохраняет ни адрес, ни страну", "VPN"],
+        uz: ["IP manzil", "mamlakat", "oʻz serverimizda", "hech kimga yuborilmaydi", "manzilni ham, mamlakatni ham saqlamaydi", "VPN"],
+      }[locale as "en" | "ru" | "uz"];
+      for (const w of words) expect(said[0]).toContain(w);
+      expect(said[0]).toContain("[IP Geolocation by DB-IP](https://db-ip.com)");
+      // No vendor of a model, and no country, is named here: the list is the registry's, not the policy's.
+      expect(said[0]).not.toMatch(/meta|muse|India|Hindiston|Индия|Russia|Rossiya|Россия/i);
+      // Uzbek: oʻ / gʻ with U+02BB and the tutuq belgisi with U+02BC, never a typewriter or curly quote.
+      if (locale === "uz") expect(said[0]).not.toMatch(/['‘’`]/);
+    });
+  }
+
   for (const [locale, texts] of Object.entries(LEGAL_TEXTS)) {
     if (locale === "en") continue;
     describe(locale, () => {

@@ -27,7 +27,7 @@ vi.mock("next/headers", () => ({
 
 const { GET } = await import("@/app/i/[token]/route");
 const { POST: joinRoute } = await import("@/app/api/invite/join/route");
-const { joinFromCookie, takeVisit, INVITE_VISIT_LIMIT } = await import("@/lib/server/friend-invites");
+const { joinFromCookie, takeVisit, visitorKey, INVITE_VISIT_LIMIT } = await import("@/lib/server/friend-invites");
 const { INVITE_COOKIE } = await import("@/lib/friend-invites");
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
@@ -51,7 +51,7 @@ beforeEach(() => {
 
 describe("GET /i/<token>", () => {
   it("a live link, signed out: cookie set, sent to /signup with no token anywhere in the address", async () => {
-    const res = await visit(TOKEN, { "x-forwarded-for": "203.0.113.1" });
+    const res = await visit(TOKEN, { "x-nightshift-client-ip": "203.0.113.1" });
     expect(res.status).toBe(307);
     const location = new URL(res.headers.get("location")!);
     expect(location.pathname + location.search).toBe("/signup");
@@ -67,14 +67,14 @@ describe("GET /i/<token>", () => {
   });
 
   it("accepts an upper-case token and stores it normalised", async () => {
-    const res = await visit(TOKEN.toUpperCase(), { "x-forwarded-for": "203.0.113.2" });
+    const res = await visit(TOKEN.toUpperCase(), { "x-nightshift-client-ip": "203.0.113.2" });
     expect(res.headers.get("set-cookie")).toContain(`${INVITE_COOKIE}=${TOKEN}`);
   });
 
   it.each(["short", "x".repeat(32), `${TOKEN}0`, "A".repeat(40)])(
     "%s is the one neutral page, with no database call and no cookie",
     async (token) => {
-      const res = await visit(token, { "x-forwarded-for": "203.0.113.3" });
+      const res = await visit(token, { "x-nightshift-client-ip": "203.0.113.3" });
       expect(new URL(res.headers.get("location")!).pathname + new URL(res.headers.get("location")!).search).toBe("/invite?s=invalid");
       expect(res.headers.get("set-cookie")).toBeNull();
       expect(res.headers.get("referrer-policy")).toBe("no-referrer");
@@ -87,7 +87,7 @@ describe("GET /i/<token>", () => {
     for (const [peek, error] of [[false, null], [null, null], [true, { code: "XX000" }]] as const) {
       h.peek = peek;
       h.peekError = error;
-      const res = await visit(TOKEN, { "x-forwarded-for": "203.0.113.4" });
+      const res = await visit(TOKEN, { "x-nightshift-client-ip": "203.0.113.4" });
       seen.add(`${res.status} ${res.headers.get("location")} ${res.headers.get("set-cookie")}`);
     }
     expect([...seen]).toEqual(["307 https://nightshift.test/invite?s=invalid null"]);
@@ -95,17 +95,34 @@ describe("GET /i/<token>", () => {
 
   it("signed in: told plainly that an invite is for new accounts; nothing stored, nothing asked", async () => {
     h.user = { id: "u1" };
-    const res = await visit(TOKEN, { "x-forwarded-for": "203.0.113.5" });
+    const res = await visit(TOKEN, { "x-nightshift-client-ip": "203.0.113.5" });
     expect(res.headers.get("location")).toBe("https://nightshift.test/invite?s=existing");
     expect(res.headers.get("set-cookie")).toBeNull();
     expect(h.rpc).not.toHaveBeenCalled();
   });
 
   it("answers a visitor who asks too fast with the neutral page, never an error that says so", async () => {
-    const ip = { "x-forwarded-for": "198.51.100.77" };
+    const ip = { "x-nightshift-client-ip": "198.51.100.77" };
     let last = "";
     for (let i = 0; i < INVITE_VISIT_LIMIT.max + 3; i++) last = (await visit(TOKEN, ip)).headers.get("location") ?? "";
     expect(last).toBe("https://nightshift.test/invite?s=invalid");
+  });
+
+  it("a visitor cannot pick a fresh bucket with a header of their own (only the one Caddy writes is read)", async () => {
+    const real = { "x-nightshift-client-ip": "198.51.100.78" };
+    let last = "";
+    for (let i = 0; i < INVITE_VISIT_LIMIT.max + 3; i++) {
+      const spoof = `203.0.113.${i % 250}`;
+      last = (await visit(TOKEN, { ...real, "x-forwarded-for": spoof, "x-vercel-forwarded-for": spoof, "x-real-ip": spoof })).headers.get("location") ?? "";
+    }
+    expect(last).toBe("https://nightshift.test/invite?s=invalid");
+  });
+
+  it("the key is the trusted address only, and the platform's own on Vercel", () => {
+    const h1 = new Headers({ "x-nightshift-client-ip": "198.51.100.9", "x-forwarded-for": "1.2.3.4", "x-vercel-forwarded-for": "5.6.7.8" });
+    expect(visitorKey(h1, false)).toBe("198.51.100.9");
+    expect(visitorKey(h1, true)).toBe("5.6.7.8");
+    expect(visitorKey(new Headers({ "x-forwarded-for": "1.2.3.4", "x-vercel-forwarded-for": "5.6.7.8" }), false)).toBe("unknown");
   });
 
   it("the visit counter is per window and per address", () => {

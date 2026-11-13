@@ -1,0 +1,13 @@
+0.0.0.0,0.255.255.255,ZZ
+1.0.0.0,1.0.0.255,AU
+1.0.1.0,5.255.255.255,US
+6.0.0.0,6.255.255.255,IN
+7.0.0.0,7.255.255.255,UZ
+8.0.0.0,8.8.8.255,US
+8.8.9.0,9.255.255.255,RU
+10.0.0.0,255.255.255.255,ZZ
+::,2001:dff:ffff:ffff:ffff:ffff:ffff:ffff,ZZ
+2001:e00::,2001:e00:ffff:ffff:ffff:ffff:ffff:ffff,IN
+2001:e01::,2a00:ffff:ffff:ffff:ffff:ffff:ffff:ffff,DE
+2a01::,2a01::ffff,UZ
+2a01::1:0,ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff,ZZ

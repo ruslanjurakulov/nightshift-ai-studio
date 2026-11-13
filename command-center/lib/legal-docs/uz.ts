@@ -28,6 +28,7 @@ export const uz: LegalTexts = {
               "Siz ruxsat bergan Google foydalanuvchi maʼlumotlari — 3-boʻlimga qarang.",
               "Xat sozlamalari: video tayyor boʻlganda xat olishni va haftalik xulosani xohlaysizmi, hamda ilovadan qaysi tilda foydalanishingiz, xatlar shu tilda yozilishi uchun. «Video tayyor» xatlari siz boshlagan ish haqidagi xizmat xabarlari: ular sozlamalarda yoki ulardan istalganidagi havola orqali oʻchirmaguningizcha yoqilgan. Haftalik xulosa oʻzingiz yoqmaguningizcha oʻchirilgan. Reklama xatlarini yubormaymiz.",
               "Texnik maʼlumotlar: hosting va maʼlumotlar bazasi provayderlarimiz Xizmatni ishlatish va himoya qilish uchun standart soʻrov jurnallarini (IP manzil, brauzer turi, soʻrov vaqti) yuritadi. Biz analitika, reklama yoki kuzatuv vositalaridan foydalanmaymiz.",
+              "Soʻrov kelgan mamlakat, faqat ayrim modellar uchun: model yetkazib beruvchisi undan ayrim mamlakatlarda foydalanishga ruxsat bermasa, serverimiz sizga shu modelni taklif qilish yoki qilmaslikni hal etish uchun soʻrovingiz kelgan IP manzil boʻyicha mamlakatni aniqlaydi. Aniqlash oʻz serverimizda, unda saqlanadigan DB-IP bazasining nusxasi boʻyicha bajariladi ([IP Geolocation by DB-IP](https://db-ip.com)); buning uchun manzilingiz hech kimga yuborilmaydi va bu tekshiruv manzilni ham, mamlakatni ham saqlamaydi. Ulanish qaysi manzildan kelgan boʻlsa, oʻsha manzil tekshiriladi, shuning uchun VPN yoki proksi ishlatilganda oʻsha xizmatning mamlakati aniqlanadi.",
             ],
           },
         ],
