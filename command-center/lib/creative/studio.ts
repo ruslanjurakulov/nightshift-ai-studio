@@ -42,6 +42,8 @@ import {
   isUuid,
 } from "@/lib/creative/operations";
 import { VOICES } from "@/lib/ttsModels";
+import { registryName } from "@/lib/creative/model-names";
+import { planGate } from "@/lib/models-discovery";
 import { formatCredits } from "@/lib/credits";
 import { formatTimecode } from "@/components/ui/Timecode";
 import { fmt } from "@/lib/i18n/core";
@@ -241,10 +243,50 @@ export function promptRule(c: StudioCapability): "required" | "optional" | "none
   return "required";
 }
 
+/**
+ * The shapes and lengths offered when a model's own lists are NOT known (sellable_models() did not answer, or a model built by
+ * hand): the three every surface outside the Studio panel (the Assistant, workflows) still offers. The panel itself builds its
+ * keys from the picked model's spec (shapesFor / durationsFor below): a model that lists 4, 6 and 8 seconds is never offered 5.
+ */
 export const ASPECT_RATIOS = ["16:9", "9:16", "1:1"] as const;
 export type AspectRatio = (typeof ASPECT_RATIOS)[number];
 export const VIDEO_DURATIONS = [5, 10] as const;
 export type VideoDuration = (typeof VIDEO_DURATIONS)[number];
+
+/** 0126's creative_params_problem: what an aspect_ratio must look like to be judged at all. */
+export const SHAPE_RE = /^[1-9][0-9]?:[1-9][0-9]?$/;
+/** 0126's creative_params_problem: a clip is a whole number of seconds from 1 to 60. */
+export const CLIP_SECONDS_MIN = 1;
+export const CLIP_SECONDS_MAX = 60;
+/**
+ * 0156's creative_params_problem: what a resolution a request NAMES must look like (the registry schema's own shape: 768p, 2k, 4k
+ * as well as 720p). creative_price then sells a named resolution only at its own variant's price (0070 / 0156): a variant without a
+ * credit_prices row is answered `unpriced`, which the key shows as it is.
+ */
+export const NAMED_RESOLUTION_RE = /^([0-9]{3,4}p|[24]k)$/;
+
+/** The order shapes are offered in: the three everyone knows first, then wide to tall. A shape not listed here goes last. */
+const SHAPE_ORDER = ["16:9", "9:16", "1:1", "21:9", "4:3", "3:2", "5:4", "4:5", "2:3", "3:4", "9:21", "5:2"];
+
+export function isShape(v: unknown): v is string {
+  return typeof v === "string" && SHAPE_RE.test(v);
+}
+
+export function isClipSeconds(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v >= CLIP_SECONDS_MIN && v <= CLIP_SECONDS_MAX;
+}
+
+function orderShapes(list: Iterable<string>): string[] {
+  const rank = (s: string) => {
+    const i = SHAPE_ORDER.indexOf(s);
+    return i >= 0 ? i : SHAPE_ORDER.length;
+  };
+  return [...new Set(list)].filter(isShape).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+function orderSeconds(list: Iterable<number>): number[] {
+  return [...new Set(list)].filter(isClipSeconds).sort((a, b) => a - b);
+}
 
 export const PROMPT_MAX = 4000;
 
@@ -313,6 +355,204 @@ export interface StudioModel {
    * the plan dialog reads it, to name what would unlock a refused model.
    */
   entitlement?: string | null;
+  /**
+   * The shapes the spec lists (spec.aspect_ratios), and per tool where it narrows them (spec.aspect_ratios_by_capability). Absent =
+   * the spec was not read: the panel then offers ASPECT_RATIOS and the quote decides. 0155 refuses a shape the list does not name,
+   * so the panel offers exactly this list.
+   */
+  aspectRatios?: string[];
+  shapesByCapability?: Partial<Record<string, string[]>>;
+  /** The clip lengths the spec lists (spec.durations_s), shortest first. Absent = not read (VIDEO_DURATIONS is offered). */
+  durations?: number[];
+  /** The resolutions the spec lists, as listed (spec.resolutions), and the one a job runs at when it names none. */
+  resolutions?: string[];
+  defaultResolution?: string | null;
+  /**
+   * The price follows the resolution (spec.price_variants_by resolution / resolution_audio with a pinned default_resolution, the
+   * only case creative_price prices per resolution, 0070). Only then is a resolution offered: on any other model every
+   * resolution would be sold at the one rate while the vendor bills each at its own.
+   */
+  resolutionPriced?: boolean;
+  /** When the last real call through the model's adapter worked (model_registry.verified_at); every successful probe moves it. */
+  verifiedAt?: string | null;
+  /**
+   * Why this organization cannot buy the model right now, decided from the same rule creative_price applies (modelLock below);
+   * null / absent = nothing known stops it (the quote still decides).
+   */
+  lock?: ModelLock | null;
+}
+
+/**
+ * Why a model on sale cannot be bought by this organization, as creative_price decides it (0072 … 0155):
+ *  - `first_purchase`: the model's entitlement is `paid` and the organization has made no credit purchase (and is not exempt);
+ *  - `not_on_sale`: any other entitlement than `any` / `paid` — the models_image / models_video / models_audio tiers included. The
+ *    database refuses these for EVERY organization whatever its plan: it never compares them with plan_entitlements (0034 marks
+ *    those keys `planned`; model_tier_allowed() exists and nothing calls it). No plan or purchase opens such a model today, so
+ *    none is offered for it.
+ */
+export type ModelLock = "first_purchase" | "not_on_sale";
+
+/**
+ * The lock for one model. `purchased`: the organization has a credit purchase or is exempt (readPurchased); null = not read, and
+ * then a `paid` model is NOT shown locked (unknown is not a refusal; the quote answers). A preview (0139) skips the plan rule.
+ */
+export function modelLock(entitlement: string | null | undefined, purchased: boolean | null, preview = false): ModelLock | null {
+  if (preview) return null;
+  // The Models catalog's reading of the same rule (lib/models-discovery planGate), so the two pages cannot drift apart.
+  const gate = planGate(entitlement ?? null, purchased);
+  if (!gate) return null;
+  if (gate.kind === "first_purchase") return gate.known ? "first_purchase" : null;
+  return gate.kind === "not_open" ? "not_on_sale" : null;
+}
+
+/**
+ * Which of the two refusals an `entitlement_required` answer is: from the model's own entitlement when the page knows it, else
+ * from the database's sentence (creative_price words them differently). null = neither can be told: the generic sentence is shown.
+ */
+export function entitlementReason(entitlement: string | null | undefined, detail?: unknown): ModelLock | null {
+  if (entitlement === "paid") return "first_purchase";
+  if (typeof entitlement === "string" && entitlement && entitlement !== "any") return "not_on_sale";
+  const d = typeof detail === "string" ? detail : "";
+  if (/first credit purchase/i.test(d)) return "first_purchase";
+  if (/needs the \S+ entitlement/i.test(d)) return "not_on_sale";
+  return null;
+}
+
+/**
+ * The shapes a model lists for a tool, exactly as 0155's quote reads them: aspect_ratios_by_capability[cap] when it names some,
+ * else aspect_ratios. [] = the model makes its own shape (none may be sent). null = the spec was not read.
+ */
+export function modelShapes(m: Pick<StudioModel, "aspectRatios" | "shapesByCapability"> | null | undefined, cap: string): string[] | null {
+  if (!m) return null;
+  const narrowed = m.shapesByCapability?.[cap];
+  if (narrowed && narrowed.length) return orderShapes(narrowed);
+  return m.aspectRatios ? orderShapes(m.aspectRatios) : null;
+}
+
+/**
+ * The shapes the panel offers for a text picture or a text video. A picked model: its own list (ASPECT_RATIOS when its spec was
+ * not read). Auto: every shape some model of this kind lists — the database then routes among the models that make the one picked.
+ */
+export function shapesFor(
+  available: readonly Pick<StudioModel, "aspectRatios" | "shapesByCapability">[],
+  current: Pick<StudioModel, "aspectRatios" | "shapesByCapability"> | null,
+  routed: boolean,
+  cap: string,
+): string[] {
+  if (!routed) return modelShapes(current, cap) ?? [...ASPECT_RATIOS];
+  return orderShapes(available.flatMap((m) => modelShapes(m, cap) ?? [...ASPECT_RATIOS]));
+}
+
+/** The clip lengths offered, chosen the same way as the shapes (VIDEO_DURATIONS when a spec was not read). */
+export function durationsFor(
+  available: readonly Pick<StudioModel, "durations">[],
+  current: Pick<StudioModel, "durations"> | null,
+  routed: boolean,
+): number[] {
+  if (!routed) return orderSeconds(current?.durations ?? VIDEO_DURATIONS);
+  return orderSeconds(available.flatMap((m) => m.durations ?? VIDEO_DURATIONS));
+}
+
+/**
+ * The resolutions offered for a clip: only on a hand-picked model whose price follows the resolution (Auto's model is not known
+ * before the quote, like a tier). The default first stands for "send none" (what the database prices with no name); the others are
+ * the listed names creative_params_problem accepts. Fewer than two = nothing to choose: no picker.
+ */
+export function resolutionsFor(
+  current: Pick<StudioModel, "resolutions" | "defaultResolution" | "resolutionPriced"> | null,
+  routed: boolean,
+): string[] {
+  if (routed || !current?.resolutionPriced || !current.defaultResolution) return [];
+  const listed = current.resolutions ?? [];
+  if (!listed.includes(current.defaultResolution)) return [];
+  const out = listed.filter((r) => r === current.defaultResolution || NAMED_RESOLUTION_RE.test(r));
+  return out.length > 1 ? out : [];
+}
+
+/**
+ * The shape, length and resolution keys ONE model is asked at in the model sheet: what the panel would send if that model were
+ * picked with the form as it is (its own list, snapped), so the sheet never shows "this model cannot" for a setting it would never
+ * be sent. A value of null = the key is left out (a model that makes its own shape; the model's default resolution).
+ */
+export function modelSettings(
+  m: StudioModel,
+  cap: string,
+  aspect: string,
+  seconds: number,
+  resolution: string | null,
+): Record<string, string | number | null> {
+  const out: Record<string, string | number | null> = {};
+  if (cap === "t2i" || cap === "t2v") {
+    const list = modelShapes(m, cap);
+    out.aspect_ratio = list === null ? (m.fixedShape ? null : aspect) : list.length ? snapShape(aspect, list) : null;
+  }
+  if (cap === "t2v" || cap === "i2v") {
+    out.duration_s = snapSeconds(seconds, m.durations ?? []);
+    out.resolution = resolution && resolution !== m.defaultResolution && resolutionsFor(m, false).includes(resolution) ? resolution : null;
+  }
+  return out;
+}
+
+/** The shape kept when the model changes: the one picked if the list has it, else 16:9 if it does, else the list's first. */
+export function snapShape(value: string, list: readonly string[]): string {
+  if (list.includes(value)) return value;
+  // The orientation is kept: a tall shape goes to the tallest the model lists, a wide one to the widest (a 9:16 never turns into
+  // 16:9 while the model makes some tall shape). A square, or no shape of the same orientation, goes to 16:9 when listed, else the
+  // list's first. The panel says so whenever the shape changes (snapNote).
+  const ratio = (s: string) => {
+    const [w, h] = s.split(":").map(Number);
+    return w && h ? w / h : 1;
+  };
+  const r = ratio(value);
+  const same = list.filter((s) => (r > 1 ? ratio(s) > 1 : r < 1 ? ratio(s) < 1 : false));
+  if (same.length) return same.reduce((best, s) => (r > 1 ? ratio(s) > ratio(best) : ratio(s) < ratio(best)) ? s : best, same[0]);
+  if (r === 1 && list.includes("1:1")) return "1:1";
+  return list.includes("16:9") ? "16:9" : (list[0] ?? value);
+}
+
+/** The length kept when the model changes: the one picked if listed, else the nearest listed (the shorter on a tie). */
+export function snapSeconds(value: number, list: readonly number[]): number {
+  if (list.length === 0 || list.includes(value)) return value;
+  return list.reduce((best, s) => (Math.abs(s - value) < Math.abs(best - value) ? s : best), list[0]);
+}
+
+/** A resolution as people read it: 4k -> 4K, 2k -> 2K; a p-number stays as it is. */
+export function resolutionLabel(r: string): string {
+  return r.replace(/k$/i, "K");
+}
+
+/** Lines up a resolution for "the best it makes": 2160p and 4k are the same height. Unknown words rank last. */
+function resolutionHeight(r: string): number {
+  const p = /^(\d{3,4})p$/i.exec(r);
+  if (p) return Number(p[1]);
+  const k = /^(\d)k$/i.exec(r);
+  return k ? ({ 2: 1440, 4: 2160, 8: 4320 } as Record<string, number>)[k[1]] ?? 0 : 0;
+}
+
+/**
+ * The model sheet's one line of facts, from the model's own lists only ("16:9 · 9:16 · 4–8 s · up to 1080p"): its shapes for this
+ * tool, its clip lengths, the largest resolution it lists. A list the spec does not state adds nothing (never a guessed fact).
+ */
+export function capabilityLine(t: Dictionary, m: StudioModel, cap: string): string {
+  const g = t.gen;
+  const parts: string[] = [];
+  if (cap === "t2i" || cap === "t2v") {
+    const shapes = modelShapes(m, cap);
+    if (shapes && shapes.length === 0) parts.push(g.factOwnShape);
+    else if (shapes) parts.push(...shapes.slice(0, 3), ...(shapes.length > 3 ? [fmt(g.factMore, { n: shapes.length - 3 })] : []));
+  }
+  if ((cap === "t2v" || cap === "i2v") && m.durations && m.durations.length) {
+    const s = orderSeconds(m.durations);
+    const lo = s[0];
+    const hi = s[s.length - 1];
+    if (lo !== undefined && hi !== undefined)
+      parts.push(lo === hi ? fmt(g.factSeconds, { n: lo }) : fmt(g.factSecondsRange, { min: lo, max: hi }));
+  }
+  if ((cap === "t2v" || cap === "i2v") && m.resolutions && m.resolutions.length) {
+    const best = [...m.resolutions].sort((a, b) => resolutionHeight(b) - resolutionHeight(a))[0];
+    if (best && resolutionHeight(best) > 0) parts.push(fmt(g.factUpTo, { r: resolutionLabel(best) }));
+  }
+  return parts.join(" · ");
 }
 
 const tier = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5 ? v : null);
@@ -374,6 +614,12 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
     | "reframeAspects"
     | "fixedShape"
     | "attribution"
+    | "aspectRatios"
+    | "shapesByCapability"
+    | "durations"
+    | "resolutions"
+    | "defaultResolution"
+    | "resolutionPriced"
   >;
   const marks = new Map<string, Marks>();
   for (const r of sellable) {
@@ -400,6 +646,20 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
     // In the canonical order, so the selector reads low, medium, high whatever the row's order.
     const tiers = Array.isArray(spec.qualities) ? IMAGE_QUALITIES.filter((q) => (spec.qualities as unknown[]).includes(q)) : [];
     const makerLine = modelAttribution(spec.attribution);
+    // The lists the quote reads (0155: shapes; 0159: lengths; 0070: resolutions), only as the spec states them.
+    const strList = (v: unknown): string[] | null => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : null);
+    const shapeList = strList(spec.aspect_ratios);
+    const narrowed: Partial<Record<string, string[]>> = {};
+    if (byCap && typeof byCap === "object" && !Array.isArray(byCap)) {
+      for (const [cap, list] of Object.entries(byCap as Record<string, unknown>)) {
+        const l = strList(list);
+        if (l && l.length) narrowed[cap] = orderShapes(l);
+      }
+    }
+    const seconds = Array.isArray(spec.durations_s) ? orderSeconds(spec.durations_s.filter((x): x is number => typeof x === "number")) : null;
+    const resList = strList(spec.resolutions);
+    const defRes = typeof spec.default_resolution === "string" && spec.default_resolution ? spec.default_resolution : null;
+    const byRes = spec.price_variants_by === "resolution" || spec.price_variants_by === "resolution_audio";
     // Only what the spec states: a model that says nothing about the video
     // tools carries nothing for them (absent reads as "no").
     marks.set(row.id, {
@@ -419,6 +679,12 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
       // Only a list the spec states and leaves empty: a spec that says nothing about shapes keeps the shape picker.
       ...(Array.isArray(spec.aspect_ratios) && spec.aspect_ratios.length === 0 ? { fixedShape: true } : {}),
       ...(makerLine ? { attribution: makerLine } : {}),
+      ...(shapeList ? { aspectRatios: orderShapes(shapeList) } : {}),
+      ...(Object.keys(narrowed).length ? { shapesByCapability: narrowed } : {}),
+      ...(seconds ? { durations: seconds } : {}),
+      ...(resList ? { resolutions: resList } : {}),
+      ...(defRes ? { defaultResolution: defRes } : {}),
+      ...(byRes && defRes && resList?.includes(defRes) ? { resolutionPriced: true } : {}),
     });
   }
   return models.map((m) => {
@@ -444,6 +710,7 @@ export function coerceModels(rows: unknown): StudioModel[] {
       displayName: typeof row.display_name === "string" && row.display_name.trim() ? row.display_name.trim() : row.id,
       capabilities: caps,
       beta: row.availability === "beta",
+      verifiedAt: typeof row.verified_at === "string" ? row.verified_at : null,
     });
   }
   return out;
@@ -469,6 +736,7 @@ export function coercePreviewModels(rows: unknown): StudioModel[] {
       capabilities: caps,
       beta: false,
       preview: true,
+      verifiedAt: typeof row.verified_at === "string" ? row.verified_at : null,
     });
   }
   return withTiers(out, rows);
@@ -492,8 +760,15 @@ export function modelsFor(models: StudioModel[], capability: string): StudioMode
 export interface StudioForm {
   capability: StudioCapability;
   prompt: string;
-  aspect: AspectRatio;
-  duration: VideoDuration;
+  /** A shape the picked model lists (the panel snaps it to the model's list: shapesFor / snapShape). */
+  aspect: string;
+  /** Seconds, one the picked model lists (durationsFor / snapSeconds). */
+  duration: number;
+  /**
+   * A clip's resolution (0070), named only when it is not the model's pinned default (resolutionsFor): null / absent = the key is
+   * left out, and the database prices and the worker sends the default.
+   */
+  resolution?: string | null;
   /** The library picture edit / i2v / upscale / remove_bg start from. */
   sourceId?: string | null;
   factor?: UpscaleFactor;
@@ -551,6 +826,10 @@ export function buildParams(form: StudioForm): Partial<Record<ParamKey, string |
   return takesSound(form.capability) && typeof form.audio === "boolean" ? { ...tiered, audio: form.audio } : tiered;
 }
 
+function isNamedResolution(v: unknown): v is string {
+  return typeof v === "string" && NAMED_RESOLUTION_RE.test(v);
+}
+
 function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>> {
   const prompt = form.prompt.trim();
   const source = form.sourceId ?? "";
@@ -558,7 +837,11 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
     case "t2i":
       return form.noAspect === true ? { prompt } : { prompt, aspect_ratio: form.aspect };
     case "t2v":
-      return form.noAspect === true ? { prompt, duration_s: form.duration } : { prompt, aspect_ratio: form.aspect, duration_s: form.duration };
+      return {
+        ...(form.noAspect === true ? { prompt } : { prompt, aspect_ratio: form.aspect }),
+        duration_s: form.duration,
+        ...(isNamedResolution(form.resolution) ? { resolution: form.resolution } : {}),
+      };
     case "edit":
       return { prompt, source_asset_id: source };
     case "i2v":
@@ -567,6 +850,7 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
         ...(prompt ? { prompt } : {}),
         source_asset_id: source,
         duration_s: form.duration,
+        ...(isNamedResolution(form.resolution) ? { resolution: form.resolution } : {}),
         ...(isUuid(form.endFrameId) ? { end_asset_id: form.endFrameId } : {}),
       };
     case "upscale":
@@ -757,7 +1041,8 @@ export type QuoteState =
   // `routed`: Auto's pick (0075) — the model the database chose, why, and the
   // display name it answered; the press sends that model back with the price.
   | { status: "ready"; credits: number; routed?: RoutedPick }
-  | { status: "error"; code: CreativeError };
+  // `detail`: the database's own sentence for a refusal, when the route passed it (only read to tell two entitlement refusals apart).
+  | { status: "error"; code: CreativeError; detail?: string };
 
 /** What Auto picked: the model, its name to show, and why (a reason code). */
 export interface RoutedPick {
@@ -1031,8 +1316,8 @@ export function fellBackLine(
 ): string | null {
   if (!job.fallback_from || !job.routed_model || job.fallback_from === job.routed_model) return null;
   return fmt(t.gen.router.fellBack, {
-    model: names.get(job.routed_model) ?? job.routed_model,
-    from: names.get(job.fallback_from) ?? job.fallback_from,
+    model: names.get(job.routed_model) ?? registryName(job.routed_model),
+    from: names.get(job.fallback_from) ?? registryName(job.fallback_from),
   });
 }
 
@@ -1215,8 +1500,10 @@ export interface StudioPrefill {
   /** 0075: start with "Auto" on (the database picks the model at the quote). Only where the panel offers Auto. */
   auto?: boolean;
   prompt: string;
-  aspect: AspectRatio;
-  duration: VideoDuration;
+  aspect: string;
+  duration: number;
+  /** A clip's resolution, when the job named one (the panel keeps it only if the model offers it). */
+  resolution?: string | null;
   sourceId?: string | null;
   factor?: UpscaleFactor;
   /** Present only for the kinds a style can steer: the job's kit, or null for none. */
@@ -1248,14 +1535,16 @@ function asFactor(v: unknown): UpscaleFactor {
 export function prefillFromJob(job: StudioJob): StudioPrefill | null {
   if (!isStudioCapability(job.capability)) return null;
   const p = job.params;
-  const aspect = (ASPECT_RATIOS as readonly string[]).includes(p.aspect_ratio as string) ? (p.aspect_ratio as AspectRatio) : "16:9";
-  const duration = (VIDEO_DURATIONS as readonly number[]).includes(p.duration_s as number) ? (p.duration_s as VideoDuration) : 5;
+  // Any shape and length the database could have accepted: the panel snaps them to the model's own lists.
+  const aspect = isShape(p.aspect_ratio) ? p.aspect_ratio : "16:9";
+  const duration = isClipSeconds(p.duration_s) ? p.duration_s : 5;
   return {
     capability: job.capability,
     model: job.requested_model,
     prompt: typeof p.prompt === "string" ? p.prompt : "",
     aspect,
     duration,
+    ...((job.capability === "t2v" || job.capability === "i2v") && isNamedResolution(p.resolution) ? { resolution: p.resolution } : {}),
     ...(needsSource(job.capability)
       ? { sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null, factor: asFactor(p.factor) }
       : {}),

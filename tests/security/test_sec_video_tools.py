@@ -64,7 +64,8 @@ def db():
     d.su("select public.grant_credits(%s, 1000, 'test')", [ORG_B])
     rows = [{"id": m, "display_name": m, "provider": "acme", "adapter": a, "capabilities": caps,
              "credit_unit": unit, "entitlement": "any",
-             "spec": {"vendor_model": "acme-" + m, "output": "video", **extra}}
+             # 0159: a quote refuses a length the model's spec does not list; these models make every length 1-60 s (what is tested here is not the length).
+             "spec": {"vendor_model": "acme-" + m, "output": "video", "durations_s": list(range(1, 61)), **extra}}
             for m, caps, a, extra, unit in MODELS]
     d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
     d.rows = rows
