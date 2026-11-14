@@ -187,3 +187,38 @@ describe("site-next.css", () => {
   });
 });
 
+// The live audit of 2026-11-14 (Playwright at 390/768/1440): each of these was on the page, measured.
+describe("site-next.css after the live audit", () => {
+  const src = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("shows every part of the example plan on a phone: 'Show the plan' showed one card of five", () => {
+    for (const block of mediaBlocks(src, "max-width")) {
+      expect(block).not.toMatch(/\.nx-try-card(?:\[data-id="[a-z]+"\])?[^{]*\{[^}]*display: none/);
+    }
+  });
+
+  it("starts the showcase cards' AI badge where their words start (22 px on a phone, 56 px from 860 px), not 40 px left of them", () => {
+    expect(src).toMatch(/\.nx-show-pic \.nx-result-badge, \.nx-show-pic \.nx-result-badge\[data-kind="ai"\] \{ left: 22px; \}/);
+    expect(mediaBlocks(src, "min-width: 860px").join("\n")).toMatch(/\.nx-show-pic \.nx-result-badge, \.nx-show-pic \.nx-result-badge\[data-kind="ai"\] \{[^}]*left: 56px;/);
+    // The words' own inset, which the badge follows.
+    expect(src).toMatch(/\.nx-show-head \{[^}]*padding: 56px 22px 18px;/);
+    expect(mediaBlocks(src, "min-width: 860px").join("\n")).toMatch(/\.nx-show-text \{[^}]*padding: 56px;/);
+  });
+
+  it("gives the closing panel's three keys one width on a phone, not a full-width key over two narrow pills", () => {
+    const phone = mediaBlocks(src, "max-width: 639px").join("\n");
+    expect(phone).toMatch(/\.nx-final \.nx-actions \{[^}]*align-items: stretch;/);
+    expect(phone).toMatch(/\.nx-final \.nx-actions > \* \{[^}]*width: 100%;/);
+  });
+
+  it("lets the first screen on a tablet be as tall as its content, not 980 px with 230 px of empty picture under the keys", () => {
+    const tablet = mediaBlocks(src, "(min-width: 640px) and (max-width: 1023px)").join("\n");
+    expect(tablet).toMatch(/\.nx-hero\.nx-sh \{ min-height: 0; \}/);
+  });
+
+  it("centres the footer's base row, so the 44 px view switch's label lines up with the words beside it", () => {
+    const site = readFileSync(join(__dirname, "..", "components/site/site.css"), "utf8");
+    expect(site).toMatch(/\.st-footer-base \{[^}]*align-items: center;/);
+  });
+});
+

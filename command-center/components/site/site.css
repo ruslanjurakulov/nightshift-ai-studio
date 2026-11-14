@@ -1261,9 +1261,12 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-credits li a { display: flex; align-items: center; min-height: 44px; font-size: 14px; color: var(--ns-text); text-decoration: underline; text-decoration-color: var(--ns-rule-strong); text-underline-offset: 3px; }
 .st-credits li a:hover { color: var(--st-act-ink); }
 .st-credits p a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ns-text); text-decoration: underline; text-decoration-color: var(--ns-rule-strong); text-underline-offset: 3px; }
+/* Centred on the cross axis: the view switch is a 44 px button and the two words beside it are one line of text, so top-aligned
+   its label sat about 11 px below theirs. */
 .st-footer-base {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding-block: 18px;

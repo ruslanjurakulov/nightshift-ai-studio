@@ -250,7 +250,7 @@ export const uz: Dictionary = {
     retry: "Qayta urinish",
     retrying: "Qayta urinilmoqda…",
     signOut: "Chiqish",
-    theme: "Mavzu",
+    theme: "Rang rejimi",
     language: "Til",
     dark: "Tungi",
     light: "Kunduzgi",
