@@ -187,28 +187,121 @@ export function attachCountUp(doc: Document = document, win: Window = window): C
   };
 }
 
-/** 5. The sticky header turns to frosted glass and a slimmer bar once the page has scrolled (site-motion.css, 1024 px and up). */
+/** Below this many pixels from the top the header never hides: the first screen always has its bar. */
+export const HEADER_HIDE_AFTER = 80;
+/** Back above this the header shows whatever the direction. The 16 px band under HEADER_HIDE_AFTER is the hysteresis: a page
+ *  resting on the threshold (a trackpad's last few pixels of momentum) does not make the bar flicker. */
+export const HEADER_SHOW_ABOVE = 64;
+/** A downward run this long hides it, so a pixel of jitter does not. */
+export const HEADER_DOWN = 8;
+/** An upward run this long brings it back: a reader reaching for the menu, not the page settling after a scroll. */
+export const HEADER_UP = 24;
+
+/** Keyboard focus is inside this header. A mouse click on a link leaves focus on it without :focus-visible; that must not pin
+ *  the bar, or every "How it works" click would keep it over the section it scrolled to. */
+function keyboardInside(h: HTMLElement, doc: Document): boolean {
+  const active = doc.activeElement;
+  if (!(active instanceof HTMLElement) || !h.contains(active)) return false;
+  try {
+    return active.matches(":focus-visible");
+  } catch {
+    // An engine that cannot answer: keep the bar for anyone focused in it rather than hide it from a keyboard user.
+    return true;
+  }
+}
+
+/**
+ * 5. The sticky header (site-motion.css, 1024 px and up): frosted glass and a slimmer bar once the page has scrolled, and out of
+ * the way while the reader goes down the page. The owner's report (2026-11-14): the bar sat over "Made with Nightshift", the
+ * heading's lower half showing through its 74 % glass, cut in two. So, as on the sites people compare us with, it slides up
+ * (data-hidden, a transform: no layout moves) once the page is past HEADER_HIDE_AFTER going down, and comes back on a real
+ * scroll up, near the top, or the moment the keyboard enters it. It never hides with a menu open or keyboard focus inside it.
+ *
+ * It also publishes the bar's measured height as --st-header-h (the language can wrap the links to two lines), which
+ * site.css turns into the page's scroll-padding-top, so a #section link lands with its heading below the bar.
+ */
 export function attachHeader(doc: Document = document, win: Window = window): Cleanup {
   let frame = 0;
   let last: boolean | null = null;
+  let lastY = Math.max(0, win.scrollY);
+  let turn = lastY;
+  let dir = 0;
+  let hidden = false;
+  const headers = () => Array.from(doc.querySelectorAll<HTMLElement>(".st-header"));
+  const held = () => headers().some((h) => h.querySelector('[aria-expanded="true"]') !== null || keyboardInside(h, doc));
+  const setHidden = (next: boolean) => {
+    if (next && held()) next = false;
+    if (next === hidden) return;
+    hidden = next;
+    for (const h of headers()) {
+      if (next) h.setAttribute("data-hidden", "true");
+      else h.removeAttribute("data-hidden");
+    }
+  };
   const sync = () => {
     frame = 0;
-    const scrolled = win.scrollY > 8;
-    if (scrolled === last) return;
-    last = scrolled;
-    doc.querySelectorAll<HTMLElement>(".st-header").forEach((h) => {
-      if (scrolled) h.setAttribute("data-scrolled", "true");
-      else h.removeAttribute("data-scrolled");
-    });
+    // iOS reports a negative scrollY while the page bounces at the top.
+    const y = Math.max(0, win.scrollY);
+    const scrolled = y > 8;
+    if (scrolled !== last) {
+      last = scrolled;
+      for (const h of headers()) {
+        if (scrolled) h.setAttribute("data-scrolled", "true");
+        else h.removeAttribute("data-scrolled");
+      }
+    }
+    if (y <= HEADER_SHOW_ABOVE) {
+      setHidden(false);
+      dir = 0;
+      turn = y;
+    } else if (y !== lastY) {
+      const d = y > lastY ? 1 : -1;
+      if (d !== dir) {
+        dir = d;
+        turn = lastY;
+      }
+      if (d > 0 && y > HEADER_HIDE_AFTER && y - turn >= HEADER_DOWN) setHidden(true);
+      else if (d < 0 && turn - y >= HEADER_UP) setHidden(false);
+    }
+    lastY = y;
   };
   const onScroll = () => {
     if (!frame) frame = requestAnimationFrame(sync);
   };
+  // Tab into a bar that is out of view: it comes back before the focus ring is drawn off screen.
+  const onFocusIn = (e: FocusEvent) => {
+    const t = e.target;
+    if (hidden && t instanceof Node && headers().some((h) => h.contains(t) && keyboardInside(h, doc))) setHidden(false);
+  };
+
+  const root = doc.documentElement;
+  const bar = headers()[0];
+  const measure = () => {
+    // offsetHeight, not the bounding box: the slide is a transform and must not read as a change of height.
+    if (bar) root.style.setProperty("--st-header-h", `${bar.offsetHeight}px`);
+  };
+  let ro: ResizeObserver | null = null;
+  if (bar) {
+    measure();
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(measure);
+      ro.observe(bar);
+    } else {
+      win.addEventListener("resize", measure);
+    }
+  }
+
   sync();
   win.addEventListener("scroll", onScroll, { passive: true });
+  doc.addEventListener("focusin", onFocusIn);
   return () => {
     win.removeEventListener("scroll", onScroll);
+    win.removeEventListener("resize", measure);
+    doc.removeEventListener("focusin", onFocusIn);
+    ro?.disconnect();
     cancelAnimationFrame(frame);
+    root.style.removeProperty("--st-header-h");
+    for (const h of headers()) h.removeAttribute("data-hidden");
   };
 }
 

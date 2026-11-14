@@ -342,12 +342,14 @@
 }
 /* The header (sticky from 1024 px): solid at the top of the page, frosted glass and a visually slimmer bar once scrolled
    (attach.ts attachHeader). The bar's box keeps its height (only a backdrop layer scales and the row's contents lift by 4 px),
-   so nothing under it moves. */
+   so nothing under it moves. Going down the page it slides out of view (data-hidden) and comes back on a scroll up: at 74 %
+   the glass let a section heading show through the bar, cut in two (owner, 2026-11-14). When it is back over the page it is
+   94 % ground under the blur, so no text reads through it in either theme. */
 @media (min-width: 1024px) {
   .st .st-header::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-color: var(--ns-ground); transform-origin: top; }
   .st .st-header[data-scrolled] { background: transparent; border-bottom-color: transparent; }
   .st .st-header[data-scrolled]::before {
-    background-color: color-mix(in srgb, var(--ns-ground) 74%, transparent);
+    background-color: color-mix(in srgb, var(--ns-ground) 94%, transparent);
     -webkit-backdrop-filter: blur(18px) saturate(160%);
     backdrop-filter: blur(18px) saturate(160%);
     box-shadow: inset 0 -1px 0 var(--ns-rule), 0 14px 32px -24px rgba(0, 0, 0, 0.5);
@@ -362,8 +364,14 @@
      (they end where the bar does), and a click on the page just under it reaches the page. */
   .st .st-header[data-scrolled], .st .st-header[data-scrolled] .st-header-row { pointer-events: none; }
   .st .st-header[data-scrolled] .st-header-row > * { pointer-events: auto; }
+  /* Out of view: a transform, so the sticky box keeps its place in the page (no CLS). Only while hidden: a transform on the
+     header makes it the containing block of anything fixed inside it (the phone menu's sheet). Its shadow falls below the box
+     and would be left as a line across the top of the screen. */
+  .st .st-header[data-hidden] { transform: translateY(-100%); }
+  .st .st-header[data-hidden]::before { box-shadow: none; }
 }
 @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+  .st .st-header { transition: transform 220ms var(--ns-ease); }
   .st .st-header::before { transition: transform 260ms var(--ns-ease), background-color 260ms var(--ns-ease); }
   .st .st-header-row { transition: translate 260ms var(--ns-ease); }
 }
