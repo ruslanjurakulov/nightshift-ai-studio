@@ -112,7 +112,7 @@ kbd { font: 500 12px var(--font); padding: 1px 6px; border-radius: 6px; border: 
 .lib li.gh { display: block; font-size: 12px; color: var(--faint); padding: 8px 6px 2px; }
 .lib li.gh:hover { background: none; }
 
-.viewer { display: grid; grid-template-rows: minmax(0, 1fr) auto; padding: 14px; gap: 10px; min-height: 0; min-width: 0; background: var(--canvas); }
+.viewer { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; padding: 12px 14px 10px; gap: 8px; min-height: 0; min-width: 0; background: var(--canvas); }
 .screen { position: relative; aspect-ratio: 16 / 9; max-height: 100%; margin: 0 auto; width: auto; height: 100%; border-radius: 12px; overflow: hidden; background: var(--film); box-shadow: var(--lift); }
 .screen .sky { position: absolute; inset: 0; background: radial-gradient(60% 70% at 70% 30%, rgb(47 139 255 / .55), transparent 60%), radial-gradient(50% 60% at 20% 80%, rgb(255 79 163 / .35), transparent 60%), linear-gradient(180deg, #071226, #02050c); }
 .screen .tun { position: absolute; left: 30%; right: 30%; top: 22%; bottom: 10%; border-radius: 50% 50% 0 0; border: 3px solid rgb(51 214 255 / .7); box-shadow: 0 0 40px rgb(51 214 255 / .5), inset 0 0 60px rgb(47 139 255 / .5); }
@@ -120,6 +120,7 @@ kbd { font: 500 12px var(--font); padding: 1px 6px; border-radius: 6px; border: 
 .screen .tc { position: absolute; left: 10px; top: 10px; padding: 2px 8px; border-radius: 6px; background: rgb(0 0 0 / .55); color: #fff; font-size: 12px; }
 .screen .mk { position: absolute; right: 10px; top: 10px; }
 .vmeta { display: flex; justify-content: center; gap: 14px; color: var(--dim); font-size: 13px; }
+.vtrans { display: flex; justify-content: center; gap: 6px; }
 
 .insp { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--rule); background: var(--console); }
 .ih { padding: 12px 16px 0; border-bottom: 1px solid var(--rule); }
@@ -145,8 +146,11 @@ kbd { font: 500 12px var(--font); padding: 1px 6px; border-radius: 6px; border: 
 .if p { margin: 0; font-size: 12px; color: var(--dim); }
 
 /* tool row */
-.trow { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--rule); background: var(--console); min-width: 0; }
-.tcbig { font: 600 24px/1 var(--font); letter-spacing: .02em; color: var(--text); min-width: 140px; }
+.trow { display: grid; grid-template-columns: var(--hdr-w) minmax(0, 1fr) var(--mix-w); align-items: center; border-bottom: 1px solid var(--rule); background: var(--console); min-width: 0; }
+.trow .tcbig { padding-left: 12px; }
+.trow .tools2 { justify-self: center; }
+.trow .chip { justify-self: end; margin-right: 10px; }
+.tcbig { font: 600 24px/1 var(--font); letter-spacing: .02em; color: var(--text); }
 .vsep { width: 1px; height: 26px; background: var(--rule); margin: 0 4px; }
 .tools2 { display: inline-flex; gap: 4px; }
 
@@ -202,6 +206,7 @@ kbd { font: 500 12px var(--font); padding: 1px 6px; border-radius: 6px; border: 
 .cursor { position: absolute; z-index: 20; pointer-events: none; transition: left 1.6s cubic-bezier(.2,0,0,1), top 1.6s cubic-bezier(.2,0,0,1); }
 .cursor svg { width: 18px; height: 18px; display: block; filter: drop-shadow(0 2px 3px rgb(0 0 0 / .5)); }
 .cursor svg path { fill: var(--c); stroke: #050811; stroke-width: 1.2; }
+.cursor.up .pill { top: -24px; }
 .cursor .pill { position: absolute; left: 14px; top: 14px; padding: 3px 9px; border-radius: 8px 8px 8px 2px; background: var(--c); color: #050811; font-size: 12px; font-weight: 600; white-space: nowrap; box-shadow: 0 6px 16px -6px var(--c); }
 .demo { position: absolute; right: 10px; bottom: 8px; z-index: 21; }
 
@@ -224,8 +229,12 @@ kbd { font: 500 12px var(--font); padding: 1px 6px; border-radius: 6px; border: 
   .demo { bottom: auto; top: 6px; right: 8px; }
   .th2 .tn { font-size: 12px; }
   .lanes { overflow-x: auto; }
-  .pbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: 68px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px; align-items: center; justify-content: space-between; background: var(--glass); border-top: 1px solid var(--rule); backdrop-filter: blur(14px); z-index: 30; }
+  .trow { grid-template-columns: auto minmax(0, 1fr); }
+  .pbar { display: grid; grid-template-columns: 1fr auto 1fr; position: fixed; left: 0; right: 0; bottom: 0; height: 68px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px; align-items: center; background: var(--glass); border-top: 1px solid var(--rule); backdrop-filter: blur(14px); z-index: 30; }
   .pbar .kbtn { height: 44px; }
+  .pbar .ctr { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); display: inline-flex; gap: 6px; }
+  .pbar .asm { grid-column: 3; justify-self: end; flex-direction: column; gap: 0; height: 48px; padding: 0 12px; line-height: 1.1; font-size: 13px; }
+  .pbar .asm small { font-size: 11px; font-weight: 500; opacity: .9; }
   .demo { bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
@@ -302,6 +311,12 @@ kbd { font: 500 12px var(--font); padding: 1px 6px; border-radius: 6px; border: 
           <span class="cap">The stadium hangs in the sky above the city.</span>
         </div>
         <div class="vmeta"><span>01:02:14:08</span><span>16:9 · 1080p</span><span>Scene 03 of 08</span></div>
+        <div class="vtrans hide-phone" role="toolbar" aria-label="Playback">
+          <button class="kbtn icon" aria-label="To start"><svg class="i"><use href="#i-start"/></svg></button>
+          <button class="kbtn icon primary" aria-label="Play"><svg class="i"><use href="#i-play"/></svg></button>
+          <button class="kbtn icon" aria-label="Loop" aria-pressed="true"><svg class="i"><use href="#i-loop"/></svg></button>
+          <button class="kbtn icon" aria-label="To end"><svg class="i"><use href="#i-end"/></svg></button>
+        </div>
       </div>
 
       <aside class="insp" aria-label="Clip inspector">
@@ -326,11 +341,6 @@ kbd { font: 500 12px var(--font); padding: 1px 6px; border-radius: 6px; border: 
 
     <div class="trow" role="toolbar" aria-label="Transport and tools">
       <span class="tcbig" id="tc">01:02:14:08</span>
-      <button class="kbtn icon" aria-label="To start"><svg class="i"><use href="#i-start"/></svg></button>
-      <button class="kbtn icon primary" aria-label="Play"><svg class="i"><use href="#i-play"/></svg></button>
-      <button class="kbtn icon" aria-label="Loop" aria-pressed="true"><svg class="i"><use href="#i-loop"/></svg></button>
-      <button class="kbtn icon" aria-label="To end"><svg class="i"><use href="#i-end"/></svg></button>
-      <span class="vsep"></span>
       <span class="tools2">
         <button class="kbtn icon" aria-label="Select" aria-pressed="true"><svg class="i"><use href="#i-arrow"/></svg></button>
         <button class="kbtn icon" aria-label="Blade"><svg class="i"><use href="#i-blade"/></svg></button>
@@ -339,8 +349,7 @@ kbd { font: 500 12px var(--font); padding: 1px 6px; border-radius: 6px; border: 
         <button class="kbtn icon" aria-label="Marker"><svg class="i"><use href="#i-flag"/></svg></button>
         <button class="kbtn icon" aria-label="Zoom"><svg class="i"><use href="#i-zoom"/></svg></button>
       </span>
-      <span class="grow"></span>
-      <span class="chip hide-phone">8:00 planned · narration sets the clock</span>
+      <span class="chip hide-phone" title="Narration sets the clock">8:00 planned</span>
     </div>
 
     <section class="lower">
@@ -356,11 +365,12 @@ kbd { font: 500 12px var(--font); padding: 1px 6px; border-radius: 6px; border: 
 </div>
 
 <nav class="pbar" aria-label="Transport">
-  <button class="kbtn icon" aria-label="To start"><svg class="i"><use href="#i-start"/></svg></button>
-  <button class="kbtn icon primary" aria-label="Play"><svg class="i"><use href="#i-play"/></svg></button>
-  <button class="kbtn icon" aria-label="Blade"><svg class="i"><use href="#i-blade"/></svg></button>
-  <span class="grow"></span>
-  <button class="kbtn primary">Assemble · 16 cr</button>
+  <span class="ctr">
+    <button class="kbtn icon" aria-label="To start"><svg class="i"><use href="#i-start"/></svg></button>
+    <button class="kbtn icon primary" aria-label="Play"><svg class="i"><use href="#i-play"/></svg></button>
+    <button class="kbtn icon" aria-label="To end"><svg class="i"><use href="#i-end"/></svg></button>
+  </span>
+  <button class="kbtn primary asm">Assemble<small>16 cr</small></button>
 </nav>
 
 <script>
@@ -403,7 +413,7 @@ const CLIPS = {
 const lanes = document.getElementById("lanes");
 let html = '<div class="ruler" id="ruler"></div>';
 for (const t of TRACKS) {
-  html += `<div class="lane" data-t="${t.id}">` + (CLIPS[t.id] || []).map(([s, d, lb, f], i) => `<div class="clip ${t.id === "V1" ? "v" : t.id === "C1" ? "cap" : ""} ${f === "sel" ? "sel" : ""}" data-c="${t.id}-${i}" style="--c:var(${t.c});left:${s * PX * 2}px;width:${d * PX * 2 - 3}px"><span class="lb">${lb}</span>${t.id === "V1" ? '<span class="thumbs"><i></i><i></i><i></i><i></i></span>' : f === "w" ? wave(i + s) : ""}</div>`).join("") + "</div>";
+  html += `<div class="lane" data-t="${t.id}">` + (CLIPS[t.id] || []).map(([s, d, lb, f], i) => `<div class="clip ${t.id === "V1" ? "v" : t.id === "C1" ? "cap" : ""} ${f === "sel" ? "sel" : ""}" data-c="${t.id}-${i}" style="--c:var(${t.c});left:${s * PX * 2}px;width:${Math.max(t.id === "A3" ? 56 : 0, d * PX * 2 - 3)}px"><span class="lb">${lb}</span>${t.id === "V1" ? '<span class="thumbs"><i></i><i></i><i></i><i></i></span>' : f === "w" ? wave(i + s) : ""}</div>`).join("") + "</div>";
 }
 lanes.innerHTML = html + '<div class="playhead" id="ph" style="left:300px"></div>';
 const ruler = document.getElementById("ruler");
@@ -432,12 +442,12 @@ const AGENTS = [
   { name: "Director · trimming 03", c: "#2f8bff", lane: "V1", steps: [[13.5, 0.55], [17.6, 0.55], [17.2, 0.5]], act: (on) => document.querySelector('[data-c="V1-2"]').classList.toggle("trim", on) },
   { name: "Sound · placing Impact", c: "#3dff8a", lane: "A3", steps: [[8, 0.5], [11.4, 0.5], [23.8, 0.5]] },
   { name: "Mix · ducking music", c: "#ffd23f", lane: "A2", steps: [[26, 0.35], [31, 0.6], [28, 0.45]] },
-  { name: "Captions · line 5", c: "#ff4fa3", lane: "C1", steps: [[25.5, 0.5], [27.5, 0.5], [26, 0.5]] },
+  { name: "Captions · line 5", c: "#ff4fa3", lane: "C1", up: true, steps: [[25.5, 0.35], [27.5, 0.35], [26, 0.35]] },
 ];
 const lanesBox = lanes.getBoundingClientRect();
 const cursors = AGENTS.map((a) => {
   const el = document.createElement("div");
-  el.className = "cursor"; el.style.setProperty("--c", a.c);
+  el.className = a.up ? "cursor up" : "cursor"; el.style.setProperty("--c", a.c);
   el.innerHTML = `<svg viewBox="0 0 24 24"><path d="M3 2l18 9-7.5 2L10 21z"/></svg><span class="pill">${a.name}</span>`;
   lanes.appendChild(el);
   return el;
