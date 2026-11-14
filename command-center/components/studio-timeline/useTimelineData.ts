@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { filmErrorFromResponse, parseFilmId, type FilmListItem } from "@/lib/films";
+import { filmErrorFromResponse, filmsApi, type FilmListItem } from "@/lib/films";
 import { coerceTimelineFilm, startPolling, type TimelineFilm } from "@/lib/studio/timeline";
 
 export const FILM_POLL_MS = 6000;
@@ -78,31 +78,9 @@ export function useFilmList(enabled: boolean) {
   const [load, setLoad] = useState<ListLoad>({ state: "loading" });
   const read = useCallback(async () => {
     setLoad({ state: "loading" });
-    // GET /api/films answers rows the server already read into FilmListItem (camelCase); filmsApi().list re-reads them as database
-    // rows and drops every one, so the picker reads the route's answer itself and keeps only rows with a real id and title.
-    let res: Response;
-    try {
-      res = await fetch("/api/films", { cache: "no-store", credentials: "same-origin" });
-    } catch {
-      setLoad({ state: "error" });
-      return;
-    }
-    const json: unknown = await res.json().catch(() => null);
-    if (!res.ok) {
-      const e = filmErrorFromResponse(res.status, json).error;
-      setLoad({ state: e === "not_available" ? "missing" : e === "session_expired" ? "expired" : "error" });
-      return;
-    }
-    const rows = (json as { films?: unknown } | null)?.films;
-    if (!Array.isArray(rows)) {
-      setLoad({ state: "error" });
-      return;
-    }
-    const films = rows.filter((r): r is FilmListItem => {
-      const x = r as Partial<FilmListItem> | null;
-      return Boolean(x && parseFilmId(x.id) && typeof x.title === "string" && typeof x.targetSeconds === "number" && typeof x.aspect === "string");
-    });
-    setLoad({ state: "ready", films });
+    const r = await filmsApi().list(false);
+    if (r.ok) setLoad({ state: "ready", films: r.data });
+    else setLoad({ state: r.error === "not_available" ? "missing" : r.error === "session_expired" ? "expired" : "error" });
   }, []);
   useEffect(() => {
     if (enabled) void read();
