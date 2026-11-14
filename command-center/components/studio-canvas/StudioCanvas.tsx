@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { useShell } from "@/components/shell/ShellContext";
 import { creditUnit, formatCredits } from "@/lib/credits";
+import { UPSELL_LINKS } from "@/lib/upsell";
 import { ICONS } from "@/components/navigation/navIcons";
 import { useLibraryImages, type LibraryPreview } from "@/components/studio/useLibraryImages";
 import { refreshCredits } from "@/lib/credits-live";
@@ -970,7 +971,8 @@ export function StudioCanvas({
                 }}
                 onCreated={(jobId) => {
                   attachJob(n.id, jobId);
-                  setComposing(null);
+                  // Only this card's composer closes: by the time the POST returns, another card may be composing.
+                  setComposing((cur) => (cur === n.id ? null : cur));
                 }}
                 onMore={() => open(n.id)}
                 onQuote={(q) => setQuote(n.id, q)}
@@ -1062,7 +1064,7 @@ function QuoteKey({
   // Short of credits: Generate would only be refused, so the key goes to the top-ups (a link; nothing is bought here).
   if (priceable && quote?.state === "short") {
     return (
-      <Link href={path("/credits")} className="cv-kbtn is-primary" title={c.quote} data-testid="dock-quote" data-state="topup">
+      <Link href={path(UPSELL_LINKS.topups)} className="cv-kbtn is-primary" title={c.quote} data-testid="dock-quote" data-state="topup">
         {c.dock.topUp}
       </Link>
     );

@@ -785,6 +785,21 @@ describe("one paid job per node (Lens H1)", () => {
     expect(screen.queryByTestId("generate-panel")).toBeNull();
   });
 
+  it("a card's job landing closes only that card's composer, not the one now open on another card", async () => {
+    const first = await composerCard();
+    // A second card is added (and composing) while the first card's POST is still out.
+    fireEvent.click(screen.getByTestId("plus-img"));
+    fireEvent.click(within(await screen.findByTestId("quick-menu")).getByTestId("quick-animate"));
+    const second = await waitFor(() => {
+      const el = [...document.querySelectorAll('[data-testid^="inline-composer-"]')].find((e) => !e.getAttribute("data-testid")!.endsWith(first.id));
+      if (!el) throw new Error("no second composer yet");
+      return el.getAttribute("data-testid")!;
+    });
+    act(() => (first.props.onCreated as (j: { id: string }) => void)({ id: JOB_NEW }));
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes.find((n: { id: string }) => n.id === first.id).jobId).toBe(JOB_NEW));
+    expect(screen.getByTestId(second)).toBeTruthy();
+  });
+
   it("a press that ends without a job frees the node: the form offers Generate again", async () => {
     store({ nodes: [node("img", "image", 0, { draft: "a fox" })], wires: [] });
     mount();
@@ -860,7 +875,7 @@ describe("Lens mediums", () => {
       return el;
     });
     expect(key.textContent).toBe(c.dock.topUp);
-    expect(key.getAttribute("href")).toBe("/chronos/credits");
+    expect(key.getAttribute("href")).toBe("/chronos/credits#topups");
     expect(panel.generateClicks).toBe(0);
   });
 

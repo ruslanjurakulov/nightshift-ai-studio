@@ -170,7 +170,7 @@ export const studioCanvasEn = {
     blankLink: "Or start from a blank canvas",
     ask: "What shall we make?",
     askPlaceholder: "Describe your idea…",
-    askNote: "Pick what to make: Nightshift lays out the steps and opens the first one with your idea in it. Nothing is spent until you press Make.",
+    askNote: "Pick what to make: Nightshift lays out the steps and opens the first one with your idea in it. Nothing is spent until you press Generate on a card.",
     blankPhone: { name: "Blank canvas", desc: "Tap Add to place a node, or add a file from the Library" },
     title: "Start on the canvas",
     lead: "Every tool is a node. Wire a picture into a clip and the clip uses it. Adding and wiring nodes is free: a node spends only after you confirm its price.",

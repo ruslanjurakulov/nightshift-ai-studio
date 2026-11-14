@@ -161,7 +161,7 @@ export const studioCanvasUz: StudioCanvasDictionary = {
     blankLink: "Yoki boʻsh holstdan boshlang",
     ask: "Nima yaratamiz?",
     askPlaceholder: "Gʻoyangizni yozing…",
-    askNote: "Nima yaratishni tanlang: Nightshift qadamlarni joylashtiradi va birinchisini gʻoyangiz bilan ochadi. «Yaratish»ni bosmaguningizcha hech narsa sarflanmaydi.",
+    askNote: "Nima yaratishni tanlang: Nightshift qadamlarni joylashtiradi va birinchisini gʻoyangiz bilan ochadi. Kartadagi «Yaratish» tugmasini bosmaguningizcha hech narsa sarflanmaydi.",
     blankPhone: { name: "Boʻsh holst", desc: "Tugun qoʻyish uchun «Qoʻshish» ni bosing yoki mediatekadan fayl qoʻshing" },
     title: "Holstda boshlang",
     lead: "Har bir asbob — bitta tugun. Rasmni klipga ulang — klip undan foydalanadi. Tugun qoʻshish va ulash bepul: tugun faqat narxini tasdiqlaganingizdan keyin sarflaydi.",
