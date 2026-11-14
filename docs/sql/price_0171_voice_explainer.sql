@@ -1,7 +1,7 @@
 -- price_0171_voice_explainer.sql — the credit price of the Studio's voice video (migration 0171, model nightshift-voice-explainer).
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it, and the app never writes a price on its own.
 --
--- WHEN. Only after the model was probed ON THE WORKER (docs/VOICE_EXPLAINER.md, "Opening it", steps 1 to 6): this file refuses
+-- WHEN. Only after the model was probed ON THE WORKER (docs/VOICE_EXPLAINER.md, "Opening it", steps 1 to 8): this file refuses
 -- while the registry row is missing or has no passing probe, so a price can never be the first thing that makes it look ready.
 -- It does not open the model: availability is set afterwards, on the Models page.
 --
@@ -11,12 +11,17 @@
 -- The quantity is the recording's length as the DATABASE measured it (creative_source_seconds), never a client's number, and
 -- job_minimum still floors a short one. A ten-minute recording (the longest 0171 takes) is 240 credits.
 --
--- THE DERIVATION. There is no vendor bill: the cost is this server's own work.
+-- THE DERIVATION. The cost is this server's own work plus ONE vendor call: the transcription (ElevenLabs Speech to Text,
+-- Scribe scribe_v2, owner decision 2026-11-14; docs/VOICE_EXPLAINER.md, "What the worker does").
+--   * Scribe: $0.20 per audio hour (elevenlabs.io/pricing/api, read 2026-11-11 for elevenlabs-scribe-v2) = $0.0033 a minute
+--     = 0.33 credits a minute = 0.0056 credits a second, about 11% of the 0.05 fully-loaded unit below and under 1.5% of the
+--     0.4 a second charged. The unit covers it; the numbers below stay as they were. UNVERIFIED: whether speech-to-text draws
+--     from the same ElevenLabs credit pool as the channels' narration (docs/VOICE_EXPLAINER.md, "Opening it", step 5c).
 --   * Measured render: 3.4x real time on 4 cores; memory ~+2.2 GB at 30 s and ~+3.8 GB at
 --     121 s of recording, both measured BEFORE the engine rendered in chunks (docs/VOICE_EXPLAINER.md, "Capacity").
 --   * The server: a Hetzner AX42, about $60 a month.
---   * Variable cost ≈ $0.007 per minute of recording: CPU including Whisper, storage of the result, and a 20% reserve for
---     renders that are retried.
+--   * Variable cost ≈ $0.007 per minute of recording: CPU (it included local Whisper, which no longer runs here), storage of
+--     the result, and a 20% reserve for renders that are retried; plus Scribe's $0.0033, about $0.010 a minute in all.
 --   * credits_per_unit 0.05 (3 cents of cost per minute) is the FULLY-LOADED unit cost, not the variable one: it also carries a
 --     share of the server spread over ~500 minutes of recording a month, payment fees (~5%), refunds, and a reserve for a
 --     future Remotion Company License. (The whole server over 500 minutes alone would be 12 cents a minute: 0.05 assumes the
@@ -40,8 +45,8 @@ declare
   v_credits_per_unit constant numeric := 0.05;
   v_margin constant numeric := 7.0;
   v_note constant text :=
-    '0171 voice video, owner 2026-11-14: fully-loaded cost 0.05/s (CPU incl. Whisper, storage, retries, server share, fees, '
-    'refunds, licence reserve), margin 7.0 = 0.4 credits/s (24/min). docs/sql/price_0171_voice_explainer.sql';
+    '0171 voice video, owner 2026-11-14: fully-loaded cost 0.05/s (CPU, Scribe transcription $0.20/h, storage, retries, '
+    'server share, fees, refunds, licence reserve), margin 7.0 = 0.4 credits/s (24/min). docs/sql/price_0171_voice_explainer.sql';
   m record;
 begin
   if v_credits_per_unit is null or v_credits_per_unit <= 0 then
