@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUp, Film, FolderOpen, LayoutTemplate, ListChecks } from "lucide-react";
+import { ArrowRight, ArrowUp, Film, FolderOpen, ImageIcon, LayoutTemplate, ListChecks } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
@@ -181,7 +181,8 @@ export function StudioHome({
   // and offered (the person had moved on meanwhile), or the one line that says what became of it.
   const [attach, setAttach] = useState<
     | { phase: "idle" }
-    | { phase: "confirm"; file: File; kind: AttachKind; url: string; words: string }
+    // No object URL: nothing of the file (its picture, its name) is drawn before the person answers Use.
+    | { phase: "confirm"; file: File; kind: AttachKind; words: string }
     | { phase: "uploading"; name: string; kind: AttachKind; url: string }
     | { phase: "ready"; assetId: string; kind: AttachKind; name: string; desk: MediaDesk | null }
     | { phase: "said"; tone: "ok" | "error"; line: string }
@@ -191,9 +192,14 @@ export function StudioHome({
   // The words as typed NOW (an upload that ends reads these, not the ones it started with).
   const draftRef = useRef(draft);
   draftRef.current = draft;
-  // Every choice the person makes (a mode, an example, a result into the box) counts here: an upload that ends after one is offered,
-  // never forced over it.
+  // Every choice the person makes (a mode, an example, a result into the box, the Plan) counts here: an upload that ends after one
+  // is offered, never forced over it.
   const choices = useRef(0);
+  // Every change the person makes INSIDE the box (words, model, shape, length, any setting: GeneratePanel onEdit, the topic box's
+  // typing), by the same rule. Not onDraftChange, which also fires when a box mounts with its words.
+  const edits = useRef(0);
+  const planningRef = useRef(planning);
+  planningRef.current = planning;
   // The box is pressing Generate (GeneratePanel onSubmittingChange): it is never swapped under a create in flight.
   const panelSubmitting = useRef(false);
   const [submittingNow, setSubmittingNow] = useState(false);
@@ -201,13 +207,21 @@ export function StudioHome({
 
   // The local preview's object URL lives as long as the line that shows it.
   useEffect(() => {
-    if (attach.phase !== "uploading" && attach.phase !== "confirm") return;
+    if (attach.phase !== "uploading") return;
     const url = attach.url;
     return () => URL.revokeObjectURL(url);
   }, [attach]);
 
-  // Leaving the page stops asking about the upload (the upload itself, once sent, is the library's).
+  // Leaving the page stops the transfer (the PUT takes the same signal) and the asking about it. A file already sent stays the
+  // library's; one cut off mid-PUT is never registered, and its ticket lapses.
   useEffect(() => () => uploadAbort.current?.abort(), []);
+
+  /** Focus is in a text field of the composer (the words, the topic, the Plan's goal): a remount now would take it away mid-word. */
+  const typingInBox = (): boolean => {
+    const el = typeof document !== "undefined" ? document.activeElement : null;
+    if (!el || !composerRef.current?.contains(el)) return false;
+    return el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type !== "file");
+  };
 
   const toComposer = () => composerRef.current?.scrollIntoView?.({ behavior: scrollBehavior(), block: "nearest" });
 
@@ -262,6 +276,7 @@ export function StudioHome({
       setPlanning(false);
       openMode(mode);
     } else {
+      choices.current += 1;
       setPlanMounted(true);
       setPlanning(true);
     }
@@ -321,9 +336,11 @@ export function StudioHome({
   /**
    * A picture or a video into the box: the library's upload first, then the tool for what the library registered it as, on the desk
    * it was attached on (lib/creative/attach toolForAttachment), with the words as typed when it lands. The change of tool is said in
-   * one line (CLAUDE.md #4). If the person moved on meanwhile (another mode, an example, a result into the box) or is pressing
-   * Generate, the box is NOT swapped under them: the file is offered with "Use it in the box" instead. Nothing is priced or started
-   * here: the box asks its price as for any filled form, and only its send key spends.
+   * one line (CLAUDE.md #4). If the person moved on meanwhile (another mode, an example, a result into the box), changed anything
+   * in the box (the swap is a fresh mount: a model, a shape or a length picked meanwhile was lost), is typing in it (the remount
+   * takes focus and broke an IME composition) or is pressing Generate, the box is NOT swapped under them: the file is offered with
+   * "Use it in the box" instead. Nothing is priced or started here: the box asks its price as for any filled form, and only its
+   * send key spends.
    */
   const attachFile = async (file: File, onDesk: MediaDesk | null) => {
     const check = checkAttachment(file);
@@ -346,6 +363,7 @@ export function StudioHome({
     const ctl = new AbortController();
     uploadAbort.current = ctl;
     const choicesAtStart = choices.current;
+    const editsAtStart = edits.current;
     setAttach({ phase: "uploading", name: file.name, kind: check.kind, url: URL.createObjectURL(file) });
     const r = await uploadAttachment({ orgId, file, kind: check.kind, mime: check.mime, signal: ctl.signal });
     // A newer file was attached meanwhile, or the page is gone: this one's outcome is not what the box shows.
@@ -357,7 +375,8 @@ export function StudioHome({
       setAttach({ phase: "said", tone: "error", line });
       return;
     }
-    if (choices.current !== choicesAtStart || panelSubmitting.current) {
+    // In the Plan: the swap would close it under the person (its goal box is theirs as much as the words are).
+    if (choices.current !== choicesAtStart || edits.current !== editsAtStart || typingInBox() || planningRef.current || panelSubmitting.current) {
       setAttach({ phase: "ready", assetId: r.assetId, kind: r.kind, name: file.name, desk: onDesk });
       return;
     }
@@ -388,7 +407,7 @@ export function StudioHome({
     void takePending(indexedDbStore(), pending.nonce).then((p) => {
       if (words) fill(form("t2v", { prompt: attachWords("t2v", words) }), "video", true);
       if (p.state === "ready") {
-        setAttach({ phase: "confirm", file: p.file, kind: p.kind, url: URL.createObjectURL(p.file), words });
+        setAttach({ phase: "confirm", file: p.file, kind: p.kind, words });
         return;
       }
       // The file is not here: said, never a box that looks attached.
@@ -487,16 +506,31 @@ export function StudioHome({
       )}
     </span>
   );
+  const confirmWords = (kind: AttachKind) => (kind === "image" ? th.attachFlow.confirmImage : th.attachFlow.confirmVideo);
   // Seen in the box; HEARD from one live region outside it (attachLive below), which does not remount when the box does.
   const attachNote: ReactNode =
     attach.phase === "confirm" ? (
+      // Its kind, in words and a glyph, and nothing of the file itself: the browser may be shared, and whoever signed in may not be
+      // the one who chose it. Its picture and its name are drawn from Use on (the upload's line).
       <div className="sh-attach sh-attach-ask" data-testid="composer-pending-confirm">
-        {thumb(attach.kind, attach.url)}
+        <span className="sh-attach-glyph" aria-hidden>
+          {attach.kind === "image" ? <ImageIcon className="size-4" strokeWidth={1.75} /> : <Film className="size-4" strokeWidth={1.75} />}
+        </span>
         <div className="sh-attach-ask-body">
-          <p className="sh-attach-ask-title">{fmt(th.attachFlow.confirmTitle, { name: attach.file.name })}</p>
+          <p className="sh-attach-ask-title">{confirmWords(attach.kind)}</p>
           <p className="sh-attach-ask-note">{th.attachFlow.confirmNote}</p>
           <div className="sh-attach-ask-keys">
-            <button type="button" className="sc-pill tap press" data-testid="composer-pending-use" onClick={() => void attachFile(attach.file, null)}>
+            <button
+              type="button"
+              className="sc-pill tap press"
+              data-testid="composer-pending-use"
+              onClick={(e) => {
+                // The answer takes focus (Safari would leave it in the words): a words box still focused when the upload ends would
+                // read as typing, and the file would only be offered.
+                e.currentTarget.focus();
+                void attachFile(attach.file, null);
+              }}
+            >
               {th.attachFlow.confirmUse}
             </button>
             <button
@@ -535,7 +569,7 @@ export function StudioHome({
     ) : null;
   const attachLive =
     attach.phase === "confirm"
-      ? fmt(th.attachFlow.confirmTitle, { name: attach.file.name })
+      ? confirmWords(attach.kind)
       : attach.phase === "uploading"
         ? fmt(th.attachFlow.uploading, { name: attach.name })
         : attach.phase === "ready"
@@ -553,7 +587,10 @@ export function StudioHome({
         key={topicNonce}
         initial={draft}
         autoFocus={focusBox}
-        onDraft={setDraft}
+        onDraft={(v) => {
+          edits.current += 1;
+          setDraft(v);
+        }}
         extra={planToggle}
         onGo={(topic) => router.push(path(`/create?desk=youtube&topic=${encodeURIComponent(topic)}`))}
       />
@@ -573,6 +610,9 @@ export function StudioHome({
         plans={plans}
         unavailable={unavailable}
         onDraftChange={setDraft}
+        onEdit={() => {
+          edits.current += 1;
+        }}
         autoFocusPrompt={focusBox}
         composerExtra={planToggle}
         onAttachFile={desk === "voice" ? undefined : (file) => void attachFile(file, desk)}

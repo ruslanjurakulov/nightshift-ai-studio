@@ -281,6 +281,54 @@ class CaddyFramingTests(unittest.TestCase):
         self.assertNotIn("frame-ancestors", self.code)
 
 
+def caddy_duration_seconds(value):
+    """A Caddy duration (Go's time.ParseDuration units, plus `d`) in seconds."""
+    units = {"ns": 1e-9, "us": 1e-6, "µs": 1e-6, "ms": 1e-3, "s": 1, "m": 60, "h": 3600, "d": 86400}
+    parts = re.findall(r"(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h|d)", value)
+    if not parts or "".join(n + u for n, u in parts) != value:
+        raise ValueError(f"not a Caddy duration: {value!r}")
+    return sum(float(n) * units[u] for n, u in parts)
+
+
+class CaddyUpstreamRetryTests(unittest.TestCase):
+    """A deploy is a short wait for the visitor, never a 502.
+
+    Every deploy recreates `web`; for those seconds nothing answers at web:3000.
+    Measured 2026-11-14 with a plain `reverse_proxy web:3000`: 502 for about 5s
+    per deploy, and Google's brand verification called the home page
+    "unresponsive". lb_try_duration makes Caddy hold the request and dial again
+    instead (a failed dial is retried for any method: no request reached the app).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+        code = "\n".join(l for l in text.splitlines() if not l.strip().startswith("#"))
+        cls.proxies = re.findall(r"^[ \t]*reverse_proxy\b.*$", code, re.M)
+        m = re.search(r"^[ \t]*reverse_proxy web:3000 \{\n(.*?)^[ \t]*\}", code, re.M | re.S)
+        cls.block = m.group(1) if m else ""
+        cls.options = dict(
+            (o.group(1), o.group(2)) for o in re.finditer(r"^[ \t]*([a-z_]+)[ \t]+(\S+)[ \t]*$", cls.block, re.M)
+        )
+
+    def test_there_is_one_proxy_and_it_has_a_block(self):
+        self.assertEqual(self.proxies, ["\treverse_proxy web:3000 {"], self.proxies)
+
+    def test_a_recreated_web_is_waited_for_at_least_ten_seconds(self):
+        self.assertIn("lb_try_duration", self.options, "without it Caddy answers 502 the moment web:3000 is not there")
+        self.assertGreaterEqual(caddy_duration_seconds(self.options["lb_try_duration"]), 10)
+
+    def test_the_dial_is_repeated_on_an_interval_that_does_not_spin(self):
+        # Caddy's docs: lb_try_interval 0 with a non-zero lb_try_duration can spin the CPU while web is down.
+        self.assertIn("lb_try_interval", self.options)
+        self.assertGreater(caddy_duration_seconds(self.options["lb_try_interval"]), 0)
+
+    def test_a_request_the_app_may_have_received_is_not_resent(self):
+        # lb_retry_match would also retry non-GET requests whose connection succeeded: a
+        # POST that spends credits or writes an intent could run twice.
+        self.assertNotIn("lb_retry_match", self.block)
+
+
 class CaddyMicrophoneTests(unittest.TestCase):
     """The microphone is allowed on the timeline editor's project page only (owner decision, 2026-11-11).
 

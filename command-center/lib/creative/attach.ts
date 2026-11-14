@@ -23,15 +23,17 @@ const takes = (kind: AttachKind, c: StudioCapability) => (kind === "image" ? nee
 const sold = (models: readonly StudioModel[], c: StudioCapability) => modelsFor([...models], c).length > 0;
 
 /**
- * The tool an attachment opens. On a desk, that desk's first tool for this kind of file (the Image desk edits a picture, Video
- * animates it, Enhance upscales it, as its [+] did before the file picker; a video on Enhance gets its first video tool). Only where
- * the desk has no tool for it, or there is no desk (the home page's file): a picture animates (picture to video), a video
- * opens the first video-in tool a model is sold for, else the first of them anyway, where the form says plainly that nothing is on
- * sale for it (never another tool that quietly does something else, CLAUDE.md #4). The person can switch the tool afterwards; the
- * switch is announced.
+ * The tool an attachment opens. On a desk, that desk's first tool for this kind of file that a model is sold for (the Image desk
+ * edits a picture, Video animates it, Enhance upscales it, as its [+] did before the file picker; a video on Enhance gets its first
+ * video tool on sale); when none of them is on sale, its first tool for the file anyway, whose form says plainly that nothing is on
+ * sale (an Enhance whose upscale is not sold opened a dead upscale form while its cut-out was on sale). Only where the desk has no
+ * tool for it, or there is no desk (the home page's file): a picture animates (picture to video), a video opens the first video-in
+ * tool a model is sold for, else the first of them anyway, as above (never another tool that quietly does something else,
+ * CLAUDE.md #4). The person can switch the tool afterwards; the switch is announced.
  */
 export function toolForAttachment(kind: AttachKind, models: readonly StudioModel[], desk: MediaDesk | null = null): StudioCapability {
-  const own = desk ? DESK_TOOLS[desk].find((c) => takes(kind, c)) : undefined;
+  const fits = desk ? DESK_TOOLS[desk].filter((c) => takes(kind, c)) : [];
+  const own = fits.find((c) => sold(models, c)) ?? fits[0];
   if (own) return own;
   if (kind === "image") return "i2v";
   return VIDEO_IN_TOOLS.find((c) => sold(models, c)) ?? VIDEO_IN_TOOLS[0];
@@ -79,7 +81,15 @@ export async function uploadAttachment(input: AttachUpload): Promise<AttachResul
   const doFetch = input.fetchImpl ?? fetch;
   const sleep = input.sleep ?? wait;
   const now = input.now ?? Date.now;
-  const sent = await uploadEdited({ orgId: input.orgId, blob: input.file, filename: input.file.name, mime: input.mime ?? input.file.type, fetchImpl: doFetch });
+  // The signal reaches the PUT too: a page left mid-transfer stops sending the file, not only asking about it.
+  const sent = await uploadEdited({
+    orgId: input.orgId,
+    blob: input.file,
+    filename: input.file.name,
+    mime: input.mime ?? input.file.type,
+    fetchImpl: doFetch,
+    signal: input.signal,
+  });
   if (!sent.ok) return { ok: false, error: sent.error, maxBytes: sent.maxBytes ?? null };
 
   const deadline = now() + ATTACH_WAIT_MS;

@@ -65,6 +65,8 @@ export interface SaveInput {
   /** The library picture this edit was made from. Sent as a request only; an id that is not a uuid is not sent at all. */
   parentId?: string;
   fetchImpl?: typeof fetch;
+  /** Stops the ticket request and the PUT (a page left mid-transfer). An aborted save reads as "network": it did not complete. */
+  signal?: AbortSignal;
 }
 
 /** Ticket, then the streamed PUT. Never throws: every failure is a SaveResult with a code. */
@@ -76,6 +78,7 @@ export async function uploadEdited(input: SaveInput): Promise<SaveResult> {
     const res = await doFetch("/api/media/uploads", {
       method: "POST",
       headers: { "content-type": "application/json" },
+      signal: input.signal,
       body: JSON.stringify({
         org_id: input.orgId,
         filename: input.filename,
@@ -90,7 +93,7 @@ export async function uploadEdited(input: SaveInput): Promise<SaveResult> {
     if (!res.ok || !id || ticket.upload_url !== `/api/media/uploads/${id}`) {
       return { ok: false, error: saveErrorCode(res.ok ? "failed" : ticket.error), maxBytes: typeof ticket.max_bytes === "number" ? ticket.max_bytes : null };
     }
-    const put = await doFetch(ticket.upload_url, { method: "PUT", headers: { "content-type": input.mime }, body: input.blob });
+    const put = await doFetch(ticket.upload_url, { method: "PUT", headers: { "content-type": input.mime }, body: input.blob, signal: input.signal });
     const body = (await put.json().catch(() => ({}))) as { error?: unknown; max_bytes?: unknown };
     if (!put.ok) return { ok: false, error: saveErrorCode(body.error), maxBytes: typeof body.max_bytes === "number" ? body.max_bytes : null };
     return { ok: true, ticket: id, name: typeof ticket.name === "string" ? ticket.name : input.filename };

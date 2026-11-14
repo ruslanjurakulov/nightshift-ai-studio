@@ -88,8 +88,10 @@
 .sh-attach-line { min-width: 0; overflow-wrap: anywhere; }
 .sh-attach-said { margin: 8px 0 0; padding-inline: 4px; font-size: 13px; line-height: 1.45; color: var(--color-muted); }
 .sh-attach-said[data-tone="error"] { color: var(--color-fail); }
-/* The home page's file, asked about before anything is uploaded: its picture, the question, what Use means, Use / Discard. */
+/* The home page's file, asked about before anything is uploaded: a glyph for its kind (never its picture or its name: the browser
+   may be shared), the question, what Use means, Use / Discard. */
 .sh-attach-ask { align-items: flex-start; }
+.sh-attach-glyph { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-panel-2); color: var(--color-muted); }
 .sh-attach-ask-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 6px; min-width: 0; }
 .sh-attach-ask-title { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--color-fg); overflow-wrap: anywhere; }
 .sh-attach-ask-note { margin: 0; font-size: 13px; line-height: 1.45; color: var(--color-muted); }

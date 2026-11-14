@@ -48,6 +48,7 @@ import {
   carriesPending,
   checkAttachment,
   discardPending,
+  discardPendingAtSignOut,
   dropExpired,
   keepPending,
   newNonce,
@@ -372,8 +373,29 @@ describe("the file kept for the Studio", () => {
     expect(m.m.has(PENDING_MARK)).toBe(false);
     const login = readFileSync(join(ROOT, "command-center/app/login/page.tsx"), "utf8");
     expect(login).toContain("if (!carriesPending(destination)) await discardPending();");
-    const signOut = readFileSync(join(ROOT, "command-center/components/account/AccountParts.tsx"), "utf8");
-    expect(signOut).toContain("await discardPending();");
+    for (const f of ["command-center/components/account/AccountParts.tsx", "command-center/components/auth/MfaChallenge.tsx"]) {
+      const signOut = readFileSync(join(ROOT, f), "utf8");
+      expect(signOut, f).toContain("await discardPendingAtSignOut();");
+      expect(signOut, f).not.toContain("await discardPending();");
+    }
+  });
+
+  // Re-review nit: the mark is a separate localStorage write that can fail or be cleared on its own; sign-out looked at it first and
+  // left the record for whoever signs in next.
+  it("sign-out removes the kept file even when the mark is missing; a sign-in without the mark still does not open storage", async () => {
+    const store = memoryStore();
+    const m = mark();
+    await keepPending(file("fox.jpg", "image/jpeg"), "image", store, { now: 1000, mark: m });
+    m.m.clear();
+    const del = vi.spyOn(store, "delete");
+    await discardPending(store, m);
+    expect(del).not.toHaveBeenCalled();
+    expect(store.record).not.toBeNull();
+    await discardPendingAtSignOut(store, m);
+    expect(store.record).toBeNull();
+    // A store that fails is left for the sweep; sign-out never throws.
+    const broken = { ...memoryStore(), delete: async () => Promise.reject(new Error("idb")) };
+    await expect(discardPendingAtSignOut(broken, null)).resolves.toBeUndefined();
   });
 
   it("a stale one is cleared on the landing and on every app page, without opening storage when nothing is kept", async () => {

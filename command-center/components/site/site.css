@@ -75,8 +75,10 @@
   }
 }
 html:has(.st) { scroll-padding-top: 80px; }
-/* From 1024px the bar can be two lines tall (the links wrap, see .st-nav). */
-@media (min-width: 1024px) { html:has(.st-header-row) { scroll-padding-top: 112px; } }
+/* From 1024px the bar sticks, and it can be two lines tall (the links wrap, see .st-nav), so a #section link clears its
+   measured height (--st-header-h, components/site/motion/attach.ts attachHeader) and 12px of air; 112px before the script
+   has measured it, as it was. */
+@media (min-width: 1024px) { html:has(.st-header-row) { scroll-padding-top: calc(var(--st-header-h, 100px) + 12px); } }
 @media (prefers-reduced-motion: no-preference) {
   html:has(.st) { scroll-behavior: smooth; }
 }

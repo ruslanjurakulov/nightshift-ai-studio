@@ -78,7 +78,20 @@
 	# `web` is reachable only on the compose network; it publishes no port of
 	# its own, so this is the only way in. Caddy passes the original Host and
 	# sets X-Forwarded-Proto/For itself.
-	reverse_proxy web:3000
+	#
+	# Every deploy recreates `web` (deploy/remote-deploy.sh, step 6), and for
+	# those seconds there is nothing at web:3000 to dial. Without a retry window
+	# Caddy answered each such request 502 at once (measured 2026-11-14: 502 for
+	# about 5s per deploy, which a site verifier read as "unresponsive"). With
+	# one, a request whose dial fails is held and the dial repeated every
+	# lb_try_interval until the new container answers or lb_try_duration runs
+	# out. Caddy retries a failed dial for any method (no request reached the
+	# app), so a POST is never sent twice. 30s covers the old container's whole
+	# stop grace (compose's default 10s) plus the new one's start, with room.
+	reverse_proxy web:3000 {
+		lb_try_duration 30s
+		lb_try_interval 250ms
+	}
 
 	log {
 		output stdout
