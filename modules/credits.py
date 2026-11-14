@@ -42,7 +42,10 @@ Prices (``credit_prices``) — credits = quantity x credits_per_unit x (1+margin
   only when the operator set ``CHRONOS_PRICE_<UNIT>`` for it;
 * otherwise the entry is unpriced.
 * ``video_minute`` prices a run up front (the Command Center's estimate), and
-  ``job_minimum`` is the smallest hold any run may take.
+  ``job_minimum`` is the smallest hold any run may take;
+* a concept-thumbnail channel's hold also carries its generated images at the
+  ``image_generations`` price, and the runner's floor checks them too
+  (``minimum_reservation``).
 
 The TypeScript twin of the pricing rules is ``command-center/lib/credits.ts``;
 keep the two in step.
@@ -180,17 +183,58 @@ def settle_amount(reserved: float, entries: Iterable[Mapping],
     return Settlement(metered, SETTLE_METERED, metered)
 
 
-def minimum_reservation(prices: Mapping[str, Price], duration_s=None) -> Optional[float]:
+#: The ledger unit a generated image is recorded under (modules/cost_ledger.py IMAGE_GENERATIONS).
+UNIT_IMAGE_GENERATIONS = "image_generations"
+#: The most images a concept-thumbnail run generates: one per A/B arm, and the
+#: run clamps the arms to 2..4 (config.THUMBNAIL_VARIANT_COUNT). The Command
+#: Center's hold takes this ceiling (lib/credits.ts CONCEPT_THUMBNAIL_MAX_IMAGES)
+#: because it cannot see the worker's setting; the floor takes the same ceiling,
+#: so a hold the Command Center made is never refused here.
+CONCEPT_THUMBNAIL_MAX_IMAGES = 4
+
+
+def concept_thumbnail_on(agent_config) -> bool:
+    """Whether a channel's ``agent_config`` turns concept thumbnails on — read
+    like modules/thumbnail_concept.normalize_mode and lib/credits.ts
+    conceptThumbnailOn: only the text "concept" (case and surrounding white
+    space ignored). Not imported from thumbnail_concept, which loads config."""
+    if not isinstance(agent_config, Mapping):
+        return False
+    mode = agent_config.get("thumbnail_mode")
+    return isinstance(mode, str) and mode.strip().lower() == "concept"
+
+
+def minimum_reservation(prices: Mapping[str, Price], duration_s=None,
+                        agent_config: Optional[Mapping] = None) -> Optional[float]:
     """The smallest hold a run may carry: the ``job_minimum`` floor, and — when
     the run asks for a length and minutes are priced — that length's price.
-    None when neither is known (nothing to check against)."""
+    None when neither is known (nothing to check against).
+
+    A concept-thumbnail channel (``agent_config``) also buys up to
+    CONCEPT_THUMBNAIL_MAX_IMAGES generated images, on the worker's own keys, on
+    top of that — the Command Center holds them the same way (withConceptThumbnail).
+    Without this, a browser that called reserve_credits directly could file the
+    job against the bare floor, and settle_amount caps the capture at the hold:
+    the images would be paid by the platform. When ``image_generations`` has no
+    price there is no honest floor (the Command Center cannot make a hold either),
+    so this raises CreditRefused naming the fix, rather than leaving them out."""
     floors: List[float] = []
     if UNIT_JOB_MINIMUM in prices:
         floors.append(prices[UNIT_JOB_MINIMUM].credits_per_unit)
     d = _num(duration_s)
     if d is not None and d > 0 and UNIT_VIDEO_MINUTE in prices:
         floors.append(prices[UNIT_VIDEO_MINUTE].charge(d / 60.0))
-    return round_up(max(floors)) if floors else None
+    base = round_up(max(floors)) if floors else None
+    if not concept_thumbnail_on(agent_config):
+        return base
+    image = prices.get(UNIT_IMAGE_GENERATIONS)
+    if image is None:
+        raise CreditRefused(
+            "this channel makes concept thumbnails, and generated images (image_generations) have no "
+            "credit price, so no hold can cover them — add an image_generations row to credit_prices, "
+            "or set the channel's thumbnails back to frame mode")
+    # Rounded like the Command Center's hold: the floor first, then floor + images.
+    return round_up((base or 0.0) + image.charge(CONCEPT_THUMBNAIL_MAX_IMAGES))
 
 
 def _ts(value) -> Optional[datetime]:
@@ -287,6 +331,17 @@ class CreditsRest:
         rows = self._get("channels", {"select": "org_id", "channel_id": f"eq.{channel_id}"})
         return str(rows[0].get("org_id") or "") or None if rows else None
 
+    def channel_agent_config(self, channel_id: str) -> dict:
+        """The channel's ``agent_config`` — the same column the run reads its
+        settings from (ChannelRegistry) and the Command Center prices its hold
+        from. A null column is ``{}`` (the run reads defaults from it too). No
+        row is not "no settings": it raises, and the run is refused."""
+        rows = self._get("channels", {"select": "agent_config", "channel_id": f"eq.{channel_id}"})
+        if not rows:
+            raise CreditsUnavailable("channels: no row for this channel's settings")
+        cfg = rows[0].get("agent_config")
+        return dict(cfg) if isinstance(cfg, dict) else {}
+
     def start(self, job_ref: str, org_id: str) -> Optional[float]:
         return _num(self._rpc("start_credit_reservation", {"p_job_id": job_ref, "p_org": org_id}))
 
@@ -378,8 +433,9 @@ def open_hold(client, *, job_ref: Optional[str], channel_id: str,
     is nothing to settle (exempt org, or not enforced and no hold).
 
     With ``enforce`` a run of a non-exempt organization needs an open hold of
-    at least ``minimum_reservation`` — a browser can call reserve_credits
-    directly and file a job against a token hold, so the runner checks too.
+    at least ``minimum_reservation`` for its length and its channel's
+    ``agent_config`` — a browser can call reserve_credits directly and file a
+    job against a token hold, so the runner checks too.
     Raises CreditRefused (nothing was run) or, when enforcing, turns an
     unreachable credits API into a refusal: an unpaid run is not a fallback."""
     ref = (job_ref or "").strip() or None
@@ -395,6 +451,9 @@ def open_hold(client, *, job_ref: Optional[str], channel_id: str,
             return None
         if not ref:
             raise CreditRefused("no credit reservation for this run — start it from the Command Center")
+        # Read before the hold is claimed: a settings read that fails refuses
+        # the run with nothing to give back.
+        agent_config = client.channel_agent_config(channel_id) if enforce else None
         amount = client.start(ref, org)
         if amount is None:
             if enforce:
@@ -402,7 +461,7 @@ def open_hold(client, *, job_ref: Optional[str], channel_id: str,
                                     "for another organization)")
             return None
         if enforce:
-            minimum = minimum_reservation(client.prices(), duration_s)
+            minimum = _floor_or_release(client, ref, duration_s, agent_config)
             if minimum is not None and amount + 1e-9 < minimum:
                 _safe(client.release, ref)
                 raise CreditRefused(f"its reservation of {amount:.2f} credits is below the "
@@ -413,6 +472,18 @@ def open_hold(client, *, job_ref: Optional[str], channel_id: str,
             raise CreditRefused(f"credits are unavailable ({e})") from None
         logger.warning("credits: %s — run continues unsettled (enforcement is off)", e)
         return None
+
+
+def _floor_or_release(client, ref: str, duration_s, agent_config) -> Optional[float]:
+    """``minimum_reservation`` for a hold that is already claimed. A floor that
+    cannot be priced refuses the run, and the claimed hold goes back at once
+    instead of waiting 24 hours for the expiry sweep."""
+    prices = client.prices()
+    try:
+        return minimum_reservation(prices, duration_s, agent_config)
+    except CreditRefused:
+        _safe(client.release, ref)
+        raise
 
 
 def frozen_duration(params: Optional[Mapping]) -> Optional[int]:
@@ -437,7 +508,9 @@ def open_queue_hold(client, *, job_ref: Optional[str], channel_id: str,
     * the job carries its FROZEN length — ``params.duration``, written when it
       was queued — and the run uses exactly that (C1: the hold priced one
       length, and a run without one read the channel's target at run time);
-    * the hold covers that length (``minimum_reservation``).
+    * the hold covers that length and the channel's generated add-ons
+      (``minimum_reservation``: concept thumbnails, read from the channel's
+      ``agent_config``).
 
     Anything the worker cannot check — no credits client, no organization on
     record, the credits API unreachable — is a refusal: an unpaid run is not a
@@ -456,11 +529,12 @@ def open_queue_hold(client, *, job_ref: Optional[str], channel_id: str,
         duration = frozen_duration(params)
         if duration is None:
             raise CreditRefused("its length was not fixed when it was queued (no duration) — queue it again")
+        agent_config = client.channel_agent_config(channel_id)
         amount = client.start(ref, org)
         if amount is None:
             raise CreditRefused("its credit reservation is not open (expired, settled, or for another "
                                 "organization)")
-        minimum = minimum_reservation(client.prices(), duration)
+        minimum = _floor_or_release(client, ref, duration, agent_config)
         if minimum is not None and amount + 1e-9 < minimum:
             _safe(client.release, ref)
             raise CreditRefused(f"its reservation of {amount:.2f} credits is below the "
