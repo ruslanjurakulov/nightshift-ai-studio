@@ -110,6 +110,9 @@ def main(argv=None) -> int:
             raise ve.ExplainerError(f"the Remotion engine is not installed: run `npm ci` in {ve.ENGINE_DIR}")
         if shutil.which("npx") is None:
             raise ve.ExplainerError("npx is not on PATH: install Node 22 to render")
+        # A recording long enough to be rendered in chunks is joined by ffmpeg: missing, it would fail after the render.
+        if duration >= 2 * ve.CHUNK_S and shutil.which("ffmpeg") is None:
+            raise ve.ExplainerError(f"a recording over {2 * ve.CHUNK_S:.0f} s is rendered in chunks joined by ffmpeg: install ffmpeg")
         if not 1 <= args.fps <= 60:
             raise ve.ExplainerError(f"--fps {args.fps} is not 1 to 60")
         for name, v in (("--width", args.width), ("--height", args.height)):
