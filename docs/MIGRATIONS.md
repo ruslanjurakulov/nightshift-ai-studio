@@ -1738,9 +1738,9 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
   `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).
 
-## The nine cleared models on sale (0163)
+## The nine cleared models on sale (0173)
 
-0163 (`0163_open_cleared_models.sql`) is **live on apply** and moves money: it writes 20 `credit_prices` rows and sets
+0173 (`0173_open_cleared_models.sql`) is **live on apply** and moves money: it writes 20 `credit_prices` rows and sets
 `model_registry.availability = 'beta'` and `entitlement = NULL` for nine models. It replaces no function, policy, grant or constraint.
 
 - **What opens.** Ideogram 3, 4 and 4.5; MiniMax H3, H3 Highspeed, H3 Lite and H3 Max; Runway gen4.5 and gen4_turbo: every registry
@@ -1748,14 +1748,14 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   no `blocked_countries`, and `api_exposure` `web_only` (so the API and MCP never list them). The 68 terms-gated entries stay hidden;
   0035's CHECK would refuse the file if it tried otherwise.
 - **Prices.** The repository's convention (`docs/sql/prices_2026_10_01.sql`, `prices_defaults_2026_10_03.sql`): `credits_per_unit` is
-  the vendor figure in US cents, margin 1.5 for image and video, so every unit 0163 writes sells at 2.5x its registry figure, rounded
+  the vendor figure in US cents, margin 1.5 for image and video, so every unit 0173 writes sells at 2.5x its registry figure, rounded
   up per job; 1 credit spent buys at most US$0.004 of vendor cost. That is about 2.5x before fees for a credit bought at US$0.01,
   about 2x for a bulk pack at US$0.008 and about 1.8x for the Studio plan at US$0.0072 a credit. A model priced by variant has a row per
   variant (`model_<id>_<unit>_<768p|2k|480p|low|medium|high>`), which is all a quote of it reads; its base row (what `sellable_models`
   joins to list it) is the default variant's figure. The figures are the registry's own list prices (`confirmed: false`); the file
   compares each with the registry before it writes, and refuses if one moved.
 - **ideogram-3 keeps its existing live row**, 6 x 2.5 = 15 credits an image (the live database already has credits_per_unit 6, margin
-  1.5; 0163 never overwrites a row). The owner may lower it to 3 via a docs/sql script. The other four rows already live are at margin
+  1.5; 0173 never overwrites a row). The owner may lower it to 3 via a docs/sql script. The other four rows already live are at margin
   1.5 too, so the never-below guard does not stop the apply.
 - **Each probe proved one call only.** MiniMax H3 and H3 Highspeed i2v at 768p, H3 Lite and H3 Max i2v at 480p, Runway gen4.5 and
   gen4_turbo i2v, Ideogram 3 and 4 t2i, Ideogram 4.5 t2i at low. Not proven so far, yet sold at their own figures: every t2v call
@@ -1778,11 +1778,14 @@ the rest in the ledger note as "already spent", for good. The customer's own API
 - **Not checked by SQL (owner).** The Privacy Policy now names Ideogram, MiniMax and Runway as Studio processors and says MiniMax and
   Runway may use inputs and outputs to improve their models (the registry's "before a sale" note). Still open: Runway's photo-consent
   confirmation on the i2v upload, Runway's export-embargo country decision, MiniMax's Uzbekistan billing.
-- **Number.** 0163, first written as 0160: renumbered so 0161 (#744) and 0162 (#743) can land first, since the Supabase integration
-  refuses a number below the latest applied one and this file waits for the owner's decision. The numbering tests of 0127, 0131 and
-  0133 list it as reviewed.
-- **Undo.** `docs/sql/rollback_0163_open_cleared_models.sql` (owner-applied): the nine back to `hidden` with their tiers, and only the
-  price rows 0163 wrote (note `0163:`) whose rate and margin nobody changed are deleted. The operator's preview works again as before.
+- **Number.** 0173, first written as 0160, then 0163: renumbered each time so the files merged meanwhile land first, since the
+  Supabase integration applies a file on merge only when its number is above the latest applied one, and this file waits for the
+  owner's decision. Live and main end at 0170; 0171 and 0172 belong to open branches. None of 0158 to 0170 writes `model_registry` or
+  `credit_prices` or replaces `sellable_models`, `model_is_available` or `model_past_shutdown`; 0159's `creative_price` refuses a clip
+  length the model does not list, and the nine list theirs. Once it applies, 0166's Film Studio drafts can pick the nine (a draft
+  spends nothing). The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0173_open_cleared_models.sql` (owner-applied): the nine back to `hidden` with their tiers, and only the
+  price rows 0173 wrote (note `0173:`) whose rate and margin nobody changed are deleted. The operator's preview works again as before.
 - **Tests.** `tests/test_open_cleared_models_migration.py` (the nine are exactly the openable entries, no gated id in the file, every
   price is the registry figure in cents at 1.5, every variant priced, base rows at the default, the file's entitlement NULL, the
   rollback's tiers and rates, rows only, the 100 welcome credits, the Privacy Policy row) and `tests/security/test_sec_open_cleared_models.py`

@@ -1,4 +1,4 @@
--- 0163_open_cleared_models.sql — put on sale (beta) the nine models whose vendor terms are cleared, that a real probe has verified,
+-- 0173_open_cleared_models.sql — put on sale (beta) the nine models whose vendor terms are cleared, that a real probe has verified,
 -- that have a working adapter and a vendor price in the registry, at prices that never sell below that vendor price.
 --
 -- *** LIVE ON APPLY. MONEY. *** Merging this file applies it to the live database. It writes credit_prices rows (20 units), sets
@@ -87,13 +87,19 @@
 --
 -- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local lock_timeout` assumes
 -- it, and the end state is asserted inside the same block that writes. Idempotent: a replay finds its rows and changes nothing.
--- Rollback: docs/sql/rollback_0163_open_cleared_models.sql (owner-applied: hidden again, the tiers back, and only the price rows this file
--- wrote and nobody changed since are deleted). Docs: docs/MIGRATIONS.md, "The nine cleared models on sale (0163)".
+-- Rollback: docs/sql/rollback_0173_open_cleared_models.sql (owner-applied: hidden again, the tiers back, and only the price rows this file
+-- wrote and nobody changed since are deleted). Docs: docs/MIGRATIONS.md, "The nine cleared models on sale (0173)".
 --
--- NUMBER. 0163 (first written as 0160, renumbered so 0161 (#744) and 0162 (#743) can land first: the Supabase integration refuses a
--- number below the latest applied one, and this file waits for the owner). Main ends at 0157 (#729, the Dodo purchase history: it writes
--- neither model_registry nor credit_prices); 0158 to 0162 belong to other branches this file was not checked against. A later file
--- that changes one of the nine's figures, call or entitlement makes a replay of this one refuse rather than sell at an old price.
+-- NUMBER. 0173 (first written as 0160, then 0163; renumbered each time so the files merged meanwhile land first: the Supabase
+-- integration applies a file on merge only when its number is above the latest applied one, and this file waits for the owner). Main
+-- ends at 0170; none of 0158 to 0170 writes model_registry or credit_prices or replaces sellable_models, model_is_available or
+-- model_past_shutdown, so every guard below reads what it read on 0157. 0159 replaces creative_price (a quote refuses a clip length
+-- the model does not list), which this file does not call: the nine's durations_s are the registry's, so a listed length is quoted
+-- and an unlisted one refused, as for every other model. 0166 (Film Studio P1) lets a person pick
+-- a model sellable_models lists on the web, so the nine become pickable in a film draft once this file applies (0166 spends nothing).
+-- 0171 (claude/film-p2-money) prices films through creative_price and writes neither table; 0172 belongs to an open branch this file
+-- was not checked against. A later file that changes one of the nine's figures, call or entitlement makes a replay of this one refuse
+-- rather than sell at an old price.
 
 set local lock_timeout = '5s';
 
@@ -101,7 +107,7 @@ do $$
 begin
   if to_regclass('public.model_registry') is null or to_regclass('public.credit_prices') is null
      or to_regprocedure('public.sellable_models(text, text)') is null then
-    raise exception '0163 needs 0020 (credit_prices) and 0035 (model_registry, sellable_models): apply them first';
+    raise exception '0173 needs 0020 (credit_prices) and 0035 (model_registry, sellable_models): apply them first';
   end if;
 end $$;
 
@@ -133,45 +139,45 @@ declare
   -- Every unit a quote of the nine can read. variant null = the base row (the default variant's figure for a model priced by variant).
   prices constant jsonb := $json$[
     {"unit": "model_ideogram_3_image", "model": "ideogram-3", "variant": null, "usd": 0.03, "credits": 3,
-     "note": "0163: Ideogram 3.0 Turbo list US$0.03/image (registry, as_of 2026-11-13, ESTIMATE). Sold 7.5 credits."},
+     "note": "0173: Ideogram 3.0 Turbo list US$0.03/image (registry, as_of 2026-11-13, ESTIMATE). Sold 7.5 credits."},
     {"unit": "model_ideogram_4_image", "model": "ideogram-4", "variant": null, "usd": 0.03, "credits": 3,
-     "note": "0163: Ideogram 4.0 Turbo 1K list US$0.03/image (registry, as_of 2026-11-13, ESTIMATE). Sold 7.5 credits."},
+     "note": "0173: Ideogram 4.0 Turbo 1K list US$0.03/image (registry, as_of 2026-11-13, ESTIMATE). Sold 7.5 credits."},
     {"unit": "model_ideogram_4_5_image", "model": "ideogram-4.5", "variant": null, "usd": 0.06, "credits": 6,
-     "note": "0163: base row (lists the model); quotes read the tier rows. = medium, US$0.06/image. Sold 15 credits."},
+     "note": "0173: base row (lists the model); quotes read the tier rows. = medium, US$0.06/image. Sold 15 credits."},
     {"unit": "model_ideogram_4_5_image_low", "model": "ideogram-4.5", "variant": "low", "usd": 0.03, "credits": 3,
-     "note": "0163: Ideogram 4.5 Low list US$0.03/image (registry, as_of 2026-11-13, ESTIMATE). Sold 7.5 credits."},
+     "note": "0173: Ideogram 4.5 Low list US$0.03/image (registry, as_of 2026-11-13, ESTIMATE). Sold 7.5 credits."},
     {"unit": "model_ideogram_4_5_image_medium", "model": "ideogram-4.5", "variant": "medium", "usd": 0.06, "credits": 6,
-     "note": "0163: Ideogram 4.5 Medium list US$0.06/image (registry, as_of 2026-11-13, ESTIMATE). Sold 15 credits."},
+     "note": "0173: Ideogram 4.5 Medium list US$0.06/image (registry, as_of 2026-11-13, ESTIMATE). Sold 15 credits."},
     {"unit": "model_ideogram_4_5_image_high", "model": "ideogram-4.5", "variant": "high", "usd": 0.10, "credits": 10,
-     "note": "0163: Ideogram 4.5 High list US$0.10/image (registry, as_of 2026-11-13, ESTIMATE). Sold 25 credits."},
+     "note": "0173: Ideogram 4.5 High list US$0.10/image (registry, as_of 2026-11-13, ESTIMATE). Sold 25 credits."},
     {"unit": "model_minimax_h3_second", "model": "minimax-h3", "variant": null, "usd": 0.08, "credits": 8,
-     "note": "0163: base row (lists the model); quotes read the resolution rows. = 768p, US$0.08/s. Sold 20 credits/s."},
+     "note": "0173: base row (lists the model); quotes read the resolution rows. = 768p, US$0.08/s. Sold 20 credits/s."},
     {"unit": "model_minimax_h3_second_768p", "model": "minimax-h3", "variant": "768p", "usd": 0.08, "credits": 8,
-     "note": "0163: MiniMax H3 768p list US$0.08 per output second (registry, as_of 2026-11-13, ESTIMATE). Sold 20 credits/s."},
+     "note": "0173: MiniMax H3 768p list US$0.08 per output second (registry, as_of 2026-11-13, ESTIMATE). Sold 20 credits/s."},
     {"unit": "model_minimax_h3_second_2k", "model": "minimax-h3", "variant": "2k", "usd": 0.13, "credits": 13,
-     "note": "0163: MiniMax H3 2K list US$0.13 per output second (registry, as_of 2026-11-13, ESTIMATE). Sold 32.5 credits/s."},
+     "note": "0173: MiniMax H3 2K list US$0.13 per output second (registry, as_of 2026-11-13, ESTIMATE). Sold 32.5 credits/s."},
     {"unit": "model_minimax_h3_highspeed_second", "model": "minimax-h3-highspeed", "variant": null, "usd": 0.06, "credits": 6,
-     "note": "0163: base row (lists the model); quotes read the resolution rows. = 768p, US$0.06/s. Sold 15 credits/s."},
+     "note": "0173: base row (lists the model); quotes read the resolution rows. = 768p, US$0.06/s. Sold 15 credits/s."},
     {"unit": "model_minimax_h3_highspeed_second_480p", "model": "minimax-h3-highspeed", "variant": "480p", "usd": 0.04, "credits": 4,
-     "note": "0163: MiniMax H3 Highspeed 480p list US$0.04 per output second (registry, ESTIMATE). Sold 10 credits/s."},
+     "note": "0173: MiniMax H3 Highspeed 480p list US$0.04 per output second (registry, ESTIMATE). Sold 10 credits/s."},
     {"unit": "model_minimax_h3_highspeed_second_768p", "model": "minimax-h3-highspeed", "variant": "768p", "usd": 0.06, "credits": 6,
-     "note": "0163: MiniMax H3 Highspeed 768p list US$0.06 per output second (registry, ESTIMATE). Sold 15 credits/s."},
+     "note": "0173: MiniMax H3 Highspeed 768p list US$0.06 per output second (registry, ESTIMATE). Sold 15 credits/s."},
     {"unit": "model_minimax_h3_lite_second", "model": "minimax-h3-lite", "variant": null, "usd": 0.04, "credits": 4,
-     "note": "0163: base row (lists the model); quotes read the resolution rows. = 768p, US$0.04/s. Sold 10 credits/s."},
+     "note": "0173: base row (lists the model); quotes read the resolution rows. = 768p, US$0.04/s. Sold 10 credits/s."},
     {"unit": "model_minimax_h3_lite_second_480p", "model": "minimax-h3-lite", "variant": "480p", "usd": 0.025, "credits": 2.5,
-     "note": "0163: MiniMax H3 Lite 480p list US$0.025 per output second (registry, ESTIMATE). Sold 6.25 credits/s."},
+     "note": "0173: MiniMax H3 Lite 480p list US$0.025 per output second (registry, ESTIMATE). Sold 6.25 credits/s."},
     {"unit": "model_minimax_h3_lite_second_768p", "model": "minimax-h3-lite", "variant": "768p", "usd": 0.04, "credits": 4,
-     "note": "0163: MiniMax H3 Lite 768p list US$0.04 per output second (registry, ESTIMATE). Sold 10 credits/s."},
+     "note": "0173: MiniMax H3 Lite 768p list US$0.04 per output second (registry, ESTIMATE). Sold 10 credits/s."},
     {"unit": "model_minimax_h3_max_second", "model": "minimax-h3-max", "variant": null, "usd": 0.08, "credits": 8,
-     "note": "0163: base row (lists the model); quotes read the resolution rows. = 768p, US$0.08/s. Sold 20 credits/s."},
+     "note": "0173: base row (lists the model); quotes read the resolution rows. = 768p, US$0.08/s. Sold 20 credits/s."},
     {"unit": "model_minimax_h3_max_second_480p", "model": "minimax-h3-max", "variant": "480p", "usd": 0.05, "credits": 5,
-     "note": "0163: MiniMax H3 Max 480p list US$0.05 per output second (registry, ESTIMATE). Sold 12.5 credits/s."},
+     "note": "0173: MiniMax H3 Max 480p list US$0.05 per output second (registry, ESTIMATE). Sold 12.5 credits/s."},
     {"unit": "model_minimax_h3_max_second_768p", "model": "minimax-h3-max", "variant": "768p", "usd": 0.08, "credits": 8,
-     "note": "0163: MiniMax H3 Max 768p list US$0.08 per output second (registry, ESTIMATE). Sold 20 credits/s."},
+     "note": "0173: MiniMax H3 Max 768p list US$0.08 per output second (registry, ESTIMATE). Sold 20 credits/s."},
     {"unit": "model_runway_gen4_5_second", "model": "runway-gen4.5", "variant": null, "usd": 0.12, "credits": 12,
-     "note": "0163: Runway gen4.5 list 12 Runway credits/s at US$0.01 (registry, as_of 2026-11-13). Sold 30 credits/s."},
+     "note": "0173: Runway gen4.5 list 12 Runway credits/s at US$0.01 (registry, as_of 2026-11-13). Sold 30 credits/s."},
     {"unit": "model_runway_gen4_turbo_second", "model": "runway-gen4-turbo", "variant": null, "usd": 0.05, "credits": 5,
-     "note": "0163: Runway gen4_turbo list 5 Runway credits/s at US$0.01 (registry, as_of 2026-11-13). Sold 12.5 credits/s."}
+     "note": "0173: Runway gen4_turbo list 5 Runway credits/s at US$0.01 (registry, as_of 2026-11-13). Sold 12.5 credits/s."}
   ]$json$::jsonb;
   -- The policy margin for image and video (docs/sql/prices_defaults_2026_10_03.sql). Never 0 here: free credits are spent at this rate.
   c_margin constant numeric := 1.5;
@@ -191,31 +197,31 @@ begin
   -- 1. This file's own arithmetic: a price is the registry figure in cents, nothing rounded down, and every variant has its row.
   for p in select * from jsonb_array_elements(prices) loop
     if (p ->> 'credits')::numeric <> (p ->> 'usd')::numeric * 100 or (p ->> 'credits')::numeric <= 0 then
-      raise exception '0163: % is not its vendor figure in cents (% for US$%)', p ->> 'unit', p ->> 'credits', p ->> 'usd';
+      raise exception '0173: % is not its vendor figure in cents (% for US$%)', p ->> 'unit', p ->> 'credits', p ->> 'usd';
     end if;
     if not (p ->> 'model' = any (ids)) then
-      raise exception '0163: % prices a model this file does not open (%)', p ->> 'unit', p ->> 'model';
+      raise exception '0173: % prices a model this file does not open (%)', p ->> 'unit', p ->> 'model';
     end if;
   end loop;
 
   -- 2. The registry is what this file was written against, model by model. An empty registry is a fresh deployment (or the security
   --    lab's build): nothing to open and nothing to price, so the file writes nothing at all.
   if not exists (select 1 from public.model_registry) then
-    raise notice '0163: model_registry is empty (not synced yet): nothing opened, no price written';
+    raise notice '0173: model_registry is empty (not synced yet): nothing opened, no price written';
     return;
   end if;
   -- Asked only here: a scratch sequence that leaves 0124 or 0125 out has an empty registry and never reaches this line.
   if to_regprocedure('public.model_past_shutdown(jsonb)') is null or to_regprocedure('public.model_is_available(text)') is null then
-    raise exception '0163 needs 0124 (model_is_available) and 0125 (model_past_shutdown): apply them first';
+    raise exception '0173 needs 0124 (model_is_available) and 0125 (model_past_shutdown): apply them first';
   end if;
   for m in select * from jsonb_array_elements(models) loop
     select * into r from public.model_registry where id = m ->> 'id';
     if not found then
-      raise exception '0163: % is not in model_registry: sync the file (Actions -> Probe models) or take it out of this file', m ->> 'id';
+      raise exception '0173: % is not in model_registry: sync the file (Actions -> Probe models) or take it out of this file', m ->> 'id';
     end if;
     if r.adapter <> m ->> 'adapter' or r.spec ->> 'vendor_model' is distinct from m ->> 'vendor_model'
        or r.credit_unit is distinct from m ->> 'credit_unit' then
-      raise exception '0163: % now calls % / % (unit %), not what this file priced: re-derive its prices', r.id, r.adapter,
+      raise exception '0173: % now calls % / % (unit %), not what this file priced: re-derive its prices', r.id, r.adapter,
         r.spec ->> 'vendor_model', r.credit_unit;
     end if;
     -- The same capabilities as written (as sets: the file's order is not the point). A capability a re-sync added was never priced
@@ -223,53 +229,53 @@ begin
     -- would be sold at this file's figure for a different call.
     want := array(select jsonb_array_elements_text(m -> 'caps'));
     if not (r.capabilities @> want and r.capabilities <@ want) then
-      raise exception '0163: % now offers %, not the % this file priced: review the new capability before it is opened', r.id,
+      raise exception '0173: % now offers %, not the % this file priced: review the new capability before it is opened', r.id,
         r.capabilities, want;
     end if;
     if r.spec ? 'vendor_model_by_capability' then
-      raise exception '0163: % calls another vendor model for some capability (spec.vendor_model_by_capability): this file priced one call', r.id;
+      raise exception '0173: % calls another vendor model for some capability (spec.vendor_model_by_capability): this file priced one call', r.id;
     end if;
     if r.availability = 'disabled' then
-      raise exception '0163: % is disabled (the owner''s off, or removed from the file): this file does not turn it back on', r.id;
+      raise exception '0173: % is disabled (the owner''s off, or removed from the file): this file does not turn it back on', r.id;
     end if;
     if r.verified_at is null or r.verified_probe_id is null then
-      raise exception '0163: % has no successful probe of its current call: run Actions -> Probe models for it, then apply', r.id;
+      raise exception '0173: % has no successful probe of its current call: run Actions -> Probe models for it, then apply', r.id;
     end if;
     if coalesce(r.spec ->> 'terms_gate', '') <> '' then
-      raise exception '0163: % is terms-gated (%): its vendor terms are not cleared, so it is not opened', r.id, r.spec ->> 'terms_gate';
+      raise exception '0173: % is terms-gated (%): its vendor terms are not cleared, so it is not opened', r.id, r.spec ->> 'terms_gate';
     end if;
     if coalesce(nullif(r.spec -> 'blocked_countries', 'null'::jsonb), '[]'::jsonb) <> '[]'::jsonb then
-      raise exception '0163: % carries blocked_countries, which 0142 keeps off sale', r.id;
+      raise exception '0173: % carries blocked_countries, which 0142 keeps off sale', r.id;
     end if;
     if public.model_past_shutdown(r.spec) then
-      raise exception '0163: % is past its vendor''s announced shutdown date (0125)', r.id;
+      raise exception '0173: % is past its vendor''s announced shutdown date (0125)', r.id;
     end if;
     -- Ideogram's and Runway's terms forbid passing their API to third parties: only the Studio may sell them.
     if coalesce(r.spec ->> 'api_exposure', '') <> 'web_only' then
-      raise exception '0163: % is no longer web_only: its API and MCP exposure needs its own review', r.id;
+      raise exception '0173: % is no longer web_only: its API and MCP exposure needs its own review', r.id;
     end if;
     if r.entitlement is not null and r.entitlement <> m ->> 'tier' then
-      raise exception '0163: % now needs %, not the % this file read: review it before it is opened', r.id, r.entitlement, m ->> 'tier';
+      raise exception '0173: % now needs %, not the % this file read: review it before it is opened', r.id, r.entitlement, m ->> 'tier';
     end if;
     if (r.spec -> 'pricing' -> 'variants' ->> 'by') is distinct from (m ->> 'by') then
-      raise exception '0163: % is now priced by %, not by %: re-derive its prices', r.id,
+      raise exception '0173: % is now priced by %, not by %: re-derive its prices', r.id,
         coalesce(r.spec -> 'pricing' -> 'variants' ->> 'by', 'one flat figure'), coalesce(m ->> 'by', 'one flat figure');
     end if;
     -- The default a quote settles on must be the variant the base row was set to (creative_price: the pinned default_resolution;
     -- medium when no quality is named).
     if m ->> 'by' = 'resolution' and r.spec ->> 'default_resolution' is distinct from m ->> 'default' then
-      raise exception '0163: % now pins %, not %: its base row would show another resolution''s price', r.id,
+      raise exception '0173: % now pins %, not %: its base row would show another resolution''s price', r.id,
         r.spec ->> 'default_resolution', m ->> 'default';
     end if;
     if m ->> 'by' = 'quality' and not coalesce(r.spec -> 'qualities' @> jsonb_build_array(m ->> 'default'), false) then
-      raise exception '0163: % no longer offers the % quality its base row is priced at', r.id, m ->> 'default';
+      raise exception '0173: % no longer offers the % quality its base row is priced at', r.id, m ->> 'default';
     end if;
     select coalesce(array_agg(k.key order by k.key), '{}') into have
       from jsonb_object_keys(coalesce(r.spec -> 'pricing' -> 'variants' -> 'prices', '{}'::jsonb)) as k(key);
     select coalesce(array_agg(x.v ->> 'variant' order by x.v ->> 'variant'), '{}') into want
       from jsonb_array_elements(prices) as x(v) where x.v ->> 'model' = r.id and x.v ->> 'variant' is not null;
     if have <> want then
-      raise exception '0163: % prices the variants %, this file %: re-derive its prices', r.id, have, want;
+      raise exception '0173: % prices the variants %, this file %: re-derive its prices', r.id, have, want;
     end if;
   end loop;
   for p in select * from jsonb_array_elements(prices) loop
@@ -279,7 +285,7 @@ begin
     -- A figure that is not a JSON number is never cast: the CASE decides the order, not an `and`.
     moved := case when jsonb_typeof(fig) = 'number' then (fig #>> '{}')::numeric <> (p ->> 'usd')::numeric else true end;
     if moved then
-      raise exception '0163: the registry''s figure for % is % now, not US$%: re-derive the price', p ->> 'unit', fig, p ->> 'usd';
+      raise exception '0173: the registry''s figure for % is % now, not US$%: re-derive the price', p ->> 'unit', fig, p ->> 'usd';
     end if;
   end loop;
 
@@ -292,10 +298,10 @@ begin
     else
       sold := cp.credits_per_unit * (1 + cp.margin);
       if sold < (p ->> 'credits')::numeric * (1 + c_margin) then
-        raise exception '0163: % already sells at % credits a unit, below this file''s % (US$% x 100 x 2.5): raise that row or delete it, then apply',
+        raise exception '0173: % already sells at % credits a unit, below this file''s % (US$% x 100 x 2.5): raise that row or delete it, then apply',
           cp.unit, sold, (p ->> 'credits')::numeric * (1 + c_margin), p ->> 'usd';
       elsif cp.credits_per_unit <> (p ->> 'credits')::numeric or cp.margin <> c_margin then
-        raise notice '0163: % keeps the price already set (% credits a unit, not below this file''s %)', cp.unit, sold,
+        raise notice '0173: % keeps the price already set (% credits a unit, not below this file''s %)', cp.unit, sold,
           (p ->> 'credits')::numeric * (1 + c_margin);
       end if;
     end if;
@@ -312,21 +318,21 @@ begin
   for p in select * from jsonb_array_elements(prices) loop
     select * into cp from public.credit_prices where unit = p ->> 'unit';
     if not found or cp.credits_per_unit * (1 + cp.margin) < (p ->> 'usd')::numeric * 100 * (1 + c_margin) then
-      raise exception '0163 end state: % does not sell at 2.5x its vendor figure', p ->> 'unit';
+      raise exception '0173 end state: % does not sell at 2.5x its vendor figure', p ->> 'unit';
     end if;
   end loop;
   for m in select * from jsonb_array_elements(models) loop
     select * into r from public.model_registry where id = m ->> 'id';
     if r.availability not in ('beta', 'ga') or r.entitlement is not null or r.verified_at is null then
-      raise exception '0163 end state: % is not on sale as this file says (availability %, entitlement %)', r.id, r.availability, r.entitlement;
+      raise exception '0173 end state: % is not on sale as this file says (availability %, entitlement %)', r.id, r.availability, r.entitlement;
     end if;
     -- Listed by the Studio's catalog (unless the owner's switch has it off, 0124), and never by the API or MCP.
     if public.model_is_available(r.id) and not exists (select 1 from public.sellable_models(null, 'web') s where s.id = r.id) then
-      raise exception '0163 end state: % is on sale but sellable_models does not list it', r.id;
+      raise exception '0173 end state: % is on sale but sellable_models does not list it', r.id;
     end if;
     if exists (select 1 from public.sellable_models(null, 'api') s where s.id = r.id)
        or exists (select 1 from public.sellable_models(null, 'mcp') s where s.id = r.id) then
-      raise exception '0163 end state: % is offered through the API or MCP', r.id;
+      raise exception '0173 end state: % is offered through the API or MCP', r.id;
     end if;
   end loop;
 end $$;
@@ -335,7 +341,7 @@ end $$;
 do $$
 begin
   if exists (select 1 from public.model_registry where availability in ('beta', 'ga') and coalesce(spec ->> 'terms_gate', '') <> '') then
-    raise exception '0163 end state: a terms-gated model is on sale';
+    raise exception '0173 end state: a terms-gated model is on sale';
   end if;
 end $$;
 
@@ -357,4 +363,4 @@ end $$;
 --
 -- What each unit sells at (credits a unit, margin folded in), next to the registry's vendor figure:
 --   select cp.unit, cp.credits_per_unit * (1 + cp.margin) as sold, cp.note from public.credit_prices cp
---    where cp.note like '0163:%' order by cp.unit;
+--    where cp.note like '0173:%' order by cp.unit;
