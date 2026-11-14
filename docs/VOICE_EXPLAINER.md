@@ -235,6 +235,11 @@ No silent fallback anywhere (CLAUDE.md rule 4). Every refusal fails the job, rel
 | The render ran out of time (600 s + 6 s per second of narration) | `unavailable` | A busy machine: try again later. |
 | The worker was told to stop (SIGTERM) during the job | `unavailable` | The render's process group is killed, or the transcription request is abandoned (it runs on a watched thread), and the job fails at once, hold released, instead of running on until Docker's SIGKILL leaves it in `submitting` for the 10-minute sweep. |
 
+"Nothing was charged" in these messages is about the person: the hold is released on every failure. ElevenLabs is another
+matter: once the transcription has answered, it has billed the platform for it, so every later failure (no words, the
+word track, the render, a stop) is marked as not proving that nothing was bought (`not_accepted` false, BR-L-019), and
+the worker never fails it over to another model as if no vendor call had been made.
+
 ### Opening it (the operator's checklist; nothing is sold until every step is done, in this order)
 
 The entry ships **hidden**: no `credit_prices` row, no probe, no availability.

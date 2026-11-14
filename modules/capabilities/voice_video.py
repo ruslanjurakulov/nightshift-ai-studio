@@ -410,6 +410,18 @@ class VoiceVideoAdapter(_ElevenLabs):
         self._check_stop("before the recording was transcribed")
         raw = self._transcribe_until_stopped(speech, duration)
         speech.unlink(missing_ok=True)
+        try:
+            return self._video(raw, wav, duration, look, work)
+        except AdapterError as e:
+            # The paid Scribe call went out and was answered: ElevenLabs bills a transcription it gave back, so no failure
+            # after it proves "nothing was bought" (BR-L-019), and none may fail over onto another model as if it did. The
+            # bridge clears the flag only past a submit's FIRST call, and the transcription is this submit's only one.
+            e.not_accepted = False
+            raise
+
+    def _video(self, raw, wav: Path, duration: float, look: str, work: Path) -> Path:
+        """Everything after the transcription: words -> scenes -> the render. Every failure here comes after the paid call
+        (``not_accepted`` False, :meth:`_make`)."""
         words = self._words(raw)
         try:
             words = ve.fit_words(words, duration)
@@ -421,7 +433,7 @@ class VoiceVideoAdapter(_ElevenLabs):
             props = ve.build_props(look=look, duration_s=duration, words=words, scenes=scenes, narration=NARRATION_FILE,
                                    sfx=cues, captions=True)
         except ve.ExplainerError as e:
-            raise AdapterError(E_BAD_REQUEST, f"the recording cannot be made into a video: {e}"[:500], not_accepted=True) from None
+            raise AdapterError(E_BAD_REQUEST, f"the recording cannot be made into a video: {e}"[:500]) from None
         out = work / "voice_video.mp4"
         timeout = RENDER_TIMEOUT_FLOOR_S + RENDER_TIMEOUT_PER_SECOND * duration
         self._check_stop("before this video was rendered")
@@ -431,14 +443,13 @@ class VoiceVideoAdapter(_ElevenLabs):
                                        timeout_s=timeout, tmp_dir=work / "tmp")
         except ve.RenderTimeout:
             raise AdapterError(E_UNAVAILABLE, f"the render took longer than {timeout:.0f} s and was stopped; nothing was "
-                                              "charged: try again later", not_accepted=True) from None
+                                              "charged: try again later") from None
         except ve.ExplainerError as e:
             # The tail names this machine's paths: the operator's log, never the job row.
             logger.warning("voice video: the render failed: %s", self.message(str(e)))
-            raise AdapterError(E_BAD_RESPONSE, "the render failed on the worker; nothing was charged",
-                               not_accepted=True) from None
+            raise AdapterError(E_BAD_RESPONSE, "the render failed on the worker; nothing was charged") from None
         if not out.is_file() or out.stat().st_size == 0:
-            raise AdapterError(E_BAD_RESPONSE, "the render produced no video; nothing was charged", not_accepted=True)
+            raise AdapterError(E_BAD_RESPONSE, "the render produced no video; nothing was charged")
         shutil.rmtree(work / "tmp", ignore_errors=True)
         wav.unlink(missing_ok=True)
         return out
@@ -544,10 +555,9 @@ class VoiceVideoAdapter(_ElevenLabs):
             cleaned = caption_words.clean_words(raw if isinstance(raw, list) else [])
         except caption_words.NoSpeech:
             raise AdapterError(E_BAD_REQUEST, "no words were heard in the recording: a voice video needs speech "
-                                              "(is it a narration, and loud enough?); nothing was charged",
-                               not_accepted=True) from None
+                                              "(is it a narration, and loud enough?); nothing was charged") from None
         except caption_words.CaptionsError as e:
-            raise AdapterError(E_BAD_REQUEST, f"{e.message}; nothing was charged", not_accepted=True) from None
+            raise AdapterError(E_BAD_REQUEST, f"{e.message}; nothing was charged") from None
         return ve.normalize_words(cleaned)
 
     def _render_until_stopped(self, props: dict, out: Path, **kw) -> None:
@@ -581,7 +591,7 @@ class VoiceVideoAdapter(_ElevenLabs):
             out.unlink(missing_ok=True)
             logger.warning("voice video: the worker was told to stop; the render was killed")
             raise AdapterError(E_UNAVAILABLE, "the worker was stopped while this video was rendering; nothing was "
-                                              "charged: start it again", not_accepted=True)
+                                              "charged: start it again")
         if "error" in box:
             raise box["error"]
 

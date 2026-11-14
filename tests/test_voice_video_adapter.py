@@ -403,7 +403,8 @@ class Submit(Tmp):
         with self.assertLogs(vv.logger, level=logging.WARNING) as logs:
             with self.assertRaises(AdapterError) as cm:
                 self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
-        self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_BAD_RESPONSE, True))
+        # After the paid Scribe call: the failure proves nothing about what ElevenLabs billed (BR-L-019).
+        self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_BAD_RESPONSE, False))
         self.assertNotIn(str(self.root), cm.exception.message)
         self.assertIn("nothing was charged", cm.exception.message)
         self.assertIn("secret/path.tsx", "\n".join(logs.output))
@@ -415,6 +416,59 @@ class Submit(Tmp):
             self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
         self.assertEqual(cm.exception.code, E_UNAVAILABLE)
         self.assertIn("try again later", cm.exception.message)
+
+    def test_no_failure_after_the_paid_transcription_claims_nothing_was_bought(self):
+        # BR-L-019: not_accepted lets the worker fail over to another model as if no vendor task existed. Once Scribe has
+        # answered, ElevenLabs bills that transcription whatever happens next, so every later failure must say False. The
+        # bridge's own rule clears it only past a submit's first call, and the transcription is this submit's only one.
+        failures = {
+            "the render fails": dict(render_error=ve.RenderFailed("Remotion failed (exit 1)")),
+            "the render times out": dict(render_error=ve.RenderTimeout("the render took longer than 618 s")),
+            "no words": dict(words=[]),
+            "the words are not this recording's": dict(words=[{"word": "late", "start": 10.0, "end": 11.0}]),
+        }
+        for name, over in failures.items():
+            with self.subTest(name):
+                self.e.render_error = over.get("render_error")
+                self.e.words = over.get("words", WORDS)
+                with self.assertLogs(vv.logger, level=logging.DEBUG):
+                    vv.logger.debug("start")
+                    a = self.e.adapter()
+                    with self.assertRaises(AdapterError) as cm:
+                        a.submit(self.req(), vv.RULES_ENGINE)
+                self.assertEqual(a.calls_sent, 1, "the paid call went out")
+                self.assertFalse(cm.exception.not_accepted, cm.exception.message)
+        # An empty render file after a clean exit, and a stop between the transcription and the render: the same.
+        def empty(props, out, **kw):
+            Path(out).write_bytes(b"")
+        stop = threading.Event()
+
+        def transcribe_then_stop(speech, limit):
+            stop.set()
+            return [{"t": w["word"], "s": w["start"], "e": w["end"]} for w in WORDS]
+
+        for over in (dict(render=empty), dict(stop=stop, transcribe=transcribe_then_stop)):
+            with self.subTest(sorted(over)):
+                with self.assertRaises(AdapterError) as cm:
+                    self.e.adapter(**over).submit(self.req(), vv.RULES_ENGINE)
+                self.assertFalse(cm.exception.not_accepted, cm.exception.message)
+
+    def test_through_the_bridge_a_render_failure_after_scribe_is_not_marked_not_accepted(self):
+        # The seam the worker submits through (modules/creative_adapters.py): it resets calls_sent and trusts the adapter's
+        # flag for a submit's first call, so the adapter itself must say False once Scribe has answered.
+        self.e.render_error = ve.RenderFailed("Remotion failed (exit 1)")
+        a = self.e.adapter()
+        ra = ca.RegistryAdapter(reg.load()[MODEL], a, sync_store={})
+        req = cw.GenerationRequest(job_id="j", org_id=ORG, capability=VOICE_EXPLAINER, model=MODEL,
+                                   params={"source_asset_id": SRC, "look": "dusk"}, input_files=(self.rec,), quantity=3.0)
+        with self.assertLogs(vv.logger, level=logging.WARNING):
+            with self.assertRaises(AdapterError) as cm:
+                ra.submit(req)
+        self.assertEqual((cm.exception.code, cm.exception.not_accepted, a.calls_sent), (E_BAD_RESPONSE, False, 1))
+        # And a refusal before anything was sent still proves nothing was bought.
+        with self.assertRaises(AdapterError) as cm:
+            ca.RegistryAdapter(reg.load()[MODEL], self.e.adapter(has_npx=lambda: False), sync_store={}).submit(req)
+        self.assertTrue(cm.exception.not_accepted)
 
     def test_one_render_at_a_time_in_this_process_and_a_second_is_refused_never_waited_for(self):
         seen = []
@@ -486,7 +540,8 @@ class Scribe(Tmp):
                                                                     "type": "audio_event"}]}):
             self.e.answer = FakeResp(200, body)
             e = self.fail()
-            self.assertEqual((e.code, e.not_accepted), (E_BAD_REQUEST, True), body)
+            # The vendor answered (and bills) the call: "no words" is the person's fix, but no proof nothing was bought.
+            self.assertEqual((e.code, e.not_accepted), (E_BAD_REQUEST, False), body)
             self.assertIn("no words were heard", e.message)
             self.assertIn("nothing was charged", e.message)
 
@@ -702,7 +757,7 @@ class Stop(Tmp):
         with self.assertRaises(AdapterError) as cm:
             self.e.adapter(render=render, stop=stop).submit(self.req(), vv.RULES_ENGINE)
         self.assertLess(time.monotonic() - t0, 15)
-        self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_UNAVAILABLE, True))
+        self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_UNAVAILABLE, False))   # after the paid call
         self.assertIn("nothing was charged", cm.exception.message)
         (p,) = procs
         # SIGKILL reached the shell through its process group (nothing signals it directly), so its child got it too.
