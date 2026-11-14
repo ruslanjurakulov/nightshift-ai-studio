@@ -319,14 +319,7 @@
 @media (hover: none) { .nx-marquee { display: none; } }
 @media (prefers-reduced-motion: reduce) { .nx-marquee { display: none; } }
 
-/* ── The facts count up (attach.ts attachCountUp) ──────────────────────────────────────────────────────────────────────── */
-/* The server's number stays in the page, transparent, holding its own width; the counter is drawn over it with no
-   alternative text (`/ ""`), so assistive technology reads the true number throughout. */
-.nx [data-count][data-counting] { position: relative; color: transparent; counter-reset: nx-n var(--nx-n); }
-.nx [data-count][data-counting]::after { content: counter(nx-n); content: counter(nx-n) / ""; position: absolute; top: 0; left: 0; color: var(--ns-text); }
-@media (prefers-reduced-motion: no-preference) {
-  .nx [data-count][data-counting] { transition: --nx-n 1200ms cubic-bezier(0.16, 1, 0.3, 1); }
-}
+/* The facts' count-up is drawn after this layer, at the end of the file: see there for why. */
 
 /* ── The reveal on /mcp ─────────────────────────────────────────────────────────────────────────────────────────────────
    SiteEffects marks what eases in on every public page; site-next.css draws it inside .nx, and /mcp is on the older frame,
@@ -388,4 +381,16 @@ html[data-motion="paused"] .nx-btn:not([data-busy])::after, html[data-motion="pa
   .st .ml-land [data-rv] { opacity: 1; transform: none; }
   .nx .nx-marquee, .nx-sh::after, .nx-section#samples::before, .nx-section#samples::after { display: none; }
 }
+}
+
+/* ── The facts count up (attach.ts attachCountUp) ──────────────────────────────────────────────────────────────────────── */
+/* The server's number stays in the page, transparent, holding its own width; the counter is drawn over it with no
+   alternative text (`/ ""`), so assistive technology reads the true number throughout.
+   Outside @layer on purpose: the number's own colour (.nx-facts-n in site-next.css) is unlayered, and an unlayered rule beats a
+   layered one whatever its specificity, so inside the layer "transparent" lost and both numbers were painted for the length of
+   the count ("36" over "37", "990" over "100"; live audit, 2026-11-14). Unlayered, this selector is the more specific and wins. */
+.nx [data-count][data-counting] { position: relative; color: transparent; counter-reset: nx-n var(--nx-n); }
+.nx [data-count][data-counting]::after { content: counter(nx-n); content: counter(nx-n) / ""; position: absolute; top: 0; left: 0; color: var(--ns-text); }
+@media (prefers-reduced-motion: no-preference) {
+  .nx [data-count][data-counting] { transition: --nx-n 1200ms cubic-bezier(0.16, 1, 0.3, 1); }
 }

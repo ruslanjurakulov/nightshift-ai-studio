@@ -2,7 +2,7 @@
 
 import "./autopilot-demo.css";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ArrowRight, ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import { fmt } from "@/lib/i18n/core";
 import type { SiteAutopilotDictionary } from "@/lib/i18n/site-autopilot/en";
@@ -19,6 +19,7 @@ import {
   WORDS_FILE,
   type AutopilotStage,
 } from "@/lib/site/autopilot-artifacts";
+import { motionAllowed } from "@/components/site/motion/env";
 
 type Copy = SiteAutopilotDictionary["demo"];
 
@@ -40,16 +41,58 @@ const SOURCE: Partial<Record<AutopilotStage, string>> = {
  * docs/APPROVE_PUBLISH_1B.md). Nothing here pretends to be a live run: no counter, no fake progress, no number that was not in a file.
  *
  * Click-driven only: a stage button, the previous/next keys, the arrow keys on the rail. Nothing advances by itself, so there is
- * nothing to pause (the owner's rule for the public site, 2026-11-13: no visible pause key). Every panel is in the page at once,
- * stacked in one grid cell with only the current one visible, so the section's height is the tallest panel's from the first
- * paint and moving between stages shifts nothing (CLS 0).
+ * nothing to pause (the owner's rule for the public site, 2026-11-13: no visible pause key). Every panel is in the page at once
+ * (each stage is in the server's HTML), but only the current one takes room: the frame is as tall as the stage on screen. It was
+ * once the tallest stage's height for every stage, which left the first stage, the one every visitor sees, over 480 px of empty
+ * card (live audit, 2026-11-14). The first paint is the first stage's height, so loading shifts nothing; a change of stage is the
+ * visitor's own press (input-driven, not counted as CLS), and with motion allowed the height eases to the new stage's.
  */
 export function AutopilotDemo({ copy }: { copy: Copy }) {
   const [at, setAt] = useState(0);
   const rail = useRef<HTMLOListElement>(null);
+  const stack = useRef<HTMLDivElement>(null);
+  // The frame's height just before a change of stage: the height it eases from (null when nothing is to ease).
+  const from = useRef<number | null>(null);
   const total = AUTOPILOT_STAGES.length;
 
-  const go = useCallback((i: number) => setAt(Math.max(0, Math.min(total - 1, i))), [total]);
+  const go = useCallback(
+    (i: number) => {
+      from.current = stack.current?.offsetHeight ?? null;
+      setAt(Math.max(0, Math.min(total - 1, i)));
+    },
+    [total],
+  );
+
+  // Ease the frame from the old stage's height to the new one's, then hand it back to its content (height: auto), so a resize
+  // or a font arriving later still fits. Before paint, so the jump to the new height is never shown first.
+  useLayoutEffect(() => {
+    const el = stack.current;
+    const start = from.current;
+    from.current = null;
+    if (!el || start === null || !motionAllowed()) return;
+    const end = el.offsetHeight;
+    if (Math.abs(end - start) < 2) return;
+    const release = () => {
+      el.style.removeProperty("height");
+      el.removeAttribute("data-sizing");
+    };
+    el.setAttribute("data-sizing", "true");
+    el.style.height = `${start}px`;
+    void el.offsetHeight;
+    el.style.height = `${end}px`;
+    // The panels' own fades end here too (transitionend bubbles): only the frame's height ends the easing.
+    const onEnd = (ev: TransitionEvent) => {
+      if (ev.target === el && ev.propertyName === "height") release();
+    };
+    el.addEventListener("transitionend", onEnd);
+    // A transition that never runs (the tab hidden, the pause pressed mid-way) must not leave the frame at a fixed height.
+    const timer = window.setTimeout(release, 600);
+    return () => {
+      el.removeEventListener("transitionend", onEnd);
+      window.clearTimeout(timer);
+      release();
+    };
+  }, [at]);
 
   // On a phone the rail scrolls sideways: keep the current stage in its view, without scrolling the page (no scrollIntoView).
   useEffect(() => {
@@ -115,7 +158,7 @@ export function AutopilotDemo({ copy }: { copy: Copy }) {
             </p>
           </div>
 
-          <div className="nx-ap-stack">
+          <div ref={stack} className="nx-ap-stack">
             {stages.map(({ id, s }, i) => {
               const kind = STAGE_EVIDENCE[id];
               const active = i === at;

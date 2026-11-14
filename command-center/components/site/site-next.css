@@ -934,12 +934,19 @@ html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(28px, 7.2vw, 52p
 .nx-plans-note { margin: 8px 0 0; font-size: 15px; line-height: 1.5; color: var(--ns-text-dim); }
 .nx-plans-more { margin-top: 8px; }
 
-/* Try it, compact on a phone: the working titles for your topic, a few lines, one column (the other cards are on a desktop). */
+/* Try it, compact on a phone: every part of the plan, one column, two lines each, a line's name and words run together, and
+   the thumbnail brief without its drawing. (Only the working titles were shown here once, so "Show the plan" on a phone showed
+   one card of five; live audit, 2026-11-14.) */
 @media (max-width: 859px) {
-  .nx-try-cards { gap: 10px; }
-  .nx-try-card[data-id="voice"], .nx-try-card[data-id="shots"], .nx-try-card[data-id="script"], .nx-try-card[data-id="thumb"] { display: none; }
-  .nx-try-card { padding: 16px; }
-  .nx-try-items li:nth-child(n+4) { display: none; }
+  .nx-try-cards { gap: 8px; }
+  .nx-try-card { padding: 14px 16px; }
+  .nx-try-card-h { font-size: 16px; }
+  .nx-try-items { margin-top: 8px; }
+  .nx-try-items li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; padding: 6px 0; }
+  .nx-try-items li:nth-child(n+3) { display: none; }
+  .nx-try-items b { font-size: 14px; }
+  .nx-try-items span { font-size: 15px; }
+  .nx-try-thumb { display: none; }
 }
 
 /* /pricing hero: headline, the price check, then the button, in one column; two columns on a desktop. */
@@ -1734,3 +1741,24 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(110px +
 .nx-approve-ok { width: 16px; height: 16px; color: #5ee0a0; flex-shrink: 0; }
 /* The key as it waits: drawn, not a control (a span in an aria-hidden group), outlined in the stage amber, not filled. */
 .nx-approve-key { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px dashed #ffa940; font-weight: 600; color: #ffa940; }
+
+/* ── Live audit, 2026-11-14 ──
+   The showcase cards' AI badge starts where the card's words start, not 40 px left of them: 22 px on a phone (.nx-show-head's
+   padding), 56 px from 860 px (.nx-show-text's). The courtesy credit, which sits under it on a phone, follows. */
+.nx-show-pic .nx-result-badge, .nx-show-pic .nx-result-badge[data-kind="ai"] { left: 22px; }
+.nx-show-pic .nx-result-credit { left: 22px; }
+@media (min-width: 860px) {
+  .nx-show-pic .nx-result-badge, .nx-show-pic .nx-result-badge[data-kind="ai"] { top: 20px; left: 56px; }
+  .nx-show-pic .nx-result-credit { left: auto; }
+}
+/* The closing panel on a phone: its three keys are one column of equal width (the primary was full width and the two secondary
+   keys were narrow pills under it). */
+@media (max-width: 639px) {
+  .nx-final .nx-actions { align-items: stretch; width: 100%; max-width: 360px; margin-inline: auto; }
+  .nx-final .nx-actions > * { width: 100%; justify-content: center; }
+}
+/* The first screen on a tablet: as tall as its words and the prompt bar, not a fixed 980 px that left about 230 px of empty
+   picture under the keys at 768 px. A phone's screen is filled by the words anyway; from 1024 px the rule above applies. */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .nx-hero.nx-sh { min-height: 0; }
+}

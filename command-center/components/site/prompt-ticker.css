@@ -1,6 +1,6 @@
 /* Prompt → result under the hero (components/site/PromptTicker.tsx). The words box holds three lines whatever is typed into it
    and the result box is 16:9 from its numbers, so typing and the change of sample never move the page. The result waits blurred
-   while its words are typed (data-phase="typing") and sharpens after. Motion only under prefers-reduced-motion: no-preference.
+   while the first half of its words is typed (data-soft) and is sharp before the last words land. Motion only under prefers-reduced-motion: no-preference.
    The card glass reads the shared --glass-* tokens, with fallbacks. */
 
 @layer components {
@@ -60,9 +60,9 @@
 .nxt-next svg { width: 18px; height: 18px; }
 .nxt-media { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-radius: 16px; background: #0c0c0e; }
 .nxt-pic, .nxt-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.nxt[data-phase="typing"] .nxt-pic { filter: blur(14px) brightness(0.6); transform: scale(1.06); }
+.nxt[data-soft="true"] .nxt-pic { filter: blur(14px) brightness(0.6); transform: scale(1.06); }
 @media (prefers-reduced-motion: no-preference) {
-  .nxt-pic { transition: filter 700ms var(--ns-ease), transform 700ms var(--ns-ease); }
+  .nxt-pic { transition: filter 450ms var(--ns-ease), transform 450ms var(--ns-ease); }
   .nxt-video { animation: nxt-in 500ms var(--ns-ease) both; }
   .nxt-caret[data-on="true"] { animation: nxt-blink 1s steps(1) infinite; }
   html[data-motion="paused"] .nxt-caret { animation: none; }

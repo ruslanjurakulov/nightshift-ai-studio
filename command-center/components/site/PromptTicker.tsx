@@ -16,13 +16,21 @@ export type TickerGalleryCopy = { badge: string; model: string; altClip: string 
 /** How long a result stays after its words are typed: its clip to the end, but never less than MIN or more than MAX. */
 const MIN_MS = 4000;
 const MAX_MS = 9000;
+/** How long a sentence takes to type, whatever its length (TYPE_STEP bounds the time a character gets). */
+const TYPE_MS = 1500;
+const TYPE_STEP = { min: 8, max: 40 } as const;
+/** The share of the sentence typed when the result starts to sharpen: it is in focus by the time the last words land. */
+const SHARPEN_AT = 0.5;
 
 /**
  * Prompt → result, under the hero: a real sample's prompt is typed out (its first sentence; the label and the ellipsis say it is
  * cut), then its own result comes into focus and plays. Then the next sample. Every prompt is a job's own words and every result
  * is that job's own clip, named with its model in the sample's box; nothing is typed that no job was given.
  *
- * While the words are typed the result waits blurred (it is the real result, not a stand-in), and it sharpens when they are done.
+ * While the first half of the words is typed the result waits blurred (it is the real result, not a stand-in); it sharpens while
+ * the rest is typed. The typing is timed by the clock, not by one timer per character, so a busy page cannot stretch it: the
+ * result is in focus for most of each turn, never the other way round (it was blurred for most of the cycle; live audit,
+ * 2026-11-14).
  * Screen readers get the whole sentence at once, never letter by letter. Under reduced motion nothing types or plays: the first
  * sample stands still, whole, and "Next example" steps through them. The page's pause switch holds it; it types only while on
  * screen, and its clip plays only with a turn (components/site/clip-turns.ts).
@@ -78,13 +86,24 @@ export function PromptTicker({ items, copy, g }: { items: SampleSlide[]; copy: S
     if (auto && typed === null && shown === 0) setTyped(0);
   }, [auto, typed, shown]);
 
-  // Typing: about 2.4 s for a sentence, whatever its length, between 18 and 45 ms a character.
+  // Typing: about TYPE_MS for a sentence, whatever its length. The count is read off the clock at each tick, so a timer that
+  // fires late (a busy main thread) skips ahead instead of slowing the whole sentence down; a pause resumes where it stopped.
+  const typing = auto && typed !== null && typed < chars.length;
   useEffect(() => {
-    if (!auto || typed === null || typed >= chars.length) return;
-    const step = Math.min(45, Math.max(18, 2400 / Math.max(1, chars.length)));
-    const id = window.setTimeout(() => setTyped((n) => (n === null ? n : n + 1)), step);
+    if (!typing) return;
+    const step = Math.min(TYPE_STEP.max, Math.max(TYPE_STEP.min, TYPE_MS / Math.max(1, chars.length)));
+    const start = performance.now() - (typed ?? 0) * step;
+    let id = 0;
+    const tick = () => {
+      const n = Math.min(chars.length, Math.floor((performance.now() - start) / step));
+      setTyped((at) => (at === null ? at : Math.max(at, n)));
+      if (n < chars.length) id = window.setTimeout(tick, Math.max(16, step));
+    };
+    id = window.setTimeout(tick, step);
     return () => window.clearTimeout(id);
-  }, [auto, typed, chars.length]);
+    // `typed` is read once when typing (re)starts; the clock carries it from there.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typing, chars.length, i]);
 
   // The result's turn: until its clip ends (MIN..MAX), or MIN for a result shown as its still. `shown` counts the time it had.
   useEffect(() => {
@@ -117,8 +136,16 @@ export function PromptTicker({ items, copy, g }: { items: SampleSlide[]; copy: S
 
   if (!s) return null;
   const blurred = typed !== null && !done;
+  const soft = typed !== null && typed < chars.length * SHARPEN_AT;
   return (
-    <div ref={box} className="nxt" data-showcase-entry={s.job} data-model={s.modelName} data-phase={blurred ? "typing" : "result"}>
+    <div
+      ref={box}
+      className="nxt"
+      data-showcase-entry={s.job}
+      data-model={s.modelName}
+      data-phase={blurred ? "typing" : "result"}
+      data-soft={soft ? "true" : undefined}
+    >
       <div className="nxt-words">
         <p className="nxt-key">{copy.prompt}</p>
         <p className="nxt-line">
