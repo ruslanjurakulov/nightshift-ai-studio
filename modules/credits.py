@@ -440,7 +440,7 @@ HELD_FRAME = "frame"
 HELD_CONCEPT = "concept"
 
 
-class HeldTermsChanged(RuntimeError):
+class HeldTermsRefused(RuntimeError):
     """The run's settings are not the ones its hold was checked for. Raised by
     main.py before anything is spent; the runner releases the hold."""
 

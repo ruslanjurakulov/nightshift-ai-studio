@@ -74,6 +74,9 @@ _BY_CLASS = {
     "RenderTimeout": TIMEOUT,
     "TimeoutExpired": TIMEOUT,
     "CreditRefused": CREDITS,
+    # The run's channel settings are not the ones its credit hold was checked for (main._preflight_held_thumbnail):
+    # nothing was spent, and the fix is to start it again from the Command Center.
+    "HeldTermsRefused": CREDITS,
     # The run refused to start on a full output volume (main._preflight_disk): nothing was made.
     "InsufficientDisk": RENDER,
 }

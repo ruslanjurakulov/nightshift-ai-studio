@@ -737,7 +737,7 @@ def _preflight_held_thumbnail(ctx, channel_id, env=None) -> None:
     logger.error("[channel: %s] Run stopped before spending anything: %s", channel_id, why)
     events.emit(events.AGENT_FAILED, agent="credits", status=events.STATUS_FAILED,
                 channel_id=channel_id, metadata={"error": why, "stage": "preflight"})
-    raise credit_rules.HeldTermsChanged(why)
+    raise credit_rules.HeldTermsRefused(why)
 
 
 @contextlib.contextmanager

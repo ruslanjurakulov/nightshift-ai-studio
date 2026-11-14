@@ -35,7 +35,7 @@ class HeldThumbnailPreflight(unittest.TestCase):
 
     def test_concept_switched_on_after_a_frame_hold_stops_the_run_and_records_why(self):
         with mock.patch.object(self.main.events, "emit") as emit:
-            with self.assertRaises(credits.HeldTermsChanged) as stop:
+            with self.assertRaises(credits.HeldTermsRefused) as stop:
                 self.main._preflight_held_thumbnail(ctx("concept"), "news", env={ENV: "frame"})
         self.assertIn("nothing was spent", str(stop.exception))
         (args, kw), = emit.call_args_list
@@ -53,7 +53,7 @@ class HeldThumbnailPreflight(unittest.TestCase):
 
     def test_the_run_reads_concept_exactly_as_its_thumbnail_step_does(self):
         # " Concept " is concept to the thumbnail step (normalize_mode), so it must be to this stop too.
-        with mock.patch.object(self.main.events, "emit"), self.assertRaises(credits.HeldTermsChanged):
+        with mock.patch.object(self.main.events, "emit"), self.assertRaises(credits.HeldTermsRefused):
             self.main._preflight_held_thumbnail(ctx(" Concept "), "news", env={ENV: "frame"})
 
 
