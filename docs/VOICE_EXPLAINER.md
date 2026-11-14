@@ -156,8 +156,10 @@ The mixed audio's mean level was -24.9 dB against the narration's -23.7 dB, so t
 A person picks one of their library recordings (their own narration, audio only, at most 600 s) and one of the five looks on
 the Studio's **Voice** desk, sees the database's price, and presses Generate. The creative worker draws the video on this
 server with the engine above and stores it in the media library. It is an ordinary creative job: quote, hold, capture, and
-a full release on every failure (`create_creative_job`, 0036; nothing new in the money path). The MCP Studio tools
-(`list_models`, `quote_generation`, `create_generation`, `get_generation`) offer it too, with the same params.
+a full release on every failure (`create_creative_job`, 0036; nothing new in the money path). The API and the MCP Studio
+tools (`list_models`, `quote_generation`, `create_generation`, `get_generation`) accept the capability with the same params,
+but the shipped model is `web_only` (its transcription is an ElevenLabs Service, OEM Terms §2.B(a), like every ElevenLabs
+entry), so they list and sell it only after the owner's own explicit change of its `api_exposure` (Opening it, step 6).
 
 | Part | Where |
 | :-- | :-- |
@@ -264,9 +266,10 @@ The entry ships **hidden**: no `credit_prices` row, no probe, no availability.
      the same credit pool as text-to-speech (the official pricing pages disagree). If it does, transcription can starve the
      channels' narration: watch the balance, or keep a margin of credits for narration.
 6. **Clear the terms gate** once (a) holds: the entry carries `"terms_gate": "plan_required:scale"`, and the database refuses to
-   put a gated model on sale. A pull request that sets it to `null` in `schemas/model_registry.json`, merged and deployed. Whether
-   the model should also be `web_only` (OEM Terms §2.B(a): no resale to a third party who will itself make the Service available;
-   an API customer receives a rendered video, not Scribe) is the owner's decision; it is `any` today, as the MCP Studio tools offer it.
+   put a gated model on sale. A pull request that sets it to `null` in `schemas/model_registry.json`, merged and deployed. This
+   opens the web Studio only: the entry ships `"api_exposure": "web_only"`, like every ElevenLabs entry (OEM Terms §2.B(a): no
+   Making Available to a third party who will itself make the Service available), so the API and the MCP Studio tools do not
+   list or sell it. Offering it there is a separate, explicit owner decision: its own reviewed change of `api_exposure` to `any`.
 7. **Sync the registry** (`tools/probe_models.py --sync`, Actions → Probe models), so the database has the row.
 8. **Probe it on the worker**, where the engine is: the probe proves that THIS machine renders and that ElevenLabs transcribes for
    this key, and the Actions runner has no engine (its probe answers `not_configured`, honestly). For example

@@ -1751,7 +1751,7 @@ capability CHECKs.
   seconds as the database measured them (`creative_source_seconds`) at the model's credit unit, floored at `job_minimum`; a model with no
   `limits.max_source_seconds` is not sold, a longer recording is refused before any hold. A change of `spec.explainer_looks` clears the
   model's proof. `sellable_models` hands the Studio the looks; `api_creative_models` (0162) lists the model to an API key (the MCP
-  Studio tools). Money: 0036's hold / capture / release, unchanged.
+  Studio tools) unless it is `web_only`, as the shipped `nightshift-voice-explainer` is (OEM Terms §2.B(a)). Money: 0036's hold / capture / release, unchanged.
 - **The hunks** (tests/test_voice_video_migration.py undoes each and compares the rest byte for byte): `model_registry_guard`,
   `creative_capability_supported`, `creative_source_problem` on 0100's bodies; `sellable_models` on 0125's; `creative_params_problem`
   on 0156's; `creative_price` on 0159's; `api_creative_models` on 0162's; the CHECKs `model_registry_capabilities_check` (at most 20

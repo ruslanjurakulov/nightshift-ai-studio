@@ -6641,10 +6641,11 @@
       "terms_gate": "plan_required:scale",
       "terms_notes": [
         "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025') §2.B: the transcription is an ElevenLabs Service inside a product we sell; Free, Starter, Creator and Pro customers may not do that. Needs Scale or higher.",
-        "The owner confirms the plan and clears this gate (docs/VOICE_EXPLAINER.md, Opening it). api_exposure stays any: an API customer gets a rendered video, not Scribe; whether §2.B(a) still asks for web_only is the owner's call."
+        "OEM Terms §2.B(a), as for every ElevenLabs entry (elevenlabs-scribe-v2 included): no Making Available a Service to a third party 'who will itself Make Available' it. Hence api_exposure web_only: the web Studio only, never the API or the MCP Studio tools.",
+        "The owner confirms the plan and clears terms_gate (docs/VOICE_EXPLAINER.md, Opening it); that does not open the API. Offering this model to the API / MCP is the owner's own explicit act: a reviewed change of api_exposure to any, never a default."
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 200,
         "max_concurrent_per_org": 1,

@@ -863,6 +863,14 @@ class Registry(unittest.TestCase):
         # so the database refuses beta / ga until the owner has confirmed a Scale (or higher) plan and cleared it.
         self.assertEqual(e.terms_gate, "plan_required:scale")
         self.assertTrue(any("§2.B" in n for n in e.raw["terms_notes"]))
+        # And web_only like every ElevenLabs entry (OEM Terms §2.B(a)): clearing terms_gate must not put it on sale to the API
+        # or the MCP tools by default. Offering it there is the owner's own act, and the note says so.
+        self.assertEqual(e.api_exposure, "web_only")
+        self.assertEqual(e.api_exposure, reg.load()["elevenlabs-scribe-v2"].api_exposure)
+        notes = " ".join(e.raw["terms_notes"])
+        self.assertIn("§2.B(a)", notes)
+        self.assertIn("owner's own explicit act", notes)
+        self.assertTrue(all(len(n) <= 300 for n in e.raw["terms_notes"]))
         self.assertIn("speech-to-text", e.raw["api_documented"]["evidence"])
         self.assertIn(vv.SCRIBE_MODEL, e.raw["api_documented"]["evidence"])
         self.assertEqual(e.capabilities, (VOICE_EXPLAINER,))
