@@ -1315,3 +1315,43 @@ def test_a_refused_registration_does_not_run_the_collector(db):
         db.su("delete from public.oauth_clients where client_name = 'flood2'")
     assert register(db, uris=(ORDINARY,), ip=ip)["ok"] is True  # an accepted call still collects
     assert db.su("select count(*) from public.oauth_clients where client_id=%s", [stale])[0][0] == 0
+
+
+# ── 0163: a concept-thumbnail channel's video is priced with its generated images ──────────────────────────────────────
+
+def test_a_concept_channels_video_is_held_with_its_images_and_unpriced_images_hold_nothing(db):
+    """The worker refuses a hold that leaves a concept channel's up to 4 generated images out (modules/credits.minimum_reservation).
+    Before 0163 this function priced the bare floor, so every MCP video of such a channel was queued and then refused by the worker."""
+    c = connect(db, UA, limit=1000)
+    db.su("update public.channels set agent_config = agent_config || '{\"thumbnail_mode\": \" Concept \"}' where channel_id = 'chan-a'")
+    try:
+        db.su("insert into public.credit_prices (unit, credits_per_unit, margin) values ('image_generations', 2, 0.25) "
+              "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit, margin = excluded.margin")
+        r = create(db, c, params={"duration": 30}, idem="concept-1")
+        assert r["ok"] and r["data"]["price_credits"] == 55.0, r          # 45 for the length + 4 x 2 x 1.25
+        assert db.su("select amount::float from public.credit_reservations where job_id = %s",
+                     [db.su("select credit_ref from public.render_jobs where id = %s", [r["data"]["job_id"]])[0][0]])[0][0] == 55.0
+
+        held_before = db.su("select count(*) from public.credit_reservations where org_id = %s", [ORG_A])[0][0]
+        jobs_before = db.su("select count(*) from public.render_jobs where channel_id = 'chan-a'")[0][0]
+        db.su("delete from public.credit_prices where unit = 'image_generations'")
+        r = create(db, c, params={"duration": 30}, idem="concept-2")
+        assert code_of(r) == "pricing_unavailable", r
+        assert "concept thumbnails" in r["error"]["message"], r
+        # Unknown is not "the price without the images": nothing is held and nothing is queued.
+        assert db.su("select count(*) from public.credit_reservations where org_id = %s", [ORG_A])[0][0] == held_before
+        assert db.su("select count(*) from public.render_jobs where channel_id = 'chan-a'")[0][0] == jobs_before
+    finally:
+        db.su("update public.channels set agent_config = agent_config - 'thumbnail_mode' where channel_id = 'chan-a'")
+        db.su("delete from public.credit_prices where unit = 'image_generations'")
+
+
+def test_a_frame_channels_video_price_is_unchanged_by_an_image_price(db):
+    c = connect(db, UA, limit=1000)
+    db.su("insert into public.credit_prices (unit, credits_per_unit, margin) values ('image_generations', 2, 0.25) "
+          "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit, margin = excluded.margin")
+    try:
+        r = create(db, c, params={"duration": 30}, idem="frame-1")
+        assert r["ok"] and r["data"]["price_credits"] == 45.0, r
+    finally:
+        db.su("delete from public.credit_prices where unit = 'image_generations'")

@@ -1433,3 +1433,38 @@ the API key's hash, never a session or the service key — and two things the St
 - **Tests.** `tests/test_api_creative_models_migration.py` (the text, the hashes, the rollback, the numbering),
   `tests/security/test_sec_mcp_studio_tools.py` and `tests/security/test_sec_breach_mcp_studio_0162.py` (a real PostgreSQL),
   `command-center/tests/mcp-studio-tools.test.ts` (the MCP layer).
+
+## A concept-thumbnail channel's run is priced with its images (0163)
+
+0163 (`0163_concept_thumbnail_holds.sql`) is **live on apply**. It rewrites no row and widens no grant. **Apply it before the worker
+from the same pull request is deployed**: that worker refuses a hold that leaves a concept channel's images out, and without 0163 the
+two holds below are made without them.
+
+- **Why.** A channel with `agent_config.thumbnail_mode = "concept"` (0158) buys up to 4 generated images a run, on the worker's keys.
+  The Command Center's hold adds them (lib/credits.ts `withConceptThumbnail`); the worker now refuses a hold below that floor
+  (modules/credits.py `minimum_reservation`), because a browser could reserve the bare floor itself and the capture is capped at the
+  hold. Two holds are priced by the database, not the Command Center, and left the images out: a series episode (0120
+  `series_episode_price`, used by `quote_series_episode` / `start_series_episode`) and a video asked for over MCP (0094
+  `oauth_create_video`). With the worker change and without 0163, both are queued and then refused on a concept channel, and a refused
+  episode blocks every later episode of its series.
+- **What changes.** `concept_thumbnail_credits(channel)`: 0 for a frame channel; 4 x `image_generations` x (1 + margin) for a concept
+  one; NULL when `image_generations` has no price (then the episode is `unpriced` and the MCP call answers 503 `pricing_unavailable`
+  naming concept thumbnails: never the price without the images). "Concept" is read like `modules/credits.concept_thumbnail_on`: only
+  the JSON string, case and surrounding white space ignored. A two-argument `series_episode_price(duration, channel)` adds it, rounded
+  like the worker (floor first, then floor + images). The three callers are their latest bodies with only the price changed; the
+  one-argument `series_episode_price` is untouched. Both helpers are definers granted to no API role.
+- **md5.** before: `quote_series_episode` `9ba908b7888b5cab0281b8cf87e8659a`, `start_series_episode` `f3598d71d76e780b6973f88d8a743d2b`,
+  `oauth_create_video` `244a5779e4388525f5f345b59379029f`; after: `bc65c3a373f86234e31f6a95564c3f72`, `e16dcc884ae25d0173a73ec1a04fcbd8`,
+  `6569154f72af9169e2c3b2d306531465`, `concept_thumbnail_credits` `e9883cc8f072cccadc2d9c3f0d5077c2`, `series_episode_price(integer, text)`
+  `c27ede9c11d262b6047a93e0f81f4042` (drift guard, end-state check, rollback, `tests/security/sec_db.py`).
+- **Without it.** Before the worker change: series and MCP videos of a concept channel run, and their images are paid by the platform.
+  After it: they are refused at the worker ("…below the X a N-second run requires, which includes up to 4 generated concept-thumbnail
+  images…").
+- **Number.** 0163: 0162 is the highest on main. Needs 0094, 0120 and 0158. 0127's, 0131's and 0133's numbering tests list it as
+  reviewed (0127's holds it to reading `series_plans` only).
+- **Undo.** `docs/sql/rollback_0163_concept_thumbnail_holds.sql` (owner-applied): refuses a body that is not 0163's, puts 0120's and
+  0094's bodies back byte for byte, drops the two helpers. Roll the worker back first.
+- **Tests.** `tests/test_concept_thumbnail_holds_migration.py` (the bodies differ from 0120's / 0094's only in the price, the rollback,
+  the hashes, the grants), `tests/security/test_sec_concept_thumbnail_holds.py` (a real PostgreSQL: the reading and the price equal the
+  worker's to the cent, privileges, replay, rollback, drift), the `0163` tests of `tests/security/test_sec_series_tables.py` and
+  `tests/security/test_sec_mcp_oauth.py` (the quote, the hold, the refusal).

@@ -699,3 +699,8 @@ sec_dodo_history_0157.extend(TABLES, FUNCTIONS)
 import sec_mcp_chatgpt_client_0161  # noqa: E402
 
 sec_mcp_chatgpt_client_0161.extend(TABLES, FUNCTIONS)
+
+# Migration 0163 (a concept-thumbnail channel's run is priced with its generated images): tests/security/sec_concept_thumbnail_holds_0163.py
+import sec_concept_thumbnail_holds_0163  # noqa: E402
+
+sec_concept_thumbnail_holds_0163.extend(TABLES, FUNCTIONS)

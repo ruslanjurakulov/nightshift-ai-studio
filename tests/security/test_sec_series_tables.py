@@ -1531,7 +1531,7 @@ def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0120_applies
     base_dsn = sec_db.create_database(admin, base)
     sigs = ("public.render_job_params_valid(jsonb,text)", "public.render_jobs_payment_guard()")
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_", "0127_", "0145_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_", "0127_", "0145_", "0163_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s_: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s_]).fetchone()[0],
                          b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s_]).fetchone()[0]) for s_ in sigs}
@@ -1638,3 +1638,48 @@ def test_the_rollback_strips_the_series_key_from_finished_runs_so_the_old_valida
     # the finished run is still a valid row for the old validator, and the migration applies again on top
     assert s.value("select public.render_job_params_valid(params, kind) from public.render_jobs where id = %s", [run["render_job_id"]])
     s.conn.execute(MIGRATION.read_text(encoding="utf-8"))
+
+
+# ═══ 0163: a concept-thumbnail channel's episode is priced with its generated images ═══════════════════════════════════════
+
+def make_concept(su, channel, mode="concept"):
+    become(su, None)
+    su.rows("update public.channels set agent_config = coalesce(agent_config, '{}'::jsonb) || jsonb_build_object('thumbnail_mode', %s::text) "
+            "where channel_id = %s returning 1", [mode, channel])
+
+
+def test_0163_a_concept_channels_episode_is_quoted_and_held_with_its_images(conn, world):
+    """The worker refuses a hold that leaves the up to 4 generated images out (modules/credits.minimum_reservation). Before 0163 the episode
+    was held at the bare floor and refused at the worker, and a refused episode blocks every later one of its series."""
+    s = world.su
+    plan, eps = ready_plan(s, world.ed, world.chan_a)
+    make_concept(s, world.chan_a)
+    set_prices(s, {"image_generations": (2, "0.25")})
+    q = quote(s, world.adm, eps[0]).rows[0][0]
+    assert (q["price_status"], float(q["credits"]), q["startable"]) == ("priced", 25.0, True)   # 15 for 120 s + 4 x 2 x 1.25
+    # The old price is a changed price, not a smaller hold.
+    assert refused(start(s, world.adm, eps[0], PRICE), "NS409", "price_changed")
+    started(s, world.adm, eps[0], 25)
+    assert holds(s, world.org_a) == [("rj-se-" + eps[0].replace("-", ""), 25, "open")]
+
+
+def test_0163_unpriced_images_make_the_episode_unpriced_never_the_price_without_them(conn, world):
+    s = world.su
+    plan, eps = ready_plan(s, world.ed, world.chan_a)
+    make_concept(s, world.chan_a)
+    become(s, None)
+    s.rows("delete from public.credit_prices where unit = 'image_generations' returning 1")
+    q = quote(s, world.adm, eps[0]).rows[0][0]
+    assert (q["price_status"], q["credits"], q["startable"]) == ("unpriced", None, False)
+    assert refused(start(s, world.adm, eps[0], PRICE), "NS400", "unpriced")
+    assert holds(s, world.org_a) == [] and run_jobs(s, world.chan_a) == []
+
+
+def test_0163_a_frame_channels_episode_keeps_0120s_price(conn, world):
+    s = world.su
+    plan, eps = ready_plan(s, world.ed, world.chan_a)
+    for mode in ("frame", "conceptual", ""):
+        make_concept(s, world.chan_a, mode)
+        set_prices(s, {"image_generations": (2, "0.25")})
+        q = quote(s, world.adm, eps[0]).rows[0][0]
+        assert (q["price_status"], float(q["credits"])) == ("priced", PRICE), mode
