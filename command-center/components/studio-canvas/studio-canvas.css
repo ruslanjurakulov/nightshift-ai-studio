@@ -305,12 +305,19 @@ main:has([data-studio-canvas]) {
 .cv-stage.is-busy { --busy: 1; }
 .cv-stage[data-hand="true"] { cursor: grab; }
 .cv-stage[data-panning="true"] { cursor: grabbing; }
-.cv-world { position: absolute; left: 0; top: 0; z-index: 2; transform-origin: 0 0; --inv: 1; }
+.cv-flowboard { position: absolute !important; inset: 0; z-index: 0; background: transparent !important; }
+.cv-flowboard .react-flow__node { cursor: default; }
+.cv-flowboard .react-flow__node:focus-visible { outline: none; }
+.cv-stage[data-hand="true"] .react-flow__pane { cursor: grab; }
+.cv-flowboard .react-flow__pane.dragging { cursor: grabbing; }
+.cv-flowboard .react-flow__edge.selectable { cursor: pointer; }
+/* Someone else (an agent, later) on this node: a ring in their colour and their name on a tab. */
+.cv-node.is-remote { box-shadow: 0 0 0 2px var(--actor), 0 0 24px -6px var(--actor), var(--lift-2); }
+.cv-actor { position: absolute; top: -26px; left: 10px; padding: 2px 8px; border-radius: 7px 7px 7px 0; color: #fff; background: var(--actor); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .cv-hint { position: absolute; left: 50%; top: 45%; z-index: 2; transform: translateX(-50%); max-width: 420px; margin: 0; text-align: center; color: var(--dim); }
 .cv-hint.is-flow { position: static; transform: none; margin: 32px auto; padding: 0 16px; }
 
 /* wires: colour is the type; a wide invisible path makes each one easy to click */
-.cv-edges { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
 .cv-e { fill: none; stroke-width: calc(2px * min(var(--inv), 2.2)); opacity: 0.6; transition: opacity var(--d-state) var(--ease); }
 .cv-e.t-text { stroke: var(--p-text); }
 .cv-e.t-image { stroke: var(--p-image); }
@@ -334,9 +341,7 @@ main:has([data-studio-canvas]) {
 
 /* ── nodes ────────────────────────────────────────────────────────────────── */
 .cv-node {
-  position: absolute;
-  left: 0;
-  top: 0;
+  position: relative;
   border: 1px solid var(--rule);
   border-radius: 16px;
   color: var(--text);
@@ -423,23 +428,26 @@ main:has([data-studio-canvas]) {
 .cv-art.is-failed img { filter: grayscale(1) brightness(0.55); }
 
 /* ports: the shape is the type, never colour alone; the letter is the type's initial, in the page's language */
-.cv-port {
-  position: absolute;
-  top: 12px;
+.react-flow__handle.cv-port {
+  top: 25px;
   z-index: 3;
   display: grid;
   place-items: center;
   width: 26px;
   height: 26px;
-  transform: scale(min(var(--inv), 1.5));
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
   --pc: var(--p-image);
 }
+.react-flow__handle.cv-port.is-in { left: 0; transform: translate(-50%, -50%) scale(min(var(--inv, 1), 1.5)); }
+.react-flow__handle.cv-port.is-out { right: 0; transform: translate(50%, -50%) scale(min(var(--inv, 1), 1.5)); cursor: crosshair; }
 .cv-port.t-text { --pc: var(--p-text); }
 .cv-port.t-image { --pc: var(--p-image); }
 .cv-port.t-video { --pc: var(--p-video); }
 .cv-port.t-audio { --pc: var(--p-audio); }
-.cv-port.is-in { left: -13px; }
-.cv-port.is-out { right: -13px; cursor: crosshair; }
 .cv-port::before {
   content: "";
   position: absolute;
@@ -455,14 +463,14 @@ main:has([data-studio-canvas]) {
 .cv-port.t-audio::before { width: 26px; height: 23px; box-shadow: none; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .cv-port.t-audio > span { top: 4px; }
 .cv-port:hover::before { outline: 2px solid var(--pc); outline-offset: 3px; }
-.cv-port.is-in.is-target::before { outline: 2px solid var(--amber); outline-offset: 4px; }
+.react-flow__handle.cv-port.connectingto::before,
+.react-flow__handle.cv-port.valid::before { outline: 2px solid var(--amber); outline-offset: 4px; }
+.cv-port > span { pointer-events: none; }
 
 /* ── minimap: glass, in a corner Fit keeps clear, collapsible ─────────────── */
-.cv-mini {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 3;
+.react-flow__panel.cv-mini {
+  margin: 12px;
+  z-index: 5;
   width: 200px;
   border: 1px solid var(--rule);
   border-radius: 14px;
@@ -470,12 +478,13 @@ main:has([data-studio-canvas]) {
   box-shadow: var(--lift-2);
   backdrop-filter: blur(14px);
 }
-.cv-mini.is-min { width: auto; }
+.react-flow__panel.cv-mini.is-min { width: auto; }
+.cv-mini .react-flow__minimap { position: static; margin: 0; background: transparent; }
+.cv-mini .react-flow__minimap svg { display: block; border-radius: 0 0 14px 14px; }
 .cv-mini-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px 0 10px; color: var(--dim); font-size: 13px; }
 .cv-mini.is-min .cv-mini-h { padding-bottom: 4px; }
 .cv-mini-h button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--dim); }
 .cv-mini-h button:hover { color: var(--text); background: var(--key); }
-.cv-mini svg { display: block; width: 200px; height: 120px; cursor: pointer; touch-action: none; }
 .cv-mn { fill: var(--rule-strong); opacity: 0.55; }
 .cv-mn.is-run { fill: #a67bff; opacity: 0.9; }
 .cv-mn.is-sel { fill: var(--amber); opacity: 1; }

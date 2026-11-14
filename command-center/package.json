@@ -15,6 +15,7 @@
     "@modelcontextprotocol/sdk": "^1.32.0",
     "@supabase/ssr": "0.5.2",
     "@supabase/supabase-js": "2.50.5",
+    "@xyflow/react": "12.12.1",
     "konva": "^10.9.0",
     "libsodium-wrappers": "^0.7.15",
     "lucide-react": "^1.47.0",

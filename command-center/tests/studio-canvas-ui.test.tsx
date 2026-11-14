@@ -82,11 +82,33 @@ if (typeof window.PointerEvent === "undefined") {
   (window as unknown as { PointerEvent: typeof MouseEvent }).PointerEvent = class extends MouseEvent {} as typeof MouseEvent;
 }
 
-/** A press that does not move: on a node's title bar, it opens the inspector. */
+// React Flow measures with ResizeObserver, DOMMatrix and offset sizes, none of which jsdom has (reactflow.dev/learn/advanced-use/testing).
+class FakeResizeObserver {
+  constructor(private cb: (entries: { target: Element }[], o: unknown) => void) {}
+  observe(target: Element) {
+    this.cb([{ target }], this);
+  }
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = FakeResizeObserver;
+(globalThis as unknown as { DOMMatrixReadOnly: unknown }).DOMMatrixReadOnly = class {
+  m22: number;
+  constructor(transform?: string) {
+    const scale = transform?.match(/scale\(([0-9.]+)\)/)?.[1];
+    this.m22 = scale !== undefined ? +scale : 1;
+  }
+};
+Object.defineProperties(HTMLElement.prototype, {
+  offsetHeight: { configurable: true, get() { return parseFloat((this as HTMLElement).style.height) || 1; } },
+  offsetWidth: { configurable: true, get() { return parseFloat((this as HTMLElement).style.width) || 1; } },
+});
+(SVGElement.prototype as unknown as { getBBox: () => DOMRect }).getBBox = () => ({ x: 0, y: 0, width: 0, height: 0 }) as DOMRect;
+
+/** A click that does not move: on a node's title bar, it opens the inspector. */
 function openNode(id: string) {
   const head = document.querySelector(`[data-node-id="${id}"] .cv-nh`) as HTMLElement;
-  fireEvent.pointerDown(head, { clientX: 10, clientY: 10, button: 0 });
-  fireEvent.pointerUp(head, { clientX: 10, clientY: 10, button: 0 });
+  fireEvent.click(head);
 }
 
 let narrow = false;
@@ -286,26 +308,33 @@ describe("honest states", () => {
 });
 
 describe("the board's hand", () => {
-  it("a drag moves a node and does not open the inspector; a press that does not move opens it", async () => {
+  it("a click opens the inspector; arrow keys move the selected node, and ⌘Z puts it back", async () => {
     store({ nodes: [node("a", "image")], wires: [] });
     mount();
     await screen.findByTestId("canvas-board");
-    const head = document.querySelector('[data-node-id="a"] .cv-nh') as HTMLElement;
-    fireEvent.pointerDown(head, { clientX: 10, clientY: 10, button: 0 });
-    fireEvent.pointerMove(head, { clientX: 90, clientY: 50, button: 0 });
-    fireEvent.pointerUp(head, { clientX: 90, clientY: 50, button: 0 });
-    expect(screen.queryByTestId("canvas-inspector")).toBeNull();
-    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes[0].x).toBe(80));
     openNode("a");
     expect(await screen.findByTestId("canvas-inspector")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: c.inspector.close }));
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes[0].x).toBe(16));
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+    });
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes[0].x).toBe(0));
   });
 
   it("a wire can be selected and deleted with Delete, and ⌘Z puts it back", async () => {
     store({ nodes: [node("img", "image"), node("clip", "animate", 400)], wires: [{ id: "w1", from: "img", to: "clip" }] });
     mount();
     await screen.findByTestId("canvas-board");
-    const hit = document.querySelector('[data-wire-hit="w1"]')!;
-    fireEvent.pointerDown(hit, { clientX: 5, clientY: 5, button: 0 });
+    const hit = await waitFor(() => {
+      const el = document.querySelector('[data-wire-hit="w1"]');
+      if (!el) throw new Error("no wire yet");
+      return el;
+    });
+    fireEvent.click(hit);
     await waitFor(() => expect(document.querySelector('[data-wire="img->clip"]')!.getAttribute("class")).toContain("is-sel"));
     act(() => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true }));
