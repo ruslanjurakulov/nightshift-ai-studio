@@ -420,6 +420,8 @@ export function StudioCanvas({
 
   // ── keys: ⌘K searches, N adds, Delete removes, ⌘Z undoes, + / − / 0 zoom, Escape closes ──
   const [space, setSpace] = useState(false);
+  const focusFrame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(focusFrame.current), []);
   useEffect(() => {
     const typing = (el: EventTarget | null) => {
       const e = el as HTMLElement | null;
@@ -442,7 +444,13 @@ export function StudioCanvas({
           // Focus goes back to the card that was open, not to the page: the keyboard keeps its place.
           if (wasInspecting) {
             const id = selected;
-            requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(id)}"]`)?.focus());
+            // Found by data attribute, not a selector string: no CSS.escape needed (jsdom has none). Cancelled on unmount.
+            cancelAnimationFrame(focusFrame.current);
+            focusFrame.current = requestAnimationFrame(() =>
+              Array.from(document.querySelectorAll<HTMLElement>("[data-node-id]"))
+                .find((el) => el.dataset.nodeId === id)
+                ?.focus(),
+            );
           }
         } else {
           setSelected(null);
