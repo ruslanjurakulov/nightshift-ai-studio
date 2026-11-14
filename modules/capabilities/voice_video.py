@@ -81,6 +81,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, List, Mapping, Optional
 
+import requests
+
 from modules import captions as caption_words
 from modules import voice_explainer as ve
 from modules.capabilities.audio import (
@@ -500,6 +502,9 @@ class VoiceVideoAdapter(_ElevenLabs):
                 raise AdapterError(E_UNAVAILABLE, "the worker was stopped while the recording was being transcribed; nothing "
                                                   "was charged: start it again")
             if time.monotonic() > deadline:
+                if isinstance(self.session, requests.Session):
+                    # The abandoned request still holds this session; the next job of this adapter gets its own.
+                    self.session = requests.Session()
                 raise AdapterError(E_UNAVAILABLE, f"the transcription took longer than {limit:.0f} s and was given up; "
                                                   "nothing was charged: try again later")
         if "error" in box:

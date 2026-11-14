@@ -564,6 +564,17 @@ class Scribe(Tmp):
         self.assertEqual((e.code, e.not_accepted), (E_UNAVAILABLE, False))
         self.assertIn("try again later", e.message)
 
+    def test_a_given_up_request_does_not_share_its_session_with_the_next_job(self):
+        self.e.block = threading.Event()
+        self.addCleanup(self.e.block.set)
+        a = self.e.adapter(session=vv_requests().Session())
+        abandoned = a.session
+        with mock.patch.object(abandoned, "request", side_effect=lambda *x, **kw: self.e.block.wait(30)), \
+                mock.patch.object(vv, "scribe_timeout", return_value=0.2), mock.patch.object(vv, "SCRIBE_GRACE_S", 0.1):
+            with self.assertRaises(AdapterError):
+                a.submit(self.req(), vv.RULES_ENGINE)
+        self.assertIsNot(a.session, abandoned)
+
     def test_a_stop_during_the_transcription_fails_the_job_at_once(self):
         stop = threading.Event()
         self.e.block = threading.Event()
