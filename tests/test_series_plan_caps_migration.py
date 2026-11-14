@@ -116,7 +116,9 @@ class Numbering(unittest.TestCase):
         # way: it names none of the three words below.
         # 0161 (ChatGPT keeps the client it registered: oauth_gc on 0147's body, one internal helper, one generated column and its index on oauth_clients) was reviewed the same way:
         # it names none of the three words below.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161")
+        # 0162 (two read-only API functions for the MCP Studio tools: api_creative_models, api_creative_job_files) was reviewed the
+        # same way: it names none of the three words below.
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

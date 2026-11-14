@@ -95,7 +95,7 @@ describe("developer pages copy", () => {
       // The scripted conversations name only tools the server really has.
       for (const t of dict.mcp.how.tabs) for (const r of t.rows) expect(MCP_TOOL_IDS as readonly string[]).toContain(r.id);
       expect(dict.mcp.tools.list.map((t) => t.id)).toEqual([...MCP_TOOL_IDS]);
-      expect(Object.keys(dict.mcp.tools.paid).sort()).toEqual(["create_video", "request_download"]);
+      expect(Object.keys(dict.mcp.tools.paid).sort()).toEqual(["create_generation", "create_video", "request_download"]);
       expect(dict.cli.commands.list.map((c) => c.id)).toEqual(CLI_COMMANDS.map((c) => c.id));
       expect(dict.skills.list.items.map((s) => s.id)).toEqual(SKILLS.map((s) => s.id));
       expect(dict.cli.steps.map((s) => s.id)).toEqual(["install", "login", "run"]);

@@ -112,5 +112,6 @@ html[data-motion="paused"] .fx-art * { animation-play-state: paused !important; 
 .fx-banner-links { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 
 /* A 9:16 card one column wide on a phone would be taller than the screen: the frame stops at about half of it (the drawing
-   and a sample's still are cropped from the centre, object-fit / slice). */
-@media (max-width: 40rem) { .fx-grid .fx-frame, .efx-grid .fx-frame { max-height: 52vh; } }
+   and a sample's still are cropped from the centre, object-fit / slice). Below 40rem only: at exactly 640 px the grids are
+   already two columns wide, and a cap there cut the portrait frames short of their shape. */
+@media (max-width: 39.99rem) { .fx-grid .fx-frame, .efx-grid .fx-frame { max-height: 52vh; } }

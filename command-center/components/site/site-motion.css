@@ -314,6 +314,10 @@
   .nx-marquee:hover .nx-marquee-track { animation-play-state: paused; }
 }
 @keyframes nx-marquee { to { transform: translateX(-50%); } }
+/* Where it cannot move (a touch screen, or reduced motion) the strip was a centred stack of the same names the tiles right under
+   it give, each with a dot hanging after it: there it is not drawn at all. It is hidden from assistive technology anyway. */
+@media (hover: none) { .nx-marquee { display: none; } }
+@media (prefers-reduced-motion: reduce) { .nx-marquee { display: none; } }
 
 /* The facts' count-up is drawn after this layer, at the end of the file: see there for why. */
 

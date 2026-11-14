@@ -306,8 +306,11 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "api_create_video": API,
     "api_creative_create": API,
     "api_creative_get": API,
+    # 0162: the MCP Studio tools' model list and a generation's result files; anon with a key hash, behind api_begin.
+    "api_creative_job_files": API,
     "api_creative_job_json": SERVICE,
     "api_creative_model_ok": SERVICE,
+    "api_creative_models": API,
     "api_creative_month_credits": SERVICE,
     "api_creative_quote": API,
     "api_creative_refusal": SERVICE,
