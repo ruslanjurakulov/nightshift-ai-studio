@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
+import { discardPending } from "@/lib/site/pending-attachment";
 import {
   completeTotpChallenge,
   listTotpFactors,
@@ -84,6 +85,8 @@ export function MfaChallenge({ next }: { next: string }) {
     } catch {
       /* the page below is /login either way; a still-valid cookie is the middleware's to refuse */
     }
+    // A file kept from the home page for the Studio is not left for whoever signs in next (lib/site/pending-attachment.ts).
+    await discardPending();
     router.push("/login");
     router.refresh();
   }
