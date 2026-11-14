@@ -22,12 +22,16 @@ export function PackCards({
   perMinute,
   rates = null,
   testMode = false,
+  testBadge = null,
 }: {
   packs: PricingPack[];
   paddle: Pricing["paddle"];
   perMinute: number | null;
-  /** Dodo Payments in test mode (PAYMENTS_PROVIDER=dodo): the same badge as Paddle's sandbox. */
+  /** Dodo Payments in test mode (PAYMENTS_PROVIDER=dodo): treated exactly as Paddle's sandbox. */
   testMode?: boolean;
+  /** The test-payments badge, handed in by the server for a platform admin only. A visitor never gets the words, so a
+   *  test-mode page shows them nothing about it (PricingView says "purchases open soon" where Buy would be). */
+  testBadge?: string | null;
   /** Today's generation prices; when known, "≈ N images · M videos" replaces the minutes line. */
   rates?: GenerationRates | null;
 }) {
@@ -64,9 +68,9 @@ export function PackCards({
 
   return (
     <div className="flex flex-col gap-3">
-      {(environment === "sandbox" || testMode) && (
+      {(environment === "sandbox" || testMode) && testBadge && (
         <span className="st-tag self-start" style={{ color: "var(--ns-caution)", borderColor: "currentColor" }}>
-          {p.sandbox}
+          {testBadge}
         </span>
       )}
       <ul className="st-panel st-price-rows">

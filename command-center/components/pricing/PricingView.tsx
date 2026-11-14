@@ -69,6 +69,7 @@ export function PricingView({
   anchor,
   referral = null,
   finder = null,
+  operator = false,
 }: {
   t: Dictionary;
   locale: Locale;
@@ -95,6 +96,9 @@ export function PricingView({
   /** "What does my plan make?" (lib/plan-finder.ts): the rates read for it. Absent, the cards keep their older
    *  equivalents line and neither the finder nor the per-item table is drawn. */
   finder?: PlanFinderData | null;
+  /** The viewer is a platform admin (is_platform_admin, asked on the server). Only they see the test-payments badge and a
+   *  way to the test checkout; the default, and anyone else, gets "purchases open soon" while payments are in test mode. */
+  operator?: boolean;
 }) {
   const p = t.pricing;
   const steps = [
@@ -118,8 +122,13 @@ export function PricingView({
   const terms = [...saleTerms.slice(0, expiryAt), expiryLine, ...saleTerms.slice(expiryAt)];
   // Sold through Dodo Payments (PAYMENTS_PROVIDER=dodo): the seller named in the copy is Dodo, not Paddle.
   const dodo = Boolean(pricing.dodo);
-  // Dodo's test mode gets the same badge as Paddle's sandbox: nothing bought there is real.
+  // Dodo's test mode is treated as Paddle's sandbox: nothing bought there is real.
   const dodoTest = pricing.dodo?.environment === "test";
+  const testMode = dodoTest || pricing.paddle?.environment === "sandbox" || plans?.paddle?.environment === "sandbox";
+  // A test checkout is the operator's to try. A visitor sees the prices and "purchases open soon" instead of a key into
+  // it, and never the test-mode words: the badge text is handed only to the operator's page.
+  const salesClosed = testMode && !operator;
+  const testBadge = testMode && operator ? p.sandbox : null;
   const faqItems = dodo
     ? p.faq.map((f) => (f.id === "card" ? { ...f, a: p.dodo.faqCard } : f.id === "refund" ? { ...f, a: p.dodo.faqRefund } : f))
     : p.faq;
@@ -224,6 +233,7 @@ export function PricingView({
                 perMinute={rates?.perMinute ?? null}
                 rates={generationRates}
                 testMode={dodoTest}
+                testBadge={testBadge}
                 signedIn={signedIn}
                 subscribeHref={`${credits}#plans`}
                 outputs={
@@ -312,15 +322,27 @@ export function PricingView({
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                <PackCards packs={pricing.packs} paddle={pricing.paddle} perMinute={rates?.perMinute ?? null} rates={generationRates} testMode={dodoTest} />
+                <PackCards
+                  packs={pricing.packs}
+                  paddle={pricing.paddle}
+                  perMinute={rates?.perMinute ?? null}
+                  rates={generationRates}
+                  testMode={dodoTest}
+                  testBadge={testBadge}
+                />
                 <p className="st-small">
                   {pricing.source === "paddle" ? p.taxNote : dodo ? p.dodo.taxNote : p.checkoutClosed} {expiryLine}
                 </p>
-                {(pricing.source === "paddle" || dodo) && (
-                  <Link href={signedIn ? credits : "/login"} className="st-key self-start" data-tone="quiet">
-                    {signedIn ? p.buySignedIn : p.buySignedOut}
-                  </Link>
-                )}
+                {(pricing.source === "paddle" || dodo) &&
+                  (salesClosed ? (
+                    <p className="st-body self-start" data-sales="soon">
+                      {p.purchasesSoon}
+                    </p>
+                  ) : (
+                    <Link href={signedIn ? credits : "/login"} className="st-key self-start" data-tone="quiet">
+                      {signedIn ? p.buySignedIn : p.buySignedOut}
+                    </Link>
+                  ))}
               </div>
             )}
           </div>
