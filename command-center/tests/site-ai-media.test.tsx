@@ -360,10 +360,11 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     // Deep in the page it stays docked.
     scrollTo(20000);
     expect(form.dataset.docked).toBe("true");
-    // While docked the box grows (more lines, the empty-box message): its place follows, so undocking shifts nothing.
+    // While docked the box grows (more lines, the empty-box message): its place keeps the height it had when it docked, so nothing
+    // the visitor is reading below it moves (a layout shift); the box's live height goes to --nx-dock-h only.
     Object.defineProperty(form, "offsetHeight", { configurable: true, value: 112 });
     act(() => ro?.([] as unknown as ResizeObserverEntry[], {} as ResizeObserver));
-    expect((container.querySelector(".nx-pbar-slot") as HTMLElement).style.minHeight).toBe("112px");
+    expect((container.querySelector(".nx-pbar-slot") as HTMLElement).style.minHeight).toBe("64px");
     // The empty-box message is inside the form, so it is on the docked box, not left behind in the first screen.
     fireEvent.submit(form);
     expect(form.querySelector(".nx-pbar-err[role='alert']")?.textContent).toBe(t.prompt.empty);

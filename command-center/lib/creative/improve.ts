@@ -116,6 +116,15 @@ export function isLinkPromptTool(tool: unknown): tool is LinkPromptTool {
   return (IMPROVE_STUDIO_TOOLS as readonly unknown[]).includes(tool) || (LINK_PROMPT_TOOLS as readonly unknown[]).includes(tool);
 }
 
+/**
+ * A link's words before any tool is known (the home page's attached file: the tool follows what the library registers it as),
+ * cleaned as below and bounded only by what a link carries. The tool's own limit is applied once the tool is chosen.
+ */
+export function cleanLinkWords(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return cutWhole(stripInvisible(raw).trim(), IMPROVE_PROMPT_MAX).trim();
+}
+
 /** A link's words for any tool that takes them from a link, cleaned and bounded as cleanImprovePrompt does. */
 export function cleanLinkPrompt(tool: LinkPromptTool, raw: unknown): string {
   if (typeof raw !== "string" || promptRule(tool) === "none") return "";

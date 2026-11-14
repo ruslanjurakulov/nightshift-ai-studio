@@ -25,6 +25,9 @@ export type PromptBarCopy = {
   /** The chip's ×: "Remove {name}". */
   remove: string;
   picture: string;
+  /** picture / video while no Studio model is on sale: no promise of a video. */
+  pictureClosed: string;
+  videoClosed: string;
   video: string;
   submit: string;
   empty: string;
@@ -60,7 +63,7 @@ const MAX_LINES = 6;
 export const DOCK_AT = 48;
 export const UNDOCK_AT = 16;
 
-type Picked = { file: File; kind: AttachKind; url: string };
+type Picked = { file: File; kind: AttachKind; mime: string; url: string };
 type Problem = "words" | AttachProblem | "keep";
 
 // The travel between the first screen and the bottom is measured before the change and played after it, before paint.
@@ -114,6 +117,16 @@ export function PromptBar({
   const travelFrom = useRef<DOMRect | null>(null);
 
   useEffect(() => setReady(true), []);
+
+  // Back to this page from the Studio or sign-up (the browser's back button restores it from its page cache): the send key was left
+  // busy by the navigation, and would stay off for good.
+  useEffect(() => {
+    const back = (e: PageTransitionEvent) => {
+      if (e.persisted) setBusy(false);
+    };
+    window.addEventListener("pageshow", back);
+    return () => window.removeEventListener("pageshow", back);
+  }, []);
 
   // A file kept for the Studio more than an hour ago and never picked up is removed from this browser.
   useEffect(() => {
@@ -171,17 +184,14 @@ export function PromptBar({
     el.animate([{ translate: `${dx}px ${dy}px` }, { translate: "0px 0px" }], { duration: 420, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" });
   }, [docked]);
 
-  // While docked the box can still grow (more lines, a chip, a message): its place in the first screen follows its height, so
-  // undocking puts it back into a place of its own size and nothing under it jumps. Off again on undock, where the place sizes itself.
-  // The page reads the same height (--nx-dock-h) for the room it leaves at its end and above a scrolled-to anchor.
+  // The page reads the docked box's live height (--nx-dock-h) for the room it leaves at its end and above a scrolled-to anchor. Its
+  // place in the first screen keeps the height it had when it docked: resizing that place while docked would move everything the
+  // visitor is reading below it (a layout shift); on undock the place sizes itself again, at the top, where the box returns.
   useEffect(() => {
     const el = form.current;
     const root = document.documentElement;
     if (!docked || !el) return;
-    const measure = () => {
-      setReserve(el.offsetHeight);
-      root.style.setProperty("--nx-dock-h", `${el.offsetHeight}px`);
-    };
+    const measure = () => root.style.setProperty("--nx-dock-h", `${el.offsetHeight}px`);
     measure();
     if (typeof ResizeObserver === "undefined") return () => root.style.removeProperty("--nx-dock-h");
     const ro = new ResizeObserver(measure);
@@ -242,15 +252,17 @@ export function PromptBar({
     if (!ready || busy) return;
     if (picked) {
       // The file waits in this browser for the Studio; the link carries only the words and that one is waiting.
+      // The file waits bound to a fresh nonce, which the link carries: the Studio takes it only for this link.
       setBusy(true);
+      let nonce: string;
       try {
-        await keepPending(picked.file, picked.kind, indexedDbStore());
+        nonce = await keepPending(picked.file, picked.kind, indexedDbStore(), { mime: picked.mime });
       } catch {
         setBusy(false);
         setProblem({ kind: "keep" });
         return;
       }
-      window.location.assign(attachedHref(words, signedIn));
+      window.location.assign(attachedHref(words, signedIn, nonce));
       return;
     }
     const href = promptHref(TEXT_TOOL, words, signedIn);
@@ -270,7 +282,7 @@ export function PromptBar({
       return;
     }
     setProblem(null);
-    setPicked({ file, kind: check.kind, url: URL.createObjectURL(file) });
+    setPicked({ file, kind: check.kind, mime: check.mime, url: URL.createObjectURL(file) });
     box.current?.focus();
   };
 
@@ -330,7 +342,9 @@ export function PromptBar({
               </span>
               <span className="nx-pbar-file-text">
                 <span className="nx-pbar-file-name">{picked.file.name}</span>
-                <span className="nx-pbar-file-kind">{picked.kind === "image" ? copy.picture : copy.video}</span>
+                <span className="nx-pbar-file-kind">
+                  {picked.kind === "image" ? (studioOpen ? copy.picture : copy.pictureClosed) : studioOpen ? copy.video : copy.videoClosed}
+                </span>
               </span>
               <button
                 type="button"

@@ -35,7 +35,7 @@ import {
 } from "@/lib/creative/studio";
 import { TOPIC_MAX } from "@/lib/home";
 import { attachErrorKey, attachWords, toolForAttachment, uploadAttachment } from "@/lib/creative/attach";
-import { checkAttachment, indexedDbStore, takePending, type AttachKind } from "@/lib/site/pending-attachment";
+import { checkAttachment, discardPending, indexedDbStore, takePending, type AttachKind } from "@/lib/site/pending-attachment";
 import { PENDING_PARAM } from "@/lib/site/prompt-link";
 import { formatMediaBytes } from "@/lib/media";
 import type { UpsellCatalog } from "@/lib/upsell";
@@ -113,10 +113,10 @@ export function StudioHome({
   /** The Assistant's data; null = no Plan toggle (no organization to plan for). */
   assistant?: AssistantData | null;
   /**
-   * The public home page's composer sent a file kept in this browser (`?attach=pending`, lib/site/pending-attachment.ts), with the
-   * words typed beside it (already cleaned by the page). Picked up once: uploaded to the library, then the tool for its kind opens.
+   * The public home page's composer sent a file kept in this browser for this link (`?attach=<nonce>`, lib/site/pending-attachment.ts),
+   * with the words typed beside it (already cleaned by the page). Taken once, and uploaded only when the person answers Use.
    */
-  pending?: { words: string } | null;
+  pending?: { nonce: string; words: string } | null;
 }) {
   const { t, locale, fmt } = useI18n();
   const th = t.studioHome;
@@ -177,21 +177,37 @@ export function StudioHome({
     };
   }, [bottomBar]);
 
-  // A file attached with [+] (or from the home page) on its way into the library, or the one line that says what became of it.
+  // A file attached with [+] (or from the home page): asked about (the home page's), on its way into the library, in the library
+  // and offered (the person had moved on meanwhile), or the one line that says what became of it.
   const [attach, setAttach] = useState<
     | { phase: "idle" }
+    | { phase: "confirm"; file: File; kind: AttachKind; url: string; words: string }
     | { phase: "uploading"; name: string; kind: AttachKind; url: string }
+    | { phase: "ready"; assetId: string; kind: AttachKind; name: string; desk: MediaDesk | null }
     | { phase: "said"; tone: "ok" | "error"; line: string }
   >({ phase: "idle" });
   const attachSeq = useRef(0);
   const pickedUp = useRef(false);
+  // The words as typed NOW (an upload that ends reads these, not the ones it started with).
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  // Every choice the person makes (a mode, an example, a result into the box) counts here: an upload that ends after one is offered,
+  // never forced over it.
+  const choices = useRef(0);
+  // The box is pressing Generate (GeneratePanel onSubmittingChange): it is never swapped under a create in flight.
+  const panelSubmitting = useRef(false);
+  const [submittingNow, setSubmittingNow] = useState(false);
+  const uploadAbort = useRef<AbortController | null>(null);
 
-  // The local preview's object URL lives as long as the upload line.
+  // The local preview's object URL lives as long as the line that shows it.
   useEffect(() => {
-    if (attach.phase !== "uploading") return;
+    if (attach.phase !== "uploading" && attach.phase !== "confirm") return;
     const url = attach.url;
     return () => URL.revokeObjectURL(url);
   }, [attach]);
+
+  // Leaving the page stops asking about the upload (the upload itself, once sent, is the library's).
+  useEffect(() => () => uploadAbort.current?.abort(), []);
 
   const toComposer = () => composerRef.current?.scrollIntoView?.({ behavior: scrollBehavior(), block: "nearest" });
 
@@ -206,8 +222,9 @@ export function StudioHome({
     ...over,
   });
 
-  /** A fresh box with these settings (a new mount: nothing typed before leaks into it). */
-  const fill = (value: StudioPrefill | null, nextMode?: StudioMode) => {
+  /** A fresh box with these settings (a new mount: nothing typed before leaks into it). `auto`: an attachment's own switch, not a choice. */
+  const fill = (value: StudioPrefill | null, nextMode?: StudioMode, auto = false) => {
+    if (!auto) choices.current += 1;
     setPlanning(false);
     setFocusBox(true);
     if (nextMode) setMode(nextMode);
@@ -219,6 +236,7 @@ export function StudioHome({
 
   /** A fresh box for mode `m`, with the words typed so far where its first tool takes words (Enhance starts from a file). */
   const openMode = (m: StudioMode) => {
+    choices.current += 1;
     setMode(m);
     setFocusBox(false);
     // A fresh box: the last attachment's line was about the box it replaced.
@@ -286,12 +304,28 @@ export function StudioHome({
     if (value) fill(value, "image");
   };
 
+  /** An attached file now in the library into the box: the tool for its kind on `desk`, the words as typed now, the switch said. */
+  const applyAttached = (assetId: string, kind: AttachKind, onDesk: MediaDesk | null) => {
+    const words = draftRef.current;
+    const cap = toolForAttachment(kind, models, onDesk);
+    fill(form(cap, { sourceId: assetId, prompt: attachWords(cap, words) }), deskFor(cap), true);
+    // A tool that takes no words still keeps them typed for the next box.
+    setDraft(words);
+    setAttach({
+      phase: "said",
+      tone: "ok",
+      line: fmt(kind === "image" ? th.attachFlow.switchedImage : th.attachFlow.switchedVideo, { tool: t.desk.tools[cap] }),
+    });
+  };
+
   /**
-   * A picture or a video into the box: the library's upload first, then the tool for what the library registered it as (a picture
-   * animates, a video opens the video tools), with the words carried over. The change of tool is said in one line (CLAUDE.md #4).
-   * Nothing is priced or started here: the box asks its price as for any filled form, and only its send key spends.
+   * A picture or a video into the box: the library's upload first, then the tool for what the library registered it as, on the desk
+   * it was attached on (lib/creative/attach toolForAttachment), with the words as typed when it lands. The change of tool is said in
+   * one line (CLAUDE.md #4). If the person moved on meanwhile (another mode, an example, a result into the box) or is pressing
+   * Generate, the box is NOT swapped under them: the file is offered with "Use it in the box" instead. Nothing is priced or started
+   * here: the box asks its price as for any filled form, and only its send key spends.
    */
-  const attachFile = async (file: File, words: string) => {
+  const attachFile = async (file: File, onDesk: MediaDesk | null) => {
     const check = checkAttachment(file);
     if (!check.ok) {
       const line =
@@ -308,10 +342,14 @@ export function StudioHome({
       return;
     }
     const seq = ++attachSeq.current;
+    uploadAbort.current?.abort();
+    const ctl = new AbortController();
+    uploadAbort.current = ctl;
+    const choicesAtStart = choices.current;
     setAttach({ phase: "uploading", name: file.name, kind: check.kind, url: URL.createObjectURL(file) });
-    const r = await uploadAttachment({ orgId, file, kind: check.kind });
-    // A newer file was attached meanwhile: this one's outcome is not what the box shows.
-    if (seq !== attachSeq.current) return;
+    const r = await uploadAttachment({ orgId, file, kind: check.kind, mime: check.mime, signal: ctl.signal });
+    // A newer file was attached meanwhile, or the page is gone: this one's outcome is not what the box shows.
+    if (seq !== attachSeq.current || ctl.signal.aborted) return;
     if (!r.ok) {
       const key = attachErrorKey(r.error);
       const media = t.media.errors as Record<string, string>;
@@ -319,19 +357,17 @@ export function StudioHome({
       setAttach({ phase: "said", tone: "error", line });
       return;
     }
-    const cap = toolForAttachment(r.kind, models);
-    fill(form(cap, { sourceId: r.assetId, prompt: attachWords(cap, words) }), deskFor(cap));
-    // A tool that takes no words still keeps them typed for the next box.
-    setDraft(words);
-    setAttach({
-      phase: "said",
-      tone: "ok",
-      line: fmt(r.kind === "image" ? th.attachFlow.switchedImage : th.attachFlow.switchedVideo, { tool: t.desk.tools[cap] }),
-    });
+    if (choices.current !== choicesAtStart || panelSubmitting.current) {
+      setAttach({ phase: "ready", assetId: r.assetId, kind: r.kind, name: file.name, desk: onDesk });
+      return;
+    }
+    applyAttached(r.assetId, r.kind, onDesk);
   };
 
-  // The home page's kept file: taken out of this browser once (a reload or React's second effect run never takes it twice), and the
-  // address loses `attach=pending`, so a reload does not report the file gone when it is already in the library.
+  // The home page's kept file, for THIS link's nonce: taken out of this browser once (read and deleted in one transaction, so a
+  // reload, React's second effect run or another tab never takes it twice), and the address loses `attach=`. Nothing is uploaded
+  // until the person answers "Use the file you attached on the home page?" (the tab may not be theirs: someone else may have signed
+  // up in it). The words come into the clip box either way.
   useEffect(() => {
     if (!pending || pickedUp.current) return;
     pickedUp.current = true;
@@ -340,20 +376,22 @@ export function StudioHome({
       u.searchParams.delete(PENDING_PARAM);
       window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}${u.hash}`);
     } catch {
-      // The address keeps the word; the file is read once either way.
+      // The address keeps the nonce; the file is taken once either way.
     }
-    // No workspace yet: the file is left where it is (it lapses on its own) and the line says why nothing happened.
+    const words = pending.words;
+    // No workspace to put it in: nothing will read it later, so it is not kept; the line says to attach it again.
     if (!orgId) {
+      void discardPending(indexedDbStore());
       setAttach({ phase: "said", tone: "error", line: th.attachFlow.noOrg });
       return;
     }
-    void takePending(indexedDbStore()).then((p) => {
+    void takePending(indexedDbStore(), pending.nonce).then((p) => {
+      if (words) fill(form("t2v", { prompt: attachWords("t2v", words) }), "video", true);
       if (p.state === "ready") {
-        void attachFile(p.file, pending.words);
+        setAttach({ phase: "confirm", file: p.file, kind: p.kind, url: URL.createObjectURL(p.file), words });
         return;
       }
-      // The file is not here: the words still open the clip box, and the line says the file did not come (never a box that looks attached).
-      if (pending.words) fill(form("t2v", { prompt: attachWords("t2v", pending.words) }), "video");
+      // The file is not here: said, never a box that looks attached.
       setAttach({
         phase: "said",
         tone: "error",
@@ -435,28 +473,76 @@ export function StudioHome({
     ) : null;
   // The attachment's upload and its one line live INSIDE the box, in its flow: drawn after the box they sat on the page's own text
   // where the pinned phone box overlaps it (studio-attached-390, the first screenshots of this change).
+  const thumb = (kind: AttachKind, url: string) => (
+    <span className="sh-attach-thumb" aria-hidden>
+      {kind === "image" ? (
+        // The person's own file from this device: never optimised or sent anywhere else.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" />
+      ) : (
+        <>
+          <video src={`${url}#t=0.1`} muted playsInline preload="metadata" />
+          <Film className="sh-attach-mark" />
+        </>
+      )}
+    </span>
+  );
+  // Seen in the box; HEARD from one live region outside it (attachLive below), which does not remount when the box does.
   const attachNote: ReactNode =
-    attach.phase === "uploading" ? (
-      <div className="sh-attach" role="status" data-testid="composer-uploading">
-        <span className="sh-attach-thumb" aria-hidden>
-          {attach.kind === "image" ? (
-            // The person's own file from this device, shown while it uploads: never optimised or sent anywhere else.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={attach.url} alt="" />
-          ) : (
-            <>
-              <video src={`${attach.url}#t=0.1`} muted playsInline preload="metadata" />
-              <Film className="sh-attach-mark" />
-            </>
-          )}
-        </span>
+    attach.phase === "confirm" ? (
+      <div className="sh-attach sh-attach-ask" data-testid="composer-pending-confirm">
+        {thumb(attach.kind, attach.url)}
+        <div className="sh-attach-ask-body">
+          <p className="sh-attach-ask-title">{fmt(th.attachFlow.confirmTitle, { name: attach.file.name })}</p>
+          <p className="sh-attach-ask-note">{th.attachFlow.confirmNote}</p>
+          <div className="sh-attach-ask-keys">
+            <button type="button" className="sc-pill tap press" data-testid="composer-pending-use" onClick={() => void attachFile(attach.file, null)}>
+              {th.attachFlow.confirmUse}
+            </button>
+            <button
+              type="button"
+              className="sc-pill tap press"
+              data-testid="composer-pending-discard"
+              onClick={() => setAttach({ phase: "said", tone: "ok", line: th.attachFlow.discarded })}
+            >
+              {th.attachFlow.confirmDiscard}
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : attach.phase === "uploading" ? (
+      <div className="sh-attach" data-testid="composer-uploading">
+        {thumb(attach.kind, attach.url)}
         <span className="sh-attach-line">{fmt(th.attachFlow.uploading, { name: attach.name })}</span>
       </div>
+    ) : attach.phase === "ready" ? (
+      <div className="sh-attach" data-testid="composer-attach-ready">
+        <span className="sh-attach-line">{fmt(th.attachFlow.ready, { name: attach.name })}</span>
+        <button
+          type="button"
+          className="sc-pill tap press"
+          data-testid="composer-attach-use"
+          disabled={submittingNow}
+          onClick={() => applyAttached(attach.assetId, attach.kind, attach.desk)}
+        >
+          {th.attachFlow.readyUse}
+        </button>
+      </div>
     ) : attach.phase === "said" ? (
-      <p className="sh-attach-said" data-tone={attach.tone} role={attach.tone === "error" ? "alert" : "status"} data-testid="composer-attach-line">
+      <p className="sh-attach-said" data-tone={attach.tone} data-testid="composer-attach-line">
         {attach.line}
       </p>
     ) : null;
+  const attachLive =
+    attach.phase === "confirm"
+      ? fmt(th.attachFlow.confirmTitle, { name: attach.file.name })
+      : attach.phase === "uploading"
+        ? fmt(th.attachFlow.uploading, { name: attach.name })
+        : attach.phase === "ready"
+          ? fmt(th.attachFlow.ready, { name: attach.name })
+          : attach.phase === "said"
+            ? attach.line
+            : "";
   let noteInBox = false;
   let box: ReactNode = null;
   if (planning && assistant) {
@@ -489,7 +575,11 @@ export function StudioHome({
         onDraftChange={setDraft}
         autoFocusPrompt={focusBox}
         composerExtra={planToggle}
-        onAttachFile={desk === "voice" ? undefined : (file) => void attachFile(file, draft)}
+        onAttachFile={desk === "voice" ? undefined : (file) => void attachFile(file, desk)}
+        onSubmittingChange={(on) => {
+          panelSubmitting.current = on;
+          setSubmittingNow(on);
+        }}
         attachBusy={attach.phase === "uploading"}
         attachNote={attachNote}
         onCreated={() => setRefreshKey((k) => k + 1)}
@@ -568,6 +658,10 @@ export function StudioHome({
         {box}
         {/* Only where the box is not the composer panel (the YouTube video, the Plan): there is no panel to put it in. */}
         {!noteInBox && attachNote}
+        {/* One live region for the attachment, outside the box so it is not remounted with it: only its words change. */}
+        <p className="sr-only" aria-live="polite" data-testid="composer-attach-live">
+          {attachLive}
+        </p>
       </div>
 
       <section ref={examplesRef} className="sh-section" aria-labelledby="sh-examples-title" tabIndex={-1}>

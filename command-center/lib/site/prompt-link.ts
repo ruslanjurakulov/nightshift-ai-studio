@@ -5,7 +5,7 @@
  * sees the price (CLAUDE.md #3). No model is named: the visitor picked none, and the Studio shows which one it will use.
  *
  * There is no "what to make" key: what the visitor attached decides it. Nothing attached is a clip from the words (t2v). A picture
- * or a video is kept in this browser (lib/site/pending-attachment.ts) and the link opens the Studio's composer with `attach=pending`:
+ * or a video is kept in this browser (lib/site/pending-attachment.ts) and the link opens the Studio's composer with `attach=<nonce>`:
  * the Studio uploads the file into the person's library and opens the tool for its kind (lib/creative/attach.ts toolForAttachment).
  *
  * Kept free of the Studio's own modules (the bar is client code and those pull in the model tables); the Studio cleans and bounds
@@ -26,12 +26,14 @@ export const PROMPT_MAX = 1000;
 /** lib/public-paths SIGNUP_PATH. */
 const SIGNUP = "/signup";
 
-/** `?attach=pending`: the Studio looks for the file kept in this browser (lib/site/pending-attachment.ts). Read by the create page. */
+/**
+ * `?attach=<nonce>`: the Studio looks for the file kept in this browser for THIS link (lib/site/pending-attachment.ts takes it only
+ * when the record's nonce matches). Read by the create page.
+ */
 export const PENDING_PARAM = "attach";
-export const PENDING_VALUE = "pending";
 
 // C0/C1 controls, bidi overrides and isolates, zero-width marks: never carried in a link (the Studio strips them too).
-const HIDDEN = /[\u0000-\u001f\u007f-\u009f؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
+const HIDDEN = /[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g;
 
 /** The words as the link carries them: hidden characters out, runs of space folded, at most `max` characters, ending on a whole word. */
 export function linkWords(raw: string, max: number = PROMPT_MAX): string {
@@ -43,10 +45,10 @@ export function linkWords(raw: string, max: number = PROMPT_MAX): string {
   return (space > 0 ? head.slice(0, space) : head).trim();
 }
 
-type Form = { tool: PromptTool } | { pending: true };
+type Form = { tool: PromptTool } | { pending: string };
 
 function studio(form: Form, words: string): string {
-  const q = new URLSearchParams("tool" in form ? { tool: form.tool } : { [PENDING_PARAM]: PENDING_VALUE });
+  const q = new URLSearchParams("tool" in form ? { tool: form.tool } : { [PENDING_PARAM]: form.pending });
   if (words) q.set("prompt", words);
   return `${STUDIO_NEXT_PREFIX}?${q.toString()}`;
 }
@@ -63,8 +65,8 @@ export function promptHref(tool: PromptTool, raw: string, signedIn: boolean): st
  * The bar's destination once a file is kept in this browser: the Studio's composer, which picks the file up and opens the tool for
  * it, with the words so far (none is fine: the file is what it is for), through sign-up when signed out.
  */
-export function attachedHref(raw: string, signedIn: boolean): string {
-  return viaSignup({ pending: true }, linkWords(raw), signedIn);
+export function attachedHref(raw: string, signedIn: boolean, nonce: string): string {
+  return viaSignup({ pending: nonce }, linkWords(raw), signedIn);
 }
 
 function viaSignup(form: Form, words: string, signedIn: boolean): string {

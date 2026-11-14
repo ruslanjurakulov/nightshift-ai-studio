@@ -146,7 +146,10 @@ export function GeneratePanel({
   onAttachFile,
   attachBusy = false,
   attachNote = null,
+  onSubmittingChange,
 }: {
+  /** Told when a press of Generate starts and ends: the page never swaps this box under a create in flight (StudioHome). */
+  onSubmittingChange?: (submitting: boolean) => void;
   /**
    * Composer only: [+] takes a picture or a video from the device (the system picker, ATTACH_ACCEPT) and hands it to the page, which
    * uploads it to the library and opens the tool for its kind (components/studio/StudioHome.tsx). Absent: [+] switches to this mode's
@@ -266,6 +269,13 @@ export function GeneratePanel({
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(onSubmittingChange);
+  submittingRef.current = onSubmittingChange;
+  useEffect(() => {
+    submittingRef.current?.(submitting);
+  }, [submitting]);
+  // A box that unmounts mid-press (never by the page's own swap: it waits) is not pressing any more.
+  useEffect(() => () => submittingRef.current?.(false), []);
   const [notice, setNotice] = useState<{ kind: "ok" } | { kind: "error"; code: CreativeError; detail?: string } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const changeRef = useRef<HTMLButtonElement>(null);

@@ -245,6 +245,9 @@ export const siteEn = {
     remove: "Remove {name}",
     picture: "Picture · becomes a video",
     video: "Video · opens the video tools",
+    /** picture / video while no Studio model is on sale (studioToolsOpen): the chip promises nothing the Studio cannot make today. */
+    pictureClosed: "Picture · for the Studio (picture-to-video is not on sale yet)",
+    videoClosed: "Video · for the Studio (its video tools are not on sale yet)",
     submit: "Create",
     empty: "Write a few words first, or attach a picture or a video.",
     badType: "That file is not a picture or a video the Studio takes (JPEG, PNG, WebP, GIF, HEIC, MP4, MOV, WebM, MKV).",

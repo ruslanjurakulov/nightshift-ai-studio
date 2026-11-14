@@ -210,6 +210,8 @@ export const siteUz: SiteDictionary = {
     remove: "{name} ni olib tashlash",
     picture: "Rasm · videoga aylanadi",
     video: "Video · video vositalari ochiladi",
+    pictureClosed: "Rasm · Studiya uchun (rasmdan video hali sotuvda emas)",
+    videoClosed: "Video · Studiya uchun (video vositalari hali sotuvda emas)",
     submit: "Yaratish",
     empty: "Avval bir-ikki soʻz yozing yoki rasm yoxud video biriktiring.",
     badType: "Bu fayl Studiya qabul qiladigan rasm yoki video emas (JPEG, PNG, WebP, GIF, HEIC, MP4, MOV, WebM, MKV).",

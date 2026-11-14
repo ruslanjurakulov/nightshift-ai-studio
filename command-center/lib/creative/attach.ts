@@ -1,6 +1,6 @@
 /**
  * A file attached with the composer's "+" (the Studio's own, and the landing's kept one picked up by the Studio): which tool it
- * opens, and its trip into the library. Client-safe; unit-tested in tests/studio-attach.test.ts.
+ * opens, and its trip into the library. Client-safe; unit-tested in tests/studio-attach.test.tsx.
  *
  * The upload is the library's EXISTING path, nothing new (lib/imageEditor/save uploadEdited): POST /api/media/uploads asks the
  * database for a ticket (membership, type allowlist, size cap, quota), PUT streams the file, the media worker sniffs and registers
@@ -9,7 +9,8 @@
  */
 import { uploadEdited, type SaveError } from "@/lib/imageEditor/save";
 import { knownUploadReason, parseMediaId, type UploadReason } from "@/lib/media";
-import { modelsFor, promptRule, wordsMax, type StudioCapability, type StudioModel } from "@/lib/creative/studio";
+import { modelsFor, needsSource, needsVideo, promptRule, wordsMax, type StudioCapability, type StudioModel } from "@/lib/creative/studio";
+import { DESK_TOOLS, type MediaDesk } from "@/lib/creative/desks";
 import type { AttachKind } from "@/lib/site/pending-attachment";
 
 /**
@@ -18,14 +19,22 @@ import type { AttachKind } from "@/lib/site/pending-attachment";
  */
 export const VIDEO_IN_TOOLS = ["video_edit", "video_upscale", "video_reframe", "video_remove_bg"] as const satisfies readonly StudioCapability[];
 
+const takes = (kind: AttachKind, c: StudioCapability) => (kind === "image" ? needsSource(c) : needsVideo(c));
+const sold = (models: readonly StudioModel[], c: StudioCapability) => modelsFor([...models], c).length > 0;
+
 /**
- * The tool an attachment opens. A picture: animate it (picture to video). A video: the first video-in tool a model is sold for;
- * when none is sold yet, the first of them anyway, where the form says plainly that nothing is on sale for it (never another tool
- * that quietly does something else, CLAUDE.md #4). The person can switch the tool afterwards; the switch is announced.
+ * The tool an attachment opens. On a desk, that desk's first tool for this kind of file (the Image desk edits a picture, Video
+ * animates it, Enhance upscales it, as its [+] did before the file picker; a video on Enhance gets its first video tool). Only where
+ * the desk has no tool for it, or there is no desk (the home page's file): a picture animates (picture to video), a video
+ * opens the first video-in tool a model is sold for, else the first of them anyway, where the form says plainly that nothing is on
+ * sale for it (never another tool that quietly does something else, CLAUDE.md #4). The person can switch the tool afterwards; the
+ * switch is announced.
  */
-export function toolForAttachment(kind: AttachKind, models: readonly StudioModel[]): StudioCapability {
+export function toolForAttachment(kind: AttachKind, models: readonly StudioModel[], desk: MediaDesk | null = null): StudioCapability {
+  const own = desk ? DESK_TOOLS[desk].find((c) => takes(kind, c)) : undefined;
+  if (own) return own;
   if (kind === "image") return "i2v";
-  return VIDEO_IN_TOOLS.find((c) => modelsFor([...models], c).length > 0) ?? VIDEO_IN_TOOLS[0];
+  return VIDEO_IN_TOOLS.find((c) => sold(models, c)) ?? VIDEO_IN_TOOLS[0];
 }
 
 /** How often the upload is asked about while the worker checks it, and for how long the page waits (lib/editor-voiceover's). */
@@ -41,7 +50,11 @@ export type AttachError =
   /** Uploaded, but still being checked when the page stopped waiting: it will be in the library. */
   | "still_checking"
   /** The worker registered it as neither a picture nor a video (a file whose name or type said otherwise). */
-  | "wrong_kind";
+  | "wrong_kind"
+  /** Asked about the upload, the server said this person may not see it (403): final, never "still checking". */
+  | "upload_forbidden"
+  /** The upload is no longer there to ask about (404 or 410): dismissed, or cleaned up. Final. */
+  | "upload_gone";
 
 export type AttachResult =
   | { ok: true; assetId: string; kind: AttachKind }
@@ -51,6 +64,8 @@ export interface AttachUpload {
   orgId: string;
   file: File;
   kind: AttachKind;
+  /** The type the upload declares: 0044's normalization of the browser's (lib/media normalizeUploadMime). Default: the file's own. */
+  mime?: string;
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -64,7 +79,7 @@ export async function uploadAttachment(input: AttachUpload): Promise<AttachResul
   const doFetch = input.fetchImpl ?? fetch;
   const sleep = input.sleep ?? wait;
   const now = input.now ?? Date.now;
-  const sent = await uploadEdited({ orgId: input.orgId, blob: input.file, filename: input.file.name, mime: input.file.type, fetchImpl: doFetch });
+  const sent = await uploadEdited({ orgId: input.orgId, blob: input.file, filename: input.file.name, mime: input.mime ?? input.file.type, fetchImpl: doFetch });
   if (!sent.ok) return { ok: false, error: sent.error, maxBytes: sent.maxBytes ?? null };
 
   const deadline = now() + ATTACH_WAIT_MS;
@@ -77,6 +92,9 @@ export async function uploadAttachment(input: AttachUpload): Promise<AttachResul
     try {
       const res = await doFetch(`/api/media/uploads/${sent.ticket}`, { cache: "no-store", signal: input.signal });
       if (res.status === 401) return { ok: false, error: "unauthorized" };
+      // Answers that will not change by asking again: said at once, not after three minutes of "still checking".
+      if (res.status === 403) return { ok: false, error: "upload_forbidden" };
+      if (res.status === 404 || res.status === 410) return { ok: false, error: "upload_gone" };
       // A failed read is not a failed upload: ask again until the deadline.
       if (!res.ok) continue;
       body = (await res.json().catch(() => ({}))) as typeof body;
@@ -113,10 +131,14 @@ export function attachWords(c: StudioCapability, words: string): string {
  * Where the words for an attachment that did not make it come from: the attach flow's own, or the library's upload refusals
  * (t.media.errors, whose `too_large` names the cap the database answered with).
  */
-export function attachErrorKey(error: AttachError): { flow: "rejected" | "expiredTicket" | "stillChecking" | "wrongKind" } | { media: SaveError } {
+export function attachErrorKey(
+  error: AttachError,
+): { flow: "rejected" | "expiredTicket" | "stillChecking" | "wrongKind" | "uploadForbidden" | "uploadGone" } | { media: SaveError } {
   if (error === "rejected") return { flow: "rejected" };
   if (error === "expired") return { flow: "expiredTicket" };
   if (error === "still_checking") return { flow: "stillChecking" };
   if (error === "wrong_kind") return { flow: "wrongKind" };
+  if (error === "upload_forbidden") return { flow: "uploadForbidden" };
+  if (error === "upload_gone") return { flow: "uploadGone" };
   return { media: error };
 }
