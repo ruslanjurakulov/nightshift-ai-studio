@@ -525,8 +525,9 @@ def put_back_0159(session) -> None:
     put_back_0170(session)
 
 
-#: md5 of 0170's creative_price body (white space folded), the way its drift guard and end state read it.
+#: md5 of 0170's creative_price and creative_params_problem bodies (white space folded), the way its drift guards and end state read them.
 CREATIVE_PRICE_0170 = "61430edcfe6eb08416381684b9143661"
+CREATIVE_PARAMS_PROBLEM_0170 = "232b83510bce2fc9088ecbdd3af79eda"
 
 
 def has_0170(conn_or_session) -> bool:
