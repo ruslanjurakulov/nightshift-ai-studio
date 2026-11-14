@@ -1551,3 +1551,46 @@ public read answers `{"visible": false}` and nothing else. The one command, the 
   milestone with its switch on), `command-center/tests/referrals.test.ts`, `command-center/tests/referral-ui.test.tsx`,
   `command-center/tests/friend-invites-routes.test.ts` (the join's retry), `command-center/tests/paddle-webhook.test.ts` (the
   discount mark), `command-center/tests/login-invite.test.ts` (a kept cookie retried after a password sign-in).
+
+## Film Studio P1: films as drafts (0166)
+
+0166 (`0166_films_core.sql`) adds five tables (`films`, `film_scenes`, `film_refs`, `film_takes`, `film_events`) and the four calls
+a browser may make (`create_film_draft`, `save_film`, `archive_film`, `film_json`), plus internal helpers. It changes nothing that
+exists: no existing table, column, row, policy, constraint or function body is touched. The plan and the data model are in
+`docs/FILM_STUDIO.md`.
+
+- **No spend.** No credit function is called and no creative or render job is created. A film stays `draft` (or `planned`) until
+  0167 adds the quote and the start.
+- **Who may call them.**
+  - Writes: editors and above. Reads: any member, through column grants (never `request_hash`; a column a later migration adds
+    is hidden until it is granted). The service key reads whole rows.
+  - Another organization's film is P0002, exactly like a missing one.
+  - Neither anon nor service_role calls any of the four.
+  - No API role writes any of the five tables, the service key included.
+  - `film_events` is append-only by trigger, even for the database owner. Its identity sequence is closed to every API role.
+- **Limits** (`film_limits()`, repeated in the table checks):
+  - 60 scenes, 3-30 s a scene, 1-3 shots, 1200 s in total;
+  - a target of 60-1200 s;
+  - a topic of 2,000 or a script of 40,000 characters;
+  - 16 film-wide references and 8 per scene;
+  - 50 open drafts and 500 films in all (archived ones included) an organization;
+  - 5,000 recorded changes a film;
+  - per person per hour, in the database: 30 creates, 240 saves, 60 archives (`take_web_rate`, buckets `db.film.*`; NS429
+    `rate_limited`).
+  - Erasure is the operator's, by a documented SQL-editor procedure (`docs/FILM_STUDIO.md`, "Storage and erasure"); nothing new
+    is granted for it.
+- **Models.** A model a person picks must be on sale for its role (`sellable_models`). A Seedance model (by id, a
+  `video.seedance*` adapter, or a vendor model id naming Seedance) is refused as `model_not_offered`, under BytePlus §4.2.3. Other
+  ByteDance models (Seedream) are judged like any other model: today they are terms-gated, so not on sale (`model_not_available`).
+- **Text helpers.** `film_clean_text` and `film_text_ok` are 0131's `ads_clean_text` and `ads_text_ok`, byte for byte, under
+  Film Studio's names. They are copies so that `rollback_0131` can still drop 0131's.
+- **md5.** The replay guard pins every function body the file creates. The rollback pins the four browser calls.
+- **Number.** 0166. 0163-0165 are taken by other open branches. It needs 0018, 0036, 0038, 0042/0087, 0047 and 0125. The numbering tests of
+  0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0166_films_core.sql` (owner-applied). It refuses a body that is not 0166's, a later Film Studio
+  migration, and any existing films unless its override line is set. Then it drops everything 0166 made.
+- **Tests.**
+  - `tests/test_films_core_migration.py`: the text, the grants, the limits, the hashes and the rollback.
+  - `tests/security/test_sec_films_core.py`: a real PostgreSQL. It covers tenancy, direct writes, draft-only, versions and the
+    lock, events, limits, frame roles, models, idempotency, replay and rollback.
+  - `tests/security/sec_films_0166.py`: the shared lab's contract and seed.
