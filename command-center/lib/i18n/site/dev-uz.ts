@@ -181,6 +181,10 @@ export const devUz: DevDictionary = {
     paid: { title: "Har qanday tarif", body: "Hisobga kirish orqali ulanish har qanday tarifda, jumladan Free tarifida ham ishlaydi. U ish maydoni kreditlarini sarflaydi (xush kelibsiz kreditlari, paketlar va tarif kreditlari hisoblanadi), kredit yetmasa, yordamchiga ish boshlanishidan oldin aytiladi. API kalitlari va REST API alohida: ular oldindan toʻlangan API balansidan toʻlanadi.", link: "Tariflar va kreditlar" },
     apiKeyInstead: "API kalitdan foydalanish",
     apiKeyInsteadBody: "Kira olmaydigan mijoz yoki skript uchun. Kalitni “Dasturchilar” → “API kalitlari” boʻlimida yarating.",
+    ready: {
+      badge: "Ulashga tayyor",
+      body: "Nightshift serveri {app} oʻz serverlari uchun eʼlon qilgan talablarga mos keladi. Yuqoridagi qadamlarni bajaring.",
+    },
     soon: {
       badge: "Tez orada",
       use: "Bugunoq API kalit bilan ishlaydi:",
@@ -318,8 +322,8 @@ export const devUz: DevDictionary = {
     },
     tools: {
       slug: "Yordamchingiz nima qila oladi",
-      title: "Oʻnta vosita. Oʻqish bepul.",
-      lead: "Faqat ikkitasi pul sarflaydi va bu ochiq aytilgan. Narxlar API maʼlumotnomasidagi amaldagi narxlar roʻyxatidan olinadi.",
+      title: "Videolar va Studiya generatsiyalari. Oʻqish bepul.",
+      lead: "Pul sarflaydigan vositalar shunday deb belgilangan. Video va yuklab olish API balansidan, Studiya generatsiyasi esa ish maydoni kreditlaridan toʻlanadi va har bir generatsiya narxi boshlanishdan oldin aytiladi. Studiyaning toʻrtta vositasi Studiya ruxsatlari bor API kalit bilan ishlaydi.",
       table: "Vositalar",
       cols: { tool: "Vosita", what: "Nima qiladi", cost: "Narxi" },
       free: "Bepul",
@@ -334,10 +338,15 @@ export const devUz: DevDictionary = {
         { id: "request_download", what: "720p yoki 1080p MP4 ga buyurtma berish" },
         { id: "get_download", what: "Yuklab olish holati va havolasi" },
         { id: "get_balance", what: "API balansingiz, shu oydagi sarf va daraja" },
+        { id: "list_models", what: "Ish maydoningiz foydalana oladigan Studiya modellari: shakllari, davomiyligi va oʻlchamlari" },
+        { id: "quote_generation", what: "Bitta rasm, klip yoki ovozning kreditdagi narxi, hech narsa boshlanmasdan oldin" },
+        { id: "create_generation", what: "Uni yaratish, kelishilgan narxdan qimmat emas" },
+        { id: "get_generation", what: "Uning holati va tayyor boʻlganda har bir faylga havola" },
       ],
       paid: {
         create_video: "Video tayyor boʻlganda yechiladi; muvaffaqiyatsiz ishga tushirish hech narsa turmaydi.",
         request_download: "Fayl tayyor boʻlganda yechiladi; muvaffaqiyatsiz yuklab olish hech narsa turmaydi.",
+        create_generation: "Kreditlar hisoblangan narxda ajratib qoʻyiladi va tayyor boʻlganda yechiladi; muvaffaqiyatsiz generatsiya hech narsa turmaydi.",
       },
     },
     land: {
@@ -431,7 +440,7 @@ export const devUz: DevDictionary = {
         items: [
           { q: "Nightshift MCP nima?", a: "Sunʼiy intellekt yordamchingiz ulanadigan server. U orqali yordamchi kanallaringizni sanab beradi, video yaratadi, har bir vazifani kuzatadi va nashr qiladi — ilovadagi bilan bir xil nashr tekshiruvi va tasdiqlashlar asosida." },
           { q: "Yordamchim nimalarni qila oladi?", a: "Kanallaringiz va videolaringizni sanab beradi, videoni boshlaydi, vazifasini kuzatadi, balansni tekshiradi, tayyor videoni ulangan akkauntlarga nashr qiladi va API kalit bilan HD yuklab olishni buyuradi. Vositalarning toʻliq roʻyxati shu sahifaning pastida." },
-          { q: "Qaysi yordamchilar mos keladi?", a: "ChatGPT, Claude, Gemini, Grok, Cursor va GitHub Copilot bilan VS Code. Yuqoridagi ulanish kartasida oʻzingiznikini tanlang — har birining oʻz qadamlari bor." },
+          { q: "Qaysi yordamchilar mos keladi?", a: "{available} bugunoq ulanadi. Boshqa yordamchi uchun uni yuqoridagi ulanish kartasida tanlang: uning varagʻida u uchun qadamlar bor." },
           { q: "Qanday ulanadi?", a: "Yuqoridagi ulanish kartasidan yordamchingizni tanlang. Kirish mavjud boʻlgan joyda server manzili va kirish kerak boʻladi; qolgan yordamchilarga “Dasturchilar”da yaratadigan API kalitingiz kerak." },
           { q: "Narxi qancha?", a: "Kirish orqali ulanish har qanday tarifda, jumladan Free tarifida ham ishlaydi va ilovada yaratilgan video bilan bir xil kreditlarni sarflaydi. API kalit oldindan toʻlangan API balansingizni sarflaydi. Video navbatga qoʻyilganda uning narxi band qilinadi; faqat video muvaffaqiyatli boʻlganda yechiladi, muvaffaqiyatsiz ishga tushirish esa hech narsaga tushmaydi." },
           { q: "U mendan soʻramasdan nashr qila oladimi?", a: "Yoʻq. Nashr ilovadagi bilan bir xil tekshiruv va tasdiqlashlardan oʻtadi, YouTube’ga yuklashlar esa siz qaror qilmaguningizcha yopiq qoladi." },
@@ -529,7 +538,7 @@ export const devUz: DevDictionary = {
         { id: "download-and-publish", what: "MP4 yuklab olish va boshqa platformalarda nashr qilish; YouTube’ga yuklash maxfiy qoladi" },
         { id: "troubleshoot-errors", what: "Xatoni oʻqib, keyin nima qilishni bilish" },
         { id: "batch-videos", what: "Bir nechta videoni son chegarasi, sarf chegarasi va birinchi muammoda toʻxtash bilan yaratish" },
-        { id: "use-the-mcp-tools", what: "Oʻnta MCP vositasidan foydalanish va MCP bilan CLI oʻrtasida tanlash" },
+        { id: "use-the-mcp-tools", what: "MCP vositalaridan foydalanish va MCP bilan CLI oʻrtasida tanlash" },
       ],
     },
     more: { api: "API maʼlumotnomasi", cli: "Buyruq qatori", mcp: "Yordamchini ulash" },

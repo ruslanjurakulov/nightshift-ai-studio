@@ -301,7 +301,7 @@ class SkillContentTests(unittest.TestCase):
     def test_the_mcp_skill_lists_exactly_the_servers_tools(self):
         src = (ROOT / "command-center" / "lib" / "api" / "mcp.ts").read_text(encoding="utf-8")
         tools = set(re.findall(r'^\s+"([a-z_]+)",$', re.search(r"export const TOOL_NAMES = \[(.*?)\] as const;", src, re.S).group(1), re.M))
-        self.assertEqual(len(tools), 10)
+        self.assertEqual(len(tools), 14)
         text = (SKILLS / "use-the-mcp-tools" / "SKILL.md").read_text(encoding="utf-8")
         listed = set(re.findall(r"^\|\s*`([a-z_]+)`\s*\|", text, re.M))
         self.assertEqual(listed, tools)

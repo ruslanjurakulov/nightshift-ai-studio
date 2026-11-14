@@ -35,6 +35,8 @@ import sec_db
 
 MIGRATION = sec_db.MIGRATIONS / "0147_mcp_free_tier.sql"
 ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0147_mcp_free_tier.sql"
+# Later migrations that replace a function of 0147 (oauth_gc: 0161, tests/security/test_sec_mcp_chatgpt_client.py), with their undo.
+LATER = [(sec_db.MIGRATIONS / "0161_mcp_chatgpt_client.sql", sec_db.REPO / "docs" / "sql" / "rollback_0161_mcp_chatgpt_client.sql")]
 ORG_PAID = "aaaaaaaa-0000-0000-0000-000000000147"
 U_PAID = str(uuid.UUID(int=0xA147))
 RESOURCE = "https://nightshift-ai.studio/api/mcp"
@@ -100,6 +102,11 @@ def db():
         pytest.skip(f"{sec_db.DSN_ENV} is not set — the security lab needs a scratch Postgres")
     name = f"ns_mcp_free_{uuid.uuid4().hex[:8]}"
     d = Db(sec_db.build(admin, name))
+    # This lab replays and rolls back 0147, whose drift guard refuses a body it was not written on; so a later migration that
+    # replaces one of 0147's functions is undone first (with its own rollback) and attacked in its own lab.
+    for later, undo in LATER:
+        if later.exists():
+            d.apply(undo)
     d.su("insert into auth.users (id, email, email_confirmed_at) values (%s, 'paid@0147.io', now())", [U_PAID])
     d.su("insert into public.organizations (id, name, slug) values (%s, 'Paid', 'org-paid-0147')", [ORG_PAID])
     d.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, 'paid@0147.io', 'owner')", [ORG_PAID, U_PAID])

@@ -203,8 +203,8 @@ export const GROK_MCP_GUIDE = "https://docs.x.ai/grok/connectors";
 /** The vendor's own guide each steps-only tab links to: the assistants with no documented install link. */
 export const MCP_GUIDES: Record<string, string> = { chatgpt: CHATGPT_MCP_GUIDE, gemini: GEMINI_MCP_GUIDE, grok: GROK_MCP_GUIDE };
 
-/** The ten tools, in the order the server lists them (lib/api/mcp.ts TOOL_NAMES;
- *  tests/dev-pages-copy.test.ts keeps the two lists equal). */
+/** The tools, in the order the server lists them (lib/api/mcp.ts TOOL_NAMES;
+ *  tests/dev-pages-copy.test.ts keeps the two lists equal). The last four (the Studio's generations) are API-key only. */
 export const MCP_TOOL_IDS = [
   "list_channels",
   "create_video",
@@ -216,4 +216,8 @@ export const MCP_TOOL_IDS = [
   "request_download",
   "get_download",
   "get_balance",
+  "list_models",
+  "quote_generation",
+  "create_generation",
+  "get_generation",
 ] as const;

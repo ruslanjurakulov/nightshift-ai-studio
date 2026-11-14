@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/config";
 import { runBackend } from "@/lib/server/run-backend";
 import { downloadsDir } from "@/lib/server/downloads";
+import { mediaDir, mediaUrlSecret, signedMediaPath } from "@/lib/server/media";
 import { apiError, newRequestId, toResponse, type ApiResult } from "@/lib/api/http";
 import { authenticate, type ApiCaller, type Rpc } from "@/lib/api/operations";
 import { oauthRpc } from "@/lib/api/mcp-oauth";
@@ -36,7 +37,18 @@ export async function apiCaller(request: Request, requestId: string): Promise<Ap
   if (!isSupabaseConfigured) return apiError(503, "api_unavailable", "The API is not configured on this deployment.");
   const auth = await authenticate(request.headers.get("authorization"));
   if (!auth.ok) return auth.result;
-  return { keyHash: auth.keyHash, requestId, rpc: apiRpc, backend: runBackend, downloads: downloadsDir() !== null };
+  return { keyHash: auth.keyHash, requestId, rpc: apiRpc, backend: runBackend, downloads: downloadsDir() !== null, mediaLink };
+}
+
+/**
+ * A key holder's link to one of its organization's generated files: the library's own signed path (the same HMAC the Studio's
+ * links carry, bound to the asset, variant and type, expiring after MEDIA_URL_TTL_S). Only ever called with an asset the database
+ * returned for a job this key started (0162 api_creative_job_files). Null without a media volume or a signing secret.
+ */
+function mediaLink(assetId: string, variant: "original" | "thumb" | "proxy", mime: string): string | null {
+  const secret = mediaUrlSecret();
+  if (!secret || mediaDir() === null) return null;
+  return signedMediaPath(secret, assetId, variant, mime);
 }
 
 /**
