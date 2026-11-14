@@ -3728,7 +3728,7 @@ export const uz: Dictionary = {
       not_cancellable: "Provayder bu generatsiya ustida ishlayapti, endi uni bekor qilib boʻlmaydi.",
       failed: "Nimadir xato ketdi. Qayta urinib koʻring.",
     },
-    // 0175: the count, the limit and when the window frees (UTC), read from the database's detail; without it no number.
+    // 0175: the count, the limit and when the window frees (UTC), read from the detail of the refusal; without it no number.
     failedJobLimit: {
       counted: "Soʻnggi 24 soatda tashkilotingizda {n} ta generatsiya xato bilan tugadi yoki rad etildi (chegara — {limit}), shuning uchun yangilari {date} {time} UTC gacha toʻxtatildi. Hech narsa band qilinmadi va yechilmadi. Promptni yoki manba faylni oʻzgartiring: rad etish odatda provayderning xavfsizlik filtri uni oʻtkazmaganini bildiradi. Agar bu xato boʻlsa, qoʻllab-quvvatlash xizmatiga yozing.",
       unknown: "Soʻnggi 24 soatda tashkilotingizda juda koʻp generatsiya xato bilan tugadi yoki rad etildi, shuning uchun yangilari hozircha toʻxtatildi. Hech narsa band qilinmadi va yechilmadi. Promptni yoki manba faylni oʻzgartiring yoki qoʻllab-quvvatlash xizmatiga yozing.",

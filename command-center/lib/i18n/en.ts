@@ -3745,7 +3745,7 @@ export const en = {
       not_cancellable: "The provider is already working on this generation, so it can no longer be cancelled.",
       failed: "Something went wrong. Try again.",
     },
-    // 0175: the count, the limit and when the window frees (UTC), read from the database's detail; without it no number.
+    // 0175: the count, the limit and when the window frees (UTC), read from the detail of the refusal; without it no number.
     failedJobLimit: {
       counted: "{n} generations in your organization failed or were refused in the last 24 hours (the limit is {limit}), so new ones are paused until {date} {time} UTC. Nothing was held or charged. Change the prompt or the input file: a refusal usually means the provider's safety filter turned it down. If this looks wrong, contact support.",
       unknown: "Too many generations in your organization failed or were refused in the last 24 hours, so new ones are paused for now. Nothing was held or charged. Change the prompt or the input file, or contact support.",
