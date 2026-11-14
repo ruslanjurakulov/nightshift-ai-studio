@@ -54,6 +54,15 @@ export const EDITOR_QUOTE_RATE: RateRule = { bucket: "editor.quote", max: 120, w
 export const EDITOR_SEND_RATE: RateRule = { bucket: "editor.send", max: 120, windowSeconds: 600 };
 
 /**
+ * Studio → Projects (films, migration 0166), per person. The database limits the same calls again under its own `db.film.*` buckets
+ * (30 creates, 240 saves, 60 archives an hour); these route buckets are twice that, so they stop a loop at the door without ever
+ * being the limit a real person meets first. A refused call says "rate_limited" and the canvas keeps the unsaved work on screen.
+ */
+export const FILM_CREATE_RATE: RateRule = { bucket: "films.create", max: 60, windowSeconds: 3600 };
+export const FILM_SAVE_RATE: RateRule = { bucket: "films.save", max: 480, windowSeconds: 3600 };
+export const FILM_ARCHIVE_RATE: RateRule = { bucket: "films.archive", max: 120, windowSeconds: 3600 };
+
+/**
  * Dodo invoice downloads (GET /api/billing/dodo/invoice) per person: 5 a minute. Dodo limits its invoice endpoint to 5 a
  * minute per payment and 20 a minute per client IP (api-reference/introduction, "Invoice Downloads"), and every tenant's
  * request leaves from this one server, so without a per-person cap one admin clicking (or a script) could spend the whole

@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUp, Film, FolderOpen, ImageIcon, LayoutTemplate, ListChecks } from "lucide-react";
+import { ArrowRight, ArrowUp, Film, FolderOpen, ImageIcon, LayoutTemplate, ListChecks, Projector } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
+import { STUDIO_PROJECTS } from "@/lib/navigation";
+import { filmStudioStrings } from "@/lib/i18n/film-studio";
 import { useChannelPath } from "@/lib/channels-client";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { JobFeed } from "@/components/studio/JobFeed";
@@ -122,7 +124,7 @@ export function StudioHome({
   const th = t.studioHome;
   const path = useChannelPath();
   const router = useRouter();
-  const { tools } = useShell();
+  const { tools, features } = useShell();
   const [mode, setMode] = useState<StudioMode>(() => startMode(tools, initial));
   const [planning, setPlanning] = useState(false);
   // Once opened, the planner stays mounted (hidden while another mode is shown): a running plan's loop
@@ -795,6 +797,16 @@ export function StudioHome({
               </li>
             );
           })}
+          {/* Studio → Projects (NIGHTSHIFT_FILM_STUDIO, resolved per viewer by the layout): a whole video planned scene by scene. */}
+          {features.filmStudio === true && (
+            <li>
+              <Link href={path(STUDIO_PROJECTS)} className="sh-page" data-testid="studio-home-projects">
+                <Projector aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
+                <span className="min-w-0 truncate">{filmStudioStrings(locale).section}</span>
+                <ArrowRight aria-hidden className="ml-auto size-3.5 shrink-0 opacity-60" />
+              </Link>
+            </li>
+          )}
           <li>
             <Link href={path("/presets")} className="sh-page">
               <LayoutTemplate aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />

@@ -45,6 +45,7 @@ import { FlashNotice } from "@/components/account/FlashNotice";
 import { SkipLink } from "@/components/shell/SkipLink";
 import { adsFactoryEnabled } from "@/lib/adsFactory/flag";
 import { characterStudioEnabled } from "@/lib/characterStudio/model";
+import { filmStudioListed, filmStudioMode } from "@/lib/server/films";
 import { ShellOffsets } from "@/components/shell/ShellOffsets";
 import { GlassPointer } from "@/components/ui/GlassPointer";
 import "./app-redesign.css";
@@ -213,7 +214,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MotionProvider>
       <NavigationProvider channelNames={channelNames}>
         {/* The optional sections' switches are read HERE, on the server, per request: the navigation lists Ads only while its switch is on. */}
-        <ShellProvider operator={operator} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled() }} tools={tools}>
+        <ShellProvider operator={operator} features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled(), filmStudio: filmStudioListed(filmStudioMode(), operator) }} tools={tools}>
         <SidebarProvider initialCollapsed={!operator && sidebarCollapsed}>
           <div className="app-shell atmos relative flex min-h-svh flex-col">
             {/* First stop in the tab order: past the sidebar, the top bar and the tab bar to the page. */}

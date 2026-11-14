@@ -5,8 +5,12 @@ each shot starts from the previous shot's last frame. The shots are assembled in
 subtitles. The video then goes to a channel as a **private** upload, behind the existing publish gate and approval
 (`modules/publish_gate.py`, migration 0112). Film Studio never adds a publish path. CLAUDE.md rules 2 and 3 apply unchanged.
 
-The work ships in phases, one draft PR each. **P1** (drafts) is merged; **P2** (money: the quote, the start and the settle path) is
-this PR. There is still no worker and no UI: a film can be priced and started, and nothing runs it until P3.
+The work ships in phases, one draft PR each. **P1** (the data) and **P5/P6 for drafts** (the routes and the screens, below) are
+merged: drafts, with no spend and no worker. So is **P4a**: `modules/film_timeline.py`, the pure function that turns a film's chosen
+takes into the editor's timeline document; nothing calls it yet. The assembly was measured first (P0,
+docs/FILM_ASSEMBLY_MEASUREMENT.md), on a development container and not yet on the media-worker. **P2** (money: the quote, the start
+and the settle path, migration 0171) is this PR. There is still no worker: a project can be priced and started only once P3 ships
+and the switch is on ("Switch-on gates", below).
 
 ## The data model (migration 0166)
 
@@ -245,17 +249,54 @@ What a segment captured is the ledger's own answer: a hold that 0020 expired und
 **Number.** 0166's header names "0167" for this phase. That was the plan's number; the file is **0171**, and a merged migration is
 never edited.
 
+## In the Command Center (P5, P6 for drafts)
+
+A person sees this as **Studio → Projects** ("Проекты", "Loyihalar"; one item is a "project"). The Studio's own name is not written in
+the Projects strings: it is read from the app's `nav.hub` key. Code, tables and functions keep the internal name `films`.
+
+| Piece | Where |
+| :-- | :-- |
+| The switch | `NIGHTSHIFT_FILM_STUDIO` on the Command Center's server, default off. `off`: the pages and `/api/films/**` are a 404 and nothing lists the section. `admins`: only a platform owner/admin sees it. `on`: every member. |
+| Pages | `/{channel}/create/projects` (the list and "New project") and `/{channel}/create/projects/{id}` (the canvas), under the Studio's own address |
+| Entry points | The Studio's desk bar, the customer sidebar's Create group and the Studio overview's list, each only while the switch lists it for the viewer |
+| Routes | `GET/POST /api/films`, `GET/PATCH /api/films/{id}`, `POST /api/films/{id}/archive`. Each is the member's own session (anon key + cookie) calling 0166's functions; the service key is never used. Same origin, a body cap, and a route rate limit per person (`films.create` 60, `films.save` 480, `films.archive` 120 an hour) in front of the database's own `db.film.*` limits. The database writes the audit row (`film_events`). |
+| Shared shapes | `command-center/lib/films.ts`: the read model, the refusals as closed words, what a save sends, the checks before a save, and the browser's calls |
+| Data and state | `components/films/useFilmProject.ts`: the draft, autosave (4 s after the last edit, at least 20 s apart, so at most 180 saves an hour against the database's 240), the version conflict, undo and redo (50 steps), split, merge, insert, delete and reorder, and a pending-edit buffer in the browser so a refresh or a closed tab loses nothing. It knows nothing about how the board is drawn, so a node canvas can replace the scene grid. |
+| Strings | `command-center/lib/i18n/film-studio/{en,ru,uz}.ts` |
+
+What is not available yet, and says so on the screen: writing the storyboard with AI (P3), and Start with a price (P2). Start is
+drawn disabled with "Pricing for projects is not live yet"; no number, price or quote is shown. Sound, shooting, assembly and the
+handoff are dim stations on the track. Nothing on these screens spends, starts or publishes.
+
+## Assembly (P4a: `modules/film_timeline.py`)
+
+`build_cut(film, scenes, takes, assets, narration, captions)` returns the editor's timeline document, its sha256 (the same
+input always gives the same hash), a plan of what it decided, and the `.srt` sidecar. It is pure: P4b reads the rows and
+renders the document through `timeline_render`, exactly as an editor export does.
+
+- A scene lasts its `planned_seconds`, and the film their sum, which is what P2 quotes. A cross-fade takes its overlap out of
+  the incoming scene's footage. Shots within a scene, and a scene that continues the previous one, are cut, and the
+  continuity is checked against `result_last_frame_asset_id`.
+- A missing, failed, unfinished or deleted take refuses the whole film with a named reason and the scene. No scene is
+  dropped, and no still or other take is put in its place.
+- Measured limits it holds a film to (docs/FILM_ASSEMBLY_MEASUREMENT.md): at most 10 minutes, no per-clip `loudnorm`, and at
+  most 32 sound clips, because the editor's final pass cannot render more at 1080p under the export's 2 GiB limit.
+- What P3 has to deliver for it: the narration take **on the film's clock** (each scene's words start `NARRATION_LEAD_S` into
+  the scene, so a 60-scene film is one sound clip rather than 60), its per-scene `segments` in the file's time, its measured
+  `loudness_lufs` and `true_peak_db` (one gain brings it to -16 LUFS; without them the plan says "not measured"), and the
+  captions timed against the narration file.
+
 ## The phases
 
 | PR | Content | Migration | State |
 | :-- | :-- | :-- | :-- |
-| P0 | Scout and measurement: vendor facts, and a 10-15 minute assembly measured on the media-worker (rule 8) | - | Scout done; measurement owed |
+| P0 | Scout and measurement: vendor facts, and a 10-15 minute assembly measured on the media-worker (rule 8) | - | Scout done; assembly measured on a dev container (docs/FILM_ASSEMBLY_MEASUREMENT.md); one timed run on the media-worker owed |
 | P1 | Core tables, RLS, `film_events`, `create_film_draft` / `save_film` / `archive_film` / `film_json`. Drafts only, no spend | 0166 | merged |
 | **P2** | Money. `quote_film`, `start_film` and `film_segments` (one hold per segment, settle and release). Also: the money columns on `film_takes`, `creative_jobs.film_take_id` with `payer='film'`, `org_film_settings`, and the service functions of the state machine. The `film_assembly_minute` price is read, not seeded: an admin sets it | **0171** (provisional) | this PR |
 | P3 | The orchestrator. `tools/film_worker.py` and `modules/film_orchestrator.py` drive 0171's state machine (claim, begin, result, the one retry, settle, the sweep). Last-frame extraction goes through `ffmpeg_limits`. The plan step uses Gemini. The creative worker accepts `payer='film'`. Turns `film_studio_enabled` on. | (0171) | |
-| P4 | Assembly on the media-worker: `modules/film_timeline.py`, `film_cuts`, `films.current_cut_id` | 0168 | |
-| P5 | `/api/films/**` routes, `lib/films.ts`, rate buckets, geo checks, audit | - | |
-| P6 | The canvas UI with every state, at mobile width, in en/ru/uz | - | |
+| P4 | Assembly on the media-worker. **P4a**: `modules/film_timeline.py` (pure, no wiring). P4b: `film_cuts`, `films.current_cut_id`, the media-worker claim and the free-disk check | 0168 | P4a done |
+| P5 | `/api/films/**` routes, `lib/films.ts`, rate buckets, geo checks, audit | - | drafts done (no geo check yet: drafts pick no model) |
+| P6 | The canvas UI with every state, at mobile width, in en/ru/uz | - | drafts done; Start stays off until P3 and the switch |
 | P7 | Re-shoot: angle, light and motion; choosing a take version; re-assembly | 0169 | |
 | P8 | Handoff to the channel. This adds the `film` and `film_voice` render-job kinds, `send_film_to_channel` and `main.py --film`. The payment guard is md5-pinned. The upload stays private. | 0170 | |
 | P9 | The autopilot `scene_mode = ai_video` setting, locked to admins. Storyboard review is forced. `films.storyboard_id` is added. | 0171 | |

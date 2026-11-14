@@ -47,7 +47,7 @@ describe("navigation", () => {
   it("the switch is read on the server, in the layout and the sections page, and never as a NEXT_PUBLIC value", () => {
     const root = join(__dirname, "..");
     const layout = readFileSync(join(root, "app", "(app)", "layout.tsx"), "utf8");
-    expect(layout).toContain("features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled() }}");
+    expect(layout).toContain("features={{ adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled(), filmStudio: filmStudioListed(filmStudioMode(), operator) }}");
     expect(readFileSync(join(root, "app", "(app)", "[channel]", "sections", "page.tsx"), "utf8")).toContain(
       "navGroupsFor(true, { adsFactory: adsFactoryEnabled(), characterStudio: characterStudioEnabled() })",
     );

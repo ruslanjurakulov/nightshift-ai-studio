@@ -8,8 +8,9 @@ import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import { breadcrumbs, type Crumb } from "@/lib/navigation";
 import type { Dictionary } from "@/lib/i18n";
 import { useNavigation } from "./NavigationProvider";
+import { filmStudioStrings } from "@/lib/i18n/film-studio";
 
-function crumbLabel(crumb: Crumb, t: Dictionary, channelName: (slug: string) => string | null): string {
+function crumbLabel(crumb: Crumb, t: Dictionary, channelName: (slug: string) => string | null, locale = "en"): string {
   switch (crumb.kind) {
     case "channel":
       return crumb.slug === ALL_CHANNELS_SLUG ? t.channels.allChannels : channelName(crumb.slug) ?? crumb.slug;
@@ -18,6 +19,8 @@ function crumbLabel(crumb: Crumb, t: Dictionary, channelName: (slug: string) => 
     case "detail":
       if (crumb.parent === "channels" && crumb.segment === "new") return t.channels.add;
       if (crumb.parent === "channels" && crumb.segment === "connect") return t.connectPicker.crumb;
+      // Studio → Projects (lib/navigation STUDIO_PROJECTS) sits under /create without being a rail entry of its own.
+      if (crumb.parent === "create" && crumb.segment === "projects") return filmStudioStrings(locale).section;
       // A section the sidebar does not list names itself by its URL; anything
       // below a section (a video's id) is a detail page, and an id is not a name.
       if (crumb.parent === null && crumb.segment === "presets") return t.presets.title;
@@ -34,7 +37,7 @@ function crumbLabel(crumb: Crumb, t: Dictionary, channelName: (slug: string) => 
  */
 export function PageNav() {
   const pathname = usePathname();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { goBack, channelName, showChannel } = useNavigation();
   const crumbs = breadcrumbs(pathname).filter((c) => c.kind !== "channel" || showChannel);
 
@@ -53,7 +56,7 @@ export function PageNav() {
         <ol className="flex min-w-0 items-center gap-1 text-xs text-[var(--color-muted)]">
           {crumbs.map((crumb, i) => {
             const last = i === crumbs.length - 1;
-            const label = crumbLabel(crumb, t, channelName);
+            const label = crumbLabel(crumb, t, channelName, locale);
             // Middle crumbs give way first on a narrow screen; the page you are
             // on is the one worth keeping legible.
             const hideOnPhone = !last && i < crumbs.length - 2;
