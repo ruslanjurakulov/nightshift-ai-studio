@@ -104,7 +104,8 @@ export function BeforeAfter({ clip, picture, title, copy, g }: { clip: SampleSli
   };
 
   return (
-    <figure className="nxb" data-showcase-entry={clip.job} data-model={clip.modelName}>
+    // The `#sample-` anchor: a model tile links to its sample's box, and for a clip made from a picture this is the only one on the page.
+    <figure id={`sample-${clip.job}`} className="nxb" data-showcase-entry={clip.job} data-model={clip.modelName}>
       <div
         ref={frame}
         className="nxb-frame"

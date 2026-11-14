@@ -12,6 +12,7 @@ import type { Dictionary } from "@/lib/i18n";
 import { creditLine } from "@/lib/site/media";
 import { landingExcludedJobs, type PlaceMedia } from "@/components/site/samples";
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
+import { landingGalleryJobs } from "@/components/site/landing-samples";
 
 /** The gallery's root. It renders only when a sample whose files are in the repository exists. */
 export const GALLERY = "section#samples";
@@ -59,12 +60,16 @@ export function shippedSamples(): { cards: number; clips: number; sources: numbe
   };
 }
 
-/** The same for the landing, whose gallery leaves out the samples its own slots show (so no clip is on the page twice). */
+/**
+ * The same for the landing, whose gallery shows only its share (components/site/landing-samples.tsx landingGalleryJobs): not the
+ * samples its slots, picture → video, the ticker or the Effects section show, at most LANDING_GALLERY_MAX, and the carousel leaves
+ * those out (so no clip is on the page twice).
+ */
 export function landingSamples(): { cards: number; clips: number; sources: number } {
-  const inSlots = landingExcludedJobs();
+  const share = landingGalleryJobs(landingExcludedJobs());
   const all = showcaseItems();
   const jobs = new Set(all.map(({ e }) => e.jobId));
-  const items = all.filter(({ e }) => !inSlots.includes(e.jobId));
+  const items = all.filter(({ e }) => share.includes(e.jobId));
   return {
     cards: items.length,
     clips: items.filter(({ e, f }) => e.kind === "video" && f.clip !== null).length,

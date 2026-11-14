@@ -200,7 +200,7 @@ export const siteEn = {
   gallery: {
     label: "Made in the Studio",
     title: "Made with Nightshift",
-    lead: "Real generations, made by our team in the Studio. Each one names the model that made it and the words it was given.",
+    lead: "Real generations, made by our team in the Studio. Open one to see the model that made it and the words it was given.",
     badge: "AI-generated",
     model: "Model",
     prompt: "Prompt",
@@ -229,6 +229,11 @@ export const siteEn = {
     /** On a clip animated from one of the samples' own pictures: that picture, small, with the model that made it. */
     source: "Made from this picture:",
     altSource: "The AI-generated picture this clip was made from, made by {model}",
+    /** The explore grid's card is the picture alone: pressing it opens the sample in a dialog with its prompt, model and day. */
+    open: "Open this sample",
+    /** The dialog's name. */
+    detail: "About this sample",
+    close: "Close",
   },
   /**
    * The landing's prompt bar (components/landing/PromptBar.tsx): it only opens the Studio form with the words (and, once a file is

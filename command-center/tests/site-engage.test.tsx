@@ -248,8 +248,8 @@ describe("the landing page's reasons to stay", () => {
 
     // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of two
     // outside the gallery (the hero's switch under the card and the Studio showcase's clip picture carry the same switch; the
-    // Approvals showcase is a drawing and has nothing that moves by itself). Each merged model sample that plays a clip carries it
-    // too, on its picture inside the gallery, and every one of them agrees. Each is visually hidden until a keyboard focuses it
+    // Approvals showcase is a drawing and has nothing that moves by itself). The gallery carries it once, and every one of them
+    // agrees. Each is visually hidden until a keyboard focuses it
     // (the owner wants no visible pause word or icon), so it is still in the tab order and named for a screen reader.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
     // The models strip (components/site/motion/ModelMarquee.tsx) moves by itself, so it carries the same switch, once (also
@@ -257,9 +257,11 @@ describe("the landing page's reasons to stay", () => {
     const inStrip = all().filter((b) => b.closest(".nx-marquee"));
     expect(inStrip).toHaveLength(container.querySelector(".nx-marquee") ? 1 : 0);
     expect(outsideGallery(all()).filter((b) => !b.closest(".nx-marquee"))).toHaveLength(2);
+    // The gallery carries it once for the whole grid when any of its samples plays a clip (one Tab stop, not one per card), outside
+    // the cards, which are the buttons that open each sample.
     const inGallery = all().filter((b) => b.closest(GALLERY));
-    expect(inGallery).toHaveLength(landingSamples().clips);
-    for (const b of inGallery) expect(b.closest(SAMPLE_CARD)).toBeTruthy();
+    expect(inGallery).toHaveLength(landingSamples().clips > 0 ? 1 : 0);
+    for (const b of inGallery) expect(b.closest(SAMPLE_CARD)).toBeNull();
     const toggle = container.querySelector(".nx-motion-btn") as HTMLElement;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);
