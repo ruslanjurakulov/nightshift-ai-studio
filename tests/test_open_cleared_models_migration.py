@@ -1,16 +1,17 @@
-"""supabase/migrations/0173_open_cleared_models.sql — the nine cleared, verified, priced models go on sale (beta) at 2.5x their vendor figure.
+"""supabase/migrations/0173_open_cleared_models.sql — the seven cleared, verified, priced models go on sale (beta) at 2.5x their vendor figure.
 
 SQL does not run in this suite (tests/security/test_sec_open_cleared_models.py runs the file, the quotes and the rollback on a real
 Postgres). These pin, from the files alone, what would cost money or break the owner's legal gate if it changed by accident:
 
-* the nine are exactly the registry entries a sale is possible for today (no terms gate, a vendor figure for every priced variant, not past
-  a shutdown, web only), and no terms-gated entry is named anywhere in the file;
+* the seven are exactly the registry entries a sale is possible for today (no terms gate, a vendor figure for every priced variant, not past
+  a shutdown, web only), less the two Runway models the owner holds back by name, and no terms-gated entry is named anywhere in the file;
+* the two Runway models are not in the file at all: not opened, not priced, their tiers untouched in the reviewed registry;
 * every price is the registry's own figure in cents at the 1.5 policy margin, so no unit sells below its vendor figure, every variant a
   quote can read has its own row, and a variant model's base row is its default variant's figure;
 * the reviewed file carries the entitlement the database opens (null), the rollback restores the tiers the migration read, and deletes
   only the rows the migration wrote;
 * the free sign-up credits the exposure statement is computed from are still 100;
-* the Privacy Policy names the three vendors in every language;
+* the Privacy Policy names the two vendors in every language, and not Runway;
 * the file writes rows and nothing else: no function, policy, grant or constraint.
 """
 
@@ -26,8 +27,10 @@ TEXT = (MIG / "0173_open_cleared_models.sql").read_text(encoding="utf-8")
 ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0173_open_cleared_models.sql").read_text(encoding="utf-8")
 REGISTRY = {m["id"]: m for m in json.loads((ROOT / "schemas" / "model_registry.json").read_text(encoding="utf-8"))["models"]}
 CODE = "\n".join(line.split("--", 1)[0] for line in TEXT.splitlines())
-NINE = ("ideogram-3", "ideogram-4", "ideogram-4.5", "minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max",
-        "runway-gen4.5", "runway-gen4-turbo")
+SEVEN = ("ideogram-3", "ideogram-4", "ideogram-4.5", "minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max")
+# Openable by every gate the file checks, and held back by name, not by a gate: Runway's terms want a photo-consent confirmation on an
+# i2v upload, and the Studio has no likeness-consent step yet (the owner's decision, 2026-11-14). A file of their own opens them.
+WAITING_FOR_LIKENESS_CONSENT = {"runway-gen4.5": "models_video:ultra", "runway-gen4-turbo": "models_video:premium"}
 MARGIN = Decimal("1.5")
 
 
@@ -64,10 +67,26 @@ def openable_from_the_file(entry):
     return variants is None or all(v is not None for v in variants.values())
 
 
-class TheNine(unittest.TestCase):
+class TheSeven(unittest.TestCase):
     def test_the_file_opens_exactly_the_entries_a_sale_is_possible_for(self):
-        self.assertEqual(tuple(m["id"] for m in MODELS), NINE)
-        self.assertEqual(sorted(i for i, e in REGISTRY.items() if openable_from_the_file(e)), sorted(NINE))
+        self.assertEqual(tuple(m["id"] for m in MODELS), SEVEN)
+        openable = sorted(i for i, e in REGISTRY.items() if openable_from_the_file(e))
+        # Runway is still openable by the gates: it is held back by name, so the gates stay as strict as they were.
+        self.assertTrue(set(WAITING_FOR_LIKENESS_CONSENT) <= set(openable), openable)
+        self.assertEqual([i for i in openable if i not in WAITING_FOR_LIKENESS_CONSENT], sorted(SEVEN))
+
+    def test_runway_waits_for_the_likeness_consent_step_and_stays_hidden(self):
+        # Not opened, not priced, not even named outside the comments that say why; the reviewed registry keeps the plan tier it has
+        # on main and states no availability (the database owns it, hidden by default), so a sync cannot open it either.
+        for i, tier in WAITING_FOR_LIKENESS_CONSENT.items():
+            e = REGISTRY[i]
+            self.assertNotIn(i, CODE, i)
+            self.assertNotIn(e["credit_unit"], TEXT, i)
+            self.assertNotIn(i, ROLLBACK.split("$json$")[1] + ROLLBACK.split("$json$")[3], i)
+            self.assertEqual(e["entitlement"], tier, i)
+            self.assertNotIn("availability", e, i)
+        self.assertNotRegex(CODE, r"model_runway_|video\.runway")
+        self.assertIn("likeness-consent", TEXT)
 
     def test_no_terms_gated_entry_is_named_anywhere_in_the_file(self):
         gated = [i for i, e in REGISTRY.items() if e.get("terms_gate")]
@@ -133,7 +152,7 @@ class Prices(unittest.TestCase):
 
 class EntitlementAndRollback(unittest.TestCase):
     def test_the_reviewed_file_carries_the_entitlement_the_database_opens(self):
-        for i in NINE:
+        for i in SEVEN:
             self.assertIsNone(REGISTRY[i]["entitlement"], i)
         self.assertIn("set entitlement = null", CODE)
 
@@ -186,17 +205,19 @@ class TheLab(unittest.TestCase):
         # The helper's own source, from this repository's test file (the lab module itself needs psycopg, which this suite may lack).
         ns = {"REGISTRY": REGISTRY, "_COLUMNS": reg._COLUMNS}
         exec(re.search(r"(?ms)^def _sync_row\(mid\):\n.*?(?=^\n)", self.LAB).group(0), ns)  # noqa: S102
-        for row in reg.sync_rows([reg.get(i) for i in NINE]):
+        for row in reg.sync_rows([reg.get(i) for i in SEVEN + tuple(WAITING_FOR_LIKENESS_CONSENT)]):
             self.assertEqual(ns["_sync_row"](row["id"]), row, row["id"])
 
 
 class PrivacyPolicy(unittest.TestCase):
-    def test_every_language_names_the_three_vendors_and_their_training_use(self):
+    def test_every_language_names_the_two_vendors_and_minimaxs_training_use_and_not_runway(self):
         for loc, word in (("en", "improve"), ("ru", "улучшения"), ("uz", "yaxshilash")):
             text = (ROOT / "command-center" / "lib" / "legal-docs" / f"{loc}.ts").read_text(encoding="utf-8")
-            row = next((ln for ln in text.splitlines() if "Ideogram, MiniMax, Runway" in ln), None)
+            row = next((ln for ln in text.splitlines() if "Ideogram, MiniMax\"" in ln), None)
             self.assertIsNotNone(row, loc)
             self.assertIn(word, row, loc)
+            # Runway is not a processor until it is opened (it waits for the likeness-consent step).
+            self.assertNotIn("Runway", text, loc)
 
 
 if __name__ == "__main__":

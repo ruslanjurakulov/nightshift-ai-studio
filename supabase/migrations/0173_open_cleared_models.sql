@@ -1,13 +1,13 @@
--- 0173_open_cleared_models.sql — put on sale (beta) the nine models whose vendor terms are cleared, that a real probe has verified,
+-- 0173_open_cleared_models.sql — put on sale (beta) the seven models whose vendor terms are cleared, that a real probe has verified,
 -- that have a working adapter and a vendor price in the registry, at prices that never sell below that vendor price.
 --
--- *** LIVE ON APPLY. MONEY. *** Merging this file applies it to the live database. It writes credit_prices rows (20 units), sets
--- model_registry.availability to beta and model_registry.entitlement to NULL for nine models, and replaces no function, policy, grant,
+-- *** LIVE ON APPLY. MONEY. *** Merging this file applies it to the live database. It writes credit_prices rows (18 units), sets
+-- model_registry.availability to beta and model_registry.entitlement to NULL for seven models, and replaces no function, policy, grant,
 -- trigger or constraint. Everything else in the registry is left exactly as it is: the 68 terms-gated entries stay hidden, and 0035's
 -- CHECK (terms_before_sale) would refuse this whole file if it tried to open one.
 --
 -- WHAT GOES ON SALE (the owner's instruction of 2026-11-13, "open all the models", read against the owner's own gates)
---   A model is opened only when ALL of these hold, and the file REFUSES to apply if one of the nine fails any of them (below):
+--   A model is opened only when ALL of these hold, and the file REFUSES to apply if one of the seven fails any of them (below):
 --     verified_at / verified_probe_id set (a successful model_probe_runs row, 0035), spec.terms_gate empty (the owner's legal gate),
 --     the adapter, vendor model and capabilities this file was written for (and no spec.vendor_model_by_capability: one capability
 --     calling another vendor model would be sold at this file's figure), a vendor figure in spec.pricing for every priced variant, no
@@ -19,15 +19,16 @@
 --   minimax-h3-highspeed  video.minimax_h3      by resolution 480p / 768p  US$0.04 / 0.06 per second
 --   minimax-h3-lite       video.minimax_h3      by resolution 480p / 768p  US$0.025 / 0.04 per second
 --   minimax-h3-max        video.minimax_h3      by resolution 480p / 768p  US$0.05 / 0.08 per second
---   runway-gen4.5         video.runway          flat                      US$0.12 / second
---   runway-gen4-turbo     video.runway          flat                      US$0.05 / second
 --   Every figure is the registry's own (schemas/model_registry.json spec.pricing, `confirmed: false`: list prices the owner read on the
 --   vendor's page, not yet matched against a vendor bill). The drift guard compares each one with the number written here, so a
 --   registry figure that moved since this file was written stops the apply instead of selling at a price derived from the old one.
 --   EACH PROBE PROVED ONE CALL ONLY (the registry's probe entries): MiniMax H3 and H3 Highspeed i2v at 768p, H3 Lite and H3 Max i2v at
---   480p, Runway gen4.5 and gen4_turbo i2v, Ideogram 3 and 4 t2i, Ideogram 4.5 t2i at low. Not proven by any probe so far, yet sold by
---   this file at their own figures: every t2v call (MiniMax, gen4.5), MiniMax H3 2k, H3 Highspeed 480p, H3 Lite 768p, H3 Max 768p, and
---   Ideogram 4.5 medium and high.
+--   480p, Ideogram 3 and 4 t2i, Ideogram 4.5 t2i at low. Not proven by any probe so far, yet sold by this file at their own figures:
+--   every MiniMax t2v call, MiniMax H3 2k, H3 Highspeed 480p, H3 Lite 768p, H3 Max 768p, and Ideogram 4.5 medium and high.
+--   NOT OPENED, BY NAME: runway-gen4.5 and runway-gen4-turbo. They pass every gate above, but they wait for the likeness-consent step
+--   (Runway's terms want a photo-consent confirmation on an i2v upload, and the Studio has no such step yet; the owner's decision of
+--   2026-11-14). No gate is loosened or skipped for that: this file simply does not name them, so they stay hidden, unpriced, with the
+--   plan-tier entitlement the registry gives them, until a file of their own opens them.
 --
 -- THE PRICE POLICY (docs/sql/prices_2026_10_01.sql and prices_defaults_2026_10_03.sql, the convention every quote reads)
 --   credits_per_unit = the vendor's cost in US cents (1 credit = 1 cent of cost); the customer pays credits_per_unit x (1 + margin);
@@ -43,7 +44,7 @@
 --   the registry gives as provider_usd_per_unit, so the catalog never shows a number that no quote charges.
 --
 -- WHY THE ENTITLEMENT BECOMES NULL (the diagnosis)
---   The nine registry entries carry plan-tier entitlements (models_image:basic, models_video:premium, models_video:ultra ...).
+--   The seven registry entries carry plan-tier entitlements (models_image:basic, models_image:premium, models_video:premium ...).
 --   0034 seeds plan_entitlements with those tiers (free = basic, creator = premium, pro and studio = all) and a model_tier_allowed()
 --   helper, but nothing ever calls it: creative_price refuses EVERY entitlement other than `any` (NULL) and `paid`, for every
 --   organization whatever its plan (0072 onwards, unchanged through 0156), and entitlement_keys marks models_* `planned`. Both Studio
@@ -62,43 +63,42 @@
 --   A new account gets 100 welcome credits once per mailbox (0027 / 0042: welcome_credit_claims). Every unit here sells at 2.5x or more
 --   (ideogram-3 at 5x), so 100 credits buy at most US$0.40 of vendor cost per account (less after per-job rounding up). An invite reward (0092, off by default) adds 100
 --   credits per 5 joined accounts, at most US$0.08 more per account. A FAILED or refused job returns its whole hold (finish_creative_job),
---   so if a vendor bills a failed or moderated task (MiniMax's pricing page does not say; not verified for Runway or Ideogram either),
+--   so if a vendor bills a failed or moderated task (MiniMax's pricing page does not say; not verified for Ideogram either),
 --   the same 100 credits can be used again and that vendor money is not bounded by the 100 credits. The PR proposes caps; none is applied.
 --
 -- WHAT IS LEFT TO THE OWNER (the registry's own "before a sale" notes; this file cannot check them)
---   MiniMax and Runway may use inputs and outputs to improve their models (their terms): this PR adds that line to the Privacy Policy's
---   processors. Runway: a photo-consent confirmation on the i2v upload and an export-embargo country decision are still open (a country
---   list would keep it off sale under 0142 until the database checks countries). MiniMax: Uzbekistan billing was not verified.
+--   MiniMax may use inputs and outputs to improve its models (its terms): this PR adds that line to the Privacy Policy's processors,
+--   with Ideogram. Runway is not named there, because it is not opened here. MiniMax: Uzbekistan billing was not verified.
 --
 -- THE DRIFT GUARD ON PRICES. A credit_prices row that already exists for one of these units is never overwritten (the convention of every
 -- price file: a price the owner set wins). Identical rows are left alone; a row that sells at or above this file's price is kept with a
 -- NOTICE; a row that sells BELOW this file's price stops the apply (the exposure figures above would not hold). An empty registry (a fresh
--- deployment, the security lab's build) writes nothing at all; a synced registry without one of the nine stops the apply.
+-- deployment, the security lab's build) writes nothing at all; a synced registry without one of the seven stops the apply.
 --
--- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: nine rows, every column true, and no row in the
+-- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: seven rows, every column true, and no row in the
 -- second query (or only rows you mean to keep: they must sell at or above this file's figure).
 --   select id, verified_at is not null and verified_probe_id is not null as verified, coalesce(spec ->> 'terms_gate', '') = '' as cleared,
 --          availability in ('hidden', 'beta') as openable, not public.model_past_shutdown(spec) as not_shut_down
 --     from public.model_registry
---    where id in ('ideogram-3', 'ideogram-4', 'ideogram-4.5', 'minimax-h3', 'minimax-h3-highspeed', 'minimax-h3-lite', 'minimax-h3-max',
---                 'runway-gen4.5', 'runway-gen4-turbo') order by id;
+--    where id in ('ideogram-3', 'ideogram-4', 'ideogram-4.5', 'minimax-h3', 'minimax-h3-highspeed', 'minimax-h3-lite', 'minimax-h3-max')
+--    order by id;
 --   select unit, credits_per_unit, margin from public.credit_prices
---    where unit like 'model\_ideogram\_%' or unit like 'model\_minimax\_h3%' or unit like 'model\_runway\_gen4%' order by unit;
+--    where unit like 'model\_ideogram\_%' or unit like 'model\_minimax\_h3%' order by unit;
 --
 -- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local lock_timeout` assumes
 -- it, and the end state is asserted inside the same block that writes. Idempotent: a replay finds its rows and changes nothing.
 -- Rollback: docs/sql/rollback_0173_open_cleared_models.sql (owner-applied: hidden again, the tiers back, and only the price rows this file
--- wrote and nobody changed since are deleted). Docs: docs/MIGRATIONS.md, "The nine cleared models on sale (0173)".
+-- wrote and nobody changed since are deleted). Docs: docs/MIGRATIONS.md, "The seven cleared models on sale (0173)".
 --
 -- NUMBER. 0173 (first written as 0160, then 0163; renumbered each time so the files merged meanwhile land first: the Supabase
 -- integration applies a file on merge only when its number is above the latest applied one, and this file waits for the owner). Main
 -- ends at 0170; none of 0158 to 0170 writes model_registry or credit_prices or replaces sellable_models, model_is_available or
 -- model_past_shutdown, so every guard below reads what it read on 0157. 0159 replaces creative_price (a quote refuses a clip length
--- the model does not list), which this file does not call: the nine's durations_s are the registry's, so a listed length is quoted
+-- the model does not list), which this file does not call: the seven's durations_s are the registry's, so a listed length is quoted
 -- and an unlisted one refused, as for every other model. 0166 (Film Studio P1) lets a person pick
--- a model sellable_models lists on the web, so the nine become pickable in a film draft once this file applies (0166 spends nothing).
+-- a model sellable_models lists on the web, so the seven become pickable in a film draft once this file applies (0166 spends nothing).
 -- 0171 (claude/film-p2-money) prices films through creative_price and writes neither table; 0172 belongs to an open branch this file
--- was not checked against. A later file that changes one of the nine's figures, call or entitlement makes a replay of this one refuse
+-- was not checked against. A later file that changes one of the seven's figures, call or entitlement makes a replay of this one refuse
 -- rather than sell at an old price.
 
 set local lock_timeout = '5s';
@@ -115,7 +115,8 @@ end $$;
 do $$
 declare
   -- id, the call this file was written for (adapter, vendor model, unit, capabilities), the tier it had (restored by the
-  -- rollback), and how it is priced.
+  -- rollback), and how it is priced. runway-gen4.5 and runway-gen4-turbo are left out by name: they wait for the likeness-consent
+  -- step (Runway's terms: a photo-consent confirmation on an i2v upload), see the header.
   models constant jsonb := $json$[
     {"id": "ideogram-3", "adapter": "image.ideogram", "vendor_model": "TURBO", "credit_unit": "model_ideogram_3_image",
      "caps": ["t2i"], "tier": "models_image:basic", "by": null, "default": null},
@@ -130,13 +131,9 @@ declare
     {"id": "minimax-h3-lite", "adapter": "video.minimax_h3", "vendor_model": "MiniMax-H3-Lite", "credit_unit": "model_minimax_h3_lite_second",
      "caps": ["t2v", "i2v"], "tier": "models_video:basic", "by": "resolution", "default": "768p"},
     {"id": "minimax-h3-max", "adapter": "video.minimax_h3", "vendor_model": "MiniMax-H3-Max", "credit_unit": "model_minimax_h3_max_second",
-     "caps": ["t2v", "i2v"], "tier": "models_video:premium", "by": "resolution", "default": "768p"},
-    {"id": "runway-gen4.5", "adapter": "video.runway", "vendor_model": "gen4.5", "credit_unit": "model_runway_gen4_5_second",
-     "caps": ["t2v", "i2v"], "tier": "models_video:ultra", "by": null, "default": null},
-    {"id": "runway-gen4-turbo", "adapter": "video.runway", "vendor_model": "gen4_turbo", "credit_unit": "model_runway_gen4_turbo_second",
-     "caps": ["i2v"], "tier": "models_video:premium", "by": null, "default": null}
+     "caps": ["t2v", "i2v"], "tier": "models_video:premium", "by": "resolution", "default": "768p"}
   ]$json$::jsonb;
-  -- Every unit a quote of the nine can read. variant null = the base row (the default variant's figure for a model priced by variant).
+  -- Every unit a quote of the seven can read. variant null = the base row (the default variant's figure for a model priced by variant).
   prices constant jsonb := $json$[
     {"unit": "model_ideogram_3_image", "model": "ideogram-3", "variant": null, "usd": 0.03, "credits": 3,
      "note": "0173: Ideogram 3.0 Turbo list US$0.03/image (registry, as_of 2026-11-13, ESTIMATE). Sold 7.5 credits."},
@@ -173,11 +170,7 @@ declare
     {"unit": "model_minimax_h3_max_second_480p", "model": "minimax-h3-max", "variant": "480p", "usd": 0.05, "credits": 5,
      "note": "0173: MiniMax H3 Max 480p list US$0.05 per output second (registry, ESTIMATE). Sold 12.5 credits/s."},
     {"unit": "model_minimax_h3_max_second_768p", "model": "minimax-h3-max", "variant": "768p", "usd": 0.08, "credits": 8,
-     "note": "0173: MiniMax H3 Max 768p list US$0.08 per output second (registry, ESTIMATE). Sold 20 credits/s."},
-    {"unit": "model_runway_gen4_5_second", "model": "runway-gen4.5", "variant": null, "usd": 0.12, "credits": 12,
-     "note": "0173: Runway gen4.5 list 12 Runway credits/s at US$0.01 (registry, as_of 2026-11-13). Sold 30 credits/s."},
-    {"unit": "model_runway_gen4_turbo_second", "model": "runway-gen4-turbo", "variant": null, "usd": 0.05, "credits": 5,
-     "note": "0173: Runway gen4_turbo list 5 Runway credits/s at US$0.01 (registry, as_of 2026-11-13). Sold 12.5 credits/s."}
+     "note": "0173: MiniMax H3 Max 768p list US$0.08 per output second (registry, ESTIMATE). Sold 20 credits/s."}
   ]$json$::jsonb;
   -- The policy margin for image and video (docs/sql/prices_defaults_2026_10_03.sql). Never 0 here: free credits are spent at this rate.
   c_margin constant numeric := 1.5;
@@ -250,7 +243,8 @@ begin
     if public.model_past_shutdown(r.spec) then
       raise exception '0173: % is past its vendor''s announced shutdown date (0125)', r.id;
     end if;
-    -- Ideogram's and Runway's terms forbid passing their API to third parties: only the Studio may sell them.
+    -- Ideogram's terms forbid passing its API to third parties, and MiniMax's answer on resale covered our own app: only the Studio
+    -- may sell them.
     if coalesce(r.spec ->> 'api_exposure', '') <> 'web_only' then
       raise exception '0173: % is no longer web_only: its API and MCP exposure needs its own review', r.id;
     end if;
@@ -350,14 +344,15 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
 --   (select count(*) from public.model_registry
---     where id in ('ideogram-3', 'ideogram-4', 'ideogram-4.5', 'minimax-h3', 'minimax-h3-highspeed', 'minimax-h3-lite', 'minimax-h3-max',
---                  'runway-gen4.5', 'runway-gen4-turbo')
---       and availability in ('beta', 'ga') and entitlement is null) = 9 as nine_on_sale,
+--     where id in ('ideogram-3', 'ideogram-4', 'ideogram-4.5', 'minimax-h3', 'minimax-h3-highspeed', 'minimax-h3-lite', 'minimax-h3-max')
+--       and availability in ('beta', 'ga') and entitlement is null) = 7 as seven_on_sale,
 --   (select count(*) from public.sellable_models(null, 'web')
---     where id in ('ideogram-3', 'ideogram-4', 'ideogram-4.5', 'minimax-h3', 'minimax-h3-highspeed', 'minimax-h3-lite', 'minimax-h3-max',
---                  'runway-gen4.5', 'runway-gen4-turbo')) = 9 as nine_listed,
+--     where id in ('ideogram-3', 'ideogram-4', 'ideogram-4.5', 'minimax-h3', 'minimax-h3-highspeed', 'minimax-h3-lite', 'minimax-h3-max'))
+--     = 7 as seven_listed,
 --   not exists (select 1 from public.sellable_models(null, 'api')
---                where id like 'ideogram%' or id like 'minimax-h3%' or id like 'runway-gen4%') as not_on_the_api,
+--                where id like 'ideogram%' or id like 'minimax-h3%') as not_on_the_api,
+--   not exists (select 1 from public.model_registry
+--                where id in ('runway-gen4.5', 'runway-gen4-turbo') and availability in ('beta', 'ga')) as runway_still_hidden,
 --   not exists (select 1 from public.model_registry
 --                where availability in ('beta', 'ga') and coalesce(spec ->> 'terms_gate', '') <> '') as nothing_gated_on_sale;
 --

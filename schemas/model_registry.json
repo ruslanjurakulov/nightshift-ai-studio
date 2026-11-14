@@ -2781,7 +2781,7 @@
         "note": "'$0.01 per credit', gen4.5 12 credits per second (pricing page, read 2026-11-13). A page figure: confirmed stays false until a probe's cost.credits matches it"
       },
       "credit_unit": "model_runway_gen4_5_second",
-      "entitlement": null,
+      "entitlement": "models_video:ultra",
       "terms_gate": null,
       "terms_notes": [
         "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",
@@ -2858,7 +2858,7 @@
         "note": "'$0.01 per credit', gen4_turbo 5 credits per second (pricing page, read 2026-11-13; the old 'minimum 10 credits per task' note is no longer on it). confirmed stays false until a probe's cost.credits matches"
       },
       "credit_unit": "model_runway_gen4_turbo_second",
-      "entitlement": null,
+      "entitlement": "models_video:premium",
       "terms_gate": null,
       "terms_notes": [
         "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",

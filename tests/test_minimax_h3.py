@@ -212,7 +212,7 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertNotIn("fal.ai", " ".join(self.r[mid].raw["terms_notes"]), mid)
 
     def test_only_0173_and_its_rollback_price_them(self):
-        # 0173 (the nine cleared models on sale) is the one file that writes these units, at 2.5x the registry figure
+        # 0173 (the seven cleared models on sale) is the one file that writes these units, at 2.5x the registry figure
         # (tests/test_open_cleared_models_migration.py pins the figures); its rollback deletes them. Any other mention
         # would be a second price for the same unit.
         units = []

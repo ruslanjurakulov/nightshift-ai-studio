@@ -1738,15 +1738,20 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
   `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).
 
-## The nine cleared models on sale (0173)
+## The seven cleared models on sale (0173)
 
-0173 (`0173_open_cleared_models.sql`) is **live on apply** and moves money: it writes 20 `credit_prices` rows and sets
-`model_registry.availability = 'beta'` and `entitlement = NULL` for nine models. It replaces no function, policy, grant or constraint.
+0173 (`0173_open_cleared_models.sql`) is **live on apply** and moves money: it writes 18 `credit_prices` rows and sets
+`model_registry.availability = 'beta'` and `entitlement = NULL` for seven models. It replaces no function, policy, grant or constraint.
 
-- **What opens.** Ideogram 3, 4 and 4.5; MiniMax H3, H3 Highspeed, H3 Lite and H3 Max; Runway gen4.5 and gen4_turbo: every registry
-  entry with no `terms_gate`, a successful probe of its current call, a vendor figure for every priced variant, no shutdown date passed,
-  no `blocked_countries`, and `api_exposure` `web_only` (so the API and MCP never list them). The 68 terms-gated entries stay hidden;
-  0035's CHECK would refuse the file if it tried otherwise.
+- **What opens.** Ideogram 3, 4 and 4.5; MiniMax H3, H3 Highspeed, H3 Lite and H3 Max: every registry entry with no `terms_gate`, a
+  successful probe of its current call, a vendor figure for every priced variant, no shutdown date passed, no `blocked_countries`, and
+  `api_exposure` `web_only` (so the API and MCP never list them), less the two below. The 68 terms-gated entries stay hidden; 0035's
+  CHECK would refuse the file if it tried otherwise.
+- **Not opened, by name: Runway gen4.5 and gen4_turbo.** They pass every gate above, but they wait for the likeness-consent step:
+  Runway's terms want a photo-consent confirmation on an i2v upload, and the Studio has none yet (the owner's decision, 2026-11-14).
+  No gate is loosened for that; the file simply does not name them. They stay hidden and unpriced, and `schemas/model_registry.json`
+  keeps their plan tiers (`models_video:ultra`, `models_video:premium`) exactly as on main. A file of their own opens them, after the
+  consent step and the export-embargo country decision.
 - **Prices.** The repository's convention (`docs/sql/prices_2026_10_01.sql`, `prices_defaults_2026_10_03.sql`): `credits_per_unit` is
   the vendor figure in US cents, margin 1.5 for image and video, so every unit 0173 writes sells at 2.5x its registry figure, rounded
   up per job; 1 credit spent buys at most US$0.004 of vendor cost. That is about 2.5x before fees for a credit bought at US$0.01,
@@ -1755,40 +1760,40 @@ the rest in the ledger note as "already spent", for good. The customer's own API
   joins to list it) is the default variant's figure. The figures are the registry's own list prices (`confirmed: false`); the file
   compares each with the registry before it writes, and refuses if one moved.
 - **ideogram-3 keeps its existing live row**, 6 x 2.5 = 15 credits an image (the live database already has credits_per_unit 6, margin
-  1.5; 0173 never overwrites a row). The owner may lower it to 3 via a docs/sql script. The other four rows already live are at margin
-  1.5 too, so the never-below guard does not stop the apply.
-- **Each probe proved one call only.** MiniMax H3 and H3 Highspeed i2v at 768p, H3 Lite and H3 Max i2v at 480p, Runway gen4.5 and
-  gen4_turbo i2v, Ideogram 3 and 4 t2i, Ideogram 4.5 t2i at low. Not proven so far, yet sold at their own figures: every t2v call
-  (MiniMax, gen4.5), MiniMax H3 2k, H3 Highspeed 480p, H3 Lite 768p, H3 Max 768p, and Ideogram 4.5 medium and high.
+  1.5; 0173 never overwrites a row). The owner may lower it to 3 via a docs/sql script. The other rows already live for these units (four,
+  counted when the file still named nine models) are at margin 1.5 too, so the never-below guard does not stop the apply.
+- **Each probe proved one call only.** MiniMax H3 and H3 Highspeed i2v at 768p, H3 Lite and H3 Max i2v at 480p, Ideogram 3 and 4
+  t2i, Ideogram 4.5 t2i at low. Not proven so far, yet sold at their own figures: every MiniMax t2v call, MiniMax H3 2k, H3 Highspeed 480p, H3 Lite 768p, H3 Max 768p, and Ideogram 4.5 medium and high.
 - **Entitlement: the diagnosis.** `creative_price` refuses every entitlement except `any` (NULL) and `paid`, for every organization
   whatever its plan; 0034's `model_tier_allowed()` and its plan tiers are seeded but never called (`entitlement_keys` marks
   `models_*` `planned`). Availability alone would sell to nobody, and would take the models from the operator (0139's preview passes
-  only a `hidden` model; a beta model's quote asks the entitlement even in the exempt organization). So the nine get NULL, here and in
+  only a `hidden` model; a beta model's quote asks the entitlement even in the exempt organization). So the seven get NULL, here and in
   `schemas/model_registry.json`; the tiers they had are in the rollback. Enforcing tiers is its own change (creative_price, the
   entitlement keys and both Studio gates together), and with no plan purchasable yet it would open only the two `basic` models.
 - **Free credits.** 100 welcome credits per mailbox (0042) buy at most US$0.40 of vendor cost at 2.5x. A failed or refused job returns its
-  whole hold, so vendor money spent on a failed task (whether MiniMax bills one is not stated; not verified for Runway or Ideogram) is
+  whole hold, so vendor money spent on a failed task (whether MiniMax bills one is not stated; not verified for Ideogram) is
   not bounded by those 100 credits. No cap is applied by this file.
-- **Drift guards.** Each of the nine must be present, the same adapter / vendor model / credit unit / capabilities / variant set /
+- **Drift guards.** Each of the seven must be present, the same adapter / vendor model / credit unit / capabilities / variant set /
   default as written, with no `spec.vendor_model_by_capability` (a capability calling another vendor model would sell at this figure),
   verified, ungated, not disabled, not shut down, web only, and carry either its old tier or NULL. A price row that already exists is
   never overwritten: kept when it sells at or above this file's price (with a NOTICE), refused when below. An empty registry (a fresh
-  deployment, the lab's build) writes nothing. The end state is asserted in the same block: every unit at 2.5x or more, the nine beta with NULL
+  deployment, the lab's build) writes nothing. The end state is asserted in the same block: every unit at 2.5x or more, the seven beta with NULL
   entitlement, listed by `sellable_models('web')` and not by `'api'` or `'mcp'`, nothing terms-gated on sale.
-- **Not checked by SQL (owner).** The Privacy Policy now names Ideogram, MiniMax and Runway as Studio processors and says MiniMax and
-  Runway may use inputs and outputs to improve their models (the registry's "before a sale" note). Still open: Runway's photo-consent
-  confirmation on the i2v upload, Runway's export-embargo country decision, MiniMax's Uzbekistan billing.
+- **Not checked by SQL (owner).** The Privacy Policy now names Ideogram and MiniMax as Studio processors and says MiniMax may use
+  inputs and outputs to improve its models (the registry's "before a sale" note); Runway is not named, since it is not opened. Still
+  open: MiniMax's Uzbekistan billing.
 - **Number.** 0173, first written as 0160, then 0163: renumbered each time so the files merged meanwhile land first, since the
   Supabase integration applies a file on merge only when its number is above the latest applied one, and this file waits for the
   owner's decision. Live and main end at 0170; 0171 and 0172 belong to open branches. None of 0158 to 0170 writes `model_registry` or
   `credit_prices` or replaces `sellable_models`, `model_is_available` or `model_past_shutdown`; 0159's `creative_price` refuses a clip
-  length the model does not list, and the nine list theirs. Once it applies, 0166's Film Studio drafts can pick the nine (a draft
+  length the model does not list, and the seven list theirs. Once it applies, 0166's Film Studio drafts can pick the seven (a draft
   spends nothing). The numbering tests of 0127, 0131 and 0133 list it as reviewed.
-- **Undo.** `docs/sql/rollback_0173_open_cleared_models.sql` (owner-applied): the nine back to `hidden` with their tiers, and only the
+- **Undo.** `docs/sql/rollback_0173_open_cleared_models.sql` (owner-applied): the seven back to `hidden` with their tiers, and only the
   price rows 0173 wrote (note `0173:`) whose rate and margin nobody changed are deleted. The operator's preview works again as before.
-- **Tests.** `tests/test_open_cleared_models_migration.py` (the nine are exactly the openable entries, no gated id in the file, every
-  price is the registry figure in cents at 1.5, every variant priced, base rows at the default, the file's entitlement NULL, the
-  rollback's tiers and rates, rows only, the 100 welcome credits, the Privacy Policy row) and `tests/security/test_sec_open_cleared_models.py`
-  (every variant quoted to a customer at 2.5x and never below cost, a customer held at the quote, the catalog and not the API or MCP,
+- **Tests.** `tests/test_open_cleared_models_migration.py` (the seven are exactly the openable entries less Runway, Runway absent and
+  still tiered, no gated id in the file, every price is the registry figure in cents at 1.5, every variant priced, base rows at the
+  default, the file's entitlement NULL, the rollback's tiers and rates, rows only, the 100 welcome credits, the Privacy Policy row) and
+  `tests/security/test_sec_open_cleared_models.py` (every variant quoted to a customer at 2.5x and never below cost, a customer held at
+  the quote, the catalog and not the API or MCP, Runway seeded verified and ungated yet left hidden, unpriced, unlisted and refused,
   gated models refused and un-openable, the operator exempt and not a preview, availability alone sells to nobody, the drift guards,
   replay, rollback and re-apply).

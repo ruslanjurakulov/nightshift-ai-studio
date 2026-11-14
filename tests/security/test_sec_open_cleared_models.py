@@ -1,18 +1,20 @@
-"""The nine cleared models go on sale at 2.5x their vendor figure, and nothing else does (migration 0173).
+"""The seven cleared models go on sale at 2.5x their vendor figure, and nothing else does (migration 0173).
 
-0173 writes credit_prices rows for every unit a quote of Ideogram 3 / 4 / 4.5, MiniMax H3 / Highspeed / Lite / Max and Runway gen4.5 /
-gen4_turbo can read, and puts those nine on sale (beta, entitlement NULL). These tests seed the nine from schemas/model_registry.json as
-the live database holds them before 0173 (hidden, verified by a probe, a plan-tier entitlement), apply the real file, and run the real
-quote and create on a real Postgres:
+0173 writes credit_prices rows for every unit a quote of Ideogram 3 / 4 / 4.5 and MiniMax H3 / Highspeed / Lite / Max can read, and puts
+those seven on sale (beta, entitlement NULL). Runway gen4.5 and gen4_turbo pass the same gates but wait, by name, for the likeness-consent
+step (Runway's terms want a photo-consent confirmation on an i2v upload). These tests seed the seven and the two Runway models from
+schemas/model_registry.json as the live database holds them before 0173 (hidden, verified by a probe, a plan-tier entitlement), apply the
+real file, and run the real quote and create on a real Postgres:
 
 * every variant of every opened model is quoted to a customer at exactly 2.5x its registry vendor figure per unit, its own variant's row,
   never below the vendor's cost; naming no variant is the default variant;
-* the Studio's catalog lists the nine, the API and MCP never do;
+* the Studio's catalog lists the seven, the API and MCP never do;
+* the two Runway models stay hidden, unpriced, unlisted and refused, with the tier they had;
 * a terms-gated model stays refused, even verified and priced, and can still not be put on sale at all;
 * the operator's own organization is still credits-exempt: quoted, held and charged nothing, and no longer a "preview";
 * the diagnosis: availability alone (the tier entitlement left in place) sells to nobody and takes the models from the operator;
 * the drift guards: an unverified model, a moved registry figure, a missing model, a price row below this file's;
-* a replay changes nothing; the rollback takes the nine off sale, restores the tiers, deletes only 0173's own rows, and 0173 re-applies.
+* a replay changes nothing; the rollback takes the seven off sale, restores the tiers, deletes only 0173's own rows, and 0173 re-applies.
 
 Every row is made inside a rolled-back transaction.
 """
@@ -56,7 +58,9 @@ def _block(name):
 
 MODELS = _block("models")
 PRICES = _block("prices")
-NINE = [m["id"] for m in MODELS]
+SEVEN = [m["id"] for m in MODELS]
+#: Openable by every gate, held back by name until the Studio has a likeness-consent step (Runway's terms, the owner's decision).
+RUNWAY = ["runway-gen4.5", "runway-gen4-turbo"]
 TIER = {m["id"]: m["tier"] for m in MODELS}
 #: Gated entries of every kind of gate, the Runway upscaler (the owner keeps it gated) among them.
 GATED = ["runway-video-upscale", "seedance-2.0", "grok-imagine-video-1.5", "grounded-image-1.0", "flux-3-image", "kling-v3"]
@@ -83,7 +87,7 @@ def _call(conn, who, q, params):
 def _seed(conn, ids=None, *, verified=True, tiers=True, mutate=None):
     """The registry entries as the live database holds them before 0173: the file's static facts, hidden, a successful probe of the
     exact call, and (tiers) the plan-tier entitlement the file carried before 0173."""
-    ids = list(NINE if ids is None else ids)
+    ids = list(SEVEN if ids is None else ids)
     # A deep copy: the row shares the nested spec with REGISTRY, and a mutation must not reach the next test.
     for row in copy.deepcopy([_sync_row(i) for i in ids]):
         if mutate:
@@ -173,17 +177,40 @@ def test_a_customers_generation_is_held_at_the_quote(conn, sc):
         assert (row[0], Decimal(str(row[1])), row[2]) == ("2k", Decimal(str(q["credits"])), True), row
 
 
-def test_the_studio_lists_the_nine_and_the_api_and_mcp_never_do(conn, sc):
+def test_the_studio_lists_the_seven_and_the_api_and_mcp_never_do(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
         _seed(conn)
         _apply(conn)
         listed = {s: {r[0] for r in conn.execute("select id from public.sellable_models(null, %s)", [s]).fetchall()}
                   for s in ("web", "api", "mcp")}
-        assert set(NINE) <= listed["web"], listed["web"]
-        assert not (set(NINE) & listed["api"]) and not (set(NINE) & listed["mcp"]), listed
-        rows = conn.execute("select id, availability, entitlement from public.model_registry where id = any(%s)", [NINE]).fetchall()
-        assert sorted(rows) == sorted((i, "beta", None) for i in NINE), rows
+        assert set(SEVEN) <= listed["web"], listed["web"]
+        assert not (set(SEVEN) & listed["api"]) and not (set(SEVEN) & listed["mcp"]), listed
+        rows = conn.execute("select id, availability, entitlement from public.model_registry where id = any(%s)", [SEVEN]).fetchall()
+        assert sorted(rows) == sorted((i, "beta", None) for i in SEVEN), rows
+
+
+def test_runway_waits_for_the_likeness_consent_step_hidden_unpriced_and_refused(conn, sc):
+    # Seeded exactly as the live database holds them (verified, ungated, the registry's tier): every gate 0173 checks would pass, and
+    # the file still leaves them alone, because it does not name them.
+    with conn.transaction(force_rollback=True):
+        _become(conn, None)
+        _seed(conn)
+        _seed(conn, RUNWAY)
+        _apply(conn)
+        rows = {r[0]: (r[1], r[2]) for r in conn.execute(
+            "select id, availability, entitlement from public.model_registry where id = any(%s)", [RUNWAY]).fetchall()}
+        assert rows == {i: ("hidden", REGISTRY[i]["entitlement"]) for i in RUNWAY}, rows
+        assert all(REGISTRY[i]["entitlement"] for i in RUNWAY), "the reviewed file keeps Runway's plan tiers"
+        units = [REGISTRY[i]["credit_unit"] for i in RUNWAY]
+        assert conn.execute("select count(*) from public.credit_prices where unit = any(%s) or unit like 'model\\_runway\\_gen4%%'",
+                            [units]).fetchone()[0] == 0
+        for s in ("web", "api", "mcp"):
+            listed = {r[0] for r in conn.execute("select id from public.sellable_models(null, %s)", [s]).fetchall()}
+            assert not (set(RUNWAY) & listed), (s, listed)
+        got = _quote(conn, sc.bob.actor, sc.bob.org, "i2v", "runway-gen4-turbo",
+                     {"prompt": "slow push in", "duration_s": SECONDS, "source_asset_id": sc.bob.media_asset})
+        assert got[0] == "NS400", got
 
 
 # ── gated models stay off sale ─────────────────────────────────────────────────────────────────────────────────────
@@ -264,9 +291,9 @@ def _refused(conn, needle):
 def test_an_unverified_model_stops_the_apply(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
-        _seed(conn, [i for i in NINE if i != "runway-gen4.5"])
-        _seed(conn, ["runway-gen4.5"], verified=False)
-        _refused(conn, "runway-gen4.5 has no successful probe")
+        _seed(conn, [i for i in SEVEN if i != "minimax-h3-lite"])
+        _seed(conn, ["minimax-h3-lite"], verified=False)
+        _refused(conn, "minimax-h3-lite has no successful probe")
         assert conn.execute("select count(*) from public.credit_prices where note like '0173:%'").fetchone()[0] == 0
 
 
@@ -280,14 +307,14 @@ def test_a_registry_figure_that_moved_stops_the_apply(conn, sc):
         _refused(conn, "model_minimax_h3_second_2k")
 
 
-def test_a_synced_registry_without_one_of_the_nine_stops_the_apply(conn, sc):
+def test_a_synced_registry_without_one_of_the_seven_stops_the_apply(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
-        _seed(conn, [i for i in NINE if i != "ideogram-4"])
+        _seed(conn, [i for i in SEVEN if i != "ideogram-4"])
         _refused(conn, "ideogram-4 is not in model_registry")
 
 
-def test_a_gate_set_on_one_of_the_nine_stops_the_apply(conn, sc):
+def test_a_gate_set_on_one_of_the_seven_stops_the_apply(conn, sc):
     def gate(row):
         if row["id"] == "minimax-h3-max":
             row["spec"]["terms_gate"] = "terms_review_required"
@@ -308,26 +335,26 @@ def test_a_capability_a_resync_added_stops_the_apply_and_nothing_is_priced_or_op
         _refused(conn, "ideogram-3 now offers")
         assert conn.execute("select count(*) from public.credit_prices where note like '0173:%'").fetchone()[0] == 0
         assert conn.execute("select count(*) from public.model_registry where id = any(%s) and availability <> 'hidden'",
-                            [NINE]).fetchone()[0] == 0
+                            [SEVEN]).fetchone()[0] == 0
 
 
 def test_a_vendor_model_by_capability_stops_the_apply(conn, sc):
-    # gen4.5's t2v served by another (dearer) vendor model would be sold at gen4.5's figure; 0035 accepts either model's probe.
+    # H3's t2v served by another (dearer) vendor model would be sold at H3's figure; 0035 accepts either model's probe.
     def split(row):
-        if row["id"] == "runway-gen4.5":
-            row["spec"]["vendor_model_by_capability"] = {"t2v": "gen4.5-pro"}
+        if row["id"] == "minimax-h3":
+            row["spec"]["vendor_model_by_capability"] = {"t2v": "MiniMax-H3-Pro"}
     with conn.transaction(force_rollback=True):
         _become(conn, None)
         _seed(conn, mutate=split)
-        _refused(conn, "runway-gen4.5 calls another vendor model")
+        _refused(conn, "minimax-h3 calls another vendor model")
 
 
 def test_a_price_row_below_this_files_stops_the_apply_and_a_higher_one_is_kept(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
         _seed(conn)
-        conn.execute("insert into public.credit_prices (unit, credits_per_unit, margin) values ('model_runway_gen4_5_second', 12, 0.2)")
-        _refused(conn, "model_runway_gen4_5_second already sells at")
+        conn.execute("insert into public.credit_prices (unit, credits_per_unit, margin) values ('model_minimax_h3_max_second', 8, 0.2)")
+        _refused(conn, "model_minimax_h3_max_second already sells at")
     with conn.transaction(force_rollback=True):
         _become(conn, None)
         _seed(conn)
@@ -354,23 +381,23 @@ def test_a_replay_changes_nothing(conn, sc):
         assert snap() == first
 
 
-def test_the_rollback_takes_the_nine_off_sale_restores_the_tiers_and_deletes_only_its_own_rows(conn, sc):
+def test_the_rollback_takes_the_seven_off_sale_restores_the_tiers_and_deletes_only_its_own_rows(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
         _seed(conn)
         # a row that was there before 0173 at this file's very figures, and one the owner raised after it
-        conn.execute("insert into public.credit_prices (unit, credits_per_unit, margin, note) values ('model_runway_gen4_turbo_second', 5, 1.5, 'owner')")
+        conn.execute("insert into public.credit_prices (unit, credits_per_unit, margin, note) values ('model_minimax_h3_lite_second_480p', 2.5, 1.5, 'owner')")
         _apply(conn)
         conn.execute("update public.credit_prices set credits_per_unit = 9 where unit = 'model_ideogram_4_image'")
         conn.execute(_rollback_body())
         rows = dict((r[0], (r[1], r[2])) for r in conn.execute(
-            "select id, availability, entitlement from public.model_registry where id = any(%s)", [NINE]).fetchall())
-        assert rows == {i: ("hidden", TIER[i]) for i in NINE}, rows
+            "select id, availability, entitlement from public.model_registry where id = any(%s)", [SEVEN]).fetchall())
+        assert rows == {i: ("hidden", TIER[i]) for i in SEVEN}, rows
         left = {r[0] for r in conn.execute("select unit from public.credit_prices where unit = any(%s)", [[p["unit"] for p in PRICES]]).fetchall()}
-        assert left == {"model_runway_gen4_turbo_second", "model_ideogram_4_image"}, left
+        assert left == {"model_minimax_h3_lite_second_480p", "model_ideogram_4_image"}, left
         # hidden again, the operator previews them as before 0173
         state, q = _quote(conn, sc.operator, DEFAULT_ORG, "t2i", "ideogram-4.5", {"prompt": "x", "quality": "low"})
         assert state == "ok" and q["preview"] is True, q
         # and the file applies again on top of its own rollback (the edited 9-credit row sells above 3, so it is kept)
         _apply(conn)
-        assert conn.execute("select count(*) from public.model_registry where id = any(%s) and availability = 'beta'", [NINE]).fetchone()[0] == 9
+        assert conn.execute("select count(*) from public.model_registry where id = any(%s) and availability = 'beta'", [SEVEN]).fetchone()[0] == 7
