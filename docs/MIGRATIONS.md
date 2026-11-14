@@ -1447,20 +1447,33 @@ lab: a 1000-credit pack refunded in full left 1100 credits where 100 should have
   (a run that fails after it began, or never settles) giving the credits back the same way, and cancels a queued run nobody cancelled.
   No run is interrupted or refused by this file.
 - **`credit_refund_recoveries`.** One row per refund whose shortfall met open holds: `holds` (the job ids open at that moment),
-  `owed` = least(shortfall, reserved) and `collected` (0 <= collected <= owed, only goes up; a guard trigger refuses any other change,
-  a delete or a truncate). RLS on, no policy, select for the service role only, like `credit_refunds`.
+  `owed` = least(shortfall, reserved), `collected` (taken back by a ledger row) and `lapsed` (the refunded purchase's own credits that
+  expired while on the hold: gone from the buyer as the refund meant, so counted without a collection). 0 <= collected + lapsed <=
+  owed; both only go up; a guard trigger refuses any other change, a delete or a truncate. RLS on, no policy, select for the service
+  role only, like `credit_refunds`. A recovery is still open only while one of its holds is open (the documented query checks that;
+  one whose holds were all captured is spent).
 - **`credit_refund_recover()`.** AFTER INSERT trigger `credit_transactions_recover_refunds` on `credit_transactions`, for `release`
   rows only (every release goes through one: `credit_release_locked` and the unused part of `capture_credits`). It fires after
-  `credit_transactions_apply_lots` (same-event triggers fire in name order), so the hold's lots are back before it spends them. Per
-  release it takes least(what is still owed, what the release gave back, what is available), oldest refund first, only for holds
-  that were open when the refund was recorded (a later hold, on later credits, is never touched: a refund does not eat the next
-  purchase). Each collection is a `refund` ledger row that spends the refunded purchase's own lot first. Runs under the account lock
-  the releasing function already holds, so it serialises with `reserve_credits` and the refund.
+  `credit_transactions_apply_lots` (same-event triggers fire in name order; the end state checks the catalog holds exactly those two
+  row-level AFTER INSERT triggers, in that order), so the hold's lots are back, and the ones that ran out expired, before it looks.
+  Per release it takes least(what is still owed, what THIS release gave back to lots that are still live, what is available), oldest
+  refund first, only for holds that were open when the refund was recorded. "Gave back to live lots" is read from the release row's
+  own `credit_lot_moves`: Lens (#766) showed that a cap on `available` alone let a refunded pack that expired while held be paid
+  again from a pack bought afterwards. A later hold, on later credits, is never touched: a refund does not eat the next purchase.
+  Each collection is a `refund` ledger row, written with `created_by` null (the platform's act, also when the release ran inside
+  the buyer's own `reserve_credits`), that spends the refunded purchase's own lot first. Runs under the account lock the releasing
+  function already holds, so it serialises with `reserve_credits` and the refund.
+- **Known gap, by design.** A future path that refunds a CAPTURED run (credits given back after `capture_credits`) is not a release
+  and would reopen the leak; it must consult `credit_refund_recoveries` or go through a release row. None exists today (0030's
+  download refund restores a charge that had no hold).
+- **Webhooks.** `supabase/functions/_shared/paddle.ts` and `dodo.ts` read `on_hold`: the log line and the event row say "N on hold,
+  collected if the hold is released" and only the rest "already spent"; without 0167 (no `on_hold`) the shortfall is one figure,
+  not called spent.
 - **`refund_purchased_credits`.** 0034's body, line for line, plus lines marked `-- 0167`: the recovery row, `on_hold` in the answer
   (and in a duplicate's), and a ledger note that says how much is on hold instead of calling it spent. Same signature, refusals,
   idempotency on refund_id and grants.
 - **md5.** `refund_purchased_credits` before `766daf507d4e70711b8622aebbea7705` (0034), after `1024ac369b7a18830ac547e41c5ca89e`;
-  `credit_refund_recover` `293b7cc5a993f40764d0d4bb86b7a1ae` (drift guard, end state, rollback).
+  `credit_refund_recover` `afd0aaef5404232e1f830d109f04a1b1` (drift guard, end state, rollback).
 - **Not changed here.** `api_refund_topup` (0031, the API balance in cents) and `owner_reverse_grant` (0107) apply the same "available
   only" rule to their own tables; reported for their own ledger rows.
 - **Number.** 0167 (provisional; 0163 to 0166 are held by other open branches). Needs 0020, 0021 and 0034; names nothing of 0035 to
@@ -1469,4 +1482,6 @@ lab: a 1000-credit pack refunded in full left 1100 credits where 100 should have
   and its function, puts 0034's body back verbatim. The table stays as the record.
 - **Tests.** `tests/test_refund_hold_recovery_migration.py` (the text, the hashes, the rollback, the numbering),
   `tests/security/test_sec_breach_refund_hold.py` (the attack) and `tests/security/test_sec_refund_hold_recovery.py` (partial holds,
-  capture, two refunds, a later hold, replay, concurrency with `reserve_credits`; a real PostgreSQL).
+  capture, two refunds, a later hold, lots expiring on the hold, a subscription payment, a never-settled started hold, a storyboard
+  undo, created_by, the open query, replay, concurrency with `reserve_credits`; a real PostgreSQL);
+  `command-center/tests/paddle-webhook.test.ts` and `dodo-webhook.test.ts` (the wording).

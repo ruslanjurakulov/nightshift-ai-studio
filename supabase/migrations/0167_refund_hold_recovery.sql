@@ -25,17 +25,30 @@
 --
 -- WHAT THIS ADDS
 --   credit_refund_recoveries   one row per refund whose shortfall met open holds: the refund, its purchase, the organization, the job
---                              ids of the holds open at that moment, `owed` and `collected` (0 <= collected <= owed). Written only by
---                              refund_purchased_credits (insert) and credit_refund_recover (collected goes up); a guard trigger refuses
---                              any other change, a delete and a truncate. RLS on, no policy; select for the service role only, like
---                              credit_refunds (0021). What a refund finally could not take back:
---                                  select f.refund_id, f.shortfall - coalesce(r.collected, 0) as not_recovered
+--                              ids of the holds open at that moment, `owed`, `collected` (taken back by a ledger row) and `lapsed` (the
+--                              refunded purchase's own credits that expired while on the hold: gone from the buyer as the refund meant,
+--                              with no collection), 0 <= collected + lapsed <= owed. Written only by refund_purchased_credits (insert)
+--                              and credit_refund_recover (collected and lapsed go up); a guard trigger refuses any other change, a delete
+--                              and a truncate. RLS on, no policy; select for the service role only, like credit_refunds (0021).
+--                              What a refund finally could not take back (credits the buyer spent):
+--                                  select f.refund_id, f.shortfall - coalesce(r.collected + r.lapsed, 0) as not_recovered
 --                                    from public.credit_refunds f left join public.credit_refund_recoveries r using (refund_id)
 --                                   where f.shortfall > 0;
+--                              Still open (an open hold may yet pay it; one whose holds were all captured never will):
+--                                  select r.* from public.credit_refund_recoveries r
+--                                   where r.collected + r.lapsed < r.owed
+--                                     and exists (select 1 from public.credit_reservations c
+--                                                  where c.job_id = any (r.holds) and c.status = 'open');
 --   credit_refund_recover()    AFTER INSERT trigger on credit_transactions for 'release' rows (every release goes through one:
 --                              credit_release_locked and capture_credits' unused part, 0020). Named so that it fires after
---                              credit_transactions_apply_lots (triggers fire in name order): the hold's lots are released before the
---                              collection spends them.
+--                              credit_transactions_apply_lots (triggers fire in name order): the hold's lots are released, and the ones
+--                              that ran out expired, before it looks. It collects only what the release gave back to lots that are still
+--                              live (credit_lot_moves of this release row), never credits that arrived later (Lens on #766).
+--
+-- A FUTURE PATH THAT REFUNDS A CAPTURED RUN (credits given back after capture_credits, for a run that failed after it was charged)
+-- would reopen this leak: it is not a release, so nothing here collects from it. Such a path must take the open recoveries of the
+-- run's hold into account (credit_refund_recoveries, `job_id = any (holds)`), or go through a 'release' row. None exists today: 0030's
+-- download refund restores a charge that had no hold.
 --
 -- WHAT THIS REPLACES (its latest body, character for character, plus lines marked `-- 0167`)
 --   refund_purchased_credits(text, text, numeric, text, text)   0034's body + the held part recorded in credit_refund_recoveries, the
@@ -59,7 +72,7 @@
 --   expected BEFORE (0034 applied, 0167 not): 766daf507d4e70711b8622aebbea7705
 --   expected AFTER  (the last block of this file asserts the same, inside the transaction):
 --     refund_purchased_credits   1024ac369b7a18830ac547e41c5ca89e
---     credit_refund_recover      293b7cc5a993f40764d0d4bb86b7a1ae
+--     credit_refund_recover      afd0aaef5404232e1f830d109f04a1b1
 --   If a live value is anything else, STOP: something was applied by hand, and replacing the body would silently undo it.
 --
 -- APPLY AS ONE TRANSACTION. Additive and idempotent: a second run finds this file's bodies and changes nothing. Locks: one new table, and
@@ -87,7 +100,7 @@ begin
   if r is null or r <> all (array['766daf507d4e70711b8622aebbea7705', '1024ac369b7a18830ac547e41c5ca89e']) then
     raise exception '0167 found a refund_purchased_credits() that is neither 0034''s body nor 0167''s (md5 %): read the live body first', r;
   end if;
-  if c is not null and c <> '293b7cc5a993f40764d0d4bb86b7a1ae' then
+  if c is not null and c <> 'afd0aaef5404232e1f830d109f04a1b1' then
     raise exception '0167 found a credit_refund_recover() that is not this file''s body (md5 %): read the live body first', c;
   end if;
 end $$;
@@ -103,29 +116,30 @@ create table if not exists public.credit_refund_recoveries (
   holds                text[] not null,
   owed                 numeric(14,2) not null,
   collected            numeric(14,2) not null default 0,
+  lapsed               numeric(14,2) not null default 0,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now()
 );
 
 alter table public.credit_refund_recoveries drop constraint if exists credit_refund_recoveries_amounts_check;
 alter table public.credit_refund_recoveries add constraint credit_refund_recoveries_amounts_check
-  check (owed > 0 and collected >= 0 and collected <= owed);
+  check (owed > 0 and collected >= 0 and lapsed >= 0 and collected + lapsed <= owed);
 alter table public.credit_refund_recoveries drop constraint if exists credit_refund_recoveries_holds_check;
 alter table public.credit_refund_recoveries add constraint credit_refund_recoveries_holds_check
   check (cardinality(holds) >= 1 and array_position(holds, null) is null);
 
 create index if not exists credit_refund_recoveries_open_idx
-  on public.credit_refund_recoveries (org_id, created_at) where collected < owed;
+  on public.credit_refund_recoveries (org_id, created_at) where collected + lapsed < owed;
 
 comment on table public.credit_refund_recoveries is
-  'The part of a refund''s shortfall that was on hold when the refund was recorded (migration 0167): taken back when one of those holds is released, never when it is captured. owed <= the shortfall in credit_refunds; collected only goes up. Written by refund_purchased_credits and credit_refund_recover only.';
+  'The part of a refund''s shortfall that was on hold when the refund was recorded (migration 0167): taken back when one of those holds is released, never when it is captured. owed <= the shortfall in credit_refunds; collected (a ledger row took it) and lapsed (the refunded purchase''s own credits expired on the hold) only go up. Written by refund_purchased_credits and credit_refund_recover only.';
 
--- Only `collected` (and updated_at) may change, and only upward: the rest is the record of what the refund met.
+-- Only `collected` and `lapsed` (and updated_at) may change, and only upward: the rest is the record of what the refund met.
 create or replace function public.credit_refund_recoveries_guard() returns trigger
   language plpgsql set search_path = public, pg_temp as $$
 begin
   if tg_op <> 'UPDATE' then
-    raise exception 'credit_refund_recoveries is append-only: only collected may change, and only upward' using errcode = '42501';
+    raise exception 'credit_refund_recoveries is append-only: only collected and lapsed may change, and only upward' using errcode = '42501';
   end if;
   if new.refund_id is distinct from old.refund_id
      or new.purchase_external_id is distinct from old.purchase_external_id
@@ -133,8 +147,9 @@ begin
      or new.holds is distinct from old.holds
      or new.owed is distinct from old.owed
      or new.created_at is distinct from old.created_at
-     or new.collected < old.collected then
-    raise exception 'credit_refund_recoveries: only collected may change, and only upward' using errcode = '42501';
+     or new.collected < old.collected
+     or new.lapsed < old.lapsed then
+    raise exception 'credit_refund_recoveries: only collected and lapsed may change, and only upward' using errcode = '42501';
   end if;
   return new;
 end
@@ -266,38 +281,66 @@ $$;
 -- 3. A released hold pays the refund that met it
 -- ───────────────────────────────────────────────────────────────────────────
 -- Runs inside whichever function released the hold, which already holds the account lock (every release path locks the account
--- first, 0020). By then credit_transactions_apply_lots has given the hold's lots back and expired any that ran out, so `available`
--- is what the buyer could spend this instant: the collection takes at most that, and at most what this release gave back.
+-- first, 0020). By then credit_transactions_apply_lots has given the hold's lots back (credit_lot_moves 'release' rows of THIS ledger
+-- row) and expired the ones that ran out. What may be collected is what the release gave back to lots that are still live: an
+-- expired lot's credits are gone already, and `available` alone would also count credits bought after the refund (Lens on #766: a
+-- refunded pack that expired while held, then a later pack, and the later pack was eaten). The refunded purchase's own credits that
+-- expired on the hold are what the refund meant to take, so they count against what it is owed (`lapsed`) without a ledger row.
+-- The row is written straight into the ledger with created_by null, not through credit_log (which stamps auth.uid()): a lazy release
+-- runs inside the buyer's own reserve_credits, and the collection is the platform's act, not theirs.
 
 create or replace function public.credit_refund_recover() returns trigger
   language plpgsql security definer set search_path = public, pg_temp as $$
 declare
-  rec   record;
-  left_ numeric := new.amount;
-  avail numeric;
-  x     numeric;
+  rec    record;
+  live_  numeric;
+  gone   numeric;
+  avail  numeric;
+  owing  numeric;
+  lap    numeric;
+  x      numeric;
+  used   jsonb := '{}'::jsonb;
 begin
+  select coalesce(sum(-m.held_delta), 0) into live_
+    from public.credit_lot_moves m join public.credit_lots l on l.id = m.lot_id
+   where m.txn_id = new.id and m.kind = 'release'
+     and l.expired_at is null and (l.expires_at is null or l.expires_at > now());
   for rec in
-    select r.refund_id, r.purchase_external_id, r.owed, r.collected, f.reason
+    select r.refund_id, r.purchase_external_id, r.owed, r.collected, r.lapsed, f.reason
       from public.credit_refund_recoveries r
       join public.credit_refunds f on f.refund_id = r.refund_id
-     where r.org_id = new.org_id and r.collected < r.owed and new.job_id = any (r.holds)
+     where r.org_id = new.org_id and r.collected + r.lapsed < r.owed and new.job_id = any (r.holds)
      order by r.created_at, r.refund_id
      for update of r
   loop
-    exit when left_ <= 0;
+    owing := rec.owed - rec.collected - rec.lapsed;
+    -- The refunded purchase's own lot, expired on this hold: what is left of it after earlier refunds of the same purchase here.
+    select coalesce(sum(-m.held_delta), 0) into gone
+      from public.credit_lot_moves m join public.credit_lots l on l.id = m.lot_id
+     where m.txn_id = new.id and m.kind = 'release' and l.external_id = rec.purchase_external_id
+       and not (l.expired_at is null and (l.expires_at is null or l.expires_at > now()));
+    lap := least(owing, greatest(gone - coalesce((used ->> rec.purchase_external_id)::numeric, 0), 0));
+    if lap > 0 then
+      update public.credit_refund_recoveries set lapsed = lapsed + lap, updated_at = now() where refund_id = rec.refund_id;
+      used := used || jsonb_build_object(rec.purchase_external_id, coalesce((used ->> rec.purchase_external_id)::numeric, 0) + lap);
+      owing := owing - lap;
+    end if;
     select greatest(a.balance - a.reserved, 0) into avail from public.credit_accounts a where a.org_id = new.org_id;
-    x := least(rec.owed - rec.collected, left_, coalesce(avail, 0));
-    exit when x <= 0;
+    x := least(owing, live_, coalesce(avail, 0));
+    continue when x <= 0;
     update public.credit_accounts set balance = balance - x, updated_at = now() where org_id = new.org_id;
     update public.credit_refund_recoveries set collected = collected + x, updated_at = now() where refund_id = rec.refund_id;
     -- The lot trigger takes the refunded purchase's own credits first, as the refund itself did.
     perform set_config('nightshift.refund_of', rec.purchase_external_id, true);
-    perform public.credit_log(new.org_id, 'refund', -x, null, null,
-              format('%s of purchase %s (%s): %s credits taken back from hold %s, released after the refund',
-                     rec.reason, rec.purchase_external_id, rec.refund_id, x, new.job_id));
+    insert into public.credit_transactions
+      (org_id, kind, amount, balance_after, reserved_after, job_id, external_id, note, created_by)
+    select new.org_id, 'refund', -x, a.balance, a.reserved, null, null,
+           left(format('%s of purchase %s (%s): %s credits taken back from hold %s, released after the refund',
+                       rec.reason, rec.purchase_external_id, rec.refund_id, x, new.job_id), 500),
+           null
+      from public.credit_accounts a where a.org_id = new.org_id;
     perform set_config('nightshift.refund_of', '', true);
-    left_ := left_ - x;
+    live_ := live_ - x;
   end loop;
   return null;
 end
@@ -331,15 +374,18 @@ begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
        where oid = 'public.refund_purchased_credits(text, text, numeric, text, text)'::regprocedure) <> '1024ac369b7a18830ac547e41c5ca89e'
      or (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
-          where oid = 'public.credit_refund_recover()'::regprocedure) <> '293b7cc5a993f40764d0d4bb86b7a1ae' then
+          where oid = 'public.credit_refund_recover()'::regprocedure) <> 'afd0aaef5404232e1f830d109f04a1b1' then
     raise exception '0167 end state: a function does not hold this file''s body';
   end if;
-  if not exists (select 1 from pg_trigger where tgrelid = 'public.credit_transactions'::regclass
-                    and tgname = 'credit_transactions_recover_refunds' and not tgisinternal and tgenabled = 'O')
-     or not exists (select 1 from pg_trigger where tgrelid = 'public.credit_transactions'::regclass
-                       and tgname = 'credit_transactions_apply_lots' and tgenabled = 'O')
-     or 'credit_transactions_recover_refunds' collate "C" <= 'credit_transactions_apply_lots' collate "C" then
-    raise exception '0167 end state: credit_transactions_recover_refunds must exist, be enabled and fire after credit_transactions_apply_lots';
+  -- Every enabled row-level AFTER INSERT trigger on the ledger, in the order Postgres fires them (by name, byte order): exactly the lot
+  -- trigger, then the collector. Another one would run between or after them and see the account half way.
+  -- tgtype bits: 1 row, 2 before, 4 insert, 64 instead of.
+  if (select array_agg(t.tgname::text order by t.tgname::text collate "C")
+        from pg_trigger t
+       where t.tgrelid = 'public.credit_transactions'::regclass and not t.tgisinternal and t.tgenabled <> 'D'
+         and t.tgtype & 1 = 1 and t.tgtype & 2 = 0 and t.tgtype & 64 = 0 and t.tgtype & 4 = 4)
+     is distinct from array['credit_transactions_apply_lots', 'credit_transactions_recover_refunds'] then
+    raise exception '0167 end state: the AFTER INSERT triggers on credit_transactions must be exactly credit_transactions_apply_lots then credit_transactions_recover_refunds';
   end if;
   if (select count(*) from pg_trigger where tgrelid = 'public.credit_refund_recoveries'::regclass
         and tgname in ('credit_refund_recoveries_guard', 'credit_refund_recoveries_no_truncate') and tgenabled = 'O') <> 2 then
@@ -377,5 +423,9 @@ end $$;
 --       and not has_table_privilege('authenticated', 'public.credit_refund_recoveries', 'SELECT') as recoveries_closed,
 --     not has_function_privilege('authenticated', 'public.refund_purchased_credits(text,text,numeric,text,text)', 'EXECUTE') as service_only;
 --
--- Refunds whose held part is still open (each is collected when one of its holds is released):
---   select refund_id, org_id, owed, collected, holds from public.credit_refund_recoveries where collected < owed order by created_at;
+-- Refunds whose held part is still open (each is collected when one of its holds is released; one whose holds were all captured is
+-- not open, it is spent):
+--   select r.refund_id, r.org_id, r.owed, r.collected, r.lapsed, r.holds from public.credit_refund_recoveries r
+--    where r.collected + r.lapsed < r.owed
+--      and exists (select 1 from public.credit_reservations c where c.job_id = any (r.holds) and c.status = 'open')
+--    order by r.created_at;

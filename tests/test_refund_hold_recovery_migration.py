@@ -109,19 +109,52 @@ class Collector(unittest.TestCase):
                       "  execute function public.credit_refund_recover();", SQL)
         # Same-event triggers fire in name order (C collation): the hold's lots are given back before they are spent.
         self.assertLess("credit_transactions_apply_lots", "credit_transactions_recover_refunds")
+        # The end state checks the catalog, not two constants: exactly these two row-level AFTER INSERT triggers, in that order.
+        end = SQL.split("5. End state", 1)[1]
+        self.assertIn("t.tgtype & 1 = 1 and t.tgtype & 2 = 0 and t.tgtype & 64 = 0 and t.tgtype & 4 = 4", end)
+        self.assertIn("order by t.tgname::text collate \"C\"", end)
+        self.assertIn("is distinct from array['credit_transactions_apply_lots', 'credit_transactions_recover_refunds'] then", end)
+        self.assertNotIn("'credit_transactions_recover_refunds' collate \"C\" <= 'credit_transactions_apply_lots'", end)
 
     def test_it_collects_only_from_holds_open_at_the_refund_and_never_more_than_is_there(self):
         self.assertIn("new.job_id = any (r.holds)", RECOVER)
-        self.assertIn("r.collected < r.owed", RECOVER)
-        self.assertIn("x := least(rec.owed - rec.collected, left_, coalesce(avail, 0));", RECOVER)
+        self.assertIn("r.collected + r.lapsed < r.owed", RECOVER)
+        self.assertIn("x := least(owing, live_, coalesce(avail, 0));", RECOVER)
         self.assertIn("greatest(a.balance - a.reserved, 0)", RECOVER)
-        self.assertIn("exit when x <= 0;", RECOVER)
+        self.assertIn("continue when x <= 0;", RECOVER)
+
+    def test_it_collects_only_what_the_release_gave_back_to_live_lots(self):
+        """Lens on #766: an expired lot's credits are gone, and `available` alone also counts credits bought after the refund."""
+        live = RECOVER.split("select coalesce(sum(-m.held_delta), 0) into live_", 1)[1].split(";", 1)[0]
+        self.assertIn("m.txn_id = new.id and m.kind = 'release'", live)
+        self.assertIn("l.expired_at is null and (l.expires_at is null or l.expires_at > now())", live)
+        self.assertNotIn("new.amount", RECOVER)
+        self.assertIn("live_ := live_ - x;", RECOVER)
+
+    def test_the_refunded_purchases_own_expired_credits_count_as_lapsed_not_collected(self):
+        gone = RECOVER.split("into gone", 1)[1].split(";", 1)[0]
+        self.assertIn("l.external_id = rec.purchase_external_id", gone)
+        self.assertIn("and not (l.expired_at is null and (l.expires_at is null or l.expires_at > now()))", gone)
+        self.assertIn("lap := least(owing, greatest(gone - coalesce((used ->> rec.purchase_external_id)::numeric, 0), 0));", RECOVER)
+        self.assertIn("set lapsed = lapsed + lap", RECOVER)
 
     def test_every_collection_is_a_ledger_row_on_the_refunded_lot_first(self):
-        self.assertIn("perform public.credit_log(new.org_id, 'refund', -x, null, null,", RECOVER)
+        self.assertIn("(org_id, kind, amount, balance_after, reserved_after, job_id, external_id, note, created_by)", RECOVER)
+        self.assertIn("select new.org_id, 'refund', -x, a.balance, a.reserved, null, null,", RECOVER)
         self.assertIn("perform set_config('nightshift.refund_of', rec.purchase_external_id, true);", RECOVER)
         self.assertIn("perform set_config('nightshift.refund_of', '', true);", RECOVER)
-        self.assertLess(RECOVER.index("set balance = balance - x"), RECOVER.index("public.credit_log("))
+        self.assertLess(RECOVER.index("set balance = balance - x"), RECOVER.index("insert into public.credit_transactions"))
+
+    def test_the_collection_is_not_signed_by_whoever_released_the_hold(self):
+        # credit_log stamps auth.uid(): inside a lazy release that is the buyer. The row is the platform's: created_by null.
+        self.assertNotIn("credit_log(", RECOVER)
+        row = RECOVER.split("insert into public.credit_transactions", 1)[1].split(";", 1)[0]
+        self.assertRegex(row, r"500\),\n\s+null\n\s+from public\.credit_accounts a where a\.org_id = new\.org_id")
+        self.assertNotIn("auth.uid()", RECOVER)
+
+    def test_a_future_refund_of_a_captured_run_is_named_as_reopening_the_leak(self):
+        self.assertIn("-- A FUTURE PATH THAT REFUNDS A CAPTURED RUN", SQL)
+        self.assertIn("would reopen this leak", SQL)
 
     def test_definer_with_a_pinned_search_path(self):
         head = definition(SQL, "credit_refund_recover").split("$$", 1)[0]
@@ -137,8 +170,14 @@ class TableAndPrivileges(unittest.TestCase):
         self.assertNotRegex(CODE, r"grant [^;]*(insert|update|delete)[^;]* on public\.credit_refund_recoveries")
 
     def test_only_collected_moves_and_only_up(self):
-        self.assertIn("check (owed > 0 and collected >= 0 and collected <= owed)", CODE)
-        self.assertIn("or new.collected < old.collected then", CODE)
+        self.assertIn("check (owed > 0 and collected >= 0 and lapsed >= 0 and collected + lapsed <= owed)", CODE)
+        self.assertIn("or new.collected < old.collected\n     or new.lapsed < old.lapsed then", CODE)
+
+    def test_the_open_query_needs_an_open_hold(self):
+        for part in (SQL.split("Still open", 1)[1].split("credit_refund_recover()", 1)[0],
+                     SQL.split("-- Refunds whose held part is still open", 1)[1]):
+            self.assertIn("collected + r.lapsed < r.owed", part)
+            self.assertIn("c.job_id = any (r.holds) and c.status = 'open'", part)
         self.assertIn("before update or delete on public.credit_refund_recoveries", CODE)
         self.assertIn("before truncate on public.credit_refund_recoveries", CODE)
 

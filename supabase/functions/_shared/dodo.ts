@@ -60,7 +60,9 @@ import {
   MAX_BODY_BYTES,
   StoreError,
   readBodyCapped,
+  onHoldWords,
   refundCredits,
+  shortfallWords,
   type EventRecord,
   type EventStatus,
   type Logger,
@@ -864,7 +866,9 @@ export interface DodoStore {
     amount: number | null,
     note: string,
     reason: "refund" | "chargeback",
-  ): Promise<{ duplicate: boolean; requested: number; taken: number; shortfall: number }>;
+  // onHold (0167): the part of the shortfall that sat on holds; it is taken back if a hold is released, so it is not "spent".
+  // null = the database does not say (0167 not applied): the shortfall is then reported without a split.
+  ): Promise<{ duplicate: boolean; requested: number; taken: number; shortfall: number; onHold?: number | null }>;
   findSubscription(subscriptionId: string): Promise<DodoSubscriptionRow | null>;
   /** dodo_consume_checkout_nonce (0146): spend a checkout nonce once, for one payment or one new subscription. */
   consumeNonce(n: {
@@ -1249,15 +1253,14 @@ async function execute(
         return { httpStatus: 200, row: { status: "ignored", detail: "refund worth less than 0.01 credits", orgId: purchase.orgId, ...ids } };
       try {
         const res = await store.refundPurchasedCredits(decision.transactionId, decision.refundKey, size.amount, `Dodo ${decision.refundKey}`, decision.reason);
-        if (res.shortfall > 0)
-          log.warn(`dodo-webhook: ${decision.reason} ${decision.refundKey}: ${res.shortfall} credits were already spent and could not be taken back`);
+        if (res.shortfall > 0) log.warn(`dodo-webhook: ${decision.reason} ${decision.refundKey}: ${shortfallWords(res)}`);
         return {
           httpStatus: 200,
           row: {
             status: res.duplicate ? "duplicate" : "processed",
             detail: res.duplicate
               ? `${decision.reason} already recorded`
-              : `${decision.reason}: took back ${res.taken} of ${res.requested} credits` + (res.shortfall > 0 ? `; shortfall ${res.shortfall}` : ""),
+              : `${decision.reason}: took back ${res.taken} of ${res.requested} credits` + (res.shortfall > 0 ? `; shortfall ${res.shortfall}${onHoldWords(res)}` : ""),
             orgId: purchase.orgId,
             credits: res.taken,
             currency: decision.currency,
@@ -1370,7 +1373,10 @@ export function createDodoRestStore(opts: { url: string; serviceKey: string; fet
         await rpc("refund_purchased_credits", { p_external_id: externalId, p_refund_id: refundId, p_amount: amount, p_note: note, p_reason: reason }),
       );
       const n = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0));
-      return { duplicate: res.duplicate === true, requested: n(res.requested), taken: n(res.taken), shortfall: n(res.shortfall) };
+      return {
+        duplicate: res.duplicate === true, requested: n(res.requested), taken: n(res.taken), shortfall: n(res.shortfall),
+        onHold: res.on_hold === undefined || res.on_hold === null ? null : n(res.on_hold),
+      };
     },
     async consumeNonce(n) {
       const res = await rpc("dodo_consume_checkout_nonce", {

@@ -20,6 +20,7 @@ import os
 import threading
 import time
 import uuid
+from decimal import Decimal
 
 import psycopg
 import pytest
@@ -189,6 +190,139 @@ def test_a_hold_placed_after_the_refund_on_credits_bought_later_is_never_collect
         _expire(s, org, job2)
         assert _balanced(s, org) == 500, "the later pack's credits came back whole"
         assert _recovery(s, rid)[1] == 0
+
+
+# ── lots that expire on the hold (Lens on #766) ─────────────────────────────
+
+def _expire_lot_of(s, org, where, params):
+    s.rows(f"update public.credit_lots set expires_at = now() - interval '1 second' where org_id = %s and {where} returning 1",
+           [org, *params])
+
+
+def _lapsed(s, rid):
+    return s.value("select lapsed from public.credit_refund_recoveries where refund_id = %s", [rid])
+
+
+def test_a_refunded_lot_that_expired_on_the_hold_is_not_paid_again_from_a_later_purchase(conn):
+    """Lens's repro: the refunded pack's lot runs out while held, a second pack is bought, the hold expires. The expired credits are
+    gone, which is what the refund wanted; the later pack must come through whole. Before the fix: balance 100 instead of 1100."""
+    with as_superuser(conn, commit=False) as s:
+        buyer, org, ext = _buyer(s)
+        job = _hold(s, buyer, org, 1100)
+        rid, out = _refund(s, ext)
+        assert (out["taken"], out["on_hold"]) == (0, 1000)
+        _expire_lot_of(s, org, "external_id = %s", [ext])
+        _ok(_call(s, SERVICE, "select public.add_purchased_credits(%s, 1000, %s, 'later pack')", [org, f"pay_lab{uuid.uuid4().hex[:16]}"]))
+        _expire(s, org, job)
+        assert _balanced(s, org) == 1100, "the welcome 100 and the later pack stay: nothing is collected"
+        assert (_recovery(s, rid)[1], _lapsed(s, rid)) == (0, 1000), "the expired refunded credits are counted, not collected twice"
+        assert s.value("select count(*) from public.credit_transactions where org_id = %s and kind = 'refund' and amount < 0", [org]) == 0
+
+
+def test_another_lot_that_expired_on_the_hold_leaves_the_refunded_credits_to_collect_and_spares_the_later_purchase(conn):
+    """The mirror case: the WELCOME lot runs out on the hold, the refunded pack does not. The refund takes the pack's 1000 that came
+    back; the later pack is untouched."""
+    with as_superuser(conn, commit=False) as s:
+        buyer, org, ext = _buyer(s)
+        job = _hold(s, buyer, org, 1100)
+        rid, _ = _refund(s, ext)
+        _expire_lot_of(s, org, "external_id is distinct from %s", [ext])
+        _ok(_call(s, SERVICE, "select public.add_purchased_credits(%s, 1000, %s, 'later pack')", [org, f"pay_lab{uuid.uuid4().hex[:16]}"]))
+        _expire(s, org, job)
+        assert _balanced(s, org) == 1000, "welcome expired, refunded pack taken back, later pack whole"
+        assert (_recovery(s, rid)[1], _lapsed(s, rid)) == (1000, 0)
+
+
+def test_a_subscription_payment_refunded_over_a_hold_is_collected_from_its_own_lot(conn):
+    with as_superuser(conn, commit=False) as s:
+        buyer, org, _pack = _buyer(s, pack=1)
+        sub, txn = f"sub_{uuid.uuid4().hex[:26]}", f"txn_{uuid.uuid4().hex[:26]}"
+        _ok(_call(s, SERVICE, "select public.upsert_subscription(%s, %s, %s, 'creator', null, 'active', now() - interval '1 day', "
+                              "now() + interval '29 days', false, null, now())", [org, sub, f"ctm_{uuid.uuid4().hex[:26]}"]))
+        granted = _ok(_call(s, SERVICE, "select public.grant_subscription_credits(%s, %s, 'creator', now() - interval '1 day', "
+                                        "now() + interval '29 days', %s)", [org, sub, txn]))["granted"]
+        granted = Decimal(str(granted))
+        assert granted > 0
+        before = s.rows(BAL, [org])[0][0] - granted
+        job = _hold(s, buyer, org, s.value("select balance - reserved from public.credit_accounts where org_id = %s", [org]))
+        rid, out = _refund(s, txn)
+        assert (Decimal(str(out["taken"])), Decimal(str(out["on_hold"]))) == (0, granted), out
+        _expire(s, org, job)
+        assert _balanced(s, org) == before, "the plan period's credits are taken back; welcome and the small pack stay"
+        assert _recovery(s, rid)[1] == granted
+        spent_from = s.rows("select l.source from public.credit_lot_moves m join public.credit_lots l on l.id = m.lot_id "
+                            "join public.credit_transactions t on t.id = m.txn_id "
+                            "where t.org_id = %s and t.kind = 'refund' and m.kind = 'spend'", [org])
+        assert {r[0] for r in spent_from} == {"subscription"}, spent_from
+
+
+def test_a_started_hold_that_never_settles_is_collected_when_it_expires(conn):
+    with as_superuser(conn, commit=False) as s:
+        buyer, org, ext = _buyer(s)
+        job = _hold(s, buyer, org, 1100)
+        rid, _ = _refund(s, ext)
+        _ok(_call(s, SERVICE, "select public.start_credit_reservation(%s, %s)", [job, org]))
+        s.rows("update public.credit_reservations set started_at = now() - interval '24 hours 1 minute' where job_id = %s returning 1", [job])
+        _ok(_call(s, SERVICE, "select public.expire_credit_reservations(%s)", [org]))
+        assert s.value("select status from public.credit_reservations where job_id = %s", [job]) == "released"
+        assert _recovery(s, rid)[1] == 1000
+        assert _balanced(s, org) == 100
+
+
+def test_a_storyboard_undo_is_a_release_and_collects(conn):
+    """0057's storyboard_dispatch_failed: the approver undoes an Actions dispatch the route saw fail, in their own session."""
+    with as_superuser(conn, commit=False) as s:
+        buyer, org, ext = _buyer(s)
+        ch = f"chan-rh-{uuid.uuid4().hex[:8]}"
+        s.rows("insert into public.channels (channel_id, name, niche, status, org_id) values (%s, 'Refund lab', 'tech', 'PAUSED', %s) "
+               "returning 1", [ch, org])
+        scenes = [{"n": i + 1, "name": f"Scene {i + 1}", "type": "story", "narration": f"Line {i + 1}.", "visual": "harbour",
+                   "duration_s": 100} for i in range(3)]
+        script = {"topic": "t", "title": "T", "sections": [{"name": f"s{i}", "narration": f"Line {i}."} for i in range(3)]}
+        sb = str(s.value("insert into public.storyboards (channel_id, slug, topic, title, scenes, script, duration_s) "
+                         "values (%s, 'plan-rh', 'A topic', 'A title', %s::jsonb, %s::jsonb, 300) returning id",
+                         [ch, json.dumps(scenes), json.dumps(script)]))
+        approved = _ok(_call(s, buyer, "select public.approve_storyboard(%s, 1100, 'actions')", [sb]))
+        job = approved["credit_ref"]
+        rid, out = _refund(s, ext)
+        assert out["on_hold"] == 1000 and _recovery(s, rid)[2] == [job]
+        undo = _ok(_call(s, buyer, "select public.storyboard_dispatch_failed(%s)", [sb]))
+        assert undo["released"] == 1100
+        assert _recovery(s, rid)[1] == 1000
+        assert _balanced(s, org) == 100
+
+
+def test_a_collection_made_inside_the_buyers_own_call_is_not_signed_with_their_name(conn):
+    """The lazy release in reserve_credits runs in the buyer's session; the collection is the platform's act (created_by null)."""
+    with as_superuser(conn, commit=False) as s:
+        buyer, org, ext = _buyer(s)
+        job = _hold(s, buyer, org, 1100)
+        rid, _ = _refund(s, ext)
+        s.rows("update public.credit_reservations set created_at = now() - interval '3 hours 1 minute' where job_id = %s returning 1", [job])
+        _ok(_call(s, buyer, "select public.reserve_credits(%s, %s, 100)", [org, f"rj-next-{uuid.uuid4().hex[:8]}"]))
+        rows = s.rows("select created_by, balance_after, reserved_after, amount from public.credit_transactions "
+                      "where org_id = %s and kind = 'refund' and note like %s", [org, f"%{rid}%"])
+        assert len(rows) == 1 and rows[0][0] is None, rows
+        assert rows[0][3] == -1000
+        release_by = s.value("select created_by::text from public.credit_transactions where org_id = %s and kind = 'release' and job_id = %s",
+                             [org, job])
+        assert release_by == buyer.uid, "control: the release itself is the buyer's call"
+        assert _balanced(s, org) == 100
+
+
+def test_the_open_recoveries_query_leaves_out_one_whose_holds_were_all_captured(conn):
+    text = MIGRATION.read_text(encoding="utf-8")
+    query = text.split("-- Refunds whose held part is still open", 1)[1].split("order by r.created_at;", 1)[0]
+    query = "\n".join(ln.split("--", 1)[1] for ln in query.splitlines()[2:]).strip()
+    with as_superuser(conn, commit=False) as s:
+        buyer, org, ext = _buyer(s)
+        job = _hold(s, buyer, org, 1100)
+        rid, _ = _refund(s, ext)
+        open_q = f"select count(*) from ({query}) q where q.refund_id = %s"
+        assert s.value(open_q, [rid]) == 1
+        _ok(_call(s, SERVICE, "select public.start_credit_reservation(%s, %s)", [job, org]))
+        _ok(_call(s, SERVICE, "select public.capture_credits(%s, 1100)", [job]))
+        assert s.value(open_q, [rid]) == 0, "captured: spent, not open"
 
 
 # ── replay ──────────────────────────────────────────────────────────────────

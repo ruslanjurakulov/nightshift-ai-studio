@@ -198,6 +198,8 @@ class FakeStore implements DodoStore {
   subs = new Map<string, DodoSubscriptionRow & { status: string; cancelAtPeriodEnd: boolean; customerId: string | null }>();
   grants: { paymentId: string; planId: string; periodEnd: string }[] = [];
   failNext: StoreError | Error | null = null;
+  /** What the next refund answers past `requested` (0167: part of a shortfall can be on hold). Null = everything taken. */
+  refundResult: { taken: number; shortfall: number; onHold?: number | null } | null = null;
   /** dodo_checkout_nonces as 0146 keeps it: who the nonce was issued for, and what spent it. */
   nonces = new Map<string, { key: string; consumer: string | null; expired?: boolean }>();
   /** Nonces this deployment never issued (a blob signed with the right key but not by our checkout). */
@@ -245,6 +247,7 @@ class FakeStore implements DodoStore {
     const already = [...this.refunds.values()].filter((r) => r.ext === ext).reduce((s, r) => s + (r.amount ?? bought), 0);
     const requested = Math.min(amount ?? bought - already, bought - already);
     this.refunds.set(id, { ext, amount: requested, reason });
+    if (this.refundResult) return { duplicate: false, requested, ...this.refundResult };
     return { duplicate: false, requested, taken: requested, shortfall: 0 };
   }
   async consumeNonce(n: { nonce: string; orgId: string; userId: string | null; item: string; consumer: string }) {
@@ -305,6 +308,7 @@ function deliver(
     mode?: DodoWebhookMode;
     testOrgs?: string[];
     amountProduct?: string | null;
+    log?: { info(m: string): void; warn(m: string): void; error(m: string): void };
   } = {},
 ) {
   const id = opts.id ?? "msg_2KWPBgLlAfxdpx2AI54pPJ85f4W";
@@ -327,7 +331,7 @@ function deliver(
       amountProduct: opts.amountProduct === undefined ? PDT_AMOUNT : opts.amountProduct,
       store,
       now: () => opts.now ?? NOW_MS,
-      log: quiet,
+      log: opts.log ?? quiet,
     },
   );
 }
@@ -699,6 +703,29 @@ describe("refunds and disputes", () => {
     const store = await bought();
     await deliver(store, refund({ is_partial: true, amount: 270 }), { id: "msg_ref" });
     expect(store.refunds.get("dodo_refund:ref_0001")?.amount).toBe(250); // 1000 × 270 / 1080
+  });
+
+  it("a shortfall that sat on a hold is reported as on hold, not as spent (0167, rule 5)", async () => {
+    const store = await bought();
+    store.refundResult = { taken: 0, shortfall: 1000, onHold: 800 };
+    const warns: string[] = [];
+    await deliver(store, refund(), { id: "msg_ref", log: { info() {}, warn: (m) => warns.push(m), error() {} } });
+    const row = [...store.events.values()].find((e) => e.eventType === "refund.succeeded");
+    expect(row?.detail).toBe("refund: took back 0 of 1000 credits; shortfall 1000 (800 on hold, collected if the hold is released)");
+    expect(warns).toEqual([
+      "dodo-webhook: refund dodo_refund:ref_0001: 800 credits are on hold, collected if the hold is released; 200 credits were already spent and could not be taken back",
+    ]);
+    expect(warns.join(" ")).not.toContain("1000 credits were already spent");
+  });
+
+  it("a shortfall from a database without 0167 is not called spent", async () => {
+    const store = await bought();
+    store.refundResult = { taken: 400, shortfall: 600, onHold: null };
+    const warns: string[] = [];
+    await deliver(store, refund(), { id: "msg_ref", log: { info() {}, warn: (m) => warns.push(m), error() {} } });
+    const row = [...store.events.values()].find((e) => e.eventType === "refund.succeeded");
+    expect(row?.detail).toBe("refund: took back 400 of 1000 credits; shortfall 600");
+    expect(warns).toEqual(["dodo-webhook: refund dodo_refund:ref_0001: 600 credits could not be taken back now"]);
   });
 
   it("a replayed refund takes nothing twice", async () => {

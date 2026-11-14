@@ -28,7 +28,7 @@ begin
   if r is distinct from '1024ac369b7a18830ac547e41c5ca89e' then
     raise exception 'rollback 0167: refund_purchased_credits() is not 0167''s body (md5 %): a later change would be undone; read the live body first', r;
   end if;
-  if c is not null and c <> '293b7cc5a993f40764d0d4bb86b7a1ae' then
+  if c is not null and c <> 'afd0aaef5404232e1f830d109f04a1b1' then
     raise exception 'rollback 0167: credit_refund_recover() is not 0167''s body (md5 %): a later change would be undone; read the live body first', c;
   end if;
 end $$;
