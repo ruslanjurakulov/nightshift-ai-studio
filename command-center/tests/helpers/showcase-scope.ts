@@ -31,9 +31,18 @@ export function without(container: Element, selector: string): HTMLElement {
  */
 export const SAMPLE_SECTIONS = "[data-sample-section]";
 
-/** The elements that are not inside the gallery or one of the other sample sections. */
+/**
+ * The public Effects section's root (components/site/EffectsGallery.tsx). An effect whose preview is merged shows that sample's
+ * poster and loop there, so its number is whatever lib/effects/effects.json points at: the fourth showcase batch (#746) put five
+ * there and the page-wide counts below went from 16 pictures to 21 and from 4 clips to 9. What that section may show (one poster
+ * and one silent clip per sampled effect, same-origin, lazy, no pause button, no maker named) is pinned over the real data in
+ * tests/effects-ui.test.tsx ("the public Effects section"). It is not a [data-sample-section]: its cards name no model.
+ */
+export const EFFECTS_SECTION = "section#effects";
+
+/** The elements that are not inside the gallery, one of the other sample sections, or the Effects section. */
 export function outsideGallery<T extends Element>(els: Iterable<T>): T[] {
-  return [...els].filter((e) => !e.closest(GALLERY) && !e.closest(SAMPLE_SECTIONS));
+  return [...els].filter((e) => !e.closest(GALLERY) && !e.closest(SAMPLE_SECTIONS) && !e.closest(EFFECTS_SECTION));
 }
 
 /**

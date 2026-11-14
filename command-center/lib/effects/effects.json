@@ -51,7 +51,7 @@
       "duration": 10,
       "motif": "giant",
       "hues": ["#43cea2", "#185a9d"],
-      "previewJobId": null
+      "previewJobId": "ec9a7c43-0304-4da7-943a-134a259e4f90"
     },
     {
       "id": "snow-globe",
@@ -64,7 +64,7 @@
       "duration": 10,
       "motif": "globe",
       "hues": ["#a1c4fd", "#c2e9fb"],
-      "previewJobId": null
+      "previewJobId": "dd553f69-beb4-4f89-9722-91ad95a9d2cc"
     },
     {
       "id": "orbit-to-street",
@@ -77,7 +77,7 @@
       "duration": 10,
       "motif": "orbit",
       "hues": ["#0f2027", "#2c5364"],
-      "previewJobId": null
+      "previewJobId": "6a94865b-ac2f-4b1f-b273-fd4b10c8c477"
     },
     {
       "id": "satisfying-macro",
@@ -90,7 +90,7 @@
       "duration": 10,
       "motif": "macro",
       "hues": ["#ffafbd", "#ffc3a0"],
-      "previewJobId": null
+      "previewJobId": "9b0f23e8-e22b-4a27-b957-3aade8572fbd"
     },
     {
       "id": "time-freeze",
@@ -103,7 +103,7 @@
       "duration": 10,
       "motif": "freeze",
       "hues": ["#232526", "#5b86e5"],
-      "previewJobId": null
+      "previewJobId": "9930ee16-a09b-4d55-aefe-5c2cb6f189de"
     }
   ]
 }
