@@ -193,6 +193,10 @@ export const devEn = {
     paid: { title: "Every plan", body: "Connecting with a sign-in works on every plan, Free included. It spends your workspace’s credits (welcome credits, top-up packs and plan credits all count), and when there are not enough the assistant is told so before anything starts. API keys and the REST API are separate: they are paid from a prepaid API balance.", link: "Plans and credits" },
     apiKeyInstead: "Use an API key instead",
     apiKeyInsteadBody: "For a client that cannot sign in, or for a script. Create the key in Developers → API keys.",
+    ready: {
+      badge: "Ready to connect",
+      body: "Nightshift’s server follows {app}’s published requirements for custom servers. Follow the steps above.",
+    },
     soon: {
       badge: "Coming soon",
       use: "Works today with an API key:",
@@ -444,7 +448,7 @@ export const devEn = {
         items: [
           { q: "What is Nightshift MCP?", a: "A server your AI assistant connects to. Through it the assistant can list your channels, make videos, follow each job and publish, with the same publish check and approvals as the app." },
           { q: "What can my assistant do?", a: "It can list your channels and videos, start a video, follow its job, check your balance, publish a finished video to your connected accounts and, with an API key, order an HD download. The full list of tools is further down this page." },
-          { q: "Which assistants work with it?", a: "ChatGPT, Claude, Gemini, Grok, Cursor and VS Code with GitHub Copilot. Pick yours in the connect card at the top; each one has its own steps." },
+          { q: "Which assistants work with it?", a: "{available} connect today. For another assistant, pick it in the connect card at the top: its tab has the steps for it." },
           { q: "How do I connect one?", a: "Pick your assistant in the connect card at the top. Where a sign-in is available it takes the server address and a sign-in; every other assistant takes an API key you create in Developers." },
           { q: "What does it cost?", a: "Connecting with a sign-in works on every plan, Free included, and spends the same credits as a video made in the app. An API key spends your prepaid API balance. When a video is queued its price is set aside; it is charged only when the video succeeds, and a failed run costs nothing." },
           { q: "Can it publish without asking me?", a: "No. Publishing passes the same publish check and approvals as the app, and YouTube uploads stay private until you decide." },

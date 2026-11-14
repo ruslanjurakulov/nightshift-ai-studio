@@ -1352,3 +1352,49 @@ function and adds one trigger.
   created, an unlisted one is refused before anything is held for the customer and for the operator's preview, an empty or missing list
   refuses, Auto skips a model that cannot make the length, every other answer is 0156's on a corpus, order, drift guard, replay and
   rollback on a scratch database).
+
+## ChatGPT keeps the client it registered (0161)
+
+0161 (`0161_mcp_chatgpt_client.sql`) is **live on apply** and changes only what the MCP OAuth collector deletes: `oauth_gc` is
+0147's body plus one hunk; ONE new internal helper, `oauth_chatgpt_callbacks_only(text[])`; and, so the collector stays cheap,
+the stored generated column `oauth_clients.chatgpt` (from that helper, like 0147's `vendor`) with the partial index
+`oauth_clients_chatgpt_idx`. No table, row, policy, trigger or grant on anything else.
+
+- **Why.** OpenAI's authentication guide for MCP servers (https://developers.openai.com/plugins/build/auth): ChatGPT runs dynamic
+  client registration once per MCP server connection and reuses that client id; "If your authorization server expires, deletes,
+  or replaces either credential, users and reviewers may receive an invalid_client error when they connect." 0147's collector
+  deleted a client a day after its every connection ended (its own note: "ChatGPT and others are re-added"), so a ChatGPT
+  connection that was disconnected, or reached its 90-day cap, and signed in again more than a day later was refused as an
+  unknown app until the person re-created the plugin. Claude registers a new client on every connection and is not affected.
+- **The rule.** A client whose every redirect URI is one of ChatGPT's own callbacks (`https://chatgpt.com/connector_platform_oauth_redirect`,
+  `https://chatgpt.com/connector/oauth/<id>`) is not taken by 0147's branch for 30 days after a person's last (redeemed) connection
+  with it ended, for at most 3 such clients per person, the ones that ended most recently. After that 0093's rules take it as
+  before (an ended grant goes at 30 days, then a client with none). A Claude client, a mixed registration and a ChatGPT client
+  nobody approved still go a day later. A kept client gives nobody a connection: its tokens stay dead and every sign-in shows
+  the consent screen.
+- **Rows.** The vendor class holds 60 000; registrations at their hourly ceiling hold 48 000 of them for a day, leaving about
+  12 000 that must be filled with rows that outlive a day. Live connections dominate: an account holds 20 live plus those ended in
+  the last day (about 40 rows, 0147's bound of roughly 300 accounts); 0161 adds at most 3 kept a person (about 43, roughly 280
+  accounts). Kept clients alone would need about 4 000 accounts.
+- **Cost.** The collector runs on every registration and code exchange. Measured (Breach on #744, then here) with 7 000 people
+  holding 6 ended ChatGPT clients each, 42 000 rows: the first form (the helper called per grant, then an array test per
+  candidate) took 0.5 to 1 s a collection; this form (the stored flag, a left anti-join) about 130 ms median, against 0147's about
+  47 ms on the same data. What is left is the ranking window over the flood's own ChatGPT grants; with few ChatGPT grants it is
+  near zero.
+- **md5.** `oauth_gc` before `b5d0423a7df82812106021e05488d9ad` (0147), after `d9262c411e083e9f8d970224a6cad17c`;
+  `oauth_chatgpt_callbacks_only` `2a5c8c75b77b0a59556852a93c6b9cb4` (drift guard, end state, rollback).
+- **Without it.** Everything works as under 0147; only ChatGPT's reconnect after more than a day fails, and the consent page then
+  tells the person to remove the app there and add it again.
+- **Replay.** `create or replace` plus revoke: a replay changes nothing. Re-running 0147 after 0161 is refused by 0147's own drift
+  guard (it knows only 0093's and its own collector): apply the 0161 rollback first, re-run 0147, then 0161. Re-running 0093 puts
+  0093's collector back: re-apply 0147, then 0161.
+- **Number.** 0161, assigned to this branch: 0158 (#731) and 0159 (#745) are merged before it, 0160 belongs to another branch.
+  Needs 0093 and 0147; names nothing of 0149's to 0159's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0161_mcp_chatgpt_client.sql` (owner-applied): refuses a collector that is not 0161's, puts 0147's
+  body back verbatim, drops the index, the column and then the helper.
+- **Tests.** `tests/test_mcp_chatgpt_client_migration.py` (0147's body plus the two hunks, byte for byte; the hashes; the
+  rollback; the numbering), `tests/security/test_sec_mcp_chatgpt_client.py` (a real PostgreSQL: the same client id signs in again
+  after a disconnect and after the 90-day cap, its old token stays dead, it goes at 30 days; Claude, mixed, ordinary and unapproved
+  clients still go after a day; 50 approve-redeem-revoke cycles keep 3; a shared workspace client stays while anyone ranks it; no
+  API role calls either function; replay, rollback and drift guard). `tests/security/test_sec_mcp_free_tier.py` undoes 0161 before
+  it replays and rolls back 0147.

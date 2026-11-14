@@ -11,6 +11,8 @@ import {
   type InstallLink,
   type McpClient,
 } from "@/lib/dev/mcp-clients";
+import { mcpClientAvailability } from "@/lib/dev/mcp-availability";
+import { fmt } from "@/lib/i18n/core";
 import type { DevDictionary } from "@/lib/i18n/dev";
 import type { Dictionary } from "@/lib/i18n";
 import { BrandLogo, BrandSprite, logoTile } from "@/components/docs/BrandLogo";
@@ -190,21 +192,29 @@ export function McpPage({
   // Only an assistant that can connect today is a tab. With the sign-in off that is Cursor and VS Code (an API key); the four
   // sign-in assistants led the row as tabs that looked available and opened a "Coming soon" panel, so they are named
   // together in one note under the card instead. Once the sign-in is live all six are tabs, in the order the owner set.
-  const tabClients = oauthLive ? MCP_CLIENTS : MCP_CLIENTS.filter((x) => !x.oauthOnly);
-  const soonClients = oauthLive ? [] : MCP_CLIENTS.filter((x) => x.oauthOnly);
+  // Both lists come from lib/dev/mcp-availability.ts, so this note and the tabs' "Ready to connect" line cannot disagree.
+  const tabClients = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) !== "soon");
+  const soonClients = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "soon");
   const tabs: ConnectTab[] = tabClients.map((client): ConnectTab => {
     const base = { id: client.id, glyph: <BrandLogo id={client.id} />, tile: logoTile(client.id), group: "primary" as const, label: client.label };
     // Connector-only tabs (sign-in live): the real steps.
     if (client.oauthOnly) {
       const o = c.oauth[client.id as "chatgpt" | "claude" | "gemini" | "grok"];
+      const availability = mcpClientAvailability(client.id, oauthLive);
       return {
         ...base,
         panel: (
           <>
             {stepsList(client.label, o.steps, oauthActions(client.id, url, client, o))}
-            {"note" in o && o.note && (
+            {(availability === "ready" || ("note" in o && o.note)) && (
               <div className="st-panel-foot">
-                <p className="st-small">{o.note}</p>
+                {/* "Ready", not "works": the server meets the vendor's published rules, and no real account has connected yet (lib/dev/mcp-availability.ts). */}
+                {availability === "ready" && (
+                  <p className="st-small" data-availability="ready">
+                    <strong>{c.ready.badge}.</strong> {fmt(c.ready.body, { app: client.label })}
+                  </p>
+                )}
+                {"note" in o && o.note && <p className="st-small">{o.note}</p>}
               </div>
             )}
           </>
@@ -239,7 +249,10 @@ export function McpPage({
   // The first tab that connects: ChatGPT once the sign-in is live, Cursor (an API key) until then.
   const defaultTab = oauthLive ? "chatgpt" : "cursor";
   const open = initialTab && tabs.some((t) => t.id === initialTab) ? initialTab : defaultTab;
-  const worksWith = tabClients.map((x) => x.label);
+  // "Works with" names only what has been seen to connect (rule 5): a "ready" assistant meets its vendor's published rules
+  // but nobody has connected the product itself yet, so it gets its own line, and an "unverified" one is named on neither.
+  const worksWith = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "available").map((x) => x.label);
+  const readyWith = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "ready").map((x) => x.label);
 
   // Only the tabs: the page below names the assistant the person picked, and with the sign-in off that is always one that connects.
   const names = Object.fromEntries(tabClients.map((x) => [x.id, x.label]));
@@ -255,6 +268,11 @@ export function McpPage({
           <p className="sr-only">
             {c.worksWith}: {worksWith.join(", ")}
           </p>
+          {readyWith.length > 0 && (
+            <p className="sr-only">
+              {c.ready.badge}: {readyWith.join(", ")}
+            </p>
+          )}
           <div className="nx-mcp-top">
             <div className={bleed ? "nx-mcp-copy nx-bleed-panel" : "nx-mcp-copy"}>
               {bleed}

@@ -317,7 +317,10 @@ describe("the MCP page", () => {
     }
     // With the sign-in off the four chat apps cannot connect yet, so the line names only what does.
     expect(d.querySelector(".sr-only")?.textContent).toBe("Works with: Cursor, VS Code (GitHub Copilot)");
-    expect(doc(mcp({ oauthLive: true })).querySelector(".sr-only")?.textContent).toBe("Works with: ChatGPT, Claude, Gemini, Grok, Cursor, VS Code (GitHub Copilot)");
+    // With it on, ChatGPT and Claude meet their vendors' published rules but nobody has connected the products yet (rule 5,
+    // lib/dev/mcp-availability.ts): they get their own "Ready to connect" line, and Gemini and Grok are named on neither.
+    const live = [...doc(mcp({ oauthLive: true })).querySelectorAll(".st-mcphero .sr-only")].map((p) => p.textContent);
+    expect(live.slice(0, 2)).toEqual(["Works with: Cursor, VS Code (GitHub Copilot)", "Ready to connect: ChatGPT, Claude"]);
   });
 
   describe("interaction", () => {

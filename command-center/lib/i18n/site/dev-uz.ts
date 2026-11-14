@@ -181,6 +181,10 @@ export const devUz: DevDictionary = {
     paid: { title: "Har qanday tarif", body: "Hisobga kirish orqali ulanish har qanday tarifda, jumladan Free tarifida ham ishlaydi. U ish maydoni kreditlarini sarflaydi (xush kelibsiz kreditlari, paketlar va tarif kreditlari hisoblanadi), kredit yetmasa, yordamchiga ish boshlanishidan oldin aytiladi. API kalitlari va REST API alohida: ular oldindan toʻlangan API balansidan toʻlanadi.", link: "Tariflar va kreditlar" },
     apiKeyInstead: "API kalitdan foydalanish",
     apiKeyInsteadBody: "Kira olmaydigan mijoz yoki skript uchun. Kalitni “Dasturchilar” → “API kalitlari” boʻlimida yarating.",
+    ready: {
+      badge: "Ulashga tayyor",
+      body: "Nightshift serveri {app} oʻz serverlari uchun eʼlon qilgan talablarga mos keladi. Yuqoridagi qadamlarni bajaring.",
+    },
     soon: {
       badge: "Tez orada",
       use: "Bugunoq API kalit bilan ishlaydi:",
@@ -431,7 +435,7 @@ export const devUz: DevDictionary = {
         items: [
           { q: "Nightshift MCP nima?", a: "Sunʼiy intellekt yordamchingiz ulanadigan server. U orqali yordamchi kanallaringizni sanab beradi, video yaratadi, har bir vazifani kuzatadi va nashr qiladi — ilovadagi bilan bir xil nashr tekshiruvi va tasdiqlashlar asosida." },
           { q: "Yordamchim nimalarni qila oladi?", a: "Kanallaringiz va videolaringizni sanab beradi, videoni boshlaydi, vazifasini kuzatadi, balansni tekshiradi, tayyor videoni ulangan akkauntlarga nashr qiladi va API kalit bilan HD yuklab olishni buyuradi. Vositalarning toʻliq roʻyxati shu sahifaning pastida." },
-          { q: "Qaysi yordamchilar mos keladi?", a: "ChatGPT, Claude, Gemini, Grok, Cursor va GitHub Copilot bilan VS Code. Yuqoridagi ulanish kartasida oʻzingiznikini tanlang — har birining oʻz qadamlari bor." },
+          { q: "Qaysi yordamchilar mos keladi?", a: "{available} bugunoq ulanadi. Boshqa yordamchi uchun uni yuqoridagi ulanish kartasida tanlang: uning varagʻida u uchun qadamlar bor." },
           { q: "Qanday ulanadi?", a: "Yuqoridagi ulanish kartasidan yordamchingizni tanlang. Kirish mavjud boʻlgan joyda server manzili va kirish kerak boʻladi; qolgan yordamchilarga “Dasturchilar”da yaratadigan API kalitingiz kerak." },
           { q: "Narxi qancha?", a: "Kirish orqali ulanish har qanday tarifda, jumladan Free tarifida ham ishlaydi va ilovada yaratilgan video bilan bir xil kreditlarni sarflaydi. API kalit oldindan toʻlangan API balansingizni sarflaydi. Video navbatga qoʻyilganda uning narxi band qilinadi; faqat video muvaffaqiyatli boʻlganda yechiladi, muvaffaqiyatsiz ishga tushirish esa hech narsaga tushmaydi." },
           { q: "U mendan soʻramasdan nashr qila oladimi?", a: "Yoʻq. Nashr ilovadagi bilan bir xil tekshiruv va tasdiqlashlardan oʻtadi, YouTube’ga yuklashlar esa siz qaror qilmaguningizcha yopiq qoladi." },
