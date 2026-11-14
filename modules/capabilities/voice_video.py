@@ -433,16 +433,17 @@ class VoiceVideoAdapter(_ElevenLabs):
         return out
 
     # -- the transcription --------------------------------------------------------------
-    def scribe(self, speech: Path, timeout_s: float) -> list:
+    def scribe(self, speech: Path, timeout_s: float, *, model: str = SCRIBE_MODEL, language: Optional[str] = None) -> list:
         """The words ElevenLabs Scribe hears in ``speech`` (``[{t, s, e}]``, seconds), one synchronous call. The form is the
-        captions job's (``scribe_form``); the language is left to the vendor's detection (0176's params carry none).
+        captions job's (``scribe_form``); the job sends :data:`SCRIBE_MODEL` and no language (0176's params carry none, so
+        the vendor detects it). ``model`` and ``language`` exist for the measurement (tools/stt_compare.py) only.
 
         Every refusal is read by the vendor's own word (``detail.code``), never by the HTTP status alone, and turned into
         our code with its fix; the message quotes the status and that word, never the vendor's text."""
         try:
             with open(speech, "rb") as fh:
                 resp = self._call("POST", f"{self.base_url}{SCRIBE_PATH}", what="transcribe",
-                                  files={"file": (SPEECH_FILE, fh, "audio/wav")}, data=scribe_form(SCRIBE_MODEL),
+                                  files={"file": (SPEECH_FILE, fh, "audio/wav")}, data=scribe_form(model, language),
                                   timeout=timeout_s, raw=True, ok_statuses=_EVERY_REFUSAL)
         except AdapterError as e:
             # The request did not get an answer (``_call`` names only the exception's class): the vendor may still bill it.

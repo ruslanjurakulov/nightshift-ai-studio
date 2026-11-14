@@ -607,6 +607,15 @@ class Scribe(Tmp):
         self.assertEqual(e.code, E_BAD_RESPONSE)
         self.assertNotIn("upload", e.message)
 
+    def test_only_the_measurement_names_another_model_or_a_language(self):
+        # tools/stt_compare.py measures scribe_v3 or a language hint through the job's own call; the job sends neither.
+        speech = self.root / "speech.wav"
+        speech.write_bytes(b"RIFF")
+        a = self.e.adapter()
+        self.assertEqual(a.scribe(speech, 10, model="scribe_v3", language="uz")[0]["t"], "Salom.")
+        (_m, _u, kw), = self.e.transcribed
+        self.assertEqual(kw["data"], scribe_form("scribe_v3", "uz"))
+
     def test_the_key_is_in_no_log_line_of_a_whole_job_or_of_a_failure(self):
         with self.assertLogs(level=logging.DEBUG) as logs:
             logging.getLogger().debug("start")

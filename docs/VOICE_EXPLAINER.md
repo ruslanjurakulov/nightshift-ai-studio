@@ -182,6 +182,23 @@ The entry ships **hidden**: no `credit_prices` row, no probe, no availability.
    audio hour (about 0.33 credits a minute against 24 charged).
 10. **Set its availability** (Models page).
 
+### Measuring the transcription (`tools/stt_compare.py`)
+
+The move from Whisper to Scribe was an owner decision; how much better Scribe reads OUR recordings is a measurement, and it
+is not in this repository yet. `tools/stt_compare.py` makes it: give it recordings and what a person heard in them,
+
+```bash
+python tools/stt_compare.py --pair uz1.mp3 uz1.txt --pair uz2.m4a uz2.txt --json stt.json
+python tools/stt_compare.py --pair uz1.mp3 uz1.txt --engines scribe --scribe-model scribe_v3 --yes   # another model
+```
+
+and it reports, per recording and engine, the word error rate (normalised: case, punctuation and every Uzbek apostrophe form
+`ʻ ' ` ‘ ’ ʼ` made one), the word count, and the share of words whose times run forward inside the recording. It decodes the
+exact 16 kHz mono copy the job sends, runs Whisper `base` locally (free) and Scribe through the job's own call (PAID, with the
+`ELEVENLABS_API_KEY` of whoever runs it). The plan and an estimate are printed first; nothing is sent without `--yes` or a typed
+`yes`, and `--dry-run` stops after the plan. An engine that fails is reported by its error code, never as a number. A newer
+Scribe model (`scribe_v3`) is worth measuring this way before the engine id is bumped to it.
+
 ### Capacity (a CPU and memory risk; deploy defaults unchanged)
 
 Measured: the render runs at about 3.4 times real time on 4 cores (the owner's figure, 2026-11-14; the first single runs
