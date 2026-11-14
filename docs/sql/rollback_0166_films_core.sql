@@ -31,9 +31,9 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.create_film_draft(uuid, text, text, text, jsonb, text)', 'ef80ca2d519ffdcbf0b3f309b51e51c5'),
-      ('public.save_film(uuid, integer, jsonb)', 'fd81fb1a641e9344d983d56ce9a003b1'),
-      ('public.archive_film(uuid)', 'b891f1e73a3b0947bea330dac19b280b'),
+      ('public.create_film_draft(uuid, text, text, text, jsonb, text)', '70de05015b8680fb82a9f2ca1763b11b'),
+      ('public.save_film(uuid, integer, jsonb)', 'f13523910eb7c9084052ba5fdcc899a6'),
+      ('public.archive_film(uuid)', '9ca4e793fd81bbd4a0aecdebd59d6dc6'),
       ('public.film_json(uuid)', '8056afd0fba0f3431c9f5c9105869bc5')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
@@ -56,11 +56,14 @@ drop function public.save_film(uuid, integer, jsonb);
 drop function public.archive_film(uuid);
 drop function public.film_json(uuid);
 drop function public.film_read(uuid);
+drop function public.film_take_json(public.film_takes);
+drop function public.film_ref_json(public.film_refs);
 drop function public.film_check_storyboard(public.films);
 drop function public.film_save_scenes(public.films, jsonb);
 drop function public.film_save_refs(public.films, uuid, jsonb, integer, text);
 drop function public.film_apply_settings(public.films, jsonb, text[]);
 drop function public.film_check_model(text, text[], text);
+drop function public.film_take_rate(text, integer);
 drop function public.film_check_asset(uuid, jsonb, text, text);
 drop function public.film_asset_live(uuid, uuid, text);
 drop function public.film_text(jsonb, text, integer, integer, boolean);

@@ -40,15 +40,19 @@
 --
 -- LIMITS (film_limits() is the one list; the table checks repeat the same numbers so any writer is held to them)
 --   60 scenes a film · 3-30 s a scene · 1-3 clip shots a scene · 1200 s of planned scenes in total · a target of 60-1200 s ·
---   a topic of 2,000 or a script of 40,000 characters · 16 film-wide references and 8 per scene · 50 open drafts an organization ·
---   a title of 120, a narration or visual prompt of 2,000, a negative prompt of 1,000 characters. Text is cleaned by film_clean_text
+--   a topic of 2,000 or a script of 40,000 characters · 16 film-wide references and 8 per scene · 50 open drafts and 500 films in
+--   all (archived ones included) an organization · 5,000 recorded changes a film · a title of 120, a narration or visual prompt of 2,000, a negative prompt of 1,000 characters. Text is cleaned by film_clean_text
 --   (0131's ads_clean_text under this file's name): control, zero-width, direction and tag characters are removed, because visual
 --   prompts are handed to a model later and an invisible character is a hidden-instruction channel.
+--   RATE (in the database, because the RPCs are reachable through PostgREST without the Command Center): per person per hour,
+--   30 creates, 240 saves, 60 archives (take_web_rate under `db.film.*`; NS429 rate_limited). Together with the caps above this bounds
+--   what a scripted editor can store; erasure is the operator's (docs/FILM_STUDIO.md, "Storage and erasure").
 --
 -- WHO MAY DO WHAT ("editor" is the role that may change work in 0018's ladder; viewers read)
 --   films, film_scenes, film_refs, film_takes, film_events
---       select: members of the organization · no insert / update / delete for anyone, the service key included (it bypasses RLS,
---       not privileges): the functions below are the only write path.
+--       select: members of the organization, of the columns this file names (column grants; never the request hash) · no insert /
+--       update / delete for anyone, the service key included (it bypasses RLS, not privileges): the functions below are the only
+--       write path. The service key reads whole rows.
 --   create_film_draft, save_film, archive_film     editors and above
 --   film_json                                      any member
 --   anon gets nothing. The helpers are executable by no API role. Another organization's film reads exactly like one that does not
@@ -67,13 +71,14 @@
 --   42501 forbidden · P0002 not_found
 --   NS400 invalid_params | invalid_idempotency_key | limit_reached | model_not_offered | model_not_available | asset_not_usable
 --   NS409 film_changed | film_not_editable | idempotency_conflict | scene_has_takes
+--   NS429 rate_limited
 --
 -- LATER MIGRATIONS (docs/FILM_STUDIO.md): money and the funding segment (0167: film_segments, the money columns on film_takes,
 --   creative_jobs.film_take_id), assembly (0168: film_cuts, films.current_cut_id), re-shoot (0169), the channel handoff (0170) and the
 --   autopilot link (0171: films.storyboard_id). A column arrives with the migration whose code writes it.
 --
 -- REQUIRES 0018 (organizations), 0036 (creative_refuse, creative_json_int, creative_jobs), 0038 (media_assets), 0047 (style kits and
--- characters) and 0125 (sellable_models). Additive and idempotent: guarded creates, drop-then-
+-- characters), 0042/0087 (take_web_rate) and 0125 (sellable_models). Additive and idempotent: guarded creates, drop-then-
 -- create checks and policies, create-or-replace functions of this file's own names, each refused if it is not this file's body.
 --
 -- Rollback: docs/sql/rollback_0166_films_core.sql (refuses while any film exists unless its override line is set).
@@ -102,6 +107,9 @@ begin
   if to_regclass('public.style_kits') is null or to_regclass('public.characters') is null then
     raise exception '0166 needs 0047_style_kits_characters.sql: apply it first';
   end if;
+  if to_regprocedure('public.take_web_rate(text, integer, integer)') is null then
+    raise exception '0166 needs take_web_rate: apply 0042_web_api_hardening.sql (and 0087) first';
+  end if;
   if to_regprocedure('public.sellable_models(text, text)') is null then
     raise exception '0166 needs sellable_models (0035, as 0125 left it): apply them first';
   end if;
@@ -119,25 +127,31 @@ begin
   for r in select * from (values
       ('public.film_clean_text(text, boolean)', 'eb0cb2be33ffcb6213e858d445863bb2'),
       ('public.film_text_ok(text, integer, integer, boolean)', '52994765248e75d72c40c690113819ce'),
-      ('public.film_limits()', 'ad62b9b10cc1a6c0d4e0ade1d54e9909'),
+      ('public.film_limits()', '9ddbb45ad45efa76265b4f1b22c048bb'),
       ('public.film_is_editable(text)', 'c0acbafd8953f6392bbccfbf6e23dd59'),
       ('public.film_events_append_only()', '108390766c4445caffdef16883a1c02b'),
-      ('public.film_log(uuid, uuid, uuid, text, jsonb)', '63dfc83398891f7f30b483354fdcebe7'),
+      ('public.film_log(uuid, uuid, uuid, text, jsonb)', 'a3b4cc07b7d530afb27f02df3e2e8239'),
       ('public.film_uuid(jsonb, text)', '51707e246a03b38cc002f3f495053aa2'),
       ('public.film_text(jsonb, text, integer, integer, boolean)', 'bd1a548e5a7306fa23a563c49896b026'),
       ('public.film_asset_live(uuid, uuid, text)', '6e051a883f2a62f8799ce19c297b80c0'),
       ('public.film_check_asset(uuid, jsonb, text, text)', 'f83fc47b93a3fb95dfe74a4c9f616e97'),
-      ('public.film_check_model(text, text[], text)', 'fdd962fd5dbe94bde94fc605a1d2c2fd'),
-      ('public.film_apply_settings(public.films, jsonb, text[])', '817c6ffc531cf3bb209a0fe65f942ec2'),
+      ('public.film_check_model(text, text[], text)', '864da632969ae05f964eee1b568a671f'),
+      ('public.film_apply_settings(public.films, jsonb, text[])', '248ffb76f60f3a6f4e8b34b85cd0c92b'),
       ('public.film_save_refs(public.films, uuid, jsonb, integer, text)', '6627ca1abe649f0b885c67d126cd10cd'),
-      ('public.film_save_scenes(public.films, jsonb)', '2fc217822368f9cde52a6947bbb7159b'),
+      ('public.film_save_scenes(public.films, jsonb)', 'c836631256f669318c9ef499d7c4c54b'),
       ('public.film_check_storyboard(public.films)', '00d22e9f962865d66a11bce77d6d54bf'),
-      ('public.film_read(uuid)', '567d7d09f285ae6aba4847ad5975f6a6'),
+      ('public.film_take_rate(text, integer)', '79b149bec3ade73e701caed809fd4f64'),
+      ('public.film_ref_json(public.film_refs)', '3774a60dcbd400928b4698f9c7e73f17'),
+      ('public.film_take_json(public.film_takes)', 'c0b977a301577d57a137a77f9ea0040f'),
+      ('public.film_read(uuid)', '92f02292981b366f817bd37881e20a0f'),
       ('public.film_json(uuid)', '8056afd0fba0f3431c9f5c9105869bc5'),
-      ('public.create_film_draft(uuid, text, text, text, jsonb, text)', 'ef80ca2d519ffdcbf0b3f309b51e51c5'),
-      ('public.save_film(uuid, integer, jsonb)', 'fd81fb1a641e9344d983d56ce9a003b1'),
-      ('public.archive_film(uuid)', 'b891f1e73a3b0947bea330dac19b280b')) v(sig, want) loop
-    if to_regtype('public.films') is null and r.sig like '%public.films%' then
+      ('public.create_film_draft(uuid, text, text, text, jsonb, text)', '70de05015b8680fb82a9f2ca1763b11b'),
+      ('public.save_film(uuid, integer, jsonb)', 'f13523910eb7c9084052ba5fdcc899a6'),
+      ('public.archive_film(uuid)', '9ca4e793fd81bbd4a0aecdebd59d6dc6')) v(sig, want) loop
+    -- (Before PostgreSQL 16, to_regprocedure raises for an argument type that does not exist instead of answering NULL.)
+    if (r.sig like '%public.films%' and to_regtype('public.films') is null)
+       or (r.sig like '%public.film\_refs%' and to_regtype('public.film_refs') is null)
+       or (r.sig like '%public.film\_takes%' and to_regtype('public.film_takes') is null) then
       continue;  -- a fresh database: the type the signature names does not exist yet, so neither can the function
     end if;
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
@@ -189,6 +203,11 @@ $$;
 -- 1. Tables
 -- ───────────────────────────────────────────────────────────────────────────
 
+-- Every foreign key to media_assets is NO ACTION on purpose: a library file is soft-deleted (deleted_at), never hard-deleted, so
+-- nothing ever cascades or nulls a film's picture behind a person's back; a file that was deleted reads as `missing` in film_json.
+-- (Hard deletes happen only when an organization is deleted, which films_org restrict already refuses while it has films.) Each of
+-- these columns has a partial index, so the check on the rare hard delete never scans a film table.
+
 create table if not exists public.films (
   id                 uuid primary key default gen_random_uuid(),
   org_id             uuid not null references public.organizations (id) on delete restrict,
@@ -226,37 +245,51 @@ create table if not exists public.films (
   archived_at        timestamptz
 );
 
+-- One constraint per concern, so a later migration replaces the one it changes (0167 a status, say) and nothing else.
 alter table public.films drop constraint if exists films_check;
-alter table public.films add constraint films_check
+alter table public.films drop constraint if exists films_text_check;
+alter table public.films add constraint films_text_check
   check (public.film_text_ok(title, 1, 120, false)
          and source_kind in ('topic', 'script', 'storyboard')
          and public.film_text_ok(source_text, 0, 40000, true)
-         and (source_kind <> 'topic' or char_length(source_text) <= 2000)
-         and language in ('en', 'ru', 'uz')
+         and (source_kind <> 'topic' or char_length(source_text) <= 2000));
+alter table public.films drop constraint if exists films_format_check;
+alter table public.films add constraint films_format_check
+  check (language in ('en', 'ru', 'uz')
          and aspect in ('16:9', '9:16', '1:1')
          and target_seconds between 60 and 1200
-         and (resolution is null or resolution in ('480p', '720p', '768p', '1080p', '2k', '4k'))
-         and (keyframe_model is null or keyframe_model ~ '^[a-z0-9][a-z0-9._-]{0,63}$')
-         and (clip_model is null or clip_model ~ '^[a-z0-9][a-z0-9._-]{0,63}$')
-         and (voice is null or (jsonb_typeof(voice) = 'object' and octet_length(voice::text) <= 512))
+         and (resolution is null or resolution in ('480p', '720p', '768p', '1080p', '2k', '4k')));
+alter table public.films drop constraint if exists films_models_check;
+alter table public.films add constraint films_models_check
+  check ((keyframe_model is null or keyframe_model ~ '^[a-z0-9][a-z0-9._-]{0,63}$')
+         and (clip_model is null or clip_model ~ '^[a-z0-9][a-z0-9._-]{0,63}$'));
+alter table public.films drop constraint if exists films_sound_check;
+alter table public.films add constraint films_sound_check
+  check ((voice is null or (jsonb_typeof(voice) = 'object' and octet_length(voice::text) <= 512))
          and (music_gain_db is null or music_gain_db between -40 and 0)
          and (duck_db is null or duck_db between -40 and 0)
          and captions_mode in ('sidecar', 'burn', 'both', 'none')
-         and transition_default in ('cut', 'dip_to_black', 'crossfade')
-         and status in ('draft', 'planning', 'planned', 'running', 'draining', 'paused', 'assembling', 'ready',
-                        'failed', 'cancelled', 'archived')
+         and transition_default in ('cut', 'dip_to_black', 'crossfade'));
+alter table public.films drop constraint if exists films_status_check;
+alter table public.films add constraint films_status_check
+  check (status in ('draft', 'planning', 'planned', 'running', 'draining', 'paused', 'assembling', 'ready',
+                    'failed', 'cancelled', 'archived')
          and (pause_reason is null or pause_reason ~ '^[a-z][a-z0-9_]{0,63}$')
          and (pause_detail is null or public.film_text_ok(pause_detail, 1, 500, false))
-         and version >= 1
-         and idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$'
-         and request_hash ~ '^[0-9a-f]{32}$'
          and ((status = 'archived') = (archived_at is not null)));
+alter table public.films drop constraint if exists films_bookkeeping_check;
+alter table public.films add constraint films_bookkeeping_check
+  check (version >= 1
+         and idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$'
+         and request_hash ~ '^[0-9a-f]{32}$');
 
 -- The film and its organization together: every child table references the pair, so a scene, a reference, a take or an event can
 -- never name another organization's film.
 create unique index if not exists films_id_org_key on public.films (id, org_id);
 create unique index if not exists films_org_idempotency_key on public.films (org_id, idempotency_key);
 create index if not exists films_org_idx on public.films (org_id, updated_at desc) where archived_at is null;
+create index if not exists films_channel_idx on public.films (channel_id) where channel_id is not null;
+create index if not exists films_music_asset_idx on public.films (music_asset_id) where music_asset_id is not null;
 
 comment on table public.films is
   'Film Studio films (migration 0166). Written only by create_film_draft / save_film / archive_film (and the later Film Studio functions); read by members of the organization.';
@@ -292,28 +325,39 @@ create table if not exists public.film_scenes (
 );
 
 alter table public.film_scenes drop constraint if exists film_scenes_check;
-alter table public.film_scenes add constraint film_scenes_check
-  check (position between 0 and 59
-         and public.film_text_ok(title, 0, 120, false)
+alter table public.film_scenes drop constraint if exists film_scenes_text_check;
+alter table public.film_scenes add constraint film_scenes_text_check
+  check (public.film_text_ok(title, 0, 120, false)
          and public.film_text_ok(narration, 0, 2000, true)
          and public.film_text_ok(visual_prompt, 0, 2000, true)
-         and public.film_text_ok(negative_prompt, 0, 1000, true)
+         and public.film_text_ok(negative_prompt, 0, 1000, true));
+alter table public.film_scenes drop constraint if exists film_scenes_shape_check;
+alter table public.film_scenes add constraint film_scenes_shape_check
+  check (position between 0 and 59
          and planned_seconds between 3 and 30
          and shot_count between 1 and 3
-         and first_frame in ('keyframe', 'asset', 'previous')
+         and jsonb_typeof(clip_params) = 'object' and octet_length(clip_params::text) <= 512
+         and (transition_in is null or transition_in in ('cut', 'dip_to_black', 'crossfade')));
+alter table public.film_scenes drop constraint if exists film_scenes_frames_check;
+alter table public.film_scenes add constraint film_scenes_frames_check
+  check (first_frame in ('keyframe', 'asset', 'previous')
          and ((first_frame = 'asset') = (first_frame_asset_id is not null))
          and not (position = 0 and first_frame = 'previous')
          and last_frame in ('none', 'asset', 'next_keyframe')
-         and ((last_frame = 'asset') = (last_frame_asset_id is not null))
-         and (keyframe_model is null or keyframe_model ~ '^[a-z0-9][a-z0-9._-]{0,63}$')
-         and (clip_model is null or clip_model ~ '^[a-z0-9][a-z0-9._-]{0,63}$')
-         and jsonb_typeof(clip_params) = 'object' and octet_length(clip_params::text) <= 512
-         and (transition_in is null or transition_in in ('cut', 'dip_to_black', 'crossfade'))
-         and (current_version is null or current_version >= 1)
+         and ((last_frame = 'asset') = (last_frame_asset_id is not null)));
+alter table public.film_scenes drop constraint if exists film_scenes_models_check;
+alter table public.film_scenes add constraint film_scenes_models_check
+  check ((keyframe_model is null or keyframe_model ~ '^[a-z0-9][a-z0-9._-]{0,63}$')
+         and (clip_model is null or clip_model ~ '^[a-z0-9][a-z0-9._-]{0,63}$'));
+alter table public.film_scenes drop constraint if exists film_scenes_status_check;
+alter table public.film_scenes add constraint film_scenes_status_check
+  check ((current_version is null or current_version >= 1)
          and status in ('draft', 'queued', 'generating', 'ready', 'failed'));
 
 create unique index if not exists film_scenes_id_film_key on public.film_scenes (id, film_id);
 create index if not exists film_scenes_org_idx on public.film_scenes (org_id, film_id);
+create index if not exists film_scenes_first_frame_idx on public.film_scenes (first_frame_asset_id) where first_frame_asset_id is not null;
+create index if not exists film_scenes_last_frame_idx on public.film_scenes (last_frame_asset_id) where last_frame_asset_id is not null;
 -- Deferrable, so a reorder can move scenes through each other's positions inside one save and be checked once at the end.
 do $$
 begin
@@ -357,6 +401,9 @@ alter table public.film_refs add constraint film_refs_check
 create unique index if not exists film_refs_position_key
   on public.film_refs (film_id, coalesce(scene_id, '00000000-0000-0000-0000-000000000000'::uuid), position);
 create index if not exists film_refs_org_idx on public.film_refs (org_id, film_id);
+-- film_read reads each scene's references by scene: without this it scans every reference of every film.
+create index if not exists film_refs_scene_idx on public.film_refs (scene_id, position) where scene_id is not null;
+create index if not exists film_refs_asset_idx on public.film_refs (asset_id) where asset_id is not null;
 
 comment on table public.film_refs is
   'The reference set of a film (migration 0166): characters, style and location pictures for the whole film (16) or one scene (8). Written only by save_film.';
@@ -401,26 +448,33 @@ create table if not exists public.film_takes (
 );
 
 alter table public.film_takes drop constraint if exists film_takes_check;
-alter table public.film_takes add constraint film_takes_check
+alter table public.film_takes drop constraint if exists film_takes_slot_check;
+alter table public.film_takes add constraint film_takes_slot_check
   check (version >= 1
          and kind in ('keyframe', 'clip', 'extend', 'narration', 'captions')
          and ((kind in ('narration', 'captions')) = (scene_id is null))
          and ((kind in ('keyframe', 'narration', 'captions') and shot_index = 0)
               or (kind = 'clip' and shot_index = 1)
               or (kind = 'extend' and shot_index between 2 and 3))
-         and attempt between 1 and 2
-         and status in ('planned', 'queued', 'running', 'completed', 'failed', 'skipped', 'superseded')
-         and (model is null or model ~ '^[a-z0-9][a-z0-9._-]{0,63}$')
+         and attempt between 1 and 2);
+alter table public.film_takes drop constraint if exists film_takes_status_check;
+alter table public.film_takes add constraint film_takes_status_check
+  check (status in ('planned', 'queued', 'running', 'completed', 'failed', 'skipped', 'superseded')
+         and (error_code is null or error_code ~ '^[a-z0-9_]{1,64}$')
+         and (error is null or char_length(error) <= 2000));
+alter table public.film_takes drop constraint if exists film_takes_request_check;
+alter table public.film_takes add constraint film_takes_request_check
+  check ((model is null or model ~ '^[a-z0-9][a-z0-9._-]{0,63}$')
          and (prompt_final is null or char_length(prompt_final) <= 8000)
          and jsonb_typeof(params) = 'object' and octet_length(params::text) <= 8192
          and (duration_s is null or (duration_s > 0 and duration_s <= 60))
-         -- Every vendor that takes a last frame takes it only together with a first frame.
-         and (last_frame_asset_id is null or first_frame_asset_id is not null)
+         and (reshoot is null or (jsonb_typeof(reshoot) = 'object' and octet_length(reshoot::text) <= 2048)));
+alter table public.film_takes drop constraint if exists film_takes_frames_check;
+alter table public.film_takes add constraint film_takes_frames_check
+  -- Every vendor that takes a last frame takes it only together with a first frame.
+  check ((last_frame_asset_id is null or first_frame_asset_id is not null)
          and cardinality(reference_asset_ids) <= 16
-         and array_position(reference_asset_ids, null) is null
-         and (reshoot is null or (jsonb_typeof(reshoot) = 'object' and octet_length(reshoot::text) <= 2048))
-         and (error_code is null or error_code ~ '^[a-z0-9_]{1,64}$')
-         and (error is null or char_length(error) <= 2000));
+         and array_position(reference_asset_ids, null) is null);
 
 create unique index if not exists film_takes_slot_key
   on public.film_takes (film_id, coalesce(scene_id, '00000000-0000-0000-0000-000000000000'::uuid), kind, version, shot_index, attempt);
@@ -428,6 +482,12 @@ create unique index if not exists film_takes_slot_key
 create unique index if not exists film_takes_job_key on public.film_takes (creative_job_id) where creative_job_id is not null;
 create index if not exists film_takes_org_idx on public.film_takes (org_id, film_id);
 create index if not exists film_takes_scene_idx on public.film_takes (scene_id, version) where scene_id is not null;
+create index if not exists film_takes_parent_idx on public.film_takes (parent_take_id) where parent_take_id is not null;
+create index if not exists film_takes_first_frame_idx on public.film_takes (first_frame_asset_id) where first_frame_asset_id is not null;
+create index if not exists film_takes_last_frame_idx on public.film_takes (last_frame_asset_id) where last_frame_asset_id is not null;
+create index if not exists film_takes_result_idx on public.film_takes (result_asset_id) where result_asset_id is not null;
+create index if not exists film_takes_result_last_frame_idx
+  on public.film_takes (result_last_frame_asset_id) where result_last_frame_asset_id is not null;
 
 comment on table public.film_takes is
   'The version history of a film (migration 0166): one row per generated key frame, clip, extend, narration or captions, with its input frames by role. Written only by the Film Studio orchestrator functions (later migrations); nothing in 0166 writes it.';
@@ -491,7 +551,9 @@ create or replace function public.film_limits() returns jsonb
     'max_film_seconds', 1200, 'target_seconds_min', 60, 'target_seconds_max', 1200,
     'max_topic_chars', 2000, 'max_script_chars', 40000, 'max_title_chars', 120,
     'max_narration_chars', 2000, 'max_prompt_chars', 2000, 'max_negative_chars', 1000,
-    'max_film_refs', 16, 'max_scene_refs', 8, 'max_open_drafts', 50, 'max_patch_bytes', 2000000)
+    'max_film_refs', 16, 'max_scene_refs', 8, 'max_open_drafts', 50, 'max_patch_bytes', 2000000,
+    'max_films_total', 500, 'max_events_per_film', 5000,
+    'creates_per_hour', 30, 'saves_per_hour', 240, 'archives_per_hour', 60)
 $$;
 
 -- Which statuses a person may still edit. One place, so the migration that adds pause-and-edit (P2) replaces one function.
@@ -500,14 +562,38 @@ create or replace function public.film_is_editable(p_status text) returns boolea
   select p_status in ('draft', 'planned')
 $$;
 
--- One audit row. The role is the caller's role in the film's organization at the moment of the call.
+-- One audit row. The role is the caller's role in the film's organization at the moment of the call. A signed-in caller with no
+-- role there is refused, never recorded as a viewer: an audit row that names the wrong role is worse than no write at all.
 create or replace function public.film_log(p_film uuid, p_org uuid, p_scene uuid, p_event text, p_detail jsonb default null)
   returns void
-  language sql volatile security definer set search_path = public, pg_temp as $$
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  uid  uuid := auth.uid();
+  role text;
+begin
+  if uid is null then
+    role := 'service';
+  else
+    role := public.org_role(p_org);
+    if role is null then
+      raise exception 'forbidden' using errcode = '42501', detail = 'film_log: the caller has no role in this organization';
+    end if;
+  end if;
   insert into public.film_events (film_id, org_id, scene_id, actor, actor_role, event, detail)
-  values (p_film, p_org, p_scene, auth.uid(),
-          case when auth.uid() is null then 'service' else coalesce(public.org_role(p_org), 'viewer') end,
-          p_event, p_detail)
+  values (p_film, p_org, p_scene, uid, role, p_event, p_detail);
+end
+$$;
+
+-- The in-database rate limit on a browser call (take_web_rate, 0042/0087: per signed-in person, per window). The RPCs are reachable
+-- through PostgREST by any editor without the Command Center, so the route's own limit (P5) is not enough. The bucket names are
+-- `db.film.*`, never the route's, so the two limits do not count each other's calls.
+create or replace function public.film_take_rate(p_bucket text, p_max integer) returns void
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+begin
+  if not public.take_web_rate('db.film.' || p_bucket, p_max, 3600) then
+    perform public.creative_refuse('rate_limited', format('at most %s film %s calls an hour; try again later', p_max, p_bucket), 'NS429');
+  end if;
+end
 $$;
 
 -- A JSON value that must be a uuid (or JSON null, answered as NULL).
@@ -574,9 +660,12 @@ begin
   if p_model is null or p_model !~ '^[a-z0-9][a-z0-9._-]{0,63}$' then
     perform public.creative_refuse('invalid_params', format('%s must be a model id', p_field));
   end if;
-  if p_model like '%seedance%'
+  -- Seedance by name, adapter or the vendor's own model id; not every ByteDance model (a Seedream key-frame model is not Seedance,
+  -- and is held by its own terms gate through sellable_models below, with its own refusal).
+  if p_model ilike '%seedance%'
      or exists (select 1 from public.model_registry m
-                 where m.id = p_model and (m.provider = 'bytedance' or m.adapter like 'video.seedance%')) then
+                 where m.id = p_model
+                   and (m.adapter ilike 'video.seedance%' or coalesce(m.spec ->> 'vendor_model', '') ilike '%seedance%')) then
     perform public.creative_refuse('model_not_offered',
       format('%s: Seedance models are not offered in Film Studio (the vendor''s terms forbid it)', p_field));
   end if;
@@ -638,7 +727,7 @@ begin
           perform public.creative_refuse('invalid_params',
             format('target_seconds must be a whole number from %s to %s', lim ->> 'target_seconds_min', lim ->> 'target_seconds_max'));
         end if;
-        f.target_seconds := (v #>> '{}')::integer;
+        f.target_seconds := (v #>> '{}')::numeric::integer;
       when 'resolution' then
         if jsonb_typeof(v) = 'null' then
           f.resolution := null;
@@ -884,13 +973,13 @@ begin
         perform public.creative_refuse('invalid_params', format('%s: planned_seconds must be a whole number from %s to %s',
                                                                 label, lim ->> 'scene_seconds_min', lim ->> 'scene_seconds_max'));
       end if;
-      sc.planned_seconds := (r.v ->> 'planned_seconds')::integer;
+      sc.planned_seconds := (r.v ->> 'planned_seconds')::numeric::integer;
     end if;
     if r.v ? 'shot_count' then
       if not public.creative_json_int(r.v -> 'shot_count', 1, (lim ->> 'max_shots')::numeric) then
         perform public.creative_refuse('invalid_params', format('%s: shot_count must be 1 to %s', label, lim ->> 'max_shots'));
       end if;
-      sc.shot_count := (r.v ->> 'shot_count')::smallint;
+      sc.shot_count := (r.v ->> 'shot_count')::numeric::smallint;
     end if;
     if r.v ? 'first_frame' then
       if jsonb_typeof(r.v -> 'first_frame') is distinct from 'string'
@@ -1029,12 +1118,46 @@ begin
 end
 $$;
 
--- The film as the app shows it: never the request hash. Unknowns stay unknown: a reference, frame, style kit or music file that no
--- longer exists is flagged `missing`, a scene never shot has current_version null, and no take is invented.
+-- One reference or take as the app shows it: named columns only, so a column a later migration adds (money, a provider's task id)
+-- reaches a viewer only when that migration lists it here.
+create or replace function public.film_ref_json(r public.film_refs) returns jsonb
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select jsonb_build_object(
+    'id', r.id, 'scene_id', r.scene_id, 'kind', r.kind, 'character_id', r.character_id, 'asset_id', r.asset_id,
+    'position', r.position,
+    'missing', case when r.character_id is not null
+                    then not exists (select 1 from public.characters c where c.id = r.character_id and c.org_id = r.org_id)
+                    else not public.film_asset_live(r.org_id, r.asset_id, 'image') end)
+$$;
+
+create or replace function public.film_take_json(t public.film_takes) returns jsonb
+  language sql immutable set search_path = public, pg_temp as $$
+  select jsonb_build_object(
+    'id', t.id, 'scene_id', t.scene_id, 'version', t.version, 'shot_index', t.shot_index, 'kind', t.kind,
+    'parent_take_id', t.parent_take_id, 'attempt', t.attempt, 'status', t.status, 'model', t.model,
+    'prompt_final', t.prompt_final, 'params', t.params, 'duration_s', t.duration_s,
+    'first_frame_asset_id', t.first_frame_asset_id, 'last_frame_asset_id', t.last_frame_asset_id,
+    'reference_asset_ids', to_jsonb(t.reference_asset_ids), 'reshoot', t.reshoot, 'creative_job_id', t.creative_job_id,
+    'result_asset_id', t.result_asset_id, 'result_last_frame_asset_id', t.result_last_frame_asset_id,
+    'error_code', t.error_code, 'error', t.error,
+    'created_at', t.created_at, 'updated_at', t.updated_at, 'finished_at', t.finished_at)
+$$;
+
+-- The film as the app shows it, named columns only (never the request hash, nor anything a later migration adds until it is listed
+-- here). Unknowns stay unknown: a reference, frame, style kit or music file that no longer exists is flagged `missing`, a scene never
+-- shot has current_version null, and no take is invented. The newest 50 events, with the total, so a long history says it is cut.
 create or replace function public.film_read(p_film uuid) returns jsonb
   language sql stable security definer set search_path = public, pg_temp as $$
   select jsonb_build_object(
-    'film', to_jsonb(f) - 'request_hash',
+    'film', jsonb_build_object(
+      'id', f.id, 'org_id', f.org_id, 'channel_id', f.channel_id, 'title', f.title, 'source_kind', f.source_kind,
+      'source_text', f.source_text, 'language', f.language, 'aspect', f.aspect, 'target_seconds', f.target_seconds,
+      'resolution', f.resolution, 'style_kit_id', f.style_kit_id, 'keyframe_model', f.keyframe_model,
+      'clip_model', f.clip_model, 'voice', f.voice, 'music_asset_id', f.music_asset_id, 'music_gain_db', f.music_gain_db,
+      'duck_db', f.duck_db, 'captions_mode', f.captions_mode, 'transition_default', f.transition_default,
+      'status', f.status, 'pause_reason', f.pause_reason, 'pause_detail', f.pause_detail, 'version', f.version,
+      'idempotency_key', f.idempotency_key, 'created_by', f.created_by, 'created_at', f.created_at,
+      'updated_at', f.updated_at, 'archived_at', f.archived_at),
     'editable', public.film_is_editable(f.status),
     'style_kit_missing', f.style_kit_id is not null
                          and not exists (select 1 from public.style_kits k where k.id = f.style_kit_id and k.org_id = f.org_id),
@@ -1042,43 +1165,36 @@ create or replace function public.film_read(p_film uuid) returns jsonb
     'totals', jsonb_build_object(
       'scenes', (select count(*) from public.film_scenes s where s.film_id = f.id),
       'planned_seconds', (select coalesce(sum(s.planned_seconds), 0) from public.film_scenes s where s.film_id = f.id)),
-    'refs', coalesce((select jsonb_agg(jsonb_build_object(
-                        'id', r.id, 'kind', r.kind, 'character_id', r.character_id, 'asset_id', r.asset_id,
-                        'position', r.position,
-                        'missing', case when r.character_id is not null
-                                        then not exists (select 1 from public.characters c
-                                                          where c.id = r.character_id and c.org_id = r.org_id)
-                                        else not public.film_asset_live(r.org_id, r.asset_id, 'image') end)
-                      order by r.position)
+    'refs', coalesce((select jsonb_agg(public.film_ref_json(r) order by r.position)
                         from public.film_refs r where r.film_id = f.id and r.scene_id is null), '[]'::jsonb),
-    'scenes', coalesce((select jsonb_agg(
-                          to_jsonb(s) - 'org_id' - 'film_id'
-                          || jsonb_build_object(
-                               'first_frame_missing', s.first_frame_asset_id is not null
-                                                      and not public.film_asset_live(s.org_id, s.first_frame_asset_id, 'image'),
-                               'last_frame_missing', s.last_frame_asset_id is not null
-                                                     and not public.film_asset_live(s.org_id, s.last_frame_asset_id, 'image'),
-                               'refs', coalesce((select jsonb_agg(jsonb_build_object(
-                                                   'id', r.id, 'kind', r.kind, 'character_id', r.character_id,
-                                                   'asset_id', r.asset_id, 'position', r.position,
-                                                   'missing', case when r.character_id is not null
-                                                                   then not exists (select 1 from public.characters c
-                                                                                     where c.id = r.character_id and c.org_id = r.org_id)
-                                                                   else not public.film_asset_live(r.org_id, r.asset_id, 'image') end)
-                                                 order by r.position)
-                                                  from public.film_refs r where r.scene_id = s.id), '[]'::jsonb),
-                               'takes', coalesce((select jsonb_agg(to_jsonb(t) - 'org_id' - 'film_id'
-                                                                   order by t.version, t.shot_index, t.attempt)
-                                                   from public.film_takes t where t.scene_id = s.id), '[]'::jsonb))
+    'scenes', coalesce((select jsonb_agg(jsonb_build_object(
+                          'id', s.id, 'position', s.position, 'title', s.title, 'narration', s.narration,
+                          'visual_prompt', s.visual_prompt, 'negative_prompt', s.negative_prompt,
+                          'planned_seconds', s.planned_seconds, 'shot_count', s.shot_count,
+                          'first_frame', s.first_frame, 'first_frame_asset_id', s.first_frame_asset_id,
+                          'last_frame', s.last_frame, 'last_frame_asset_id', s.last_frame_asset_id,
+                          'keyframe_model', s.keyframe_model, 'clip_model', s.clip_model, 'clip_params', s.clip_params,
+                          'transition_in', s.transition_in, 'current_version', s.current_version, 'status', s.status,
+                          'created_at', s.created_at, 'updated_at', s.updated_at,
+                          'first_frame_missing', s.first_frame_asset_id is not null
+                                                 and not public.film_asset_live(s.org_id, s.first_frame_asset_id, 'image'),
+                          'last_frame_missing', s.last_frame_asset_id is not null
+                                                and not public.film_asset_live(s.org_id, s.last_frame_asset_id, 'image'),
+                          'refs', coalesce((select jsonb_agg(public.film_ref_json(r) order by r.position)
+                                              from public.film_refs r where r.film_id = f.id and r.scene_id = s.id), '[]'::jsonb),
+                          'takes', coalesce((select jsonb_agg(public.film_take_json(t) order by t.version, t.shot_index, t.attempt)
+                                               from public.film_takes t where t.film_id = f.id and t.scene_id = s.id), '[]'::jsonb))
                           order by s.position)
                           from public.film_scenes s where s.film_id = f.id), '[]'::jsonb),
-    'takes', coalesce((select jsonb_agg(to_jsonb(t) - 'org_id' - 'film_id' order by t.kind, t.version, t.attempt)
+    'takes', coalesce((select jsonb_agg(public.film_take_json(t) order by t.kind, t.version, t.attempt)
                          from public.film_takes t where t.film_id = f.id and t.scene_id is null), '[]'::jsonb),
     'events', coalesce((select jsonb_agg(jsonb_build_object(
                           'id', e.id, 'event', e.event, 'scene_id', e.scene_id, 'actor', e.actor, 'actor_role', e.actor_role,
                           'detail', e.detail, 'created_at', e.created_at) order by e.id desc)
                           from (select * from public.film_events e where e.film_id = f.id order by e.id desc limit 50) e),
                        '[]'::jsonb),
+    'events_total', (select count(*) from public.film_events e where e.film_id = f.id),
+    'events_truncated', (select count(*) > 50 from public.film_events e where e.film_id = f.id),
     'limits', public.film_limits())
   from public.films f where f.id = p_film
 $$;
@@ -1152,6 +1268,14 @@ begin
     perform public.creative_refuse('limit_reached',
       format('an organization keeps at most %s open drafts; archive one first', lim ->> 'max_open_drafts'));
   end if;
+  -- Archived films count too: archiving frees an open-draft place, never storage, so create, save, archive in a loop cannot grow
+  -- the database without bound (docs/FILM_STUDIO.md, "Storage and erasure").
+  if (select count(*) from public.films where org_id = p_org) >= (lim ->> 'max_films_total')::integer then
+    perform public.creative_refuse('limit_reached',
+      format('an organization keeps at most %s films, archived ones included; ask the operator to erase old ones',
+             lim ->> 'max_films_total'));
+  end if;
+  perform public.film_take_rate('create', (lim ->> 'creates_per_hour')::integer);
 
   -- The two the caller passes as arguments are not also settings: one source for each.
   if st ? 'source_text' or st ? 'channel_id' then
@@ -1198,6 +1322,7 @@ create or replace function public.save_film(p_film uuid, p_version integer, p_pa
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   lim     jsonb := public.film_limits();
+  org     uuid;
   f       public.films;
   n       public.films;
   touched text[];
@@ -1207,20 +1332,29 @@ begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  -- Locked: two saves of the same version make one edit and one film_changed.
-  select * into f from public.films where id = p_film for update;
-  if not found or not public.is_org_member(f.org_id, 'viewer') then
+  -- Authorised before any lock: a stranger cannot make a member's save wait on a row lock it should never have taken.
+  select x.org_id into org from public.films x where x.id = p_film;
+  if org is null or not public.is_org_member(org, 'viewer') then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  if not public.is_org_member(f.org_id, 'editor') then
+  if not public.is_org_member(org, 'editor') then
     raise exception 'forbidden' using errcode = '42501';
   end if;
+  -- Locked: two saves of the same version make one edit and one film_changed. NO KEY UPDATE, not UPDATE: the key never changes,
+  -- and a child row being written (a take, an event) holds KEY SHARE on the film, which UPDATE would wait for.
+  select * into f from public.films where id = p_film for no key update;
   if not public.film_is_editable(f.status) then
     perform public.creative_refuse('film_not_editable', format('a %s film cannot be edited', f.status), 'NS409');
   end if;
   if p_version is distinct from f.version then
     perform public.creative_refuse('film_changed', format('the film is at version %s', f.version), 'NS409');
   end if;
+  if (select count(*) from public.film_events e where e.film_id = f.id) >= (lim ->> 'max_events_per_film')::integer then
+    perform public.creative_refuse('limit_reached',
+      format('this film has reached %s recorded changes; ask the operator to erase old films or start a new one',
+             lim ->> 'max_events_per_film'));
+  end if;
+  perform public.film_take_rate('save', (lim ->> 'saves_per_hour')::integer);
   if p_patch is null or jsonb_typeof(p_patch) <> 'object' or p_patch = '{}'::jsonb then
     perform public.creative_refuse('invalid_params', 'the patch must be an object with at least one field');
   end if;
@@ -1261,24 +1395,28 @@ $$;
 create or replace function public.archive_film(p_film uuid) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
-  f public.films;
+  lim jsonb := public.film_limits();
+  org uuid;
+  f   public.films;
 begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  select * into f from public.films where id = p_film for update;
-  if not found or not public.is_org_member(f.org_id, 'viewer') then
+  select x.org_id into org from public.films x where x.id = p_film;
+  if org is null or not public.is_org_member(org, 'viewer') then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  if not public.is_org_member(f.org_id, 'editor') then
+  if not public.is_org_member(org, 'editor') then
     raise exception 'forbidden' using errcode = '42501';
   end if;
+  select * into f from public.films where id = p_film for no key update;
   if f.status = 'archived' then
     return public.film_read(f.id);
   end if;
   if not public.film_is_editable(f.status) then
     perform public.creative_refuse('film_not_editable', format('a %s film cannot be archived', f.status), 'NS409');
   end if;
+  perform public.film_take_rate('archive', (lim ->> 'archives_per_hour')::integer);
   update public.films
      set status = 'archived', archived_at = now(), version = version + 1, updated_at = now()
    where id = f.id;
@@ -1300,8 +1438,28 @@ alter table public.film_events enable row level security;
 -- Rows change only through the functions above: no direct write for anyone, the service key included.
 revoke all on public.films, public.film_scenes, public.film_refs, public.film_takes, public.film_events
   from public, anon, authenticated, service_role;
-grant select on public.films, public.film_scenes, public.film_refs, public.film_takes, public.film_events
-  to authenticated, service_role;
+-- The trusted backend reads whole rows; a signed-in member reads the columns named here and nothing else, so a column a later
+-- migration adds (money, a provider's task id) is invisible to a browser until that migration grants it on purpose
+-- (tests/security/test_sec_films_core.py pins the lists). Never the request hash.
+grant select on public.films, public.film_scenes, public.film_refs, public.film_takes, public.film_events to service_role;
+grant select (id, org_id, channel_id, title, source_kind, source_text, language, aspect, target_seconds, resolution, style_kit_id,
+              keyframe_model, clip_model, voice, music_asset_id, music_gain_db, duck_db, captions_mode, transition_default, status,
+              pause_reason, pause_detail, version, idempotency_key, created_by, created_at, updated_at, archived_at)
+  on public.films to authenticated;
+grant select (id, film_id, org_id, position, title, narration, visual_prompt, negative_prompt, planned_seconds, shot_count,
+              first_frame, first_frame_asset_id, last_frame, last_frame_asset_id, keyframe_model, clip_model, clip_params,
+              transition_in, current_version, status, created_at, updated_at)
+  on public.film_scenes to authenticated;
+grant select (id, film_id, org_id, scene_id, kind, character_id, asset_id, position, created_at)
+  on public.film_refs to authenticated;
+grant select (id, film_id, org_id, scene_id, version, shot_index, kind, parent_take_id, attempt, status, model, prompt_final, params,
+              duration_s, first_frame_asset_id, last_frame_asset_id, reference_asset_ids, reshoot, creative_job_id, result_asset_id,
+              result_last_frame_asset_id, error_code, error, created_at, updated_at, finished_at)
+  on public.film_takes to authenticated;
+grant select (id, film_id, org_id, scene_id, actor, actor_role, event, detail, created_at)
+  on public.film_events to authenticated;
+-- The identity behind film_events.id: nobody but its owner draws from it (no API role could insert anyway).
+revoke all on sequence public.film_events_id_seq from public, anon, authenticated, service_role;
 
 drop policy if exists films_select on public.films;
 create policy films_select on public.films
@@ -1339,6 +1497,9 @@ revoke all on function public.film_text(jsonb, text, integer, integer, boolean) 
 revoke all on function public.film_asset_live(uuid, uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.film_check_asset(uuid, jsonb, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.film_check_model(text, text[], text) from public, anon, authenticated, service_role;
+revoke all on function public.film_take_rate(text, integer) from public, anon, authenticated, service_role;
+revoke all on function public.film_ref_json(public.film_refs) from public, anon, authenticated, service_role;
+revoke all on function public.film_take_json(public.film_takes) from public, anon, authenticated, service_role;
 revoke all on function public.film_apply_settings(public.films, jsonb, text[]) from public, anon, authenticated, service_role;
 revoke all on function public.film_save_refs(public.films, uuid, jsonb, integer, text) from public, anon, authenticated, service_role;
 revoke all on function public.film_save_scenes(public.films, jsonb) from public, anon, authenticated, service_role;
@@ -1378,4 +1539,8 @@ grant execute on function public.archive_film(uuid) to authenticated;
 --   (select bool_and(p.proconfig @> array['search_path=public, pg_temp'])
 --      from pg_proc p
 --     where p.pronamespace = 'public'::regnamespace and p.proname like any (array['film%', '%_film', '%_film_%']))  as search_path_pinned,
---   exists (select 1 from pg_trigger where tgrelid = 'public.film_events'::regclass and tgname = 'film_events_append_only') as append_only;
+--   exists (select 1 from pg_trigger where tgrelid = 'public.film_events'::regclass and tgname = 'film_events_append_only') as append_only,
+--   not has_column_privilege('authenticated', 'public.films', 'request_hash', 'select')
+--     and not has_table_privilege('authenticated', 'public.films', 'select')                         as members_read_named_columns,
+--   not has_sequence_privilege('authenticated', 'public.film_events_id_seq', 'usage')
+--     and not has_sequence_privilege('anon', 'public.film_events_id_seq', 'usage')                   as sequence_closed;

@@ -55,6 +55,9 @@ def extend(tables: dict, functions: dict) -> None:
         "film_save_scenes": SERVICE,
         "film_check_storyboard": SERVICE,
         "film_read": SERVICE,
+        "film_ref_json": SERVICE,
+        "film_take_json": SERVICE,
+        "film_take_rate": SERVICE,
     })
 
 

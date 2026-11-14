@@ -142,13 +142,74 @@ class FilmsCoreMigration(unittest.TestCase):
         self.assertNotRegex(BODY, r"public\.ads_")
         self.assertLess(BODY.index("function public.film_text_ok("), BODY.index("create table if not exists public.films ("))
 
-    def test_seedance_is_refused_by_id_provider_and_adapter(self):
+    def test_seedance_is_refused_by_id_adapter_and_vendor_model_but_not_by_vendor(self):
         body = re.search(r"function public\.film_check_model.*?\$\$(.*?)\$\$", BODY, re.S).group(1)
-        self.assertIn("p_model like '%seedance%'", body)
-        self.assertIn("m.provider = 'bytedance'", body)
-        self.assertIn("m.adapter like 'video.seedance%'", body)
+        self.assertIn("p_model ilike '%seedance%'", body)
+        self.assertIn("m.adapter ilike 'video.seedance%'", body)
+        self.assertIn("coalesce(m.spec ->> 'vendor_model', '') ilike '%seedance%'", body)
+        # A Seedream key-frame model is ByteDance's too, and is not Seedance.
+        self.assertNotIn("bytedance", body)
         self.assertIn("'model_not_offered'", body)
         self.assertIn("public.sellable_models(c, 'web')", body)
+
+    def test_every_picture_and_channel_foreign_key_has_an_index_and_the_no_action_reason_is_written(self):
+        fks = {
+            "films": ["channel_id", "music_asset_id"],
+            "film_scenes": ["first_frame_asset_id", "last_frame_asset_id"],
+            "film_refs": ["scene_id", "asset_id"],
+            "film_takes": ["parent_take_id", "first_frame_asset_id", "last_frame_asset_id", "result_asset_id",
+                           "result_last_frame_asset_id"],
+        }
+        for table, cols in fks.items():
+            for col in cols:
+                self.assertRegex(BODY, rf"create index if not exists \w+\s+on public\.{table} \({col}\b", (table, col))
+        self.assertIn("soft-deleted (deleted_at), never hard-deleted", SQL)
+
+    def test_the_review_fixes_hold_in_the_text(self):
+        # L1: a whole number written 12.0 is cast through numeric, never straight to integer.
+        self.assertNotRegex(BODY, r"(\bv #>> '\{\}'\)|r\.v ->> '[a-z_]+'\))::(integer|smallint)")
+        self.assertEqual(len(re.findall(r"::numeric::(integer|smallint)", BODY)), 3)
+        # L2 + L3: the film row is locked FOR NO KEY UPDATE, after the membership check, in both writers.
+        self.assertNotRegex(BODY, r"for update;")
+        for fn in ("save_film", "archive_film"):
+            body = re.search(rf"function public\.{fn}\(.*?\$\$(.*?)\$\$", BODY, re.S).group(1)
+            self.assertLess(body.index("is_org_member(org, 'editor')"), body.index("for no key update"), fn)
+        # L5: one constraint per concern on films; the old catch-all is dropped, never re-added.
+        for c in ("films_text_check", "films_format_check", "films_models_check", "films_sound_check", "films_status_check",
+                  "films_bookkeeping_check"):
+            self.assertIn(f"add constraint {c}\n", BODY)
+        self.assertNotIn("add constraint films_check", BODY)
+        self.assertIn("drop constraint if exists films_check;", BODY)
+        # L6: the identity sequence is closed.
+        self.assertIn("revoke all on sequence public.film_events_id_seq from public, anon, authenticated, service_role;", BODY)
+        # L7: no audit row is written under a guessed role.
+        log = re.search(r"function public\.film_log\(.*?\$\$(.*?)\$\$", BODY, re.S).group(1)
+        self.assertNotIn("'viewer'", log)
+        self.assertIn("raise exception 'forbidden'", log)
+        # L4: a member is granted named columns, never the table; the request hash is not among them.
+        self.assertNotRegex(BODY, r"grant select on [^;]*to authenticated")
+        auth = re.findall(r"grant select \(([^)]*)\)\s+on public\.(\w+) to authenticated;", BODY)
+        self.assertEqual({t for _, t in auth}, set(TABLES))
+        self.assertNotIn("request_hash", "".join(cols for cols, _ in auth))
+        read = re.search(r"function public\.film_read\(.*?\$\$(.*?)\$\$", BODY, re.S).group(1)
+        self.assertNotIn("to_jsonb(f)", read)
+        self.assertNotIn("to_jsonb(s)", read)
+        self.assertNotIn("to_jsonb(t)", read)
+        self.assertIn("'events_truncated'", read)
+        # M3: each scene's references are read by scene and film.
+        self.assertIn("from public.film_refs r where r.film_id = f.id and r.scene_id = s.id", read)
+
+    def test_every_writer_is_rate_limited_in_the_database_and_storage_is_capped(self):
+        for fn, bucket in (("create_film_draft", "create"), ("save_film", "save"), ("archive_film", "archive")):
+            body = re.search(rf"function public\.{fn}\(.*?\$\$(.*?)\$\$", BODY, re.S).group(1)
+            self.assertIn(f"public.film_take_rate('{bucket}', (lim ->> '{bucket}s_per_hour')::integer)", body, fn)
+        rate = re.search(r"function public\.film_take_rate\(.*?\$\$(.*?)\$\$", BODY, re.S).group(1)
+        self.assertIn("public.take_web_rate('db.film.' || p_bucket, p_max, 3600)", rate)
+        self.assertIn("'NS429'", rate)
+        self.assertIn("(select count(*) from public.films where org_id = p_org) >= (lim ->> 'max_films_total')::integer", BODY)
+        self.assertIn(">= (lim ->> 'max_events_per_film')::integer", BODY)
+        doc = (REPO / "docs" / "FILM_STUDIO.md").read_text(encoding="utf-8")
+        self.assertIn("## Storage and erasure", doc)
 
     def test_the_replay_guard_pins_every_function_the_file_creates(self):
         guard = dict(re.findall(r"\('(public\.[a-z_]+\([^)]*\))', '([0-9a-f]{32})'\)", SQL.split("-- 1. Tables")[0]))

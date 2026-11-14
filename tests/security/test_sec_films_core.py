@@ -45,7 +45,7 @@ def uid(n: int) -> str:
     return str(uuid.UUID(int=0x166000 + n))
 
 
-# (id, provider, adapter, capabilities, credit unit). Every one is made sellable except vid-hidden.
+# (id, provider, adapter, capabilities, credit unit). Every one is made sellable except vid-hidden and seedream-gated.
 MODELS = [
     ("img-key", "acme", "image.acme", ["t2i", "edit"], "model_img_key_image"),
     ("vid-clip", "acme", "video.acme", ["t2v", "i2v"], "model_vid_clip_second"),
@@ -54,9 +54,17 @@ MODELS = [
     ("tts-a", "acme", "audio.acme", ["tts"], "model_tts_a_character"),
     # Sellable as far as the registry is concerned (no terms gate, verified, priced): 0166 must still refuse them.
     ("seedance-lab", "acme", "video.acme", ["i2v"], "model_seedance_lab_second"),
-    ("bd-video", "bytedance", "video.acme", ["i2v"], "model_bd_video_second"),
     ("vid-sd-adapter", "acme", "video.seedance2", ["i2v"], "model_vid_sd_adapter_second"),
+    ("vid-sd-vendor", "acme", "video.acme", ["i2v"], "model_vid_sd_vendor_second"),
+    # ByteDance, but not Seedance: a Seedream key-frame model must never be refused as Seedance. One is sellable (accepted), one
+    # is held by its terms gate like the real Seedream entries (refused as not on sale, under its own word).
+    ("seedream-lab", "bytedance", "image.seedream", ["t2i"], "model_seedream_lab_image"),
+    ("seedream-gated", "bytedance", "image.seedream", ["t2i"], "model_seedream_gated_image"),
 ]
+NOT_SOLD = {"vid-hidden", "seedream-gated"}
+VENDOR_MODEL = {"vid-sd-vendor": "dreamina-seedance-2-0-260128", "seedream-lab": "seedream-4-5-251128",
+                "seedream-gated": "dola-seedream-5-0-pro-260628"}
+TERMS_GATE = {"seedream-gated": "written_consent_required"}
 
 SETTINGS = {"title": "The lighthouse", "language": "en", "target_seconds": 180}
 
@@ -152,6 +160,22 @@ class Db:
     def read(self, who, film):
         return self.one("authenticated", who, "select public.film_json(%s::uuid)", [film])
 
+    # ── seeding past a limit without going through the rate limit ───────────
+    def seed_films(self, org, n, status="draft"):
+        """n films written by the database owner (a limit is tested at its edge, not by 500 calls through a rate limit)."""
+        self.su("insert into public.films (org_id, title, source_kind, language, target_seconds, status, archived_at, "
+                "idempotency_key, request_hash) "
+                "select %s, 'Seeded', 'topic', 'en', 120, %s, case when %s = 'archived' then now() end, "
+                "'seeded-' || md5(random()::text || g::text), md5(g::text) from generate_series(1, %s) g",
+                [org, status, status, n])
+
+    def spend_rate(self, user, bucket, used):
+        """Mark `used` calls of this person's db.film.<bucket> allowance as spent in the current hour."""
+        self.su("insert into public.web_rate_counters (user_id, bucket, window_start, count) "
+                "values (%s, %s, to_timestamp(floor(extract(epoch from now()) / 3600) * 3600), %s) "
+                "on conflict (user_id, bucket, window_start) do update set count = excluded.count",
+                [user, f"db.film.{bucket}@3600", used])
+
     # ── ground truth ────────────────────────────────────────────────────────
     def events(self, film):
         return self.su("select event, actor::text, actor_role, detail from public.film_events where film_id = %s order by id", [film])
@@ -175,19 +199,21 @@ def db():
     name = f"ns_films_{uuid.uuid4().hex[:8]}"
     d = Db(sec_db.build(admin, name))
     rows = [{"id": m, "display_name": m, "provider": prov, "adapter": a, "capabilities": caps, "credit_unit": unit,
-             "entitlement": "any", "spec": {"vendor_model": "acme-" + m, "output": a.split(".")[0]}}
+             "entitlement": "any",
+             "spec": {"vendor_model": VENDOR_MODEL.get(m, "acme-" + m), "output": a.split(".")[0],
+                      **({"terms_gate": TERMS_GATE[m]} if m in TERMS_GATE else {})}}
             for m, prov, a, caps, unit in MODELS]
     d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
     for m, _prov, a, caps, unit in MODELS:
         d.su("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 2, 0) "
              "on conflict (unit) do update set credits_per_unit = 2, margin = 0", [unit])
-        if m == "vid-hidden":
+        if m in NOT_SOLD:
             continue
         d.su("select public.record_model_probe(%s, %s, %s, %s, true, null, null, 10, 100, 'security-lab')",
-             [m, a, "acme-" + m, caps[-1]])
+             [m, a, VENDOR_MODEL.get(m, "acme-" + m), caps[-1]])
         d.su("update public.model_registry set availability = 'beta' where id = %s", [m])
     sellable = {r[0] for r in d.su("select id from public.sellable_models(null, 'web')")}
-    assert sellable >= {m for m, *_ in MODELS} - {"vid-hidden"}, sellable  # the refusals below are 0166's, not the registry's
+    assert sellable >= {m for m, *_ in MODELS} - NOT_SOLD and not sellable & NOT_SOLD, sellable  # the refusals below are 0166's, not the registry's
     try:
         yield d
     finally:
@@ -509,10 +535,11 @@ def test_a_create_outside_the_limits_is_refused(db, a, kind, text, settings, wor
 
 def test_an_organization_keeps_at_most_fifty_open_drafts_and_archiving_frees_a_place(db):
     o = db.new_org()
-    ids = [db.create(o.editor, o.org)["film"]["id"] for _ in range(50)]
+    db.seed_films(o.org, 49)
+    last = db.create(o.editor, o.org)["film"]["id"]
     code, word, detail = err(lambda: db.create(o.editor, o.org))
-    assert (code, word) == ("NS400", "limit_reached") and "50" in detail
-    db.archive(o.editor, ids[0])
+    assert (code, word) == ("NS400", "limit_reached") and "50 open drafts" in detail
+    db.archive(o.editor, last)
     assert db.create(o.editor, o.org)["film"]["status"] == "draft"
 
 
@@ -631,7 +658,7 @@ def test_film_json_says_missing_for_a_reference_frame_kit_or_track_that_is_gone(
 
 # ── models ──────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("model", ["seedance-lab", "bd-video", "vid-sd-adapter"])
+@pytest.mark.parametrize("model", ["seedance-lab", "vid-sd-adapter", "vid-sd-vendor"])
 def test_no_seedance_model_is_accepted_even_when_the_registry_would_sell_it(db, a, model):
     fid = db.create(a.editor, a.org)["film"]["id"]
     for patch in ({"clip_model": model}, {"keyframe_model": model}, {"scenes": scenes(1, clip_model=model)}):
@@ -671,6 +698,217 @@ def test_a_channel_voice_needs_the_film_to_have_a_channel(db, a):
     assert "needs the film to have a channel" in err(lambda: db.save(a.editor, fid, 1, {"channel_id": None}))[2]
     assert "takes no model" in err(lambda: db.save(a.editor, fid, 1, {"voice": {"source": "channel", "voice_id": "x"}}))[2]
     assert db.save(a.editor, fid, 1, {"channel_id": None, "voice": None})["film"]["channel_id"] is None
+
+
+def test_a_seedream_key_frame_model_is_not_refused_as_seedance(db, a):
+    """L9: Seedance is refused by name, adapter or vendor model, never by vendor: a ByteDance image model is judged like any other."""
+    fid = db.create(a.editor, a.org)["film"]["id"]
+    assert db.save(a.editor, fid, 1, {"keyframe_model": "seedream-lab"})["film"]["keyframe_model"] == "seedream-lab"
+    code, word, detail = err(lambda: db.save(a.editor, fid, 2, {"keyframe_model": "seedream-gated"}))
+    assert (code, word) == ("NS400", "model_not_available") and "Seedance" not in detail
+
+
+# ── storage abuse (M1): every way to grow the database is bounded ───────────
+
+def test_archived_films_count_toward_the_organizations_total_of_five_hundred(db):
+    o = db.new_org()
+    db.seed_films(o.org, 500, status="archived")
+    code, word, detail = err(lambda: db.create(o.editor, o.org))
+    assert (code, word) == ("NS400", "limit_reached") and "500 films, archived ones included" in detail
+    assert db.su("select count(*) from public.films where org_id = %s", [o.org])[0][0] == 500
+
+
+@pytest.mark.parametrize("bucket,limit", [("create", 30), ("save", 240), ("archive", 60)])
+def test_each_film_call_is_rate_limited_in_the_database_per_person(db, a, bucket, limit):
+    fid = db.create(a.editor, a.org)["film"]["id"]
+    calls = {"create": lambda who: db.create(who, a.org),
+             "save": lambda who: db.save(who, fid, 1, {"title": "Rate"}),
+             "archive": lambda who: db.archive(who, fid)}
+    db.spend_rate(a.editor, bucket, limit)
+    code, word, detail = err(lambda: calls[bucket](a.editor))
+    assert (code, word) == ("NS429", "rate_limited") and f"at most {limit}" in detail
+    # Another person's allowance is their own, and the route's bucket (P5) is not the database's: the admin's route bucket is
+    # spent, the call still goes through.
+    db.su("insert into public.web_rate_counters (user_id, bucket, window_start, count) "
+          "values (%s, %s, to_timestamp(floor(extract(epoch from now()) / 3600) * 3600), 1000)",
+          [a.admin, f"film.{bucket}@3600"])
+    calls[bucket](a.admin)
+    assert db.su("select count(*) from public.film_events where film_id = %s and actor = %s", [fid, a.editor])[0][0] == 1
+
+
+def test_a_film_takes_at_most_five_thousand_recorded_changes_and_can_still_be_archived(db, a):
+    fid = db.create(a.editor, a.org)["film"]["id"]
+    db.su("insert into public.film_events (film_id, org_id, actor, actor_role, event) "
+          "select %s, %s, %s, 'editor', 'saved' from generate_series(1, 4998)", [fid, a.org, a.editor])
+    assert db.save(a.editor, fid, 1, {"title": "The last one"})["events_total"] == 5000
+    code, word, detail = err(lambda: db.save(a.editor, fid, 2, {"title": "One too many"}))
+    assert (code, word) == ("NS400", "limit_reached") and "5000 recorded changes" in detail
+    assert db.archive(a.editor, fid)["film"]["status"] == "archived"   # one more, once: an archived film takes no more edits
+
+
+def test_the_documented_operator_erasure_removes_the_named_films_and_leaves_the_trail_append_only(db, a):
+    """M1: docs/FILM_STUDIO.md's erasure block, run as written (the database owner, no new grant), erases exactly the films it names."""
+    doc = (sec_db.REPO / "docs" / "FILM_STUDIO.md").read_text(encoding="utf-8")
+    block = doc.split("## Storage and erasure", 1)[1].split("```sql", 1)[1].split("```", 1)[0]
+    block = "\n".join(ln for ln in block.splitlines() if ln.strip() not in ("begin;", "commit;")).replace("<org uuid>", a.org)
+    old, kept = (db.create(a.editor, a.org)["film"]["id"] for _ in range(2))
+    db.save(a.editor, old, 1, {"refs": [{"kind": "style", "asset_id": a.image}], "scenes": scenes(2)})
+    db.archive(a.editor, old)
+    db.archive(a.editor, kept)
+    db.su("update public.films set archived_at = now() - interval '100 days' where id = %s", [old])
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute(block)
+        c.commit()
+    for t in TABLES:
+        col = "id" if t == "films" else "film_id"
+        assert db.su(f"select count(*) from public.{t} where {col} = %s", [old])[0][0] == 0, t
+    assert db.su("select count(*) from public.film_events where film_id = %s", [kept])[0][0] == 2
+    with pytest.raises(psycopg.Error) as e:
+        db.su("delete from public.film_events where film_id = %s", [kept])
+    assert "append-only" in str(e.value)
+
+
+# ── reading (M3, L4, L10) ───────────────────────────────────────────────────
+
+def test_film_read_reaches_every_row_through_an_index(db, a):
+    """M3: with sequential scans priced out, film_read must still never scan a film table (one would mean a missing index)."""
+    fid = db.create(a.editor, a.org)["film"]["id"]
+    sc = db.save(a.editor, fid, 1, {"refs": [{"kind": "style", "asset_id": a.image}],
+                                    "scenes": scenes(3, refs=[{"kind": "location", "asset_id": a.image2}])})["scenes"]
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("set local enable_seqscan = off")
+        c.execute("select public.film_read(%s)", [fid]).fetchone()
+        # This transaction's own scans, table by table (pg_stat_xact_user_tables covers the current transaction only).
+        scans = c.execute("select relname, seq_scan, coalesce(idx_scan, 0) from pg_stat_xact_user_tables "
+                          "where schemaname = 'public' and relname like 'film%' order by 1").fetchall()
+        assert {r[0] for r in scans} >= {"films", "film_scenes", "film_refs", "film_takes", "film_events"}, scans
+        assert all(seq == 0 for _, seq, _idx in scans), scans
+        plan = c.execute("explain (format json) select r.id from public.film_refs r where r.film_id = %s and r.scene_id = %s",
+                         [fid, sc[1]["id"]]).fetchone()[0]
+        c.rollback()
+    assert "Seq Scan" not in json.dumps(plan) and "film_refs_scene_idx" in json.dumps(plan), plan
+
+
+AUTH_COLUMNS = {
+    "films": {"id", "org_id", "channel_id", "title", "source_kind", "source_text", "language", "aspect", "target_seconds",
+              "resolution", "style_kit_id", "keyframe_model", "clip_model", "voice", "music_asset_id", "music_gain_db", "duck_db",
+              "captions_mode", "transition_default", "status", "pause_reason", "pause_detail", "version", "idempotency_key",
+              "created_by", "created_at", "updated_at", "archived_at"},
+    "film_scenes": {"id", "film_id", "org_id", "position", "title", "narration", "visual_prompt", "negative_prompt",
+                    "planned_seconds", "shot_count", "first_frame", "first_frame_asset_id", "last_frame", "last_frame_asset_id",
+                    "keyframe_model", "clip_model", "clip_params", "transition_in", "current_version", "status", "created_at",
+                    "updated_at"},
+    "film_refs": {"id", "film_id", "org_id", "scene_id", "kind", "character_id", "asset_id", "position", "created_at"},
+    "film_takes": {"id", "film_id", "org_id", "scene_id", "version", "shot_index", "kind", "parent_take_id", "attempt", "status",
+                   "model", "prompt_final", "params", "duration_s", "first_frame_asset_id", "last_frame_asset_id",
+                   "reference_asset_ids", "reshoot", "creative_job_id", "result_asset_id", "result_last_frame_asset_id",
+                   "error_code", "error", "created_at", "updated_at", "finished_at"},
+    "film_events": {"id", "film_id", "org_id", "scene_id", "actor", "actor_role", "event", "detail", "created_at"},
+}
+
+
+def test_a_member_reads_exactly_the_named_columns_and_a_later_column_stays_hidden(db, a):
+    """L4: column grants, not a table grant, so a money or provider column a later migration adds is not a viewer's to read."""
+    for t, cols in AUTH_COLUMNS.items():
+        readable = {r[0] for r in db.su("select column_name from information_schema.columns where table_schema = 'public' "
+                                         "and table_name = %s and has_column_privilege('authenticated', 'public.' || table_name, "
+                                         "column_name, 'select')", [t])}
+        assert readable == cols, (t, readable ^ cols)
+        assert not db.su("select has_table_privilege('authenticated', %s, 'select')", [f"public.{t}"])[0][0], t
+        assert db.su("select has_table_privilege('service_role', %s, 'select')", [f"public.{t}"])[0][0], t
+    fid = db.create(a.editor, a.org)["film"]["id"]
+    with pytest.raises(psycopg.Error) as e:
+        db.act("authenticated", a.viewer, "select request_hash from public.films where id = %s", [fid])
+    assert e.value.sqlstate == "42501"
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("alter table public.films add column cost_cents integer default 7")
+        c.execute("alter table public.film_takes add column provider_task_id text default 'task-secret'")
+        c.execute("select set_config('request.jwt.claims', %s, true)", [claims("authenticated", a.viewer)])
+        c.execute("set local role authenticated")
+        j = c.execute("select public.film_json(%s)", [fid]).fetchone()[0]
+        assert "cost_cents" not in j["film"]
+        with pytest.raises(psycopg.Error) as e:
+            c.execute("select cost_cents from public.films")
+        assert e.value.sqlstate == "42501"
+        c.rollback()
+
+
+def test_film_json_says_how_many_events_there_are_when_it_shows_only_fifty(db, a):
+    fid = db.create(a.editor, a.org)["film"]["id"]
+    j = db.read(a.viewer, fid)
+    assert (len(j["events"]), j["events_total"], j["events_truncated"]) == (1, 1, False)
+    db.su("insert into public.film_events (film_id, org_id, actor, actor_role, event) "
+          "select %s, %s, %s, 'editor', 'saved' from generate_series(1, 60)", [fid, a.org, a.editor])
+    j = db.read(a.viewer, fid)
+    assert (len(j["events"]), j["events_total"], j["events_truncated"]) == (50, 61, True)
+
+
+# ── parsing, locks, the audit role, the sequence (L1, L2, L3, L6, L7) ───────
+
+def test_a_whole_number_written_with_a_decimal_point_is_a_whole_number(db, a):
+    """L1: 12.0 is accepted as 12 (never an unmapped 22P02); 12.5 is refused with the field's own word."""
+    fid = db.create(a.editor, a.org, settings={**SETTINGS, "target_seconds": 180.0})["film"]["id"]
+    s = db.save(a.editor, fid, 1, {"target_seconds": 240.0, "scenes": [{"planned_seconds": 12.0, "shot_count": 2.0}]})
+    assert (s["film"]["target_seconds"], s["scenes"][0]["planned_seconds"], s["scenes"][0]["shot_count"]) == (240, 12, 2)
+    for patch, field in (({"target_seconds": 240.5}, "target_seconds"), ({"scenes": [{"planned_seconds": 12.5}]}, "planned_seconds"),
+                         ({"scenes": [{"planned_seconds": 12, "shot_count": 1.5}]}, "shot_count"),
+                         ({"scenes": [{"planned_seconds": "12"}]}, "planned_seconds")):
+        code, word, detail = err(lambda: db.save(a.editor, fid, 2, patch))
+        assert (code, word) == ("NS400", "invalid_params") and field in detail, (patch, detail)
+
+
+def test_a_save_is_not_blocked_by_a_child_row_being_written(db, a):
+    """L2: FOR NO KEY UPDATE. A take or event being inserted holds KEY SHARE on its film; FOR UPDATE would wait for it."""
+    fid = db.create(a.editor, a.org)["film"]["id"]
+    with psycopg.connect(db.dsn, autocommit=False) as child:
+        child.execute("insert into public.film_events (film_id, org_id, actor_role, event) values (%s, %s, 'service', 'worker_note')",
+                      [fid, a.org])
+        with psycopg.connect(db.dsn, autocommit=False) as c:
+            c.execute("set local lock_timeout = '2s'")
+            c.execute("select set_config('request.jwt.claims', %s, true)", [claims("authenticated", a.editor)])
+            c.execute("set local role authenticated")
+            assert c.execute("select public.save_film(%s, 1, '{\"title\": \"Not blocked\"}'::jsonb)", [fid]).fetchone()[0]
+            assert c.execute("select public.archive_film(%s)", [fid]).fetchone()[0]["film"]["status"] == "archived"
+            c.commit()
+        child.rollback()
+
+
+def test_a_stranger_is_answered_before_any_row_lock_is_taken(db, a, b):
+    """L3: authorise, then lock. A stranger's call on a film locked by someone else answers not_found at once, never waits."""
+    fid = db.create(a.editor, a.org)["film"]["id"]
+    with psycopg.connect(db.dsn, autocommit=False) as holder:
+        holder.execute("select 1 from public.films where id = %s for update", [fid])
+        for q in ("select public.save_film(%s, 1, '{\"title\": \"x\"}'::jsonb)", "select public.archive_film(%s)"):
+            with psycopg.connect(db.dsn, autocommit=False) as c:
+                c.execute("set local lock_timeout = '1s'")
+                c.execute("select set_config('request.jwt.claims', %s, true)", [claims("authenticated", b.editor)])
+                c.execute("set local role authenticated")
+                with pytest.raises(psycopg.Error) as e:
+                    c.execute(q, [fid])
+                assert (e.value.sqlstate, str(e.value).splitlines()[0]) == ("P0002", "not_found"), q
+        holder.rollback()
+
+
+def test_the_audit_never_records_a_role_the_caller_does_not_have(db, a, b):
+    """L7: film_log refuses a signed-in caller with no role in the organization instead of recording 'viewer'."""
+    fid = db.create(a.editor, a.org)["film"]["id"]
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("select set_config('request.jwt.claims', %s, true)", [claims("authenticated", b.editor)])
+        with pytest.raises(psycopg.Error) as e:
+            c.execute("select public.film_log(%s, %s, null, 'forged')", [fid, a.org])
+        assert e.value.sqlstate == "42501"
+        c.rollback()
+    assert [e[0] for e in db.events(fid)] == ["created"]
+
+
+def test_no_api_role_may_use_the_event_sequence(db):
+    """L6."""
+    rows = db.su("select r, p, has_sequence_privilege(r, 'public.film_events_id_seq', p) "
+                 "from unnest(array['anon', 'authenticated', 'service_role', 'public']) r, unnest(array['USAGE', 'SELECT', 'UPDATE']) p "
+                 "where r <> 'public'")
+    assert [x for x in rows if x[2]] == []
+    acl = db.su("select coalesce(array_to_string(relacl, ','), '') from pg_class where oid = 'public.film_events_id_seq'::regclass")[0][0]
+    assert "anon" not in acl and "authenticated" not in acl and "service_role" not in acl and "=" not in acl.replace("postgres=", ""), acl
 
 
 # ── the migration itself ────────────────────────────────────────────────────

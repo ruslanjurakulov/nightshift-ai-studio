@@ -62,7 +62,56 @@ Errors are SQLSTATE plus a machine word:
 
 - `42501 forbidden`, `P0002 not_found`;
 - `NS400 invalid_params | invalid_idempotency_key | limit_reached | model_not_offered | model_not_available | asset_not_usable`;
-- `NS409 film_changed | film_not_editable | idempotency_conflict | scene_has_takes`.
+- `NS409 film_changed | film_not_editable | idempotency_conflict | scene_has_takes`;
+- `NS429 rate_limited`.
+
+A signed-in member reads the tables through **column grants**, not a table grant. A column that a later migration adds, such as
+money or a provider's task id, stays invisible to a browser until that migration grants it. `film_json` names its columns for the
+same reason. The service key reads whole rows.
+
+## Storage and erasure
+
+The four calls are reachable through PostgREST by any editor, with or without the Command Center. So the database itself bounds
+what a scripted editor can store:
+
+| Bound | Value | Where |
+| :-- | :-- | :-- |
+| Films an organization keeps, archived ones included | 500 | `create_film_draft` (`max_films_total`) |
+| Open drafts an organization keeps | 50 | `create_film_draft` (`max_open_drafts`) |
+| Recorded changes (events) per film | 5,000 | `save_film` (`max_events_per_film`). Archiving stays possible once, so a full film is never stuck as an open draft. |
+| Calls per person per hour | 30 creates, 240 saves, 60 archives | `film_take_rate`, which wraps `take_web_rate` under `db.film.*`. These buckets are separate from the routes' own. |
+| One save | 2 MB, 60 scenes, the text limits | `save_film` |
+
+A save **replaces** the storyboard. It never appends to it. So a film's size is bounded by its limits: about 60 × 5,120 characters
+of scene text plus a 40,000-character script, roughly 1.4 MB in the worst case. Its events are bounded by 5,000 small rows. The
+worst case for one organization is about 500 × (1.4 MB + 1.5 MB). Reaching it takes weeks at the rate limits, and the operator can
+see it coming.
+
+**Erasure is the operator's job, and nobody else's.** No role, the service key included, may delete a film row. `film_events`
+refuses update and delete even from the database owner, by trigger. To erase films, for example on a customer's request or when
+an organization reaches 500, the owner runs this in the Supabase SQL editor as the table owner. It needs no grant:
+
+```sql
+begin;
+set local lock_timeout = '5s';
+-- Name the films first and look at them: select id, org_id, title, status, created_at from public.films where ...;
+create temp table erase_films on commit drop as
+  select id from public.films where org_id = '<org uuid>' and status = 'archived' and archived_at < now() - interval '90 days';
+-- The append-only trigger is lifted inside this one transaction only. ALTER TABLE holds an exclusive lock until commit, so no
+-- other session can update or delete an event in between.
+alter table public.film_events disable trigger film_events_append_only;
+delete from public.film_events where film_id in (select id from erase_films);
+alter table public.film_events enable trigger film_events_append_only;
+delete from public.film_takes  where film_id in (select id from erase_films);   -- before the scenes: a take restricts its scene
+delete from public.film_refs   where film_id in (select id from erase_films);
+delete from public.film_scenes where film_id in (select id from erase_films);
+delete from public.films       where id      in (select id from erase_films);
+-- Check before commit: the trigger is back on, and the counts are what you meant.
+select tgenabled from pg_trigger where tgrelid = 'public.film_events'::regclass and tgname = 'film_events_append_only';  -- 'O'
+commit;
+```
+
+Library files (key frames, clips) are not touched by this. They are ordinary media assets, deleted through the library as usual.
 
 Tests:
 
