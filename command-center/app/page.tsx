@@ -21,6 +21,7 @@ import {
 } from "@/lib/landing";
 import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { readPublicCreditRates } from "@/lib/server/public-rates";
+import { readPublicSiteStats } from "@/lib/server/public-stats";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { Landing } from "@/components/landing/Landing";
 import { faqForSale, landingFaqItems } from "@/components/landing/Faq";
@@ -59,11 +60,12 @@ export default async function Home() {
   // The same pricing source /pricing reads; the teaser only ever shows what it holds.
   // Plans (0034) come from the public price list in the database. The landing
   // is signed out by now, so all three are the shared public reads: bounded,
-  // kept and run together (BR-L-047, BR-L-101).
-  const [catalogRead, apiPrices, siteRates] = await Promise.all([
+  // kept and run together (BR-L-047, BR-L-101). The live counters (0164) are the same kind of read, and null while hidden.
+  const [catalogRead, apiPrices, siteRates, liveStats] = await Promise.all([
     readPublicPlanCatalog(),
     readPublicApiPrices(),
     readPublicCreditRates(),
+    readPublicSiteStats(),
   ]);
   // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
   const catalog = planValue(catalogRead);
@@ -95,6 +97,7 @@ export default async function Home() {
         showcase={visibleShowcase(SHOWCASE)}
         expiry={expiry}
         dodo={dodo}
+        liveStats={liveStats}
       />
     </PublicShell>
   );

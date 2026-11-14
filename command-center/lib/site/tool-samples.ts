@@ -69,9 +69,8 @@ export function toolSource(job: string | null): string | null {
 }
 
 /**
- * Every sample the wall shows, for the gallery to leave out. The third step's phone and the Approvals band's thumbnail are not
- * samples any more: both sit beside the Silk Road ask, so both show that example's own picture (lib/site/art.ts THUMB_ART). A
- * showcase sample made from another prompt (a falling sneaker, a jungle explorer) under that topic said the result need not match
- * the prompt (owner, 2026-11-14); those two samples are back in the gallery, under their own prompts.
+ * Every sample the wall shows, for the gallery to leave out. The third step's phone and the Approvals band's thumbnail are not the
+ * wall's: they show the example topic's own clips (components/site/slots.ts EXAMPLE_JOBS), which the landing leaves out of its
+ * gallery the same way (landingPlacedJobs).
  */
 export const TOOL_JOBS: string[] = Object.values(TOOL_SAMPLES).flatMap((s) => [s.job, toolSource(s.job)].filter((x): x is string => Boolean(x)));

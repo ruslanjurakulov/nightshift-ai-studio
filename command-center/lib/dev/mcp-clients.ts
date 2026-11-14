@@ -151,6 +151,18 @@ export function cursorInstallLink(mcpUrl: string): string {
   return `cursor://anysphere.cursor-deeplink/mcp/install?name=${MCP_SERVER_NAME}&config=${btoa(JSON.stringify({ url: mcpUrl }))}`;
 }
 
+/**
+ * Claude Desktop's documented chat link (https://support.claude.com/en/articles/14729294-open-claude-desktop-with-a-link,
+ * read 2026-11-14): `claude://claude.ai/new?q=` + the URL-encoded prompt opens a new chat with the prompt filled in, for
+ * the person to review and send; nothing is sent by the link. The web form `https://claude.ai/new?q=` is NOT in Anthropic's
+ * docs, so it is not used, and no other assistant documents such a link (ChatGPT's `?q=` is community lore only), so
+ * their prompts are copy-only. A custom scheme: it does nothing where the desktop app is not installed, which is why the
+ * copy button always sits beside it.
+ */
+export function claudeDesktopPromptLink(prompt: string): string {
+  return `claude://claude.ai/new?q=${encodeURIComponent(prompt)}`;
+}
+
 /** VS Code's own install link (opens a review editor before anything is installed). */
 export function vscodeInstallLink(mcpUrl: string, edition: "stable" | "insiders" = "stable"): string {
   const scheme = edition === "insiders" ? "vscode-insiders" : "vscode";

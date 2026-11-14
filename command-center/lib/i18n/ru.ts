@@ -14,6 +14,7 @@ import { ownerRpcRu } from "./owner-rpc/ru";
 import { marketingRu } from "./marketing/ru";
 import { modelSwitchRu } from "./model-switch/ru";
 import { modelBudgetRu } from "./model-budget/ru";
+import { planFinderRu } from "./plan-finder/ru";
 import { billingLedgerRu } from "./billing-ledger/ru";
 import { addCreditsRu } from "./add-credits/ru";
 import { modelKeysRu } from "./model-keys/ru";
@@ -62,6 +63,7 @@ export const ru: Dictionary = {
   modelSwitch: modelSwitchRu,
   studioHome: studioHomeRu,
   modelBudget: modelBudgetRu,
+  planFinder: planFinderRu,
   /** The owner's per-provider ledger on the Billing page: ./billing-ledger/ru.ts. */
   billingLedger: billingLedgerRu,
   addCredits: addCreditsRu,

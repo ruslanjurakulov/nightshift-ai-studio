@@ -1,4 +1,4 @@
-import { REFERRAL_PATH, REFUND_PATH, ROADMAP_PATH, SITEMAP_PATHS } from "@/lib/public-paths";
+import { REFERRAL_PATH, REFUND_PATH, ROADMAP_PATH, SITEMAP_PATHS, TRUST_PATH } from "@/lib/public-paths";
 import { DEV_PAGE_PATHS } from "@/lib/dev-pages";
 
 /**
@@ -14,7 +14,7 @@ import { DEV_PAGE_PATHS } from "@/lib/dev-pages";
  * /docs/skills are the public 404 and are not listed.
  */
 /** Listed in the sitemap and llms.txt, not counted by the page-view beacon (see above). */
-export const UNCOUNTED_PAGE_PATHS = [ROADMAP_PATH, REFUND_PATH, REFERRAL_PATH] as const;
+export const UNCOUNTED_PAGE_PATHS = [ROADMAP_PATH, REFUND_PATH, TRUST_PATH, REFERRAL_PATH] as const;
 
 export function listedPagePaths(devPages: boolean): string[] {
   return devPages ? [...SITEMAP_PATHS, ...UNCOUNTED_PAGE_PATHS, ...DEV_PAGE_PATHS] : [...SITEMAP_PATHS, ...UNCOUNTED_PAGE_PATHS];

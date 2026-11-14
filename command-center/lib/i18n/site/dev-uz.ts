@@ -185,6 +185,10 @@ export const devUz: DevDictionary = {
       badge: "Ulashga tayyor",
       body: "Nightshift serveri {app} oʻz serverlari uchun eʼlon qilgan talablarga mos keladi. Yuqoridagi qadamlarni bajaring.",
     },
+    unverified: {
+      badge: "Hali sinalmagan",
+      body: "Bu qadamlar {app} hujjatlaridan olingan. Hali hech kim {app}’ni Nightshift’ga ulab koʻrmagan, shuning uchun u ishlaydi deb ayta olmaymiz.",
+    },
     soon: {
       badge: "Tez orada",
       use: "Bugunoq API kalit bilan ishlaydi:",
@@ -428,6 +432,28 @@ export const devUz: DevDictionary = {
           { id: "dunes", tag: "Haftalik", prompt: "Kanalim uchun shu haftalik video, tasdiqlashga tayyor." },
         ],
       },
+      prompts: {
+        label: "Soʻrovlar galereyasi",
+        title: "Haqiqiy vositalarga mos soʻrovlar",
+        lead: "Har bir kartada yordamchi chaqiradigan vositalar yozilgan — joylashdan oldin u nimani qila olishi va nimani qila olmasligini bilasiz.",
+        copy: "Soʻrovni nusxalash",
+        copyName: "soʻrovni",
+        toolsLabel: "Vositalar:",
+        door: { either: "Kirish yoki API kalit", key: "API kalit", studioKey: "Studiya huquqlari bor API kalit" },
+        openClaude: "Claude’da ochish",
+        openClaudeHint: "“Claude’da ochish” uchun Nightshift allaqachon ulangan Claude kompyuter ilovasi kerak. Havola soʻrovni yozib qoʻyadi, uni oʻzingiz oʻqib yuborasiz; havolaning oʻzi hech narsa yubormaydi.",
+        keyNote: "Studiya vositalari (list_models, quote_generation, create_generation, get_generation) faqat Studiya huquqlari bor API kalitga beriladi, kirish orqali ulangan ilovaga hech qachon berilmaydi.",
+        items: [
+          { id: "balance", title: "Balansimni tekshirish", prompt: "Nightshift’dagi balansim qancha va hozir ketayotgan ishlar uchun qanchasi band qilingan?" },
+          { id: "channels", title: "Kanallarim roʻyxati", prompt: "Nightshift’da qaysi kanallarim bor? Har birining nomi va id’sini ayt." },
+          { id: "plan", title: "Keyingi videoni rejalash", prompt: "Nightshift YouTube kanalim uchun yaratgan oxirgi oʻnta videoni koʻrib chiq va keyingisi uchun uchta mavzu taklif qil. Hozircha hech narsani boshlama." },
+          { id: "make", title: "Yaratish va kuzatish", prompt: "Kanalim uchun choy qanday yetishtirilishi haqida besh daqiqalik video yarat, keyin vazifa tugaguncha uni kuzatib bor." },
+          { id: "review", title: "Videom qay holatda", prompt: "Oxirgi tayyor videomni koʻrsat: kirish holati, tekshiruv holati va nashr soʻrovlari." },
+          { id: "models", title: "Foydalana oladigan modellarim", prompt: "Matndan qisqa klip yaratish uchun qaysi Studiya modellaridan foydalana olaman va har biri qanday davomiylikni qabul qiladi?" },
+          { id: "quote", title: "10 soniyalik klip narxi", prompt: "Studiya modellarimdan biri bilan 16:9 formatdagi 10 soniyalik klip — tongdagi toʻlqinlar — narxini hisobla. Hozircha yaratma." },
+          { id: "generate", title: "Hisoblangan narx doirasida yaratish", prompt: "Shu klipni hozir yarat, lekin hozirgina hisoblagan narxingdan qimmat boʻlmasin. Fayl tayyor boʻlganda havolasini yubor." },
+        ],
+      },
       works: {
         label: "Bilan ishlaydi",
         title: "Siz allaqachon foydalanayotgan yordamchilar bilan ishlaydi",
@@ -446,6 +472,14 @@ export const devUz: DevDictionary = {
           { q: "U mendan soʻramasdan nashr qila oladimi?", a: "Yoʻq. Nashr ilovadagi bilan bir xil tekshiruv va tasdiqlashlardan oʻtadi, YouTube’ga yuklashlar esa siz qaror qilmaguningizcha yopiq qoladi." },
           { q: "Yordamchini qanday uzaman?", a: "Kirish orqali ulangan ilova “Dasturchilar” → “Ulangan ilovalar” boʻlimida olib tashlanadi va darhol toʻxtaydi. API kalit “Dasturchilar” → “API kalitlari”da bekor qilinadi." },
           { q: "Kreditlar tugab qolsa-chi?", a: "Soʻrov ish boshlanishidan oldin rad etiladi, yordamchi esa keyingi qadamni aytadi. Hech narsa band qilinmaydi, navbatga qoʻyilmaydi va yaratilmaydi. Kredit qoʻshganingizdan keyin shu ulanish keyingi chaqiruvdan yana ishlaydi." },
+          {
+            q: "Ulanish kredit sarflaydimi?",
+            a: "Yoʻq. Ulanish hech narsaga tushmaydi, kanallaringiz, videolaringiz, vazifalar va balansni oʻqish ham. Faqat uchta vosita sarflaydi. create_video video narxini band qiladi va faqat video muvaffaqiyatli boʻlganda yechadi. API kalit bilan request_download fayl tayyor boʻlganda yechiladi, create_generation esa quote_generation’dan keyin rozi boʻlgan max_credits’dan hech qachon koʻp yechmaydi — narxni hisoblashning oʻzi hech narsaga tushmaydi. Kirish orqali ulangan har bir ilovaning oʻz oylik sarf limiti bor: uni ilovaga ruxsat berayotganda belgilaysiz va “Dasturchilar” → “Ulangan ilovalar”da oʻzgartirasiz, 0 esa ilovani faqat oʻqiydigan qiladi. API kalitning ham oʻz oylik limiti boʻlishi mumkin.",
+          },
+          {
+            q: "Yordamchim nimalarni koʻradi?",
+            a: "Faqat vositalari qaytargan narsalarni va faqat ruxsat berayotganda belgilagan huquqlaringiz doirasida: kanallaringiz, videolaringiz va vazifalar, qayerga nashr qilish mumkinligi hamda kreditlaringiz va shu ulanishning limiti. Studiya huquqlari bor API kalit bilan u Studiya modellarini, narx hisob-kitoblarini va kalitning oʻz generatsiyalarini ham koʻradi. U parolingizni, YouTube’dagi kirishingizni yoki biror kalitni hech qachon koʻrmaydi. Nightshift yozishmangizni emas, faqat yordamchi chaqirgan vositalarni oladi.",
+          },
         ],
       },
       keyMode: {
@@ -458,6 +492,8 @@ export const devUz: DevDictionary = {
           cost: "API kalit oldindan toʻlangan API balansingizni sarflaydi. Video navbatga qoʻyilganda uning narxi band qilinadi; faqat video muvaffaqiyatli boʻlganda yechiladi, muvaffaqiyatsiz ishga tushirish esa hech narsaga tushmaydi. Har qanday tarifda ish maydoni kreditlarini sarflaydigan kirish orqali ulanish tez orada ochiladi.",
           disconnect: "API kalit “Dasturchilar” → “API kalitlari”da bekor qilinadi.",
           credits: "Soʻrov ish boshlanishidan oldin rad etiladi, yordamchi esa keyingi qadamni aytadi. Hech narsa band qilinmaydi, navbatga qoʻyilmaydi va yaratilmaydi. API balansini toʻldirganingizdan keyin shu kalit keyingi chaqiruvdan yana ishlaydi.",
+          spend: "Yoʻq. Kalitni qoʻshish hech narsaga tushmaydi, kanallaringiz, videolaringiz, vazifalar, balans va Studiya modellarini oʻqish hamda quote_generation ham. Faqat uchta vosita sarflaydi. create_video va request_download API balansingizdan toʻlanadi: video narxi band qilinadi va faqat muvaffaqiyatli boʻlganda yechiladi, fayl esa tayyor boʻlganda yechiladi. create_generation kredit sarflaydi va hech qachon rozi boʻlgan max_credits’dan koʻp emas. Tashkilot oylik limit belgilashi mumkin, har bir kalit esa oʻzinikini.",
+          sees: "Faqat vositalari kalitingiz huquqlari boʻyicha qaytargan narsalarni: kanallaringiz, videolaringiz va vazifalar, qayerga nashr qilish mumkinligi, API balansingiz, Studiya huquqlari bilan esa Studiya modellari, narx hisob-kitoblari va kalitning oʻz generatsiyalari. U parolingizni, YouTube’dagi kirishingizni yoki boshqa kalitlarni hech qachon koʻrmaydi. Nightshift yozishmangizni emas, faqat yordamchi chaqirgan vositalarni oladi.",
         },
       },
       explore: { title: "Koʻproq bilib oling", pricing: "Tariflar va narxlar", tools: "Yordamchi nimalarni qila oladi" },

@@ -1,7 +1,6 @@
 import heroNight from "@/components/site/art/hero-night.webp";
 import heroNightSm from "@/components/site/art/hero-night-sm.webp";
-import thumbSilkroad from "@/components/site/art/thumb-silkroad.webp";
-import { ART_SIZE, SLOT_DEFS, type SlotSlug, type THUMB_ART } from "@/lib/site/art";
+import { ART_SIZE, SLOT_DEFS, type SlotSlug } from "@/lib/site/art";
 
 /**
  * The AI-generated pictures (lib/site/art.ts says which stands where and what they are). Imported statically, like the stock
@@ -11,15 +10,6 @@ import { ART_SIZE, SLOT_DEFS, type SlotSlug, type THUMB_ART } from "@/lib/site/a
 type Img = { src: string } | string;
 /** Next hands an imported image over as { src, width, height }; a plain bundler (the test runner's) as the URL. */
 const urlOf = (m: Img) => (typeof m === "string" ? m : m.src);
-
-/** The sample thumbnail's background. Lazy: it is not on the first screen. */
-export function ArtImg({ id, alt, className }: { id: typeof THUMB_ART; alt: string; className?: string }) {
-  const { width, height } = ART_SIZE[id];
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={urlOf(thumbSilkroad)} width={width} height={height} alt={alt} className={className} loading="lazy" decoding="async" data-art-id={id} />
-  );
-}
 
 /**
  * THE SLOTS: the one list of the pictures the steps and the tool tiles can show: transparent-background WebPs (3D objects), one per

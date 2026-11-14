@@ -3,10 +3,8 @@ import type { Dictionary } from "@/lib/i18n";
 import { BrandMark } from "@/components/site/BrandMark";
 import { BrandArt, type BrandArtKind } from "@/components/site/BrandArt";
 import { TypedText } from "@/components/site/TypedText";
-import { slotMedia, type PlaceMedia, type SlotId } from "@/components/site/samples";
+import { EXAMPLE_THUMB_JOB, exampleMedia, slotMedia, type PlaceMedia, type SlotId } from "@/components/site/samples";
 import { PlaceFill, placeAlt, placeBox, placeNote } from "@/components/site/PlaceFill";
-import { ArtImg } from "@/components/site/art";
-import { THUMB_ART } from "@/lib/site/art";
 
 /** Everything a chat card says, as plain strings, so any page (the landing, /pricing, /mcp) can print one from its own dictionary. */
 export type ChatCopy = {
@@ -21,14 +19,13 @@ export type ChatCopy = {
   badge: string;
   /** The sentence under the card: what its stock picture is, or the caller's own; null under one of our samples (it carries its AI badge, and no footnote, components/site/PlaceFill.tsx placeNote). */
   note: string | null;
-  /** What the card's slot shows (components/site/samples.tsx slotMedia), and the site dictionary its labels come from. */
-  media: PlaceMedia;
   /**
-   * The ask is the default one (the Silk Road), so the frame is that example's own picture, a render made for Nightshift (lib/site/art.ts
-   * THUMB_ART), never the slot's: a reply under "make a video about the Silk Road" with a chocolate pour in it said the result
-   * need not match the prompt (owner, 2026-11-14). A caller's own ask keeps the slot's picture (or drawn art).
+   * What the card's frame shows, and the site dictionary its labels come from. Under the default ask (football in 2050) it is that
+   * example's own clip (components/site/slots.ts EXAMPLE_THUMB_JOB), never the slot's: a reply under the example ask with a
+   * chocolate pour in it said the result need not match the prompt (owner, 2026-11-14); null while that clip's files are not here,
+   * and then the card has no frame rather than a stand-in. A caller's own ask shows its slot (components/site/samples.tsx slotMedia).
    */
-  thumb: boolean;
+  media: PlaceMedia | null;
   site: Dictionary["site"];
   lamps: [string, string, string];
   key: string;
@@ -37,9 +34,8 @@ export type ChatCopy = {
 /** The chat card's words from the site dictionary; `ask` replaces the default one-line ask, `opts` the picture's label and note (for drawn art). */
 export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opts?: { badge?: string; note?: string }): ChatCopy {
   const st = t.site.stage;
-  const media = slotMedia(slot);
+  const media = ask === undefined ? exampleMedia(EXAMPLE_THUMB_JOB) : slotMedia(slot);
   const approve = st.steps.find((s) => s.id === "approve" && "check" in s) as Extract<(typeof st.steps)[number], { check: string }>;
-  const thumb = ask === undefined;
   return {
     figure: st.figure,
     tag: st.tag,
@@ -48,12 +44,11 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opt
     current: "approve",
     ask: ask ?? t.site.caps.items[0].bubble,
     reply: t.site.caps.exampleReply,
-    alt: thumb ? t.site.art.alts[THUMB_ART] : placeAlt(media, t.site),
+    alt: ask === undefined ? t.site.how.thumbAlt : media ? placeAlt(media, t.site) : "",
     badge: opts?.badge ?? t.site.stage.tag,
-    // The Silk Road picture carries its AI badge on the frame and needs no stock sentence under it.
-    note: opts?.note ?? (thumb ? null : placeNote(media, t.site)),
+    // A sample carries its AI badge on the frame and needs no stock sentence under it (placeNote is null for one).
+    note: opts?.note ?? (media ? placeNote(media, t.site) : null),
     media,
-    thumb,
     site: t.site,
     lamps: [approve.lamp, approve.check, approve.waiting],
     key: approve.key,
@@ -73,8 +68,8 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opt
  * so nothing flashes. Nothing in it can be pressed: a frame that shows one of our generations carries its AI badge
  * only (components/site/PlaceFill.tsx). Its frame has a fixed aspect ratio, so it cannot shift the page. A Server Component.
  *
- * `art` puts a drawing where the picture goes (the /mcp card); otherwise, under the default (Silk Road) ask, the frame is that
- * example's own picture (ChatCopy `thumb`), and under a caller's own ask it is whatever chatCopy's slot shows.
+ * `art` puts a drawing where the picture goes (the /mcp card); otherwise, under the default ask (football in 2050), the frame plays
+ * that example's own clip (ChatCopy `media`), and under a caller's own ask it is whatever chatCopy's slot shows.
  */
 export function ChatCard({
   copy,
@@ -120,8 +115,8 @@ export function ChatCard({
           </span>
         </div>
         <div className="nx-result nx-result-sign">
-          {!bare && (
-            <div className="nx-result-art" data-ratio="wide" {...(art ? {} : copy.thumb ? { "data-media": "art" } : placeBox(m))}>
+          {!bare && (art || m) && (
+            <div className="nx-result-art" data-ratio="wide" {...(art || !m ? {} : placeBox(m))}>
               {art ? (
                 <>
                   <BrandArt kind={art} className="nx-art" />
@@ -129,15 +124,8 @@ export function ChatCard({
                     {copy.badge}
                   </span>
                 </>
-              ) : copy.thumb ? (
-                <>
-                  <ArtImg id={THUMB_ART} alt={copy.alt} className="nx-art" />
-                  <span className="nx-result-badge" data-kind="ai">
-                    {copy.site.gallery.badge}
-                  </span>
-                </>
               ) : (
-                <PlaceFill media={m} s={copy.site} alt={copy.alt} eager={eager} early={eager} compact={compactClip} sizes="(min-width: 640px) 520px, calc(100vw - 80px)" />
+                m && <PlaceFill media={m} s={copy.site} alt={copy.alt} eager={eager} early={eager} compact={compactClip} sizes="(min-width: 640px) 520px, calc(100vw - 80px)" />
               )}
             </div>
           )}

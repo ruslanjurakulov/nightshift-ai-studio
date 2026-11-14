@@ -63,7 +63,7 @@ describe("the Effects gallery's masonry", () => {
     expect(() => masonrySpan(Number.NaN, 3)).toThrow();
   });
 
-  it("sizes each card from its sample's real shape, or the drawing's, in page order", () => {
+  it("sizes each card from its sample's real shape when that is its effect's shape, else the effect's (the drawing's), in page order", () => {
     const { container, unmount } = render(<EffectsGallery t={dictionaries.en} />);
     const cards = [...container.querySelectorAll<HTMLElement>(".efx-card")];
     expect(cards.map((c) => c.dataset.effect)).toEqual(EFFECTS.map((e) => e.id));
@@ -71,7 +71,13 @@ describe("the Effects gallery's masonry", () => {
       const li = container.querySelector<HTMLElement>(`[data-effect="${e.id}"]`)!;
       const s = effectSample(e);
       const ratio = effectFrameRatio(e);
-      expect(ratio, e.id).toBeCloseTo(s ? s.entry.height / s.entry.width : e.aspect === "9:16" ? 16 / 9 : e.aspect === "16:9" ? 9 / 16 : 1, 9);
+      const own = e.aspect === "9:16" ? 16 / 9 : e.aspect === "16:9" ? 9 / 16 : 1;
+      const real = s ? s.entry.height / s.entry.width : own;
+      expect(ratio, e.id).toBeCloseTo(Math.abs(real / own - 1) <= 0.03 ? real : own, 9);
+      // The frame the browser draws is the same shape the grid was planned on.
+      const frame = li.querySelector<HTMLElement>(".fx-frame, .efx-frame")!;
+      const [w, h] = frame.style.aspectRatio.split("/").map(Number);
+      expect(h / w, e.id).toBeCloseTo(ratio, 6);
       expect(li.style.getPropertyValue("--efx-n2"), e.id).toBe(String(masonrySpan(ratio, 2)));
       expect(li.style.getPropertyValue("--efx-n3"), e.id).toBe(String(masonrySpan(ratio, 3)));
     }
@@ -94,6 +100,11 @@ describe("the Effects gallery's masonry", () => {
       // Within six rows (about 60 px) of each other: the multi-column layout left 600 px and more.
       expect(Math.max(...e) - Math.min(...e), `${n} columns: ${e}`).toBeLessThanOrEqual(6);
     }
+    // product-burst's sample came from a 4:5 still: at 4:5 no arrangement of the eight is level (13 rows apart at two columns),
+    // so it is shown in its effect's square and only a sample of its effect's shape sets a frame of its own.
+    const burst = EFFECTS.find((x) => x.id === "product-burst")!;
+    expect(effectSample(burst)?.entry.height).toBeGreaterThan(effectSample(burst)!.entry.width);
+    expect(effectFrameRatio(burst)).toBe(1);
     // The case that broke: two 9:16 cards side by side with everything else stacked elsewhere.
     const tall = 94, square = 64, wide = 48;
     const e = ends([tall, square, tall, tall, square, wide, square, wide], masonryColumns([tall, square, tall, tall, square, wide, square, wide], 3)!, 3);

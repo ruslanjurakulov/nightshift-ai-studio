@@ -45,9 +45,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** Which surface an element showing a sample belongs to (null: a pointer to it, not a showing). */
 function surfaceOf(el: Element): string | null {
   if (el.closest("#models, .nx-marquee")) return null;
-  // The approval screen is drawn twice on purpose, as the same screen: the third step's live piece and the Approvals showcase both
-  // show the one video awaiting approval (lib/site/tool-samples.ts). One surface.
-  if (el.closest(".nx-step-live[data-step='approve'], .nx-approve-art")) return "approval-screen";
+  // The example topic's video is one surface wherever it is told (components/site/slots.ts EXAMPLE_JOBS): the third step's phone,
+  // the Approvals showcase's thumbnail and the plan demo's thumbnail all show the one video the example ask makes. Its clips are
+  // in no sample section, so they can never be shown again as a sample of their own.
+  if (el.closest(".nx-step-live[data-step='approve'], .nx-approve-art, .nx-try-thumb")) return "example-video";
   const sampleSection = el.closest("[data-sample-section]");
   if (sampleSection) return `sample-section:${sampleSection.id || sampleSection.className}`;
   const section = el.closest("section[id]");

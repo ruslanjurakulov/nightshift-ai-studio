@@ -35,8 +35,8 @@ export const SLOTS = {
   "landing.final": { ai: "01c9f1f0-d54b-4fd3-a88f-ddf459aece73", id: "moon" },
   /**
    * /solutions: one picture above each of the two audiences that are not channels. The chat card on /pricing and the publish
-   * desk's frame (channels) had slots too; both sit beside the Silk Road example, so both show that example's own picture
-   * (lib/site/art.ts THUMB_ART) and not a sample made from another prompt (owner, 2026-11-14).
+   * desk's frame (channels) had slots too; both sit beside the example topic, so both show that example's own clip
+   * (EXAMPLE_THUMB_JOB below) and not a sample made from another prompt (owner, 2026-11-14).
    */
   "solutions.creative-studio": { ai: "fc1fad12-16de-4cd5-9cd9-e77ed245f469", id: "loom", clip: "loom" },
   "solutions.developers": { ai: "1504b313-3a3c-4e78-bfda-5bca3ef7f3da", id: "citynight" },
@@ -79,6 +79,30 @@ export function slotMedia(slot: SlotId, entries?: readonly ShowcaseEntry[], file
   return placeMedia(SLOTS[slot], slot, entries, files);
 }
 
+/**
+ * THE EXAMPLE TOPIC's result. The public site tells one example as a story: the ask ("What football will look like in 2050": step 1
+ * of "How it works", the chat card, the plan demo, the sign-in stage) and the video it makes, waiting private for approval (step 3's
+ * phone, the Approvals card, the /pricing chat card, the publish desk on /solutions). The result is shown as two real clips made
+ * in our Studio from prompts about that very topic, never a still: "you asked for a video and put a picture as the result, who will
+ * believe it" (owner, 2026-11-14), and a sample made from another prompt beside the topic said the result need not match the ask.
+ * tests/site-art.test.tsx pins that nothing else stands beside the topic.
+ */
+/** 9:16: a glowing-kit player's bicycle kick in a stadium floating over a neon city. The third step's phone. */
+export const EXAMPLE_PHONE_JOB = "99579363-b080-45b5-b1ed-06c712694042";
+/** 16:9: the floating stadium wide, a volley, a holographic replay in the sky. The video's thumbnail wherever it waits for approval. */
+export const EXAMPLE_THUMB_JOB = "950e0667-4445-47c3-bbf4-3c681a22bb3c";
+export const EXAMPLE_JOBS: readonly string[] = [EXAMPLE_PHONE_JOB, EXAMPLE_THUMB_JOB];
+
+/**
+ * An example clip as a place's media (placeBox, PlaceFill), or null while its entry or its files are not in the repository. No stock
+ * fallback, unlike a slot: a stand-in picture beside the example topic is exactly what the owner rejected, so its place is empty.
+ */
+export function exampleMedia(job: string, entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): Extract<PlaceMedia, { kind: "ai" }> | null {
+  const entry = entries.find((e) => e.jobId === job);
+  const f = entry ? files[entry.jobId] : undefined;
+  return entry && f ? { kind: "ai", entry, files: f, moving: entry.kind === "video" && f.clip !== null } : null;
+}
+
 /** The showcase jobs these slots show right now: a page leaves them out of its own gallery, so no clip is shown twice on it. */
 export function slotJobs(slots: readonly SlotId[], entries?: readonly ShowcaseEntry[], files?: Readonly<Record<string, ShowcaseFiles>>): string[] {
   return slots.flatMap((s) => {
@@ -104,12 +128,13 @@ export const LANDING_LEFT_OUT: readonly string[] = [
 ];
 
 /**
- * The samples a landing place shows: its slots, the tool wall, the steps and the approval screen (lib/site/tool-samples.ts). They
- * are on the page, so they count in its facts and model tiles; a sample surface leaves them out so nothing is shown twice.
- * Functions, not constants, so they read the slots and the data file as they are when called.
+ * The samples a landing place shows: its slots, the tool wall (lib/site/tool-samples.ts), and the example topic's two clips (the
+ * third step's phone and the Approvals card's thumbnail, EXAMPLE_JOBS). They are on the page, so they count in its facts and model
+ * tiles; a sample surface leaves them out so nothing is shown twice. Functions, not constants, so they read the slots and the data
+ * file as they are when called.
  */
 export function landingPlacedJobs(): string[] {
-  return [...slotJobs(LANDING_SLOTS), ...TOOL_JOBS];
+  return [...slotJobs(LANDING_SLOTS), ...TOOL_JOBS, ...EXAMPLE_JOBS.filter((j) => exampleMedia(j) !== null)];
 }
 
 /**

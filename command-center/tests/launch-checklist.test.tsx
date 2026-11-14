@@ -85,6 +85,8 @@ const PAGES: PageSpec[] = [
   { path: "/refund", module: "@/app/refund/page", props: {}, indexed: true },
   // The referral programme's terms (0165): listed like /roadmap, not counted by the page-view beacon.
   { path: "/referral", module: "@/app/referral/page", props: {}, indexed: true },
+  // Trust and safety: listed like /roadmap and /refund, not counted by the page-view beacon.
+  { path: "/trust", module: "@/app/trust/page", props: {}, indexed: true },
 ];
 /** Public, with their own metadata (a layout, the page being client code), but not in the sitemap by design: forms, not content. */
 const FORM_PAGES: { path: string; module: string }[] = [

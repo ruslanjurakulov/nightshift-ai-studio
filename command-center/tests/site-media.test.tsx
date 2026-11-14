@@ -11,7 +11,7 @@ import { devDictionaries } from "@/lib/i18n/dev";
 import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
 import { SAMPLES, SLOTS, slotMedia } from "@/components/site/samples";
 import { stockInUse } from "@/components/site/stock-in-use";
-import { THUMB_ART } from "@/lib/site/art";
+import { EXAMPLE_THUMB_JOB } from "@/components/site/samples";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { SignOffPicture } from "@/components/site/SolutionPictures";
 
@@ -95,15 +95,16 @@ describe("no stock picture is left on the public site (round 10)", () => {
 });
 
 describe("the publish desk's frame says what it is, on the frame and, for a phone, under it", () => {
-  // The desk's video is titled with the Silk Road topic; its frame was a sample of a giant dog in a street (owner, 2026-11-14).
-  it.each(LOCALES.map((l) => l.code))("%s: the frame is the Silk Road example's own picture, labelled AI-generated on it and again under the drawing, with no sample, model or stock credit", (code) => {
+  // The desk's video is titled with the example topic; its frame was a sample of a giant dog in a street, then a still (owner, 2026-11-14).
+  it.each(LOCALES.map((l) => l.code))("%s: the frame plays the example topic's own clip, labelled AI-generated on it and again under the drawing, with no stock credit", (code) => {
     const t = dictionaries[code];
     const { container } = render(<SignOffPicture t={t} />);
     const frame = container.querySelector(".st-signoff-frame")!;
     expect(container.querySelector(".st-signoff-title")?.textContent).toBe(t.site.solutions.pictures.signoff.video);
-    expect(frame.querySelector("img")?.getAttribute("data-art-id")).toBe(THUMB_ART);
-    expect(frame.hasAttribute("data-showcase-entry") || frame.hasAttribute("data-model")).toBe(false);
-    expect(frame.querySelector("[data-sample-job], [data-sample], video")).toBeNull();
+    expect(frame.querySelector("img")?.getAttribute("data-sample-job")).toBe(EXAMPLE_THUMB_JOB);
+    expect(frame.getAttribute("data-showcase-entry")).toBe(EXAMPLE_THUMB_JOB);
+    expect(frame.getAttribute("data-clip")).toBe("sample");
+    expect(frame.querySelector("[data-sample]")).toBeNull();
     expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
     expect(frame.querySelector(".nx-result-credit")).toBeNull();
     expect(container.querySelector(".st-signoff-caption")).toBeNull();

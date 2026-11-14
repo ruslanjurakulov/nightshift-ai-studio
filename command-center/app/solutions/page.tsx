@@ -13,6 +13,8 @@ import { ApiPicture, ComposerPicture, SignOffPicture } from "@/components/site/S
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { slotMedia, type SlotId } from "@/components/site/samples";
 import { PlaceFill, placeBox } from "@/components/site/PlaceFill";
+import { LiveStats } from "@/components/site/LiveStats";
+import { readPublicSiteStats } from "@/lib/server/public-stats";
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
 export async function generateMetadata(): Promise<Metadata> {
@@ -40,17 +42,18 @@ const WAY_PICTURE = { "youtube-channels": SignOffPicture, "creative-studio": Com
 /**
  * The Solutions index: who it is for, as three tabs (the three audiences the product serves, no others), each with its own
  * words, one stock photograph (an example of the kind of picture such a channel might use: silhouettes at sunrise, a craft
- * workshop, a city's lights; credited, labelled an example) over the product's own picture for that job, and then the
- * three rules that hold whichever way you came in.
+ * workshop, a city's lights; credited, labelled an example) over the product's own picture for that job, then the live
+ * counters once the owner turns them on (components/site/LiveStats.tsx), and then the three rules that hold whichever way you
+ * came in.
  */
 export default async function SolutionsPage() {
-  const { t } = await getDictionary();
+  const [{ t, locale }, liveStats] = await Promise.all([getDictionary(), readPublicSiteStats()]);
   const s = t.site.solutions;
   const rules = t.site.rules;
   const tabs = s.pages.flatMap((page) => {
     if (!isSolutionId(page.id)) return [];
     const Picture = WAY_PICTURE[page.id];
-    // The channels tab's picture carries its own frame (SignOffPicture: the Silk Road example's picture, no slot), so only the
+    // The channels tab's picture carries its own frame (SignOffPicture: the example topic's own clip, no slot), so only the
     // other two have a slot, and a photograph or clip above theirs.
     const media = page.id !== "youtube-channels" ? slotMedia(`solutions.${page.id}` as SlotId) : null;
     return [
@@ -126,6 +129,9 @@ export default async function SolutionsPage() {
           ))}
         </section>
       </div>
+
+      {/* The live counters (0164): nothing at all while the owner's switch is off. */}
+      <LiveStats t={t} locale={locale} stats={liveStats} />
 
       <section aria-labelledby="same-title" className="st-section" data-tone="raised">
         <div className="st-wrap">

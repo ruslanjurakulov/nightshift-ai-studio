@@ -105,6 +105,13 @@ export const ROADMAP_PATH = "/roadmap";
  */
 export const REFERRAL_PATH = "/referral";
 
+/**
+ * The public /trust page ("Trust and safety", app/trust/page.tsx): what Nightshift may do with a channel, keys and
+ * money, checked against the code. Always public, linked from the footer, and listed like /roadmap and /refund (lib/site-pages.ts
+ * UNCOUNTED_PAGE_PATHS) rather than in SITEMAP_PATHS, which must equal the page-view counter's SQL list (migration 0104).
+ */
+export const TRUST_PATH = "/trust";
+
 /** Always public: the crawler files (app/robots.ts, app/sitemap.ts, app/llms.txt/route.ts). */
 export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml", "/llms.txt"] as const;
 
@@ -229,6 +236,7 @@ export const ALWAYS_PUBLIC_PATHS = [
   UNSUBSCRIBE_PATH,
   ROADMAP_PATH,
   REFERRAL_PATH,
+  TRUST_PATH,
 ] as const;
 
 /** The pages the sitemap lists: every public page a visitor reads, not the
@@ -320,6 +328,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   "refund",
   // The referral programme's terms (REFERRAL_PATH): a channel of that id would be shadowed by it.
   "referral",
+  // The public /trust page (TRUST_PATH): a channel of that id would be shadowed by it.
+  "trust",
 ] as const;
 
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */

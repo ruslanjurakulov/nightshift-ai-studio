@@ -39,6 +39,7 @@ import { EffectsDesk } from "@/components/effects/EffectsDesk";
 import { EffectBanner } from "@/components/effects/EffectBanner";
 import { EffectArt } from "@/components/effects/EffectArt";
 import { effectSample } from "@/components/effects/EffectFrame";
+import { sampleKeepsShape } from "@/components/effects/effect-sample";
 import { EffectsGallery } from "@/components/site/EffectsGallery";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 
@@ -265,19 +266,41 @@ describe("the public Effects section", () => {
     }
   });
 
-  it("draws each card in its effect's own shape, or its sample's real one, so the grid mixes portrait, square and wide", () => {
+  it("draws each card in its effect's own shape, or its sample's real one when that is the effect's, so the grid mixes portrait, square and wide", () => {
     render(<EffectsGallery t={en} />);
     const RATIO = { "16:9": "16 / 9", "9:16": "9 / 16", "1:1": "1 / 1" } as const;
     const shapes = new Set<string>();
     for (const e of EFFECTS) {
       const s = effectSample(e);
-      // A sample is never squeezed into the shape the effect asked for: the card takes the clip's own size.
-      const want = s ? `${s.entry.width} / ${s.entry.height}` : RATIO[e.aspect];
+      // A sample of the effect's shape keeps its own size (a model's 1280 x 2240 for a 9:16); one of another shape (product-burst's,
+      // made from a 4:5 still) is cut to the effect's shape from the centre, never squeezed: its picture and clip cover the frame.
+      const keeps = s !== null && sampleKeepsShape(e, s.entry);
+      const want = keeps ? `${s!.entry.width} / ${s!.entry.height}` : RATIO[e.aspect];
       expect(card(e.id).querySelector<HTMLElement>(".fx-frame")!.style.aspectRatio, e.id).toBe(want);
-      const [w, h] = s ? [s.entry.width, s.entry.height] : e.aspect.split(":").map(Number);
+      const [w, h] = keeps ? [s!.entry.width, s!.entry.height] : e.aspect.split(":").map(Number);
       shapes.add(w > h ? "wide" : w < h ? "portrait" : "square");
     }
     expect(shapes).toEqual(new Set(["portrait", "square", "wide"]));
+    expect(sampleKeepsShape(EFFECTS.find((x) => x.id === "product-burst")!, effectSample(EFFECTS.find((x) => x.id === "product-burst")!)!.entry)).toBe(false);
+    const fx = readFileSync(join(__dirname, "..", "components/effects/effects.css"), "utf8");
+    expect(fx).toMatch(/\.fx-frame > img \{[^}]*object-fit: cover;/);
+  });
+
+  // photo-to-life, product-burst and liquid-reveal said "No sample yet: this is a drawing, not a result" until their own jobs were
+  // exported (2026-11-14), each made with exactly the effect's words. liquid-reveal's first try (95f4091b) was rejected: its source
+  // picture had ad text in it.
+  it("shows a real sample on every card, so no card says it is a drawing", () => {
+    expect(Object.fromEntries(["photo-to-life", "product-burst", "liquid-reveal"].map((id) => [id, effectById(id)?.previewJobId]))).toEqual({
+      "photo-to-life": "49af4517-9ebf-44d9-80ed-f652cea6e071",
+      "product-burst": "e35f41fb-3162-4f9d-ae17-6420d558840d",
+      "liquid-reveal": "cf2af7b1-5433-4661-979b-f65f3f8a4dbf",
+    });
+    expect(DRAWN.map((e) => e.id)).toEqual([]);
+    for (const code of ["en", "ru", "uz"] as const) {
+      const { container, unmount } = render(<EffectsGallery t={dictionaries[code]} />);
+      expect(container.textContent, code).not.toContain(dictionaries[code].effects.noSample);
+      unmount();
+    }
   });
 });
 

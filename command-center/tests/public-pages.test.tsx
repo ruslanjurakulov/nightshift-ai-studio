@@ -26,7 +26,7 @@ import { coercePlanCatalog, creditEquivalents, planMatrix, type GenerationRates 
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, makerCreditProblems, placeLabelProblems, without } from "./helpers/showcase-scope";
 import { slotMedia } from "@/components/site/samples";
-import { THUMB_ART } from "@/lib/site/art";
+import { EXAMPLE_JOBS, EXAMPLE_THUMB_JOB } from "@/components/site/samples";
 import { stockInUse } from "@/components/site/stock-in-use";
 
 afterEach(cleanup);
@@ -97,17 +97,18 @@ describe("public landing page", () => {
     const tiles = all.filter((i) => i.closest("#models, #tools"));
     const imgs = all.filter((i) => !i.closest("#models, #tools"));
     // The three slots (the first screen, the Studio showcase and the closing panel: a stock still with a data-sample, or one of
-    // our samples with a data-sample-job inside its own box), and the Silk Road example's own picture (a data-art-id) in the three
-    // places beside that topic: the plan demo's thumbnail, the third step's phone and the drawn approval screen's thumbnail.
+    // our samples with a data-sample-job inside its own box), and the example topic's own clips' first frames in the three places
+    // beside that topic: the plan demo's thumbnail, the third step's phone and the drawn approval screen's thumbnail.
     // Round 10: no clay pictures for the steps and the tools (live pieces and real outputs instead, each in its sample's box).
     expect(imgs.length).toBe(6);
-    expect(imgs.filter((i) => i.getAttribute("data-art-id") === THUMB_ART)).toHaveLength(3);
+    expect(imgs.filter((i) => EXAMPLE_JOBS.includes(i.getAttribute("data-sample-job") ?? ""))).toHaveLength(3);
+    expect(imgs.filter((i) => i.hasAttribute("data-art-id"))).toHaveLength(0);
     for (const img of imgs) {
       expect(img.getAttribute("data-sample") ?? img.getAttribute("data-art-id") ?? img.getAttribute("data-sample-job")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
       if (img.hasAttribute("data-sample-job")) expect(img.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(img.getAttribute("data-sample-job"));
     }
-    expect(imgs.filter((i) => i.getAttribute("data-sample") || i.getAttribute("data-sample-job"))).toHaveLength(3);
+    expect(imgs.filter((i) => i.getAttribute("data-sample") || i.getAttribute("data-sample-job"))).toHaveLength(6);
     // Every stock picture shown is one the footer credits (components/site/stock-in-use.ts).
     // (An Effects card's frame carries its sample's job id in data-sample, never a stock id: tests/effects-ui.test.tsx.)
     for (const img of outsideGallery(container.querySelectorAll("[data-sample]"))) expect(stockInUse() as string[]).toContain(img.getAttribute("data-sample"));
@@ -168,9 +169,10 @@ describe("public landing page", () => {
     expect(studio.querySelector("img")!.getAttribute("alt")).toBe(m.kind === "ai" ? (m.moving ? t.site.gallery.bgClip : t.site.gallery.bgImage) : t.site.samples.alts[m.id]);
     expect(placeLabelProblems(studio.querySelector(".nx-show-pic")!, m, t.site)).toEqual([]);
     expect(studio.querySelector(".nx-show-note")?.textContent ?? null).toBe(m.kind === "ai" ? null : m.clip ? `${t.site.samples.note} ${t.site.samples.clipNote}` : t.site.samples.note);
-    // Approvals: the picture shows what the words say. A drawn approval screen (no slot, no stock, no clip), one image to assistive
-    // tech with its description, tagged "Example", in the product's own words: private on YouTube, the publish check passed, waiting,
-    // and the Approve key, drawn (a span, nothing to press).
+    // Approvals: the picture shows what the words say. A drawn approval screen (no slot, no stock), one image to assistive tech
+    // with its description, tagged "Example", in the product's own words: private on YouTube, the publish check passed, waiting,
+    // and the Approve key, drawn (a span, nothing to press). Its one moving part is the video's thumbnail: the example topic's own
+    // clip (components/site/slots.ts EXAMPLE_THUMB_JOB), muted, never focusable (LoopClip: tabIndex -1, aria-hidden).
     const approvals = container.querySelector("section#approvals") as HTMLElement;
     const art = approvals.querySelector(".nx-show-pic[data-media='drawn'] .nx-approve-art") as HTMLElement;
     expect(art.getAttribute("role")).toBe("img");
@@ -178,8 +180,9 @@ describe("public landing page", () => {
     const step = t.site.stage.steps.find((x) => x.id === "approve") as { lamp: string; check: string; waiting: string; key: string };
     for (const w of [t.site.stage.tag, step.lamp, step.check, step.waiting, step.key, t.site.gallery.badge]) expect(art.textContent).toContain(w);
     expect(art.querySelector(".nx-approve-key")?.tagName).toBe("SPAN");
-    expect(art.querySelectorAll("a, button, input, video, [tabindex]")).toHaveLength(0);
-    expect(approvals.querySelector("[data-clip], .nx-show-note, .nx-result-credit")).toBeNull();
+    expect(art.querySelectorAll("a, button, input, [tabindex]:not(video[tabindex='-1'])")).toHaveLength(0);
+    expect([...approvals.querySelectorAll("[data-clip]")].map((x) => [x.className, x.getAttribute("data-showcase-entry")])).toEqual([["nx-approve-thumb", EXAMPLE_THUMB_JOB]]);
+    expect(approvals.querySelector(".nx-show-note, .nx-result-credit")).toBeNull();
     expect(approvals.querySelector(".nx-show-card")?.getAttribute("data-art")).toBe("drawn");
     expect(stills.size).toBe(2);
   });
@@ -476,6 +479,8 @@ describe("public pricing page", () => {
 
     // Every figure the page was handed, and every figure derived from them.
     const allowed = new Set<number>([12, 5, WELCOME_CREDITS, 25, 30, 4, 40]);
+    // The chat card's example ask names a year ("What football will look like in 2050"): words of the topic, not a figure.
+    for (const m of dictionaries.en.site.caps.items[0].bubble.matchAll(/\d+/g)) allowed.add(Number(m[0]));
     for (const c of plans.columns) allowed.add(c.monthlyCredits);
     for (const r of plans.rows) for (const v of r.cells) if (typeof v === "number") allowed.add(v);
     for (const pk of pricing.packs) allowed.add(pk.credits);
@@ -586,14 +591,15 @@ describe("the pricing page, product first (round 3)", () => {
     const kids = [...hero.children].map((c) => c.className);
     expect(kids).toEqual(["nx-pr-copy", "nx-pr-calc", "nx-pr-actions"]);
     expect(container.querySelectorAll("figure.nx-chat")).toHaveLength(1);
-    // The card asks for the Silk Road video, so its picture is that example's own (THUMB_ART), labelled AI-generated: never a
-    // sample made from another prompt (it was a chocolate pour, owner 2026-11-14), and never a stock picture with no note.
+    // The card asks for the example video, so its frame plays that example's own clip, labelled AI-generated: never a sample made
+    // from another prompt (it was a chocolate pour, owner 2026-11-14), and never a stock picture with no note.
     const chat = container.querySelector("figure.nx-chat")!;
     expect(chat.querySelector(".nx-bubble")?.textContent).toContain(dictionaries.en.site.caps.items[0].bubble);
     const pic = chat.querySelector(".nx-result-art img")!;
-    expect(pic.getAttribute("data-art-id")).toBe(THUMB_ART);
-    expect(pic.getAttribute("alt")).toBe(dictionaries.en.site.art.alts[THUMB_ART]);
-    expect(chat.querySelector("[data-showcase-entry], [data-sample-job], [data-sample], video")).toBeNull();
+    expect(pic.getAttribute("data-sample-job")).toBe(EXAMPLE_THUMB_JOB);
+    expect(pic.getAttribute("alt")).toBe(dictionaries.en.site.how.thumbAlt);
+    expect(chat.querySelector(".nx-result-art")?.getAttribute("data-showcase-entry")).toBe(EXAMPLE_THUMB_JOB);
+    expect(chat.querySelector("[data-sample]")).toBeNull();
     expect(chat.querySelector(".nx-result-art .nx-result-badge[data-kind='ai']")?.textContent).toBe(dictionaries.en.site.gallery.badge);
     expect(chat.querySelector("figcaption")).toBeNull();
     expect(screen.queryByText(dictionaries.en.pricing.ratesTitle)).toBeNull();

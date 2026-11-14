@@ -70,6 +70,8 @@ export const PUBLIC_PAGE_PATHS = [
   "/refund",
   // The referral programme's terms (lib/public-paths.ts REFERRAL_PATH).
   "/referral",
+  // Trust and safety (lib/public-paths.ts TRUST_PATH).
+  "/trust",
   "/login",
   "/signup",
   // Password recovery (lib/public-paths.ts): the request page and the page a reset link ends on.

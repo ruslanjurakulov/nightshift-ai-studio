@@ -1311,46 +1311,6 @@
       "exportedAt": "2026-11-13T21:21:15Z"
     },
     {
-      "jobId": "c808297a-8479-45fe-ae33-1c7688be7cb2",
-      "assetId": "aa1a55ad-bcdf-5aaf-97c6-c24a7b7d72dc",
-      "sha256": "93799e5f990c9d1dc60779945f8366d5589a7f6a3b08ce2c358656411cf24b79",
-      "modelId": "ideogram-3",
-      "modelName": "Ideogram 3",
-      "provider": "ideogram",
-      "operatorPreview": true,
-      "shutdownOn": null,
-      "attribution": {
-        "text": "Powered by Ideogram",
-        "url": "https://ideogram.ai"
-      },
-      "capability": "t2i",
-      "kind": "image",
-      "prompt": "Playful 3D typographic artwork: the word \"NIGHTSHIFT\" built from glossy inflatable balloon letters floating over a midnight-blue city skyline, stars and neon reflections, soft studio lighting, high detail.",
-      "createdAt": "2026-11-13T20:31:10Z",
-      "input": {
-        "kind": "none"
-      },
-      "endFrame": null,
-      "cost": {
-        "usdEstimate": null,
-        "priceSource": null,
-        "rows": 1,
-        "vendor": [
-          {
-            "provider": "ideogram",
-            "vendorModel": "TURBO",
-            "unit": "image",
-            "quantity": 1.0
-          }
-        ]
-      },
-      "width": 1280,
-      "height": 718,
-      "slot": null,
-      "caption": null,
-      "exportedAt": "2026-11-13T21:22:29Z"
-    },
-    {
       "jobId": "dcb96246-9379-4c3a-aa33-a8ee6bb7f846",
       "assetId": "49fcc17b-cc36-59c2-bb40-75c402e63513",
       "sha256": "fba8cc386604d24ea45aa4ddcc809fad816a3f09635434e775da8720facaf645",
@@ -1579,6 +1539,197 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T22:50:43Z"
+    },
+    {
+      "jobId": "99579363-b080-45b5-b1ed-06c712694042",
+      "assetId": "bede2582-546f-568a-8416-72737d76ec2d",
+      "sha256": "ed48bfd5fe79de4c0be94269bfb49ae4071985fb98a28ed5909500efa7781a4d",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical cinematic shot for a viral YouTube video about football in the year 2050. A night final in a futuristic floating stadium high above a neon city: a player in a glowing kit leaps into a spectacular bicycle kick, the ball leaves a bright trail of light as it flies, the camera follows it in dramatic slow motion into the net, the net ripples with light, a holographic crowd erupts and camera drones swirl around. High energy, epic, photoreal, crisp detail, rich neon and stadium light. No text, no captions, no logos, no real people.",
+      "createdAt": "2026-11-14T03:24:25Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-14T03:34:17Z"
+    },
+    {
+      "jobId": "950e0667-4445-47c3-bbf4-3c681a22bb3c",
+      "assetId": "776efc38-929e-5819-934f-cbbc0f21f819",
+      "sha256": "29c8e10b2f4d0945eb7f2df9fc224f530e2c83356ff1522f14f81b307f0bd9bf",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Cinematic wide shot for a viral YouTube video about football in the year 2050. A night final in a futuristic floating stadium hovering above a glowing neon city: players in luminous kits sprint, one strikes a powerful volley and the ball streaks across the frame leaving a trail of light, camera drones fly alongside, a giant holographic replay forms in the sky and the crowd erupts. Dynamic sweeping camera, epic scale, photoreal, crisp detail, rich neon and stadium light. No text, no captions, no logos, no real people.",
+      "createdAt": "2026-11-14T03:24:25Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-14T03:36:26Z"
+    },
+    {
+      "jobId": "e35f41fb-3162-4f9d-ae17-6420d558840d",
+      "assetId": "6f11b530-17e3-5077-b51c-d86d67db7f88",
+      "sha256": "5adfeca1e73e68dcb2896db881b61a27a4a539e31719e2bb3ecf6c61693d6a74",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "The product in this picture stands centred on a clean studio backdrop. On a sharp beat it bursts apart into thousands of glossy paint droplets and fine glittering particles in its own colours, which swirl around in slow motion, then rush back together and snap into the intact product again. Crisp rim light, macro detail, static camera, seamless loop. Keep the product's shape, label and colours exactly as in the picture; no added text, no extra objects.",
+      "createdAt": "2026-11-14T03:32:00Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "e3da9148-f2f8-443e-95b1-8ed36ef3dea4",
+        "assetId": "9283b527-51ec-5f5a-97b0-125d6aea3cc8"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 1600,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-14T03:38:36Z"
+    },
+    {
+      "jobId": "49af4517-9ebf-44d9-80ed-f652cea6e071",
+      "assetId": "61b95419-43ab-59d1-8c1a-73e758f1d300",
+      "sha256": "1b54397f47a0e44b5e464ba9c5984a6e97c1528733c9dea76f8cf84b5a521f8c",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "Bring this exact photo to life as a short real-camera shot. Everything in it moves naturally and subtly: hair and clothes stir in a light breeze, eyes blink, leaves and water move, the light shifts a little. The camera drifts slowly forward. Keep every face, body, colour, outfit and detail of the photo exactly as it is; no new people or objects, no morphing, no cuts, no text.",
+      "createdAt": "2026-11-14T03:32:45Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "495ebf91-84df-4c76-a6c4-a3ca6e4eb82d",
+        "assetId": "d2edcabc-0ecf-51b8-acc2-ae1d8953794a"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-14T03:42:58Z"
+    },
+    {
+      "jobId": "cf2af7b1-5433-4661-979b-f65f3f8a4dbf",
+      "assetId": "f0b22ad3-7cb4-5f9c-a908-6d4127ee8afa",
+      "sha256": "95125169cb39b5cf48559978c3141cd3a88b7495e262b1b7b1fd050ae62a0998",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "A ribbon of glossy liquid, like molten chrome with deep colour inside it, rises from below and wraps the product in this picture in one smooth spiral, hiding it for a moment, then slides away and drips off to reveal the product clean and gleaming. Slow, elegant motion, soft studio light with bright specular highlights, dark seamless background, the camera orbits a quarter turn. Keep the product's shape, label and colours exactly as in the picture; no added text.",
+      "createdAt": "2026-11-14T03:43:49Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "94baf12a-60db-42f6-a000-fcc118e344a0",
+        "assetId": "96e47558-15a3-5354-8c33-6faadf485a8f"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-14T03:53:30Z"
     }
   ]
 }

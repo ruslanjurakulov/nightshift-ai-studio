@@ -85,7 +85,7 @@ export function thumbWords(topic: string): string[] {
   return words.slice(0, 3);
 }
 
-export function ThumbArt({ topic, className = "", backdrop = false }: { topic: string; className?: string; /** A picture sits behind the drawing (the Silk Road example's AI-generated image): the stage fill and its glow are left out, the words and the frame stay. */ backdrop?: boolean }) {
+export function ThumbArt({ topic, className = "", backdrop = false }: { topic: string; className?: string; /** A picture sits behind the drawing (the first frame of the example topic's own clip): the stage fill and its glow are left out, the words and the frame stay. */ backdrop?: boolean }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const words = thumbWords(topic);
   let h = 0;
