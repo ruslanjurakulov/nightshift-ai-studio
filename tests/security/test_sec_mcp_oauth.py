@@ -1247,6 +1247,9 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     assert db.anon("select public.oauth_check(%s,null)", [sha(c["at"])])["ok"] is True
     # A replay of 0093 puts its own bodies and its `enforced` back: 0147 goes on again after it (docs/MIGRATIONS.md).
     assert db.su("select status from public.entitlement_keys where key='mcp'")[0][0] == "enforced"
+    # 0094 replaced oauth_create_video and oauth_get_balance on 0093's bodies, and 0163 replaced oauth_create_video on 0094's:
+    # the replay put 0093's back, so the chain goes on again in order, or every later test in this module runs on 0093's price.
+    sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql"])
     later = sec_db.MIGRATIONS / "0147_mcp_free_tier.sql"
     if later.exists():
         sec_db.apply_files(db.dsn, [later])
@@ -1256,6 +1259,10 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     if chatgpt.exists():
         sec_db.apply_files(db.dsn, [chatgpt])
         assert db.su("select position('kc.chatgpt' in pg_get_functiondef('public.oauth_gc()'::regprocedure)) > 0")[0][0] is True
+    if sec_db.MIGRATION_0163.exists():
+        sec_db.apply_files(db.dsn, [sec_db.MIGRATION_0163])
+        assert db.su("select position('concept_thumbnail_credits' in pg_get_functiondef("
+                     "'public.oauth_create_video(text, text, jsonb, text, text)'::regprocedure)) > 0")[0][0] is True
 
 
 # ── Lens-386A: PKCE is checked by the database, a limit of 0 is read-only for the operator too,
