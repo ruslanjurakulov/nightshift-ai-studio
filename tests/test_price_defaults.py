@@ -320,8 +320,17 @@ class PriceDefaultsFile(unittest.TestCase):
         self.assertEqual(clash, set(), "already priced by an earlier file or migration")
 
     def test_applies_after_the_other_price_files(self):
+        """Defaults fill what the earlier seeds left unpriced, so they come after them. A later,
+        dated price note (prices_scribe_2026_11_14.sql) corrects a default and comes after it."""
+        def dated(name):
+            m = re.search(r"(\d{4}_\d{2}_\d{2})\.sql$", name)
+            return m.group(1) if m else ""
         names = sorted(p.name for p in SQL.glob("prices_*.sql"))
-        self.assertEqual(names[-1], DEFAULTS.name)
+        mine = dated(DEFAULTS.name)
+        earlier = [n for n in names if n != DEFAULTS.name and dated(n) <= mine]
+        self.assertTrue(earlier and all(n < DEFAULTS.name for n in earlier), earlier)
+        for n in names:
+            self.assertTrue(dated(n), f"{n}: a price file is named for the day it was written")
 
     def test_every_unit_is_one_the_code_can_charge(self):
         chargeable = set(_registry_units()) | _product_units()
