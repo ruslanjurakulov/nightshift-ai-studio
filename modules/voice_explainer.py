@@ -16,7 +16,7 @@ Two planners fill the scenes, and the caller picks one; neither stands in for th
 
 This module spends nothing and talks to no provider by itself: transcription and the
 model are passed in. Two callers wire it: tools/voice_to_video.py (the operator's command)
-and modules/capabilities/voice_video.py (the Studio's paid creative job, migration 0171,
+and modules/capabilities/voice_video.py (the Studio's paid creative job, migration 0176,
 rules planner only; docs/VOICE_EXPLAINER.md).
 """
 
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 LOOKS = ("dusk", "midnight", "golden", "neon", "paper")
 #: Mirrors the closed catalogue in video-engine/src/explainer/types.ts.
 VISUAL_KINDS = ("none", "card", "stat", "progress", "characters", "emoji", "checklist", "chat")
-POSES = ("stand", "wave", "point", "think", "cheer", "sad", "sit")
+POSES = ("stand", "wave", "point", "think", "cheer", "sad", "sit", "walk")
 SETTINGS = ("street", "room", "office", "stage")
 PROPS = ("none", "laptop", "phone", "coin", "chart", "book")
 MOODS = ("worried", "happy", "shocked", "thinking", "angry", "calm")
@@ -409,7 +409,8 @@ Return a JSON array with exactly {len(sentences)} objects, in order, each:
     {{"kind":"none"}}
 }}
 All lengths are characters. A longer text, another value, or a missing field refuses the whole plan.
-Use only numbers and facts the sentence itself says. Vary the visuals; a story beat gets characters, a price or list gets a card."""
+Use only numbers and facts the sentence itself says. Vary the visuals; a story beat gets characters, a price or list gets a card.
+People act: "walk" walks in from the side, and two people with a phone, coin or book hand it from the first to the second."""
 
 
 def plan_model(sentences: Sequence[Sentence], gen: Callable[[str, Optional[str]], str], *, language: str = "") -> List[dict]:
@@ -475,7 +476,7 @@ def sound_cues(scenes: Sequence[Scene], sfx_dir: Optional[Path]) -> tuple:
 
 def build_props(*, look: str, duration_s: float, words: Sequence[Word], scenes: Sequence[Scene], narration: str,
                 music: str = "", music_volume: float = 0.08, sfx: Sequence[Mapping] = (), captions: bool = True,
-                width: int = 1080, height: int = 1920, fps: int = 30) -> dict:
+                media_card: bool = True, width: int = 1080, height: int = 1920, fps: int = 30) -> dict:
     """The VoiceExplainer props, exactly (video-engine/src/explainer/types.ts)."""
     if look not in LOOKS:
         raise ExplainerError(f"look {look!r} is not one of {', '.join(LOOKS)}")
@@ -488,6 +489,9 @@ def build_props(*, look: str, duration_s: float, words: Sequence[Word], scenes: 
         "words": [{"text": w.text, "start_s": round(w.start_s, 3), "end_s": round(w.end_s, 3)} for w in words],
         "scenes": [s.to_dict() for s in scenes],
         "captions": bool(captions),
+        "media_card": bool(media_card),
+        # Only render() sets it, for the sound pass of a chunked render.
+        "sound_only": False,
     }
 
 
@@ -504,27 +508,84 @@ def audio_seconds(path: Path) -> float:
     return d
 
 
+#: The window one Remotion render covers. Memory is NOT what grows with length here (measured: a 30 s and a 121 s render
+#: peaked within 25 MB of each other, docs/VOICE_EXPLAINER.md "Memory"); chunks bound the one part that does creep (the
+#: browser's heap) and keep every process short-lived. Each successful render counts once toward Remotion's licence,
+#: so chunks are never shorter than this: a 121 s narration is 3 or 4 picture chunks (by where its scenes start) plus
+#: one sound pass; a 59 s one is a single render.
+CHUNK_S = 30.0
+
+
+#: Browser tabs for the sound pass: up to 4, never more than the machine's cores (Remotion refuses more).
+SOUND_TABS = max(1, min(4, os.cpu_count() or 1))
+
+
+def _js_round(x: float) -> int:
+    """JavaScript's Math.round (half up), which the composition uses for scene frames; Python's round() is half-even."""
+    return math.floor(x + 0.5)
+
+
+def total_frames(duration_s: float, fps: int) -> int:
+    """The composition's length in frames (text.ts explainerFrames: ceil(duration_s * fps))."""
+    return max(1, math.ceil(float(duration_s) * int(fps)))
+
+
+def plan_chunks(scenes: Sequence[Mapping], duration_s: float, fps: int, *, target_s: float = CHUNK_S) -> List[tuple]:
+    """Inclusive frame ranges ``(first, last)`` that cover the whole video, in order, with no gap or overlap.
+
+    A chunk only ever ends where a scene starts (the frame the composition starts it on), so no scene is split across
+    two browser processes, and a cut is only made when both sides are at least ``target_s`` long: every chunk is at
+    least that long unless the whole video is shorter than two of them, which is one chunk (one render, as before)."""
+    total = total_frames(duration_s, fps)
+    target = max(1, _js_round(target_s * int(fps)))
+    starts = sorted({_js_round(float(sc["start_s"]) * int(fps)) for sc in scenes} - {0})
+    chunks, first = [], 0
+    for cut in starts:
+        if cut - first >= target and total - cut >= target:
+            chunks.append((first, cut - 1))
+            first = cut
+    chunks.append((first, total - 1))
+    return chunks
+
+
 def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir: Path = ENGINE_DIR,
            browser: Optional[str] = None, timeout_s: float = 1800, concurrency: int = 1,
-           tmp_dir: Optional[Path] = None, on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> Path:
+           tmp_dir: Optional[Path] = None, chunk_s: float = CHUNK_S,
+           on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> Path:
     """Render the props with Remotion. ``files`` maps each public path the props name
     (narration, music, effects) to the file on disk; they are copied into a private
     public dir for this render only. Raises RenderFailed (RenderTimeout) with Remotion's last lines.
 
-    ``tmp_dir``: where this render's scratch goes (the public dir, the props, and Remotion's own TMPDIR) instead of the
-    system's. The creative worker's /tmp is a tmpfs, so a ten-minute render's audio and bundle there would count against the
-    container's memory limit; it passes the job's own folder on the media volume.
+    The project is bundled once (webpack runs in its own short process, so no render holds it). A video up to two
+    chunks long is then one render, sound included. A longer one renders its picture in scene-aligned chunks without
+    sound (``--frames``, ``--muted``) and its sound once, over the whole timeline, as lossless PCM: the same
+    composition with ``sound_only`` set, which plays the same <Audio> elements and draws nothing. That is Remotion's
+    own mix, bit for bit what a single render carries (measured), without paying for a second picture. ffmpeg joins
+    the pictures without re-encoding and encodes the sound once, as a single render does (AAC, 320 kb/s, 48 kHz). The
+    result must have exactly the composition's frame count, or it is refused and deleted.
 
-    ``on_spawn``: called with each Remotion process as it starts (its own process group), so a caller that must stop early
-    (the creative worker on SIGTERM) can kill the whole tree instead of waiting for it."""
+    ``tmp_dir``: where this render's scratch goes (the public dir, the props, the bundle and Remotion's own TMPDIR)
+    instead of the system's. The creative worker's /tmp is a tmpfs, so a ten-minute render's audio and bundle there would
+    count against the container's memory limit; it passes the job's own folder on the media volume.
+
+    ``on_spawn`` receives every child process (the bundler, each Remotion render, ffmpeg) right after it starts, so a
+    caller that is stopped can kill its process group; None does nothing.
+
+    Why not each chunk's own sound: Remotion mixes an effect that starts at or before a chunk's first frame
+    differently from a whole render (measured on a whoosh at every cut), so the pieces would not join exactly."""
     if not (engine_dir / "node_modules").exists():
         raise ExplainerError(f"the Remotion engine is not installed: run `npm ci` in {engine_dir}")
     if shutil.which("npx") is None:
         raise ExplainerError("npx is not on PATH: install Node 22 to render")
+    chunks = plan_chunks(props["scenes"], props.get("duration_s") or 0, int(props.get("fps") or 30), target_s=chunk_s) \
+        if props.get("scenes") else [(0, 0)]
+    if len(chunks) > 1 and (shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None):
+        raise ExplainerError("ffmpeg and ffprobe are needed to join a long render: install ffmpeg")
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # A file left from an earlier run must not pass as this run's output.
     out_path.unlink(missing_ok=True)
+    deadline = _now() + timeout_s
     env = _render_env()
     if tmp_dir is not None:
         Path(tmp_dir).mkdir(parents=True, exist_ok=True)
@@ -541,26 +602,98 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
             shutil.copyfile(src, dst)
         props_file = Path(tmp) / "props.json"
         props_file.write_text(json.dumps(props), encoding="utf-8")
-        cmd = ["npx", "remotion", "render", "src/index.ts", COMPOSITION, str(out_path.resolve()), f"--props={props_file}",
-               f"--public-dir={pub}", f"--concurrency={int(concurrency)}", "--log=error"]
-        if browser:
-            cmd.append(f"--browser-executable={browser}")
-        # Its own process group: on a timeout the whole tree goes (npx, node, the headless Chrome), not just npx, so
-        # nothing keeps writing out_path after the caller was told the render failed.
-        proc = subprocess.Popen(cmd, cwd=engine_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                env=env, start_new_session=True)
-        if on_spawn is not None:
-            on_spawn(proc)
+        bundle = Path(tmp) / "bundle"
         try:
-            stdout, stderr = proc.communicate(timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            _kill_group(proc)
+            _run(["npx", "remotion", "bundle", "src/index.ts", f"--out-dir={bundle}", f"--public-dir={pub}", "--log=error"],
+                 engine_dir, deadline, timeout_s, "bundling", on_spawn, env)
+            common = ["--log=error"]
+            if browser:
+                common.append(f"--browser-executable={browser}")
+
+            def remotion(out: Path, *extra: str, what: str, props_path: Path = props_file, tabs: int = concurrency) -> None:
+                _run(["npx", "remotion", "render", str(bundle), COMPOSITION, str(out), f"--props={props_path}", *extra,
+                      f"--concurrency={int(tabs)}", *common], engine_dir, deadline, timeout_s, what, on_spawn, env)
+                if not out.exists() or out.stat().st_size == 0:
+                    raise ExplainerError(f"Remotion wrote nothing for {what}")
+
+            if len(chunks) == 1:
+                remotion(out_path.resolve(), what="the video")
+            else:
+                videos = []
+                for i, (a, b) in enumerate(chunks):
+                    video = Path(tmp) / f"part{i:02d}.mp4"
+                    remotion(video, f"--frames={a}-{b}", "--muted", what=f"chunk {i + 1}/{len(chunks)} (frames {a}-{b})")
+                    videos.append(video)
+                sound_props = Path(tmp) / "props-sound.json"
+                sound_props.write_text(json.dumps({**props, "sound_only": True}), encoding="utf-8")
+                sound = Path(tmp) / "sound.wav"
+                # Nothing is drawn, so several tabs cost little memory (measured: 448 MB with 4, against ~1.2 GB for a
+                # picture chunk) and halve the pass, which still visits every frame to collect the sound.
+                remotion(sound, "--codec=wav", what="the sound", props_path=sound_props, tabs=SOUND_TABS)
+                vlist = Path(tmp) / "videos.txt"
+                vlist.write_text("".join(f"file '{p}'\n" for p in videos), encoding="utf-8")
+                _run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(vlist), "-i", str(sound),
+                      "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "320k", "-ar", "48000",
+                      "-movflags", "+faststart", str(out_path.resolve())],
+                     engine_dir, deadline, timeout_s, "joining the chunks", on_spawn, env)
+                want = total_frames(props["duration_s"], props["fps"])
+                got = _frame_count(out_path)
+                if got != want:
+                    raise ExplainerError(f"the joined video has {got} frames, the composition has {want}: not delivered")
+        except ExplainerError:
             out_path.unlink(missing_ok=True)
-            raise RenderTimeout(f"the render took longer than {timeout_s:.0f} s and was stopped") from None
-        if proc.returncode != 0 or not out_path.exists() or out_path.stat().st_size == 0:
-            tail = "\n".join((stderr or stdout or "").strip().splitlines()[-8:])
-            raise RenderFailed(f"Remotion failed (exit {proc.returncode}): {tail}")
+            raise
     return out_path
+
+
+def _now() -> float:
+    import time  # noqa: PLC0415
+
+    return time.monotonic()
+
+
+def _run(cmd: List[str], cwd: Path, deadline: float, timeout_s: float, what: str,
+         on_spawn: Optional[Callable[[subprocess.Popen], None]] = None, env: Optional[dict] = None) -> None:
+    """One step of a render, in its own process group with the trimmed environment, inside the render's overall time.
+    On a timeout the whole tree goes (npx, node, the headless Chrome), so nothing keeps writing after the caller was
+    told the render failed."""
+    left = deadline - _now()
+    if left <= 0:
+        raise RenderTimeout(f"the render took longer than {timeout_s:.0f} s and was stopped (before {what})")
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            env=env if env is not None else _render_env(), start_new_session=True)
+    if on_spawn is not None:
+        try:
+            on_spawn(proc)
+        except BaseException:
+            # The caller could not take ownership of the process: it must not outlive this call.
+            _kill_group(proc)
+            raise
+    try:
+        stdout, stderr = proc.communicate(timeout=left)
+    except subprocess.TimeoutExpired:
+        _kill_group(proc)
+        raise RenderTimeout(f"the render took longer than {timeout_s:.0f} s and was stopped ({what})") from None
+    if proc.returncode != 0:
+        tail = "\n".join((stderr or stdout or "").strip().splitlines()[-8:])
+        raise RenderFailed(f"{'Remotion' if cmd[0] == 'npx' else cmd[0]} failed {what} (exit {proc.returncode}): {tail}")
+
+
+def _frame_count(path: Path) -> Optional[int]:
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
+                              "stream=nb_read_packets", "-of", "csv=p=0", str(path)],
+                             capture_output=True, text=True, timeout=120, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_count(out)
+
+
+def parse_count(text: str) -> Optional[int]:
+    """ffprobe's packet count. It prints ``912,`` (a trailing separator) in csv mode: anything that is not exactly one
+    count is None, never a guess."""
+    m = re.fullmatch(r"\s*(\d+),?\s*", text or "")
+    return int(m.group(1)) if m else None
 
 
 #: What the render needs from the environment; everything else (provider keys among it) stays out of it.

@@ -20,6 +20,6 @@ export const TOOL_ICONS: Record<StudioCapability, LucideIcon> = {
   video_edit: Clapperboard,
   video_reframe: Video,
   video_remove_bg: SquareDashedMousePointer,
-  // 0171: a video drawn over the person's own voice.
+  // 0176: a video drawn over the person's own voice.
   voice_explainer: MicVocal,
 };

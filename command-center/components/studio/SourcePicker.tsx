@@ -19,7 +19,7 @@ export function clipLength(seconds: number | null): string | null {
  * `media="recording"`, the ONE audio or video file a voice change or a dub
  * starts from (migration 0050), or with `media="video"` the ONE video a video
  * upscale starts from (0052), or with `media="audio"` the ONE audio recording a
- * voice video is drawn over (0171). Once picked it
+ * voice video is drawn over (0176). Once picked it
  * shows large with "Change"; the list comes back only when asked. The pick is
  * only an id: the database refuses (source_unavailable) one that is not a
  * live file of the right kind of this organization when it prices the job,
@@ -44,7 +44,7 @@ export function SourcePicker({
   libraryHref: string;
   /** In the Studio's narrow composer column: four across at every width. */
   compact?: boolean;
-  /** What the tool starts from: a picture (0046), a recording (0050), a video (0052) or an audio recording only (0171). */
+  /** What the tool starts from: a picture (0046), a recording (0050), a video (0052) or an audio recording only (0176). */
   media?: "picture" | "recording" | "video" | "audio";
   /** A recording or video tool's longest clip, to grey out longer ones (the database still decides). */
   maxSeconds?: number | null;
@@ -245,7 +245,7 @@ function RecordingPicker({
   recordings: PickerRecording[];
   /** Videos only (0052's upscale): its own words, and limits in seconds. */
   video: boolean;
-  /** Audio only (0171's voice video): its own words, so the list never promises a video it then refuses. */
+  /** Audio only (0176's voice video): its own words, so the list never promises a video it then refuses. */
   audio?: boolean;
   value: string | null;
   chosen: PickerRecording | undefined;

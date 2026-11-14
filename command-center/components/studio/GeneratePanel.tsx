@@ -268,7 +268,7 @@ export function GeneratePanel({
   // 0099: the shape an expand extends the picture to, and the light a relight is asked for by name.
   const [shape, setShape] = useState<ExpandAspect | null>(initial?.shape ?? null);
   const [look, setLook] = useState<RelightLook | null>(initial?.look ?? null);
-  // 0171: the look a voice video is drawn in.
+  // 0176: the look a voice video is drawn in.
   const [explainerLook, setExplainerLook] = useState<ExplainerLook | null>(initial?.explainerLook ?? null);
   // A description is written in the language the app is read in, unless the person picks another.
   const [describeLanguage, setDescribeLanguage] = useState<DescribeLanguage>(
@@ -351,7 +351,7 @@ export function GeneratePanel({
   const effectiveLook = capability !== "relight" ? null : look && looks.includes(look) ? look : null;
   // A voice video's look: the one picked if this model draws it, else the model's first. Every look is priced the same (the
   // recording's seconds), and that chip is shown pressed, so what the press sends is always the look the person sees chosen.
-  // Nothing behind the Studio fills one in: 0171 refuses a job without a look and the worker draws only the one sent.
+  // Nothing behind the Studio fills one in: 0176 refuses a job without a look and the worker draws only the one sent.
   const drawLooks = explainerLooksFor(available, current, routed);
   const effectiveDrawLook =
     capability !== "voice_explainer" ? null : explainerLook && drawLooks.includes(explainerLook) ? explainerLook : (drawLooks[0] ?? null);
@@ -1083,7 +1083,7 @@ export function GeneratePanel({
         <span className="text-xs text-[var(--color-muted)]">{t.gen.lookOrWords}</span>
       </div>
     ) : capability === "voice_explainer" && drawLooks.length > 0 ? (
-      // 0171: the look a voice video is drawn in. One is always shown picked (see effectiveDrawLook); no words go with it.
+      // 0176: the look a voice video is drawn in. One is always shown picked (see effectiveDrawLook); no words go with it.
       <div className="flex flex-col gap-2" data-testid="gen-explainer-looks">
         <span className="studio-label" id="gen-explainer-look-label">
           {t.gen.explainerLookLabel}
@@ -1215,7 +1215,7 @@ export function GeneratePanel({
       </span>
     </div>
   ) : narrated ? (
-    // 0171: the person's own narration, audio only, at most ten minutes (the model may say less); the database still decides.
+    // 0176: the person's own narration, audio only, at most ten minutes (the model may say less); the database still decides.
     <div className="flex flex-col gap-2">
       <span className="studio-label">{t.gen.narrationLabel}</span>
       <SourcePicker
@@ -2047,7 +2047,7 @@ export function GeneratePanel({
             <div className="desk-booth-cast">
               {voiceBlock}
               {dubLangBlock}
-              {/* 0171: a voice video's look sits where a voice is cast (lookBlock is null for every other voice tool). */}
+              {/* 0176: a voice video's look sits where a voice is cast (lookBlock is null for every other voice tool). */}
               {lookBlock}
               {modelBlock}
               {dockBlock}

@@ -92,7 +92,7 @@ class ApiCreativeModelsMigration(unittest.TestCase):
         self.assertIn("'spec', s.spec - 'api_exposure'", b)
 
     def test_the_listed_capabilities_are_exactly_the_apis_twin_in_typescript(self):
-        # The NEWEST body is the one the API runs (0171 added voice_explainer to 0162's list): each one keeps the twin equal.
+        # The NEWEST body is the one the API runs (0176 added voice_explainer to 0162's list): each one keeps the twin equal.
         newest = [p for p in sorted(MIG.glob("*.sql")) if "function public.api_creative_models(" in p.read_text(encoding="utf-8")][-1]
         b = body("api_creative_models", newest.read_text(encoding="utf-8"))
         sql_caps = re.findall(r"'([a-z_0-9]+)'", re.search(r"and s\.capabilities && array\[(.*?)\]::text\[\];", b, re.S).group(1))

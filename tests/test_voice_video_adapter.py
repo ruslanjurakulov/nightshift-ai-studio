@@ -1,4 +1,4 @@
-"""Voice to video (migration 0171) on the worker: the adapter of our own engine, the registry entry, the seam and the worker.
+"""Voice to video (migration 0176) on the worker: the adapter of our own engine, the registry entry, the seam and the worker.
 
 The render is replaced by a fake and the transcription's HTTP layer by a fake session (a real render is opt-in,
 test_the_real_engine below); nothing touches a network or spends anything. What must hold:
@@ -814,24 +814,28 @@ class TheEngineModule(unittest.TestCase):
             root = Path(tmp)
             engine = root / "engine"
             (engine / "node_modules").mkdir(parents=True)
-            seen = {}
+            calls = []
 
             class Proc:
                 returncode = 0
                 pid = 1
 
                 def __init__(self, cmd, **kw):
-                    seen.update(kw)
-                    seen["cmd"] = cmd
-                    Path(cmd[5]).write_bytes(MP4)
+                    calls.append((cmd, kw))
+                    if cmd[2] == "render":
+                        Path(cmd[5]).write_bytes(MP4)
 
                 def communicate(self, timeout=None):
                     return "", ""
 
             with mock.patch.object(ve.subprocess, "Popen", Proc), mock.patch.object(ve.shutil, "which", return_value="/usr/bin/npx"):
                 ve.render({"look": "dusk"}, root / "out.mp4", files={}, engine_dir=engine, tmp_dir=root / "scratch")
-            self.assertEqual(seen["env"]["TMPDIR"], str((root / "scratch").resolve()))
-            self.assertTrue(any(a.startswith(f"--public-dir={(root / 'scratch').resolve()}") for a in seen["cmd"]))
+            scratch = str((root / "scratch").resolve())
+            # Every step (the bundler and the render) writes its scratch on the media volume, never the tmpfs /tmp.
+            self.assertEqual([c[0][2] for c in calls], ["bundle", "render"])
+            self.assertTrue(all(kw["env"]["TMPDIR"] == scratch for _, kw in calls))
+            self.assertTrue(any(a.startswith(f"--public-dir={scratch}") for a in calls[0][0]))
+            self.assertTrue(calls[1][0][3].startswith(scratch))  # the bundle the render reads lives there too
 
     def test_render_failures_are_typed(self):
         self.assertTrue(issubclass(ve.RenderTimeout, ve.RenderFailed))

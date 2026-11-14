@@ -247,7 +247,7 @@ class ModelEntry:
     end_frame: bool
     #: The lights a relight is sold for (0099); empty unless it lists relight.
     relight_looks: Tuple[str, ...]
-    #: The looks a voice video is drawn in (0171); empty unless it lists voice_explainer.
+    #: The looks a voice video is drawn in (0176); empty unless it lists voice_explainer.
     explainer_looks: Tuple[str, ...]
     #: The longest source a file tool takes, in seconds (limits.max_source_seconds).
     max_source_seconds: Optional[int]
@@ -371,7 +371,7 @@ class ModelEntry:
             out.append(f"{cap} keeps the video's own shape: an aspect ratio does not apply")
         if cap == RELIGHT and request.look is not None and request.look not in self.relight_looks:
             out.append(f"{self.id} does not relight with the {request.look} look")
-        # A voice video (0171) is always drawn in a look, and only in one the model was proven for: never a default here.
+        # A voice video (0176) is always drawn in a look, and only in one the model was proven for: never a default here.
         if cap == VOICE_EXPLAINER and request.look not in self.explainer_looks:
             out.append(f"{self.id} does not draw the {request.look or '(no look)'} look")
         if cap not in (RELIGHT, VOICE_EXPLAINER) and request.look is not None:
@@ -526,7 +526,7 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if any(c in VIDEO_INPUT for c in caps) and any(c not in VIDEO_INPUT for c in caps):
             errors.append(_err(mid, "a video tool model lists only video tools"))
         if (VOICE_EXPLAINER in caps) != bool(m.get("explainer_looks")):
-            # 0171 sells a voice video only in a look the model lists.
+            # 0176 sells a voice video only in a look the model lists.
             errors.append(_err(mid, "explainer_looks is required with voice_explainer and only with it"))
         if any(k not in EXPLAINER_LOOKS for k in (m.get("explainer_looks") or ())):
             errors.append(_err(mid, "explainer_looks must be looks the database accepts"))

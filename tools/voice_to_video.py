@@ -88,6 +88,7 @@ def main(argv=None) -> int:
     ap.add_argument("--music", help="a music bed (mp3/wav); default: none")
     ap.add_argument("--sfx-dir", default=str(ROOT / "assets" / "sfx"), help="where whoosh/deep_boom are; 'none' for no effects")
     ap.add_argument("--no-captions", action="store_true")
+    ap.add_argument("--no-media-card", action="store_true", help="draw character scenes without the video-card frame")
     ap.add_argument("--width", type=int, default=1080)
     ap.add_argument("--height", type=int, default=1920)
     ap.add_argument("--fps", type=int, default=30)
@@ -109,6 +110,9 @@ def main(argv=None) -> int:
             raise ve.ExplainerError(f"the Remotion engine is not installed: run `npm ci` in {ve.ENGINE_DIR}")
         if shutil.which("npx") is None:
             raise ve.ExplainerError("npx is not on PATH: install Node 22 to render")
+        # A recording long enough to be rendered in chunks is joined by ffmpeg: missing, it would fail after the render.
+        if duration >= 2 * ve.CHUNK_S and shutil.which("ffmpeg") is None:
+            raise ve.ExplainerError(f"a recording over {2 * ve.CHUNK_S:.0f} s is rendered in chunks joined by ffmpeg: install ffmpeg")
         if not 1 <= args.fps <= 60:
             raise ve.ExplainerError(f"--fps {args.fps} is not 1 to 60")
         for name, v in (("--width", args.width), ("--height", args.height)):
@@ -150,7 +154,7 @@ def main(argv=None) -> int:
             files[music] = Path(args.music)
         props = ve.build_props(look=args.look, duration_s=duration, words=words, scenes=scenes,
                                narration=f"narration{audio.suffix.lower()}", music=music, sfx=cues,
-                               captions=not args.no_captions, width=args.width, height=args.height, fps=args.fps)
+                               captions=not args.no_captions, media_card=not args.no_media_card, width=args.width, height=args.height, fps=args.fps)
         if args.dump_props:
             Path(args.dump_props).write_text(json.dumps(props, ensure_ascii=False, indent=2), encoding="utf-8")
         logger.info("%d words, %d scenes, %.1f s, look %s — rendering…", len(words), len(scenes), duration, args.look)

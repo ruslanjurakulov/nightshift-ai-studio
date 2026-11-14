@@ -101,7 +101,7 @@ export const PICTURE_OPS = PICTURE_OP_CAPABILITIES;
 export const VIDEO_OPS = VIDEO_OP_CAPABILITIES;
 
 /**
- * Voice to video (migration 0171): one of the organization's recordings (their own narration) and a look in, a 9:16
+ * Voice to video (migration 0176): one of the organization's recordings (their own narration) and a look in, a 9:16
  * motion-graphics video out, drawn by our own engine. Offered on the Voice desk (and by a link that names it), not in the
  * sidebar's tool rows, and usable only once the owner has proven and priced its model.
  */
@@ -151,7 +151,7 @@ export function isExplainerLook(v: unknown): v is ExplainerLook {
   return typeof v === "string" && (EXPLAINER_LOOKS as readonly string[]).includes(v);
 }
 
-/** The tools that start from an AUDIO recording of the library and draw a video over it (migration 0171). */
+/** The tools that start from an AUDIO recording of the library and draw a video over it (migration 0176). */
 export function needsNarration(c: string): c is (typeof NARRATION_CAPABILITIES)[number] {
   return (NARRATION_CAPABILITIES as readonly string[]).includes(c);
 }
@@ -340,7 +340,7 @@ export interface StudioModel {
   relightLooks?: RelightLook[];
   /** 0100: the shapes it reframes a video to (spec.aspect_ratios_by_capability.video_reframe), in the canonical order. */
   reframeAspects?: ExpandAspect[];
-  /** 0171: the looks it draws a voice video in (spec.explainer_looks), in the canonical order. */
+  /** 0176: the looks it draws a voice video in (spec.explainer_looks), in the canonical order. */
   explainerLooks?: ExplainerLook[];
   /**
    * 0060: the render qualities the model is sold by (spec.qualities), cheapest
@@ -811,7 +811,7 @@ export interface StudioForm {
   shape?: ExpandAspect | null;
   /** The light a relight is asked for by name (0099); the words replace it when typed. */
   look?: RelightLook | null;
-  /** The look a voice video is drawn in (0171): one the model lists, picked (the panel shows which). */
+  /** The look a voice video is drawn in (0176): one the model lists, picked (the panel shows which). */
   explainerLook?: ExplainerLook | null;
   /** The language a description is written in (0055); absent = English. */
   describeLanguage?: DescribeLanguage | null;
@@ -917,7 +917,7 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
       // The length (and so the price) is the video's own: never sent.
       return { source_asset_id: source, target_resolution: form.target ?? "" };
     case "voice_explainer":
-      // The recording and the look are the whole request; the length (and so the price) is the recording's own (0171).
+      // The recording and the look are the whole request; the length (and so the price) is the recording's own (0176).
       return { source_asset_id: source, look: form.explainerLook ?? "" };
     default:
       // Speech: the words are the prompt (the price counts their characters)
@@ -1001,7 +1001,7 @@ export const WORDS_FREE_PRICE: readonly StudioCapability[] = [
   "video_edit",
   "video_reframe",
   "video_remove_bg",
-  // 0171: priced by the recording's own seconds, whatever the look.
+  // 0176: priced by the recording's own seconds, whatever the look.
   "voice_explainer",
 ];
 const PRICE_STAND_IN = "price check";
@@ -1169,7 +1169,7 @@ export function reframeShapesFor(
   return EXPAND_ASPECTS.filter((x) => available.some((m) => m.reframeAspects?.includes(x)));
 }
 
-/** The looks a voice video offers (0171), chosen the same way as the shapes: the picked model's, or (Auto) any model's. */
+/** The looks a voice video offers (0176), chosen the same way as the shapes: the picked model's, or (Auto) any model's. */
 export function explainerLooksFor(
   available: readonly Pick<StudioModel, "explainerLooks">[],
   current: Pick<StudioModel, "explainerLooks"> | null,
@@ -1506,7 +1506,7 @@ const RATIO = /^(\d{1,2}):(\d{1,2})$/;
 export function cardShape(job: Pick<StudioJob, "capability" | "params" | "status">): { aspect: string; asked: boolean } {
   const kind = outputKind(job.capability);
   if (kind === "audio" || kind === "text") return { aspect: "16 / 7", asked: false };
-  // A voice video is always drawn 1080x1920 (0171): its frame is known before the file is.
+  // A voice video is always drawn 1080x1920 (0176): its frame is known before the file is.
   if (needsNarration(job.capability)) return { aspect: "9 / 16", asked: true };
   const a = job.params.aspect_ratio;
   const m = typeof a === "string" ? RATIO.exec(a) : null;
@@ -1568,7 +1568,7 @@ export interface StudioPrefill {
   shape?: ExpandAspect | null;
   /** A relight's light by name (0099), when the job had an offered one. */
   look?: RelightLook | null;
-  /** A voice video's look (0171), when the job had an offered one. */
+  /** A voice video's look (0176), when the job had an offered one. */
   explainerLook?: ExplainerLook | null;
   /** A picture's render quality (0060), when the job named one. */
   quality?: ImageQuality | null;
