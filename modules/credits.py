@@ -321,7 +321,12 @@ class CreditsRest:
             raise CreditsUnavailable(f"{table}: {type(e).__name__}") from None
         if r.status_code >= 300:
             raise CreditsUnavailable(f"{table}: HTTP {r.status_code}")
-        rows = r.json()
+        try:
+            rows = r.json()
+        except ValueError:
+            # A 2xx that is not JSON (a proxy's error page) is not "no rows": it
+            # would read as no settings, or no organization.
+            raise CreditsUnavailable(f"{table}: the reply was not JSON") from None
         return rows if isinstance(rows, list) else []
 
     def prices(self) -> Dict[str, Price]:
@@ -451,21 +456,15 @@ def open_hold(client, *, job_ref: Optional[str], channel_id: str,
             return None
         if not ref:
             raise CreditRefused("no credit reservation for this run — start it from the Command Center")
-        # Read before the hold is claimed: a settings read that fails refuses
-        # the run with nothing to give back.
-        agent_config = client.channel_agent_config(channel_id) if enforce else None
+        floor = _Floor.read(client, channel_id, duration_s) if enforce else None
         amount = client.start(ref, org)
         if amount is None:
             if enforce:
                 raise CreditRefused("its credit reservation is not open (expired, settled, or "
                                     "for another organization)")
             return None
-        if enforce:
-            minimum = _floor_or_release(client, ref, duration_s, agent_config)
-            if minimum is not None and amount + 1e-9 < minimum:
-                _safe(client.release, ref)
-                raise CreditRefused(f"its reservation of {amount:.2f} credits is below the "
-                                    f"{minimum:.2f} this run requires")
+        if floor is not None:
+            floor.check(client, ref, amount, "this run requires")
         return Hold(ref, org, float(amount))
     except CreditsUnavailable as e:
         if enforce:
@@ -474,16 +473,42 @@ def open_hold(client, *, job_ref: Optional[str], channel_id: str,
         return None
 
 
-def _floor_or_release(client, ref: str, duration_s, agent_config) -> Optional[float]:
-    """``minimum_reservation`` for a hold that is already claimed. A floor that
-    cannot be priced refuses the run, and the claimed hold goes back at once
-    instead of waiting 24 hours for the expiry sweep."""
-    prices = client.prices()
-    try:
-        return minimum_reservation(prices, duration_s, agent_config)
-    except CreditRefused:
-        _safe(client.release, ref)
-        raise
+@dataclass(frozen=True)
+class _Floor:
+    """The smallest hold a run may carry, decided BEFORE the hold is claimed.
+
+    Every read it needs (the channel's settings, the prices) happens first, so
+    once the hold is claimed nothing is left that can fail and strand it until
+    the expiry sweep. A refusal found after the claim gives the hold back at
+    once."""
+    minimum: Optional[float]
+    refusal: Optional[CreditRefused]
+    concept: bool
+
+    @staticmethod
+    def read(client, channel_id: str, duration_s) -> "_Floor":
+        agent_config = client.channel_agent_config(channel_id)
+        prices = client.prices()
+        concept = concept_thumbnail_on(agent_config)
+        try:
+            return _Floor(minimum_reservation(prices, duration_s, agent_config), None, concept)
+        except CreditRefused as e:
+            return _Floor(None, e, concept)
+
+    def check(self, client, ref: str, amount: float, requires: str) -> None:
+        if self.refusal is not None:
+            _safe(client.release, ref)
+            raise self.refusal
+        if self.minimum is not None and amount + 1e-9 < self.minimum:
+            _safe(client.release, ref)
+            why = (f"its reservation of {amount:.2f} credits is below the {self.minimum:.2f} {requires}")
+            if self.concept:
+                # Rule 6: the honest case is a hold priced before concept
+                # thumbnails were switched on — say so, and what to do.
+                why += (f", which includes up to {CONCEPT_THUMBNAIL_MAX_IMAGES} generated concept-thumbnail "
+                        "images; if concept thumbnails were turned on after this run was priced, start it "
+                        "again from the Command Center")
+            raise CreditRefused(why)
 
 
 def frozen_duration(params: Optional[Mapping]) -> Optional[int]:
@@ -529,16 +554,12 @@ def open_queue_hold(client, *, job_ref: Optional[str], channel_id: str,
         duration = frozen_duration(params)
         if duration is None:
             raise CreditRefused("its length was not fixed when it was queued (no duration) — queue it again")
-        agent_config = client.channel_agent_config(channel_id)
+        floor = _Floor.read(client, channel_id, duration)
         amount = client.start(ref, org)
         if amount is None:
             raise CreditRefused("its credit reservation is not open (expired, settled, or for another "
                                 "organization)")
-        minimum = _floor_or_release(client, ref, duration, agent_config)
-        if minimum is not None and amount + 1e-9 < minimum:
-            _safe(client.release, ref)
-            raise CreditRefused(f"its reservation of {amount:.2f} credits is below the "
-                                f"{minimum:.2f} a {duration}-second run requires")
+        floor.check(client, ref, amount, f"a {duration}-second run requires")
         return Hold(ref, org, float(amount))
     except CreditsUnavailable as e:
         raise CreditRefused(f"credits are unavailable ({e})") from None

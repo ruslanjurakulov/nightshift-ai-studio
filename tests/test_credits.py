@@ -311,6 +311,33 @@ class OpenQueueHold(unittest.TestCase):
             self.open(c)
         self.assertNotIn("start", [x[0] for x in c.calls])
 
+    class PricesDown(FakeCredits):
+        def prices(self):
+            raise CreditsUnavailable("credit_prices: ReadTimeout")
+
+    def test_unreadable_prices_refuse_before_the_hold_is_claimed_so_none_is_stranded(self):
+        # Used to read the prices after start(): the refusal then left the hold claimed until the 24 h sweep.
+        for opener in (self.open, lambda c: credits.open_hold(c, job_ref="r1", channel_id="news",
+                                                              duration_s=180, enforce=True)):
+            c = self.PricesDown()
+            with self.assertRaisesRegex(CreditRefused, "credit_prices: ReadTimeout"):
+                opener(c)
+            self.assertNotIn("start", [x[0] for x in c.calls])
+
+    def test_a_concept_refusal_says_the_images_are_why_and_what_to_do(self):
+        c = FakeCredits(hold=75.0, prices=CONCEPT_PRICES, agent_config=CONCEPT)
+        with self.assertRaises(CreditRefused) as ctx:
+            self.open(c)
+        msg = str(ctx.exception)
+        self.assertIn("up to 4 generated concept-thumbnail images", msg)
+        self.assertIn("start it again from the Command Center", msg)
+
+    def test_a_frame_refusal_does_not_mention_images(self):
+        c = FakeCredits(hold=10.0, prices=CONCEPT_PRICES)
+        with self.assertRaises(CreditRefused) as ctx:
+            self.open(c)
+        self.assertNotIn("image", str(ctx.exception))
+
     def test_not_enforced_and_no_hold_touches_nothing(self):
         c = FakeCredits()
         self.assertIsNone(credits.open_hold(c, job_ref=None, channel_id="news", enforce=False))
@@ -1167,6 +1194,15 @@ class CreditsRestClient(unittest.TestCase):
         c = credits.CreditsRest("https://x.supabase.co", "k", session=self.Session(self.Resp(200, [])))
         with self.assertRaises(CreditsUnavailable):
             c.channel_agent_config("news")
+
+    def test_a_reply_that_is_not_json_is_unavailable_not_empty(self):
+        class NotJson(self.Resp):
+            def json(self):
+                raise ValueError("Expecting value")
+        c = credits.CreditsRest("https://x.supabase.co", "k", session=self.Session(NotJson(200, None)))
+        for read in (c.channel_agent_config, c.channel_org):
+            with self.subTest(read=read.__name__), self.assertRaises(CreditsUnavailable):
+                read("news")
 
     def test_http_error_names_the_status_not_the_body_or_key(self):
         s = self.Session(self.Resp(401, {"message": "service-secret leaked?"}))
