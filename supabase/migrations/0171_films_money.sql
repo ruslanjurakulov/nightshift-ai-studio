@@ -72,8 +72,9 @@
 --     film_record_assembly. A file that is rejected (too short, no recorded length), the files a failed or lost take's job registered
 --     or whose provenance names it, and an assembly file handed in with a failure are soft-deleted in the same transaction, so a
 --     result nobody paid for does not stay in the organization's library. film_discard_assets never touches a file that is not
---     generated, existed before the take began (or the segment was claimed), or is named anywhere else (another take, a scene, a
---     reference, a film's music, another assembly, a character): whatever a caller hands in.
+--     generated, existed before the take began (or the segment was claimed), is named anywhere else (another take, a scene, a
+--     reference, a film's music, another assembly, a character, another creative job), or whose own record (provenance, the take's
+--     job) does not name the take or segment: whatever a caller hands in.
 --     The segment settles once: capture_credits(ref, sum of the charges) — never above the hold (allow_over false) — and 0020 releases the
 --     rest in the same transaction; a segment that charged nothing is release_credits(ref).
 --   * NEVER RAN GOES BACK TO DRAFT. A segment that charged nothing and made nothing (cancelled before any charge, worker_unavailable,
@@ -231,7 +232,7 @@ begin
       ('public.film_take_money_json(public.film_takes)', '387f1f2650ad13eb82fec18ff75294bf'),
       ('public.film_lock_segment(uuid, text, boolean)', '053dc28514bf28fbdcdd1de097418f88'),
       ('public.film_lock_take(uuid, text)', '099be6f8255fa8cf59e2c2444d3b1a21'),
-      ('public.film_discard_assets(uuid, uuid, uuid, uuid[])', 'bf9ca6a78df29e00e0bb9095e52bd5bd'),
+      ('public.film_discard_assets(uuid, uuid, uuid, uuid[])', '05c2621095fb5bc2c9af4bf1c6b5af28'),
       ('public.film_fail_locked(uuid, text, text, text, numeric)', '5c479bb1bff1c0e6218ef9424ddeca49'),
       ('public.film_record_skip(uuid, uuid, uuid, text, text, text)', 'f0f07d2362e5fdaea5cd277d34568494'),
       ('public.film_lose_inflight_locked(uuid)', 'a1532b883a64b60cef101a260ee3ef02'),
@@ -259,6 +260,10 @@ begin
     end if;
   end loop;
 end $$;
+
+-- Earlier review rounds of this file had these two signatures; a database that applied one of them is left with only this one.
+drop function if exists public.film_discard_assets(uuid, uuid[]);
+drop function if exists public.film_record_assembly(uuid, text, boolean, numeric);
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 1. Tables and columns
@@ -941,8 +946,11 @@ $$;
 --     that existed before is not this take's output, so a take that never began discards nothing;
 --   * nothing else names it: no other take's result or last frame, no take's first frame, last frame or references, no scene's
 --     frames, no film reference, no film's music, no other segment's assembly, no character's pictures.
--- The candidates are the files handed in, the files the take's creative job registered (creative_jobs.result_asset_ids), and the
--- files whose provenance names the take (film_take_id) or the segment (film_segment_id): P3's contract (see the header).
+-- The candidates are only the files the take's creative job registered (creative_jobs.result_asset_ids) and the files whose
+-- provenance names the take (film_take_id) or the segment (film_segment_id): P3's contract (see the header). The ids a caller hands
+-- in (p_assets) are what it saw, and qualify only by that same record: handing a file in never makes it a candidate, so a paid
+-- Studio result or any other file of the organization passed by mistake is never removed. A file any other creative job lists is
+-- never removed either.
 -- Returns how many it removed.
 create or replace function public.film_discard_assets(p_org uuid, p_take uuid, p_segment uuid, p_assets uuid[]) returns integer
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -961,15 +969,16 @@ begin
   if since is null then
     return 0;
   end if;
-  with cand as (
-    select x as id from unnest(coalesce(p_assets, '{}'::uuid[])) x where x is not null
-    union
-    select r from public.creative_jobs j, unnest(j.result_asset_ids) r where p_take is not null and j.film_take_id = p_take
+  -- A file is this take's (or segment's) output only by its own record: its provenance names the take or the segment, or the take's
+  -- creative job lists it. An id a caller hands in is held to the same test: handing a file in never makes it a candidate.
+  with mine as (
+    select r as id from public.creative_jobs j, unnest(j.result_asset_ids) r where p_take is not null and j.film_take_id = p_take
     union
     select a.id from public.media_assets a
      where a.org_id = p_org and a.deleted_at is null and a.created_at >= since
        and ((p_take is not null and a.provenance ->> 'film_take_id' = p_take::text)
-            or (p_segment is not null and a.provenance ->> 'film_segment_id' = p_segment::text)))
+            or (p_segment is not null and a.provenance ->> 'film_segment_id' = p_segment::text))),
+  cand as (select m.id from mine m)
   update public.media_assets a set deleted_at = now()
    where a.id in (select c.id from cand c)
      and a.org_id = p_org and a.deleted_at is null and a.source = 'generated' and a.created_at >= since
@@ -982,7 +991,10 @@ begin
      and not exists (select 1 from public.film_refs r where r.asset_id = a.id)
      and not exists (select 1 from public.films f where f.music_asset_id = a.id)
      and not exists (select 1 from public.film_segments g where g.assembly_asset_id = a.id and g.id is distinct from p_segment)
-     and not exists (select 1 from public.character_references cr where cr.asset_id = a.id);
+     and not exists (select 1 from public.character_references cr where cr.asset_id = a.id)
+     -- Belt and braces: a file another creative job delivered is that job's (and possibly paid for), never this take's to discard.
+     and not exists (select 1 from public.creative_jobs j
+                      where j.org_id = p_org and a.id = any (j.result_asset_ids) and j.film_take_id is distinct from p_take);
   get diagnostics n = row_count;
   return n;
 end

@@ -238,11 +238,15 @@ class Db:
     def cancel(self, segment, reason="cancelled"):
         return self.svc("select public.film_cancel_segment(%s, %s)", [segment, reason])
 
+    def output(self, org, take, kind="video", mime="video/mp4", duration=_UNSET):
+        """A file the worker registers as a take's output, as P3's contract says: provenance names the take."""
+        return self.asset(org, kind, mime, duration=duration, provenance={"film_take_id": str(take)})
+
     def make(self, o, take, kind, worker="w-1", seconds=None):
         """Begin a take and give it a result of its kind (a video measures VIDEO_SECONDS)."""
         self.begin(take, worker)
         kind_ = {"keyframe": ("image", "image/png"), "narration": ("audio", "audio/mpeg")}.get(kind, ("video", "video/mp4"))
-        return self.succeed(take, seconds, self.asset(o.org, *kind_), worker)
+        return self.succeed(take, seconds, self.output(o.org, take, *kind_), worker)
 
     def finish_all(self, o, segment, worker="w-1"):
         """Every planned take of the segment made."""
@@ -953,8 +957,8 @@ def test_a_rejected_clip_is_not_kept_in_the_library(db, a):
     db.claim()
     clip = [t[0] for t in db.takes(seg["id"]) if t[1] == "clip"][0]
     db.begin(clip)
-    short = db.asset(a.org, "video", "video/mp4", duration=3)
-    frame = db.asset(a.org)
+    short = db.output(a.org, clip, duration=3)
+    frame = db.output(a.org, clip, "image", "image/png")
     out = db.svc("select public.film_take_succeeded(%s::uuid, 'w-1', null, %s::uuid, %s::uuid, 'lab-task-1')", [clip, short, frame])
     assert out["accepted"] is False
     gone = db.su("select id::text, deleted_at is not null from public.media_assets where id in (%s, %s)", [short, frame])
@@ -1039,11 +1043,58 @@ def test_a_charged_key_frame_handed_in_as_a_rejected_clips_last_frame_is_never_d
     made = db.make(a, kf, "keyframe")
     key_frame = made["result_asset_id"]
     db.begin(clip)
-    short = db.asset(a.org, "video", "video/mp4", duration=2)
+    short = db.output(a.org, clip, duration=2)
     out = db.svc("select public.film_take_succeeded(%s::uuid, 'w-1', null, %s::uuid, %s::uuid, 'lab-task-1')", [clip, short, key_frame])
     assert out["accepted"] is False
     assert db.live(key_frame) is True and db.live(short) is False
     assert db.su("select charged_credits from public.film_takes where id = %s", [kf])[0][0] == 3
+
+
+def test_a_paid_file_handed_in_as_a_rejected_clips_last_frame_is_never_discarded(db, a):
+    """Round 4, Lens's first reproduction: a generated image registered after the clip began (here a Studio job's result the customer
+    paid for) but named by no film table is not the take's output: its own record does not say so, and handing it in does not."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    clip = db.takes(seg["id"])[1][0]
+    db.begin(clip)
+    paid = db.asset(a.org)  # registered after the begin, no provenance
+    job = db.su("insert into public.creative_jobs (org_id, capability, requested_model, status, result_asset_ids) "
+                "values (%s, 't2i', 'img-key', 'completed', array[%s::uuid]) returning id", [a.org, paid])[0][0]
+    other = db.asset(a.org)  # registered after the begin, no provenance, no job: still not the take's
+    try:
+        for frame in (paid, other):
+            short = db.output(a.org, clip, duration=2)
+            out = db.svc("select public.film_take_succeeded(%s::uuid, 'w-1', null, %s::uuid, %s::uuid, 'lab-task-1')",
+                         [clip, short, frame])
+            assert out["accepted"] is False and db.live(short) is False and db.live(frame) is True, frame
+            if out.get("retry_take_id"):
+                clip = out["retry_take_id"]
+                db.begin(clip)
+    finally:
+        db.su("delete from public.creative_jobs where id = %s", [job])
+
+
+def test_a_generated_video_handed_to_a_failed_assembly_is_kept_unless_its_provenance_names_the_segment(db, a):
+    """Round 4, Lens's second reproduction: a generated video registered after the claim, with no provenance, survives a failed
+    assembly that names it; the segment's own file (provenance film_segment_id) is the one that goes."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    db.finish_all(a, seg["id"])
+    db.svc("select public.film_begin_assembly(%s, 'w-1')", [seg["id"]])
+    someone_elses = db.asset(a.org, "video", "video/mp4")
+    db.svc("select public.film_record_assembly(%s, 'w-1', false, %s::uuid)", [seg["id"], someone_elses])
+    assert db.live(someone_elses) is True
+    db.settle(seg["id"], "assembly_failed")  # one project at a time: the first one ends before the second starts
+    fid2 = db.film(a)
+    seg2 = db.quoted_start(a, fid2)
+    db.claim()
+    db.finish_all(a, seg2["id"])
+    db.svc("select public.film_begin_assembly(%s, 'w-1')", [seg2["id"]])
+    own = db.asset(a.org, "video", "video/mp4", provenance={"film_segment_id": seg2["id"]})
+    db.svc("select public.film_record_assembly(%s, 'w-1', false, %s::uuid)", [seg2["id"], own])
+    assert db.live(own) is False
 
 
 def test_a_failed_assembly_never_discards_a_library_file(db, a):

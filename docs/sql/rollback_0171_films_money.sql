@@ -50,7 +50,7 @@ begin
       ('public.film_take_money_json(public.film_takes)', '387f1f2650ad13eb82fec18ff75294bf'),
       ('public.film_lock_segment(uuid, text, boolean)', '053dc28514bf28fbdcdd1de097418f88'),
       ('public.film_lock_take(uuid, text)', '099be6f8255fa8cf59e2c2444d3b1a21'),
-      ('public.film_discard_assets(uuid, uuid, uuid, uuid[])', 'bf9ca6a78df29e00e0bb9095e52bd5bd'),
+      ('public.film_discard_assets(uuid, uuid, uuid, uuid[])', '05c2621095fb5bc2c9af4bf1c6b5af28'),
       ('public.film_fail_locked(uuid, text, text, text, numeric)', '5c479bb1bff1c0e6218ef9424ddeca49'),
       ('public.film_record_skip(uuid, uuid, uuid, text, text, text)', 'f0f07d2362e5fdaea5cd277d34568494'),
       ('public.film_lose_inflight_locked(uuid)', 'a1532b883a64b60cef101a260ee3ef02'),
@@ -116,6 +116,8 @@ drop function public.film_lose_inflight_locked(uuid);
 drop function public.film_record_skip(uuid, uuid, uuid, text, text, text);
 drop function public.film_fail_locked(uuid, text, text, text, numeric);
 drop function public.film_discard_assets(uuid, uuid, uuid, uuid[]);
+drop function if exists public.film_discard_assets(uuid, uuid[]);
+drop function if exists public.film_record_assembly(uuid, text, boolean, numeric);
 drop function public.film_lock_take(uuid, text);
 drop function public.film_lock_segment(uuid, text, boolean);
 drop function public.film_take_money_json(public.film_takes);

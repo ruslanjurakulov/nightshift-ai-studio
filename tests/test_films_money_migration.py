@@ -91,7 +91,10 @@ class FilmsMoneyMigration(unittest.TestCase):
         self.assertNotRegex(BODY, r"insert into public\.credit_prices")
         self.assertIn("'film_assembly_minute'", BODY)
         self.assertNotIn("drop table", BODY)
-        self.assertNotIn("drop function", BODY)
+        # Only this file's own earlier review-round signatures are ever dropped (a lab database that applied one stays clean).
+        self.assertEqual(re.findall(r"drop function[^;]*;", BODY),
+                         ["drop function if exists public.film_discard_assets(uuid, uuid[]);",
+                          "drop function if exists public.film_record_assembly(uuid, text, boolean, numeric);"])
 
     def test_nothing_publishes_renders_or_queues_a_job(self):
         for word in ("insert into public.render_jobs", "insert into public.creative_jobs", "publish_requests", "visibility_requests",
