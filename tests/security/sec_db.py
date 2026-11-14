@@ -543,6 +543,43 @@ def put_back_0167(conn_or_session) -> None:
         conn.execute(MIGRATION_0167.read_text(encoding="utf-8"))
 
 
+MIGRATION_0171 = MIGRATIONS / "0171_films_money.sql"
+ROLLBACK_0171 = REPO / "docs" / "sql" / "rollback_0171_films_money.sql"
+_OVERRIDE_0171 = "-- set local nightshift.rollback_0171_discard_segments = 'on';"
+
+
+def has_0171(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return conn.execute("select to_regclass('public.film_segments') is not null").fetchone()[0]
+
+
+def rollback_0171_body(override: bool = False) -> str:
+    """rollback_0171 without its own begin/commit (the caller's transaction holds it), with the override line set when asked."""
+    out = []
+    for ln in ROLLBACK_0171.read_text(encoding="utf-8").splitlines():
+        if ln.strip() in ("begin;", "commit;"):
+            continue
+        if override and ln.strip() == _OVERRIDE_0171:
+            ln = "set local nightshift.rollback_0171_discard_segments = 'on';"
+        out.append(ln)
+    return "\n".join(out)
+
+
+def take_off_0171(conn_or_session) -> None:
+    """0171 replaces 0166's films_status_check (adds 'queued'), and 0166's rollback refuses while film_segments exists, so a test that
+    replays or rolls back 0166 takes 0171 off first with its own rollback (override on: the lab's segments are not kept) and puts it
+    back with put_back_0171 where the chain goes on."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0171(conn):
+        conn.execute(rollback_0171_body(override=True))
+
+
+def put_back_0171(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0171(conn):
+        conn.execute(MIGRATION_0171.read_text(encoding="utf-8"))
+
+
 def migration_files() -> list[Path]:
     """Every migration, in sorted filename order — the order a fresh project
     applies them. Numbers need not be contiguous (migrations can merge out of

@@ -7,8 +7,8 @@ import { OAUTH_TOOL_SCOPES, oauthRefusalText, oauthRpc } from "@/lib/api/mcp-oau
 import { OAUTH_SCOPES } from "@/lib/oauth/config";
 
 /**
- * The Studio for a connected assistant (migration 0175), through the real MCP server, the real operations and the real oauthRpc,
- * with a small fake of 0175's functions. What the database itself decides (another workspace's file, another connection's quote,
+ * The Studio for a connected assistant (migration 0176), through the real MCP server, the real operations and the real oauthRpc,
+ * with a small fake of 0176's functions. What the database itself decides (another workspace's file, another connection's quote,
  * the hold equal to the quote, the monthly limit under the account lock) is attacked against a real Postgres in
  * tests/security/test_sec_mcp_oauth_creative.py; this pins what the assistant is offered and told: an OAuth connection with
  * studio:create gets five tools an API key never gets, create sends nothing but the quote's id and an idempotency key, and every
@@ -26,7 +26,7 @@ type Quote = { id: string; capability: string; model: string; params: Record<str
 const ok = (data: unknown, status = 200) => ({ ok: true, status, data });
 const err = (status: number, code: string, message: string, details: Record<string, unknown> = {}) => ({ ok: false, status, error: { code, message, ...details } });
 
-/** A fake of 0175: which models are switched on, the price list, the quotes, the jobs, the connection's limit. */
+/** A fake of 0176: which models are switched on, the price list, the quotes, the jobs, the connection's limit. */
 const db = {
   calls: [] as { fn: string; args: Record<string, unknown> }[],
   on: new Map<string, "ok" | "acknowledgement_required" | "not_offered">(),
@@ -348,7 +348,7 @@ describe("limits and models", () => {
 });
 
 describe("the database door", () => {
-  it("oauthRpc sends 0175's functions with the token hash, and still refuses the API key's creative functions", async () => {
+  it("oauthRpc sends 0176's functions with the token hash, and still refuses the API key's creative functions", async () => {
     const seen: string[] = [];
     const rpc = oauthRpc(async (fn, args) => {
       seen.push(`${fn}:${Object.keys(args).join(",")}`);

@@ -71,6 +71,7 @@ export const filmStudioEn = {
     draft: "Draft",
     planning: "Planning",
     planned: "Planned",
+    queued: "Waiting to start",
     running: "Shooting",
     draining: "Finishing",
     paused: "Paused",

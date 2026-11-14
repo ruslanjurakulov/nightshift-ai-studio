@@ -18,7 +18,7 @@ import { docsOrigin } from "@/lib/api/docs-origin";
 /** The MCP server's path: the resource a token is issued for. */
 export const MCP_RESOURCE_PATH = "/api/mcp";
 
-/** What a connection may be given; the database holds the same list (0093; studio:create since 0175). */
+/** What a connection may be given; the database holds the same list (0093; studio:create since 0176). */
 export const OAUTH_SCOPES = ["videos:read", "videos:create", "videos:publish", "studio:create"] as const;
 export type OAuthScope = (typeof OAUTH_SCOPES)[number];
 

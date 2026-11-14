@@ -31,7 +31,7 @@ export const OAUTH_TOOL_SCOPES = {
   get_balance: "videos:read",
   create_video: "videos:create",
   publish_video: "videos:publish",
-  // 0175: the Studio's generations, behind their own permission (a person who allowed "make videos" allowed nothing else). Every
+  // 0176: the Studio's generations, behind their own permission (a person who allowed "make videos" allowed nothing else). Every
   // model is off for assistants until its terms allow it, so list_creative_models can honestly answer an empty list.
   list_creative_models: "studio:create",
   list_media: "studio:create",
@@ -40,10 +40,10 @@ export const OAUTH_TOOL_SCOPES = {
   get_creative_job: "studio:create",
 } as const satisfies Record<string, McpScope>;
 
-/** The connected-app Studio tools (0175), in the order a client lists them. Never offered to an API key (it has its own four). */
+/** The connected-app Studio tools (0176), in the order a client lists them. Never offered to an API key (it has its own four). */
 export const OAUTH_STUDIO_TOOL_NAMES = ["list_creative_models", "list_media", "quote_creative", "create_creative", "get_creative_job"] as const;
 
-/** 0175's functions: a connection's own doors, which take the token's hash as p_token_hash and open with oauth_ctx. */
+/** 0176's functions: a connection's own doors, which take the token's hash as p_token_hash and open with oauth_ctx. */
 const OAUTH_CREATIVE = new Set(["oauth_creative_models", "oauth_media_list", "oauth_creative_quote", "oauth_creative_create", "oauth_creative_get"]);
 
 /** Functions an access token may be sent to, and what each is called for it. */
@@ -142,7 +142,7 @@ function publishRefusedText(errors: unknown): string | null {
  */
 export function oauthRefusalText(result: Extract<ApiResult, { ok: false }>, origin: string, opts: { studio?: "create" | "other" } = {}): string {
   const d = result.details ?? {};
-  // The same refusal reads for the thing that was asked: a video, or a Studio generation (0175).
+  // The same refusal reads for the thing that was asked: a video, or a Studio generation (0176).
   const what = opts.studio ? "generation" : "video";
   const studio = opts.studio ? studioRefusalText(result, origin, opts.studio === "create") : null;
   if (studio !== null) return studio;
@@ -215,7 +215,7 @@ export function oauthRefusalText(result: Extract<ApiResult, { ok: false }>, orig
 }
 
 /**
- * The Studio tools' own refusals (0175), or null for one that reads the same as a video's (credits, the connection's limit, the
+ * The Studio tools' own refusals (0176), or null for one that reads the same as a video's (credits, the connection's limit, the
  * plan's runs, permissions). Each names the next step (CLAUDE.md #6): a model that is not offered here is not a model that needs a
  * confirmation in the Studio, and neither is a price that moved.
  */

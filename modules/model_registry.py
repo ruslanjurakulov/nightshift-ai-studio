@@ -633,7 +633,7 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             errors.append(_err(mid, "mcp_oauth_exposure is true or false"))
         if m.get("mcp_oauth_exposure") is True:
             # A connected assistant's request has no visitor address to check a country against, and a rights acknowledgement is the
-            # person's own act in the Studio (0174); migration 0175 refuses both for an assistant, so the file must not promise them.
+            # person's own act in the Studio (0174); migration 0176 refuses both for an assistant, so the file must not promise them.
             if m.get("blocked_countries"):
                 errors.append(_err(mid, "mcp_oauth_exposure cannot be combined with blocked_countries"))
             if m.get("requires_acknowledgement"):

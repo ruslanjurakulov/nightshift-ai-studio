@@ -1,4 +1,4 @@
-"""supabase/migrations/0175_mcp_oauth_creative.sql — the Studio's generations for an AI assistant connected with OAuth.
+"""supabase/migrations/0176_mcp_oauth_creative.sql — the Studio's generations for an AI assistant connected with OAuth.
 
 SQL does not run in this suite (tests/security/test_sec_mcp_oauth_creative.py does that, against a real Postgres); these pin what
 must never change by accident: every model is OFF for assistants unless the registry file says so for that model, and no model does
@@ -16,9 +16,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MIG = ROOT / "supabase" / "migrations"
-SQL = (MIG / "0175_mcp_oauth_creative.sql").read_text(encoding="utf-8")
+SQL = (MIG / "0176_mcp_oauth_creative.sql").read_text(encoding="utf-8")
 SQL_0093 = (MIG / "0093_mcp_oauth.sql").read_text(encoding="utf-8")
-ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0175_mcp_oauth_creative.sql").read_text(encoding="utf-8")
+ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0176_mcp_oauth_creative.sql").read_text(encoding="utf-8")
 MIGRATIONS_DOC = (ROOT / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
 REGISTRY = json.loads((ROOT / "schemas" / "model_registry.json").read_text(encoding="utf-8"))
 OPERATIONS_TS = (ROOT / "command-center" / "lib" / "api" / "operations.ts").read_text(encoding="utf-8")
@@ -38,8 +38,8 @@ DOORS = {
 }
 REPLACED = {
     "oauth_scopes_supported": ("b1cdcf014109e5902d0e6d9f05767186", "3ef7e3154b00584e7625225d20dfa705"),
-    "oauth_endpoint_scope": ("ade9dedd7a1058b4938e9df7e8bd1b87", "8d0d2c6e236fde2b82aed988a7e7f377"),
-    "oauth_grant_month_credits": ("6329f5ed73f203e67e31e885238fa1ab", "4a3f226949bf5b91529a4e60d943fff3"),
+    "oauth_endpoint_scope": ("ade9dedd7a1058b4938e9df7e8bd1b87", "4bc3b07f8a926be2ca055a9404d1e3d3"),
+    "oauth_grant_month_credits": ("6329f5ed73f203e67e31e885238fa1ab", "79d0c8598db85481dcb63b906cdd576d"),
 }
 
 
@@ -186,9 +186,9 @@ class HouseStyle(unittest.TestCase):
         self.assertIn("set local lock_timeout", CODE)
 
     def test_the_number_is_unique_and_documented(self):
-        self.assertEqual(len(list(MIG.glob("0175_*.sql"))), 1)
-        self.assertIn("(0175)", MIGRATIONS_DOC)
-        self.assertIn("0175_mcp_oauth_creative.sql", MIGRATIONS_DOC)
+        self.assertEqual(len(list(MIG.glob("0176_*.sql"))), 1)
+        self.assertIn("(0176)", MIGRATIONS_DOC)
+        self.assertIn("0176_mcp_oauth_creative.sql", MIGRATIONS_DOC)
 
     def test_create_creative_job_is_not_replaced(self):
         # 0174 (PR #780) replaces it; this file must only call it.

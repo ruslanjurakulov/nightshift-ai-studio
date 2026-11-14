@@ -1,6 +1,6 @@
-"""The Studio for a connected assistant (0175), attacked in a real database.
+"""The Studio for a connected assistant (0176), attacked in a real database.
 
-The MCP tools quote_creative / create_creative / get_creative_job / list_creative_models / list_media call 0175's five doors with the
+The MCP tools quote_creative / create_creative / get_creative_job / list_creative_models / list_media call 0176's five doors with the
 anon key and the access token's hash, the way PostgREST does. These prove:
 
 * every model is off for assistants unless its registry spec says JSON true (a string "true" is off), independently of api_exposure
@@ -28,14 +28,14 @@ import pytest
 
 import sec_db
 
-MIGRATION = sec_db.MIGRATIONS / "0175_mcp_oauth_creative.sql"
-ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0175_mcp_oauth_creative.sql"
-ORG_A = "aaaaaaaa-0000-0000-0000-000000000175"
-ORG_B = "bbbbbbbb-0000-0000-0000-000000000175"
+MIGRATION = sec_db.MIGRATIONS / "0176_mcp_oauth_creative.sql"
+ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0176_mcp_oauth_creative.sql"
+ORG_A = "aaaaaaaa-0000-0000-0000-000000000176"
+ORG_B = "bbbbbbbb-0000-0000-0000-000000000176"
 UA = str(uuid.UUID(int=0xA175))
 UB = str(uuid.UUID(int=0xB175))
 # A workspace with only 5 credits: a 6-credit generation does not fit.
-ORG_C = "cccccccc-0000-0000-0000-000000000175"
+ORG_C = "cccccccc-0000-0000-0000-000000000176"
 UC = str(uuid.UUID(int=0xC175))
 RESOURCE = "https://nightshift-ai.studio/api/mcp"
 ALL = ["videos:read", "videos:create", "videos:publish", "studio:create"]
@@ -434,7 +434,7 @@ def test_replay_then_rollback_refuses_while_a_connection_holds_the_permission_th
         with pytest.raises(psycopg.errors.CheckViolation):
             d.su("insert into public.oauth_grants (user_id, org_id, client_id, scopes, resource, monthly_limit_credits) "
                  "select %s, %s, client_id, array['studio:create'], %s, 1 from public.oauth_clients limit 1", [UA, ORG_A, RESOURCE])
-        # And 0175 goes on again after its own rollback.
+        # And 0176 goes on again after its own rollback.
         sec_db.apply_files(d.dsn, [MIGRATION])
         assert d.su("select public.oauth_endpoint_scope('oauth.creative.create')")[0][0] == "studio:create"
         assert job

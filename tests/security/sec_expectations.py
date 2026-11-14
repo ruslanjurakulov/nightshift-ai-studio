@@ -719,8 +719,13 @@ import sec_films_0166  # noqa: E402
 
 sec_films_0166.extend(TABLES, FUNCTIONS)
 
-# Migration 0175 (the Studio's generations for a connected assistant: quotes, jobs and rate buckets of a connection's own, five
-# token-only doors, every model off): tests/security/sec_mcp_oauth_creative_0175.py
-import sec_mcp_oauth_creative_0175  # noqa: E402
+# Migration 0171 (Film Studio P2: quote_film / start_film, one credit hold per film segment, the worker's settle functions): tests/security/sec_films_0171.py
+import sec_films_0171  # noqa: E402
 
-sec_mcp_oauth_creative_0175.extend(TABLES, FUNCTIONS)
+sec_films_0171.extend(TABLES, FUNCTIONS)
+
+# Migration 0176 (the Studio's generations for a connected assistant: quotes, jobs and rate buckets of a connection's own, five
+# token-only doors, every model off): tests/security/sec_mcp_oauth_creative_0176.py
+import sec_mcp_oauth_creative_0176  # noqa: E402
+
+sec_mcp_oauth_creative_0176.extend(TABLES, FUNCTIONS)

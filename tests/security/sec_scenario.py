@@ -421,10 +421,10 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # One rate credit for that connection (0147): tests/security/sec_mcp_free_tier_0147.py.
     import sec_mcp_free_tier_0147
     sec_mcp_free_tier_0147.seed(conn, sc)
-    # A connected assistant's Studio quote, the generation it paid for and a rate counter (0175):
-    # tests/security/sec_mcp_oauth_creative_0175.py.
-    import sec_mcp_oauth_creative_0175
-    sec_mcp_oauth_creative_0175.seed(conn, sc)
+    # A connected assistant's Studio quote, the generation it paid for and a rate counter (0176):
+    # tests/security/sec_mcp_oauth_creative_0176.py.
+    import sec_mcp_oauth_creative_0176
+    sec_mcp_oauth_creative_0176.seed(conn, sc)
     # A LEGACY pending invite into org A, addressed to Ivan's email: written as the
     # database owner, because since 0091 no API role can create one (and the
     # migration deleted every one that existed). It is kept so the lab keeps
@@ -466,6 +466,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Film Studio P1 (0166): tests/security/sec_films_0166.py — one draft of two scenes, a style reference and a take per tenant.
     import sec_films_0166
     sec_films_0166.seed(conn, sc)
+    # Film Studio P2 (0171): tests/security/sec_films_0171.py — one released segment and a settings row per tenant.
+    import sec_films_0171
+    sec_films_0171.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
