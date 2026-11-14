@@ -675,6 +675,10 @@ def test_replaying_0094_twice_changes_nothing(conn):
     sql = (sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql").read_text(encoding="utf-8")
     sec_db.apply_files(ws.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql"])
     sec_db.apply_files(ws.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql"])
+    # 0094 has no drift guard: the replay put its oauth_create_video back over 0163's, on the lab every later file shares
+    # (0163's rollback, run by take_off_0122, then refused it). 0163 goes back on, as it would after a replay on live.
+    if sec_db.MIGRATION_0163.exists():
+        sec_db.apply_files(ws.dsn, [sec_db.MIGRATION_0163])
     assert (ws.lots(), ws.acct(), ws.summary()) == before and ws.acct()[2] is False   # an OFF stays OFF
     assert ws.reserve(150, "rj-replay-1")[:2] == (False, "NS402")
     with as_superuser(conn, commit=False) as s:

@@ -1455,13 +1455,17 @@ two holds below are made without them.
   one-argument `series_episode_price` is untouched. Both helpers are definers granted to no API role.
 - **md5.** before: `quote_series_episode` `9ba908b7888b5cab0281b8cf87e8659a`, `start_series_episode` `f3598d71d76e780b6973f88d8a743d2b`,
   `oauth_create_video` `244a5779e4388525f5f345b59379029f`; after: `bc65c3a373f86234e31f6a95564c3f72`, `e16dcc884ae25d0173a73ec1a04fcbd8`,
-  `6569154f72af9169e2c3b2d306531465`, `concept_thumbnail_credits` `e9883cc8f072cccadc2d9c3f0d5077c2`, `series_episode_price(integer, text)`
+  `6569154f72af9169e2c3b2d306531465`, `concept_thumbnail_credits` `93ecebafdd6738762a480f75527fd508`, `series_episode_price(integer, text)`
   `c27ede9c11d262b6047a93e0f81f4042` (drift guard, end-state check, rollback, `tests/security/sec_db.py`).
 - **Without it.** Before the worker change: series and MCP videos of a concept channel run, and their images are paid by the platform.
   After it: they are refused at the worker ("…below the X a N-second run requires, which includes up to 4 generated concept-thumbnail
   images…").
 - **Number.** 0163: 0162 is the highest on main. Needs 0094, 0120 and 0158. 0127's, 0131's and 0133's numbering tests list it as
   reviewed (0127's holds it to reading `series_plans` only).
+- **A replay of 0093 or 0094 undoes part of it.** Neither has a drift guard: replaying 0094 puts its `oauth_create_video` back over
+  0163's (replaying 0093 puts 0093's back over both). MCP videos of a concept channel are then held without the images and refused by
+  the worker, and 0163's rollback refuses to run. After such a replay apply 0094 (if it was 0093) and then 0163 again; 0163's drift
+  guard accepts 0094's body.
 - **Undo.** `docs/sql/rollback_0163_concept_thumbnail_holds.sql` (owner-applied): refuses a body that is not 0163's, puts 0120's and
   0094's bodies back byte for byte, drops the two helpers. Roll the worker back first.
 - **Tests.** `tests/test_concept_thumbnail_holds_migration.py` (the bodies differ from 0120's / 0094's only in the price, the rollback,

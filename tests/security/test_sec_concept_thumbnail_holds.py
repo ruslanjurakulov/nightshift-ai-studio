@@ -60,6 +60,10 @@ READINGS = [
     {"thumbnail_mode": "frame"}, {"thumbnail_mode": "conceptual"}, {"thumbnail_mode": "con cept"}, {"thumbnail_mode": ""},
     {"thumbnail_mode": ["concept"]}, {"thumbnail_mode": {"mode": "concept"}}, {"thumbnail_mode": 1}, {"thumbnail_mode": True},
     {"thumbnail_mode": None}, {},          # (channels.agent_config itself is NOT NULL)
+    # every character Python's str.strip() removes, before and after the word, and two it keeps (zero-width space, BOM):
+    # the worker and the database must both call each of these concept, or both frame.
+    *({"thumbnail_mode": f"{ch}concept{ch}"} for ch in
+      "\t\n\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0\u1680\u2000\u2005\u200a\u2028\u2029\u202f\u205f\u3000\u200b\ufeff"),
 ]
 
 
@@ -105,6 +109,16 @@ def test_unpriced_images_are_unknown_for_a_concept_channel_and_irrelevant_for_a_
                                     120, {"thumbnail_mode": "concept"})
     set_config(su, {"thumbnail_mode": "frame"})
     assert float(su.value("select public.series_episode_price(120, %s)", [CHANNEL])) == 15.0
+
+
+def test_a_nan_image_price_is_unpriced_never_a_price(su):
+    # numeric accepts 'NaN' and NaN >= 0 holds, so credit_prices' check lets it in; the worker reads it as unpriced.
+    set_prices(su, [("job_minimum", 5, 0), ("video_minute", 6, 0.25), ("image_generations", "NaN", 0)])
+    set_config(su, {"thumbnail_mode": "concept"})
+    assert su.value("select public.concept_thumbnail_credits(%s)", [CHANNEL]) is None
+    assert su.value("select public.series_episode_price(120, %s)", [CHANNEL]) is None
+    assert credits.parse_prices([{"unit": "image_generations", "credits_per_unit": float("nan")}]) == {}
+    # (a NaN margin cannot be stored: credit_prices_margin_check refuses it)
 
 
 @pytest.mark.parametrize("role", ["anon", "authenticated", "service_role"])

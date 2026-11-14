@@ -34,7 +34,7 @@
 --     quote_series_episode         bc65c3a373f86234e31f6a95564c3f72
 --     start_series_episode         e16dcc884ae25d0173a73ec1a04fcbd8
 --     oauth_create_video           6569154f72af9169e2c3b2d306531465
---     concept_thumbnail_credits    e9883cc8f072cccadc2d9c3f0d5077c2
+--     concept_thumbnail_credits    93ecebafdd6738762a480f75527fd508
 --     series_episode_price(i, t)   c27ede9c11d262b6047a93e0f81f4042
 --   If a live value is anything else, STOP: something was applied by hand, and replacing the body would silently undo it.
 --
@@ -75,7 +75,7 @@ begin
   if o is null or o <> all (array['244a5779e4388525f5f345b59379029f', '6569154f72af9169e2c3b2d306531465']) then
     raise exception '0163 found an oauth_create_video() that is neither 0094''s body nor 0163''s (md5 %): read the live body first', o;
   end if;
-  if c is not null and c <> 'e9883cc8f072cccadc2d9c3f0d5077c2' then
+  if c is not null and c <> '93ecebafdd6738762a480f75527fd508' then
     raise exception '0163 found a concept_thumbnail_credits() that is not this file''s body (md5 %): read the live body first', c;
   end if;
   if sp is not null and sp <> 'c27ede9c11d262b6047a93e0f81f4042' then
@@ -95,17 +95,23 @@ declare
 begin
   select c.agent_config into v_cfg from public.channels c where c.channel_id = p_channel_id;
   -- coalesce: a missing key, a null column or a non-string value is frame mode, never "unknown, so maybe concept".
+  -- The trimmed characters are exactly Python's str.strip() set (str.isspace), not the locale's \s: a value the worker
+  -- reads as concept and this read as frame would price the episode without the images, and the worker would refuse it.
   if not coalesce(jsonb_typeof(v_cfg -> 'thumbnail_mode') = 'string'
-                  and lower(regexp_replace(v_cfg ->> 'thumbnail_mode', '^\s+|\s+$', '', 'g')) = 'concept', false) then
+                  and lower(regexp_replace(v_cfg ->> 'thumbnail_mode',
+                        '^[\t\n\v\f\r\x1c-\x20\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r\x1c-\x20\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$',
+                        '', 'g')) = 'concept', false) then
     return 0;
   end if;
   select * into ig from public.credit_prices where unit = 'image_generations';
-  -- modules/credits.parse_prices: a missing or negative rate is unpriced; a missing or negative margin is 0.
-  if ig.unit is null or ig.credits_per_unit is null or ig.credits_per_unit < 0 then
+  -- modules/credits.parse_prices: a missing, negative or non-finite rate is unpriced; such a margin is 0. (numeric accepts 'NaN',
+  -- and NaN >= 0 holds in Postgres, so the table's check does not keep it out.)
+  if ig.unit is null or ig.credits_per_unit is null or ig.credits_per_unit < 0 or ig.credits_per_unit = 'NaN'::numeric then
     return null;
   end if;
   -- 4: CONCEPT_THUMBNAIL_MAX_IMAGES (modules/credits.py, lib/credits.ts) — one image per A/B arm, at most 4 arms.
-  return ig.credits_per_unit * (1 + case when ig.margin is null or ig.margin < 0 then 0 else ig.margin end) * 4;
+  return ig.credits_per_unit
+         * (1 + case when ig.margin is null or ig.margin < 0 or ig.margin = 'NaN'::numeric then 0 else ig.margin end) * 4;
 end
 $$;
 
@@ -484,7 +490,7 @@ begin
     ('public.quote_series_episode(uuid)', 'bc65c3a373f86234e31f6a95564c3f72'),
     ('public.start_series_episode(uuid, numeric, text, boolean)', 'e16dcc884ae25d0173a73ec1a04fcbd8'),
     ('public.oauth_create_video(text, text, jsonb, text, text)', '6569154f72af9169e2c3b2d306531465'),
-    ('public.concept_thumbnail_credits(text)', 'e9883cc8f072cccadc2d9c3f0d5077c2'),
+    ('public.concept_thumbnail_credits(text)', '93ecebafdd6738762a480f75527fd508'),
     ('public.series_episode_price(integer, text)', 'c27ede9c11d262b6047a93e0f81f4042')
   loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = to_regprocedure(sig);
