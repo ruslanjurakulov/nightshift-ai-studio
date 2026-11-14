@@ -304,6 +304,12 @@ ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: after it, in this order.
 ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql")
 
+#: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
+#: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
+#: nothing of 0124's, so no sequence that leaves 0124 out needs to leave it out.
+MIGRATION_0165 = MIGRATIONS / "0165_referral_rewards.sql"
+ROLLBACK_0165 = REPO / "docs" / "sql" / "rollback_0165_referral_rewards.sql"
+
 
 def has_0139(conn_or_session) -> bool:
     conn = getattr(conn_or_session, "conn", conn_or_session)

@@ -14,6 +14,7 @@ import { moneyAnchor, runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
 import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { PUBLIC_READ_TIMEOUT_MS } from "@/lib/server/public-read";
 import { readPublicCreditRates } from "@/lib/server/public-rates";
+import { readReferralTerms } from "@/lib/server/referrals";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
 
@@ -60,6 +61,8 @@ export default async function PricingPage() {
   // (per minute and the smallest hold, 0089). Read alongside the rest.
   const apiPricesRead = readPublicApiPrices();
   const publicRatesRead = readPublicCreditRates();
+  // The referral programme (0165): mentioned only while open, with the database's numbers (a shared, bounded public read).
+  const referralRead = readReferralTerms();
 
   const supabase = await createClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
@@ -95,6 +98,7 @@ export default async function PricingPage() {
   const catalogRead = await catalogPending;
   const catalog = planValue(catalogRead);
   const plans = sitePlanMatrix(catalog, locale);
+  const referral = await referralRead;
 
   return (
     <PublicShell t={t} fresh>
@@ -110,6 +114,7 @@ export default async function PricingPage() {
         plans={plans}
         expiry={packExpiry(catalogRead, CREDIT_EXPIRY_MONTHS)}
         anchor={moneyAnchor(pricing, await apiPricesRead, publicRates)}
+        referral={referral.state === "ok" ? referral.value : null}
       />
     </PublicShell>
   );

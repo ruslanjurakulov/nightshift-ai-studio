@@ -327,6 +327,18 @@ const RPC = {
   },
 };
 
+// The referral programme (0165): made-up counts and today's made-up numbers, for the Credits card and the public /referral.
+const REFERRAL_NUMBERS = { enabled: true, credits: 200, min_credits: 1000, hold_days: 30, qualify_days: 60, monthly_cap: 10 };
+const REFERRALS_EMPTY = {
+  ...REFERRAL_NUMBERS,
+  link: { token: "0123456789abcdef0123456789abcdef", created_at: "2026-10-01T00:00:00Z" },
+  joined: 0, held: 0, due: 0, next_release_at: null, paid: 0, earned: 0, paid_this_month: 0, clawed: 0, clawed_credits: 0, void: 0,
+  milestone_credits: null,
+};
+RPC.my_referrals = { ...REFERRALS_EMPTY, joined: 6, held: 2, next_release_at: "2026-12-09T10:00:00Z", paid: 3, earned: 600, paid_this_month: 1, void: 1 };
+RPC.claim_referral_rewards = RPC.my_referrals;
+RPC.referral_terms = { ...REFERRAL_NUMBERS, daily_cap: 50, link_hourly_cap: 10, new_account_days: 3, updated_at: "2026-11-14T08:00:00Z" };
+
 // The consent screen and Connected apps (0093): made-up app, made-up return address.
 RPC.oauth_begin_authorization = { ok: true, entitled: true, client_name: "Claude", redirect_uri: "https://claude.ai/api/mcp/auth_callback", workspace_name: "QA Studio", plan: "creator", scopes: ["videos:read", "videos:create", "videos:publish"], default_limit_credits: 500, max_limit_credits: 20000, exempt: false };
 RPC.oauth_my_grants = [
@@ -444,6 +456,9 @@ export function startFakeSupabase(port = 54399) {
         });
         return;
       }
+      // The referral card (0165): `ref_empty` has a link and nobody joined yet; every other session has made-up referrals. The
+      // "claim" moves nothing here: it answers the same counts as the read.
+      if (state === "ref_empty" && (rpc[1] === "claim_referral_rewards" || rpc[1] === "my_referrals")) return send(res, 200, REFERRALS_EMPTY);
       if (state === "owner" && rpc[1] === "is_platform_admin") return send(res, 200, true);
       if (state === "owner" && rpc[1] === "bind_current_member") return send(res, 200, "owner");
       if (state === "owner" && rpc[1] === "my_organizations") return send(res, 200, OWNER_ORGS);

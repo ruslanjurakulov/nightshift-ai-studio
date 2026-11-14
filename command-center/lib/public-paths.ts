@@ -98,6 +98,13 @@ export const STUDIO_PAGE_PATH = "/studio";
  */
 export const ROADMAP_PATH = "/roadmap";
 
+/**
+ * The referral programme's terms (app/referral/page.tsx, migration 0165): the full rules with today's numbers, read from the
+ * database. Always public, like /roadmap and for the same reason it is listed but not counted (UNCOUNTED_PAGE_PATHS: the
+ * page-view counter's SQL list would need a migration).
+ */
+export const REFERRAL_PATH = "/referral";
+
 /** Always public: the crawler files (app/robots.ts, app/sitemap.ts, app/llms.txt/route.ts). */
 export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml", "/llms.txt"] as const;
 
@@ -221,6 +228,7 @@ export const ALWAYS_PUBLIC_PATHS = [
   INVITE_NOTICE_PATH,
   UNSUBSCRIBE_PATH,
   ROADMAP_PATH,
+  REFERRAL_PATH,
 ] as const;
 
 /** The pages the sitemap lists: every public page a visitor reads, not the
@@ -310,6 +318,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   "roadmap",
   // The Refund Policy (REFUND_PATH): a channel of that id would be shadowed by it.
   "refund",
+  // The referral programme's terms (REFERRAL_PATH): a channel of that id would be shadowed by it.
+  "referral",
 ] as const;
 
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */

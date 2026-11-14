@@ -1433,3 +1433,51 @@ the API key's hash, never a session or the service key — and two things the St
 - **Tests.** `tests/test_api_creative_models_migration.py` (the text, the hashes, the rollback, the numbering),
   `tests/security/test_sec_mcp_studio_tools.py` and `tests/security/test_sec_breach_mcp_studio_0162.py` (a real PostgreSQL),
   `command-center/tests/mcp-studio-tools.test.ts` (the MCP layer).
+
+## The referral programme (0165)
+
+0165 (`0165_referral_rewards.sql`) is **live on apply and pays nothing until the operator switches the programme on**
+(`friend_invite_settings.enabled`, 0092's switch, default off). It touches no payment path: no webhook, ledger, lot or refund
+function and no trigger is added or changed. A referral is judged afterwards by reading the ledger and `credit_refunds`, under the
+referrer's own link lock.
+
+- **Why.** 0092 pays 100 credits once five confirmed sign-ups joined through a link: sign-ups alone, farmable with throwaway
+  mailboxes (`docs/security/LEDGER.md` BR-S-010). 0165 pays per friend for a real payment, after a hold.
+- **The rule.** A friend who joined under 0092's rules (new account, e-mail confirmed, not the owner nor the owner's mailbox, one
+  account and one mailbox once) qualifies with their first `purchase` / `subscription` ledger row of at least
+  `referral_min_credits` (default 1000) within `referral_qualify_days` (60) of joining, in a workspace they own, the referrer is not a
+  member of, and that pays. A shared subscription customer id on both sides is void (`same_payer`); one-time payments carry no payer
+  identity here and the platform has no device signal, so those checks cannot run. The reward (`referral_credits`, 200; a CHECK keeps
+  it at most `referral_min_credits`) is held `referral_hold_days` (30, at least 7); a refund or chargeback during the hold voids it;
+  after the hold it is one `grant` ledger row `referral-reward:<ref>` (an opaque uuid, never the friend's id), at most
+  `referral_monthly_cap` (10) per referrer per UTC month and `referral_daily_cap` (50) per UTC day platform-wide; a capped reward
+  waits. A refund after the payout claws it back once, as far as it is still available (`adjust` row `referral-clawback:<ref>`,
+  `claw_shortfall` for the rest; never a negative balance). One referral per friend for good (primary key, mailbox key, payment
+  id unique).
+- **The milestone.** 0092's sign-up reward gets its own switch, `milestone_enabled`: set from `enabled` on the first apply (a
+  programme running then keeps its rules), default off afterwards. `friend_invite_pay_locked` and `my_friend_invite` change by one
+  hunk each.
+- **When it settles.** `claim_referral_rewards()` (the referrer's Credits page, server-side, in their own session) and
+  `referral_settle_all()` (service role; hourly by pg_cron as `nightshift-referral-settle` when pg_cron is installed).
+- **Who may call what.** `my_referrals`, `claim_referral_rewards`: signed in, the caller's own only. `referral_terms`: anon and
+  signed in (the public `/referral` page). `referral_admin`, `set_referral_settings`: signed in, refused unless platform owner/admin.
+  `referral_settle_all`: service role only. `referral_settle_locked`: nobody (execute revoked from every API role).
+  `referral_rewards`: RLS on, no policy, every privilege revoked.
+- **md5.** Before (0092): `friend_invite_pay_locked` `1cfc1f84f065d73e2cb7e84c18ca6ae2`, `my_friend_invite`
+  `b26806d4fdc88a8453e939087d53184c`. After: `friend_invite_pay_locked` `eeae5e2f28b289aab7439beabede3a6f`, `my_friend_invite`
+  `4717561b1b5c47f7e754118f15fa03ea`, `referral_settle_locked` `848d0bf6185034b56fb6bf3e417c859e`, `my_referrals`
+  `54c02346593d9bdaacaf4beed9e7e5da`, `claim_referral_rewards` `7bc98186baf5f45c5b2efd210899c5fd`, `referral_terms`
+  `11b11a0e55db31c944ddb3fb15b0d31c`, `referral_admin` `0be877b18ac000c7b6991943a1c00316`, `set_referral_settings`
+  `e711a0e034a7cbd1c40efd805bee2f33`, `referral_settle_all` `ccfeaac4dd7b62f0096b820a48a7ae1b` (drift guard, rollback).
+- **Without it.** The Credits page shows 0092's card and settings panel exactly as before; `/referral` says the programme is not
+  available here; the pricing page does not mention it.
+- **Number.** 0165 (assigned; 0163 and 0164 are other open pull requests). Needs 0018, 0020, 0021, 0034 and 0092; names nothing of
+  0100–0164. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0165_referral_rewards.sql` (owner-applied): refuses while any referral row exists or a body is not
+  0165's; puts 0092's two bodies back byte for byte; unschedules the job; drops what 0165 added.
+- **Tests.** `tests/test_referral_rewards_migration.py` (the hunks, the hashes, the grants, the rule's text, the rollback, the
+  numbering), `tests/security/test_sec_referral_rewards.py` (a real PostgreSQL: defaults off, sign-ups alone pay nothing, only a
+  real payment of the friend's own workspace qualifies, the hold, void on refund, clawback once and never below zero, same payer,
+  monthly and daily caps, a duplicate webhook, five settles racing, two referrers racing for the day's last place, isolation, the
+  operator's ranges, replay, drift guard, rollback), `tests/security/test_sec_friend_invites.py` (0092's milestone with its switch
+  on), `command-center/tests/referrals.test.ts` and `command-center/tests/referral-ui.test.tsx`.

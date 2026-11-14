@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
 import { CONTACT_HREF, LEGAL } from "@/lib/legal";
-import { REFUND_PATH, ROADMAP_PATH } from "@/lib/public-paths";
+import { REFERRAL_PATH, REFUND_PATH, ROADMAP_PATH } from "@/lib/public-paths";
 import { SOLUTION_IDS, solutionHref } from "@/lib/solutions";
 import { Wordmark } from "@/components/site/Wordmark";
 import { devFor } from "@/lib/i18n/dev";
@@ -67,6 +67,8 @@ export function PublicFooter({ t }: { t: Dictionary }) {
       title: f.company,
       links: [
         contact,
+        // The referral programme's full terms (migration 0165). Always linked: the page says itself whether it is open.
+        { href: REFERRAL_PATH, label: t.referral.footer },
         { href: "/login", label: f.signIn },
         { href: "/#google-data", label: f.googleData },
         { href: GOOGLE_PERMISSIONS, label: f.googleAccess, external: true },
