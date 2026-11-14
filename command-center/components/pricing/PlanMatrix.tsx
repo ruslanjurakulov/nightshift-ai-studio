@@ -47,8 +47,12 @@ export function PlanMatrix({
   signedIn,
   subscribeHref,
   testMode = false,
+  outputs,
 }: {
   matrix: Matrix;
+  /** "What does this plan make?" per plan id, rendered on the server (components/pricing/PlanOutputs.tsx). When given, it
+   *  takes the place of the "≈ N images · M videos" line, which counted the cheapest model alone. */
+  outputs?: Record<string, React.ReactNode>;
   perMinute: number | null;
   /** Dodo Payments in test mode (PAYMENTS_PROVIDER=dodo): the same badge as Paddle's sandbox. */
   testMode?: boolean;
@@ -100,8 +104,9 @@ export function PlanMatrix({
         {matrix.columns.map((col, i) => {
           const price = columnPrice(col, preview, loading);
           const minutes = col.isDefault || rates ? null : packMinutes(col.monthlyCredits, perMinute);
+          const made = outputs?.[col.id];
           return (
-            <li key={col.id} className="st-plan" data-spot>
+            <li key={col.id} id={`plan-${col.id}`} className="st-plan" data-spot>
               {/* The free plan's catalog name is the English word "Free"; above "Бесплатно" it read as a second, untranslated
                   price (and as "Free / Free" in English). It is named in the page's language, and its price line says it costs
                   nothing in words: a "$0" would be a figure no price list gave this page. */}
@@ -130,11 +135,17 @@ export function PlanMatrix({
                     ? fmt(p.freeCredits, { n: formatCredits(WELCOME_CREDITS, locale) })
                     : fmt(p.monthlyCredits, { n: formatCredits(col.monthlyCredits, locale) })}
                 </div>
-                <Equivalents credits={col.isDefault ? WELCOME_CREDITS : col.monthlyCredits} rates={rates} />
-                {minutes !== null && (
-                  <div className="text-sm font-light text-[var(--color-muted)]">
-                    {fmt(p.minutes, { m: formatCredits(minutes, locale) })}
-                  </div>
+                {made !== undefined ? (
+                  made
+                ) : (
+                  <>
+                    <Equivalents credits={col.isDefault ? WELCOME_CREDITS : col.monthlyCredits} rates={rates} />
+                    {minutes !== null && (
+                      <div className="text-sm font-light text-[var(--color-muted)]">
+                        {fmt(p.minutes, { m: formatCredits(minutes, locale) })}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
               {matrix.rows.length > 0 && (
