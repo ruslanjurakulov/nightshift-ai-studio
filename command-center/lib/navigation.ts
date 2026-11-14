@@ -146,7 +146,16 @@ export interface NavFeatures {
   adsFactory: boolean;
   /** NIGHTSHIFT_CHARACTER_STUDIO (lib/characterStudio/model.ts): Character Studio. */
   characterStudio: boolean;
+  /**
+   * NIGHTSHIFT_FILM_STUDIO (lib/server/films.ts), already resolved for this viewer (`admins` lists it for a platform admin only):
+   * Studio's Projects section, STUDIO_PROJECTS. Absent reads as off. It is not a rail entry of its own: it is listed beside the
+   * Studio's desks (the desk bar, the customer sidebar's Create group and Studio's overview).
+   */
+  filmStudio?: boolean;
 }
+
+/** Studio → Projects: a whole video planned scene by scene (migration 0166). Under /create, the Studio's own address. */
+export const STUDIO_PROJECTS = "/create/projects";
 
 export const NO_NAV_FEATURES: NavFeatures = { adsFactory: false, characterStudio: false };
 

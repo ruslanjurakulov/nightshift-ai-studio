@@ -474,6 +474,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Film Studio P1 (0166): tests/security/sec_films_0166.py — one draft of two scenes, a style reference and a take per tenant.
     import sec_films_0166
     sec_films_0166.seed(conn, sc)
+    # Film Studio P2 (0171): tests/security/sec_films_0171.py — one released segment and a settings row per tenant.
+    import sec_films_0171
+    sec_films_0171.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

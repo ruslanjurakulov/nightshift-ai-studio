@@ -720,3 +720,8 @@ sec_referral_0165.extend(TABLES, FUNCTIONS)
 import sec_films_0166  # noqa: E402
 
 sec_films_0166.extend(TABLES, FUNCTIONS)
+
+# Migration 0171 (Film Studio P2: quote_film / start_film, one credit hold per film segment, the worker's settle functions): tests/security/sec_films_0171.py
+import sec_films_0171  # noqa: E402
+
+sec_films_0171.extend(TABLES, FUNCTIONS)

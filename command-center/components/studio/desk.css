@@ -23,6 +23,9 @@
 }
 @media (min-width: 640px) {
   .desk-bar { margin-inline: 0; padding-inline: 0; overflow: visible; }
+  /* With Studio → Projects listed (NIGHTSHIFT_FILM_STUDIO) the row has an eighth key and no longer fits every width: it scrolls
+     sideways inside the page instead of running past its edge. */
+  .desk-bar:has([data-desk="projects"]) { overflow-x: auto; }
 }
 .desk-bar-row {
   display: flex;

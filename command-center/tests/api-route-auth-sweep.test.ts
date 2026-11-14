@@ -32,6 +32,7 @@ const AUTH_CALLS = [
   "adsGate(",           // the Ads routes' helper (lib/server/ads-factory): the NIGHTSHIFT_ADS_FACTORY switch, then getUser, then the member's own client; tests/ads-factory-routes.test.ts proves the order
   "adsScanGate(",       // the brand scan routes' helper (lib/server/ads-brand-scan): NIGHTSHIFT_ADS_BRAND_SCAN, then adsGate(); tests/ads-brand-scan.test.ts proves the order
   "characterStudioGate(", // Character Studio's helper (lib/server/character-studio): NIGHTSHIFT_CHARACTER_STUDIO, then getUser, then the member's own client; tests/character-studio.test.ts proves the order
+  "filmGate(",          // Studio → Projects (lib/server/films): NIGHTSHIFT_FILM_STUDIO, then getUser, then the admins-only check, then the member's own client; tests/films-routes.test.ts proves the order
   "startSocialConnect(", // social connect: getUser + org role inside
   "finishSocialConnect(",
   "runApi(",             // the public API: a bearer key, checked by api_auth
