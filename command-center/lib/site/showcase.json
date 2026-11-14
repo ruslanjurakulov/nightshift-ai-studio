@@ -1579,6 +1579,45 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T22:50:43Z"
+    },
+    {
+      "jobId": "49af4517-9ebf-44d9-80ed-f652cea6e071",
+      "assetId": "61b95419-43ab-59d1-8c1a-73e758f1d300",
+      "sha256": "1b54397f47a0e44b5e464ba9c5984a6e97c1528733c9dea76f8cf84b5a521f8c",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "Bring this exact photo to life as a short real-camera shot. Everything in it moves naturally and subtly: hair and clothes stir in a light breeze, eyes blink, leaves and water move, the light shifts a little. The camera drifts slowly forward. Keep every face, body, colour, outfit and detail of the photo exactly as it is; no new people or objects, no morphing, no cuts, no text.",
+      "createdAt": "2026-11-14T03:32:45Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "495ebf91-84df-4c76-a6c4-a3ca6e4eb82d",
+        "assetId": "d2edcabc-0ecf-51b8-acc2-ae1d8953794a"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-14T03:42:58Z"
     }
   ]
 }
