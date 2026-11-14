@@ -443,6 +443,9 @@ class ChunkedRender(unittest.TestCase):
             self.assertIn("--muted", c)
         # The sound: the whole timeline, lossless, from the same composition told to draw nothing.
         self.assertIn("--codec=wav", renders[-1])
+        self.assertIn(f"--concurrency={ve.SOUND_TABS}", renders[-1])
+        self.assertTrue(1 <= ve.SOUND_TABS <= 4)
+        self.assertTrue(all("--concurrency=1" in c for c in renders[:-1]), "picture chunks keep one tab: memory")
         self.assertFalse(any(a.startswith("--frames=") for a in renders[-1]))
         self.assertEqual([p["sound_only"] for p in self.props_seen], [False, False, False, True])
         self.assertEqual({k: v for k, v in self.props_seen[-1].items() if k != "sound_only"},

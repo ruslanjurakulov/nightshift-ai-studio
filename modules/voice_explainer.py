@@ -507,6 +507,10 @@ def audio_seconds(path: Path) -> float:
 CHUNK_S = 30.0
 
 
+#: Browser tabs for the sound pass: up to 4, never more than the machine's cores (Remotion refuses more).
+SOUND_TABS = max(1, min(4, os.cpu_count() or 1))
+
+
 def _js_round(x: float) -> int:
     """JavaScript's Math.round (half up), which the composition uses for scene frames; Python's round() is half-even."""
     return math.floor(x + 0.5)
@@ -581,13 +585,13 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
         try:
             _run(["npx", "remotion", "bundle", "src/index.ts", f"--out-dir={bundle}", f"--public-dir={pub}", "--log=error"],
                  engine_dir, deadline, timeout_s, "bundling")
-            common = [f"--concurrency={int(concurrency)}", "--log=error"]
+            common = ["--log=error"]
             if browser:
                 common.append(f"--browser-executable={browser}")
 
-            def remotion(out: Path, *extra: str, what: str, props_path: Path = props_file) -> None:
-                _run(["npx", "remotion", "render", str(bundle), COMPOSITION, str(out), f"--props={props_path}", *extra, *common],
-                     engine_dir, deadline, timeout_s, what)
+            def remotion(out: Path, *extra: str, what: str, props_path: Path = props_file, tabs: int = concurrency) -> None:
+                _run(["npx", "remotion", "render", str(bundle), COMPOSITION, str(out), f"--props={props_path}", *extra,
+                      f"--concurrency={int(tabs)}", *common], engine_dir, deadline, timeout_s, what)
                 if not out.exists() or out.stat().st_size == 0:
                     raise ExplainerError(f"Remotion wrote nothing for {what}")
 
@@ -602,7 +606,9 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
                 sound_props = Path(tmp) / "props-sound.json"
                 sound_props.write_text(json.dumps({**props, "sound_only": True}), encoding="utf-8")
                 sound = Path(tmp) / "sound.wav"
-                remotion(sound, "--codec=wav", what="the sound", props_path=sound_props)
+                # Nothing is drawn, so several tabs cost little memory (measured: 448 MB with 4, against ~1.2 GB for a
+                # picture chunk) and halve the pass, which still visits every frame to collect the sound.
+                remotion(sound, "--codec=wav", what="the sound", props_path=sound_props, tabs=SOUND_TABS)
                 vlist = Path(tmp) / "videos.txt"
                 vlist.write_text("".join(f"file '{p}'\n" for p in videos), encoding="utf-8")
                 _run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(vlist), "-i", str(sound),
