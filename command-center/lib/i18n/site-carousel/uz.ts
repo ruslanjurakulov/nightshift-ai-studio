@@ -5,8 +5,8 @@ export const siteCarouselUz: SiteCarouselDictionary = {
   carousel: {
     label: "Tomosha qiling",
     title: "Namunalar ketma-ket",
-    lead: "Oʻzimizning Studiyamizdagi haqiqiy generatsiyalar. Har bir klip oxirigacha oʻynaydi, soʻng keyingisi chiqadi. Koʻrish uchun istalgan kartani bosing.",
-    region: "Studiyamizdagi namunalar",
+    lead: "Nightshift Studio’dagi haqiqiy generatsiyalar. Har bir klip oxirigacha oʻynaydi, soʻng keyingisi chiqadi. Koʻrish uchun istalgan kartani bosing.",
+    region: "Nightshift Studio’dagi namunalar",
     roledescription: "karusel",
     slideRole: "slayd",
     slide: "{n} / {total}",
@@ -90,6 +90,6 @@ export const siteCarouselUz: SiteCarouselDictionary = {
     result: "Natija",
     next: "Keyingi misol",
     pause: "Misollarni toʻxtatish",
-    note: "Studiyamizdagi haqiqiy soʻrovlar va ular boʻyicha yaratilgan kliplar.",
+    note: "Nightshift Studio’dagi haqiqiy soʻrovlar va ular boʻyicha yaratilgan kliplar.",
   },
 };

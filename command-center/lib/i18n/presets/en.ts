@@ -25,7 +25,7 @@ export const presetsEn = {
       hint: "Written art directions for Studio pictures. This opens the look, where you can add it to your styles. It is a direction for the model, not a promise of how a picture turns out.",
     },
     starter: {
-      title: "Studio starters",
+      title: "Nightshift Studio starters",
       hint: "Opens the Studio tool with the description and the shape filled in. Starter text is in English on purpose; replace the [brackets].",
     },
     voice: {
