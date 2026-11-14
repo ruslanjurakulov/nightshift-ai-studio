@@ -110,6 +110,13 @@ export const studioCanvasEn = {
     openResult: "Open in a new tab",
     retryHint: "Retry fills the form again from that job. It is priced again before it starts.",
   },
+  quick: {
+    add: "Add a next step after {name}",
+    title: "Next after {name}",
+    none: "Nothing takes this card's output yet.",
+    more: "More options",
+    composer: "Make it here",
+  },
   drawer: {
     title: "Library",
     close: "Close",

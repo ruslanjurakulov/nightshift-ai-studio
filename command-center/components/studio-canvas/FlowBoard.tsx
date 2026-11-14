@@ -52,11 +52,17 @@ type CardData = {
   actor: RemoteActor | null;
   onRetry: () => void;
   onOpen: () => void;
+  /** The card's own small composer (QuickAdd's InlineComposer), or null. */
+  composer: ReactNode;
+  /** The "+" by the output: opens the next-step menu. Null on a card with no output. */
+  onPlus: ((el: HTMLElement) => void) | null;
 };
 type WireData = { type: PortType; live: boolean; hl: boolean };
 type CardNode = Node<CardData, "card">;
 type WireEdge = Edge<WireData, "wire">;
 
+/** A card carrying its own composer is wider: the composer needs a line for its words and its keys. */
+const COMPOSER_W = 460;
 /** The zoom below which cards switch to their one-line overview read. */
 const LOD_BELOW = 0.87;
 /** A press that moves less than this is a click (it opens the inspector); more is a drag (it only moves the node). */
@@ -88,6 +94,10 @@ export type BoardProps = {
   /** The inspector is open: the focused cards sit where the map would. */
   mapHidden?: boolean;
   onToggleMap: () => void;
+  /** The small composer a card carries (a card made with "+"), or null. */
+  composerFor?: (n: CanvasNode) => ReactNode;
+  /** "+" pressed on a card, or a wire from it dropped on empty board: open the next-step menu there. */
+  onPlus?: (from: string, at: { el?: HTMLElement | null; clientX: number; clientY: number; dropped: boolean }) => void;
   /** Who else is on which node right now. Empty today; the layer for agents' cursors. */
   actors?: ReadonlyMap<string, RemoteActor>;
   children: ReactNode;
@@ -128,6 +138,8 @@ function BoardInner({
   mapOpen,
   mapHidden = false,
   onToggleMap,
+  composerFor,
+  onPlus,
   actors,
   children,
 }: BoardProps) {
@@ -164,10 +176,18 @@ function BoardInner({
             actor: actors?.get(n.id) ?? null,
             onRetry: () => onRetry(n.id),
             onOpen: () => onOpen(n.id),
+            composer: composerFor?.(n) ?? null,
+            onPlus:
+              onPlus && outputType(canvas, n)
+                ? (el: HTMLElement) => {
+                    const r = el.getBoundingClientRect();
+                    onPlus(n.id, { el, clientX: r.right + 8, clientY: r.top, dropped: false });
+                  }
+                : null,
           },
         };
       }),
-    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, onOpen, lod],
+    [canvas, jobs, previews, selected, dims, dropTarget, statusOf, isClosed, nodeName, actors, onRetry, onOpen, lod, composerFor, onPlus],
   );
 
   const edges = useMemo<WireEdge[]>(() => {
@@ -255,12 +275,21 @@ function BoardInner({
         onEdgesChange={onEdgesChange}
         onNodeDragStart={() => record()}
         onNodeClick={(e, n) => {
-          if ((e.target as Element).closest("button, a, input, select, textarea")) return;
+          // A press inside the card's own composer is the composer's, not "open the inspector".
+          if ((e.target as Element).closest("button, a, input, select, textarea, .cv-ncomp")) return;
           onOpen(n.id);
         }}
         onEdgeClick={(_, ed) => onSelectWire(ed.id)}
         onPaneClick={() => onSelect(null)}
         isValidConnection={(conn) => !!conn.source && !!conn.target && canConnect(conn.source, conn.target)}
+        onConnectEnd={(event, conn) => {
+          // A wire dropped on empty board: offer what could come next, right there.
+          if (conn.isValid || !conn.fromNode || !onPlus) return;
+          const target = (event as MouseEvent).target as Element | null;
+          if (!target?.closest(".react-flow__pane")) return;
+          const p = "changedTouches" in event ? event.changedTouches[0] : (event as MouseEvent);
+          onPlus(conn.fromNode.id, { clientX: p.clientX, clientY: p.clientY, dropped: true });
+        }}
         onConnect={(conn: Connection) => {
           if (conn.source && conn.target) onWire(conn.source, conn.target);
         }}
@@ -350,6 +379,8 @@ function NodeCard({
   previews,
   onRetry,
   onOpen,
+  composer,
+  onPlus,
 }: CardData & { selected: boolean; dragging: boolean }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
@@ -375,7 +406,7 @@ function NodeCard({
       data-node-id={node.id}
       data-kind={node.kind}
       data-status={status}
-      style={{ width: NODE_W, ...(actor ? ({ "--actor": actor.colour } as CSSProperties) : null) }}
+      style={{ width: composer ? COMPOSER_W : NODE_W, ...(actor ? ({ "--actor": actor.colour } as CSSProperties) : null) }}
       role="group"
       tabIndex={0}
       aria-label={`${name}: ${line}`}
@@ -418,6 +449,13 @@ function NodeCard({
           <span className="cv-nt-n">{name}</span>
         </span>
       </div>
+      {composer ? (
+        <div className="cv-nb">
+          {composer}
+          <Lamp tone={LAMP[status]} live={status === "working"} label={line} />
+          {sourceName && <span className="cv-nsub">{fmt(c.node.from, { name: sourceName })}</span>}
+        </div>
+      ) : (
       <div className="cv-nb">
         {showArt && (
           <div className={`cv-art${working ? " is-working" : ""}${status === "failed" ? " is-failed" : ""}`} aria-hidden>
@@ -442,6 +480,23 @@ function NodeCard({
           </div>
         )}
       </div>
+      )}
+      {onPlus && (
+        <button
+          type="button"
+          className="cv-plus nodrag"
+          aria-label={fmt(c.quick.add, { name })}
+          title={fmt(c.quick.add, { name })}
+          aria-haspopup="menu"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlus(e.currentTarget);
+          }}
+          data-testid={`plus-${node.id}`}
+        >
+          <Plus aria-hidden className="size-4" />
+        </button>
+      )}
       {out && (
         <Handle
           type="source"

@@ -388,6 +388,83 @@ describe("the board's hand", () => {
   });
 });
 
+describe("quick add: \"+\" by a card's output", () => {
+  it("lists only the next steps that take this output, and a step with nothing on sale is there but disabled", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i"] } });
+    await screen.findByTestId("canvas-board");
+    fireEvent.click(screen.getByTestId("plus-img"));
+    const menu = await screen.findByTestId("quick-menu");
+    // An Image puts out a picture: words-in tools (Image, Video, Voice) are not offered at all.
+    for (const k of ["image", "video", "voice", "prompt"]) expect(within(menu).queryByTestId(`quick-${k}`)).toBeNull();
+    // Image → Video takes a picture but nothing sells it here: listed with its reason, and refused.
+    const clip = within(menu).getByTestId("quick-animate");
+    expect(clip.getAttribute("aria-disabled")).toBe("true");
+    expect(clip.textContent).toContain(c.palette.closedWhy);
+    fireEvent.click(clip);
+    expect(document.querySelectorAll("[data-node-id]")).toHaveLength(1);
+  });
+
+  it("picking a step makes a new card wired from this one, carrying the Studio's own composer (no price of its own)", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i", "i2v"] } });
+    await screen.findByTestId("canvas-board");
+    fireEvent.click(screen.getByTestId("plus-img"));
+    fireEvent.click(within(await screen.findByTestId("quick-menu")).getByTestId("quick-animate"));
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes).toHaveLength(2));
+    const saved = JSON.parse(window.localStorage.getItem(KEY)!);
+    const added = saved.nodes.find((n: { id: string }) => n.id !== "img");
+    expect(added.kind).toBe("animate");
+    expect(saved.wires).toEqual([expect.objectContaining({ from: "img", to: added.id })]);
+    // The card's composer is the Studio's composer (its quote, hold and create), locked to this card's tool.
+    const composer = await screen.findByTestId(`inline-composer-${added.id}`);
+    const props = panel.props[panel.props.length - 1];
+    expect(props.layout).toBe("composer");
+    expect(props.only).toEqual(["i2v"]);
+    // The card itself prints no price: only the server's quote, inside the composer, ever does.
+    const card = document.querySelector(`[data-node-id="${added.id}"]`)!;
+    expect(card.textContent!.replace(composer.textContent ?? "", "")).not.toMatch(/\d+\s*(credits|cr)\b/i);
+    expect(screen.queryByTestId("canvas-inspector")).toBeNull();
+    // A press in it attaches the job it started to this card, read back like any other.
+    fireEvent.click(within(composer).getByRole("button", { name: "press" }));
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(KEY)!).nodes.find((n: { id: string }) => n.id === added.id).jobId).toBe(JOB_NEW));
+  });
+
+  it("\"More options\" opens the inspector for that card, in place of the small composer", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i", "i2v"] } });
+    await screen.findByTestId("canvas-board");
+    fireEvent.click(screen.getByTestId("plus-img"));
+    fireEvent.click(within(await screen.findByTestId("quick-menu")).getByTestId("quick-animate"));
+    const id = await waitFor(() => {
+      const el = document.querySelector('[data-testid^="inline-more-"]');
+      if (!el) throw new Error("no composer yet");
+      return el as HTMLElement;
+    });
+    fireEvent.click(id);
+    expect(await screen.findByTestId("canvas-inspector")).toBeTruthy();
+    expect(document.querySelector('[data-testid^="inline-composer-"]')).toBeNull();
+  });
+
+  it("the menu is the keyboard's: arrows move, Escape closes it and focus goes back to the \"+\"", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount({ tools: { state: "known", sold: ["t2i", "i2v"] } });
+    await screen.findByTestId("canvas-board");
+    const plus = screen.getByTestId("plus-img");
+    plus.focus();
+    fireEvent.click(plus);
+    const menu = await screen.findByTestId("quick-menu");
+    const items = within(menu).getAllByRole("menuitem");
+    expect(document.activeElement).toBe(within(menu).getByTestId("quick-animate"));
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(document.activeElement).not.toBe(within(menu).getByTestId("quick-animate"));
+    expect(items).toContain(document.activeElement);
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByTestId("quick-menu")).toBeNull();
+    expect(document.activeElement).toBe(plus);
+  });
+});
+
 describe("keys and the palette", () => {
   it("a tool with nothing on sale is listed disabled with its reason, and cannot be added", async () => {
     mount({ tools: { state: "known", sold: ["t2i"] } });

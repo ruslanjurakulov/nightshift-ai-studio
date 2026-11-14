@@ -28,6 +28,7 @@ import {
   loadLayout,
   newNode,
   nextSpot,
+  outputType,
   recipeState,
   removeNode,
   saveLayout,
@@ -45,6 +46,7 @@ import {
 } from "@/lib/studio/canvas";
 import { LibraryDrawer, type DroppedAsset } from "./LibraryDrawer";
 import { Inspector, type PanelData } from "./Inspector";
+import { InlineComposer, QuickAddMenu, type QuickMenuState } from "./QuickAdd";
 import { KIND_ICONS, Lamp, statusLine } from "./parts";
 import { Board } from "./FlowBoard";
 import { LAMP, inputOf, kindOpen, nodeAsset, nodeStatus, type JobReading, type NodeStatus } from "./nodeState";
@@ -147,6 +149,9 @@ export function StudioCanvas({
   const [firstRunDone, setFirstRunDone] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
+  const [quick, setQuick] = useState<QuickMenuState | null>(null);
+  /** The card showing its own small composer (made with "+"); the inspector replaces it when opened. */
+  const [composing, setComposing] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Map<string, JobReading>>(() => new Map());
   const library = useLibraryImages(orgId ?? "", { enabled: !!orgId });
   const libraryRef = useRef(library);
@@ -314,6 +319,43 @@ export function StudioCanvas({
     setSelected(id);
     setSelectedWire(null);
     setInspecting(true);
+    setComposing(null);
+  };
+  /** A job the composer started belongs to its node; it is read back from the database like any other. */
+  const attachJob = (nodeId: string, jobId: string) => {
+    patchNode(nodeId, { jobId });
+    setJobs((prev) => new Map(prev).set(jobId, { state: "loading" }));
+    void refresh([jobId]);
+  };
+  /** Centre a card in the board at 100% (no inspector beside it). */
+  const centreOn = (spot: { x: number; y: number }) => {
+    requestAnimationFrame(() => {
+      const r = boardRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setCanvas((s) => ({ ...s, view: { x: Math.round(r.width / 2 - (spot.x + 230)), y: Math.round(r.height / 2 - (spot.y + 250)), k: 1 } }));
+    });
+  };
+  /** "+" picked a next step: a new card to the right of the source (or where the wire was dropped), wired from it, with its own composer. */
+  const quickAdd = (from: string, kind: ToolKind, at?: { x: number; y: number }) => {
+    const src = canvas.nodes.find((n) => n.id === from);
+    if (!src || !kindOpen(availability, kind)) return;
+    let spot = at ?? { x: src.x + NODE_W + 96, y: src.y };
+    if (!at) {
+      // Down the column until the spot is clear, so the new card never lands on another.
+      while (canvas.nodes.some((n) => Math.abs(n.x - spot.x) < NODE_W + 40 && Math.abs(n.y - spot.y) < NODE_H)) spot = { x: spot.x, y: spot.y + NODE_H + 56 };
+    }
+    const id = makeId();
+    edit((s) => connect({ ...s, nodes: [...s.nodes, newNode(kind, spot.x, spot.y, id)] }, from, id, makeId()));
+    setFirstRunDone(true);
+    setSelected(id);
+    setSelectedWire(null);
+    if (narrow) {
+      open(id);
+    } else {
+      setInspecting(false);
+      setComposing(kind === "effects" ? null : id);
+      centreOn(spot);
+    }
   };
   const addNode = (kind: NodeKind, at?: { x: number; y: number }, extra: Partial<CanvasNode> = {}) => {
     if (!kindOpen(availability, kind)) {
@@ -435,7 +477,7 @@ export function StudioCanvas({
         setPalette((p) => (p ? null : "all"));
         return;
       }
-      if (document.querySelector('[role="dialog"]')) return;
+      if (document.querySelector('[role="dialog"], [data-quick-menu]')) return;
       if (e.key === "Escape") {
         if (drawer || inspecting) {
           const wasInspecting = inspecting && selected;
@@ -566,11 +608,7 @@ export function StudioCanvas({
         onDraft={(words) => {
           if (words !== sel.draft) patchNode(sel.id, { draft: words.slice(0, 4000) });
         }}
-        onCreated={(jobId) => {
-          patchNode(sel.id, { jobId });
-          setJobs((prev) => new Map(prev).set(jobId, { state: "loading" }));
-          void refresh([jobId]);
-        }}
+        onCreated={(jobId) => attachJob(sel.id, jobId)}
         onWire={(from) => wire(from, sel.id)}
         onDisconnect={() => edit((s) => disconnect(s, sel.id))}
         onEffect={(effectId) => patchNode(sel.id, { effectId })}
@@ -593,6 +631,22 @@ export function StudioCanvas({
     />
   ) : null;
 
+  const quickFrom = quick ? canvas.nodes.find((n) => n.id === quick.from) ?? null : null;
+  const quickEl =
+    quick && quickFrom
+      ? overlay(
+          <QuickAddMenu
+            state={quick}
+            out={outputType(canvas, quickFrom)}
+            fromName={nodeName(quickFrom)}
+            onClose={() => setQuick(null)}
+            onPick={(k) => {
+              setQuick(null);
+              quickAdd(quickFrom.id, k, quick.at);
+            }}
+          />,
+        )
+      : null;
   const paletteEl = palette ? overlay(
     <CanvasPalette
       mode={palette}
@@ -643,6 +697,7 @@ export function StudioCanvas({
             previews={library.previews}
             selected={selected}
             onOpen={open}
+            onPlus={(from, el) => setQuick({ from, x: 0, y: 0, opener: el, sheet: true })}
           />
         )}
         <div className="cv-flow-dock" role="toolbar" aria-label={c.dock.label}>
@@ -671,6 +726,7 @@ export function StudioCanvas({
           ) : null,
         )}
         {paletteEl}
+        {quickEl}
       </div>
     );
   }
@@ -717,6 +773,29 @@ export function StudioCanvas({
           onDrop={dropAsset}
           mapOpen={mapOpen}
           mapHidden={inspecting && !!sel}
+          composerFor={(n) =>
+            composing === n.id && !inspecting && !n.jobId && kindOpen(availability, n.kind) ? (
+              <InlineComposer
+                node={n}
+                state={canvas}
+                jobs={jobs}
+                data={data}
+                onDraft={(words) => {
+                  if (words !== n.draft) patchNode(n.id, { draft: words.slice(0, 4000) });
+                }}
+                onCreated={(jobId) => {
+                  attachJob(n.id, jobId);
+                  setComposing(null);
+                }}
+                onMore={() => open(n.id)}
+              />
+            ) : null
+          }
+          onPlus={(from, p) => {
+            const r = boardRef.current?.getBoundingClientRect();
+            const w = p.dropped && r ? toCanvas(canvas.view, p.clientX - r.left, p.clientY - r.top) : null;
+            setQuick({ from, x: p.clientX, y: p.clientY, opener: p.el ?? null, at: w ? { x: Math.round(w.x), y: Math.round(w.y - 25) } : undefined });
+          }}
           onToggleMap={() => setMapOpen((m) => !m)}
         >
           {firstRun}
@@ -764,6 +843,7 @@ export function StudioCanvas({
         {quote}
       </div>
       {paletteEl}
+      {quickEl}
     </div>
   );
 }
@@ -1082,6 +1162,7 @@ function FlowView({
   previews,
   selected,
   onOpen,
+  onPlus,
 }: {
   canvas: CanvasState;
   statusOf: (n: CanvasNode) => NodeStatus;
@@ -1090,6 +1171,7 @@ function FlowView({
   previews: ReadonlyMap<string, { thumbUrl: string | null; kind: string }>;
   selected: string | null;
   onOpen: (id: string) => void;
+  onPlus: (from: string, el: HTMLElement) => void;
 }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
@@ -1115,7 +1197,19 @@ function FlowView({
                 const accepts = KIND_SPEC[n.kind].accepts.map((k) => c.ports[k]).join(" / ");
                 const working = s === "working" || s === "queued";
                 return (
-                  <li key={n.id}>
+                  <li key={n.id} className="cv-fli">
+                    {outputType(canvas, n) && (
+                      <button
+                        type="button"
+                        className="cv-plus is-flow"
+                        aria-label={fmt(c.quick.add, { name: nodeName(n) })}
+                        aria-haspopup="menu"
+                        onClick={(e) => onPlus(n.id, e.currentTarget)}
+                        data-testid={`plus-${n.id}`}
+                      >
+                        <Plus aria-hidden className="size-4" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       className={`cv-fcard s-${s}${selected === n.id ? " is-sel" : ""}`}

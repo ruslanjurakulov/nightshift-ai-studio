@@ -101,6 +101,13 @@ export const studioCanvasUz: StudioCanvasDictionary = {
     openResult: "Yangi oynada ochish",
     retryHint: "«Qayta urinish» shaklni oʻsha ishdan qayta toʻldiradi. Boshlanishdan oldin narx qayta hisoblanadi.",
   },
+  quick: {
+    add: "«{name}» dan keyingi qadamni qoʻshish",
+    title: "«{name}» dan keyin",
+    none: "Hozircha bu kartaning chiqishini hech narsa qabul qilmaydi.",
+    more: "Koʻproq sozlamalar",
+    composer: "Shu yerda yaratish",
+  },
   drawer: {
     title: "Mediateka",
     close: "Yopish",
