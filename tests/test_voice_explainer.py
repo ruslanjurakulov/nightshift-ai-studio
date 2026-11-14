@@ -383,6 +383,48 @@ class Chunks(unittest.TestCase):
         for bad in ("", "N/A", "912,13", "-1", None):
             self.assertIsNone(ve.parse_count(bad))
 
+    def test_the_frame_count_runs_like_every_other_step_of_the_render(self):
+        # ffprobe gets the trimmed environment (no provider key), its own process group, and the caller's on_spawn, so a
+        # stop of the worker kills it like the rest of the render; its csv answer is still read by parse_count.
+        import os
+        import subprocess
+        from unittest import mock
+
+        seen = {}
+
+        class Probe:
+            pid = 7
+            returncode = 0
+
+            def __init__(self, cmd, **kw):
+                seen.update(cmd=cmd, **kw)
+
+            def communicate(self, timeout=None):
+                seen["timeout"] = timeout
+                return "912,\n", ""
+
+        spawned = []
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "x" * 30, "PATH": "/usr/bin"}), \
+                mock.patch("subprocess.Popen", Probe):
+            self.assertEqual(ve._frame_count(Path("o.mp4"), on_spawn=spawned.append), 912)
+        self.assertEqual(seen["cmd"][0], "ffprobe")
+        self.assertNotIn("GEMINI_API_KEY", seen["env"])
+        self.assertTrue(seen["start_new_session"])
+        self.assertEqual(seen["timeout"], ve.FRAME_COUNT_TIMEOUT_S)
+        self.assertEqual(len(spawned), 1)
+
+        class Hung(Probe):
+            def communicate(self, timeout=None):
+                raise subprocess.TimeoutExpired("ffprobe", timeout)
+
+        class Failed(Probe):
+            returncode = 1
+
+        for proc in (Hung, Failed):
+            with self.subTest(proc.__name__), mock.patch("subprocess.Popen", proc), mock.patch("os.killpg") as killpg:
+                self.assertIsNone(ve._frame_count(Path("o.mp4")), "unknown, never a guess")
+                self.assertEqual(killpg.called, proc is Hung)
+
     def test_the_frame_count_matches_the_composition(self):
         self.assertEqual(ve.total_frames(30.384, 30), 912)
         self.assertEqual(ve.total_frames(10, 30), 300)
@@ -422,7 +464,7 @@ class ChunkedRender(unittest.TestCase):
         (engine / "node_modules").mkdir(parents=True)
         out = Path(d.name) / "o.mp4"
         with mock.patch("shutil.which", return_value="/usr/bin/x"), mock.patch("subprocess.Popen", Done), \
-                mock.patch.object(ve, "_frame_count", return_value=frames):
+                mock.patch.object(ve, "_frame_count", return_value=frames) as self.frame_count:
             try:
                 ve.render(self.PROPS, out, files={}, engine_dir=engine, on_spawn=on_spawn)
                 err = None
@@ -470,6 +512,10 @@ class ChunkedRender(unittest.TestCase):
         self.assertEqual(len(seen), len(calls))
         self.assertEqual(len(seen), 6)
         self.assertEqual(len({id(p) for p in seen}), 6)
+        # The frame count (ffprobe, mocked here) is the seventh process: it gets the same on_spawn and the trimmed env.
+        kw = self.frame_count.call_args.kwargs
+        self.assertIsNotNone(kw["on_spawn"])
+        self.assertNotIn("GEMINI_API_KEY", kw["env"])
 
     def test_without_on_spawn_nothing_changes(self):
         calls, out, err = self.run_render(ve.total_frames(121.536, 30))

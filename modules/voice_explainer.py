@@ -568,7 +568,7 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
     instead of the system's. The creative worker's /tmp is a tmpfs, so a ten-minute render's audio and bundle there would
     count against the container's memory limit; it passes the job's own folder on the media volume.
 
-    ``on_spawn`` receives every child process (the bundler, each Remotion render, ffmpeg) right after it starts, so a
+    ``on_spawn`` receives every child process (the bundler, each Remotion render, ffmpeg, ffprobe) right after it starts, so a
     caller that is stopped can kill its process group; None does nothing.
 
     Why not each chunk's own sound: Remotion mixes an effect that starts at or before a chunk's first frame
@@ -637,7 +637,7 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
                       "-movflags", "+faststart", str(out_path.resolve())],
                      engine_dir, deadline, timeout_s, "joining the chunks", on_spawn, env)
                 want = total_frames(props["duration_s"], props["fps"])
-                got = _frame_count(out_path)
+                got = _frame_count(out_path, on_spawn=on_spawn, env=env)
                 if got != want:
                     raise ExplainerError(f"the joined video has {got} frames, the composition has {want}: not delivered")
         except ExplainerError:
@@ -679,14 +679,34 @@ def _run(cmd: List[str], cwd: Path, deadline: float, timeout_s: float, what: str
         raise RenderFailed(f"{'Remotion' if cmd[0] == 'npx' else cmd[0]} failed {what} (exit {proc.returncode}): {tail}")
 
 
-def _frame_count(path: Path) -> Optional[int]:
+#: Seconds ffprobe may take to count a joined video's packets (it reads the whole file: ten minutes is a few seconds).
+FRAME_COUNT_TIMEOUT_S = 120
+
+
+def _frame_count(path: Path, *, on_spawn: Optional[Callable[[subprocess.Popen], None]] = None,
+                 env: Optional[dict] = None) -> Optional[int]:
+    """The joined video's frame count, or None when it cannot be read (then it is refused, never assumed). Run like every
+    other step of the render: the trimmed environment (no provider key reaches ffprobe), its own process group, and
+    handed to ``on_spawn`` so a stop of the worker can kill it."""
     try:
-        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
-                              "stream=nb_read_packets", "-of", "csv=p=0", str(path)],
-                             capture_output=True, text=True, timeout=120, check=True).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+        proc = subprocess.Popen(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
+                                 "stream=nb_read_packets", "-of", "csv=p=0", str(path)],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                env=env if env is not None else _render_env(), start_new_session=True)
+    except OSError:
         return None
-    return parse_count(out)
+    if on_spawn is not None:
+        try:
+            on_spawn(proc)
+        except BaseException:
+            _kill_group(proc)
+            raise
+    try:
+        stdout, _stderr = proc.communicate(timeout=FRAME_COUNT_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        _kill_group(proc)
+        return None
+    return parse_count(stdout) if proc.returncode == 0 else None
 
 
 def parse_count(text: str) -> Optional[int]:
