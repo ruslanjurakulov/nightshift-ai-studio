@@ -28,7 +28,9 @@ import { refreshCredits, useLiveCredits } from "@/lib/credits-live";
 import { RELIGHT_LOOKS, UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
   DESCRIBE_LANGUAGES,
+  EXPLAINER_LOOKS,
   IMAGE_QUALITIES,
+  MAX_NARRATION_SECONDS,
   PANEL_CAPABILITIES,
   DUB_LANGUAGES,
   PROMPT_MAX,
@@ -45,12 +47,14 @@ import {
   effectiveSound,
   errorAction,
   expandShapesFor,
+  explainerLooksFor,
   generateLabel,
   isAiEdit,
   isPictureOp,
   modelSettings,
   modelShapes,
   modelsFor,
+  needsNarration,
   needsRecording,
   needsSource,
   needsVideo,
@@ -74,6 +78,7 @@ import {
   type DescribeLanguage,
   type DubLanguage,
   type ExpandAspect,
+  type ExplainerLook,
   type ImageQuality,
   type ModelLock,
   type QuoteState,
@@ -102,7 +107,7 @@ function shapeGlyph(a: string): CSSProperties | undefined {
 
 /** What a tool starts from in the library: switching to a tool that starts from another kind starts the pick again. */
 const startsFrom = (c: StudioCapability) =>
-  needsSource(c) ? "picture" : needsRecording(c) ? "recording" : needsVideo(c) ? "video" : null;
+  needsSource(c) ? "picture" : needsRecording(c) ? "recording" : needsVideo(c) ? "video" : needsNarration(c) ? "narration" : null;
 const MAKE_KINDS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) === null);
 /** The picture tools (0046), the voice tools (0050) and the video tools (0052): each starts from something in the library. */
 const MEDIA_TOOLS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) !== null);
@@ -263,6 +268,8 @@ export function GeneratePanel({
   // 0099: the shape an expand extends the picture to, and the light a relight is asked for by name.
   const [shape, setShape] = useState<ExpandAspect | null>(initial?.shape ?? null);
   const [look, setLook] = useState<RelightLook | null>(initial?.look ?? null);
+  // 0170: the look a voice video is drawn in.
+  const [explainerLook, setExplainerLook] = useState<ExplainerLook | null>(initial?.explainerLook ?? null);
   // A description is written in the language the app is read in, unless the person picks another.
   const [describeLanguage, setDescribeLanguage] = useState<DescribeLanguage>(
     initial?.describeLanguage ?? defaultDescribeLanguage(locale),
@@ -275,7 +282,7 @@ export function GeneratePanel({
   // from the mounted form is theirs. Compared to the last key seen, so React's second effect run on mount is not a change.
   const editKey = JSON.stringify([
     capability, prompt, aspect, duration, resolution, model, auto, sourceId, factor, styleKitId, voiceId, targetLanguage, endFrameId,
-    target, shape, look, describeLanguage, quality, sound,
+    target, shape, look, explainerLook, describeLanguage, quality, sound,
   ]);
   const seenEdit = useRef(editKey);
   const editRef = useRef(onEdit);
@@ -342,6 +349,11 @@ export function GeneratePanel({
   const effectiveShape = !takesShape(capability) ? null : shape && shapes.includes(shape) ? shape : (shapes[0] ?? null);
   const looks = relightLooksFor(available, current, routed);
   const effectiveLook = capability !== "relight" ? null : look && looks.includes(look) ? look : null;
+  // A voice video's look: the one picked if this model draws it, else the model's first. Every look is priced the same (the
+  // recording's seconds), and the chip shows which one the press asks for, so starting on one is a choice the person sees.
+  const drawLooks = explainerLooksFor(available, current, routed);
+  const effectiveDrawLook =
+    capability !== "voice_explainer" ? null : explainerLook && drawLooks.includes(explainerLook) ? explainerLook : (drawLooks[0] ?? null);
   // A tier only for a picture tool on a model that sells tiers; another model never gets one.
   const effectiveQ = !routed && takesQuality(capability) ? effectiveQuality(current, quality) : null;
   // A soundtrack choice only for a video tool on a model that sells it; another model never gets one.
@@ -396,6 +408,7 @@ export function GeneratePanel({
     target: effectiveTarget,
     shape: effectiveShape,
     look: effectiveLook,
+    explainerLook: effectiveDrawLook,
     describeLanguage,
     quality: effectiveQ,
     audio: effectiveSnd,
@@ -418,12 +431,13 @@ export function GeneratePanel({
         target: effectiveTarget,
         shape: effectiveShape,
         look: effectiveLook,
+        explainerLook: effectiveDrawLook,
         describeLanguage,
         quality: effectiveQ,
         audio: effectiveSnd,
         noAspect: shapeless,
       }),
-    [capability, prompt, effectiveAspect, effectiveSeconds, effectiveRes, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, describeLanguage, effectiveQ, effectiveSnd, shapeless],
+    [capability, prompt, effectiveAspect, effectiveSeconds, effectiveRes, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, effectiveDrawLook, describeLanguage, effectiveQ, effectiveSnd, shapeless],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -645,6 +659,7 @@ export function GeneratePanel({
   const isVoice = capability === "tts";
   const sourced = needsSource(capability);
   const recorded = needsRecording(capability);
+  const narrated = needsNarration(capability);
   const filmed = needsVideo(capability);
   const words = promptRule(capability);
   const blocked = blockedReason(form, !!effectiveModel);
@@ -653,7 +668,7 @@ export function GeneratePanel({
     ? t.modelSwitch.studio.offBody
     : noLength && current
       ? fmt(t.gen.noLength, { model: current.displayName })
-      : blocked === "no_model" && isAiEdit(capability)
+      : blocked === "no_model" && (isAiEdit(capability) || narrated)
       ? t.gen.notAvailableYet
       : blocked
         ? t.gen.blocked[blocked]
@@ -1004,7 +1019,7 @@ export function GeneratePanel({
     </div>
   ) : (
     <p className="studio-field p-3 text-sm text-[var(--color-muted)]" data-testid="gen-no-model">
-      {isAiEdit(capability) ? t.gen.notAvailableYet : t.gen.noModels}
+      {isAiEdit(capability) || narrated ? t.gen.notAvailableYet : t.gen.noModels}
     </p>
   );
 
@@ -1065,6 +1080,30 @@ export function GeneratePanel({
           ))}
         </div>
         <span className="text-xs text-[var(--color-muted)]">{t.gen.lookOrWords}</span>
+      </div>
+    ) : capability === "voice_explainer" && drawLooks.length > 0 ? (
+      // 0170: the look a voice video is drawn in. One is always shown picked (see effectiveDrawLook); no words go with it.
+      <div className="flex flex-col gap-2" data-testid="gen-explainer-looks">
+        <span className="studio-label" id="gen-explainer-look-label">
+          {t.gen.explainerLookLabel}
+        </span>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-explainer-look-label">
+          {EXPLAINER_LOOKS.filter((l) => drawLooks.includes(l)).map((l) => (
+            <button
+              key={l}
+              type="button"
+              data-testid={`gen-explainer-look-${l}`}
+              aria-pressed={effectiveDrawLook === l}
+              onClick={() => {
+                setExplainerLook(l);
+                edited();
+              }}
+              className="studio-chip"
+            >
+              {t.gen.explainerLooks[l]}
+            </button>
+          ))}
+        </div>
       </div>
     ) : null;
 
@@ -1173,6 +1212,24 @@ export function GeneratePanel({
       <span className="text-xs text-[var(--color-muted)]">
         {capability === "dub" ? t.gen.dubNote : t.gen.voiceChangeNote}
       </span>
+    </div>
+  ) : narrated ? (
+    // 0170: the person's own narration, audio only, at most ten minutes (the model may say less); the database still decides.
+    <div className="flex flex-col gap-2">
+      <span className="studio-label">{t.gen.narrationLabel}</span>
+      <SourcePicker
+        orgId={orgId}
+        value={sourceId}
+        compact
+        media="audio"
+        maxSeconds={Math.min(MAX_NARRATION_SECONDS, current?.maxSourceSeconds ?? MAX_NARRATION_SECONDS)}
+        onChange={(id) => {
+          setSourceId(id);
+          edited();
+        }}
+        libraryHref={path("/library")}
+      />
+      <span className="text-xs text-[var(--color-muted)]">{t.gen.voiceVideoNote}</span>
     </div>
   ) : null;
 
@@ -1989,6 +2046,8 @@ export function GeneratePanel({
             <div className="desk-booth-cast">
               {voiceBlock}
               {dubLangBlock}
+              {/* 0170: a voice video's look sits where a voice is cast (lookBlock is null for every other voice tool). */}
+              {lookBlock}
               {modelBlock}
               {dockBlock}
             </div>

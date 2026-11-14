@@ -3,10 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { isMissingFunction } from "@/lib/orgs";
 import {
   EXPAND_ASPECTS,
+  EXPLAINER_LOOKS,
   RELIGHT_LOOKS,
   UPSCALE_TARGETS,
   isImageQuality,
   type ExpandAspect,
+  type ExplainerLook,
   type ImageQuality,
   type RelightLook,
   type UpscaleTarget,
@@ -44,6 +46,7 @@ export const CAPABILITIES = [
   "video_edit",
   "video_reframe",
   "video_remove_bg",
+  "voice_explainer",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export type Surface = "web" | "api" | "mcp";
@@ -84,6 +87,8 @@ export interface PublicSpec {
   relightLooks: RelightLook[];
   /** Shapes the model reframes a video to (0100); empty unless it can. */
   reframeAspects: ExpandAspect[];
+  /** Looks the model draws a voice video in (0170); empty unless it can. */
+  explainerLooks: ExplainerLook[];
   /** Languages the model dubs into (0050); empty unless it can dub. */
   languages: string[];
   /** Sizes the model upscales a video to (0052); empty unless it can. */
@@ -177,6 +182,7 @@ function coerceSpec(v: unknown): PublicSpec | null {
     expandAspects: EXPAND_ASPECTS.filter((a) => byCap.expand?.includes(a)),
     reframeAspects: EXPAND_ASPECTS.filter((a) => byCap.video_reframe?.includes(a)),
     relightLooks: RELIGHT_LOOKS.filter((l) => strings(v.relight_looks).includes(l)),
+    explainerLooks: EXPLAINER_LOOKS.filter((l) => strings(v.explainer_looks).includes(l)),
     languages: strings(v.languages).filter((l) => /^[a-z]{2,3}$/.test(l)),
     upscaleTargets: strings(v.upscale_targets).filter((x): x is UpscaleTarget => (UPSCALE_TARGETS as readonly string[]).includes(x)),
     endFrame: v.end_frame === true,

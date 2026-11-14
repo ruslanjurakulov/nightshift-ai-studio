@@ -45,6 +45,9 @@ export interface CreativeResult {
  * transcribe a recording there into a word-timed caption track (0072).
  * expand, relight and erase (0099) change one library picture and answer one
  * picture; no model is sold for them until the owner proves and prices one.
+ * voice_explainer (0170) draws a 9:16 video over one library recording (the
+ * person's own narration) with our own engine; sold like the others once the
+ * owner probes and prices its model.
  */
 export const CREATIVE_CAPABILITIES = [
   "t2i",
@@ -67,6 +70,7 @@ export const CREATIVE_CAPABILITIES = [
   "video_edit",
   "video_reframe",
   "video_remove_bg",
+  "voice_explainer",
 ] as const;
 export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
 
@@ -156,6 +160,23 @@ export const VIDEO_SOURCE_CAPABILITIES = ["video_upscale"] as const satisfies re
  * edit tools and are kept out of VIDEO_SOURCE_CAPABILITIES (the upscale's list).
  */
 export const VIDEO_OP_CAPABILITIES = ["video_edit", "video_reframe", "video_remove_bg"] as const satisfies readonly CreativeCapability[];
+
+/**
+ * Voice to video (0170): one library AUDIO recording (the person's own narration) in, a 1080x1920 motion-graphics video out,
+ * drawn by our own engine on the worker. Kept apart from MEDIA_SOURCE_CAPABILITIES (the voice tools take a video's soundtrack
+ * too; this takes audio only, and its result is a video, not a voice). Priced by the recording's measured seconds.
+ */
+export const NARRATION_CAPABILITIES = ["voice_explainer"] as const satisfies readonly CreativeCapability[];
+
+/**
+ * 0170's explicit allow-list for a voice video's `look` (REQUIRED): the palette and type it is drawn in. The model must list it
+ * too (spec.explainer_looks). Mirrors modules/voice_explainer.LOOKS and video-engine/src/explainer/looks.ts (tests pin the three).
+ */
+export const EXPLAINER_LOOKS = ["dusk", "midnight", "golden", "neon", "paper"] as const;
+export type ExplainerLook = (typeof EXPLAINER_LOOKS)[number];
+
+/** The longest recording a voice video takes (0170's source check: one render holds the whole video). */
+export const MAX_NARRATION_SECONDS = 600;
 
 /** Every capability whose input is a library video. */
 export const VIDEO_FILE_CAPABILITIES = [...VIDEO_SOURCE_CAPABILITIES, ...VIDEO_OP_CAPABILITIES] as const;
@@ -384,7 +405,7 @@ export function mapCreativeError(error: DbError): CreativeResult {
  *  - the words are one line of plain text; a look is relight's alone.
  */
 export function pictureOpProblem(capability: string, params: Record<string, unknown>): string | null {
-  if (params.look !== undefined && capability !== "relight") return `look does not apply to ${capability}`;
+  if (params.look !== undefined && capability !== "relight" && capability !== "voice_explainer") return `look does not apply to ${capability}`;
   if (!(PICTURE_OP_CAPABILITIES as readonly string[]).includes(capability)) return null;
   const op = capability as (typeof PICTURE_OP_CAPABILITIES)[number];
   const words = params.prompt;
@@ -416,7 +437,7 @@ export function pictureOpProblem(capability: string, params: Record<string, unkn
  * same situation as a missing function — "not enabled on this deployment yet" —
  * so it reads as `creative_unavailable`, never as a crash or a price.
  */
-const NEEDS_MIGRATION: readonly string[] = [...PICTURE_OP_CAPABILITIES, ...VIDEO_OP_CAPABILITIES];
+const NEEDS_MIGRATION: readonly string[] = [...PICTURE_OP_CAPABILITIES, ...VIDEO_OP_CAPABILITIES, ...NARRATION_CAPABILITIES];
 
 function degraded(capability: string, result: CreativeResult): CreativeResult {
   return result.body.error === "capability_not_supported" && NEEDS_MIGRATION.includes(capability)
@@ -451,6 +472,20 @@ export function videoOpProblem(capability: string, params: Record<string, unknow
   }
   for (const k of ["negative_prompt", "resolution", "seed"] as const)
     if (params[k] !== undefined) return `${k} does not apply to ${op}`;
+  return null;
+}
+
+/**
+ * 0170's rules for a voice video, the same the database enforces: the recording (checked above) and a look of EXPLAINER_LOOKS,
+ * required; no words, shape, size, seed, voice or length (the database measures the recording). null = nothing wrong (or not
+ * a voice video).
+ */
+export function voiceVideoProblem(capability: string, params: Record<string, unknown>): string | null {
+  if (!(NARRATION_CAPABILITIES as readonly string[]).includes(capability)) return null;
+  if (!(EXPLAINER_LOOKS as readonly unknown[]).includes(params.look))
+    return `look (one of ${EXPLAINER_LOOKS.join(", ")}) is required for voice_explainer`;
+  for (const k of ["prompt", "negative_prompt", "aspect_ratio", "resolution", "seed", "voice_id"] as const)
+    if (params[k] !== undefined) return `${k} does not apply to voice_explainer`;
   return null;
 }
 
@@ -503,12 +538,13 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: "params are too large" }) };
   const recorded = RECORDING_CAPABILITIES.includes(capability);
   const filmed = (VIDEO_FILE_CAPABILITIES as readonly string[]).includes(capability);
-  const sourced = recorded || filmed || (PICTURE_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
+  const narrated = (NARRATION_CAPABILITIES as readonly string[]).includes(capability);
+  const sourced = recorded || filmed || narrated || (PICTURE_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
   if (sourced && !isUuid(params.source_asset_id))
     return {
       ok: false,
       result: fail(400, "invalid_params", {
-        detail: `source_asset_id (${recorded ? "an audio or video file" : filmed ? "a video" : "an image"} in the media library) is required for ${capability}`,
+        detail: `source_asset_id (${recorded ? "an audio or video file" : filmed ? "a video" : narrated ? "an audio recording" : "an image"} in the media library) is required for ${capability}`,
       }),
     };
   if (!sourced && params.source_asset_id !== undefined)
@@ -529,9 +565,9 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `language must be one of ${CAPTION_LANGUAGES.join(", ")}` }) };
   if (capability !== "describe" && capability !== "captions" && params.language !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `language does not apply to ${capability}` }) };
-  const bad = pictureOpProblem(capability, params) ?? videoOpProblem(capability, params);
+  const bad = pictureOpProblem(capability, params) ?? videoOpProblem(capability, params) ?? voiceVideoProblem(capability, params);
   if (bad) return { ok: false, result: fail(400, "invalid_params", { detail: bad }) };
-  if ((recorded || filmed) && params.duration_s !== undefined)
+  if ((recorded || filmed || narrated) && params.duration_s !== undefined)
     // The length is the file's own, measured by the database — never sent.
     return { ok: false, result: fail(400, "invalid_params", { detail: `duration_s does not apply to ${capability}` }) };
   if (capability === "video_upscale" && !(UPSCALE_TARGETS as readonly unknown[]).includes(params.target_resolution))

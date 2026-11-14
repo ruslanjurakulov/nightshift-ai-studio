@@ -430,7 +430,7 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
   // Each is one call to an existing database door: 0162's model list and files, 0062's quote and create. The price, the hold, the
   // capture and the refund stay in those functions (create_creative_job); nothing here computes or moves a credit. A connected app
   // is never offered them: they are not in OAUTH_TOOL_SCOPES, so `offered` is false and `register` skips them.
-  const capability = z.enum(API_CREATIVE_CAPABILITIES).describe("What to make: t2i (a picture from words), edit, t2v (a clip from words), i2v (a clip from a picture), tts, sfx, and so on.");
+  const capability = z.enum(API_CREATIVE_CAPABILITIES).describe("What to make: t2i (a picture from words), edit, t2v (a clip from words), i2v (a clip from a picture), tts, sfx, voice_explainer (a 9:16 video drawn over one of the library's recordings: params source_asset_id and look), and so on.");
   const generation = {
     capability,
     model: z.string().regex(MODEL_ID_RE).describe("A model id from list_models."),
