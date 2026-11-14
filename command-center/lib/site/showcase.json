@@ -1579,6 +1579,45 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T22:50:43Z"
+    },
+    {
+      "jobId": "95f4091b-6734-40d3-a7ab-6301105696f9",
+      "assetId": "689317f1-01c0-505e-ac81-fe19727d8132",
+      "sha256": "209421e88ed11f4d058d9c816479d3120924c906476d21d325732040fc37b000",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "i2v",
+      "kind": "video",
+      "prompt": "A ribbon of glossy liquid, like molten chrome with deep colour inside it, rises from below and wraps the product in this picture in one smooth spiral, hiding it for a moment, then slides away and drips off to reveal the product clean and gleaming. Slow, elegant motion, soft studio light with bright specular highlights, dark seamless background, the camera orbits a quarter turn. Keep the product's shape, label and colours exactly as in the picture; no added text.",
+      "createdAt": "2026-11-14T03:32:00Z",
+      "input": {
+        "kind": "operator_job",
+        "jobId": "3069ec2f-2f68-40a8-bcbe-fc4c5f9111bc",
+        "assetId": "54650bf2-fd78-52c5-b2b6-0a463424c9f7"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-14T03:40:42Z"
     }
   ]
 }
