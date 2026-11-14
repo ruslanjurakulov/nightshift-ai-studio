@@ -1760,6 +1760,11 @@ capability CHECKs.
   its 0100 definition or 0171's (md5 of `pg_get_constraintdef`); the "What to verify before you apply" query in the header reads them
   all. The last block asserts every body, both CHECKs, the grants, the definer rights and the pinned search_path. Apply as ONE
   transaction.
+- **md5** (0171's bodies; the earlier ones are in the header's query): `model_registry_guard` `8cbfab36aca302e738c4631eeab076a2`,
+  `sellable_models` `900103ab5248afeff3755b304c75b3a4`, `creative_capability_supported` `5de759d4adb2bbba5a696fa1795be2ac`,
+  `creative_params_problem` `2f38c8aa1b2d7c03f1cf7919df265f4b`, `creative_source_problem` `873ea0c4516b86aaef6f5ab29799460b`,
+  `creative_price` `eee6b9b5d7ab39a1858c347c9cfe0f78`, `api_creative_models` `7fe653e82bf16f877075ff1e3331fe8d`; the CHECKs
+  `faec146cbdef4b642fb0c9fb01912dfd` and `e4001c1cb3d83d6c172aea5fde503103`.
 - **Rollback.** `docs/sql/rollback_0171_voice_video.sql` refuses while a model row or a probe run lists `voice_explainer` (take the
   entry out of the registry first) and while a `voice_explainer` job has not finished (any status before completed / failed /
   cancelled / expired), and refuses a body or CHECK that is neither 0171's nor the earlier one; it puts every earlier body
