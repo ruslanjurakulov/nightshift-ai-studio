@@ -594,7 +594,7 @@ plan_total = Σ over model nodes  creative_price(org, capability, model, params)
 - **No formula is re-implemented.** Each node line is the exact `creative_price` result, and the assembly line is the same one `quote_film` would produce.
 - The AI never states a price. The UI shows only `plan_quote`'s numbers.
 - The summary line ("3 scenes, Uzbek voice, captions, assembly. Total X credits. [Create]") is rendered from the quote lines with i18n strings.
-- Retry allowance: see §6.3. Free retries are absorbed by the platform and are **not** added to the quote.
+- Retry allowance: see §6.3. Internal retries are paid from the capped internal retry budget and are **not** added to the quote.
 
 ### 5.4 Approval binds one exact plan version (owner requirement 2)
 
@@ -691,14 +691,40 @@ Worked example: 3 clips, 2 done and 1 failed.
 | Assembly (not started, its input is missing) | not charged; held while retryable |
 | User cancels, or the retry window ends (24 h) | `plan_settle` captures 1+2 and **releases** the rest |
 
-**Retry policy (proposal; the owner decides):**
+**Retry and charging policy (owner decision, final):**
 
-- **A provider-side failure** (`provider_timeout`, `provider_5xx`, `quota`, `submit_interrupted`, `worker_lost`): the user may retry the node **free, up to 2 times per node** ("retry this step").
-  - The retry reuses the existing hold share; there is no new quote.
-  - The platform absorbs the provider cost of the failed attempt. That cost is recorded in `creative_job_costs` (0037).
-- **A content refusal** (provider safety block, invalid input the validator could not foresee): retrying is allowed once, free; after that the step is `failed_final`.
-- **A user re-roll** of a **completed** node ("I don't like clip 2"): a **new charge**. It is a new plan version, which means a new quote and a new approval for that node only, and the old output is kept.
-- **The failed-job cap** (§1.10, missing today): an org with ≥ 10 provider-side plan-node failures in 24 h gets new plan approvals refused with `too_many_failures_today`. That protects us from paying for a broken provider over and over. Proposal; the owner sets N.
+| Situation | User charge | How the system does it |
+| :-- | :-- | :-- |
+| Nightshift or provider technical failure, no usable result | **No extra credits** | The executor retries internally, paid from a capped internal retry budget (below). The node's share of the plan hold is untouched; the user is never re-quoted for it |
+| The result is fine, but the user wants another variant | **A new paid generation**, quoted and approved beforehand | A re-roll is a new plan version: `plan_save`, then `plan_quote`, then `plan_approve` for that node only. The old output is kept |
+| Provider response unknown or late | **No new paid request** until the existing job's state is reconciled | §6.4 "reconcile, never resubmit". The node stays `reconciling` and no new attempt is created |
+| Plan partially done | Finished outputs are kept and charged; the hold for the unexecuted part is released | `plan_settle`, then `capture_credits(pl-…, Σ completed)`, which releases the remainder in the same call (`0020:566-615`) |
+
+**Internal retry budget (the cap and where it is enforced).**
+
+- **When an internal retry is allowed.** Only on a failure whose outcome is **known**: the provider answered with an error (`provider_5xx`, `quota`, `rate_limited`, a content refusal we could not foresee), or our own step failed before submit.
+  - `provider_timeout`, `submit_interrupted` and `worker_lost` are **unknown** outcomes. They go to reconciliation first, and become retryable only once reconciliation proves there is no usable result.
+- **The caps.** Proposed numbers; they live in config table `plan_retry_limits`, which a platform admin edits:
+  - per node, **2** internal retries;
+  - per plan, internal retry spend ≤ **100% of the plan's quote** at vendor cost, so the platform never absorbs more than one extra plan;
+  - per org per 24 h, **10** retried node failures, which is also the failed-job cap (§1.10);
+  - global per day, a credit or USD cap. With no price configured, a count cap is used, never "unlimited" (the `spend_guard.py:25-27` trap).
+- **Where it is enforced:** `plan_retry_node(node)`, SECURITY DEFINER and service role only, called by the executor. Under the plan row lock it:
+  1. counts `studio_plan_nodes.internal_retries` and the append-only `plan_retry_spend` rows (vendor cost from `creative_job_costs`, 0037);
+  2. refuses with `retry_budget_exhausted` when any cap is reached. The node becomes `failed_final`, its share is released at settle, and the user is told "this step could not be made; you were not charged for it".
+- **Who pays.** A retried child job has `payer='plan'` and adds nothing to the user's charge. Its vendor cost is booked to `plan_retry_spend` as platform cost, which makes it visible in the margin report (0063).
+- **No approval, no user retry.** There is no user-facing "free retry" button that bypasses the caps. "Try this step again" after `failed_final` is a re-roll, so it is quoted and approved.
+
+**The approval screen must show the partial-result rule before Approve.**
+
+The approve panel renders, from i18n in all three languages and never from model text:
+
+- the quote lines and the total;
+- the cap ("you approve at most X credits");
+- this sentence, always visible and not behind a tooltip: **"If a step fails, you pay only for the finished parts; the rest of the held credits is returned. A failed step is retried at our cost and never charged twice."**
+- for a template whose output is an assembled video, the second sentence: **"If assembly cannot finish, you keep the finished clips and pay only for them."**
+
+`plan_approve` stores `ack: 'partial_charge_v1'`, as `approve_video_publish` stores its acknowledgement (0112). An approval without it is refused, so an API or MCP caller must send the same acknowledgement.
 
 ### 6.4 Scheduling, health re-check, cap, timeouts, reconciliation
 
@@ -714,15 +740,15 @@ Worked example: 3 clips, 2 done and 1 failed.
 1. The approval is still active, its sha256 equals the plan's current hash, and it has not expired.
 2. The node's **current** `creative_price(...)` ≤ its approved quote. Otherwise the node is `blocked_price_changed`, and nothing is spent.
 3. **The cap:** Σ charged + Σ in-flight quotes + this node's quote ≤ `cap_credits`. Otherwise `blocked_cap`.
-4. `sellable_models` still lists the model, and health is not `down`. Otherwise the node is `waiting_provider`: re-checked every 5 min until 1 h has passed, then `failed` (provider-side), with the free retry available.
+4. `sellable_models` still lists the model, and health is not `down`. Otherwise the node is `waiting_provider`: re-checked every 5 min until 1 h has passed, then `failed` (provider-side). An internal retry follows only within the budget (§6.3).
 5. Then it inserts the child creative job, `payer='plan'`, with an idempotency key `pl:<plan>:<node>:<attempt>`. The existing unique index makes a replay of the same attempt return the same job (`0036:214-215`).
 
 **Provider timeout or slow response: reconcile, never resubmit.**
 
 - A child job with a `provider_task_id` is **resumed** (polled), never resubmitted. The claim order already does this (`0036:841-846`).
-- A child job stuck in submit with no task id fails as `submit_interrupted` (`0036:824-836`). It is **not** retried automatically. Before the free retry is offered, the executor runs `adapter.lookup_by_client_ref(ref)` where the provider supports a client reference.
+- A child job stuck in submit with no task id fails as `submit_interrupted` (`0036:824-836`). It is **not** retried automatically. The node goes to `reconciling`, and the executor runs `adapter.lookup_by_client_ref(ref)` where the provider supports a client reference.
   - **Evidence gap:** which adapters support lookup by our reference must be verified per provider by Scout.
-  - Where lookup is impossible, the retry stays **manual** (the user clicks it). The UI says "the provider may still deliver; retrying may cost the platform twice", which is why it is free for the user.
+  - Where lookup is impossible, the node stays `reconciling` until the provider's own maximum job lifetime has passed (per adapter, verified by Scout; the 45-min poll deadline is the floor). Only then is it treated as "no usable result" and an internal retry is allowed, within the budget. This may cost the platform twice. It never costs the user twice.
 - A new attempt is always a **new** attempt number with a new idem key, started only by a person's retry or by the policy above. It never comes from a timer racing the provider.
 
 **Timeouts.**
@@ -742,12 +768,13 @@ Worked example: 3 clips, 2 done and 1 failed.
 > The coordinator assigns the number(s) (0178+ is likely; please confirm).
 
 - **`studio_plans`**: id, org_id, created_by, template_id, template_version, version, doc (jsonb, ≤ 64 kB), status (`draft`, `quoted`, `approved`, `running`, `paused_failed`, `paused_provider`, `settling`, `completed`, `partial`, `failed`, `cancelled`), catalog_version, timestamps. RLS: members read their org's plans; writes go through functions only.
-- **`studio_plan_nodes`**: plan_id, version, key, capability, model_id, params, deps text[], quoted_credits, charged_credits, status (`waiting`, `ready`, `waiting_provider`, `blocked_cap`, `blocked_price_changed`, `running`, `completed`, `failed`, `failed_final`, `skipped`, `cancelled`), attempts, free_retries_used, creative_job_id (current), error_code, result_asset_ids.
+- **`studio_plan_nodes`**: plan_id, version, key, capability, model_id, params, deps text[], quoted_credits, charged_credits, status (`waiting`, `ready`, `waiting_provider`, `blocked_cap`, `blocked_price_changed`, `running`, `reconciling`, `completed`, `failed`, `failed_final`, `skipped`, `cancelled`), attempts, internal_retries, creative_job_id (current), error_code, result_asset_ids.
 - **`studio_plan_quotes`**: quote_id, plan_id, version, lines jsonb, total (nullable, rule 5), plan_sha256, catalog_version, created_at.
 - **`studio_plan_approvals`**: plan_id, version, plan_sha256, quote_id, cap_credits, credit_ref `pl-…`, approved_by, approved_at, expires_at, idem. Append-only, like `review_intents`.
 - **`studio_plan_events`**: append-only (the `film_events` pattern).
 - **`creative_jobs`**: `plan_node_id`, and `payer` gains `plan`. This is a superset CHECK, built the same way 0171 did it (`0171:138, 465-469`).
-- **`provider_health`** (§2.3), **`planner_limits`** and **`planner_calls`** (§4.5).
+- **`provider_health`** (§2.3), **`planner_limits`** and **`planner_calls`** (§4.5), and **`plan_retry_limits`** plus the append-only **`plan_retry_spend`** (§6.3).
+- Unique indexes: `studio_plan_approvals(plan_id) where active`, and `creative_jobs(plan_node_id, attempt)` (§6.7).
 - A switch, **`studio_planner_settings.enabled`**, default **off**, like `film_studio_settings` (`0171:273`).
 
 If the migration has not been applied, the app degrades honestly: the template picker says "Planner not set up yet (migration NNNN)", as `operations.ts:75` does for the API.
@@ -757,6 +784,49 @@ If the migration has not been applied, the app degrades honestly: the template p
 T2 (narrated Shorts) is a film. When Film P3 ships, the plan executor may hand T2 to `start_film` as one internal node `film`, rather than duplicating the assembly. That node's quote is `quote_film`'s total, and its hold is Film's own segment hold. That makes **two** holds for the plan, so two concurrency slots. This is an open question: on a concurrency-1 plan, the executor would have to start the film node only once the plan's own hold is captured. The owner and coordinator should decide; see §10.
 
 ---
+
+### 6.7 The exactly-once acceptance test (the most important one)
+
+**Claim.** Each of the following produces **exactly one generation per node attempt** and **exactly one capture per hold**:
+
+- the same approval sent twice;
+- a page refresh mid-run;
+- a worker crash and restart;
+- concurrent duplicate submits.
+
+| Case | Mechanism | Already holds in code | New for plans |
+| :-- | :-- | :-- | :-- |
+| **Approval sent twice** (double click, network retry, two tabs) | (1) `plan_approve` takes the plan row `FOR UPDATE` and an advisory lock `pg_advisory_xact_lock(hashtextextended('plan_approve:'‖plan, 0))`; (2) an idempotency key: same key and same sha256 replays the stored approval, a different request is refused; (3) the hold ref `pl-<plan>` can be reserved only once, **even after release** | `reserve_credits` refuses an existing job_id with `23505` (`0094:165-166`); the advisory-lock pattern is `0093:1022`; account-then-hold lock order is `0020:285, 586-588` | the unique index `studio_plan_approvals(plan_id) where active`; a replay returns `replay:true` as `create_creative_job` does (`0036:687-696`) |
+| **Page refresh mid-run** | The browser holds no state and starts nothing: after approval it only reads `plan_status` (rule 3, §6.1). A refresh re-reads rows | — (0073 is the counter-example: its browser advances runs, `0073:53-57`) | the executor is the only writer of node starts |
+| **Worker crash and restart** | Leases: `plan_claim` uses `FOR UPDATE SKIP LOCKED` with a stale-after. The node start is idempotent on `pl:<plan>:<node>:<attempt>`. A re-created start returns the existing job. The child job resumes polling its `provider_task_id`, and is never resubmitted | `claim_creative_job` uses SKIP LOCKED, stale 10 min, and claims jobs with a task id first (`0036:789-862, 841-846`); `submit_interrupted` is never resubmitted (`0036:824-836`); unique `(org_id, idempotency_key)` (`0036:214-215`) | `plan_begin_node` inserts the child job and sets `node.creative_job_id` in **one transaction**, so a crash leaves either both or neither |
+| **Concurrent duplicate submits** (two executors, or an executor and a retry) | The plan row lock in `plan_begin_node`; the node status moves `ready` → `running` under that lock, so a second caller sees `running` and returns the existing job; the idempotency unique index is the backstop | `credit_account_lock` before any money write (`0036:682`); the idempotency conflict check (`0036:687-696`) | unique `creative_jobs(plan_node_id, attempt)` |
+| **One capture per hold** | `capture_credits` on a hold that is not `open` returns the earlier captured amount and changes nothing | `0020:586-591` (`if r.status <> 'open' then return coalesce(r.captured, 0)`) | `plan_settle` moves the plan to `settling` under its row lock before calling capture; a second settle sees `settling`/`completed` and returns |
+| **Late or unknown provider answer** | Reconcile, never resubmit (§6.4). A new attempt is created only by `plan_retry_node` after reconciliation proved "no usable result" | task-id resume (`0036:841-846`) | node status `reconciling`; `adapter.lookup_by_client_ref` (**evidence gap**, per provider) |
+
+**The test file (Breach target):** `tests/security/sec_studio_plans_exactly_once_<NNNN>.py`. It runs in the security lab (`tests/security/`, `.github/workflows/security.yml`) against local Postgres, with a fake adapter that counts submits. Each case asserts the same three things:
+
+1. `count(creative_jobs where plan_node_id = n and attempt = k) = 1`;
+2. the fake adapter's submit count equals the number of node attempts;
+3. `count(credit_transactions where job_id = 'pl-<plan>' and kind = 'capture') ≤ 1`, and the balance moves by exactly Σ charged.
+
+The cases:
+
+- `test_approve_twice_same_idem_replays_one_hold`;
+- `test_approve_twice_different_idem_second_refused`;
+- `test_approve_concurrent_20_threads_one_hold` (barrier-synchronised);
+- `test_reserve_pl_ref_after_release_refused` (0094:165 regression);
+- `test_refresh_reads_only` (a member session calls every browser-reachable RPC after approval; no node start is possible);
+- `test_worker_killed_after_insert_before_commit` (rolled back: no job, no submit);
+- `test_worker_killed_after_commit_before_submit` (the job is re-claimed; one submit);
+- `test_worker_killed_after_submit_before_task_id` (`submit_interrupted`, then `reconciling`; zero automatic resubmits);
+- `test_worker_killed_after_task_id` (the poll resumes; one submit);
+- `test_two_executors_same_plan` (SKIP LOCKED: one runs the plan, the other gets nothing);
+- `test_begin_node_concurrent_same_node` (one job);
+- `test_settle_twice_one_capture`;
+- `test_settle_concurrent_one_capture`;
+- `test_late_provider_answer_no_new_request` (the adapter answers after the deadline; no attempt 2 until reconciliation).
+
+The P3 owner acceptance includes a manual version: double-click Approve, refresh mid-run, and restart the worker container. Then the plan page and the credits ledger show one job per step and one charge.
 
 ## 7. Canvas integration (P4)
 
@@ -787,7 +857,7 @@ New tools in `lib/api/mcp.ts`. Each calls exactly one gate function through `api
 | `plan_quote` | `plan_quote` | `creative:quote` | returns lines plus total plus sha256 |
 | `plan_approve` | `plan_approve` | **`studio:approve`** | requires `plan_sha256` and `quote_id`; the key's or grant's monthly credit limit applies (`0093:23-24`); idempotency key required |
 | `plan_status` | `plan_status` | `creative:read` | |
-| `plan_retry_node` | `plan_retry_node` | `studio:approve` | only free retries; a re-roll is a new version |
+| (none) | — | — | internal retries are executor-only (§6.3); an agent's re-roll is `plan_template`, then `plan_quote`, then `plan_approve` |
 
 - **The approve scope is separate** so a read-only agent can plan and quote but never spend.
 - For OAuth, a `studio:approve` scope means a consent-screen change (0093). Proposal: P4 ships **API keys only**, as the Studio tools do today (`mcp.ts:72, 193-194`).
@@ -854,12 +924,13 @@ Each phase follows the CLAUDE.md pipeline (Scout where a provider is involved, t
   - a provider `down` gives `waiting_provider`, with no substitute;
   - a timeout causes no resubmit;
   - partial failure: 2 captured, 1 released;
-  - free retries used up gives `failed_final`.
+  - the internal retry budget used up gives `failed_final`, with no user charge;
+  - the exactly-once suite in §6.7.
 - **Security:** §5.6 items 1, 3-7 and 10.
 - **Owner acceptance:**
   1. Approve "Animate a picture" with upscale: 2 nodes, a real result, and the balance goes down by exactly the quote.
-  2. Force the i2v node to fail (the operator switch, mid-plan). You see the upscale done and the i2v failed, only the upscale is charged, and the rest is released.
-  3. Retry free once.
+  2. Force the i2v node to fail with a known provider error. You see it retried internally (the balance does not move). Then force it past the budget: the upscale is done, the i2v is `failed_final`, only the upscale is charged, and the rest is released.
+  3. Look at the approval panel before approving: it shows the partial-charge sentence.
   4. The live step list shows each state as it happens.
 
 ### P4 — canvas and MCP on the same plan
@@ -886,8 +957,8 @@ Each phase follows the CLAUDE.md pipeline (Scout where a provider is involved, t
 1. **Planner LLM.** Gemini 3.6 Flash (already wired; its price doubles on 2027-01-01) or Claude Sonnet 5.5 / Haiku 5.5 (a new key and integration)?
 2. **Where the LLM call runs.** In the Command Center server (fast, but the first LLM key on the web host) or in the queue worker (slower, but the key stays where Gemini already lives)?
 3. **Free planner allowance numbers** (§4.5): per user per day and month, per org per day, global per day, and the global USD cap.
-4. **Retry policy** (§6.3): free provider-side retries per node (proposed 2), a content-refusal retry (proposed 1), the retry window (proposed 24 h).
-5. **Failed-job cap** (§6.3): N provider-side failures per org per 24 h (proposed 10). Should the same cap also cover plain creative jobs (E1)?
+4. **Internal retry budget numbers** (§6.3; the policy itself is decided): per node (proposed 2), per plan (proposed ≤ 100% of the quote at vendor cost), per org per 24 h (proposed 10), and a global daily cap.
+5. **Failed-job cap scope:** should the per-org 24 h cap also cover plain creative jobs (E1)?
 6. **"T1-parts"** (§3.1): offer a "clips + voice, no assembly" product-ad variant now, or wait for assembly?
 7. **The assembly price.** `film_assembly_minute` is unpriced (0171). T1 and T2 stay blocked until you set it and Film P3 ships.
 8. **Who may approve.** Owner and admin only (proposed), or any member with spending rights?
@@ -898,7 +969,7 @@ Each phase follows the CLAUDE.md pipeline (Scout where a provider is involved, t
 
 - **A model on sale is not a model that works.** The health signal reduces surprises but cannot remove them. A provider can fail after approval. Then we stop that step, keep what is done, charge only for it, and ask the user. We never swap models behind their back.
 - **The planner's free calls cost us real money.** The limits and the meter are how we keep that bounded.
-- **A provider that times out may still deliver and bill us.** We reconcile rather than resend, but some providers give us no way to look a job up. There, a retry may cost us twice. That is why the user's provider-side retry is free and capped.
+- **A provider that times out may still deliver and bill us.** We reconcile rather than resend, but some providers give us no way to look a job up. There, a retry may cost us twice. That cost is ours, never the user's, and the internal retry budget caps it.
 - **The canvas wiring rules and the SQL validator could drift apart.** Only the SQL is the authority, and the tests run the same cases through both.
 - **A running plan occupies a parallel-run slot.** On a concurrency-1 plan the user cannot start other paid work until the plan settles. This is the existing rule for every hold, not a new one.
 - **0073 advances runs from the browser.** If nobody changes it, we have two executors with different rules. The proposal is to re-base 0073 on the plan executor after P3.
