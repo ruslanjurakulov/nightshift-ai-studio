@@ -699,3 +699,8 @@ sec_dodo_history_0157.extend(TABLES, FUNCTIONS)
 import sec_mcp_chatgpt_client_0161  # noqa: E402
 
 sec_mcp_chatgpt_client_0161.extend(TABLES, FUNCTIONS)
+
+# Migration 0166 (Film Studio P1: films, their storyboard, references, takes and the append-only film_events; drafts only, no spend): tests/security/sec_films_0166.py
+import sec_films_0166  # noqa: E402
+
+sec_films_0166.extend(TABLES, FUNCTIONS)
