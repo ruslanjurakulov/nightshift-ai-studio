@@ -121,7 +121,7 @@ export const pillarEn = {
       {
         id: "public",
         name: "Public",
-        does: "You make the video public on YouTube, or, on a channel where an administrator switched on “Publish when approved”, your approval asks YouTube for it once.",
+        does: "You make the video public on YouTube, or, on a channel where someone who manages the workspace switched on “Publish when approved”, your approval asks YouTube for it once.",
       },
     ],
     more: "See the real files behind these stages",
@@ -158,9 +158,9 @@ export const pillarEn = {
       },
     ],
     branch: {
-      title: "Or “Publish when approved”, only if an administrator turned it on",
+      title: "Or “Publish when approved”, only if someone who manages the workspace turned it on",
       items: [
-        "Off by default for every channel. Only an administrator of the channel’s workspace can switch it on, through an audited database function, never the bot; one tap switches it off.",
+        "Off by default for every channel. Only someone who manages the channel’s workspace can switch it on, through an audited database function, never the bot; one tap switches it off.",
         "With it on, your approval queues one request. The worker that carries it out is itself off unless the server is set to run it.",
         "Just before acting, the worker asks the database again: still the approved cut, the approval not expired, the publish check’s verdict stored and allowed, the switch still on.",
         "It asks YouTube once to make the video public, then reads it back. The app says “Published” only when YouTube’s answer says public. If anything fails before YouTube is asked, the video stays private.",
@@ -188,7 +188,7 @@ export const pillarEn = {
       {
         id: "publish",
         q: "Will it ever publish a video on its own?",
-        a: "No. Every upload is private. A video becomes public when a person makes it public on YouTube, or when a person approves it on a channel where an administrator switched on “Publish when approved”. The switches that could change this are per channel and off by default.",
+        a: "No. Every upload is private. A video becomes public when a person makes it public on YouTube, or when a person approves it on a channel where someone who manages the workspace switched on “Publish when approved”. The switches that could change this are per channel and off by default.",
       },
       {
         id: "monetize",

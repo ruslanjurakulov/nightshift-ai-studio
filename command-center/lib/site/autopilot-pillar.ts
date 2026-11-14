@@ -22,7 +22,7 @@ import { APPROVAL_TTL_HOURS } from "@/lib/videoApproval";
 export const DEFAULT_UPLOAD_PRIVACY = "private";
 /** approve_video_publish's `now() + interval '24 hours'` (0112, redefined in 0116 and 0145 with the same interval). */
 export const APPROVAL_HOURS = APPROVAL_TTL_HOURS;
-/** `channels.publish_on_approve boolean not null default false` (0116): "Publish when approved" is off for every channel. */
+/** 0116 adds the per-channel "Publish when approved" switch as `not null default false`: off for every channel. */
 export const PUBLISH_ON_APPROVE_DEFAULT = false;
 /** `channels.auto_publish boolean not null default false` (0004): the auto-publish switch is off for every channel. */
 export const AUTO_PUBLISH_DEFAULT = false;

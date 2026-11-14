@@ -114,7 +114,7 @@ export const pillarUz: PillarDictionary = {
       {
         id: "public",
         name: "Ommaviy",
-        does: "Videoni YouTube’da oʻzingiz ommaviy qilasiz yoki administrator “Tasdiqdan keyin nashr qilish”ni yoqqan kanalda tasdiqingiz buni YouTube’dan bir marta soʻraydi.",
+        does: "Videoni YouTube’da oʻzingiz ommaviy qilasiz yoki ish maydonini boshqaradigan kishi “Tasdiqdan keyin nashr qilish”ni yoqqan kanalda tasdiqingiz buni YouTube’dan bir marta soʻraydi.",
       },
     ],
     more: "Bu bosqichlar ortidagi haqiqiy fayllar",
@@ -151,9 +151,9 @@ export const pillarUz: PillarDictionary = {
       },
     ],
     branch: {
-      title: "Yoki “Tasdiqdan keyin nashr qilish” — faqat administrator yoqqan boʻlsa",
+      title: "Yoki “Tasdiqdan keyin nashr qilish” — faqat ish maydonini boshqaradigan kishi yoqqan boʻlsa",
       items: [
-        "Har bir kanal uchun sukut boʻyicha oʻchiq. Uni faqat kanal ish maydonining administratori, tekshiriladigan maʼlumotlar bazasi funksiyasi orqali yoqa oladi, bot hech qachon; bir bosishda oʻchiriladi.",
+        "Har bir kanal uchun sukut boʻyicha oʻchiq. Uni faqat kanal ish maydonini boshqaradigan kishi, tekshiriladigan maʼlumotlar bazasi funksiyasi orqali yoqa oladi, bot hech qachon; bir bosishda oʻchiriladi.",
         "U yoqilganda tasdiqingiz navbatga bitta soʻrov qoʻyadi. Uni bajaradigan ishlovchining oʻzi server uni ishga tushirishga sozlanmaguncha oʻchiq turadi.",
         "Harakatdan oldin ishlovchi maʼlumotlar bazasidan yana soʻraydi: hali ham tasdiqlangan versiyami, tasdiq muddati oʻtmaganmi, tekshiruv xulosasi saqlangan va ruxsat beradimi, kalit hali ham yoqilganmi.",
         "U YouTube’dan videoni ommaviy qilishni bir marta soʻraydi, soʻng videoni qayta oʻqiydi. Ilova “Nashr qilindi” deb faqat YouTube video ommaviy ekanini aytganda yozadi. YouTube’ga murojaat qilinishidan oldin biror narsa ishlamasa, video shaxsiy qoladi.",
@@ -181,7 +181,7 @@ export const pillarUz: PillarDictionary = {
       {
         id: "publish",
         q: "U qachondir videoni oʻzi nashr qiladimi?",
-        a: "Yoʻq. Har bir yuklash shaxsiy. Video inson uni YouTube’da ommaviy qilganda yoki administrator “Tasdiqdan keyin nashr qilish”ni yoqqan kanalda inson uni tasdiqlaganda ommaviy boʻladi. Buni oʻzgartirishi mumkin boʻlgan kalitlar har bir kanal uchun alohida va sukut boʻyicha oʻchiq.",
+        a: "Yoʻq. Har bir yuklash shaxsiy. Video inson uni YouTube’da ommaviy qilganda yoki ish maydonini boshqaradigan kishi “Tasdiqdan keyin nashr qilish”ni yoqqan kanalda inson uni tasdiqlaganda ommaviy boʻladi. Buni oʻzgartirishi mumkin boʻlgan kalitlar har bir kanal uchun alohida va sukut boʻyicha oʻchiq.",
       },
       {
         id: "monetize",
