@@ -327,7 +327,8 @@ export function PricingView({
               </dl>
             </details>
           </div>
-          <ChatCard copy={chatCopy(t, "pricing.card")} compactClip />
+          {/* The default ask (the Silk Road), so the frame is that example's own picture (chatCopy `thumb`), not a slot's sample. */}
+          <ChatCard copy={chatCopy(t)} />
         </div>
       </section>
 

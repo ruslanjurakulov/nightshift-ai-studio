@@ -9,7 +9,7 @@ import { devDictionaries } from "@/lib/i18n/dev";
 import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
 import { SAMPLES, SLOTS, slotMedia } from "@/components/site/samples";
 import { stockInUse } from "@/components/site/stock-in-use";
-import { placeLabelProblems } from "./helpers/showcase-scope";
+import { THUMB_ART } from "@/lib/site/art";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { SignOffPicture } from "@/components/site/SolutionPictures";
 
@@ -93,24 +93,20 @@ describe("no stock picture is left on the public site (round 10)", () => {
 });
 
 describe("the publish desk's frame says what it is, on the frame and, for a phone, under it", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: stock footage is labelled an example and credited (with a caption for a phone); one of our samples is labelled AI-generated with its model's credit under the drawing", (code) => {
+  // The desk's video is titled with the Silk Road topic; its frame was a sample of a giant dog in a street (owner, 2026-11-14).
+  it.each(LOCALES.map((l) => l.code))("%s: the frame is the Silk Road example's own picture, labelled AI-generated on it and again under the drawing, with no sample, model or stock credit", (code) => {
     const t = dictionaries[code];
     const { container } = render(<SignOffPicture t={t} />);
     const frame = container.querySelector(".st-signoff-frame")!;
-    const m = slotMedia("solutions.youtube-channels");
-    if (m.kind === "stock") {
-      expect(frame.getAttribute("data-clip")).toBe(m.clip);
-      expect(frame.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(m.footage ? t.site.samples.frameTag : t.site.samples.tag);
-      const credit = creditLine(m.id, t.site.samples.credit);
-      expect(frame.querySelector(".nx-result-credit")?.textContent).toBe(credit);
-      expect(container.querySelector(".st-signoff-caption")?.textContent).toContain(credit);
-    } else {
-      expect(frame.getAttribute("data-showcase-entry")).toBe(m.entry.jobId);
-      expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
-      expect(container.querySelector(".st-signoff-caption")).toBeNull();
-      expect(placeLabelProblems(container.querySelector(".nx-place-credit")!, m, t.site)).toEqual([]);
-      expect(container.innerHTML).not.toMatch(/pexels/i);
-    }
+    expect(container.querySelector(".st-signoff-title")?.textContent).toBe(t.site.solutions.pictures.signoff.video);
+    expect(frame.querySelector("img")?.getAttribute("data-art-id")).toBe(THUMB_ART);
+    expect(frame.hasAttribute("data-showcase-entry") || frame.hasAttribute("data-model")).toBe(false);
+    expect(frame.querySelector("[data-sample-job], [data-sample], video")).toBeNull();
+    expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
+    expect(frame.querySelector(".nx-result-credit")).toBeNull();
+    expect(container.querySelector(".st-signoff-caption")).toBeNull();
+    expect(container.querySelector(".nx-place-credit")?.textContent).toBe(t.site.gallery.badge);
+    expect(container.innerHTML).not.toMatch(/pexels/i);
     // The flat drawn placeholder is gone.
     expect(container.querySelector(".st-clip-pic")).toBeNull();
   });

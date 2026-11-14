@@ -8,7 +8,7 @@ import { packExpiry, type PackExpiry } from "@/lib/plans";
 import { creditUnit, formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
-import { Showcases } from "@/components/landing/Showcases";
+import { APPROVALS_HREF, Showcases } from "@/components/landing/Showcases";
 import { ShowcaseGallery, showcaseItems, type LandingFormat } from "@/components/site/ShowcaseGallery";
 import { EffectsGallery } from "@/components/site/EffectsGallery";
 import { TryDemo } from "@/components/landing/TryDemo";
@@ -21,7 +21,9 @@ import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { PromptBar, type PromptIdea } from "@/components/landing/PromptBar";
 import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
-import { STEP_PHONE_JOB, studioToolsOpen } from "@/lib/site/tool-samples";
+import { studioToolsOpen } from "@/lib/site/tool-samples";
+import { ArtImg } from "@/components/site/art";
+import { THUMB_ART } from "@/lib/site/art";
 import { TypedText } from "@/components/site/TypedText";
 import { PROMPT_TOOLS, type PromptTool } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
@@ -323,9 +325,13 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
  * 1. the ask, typed as you watch (the chat card's own example ask; reduced motion or the pause switch show it whole);
  * 2. the Generate key as the Studio draws it, with the price beside it only when the live price list holds one, else where it
  *    will appear (never a default or a zero);
- * 3. a phone with one of our vertical samples playing as a channel's video, under "Private on YouTube": an example,
- *    labelled AI-generated (the badge only: the phone illustrates the step, the clip is not its subject), in the sample's own box.
+ * 3. a phone with the finished video of the ask typed in step 1 (the Silk Road), under "Private on YouTube": the Silk Road
+ *    example's own AI-generated picture (lib/site/art.ts THUMB_ART, the Registan at sunset), cut to the phone's 9:16 on the
+ *    right madrasa and its minaret, labelled AI-generated. Not one of our showcase clips: the step shows the result of THAT ask,
+ *    and a clip made from another prompt beside it said the result need not match the prompt (owner, 2026-11-14).
  * The first two are pictures of a control, not controls: hidden from assistive tech (the step's words say it).
+ * All three sit on stages of one height (site-next.css .nx-step-live), so the numerals under them start on one line: the phone
+ * fills its stage's height instead of standing taller than the other two and pushing its step's top up (owner, 2026-11-14).
  */
 function StepLive({ id, t, locale, anchor }: { id: string; t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
   if (id === "topic") {
@@ -349,26 +355,23 @@ function StepLive({ id, t, locale, anchor }: { id: string; t: Dictionary; locale
       </div>
     );
   }
-  const e = SHOWCASE_ENTRIES.find((x) => x.jobId === STEP_PHONE_JOB);
-  const f = e ? SHOWCASE_FILES[e.jobId] : undefined;
   const approve = t.site.stage.steps.find((x) => x.id === "approve" && "lamp" in x) as { lamp: string } | undefined;
-  if (!e || !f) return null;
-  const clip = e.kind === "video" && f.clip !== null;
   return (
-    <div className="nx-step-live" data-step="approve" data-showcase-entry={e.jobId} data-model={e.modelId}>
-      <span className="nx-step-phone" data-clip={clip ? "sample" : undefined}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={f.posterSm} width={e.width} height={e.height} alt={clip ? t.site.gallery.bgClip : t.site.gallery.bgImage} className="nx-step-shot nx-drift-pic" loading="lazy" decoding="async" />
-        {clip && <ShowcaseClip jobId={e.jobId} />}
+    <div className="nx-step-live" data-step="approve">
+      <span className="nx-step-phone">
+        {/* Drifts slowly where motion is allowed; still under reduced motion and the page's pause switch (.nx-drift-pic). */}
+        <ArtImg id={THUMB_ART} alt={t.site.how.phoneAlt} className="nx-step-shot nx-drift-pic" />
+        {/* On the picture, as the gallery's cards carry it: beside the phone it was squeezed into a two-line capsule. */}
+        <AiBadge g={t.site.gallery} className="nx-ai-credit nx-step-credit" />
         {approve && <span className="nx-step-private">{approve.lamp}</span>}
       </span>
-      <AiBadge g={t.site.gallery} className="nx-ai-credit nx-step-credit" />
     </div>
   );
 }
 
 function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
   const h = t.site.how.simple;
+  const approvals = t.site.caps.items.find((i) => i.id === "approvals");
   return (
     <section id="how" aria-labelledby="how-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
@@ -387,6 +390,13 @@ function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mon
                 </span>
                 <h3 className="nx-h3">{s.title}</h3>
                 <p className="nx-body">{s.body}</p>
+                {/* The step says the two ways a video goes public in two sentences; who may turn the switch on, which version, and
+                    for how long is behind the Approvals band's own link, not in the step (owner, 2026-11-14). */}
+                {s.id === "approve" && approvals && (
+                  <Link href={APPROVALS_HREF} className="nx-link nx-strip-more">
+                    {approvals.cta}
+                  </Link>
+                )}
               </li>
             );
           })}
