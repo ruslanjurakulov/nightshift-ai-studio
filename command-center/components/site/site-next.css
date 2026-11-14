@@ -1671,7 +1671,7 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(110px +
 .nx-step-phone .nx-clip { inset: 0; width: 100%; height: 100%; object-position: 50% 50%; scale: 1.25; }
 .nx-step-private { position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 2; padding: 3px 6px; border-radius: 8px; background: rgba(0, 0, 0, 0.8); font-size: 13px; line-height: 1.25; color: #fff; text-align: center; }
 .nx-step-credit { position: absolute; top: 6px; left: 6px; right: 6px; z-index: 2; justify-content: center; }
-.nx-step-credit .nx-ai-badge { padding: 2px 8px; font-size: 11px; line-height: 1.25; text-align: center; }
+.nx-step-credit .nx-ai-badge { padding: 2px 8px; font-size: 13px; line-height: 1.25; text-align: center; }
 /* The third step's way to the whole approval story (who may switch publishing on, which cut, for how long). */
 .nx-strip-more { justify-self: start; margin-top: 6px; }
 
