@@ -21,8 +21,9 @@
 --     share of the server spread over ~500 minutes of recording a month, payment fees (~5%), refunds, and a reserve for a
 --     future Remotion Company License. (The whole server over 500 minutes alone would be 12 cents a minute: 0.05 assumes the
 --     voice video carries a share of it, not all of it. Revisit when the monthly minutes are measured.)
---   * Remotion: the owner is a one-person company, so Remotion's Free License applies (companies of up to 3 employees): $0
---     today. Re-check when the company has more than 3 employees, or on Remotion 5.0 (the licence terms may change).
+--   * Remotion: the owner is a one-person company, so Remotion's Free License applies ("for individuals and companies of up
+--     to 3 people", remotion.dev/docs/license/pricing, read 2026-11-14): $0 today. Re-check when the company has more than
+--     3 people, or on Remotion 5.0 (the licence terms may change).
 --
 -- NEVER 0, NEVER NULL. creative_price floors a job at job_minimum only when the unit's price is above 0: a zero row would make
 -- every voice video free. This file refuses to write 0, a negative or a NULL rate, and a margin outside 0..10 (the table's

@@ -6634,7 +6634,7 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
-        "note": "No vendor bill: the cost is the worker's own CPU, about 2.7 s of render per second of narration on 4 cores (measured once, docs/VOICE_EXPLAINER.md). The owner sets the credit price (credit_prices)."
+        "note": "No vendor bill: the cost is the worker's own CPU, about 3.4 s of render per second of narration on 4 cores (docs/VOICE_EXPLAINER.md, Capacity). The owner sets the credit price: docs/sql/price_0171_voice_explainer.sql, applied after the probe."
       },
       "credit_unit": "model_nightshift_voice_explainer_second",
       "entitlement": null,

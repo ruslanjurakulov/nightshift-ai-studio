@@ -377,6 +377,20 @@ class AppliedSafely(unittest.TestCase):
         explainer = (ROOT / "docs" / "VOICE_EXPLAINER.md").read_text(encoding="utf-8")
         self.assertIn("0171", explainer)
         self.assertNotIn("render_jobs` kind", explainer)
+        # The operator's checklist, in the order that keeps a model unsold until it is safe: the image is built, one
+        # ten-minute render measured inside it, the licence checked, the model probed, and only then priced and opened.
+        steps = explainer[explainer.index("### Opening it"):explainer.index("### Capacity")]
+        order = ["Build and deploy the worker image", "Measure one 600 s render's peak memory as uid 1000", "Remotion licence",
+                 "Probe it on the worker", "price_0171_voice_explainer.sql", "Set its availability"]
+        self.assertEqual(sorted(order, key=steps.index), order)
+        self.assertIn("CREATIVE_WORKER_CONCURRENCY", steps)
+        self.assertIn("price_0171_voice_explainer.sql", docs)
+        price = (ROOT / "docs" / "sql" / "price_0171_voice_explainer.sql").read_text(encoding="utf-8")
+        # The owner's numbers, and the refusals that keep a zero from ever making the jobs free.
+        for needle in ("v_credits_per_unit constant numeric := 0.05;", "v_margin constant numeric := 7.0;",
+                       "if v_credits_per_unit is null or v_credits_per_unit <= 0 then", "m.verified_at is null",
+                       "on conflict (unit) do update"):
+            self.assertIn(needle, price)
 
 
 if __name__ == "__main__":
