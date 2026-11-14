@@ -6,7 +6,7 @@
  * What would break if these failed: a slide or a pair that is not a real merged sample; a prompt shown as the whole when it was
  * cut; a model named outside its sample's box; a maker's "Powered by" line or link back on a public page (the owner's rule,
  * 2026-11-13); a visible pause button (same rule); a carousel that does not move on when its clip ends, or that moves under
- * reduced motion; a slider a keyboard or a finger cannot move; more than one of these players decoding on a phone.
+ * reduced motion; a slider a keyboard or a finger cannot move; a player on screen that holds a still while another plays.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -28,7 +28,7 @@ import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { FORMATS } from "@/lib/site/formats";
 import { STILL_MS, beforeAfterPairs, carouselOrder, clock, firstSentence, ringIndex, ringOffset, sliderKey } from "@/lib/site/carousel";
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
-import { PHONE_TURNS, pickTurns } from "@/components/site/clip-turns";
+import { PHONE_TURNS, SHOW_RATIO, WIDE_TURNS, pickTurns, shownRatio } from "@/components/site/clip-turns";
 import { SampleCarousel, SampleCompare, SampleTicker, effectPreviewJobs, landingGalleryJobs, sampleSectionJobs } from "@/components/site/landing-samples";
 import { LANDING_LEFT_OUT, landingExcludedJobs } from "@/components/site/slots";
 import { TOOL_JOBS } from "@/lib/site/tool-samples";
@@ -125,15 +125,42 @@ describe("the arithmetic", () => {
     expect(sliderKey(40, "a")).toBeNull();
   });
 
-  it("a phone gives one turn to the players most on screen; one that does not want it or barely shows gets none", () => {
+  // What would break (the owner's report of 2026-11-14): a phone gave ONE turn, so a second clip on screen held a still and read
+  // as frozen. Every clip that shows 35% of itself and wants to play gets one; one that does not want it or barely shows does not.
+  it("every player on screen gets a turn, on a phone too; one that does not want it or shows less than 35% gets none", () => {
     const bids = new Map([
       ["carousel", { ratio: 0.6, want: true }],
       ["ticker", { ratio: 0.9, want: true }],
+      ["grid", { ratio: 0.35, want: true }],
       ["compare", { ratio: 1, want: false }],
-      ["sliver", { ratio: 0.1, want: true }],
+      ["sliver", { ratio: 0.3, want: true }],
     ]);
-    expect([...pickTurns(bids, PHONE_TURNS)]).toEqual(["ticker"]);
-    expect([...pickTurns(bids, 3)].sort()).toEqual(["carousel", "ticker"]);
+    expect([...pickTurns(bids, PHONE_TURNS)].sort()).toEqual(["carousel", "grid", "ticker"]);
+  });
+
+  // What would break: a cap below what one screen shows leaves a visible clip stopped while its neighbour plays. The densest landing
+  // screens measured 3 clips at once at 390 x 844 and 6 at 1440 x 900 (the model grid); when a cap does bind, the clips most on
+  // screen are the ones that play, never one at the edge over one in the middle.
+  it("the caps cover the densest screen measured, and past a cap the clips most on screen play", () => {
+    expect(PHONE_TURNS).toBeGreaterThanOrEqual(3);
+    expect(WIDE_TURNS).toBeGreaterThanOrEqual(6);
+    const bids = new Map([
+      ["edge", { ratio: 0.4, want: true }],
+      ["middle", { ratio: 1, want: true }],
+      ["most", { ratio: 0.8, want: true }],
+    ]);
+    expect([...pickTurns(bids, 2)].sort()).toEqual(["middle", "most"]);
+  });
+
+  // What would break: a clip taller than the screen (a bleed behind a first screen) can never show 35% of itself, so by its own
+  // share it would never play although it fills the screen.
+  it("a clip taller than the screen counts by how much of the screen it fills", () => {
+    const rect = (width: number, height: number) => ({ width, height }) as DOMRectReadOnly;
+    expect(shownRatio({ intersectionRatio: 0.25, isIntersecting: true, intersectionRect: rect(390, 844), rootBounds: rect(390, 844) })).toBe(1);
+    expect(shownRatio({ intersectionRatio: 0.1, isIntersecting: true, intersectionRect: rect(390, 100), rootBounds: rect(390, 844) })).toBeLessThan(SHOW_RATIO);
+    // A test double or an old engine with no ratio: in view counts as whole, out of view as none.
+    expect(shownRatio({ isIntersecting: true } as IntersectionObserverEntry)).toBe(1);
+    expect(shownRatio({ isIntersecting: false } as IntersectionObserverEntry)).toBe(0);
   });
 });
 

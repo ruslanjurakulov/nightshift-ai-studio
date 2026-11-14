@@ -511,6 +511,40 @@ describe("the facts count up", () => {
     stop();
   });
 
+  // Live audit, 2026-11-14: "36" painted over "37" and "990" over "100" for the length of the count, in both themes. The rule
+  // hiding the server's number sat in @layer components while the number's own colour (.nx-facts-n) was unlayered, and an
+  // unlayered declaration beats a layered one whatever its specificity. jsdom has no cascade layers, so this reads the layers.
+  it("hides the server's number while the counter is drawn over it: the hiding rule wins the cascade against the number's colour", () => {
+    /** Whether the first rule starting with `head` is inside an @layer block (comments removed, braces counted). */
+    const layered = (source: string, head: string) => {
+      const src = noComments(source);
+      const at = src.indexOf(head);
+      expect(at, head).toBeGreaterThan(-1);
+      const open: string[] = [];
+      let start = 0;
+      for (let i = 0; i < at; i++) {
+        if (src[i] === "{") open.push(src.slice(start, i).trim());
+        if (src[i] === "{" || src[i] === "}" || src[i] === ";") start = i + 1;
+        if (src[i] === "}") open.pop();
+      }
+      return open.some((h) => h.startsWith("@layer"));
+    };
+    const next = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
+    const hide = ".nx [data-count][data-counting] {";
+    expect(noComments(css)).toMatch(/\.nx \[data-count\]\[data-counting\] \{[^}]*color: transparent;/);
+    // Every rule that colours the facts' number: the hiding rule must be in the same or a later-winning place and more specific.
+    const colours = [...noComments(next).matchAll(/(^|\n)([^{}\n]*\.nx-facts-n[^{}\n]*)\{[^}]*\bcolor:/g)].map((m) => m[2].trim());
+    expect(colours.length).toBeGreaterThan(0);
+    for (const sel of colours) {
+      // An unlayered colour can only be beaten by an unlayered rule.
+      if (!layered(next, `${sel} {`)) expect(layered(css, hide), sel).toBe(false);
+      // .nx [data-count][data-counting] is (0,3,0); the number's own selector is a single class.
+      expect(sel).toBe(".nx-facts-n");
+    }
+    // site-motion.css loads after site-next.css (pinned above), so equal standing is decided by specificity, which it wins.
+    expect(noComments(css)).toMatch(/\.nx \[data-count\]\[data-counting\]::after \{[^}]*color: var\(--ns-text\);/);
+  });
+
   it("does not count on a reload or a back/forward visit (scroll is restored after it runs), nor in forced colours", () => {
     for (const type of ["reload", "back_forward"]) {
       device(() => false);

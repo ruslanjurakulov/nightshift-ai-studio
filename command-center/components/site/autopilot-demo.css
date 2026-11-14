@@ -4,8 +4,9 @@
    pins them for this file: every selector under .nx (the marketing shell's
    root) or an .nx-* class, tokens only (--ns-*, --nx-stage-*), every
    transition inside a prefers-reduced-motion: no-preference block, controls
-   44px or more. The walk-through's panels share one grid cell, so its height
-   is the tallest panel's from the first paint (no shift between stages). */
+   44px or more. Only the current panel takes room, so the frame is as tall
+   as the stage on screen (the tallest stage's height left the first one, the
+   one every visitor sees, with 480 px or more of empty card). */
 
 @layer components {
 .nx-ap-frame {
@@ -106,17 +107,22 @@
   white-space: nowrap;
 }
 
-/* Every panel in one cell: the cell is as tall as the tallest, the others are hidden (and inert). */
-.nx-ap-stack { display: grid; }
+/* The current panel is in the flow and sets the frame's height; the others lie over it, top-aligned, hidden and inert, so one
+   fading out never makes room. A floor keeps a short stage from looking like a collapsed box. While the height eases from one
+   stage to the next (data-sizing, AutopilotDemo.tsx), a taller panel fading out is clipped to the frame, not drawn over what
+   follows it. */
+.nx-ap-stack { position: relative; display: grid; min-height: 240px; }
+.nx-ap-stack[data-sizing] { overflow: hidden; }
 .nx-ap-panel {
-  grid-area: 1 / 1;
+  position: absolute;
+  inset: 0 0 auto;
   display: grid;
   align-content: start;
   gap: 20px;
   visibility: hidden;
   opacity: 0;
 }
-.nx-ap-panel[data-active="true"] { visibility: visible; opacity: 1; }
+.nx-ap-panel[data-active="true"] { position: relative; inset: auto; visibility: visible; opacity: 1; }
 @media (min-width: 900px) {
   .nx-ap-panel { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 32px; }
 }
@@ -255,14 +261,16 @@
 }
 .nx-ap-cta .nx-body { color: var(--nx-stage-dim); max-width: 60ch; }
 .nx-ap-cta .nx-link { color: var(--nx-stage-text); }
-.nx-ap-cta .nx-actions { margin-top: 8px; }
+/* The closing box reads left to right, heading and body at its left edge: its keys start there too, not in the middle. */
+.nx-ap-cta .nx-actions { margin-top: 8px; align-items: flex-start; justify-content: flex-start; }
 
 @media (prefers-reduced-motion: no-preference) {
   .nx-ap-panel { transition: opacity 260ms var(--ns-ease), visibility 0s linear 260ms; }
   .nx-ap-panel[data-active="true"] { transition: opacity 260ms var(--ns-ease), visibility 0s; }
   .nx-ap-fill { transition: transform 420ms var(--ns-ease); }
   .nx-ap-dot { transition: background-color 200ms var(--ns-ease), border-color 200ms var(--ns-ease); }
-  html[data-motion="paused"] .nx-ap-panel, html[data-motion="paused"] .nx-ap-fill { transition: none; }
+  .nx-ap-stack { transition: height 320ms var(--ns-ease); }
+  html[data-motion="paused"] .nx-ap-panel, html[data-motion="paused"] .nx-ap-fill, html[data-motion="paused"] .nx-ap-stack { transition: none; }
 }
 
 /* ── The Shorts feed (phones only: the entry is hidden from 768px up) ──── */

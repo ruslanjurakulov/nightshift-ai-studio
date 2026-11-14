@@ -51,6 +51,7 @@ export function PriceBlock({ t, locale, teaser, rates }: { t: Dictionary; locale
   return (
     <section id="pricing" aria-labelledby="pricing-title" className="nx-section">
       <div className="nx-wrap">
+        <p className="nx-label">{p.slug}</p>
         <h2 id="pricing-title" className="nx-h2">
           {p.title}
         </h2>

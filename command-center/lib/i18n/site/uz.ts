@@ -19,7 +19,7 @@ export const siteUz: SiteDictionary = {
   hero: {
     kicker: "Yuzli va yuzsiz YouTube kanallari uchun",
     titleA: "Videoni biz tayyorlaymiz.",
-    titleB: "Nashr qilishni siz bosasiz.",
+    titleB: "Nashr tugmasini siz bosasiz.",
     lead: "Nightshift’ga mavzu bering. U YouTube uchun video yozadi, ovozlaydi va montaj qiladi, soʻng roziligingizni kutadi. Narxni boshlashdan oldin koʻrasiz.",
     leadShort: "Bir jumladan klip va rasmlar yarating yoki Nightshift kanalingiz uchun keyingi videoni tayyorlab, qaroringizni kutsin.",
     leadShortClosed: "Nightshift kanalingiz uchun keyingi videoni tayyorlab, qaroringizni kutsin; quyidagi klip va rasmlarni jamoamiz Studiyada yaratgan.",
@@ -82,7 +82,7 @@ export const siteUz: SiteDictionary = {
     noTopic: "Avval mavzuni yozing yoki quyidan tanlang.",
     sections: [
       { id: "titles", name: "Ishchi sarlavhalar", items: [{ k: "Toʻgʻridan-toʻgʻri", v: "{topic}: odatda tushuntirilmaydigan qismi" }, { k: "Qiziqtiruvchi", v: "“{topic}” ortida aslida nima bor" }, { k: "Oddiy", v: "{topic}: oddiy soʻzlar bilan" }] },
-      { id: "script", name: "Ssenariy tuzilmasi", items: [{ k: "Ilgak", v: "“{topic}” ortidagi asosiy savoldan boshlash." }, { k: "Kontekst", v: "Burilishdan oldin odamlar nimani bilishi kerak." }, { k: "Burilish", v: "Manzarani oʻzgartiradigan fakt." }, { k: "Dalil", v: "Ssenariy nimaga solishtirib tekshirilgan." }, { k: "Yakun", v: "Bitta xulosa va keyingi videoni koʻrish uchun sabab." }] },
+      { id: "script", name: "Ssenariy tuzilmasi", items: [{ k: "Boshlanish", v: "“{topic}” ortidagi asosiy savoldan boshlash." }, { k: "Kontekst", v: "Burilishdan oldin odamlar nimani bilishi kerak." }, { k: "Burilish", v: "Manzarani oʻzgartiradigan fakt." }, { k: "Dalil", v: "Ssenariy nimaga solishtirib tekshirilgan." }, { k: "Yakun", v: "Bitta xulosa va keyingi videoni koʻrish uchun sabab." }] },
       { id: "voice", name: "Ovoz va koʻrinish", items: [{ k: "Diktor", v: "Kanalingiz ovozi, uning tilida." }, { k: "Tasvir", v: "Kanalingiz uslubida." }, { k: "Subtitrlar", v: "Yoqilgan, kanal tilida." }] },
       { id: "shots", name: "Kadrlar roʻyxati", items: [{ k: "Boshlanish", v: "“{topic}” mavzusiga kirish uchun umumiy reja." }, { k: "Oʻrtasi", v: "Har bir fikrni qoʻllab turadigan yaqin tafsilotlar." }, { k: "Oxiri", v: "Yakuniy gap ostida sokin uzoqlashish." }] },
       { id: "thumb", name: "Muqova topshirigʻi", items: [{ k: "Obyekt", v: "“{topic}” mavzusidan bitta aniq obyekt." }, { k: "Soʻzlar", v: "Rasmda uch soʻzdan oshmasin." }, { k: "Rang", v: "Yuqori kontrast va bitta iliq urgʻu." }] },
@@ -129,7 +129,7 @@ export const siteUz: SiteDictionary = {
       { id: "voice", step: "Ovozni yozib olish" },
       { id: "edit", step: "Tasvir, subtitr va montaj" },
       { id: "upload", step: "Yuklab, yopiq qoldirish" },
-      { id: "publish", step: "Nashr qilishni bosish" },
+      { id: "publish", step: "Nashr tugmasini bosish" },
     ],
   },
   approvalCard: {
@@ -232,7 +232,7 @@ export const siteUz: SiteDictionary = {
   formats: {
     items: [
       { id: "product-ad", title: "Koʻcha boʻyi reklama", body: "Ulkan mahsulot haqiqiy koʻchaga tushadi, tashqi reklama kampaniyasidek suratga olingan." },
-      { id: "satisfying", title: "Zavqli makro", body: "Pichoq yaqin plandan kesilmaydigan narsani kesadi. Buni qayta-qayta koʻrishadi." },
+      { id: "satisfying", title: "Yoqimli makro", body: "Pichoq yaqin plandan kesilmaydigan narsani kesadi. Buni qayta-qayta koʻrishadi." },
       { id: "cctv", title: "Kameraga tushib qoldi", body: "Kuzatuv kamerasining tungi yozuvi: hayvonlar nimadir qilyapti." },
       { id: "miniature", title: "Kichkina dunyo", body: "Barmoqdek odamchalar haqiqiy oshxonada ishlayapti, tilt-shift." },
       { id: "pov", title: "Vaqt boʻylab sayohat, birinchi shaxsdan", body: "Boshqa asrga kirib borish, sayohat vlogidek suratga olingan." },

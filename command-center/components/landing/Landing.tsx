@@ -375,6 +375,7 @@ function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mon
   return (
     <section id="how" aria-labelledby="how-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
+        <p className="nx-label">{t.site.how.slug}</p>
         <h2 id="how-title" className="nx-h2">
           {h.title}
         </h2>

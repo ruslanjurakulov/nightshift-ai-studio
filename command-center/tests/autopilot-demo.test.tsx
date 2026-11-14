@@ -284,6 +284,59 @@ describe("autopilot-demo.css", () => {
     expect(open).toBeGreaterThan(0);
     expect(outside).not.toMatch(/\btransition\s*:|\banimation\s*:|scroll-behavior:\s*smooth/);
   });
+  // Live audit, 2026-11-14: every panel took room in one grid cell, so the frame was the tallest stage's height on every stage
+  // and the first one (what every visitor sees) had 480-600 px of empty card under it.
+  it("lets only the current stage take room, so the frame is as tall as the stage on screen, with a modest floor", () => {
+    const src = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const rule = (sel: string) => src.match(new RegExp(`(?:^|\\n)${sel.replace(/[.[\]"=]/g, (c) => `\\${c}`)} \\{([^}]*)\\}`))?.[1] ?? "";
+    expect(rule(".nx-ap-panel")).toMatch(/position: absolute;/);
+    expect(rule(".nx-ap-panel")).not.toMatch(/grid-area/);
+    expect(rule('.nx-ap-panel[data-active="true"]')).toMatch(/position: relative;/);
+    const floor = Number(rule(".nx-ap-stack").match(/min-height: (\d+)px/)?.[1]);
+    expect(floor).toBeGreaterThan(0);
+    expect(floor).toBeLessThanOrEqual(320);
+    // The closing box's keys start at its left edge, under its left-aligned heading and body.
+    expect(rule(".nx-ap-cta .nx-actions")).toMatch(/justify-content: flex-start;/);
+  });
+
+  it("eases the frame to the new stage's height and hands it back to its content afterwards", () => {
+    const { container } = render(<AutopilotDemo copy={siteAutopilotEn.demo} />);
+    const stack = container.querySelector<HTMLElement>(".nx-ap-stack")!;
+    // jsdom lays nothing out: the frame reports the height of the stage on screen (or the one it was set to), as a browser would.
+    const tall: Record<string, number> = { topic: 240, research: 610, script: 610 };
+    Object.defineProperty(stack, "offsetHeight", {
+      configurable: true,
+      get: () => (stack.style.height ? parseInt(stack.style.height, 10) : tall[stack.querySelector<HTMLElement>('[data-active="true"]')!.dataset.stage!] ?? 300),
+    });
+    document.documentElement.removeAttribute("data-motion");
+    vi.useFakeTimers();
+    try {
+      const next = screen.getByRole("button", { name: siteAutopilotEn.demo.next });
+      fireEvent.click(next);
+      // From the first stage's 240 px to the second's 610 px, held at the target until the easing ends.
+      expect(stack.getAttribute("data-sizing")).toBe("true");
+      expect(stack.style.height).toBe("610px");
+      act(() => {
+        vi.advanceTimersByTime(700);
+      });
+      expect(stack.style.height).toBe("");
+      expect(stack.hasAttribute("data-sizing")).toBe(false);
+      // Two stages of the same height: nothing to ease, nothing fixed.
+      fireEvent.click(next);
+      expect(stack.style.height).toBe("");
+      expect(stack.hasAttribute("data-sizing")).toBe(false);
+      // The visitor's pause switch: the frame jumps to the new height, no easing is started.
+      document.documentElement.setAttribute("data-motion", "paused");
+      fireEvent.click(screen.getByRole("button", { name: siteAutopilotEn.demo.prev }));
+      fireEvent.click(screen.getByRole("button", { name: siteAutopilotEn.demo.prev }));
+      expect(stack.style.height).toBe("");
+      expect(stack.hasAttribute("data-sizing")).toBe(false);
+    } finally {
+      document.documentElement.removeAttribute("data-motion");
+      vi.useRealTimers();
+    }
+  });
+
   it("styles only .nx-* classes", () => {
     const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
     const selectors = [...stripped.matchAll(/(?:^|[{}])\s*([^{}@][^{}]*)\{/g)].map((m) => m[1].trim()).filter((x) => x && !x.startsWith("@"));

@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { siteEn } from "@/lib/i18n/site/en";
 import { siteRu } from "@/lib/i18n/site/ru";
 import { siteUz } from "@/lib/i18n/site/uz";
+import { siteAutopilotUz } from "@/lib/i18n/site-autopilot/uz";
+import { effectsUz } from "@/lib/i18n/effects/uz";
+import { uz } from "@/lib/i18n/uz";
 import { SOLUTION_IDS } from "@/lib/solutions";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 
@@ -74,6 +77,23 @@ describe("public site copy", () => {
     for (const dict of [siteEn, siteRu, siteUz]) {
       expect(dict.solutions.pages.map((p) => p.id)).toEqual([...SOLUTION_IDS]);
     }
+  });
+
+  // The owner reads the Uzbek page (live audit, 2026-11-14): calques he flagged must not come back.
+  it("uz: says 'press the publish button', calls a story's hook a beginning, gives one effect one name, and names the theme switch apart from a video's topic", () => {
+    expect(siteUz.hero.titleB).toBe("Nashr tugmasini siz bosasiz.");
+    const site = strings(siteUz as unknown as Node);
+    const pilot = strings(siteAutopilotUz as unknown as Node);
+    // "Nashr qilishni bosish" is "to press publishing"; "ilmoq" and "ilgak" are a fish-hook and a clasp, not a story's opening.
+    for (const s of [...site, ...pilot]) expect(s).not.toMatch(/Nashr qilishni|\bilmoq\b|\bilgak\b/i);
+    // The same shot is "satisfying macro" in the hero's chips, the gallery and the effects: one Uzbek name for all of them.
+    const macro = siteUz.formats.items.find((i) => i.id === "satisfying")!.title;
+    expect(macro).toBe(effectsUz.items["satisfying-macro"].name);
+    // "Mavzu" is the video's topic everywhere in the app, and "Koʻrinish" is the mobile/desktop view switch.
+    expect(uz.common.theme).not.toBe("Mavzu");
+    expect(uz.common.theme).not.toBe(uz.common.view);
+    // oʻ and gʻ are written with U+02BB, never with a quote mark that looks like it.
+    for (const s of [...site, ...pilot]) expect(s).not.toMatch(/[oOgG][‘’']/);
   });
 
   it("states no money amount and no usage or customer figure", () => {
