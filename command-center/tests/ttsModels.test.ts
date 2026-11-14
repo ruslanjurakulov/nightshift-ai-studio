@@ -74,13 +74,23 @@ describe("the voice-model picker and the language a model speaks", () => {
     expect(TTS_MODEL_LABELS.eleven_turbo_v2_5).toContain("Flash v2.5");
   });
 
+  it("reads every way people write Uzbek, so none slips past the picker", async () => {
+    const { ttsLanguageCode } = await import("../lib/ttsLanguages");
+    for (const v of ["Uzbek", "uz_UZ", "uz-Latn", "Uzbekcha", "Oʻzbek", "O’zbek", "Oʼzbek", "O‘zbek", "O`zbek", "Ўзбек", "ўзбекча"]) {
+      expect(ttsLanguageCode(v), v).toBe("uz");
+    }
+    expect(ttsLanguageCode("Arabic")).toBeNull();
+  });
+
   it("has the picker's reasons in all three languages", async () => {
     const [{ en }, { ru }, { uz }] = await Promise.all([import("../lib/i18n/en"), import("../lib/i18n/ru"), import("../lib/i18n/uz")]);
     for (const dict of [en, ru, uz]) {
-      for (const key of ["voiceModelDeprecated", "voiceModelNoLanguage", "voiceModelNotOnQueue", "voiceModelHint"] as const) {
+      for (const key of ["voiceModelDeprecated", "voiceModelNoLanguage", "voiceModelNotOnQueue", "voiceModelHint", "voiceModelDefaultMayNot", "voiceModelDropped"] as const) {
         expect(dict.create[key], key).toBeTruthy();
       }
       expect(dict.create.voiceModelNoLanguage).toContain("{language}");
+      expect(dict.create.voiceModelDefaultMayNot).toContain("{language}");
+      expect(dict.create.voiceModelDropped).toContain("{model}");
     }
   });
 });

@@ -961,6 +961,8 @@ export const uz: Dictionary = {
     voiceModelDeprecated: "eskirgan",
     voiceModelNoLanguage: "{language} tilida gapirmaydi",
     voiceModelNotOnQueue: "hozircha ishga tushirish uchun mavjud emas",
+    voiceModelDefaultMayNot: "{language} tilida gapirmasligi mumkin; Eleven v3 ni tanlang",
+    voiceModelDropped: "{model} tanlovi bekor qilindi: u {language} tilida gapirmaydi. Eleven v3 ni tanlang.",
     voiceModelHint: "Bu video tilida gapira olmaydigan modellar oʻchirilgan (ElevenLabs modellar roʻyxati, {date} da tekshirilgan).",
     voicePick: "Ovoz",
     voiceChannel: "Kanalning ovozi",

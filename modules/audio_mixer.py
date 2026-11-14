@@ -20,6 +20,7 @@ from config import (
     EXPECT_TTS_PROVIDER,
     ELEVENLABS_API_KEY,
     ELEVENLABS_MODEL_ID,
+    ELEVENLABS_MODEL_ID_REQUESTED,
     ELEVENLABS_RUN_VOICE_ID,
     ELEVENLABS_SECONDARY_VOICE_ID,
     ELEVENLABS_VOICE_ID,
@@ -74,7 +75,8 @@ class VoiceUnavailable(RuntimeError):
 
 
 class _Busy(Exception):
-    """ElevenLabs answered 429 (rate, concurrency or system busy): ask again, same voice."""
+    """ElevenLabs answered 429 (rate, concurrency or system busy): ask again, same voice.
+    ``reason`` is the refusal's head only, never a remedy, so it can end either message."""
 
     def __init__(self, reason: str):
         super().__init__(reason)
@@ -173,10 +175,16 @@ def script_language(agent) -> str:
 def _verify_model_speaks(agent, model: str) -> None:
     """Refuse a model that the vendor's own docs say does not speak the script's language.
 
-    No other model is picked for the person. eleven_v3 costs differently and sounds
-    different, so switching would be a change they did not choose (rule 4)."""
+    No other model is picked for the person. eleven_v3 sounds different and takes at
+    most 5,000 characters a request (docs/overview/models), so switching would be a
+    change they did not choose (rule 4)."""
     reason = tts_languages.refusal(model, script_language(agent))
     if reason:
+        if ELEVENLABS_MODEL_ID_REQUESTED and ELEVENLABS_MODEL_ID_REQUESTED != model:
+            # config replaced an id it does not accept with the default; say so, or the
+            # person who set it is told about a model they never chose.
+            reason += (f" (ELEVENLABS_MODEL_ID is {ELEVENLABS_MODEL_ID_REQUESTED[:40]!r}, which this "
+                       f"pipeline does not accept, so the default {model} was used.)")
         raise VoiceUnavailable(reason)
 
 
@@ -279,23 +287,26 @@ def _verify_voice_exists(voice_id: str) -> None:
         return
 
     code, message = elevenlabs_error(_json_or_none(resp))
-    if resp.status_code == 429 or resp.status_code >= 500:
-        # Busy or down right now: this request synthesizes nothing, and the
-        # narration stage makes the same call for real and retries a 429 there.
-        logger.warning("ElevenLabs could not answer the voice check (HTTP %s%s) — continuing; "
-                       "the narration stage retries and stops if it persists",
-                       resp.status_code, f", {code}" if code else "")
+    if resp.status_code == 429:
+        # Busy right now: this request synthesizes nothing, and the narration stage
+        # makes the same call for real and asks again on a 429 (BUSY_WAITS).
+        logger.warning("ElevenLabs is busy and could not answer the voice check (HTTP 429%s) — "
+                       "continuing; the narration stage asks again %d times and stops if it stays busy",
+                       f", {code}" if code else "", len(BUSY_WAITS))
         return
+    if resp.status_code >= 500:
+        # Not passed on: nothing retries a 5xx, so letting it through would pay for topic,
+        # research, script and fact-check and then die at the audio stage (rule 6).
+        raise VoiceUnavailable(
+            f"ElevenLabs is down (HTTP {resp.status_code}{', ' + code if code else ''}) and could not "
+            "check the voice. Nothing was spent; re-run later. No other voice is substituted.")
     if resp.status_code == 404 and code in ("", "voice_not_found"):
         raise VoiceUnavailable(
             f"ElevenLabs has no voice with id {voice_id!r} for this account. "
             "Pick a voice from the account's list in the Command Center (Agents → Voice); ids look "
             "like 'pNInz6obpgDQGcFmaJgB', not a plain number."
         )
-    head = f"ElevenLabs refused the voice check for {voice_id!r} (HTTP {resp.status_code}"
-    head += f", {code})" if code else ")"
-    if message:
-        head += f": {message}"
+    head = _refusal_head(f"ElevenLabs refused the voice check for {voice_id!r}", resp.status_code, code, message)
     raise VoiceUnavailable(f"{head}. {elevenlabs_remedy(resp.status_code, code)}")
 
 
@@ -314,12 +325,15 @@ def _json_or_none(resp):
 #: reader must not be told they may be out of characters.
 _KEY = ("The ElevenLabs key is wrong or missing; nothing was spent. Replace ELEVENLABS_API_KEY in "
         "the repository secrets with a key from the account's API keys page.")
+#: At the narration stage the run has already paid for its script, so "nothing was spent"
+#: would be false; only the refused request itself was free.
+_KEY_AT_SYNTHESIS = _KEY.replace("nothing was spent", "this request was not charged")
 _CREDIT = ("The ElevenLabs account is out of credit; top up the plan or wait for the monthly reset. "
            "No other voice is used.")
 _PLAN = ("This ElevenLabs plan cannot use this voice or feature. Pick a voice the plan can use from "
          "the account's voice list in the Command Center (Agents → Voice), or change the plan.")
 _PICK = "Pick a voice from the account's list in the Command Center (Agents → Voice)."
-_BUSY = "ElevenLabs is busy; the narration stage will retry."
+_BUSY = "ElevenLabs is busy; the narration stage will retry, in the same voice."
 ELEVENLABS_ERROR_REMEDIES = {
     "invalid_api_key": _KEY,
     "missing_api_key": _KEY,
@@ -353,27 +367,34 @@ def elevenlabs_error(body) -> tuple[str, str]:
     return code, message
 
 
-def elevenlabs_remedy(status, code: str) -> str:
+def elevenlabs_remedy(status, code: str, *, at_synthesis: bool = False) -> str:
     """The fix for one refusal: by its code first, then by its status, else a plain "fix the cause"."""
-    return (ELEVENLABS_ERROR_REMEDIES.get(code or "") or _STATUS_REMEDIES.get(status)
-            or "No other voice is substituted; fix the cause and re-run.")
+    remedy = (ELEVENLABS_ERROR_REMEDIES.get(code or "") or _STATUS_REMEDIES.get(status)
+              or "No other voice is substituted; fix the cause and re-run.")
+    return _KEY_AT_SYNTHESIS if at_synthesis and remedy is _KEY else remedy
+
+
+def _refusal_head(lead: str, status, code: str, message: str) -> str:
+    head = f"{lead} (HTTP {status}" + (f", {code})" if code else ")")
+    return head + (f": {message}" if message else "")
 
 
 def _tts_refusal(voice_id: str, status, body) -> str:
     """ElevenLabs' own reason for refusing a synthesis, and what to do about it.
     Only the voice id, the status and ElevenLabs' code/message are quoted —
     never the key or the request."""
+    return f"{_tts_head(voice_id, status, body)}. {elevenlabs_remedy(status, elevenlabs_error(body)[0], at_synthesis=True)}"
+
+
+def _tts_head(voice_id: str, status, body) -> str:
     code, message = elevenlabs_error(body)
-    head = f"ElevenLabs refused to read with voice {voice_id!r} (HTTP {status}"
-    head += f", {code})" if code else ")"
-    if message:
-        head += f": {message}"
-    return f"{head}. {elevenlabs_remedy(status, code)}"
+    return _refusal_head(f"ElevenLabs refused to read with voice {voice_id!r}", status, code, message)
 
 
 def _is_busy(status, body) -> bool:
-    code, _ = elevenlabs_error(body)
-    return code in RETRYABLE_CODES or (status == 429 and not code)
+    """Any 429, whatever its code (the legacy too_many_concurrent_requests included), and the
+    busy codes under any status."""
+    return status == 429 or elevenlabs_error(body)[0] in RETRYABLE_CODES
 
 
 #: How long the narration stage waits before asking a busy ElevenLabs again (seconds).
@@ -440,10 +461,11 @@ class AudioMixer:
                 return self._tts_elevenlabs_once(text, voice_id, out_path)
             except _Busy as busy:
                 if wait is None:
+                    # busy.reason is the head only: "will retry" would be false here.
                     raise VoiceUnavailable(
-                        f"{busy.reason} It was still busy after {len(BUSY_WAITS) + 1} tries; no other "
-                        "voice is substituted. Re-run later.") from None
-                logger.warning("%s Waiting %ss before asking again.", busy.reason, wait)
+                        f"{busy.reason}. ElevenLabs was still busy after {len(BUSY_WAITS) + 1} tries; "
+                        "no other voice is substituted. Re-run later.") from None
+                logger.warning("%s. ElevenLabs is busy; asking again in %ss in the same voice.", busy.reason, wait)
                 time.sleep(wait)
 
     def _tts_elevenlabs_once(self, text: str, voice_id: str, out_path: Path):
@@ -487,7 +509,7 @@ class AudioMixer:
             out_path.unlink(missing_ok=True)   # never leave half a segment in the cache
             body = getattr(e, "body", None)
             if _is_busy(status, body):
-                raise _Busy(_tts_refusal(voice_id, status, body)) from None
+                raise _Busy(_tts_head(voice_id, status, body)) from None
             raise VoiceUnavailable(_tts_refusal(voice_id, status, body)) from None
 
     def _elevenlabs_voice_for(self, voice_role: str) -> str:

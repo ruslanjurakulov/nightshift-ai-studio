@@ -27,6 +27,7 @@ from modules import model_registry as reg
 
 ROOT = Path(__file__).resolve().parent.parent
 SQL = ROOT / "docs" / "sql"
+SCRIBE = SQL / "prices_scribe_2026_11_14.sql"
 MIGRATIONS = ROOT / "supabase" / "migrations"
 DEFAULTS = SQL / "prices_defaults_2026_10_03.sql"
 
@@ -320,17 +321,16 @@ class PriceDefaultsFile(unittest.TestCase):
         self.assertEqual(clash, set(), "already priced by an earlier file or migration")
 
     def test_applies_after_the_other_price_files(self):
-        """Defaults fill what the earlier seeds left unpriced, so they come after them. A later,
-        dated price note (prices_scribe_2026_11_14.sql) corrects a default and comes after it."""
-        def dated(name):
-            m = re.search(r"(\d{4}_\d{2}_\d{2})\.sql$", name)
-            return m.group(1) if m else ""
+        """The real apply order: the seeds, then these defaults, then the Scribe v2 correction
+        (prices_scribe_2026_11_14.sql) that replaces one of these defaults with a read price."""
         names = sorted(p.name for p in SQL.glob("prices_*.sql"))
-        mine = dated(DEFAULTS.name)
-        earlier = [n for n in names if n != DEFAULTS.name and dated(n) <= mine]
-        self.assertTrue(earlier and all(n < DEFAULTS.name for n in earlier), earlier)
-        for n in names:
-            self.assertTrue(dated(n), f"{n}: a price file is named for the day it was written")
+        self.assertEqual(set(names), {"prices_2026_10_01.sql", "prices_corrections_2026_10_01.sql",
+                                      DEFAULTS.name, SCRIBE.name},
+                         "a new price file: give it a step in the APPLY ORDER block and a test here")
+        steps = re.findall(r"^--\s+(\d)\. docs/sql/(prices_\S+\.sql)", self.text, re.M)
+        self.assertEqual([n for _, n in steps], ["prices_2026_10_01.sql", "prices_corrections_2026_10_01.sql",
+                                                 DEFAULTS.name, SCRIBE.name])
+        self.assertEqual([i for i, _ in steps], ["2", "3", "4", "5"])
 
     def test_every_unit_is_one_the_code_can_charge(self):
         chargeable = set(_registry_units()) | _product_units()
@@ -390,6 +390,40 @@ class PriceDefaultsFile(unittest.TestCase):
         for unit in held:
             self.assertNotIn(f"('{unit}'", self.code, f"{unit} must not be applied by this file")
             self.assertRegex(self.text, rf"(?m)^--\s+\('{unit}'", f"{unit} should stay visible as a commented row")
+
+
+
+
+class ScribeCorrectionFile(unittest.TestCase):
+    """The Scribe v2 correction is a read price, applied by the owner, that never overrides them."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = SCRIBE.read_text()
+        cls.sql = "\n".join(l for l in cls.text.splitlines() if not l.lstrip().startswith("--"))
+
+    def test_it_is_an_owner_apply_file_not_a_migration(self):
+        migrations = ROOT / "supabase" / "migrations"
+        self.assertFalse(list(migrations.rglob(SCRIBE.name)))
+        self.assertFalse([p for p in migrations.rglob("*.sql") if "model_elevenlabs_scribe_v2_second" in p.read_text()],
+                         "the Scribe price is the owner's to apply, never a migration's")
+        self.assertIn("OWNER-APPLY", self.text)
+        self.assertIn("https://elevenlabs.io/pricing/api", self.text)
+
+    def test_the_update_moves_only_the_seeded_estimate_and_leaves_the_margin(self):
+        update = re.search(r"update public\.credit_prices(.*?);", self.sql, re.S | re.I).group(1)
+        self.assertIn("credits_per_unit = 0.0056", update)
+        self.assertNotIn("margin", update.split("where")[0], "an owner's margin must survive the update")
+        self.assertRegex(update, r"unit = 'model_elevenlabs_scribe_v2_second'")
+        self.assertRegex(update, r"credits_per_unit in \(0\.0112, 0\.0056\)")
+
+    def test_a_missing_row_is_inserted_at_the_read_price_and_a_present_one_kept(self):
+        insert = re.search(r"insert into public\.credit_prices.*?;", self.sql, re.S | re.I).group(0)
+        self.assertRegex(insert, r"\('model_elevenlabs_scribe_v2_second', 0\.0056, 2\.0,")
+        self.assertIn("on conflict (unit) do nothing", insert)
+
+    def test_it_corrects_exactly_the_default_it_names(self):
+        self.assertIn("('model_elevenlabs_scribe_v2_second', 0.0112, 2.0,", DEFAULTS.read_text())
 
 
 if __name__ == "__main__":

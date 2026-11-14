@@ -64,8 +64,49 @@ class TheTableIsOneTable(unittest.TestCase):
         self.assertIsNone(tl.refusal("eleven_multilingual_v2", None))
 
     def test_every_way_a_person_writes_uzbek_is_uzbek(self):
-        for value in ("Uzbek", "uzbek", "uz", "UZ", "uz-Latn", "uzb", "Oʻzbek", "O'zbek", "Uzbek (Latin script)"):
+        """A miss lets the run through on a model that cannot speak it (rule 4), so each
+        apostrophe people type, Cyrillic, and locale tags with an underscore must all hit."""
+        for value in ("Uzbek", "uzbek", "uz", "UZ", "uz-Latn", "uz_UZ", "uzb", "Uzbekcha", "Uzbek (Latin script)",
+                      "Oʻzbek", "O'zbek", "O’zbek", "Oʼzbek", "O‘zbek", "O`zbek", "Oʻzbekcha", "Oʻzbek tili",
+                      "Ўзбек", "ўзбекча", "Узбекский"):
             self.assertEqual(tl.language_code(value), "uz", value)
+        for value in ("Russian", "Русский", "ru_RU", "English", "en-US"):
+            self.assertIn(tl.language_code(value), ("ru", "en"), value)
+
+    def test_the_command_center_names_equal_the_python_names(self):
+        ts = (ROOT / "command-center/lib/ttsLanguages.ts").read_text(encoding="utf-8")
+        block = re.search(r"TTS_LANGUAGE_NAMES_BY_SPELLING[^=]*=\s*\{(.*?)\n\};", ts, re.S)
+        self.assertIsNotNone(block)
+        parsed = dict(re.findall(r'^\s*"([^"]+)":\s*"([a-z]{2})",', block.group(1), re.M))
+        self.assertEqual(parsed, tl.LANGUAGE_NAMES)
+        for apostrophe in ("\\u0027", "\\u2019", "\\u02bc", "\\u02bb", "\\u2018", "\\u0060"):
+            self.assertIn(apostrophe, ts, "the TS fold must cover the same apostrophes")
+
+    def test_it_agrees_with_every_other_language_map_in_the_repo(self):
+        """youtube_uploader labels the video and ai_disclosure picks the disclosure text: a
+        spelling they call Uzbek must be Uzbek here too."""
+        import ast
+
+        def literal(path, name):
+            # Read from source: importing youtube_uploader pulls in the Google client.
+            tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+            for node in tree.body:
+                if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets):
+                    return ast.literal_eval(node.value)
+            self.fail(f"{name} not found in {path}")
+
+        others = {**literal("modules/youtube_uploader.py", "CAPTION_LANGUAGES"),
+                  **literal("modules/ai_disclosure.py", "_LANGS")}
+        # channel-dna.ts's languageCode() reads HOME_LANGUAGES (value and label) from lib/home.ts.
+        home = (ROOT / "command-center/lib/home.ts").read_text(encoding="utf-8")
+        rows = re.findall(r'\{ id: "(uz|ru|en)", value: "([^"]+)", label: "([^"]+)" \}', home)
+        self.assertEqual(len(rows), 3, "HOME_LANGUAGES changed shape")
+        for code, value, label in rows:
+            others[value] = others[label] = code
+        self.assertIn("Uzbek", others)
+        for name, code in others.items():
+            if code in tl.VERIFIED_LANGUAGES:
+                self.assertEqual(tl.language_code(name), code, name)
 
 
 class TheRunStopsBeforeItSpends(unittest.TestCase):
@@ -75,7 +116,9 @@ class TheRunStopsBeforeItSpends(unittest.TestCase):
     def test_uzbek_on_the_default_model_stops_with_the_fix_and_no_request(self, get):
         with self.assertRaises(VoiceUnavailable) as caught:
             verify_voice(channel("Uzbek"))
-        self.assertIn(tl.UZBEK_REMEDY, str(caught.exception))
+        msg = str(caught.exception)
+        self.assertIn("Eleven Multilingual v2 does not speak Uzbek", msg)
+        self.assertIn(tl.UZBEK_FIX, msg)
         get.assert_not_called()
 
     @patch("modules.audio_mixer.ELEVENLABS_API_KEY", "")
@@ -94,7 +137,8 @@ class TheRunStopsBeforeItSpends(unittest.TestCase):
             with self.subTest(model=model), patch("modules.audio_mixer.ELEVENLABS_MODEL_ID", model):
                 with self.assertRaises(VoiceUnavailable) as caught:
                     verify_voice(channel("Uzbek"))
-                self.assertIn("Eleven v4 or v3", str(caught.exception))
+                self.assertIn("Eleven v3", str(caught.exception))
+                self.assertNotIn("v4", str(caught.exception), "v4 is not recommended until it is probed")
         get.assert_not_called()
 
     @patch("modules.audio_mixer.ELEVENLABS_API_KEY", "k")
@@ -112,6 +156,27 @@ class TheRunStopsBeforeItSpends(unittest.TestCase):
         get.return_value = MagicMock(status_code=200, json=lambda: {})
         for language in ("Russian", "English", "Arabic"):
             verify_voice(channel(language))
+
+    @patch("modules.audio_mixer.SCRIPT_LANGUAGE", "Uzbek")
+    @patch("modules.audio_mixer.ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
+    @patch("modules.audio_mixer.ELEVENLABS_API_KEY", "k")
+    @patch("modules.audio_mixer.requests.get")
+    def test_a_channel_with_no_language_is_judged_in_the_deployments(self, get):
+        """SCRIPT_LANGUAGE=Uzbek with a channel that names none: the script is Uzbek, so it stops."""
+        for missing in ("", None):
+            with self.subTest(language=missing), self.assertRaises(VoiceUnavailable):
+                verify_voice(channel(missing))
+        get.assert_not_called()
+
+    @patch("modules.audio_mixer.ELEVENLABS_MODEL_ID_REQUESTED", "eleven_v9_typo")
+    @patch("modules.audio_mixer.ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
+    @patch("modules.audio_mixer.ELEVENLABS_API_KEY", "k")
+    @patch("modules.audio_mixer.requests.get")
+    def test_a_replaced_model_id_is_named_so_the_refusal_is_not_about_a_stranger(self, get):
+        with self.assertRaises(VoiceUnavailable) as caught:
+            verify_voice(channel("Uzbek"))
+        self.assertIn("eleven_v9_typo", str(caught.exception))
+        self.assertIn("does not accept", str(caught.exception))
 
     @patch("modules.audio_mixer.ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
     @patch("modules.audio_mixer.requests.get")

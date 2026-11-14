@@ -75,6 +75,11 @@ class LanguageGate(unittest.TestCase):
         self.assertEqual([s["channel"] for s in stops], ["uz"])
         self.assertEqual(av.language_gate(channels, "eleven_v3"), [])
 
+    def test_a_channel_with_no_language_is_judged_in_the_deployments_like_the_run(self):
+        with patch("config.SCRIPT_LANGUAGE", "Uzbek"):
+            stops = av.language_gate([ch("plain", "x", language="")], "eleven_multilingual_v2")
+        self.assertEqual([s["channel"] for s in stops], ["plain"])
+
 
 class ReadOnlyAndKeyless(unittest.TestCase):
     def test_the_report_prints_no_key_and_runs_from_a_file(self):

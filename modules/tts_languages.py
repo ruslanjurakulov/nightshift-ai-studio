@@ -57,16 +57,45 @@ MODEL_LANGUAGES: dict[str, tuple[str, ...]] = {
 DEPRECATED_MODELS = ("eleven_turbo_v2_5",)
 
 #: What a person calls the language in a channel's settings or on the Create page.
-#: The pipeline stores names ("Uzbek"), the films table codes ("uz").
-_LANGUAGE_NAMES = {
-    "english": "en", "russian": "ru", "uzbek": "uz",
-    "o'zbek": "uz", "oʻzbek": "uz", "o‘zbek": "uz", "ozbek": "uz", "o'zbekcha": "uz", "oʻzbekcha": "uz",
-    "русский": "ru", "узбекский": "uz",
+#: The pipeline stores names ("Uzbek"), the films table codes ("uz"), and people type
+#: the rest. Keys are folded first (lowercase, one apostrophe, see _fold), so each
+#: spelling is listed once. A superset of youtube_uploader.CAPTION_LANGUAGES,
+#: ai_disclosure._LANGS and channel-dna.ts for these three languages; the tests hold
+#: that, and hold this map equal to LANGUAGE_NAMES in ttsLanguages.ts.
+LANGUAGE_NAMES = {
+    "english": "en",
+    "russian": "ru",
+    "русский": "ru",
+    "uzbek": "uz",
+    "uzbekcha": "uz",
+    "o'zbek": "uz",
+    "o'zbekcha": "uz",
+    "ozbek": "uz",
+    "ozbekcha": "uz",
+    "ўзбек": "uz",
+    "ўзбекча": "uz",
+    "узбек": "uz",
+    "узбекча": "uz",
+    "узбекский": "uz",
 }
+
+#: Every apostrophe-like character people type in O'zbek: ' ’ ʼ ʻ ‘ ` and the prime.
+_APOSTROPHES = re.compile("[\u0027\u2019\u02bc\u02bb\u2018\u0060\u2032]")
+_TAG_ALIASES = {"uzb": "uz", "uzn": "uz", "rus": "ru", "eng": "en"}
+
+
+def _fold(value: str) -> str:
+    return _APOSTROPHES.sub("'", " ".join(value.split()).lower())
+
 
 #: The remedy rule 6 asks for, worded once so the run, the creative worker and
 #: the tests cannot drift apart.
-UZBEK_REMEDY = ("Eleven Multilingual v2 does not speak Uzbek; set the channel's TTS model to Eleven v4 or v3")
+#: There is no per-channel model setting, so the remedy names the two real ones. It names
+#: Eleven v3 only: eleven_v4 speaks Uzbek on paper but has not been called through this
+#: pipeline yet, and a remedy must not send a person to an untried model.
+UZBEK_FIX = ("Pick Eleven v3 as the voice model for this run on the Create page, or set the "
+             "ELEVENLABS_MODEL_ID repository variable to eleven_v3 (that changes the narration "
+             "model of every channel)")
 
 _MODEL_NAMES = {
     "eleven_multilingual_v2": "Eleven Multilingual v2",
@@ -78,17 +107,19 @@ _MODEL_NAMES = {
 
 
 def language_code(language) -> Optional[str]:
-    """``uz`` from "Uzbek", "uz", "uz-Latn", "Oʻzbek"; None when it is not a language this module can name."""
+    """``uz`` from "Uzbek", "uz", "uz_UZ", "uz-Latn", "Oʻzbek", "O’zbek", "Ўзбек"; None when it is
+    not a language this module can name. A miss here lets the run through, so a spelling
+    people really use must not miss (rule 4)."""
     if not isinstance(language, str):
         return None
-    value = " ".join(language.split()).lower()
+    value = _fold(language)
     if not value:
         return None
-    if re.fullmatch(r"[a-z]{2,3}(-[a-z0-9]{2,8})*", value):
-        primary = value.split("-")[0]
-        return {"uzb": "uz", "uzn": "uz", "rus": "ru", "eng": "en"}.get(primary, primary)
-    # "Uzbek (Latin script)" and the like: the first word names the language.
-    return _LANGUAGE_NAMES.get(value) or _LANGUAGE_NAMES.get(value.split(" (")[0].split(" ")[0])
+    if re.fullmatch(r"[a-z]{2,3}([-_][a-z0-9]{2,8})*", value):
+        primary = re.split(r"[-_]", value)[0]
+        return _TAG_ALIASES.get(primary, primary)
+    # "Uzbek (Latin script)", "Oʻzbek tili" and the like: the first word names the language.
+    return LANGUAGE_NAMES.get(value) or LANGUAGE_NAMES.get(value.split(" (")[0].split(" ")[0])
 
 
 def speaks(model: str, language) -> Optional[bool]:
@@ -112,10 +143,7 @@ def refusal(model: str, language) -> Optional[str]:
     code = language_code(language)
     name = _MODEL_NAMES.get(model, model)
     if code == "uz":
-        lead = UZBEK_REMEDY if model == "eleven_multilingual_v2" else (
-            f"{name} does not speak Uzbek; set the channel's TTS model to Eleven v4 or v3")
-        return (f"{lead} (the ELEVENLABS_MODEL_ID repository variable, or the voice model chosen for "
-                f"this run). Checked against {SOURCE_URL} on {SOURCE_READ_ON}. No other model is "
-                "substituted.")
+        return (f"{name} does not speak Uzbek. {UZBEK_FIX}. Checked against {SOURCE_URL} on "
+                f"{SOURCE_READ_ON}. No other model is substituted.")
     return (f"{name} does not list language {code!r} ({SOURCE_URL}, read {SOURCE_READ_ON}). "
             "No other model is substituted.")

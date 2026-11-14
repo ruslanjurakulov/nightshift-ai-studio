@@ -133,6 +133,11 @@ def language_gate(channels: Iterable, model: str) -> list[dict]:
         if getattr(agent, "tts_provider", None) != "elevenlabs":
             continue
         language = getattr(agent, "language", None)
+        if not (isinstance(language, str) and language.strip()):
+            # The same fallback the run uses (audio_mixer.script_language), so a channel
+            # with no language of its own is judged in the deployment's.
+            import config
+            language = config.SCRIPT_LANGUAGE
         reason = tts_languages.refusal(model, language)
         if reason:
             out.append({"channel": str(getattr(ch, "channel_id", "?")), "status": str(getattr(ch, "status", "")),

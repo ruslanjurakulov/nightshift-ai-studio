@@ -29,13 +29,16 @@ def body(code=None, status=None, message="m"):
 
 
 class EachCodeHasItsRemedy(unittest.TestCase):
-    def test_401_says_key_wrong_or_missing_and_nothing_spent(self):
+    def test_401_says_key_wrong_or_missing_and_what_was_not_charged(self):
+        """At narration the script is already paid for: only the refused request was free."""
         for code in ("invalid_api_key", "missing_api_key"):
             msg = _tts_refusal(VOICE, 401, body(code))
             self.assertIn(code, msg)
             self.assertIn("wrong or missing", msg)
-            self.assertIn("nothing was spent", msg)
+            self.assertIn("this request was not charged", msg)
+            self.assertNotIn("nothing was spent", msg)
             self.assertNotIn("characters", msg)
+        self.assertIn("nothing was spent", audio_mixer.elevenlabs_remedy(401, "invalid_api_key"))
 
     def test_402_says_out_of_credit_top_up_and_no_other_voice(self):
         msg = _tts_refusal(VOICE, 402, body("insufficient_credits"))
@@ -104,6 +107,17 @@ class TheVoiceCheckReadsTheCode(unittest.TestCase):
             verify_voice(self.channel())
         self.assertIn("voice_access_denied", str(caught.exception))
 
+    @patch("modules.audio_mixer.ELEVENLABS_API_KEY", "k")
+    @patch("modules.audio_mixer.requests.get")
+    def test_a_down_elevenlabs_stops_the_run_at_preflight(self, get):
+        """Nothing retries a 5xx: passing it would pay for the script and die at the audio stage."""
+        for status in (500, 502, 503):
+            get.return_value = MagicMock(status_code=status, json=lambda: {})
+            with self.subTest(status=status), self.assertRaises(VoiceUnavailable) as caught:
+                verify_voice(self.channel())
+            self.assertIn("down", str(caught.exception))
+            self.assertIn("re-run later", str(caught.exception))
+
     @patch("modules.audio_mixer._verify_characters_left")
     @patch("modules.audio_mixer.ELEVENLABS_API_KEY", "k")
     @patch("modules.audio_mixer.requests.get")
@@ -161,6 +175,15 @@ class BusyIsRetriedThenNamed(unittest.TestCase):
         self.assertEqual(len(calls), len(audio_mixer.BUSY_WAITS) + 1)
         self.assertIn("still busy", str(err))
         self.assertIn("no other voice is substituted", str(err))
+        self.assertNotIn("will retry", str(err), "after the last try, a retry promise is false")
+
+    def test_any_429_is_retried_whatever_its_code(self):
+        """The legacy too_many_concurrent_requests, and a code nobody has seen yet."""
+        for code in ("too_many_concurrent_requests", "some_new_code", None):
+            with self.subTest(code=code):
+                calls, _, data, err = self.run_with([(429, code), None])
+                self.assertIsNone(err)
+                self.assertEqual((len(calls), data), (2, b"mp3"))
 
     def test_a_credit_refusal_is_not_retried(self):
         calls, sleep, _, err = self.run_with([(402, "insufficient_credits")])

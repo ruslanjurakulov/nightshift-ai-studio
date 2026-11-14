@@ -977,6 +977,8 @@ export const en = {
     voiceModelDeprecated: "deprecated",
     voiceModelNoLanguage: "does not speak {language}",
     voiceModelNotOnQueue: "not offered for runs yet",
+    voiceModelDefaultMayNot: "may not speak {language}; pick Eleven v3",
+    voiceModelDropped: "{model} was cleared: it does not speak {language}. Pick Eleven v3.",
     voiceModelHint: "Models that cannot speak this video's language are switched off (ElevenLabs model list, read {date}).",
     voicePick: "Voice",
     voiceChannel: "Channel's voice",

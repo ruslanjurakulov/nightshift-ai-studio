@@ -961,6 +961,8 @@ export const ru: Dictionary = {
     voiceModelDeprecated: "устарела",
     voiceModelNoLanguage: "не говорит на языке: {language}",
     voiceModelNotOnQueue: "пока недоступна для запусков",
+    voiceModelDefaultMayNot: "может не говорить на языке: {language}; выберите Eleven v3",
+    voiceModelDropped: "Выбор {model} сброшен: эта модель не говорит на языке: {language}. Выберите Eleven v3.",
     voiceModelHint: "Модели, которые не говорят на языке этого видео, отключены (список моделей ElevenLabs, проверен {date}).",
     voicePick: "Голос",
     voiceChannel: "Голос канала",

@@ -115,9 +115,18 @@ export function CreateStudio({
   // own docs say it does not speak it is switched off, and a choice it invalidates is dropped
   // rather than sent (rule 4: the run would refuse it anyway, after the person waited).
   const videoLanguage = language || dna?.language || "";
+  // The model the language just ruled out, named to the person instead of vanishing silently.
+  const [droppedModel, setDroppedModel] = useState<TtsPickerModel | null>(null);
   useEffect(() => {
-    if (ttsModel && ttsModelBlock(ttsModel as TtsPickerModel, videoLanguage)) setTtsModel("");
+    if (ttsModel && ttsModelBlock(ttsModel as TtsPickerModel, videoLanguage)) {
+      setDroppedModel(ttsModel as TtsPickerModel);
+      setTtsModel("");
+    }
   }, [ttsModel, videoLanguage]);
+  // "Repo default" is whatever ELEVENLABS_MODEL_ID says, which this page cannot see: when some
+  // model on the list cannot speak this language, the default may be one of them.
+  const blockedLanguage = TTS_PICKER_MODELS.map((m) => ttsModelBlock(m, videoLanguage)).find((b) => b?.reason === "language");
+  const riskyLanguage = blockedLanguage?.reason === "language" ? TTS_LANGUAGE_NAMES[blockedLanguage.language] : null;
   // "" = the channel's voice, a voice id, or CUSTOM_VOICE to type one in.
   const [voice, setVoice] = useState(dna?.voice ?? "");
   const [customVoice, setCustomVoice] = useState("");
@@ -679,8 +688,19 @@ export function CreateStudio({
                 </label>
                 <label className="fl-field">
                   <span>{t.create.voiceModel}</span>
-                  <select value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} className={selectClass} aria-describedby="create-voice-model-hint">
-                    <option value="">{t.create.optDefault}</option>
+                  <select
+                    value={ttsModel}
+                    onChange={(e) => {
+                      setDroppedModel(null);
+                      setTtsModel(e.target.value);
+                    }}
+                    className={selectClass}
+                    aria-describedby="create-voice-model-hint"
+                  >
+                    <option value="">
+                      {t.create.optDefault}
+                      {riskyLanguage ? ` (${fmt(t.create.voiceModelDefaultMayNot, { language: riskyLanguage })})` : ""}
+                    </option>
                     {TTS_PICKER_MODELS.map((m) => {
                       const block = ttsModelBlock(m, videoLanguage);
                       const notes = [
@@ -698,6 +718,11 @@ export function CreateStudio({
                   </select>
                   <span id="create-voice-model-hint" className="text-xs text-[var(--color-muted)]">
                     {fmt(t.create.voiceModelHint, { date: TTS_LANGUAGE_READ_ON })}
+                  </span>
+                  <span role="status" aria-live="polite" className="text-xs text-[var(--color-warn)]">
+                    {droppedModel && riskyLanguage
+                      ? fmt(t.create.voiceModelDropped, { model: TTS_MODEL_LABELS[droppedModel].split(" — ")[0], language: riskyLanguage })
+                      : ""}
                   </span>
                 </label>
                 <div className="flex flex-wrap items-center gap-2 text-sm">
