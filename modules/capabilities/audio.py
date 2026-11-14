@@ -318,6 +318,8 @@ ELEVENLABS_CODES = {
     "concurrent_limit_exceeded": E_RATE_LIMITED,
     "too_many_concurrent_requests": E_RATE_LIMITED,
     "system_busy": E_UNAVAILABLE,
+    # Malformed requests. Whose fix that is depends on who made the file: a person's upload (captions) or the worker's own
+    # copy (the voice video, which reads every bad_request as its own failure: modules/capabilities/voice_video.py).
     "invalid_audio_format": E_BAD_REQUEST,
     "request_too_large": E_BAD_REQUEST,
 }

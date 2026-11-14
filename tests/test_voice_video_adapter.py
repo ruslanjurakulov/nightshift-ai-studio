@@ -506,8 +506,11 @@ class Scribe(Tmp):
             (429, "rate_limit_exceeded", E_RATE_LIMITED, "try again in a few minutes", True),
             (429, "concurrent_limit_exceeded", E_RATE_LIMITED, "try again in a few minutes", True),
             (429, "system_busy", E_UNAVAILABLE, "try again later", False),
-            (400, "invalid_audio_format", E_BAD_REQUEST, "export it again", False),
-            (400, "request_too_large", E_BAD_REQUEST, "export it again", False),
+            # The file is the worker's own 16 kHz WAV and the form is the worker's: a refusal of either is never the person's
+            # upload to redo, so it is the worker's failure with the worker's fix (rule 6).
+            (400, "invalid_audio_format", E_BAD_RESPONSE, "engine build or ElevenLabs settings need updating", False),
+            (413, "request_too_large", E_BAD_RESPONSE, "engine build or ElevenLabs settings need updating", False),
+            (400, "invalid_model_id", E_BAD_RESPONSE, "engine build or ElevenLabs settings need updating", False),
             (503, "service_unavailable", E_UNAVAILABLE, "try again later", False),
         ]
         for status, word, code, fix, refused in cases:
@@ -520,6 +523,14 @@ class Scribe(Tmp):
                 self.assertIn("nothing was charged", e.message)
                 self.assertNotIn(KEY, e.message)
                 self.assertNotIn("echo", e.message, "the vendor's text is never quoted")
+                self.assertNotIn("upload", e.message, "the person's file was not what was sent")
+        # A 422 about the form (FastAPI's shape: detail is a list, no word of its own) is the worker's too.
+        self.e.answer = FakeResp(422, {"detail": [{"loc": ["body", "model_id"], "msg": "field required", "type": "missing"}]})
+        e = self.fail()
+        self.assertEqual((e.code, e.http_status, e.not_accepted), (E_BAD_RESPONSE, 422, False))
+        self.assertIn("HTTP 422)", e.message)
+        self.assertIn("engine build or ElevenLabs settings need updating", e.message)
+        self.assertNotIn("upload", e.message)
         self.assertTrue(AdapterError(E_RATE_LIMITED).retryable and AdapterError(E_UNAVAILABLE).retryable)
         self.assertFalse(AdapterError(E_AUTH).retryable or AdapterError(E_QUOTA).retryable)
 

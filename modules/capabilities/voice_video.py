@@ -36,7 +36,9 @@ No silent quality fallback (CLAUDE.md rule 4), and every refusal names its fix (
 * there is NO fallback to local Whisper (CLAUDE.md rule 4): ElevenLabs refusing or unreachable fails the job, the hold is
   released, and the error names the fix by the vendor's own word, not its HTTP status (rule 6): a rejected key is
   ``auth`` (set the key), an account out of credits is ``quota`` (top up ElevenLabs), rate or concurrency limits are
-  ``rate_limited`` and a busy or unreachable service ``unavailable`` (both: try again later);
+  ``rate_limited`` and a busy or unreachable service ``unavailable`` (both: try again later); a refusal of the request
+  itself (``invalid_audio_format``, ``request_too_large``, a 422, an unknown model) is ``bad_response``, because the file
+  and the form are the worker's own: the engine build's or the account's fix, never the person's upload;
 * a recording that does not decode, decodes to another length than the library measured (and the job was priced on),
   is longer than the engine holds, or has no words in it -> ``bad_request`` (the person's fix). "No words" is the
   adapter's own refusal of an empty transcript, never a vendor fault; words that come back without times are a vendor
@@ -238,15 +240,22 @@ _SCRIBE_FIX = {
              "(or change the plan), then try again",
     E_RATE_LIMITED: "ElevenLabs is limiting requests on this account right now: try again in a few minutes",
     E_UNAVAILABLE: "ElevenLabs speech-to-text is busy or could not be reached: try again later",
-    E_BAD_REQUEST: "ElevenLabs could not read the recording: export it again as MP3, M4A or WAV and upload that",
     E_NOT_FOUND: "ElevenLabs does not know this address or model: the worker's ELEVENLABS_BASE_URL or its engine build "
                  "is out of date",
     E_POLICY: "ElevenLabs refused to transcribe this recording",
 }
 
 
-def _scribe_failure(code: str, what: str) -> str:
-    fix = _SCRIBE_FIX.get(code, "ElevenLabs answered with something this worker cannot read")
+#: The fix for a request ElevenLabs refused as malformed (``bad_request`` by its word or its status). The file sent is the
+#: worker's own 16 kHz WAV of a narration that already decoded and was measured, and the form is the worker's, so
+#: ``invalid_audio_format``, ``request_too_large``, a 422 about the form or an unknown ``model_id`` is this build's or this
+#: account's to fix, never the person's upload (rule 6). Not the captions job's reading: it sends the person's own file.
+_REFUSED_REQUEST_FIX = ("the worker's transcription request was refused by ElevenLabs: its engine build or ElevenLabs "
+                        "settings need updating")
+
+
+def _scribe_failure(code: str, what: str, fix: Optional[str] = None) -> str:
+    fix = fix or _SCRIBE_FIX.get(code, "ElevenLabs answered with something this worker cannot read")
     return f"the transcription failed ({what}); nothing was charged: {fix}"
 
 
@@ -456,8 +465,13 @@ class VoiceVideoAdapter(_ElevenLabs):
             text = scrub(getattr(resp, "text", "") or "", self.secrets())
             word = elevenlabs_error_word(text)
             code = elevenlabs_error_code(status, text) or classify_http(status, text)
-            raise AdapterError(code, _scribe_failure(code, f"HTTP {status}" + (f", {word}" if word else "")),
-                               http_status=status, not_accepted=refused_outright(status, code))
+            what = f"HTTP {status}" + (f", {word}" if word else "")
+            if code == E_BAD_REQUEST:
+                # Our request, our file: the worker's failure (_REFUSED_REQUEST_FIX), never "upload it again".
+                raise AdapterError(E_BAD_RESPONSE, _scribe_failure(E_BAD_RESPONSE, what, _REFUSED_REQUEST_FIX),
+                                   http_status=status, not_accepted=refused_outright(status, E_BAD_RESPONSE))
+            raise AdapterError(code, _scribe_failure(code, what), http_status=status,
+                               not_accepted=refused_outright(status, code))
         try:
             body = resp.json()
         except ValueError:
