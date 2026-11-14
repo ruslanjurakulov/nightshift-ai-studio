@@ -921,6 +921,15 @@ def fail_with(db, code, model="img-a1", n=1, tag="al"):
     return ids
 
 
+def out_of_the_failed_job_window(db, ids):
+    """Moves these failed jobs out of 0175's 24-hour failed-job window (and the alert's), the way this module ages jobs."""
+    db.su("alter table public.creative_jobs disable trigger user")
+    try:
+        db.su("update public.creative_jobs set finished_at = now() - interval '25 hours' where id = any(%s::uuid[])", [ids])
+    finally:
+        db.su("alter table public.creative_jobs enable trigger user")
+
+
 def alerts(db):
     return db.su("select provider, kind, status, failures, window_minutes from public.model_availability_alerts order by id")
 
@@ -952,7 +961,10 @@ def test_alert_other_failures_do_not_count_a_bad_key_needs_the_opposite_remedy(d
     enforce(db)
     db.su("update public.model_availability_settings set auto_suggest = true")
     for code in ("auth", "rate_limited", "unavailable", "policy", "bad_request", "timeout", "not_configured"):
-        fail_with(db, code, "img-a1", 3)
+        ids = fail_with(db, code, "img-a1", 3)
+        # 0175 counts policy and bad_request against the organization (5 in 24 hours stop its new jobs). This module shares one
+        # organization, and what is tested here is the provider alert, not that cap: these leave the cap's window at once.
+        out_of_the_failed_job_window(db, ids)
     assert alerts(db) == []
 
 
