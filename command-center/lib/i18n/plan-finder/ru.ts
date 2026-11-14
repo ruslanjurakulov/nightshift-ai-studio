@@ -79,7 +79,7 @@ export const planFinderRu: PlanFinderDictionary = {
     perMinute: "за минуту",
     minimum: "Наименьший резерв любого запуска",
     perRun: "за запуск",
-    studio: "Студия",
+    studio: "Nightshift Studio",
     notOnSale: "Не продаётся",
     notOpen: "Пока закрыто для всех рабочих пространств",
     firstPurchase: "После первой покупки кредитов",

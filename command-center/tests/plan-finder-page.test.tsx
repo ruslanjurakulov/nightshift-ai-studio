@@ -264,7 +264,8 @@ describe("in every language", () => {
       expect(got.get(key), `${loc}.${key}`).toBeTruthy();
       expect(fillers(got.get(key)!), `${loc}.${key} fillers`).toEqual(fillers(text));
       // A sentence left in English is a missing translation (the bare figures and formats like "≈ {n}" are shared).
-      if (/[a-z]{4,}/i.test(text.replace(/\{\w+\}/g, ""))) expect(got.get(key), `${loc}.${key} is still English`).not.toBe(text);
+      // A brand is the same in every language: "Nightshift Studio" (the price table's Studio group) is not a missing translation.
+      if (/[a-z]{4,}/i.test(text.replace(/\{\w+\}/g, "").replace(/Nightshift Studio/g, ""))) expect(got.get(key), `${loc}.${key} is still English`).not.toBe(text);
     }
   });
 
