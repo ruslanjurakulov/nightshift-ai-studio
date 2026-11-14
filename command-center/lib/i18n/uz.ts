@@ -14,6 +14,7 @@ import { ownerRpcUz } from "./owner-rpc/uz";
 import { marketingUz } from "./marketing/uz";
 import { modelSwitchUz } from "./model-switch/uz";
 import { modelBudgetUz } from "./model-budget/uz";
+import { planFinderUz } from "./plan-finder/uz";
 import { billingLedgerUz } from "./billing-ledger/uz";
 import { addCreditsUz } from "./add-credits/uz";
 import { modelKeysUz } from "./model-keys/uz";
@@ -62,6 +63,7 @@ export const uz: Dictionary = {
   modelSwitch: modelSwitchUz,
   studioHome: studioHomeUz,
   modelBudget: modelBudgetUz,
+  planFinder: planFinderUz,
   /** The per-provider ledger the owner reads on the Billing page: ./billing-ledger/uz.ts. */
   billingLedger: billingLedgerUz,
   addCredits: addCreditsUz,

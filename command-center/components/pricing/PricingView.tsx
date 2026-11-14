@@ -22,6 +22,13 @@ import { MotionToggle } from "@/components/site/MotionToggle";
 import { PriceCheck } from "@/components/landing/PriceCheck";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { WELCOME_CREDITS } from "@/lib/pricing";
+import { CONCEPT_THUMBNAIL_MAX_IMAGES } from "@/lib/credits";
+import { finderPlans, type PlanFinderData } from "@/lib/plan-finder";
+import { PlanOutputs } from "@/components/pricing/PlanOutputs";
+import { PlanFinder } from "@/components/pricing/PlanFinder";
+import { PlanCostTable } from "@/components/pricing/PlanCostTable";
+import { stampText } from "@/components/pricing/plan-finder-text";
+import "@/components/pricing/plan-finder.css";
 
 const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
 
@@ -37,7 +44,8 @@ const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
  * Nothing here is a number the code made up: plan and pack prices come from
  * Paddle or the owner's env, credits and limits from the plan catalog, the
  * "≈ N images" equivalents from today's price list (signed-in only), the
- * welcome grant from WELCOME_CREDITS, and when there is none of that the page
+ * welcome grant from WELCOME_CREDITS, what each plan makes and the plan finder
+ * from the quote itself (lib/plan-finder.ts), and when there is none of that the page
  * says so in words. There is no Monthly / Yearly switch: the plan data holds
  * monthly prices only, and a yearly discount nobody set would be invented.
  *
@@ -56,6 +64,7 @@ export function PricingView({
   plansFailed = false,
   expiry,
   anchor,
+  finder = null,
 }: {
   t: Dictionary;
   locale: Locale;
@@ -77,6 +86,9 @@ export function PricingView({
   /** What money a visitor can know before signing up (lib/landing.ts moneyAnchor);
    *  without it, only what `pricing` holds (no API price list). */
   anchor?: Anchor;
+  /** "What does my plan make?" (lib/plan-finder.ts): the rates read for it. Absent, the cards keep their older
+   *  equivalents line and neither the finder nor the per-item table is drawn. */
+  finder?: PlanFinderData | null;
 }) {
   const p = t.pricing;
   const steps = [
@@ -208,8 +220,42 @@ export function PricingView({
                 testMode={dodoTest}
                 signedIn={signedIn}
                 subscribeHref={`${credits}#plans`}
+                outputs={
+                  finder
+                    ? Object.fromEntries(
+                        plans.columns.map((col) => [
+                          col.id,
+                          <PlanOutputs
+                            key={col.id}
+                            t={t}
+                            locale={locale}
+                            credits={col.isDefault ? WELCOME_CREDITS : col.monthlyCredits}
+                            free={col.isDefault}
+                            data={finder}
+                          />,
+                        ]),
+                      )
+                    : undefined
+                }
               />
               <p className="nx-extra">{pp.extraLine}</p>
+              {finder && (
+                <div id="plan-finder" className="flex flex-col gap-6">
+                  <div>
+                    <h3 className="st-h3">{t.planFinder.finder.title}</h3>
+                    <p className="st-small mt-2 max-w-3xl">{t.planFinder.finder.lead}</p>
+                  </div>
+                  <PlanFinder
+                    copy={t.planFinder.finder}
+                    locale={locale}
+                    unitForms={t.shell.creditUnit}
+                    plans={finderPlans(plans.columns)}
+                    video={finder.video}
+                    stamp={finder.video && finder.videoStamp ? stampText(t, finder.videoStamp, locale) : null}
+                    conceptImages={CONCEPT_THUMBNAIL_MAX_IMAGES}
+                  />
+                </div>
+              )}
               <details className="nx-math">
                 <summary>
                   <span id="compare-title">{p.compareTitle}</span>
@@ -228,6 +274,8 @@ export function PricingView({
               </details>
             </div>
           )}
+
+          {finder && <PlanCostTable t={t} locale={locale} data={finder} />}
 
           <div className="grid gap-8 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] lg:gap-14">
             <div>
