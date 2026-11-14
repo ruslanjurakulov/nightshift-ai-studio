@@ -66,6 +66,7 @@ export const filmStudioUz: FilmStudioDictionary = {
     draft: "Qoralama",
     planning: "Rejalanmoqda",
     planned: "Rejalangan",
+    queued: "Boshlanishini kutmoqda",
     running: "Suratga olinmoqda",
     draining: "Yakunlanmoqda",
     paused: "Toʻxtatilgan",
