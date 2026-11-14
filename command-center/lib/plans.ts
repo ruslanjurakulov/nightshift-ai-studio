@@ -471,7 +471,9 @@ export interface GenerationRates {
   videoMinute: number | null;
 }
 
-function quoteLike(qty: number, m: Pick<PricedModel, "creditsPerUnit">, minimum: number): number | null {
+/** One generation priced the way creative_price() prices it (see GenerationRates); exported so /pricing's per-plan Studio
+ *  outputs (lib/plan-finder.ts) use this exact rule rather than a copy of it. */
+export function quoteLike(qty: number, m: Pick<PricedModel, "creditsPerUnit">, minimum: number): number | null {
   if (!(qty > 0) || !(m.creditsPerUnit > 0)) return null;
   const price = roundUpCredits(Math.round(qty * m.creditsPerUnit * 1e6) / 1e6);
   return price > 0 ? Math.max(price, minimum) : null;
