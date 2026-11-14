@@ -38,7 +38,9 @@ const Headline: React.FC<{ text: string; look: Look; width: number; words: Word[
   return (
     <div style={{ fontFamily: SANS, fontWeight: 900, fontSize: size, lineHeight: 1.02, letterSpacing: -2, textAlign: "center", color: look.text }}>
       {parts.map((p, i) => {
-        if (p.space) return <span key={i}>{p.text}</span>;
+        // Words are spaced by margins, not space characters: the starred word's pop must not swallow the gap
+        // ("MANASHUNDAY" on the contact sheet).
+        if (p.space) return null;
         const k = wi++;
         const start = 1 + k * 4;
         const e = ramp(frame, start, 12);
@@ -53,6 +55,7 @@ const Headline: React.FC<{ text: string; look: Look; width: number; words: Word[
             key={i}
             style={{
               display: "inline-block",
+              margin: "0 0.14em",
               color: p.accent ? look.accent : look.text,
               opacity: e,
               transform: `translateY(${((1 - e) * 42).toFixed(1)}px) scale(${(1 + 0.08 * pop).toFixed(3)})`,
