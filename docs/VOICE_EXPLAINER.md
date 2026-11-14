@@ -36,12 +36,17 @@ python tools/voice_to_video.py --audio narration.mp3 --look dusk --out out/expla
 - `--music bed.mp3`, `--sfx-dir assets/sfx` (or `none`), `--no-captions`, `--browser`
   (a Chrome; `CHRONOS_REMOTION_BROWSER`).
 
-Everything a run needs is checked before the slow parts. A failure says what to do:
+Everything a run needs is checked before the transcription and the (paid) planner. A failure says what to do:
 - the recording must exist, be readable and be at most 600 s;
 - the look must exist;
 - the engine must be installed;
 - the effects must be present;
-- with `--planner model`, a key must be set.
+- with `--planner model`, a key must be set;
+- `npx` must be on the path, and the frame settings must be even sizes up to 4096 and 1 to 60 fps.
+
+Then, on the words: a word track that runs past the recording (another take) is refused. A last word that overshoots
+by less than half a second (ffprobe's estimate of a VBR mp3) is clamped. A counter shows a spoken number only as it
+was said ("10 000", "$1,500"): a value it cannot read unambiguously appears as written and is never re-punctuated.
 
 ## Measured
 

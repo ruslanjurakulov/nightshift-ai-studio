@@ -8,7 +8,7 @@ upload). With ``--planner model`` it makes ONE Gemini call (GEMINI_API_KEY); wit
 ``--words`` gives a word track (``[{"text","start_s","end_s"}]``, Whisper's
 ``{"word","start","end"}`` or the captions track's ``{"t","s","e"}``).
 
-Everything a run needs is checked before the slow parts: the recording is readable and
+Everything a run needs is checked before the slow parts (the transcription and the planner): the recording is readable and
 not longer than MAX_SECONDS, the look exists, the engine is installed, the effects are
 there, and with ``--planner model`` a key is set. A failure names the fix (CLAUDE.md #6).
 """
@@ -19,6 +19,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -36,7 +37,14 @@ def _words(args, audio: Path):
             raw = json.loads(Path(args.words).read_text(encoding="utf-8"))
         except (OSError, ValueError) as e:
             raise ve.ExplainerError(f"--words {args.words} is not a readable JSON word track ({type(e).__name__})") from None
-        return ve.normalize_words(raw)
+        if isinstance(raw, dict) and isinstance(raw.get("words"), list):
+            raw = raw["words"]
+        words = ve.normalize_words(raw) if isinstance(raw, list) else []
+        if not words:
+            # A malformed file is not "nothing was said": the fix is the file, not the recording.
+            raise ve.ExplainerError(f"--words {args.words} holds no timed words: a list of {{text,start_s,end_s}} "
+                                    "(or Whisper's {word,start,end}) is expected")
+        return words
     try:
         from modules.subtitle_generator import SubtitleGenerator  # noqa: PLC0415 — loads torch + whisper
     except ImportError as e:
@@ -51,10 +59,13 @@ def _words(args, audio: Path):
 def _model_gen():
     if not os.environ.get("GEMINI_API_KEY"):
         raise ve.ExplainerError("--planner model needs GEMINI_API_KEY; use --planner rules for the free planner")
-    from google.genai import types as genai_types  # noqa: PLC0415
+    try:
+        from google.genai import types as genai_types  # noqa: PLC0415
 
-    from modules.gemini_client import generate_with_retry, make_client  # noqa: PLC0415
-    from modules.gemini_stages import model_for  # noqa: PLC0415
+        from modules.gemini_client import generate_with_retry, make_client  # noqa: PLC0415
+        from modules.gemini_stages import model_for  # noqa: PLC0415
+    except ImportError as e:
+        raise ve.ExplainerError(f"the model planner needs {e.name}: `pip install -r requirements.txt`") from None
 
     client = make_client()
 
@@ -96,18 +107,36 @@ def main(argv=None) -> int:
             raise ve.ExplainerError(f"--music {args.music} does not exist; leave it out for no music")
         if not (ve.ENGINE_DIR / "node_modules").exists():
             raise ve.ExplainerError(f"the Remotion engine is not installed: run `npm ci` in {ve.ENGINE_DIR}")
-        gen = _model_gen() if args.planner == "model" and not args.plan else None
+        if shutil.which("npx") is None:
+            raise ve.ExplainerError("npx is not on PATH: install Node 22 to render")
+        if not 1 <= args.fps <= 60:
+            raise ve.ExplainerError(f"--fps {args.fps} is not 1 to 60")
+        for name, v in (("--width", args.width), ("--height", args.height)):
+            if not 16 <= v <= 4096 or v % 2:
+                raise ve.ExplainerError(f"{name} {v} is not an even number from 16 to 4096")
+        # Everything cheap is checked before the transcription and the (paid) planner call (CLAUDE.md rule 6).
         sfx_dir = None if args.sfx_dir == "none" else Path(args.sfx_dir)
+        if sfx_dir is not None:
+            ve.find_sfx(sfx_dir)
+        plan_raw = None
+        if args.plan:
+            try:
+                plan_raw = json.loads(Path(args.plan).read_text(encoding="utf-8"))
+            except (OSError, ValueError) as e:
+                raise ve.ExplainerError(f"--plan {args.plan} is not a readable JSON plan ({type(e).__name__})") from None
+            if not isinstance(plan_raw, list):
+                raise ve.ExplainerError(f"--plan {args.plan} is not a list of scenes")
+        gen = _model_gen() if args.planner == "model" and plan_raw is None else None
 
         words = _words(args, audio)
         if not words:
             raise ve.ExplainerError("no words were heard in the recording: is it speech, and is the language one Whisper knows?")
+        words = ve.fit_words(words, duration)
         sentences = ve.split_sentences(words)
-        if args.plan:
-            raw = json.loads(Path(args.plan).read_text(encoding="utf-8"))
-            if not isinstance(raw, list) or len(raw) != len(sentences):
-                raise ve.ExplainerError(f"--plan has {len(raw) if isinstance(raw, list) else 'no'} scenes for {len(sentences)} sentences")
-            plans = [ve.validate_scene(p, index=i) for i, p in enumerate(raw)]
+        if plan_raw is not None:
+            if len(plan_raw) != len(sentences):
+                raise ve.ExplainerError(f"--plan has {len(plan_raw)} scenes for {len(sentences)} sentences")
+            plans = [ve.validate_scene(p, index=i) for i, p in enumerate(plan_raw)]
         elif gen is not None:
             plans = ve.plan_model(sentences, gen, language=args.language)
         else:

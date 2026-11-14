@@ -2,7 +2,7 @@ import type { LookId } from "./types";
 
 /**
  * The five looks. Mirrored by modules/voice_explainer.LOOKS (ids only): a look the Python
- * side offers must exist here, which tests/explainer-looks.test.mts pins.
+ * side offers must exist here (tests/test_voice_explainer.py and tests/explainer.test.mts pin it).
  *
  * Fonts are stacks, not downloads: the render machine has no network guarantee, and a
  * missing web font would silently swap the face mid-video. Inter where it is installed,

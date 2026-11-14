@@ -59,6 +59,12 @@ MAX_ROWS = 6
 MAX_ITEMS = 5
 MAX_MESSAGES = 4
 MAX_CAST = 3
+#: Nested text limits. The validator and the model's prompt both read these, so the model is told exactly what
+#: will be refused.
+LIMITS = {
+    "card_title": 32, "card_subtitle": 40, "row_label": 28, "row_value": 14, "total_label": 20, "total_value": 14,
+    "stat_value": 12, "stat_label": 40, "progress_label": 28, "progress_note": 32, "checklist_item": 24, "message": 60,
+}
 
 
 class ExplainerError(ValueError):
@@ -181,6 +187,20 @@ def split_sentences(words: Sequence[Word], *, max_s: float = 6.5, min_s: float =
     return [Sentence(p) for p in merged]
 
 
+def fit_words(words: Sequence[Word], duration_s: float, *, slack_s: float = 0.5) -> List[Word]:
+    """The words as the recording can hold them. ffprobe's length of a VBR mp3 is an estimate and Whisper's last word
+    can overshoot it a little: an end within ``slack_s`` past the recording is clamped to it. A word further out is a
+    track that does not belong to this recording (another take) and is refused: the render would stop on it after
+    the transcription and the planner were paid for."""
+    out = []
+    for w in words:
+        if w.start_s >= duration_s or w.end_s > duration_s + slack_s:
+            raise ExplainerError(f"the word track runs past the recording ({w.text!r} at {w.start_s:.2f}-{w.end_s:.2f} s, "
+                                 f"the recording is {duration_s:.2f} s): is it this recording's track?")
+        out.append(Word(w.text, w.start_s, min(w.end_s, duration_s)))
+    return out
+
+
 def scene_windows(sentences: Sequence[Sentence], duration_s: float) -> List[tuple]:
     """Each scene runs from its sentence's first word to the next sentence's first word:
     the cut lands as the next sentence starts, never in the middle of a word. The first
@@ -188,7 +208,10 @@ def scene_windows(sentences: Sequence[Sentence], duration_s: float) -> List[tupl
     out = []
     for i, s in enumerate(sentences):
         start = 0.0 if i == 0 else s.start_s
-        end = sentences[i + 1].start_s if i + 1 < len(sentences) else max(duration_s, s.end_s)
+        end = sentences[i + 1].start_s if i + 1 < len(sentences) else duration_s
+        if not 0 <= start < end <= duration_s:
+            raise ExplainerError(f"scene {i} would run {start:.2f}-{end:.2f} s on a {duration_s:.2f} s recording: "
+                                 "fit the words to the recording first (fit_words)")
         out.append((start, end))
     return out
 
@@ -223,28 +246,31 @@ def validate_visual(v: Mapping) -> dict:
         rows = v.get("rows") or []
         if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_ROWS:
             raise PlanRejected(f"a card has 1 to {MAX_ROWS} rows")
-        out = {"kind": "card", "title": _text(v.get("title"), 32, "card title"),
-               "rows": [{"label": _text(r.get("label"), 28, "row label"), "value": _text(r.get("value"), 14, "row value"),
-                         "tone": _one_of(r.get("tone") or "normal", TONES, "row tone")} for r in rows if isinstance(r, Mapping)]}
-        if len(out["rows"]) != len(rows):
+        if not all(isinstance(r, Mapping) for r in rows):
             raise PlanRejected("a card row is not an object")
+        out = {"kind": "card", "title": _text(v.get("title"), LIMITS["card_title"], "card title"),
+               "rows": [{"label": _text(r.get("label"), LIMITS["row_label"], "row label"),
+                         "value": _text(r.get("value"), LIMITS["row_value"], "row value"),
+                         "tone": _one_of(r.get("tone") or "normal", TONES, "row tone")} for r in rows]}
         if v.get("subtitle"):
-            out["subtitle"] = _text(v.get("subtitle"), 40, "card subtitle")
+            out["subtitle"] = _text(v.get("subtitle"), LIMITS["card_subtitle"], "card subtitle")
         if v.get("total"):
             t = v["total"]
             if not isinstance(t, Mapping):
                 raise PlanRejected("card total is not an object")
-            out["total"] = {"label": _text(t.get("label"), 20, "total label"), "value": _text(t.get("value"), 14, "total value")}
+            out["total"] = {"label": _text(t.get("label"), LIMITS["total_label"], "total label"),
+                            "value": _text(t.get("value"), LIMITS["total_value"], "total value")}
         return out
     if kind == "stat":
-        return {"kind": "stat", "value": _text(v.get("value"), 12, "stat value"), "label": _text(v.get("label"), 40, "stat label")}
+        return {"kind": "stat", "value": _text(v.get("value"), LIMITS["stat_value"], "stat value"),
+                "label": _text(v.get("label"), LIMITS["stat_label"], "stat label")}
     if kind == "progress":
         pct = _num(v.get("percent"))
         if pct is None or not 0 <= pct <= 100:
             raise PlanRejected(f"progress percent {v.get('percent')!r} is not 0 to 100")
-        out = {"kind": "progress", "label": _text(v.get("label"), 28, "progress label"), "percent": pct}
+        out = {"kind": "progress", "label": _text(v.get("label"), LIMITS["progress_label"], "progress label"), "percent": pct}
         if v.get("note"):
-            out["note"] = _text(v.get("note"), 32, "progress note")
+            out["note"] = _text(v.get("note"), LIMITS["progress_note"], "progress note")
         return out
     if kind == "characters":
         cast = v.get("cast") or []
@@ -265,22 +291,29 @@ def validate_visual(v: Mapping) -> dict:
         items = v.get("items") or []
         if not isinstance(items, list) or not 1 <= len(items) <= MAX_ITEMS:
             raise PlanRejected(f"a checklist has 1 to {MAX_ITEMS} items")
-        return {"kind": "checklist", "items": [_text(i, 24, "checklist item") for i in items]}
+        if not all(isinstance(i, str) for i in items):
+            raise PlanRejected("a checklist item is not text")
+        return {"kind": "checklist", "items": [_text(i, LIMITS["checklist_item"], "checklist item") for i in items]}
     msgs = v.get("messages") or []
     if not isinstance(msgs, list) or not 1 <= len(msgs) <= MAX_MESSAGES:
         raise PlanRejected(f"a chat has 1 to {MAX_MESSAGES} messages")
+    # An empty bubble panel is not a scene: a message that is not an object is refused, never dropped.
+    if not all(isinstance(m, Mapping) for m in msgs):
+        raise PlanRejected("a chat message is not an object")
     return {"kind": "chat", "messages": [{"side": _one_of(m.get("side"), ("left", "right"), "message side"),
-                                          "text": _text(m.get("text"), 60, "message")}
-                                         for m in msgs if isinstance(m, Mapping)]}
+                                          "text": _text(m.get("text"), LIMITS["message"], "message")} for m in msgs]}
 
 
 def validate_scene(raw: Mapping, *, index: int) -> dict:
     """The model-written part of one scene (no times: those come from the recording)."""
     if not isinstance(raw, Mapping):
         raise PlanRejected(f"scene {index} is not an object")
-    headline = _text(raw.get("headline"), MAX_HEADLINE + 2, f"scene {index} headline")  # +2: the two stars
-    if headline.count("*") not in (0, 2):
+    headline = _text(raw.get("headline"), MAX_HEADLINE + 2, f"scene {index} headline")
+    stars = headline.count("*")
+    if stars not in (0, 2) or (stars == 2 and not re.fullmatch(r"[^*]*\*[^*]+\*[^*]*", headline)):
         raise PlanRejected(f"scene {index} headline marks its accent word with one pair of *stars*: {headline}")
+    if len(headline) - stars > MAX_HEADLINE:  # the stars are not drawn; the letters must fit
+        raise PlanRejected(f"scene {index} headline is {len(headline) - stars} characters, the layout holds {MAX_HEADLINE}")
     return {"kicker": _text(raw.get("kicker"), MAX_KICKER, f"scene {index} kicker", required=False),
             "headline": headline,
             "accent": _text(raw.get("accent"), MAX_ACCENT, f"scene {index} accent", required=False),
@@ -292,11 +325,24 @@ def validate_scene(raw: Mapping, *, index: int) -> dict:
 _STOP = {"the", "a", "an", "and", "or", "of", "to", "in", "on", "is", "it", "this", "that", "for", "with", "you", "your",
          "va", "bu", "u", "bilan", "uchun", "esa", "ham", "siz", "biz", "men", "edi", "deb", "i", "в", "и", "на", "это",
          "что", "с", "не", "по", "как", "я", "вы", "мы"}
-_NUMBER = re.compile(r"[$€£₽]?\d[\d.,]*\s?%?[$€£₽]?")
+#: A spoken number as written. Space-grouped thousands come first ("10 000", "1 500 000": the Uzbek and Russian way
+#: of writing them), then plain numbers with their decimal or thousands marks. Sentence punctuation never sticks to it.
+_NUMBER = re.compile(r"[$€£₽]?\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?:[.,]\d+)?%?|[$€£₽]?\d+(?:[.,]\d+)*%?[$€£₽]?")
+
+
+def spoken_number(text: str) -> Optional[str]:
+    """The first number the sentence says, exactly as written, or None. A counter showing a number the narration did
+    not say is worse than no counter (CLAUDE.md rule 5): what does not fit the counter is left out."""
+    m = _NUMBER.search(text)
+    if not m:
+        return None
+    value = m.group(0).strip()
+    return value if len(value) <= LIMITS["stat_value"] else None
 
 
 def _clean(w: str) -> str:
-    return re.sub(r"^[\"'«“(]+|[\"'»”).,!?;:…]+$", "", w)
+    # Stars mark the headline's accent word, so a word's own (a censored "f***") would break the marking.
+    return re.sub(r"^[\"'«“(]+|[\"'»”).,!?;:…]+$", "", w.replace("*", ""))
 
 
 def plan_rules(sentences: Sequence[Sentence]) -> List[dict]:
@@ -320,9 +366,9 @@ def plan_rules(sentences: Sequence[Sentence]) -> List[dict]:
         key = key[:MAX_HEADLINE]
         kicker = " ".join(words[:3])[:MAX_KICKER]
         accent = " ".join(words[-3:])[:MAX_ACCENT] if len(words) > 4 else ""
-        number = next((m.group(0).strip() for m in _NUMBER.finditer(s.text)), None)
-        if number and len(number) <= 12:
-            visual = {"kind": "stat", "value": number, "label": " ".join(words[:5])[:40]}
+        number = spoken_number(s.text)
+        if number:
+            visual = {"kind": "stat", "value": number, "label": " ".join(words[:5])[:LIMITS["stat_label"]]}
         else:
             visual = rotation[i % len(rotation)]
         plans.append(validate_scene({"kicker": kicker, "headline": f"*{key}*" if key else "…", "accent": accent, "visual": visual}, index=i))
@@ -335,6 +381,7 @@ write one scene. You never change, add or drop sentences, and you answer with JS
 
 def planner_prompt(sentences: Sequence[Sentence], language: str = "") -> str:
     lines = "\n".join(f"{i}. {s.text}" for i, s in enumerate(sentences))
+    L = LIMITS
     return f"""Narration ({len(sentences)} sentences{', language: ' + language if language else ''}):
 {lines}
 
@@ -343,15 +390,16 @@ Return a JSON array with exactly {len(sentences)} objects, in order, each:
   "headline": "<= {MAX_HEADLINE} chars, 1-3 words, the punch; mark ONE word with *stars*",
   "accent": "<= {MAX_ACCENT} chars, a short italic echo, or empty",
   "visual": one of
-    {{"kind":"characters","setting":"street|room|office|stage","prop":"none|laptop|phone|coin|chart|book","cast":[{{"pose":"stand|wave|point|think|cheer|sad|sit","color":0-3}}] (1-3 people)}}
-    {{"kind":"card","title":"..","subtitle":"..","rows":[{{"label":"..","value":"..","tone":"normal|good|bad"}}] (1-6),"total":{{"label":"..","value":".."}}}}
-    {{"kind":"stat","value":"<= 12 chars","label":".."}}
-    {{"kind":"progress","label":"..","percent":0-100,"note":".."}}
-    {{"kind":"emoji","mood":"worried|happy|shocked|thinking|angry|calm"}}
-    {{"kind":"checklist","items":["..", ".."] (1-5)}}
-    {{"kind":"chat","messages":[{{"side":"left|right","text":".."}}] (1-4)}}
+    {{"kind":"characters","setting":"{'|'.join(SETTINGS)}","prop":"{'|'.join(PROPS)}","cast":[{{"pose":"{'|'.join(POSES)}","color":0-3}}] (1-{MAX_CAST} people)}}
+    {{"kind":"card","title":"<= {L['card_title']}","subtitle":"<= {L['card_subtitle']}","rows":[{{"label":"<= {L['row_label']}","value":"<= {L['row_value']}","tone":"{'|'.join(TONES)}"}}] (1-{MAX_ROWS}),"total":{{"label":"<= {L['total_label']}","value":"<= {L['total_value']}"}}}}
+    {{"kind":"stat","value":"<= {L['stat_value']}","label":"<= {L['stat_label']}"}}
+    {{"kind":"progress","label":"<= {L['progress_label']}","percent":0-100,"note":"<= {L['progress_note']}"}}
+    {{"kind":"emoji","mood":"{'|'.join(MOODS)}"}}
+    {{"kind":"checklist","items":["<= {L['checklist_item']} each"] (1-{MAX_ITEMS})}}
+    {{"kind":"chat","messages":[{{"side":"left|right","text":"<= {L['message']}"}}] (1-{MAX_MESSAGES})}}
     {{"kind":"none"}}
 }}
+All lengths are characters. A longer text, another value, or a missing field refuses the whole plan.
 Use only numbers and facts the sentence itself says. Vary the visuals; a story beat gets characters, a price or list gets a card."""
 
 
@@ -386,6 +434,19 @@ def build_scenes(sentences: Sequence[Sentence], plans: Sequence[Mapping], durati
 
 # ── sound ─────────────────────────────────────────────────────────────────
 
+SFX_NEEDED = ("whoosh", "deep_boom")
+
+
+def find_sfx(sfx_dir: Path) -> dict:
+    """The effect files, or a refusal naming the fix. Cheap: callers run it before the transcription and the planner."""
+    found = {n: next((p for ext in ("mp3", "wav") if (p := Path(sfx_dir) / f"{n}.{ext}").exists()), None) for n in SFX_NEEDED}
+    missing = sorted(n for n, p in found.items() if p is None)
+    if missing:
+        raise ExplainerError(f"sound effects {', '.join(missing)} are not in {sfx_dir}: run `python tools/generate_assets.py`, "
+                             "or turn effects off")
+    return found
+
+
 def sound_cues(scenes: Sequence[Scene], sfx_dir: Optional[Path]) -> tuple:
     """``(cues, files)``: a whoosh on every cut and a low hit under the first headline,
     as the composition's public paths, and the files :func:`render` copies for them.
@@ -393,12 +454,7 @@ def sound_cues(scenes: Sequence[Scene], sfx_dir: Optional[Path]) -> tuple:
     way to say "no effects"."""
     if sfx_dir is None:
         return [], {}
-    need = {"whoosh", "deep_boom"}
-    found = {n: next((p for ext in ("mp3", "wav") if (p := Path(sfx_dir) / f"{n}.{ext}").exists()), None) for n in need}
-    missing = sorted(n for n, p in found.items() if p is None)
-    if missing:
-        raise ExplainerError(f"sound effects {', '.join(missing)} are not in {sfx_dir}: run `python tools/generate_assets.py`, "
-                             "or turn effects off")
+    found = find_sfx(sfx_dir)
     files = {f"sfx/{p.name}": p for p in found.values()}
     boom, whoosh = f"sfx/{found['deep_boom'].name}", f"sfx/{found['whoosh'].name}"
     cues = [{"src": boom, "at_s": 0.15, "volume": 0.35}]
@@ -450,11 +506,16 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
         raise ExplainerError("npx is not on PATH: install Node 22 to render")
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    # A file left from an earlier run must not pass as this run's output.
+    out_path.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix="explainer-") as tmp:
-        pub = Path(tmp) / "public"
+        pub = (Path(tmp) / "public").resolve()
         pub.mkdir()
         for name, src in files.items():
-            dst = pub / name
+            # The names become paths inside this render's public dir and nowhere else.
+            dst = (pub / name).resolve() if name and not Path(name).is_absolute() else None
+            if dst is None or ".." in Path(name).parts or not dst.is_relative_to(pub):
+                raise ExplainerError(f"refusing the public file name {name!r}")
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
         props_file = Path(tmp) / "props.json"
@@ -463,11 +524,39 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
                f"--public-dir={pub}", f"--concurrency={int(concurrency)}", "--log=error"]
         if browser:
             cmd.append(f"--browser-executable={browser}")
+        # Its own process group: on a timeout the whole tree goes (npx, node, the headless Chrome), not just npx, so
+        # nothing keeps writing out_path after the caller was told the render failed.
+        proc = subprocess.Popen(cmd, cwd=engine_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                env=_render_env(), start_new_session=True)
         try:
-            proc = subprocess.run(cmd, cwd=engine_dir, capture_output=True, text=True, timeout=timeout_s, env=dict(os.environ))
+            stdout, stderr = proc.communicate(timeout=timeout_s)
         except subprocess.TimeoutExpired:
+            _kill_group(proc)
+            out_path.unlink(missing_ok=True)
             raise ExplainerError(f"the render took longer than {timeout_s:.0f} s and was stopped") from None
         if proc.returncode != 0 or not out_path.exists() or out_path.stat().st_size == 0:
-            tail = "\n".join((proc.stderr or proc.stdout or "").strip().splitlines()[-8:])
+            tail = "\n".join((stderr or stdout or "").strip().splitlines()[-8:])
             raise ExplainerError(f"Remotion failed (exit {proc.returncode}): {tail}")
     return out_path
+
+
+#: What the render needs from the environment; everything else (provider keys among it) stays out of it.
+_RENDER_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS", "HTTPS_PROXY",
+                    "HTTP_PROXY", "NO_PROXY", "REMOTION_BROWSER_EXECUTABLE")
+
+
+def _render_env() -> dict:
+    return {k: v for k, v in os.environ.items() if k in _RENDER_ENV_KEYS}
+
+
+def _kill_group(proc) -> None:
+    import signal  # noqa: PLC0415
+
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+    try:
+        proc.communicate(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass

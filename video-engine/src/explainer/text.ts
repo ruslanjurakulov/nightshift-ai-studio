@@ -59,3 +59,16 @@ export const explainerFrames = (p: ExplainerProps): number => {
   }
   return Math.max(1, Math.ceil(p.duration_s * p.fps));
 };
+
+/**
+ * The counter's text at `progress` (0..1). It counts up only a value whose digits are unambiguous: a bare integer
+ * ("750", "$750", "40%"). "1,500", "10 000" or "3,5" read differently by language, so they appear as written, never
+ * re-punctuated. At progress 1 it is always exactly the value the narration said (CLAUDE.md rule 5).
+ */
+export const statShown = (value: string, progress: number): string => {
+  const m = /^(\D*)(\d+)(\D*)$/.exec(value);
+  if (!m || progress >= 1) return value;
+  const p = Math.max(0, progress);
+  const n = Math.round(parseInt(m[2], 10) * (1 - Math.pow(1 - p, 3)));
+  return `${m[1]}${n}${m[3]}`;
+};

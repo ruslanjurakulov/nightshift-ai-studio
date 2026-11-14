@@ -1,6 +1,7 @@
 import React from "react";
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { SANS, type Look } from "./looks";
+import { statShown } from "./text";
 import type { Mood, Tone, Visual } from "./types";
 
 /** Every panel enters the same way: a short rise and fade, so scenes read as one system. */
@@ -73,14 +74,8 @@ const Stat: React.FC<{ v: Extract<Visual, { kind: "stat" }>; look: Look; width: 
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const enter = useEnter();
-  const m = /^(\D*)(\d+(?:[.,]\d+)?)(.*)$/.exec(v.value.trim());
-  let shown = v.value;
-  if (m) {
-    const target = parseFloat(m[2].replace(",", "."));
-    const decimals = (m[2].split(/[.,]/)[1] ?? "").length;
-    const p = interpolate(frame, [0, fps * 1.2], [0, 1], { extrapolateRight: "clamp" });
-    shown = `${m[1]}${(target * (1 - Math.pow(1 - p, 3))).toFixed(decimals)}${m[3]}`;
-  }
+  // Only an unambiguous integer counts up; the last frame is always the value as said (statShown).
+  const shown = statShown(v.value, interpolate(frame, [0, fps * 1.2], [0, 1], { extrapolateRight: "clamp" }));
   return (
     <div style={{ ...panelStyle(look, width), textAlign: "center", ...enter }}>
       <div style={{ fontSize: 150, fontWeight: 900, color: look.accent, lineHeight: 1 }}>{shown}</div>

@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { LOOK_IDS, lookFor } from "../src/explainer/looks.ts";
-import { explainerFrames, headlineParts, sceneFrames, sceneWords, wordsForLine } from "../src/explainer/text.ts";
+import { explainerFrames, headlineParts, sceneFrames, sceneWords, statShown, wordsForLine } from "../src/explainer/text.ts";
 
 const w = (text: string, s: number, e: number) => ({ text, start_s: s, end_s: e });
 const scene = (id: string, s: number, e: number) => ({ id, start_s: s, end_s: e, kicker: "", headline: "x", accent: "", visual: { kind: "none" as const } });
@@ -52,4 +52,11 @@ test("an unknown look is refused, never drawn as the default", () => {
   for (const id of LOOK_IDS) assert.equal(lookFor(id).id, id);
   assert.throws(() => lookFor("sepia"), /unknown look/);
   assert.throws(() => lookFor("__proto__"), /unknown look/);
+});
+
+test("the counter ends on exactly the value said, and only counts an unambiguous integer", () => {
+  for (const v of ["$1,500", "1,000,000", "3,5", "10 000", "750", "$750", "40%", "4.3K"]) assert.equal(statShown(v, 1), v);
+  assert.equal(statShown("750", 0), "0");
+  assert.equal(statShown("$750", 0.5), "$656");
+  for (const v of ["$1,500", "3,5", "10 000", "4.3K"]) assert.equal(statShown(v, 0.3), v);
 });

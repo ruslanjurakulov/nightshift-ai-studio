@@ -9,7 +9,11 @@ What would break without these:
   or a crash after the transcription was paid for);
 * a broken model plan quietly replaced by the plain rules plan (CLAUDE.md rule 4);
 * asked-for sound effects missing and the video going out silent instead;
-* the Python looks, visual kinds, poses and settings drifting from the TypeScript ones.
+* the Python looks, visual kinds, poses and settings drifting from the TypeScript ones;
+* a counter showing "10" for "10 000 so'm" (a figure the narration never said);
+* a word track longer than the recording reaching Remotion, which then stops after everything was paid for;
+* the cheap checks (effects, plan file) running after the transcription and the paid planner call;
+* a render that keeps running after its timeout, or a public file name that escapes the render's folder.
 """
 
 from __future__ import annotations
@@ -212,6 +216,127 @@ class Cli(unittest.TestCase):
         from unittest import mock
         with mock.patch.dict(os.environ, {"GEMINI_API_KEY": ""}), self.assertRaisesRegex(ve.ExplainerError, "--planner rules"):
             voice_to_video._model_gen()
+
+
+class ReviewFindings(unittest.TestCase):
+    """Lens review of slice 1a: each test is a reproduced failure."""
+
+    def test_space_grouped_thousands_are_read_whole_and_punctuation_never_sticks(self):
+        for text, want in (("Bu 10 000 so'm turadi.", "10 000"), ("Это стоит 1 500 000 рублей.", "1 500 000"),
+                           ("In 2026, it grew.", "2026"), ("$1,500 total", "$1,500"), ("no number here", None),
+                           ("a 1234567890123 digit run", None)):
+            with self.subTest(text=text):
+                self.assertEqual(ve.spoken_number(text), want)
+
+    def test_a_word_track_longer_than_the_recording_is_refused_and_a_small_overshoot_clamped(self):
+        got = ve.fit_words([ve.Word("a", 0, 1), ve.Word("end.", 4.6, 5.3)], 5.0)
+        self.assertEqual(got[-1].end_s, 5.0)
+        with self.assertRaisesRegex(ve.ExplainerError, "runs past the recording"):
+            ve.fit_words([ve.Word("a", 0, 1), ve.Word("z", 6.0, 6.4)], 5.0)
+
+    def test_scene_windows_never_run_past_the_recording(self):
+        ss = ve.split_sentences(words("Bir ikki uch to'rt. Besh olti yetti sakkiz."))
+        self.assertEqual(ve.scene_windows(ss, 3.9)[-1][1], 3.9)
+        with self.assertRaisesRegex(ve.ExplainerError, "fit the words"):
+            ve.scene_windows(ss, 2.0)
+
+    def test_the_prompt_states_every_limit_the_validator_enforces(self):
+        p = ve.planner_prompt(ve.split_sentences(words("Bir ikki uch to'rt.")))
+        for name, n in ve.LIMITS.items():
+            with self.subTest(limit=name):
+                self.assertIn(f"<= {n}", p)
+        too_long = {"kind": "card", "title": "x", "rows": [{"label": "y" * (ve.LIMITS["row_label"] + 1), "value": "1"}]}
+        with self.assertRaisesRegex(ve.PlanRejected, "row label"):
+            ve.validate_visual(too_long)
+
+    def test_malformed_chat_and_checklist_entries_are_refused_never_dropped(self):
+        with self.assertRaisesRegex(ve.PlanRejected, "not an object"):
+            ve.validate_visual({"kind": "chat", "messages": ["hi"]})
+        with self.assertRaisesRegex(ve.PlanRejected, "not text"):
+            ve.validate_visual({"kind": "checklist", "items": [{"a": 1}]})
+
+    def test_a_censored_word_does_not_break_the_headline_marking(self):
+        plans = ve.plan_rules(ve.split_sentences(words("That was f***ing unbelievable today, honestly.")))
+        self.assertEqual(plans[0]["headline"].count("*"), 2)
+
+    def test_headline_letters_must_fit_and_stars_must_wrap_a_word(self):
+        with self.assertRaisesRegex(ve.PlanRejected, "layout holds"):
+            ve.validate_scene({**SAMPLE, "headline": "x" * (ve.MAX_HEADLINE + 1)}, index=0)
+        with self.assertRaisesRegex(ve.PlanRejected, "one pair"):
+            ve.validate_scene({**SAMPLE, "headline": "**word"}, index=0)
+
+    def test_a_public_file_name_cannot_leave_the_renders_folder(self):
+        from unittest import mock
+        with TemporaryDirectory() as d:
+            engine = Path(d) / "engine"
+            (engine / "node_modules").mkdir(parents=True)
+            src = Path(d) / "a.wav"
+            src.write_bytes(b"x")
+            for bad in ("/etc/x", "../x", "sfx/../../x", ""):
+                with self.subTest(name=bad), mock.patch("shutil.which", return_value="/usr/bin/npx"), \
+                        self.assertRaisesRegex(ve.ExplainerError, "refusing the public file name"):
+                    ve.render({}, Path(d) / "o.mp4", files={bad: src}, engine_dir=engine)
+
+    def test_a_render_timeout_kills_the_whole_group_and_leaves_no_output(self):
+        import subprocess
+        from unittest import mock
+
+        class Hung:
+            pid = 4242
+            returncode = None
+
+            def communicate(self, timeout=None):
+                raise subprocess.TimeoutExpired("npx", timeout)
+
+        with TemporaryDirectory() as d:
+            engine = Path(d) / "engine"
+            (engine / "node_modules").mkdir(parents=True)
+            out = Path(d) / "o.mp4"
+            out.write_bytes(b"stale")
+            with mock.patch("shutil.which", return_value="/usr/bin/npx"), \
+                    mock.patch("subprocess.Popen", return_value=Hung()) as popen, \
+                    mock.patch("os.killpg") as killpg, \
+                    self.assertRaisesRegex(ve.ExplainerError, "longer than"):
+                ve.render({}, out, files={}, engine_dir=engine, timeout_s=1)
+            self.assertTrue(popen.call_args.kwargs["start_new_session"])
+            self.assertNotIn("GEMINI_API_KEY", popen.call_args.kwargs["env"])
+            killpg.assert_called_once()
+            self.assertFalse(out.exists())
+
+
+class CliOrder(unittest.TestCase):
+    def setUp(self):
+        from unittest import mock
+        self.mock = mock
+        self.tmp = TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+        self.audio = self.d / "n.mp3"
+        self.audio.write_bytes(b"x")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_cli(self, *extra, duration=30.0):
+        with self.mock.patch.object(ve, "audio_seconds", return_value=duration), \
+                self.mock.patch.object(voice_to_video, "_words", side_effect=AssertionError("transcribed")) as w, \
+                self.mock.patch.object(voice_to_video, "_model_gen", side_effect=AssertionError("planner")) as g, \
+                self.mock.patch("shutil.which", return_value="/usr/bin/npx"):
+            rc = voice_to_video.main(["--audio", str(self.audio), "--out", str(self.d / "o.mp4"), *extra])
+        return rc, w.called, g.called
+
+    def test_a_recording_over_the_limit_is_refused_before_anything_runs(self):
+        self.assertEqual(self.run_cli(duration=ve.MAX_SECONDS + 1), (2, False, False))
+
+    def test_missing_effects_are_refused_before_the_transcription_and_the_planner(self):
+        self.assertEqual(self.run_cli("--sfx-dir", str(self.d / "nosfx"), "--planner", "model"), (2, False, False))
+
+    def test_a_broken_plan_file_is_refused_before_the_transcription(self):
+        (self.d / "plan.json").write_text("{nope")
+        self.assertEqual(self.run_cli("--sfx-dir", "none", "--plan", str(self.d / "plan.json")), (2, False, False))
+
+    def test_impossible_frame_settings_are_refused_not_replaced(self):
+        self.assertEqual(self.run_cli("--sfx-dir", "none", "--fps", "0")[0], 2)
+        self.assertEqual(self.run_cli("--sfx-dir", "none", "--width", "1081")[0], 2)
 
 
 if __name__ == "__main__":
