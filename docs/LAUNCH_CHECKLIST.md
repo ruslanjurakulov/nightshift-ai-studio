@@ -232,3 +232,8 @@ them as indicative, not as lab Lighthouse numbers.
 7. **`llms-full.txt`:** say if you want it built from the dictionaries.
 8. **Sitemap `lastmod`:** needs a build date plumbed to the server (Dockerfile or
    deploy change); omitted until then.
+9. **Live public counters** ("Live from our pipeline", migration 0164): built and
+   hidden. When real traffic grows, turn them on with one line in the Supabase
+   SQL editor, `select public.set_public_stats_visible(true);` (off again:
+   `select public.set_public_stats_visible(false);`). No redeploy; the site picks
+   it up within about five minutes. What each number counts: `docs/PUBLIC_STATS.md`.

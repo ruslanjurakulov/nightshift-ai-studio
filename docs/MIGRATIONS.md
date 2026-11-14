@@ -1433,3 +1433,41 @@ the API key's hash, never a session or the service key — and two things the St
 - **Tests.** `tests/test_api_creative_models_migration.py` (the text, the hashes, the rollback, the numbering),
   `tests/security/test_sec_mcp_studio_tools.py` and `tests/security/test_sec_breach_mcp_studio_0162.py` (a real PostgreSQL),
   `command-center/tests/mcp-studio-tools.test.ts` (the MCP layer).
+
+## The site's live public counters (0164)
+
+0164 (`0164_public_site_stats.sql`) is **live on apply and still invisible**: it adds one table and three functions, replaces nothing
+and alters no existing table. The switch it adds starts OFF, and while it is off the public read answers `{"visible": false}` and
+nothing else. The one command and what each number counts: `docs/PUBLIC_STATS.md`.
+
+- **`site_settings`.** One row (`id` is the constant true): `public_stats_visible boolean not null default false`, the last measurement
+  (`stats`, `stats_at`) and who last changed the switch. RLS on, no policy, every grant revoked (the service key included). A missing
+  row reads as hidden.
+- **`public_site_stats()`.** anon and authenticated. Hidden: `{"visible": false}`. Visible: `videos_rendered`,
+  `videos_uploaded_private`, `videos_approved`, `studio_generations` (counts), `last_run_at` (null when nothing finished), `visible`,
+  `as_of`. Nothing else: no organization, user, channel, video or title. Served from a snapshot of at most five minutes (one caller
+  measures under a transaction advisory lock), so anon cannot make it run five counts per call. The SQL editor and a signed-in platform
+  owner/admin also get the numbers while hidden, with `visible: false`.
+- **`set_public_stats_visible(boolean)`.** A signed-in platform owner/admin through `owner_guard` (0107: 42501 before anything is
+  read, the second factor, 10 calls per 10 minutes) or the SQL editor (no API claims and no API role). Not anon, not the service key.
+  A change writes one `security_events` row (`site.public_stats`, `{from, to, via}`) in the same transaction; a call that changes
+  nothing writes nothing. Not `app_audit_log`: its browser-side allow list (`audit_action_allowed`, 0145's body) would have to be
+  replaced, and the owner's Security page already lists `security_events`.
+- **`public_site_stats_measure()`.** Internal (no API role).
+- **Left out.** `default_org_id()` and every organization one of whose members is a bound `app_members` account (by user id, never by
+  e-mail). Rows with no organization are not counted.
+- **md5.** `public_site_stats_measure` `892be486e3390fd65bebe24af4bc5fc1`, `public_site_stats` `c2ab909184b3d57d3220cb0186d6e172`,
+  `set_public_stats_visible` `9433f15941b0f1280a7a8f17e7fdc030` (drift guard, end state, rollback).
+- **Without it.** The site's reader (`command-center/lib/server/public-stats.ts`) treats the missing function as hidden: no strip.
+- **Number.** 0164, assigned to this branch; 0163 is held by an unmerged branch (#736) and is not reused. Needs 0007, 0016, 0017,
+  0018, 0036, 0107, 0112 and 0116; names nothing of 0147's to 0162's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+  `sec_db.ON_0124` lists it so that a lab sequence which leaves 0124 out and puts it back still ends on the newest file; the two lab
+  tests that roll 0112 and 0116 back leave it out of their base (`sec_db.NEEDS_0112_0116`) and take it off and put it back around
+  the rollbacks (`take_off_0164`, `put_back_0164`).
+- **Undo.** `docs/sql/rollback_0164_public_site_stats.sql` (owner-applied): refuses a body that is not 0164's, drops the three functions
+  and the table.
+- **Tests.** `tests/test_public_site_stats_migration.py` (the text, the hashes, the rollback, the numbering),
+  `tests/security/test_sec_public_stats.py` (a real PostgreSQL: the switch refused for customers, anon and the service key with no
+  audit row; one audit row per change by the admin and by the SQL editor; hidden answers `{"visible": false}`; only the named keys;
+  the operator's and staff workspaces left out; a null stays null; the five-minute snapshot; replay, drift and rollback),
+  `command-center/tests/public-stats.test.tsx` (the reader and the strip).

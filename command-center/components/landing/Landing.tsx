@@ -34,6 +34,8 @@ import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
 import { ModelMarquee } from "@/components/site/motion/ModelMarquee";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
+import { LiveStats } from "@/components/site/LiveStats";
+import type { PublicStats } from "@/lib/public-stats";
 import { SampleCarousel, SampleCompare, SampleTicker, landingGalleryExclude } from "@/components/site/landing-samples";
 import "@/components/site/explore-hover.css";
 
@@ -52,7 +54,8 @@ const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
  * grant (WELCOME_CREDITS, pinned to the database by a test), counts of what the
  * page itself holds, and whatever the pricing source holds. No competitor is
  * named, a model only inside its own sample's box, and there are no
- * testimonials, logos or usage numbers, because there are none to show. Every
+ * testimonials or logos, because there are none to show. The only usage numbers are the live counters under the facts
+ * (components/site/LiveStats.tsx), counted by the database, and only once the owner turns them on. Every
  * picture says what it is: one of our samples (AI-generated; its model on its gallery card) or a
  * stock example (its contributor), from components/site/samples.tsx slotMedia.
  *
@@ -68,6 +71,7 @@ export function Landing({
   showcase,
   expiry = packExpiry(null, CREDIT_EXPIRY_MONTHS),
   dodo = false,
+  liveStats = null,
 }: {
   t: Dictionary;
   locale: Locale;
@@ -79,6 +83,8 @@ export function Landing({
   expiry?: PackExpiry;
   /** Dodo Payments sells here (PAYMENTS_PROVIDER=dodo): the FAQ names it as the seller. */
   dodo?: boolean;
+  /** The live counters (lib/server/public-stats.ts): null while the owner's switch is off, and then nothing is drawn. */
+  liveStats?: PublicStats | null;
 }) {
   // The samples the landing's own places show (slots, tool wall, steps, approval screen) are left out of its gallery, so no clip
   // is on the page twice, and so are the repeated sea and sky samples: one list (components/site/slots.ts landingExcludedJobs).
@@ -94,6 +100,7 @@ export function Landing({
       <Hero t={t} formats={formats} />
       <SampleTicker t={t} locale={locale} exclude={leftOut} />
       <Facts t={t} locale={locale} anchor={anchor} entries={onPage.map(({ e }) => e)} />
+      <LiveStats t={t} locale={locale} stats={liveStats} />
       <SampleCarousel t={t} locale={locale} exclude={leftOut} />
       {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
       <ShowcaseGallery t={t} locale={locale} exclude={landingGalleryExclude(leftOut)} formats={formats} />

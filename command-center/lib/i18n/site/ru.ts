@@ -2,6 +2,7 @@ import type { SiteDictionary } from "./en";
 import { studioPageRu } from "../studio-page/ru";
 import { roadmapRu } from "../roadmap/ru";
 import { siteAutopilotRu } from "../site-autopilot/ru";
+import { publicStatsRu } from "../public-stats/ru";
 
 /** Публичный сайт: главная, «Решения», вход, 404. Источник — ./en.ts. */
 export const siteRu: SiteDictionary = {
@@ -540,6 +541,7 @@ export const siteRu: SiteDictionary = {
   roadmap: roadmapRu,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotRu,
+  liveStats: publicStatsRu,
   final: {
     title: "Поставьте следующее видео в ночную смену.",
     lead: "Начните бесплатно. Цена — до каждого запуска, а каждое видео приватно, пока вы не сделаете его публичным.",

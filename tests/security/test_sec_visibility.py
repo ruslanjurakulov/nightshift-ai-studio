@@ -1176,7 +1176,8 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
     base = f"ns_visibility_base_{uuid.uuid4().hex[:8]}"
     base_dsn = sec_db.create_database(admin, base)
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0116_", "0117_", "0119_", "0121_", "0145_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence()
+                                      if not f.name.startswith(("0116_", "0117_", "0119_", "0121_", "0145_", *sec_db.NEEDS_0112_0116))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
@@ -1195,6 +1196,7 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
         rid = queued(su, bob)
         assert su.value("select publish_on_approve from public.channels where channel_id = %s", [bob.channel]) is True
         after = snapshot(su)
+        sec_db.take_off_0164(su)                   # reads 0116's table: off first, like the base that never had it
         sec_db.take_off_0119(su)                   # going down: 0119, 0121, then 0117 (it sits on 0116's audit list), then 0116
         sec_db.take_off_0121(su)
         su.conn.execute(body_0117)
@@ -1219,9 +1221,10 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
         switch(su, bob.channel, False)
         su.conn.execute(body)                      # the rollback replays
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
-        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # going up: 0116, then 0117, then 0119, then 0121
+        su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # going up: 0116, then 0117, then 0119, then 0121, then 0164
         sec_db.put_back_0119(su)
         sec_db.put_back_0121(su)
+        sec_db.put_back_0164(su)
         assert snapshot(su) == after
         sec_db.take_off_0145(su)                                      # 0145 sits on 0117's audit list: off before 0112/0116 replay it, back with put_back_0121
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
