@@ -162,6 +162,9 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
             ("insert into public.download_masters (video_id, org_id, width, height, duration_seconds, bytes) values (%s, %s, 1920, 1080, 60, 1000)", [vid, org]),
             ("insert into public.credit_refunds (refund_id, purchase_external_id, org_id, reason, requested, taken, shortfall) values (%s, %s, %s, 'refund', 1, 1, 0)",
              [f"rf-{k}", f"pay-{k}", org]),
+            # 0167: the held part of that refund, owed on a hold (a job id no reservation has: nothing collects it).
+            ("insert into public.credit_refund_recoveries (refund_id, purchase_external_id, org_id, holds, owed) values (%s, %s, %s, %s, 1)",
+             [f"rf-{k}", f"pay-{k}", org, [f"rj-seed-{k}"]]),
             ("insert into public.payment_events (provider, event_id, event_type, status, org_id) values ('paddle', %s, 'transaction.completed', 'processed', %s)",
              [f"evt-{k}", org]),
             ("insert into public.api_accounts (org_id, balance_cents, paid_total_cents) values (%s, 1000, 1000)", [org]),
@@ -187,6 +190,15 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
                [org, t.api_key_id])
         s.rows("insert into public.api_holds (ref, org_id, key_id, amount_cents) values (%s, %s, %s, 100) returning 1",
                [f"ah-{uuid.uuid4()}", org, t.api_key_id])
+        # 0168: a refund's held part, owed on a hold ref that does not exist, so that no release in another test ever collects it.
+        if s.value("select to_regclass('public.api_refund_recoveries') is not null"):
+            refund_row = s.value(
+                "insert into public.api_ledger (org_id, kind, amount_cents, balance_after, reserved_after, requested_cents, "
+                "external_id, source_external_id, note) values (%s, 'refund', 0, 1000, 0, 1, %s, %s, 'seed') returning id",
+                [org, f"adj-seed-{k}", f"txn-seed-{k}"])
+            s.rows("insert into public.api_refund_recoveries (refund_id, refund_ledger_id, topup_external_id, org_id, reason, holds, owed) "
+                   "values (%s, %s, %s, %s, 'refund', %s, 1) returning 1",
+                   [f"adj-seed-{k}", refund_row, f"txn-seed-{k}", org, [f"ah-{uuid.uuid4()}"]])
         s.rows("insert into public.api_idempotency (key_id, idem_key, endpoint, fingerprint) values (%s, %s, 'videos.create', %s) returning 1",
                [t.api_key_id, f"idem-{k}", _hex64(k)])
         s.rows("insert into public.api_rate_counters (key_id, minute, count) values (%s, date_trunc('minute', now()), 1) returning 1",
@@ -447,6 +459,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Character Studio (0137): tests/security/sec_character_swap_0137.py — one consent and one ready swap per tenant, one sample.
     import sec_character_swap_0137
     sec_character_swap_0137.seed(conn, sc)
+    # Film Studio P1 (0166): tests/security/sec_films_0166.py — one draft of two scenes, a style reference and a take per tenant.
+    import sec_films_0166
+    sec_films_0166.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

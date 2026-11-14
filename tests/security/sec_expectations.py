@@ -130,6 +130,8 @@ TABLES: Dict[str, Kind] = {
     "credit_transactions": Org(),
     "credit_reservations": Org(),
     "credit_refunds": Service(),
+    # 0167 (BR-0034-01): the held part of a refund's shortfall, collected when the hold is released; the service key reads it.
+    "credit_refund_recoveries": Service(),
     # 0084 (BR-G-001): the base rates, margins and notes are the operator's;
     # members read the rates as charged through credit_rates().
     "credit_prices": Platform(),
@@ -150,6 +152,8 @@ TABLES: Dict[str, Kind] = {
     "api_holds": Org(),
     "api_idempotency": Service(),
     "api_rate_counters": Service(),
+    # 0168 (BR-0031-01): the held part of an API top-up refund's shortfall, collected when the hold is released; the service key reads it.
+    "api_refund_recoveries": Service(),
     "api_prices": Public(anon=True),
     # web/API hardening (0042): written only by their security-definer functions
     "welcome_credit_claims": Service(),
@@ -709,3 +713,8 @@ sec_public_stats_0164.extend(TABLES, FUNCTIONS)
 import sec_referral_0165  # noqa: E402
 
 sec_referral_0165.extend(TABLES, FUNCTIONS)
+
+# Migration 0166 (Film Studio P1: films, their storyboard, references, takes and the append-only film_events; drafts only, no spend): tests/security/sec_films_0166.py
+import sec_films_0166  # noqa: E402
+
+sec_films_0166.extend(TABLES, FUNCTIONS)

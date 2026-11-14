@@ -1,6 +1,8 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  apiShortfallWords,
+  createRestStore,
   decideApiTopup,
   decideTransaction,
   handlePaddleWebhook,
@@ -351,5 +353,123 @@ describe("API top-ups through the handler", () => {
     expect(res.status).toBe(200);
     // 1500 of 3000 paid (tax included) = half of 2500 cents.
     expect(store.apiRefunds.get(ADJ)).toBe(1250);
+  });
+});
+
+// Migration 0168 (BR-0031-01): what a refund of an API top-up could not take back is either on hold (collected when the hold is
+// released) or spent. The webhook's record and log keep the two apart, and say "not known" when the database did not answer.
+describe("an API top-up refund that met holds", () => {
+  const refundEvent = {
+    event_id: "evt_01refundheld",
+    event_type: "adjustment.updated",
+    data: {
+      id: ADJ,
+      action: "refund",
+      status: "approved",
+      type: "partial",
+      transaction_id: TXN,
+      currency_code: "USD",
+      totals: { total: "1500", currency_code: "USD" },
+    },
+  };
+  const txnEvent = { event_id: "evt_01topupheld", event_type: "transaction.completed", occurred_at: "2026-09-27T10:00:00Z", data: txn() };
+
+  function storeAnswering(onHold: number | null | undefined, duplicate = false) {
+    const store = new Store();
+    store.refundApiTopup = async (_ext: string, id: string, cents: number | null) => {
+      store.apiRefunds.set(id, cents);
+      return { duplicate, requested: 1250, taken: 250, shortfall: 1000, onHold };
+    };
+    return store;
+  }
+
+  async function run(onHold: number | null | undefined, duplicate = false) {
+    const store = storeAnswering(onHold, duplicate);
+    const warned: string[] = [];
+    const log = { info() {}, warn: (m: string) => void warned.push(m), error() {} };
+    const send = (e: Record<string, unknown>) => {
+      const body = JSON.stringify(e);
+      return handlePaddleWebhook(
+        { method: "POST", rawBody: body, signature: sign(body) },
+        { secret: SECRET, prices, store, now: () => NOW_MS, log, apiProductId: PRODUCT },
+      );
+    };
+    await send(txnEvent);
+    expect((await send(refundEvent)).status).toBe(200);
+    return { detail: store.events.get("evt_01refundheld")?.detail ?? "", warned: warned.join("\n") };
+  }
+
+  it("records the held part as on hold, not as spent", async () => {
+    const { detail, warned } = await run(700);
+    for (const text of [detail, warned]) {
+      expect(text).toContain("1000 API cents not taken back yet: 700 on hold (taken back if the hold is released), 300 already spent");
+      expect(text).not.toContain("1000 API cents were already spent");
+    }
+  });
+
+  it("says spent only when nothing was on hold", async () => {
+    expect((await run(0)).detail).toContain("1000 API cents were already spent");
+  });
+
+  it.each([[null], [undefined]])("does not guess when the database did not say (%s)", async (onHold) => {
+    const { detail, warned } = await run(onHold);
+    for (const text of [detail, warned]) {
+      expect(text).toContain("spent or on hold: the database did not say which");
+      expect(text).not.toContain("already spent");
+    }
+  });
+
+  it("does not repeat a recorded on-hold figure on a duplicate delivery", async () => {
+    // The database answers a duplicate with what it recorded when the refund first landed; those cents may since have been
+    // collected (released) or spent (captured), so the webhook neither logs nor records them as on hold today.
+    const { detail, warned } = await run(700, true);
+    expect(warned).toBe("");
+    expect(detail).toBe("refund of API top-up already recorded");
+  });
+
+  it("never reports more on hold than the shortfall", () => {
+    expect(apiShortfallWords(1000, 5000)).toBe(
+      "1000 API cents not taken back yet: 1000 on hold (taken back if the hold is released), 0 already spent",
+    );
+    expect(apiShortfallWords(1000, Number.NaN)).toContain("did not say which");
+  });
+});
+
+describe("createRestStore: api_refund_topup's answer", () => {
+  function storeReturning(answer: Record<string, unknown>) {
+    const calls: { url: string; body: unknown }[] = [];
+    const store = createRestStore({
+      url: "https://proj.supabase.co",
+      serviceKey: "service-key-never-logged",
+      fetch: async (url, init) => {
+        calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+        return new Response(JSON.stringify(answer), { status: 200 });
+      },
+    });
+    return { store, calls };
+  }
+
+  it("maps on_hold_cents (0168) to onHold, with the RPC's own arguments", async () => {
+    const { store, calls } = storeReturning({
+      duplicate: false, requested_cents: 2500, taken_cents: 500, shortfall_cents: 2000, on_hold_cents: 1500, ledger_id: 9,
+    });
+    const res = await store.refundApiTopup!(TXN, ADJ, null, "Paddle adj", "chargeback");
+    expect(res).toEqual({ duplicate: false, requested: 2500, taken: 500, shortfall: 2000, onHold: 1500 });
+    expect(calls).toEqual([{
+      url: "https://proj.supabase.co/rest/v1/rpc/api_refund_topup",
+      body: { p_external_id: TXN, p_refund_id: ADJ, p_cents: null, p_note: "Paddle adj", p_reason: "chargeback" },
+    }]);
+  });
+
+  it("keeps 0 as 0 and a missing on_hold_cents (0168 not applied) as unknown", async () => {
+    const zero = await storeReturning({ duplicate: false, requested_cents: 2500, taken_cents: 2500, shortfall_cents: 0, on_hold_cents: 0 })
+      .store.refundApiTopup!(TXN, ADJ, null, "n", "refund");
+    expect(zero.onHold).toBe(0);
+    const before = await storeReturning({ duplicate: false, requested_cents: 2500, taken_cents: 500, shortfall_cents: 2000 })
+      .store.refundApiTopup!(TXN, ADJ, null, "n", "refund");
+    expect(before.onHold).toBeNull();
+    const nulled = await storeReturning({ duplicate: true, requested_cents: 2500, taken_cents: 500, shortfall_cents: 2000, on_hold_cents: null })
+      .store.refundApiTopup!(TXN, ADJ, null, "n", "refund");
+    expect(nulled.onHold).toBeNull();
   });
 });
