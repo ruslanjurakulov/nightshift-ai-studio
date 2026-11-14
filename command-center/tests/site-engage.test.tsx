@@ -252,7 +252,11 @@ describe("the landing page's reasons to stay", () => {
     // too, on its picture inside the gallery, and every one of them agrees. Each is visually hidden until a keyboard focuses it
     // (the owner wants no visible pause word or icon), so it is still in the tab order and named for a screen reader.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
-    expect(outsideGallery(all())).toHaveLength(2);
+    // The models strip (components/site/motion/ModelMarquee.tsx) moves by itself, so it carries the same switch, once (also
+    // visually hidden until a keyboard focuses it).
+    const inStrip = all().filter((b) => b.closest(".nx-marquee"));
+    expect(inStrip).toHaveLength(container.querySelector(".nx-marquee") ? 1 : 0);
+    expect(outsideGallery(all()).filter((b) => !b.closest(".nx-marquee"))).toHaveLength(2);
     const inGallery = all().filter((b) => b.closest(GALLERY));
     expect(inGallery).toHaveLength(landingSamples().clips);
     for (const b of inGallery) expect(b.closest(SAMPLE_CARD)).toBeTruthy();

@@ -201,4 +201,10 @@ export interface ShowcaseFiles {
   posterSm: string;
   /** null for a picture. */
   clip: { mp4: string; webm: string; smMp4: string; smWebm: string } | null;
+  /**
+   * A larger rendition than the 1280 one, only when the model's own output is larger (never an upscale): its still, its
+   * real width, and its clip for a video. No entry has one today (the site's clips are 720p to 768p); the pages already offer
+   * it to a wide screen when it is there (lib/site/renditions.ts) and fall back to the 1280 files when it is not.
+   */
+  lg?: { poster: string; width: number; clip: { mp4: string; webm: string } | null };
 }

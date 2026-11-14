@@ -9,10 +9,12 @@ import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import { SiteEffects } from "@/components/site/SiteEffects";
 import { PageViewBeacon } from "@/components/site/PageViewBeacon";
+import { SiteMotion } from "@/components/site/motion/SiteMotion";
 import { DEFAULT_LOCALE, LOCALES, dictionaries } from "@/lib/i18n";
 import { devFor } from "@/lib/i18n/dev";
 import "@/components/site/site.css";
 import "@/components/site/site-next.css";
+import "@/components/site/site-motion.css";
 
 /** Which top-level page the visitor is on, for the nav's lit item. */
 export type PublicSection = "home" | "studio" | "solutions" | "pricing" | "docs" | "legal" | null;
@@ -125,6 +127,7 @@ export function PublicShell({
       </main>
       <PublicFooter t={t} />
       <SiteEffects />
+      <SiteMotion />
       <PageViewBeacon />
     </div>
   );

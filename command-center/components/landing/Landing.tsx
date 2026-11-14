@@ -30,6 +30,7 @@ import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
+import { ModelMarquee } from "@/components/site/motion/ModelMarquee";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 import { SampleCarousel, SampleCompare, SampleTicker } from "@/components/site/landing-samples";
 import "@/components/site/explore-hover.css";
@@ -96,6 +97,7 @@ export function Landing({
       <ShowcaseGallery t={t} locale={locale} exclude={leftOut} formats={formats} />
       {/* Named one-press shots that open the Studio's video form (lib/effects/catalog.ts); it names no model. */}
       <EffectsGallery t={t} />
+      <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} />
       <ModelTiles t={t} items={onPage} />
       <SampleCompare t={t} locale={locale} exclude={leftOut} />
       <Showcases t={t} />
@@ -214,7 +216,10 @@ function Facts({ t, locale, anchor, entries }: { t: Dictionary; locale: Locale; 
         <ul className="nx-facts-list">
           {items.map((i) => (
             <li key={i.id} data-fact={i.id}>
-              <span className="nx-facts-n">{formatCredits(i.n, locale)}</span>
+              {/* data-count: the count-up's target (components/site/motion/attach.ts); the text stays the server's number. */}
+              <span className="nx-facts-n" data-count={i.n}>
+                {formatCredits(i.n, locale)}
+              </span>
               <span className="nx-facts-l">{i.label}</span>
             </li>
           ))}
