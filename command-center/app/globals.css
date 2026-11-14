@@ -2705,6 +2705,43 @@ html:has(.app-shell) { scroll-padding-top: calc(var(--ns-shell-h, 4rem) + 0.5rem
   --color-border: var(--rule);
   --color-fg: var(--text);
   --color-muted: var(--dim);
+  --color-primary: var(--violet-ink);
+  --ns-cta-bg: var(--grad);
+  --ns-cta-fg: #ffffff;
+  /* Resolved at :root from the old --ns-cta-bg, so they are set again here. */
+  --cta-base: #1a5fd0;
+  --cta-fg: #ffffff;
+  --studio-cta-bg: var(--grad);
+  --studio-cta-fg: #ffffff;
+  --studio-field: var(--key);
+  --studio-raised: var(--console);
+  /* The brand key's tinted glass (app/glass.css, app/(app)/app-glass.css): electric blue on the Studio, white words >= 4.7:1. */
+  --glass-primary: rgb(26 95 208 / 0.95);
+  --glass-primary-fg: #ffffff;
+  --glass-primary-edge-hi: #57a2ff;
+  --glass-primary-edge-lo: #0d3f96;
+  --glass-primary-glow: 0 1px 2px rgb(13 63 150 / 0.3), 0 8px 20px -8px rgb(47 139 255 / 0.6);
+  --ns-amber: var(--amber);
+  --ns-amber-ink: var(--amber-ink);
+  --ns-on-amber: var(--on-amber);
+  --ns-act: var(--run);
+  --ns-act-ink: var(--violet-ink);
+  --ns-act-soft: var(--violet-soft);
+  --ns-focus: var(--focus);
+  --ns-lit-edge: var(--run-glow);
+  --ns-lit-glow: var(--run-glow);
+  --ns-console: var(--console);
+  --ns-key: var(--key);
+  --ns-key-hi: var(--key-hi);
+  --ns-rule: var(--rule);
+  --ns-rule-strong: var(--rule-strong);
+  --ns-text: var(--text);
+  --ns-text-dim: var(--dim);
+  --ns-hover: var(--key);
+  --ns-go: var(--go);
+  --ns-tally: var(--tally);
+  --ns-caution: var(--caution);
+  --ns-lamp-off: var(--lamp-off);
 }
 :root[data-theme="light"] :is(.cv-root, .cv-appbar, .cv-rail, .cv-tok) {
   --ground: #e9f0fa; --canvas: #f3f7fd; --console: #ffffff; --raise: #f8fbff; --key: #e8eff9; --key-hi: #dce6f4;
