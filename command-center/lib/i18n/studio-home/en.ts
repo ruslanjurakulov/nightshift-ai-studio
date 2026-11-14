@@ -41,9 +41,13 @@ export const studioHomeEn = {
     wrongKind: "The library did not store this file as a picture or a video, so it was not attached.",
     uploadForbidden: "The library would not show this upload to your account. Sign in again, then attach the file again with +.",
     uploadGone: "The upload is no longer in the library (it was dismissed or cleaned up). Attach the file again with +.",
-    /** The home page's file, before anything is uploaded: the person decides (Use / Discard). */
-    confirmTitle: "Use the file you attached on the home page — {name}?",
-    confirmNote: "It goes into your library only if you choose Use. Nothing is made until you press Generate.",
+    /**
+     * The home page's file, before anything is uploaded: the person decides (Use / Discard). Neutral words only, no picture and no
+     * name: the person who signed in may not be the one who chose the file (a shared browser), so nothing of it is shown until Use.
+     */
+    confirmImage: "A picture was attached on the home page in this browser. Use it?",
+    confirmVideo: "A video was attached on the home page in this browser. Use it?",
+    confirmNote: "It is shown, and goes into your library, only if you choose Use. Nothing is made until you press Generate.",
     confirmUse: "Use it",
     confirmDiscard: "Discard",
     discarded: "The file was discarded. It was never uploaded.",

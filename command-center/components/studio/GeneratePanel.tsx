@@ -147,7 +147,13 @@ export function GeneratePanel({
   attachBusy = false,
   attachNote = null,
   onSubmittingChange,
+  onEdit,
 }: {
+  /**
+   * Told on each change the person makes to the form after it mounted (the words, the tool, the model, any setting): the page never
+   * swaps a box the person has touched (StudioHome's attachment). Unlike onDraftChange, never on the mount itself.
+   */
+  onEdit?: () => void;
   /** Told when a press of Generate starts and ends: the page never swaps this box under a create in flight (StudioHome). */
   onSubmittingChange?: (submitting: boolean) => void;
   /**
@@ -265,6 +271,20 @@ export function GeneratePanel({
   const [quality, setQuality] = useState<ImageQuality | null>(initial?.quality ?? null);
   // 0070: a clip's soundtrack; null = not picked, so the model's default (silent) applies.
   const [sound, setSound] = useState<boolean | null>(initial?.audio ?? null);
+  // What the person has set, as asked (not the effective values, which also move when the models or the style kits load): a change
+  // from the mounted form is theirs. Compared to the last key seen, so React's second effect run on mount is not a change.
+  const editKey = JSON.stringify([
+    capability, prompt, aspect, duration, resolution, model, auto, sourceId, factor, styleKitId, voiceId, targetLanguage, endFrameId,
+    target, shape, look, describeLanguage, quality, sound,
+  ]);
+  const seenEdit = useRef(editKey);
+  const editRef = useRef(onEdit);
+  editRef.current = onEdit;
+  useEffect(() => {
+    if (editKey === seenEdit.current) return;
+    seenEdit.current = editKey;
+    editRef.current?.();
+  }, [editKey]);
   const styles = useStyleKits(orgId);
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
@@ -1796,7 +1816,12 @@ export function GeneratePanel({
                   data-testid="composer-attach"
                   disabled={attachBusy}
                   aria-busy={attachBusy || undefined}
-                  onClick={() => filePicker.current?.click()}
+                  onClick={(e) => {
+                    // Focus leaves the words here on every browser (Safari does not focus a clicked button): the page reads a focused
+                    // words box at the upload's end as "still typing" and then does not swap the box (StudioHome attachFile).
+                    e.currentTarget.focus();
+                    filePicker.current?.click();
+                  }}
                 >
                   <Plus aria-hidden className="size-[18px]" />
                 </button>
