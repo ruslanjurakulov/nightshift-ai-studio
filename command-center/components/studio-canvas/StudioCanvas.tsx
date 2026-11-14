@@ -436,8 +436,14 @@ export function StudioCanvas({
       if (document.querySelector('[role="dialog"]')) return;
       if (e.key === "Escape") {
         if (drawer || inspecting) {
+          const wasInspecting = inspecting && selected;
           setDrawer(false);
           setInspecting(false);
+          // Focus goes back to the card that was open, not to the page: the keyboard keeps its place.
+          if (wasInspecting) {
+            const id = selected;
+            requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(id)}"]`)?.focus());
+          }
         } else {
           setSelected(null);
           setSelectedWire(null);
