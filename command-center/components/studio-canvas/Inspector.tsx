@@ -305,10 +305,10 @@ export function Inspector({
             <p className="cv-note is-warn" data-testid="inspector-unavailable">
               <strong>{c.node.notAvailable}.</strong> {c.inspector.unavailable}
             </p>
-          ) : status === "working" || status === "queued" ? (
+          ) : status === "working" || status === "queued" || status === "loading" ? (
             // One job per node at a time: a second press would start (and pay for) another and drop this one off the canvas.
             <p className="cv-note" data-testid="inspector-busy">
-              {c.inspector.busy}
+              {status === "loading" ? c.node.reading : c.inspector.busy}
             </p>
           ) : node.kind === "effects" && !effect ? null : (
             <GeneratePanel

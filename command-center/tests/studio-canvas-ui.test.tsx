@@ -115,9 +115,12 @@ function openNode(id: string) {
 }
 
 let narrow = false;
+/** Job reads held open until the test releases them (two refreshes ending in the same tick). */
+let gates: Map<string, Promise<void>> | null = null;
 function mockFetch() {
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    for (const [id, gate] of gates ?? []) if (url.includes(id)) await gate;
     if (url.startsWith("/api/media")) {
       return new Response(
         JSON.stringify({
@@ -163,6 +166,7 @@ const node = (id: string, kind: string, x = 0, extra: Record<string, unknown> = 
 beforeEach(() => {
   narrow = false;
   seqReads = 0;
+  gates = null;
   window.localStorage.clear();
   panel.props = [];
   window.matchMedia = ((q: string) => ({ matches: narrow && q.includes("max-width"), media: q, addEventListener() {}, removeEventListener() {} })) as never;
@@ -527,6 +531,26 @@ describe("review fixes", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("two job reads ending in the same tick both land: a new job never stays \"loading\"", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    gates = new Map([
+      [JOB_DONE, gate],
+      [JOB_NEW, gate],
+    ]);
+    store({ nodes: [node("a", "image", 0, { jobId: JOB_DONE }), node("b", "image", 400)], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("b");
+    fireEvent.click(await screen.findByRole("button", { name: "press" }));
+    // Both reads are in flight (a's first read, b's new job); they resolve together.
+    await act(async () => {
+      release();
+    });
+    await waitFor(() => expect(document.querySelector('[data-node-id="a"]')!.getAttribute("data-status")).toBe("done"));
+    await waitFor(() => expect(document.querySelector('[data-node-id="b"]')!.getAttribute("data-status")).toBe("working"));
   });
 
   it("a starter that needs a tool with nothing on sale is shown with its reason and builds nothing", async () => {
