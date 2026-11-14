@@ -706,7 +706,10 @@ def test_applying_the_migration_twice_keeps_links_settings_and_rewards(conn):
         for _ in range(2):
             sec_db.apply_files(_dsn(conn), [sec_db.MIGRATIONS / "0092_friend_invites.sql"])
         # 0165 replaces two of 0092's bodies and its guard accepts 0092's: it goes back on, as a database that has both would be.
+        # 0167 sits on 0165's lot trigger, which 0165's guard does not accept: off before 0165's replay, back on after.
+        sec_db.take_off_0167(conn)
         sec_db.apply_files(_dsn(conn), [sec_db.MIGRATION_0165])
+        sec_db.put_back_0167(conn)
         with as_superuser(conn, commit=False) as s:
             after = s.rows("select (select count(*) from public.friend_invite_links), "
                            "(select count(*) from public.friend_invite_joins), "

@@ -79,7 +79,7 @@ export const planFinderUz: PlanFinderDictionary = {
     perMinute: "daqiqasiga",
     minimum: "Har qanday ishga tushirishning eng kichik bandi",
     perRun: "ishga tushirishga",
-    studio: "Studiya",
+    studio: "Nightshift Studio",
     notOnSale: "Sotuvda emas",
     notOpen: "Hozircha hech bir ish maydoniga ochiq emas",
     firstPurchase: "Birinchi kredit xarididan keyin",

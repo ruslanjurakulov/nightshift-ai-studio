@@ -67,6 +67,23 @@ class AuditActions(unittest.TestCase):
         self.assertTrue({"api_key.create", "api.activate"} <= written, sorted(written))
         self.assertEqual(sorted(written - database_actions()), [])
 
+    def test_every_action_a_live_api_function_audits_through_api_audit_is_in_the_list(self):
+        # api_request_download audited 'video.download' from 0031 on; 0087's list never had it, so from 0087 every new API
+        # download answered 500 and charged nothing (0170). Only each function's LATEST body runs, so only that one is read.
+        latest: dict[str, str] = {}
+        for path in sorted((REPO / "supabase" / "migrations").glob("*.sql")):
+            text = path.read_text(encoding="utf-8")
+            for fn in re.finditer(r"create or replace function public\.(\w+)\((.*?)\n\$\$;", text, re.S | re.I):
+                latest[fn.group(1)] = fn.group(2)
+        written = {}
+        for name, body in latest.items():
+            for action in re.findall(r"api_audit\(\s*\w+\s*,\s*'([a-z_]+\.[a-z_.]+)'", body):
+                written.setdefault(action, set()).add(name)
+        self.assertGreaterEqual(len(written), 4, sorted(written))
+        refused = {a: sorted(fns) for a, fns in written.items() if a not in database_actions()}
+        self.assertEqual(refused, {}, "api_audit actions the audit list refuses for the API's role (the call answers 500)")
+        self.assertIn("api_request_download", written["video.download_request"])
+
     def test_the_value_built_actions_are_covered_by_the_two_patterns(self):
         built = {a for a in logged_actions() if "$" in a}
         self.assertEqual(sorted(built), ["learning.${parsed.decision}", "social.${account.platform}.disconnect"])

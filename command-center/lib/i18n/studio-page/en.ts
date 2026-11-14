@@ -8,12 +8,12 @@
  */
 export const studioPageEn = {
   meta: {
-    title: "What you can make and edit · Nightshift",
+    title: "Nightshift Studio: what you can make and edit",
     description:
-      "Read the plan before a video is made, cut your own videos in the editor, keep uploads private until you publish, and see the price before anything is spent.",
+      "Nightshift Studio: read the plan before a video is made, cut your own videos in the editor, keep uploads private until you publish, and see every price first.",
   },
   hero: {
-    label: "Studio",
+    label: "Nightshift Studio",
     title: "What you can make and edit.",
     lead: "Nightshift makes a YouTube video from a topic, lets you read the plan before it is paid for, and has an editor for your own cuts. This page lists what is in the product today, and says where a tool needs setting up first.",
     cta: "Start free",

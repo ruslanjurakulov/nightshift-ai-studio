@@ -517,6 +517,32 @@ def put_back_0159(session) -> None:
     session.conn.execute(MIGRATION_0159.read_text(encoding="utf-8"))
 
 
+MIGRATION_0167 = MIGRATIONS / "0167_refund_hold_recovery.sql"
+ROLLBACK_0167 = REPO / "docs" / "sql" / "rollback_0167_refund_hold_recovery.sql"
+
+
+def has_0167(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.credit_refund_recover()') is not null").fetchone()[0])
+
+
+def take_off_0167(conn_or_session) -> None:
+    """0167 replaces refund_purchased_credits() on 0034's body, which 0146 (its replay) pins ("what it builds on and leaves alone"), and
+    credit_transactions_apply_lots() on 0165's body, which 0165's replay and rollback pin. A test that replays 0146 or 0165, or applies
+    either rollback, on a database that has 0167 takes 0167 off first with its own rollback (it puts 0034's refund body and 0165's lot
+    trigger back; the recoveries table stays), and puts it back with put_back_0167 where the chain goes on."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0167(conn):
+        text = ROLLBACK_0167.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0167(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0167(conn):
+        conn.execute(MIGRATION_0167.read_text(encoding="utf-8"))
+
+
 def migration_files() -> list[Path]:
     """Every migration, in sorted filename order — the order a fresh project
     applies them. Numbers need not be contiguous (migrations can merge out of

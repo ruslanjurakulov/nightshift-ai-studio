@@ -1594,3 +1594,146 @@ exists: no existing table, column, row, policy, constraint or function body is t
   - `tests/security/test_sec_films_core.py`: a real PostgreSQL. It covers tenancy, direct writes, draft-only, versions and the
     lock, events, limits, frame roles, models, idempotency, replay and rollback.
   - `tests/security/sec_films_0166.py`: the shared lab's contract and seed.
+
+## A refund that met a hold collects when the hold is released (0167)
+
+0167 (`0167_refund_hold_recovery.sql`) closes Breach BR-0034-01: a buyer could keep refunded credits by holding them first.
+`refund_purchased_credits` (0021, body of 0034) takes back at most what is available (balance - reserved) and recorded the rest as a
+shortfall for good, as if spent. A workspace owner or admin can call `reserve_credits` for everything from the browser, have the
+payment refunded (the refund then takes 0), and three hours later the unstarted hold is released and the credits are back. In the
+lab: a 1000-credit pack refunded in full left 1100 credits where 100 should have been.
+
+- **Design.** The held part of a shortfall stays open and is collected when those holds are RELEASED; a CAPTURED hold is real
+  spending and the shortfall stands as recorded. Chosen over "the refund releases unstarted holds first", which leaves started holds
+  (a run that fails after it began, or never settles) giving the credits back the same way, and cancels a queued run nobody cancelled.
+  No run is interrupted or refused by this file.
+- **`credit_refund_recoveries`.** One row per refund whose shortfall met open holds: `holds` (the job ids open at that moment),
+  `owed` = least(shortfall, reserved), `collected` (taken back by a ledger row) and `lapsed` (the refunded purchase's own credits that
+  expired while on the hold: gone from the buyer as the refund meant, so counted without a collection). 0 <= collected + lapsed <=
+  owed; both only go up (one subscription lot can carry two payments after a mid-period upgrade: `lapsed` still never exceeds what
+  expired, and no row passes its owed); a guard trigger refuses any other change, a delete or a truncate. RLS on, no policy, select for the service
+  role only, like `credit_refunds`. A recovery is still open only while one of its holds is open (the documented query checks that;
+  one whose holds were all captured is spent).
+- **`credit_refund_recover()`.** AFTER INSERT trigger `credit_transactions_recover_refunds` on `credit_transactions`, for `release`
+  rows only (every release goes through one: `credit_release_locked` and the unused part of `capture_credits`). It fires after
+  `credit_transactions_apply_lots` (same-event triggers fire in name order; the end state checks the catalog holds exactly those two
+  row-level AFTER INSERT triggers, in that order), so the hold's lots are back, and the ones that ran out expired, before it looks.
+  Per release it takes least(what is still owed, what THIS release gave back to lots that are still live, what is available), oldest
+  refund first, only for holds that were open when the refund was recorded. "Gave back to live lots" is read from the release row's
+  own `credit_lot_moves`: Lens (#766) showed that a cap on `available` alone let a refunded pack that expired while held be paid
+  again from a pack bought afterwards. A later hold, on later credits, is never touched: a refund does not eat the next purchase.
+  It spends FROM the lots that release gave back (the refunded purchase's own first, then spend order): one `refund` ledger row
+  per lot, each naming its lot for the lot trigger, so a later purchase's lot never pays (Lens round 2). Each row is written with
+  `created_by` null (the platform's act, also when the release ran inside the buyer's own `reserve_credits`). A release that meets
+  no open recovery returns after one probe of `credit_refund_recoveries_open_idx`; the moves queries are narrowed by the hold's
+  job (`credit_lot_moves_job_idx`), since `credit_lot_moves` has no index on `txn_id` (Lens measured 21.9 ms a release at 200k moves
+  without it). Runs under the account lock the releasing function already holds, so it serialises with `reserve_credits` and the
+  refund.
+- **`credit_transactions_apply_lots`.** 0165's body (0034's plus the referral programme's `adjust` hunk) plus marked lines: a
+  `refund` row's spend may name its first lot through `nightshift.refund_lot` (a lot id, this organization's lots only). Unset, which
+  is every other caller, it is 0165's behaviour exactly. 0165's `nightshift.adjust_lot_first` is not reused: it names an external id
+  for an `adjust` row, while a collection must name a lot id (a grant or carry-over lot has no external id) for a `refund` row. Each
+  setting is read only in its own kind's branch, and each writer sets it transaction-local just before its insert and resets it
+  right after, so the two cannot meet.
+- **Known gap, by design.** A future path that refunds a CAPTURED run (credits given back after `capture_credits`) is not a release
+  and would reopen the leak; it must consult `credit_refund_recoveries` or go through a release row. None exists today (0030's
+  download refund restores a charge that had no hold).
+- **Webhooks.** `supabase/functions/_shared/paddle.ts` and `dodo.ts` read `on_hold`: the log line and the event row say "N on hold, taken back
+  if the hold is released and not spent" and only the rest "already spent"; without 0167 (no `on_hold`) the shortfall is one figure,
+  not called spent.
+- **`refund_purchased_credits`.** 0034's body, line for line, plus lines marked `-- 0167`: the recovery row, `on_hold` in the answer
+  (and in a duplicate's), and a ledger note that says how much is on hold instead of calling it spent. Same signature, refusals,
+  idempotency on refund_id and grants.
+- **md5.** `refund_purchased_credits` before `766daf507d4e70711b8622aebbea7705` (0034), after `1024ac369b7a18830ac547e41c5ca89e`;
+  `credit_transactions_apply_lots` before `fcd28a68b841d8d539d3798f919a0d01` (0165), after `6098f97a7630bed24807bb7c5ef6eefe`;
+  `credit_refund_recover` `0c16bb426e63c1bc1d9fa2518f45b921` (drift guard, end state, rollback).
+- **Not changed here.** `api_refund_topup` (0031, the API balance in cents) and `owner_reverse_grant` (0107) apply the same "available
+  only" rule to their own tables; reported for their own ledger rows.
+- **Number.** 0167 (provisional; 0163 is held by another open branch; 0164 to 0166 are merged). Needs 0020, 0021, 0034 and 0165 (the lot
+  trigger's latest body); names nothing else of 0035 to 0166. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0167_refund_hold_recovery.sql` (owner-applied): refuses bodies that are not 0167's, drops the trigger
+  and its function, puts 0034's `refund_purchased_credits` and 0165's `credit_transactions_apply_lots` back verbatim. The table stays as the
+  record.
+- **Tests.** `tests/test_refund_hold_recovery_migration.py` (the text, the hashes, the rollback, the numbering),
+  `tests/security/test_sec_breach_refund_hold.py` (the attack) and `tests/security/test_sec_refund_hold_recovery.py` (partial holds,
+  capture, two refunds, a later hold, lots expiring on the hold, a subscription payment, a never-settled started hold, a storyboard
+  undo, created_by, the open query, the lot a collection spends, plan checks that no query scans `credit_lot_moves` and that a
+  release with no recovery reads nothing, replay, concurrency with `reserve_credits`; a real PostgreSQL);
+  `command-center/tests/paddle-webhook.test.ts` and `dodo-webhook.test.ts` (the wording).
+
+## An API top-up refund that met a hold collects when the hold is released (0168)
+
+0168 (`0168_api_refund_hold_recovery.sql`) closes BR-0031-01 (Lens, high): a customer could keep a refunded API top-up by holding it
+first. `api_refund_topup` (0031, never redefined) takes back at most what is available (`balance_cents - reserved_cents`) and recorded
+the rest in the ledger note as "already spent", for good. The customer's own API key makes the holds (`api_create_video`,
+`api_request_download`) and can make the runs fail on purpose (a channel pointed at an unavailable voice stops before spending, rule
+4); a failed job, a failed download and a hold that never starts or never settles in 24 hours are released in full. In the lab: a
+5000-cent top-up refunded in full left a balance of 5000 where it should have been 0.
+
+- **Design.** 0167's for site credits (BR-0034-01), carried over to the API balance. The held part of a shortfall stays open and is
+  collected when those holds are RELEASED; a CAPTURED hold is real spending and the shortfall stands. No run is interrupted.
+- **`api_refund_recoveries`.** One row per refund whose shortfall met open holds: the refund id and its ledger row, the top-up, the
+  organization, the reason, `holds` (the refs open at that moment), `owed` = least(shortfall, reserved, the open holds' sum) and
+  `collected` (0 <= collected <= owed, only goes up; a guard trigger refuses any other change, a delete or a truncate). RLS on, no
+  policy, select for the service role only.
+- **`api_refund_recover()`.** AFTER INSERT trigger `api_ledger_recover_refunds` on `api_ledger`, for `release` rows of a hold only
+  (every release goes through `api_settle_locked`: the job trigger, the download trigger, the 24-hour expiry). It first checks the row
+  is a real release (the hold says `released`, same amount). A release pays at most what it gave back, shared across the refunds that
+  met that hold in the order they were recorded, and never more than is available: least(still owed, left of this release,
+  available). API cents have no lots and never expire, and nothing can lower the balance under a hold, so a release gives back
+  exactly its amount; this cap is what keeps a top-up made after the refund whole (the Lens finding on 0167). Only holds open when
+  the refund was recorded pay. The collection is a `refund` row in `api_ledger` (`source_external_id` = the top-up, `hold_ref` = the
+  hold, `requested_cents` null so later refunds of the same top-up still add up correctly) written with `created_by` NULL: a release
+  can run inside the customer's own API call (the lazy expiry), and `api_log` would have stamped the customer's id on it.
+- **`api_refund_topup`.** 0031's body, line for line, plus lines marked `-- 0168`: the recovery row, `on_hold_cents` in the answer
+  (and in a duplicate's), and a ledger note that says how much is on hold instead of calling it spent. Same signature, refusals,
+  idempotency on the refund id, `paid_total_cents` arithmetic and grants (service role only).
+- **The webhook.** `supabase/functions/_shared/paddle.ts` reads `on_hold_cents` and words the shortfall as on hold or spent; when the
+  database does not answer it (0168 not applied) it says it does not know which, rather than "spent" (rule 5). A duplicate delivery is
+  not logged again: its on-hold figure is the one recorded when the refund first landed.
+- **Still open.** The footer's query lists a recovery only while `collected < owed` AND one of its holds is still `open`; a
+  refund whose holds were all captured keeps `collected < owed` for good and is a shortfall that stands, not an open one.
+- **Locks.** First run: CREATE TRIGGER, SHARE ROW EXCLUSIVE on `api_ledger`. A re-run: DROP TRIGGER of the existing trigger,
+  ACCESS EXCLUSIVE on `api_ledger` (reads wait too) until commit; `lock_timeout` 5s.
+- **md5.** `api_refund_topup` before `a9d2287173b12b704808e7b3747b05e0` (0031), after `74ea95ec27564e57b7b989a906a15842`;
+  `api_refund_recover` `785ca1a1df7d72192bd98dbfd9122a37` (drift guard, end state, rollback).
+- **Not changed here.** `owner_reverse_grant` (0107, site credits) has the same "available only" rule (BR-0107-01, low, open, a failing
+  test in `tests/security/test_sec_breach_owner_reverse_hold.py`); its collection belongs next to 0167's trigger on
+  `credit_transactions` so that the two never both collect one release.
+- **Number.** 0168 (provisional; 0163 to 0167 are held by other open branches). Needs 0031; names nothing of 0032 to 0167. The
+  numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0168_api_refund_hold_recovery.sql` (owner-applied): refuses bodies that are not 0168's, drops the
+  trigger and its function, puts 0031's body back verbatim. The table stays as the record.
+- **Tests.** `tests/test_api_refund_hold_recovery_migration.py` (the text, the hashes, the rollback, the webhook wording, the
+  numbering), `tests/security/test_sec_breach_api_refund_hold.py` (the attack) and `tests/security/test_sec_api_refund_hold_recovery.py`
+  (partial holds, the 24-hour expiry, capture, two refunds, one hold met by two refunds with a later top-up, one refund over two
+  holds, a later hold, a download hold, held cents not consumable, a forged release, replay, the record's guard, who wrote the
+  collection, concurrency with `api_create_video` in both orders; a real PostgreSQL), `command-center/tests/api-topup-webhook.test.ts`.
+
+## An HD download through the public API audits a name the audit list has (0170)
+
+0170 (`0170_api_download_audit.sql`) is a **fix, live on apply**: from the moment it is applied, an API key's download request
+(`api_request_download`, behind `POST /api/v1/videos/{id}/downloads`) can create a paid, redownload or exempt download again.
+
+- **The failure.** `api_request_download` (0031, rebuilt by 0042 and 0147) audited itself as `video.download`. Since 0087,
+  `app_audit_log_stamp` refuses an action that `audit_action_allowed()` does not list with 22023 for the anon and
+  authenticated roles, which every API call runs as; the list has `video.download_request` and never had `video.download`.
+  The function's own `exception when others` turned that into `500 internal_error` and undid its block: no request row, no
+  hold, no ledger row, nothing charged. Only the "reused" answer (no audit row) worked. It failed closed, but the paid
+  feature did not work at all.
+- **The change.** One hunk in `api_request_download`: it audits `video.download_request`, the name the Command Center's own
+  download route writes for the same act (`command-center/app/api/downloads/route.ts`). The row still carries `via=api` and
+  the key's id. The audit list is not changed (nothing is widened); no reader expects `video.download` (the audit page
+  prints the action as stored). Every other line, price, hold, refusal and grant is 0147's.
+- **md5.** `api_request_download` before `055003f8a2fb5390bbd1b5f7820e6e2e` (0147), after `b59ca71d0e0379e217e47a6987c9ed0c`
+  (drift guard, end state, Verify, rollback).
+- **Number.** 0170, provisional (0169 is held by an open pull request, #750); it is changed at merge if another branch takes it.
+  Needs 0031, 0042, 0087 and 0147; names nothing of 0148 to 0169. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Replay.** `create or replace`, then revoke and grant: a replay changes nothing. Re-running 0147 after 0170 is refused by
+  0147's drift guard: apply the rollback first, re-run 0147, then 0170 again.
+- **Undo.** `docs/sql/rollback_0170_api_download_audit.sql` (owner-applied): refuses unless the body is 0170's, puts 0147's back
+  byte for byte with its grant (anon only). It brings the failure back.
+- **Tests.** `tests/security/test_sec_api_download.py` (a real PostgreSQL: a paid download with its hold, ledger and audit row,
+  the same request reused without a second hold, a redownload, the exempt organization, another organization's key, the list
+  not widened, replay, rollback, drift guard), `tests/test_api_download_audit_migration.py` (0147's body plus one hunk),
+  `tests/test_audit_actions.py` (every `api_audit(...)` action in a function's latest body is on the list).

@@ -84,7 +84,8 @@ class SimpleAccountsMigration(unittest.TestCase):
         # Columns: ID | severity | area | title | status | ... A partially fixed row is still open.
         counts: dict[str, dict[str, int]] = {}
         for ln in LEDGER.splitlines():
-            if not re.match(r"\| BR-[A-Z]+-\d+ \| (critical|high|medium|low|info) \|", ln):
+            # Lanes are letters (BR-A-001) or, for Breach findings named after the migration they hit, digits (BR-0034-01).
+            if not re.match(r"\| BR-[A-Z0-9]+-\d+ \| (critical|high|medium|low|info) \|", ln):
                 continue
             cols = [c.strip() for c in ln.split("|")]
             state = cols[5].split()[0]
