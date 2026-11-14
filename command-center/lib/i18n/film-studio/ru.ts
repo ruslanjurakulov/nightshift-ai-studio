@@ -65,6 +65,7 @@ export const filmStudioRu: FilmStudioDictionary = {
     draft: "Черновик",
     planning: "Планируется",
     planned: "Спланирован",
+    queued: "Ожидает запуска",
     running: "Съёмка",
     draining: "Завершается",
     paused: "На паузе",

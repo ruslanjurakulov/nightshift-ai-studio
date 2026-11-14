@@ -1088,9 +1088,10 @@ def test_the_rollback_refuses_while_a_referral_exists_then_puts_the_earlier_bodi
                        "and to_regprocedure('public.my_referrals()') is null")
         assert s.value("select count(*) from information_schema.columns where table_schema = 'public' "
                        "and table_name = 'friend_invite_settings' and (column_name like 'referral_%%' or column_name = 'milestone_enabled')") == 0
-        # …and 0165 goes on again on top of it, and 0167 on top of that.
+        # …and 0165 goes on again on top of it, 0167 on top of that, and 0172 on top of 0167.
         assert s.run(sec_db.MIGRATION_0165.read_text(encoding="utf-8")).ok
         assert s.run(sec_db.MIGRATION_0167.read_text(encoding="utf-8")).ok
+        assert s.run(sec_db.MIGRATION_0172.read_text(encoding="utf-8")).ok
 
 
 def test_the_mailbox_key_of_the_seeded_friend_is_the_joins_own(conn, sc):
