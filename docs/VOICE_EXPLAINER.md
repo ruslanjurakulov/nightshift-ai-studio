@@ -293,7 +293,11 @@ and it reports, per recording and engine, the word error rate (normalised: case,
 `ʻ ' ` ‘ ’ ʼ` made one), the word count, and the share of words whose times run forward inside the recording. It decodes the
 exact 16 kHz mono copy the job sends, runs Whisper `base` locally (free) and Scribe through the job's own call (PAID, with the
 `ELEVENLABS_API_KEY` of whoever runs it). The plan and an estimate are printed first; nothing is sent without `--yes` or a typed
-`yes`, and `--dry-run` stops after the plan. An engine that fails is reported by its error code, never as a number. A newer
+`yes`, and `--dry-run` stops after the plan. An engine that fails is reported by its error code, never as a number.
+Every column is over EVERY word the engine returned, timed or not: for Scribe that is the vendor's own answer
+(`VoiceVideoAdapter.scribe(raw=True)`), not the job's list, which leaves the untimed words out (counted after that, `timed`
+would be 100 % by construction). So WER is what the engine heard in the narration; `timed` is how much of it the job could
+place on screen. A newer
 Scribe model (`scribe_v3`) is worth measuring this way before the engine id is bumped to it.
 
 ### Capacity (a CPU and memory risk; deploy defaults unchanged)

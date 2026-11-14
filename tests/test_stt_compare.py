@@ -190,5 +190,64 @@ class TheCommand(unittest.TestCase):
         self.prepare.assert_not_called()
 
 
+class ScribesOwnAnswer(unittest.TestCase):
+    """The Scribe column counts the vendor's answer, not the job's: the job leaves untimed words out, so a share of timed
+    words computed after that is 100 % by construction (rule 5: a default is not a measurement)."""
+
+    def test_two_of_four_untimed_words_read_half_timed_out_of_four_and_wer_counts_all_four(self):
+        from modules.capabilities import voice_video as vv
+        from tests.test_capabilities import FakeResp
+
+        body = {"language_code": "uzb", "text": "x", "words": [
+            {"text": "Oʻzbekiston", "start": 0.1, "end": 0.8, "type": "word"},
+            {"text": " ", "start": 0.8, "end": 0.9, "type": "spacing"},
+            {"text": "gʻalaba", "start": None, "end": None, "type": "word"},
+            {"text": "qozondi", "start": 1.6, "end": 2.2, "type": "word"},
+            {"text": "bugun", "start": 2.3, "end": None, "type": "word"},
+            {"text": "(applause)", "start": 2.6, "end": 2.9, "type": "audio_event"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            audio, ref = root / "a.wav", root / "a.txt"
+            audio.write_bytes(b"RIFF")
+            ref.write_text("Oʻzbekiston gʻalaba qozondi bugun", encoding="utf-8")
+
+            def prepare(a, work, i):
+                speech = work / f"{i}.wav"
+                speech.write_bytes(b"RIFF")
+                return speech, 3.0
+
+            sent = []
+
+            def call(self_, method, url, **kw):
+                sent.append(kw)
+                return FakeResp(200, body)
+
+            with mock.patch.object(sc, "prepare", side_effect=prepare), \
+                    mock.patch.object(vv.VoiceVideoAdapter, "_call", call), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                code = sc.main(["--pair", str(audio), str(ref), "--engines", "scribe", "--yes", "--json", str(root / "r.json")],
+                               env={"ELEVENLABS_API_KEY": KEY})
+            self.assertEqual(code, 0)
+            (row,) = json.loads((root / "r.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(row["words"], 4, "every word the vendor returned, never only the ones the job keeps")
+        self.assertEqual(row["timed"], 0.5)
+        self.assertEqual(row["wer"], 0.0, "WER is over every word heard, timed or not")
+
+    def test_the_job_still_gets_only_the_timed_words(self):
+        from modules.capabilities import voice_video as vv
+        from tests.test_capabilities import FakeResp
+
+        body = {"language_code": "uzb", "words": [{"text": "a", "start": 0.1, "end": 0.2, "type": "word"},
+                                                  {"text": "b", "start": None, "end": None, "type": "word"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            speech = Path(tmp) / "s.wav"
+            speech.write_bytes(b"RIFF")
+            a = vv.VoiceVideoAdapter(env={"ELEVENLABS_API_KEY": KEY})
+            with mock.patch.object(vv.VoiceVideoAdapter, "_call", lambda *x, **kw: FakeResp(200, body)):
+                self.assertEqual([w["t"] for w in a.scribe(speech, 10)], ["a"])
+                self.assertEqual([w["t"] for w in a.scribe(speech, 10, raw=True)], ["a", "b"])
+
+
 if __name__ == "__main__":
     unittest.main()

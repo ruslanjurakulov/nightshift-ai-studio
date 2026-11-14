@@ -12,15 +12,20 @@ For every recording and engine it reports:
 * **WER**: word error rate against the reference, (substitutions + deletions + insertions) / reference words, on
   normalised words (case folded, punctuation out, every Uzbek apostrophe form ``ʻ ' ` ‘ ’ ʼ`` made one, so ``oʻ`` / ``o'`` /
   ``o‘`` compare equal). A plain word-level Levenshtein: no dependency. An empty reference has no WER ("n/a"), never 0.
-* **words**: how many words the engine returned.
+  It is computed over EVERY word the engine returned, timed or not: what the engine heard in the narration the person
+  hears. For Scribe that is the vendor's own list (``VoiceVideoAdapter.scribe(raw=True)``), not the job's, which leaves
+  out the words without times; how many of those the job could place is the next two columns.
+* **words**: how many words the engine returned (for Scribe: every ``type: word`` entry with text, timed or not).
 * **timed**: the share of those words whose times are numbers, run forward (each start at or after the one before, each
-  end at or after its start) and lie inside the recording. That is what the scenes and captions are cut on.
+  end at or after its start) and lie inside the recording. That is what the scenes and captions are cut on. Both engines
+  are judged on everything they returned, so Scribe's share is not 100 % by construction.
 
 What it calls, and when it spends:
 
 * the recording is decoded to the exact copy the job sends (16 kHz mono 16-bit WAV, ffmpeg) in a scratch folder;
 * Whisper runs on THIS machine (free, CPU; ``pip install -r requirements.txt``);
-* Scribe is the job's own call (``VoiceVideoAdapter.scribe``: the same endpoint, form and error words), PAID per audio
+* Scribe is the job's own call (``VoiceVideoAdapter.scribe``: the same request, endpoint, form and error words; only the
+  untimed words are kept instead of dropped), PAID per audio
   minute with the ``ELEVENLABS_API_KEY`` of the person running it. The plan (files, minutes, the model, an estimate) is
   printed first, and nothing is sent without ``--yes`` or a typed ``yes``. ``--dry-run`` prints the plan and stops.
 
@@ -152,7 +157,8 @@ def scribe_runner(env: Mapping[str, str], model: str, language: Optional[str]) -
     adapter = vv.VoiceVideoAdapter(env=env)
 
     def run(speech: Path, duration: float) -> List[dict]:
-        return adapter.scribe(speech, vv.scribe_timeout(duration), model=model, language=language)
+        # raw: the vendor's whole answer, so `words` and `timed` measure Scribe and not the job's filter (module doc).
+        return adapter.scribe(speech, vv.scribe_timeout(duration), model=model, language=language, raw=True)
 
     return run
 

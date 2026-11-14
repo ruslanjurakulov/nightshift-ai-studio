@@ -444,10 +444,15 @@ class VoiceVideoAdapter(_ElevenLabs):
         return out
 
     # -- the transcription --------------------------------------------------------------
-    def scribe(self, speech: Path, timeout_s: float, *, model: str = SCRIBE_MODEL, language: Optional[str] = None) -> list:
+    def scribe(self, speech: Path, timeout_s: float, *, model: str = SCRIBE_MODEL, language: Optional[str] = None,
+               raw: bool = False) -> list:
         """The words ElevenLabs Scribe hears in ``speech`` (``[{t, s, e}]``, seconds), one synchronous call. The form is the
         captions job's (``scribe_form``); the job sends :data:`SCRIBE_MODEL` and no language (0176's params carry none, so
-        the vendor detects it). ``model`` and ``language`` exist for the measurement (tools/stt_compare.py) only.
+        the vendor detects it). ``model``, ``language`` and ``raw`` exist for the measurement (tools/stt_compare.py) only.
+
+        The job gets the words that have their times (the others cannot be placed and are left out). ``raw=True`` gets
+        every word the vendor returned, timed or not, with its times as sent: the measurement counts the vendor's answer,
+        and a share of timed words computed after the untimed ones were dropped would be 100 % by construction.
 
         Every refusal is read by the vendor's own word (``detail.code``), never by the HTTP status alone, and turned into
         our code with its fix; the message quotes the status and that word, never the vendor's text."""
@@ -481,6 +486,8 @@ class VoiceVideoAdapter(_ElevenLabs):
         except caption_words.CaptionsError as e:
             raise AdapterError(E_BAD_RESPONSE, _scribe_failure(E_BAD_RESPONSE, e.message)) from None
         spoken = [w for w in heard if str(w.get("text") or "").strip()]
+        if raw:
+            return [{"t": w.get("text"), "s": w.get("start"), "e": w.get("end")} for w in spoken]
         timed = [w for w in spoken if _seconds(w.get("start")) is not None and _seconds(w.get("end")) is not None]
         if spoken and not timed:
             # Words with no times cannot be placed: that is the vendor's answer failing, never "no speech", never time 0.
