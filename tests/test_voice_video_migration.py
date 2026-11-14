@@ -355,6 +355,9 @@ class AppliedSafely(unittest.TestCase):
         self.assertEqual(len(re.findall(r"(?m)^commit;$", ROLLBACK_TEXT)), 1)
         # A row that lists the capability would break the narrowed CHECK: the rollback refuses while one exists.
         self.assertIn("'voice_explainer' = any (capabilities)", ROLLBACK_TEXT)
+        # A job on its way would fail after its hold: the rollback also refuses while one has not finished, by every live status
+        # of 0036's CHECK (a list that named only 'queued' and 'running' would let a rendering job through).
+        self.assertIn("status in ('queued', 'planning', 'running', 'provider_pending', 'processing', 'rendering')", ROLLBACK_TEXT)
 
     def test_the_number_is_unique_and_the_lab_knows_the_chain(self):
         numbers = [p.name[:4] for p in MIG.glob("*.sql")]

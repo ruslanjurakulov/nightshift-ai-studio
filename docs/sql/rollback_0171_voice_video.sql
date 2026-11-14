@@ -7,7 +7,8 @@
 --
 -- WHAT IT DOES, in one transaction:
 --   1. Refuses to run while a model_registry row (or a probe run) lists voice_explainer: the narrowed CHECKs would refuse them. Remove
---      the entry from schemas/model_registry.json, delete its row and its probe runs first (a deliberate act, not this file's).
+--      the entry from schemas/model_registry.json, delete its row and its probe runs first (a deliberate act, not this file's). And
+--      refuses while a voice_explainer job has not finished (queued, planning, running, provider_pending, processing, rendering).
 --   2. Refuses to run if a function or a CHECK is neither 0171's nor the one 0171 was written on (something changed it since: running
 --      this would silently undo that change). md5 of the body with every run of white space read as one space.
 --   3. Puts the seven functions back to their earlier bodies byte for byte (0100's, 0125's, 0156's, 0159's, 0162's) with their grants,
@@ -23,6 +24,13 @@ begin
   if exists (select 1 from public.model_registry where 'voice_explainer' = any (capabilities))
      or exists (select 1 from public.model_probe_runs where capability = 'voice_explainer') then
     raise exception 'rollback 0171 found a model row or a probe run for voice_explainer: take the model out of the registry first';
+  end if;
+  -- A voice video still on its way (waiting, claimed or rendering) would meet a database that no longer knows its capability: it
+  -- would fail after its hold and its worker time instead of finishing. Wait for the queue to empty (or cancel those jobs) first.
+  if exists (select 1 from public.creative_jobs
+              where capability = 'voice_explainer'
+                and status in ('queued', 'planning', 'running', 'provider_pending', 'processing', 'rendering')) then
+    raise exception 'rollback 0171 found a voice_explainer job that has not finished: wait for it (or cancel it) first';
   end if;
 end $$;
 

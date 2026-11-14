@@ -1761,7 +1761,8 @@ capability CHECKs.
   all. The last block asserts every body, both CHECKs, the grants, the definer rights and the pinned search_path. Apply as ONE
   transaction.
 - **Rollback.** `docs/sql/rollback_0171_voice_video.sql` refuses while a model row or a probe run lists `voice_explainer` (take the
-  entry out of the registry first), and refuses a body or CHECK that is neither 0171's nor the earlier one; it puts every earlier body
+  entry out of the registry first) and while a `voice_explainer` job has not finished (any status before completed / failed /
+  cancelled / expired), and refuses a body or CHECK that is neither 0171's nor the earlier one; it puts every earlier body
   and both CHECKs back byte for byte with their grants.
 - **Order.** 0159's, 0156's, 0125's and 0162's replays and rollbacks refuse 0171's bodies: run the 0171 rollback first. The lab does:
   `sec_db.take_off_0159` takes 0171 off first and `put_back_0159` puts it back; 0171 is in `sec_db.ON_0156` (so in every `ON_01xx`

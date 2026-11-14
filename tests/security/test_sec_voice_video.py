@@ -597,6 +597,18 @@ def test_the_rollback_puts_everything_back_byte_for_byte_refuses_while_a_model_l
         assert "rollback 0171 found a model row or a probe run for voice_explainer" in str(e.value)
         assert _state(d) == after
         d.su("delete from public.model_registry where id = 'vx'")
+        # A voice video still on its way would fail after its hold against a database that no longer knows the capability.
+        d.su("insert into public.organizations (id, name, slug) values (%s, 'R171', 'org-r171')", [ORG_A])
+        for status in ("queued", "running", "rendering"):
+            job = d.su("insert into public.creative_jobs (org_id, capability, requested_model, status) "
+                       "values (%s, 'voice_explainer', 'vx', %s) returning id", [ORG_A, status])[0][0]
+            with pytest.raises(psycopg.Error) as e:
+                d.su(rb)
+            assert "rollback 0171 found a voice_explainer job that has not finished" in str(e.value), status
+            assert _state(d) == after
+            d.su("delete from public.creative_jobs where id = %s", [job])
+        d.su("insert into public.creative_jobs (org_id, capability, requested_model, status) "
+             "values (%s, 'voice_explainer', 'vx', 'failed')", [ORG_A])
         d.su(rb)
         assert _state(d) == pre, "byte for byte, grants included"
         assert d.su("select public.creative_capability_supported('voice_explainer')") == [(False,)]
