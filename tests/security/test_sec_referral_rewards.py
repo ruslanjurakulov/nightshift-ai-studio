@@ -1053,11 +1053,15 @@ def test_applying_the_migration_again_keeps_the_switches_numbers_and_referrals(c
                 "from public.friend_invite_settings)")
         with as_superuser(conn, commit=False) as s:
             before = s.rows(snap)[0]
+        # 0167 rebuilt the lot trigger on 0165's body, and 0165's guard accepts only 0034's or its own: off first, back on after.
+        sec_db.take_off_0167(conn)
         for _ in range(2):
             sec_db.apply_files(_dsn(conn), [sec_db.MIGRATION_0165])
+        sec_db.put_back_0167(conn)
         with as_superuser(conn, commit=False) as s:
             assert s.rows(snap)[0] == before
     finally:
+        sec_db.put_back_0167(conn)
         _restore_defaults(conn)
 
 
@@ -1065,12 +1069,14 @@ def test_the_drift_guard_refuses_a_body_edited_by_hand(conn):
     with world(conn) as s:
         text = s.value("select pg_get_functiondef('public.referral_settle_locked(public.friend_invite_links)'::regprocedure)")
         s.rows(re.sub(r"return changed;", "return changed + 0;", text, count=1) + "; select 1")
+        sec_db.take_off_0167(s)  # so the only body 0165's guard can object to is the one edited here
         out = s.run(sec_db.MIGRATION_0165.read_text(encoding="utf-8"))
         assert not out.ok and "0165 found public.referral_settle_locked" in out.error, out
 
 
 def test_the_rollback_refuses_while_a_referral_exists_then_puts_the_earlier_bodies_back_exactly(conn):
     with world(conn) as s:
+        sec_db.take_off_0167(s)  # 0165's rollback puts 0034's lot trigger back; 0167's body sits on 0165's
         out = s.run(_body(sec_db.ROLLBACK_0165))
         assert not out.ok and "referral rows exist" in out.error, out
         s.rows("delete from public.referral_rewards returning 1")
@@ -1082,8 +1088,9 @@ def test_the_rollback_refuses_while_a_referral_exists_then_puts_the_earlier_bodi
                        "and to_regprocedure('public.my_referrals()') is null")
         assert s.value("select count(*) from information_schema.columns where table_schema = 'public' "
                        "and table_name = 'friend_invite_settings' and (column_name like 'referral_%%' or column_name = 'milestone_enabled')") == 0
-        # …and 0165 goes on again on top of it.
+        # …and 0165 goes on again on top of it, and 0167 on top of that.
         assert s.run(sec_db.MIGRATION_0165.read_text(encoding="utf-8")).ok
+        assert s.run(sec_db.MIGRATION_0167.read_text(encoding="utf-8")).ok
 
 
 def test_the_mailbox_key_of_the_seeded_friend_is_the_joins_own(conn, sc):
