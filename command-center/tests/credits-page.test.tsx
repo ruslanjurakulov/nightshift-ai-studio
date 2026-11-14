@@ -321,8 +321,8 @@ describe("credits page: clear, honest, terms before buying", () => {
   const has = (html: string, text: string) => html.includes(esc(text));
 
   beforeEach(() => {
-    vi.stubEnv("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN", "test_abcdefghijkl");
-    vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "sandbox");
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN", "live_abcdefghijkl");
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "production");
     vi.stubEnv("NEXT_PUBLIC_PADDLE_PLAN_PRO", "pri_abcdefghij12");
     vi.stubEnv("NEXT_PUBLIC_PADDLE_PRICE_STARTER", "pri_starter00001");
     vi.resetModules();
@@ -331,6 +331,19 @@ describe("credits page: clear, honest, terms before buying", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
+  });
+
+  it("Paddle sandbox: a workspace that is not in PADDLE_TEST_ORG_IDS is offered no pack and no plan checkout (a test card must not buy real credits)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN", "test_abcdefghijkl");
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "sandbox");
+    vi.stubEnv("PADDLE_TEST_ORG_IDS", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    vi.resetModules();
+    const html = renderToStaticMarkup(await load());
+    expect(html).not.toContain(`>${esc(en.creditsPage.buy)}<`);
+    expect(html).not.toContain(`>${esc(en.plans.subscribe)}<`);
+    // The balance and the history are still there: nothing on sale is not a dead page.
+    expect(html).toMatch(/data-balance-available[^>]*>(<[^>]+>)*70</);
+    expect(has(html, en.creditsPage.txn.purchase)).toBe(true);
   });
 
   it("balance, plans with computed equivalents, packs, plain history; terms above every buy button", async () => {

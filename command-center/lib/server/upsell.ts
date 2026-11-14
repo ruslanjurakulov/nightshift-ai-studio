@@ -1,9 +1,9 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { isCreditExempt } from "@/lib/credits";
-import { paddleClient } from "@/lib/paddle";
 import { PLAN_ENV } from "@/lib/plans";
 import { readBillingSummary, readPlanCatalog } from "@/lib/server/plans";
+import { paddleClientFor } from "@/lib/server/payments";
 import { upsellCatalog, type UpsellCatalog } from "@/lib/upsell";
 
 /**
@@ -27,7 +27,7 @@ export async function loadUpsellCatalog(orgId: string): Promise<UpsellCatalog | 
     ]);
     const catalog = catalogRead.state === "ok" ? catalogRead.value : null;
     const summary = summaryRead.state === "ok" ? summaryRead.value : null;
-    return upsellCatalog(catalog, catalogRead.state, summary, PLAN_ENV, paddleClient, false);
+    return upsellCatalog(catalog, catalogRead.state, summary, PLAN_ENV, paddleClientFor(orgId), false);
   } catch {
     return upsellCatalog(null, "failed", null, PLAN_ENV, null, false);
   }

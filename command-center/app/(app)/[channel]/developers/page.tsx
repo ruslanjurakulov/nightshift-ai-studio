@@ -5,9 +5,8 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { atLeast } from "@/lib/auth/roles-shared";
-import { paddleClient } from "@/lib/paddle";
 import { paddleApi } from "@/lib/server/paddle-api";
-import { paymentsProvider } from "@/lib/server/payments";
+import { paddleClientFor, paymentsProvider } from "@/lib/server/payments";
 import { docsOrigin } from "@/lib/api/docs-origin";
 import { mcpOauthLive } from "@/lib/mcp-oauth";
 
@@ -41,7 +40,8 @@ export default async function DevelopersPage() {
           orgId={current.id}
           // API balance top-ups are a Paddle custom-amount transaction; there is no Dodo equivalent yet
           // (docs/DODO_SETUP.md, open questions), so with PAYMENTS_PROVIDER=dodo the console says "not available yet".
-          topup={paymentsProvider() !== "dodo" && paddleApi && paddleClient ? paddleClient : null}
+          // Paddle in sandbox: only an allow-listed test workspace (PADDLE_TEST_ORG_IDS) is offered the top-up.
+          topup={paymentsProvider() !== "dodo" && paddleApi ? paddleClientFor(current.id) : null}
           // The "Add to …" buttons start a sign-in, so they exist only while the server takes one (lib/mcp-oauth.ts).
           connectedApps={<ConnectedApps mcpUrl={`${docsOrigin()}/api/mcp`} oauthLive={mcpOauthLive()} />}
         />

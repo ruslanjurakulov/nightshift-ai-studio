@@ -3258,6 +3258,7 @@ export const uz: Dictionary = {
       adminOnly: "Bu ish maydonida kredit sotib olishga ruxsatingiz yoʻq.",
       notConfigured: "Bu serverda kredit sotib olish ulanmagan. Toʻlov tizimini ulash uchun dasturchiga ayting.",
       testOnlyDodo: "Bu serverda Dodo Payments test rejimida: faqat DODO_TEST_ORG_IDS roʻyxatidagi test ish maydonlari sotib oladi, shuning uchun bu yerda hech narsa sotilmaydi — docs/DODO_SETUP.md ga qarang.",
+      testOnlyPaddle: "Bu serverda Paddle sandbox rejimida: faqat PADDLE_TEST_ORG_IDS roʻyxatidagi test ish maydonlari sotib oladi, shuning uchun bu yerda hech narsa sotilmaydi — docs/PADDLE_SETUP.md ga qarang.",
       notConfiguredDodo: "Dodo Payments orqali sotish yoqilgan (PAYMENTS_PROVIDER=dodo), lekin sozlanmagan: DODO_PAYMENTS_API_KEY va DODO_PRODUCT_* / DODO_PLAN_* mahsulot id’larini qoʻying — docs/DODO_SETUP.md ga qarang.",
       merchant: "Toʻlovlarni Merchant of Record sifatida Paddle.com qayta ishlaydi. Karta maʼlumotlaringiz Paddle’ga boradi va bizga hech qachon kelmaydi.",
       merchantDodo: "Toʻlovlarni Merchant of Record sifatida Dodo Payments qayta ishlaydi. Karta maʼlumotlaringiz Dodo Payments’ga boradi va bizga hech qachon kelmaydi.",

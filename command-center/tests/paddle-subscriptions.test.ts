@@ -152,7 +152,7 @@ class FakeStore implements PaddleStore {
 async function deliver(store: FakeStore, body: string) {
   return handlePaddleWebhook(
     { method: "POST", rawBody: body, signature: sign(body) },
-    { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} } },
+    { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "production", testOrgs: new Set() },
   );
 }
 
@@ -319,7 +319,7 @@ describe("the handler", () => {
     const body = planPaid();
     const res = await handlePaddleWebhook(
       { method: "POST", rawBody: body, signature: sign(body) },
-      { secret: SECRET, prices: packs, plans, store: bare, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} } },
+      { secret: SECRET, prices: packs, plans, store: bare, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "production", testOrgs: new Set() },
     );
     expect(res.status).toBe(500);
   });
@@ -329,7 +329,7 @@ describe("the handler", () => {
     const body = planPaid();
     const res = await handlePaddleWebhook(
       { method: "POST", rawBody: body, signature: sign(body).replace(/h1=./, "h1=0") },
-      { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} } },
+      { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "production", testOrgs: new Set() },
     );
     expect(res.status).toBe(401);
     expect(store.grants).toEqual([]);
@@ -490,7 +490,7 @@ describe("discounts", () => {
     });
     await handlePaddleWebhook(
       { method: "POST", rawBody: promoPack, signature: sign(promoPack) },
-      { secret: SECRET, prices: packs, plans, store, promos, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} } },
+      { secret: SECRET, prices: packs, plans, store, promos, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "production", testOrgs: new Set() },
     );
     expect(store.events.get("evt_promo_pack")?.detail).toBe(`credited 1000 credits${DISCOUNT_MARK} (promo ${PROMO})`);
     await deliver(store, planPaid({ discount_id: DSC, details: { totals: { subtotal: "1900", discount: "950", grand_total: "950" } } }, "evt_plan_dsc"));
@@ -582,4 +582,31 @@ describe("discounts", () => {
     expect(decideApiTopup(topup({ subtotal: "2000", discount: "2000", grand_total: "0" }), API_PRODUCT).kind).toBe("reject");
   });
 
+});
+
+describe("plans in sandbox (PADDLE_WEBHOOK_ENV=sandbox)", () => {
+  function deliverSandbox(store: FakeStore, body: string, testOrgs: ReadonlySet<string>) {
+    return handlePaddleWebhook(
+      { method: "POST", rawBody: body, signature: sign(body) },
+      { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "sandbox", testOrgs },
+    );
+  }
+
+  it("a test-card subscription puts no plan and no plan credits on a workspace that is not allow-listed", async () => {
+    const store = new FakeStore();
+    expect((await deliverSandbox(store, subEvent("subscription.created"), new Set())).body).toMatchObject({ status: "rejected" });
+    expect((await deliverSandbox(store, planPaid(), new Set())).body).toMatchObject({ status: "rejected" });
+    expect(store.subs.size).toBe(0);
+    expect(store.grants).toEqual([]);
+    expect(store.events.get("evt_txn1")?.detail).toMatch(/PADDLE_TEST_ORG_IDS/);
+  });
+
+  it("an allow-listed test workspace gets its plan and its credits", async () => {
+    const store = new FakeStore();
+    const allow = new Set([ORG]);
+    expect((await deliverSandbox(store, planPaid(), allow)).body).toMatchObject({ status: "processed" });
+    expect((await deliverSandbox(store, subEvent("subscription.created"), allow)).body).toMatchObject({ status: "processed" });
+    expect(store.grants).toEqual(["creator:2000"]);
+    expect(store.subs.size).toBe(1);
+  });
 });

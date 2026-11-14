@@ -254,8 +254,8 @@ describe("the Usage page links, with a price list that can be bought", () => {
   ];
 
   async function renderWithPrices(over: Record<string, StubResult>): Promise<string> {
-    vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "sandbox");
-    vi.stubEnv("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN", "test_abcdefghijkl");
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN", "live_abcdefghijkl");
     vi.stubEnv("NEXT_PUBLIC_PADDLE_PRICE_STARTER", "pri_01starteraaaaaaaaaaaa");
     vi.stubEnv("NEXT_PUBLIC_PADDLE_PRICE_CREATOR", "pri_01creatoraaaaaaaaaaaa");
     vi.stubEnv("NEXT_PUBLIC_PADDLE_PRICE_STUDIO", "pri_01studioaaaaaaaaaaaaa");

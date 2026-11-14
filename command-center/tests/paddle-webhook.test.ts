@@ -145,7 +145,7 @@ const quiet = { info() {}, warn() {}, error() {} };
 function deliver(store: FakeStore, body: string, signature: string | null = sign(body), method = "POST", log: Logger = quiet) {
   return handlePaddleWebhook(
     { method, rawBody: body, signature },
-    { secret: SECRET, prices, store, now: () => NOW_MS, log },
+    { secret: SECRET, prices, store, now: () => NOW_MS, log, mode: "production", testOrgs: new Set() },
   );
 }
 
@@ -285,7 +285,7 @@ describe("handlePaddleWebhook", () => {
     const body = completed();
     const res = await handlePaddleWebhook(
       { method: "POST", rawBody: body, signature: sign(body) },
-      { secret: "", prices, store: new FakeStore(), now: () => NOW_MS, log: quiet },
+      { secret: "", prices, store: new FakeStore(), now: () => NOW_MS, log: quiet, mode: "production", testOrgs: new Set() },
     );
     expect(res.status).toBe(500);
   });
@@ -429,7 +429,7 @@ describe("readBodyCapped", () => {
     const store = new FakeStore();
     const res = await handlePaddleWebhook(
       { method: "POST", rawBody: (read as { text: string }).text, signature: sign(body) },
-      { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet },
+      { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet, mode: "production", testOrgs: new Set() },
     );
     expect(res.status).toBe(200);
   });
@@ -450,7 +450,7 @@ describe("readBodyCapped", () => {
     const store = new FakeStore();
     const res = await handlePaddleWebhook(
       { method: "POST", rawBody: text, signature: header },
-      { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet },
+      { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet, mode: "production", testOrgs: new Set() },
     );
     expect(res.status).toBe(200);
     // one trailing byte changed anywhere breaks it
@@ -491,7 +491,7 @@ describe("readBodyCapped", () => {
     expect(await readBodyCapped(reqOf(null))).toEqual({ ok: true, text: "" });
     const res = await handlePaddleWebhook(
       { method: "POST", rawBody: "", signature: null },
-      { secret: SECRET, prices, store: new FakeStore(), now: () => NOW_MS, log: quiet },
+      { secret: SECRET, prices, store: new FakeStore(), now: () => NOW_MS, log: quiet, mode: "production", testOrgs: new Set() },
     );
     expect(res.status).toBe(401);
   });
@@ -500,7 +500,7 @@ describe("readBodyCapped", () => {
     const big = "x".repeat(MAX_BODY_BYTES + 1);
     const res = await handlePaddleWebhook(
       { method: "POST", rawBody: big, signature: sign(big) },
-      { secret: SECRET, prices, store: new FakeStore(), now: () => NOW_MS, log: quiet },
+      { secret: SECRET, prices, store: new FakeStore(), now: () => NOW_MS, log: quiet, mode: "production", testOrgs: new Set() },
     );
     expect(res.status).toBe(413);
   });
@@ -528,5 +528,76 @@ describe("createRestStore", () => {
     expect(err).toBeInstanceOf(StoreError);
     expect((err as StoreError).code).toBe("42501");
     expect((err as StoreError).message).not.toContain(key);
+  });
+});
+
+// A deployment whose Paddle is the SANDBOX holds the sandbox destination's secret, so a sandbox delivery (paid with a
+// public test card) verifies exactly like a live one: nothing in the event says which Paddle sent it. Only the
+// function's own environment can say so, and then it may credit the allow-listed test workspaces only.
+describe("sandbox mode (PADDLE_WEBHOOK_ENV)", () => {
+  const TEST_ORG = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  type Mode = "sandbox" | "production" | "unknown";
+  function deliverIn(store: FakeStore, body: string, mode: Mode, testOrgs: ReadonlySet<string> = new Set()) {
+    return handlePaddleWebhook(
+      { method: "POST", rawBody: body, signature: sign(body) },
+      { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet, mode, testOrgs },
+    );
+  }
+
+  it("a sandbox (test-card) purchase for a workspace that is not allow-listed grants nothing, answers 200 and says why", async () => {
+    const store = new FakeStore();
+    const res = await deliverIn(store, completed(), "sandbox");
+    expect(res).toEqual({ status: 200, body: { ok: true, status: "rejected" } });
+    expect(store.credited.size).toBe(0);
+    expect(store.events.get("evt_01purchase")).toMatchObject({ status: "rejected", orgId: ORG, transactionId: TXN });
+    expect(store.events.get("evt_01purchase")?.detail).toMatch(/PADDLE_TEST_ORG_IDS/);
+  });
+
+  it("a sandbox purchase for an allow-listed test workspace is credited", async () => {
+    const store = new FakeStore();
+    store.orgs.add(TEST_ORG);
+    const body = completed({ custom_data: { org_id: TEST_ORG.toUpperCase(), user_id: USER } });
+    const res = await deliverIn(store, body, "sandbox", new Set([TEST_ORG]));
+    expect(res.body).toMatchObject({ status: "processed" });
+    expect([...store.credited.values()]).toEqual([{ org: TEST_ORG, credits: 1000 }]);
+  });
+
+  it("production credits every workspace, as before", async () => {
+    const store = new FakeStore();
+    expect((await deliverIn(store, completed(), "production")).body).toMatchObject({ status: "processed" });
+    expect([...store.credited.values()]).toEqual([{ org: ORG, credits: 1000 }]);
+  });
+
+  it("an unset or unknown environment grants nothing but answers 503, so Paddle redelivers once the owner sets it", async () => {
+    const store = new FakeStore();
+    const res = await deliverIn(store, completed(), "unknown");
+    expect(res.status).toBe(503);
+    expect(store.credited.size).toBe(0);
+    expect(store.events.get("evt_01purchase")).toMatchObject({ status: "failed" });
+    expect(store.events.get("evt_01purchase")?.detail).toMatch(/PADDLE_WEBHOOK_ENV/);
+    // The owner sets PADDLE_WEBHOOK_ENV=production and redeploys: Paddle's retry of the same event credits, once.
+    expect((await deliverIn(store, completed(), "production")).body).toMatchObject({ status: "processed" });
+    expect([...store.credited.values()]).toEqual([{ org: ORG, credits: 1000 }]);
+  });
+
+  it("taking credits back is never gated: a refund lands in sandbox mode for a credited test workspace", async () => {
+    const store = new FakeStore();
+    store.orgs.add(TEST_ORG);
+    const allow = new Set([TEST_ORG]);
+    await deliverIn(store, completed({ custom_data: { org_id: TEST_ORG } }), "sandbox", allow);
+    // Even with the list emptied afterwards, the refund still takes back what was granted.
+    const res = await deliverIn(store, adjustment(), "sandbox");
+    expect(res.body).toMatchObject({ status: "processed" });
+    expect(store.refunds.size).toBe(1);
+  });
+
+  it("reads the environment and the list as the edge function does: production only when it says so", async () => {
+    const { paddleWebhookEnvFromEnv, paddleTestOrgsFromEnv } = await import("../../supabase/functions/_shared/paddle");
+    expect(paddleWebhookEnvFromEnv("production")).toBe("production");
+    expect(paddleWebhookEnvFromEnv(" Production ")).toBe("production");
+    expect(paddleWebhookEnvFromEnv("sandbox")).toBe("sandbox");
+    for (const raw of [undefined, null, "", "live", "prod", "test"]) expect(paddleWebhookEnvFromEnv(raw)).toBe("unknown");
+    expect([...paddleTestOrgsFromEnv(`${TEST_ORG.toUpperCase()}, not-a-uuid\n${ORG}`)]).toEqual([TEST_ORG, ORG]);
+    expect(paddleTestOrgsFromEnv(undefined).size).toBe(0);
   });
 });
