@@ -3,12 +3,12 @@ import type { StudioPageDictionary } from "./en";
 /** Ommaviy /studio sahifasi («Nimalar yaratish va tahrirlash mumkin»). Manba — ./en.ts. */
 export const studioPageUz: StudioPageDictionary = {
   meta: {
-    title: "Nimalar yaratish va tahrirlash mumkin · Nightshift",
+    title: "Nightshift Studio: nimalar yaratish va tahrirlash mumkin",
     description:
-      "Video yaratilishidan oldin rejani oʻqing, oʻz videolaringizni tahrirlang, yuklashlarni ommaviy qilmaguningizcha shaxsiy saqlang va sarfdan oldin narxni koʻring.",
+      "Nightshift Studio: rejani video yaratilmasdan oldin oʻqing, videolaringizni tahrirlang, yuklashlarni nashrgacha shaxsiy saqlang va narxni sarfdan oldin koʻring.",
   },
   hero: {
-    label: "Studiya",
+    label: "Nightshift Studio",
     title: "Nimalar yaratish va tahrirlash mumkin.",
     lead: "Nightshift mavzudan YouTube uchun video yaratadi, toʻlovdan oldin rejani oʻqishga imkon beradi va oʻz montajlaringiz uchun muharrir beradi. Bu sahifada mahsulotda bugun mavjud narsalar sanab oʻtilgan va qaysi vosita avval sozlanishi kerakligi aytilgan.",
     cta: "Bepul boshlash",

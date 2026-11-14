@@ -163,7 +163,7 @@ describe("/studio page", () => {
     expect(link.getAttribute("href")).toBe("/studio");
     expect(link.getAttribute("aria-current")).toBe("page");
     const footer = container.querySelector("footer")!;
-    expect(within(footer).getAllByRole("link", { name: "Studio" }).map((a) => a.getAttribute("href"))).toContain("/studio");
+    expect(within(footer).getAllByRole("link", { name: "Nightshift Studio" }).map((a) => a.getAttribute("href"))).toContain("/studio");
     // The only disclosure in the header is the phone's menu button, closed, and its sheet lights the same item.
     expect([...container.querySelectorAll("header [aria-expanded][aria-controls]")].map((b) => b.className)).toEqual(["st-menu-btn"]);
     expect(container.querySelector('.st-menu-nav a[href="/studio"]')?.getAttribute("aria-current")).toBe("page");
@@ -171,6 +171,24 @@ describe("/studio page", () => {
 });
 
 describe("/studio FAQ", () => {
+  it.each(LOCALES)("%s: the page is called Nightshift Studio, untranslated, in its label, its title, its share card and its description", async (locale) => {
+    dict.locale = locale;
+    const t = dictionaries[locale];
+    // A brand: the same two words in every language. The header alone keeps the short "Studio" (the full name wraps the desktop
+    // nav to two rows in ru and uz at 1440px), and it must still be that same brand, never a translated "Студия" or "Studiya".
+    expect(t.site.studioPage.hero.label).toBe("Nightshift Studio");
+    expect(t.site.studioPage.meta.title.startsWith("Nightshift Studio: ")).toBe(true);
+    expect(t.site.studioPage.meta.description).toContain("Nightshift Studio");
+    expect(t.site.footer.studio).toBe("Nightshift Studio");
+    expect(t.site.nav.studio).toBe("Studio");
+    const { container } = renderPage(locale);
+    expect(container.querySelector("main .nx-label")?.textContent).toBe("Nightshift Studio");
+    const m = await generateMetadata();
+    expect((m.openGraph as { title?: string }).title).toBe(t.site.studioPage.meta.title);
+    expect((m.openGraph as { description?: string }).description).toBe(t.site.studioPage.meta.description);
+    dict.locale = "en";
+  });
+
   it("has 8 questions", () => {
     for (const p of [studioPageEn, studioPageRu, studioPageUz]) expect(p.faq.items).toHaveLength(8);
   });

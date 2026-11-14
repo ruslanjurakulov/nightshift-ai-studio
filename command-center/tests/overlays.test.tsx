@@ -64,6 +64,15 @@ describe("mobile navigation", () => {
     const labels = Array.from(bar.querySelectorAll("a")).map((a) => a.textContent);
     expect(labels).toEqual(["Videos", "Channels", "Studio", "Credits", "Settings"]);
   });
+
+  it("names the hub Nightshift Studio everywhere but the phone's tab, whose short form is that same brand in every language", () => {
+    // Five tabs share 390px: the full name would be cut to "Nightshift S…". The short form is the brand's second word, never a
+    // translated "Студия" or "Studiya", so the tab still means the place the sidebar and the breadcrumbs call Nightshift Studio.
+    for (const code of ["en", "ru", "uz"] as const) {
+      expect(dictionaries[code].nav.hub).toBe("Nightshift Studio");
+      expect(dictionaries[code].shell.hubTab).toBe("Studio");
+    }
+  });
 });
 
 describe("command palette", () => {

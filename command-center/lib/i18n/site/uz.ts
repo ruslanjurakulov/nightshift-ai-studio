@@ -9,7 +9,7 @@ import { publicStatsUz } from "../public-stats/uz";
 export const siteUz: SiteDictionary = {
   nav: {
     how: "Qanday ishlaydi",
-    studio: "Studiya",
+    studio: "Studio",
     solutions: "Yechimlar",
     pricing: "Narxlar",
     api: "API",
@@ -181,9 +181,9 @@ export const siteUz: SiteDictionary = {
     generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
   },
   gallery: {
-    label: "Studiyada yaratilgan",
+    label: "Nightshift Studio’da yaratilgan",
     title: "Nightshift’da yaratilgan",
-    lead: "Haqiqiy generatsiyalar: ularni jamoamiz Studiyada yaratgan. Istalganini oching: uni yaratgan model va unga berilgan soʻzlar koʻrinadi.",
+    lead: "Haqiqiy generatsiyalar: ularni jamoamiz Nightshift Studio’da yaratgan. Istalganini oching: uni yaratgan model va unga berilgan soʻzlar koʻrinadi.",
     badge: "Sunʼiy intellekt yaratgan",
     model: "Model",
     prompt: "Soʻrov",
@@ -233,7 +233,7 @@ export const siteUz: SiteDictionary = {
   },
   facts: {
     label: "Bu sahifada nima bor",
-    samples: "Studiyamizdagi haqiqiy generatsiyalar",
+    samples: "Nightshift Studio’dagi haqiqiy generatsiyalar",
     models: "Ularni yaratgan modellar",
     credits: "Roʻyxatdan oʻtganda bepul kreditlar",
   },
@@ -298,11 +298,11 @@ export const siteUz: SiteDictionary = {
       },
       {
         id: "studio",
-        pill: "Studiya",
-        title: "Faqat bitta boʻlak kerakmi? Studiya tayyorlaydi.",
+        pill: "Nightshift Studio",
+        title: "Faqat bitta boʻlak kerakmi? Nightshift Studio tayyorlaydi.",
         body: "Bittadan rasm, klip yoki ovoz yarating, soʻng muharrirda birlashtiring. Har bir vosita narxi oʻz tugmasida turadi.",
         bodyClosed: "Bittadan rasm, klip yoki ovoz, soʻng muharrirda birlashtirish. Uning modellari hali sotuvda emas: bu namunani jamoamiz yaratgan. Ular ochilganda tayyor boʻlish uchun roʻyxatdan oʻting.",
-        cta: "Studiyani ochish",
+        cta: "Nightshift Studio’ni ochish",
         bubble: "Tong chogʻidagi tumanli togʻ vodiysi, yumshoq yorugʻlik, umumiy reja.",
         reply: "rasm yaratdi",
         chips: ["16:9", "“Tungi bozor” uslubi"] as string[],
@@ -412,7 +412,7 @@ export const siteUz: SiteDictionary = {
   toolStrip: { title: "Nightshift nimalar yarata oladi" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "Jamoamiz Studiyada yaratgan haqiqiy natijalar",
+    label: "Jamoamiz Nightshift Studio’da yaratgan haqiqiy natijalar",
     note: "Vositadagi rasm yoki klip — jamoamiz Studiyada bajargan haqiqiy topshiriq. “Hozircha mavjud emas” — bu vosita bugun sotuvda yoʻq degani. Vosita ochilgach, narxi tugmasida boʻladi. Bepullari shunday deb yozilgan.",
     byTeam: "jamoamiz tayyorlagan",
     from: "Chapda — bu klip yaratilgan rasm",
@@ -421,8 +421,8 @@ export const siteUz: SiteDictionary = {
     less: "Kamroq koʻrsatish",
   },
   studio: {
-    slug: "Studiya",
-    title: "Faqat bitta boʻlak kerakmi? Studiya tayyorlaydi.",
+    slug: "Nightshift Studio",
+    title: "Faqat bitta boʻlak kerakmi? Nightshift Studio tayyorlaydi.",
     lead: "Bittadan rasm, klip yoki ovoz yarating, soʻng ularni birlashtiring. Har bir vosita narxi oʻz tugmasida turadi.",
     priced: "Narxi tugmada",
     free: "Kreditsiz",
@@ -558,7 +558,7 @@ export const siteUz: SiteDictionary = {
     company: "Aloqa",
     legal: "Hujjatlar",
     how: "Qanday ishlaydi",
-    studio: "Studiya",
+    studio: "Nightshift Studio",
     pricing: "Narxlar",
     faq: "Savollar",
     api: "API maʼlumotnomasi",
@@ -578,7 +578,7 @@ export const siteUz: SiteDictionary = {
   solutions: {
     meta: {
       title: "Yechimlar",
-      description: "Nightshift YouTube kanal egalari, Studiyada alohida materiallar yaratadigan mualliflar va API orqali ishlaydigan dasturchilar uchun nima qiladi.",
+      description: "Nightshift YouTube kanal egalari, Nightshift Studio’da alohida materiallar yaratadigan mualliflar va API orqali ishlaydigan dasturchilar uchun nima qiladi.",
     },
     slug: "Yechimlar",
     title: "Uch kirish. Bitta narxlar roʻyxati, bitta tasdiqlash darvozasi.",
@@ -606,8 +606,8 @@ export const siteUz: SiteDictionary = {
         air: "Faqat siz YouTube’da ommaviy qilsangiz yoki “Tasdiqdan keyin nashr qilish” yoqilgan kanalda tasdiqlasangizgina efirga chiqadi.",
       },
       composer: {
-        figure: "Studiya konstruktori rasmi: tavsif, tanlangan 16:9 shakli, uslublaringizdan biri va narxi ustida koʻrsatilgan «Yaratish» tugmasi.",
-        title: "Studiya",
+        figure: "Nightshift Studio konstruktori rasmi: tavsif, tanlangan 16:9 shakli, uslublaringizdan biri va narxi ustida koʻrsatilgan «Yaratish» tugmasi.",
+        title: "Nightshift Studio",
         tag: "Rasm",
         describe: "Tasvirlab bering",
         prompt: "Tunda neon shahar uzra suzib yurgan stadion, toʻp ortida yorugʻ iz",
@@ -669,7 +669,7 @@ export const siteUz: SiteDictionary = {
           "Muvaffaqiyatsiz generatsiya kreditlarini oʻzida qoldirmaydi — ular oʻzi qaytadi.",
           "Uslub uchun qoʻshimcha haq olmaydi — tugmadagi narx toʻliq narxdir.",
         ],
-        start: ["Bepul hisob yarating", "Studiyani oching va vositani tanlang", "Nima kerakligini yozing va narxli tugmani bosing"],
+        start: ["Bepul hisob yarating", "Nightshift Studio’ni oching va vositani tanlang", "Nima kerakligini yozing va narxli tugmani bosing"],
       },
       {
         id: "developers",

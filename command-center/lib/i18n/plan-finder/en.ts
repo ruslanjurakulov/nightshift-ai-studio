@@ -83,7 +83,7 @@ export const planFinderEn = {
     perMinute: "per minute",
     minimum: "The smallest hold of any run",
     perRun: "per run",
-    studio: "Studio",
+    studio: "Nightshift Studio",
     notOnSale: "Not on sale",
     notOpen: "Not open to any workspace yet",
     firstPurchase: "After a first credit purchase",

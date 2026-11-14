@@ -49,7 +49,8 @@ function describe(path: string): { title: string; description: string } | null {
   const dev = getDevDictionary("en");
   const legal = getLegalTexts("en");
   if (path === "/") return { title: t.brand.name, description: t.landing.meta.description };
-  if (path === STUDIO_PAGE_PATH) return { title: t.site.nav.studio, description: t.site.studioPage.meta.description };
+  // The page's own name, not the header's short "Studio": a crawler reads this line without the site around it.
+  if (path === STUDIO_PAGE_PATH) return { title: t.site.studioPage.hero.label, description: t.site.studioPage.meta.description };
   if (path === "/pricing") return { title: t.pricing.title, description: t.pricing.metaDescription };
   if (path === ROADMAP_PATH) return { title: t.site.roadmap.title, description: t.site.roadmap.meta.description };
   if (path === REFERRAL_PATH) return { title: t.referral.page.title, description: t.referral.page.metaDescription };
