@@ -146,6 +146,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // unknown plan is left unnamed rather than called Free. Both reads are the
   // member's own session (RLS), read-only.
   let credits: CreditAccount | null = null;
+  // When the balance was read, so the header's live store (lib/credits-live) never trades a fresher reading of its own for this one.
+  let creditsReadAt: string | null = null;
   let plan: AccountPlan | null = null;
   // Which Studio tools have a model on sale (lib/server/tool-availability.ts): the sidebar, the desk bar, Home and Presets mark the
   // rest "Not available yet" instead of linking to a form that has nothing to pick. Started here so it runs beside the credit reads
@@ -160,6 +162,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         readBillingSummary(supabase, orgId).catch(() => ({ state: "failed" as const })),
       ]);
       credits = res?.account ?? null;
+      creditsReadAt = new Date().toISOString();
       plan = accountPlan(planValue(summary), false);
     }
   } else if (org.supported && org.current?.is_default) {
@@ -190,6 +193,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       orgs={org.switchable}
       currentOrgId={org.current?.id ?? null}
       credits={credits}
+      creditsReadAt={creditsReadAt}
       scope={scope}
       email={email}
       avatarV={avatarV}

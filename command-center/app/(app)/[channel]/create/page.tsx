@@ -62,7 +62,7 @@ export default async function CreatePage({
   // The plan dialog's catalog (0034) is read beside the models: a refused
   // generation then names the plans that unlock it without another round trip.
   const [models, plans, switchedOff] = genOrgId
-    ? await Promise.all([loadStudioModels(), loadUpsellCatalog(genOrgId), loadSwitchedOffModels()])
+    ? await Promise.all([loadStudioModels(genOrgId), loadUpsellCatalog(genOrgId), loadSwitchedOffModels()])
     : [[], null, [] as string[]];
   // "Use in Studio" from the Library opens a picture tool with the picture
   // chosen, and a sidebar tool row opens that tool. Either only fills the
