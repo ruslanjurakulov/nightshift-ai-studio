@@ -7,7 +7,8 @@ Kept in its own module, like sec_films_0166. Two hooks wire it in:
   * sec_scenario.build_scenario(), after sec_films_0166.seed:
         sec_films_0171.seed(conn, sc)
 
-The seed gives each tenant one settled (released) segment of its seeded draft and one settings row, written by the database owner:
+The seed gives each tenant one settled (released) segment of its seeded draft, one stored quote and one settings row, written by the
+database owner:
 the shared lab has no priced models, so start_film cannot run there, and the isolation tests only need a row of each tenant to aim
 at. Every money path is attacked in a scratch database of its own: test_sec_films_money.py.
 """
@@ -19,17 +20,22 @@ SEGMENT: dict = {}
 
 
 def extend(tables: dict, functions: dict) -> None:
-    from sec_expectations import SERVICE, USER, Org
+    from sec_expectations import SERVICE, USER, Org, Service
 
     tables.update({
         # Members read (column grants, never the request hash or the worker); nobody inserts, updates or deletes directly.
         "film_segments": Org(),
         "org_film_settings": Org(),
+        # No API role reads or writes these: quote_film answers both (the stored quote and the switch).
+        "film_quotes": Service(),
+        "film_studio_settings": Service(),
     })
     functions.update({
         # The browser's two calls: an editor quotes, an admin starts.
         "quote_film": USER,
         "start_film": USER,
+        # The switch: a signed-in caller reaches it, and owner_guard refuses everyone but a platform owner/admin (42501).
+        "set_film_studio_enabled": USER,
         # The worker's state machine: the service role only (no anon, no authenticated).
         "film_claim_segment": SERVICE,
         "film_heartbeat_segment": SERVICE,
@@ -54,6 +60,11 @@ def extend(tables: dict, functions: dict) -> None:
         "film_settle_locked": SERVICE,
         "film_lock_segment": SERVICE,
         "film_lock_take": SERVICE,
+        "film_studio_on": SERVICE,
+        "film_available": SERVICE,
+        "film_precheck": SERVICE,
+        "film_fail_locked": SERVICE,
+        "film_lose_inflight_locked": SERVICE,
     })
 
 
@@ -73,3 +84,7 @@ def seed(conn, sc) -> None:
                 "values (%s, %s, 1, 1, 'fq-1-' || md5(%s), 'released', 0, 0, 1, 0, 0, 'skipped', 0, 'cancelled', %s, md5(%s), now()) "
                 "returning id",
                 [sec_films_0166.FILM[k], t.org, f"seed-quote-{k}", f"seed-segment-{k}", f"seed-segment-{k}"]))
+            # A stored quote of the seeded draft (version 2 after its save): the isolation tests aim at it.
+            s.rows("insert into public.film_quotes (film_id, org_id, version, quote_id, total, expires_at) "
+                   "values (%s, %s, 2, 'fq-2-' || md5(%s), 10, now() + interval '30 minutes') returning 1",
+                   [sec_films_0166.FILM[k], t.org, f"seed-stored-quote-{k}"])

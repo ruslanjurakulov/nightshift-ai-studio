@@ -124,82 +124,126 @@ Rollback: `docs/sql/rollback_0166_films_core.sql`. It refuses while films exist,
 
 ## Money (P2, migration 0171)
 
+### The switch
+
+`film_studio_settings.film_studio_enabled` is **off** by default. While it is off, `start_film` refuses `film_studio_disabled` and
+the quote lists it in `blocked_by`. Only a platform owner or admin (through `owner_guard`: second factor, a rate limit) or the SQL
+editor changes it, with `set_film_studio_enabled(true|false)`, and every change writes a `security_events` row
+(`film_studio.enabled`). P3 turns it on once its worker is deployed.
+
 ### One hold per segment
 
 A started film is paid by one `film_segments` row and one credit hold, `fm-<segment id without dashes>`, taken by 0020's
-`reserve_credits` in the admin's own session. Not one hold per scene or take, because:
+`reserve_credits` in the admin's own session. It is not one hold per scene or per take:
 
 - 0034 counts every open hold as one parallel run (1 on most plans). A hold per scene would make a 40-scene film run one scene at a
-  time and lock the organization out of the Studio for the whole film.
+  time and lock the organization out of the Studio for the whole film. 0034 is not changed. Instead the quote's `run_slot` says that
+  the film uses one of the plan's runs, and for how long at most: `max_hours`, 3 unclaimed + 20 deadline + 2 grace.
 - `capture_credits` settles a hold once, and the segment is the unit that settles.
-- One hold checks the whole price before the first paid call, so a film never runs out of credits half way.
+- One hold checks the whole price before the first paid call.
 
-The hold is started by the worker's first claim (its 24-hour expiry runs from there) and the segment gets a 20-hour deadline. No credit
-function is replaced; the only money calls are `reserve_credits`, `start_credit_reservation`, `capture_credits` and `release_credits`.
+The hold is started by the worker's first claim, so its 24-hour expiry runs from there, and the segment gets a 20-hour deadline. No
+credit function is replaced: the only money calls are `reserve_credits`, `start_credit_reservation`, `capture_credits` and
+`release_credits`.
 
 ### The quote
 
-`quote_film(film, version)` (editors and above) prices the film as it stands, line by line:
+`quote_film(film, version)` (editors and above) prices the film as it stands, line by line, and stores the quote
+(`film_quotes`: film, version, total, 30 minutes' validity):
 
 | Line | How it is priced |
 | :-- | :-- |
 | Key frame (a scene with `first_frame = keyframe`) | `creative_price` for the key-frame model (t2i, or edit against a stand-in picture), at the film's aspect and style kit |
-| Clip shot 1, extend shots 2-3 | `creative_price` i2v, against a stand-in picture of the library, at the shortest length the model lists that covers `ceil(planned_seconds / shot_count)` |
-| Narration (one film-level take) | the voice model's rate as charged (from `creative_price` tts) times every character of narration, with the job minimum |
-| Assembly | `film_assembly_minute` (`credit_prices`) times the planned minutes, rounded up |
+| Clip shot 1, extend shots 2-3 | `creative_price` i2v, against a stand-in picture (one of the library's 50 newest), at the shortest length the model lists that covers `ceil(planned_seconds / shot_count)` |
+| Narration (one film-level take) | the voice model's rate as charged times every character, and never less than its minimum once per provider call (a call carries 4,000 characters) |
+| Assembly, captions included | `film_assembly_minute` (`credit_prices`) times the planned minutes, rounded up. Captions come from our own pipeline (Whisper) and are part of this line, not a separate line or hold. |
 
-It answers the total, the per-scene subtotals, `quote_id` (`fq-<version>-<md5 of the priced lines>`), the available credits, the
-organization's settings, the parallel-run slots, `blocked_by` (`cap_exceeded`, `insufficient_credits`, `limit_reached`,
-`run_slots_full`), `may_start` and `startable`.
+Each line keeps exactly what was priced (length, resolution, sound, quality tier, shape, style kit), and each take carries those
+`params`. A 0047 character counts as all of its pictures against the key-frame model's reference limit.
+
+The answer also has:
+
+- the total, the per-scene subtotals and `quote_id` (`fq-<version>-<md5 of the priced lines>`);
+- `available`: what a start could hold now. With 0094's extra credits off, only credits that are not a top-up pack count.
+- the organization's settings, `run_slot`, `film_studio_enabled`;
+- `blocked_by` (`film_studio_disabled`, `cap_exceeded`, `insufficient_credits`, `limit_reached`, `run_slots_full`);
+- `may_start` and `startable`.
 
 **Where a price is unknown, it is shown as unknown (rule 5).** A line that cannot be priced has `priced: false`, `credits: null`
-and a reason; the total and `quote_id` are then `null` and nothing can start. The reasons:
+and a reason. The total and `quote_id` are then `null` and nothing can start. The reasons:
 
 - `unpriced`: no credit price row for the model's unit or setting, or for `film_assembly_minute`. **No assembly price is seeded:
   until a platform admin sets it, every film is unpriced on that line.**
 - `model_not_available` (not on sale for its role now), `model_not_offered` (any Seedance model), `model_not_set`;
-- `invalid_params` (a shape, a length or a resolution the model does not list), `scene_too_long_for_model` (the model's longest shot
-  times the scene's shots is shorter than the scene: the detail says to add shots or cut seconds);
-- `source_unavailable` (the library has no usable picture to price a clip against), `refs_not_supported` (the key-frame model takes
-  fewer reference pictures than the scene has: never handed fewer), `reference_missing`, `asset_not_usable`, `style_unavailable`;
-- `prompt_missing`, `voice_not_set`, `channel_voice_not_priced` (a channel's own voice is not priced here), `no_scenes`.
-
-Captions are not in the price and the quote says so (`excluded: captions, priced_after_narration`): a captions job is priced by the
-measured length of a recording that does not exist yet, and nothing can be spent on captions under this hold. There is no
-"with retakes" allowance: a retry has no line to be charged to.
+- `invalid_params` (a shape, a length or a resolution the model does not list), `scene_too_long_for_model`;
+- `source_unavailable` (no usable picture to price a clip against), `refs_not_supported` (never handed fewer references),
+  `reference_missing`, `asset_not_usable`, `style_unavailable`;
+- `prompt_missing`, `voice_not_set`, `channel_voice_not_priced`, `no_scenes`.
 
 ### The start
 
-`start_film(film, quote_id, idempotency_key)` (owners and admins) takes the organization's start lock, then the film, and:
+`start_film(film, quote_id, idempotency_key)` (owners and admins; in the exempt organization a platform owner or admin) takes the
+organization's start lock, then the film. Some refusals are raised before anything is counted:
 
-- refuses a film that is not a draft (`film_not_startable`), a quote of an older version (`film_changed`), a quote whose re-priced id
-  differs (`price_changed`: a rate, a model's sale or a price row moved), an unpriced film (the first line's own word), a total over
-  `max_credits_per_film` (`cap_exceeded`) and a second live film over `max_active_films` (`limit_reached`);
-- holds the total (`reserve_credits`: NS402 with `available=… needed=…`, NS429 when the plan's parallel runs are in use), before
-  anything is created;
-- writes the segment and every planned take with its confirmed line, queues the film (`status = 'queued'`) and writes `started`.
+- who may call, the key's and the quote id's shape;
+- a replay (the same key, film and quote answer the first segment; another one is `idempotency_conflict`);
+- a film that is not a draft (`film_not_startable`), an older version (`film_changed`), the switch (`film_studio_disabled`);
+- `film_precheck`: a model off sale or turned Seedance, a reference or a frame that is gone. These are raised with their own word, and
+  no pricing has run.
 
-The same key with the same film and quote answers the first segment (`replayed: true`); with another, `idempotency_conflict`.
+Then the start is **counted** (`db.film.start`, 10 an hour). From here every refusal is answered as `{ok: false, reason, code,
+detail}`, so the count survives it (BR-0171-01). They come in this order:
+
+1. A quote id that `quote_film` did not store for this version (`price_changed`), or that has expired (`quote_expired`).
+2. The stored total against the available credits (`insufficient_credits`, code NS402), `cap_exceeded`, `limit_reached`. No pricing
+   has run yet for any of these.
+3. The re-pricing at today's rates: an unpriced line's own word, or `price_changed`.
+4. `reserve_credits`' own NS402 (`insufficient_credits`) and NS429 (`run_slots_full`).
+
+Success is `{ok: true, ...}`: the segment and every planned take with its confirmed line, the film `queued`, and a `started` event.
+
+### What a take costs
+
+| Outcome | Charge |
+| :-- | :-- |
+| Key frame or narration made | its line |
+| Clip or extend made, and its file measures (`media_assets.duration_s`) at least 90% of the confirmed seconds, with the provider's task id | its full line, as the Studio charges a job |
+| Clip shorter than that, or not measured | 0: it failed, and the retry rule applies. The worker's own seconds are checked (0.01-600) and recorded, never charged by. |
+| A failure with its retry left (attempt 1) | 0 (`retried_not_charged`), and an attempt 2 is planned at the same line. The platform carries what the vendor charged for the failed try. A single failure never ends a film. |
+| A failure with no retry left | 0, except a moderated task on Runway, which bills moderation: its line (`moderated_vendor_billed`). A narration that voiced part of its text is charged pro rata by characters (`per_character_partial`, no minimum). HappyHorse and Seedance do not bill moderation (`moderated_vendor_not_billed`). Every other vendor does not say, so the customer pays 0 and **the platform absorbs it** (`moderated_vendor_billing_unknown`). |
+| The worker was lost (leases used up, or past the deadline and grace) | 0 (`worker_lost_not_charged`) |
 
 ### The settle path (the service role; P3's worker drives it)
 
 | Call | What it does |
 | :-- | :-- |
-| `film_claim_segment(worker)` | The oldest queued segment, or one whose lease is stale. The first claim starts the hold; an expired hold settles the segment instead |
+| `film_claim_segment(worker)` | The oldest queued segment, or one whose lease is stale. Every candidate is looked at, each in its own subtransaction, so one bad row is skipped with a WARNING and never blocks other films. The first claim starts the hold, and an expired hold settles the segment instead. A stale segment whose 3 leases are used is not handed out again: what it left in flight fails as `worker_lost` and it settles. |
 | `film_heartbeat_segment(segment, worker)` | Keeps the lease |
-| `film_begin_take(take, worker)` | Marks a planned take running before the billable call; refused once the segment drains |
-| `film_take_succeeded(take, worker, output_seconds, result, last_frame)` | Records the result and its charge: a clip by its measured seconds (capped at its line), a key frame or the narration at its line |
-| `film_take_failed(take, worker, provider_error / moderated, code, error)` | Charged 0, except a moderated task on a vendor that bills it (Runway): its line, `moderated_vendor_billed`. HappyHorse and Seedance: 0, `moderated_vendor_not_billed`. Others: 0, `moderated_vendor_billing_unknown` |
-| `film_begin_assembly`, `film_record_assembly` | The assembly line, charged by its measured whole minutes |
-| `film_settle_segment(segment, worker, reason)` | Drains while something is in flight; then skips every take that never began, captures the charges once (never above the hold) and releases the rest. `completed` makes the film `ready`, `cancelled` cancels it, any other word pauses it with that reason |
+| `film_begin_take(take, worker)` | Marks a planned take running before the billable call. It is refused once the segment drains or passes its deadline. When the hold is no longer open, or a refund waits on it (an open `credit_refund_recoveries` row of 0167 that lists it), nothing begins: the segment settles with what it has, and the answer says `began: false` and why (`hold_lost`, `refund_pending`). |
+| `film_take_succeeded(take, worker, seconds, result, last_frame, provider_task_id)` | See the table above |
+| `film_take_failed(take, worker, provider_error / moderated, code, error, units_done)` | See the table above |
+| `film_begin_assembly`, `film_record_assembly` | The assembly line, captions included, charged by its measured whole minutes |
+| `film_settle_segment(segment, worker, reason)` | Drains while something is in flight. Then it skips every take that never began, captures the charges once (never above the hold) and releases the rest. |
 | `film_cancel_segment(segment, reason)` | Releases every take that never began, and settles now or when the takes in flight end |
-| `film_expire_segments()` | Settles a segment whose hold 0020 expired, one nobody claimed in 3 hours, and one past its deadline |
+| `film_expire_segments()` | Each segment in its own subtransaction. A hold 0020 released, or a segment nobody claimed in 3 hours, settles. Past the deadline the segment drains. Past the deadline plus 2 hours (before 0020's 24) the takes in flight fail as `worker_lost`, a running assembly fails, and it settles while the hold is still open. |
+
+Where a film goes after a settle:
+
+- `completed` → `ready`.
+- `cancelled` with a charge → `cancelled`.
+- Any other reason with a charge → `paused`, with that reason.
+- **Nothing charged and nothing made → `draft`**, storyboard kept, editable and startable again. `pause_reason` says why it stopped.
+  The takes stay at 0 as the record, so 0166's `save_film` still refuses to delete those scenes; that needs a later migration.
 
 What a segment captured is the ledger's own answer: a hold that 0020 expired under a half-made film reads as captured 0, and the
 `segment_settled` event says how much was not captured.
 
-**Open for later phases.** A person's cancel and the organization's settings have no browser function yet (only the two calls above
-are granted); a paused or cancelled film cannot be resumed until a resume quote exists (P7).
+**Open for later phases.**
+- A person's cancel and the organization's settings have no browser function yet.
+- A paused film cannot be resumed until a resume quote exists (P7).
+
+**Number.** 0166's header names "0167" for this phase. That was the plan's number; the file is **0171**, and a merged migration is
+never edited.
 
 ## The phases
 
@@ -208,7 +252,7 @@ are granted); a paused or cancelled film cannot be resumed until a resume quote 
 | P0 | Scout and measurement: vendor facts, and a 10-15 minute assembly measured on the media-worker (rule 8) | - | Scout done; measurement owed |
 | P1 | Core tables, RLS, `film_events`, `create_film_draft` / `save_film` / `archive_film` / `film_json`. Drafts only, no spend | 0166 | merged |
 | **P2** | Money. `quote_film`, `start_film` and `film_segments` (one hold per segment, settle and release). Also: the money columns on `film_takes`, `creative_jobs.film_take_id` with `payer='film'`, `org_film_settings`, and the service functions of the state machine. The `film_assembly_minute` price is read, not seeded: an admin sets it | **0171** (provisional) | this PR |
-| P3 | The orchestrator. `tools/film_worker.py` and `modules/film_orchestrator.py` handle the lease, trickle enqueue and retry policy. Last-frame extraction goes through `ffmpeg_limits`. The plan step uses Gemini. The creative worker accepts `payer='film'`. | (0171) | |
+| P3 | The orchestrator. `tools/film_worker.py` and `modules/film_orchestrator.py` drive 0171's state machine (claim, begin, result, the one retry, settle, the sweep). Last-frame extraction goes through `ffmpeg_limits`. The plan step uses Gemini. The creative worker accepts `payer='film'`. Turns `film_studio_enabled` on. | (0171) | |
 | P4 | Assembly on the media-worker: `modules/film_timeline.py`, `film_cuts`, `films.current_cut_id` | 0168 | |
 | P5 | `/api/films/**` routes, `lib/films.ts`, rate buckets, geo checks, audit | - | |
 | P6 | The canvas UI with every state, at mobile width, in en/ru/uz | - | |

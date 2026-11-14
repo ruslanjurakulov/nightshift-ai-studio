@@ -21,13 +21,15 @@ M0166 = (MIGRATIONS / "0166_films_core.sql").read_text(encoding="utf-8")
 M0036 = (MIGRATIONS / "0036_creative_jobs.sql").read_text(encoding="utf-8")
 
 BROWSER_CALLS = {"public.quote_film(uuid, integer)", "public.start_film(uuid, text, text)"}
+#: Granted to signed-in callers too, and refused by owner_guard to anyone but a platform owner/admin (the 0164 switch pattern).
+OWNER_CALLS = {"public.set_film_studio_enabled(boolean)"}
 SERVICE_CALLS = {
     "public.film_claim_segment(text, interval)", "public.film_heartbeat_segment(uuid, text)", "public.film_begin_take(uuid, text)",
-    "public.film_take_succeeded(uuid, text, numeric, uuid, uuid)", "public.film_take_failed(uuid, text, text, text, text)",
+    "public.film_take_succeeded(uuid, text, numeric, uuid, uuid, text)", "public.film_take_failed(uuid, text, text, text, text, numeric)",
     "public.film_begin_assembly(uuid, text)", "public.film_record_assembly(uuid, text, boolean, numeric)",
     "public.film_settle_segment(uuid, text, text)", "public.film_cancel_segment(uuid, text)", "public.film_expire_segments()",
 }
-NEW_TABLES = ["film_segments", "org_film_settings"]
+NEW_TABLES = ["film_segments", "org_film_settings", "film_quotes", "film_studio_settings"]
 
 
 def code(text):
@@ -82,7 +84,7 @@ class FilmsMoneyMigration(unittest.TestCase):
 
     def test_no_function_of_another_file_is_replaced_and_no_price_is_seeded(self):
         for name in re.findall(r"create or replace function public\.([a-z_]+)\(", BODY):
-            self.assertRegex(name, r"^(film_[a-z_]+|quote_film|start_film)$")
+            self.assertRegex(name, r"^(film_[a-z_]+|quote_film|start_film|set_film_studio_enabled)$")
         p1 = set(re.findall(r"create or replace function public\.([a-z_]+)\(", code(M0166)))
         self.assertFalse(p1 & set(re.findall(r"create or replace function public\.([a-z_]+)\(", BODY)))
         # credits_per_unit is NOT NULL and a number would be a guess: the assembly is unpriced until an admin sets it.
@@ -106,7 +108,7 @@ class FilmsMoneyMigration(unittest.TestCase):
 
     def test_exactly_two_browser_calls_and_the_state_machine_is_the_service_roles(self):
         granted = re.findall(r"grant execute on function (public\.[^;]+?) to ([a-z_, ]+);", BODY)
-        self.assertEqual({sig for sig, who in granted if who == "authenticated"}, BROWSER_CALLS)
+        self.assertEqual({sig for sig, who in granted if who == "authenticated"}, BROWSER_CALLS | OWNER_CALLS)
         self.assertEqual({sig for sig, who in granted if who == "service_role"}, SERVICE_CALLS)
         self.assertEqual({who for _, who in granted}, {"authenticated", "service_role"})
         for sig in BROWSER_CALLS | SERVICE_CALLS:
@@ -115,19 +117,26 @@ class FilmsMoneyMigration(unittest.TestCase):
         self.assertIn("if not public.is_org_member(org, 'editor') then", function_body("quote_film"))
         self.assertIn("if not public.is_org_member(org, 'admin') or (exempt_ and not public.is_platform_admin()) then",
                       function_body("start_film"))
+        self.assertIn("g := public.owner_guard('film_studio', 10);", function_body("set_film_studio_enabled"))
+        self.assertIn("perform public.security_event_log('film_studio.enabled'", function_body("set_film_studio_enabled"))
 
     def test_the_new_tables_have_rls_and_no_api_role_writes_them(self):
         for t in NEW_TABLES:
             self.assertIn(f"create table if not exists public.{t} (", BODY)
             self.assertIn(f"alter table public.{t} enable row level security;", BODY)
+        for t in ("film_segments", "org_film_settings"):
             self.assertIn(f"create policy {t}_select on public.{t}\n  for select to authenticated", BODY)
-        self.assertIn("revoke all on public.film_segments, public.org_film_settings from public, anon, authenticated, service_role;", BODY)
+        for t in ("film_quotes", "film_studio_settings"):
+            self.assertNotIn(f"policy {t}_", BODY)
+        self.assertIn("revoke all on public.film_segments, public.org_film_settings, public.film_quotes, public.film_studio_settings\n"
+                      "  from public, anon, authenticated, service_role;", BODY)
         for grant in re.findall(r"grant ([a-z, ]+?)(?: \(| on (?!function))", BODY):
             self.assertEqual(grant.strip(), "select", grant)
         auth = dict((t, cols) for cols, t in re.findall(r"grant select \(([^)]*)\)\s+on public\.(\w+) to authenticated;", BODY))
         self.assertEqual(set(auth), {"film_segments", "org_film_settings", "film_takes"})
         for hidden in ("request_hash", "worker_id"):
             self.assertNotIn(hidden, auth["film_segments"])
+        self.assertNotIn("provider_task_id", auth["film_takes"])
 
     def test_one_hold_per_segment_named_fm_and_valid_for_0020(self):
         self.assertIn("ref := 'fm-' || replace(sid::text, '-', '');", BODY)
@@ -154,17 +163,23 @@ class FilmsMoneyMigration(unittest.TestCase):
         self.assertIn("when m.adapter = 'video.runway' then 'billed'", body)
         self.assertIn("when m.adapter = 'video.happyhorse' or m.adapter like 'video.seedance%' then 'not_billed'", body)
         self.assertIn("'unknown')", body)
-        failed = function_body("film_take_failed")
+        failed = function_body("film_fail_locked")
         self.assertIn("'moderated_vendor_billed'", failed)
         self.assertIn("'moderated_vendor_billing_unknown'", failed)
         self.assertIn("charge := t.confirmed_credits;", failed)
+        # One retry within the line, charged 0 (the platform carries the failed try); never for a lost worker.
+        self.assertIn("charged_credits = 0, charge_basis = 'retried_not_charged'", failed)
+        self.assertIn("and p_failure <> 'worker_lost' then", failed)
 
-    def test_a_take_is_never_charged_above_its_line_and_a_clip_needs_measured_seconds(self):
+    def test_a_take_is_never_charged_above_its_line_and_a_clip_is_judged_by_its_own_measured_length(self):
         self.assertIn("charged_credits between 0 and confirmed_credits", BODY)
         ok = function_body("film_take_succeeded")
-        self.assertIn("billed := least(p_output_seconds, t.quantity);", ok)
-        self.assertIn("charge := least(charge, t.confirmed_credits);", ok)
-        self.assertIn("if p_output_seconds is null then", ok)
+        self.assertIn("select a.duration_s into secs from public.media_assets a where a.id = p_result_asset;", ok)
+        self.assertIn("(public.film_money_limits() ->> 'min_clip_fraction')::numeric * coalesce(t.duration_s, t.quantity)", ok)
+        self.assertIn("set status = 'completed', charged_credits = confirmed_credits", ok)
+        self.assertIn("if p_provider_task_id is null", ok)
+        self.assertIn("not (p_output_seconds >= 0.01 and p_output_seconds <= 600)", ok)
+        self.assertNotIn("p_output_seconds *", ok)  # the worker's number is never what is charged
         self.assertIn("if owed > s.confirmed_credits then", function_body("film_settle_locked"))
 
     def test_unknown_is_never_zero_in_the_quote(self):
@@ -191,9 +206,12 @@ class FilmsMoneyMigration(unittest.TestCase):
         self.assertLess(start.index("for no key update"), start.index("public.reserve_credits("))
 
     def test_the_time_limits_sit_inside_0020s_expiry(self):
-        lim = dict((k, int(v)) for k, v in re.findall(r"'([a-z_]+)', (\d+)", function_body("film_money_limits")))
-        self.assertLess(lim["deadline_hours"], 24)
+        lim = dict((k, int(v)) for k, v in re.findall(r"'([a-z_]+)', (\d+)(?![.\d])", function_body("film_money_limits")))
+        # A take still in flight is ended, and the segment settled, while 0020 still keeps the hold open (24 h after its start).
+        self.assertLess(lim["deadline_hours"] + lim["grace_hours"], 24)
+        self.assertLess(lim["grace_hours"], 4)
         self.assertLessEqual(lim["unclaimed_hours"], 3)
+        self.assertIn("'min_clip_fraction', 0.9", function_body("film_money_limits"))
 
     def test_every_refusal_word_is_listed_in_the_header(self):
         header = SQL.split("set local lock_timeout")[0]
@@ -210,7 +228,7 @@ class FilmsMoneyMigration(unittest.TestCase):
         for sig, h in end.items():
             self.assertEqual(guard[sig], h, sig)
         pinned = dict(re.findall(r"\('(public\.[a-z_]+\([^)]*\))', '([0-9a-f]{32})'\)", ROLLBACK))
-        self.assertTrue(BROWSER_CALLS <= set(pinned))
+        self.assertEqual(set(pinned), set(created_functions()))
         for sig, h in pinned.items():
             self.assertEqual(guard[sig], h, sig)
 
@@ -221,6 +239,9 @@ class FilmsMoneyMigration(unittest.TestCase):
         self.assertEqual(set(re.findall(r"drop table public\.([a-z_]+);", rb)), set(NEW_TABLES))
         added = set(re.findall(r"alter table public\.film_takes add column if not exists ([a-z_]+)", BODY))
         self.assertEqual(set(re.findall(r"alter table public\.film_takes drop column if exists ([a-z_]+);", rb)), added)
+        # Every body the file creates is pinned by the rollback (a later change would be undone).
+        pinned = set(re.findall(r"\('(public\.[a-z_]+\([^)]*\))', '[0-9a-f]{32}'\)", ROLLBACK))
+        self.assertEqual(pinned, set(created_functions()))
         self.assertIn("alter table public.creative_jobs drop column if exists film_take_id;", rb)
         self.assertIn("-- set local nightshift.rollback_0171_discard_segments = 'on';", ROLLBACK)
         # The functions the "a later migration reads film_segments" check spares are this file's own.

@@ -825,7 +825,7 @@ def test_a_member_reads_exactly_the_named_columns_and_a_later_column_stays_hidde
     assert e.value.sqlstate == "42501"
     with psycopg.connect(db.dsn, autocommit=False) as c:
         c.execute("alter table public.films add column cost_cents integer default 7")
-        c.execute("alter table public.film_takes add column provider_task_id text default 'task-secret'")
+        c.execute("alter table public.film_takes add column lab_later_secret text default 'task-secret'")
         c.execute("select set_config('request.jwt.claims', %s, true)", [claims("authenticated", a.viewer)])
         c.execute("set local role authenticated")
         j = c.execute("select public.film_json(%s)", [fid]).fetchone()[0]

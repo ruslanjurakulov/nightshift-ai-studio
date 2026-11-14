@@ -1,25 +1,30 @@
 """Film Studio P2 (migration 0171), attacked in a real database: the price of a film, its one credit hold, and the settle path.
 
 A film is quoted line by line from the backend's own rates (creative_price for every key frame and clip shot, the voice model's rate for
-the narration, film_assembly_minute for the assembly), started at that exact quote with one hold of the total, and settled once by the
-worker's service calls. What would break without each guard (each test names the guard it pins):
+the narration, film_assembly_minute for the assembly and its captions), started at that exact stored quote with one hold of the total,
+and settled once by the worker's service calls. What would break without each guard (each test names the guard it pins):
 
   * who: a viewer neither quotes nor starts; an editor quotes but only an admin starts (0020's rule for a paid run); another
     organization's film reads exactly like a missing one; the browser calls nothing of the worker's, the worker nothing of the browser's;
+    the switch is a platform owner's, and while it is off nothing starts;
   * the quote: every line from the backend's rates (no client number), an unpriced model or setting refused by name and never priced 0,
-    no Seedance model, a scene longer than the model can shoot, a key-frame model that cannot take every reference, captions excluded
-    and said so;
-  * the pin: an edited film invalidates its quote (film_changed), a rate that moved does too (price_changed), a forged quote id is
-    refused;
-  * the start: insufficient credits fail early (NS402) with nothing held or created; one key makes one start, replayed; concurrent
-    starts make one hold; the cap and the one-film-at-a-time limit; the hold equals the confirmed total;
-  * the settle: a clip is charged by its measured seconds, never above its line; the capture never exceeds the hold; a failure is
-    charged 0 and released; moderation is charged only where the vendor bills it; a cancel releases every take that never began;
-    an expired hold or a missing worker settles the segment instead of leaving a film "running"; a worker without the lease is refused;
+    no Seedance model, a scene longer than the model can shoot, a key-frame model that cannot take every reference picture (a character
+    counts as all of its pictures), the narration's minimum per provider call, captions inside the assembly line, the run slot it uses,
+    the credits a start could really hold (0094's extra credits);
+  * the pin: an edited film invalidates its quote (film_changed), a quote that was never stored or has expired is refused before any
+    pricing, a rate that moved is refused (price_changed); refused starts are counted by the rate limit;
+  * the start: insufficient credits fail early (NS402) with nothing held or created; one key makes one start; concurrent starts make
+    one hold; the cap and the one-film-at-a-time limit; the hold equals the confirmed total; each take carries what was priced;
+  * the settle: a clip is charged its full line only when its file measures at least 90% of the confirmed seconds; one automatic retry,
+    charged once; a failure is charged 0; moderation is charged only where the vendor bills it; a narration that voiced part of its
+    text is charged pro rata; a cancel releases every take that never began; a film that never ran goes back to draft; a hold that is
+    gone or that a refund waits on starts nothing new; a lost worker never blocks the claim and its takes end as worker_lost; the sweep
+    settles a segment past its deadline and grace while its hold is open;
   * the migration: a replay changes nothing, the drift guard refuses a body or a constraint that is not its own, and the rollback
     refuses while a segment is live, takes everything out with its override, and 0171 applies again after it.
 
-Runs in its own scratch database (it commits), with a registry installed through sync_model_registry and real probe rows.
+Runs in its own scratch database (it commits), with a registry installed through sync_model_registry and real probe rows. The fixture
+that clears live segments between tests uses only the service's own cancel: nothing a test asserts is set by hand behind the code.
 """
 
 from __future__ import annotations
@@ -60,9 +65,11 @@ SETTINGS = {"title": "The lighthouse", "language": "en", "target_seconds": 120, 
 SCENES = [{"title": "Open", "narration": "It begins.", "visual_prompt": "a lighthouse at dusk", "planned_seconds": 10},
           {"title": "Close", "narration": "It ends.", "planned_seconds": 8, "first_frame": "previous"}]
 # key frame 3 (one image) + scene 1 clip 10 s x 2 + scene 2 clip 8 s rounded up to 10 s x 2 + narration 18 characters x 0.01 = 0.18,
-# raised to the job minimum of 1 + assembly 18 s = 1 minute x 5.
+# raised to the job minimum of 1 (one provider call) + assembly 18 s = 1 minute x 5.
 TOTAL = Decimal("49.00")
 LIVE = ("queued", "running", "draining")
+VIDEO_SECONDS = 10  # what a lab clip measures unless a test says otherwise
+_UNSET = object()
 
 
 def claims(role, user=None):
@@ -105,11 +112,14 @@ class Db:
     def one(self, role, user, q, p=None):
         return self.act(role, user, q, p)[0][0]
 
-    def asset(self, org, kind="image", mime="image/png"):
+    def asset(self, org, kind="image", mime="image/png", duration=_UNSET):
+        """A library file as the worker registers one; a video measures VIDEO_SECONDS unless given (None: not measured)."""
+        if duration is _UNSET:
+            duration = VIDEO_SECONDS if kind == "video" else None
         return str(self.su(
             "select public.register_asset(gen_random_uuid(), %s, %s, %s, 1000, %s, 'generated', "
-            "p_width => 64, p_height => 64, p_provenance => '{}'::jsonb) ->> 'id'",
-            [org, kind, mime, uuid.uuid4().hex * 2])[0][0])
+            "p_width => 64, p_height => 64, p_duration_s => %s::numeric, p_provenance => '{}'::jsonb) ->> 'id'",
+            [org, kind, mime, uuid.uuid4().hex * 2, duration])[0][0])
 
     def new_org(self, credits=100, image=True):
         self.n += 1
@@ -161,7 +171,9 @@ class Db:
         return self.one("service_role", None, q, p)
 
     def quoted_start(self, o, film):
-        return self.start(o.admin, film, self.quote(o.editor, film)["quote_id"])
+        out = self.start(o.admin, film, self.quote(o.editor, film)["quote_id"])
+        assert out.get("ok") is True, out
+        return out
 
     # ── ground truth ────────────────────────────────────────────────────────
     def account(self, org):
@@ -178,18 +190,23 @@ class Db:
 
     def takes(self, segment):
         return self.su("select t.id, t.kind, t.scene_id, t.shot_index, t.status, t.confirmed_credits, t.charged_credits, "
-                       "t.charge_basis, t.quantity from public.film_takes t left join public.film_scenes s on s.id = t.scene_id "
-                       "where t.segment_id = %s order by s.position nulls last, t.shot_index", [segment])
+                       "t.charge_basis, t.quantity, t.attempt from public.film_takes t "
+                       "left join public.film_scenes s on s.id = t.scene_id "
+                       "where t.segment_id = %s order by s.position nulls last, t.shot_index, t.attempt", [segment])
 
     def film_row(self, film):
         return self.su("select status, pause_reason from public.films where id = %s", [film])[0]
 
     def segment(self, segment):
-        return self.su("select status, captured_credits, settle_reason, credit_ref, confirmed_credits from public.film_segments "
+        return self.su("select status, captured_credits, settle_reason, credit_ref, confirmed_credits, attempts from public.film_segments "
                        "where id = %s", [segment])[0]
 
     def events(self, film):
         return [r[0] for r in self.su("select event from public.film_events where film_id = %s order by id", [film])]
+
+    def rate_used(self, user, bucket):
+        return self.su("select coalesce(sum(count), 0) from public.web_rate_counters where user_id = %s and bucket = %s",
+                       [user, f"db.film.{bucket}@3600"])[0][0]
 
     def spend_rate(self, user, bucket, used):
         self.su("insert into public.web_rate_counters (user_id, bucket, window_start, count) "
@@ -204,11 +221,13 @@ class Db:
     def begin(self, take, worker="w-1"):
         return self.svc("select public.film_begin_take(%s, %s)", [take, worker])
 
-    def succeed(self, take, seconds, asset, worker="w-1"):
-        return self.svc("select public.film_take_succeeded(%s::uuid, %s, %s::numeric, %s::uuid)", [take, worker, seconds, asset])
+    def succeed(self, take, seconds, asset, worker="w-1", task="lab-task-1"):
+        return self.svc("select public.film_take_succeeded(%s::uuid, %s, %s::numeric, %s::uuid, null, %s)",
+                        [take, worker, seconds, asset, task])
 
-    def fail(self, take, failure, worker="w-1", code="vendor_refused"):
-        return self.svc("select public.film_take_failed(%s, %s, %s, %s, 'refused by the vendor')", [take, worker, failure, code])
+    def fail(self, take, failure, worker="w-1", code="vendor_refused", units=None):
+        return self.svc("select public.film_take_failed(%s, %s, %s, %s, 'refused by the vendor', %s::numeric)",
+                        [take, worker, failure, code, units])
 
     def settle(self, segment, reason, worker="w-1"):
         return self.svc("select public.film_settle_segment(%s, %s, %s)", [segment, worker, reason])
@@ -216,17 +235,15 @@ class Db:
     def cancel(self, segment, reason="cancelled"):
         return self.svc("select public.film_cancel_segment(%s, %s)", [segment, reason])
 
-    def finish_all(self, o, segment, worker="w-1", seconds=None):
-        """Every planned take of the segment made, each clip at `seconds` (its own planned length by default)."""
-        out = {}
-        for tid, kind, _sid, _shot, status, *_rest, qty in self.takes(segment):
-            if status != "planned":
-                continue
-            self.begin(tid, worker)
-            kind_ = {"keyframe": ("image", "image/png"), "narration": ("audio", "audio/mpeg")}.get(kind, ("video", "video/mp4"))
-            asset = self.asset(o.org, *kind_)
-            out[tid] = self.succeed(tid, (seconds or qty) if kind in ("clip", "extend") else None, asset, worker)
-        return out
+    def make(self, o, take, kind, worker="w-1", seconds=None):
+        """Begin a take and give it a result of its kind (a video measures VIDEO_SECONDS)."""
+        self.begin(take, worker)
+        kind_ = {"keyframe": ("image", "image/png"), "narration": ("audio", "audio/mpeg")}.get(kind, ("video", "video/mp4"))
+        return self.succeed(take, seconds, self.asset(o.org, *kind_), worker)
+
+    def finish_all(self, o, segment, worker="w-1"):
+        """Every planned take of the segment made."""
+        return {t[0]: self.make(o, t[0], t[1], worker) for t in self.takes(segment) if t[4] == "planned"}
 
 
 @pytest.fixture(scope="module")
@@ -253,6 +270,8 @@ def db():
          [ASSEMBLY_RATE, JOB_MINIMUM])
     sellable = {r[0] for r in d.su("select id from public.sellable_models(null, 'web')")}
     assert sellable >= {m[0] for m in MODELS}, sellable
+    # The switch, turned on the way the owner does it from the SQL editor (P3 turns it on in production).
+    assert d.su("select public.set_film_studio_enabled(true)")[0][0]["ok"] is True
     try:
         yield d
     finally:
@@ -262,11 +281,9 @@ def db():
 
 @pytest.fixture(autouse=True)
 def no_live_segment(db):
-    """Every test starts with no live segment in the module's database: film_claim_segment takes the oldest across organizations,
-    so one test's queued film must never be claimed by the next. What is in flight is failed (charged 0), then cancelled."""
-    db.su("update public.film_takes set status = 'failed', charged_credits = 0, charge_basis = 'lab_reset', finished_at = now() "
-          "where status = 'running' and segment_id is not null")
-    db.su("update public.film_segments set assembly_status = 'failed', assembly_charged_credits = 0 where assembly_status = 'running'")
+    """film_claim_segment takes the oldest claimable segment across organizations, so one test's queued film must never be claimed by
+    the next: every live segment is cancelled through the service's own cancel (a take in flight keeps its segment draining, which no
+    claim takes while its heartbeat is fresh). Nothing is written behind the code's back."""
     for (sid,) in db.su("select id from public.film_segments where status in ('queued', 'running', 'draining')"):
         db.svc("select public.film_cancel_segment(%s, 'cancelled')", [sid])
     yield
@@ -288,11 +305,17 @@ def err(fn):
     return e.value.sqlstate, str(e.value).splitlines()[0], (e.value.diag.message_detail or "")
 
 
+def refused(out):
+    """A refusal start_film answers after it is counted: (reason, code)."""
+    assert out.get("ok") is False, out
+    return out["reason"], out["code"]
+
+
 def reasons(q):
     return {r["reason"] for r in q["refusals"]}
 
 
-# ── who may quote and start ─────────────────────────────────────────────────
+# ── who may quote and start, and the switch ─────────────────────────────────
 
 def test_a_viewer_can_neither_quote_nor_start(db, a):
     fid = db.film(a)
@@ -308,8 +331,7 @@ def test_an_editor_quotes_but_only_an_admin_or_owner_starts(db, a):
     assert q["may_start"] is False and q["startable"] is False
     assert err(lambda: db.start(a.editor, fid, q["quote_id"]))[:2] == ("42501", "forbidden")
     assert db.quote(a.admin, fid)["startable"] is True
-    seg = db.start(a.owner, fid, q["quote_id"])
-    assert seg["status"] == "queued"
+    assert db.start(a.owner, fid, q["quote_id"])["status"] == "queued"
 
 
 def test_another_organizations_film_reads_as_not_found(db, a, b):
@@ -336,13 +358,35 @@ def test_a_call_without_a_signed_in_user_is_refused(db, a):
 
 
 @pytest.mark.parametrize("role", ["anon", "service_role"])
-def test_the_anon_key_and_the_service_role_call_neither_browser_function(db, a, role):
+def test_the_anon_key_and_the_service_role_call_no_browser_function(db, a, role):
     fid = db.film(a)
     for q, p in (("select public.quote_film(%s::uuid, 2)", [fid]),
-                 ("select public.start_film(%s::uuid, %s, 'service-key-01')", [fid, "fq-2-" + "0" * 32])):
+                 ("select public.start_film(%s::uuid, %s, 'service-key-01')", [fid, "fq-2-" + "0" * 32]),
+                 ("select public.set_film_studio_enabled(false)", [])):
         with pytest.raises(psycopg.Error) as e:
             db.act(role, None, q, p)
         assert e.value.sqlstate == "42501" and "permission denied" in str(e.value), q
+
+
+def test_while_the_switch_is_off_nothing_starts_and_only_a_platform_admin_or_the_sql_editor_turns_it(db, a):
+    """Item 9: film_studio_enabled, default off, set only through owner_guard (or the SQL editor), audited."""
+    fid = db.film(a)
+    qid = db.quote(a.editor, fid)["quote_id"]
+    try:
+        assert db.su("select public.set_film_studio_enabled(false)")[0][0] == {"ok": True, "enabled": False, "changed": True}
+        q = db.quote(a.editor, fid)
+        assert q["film_studio_enabled"] is False and {"reason": "film_studio_disabled"} in q["blocked_by"] and not q["startable"]
+        assert err(lambda: db.start(a.admin, fid, qid))[:2] == ("NS409", "film_studio_disabled")
+        assert db.holds(a.org) == [] and db.rate_used(a.admin, "start") == 0
+        # An owner of a customer organization is not a platform admin: refused before anything is read.
+        assert err(lambda: db.one("authenticated", a.owner, "select public.set_film_studio_enabled(true)"))[:2] == \
+            ("42501", "only a platform owner or admin may do this")
+        assert db.su("select film_studio_enabled from public.film_studio_settings")[0][0] is False
+    finally:
+        db.su("select public.set_film_studio_enabled(true)")
+    kinds = db.su("select detail ->> 'to', detail ->> 'via' from public.security_events where kind = 'film_studio.enabled' order by id")
+    assert kinds[-2:] == [("false", "sql_editor"), ("true", "sql_editor")], kinds
+    assert db.start(a.admin, fid, qid)["ok"] is True
 
 
 WORKER_CALLS = [
@@ -358,6 +402,7 @@ WORKER_CALLS = [
     ("select public.film_expire_segments()", []),
     ("select public.film_price(f) from public.films f limit 1", []),
     ("select public.film_settle_locked(%s::uuid, %s::uuid, 'cancelled')", ["seg", "seg"]),
+    ("select public.film_lose_inflight_locked(%s::uuid)", ["seg"]),
 ]
 
 
@@ -373,7 +418,7 @@ def test_no_browser_reaches_the_workers_state_machine(db, a, role):
 
 
 @pytest.mark.parametrize("role", ["authenticated", "anon", "service_role"])
-def test_no_api_role_writes_a_segment_a_setting_a_take_or_a_film_creative_job(db, a, role):
+def test_no_api_role_writes_a_segment_a_setting_a_quote_the_switch_a_take_or_a_film_creative_job(db, a, role):
     fid = db.film(a)
     seg = db.quoted_start(a, fid)["id"]
     take = db.takes(seg)[0][0]
@@ -382,6 +427,9 @@ def test_no_api_role_writes_a_segment_a_setting_a_take_or_a_film_creative_job(db
         f"update public.film_segments set captured_credits = 0, status = 'released', settled_at = now() where id = '{seg}'",
         f"delete from public.film_segments where id = '{seg}'",
         f"insert into public.org_film_settings (org_id, max_active_films) values ('{a.org}', 10)",
+        f"insert into public.film_quotes (film_id, org_id, version, quote_id, total, expires_at) values ('{fid}', '{a.org}', 2, "
+        f"'fq-2-{'0' * 32}', 0, now() + interval '1 day')",
+        "update public.film_studio_settings set film_studio_enabled = true",
         f"update public.film_takes set charged_credits = 0, charge_basis = 'x', status = 'failed' where id = '{take}'",
         "insert into public.creative_jobs (org_id, capability, requested_model, payer, film_take_id) "
         f"values ('{a.org}', 'i2v', 'vid-clip', 'film', '{take}')",
@@ -390,6 +438,14 @@ def test_no_api_role_writes_a_segment_a_setting_a_take_or_a_film_creative_job(db
         with pytest.raises(psycopg.Error) as e:
             db.act(role, who, q)
         assert e.value.sqlstate == "42501", q
+    for t in ("film_quotes", "film_studio_settings"):
+        if role == "service_role" and t == "film_quotes":
+            continue  # the trusted backend reads the stored quotes; it writes none of them (above)
+        with pytest.raises(psycopg.Error) as e:
+            db.act(role, who, f"select count(*) from public.{t}")
+        assert e.value.sqlstate == "42501", t
+    with pytest.raises(psycopg.Error):
+        db.act("authenticated", a.owner, "select provider_task_id from public.film_takes")
     assert db.segment(seg)[0] == "queued"
 
 
@@ -419,9 +475,38 @@ def test_the_quote_prices_every_line_from_the_backends_own_rates(db, a):
     assert (clip2["duration_s"], clip2["quantity"], clip2["unit"]) == (10, 10, "model_vid_clip_second")
     assert Decimal(str(q["lines"][3]["quantity"])) == 18 and q["lines"][3]["minimum"] == 1
     assert [Decimal(str(s["credits"])) for s in q["scenes"]] == [23, 20]
-    assert q["quote_id"].startswith(f"fq-{db.version(fid)}-") and q["refusals"] == [] and q["excluded"] == []
+    assert q["quote_id"].startswith(f"fq-{db.version(fid)}-") and q["refusals"] == [] and "excluded" not in q
     assert Decimal(str(q["available"])) == 100 and q["blocked_by"] == []
+    assert q["quote_expires_at"] is not None
     assert db.holds(a.org) == []
+
+
+def test_the_quote_says_the_film_takes_a_run_slot_and_for_how_long(db, a):
+    """Item 4: 0034 is unchanged; the person is told before Start that the film's hold is one of the plan's parallel runs."""
+    q = db.quote(a.editor, db.film(a))
+    assert q["run_slot"] == {"uses_run_slot": True, "slots": {"exempt": False, "limit": 1, "active": 0}, "max_hours": 25}, q["run_slot"]
+
+
+def test_captions_are_part_of_the_assembly_line_and_priced_with_it(db, a):
+    """Item 4: our own pipeline makes captions from the narration; no separate line, no separate hold, no 'excluded' path."""
+    fid = db.film(a, settings={**SETTINGS, "captions_mode": "sidecar"})
+    q = db.quote(a.editor, fid)
+    asm = [ln for ln in q["lines"] if ln["line"] == "assembly"][0]
+    assert q["priced"] is True and Decimal(str(q["total"])) == TOTAL and asm["includes"] == ["captions"] and "excluded" not in q
+    assert not [ln for ln in q["lines"] if ln["line"] == "captions"]
+
+
+def test_the_available_credits_follow_extra_credits_off(db):
+    """Item 12: with 0094's extra credits off, credits bought as a top-up pack are not what a start could hold."""
+    o = db.new_org(credits=0)
+    db.svc("select public.add_purchased_credits(%s, 100, %s, 'lab pack')", [o.org, f"pay_{uuid.uuid4().hex[:12]}"])
+    fid = db.film(o)
+    assert Decimal(str(db.quote(o.editor, fid)["available"])) == 100
+    db.su("update public.credit_accounts set use_extra_credits = false where org_id = %s", [o.org])
+    q = db.quote(o.editor, fid)
+    assert Decimal(str(q["available"])) == 0 and q["startable"] is False
+    assert [r["reason"] for r in q["blocked_by"]] == ["insufficient_credits"]
+    assert refused(db.start(o.admin, fid, q["quote_id"])) == ("insufficient_credits", "NS402")
 
 
 def test_a_seedance_model_is_refused_at_the_quote_even_when_it_is_already_saved(db, a):
@@ -446,13 +531,11 @@ def test_an_unpriced_model_or_setting_is_refused_never_priced_zero(db, a):
     finally:
         db.su("insert into public.credit_prices (unit, credits_per_unit, margin) values ('film_assembly_minute', %s, 0) "
               "on conflict (unit) do nothing", [ASSEMBLY_RATE])
-    # A setting the model has no price for (a resolution variant it does not list) is refused by creative_price, named.
     db.su("update public.film_scenes set clip_params = '{\"resolution\": \"1080p\"}' where film_id = %s and position = 0", [fid])
     q = db.quote(a.editor, fid)
     bad = [ln for ln in q["lines"] if not ln["priced"]]
     assert len(bad) == 1 and bad[0]["credits"] is None and bad[0]["reason"] == "invalid_params" and q["total"] is None
     db.su("update public.film_scenes set clip_params = '{}' where film_id = %s", [fid])
-    # A model whose price row is gone is not on sale: refused, never 0.
     try:
         db.su("update public.credit_prices set unit = 'model_vid_clip_second_off' where unit = 'model_vid_clip_second'")
         q = db.quote(a.editor, fid)
@@ -460,15 +543,15 @@ def test_an_unpriced_model_or_setting_is_refused_never_priced_zero(db, a):
         assert all(ln["credits"] is None for ln in q["lines"] if ln["line"] == "clip")
     finally:
         db.su("update public.credit_prices set unit = 'model_vid_clip_second' where unit = 'model_vid_clip_second_off'")
-    # And a start against an unpriced film is refused with the line's own word, holding nothing.
+    # A start against a film that became unpriced after its quote is refused with the line's own word, counted, holding nothing.
     qid = db.quote(a.editor, fid)["quote_id"]
     try:
         db.su("delete from public.credit_prices where unit = 'film_assembly_minute'")
-        assert err(lambda: db.start(a.admin, fid, qid))[:2] == ("NS400", "unpriced")
+        assert refused(db.start(a.admin, fid, qid)) == ("unpriced", "NS400")
     finally:
         db.su("insert into public.credit_prices (unit, credits_per_unit, margin) values ('film_assembly_minute', %s, 0) "
               "on conflict (unit) do nothing", [ASSEMBLY_RATE])
-    assert db.holds(a.org) == []
+    assert db.holds(a.org) == [] and db.rate_used(a.admin, "start") == 1
 
 
 def test_a_clip_with_no_picture_to_price_against_is_unpriced_not_zero(db):
@@ -497,12 +580,32 @@ def test_a_key_frame_model_that_cannot_take_every_reference_is_refused_never_han
     assert reasons(q) == {"refs_not_supported"} and q["total"] is None
 
 
-def test_captions_are_excluded_from_the_price_and_the_quote_says_so(db, a):
-    fid = db.film(a, settings={**SETTINGS, "captions_mode": "sidecar"})
+def test_a_character_counts_as_all_of_its_pictures_against_the_reference_limit(db, a):
+    """Breach (1): a 0047 character reaches the key-frame model as every picture it has. img-key takes 4: a character of 5 pictures
+    is refused by name, never cut to 4."""
+    ch = str(db.su("insert into public.characters (org_id, name) values (%s, %s) returning id", [a.org, f"hero_{uuid.uuid4().hex[:8]}"])[0][0])
+    for i in range(5):
+        db.su("insert into public.character_references (character_id, org_id, asset_id, position) values (%s, %s, %s, %s)",
+              [ch, a.org, db.asset(a.org), i])
+    fid = db.film(a)
+    db.save(a.editor, fid, db.version(fid), {"refs": [{"kind": "character", "character_id": ch}]})
     q = db.quote(a.editor, fid)
-    assert q["priced"] is True and Decimal(str(q["total"])) == TOTAL
-    assert [(e["line"], e["reason"]) for e in q["excluded"]] == [("captions", "priced_after_narration")]
-    assert not [ln for ln in q["lines"] if ln["line"] == "captions"]
+    assert reasons(q) == {"refs_not_supported"} and "has 5" in q["refusals"][0]["detail"]
+    db.su("delete from public.character_references where character_id = %s and position = 4", [ch])
+    assert db.quote(a.editor, fid)["priced"] is True
+
+
+def test_the_narration_is_never_less_than_the_minimum_once_per_provider_call(db, a):
+    """Breach (4): one tts call carries at most 4,000 characters, and the Studio charges each call its minimum."""
+    text = "a" * 2000
+    fid = db.film(a, scenes=[{"narration": text, "visual_prompt": "x", "planned_seconds": 10} for _ in range(3)])
+    try:
+        db.su("update public.credit_prices set credits_per_unit = 100 where unit = 'job_minimum'")
+        narr = [ln for ln in db.quote(a.editor, fid)["lines"] if ln["line"] == "narration"][0]
+        # 6,000 characters x 0.01 = 60, but two calls at a minimum of 100 each: 200.
+        assert (narr["quantity"], Decimal(str(narr["credits"]))) == (6000, 200), narr
+    finally:
+        db.su("update public.credit_prices set credits_per_unit = %s where unit = 'job_minimum'", [JOB_MINIMUM])
 
 
 def test_a_film_with_narration_and_no_voice_is_not_priced(db, a):
@@ -520,23 +623,49 @@ def test_an_edited_film_invalidates_its_quote(db, a):
     assert (code, word) == ("NS409", "film_changed") and "quote it again" in detail
     assert err(lambda: db.quote(a.editor, fid, db.version(fid) - 1))[:2] == ("NS409", "film_changed")
     assert db.holds(a.org) == [] and db.film_row(fid)[0] == "draft"
-    assert db.start(a.admin, fid, db.quote(a.editor, fid)["quote_id"])["status"] == "queued"
+    q = db.quote(a.editor, fid)
+    assert db.su("select count(*) from public.film_quotes where film_id = %s and version <> %s", [fid, db.version(fid)])[0][0] == 0
+    assert db.start(a.admin, fid, q["quote_id"])["status"] == "queued"
 
 
-def test_a_stale_quote_is_refused_when_a_rate_moves_and_a_forged_one_always(db, a):
+def test_a_quote_that_was_never_stored_or_has_expired_is_refused_before_any_pricing(db, a):
+    """Item 8 / Breach option 2: start_film compares with the stored quote first; a forged or expired id never reaches film_price."""
+    fid = db.film(a)
+    qid = db.quote(a.editor, fid)["quote_id"]
+    forged = qid[:-32] + "0" * 32
+    assert refused(db.start(a.admin, fid, forged)) == ("price_changed", "NS409")
+    db.su("update public.film_quotes set expires_at = now() - interval '1 second', created_at = now() - interval '1 hour' "
+          "where film_id = %s", [fid])
+    assert refused(db.start(a.admin, fid, qid)) == ("quote_expired", "NS409")
+    assert db.rate_used(a.admin, "start") == 2 and db.holds(a.org) == []
+    # A new quote replaces the expired one.
+    assert db.start(a.admin, fid, db.quote(a.editor, fid)["quote_id"])["ok"] is True
+
+
+def test_a_stale_quote_is_refused_when_a_rate_moves(db, a):
     fid = db.film(a)
     qid = db.quote(a.editor, fid)["quote_id"]
     try:
         db.su("update public.credit_prices set credits_per_unit = 3 where unit = 'model_vid_clip_second'")
-        code, word, detail = err(lambda: db.start(a.admin, fid, qid))
-        assert (code, word) == ("NS409", "price_changed") and "69" in detail, detail
+        out = db.start(a.admin, fid, qid)
+        assert refused(out) == ("price_changed", "NS409") and "69" in out["detail"], out
     finally:
         db.su("update public.credit_prices set credits_per_unit = 2 where unit = 'model_vid_clip_second'")
-    forged = qid[:-32] + "0" * 32
-    assert err(lambda: db.start(a.admin, fid, forged))[:2] == ("NS409", "price_changed")
     assert err(lambda: db.start(a.admin, fid, "49 credits please"))[:2] == ("NS400", "invalid_params")
     assert db.holds(a.org) == []
     assert db.start(a.admin, fid, qid)["confirmed_credits"] == TOTAL
+
+
+def test_refused_starts_count_against_the_hourly_limit(db, a):
+    """Item 8 / BR-0171-01: a refusal after the rate step is answered, not raised, so the counter commits with it."""
+    fid = db.film(a)
+    qid = db.quote(a.editor, fid)["quote_id"]
+    forged = qid[:-32] + "f" * 32
+    for _ in range(10):
+        assert refused(db.start(a.admin, fid, forged)) == ("price_changed", "NS409")
+    assert db.rate_used(a.admin, "start") == 10
+    assert err(lambda: db.start(a.admin, fid, qid))[:2] == ("NS429", "rate_limited")
+    assert db.holds(a.org) == [] and db.film_row(fid)[0] == "draft"
 
 
 # ── the start ───────────────────────────────────────────────────────────────
@@ -547,18 +676,19 @@ def test_insufficient_credits_fail_early_with_nothing_held_or_created(db):
     q = db.quote(o.editor, fid)
     assert [r["reason"] for r in q["blocked_by"]] == ["insufficient_credits"] and q["startable"] is False
     before = db.account(o.org)
-    code, word, detail = err(lambda: db.start(o.admin, fid, q["quote_id"]))
-    assert (code, word) == ("NS402", "insufficient credits") and "available=40" in detail and "needed=49" in detail, detail
+    out = db.start(o.admin, fid, q["quote_id"])
+    assert refused(out) == ("insufficient_credits", "NS402") and "available=40" in out["detail"] and "needed=49" in out["detail"], out
     assert db.account(o.org) == before and db.holds(o.org) == []
     assert db.su("select count(*) from public.film_segments where film_id = %s", [fid])[0][0] == 0
     assert db.su("select count(*) from public.film_takes where film_id = %s", [fid])[0][0] == 0
-    assert db.film_row(fid)[0] == "draft" and "started" not in db.events(fid)
+    assert db.film_row(fid)[0] == "draft" and "started" not in db.events(fid) and db.rate_used(o.admin, "start") == 1
 
 
-def test_start_holds_the_confirmed_total_once_and_plans_every_take(db, a):
+def test_start_holds_the_confirmed_total_once_and_plans_every_take_with_what_was_priced(db, a):
     fid = db.film(a)
-    seg = db.quoted_start(a, fid)
-    assert seg["status"] == "queued" and seg["confirmed_credits"] == TOTAL and seg["replayed"] is False
+    q = db.quote(a.editor, fid)
+    seg = db.start(a.admin, fid, q["quote_id"])
+    assert seg["ok"] is True and seg["status"] == "queued" and seg["confirmed_credits"] == TOTAL and seg["replayed"] is False
     assert db.holds(a.org) == [(seg["credit_ref"], TOTAL, "open", None)]
     assert seg["credit_ref"] == "fm-" + seg["id"].replace("-", "")
     assert db.account(a.org) == (Decimal(100), TOTAL)
@@ -566,8 +696,12 @@ def test_start_holds_the_confirmed_total_once_and_plans_every_take(db, a):
     assert [(t[1], t[3], t[4]) for t in takes] == [("keyframe", 0, "planned"), ("clip", 1, "planned"), ("clip", 1, "planned"),
                                                     ("narration", 0, "planned")]
     assert sum(t[5] for t in takes) + Decimal(str(seg["assembly"]["confirmed_credits"])) == TOTAL
+    # Item 13: each take carries exactly the params its line was priced with.
+    params = [r[0] for r in db.su("select t.params from public.film_takes t left join public.film_scenes s on s.id = t.scene_id "
+                                  "where t.segment_id = %s order by s.position nulls last, t.shot_index", [seg["id"]])]
+    assert params == [ln["params"] for ln in q["lines"] if ln["line"] != "assembly"], params
+    assert params[0] == {"aspect_ratio": "16:9"} and params[1] == {"duration_s": 10} and params[3] == {"voice_id": "voice_lab_1"}
     assert db.film_row(fid)[0] == "queued" and db.events(fid)[-1] == "started"
-    # A queued film is no longer a draft: it cannot be edited, quoted again or started a second time.
     assert err(lambda: db.save(a.editor, fid, db.version(fid), {"title": "x"}))[:2] == ("NS409", "film_not_editable")
     assert err(lambda: db.quote(a.editor, fid))[:2] == ("NS409", "film_not_editable")
 
@@ -592,20 +726,20 @@ def test_concurrent_starts_make_one_hold(db, same_key):
     fid = db.film(o)
     qid = db.quote(o.editor, fid)["quote_id"]
     keys = [db.key()] * 4 if same_key else [db.key() for _ in range(4)]
-    ok, refused, gate = [], [], threading.Barrier(4)
+    ok, refusals, gate = [], [], threading.Barrier(4)
 
     def go(k):
         gate.wait()
         try:
             ok.append(db.start(o.admin, fid, qid, k)["id"])
         except psycopg.Error as e:
-            refused.append((e.sqlstate, str(e).splitlines()[0]))
+            refusals.append((e.sqlstate, str(e).splitlines()[0]))
 
     threads = [threading.Thread(target=go, args=(k,)) for k in keys]
     [t.start() for t in threads]
     [t.join() for t in threads]
-    assert len(set(ok)) == 1, (ok, refused)
-    assert len(ok) == (4 if same_key else 1) and refused == ([] if same_key else [("NS409", "film_not_startable")] * 3)
+    assert len(set(ok)) == 1, (ok, refusals)
+    assert len(ok) == (4 if same_key else 1) and refusals == ([] if same_key else [("NS409", "film_not_startable")] * 3)
     assert len(db.holds(o.org)) == 1 and db.account(o.org)[1] == TOTAL
     assert db.su("select count(*) from public.film_segments where film_id = %s", [fid])[0][0] == 1
 
@@ -616,13 +750,13 @@ def test_two_films_at_once_are_refused_by_the_default_limit_and_the_cap_refuses_
     q2 = db.quote(o.editor, f2)["quote_id"]
     db.quoted_start(o, f1)
     assert [r["reason"] for r in db.quote(o.editor, f2)["blocked_by"]] == ["limit_reached", "run_slots_full"]
-    assert err(lambda: db.start(o.admin, f2, q2))[:2] == ("NS400", "limit_reached")
+    assert refused(db.start(o.admin, f2, q2)) == ("limit_reached", "NS400")
     db.su("insert into public.org_film_settings (org_id, max_credits_per_film, max_active_films) values (%s, 48, 2)", [o.org])
-    assert err(lambda: db.start(o.admin, f2, q2))[:2] == ("NS400", "cap_exceeded")
+    assert refused(db.start(o.admin, f2, q2)) == ("cap_exceeded", "NS400")
     db.su("update public.org_film_settings set max_credits_per_film = 49 where org_id = %s", [o.org])
     # The plan's one parallel run (0034) is the film already running: reserve_credits refuses the second hold.
-    code, word, _ = err(lambda: db.start(o.admin, f2, q2))
-    assert (code, word) == ("NS429", "parallel run limit reached")
+    out = db.start(o.admin, f2, q2)
+    assert refused(out) == ("run_slots_full", "NS429") and "limit=1" in out["detail"]
     assert len(db.holds(o.org)) == 1
 
 
@@ -656,64 +790,78 @@ def test_a_whole_film_settles_once_at_what_it_charged_and_the_film_is_ready(db, 
     assert again["captured_credits"] == TOTAL and db.ledger(a.org, "capture") == [-TOTAL]
 
 
-def test_a_clip_is_charged_by_its_measured_seconds_and_never_above_its_line(db, a):
+def test_a_clip_is_charged_its_full_line_only_when_its_file_measures_ninety_percent(db, a):
+    """Item 7: the file's own measured length decides, never the worker's number; at least 90% of the confirmed seconds is the full
+    line (as the Studio charges a job); less is a failure at 0, and the one retry is planned."""
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
     db.claim()
-    takes = db.takes(seg["id"])
-    clips = [t[0] for t in takes if t[1] == "clip"]
+    clips = [t[0] for t in db.takes(seg["id"]) if t[1] == "clip"]
     for tid in clips:
         db.begin(tid)
-    short = db.succeed(clips[0], 7.5, db.asset(a.org, "video", "video/mp4"))
-    long_ = db.succeed(clips[1], 14, db.asset(a.org, "video", "video/mp4"))
-    assert (short["charged_credits"], short["charge_basis"]) == (15, "output_seconds")
-    assert (long_["charged_credits"], long_["confirmed_credits"]) == (20, 20)
-    # Even the database owner cannot record a charge above the line.
+    short = db.succeed(clips[0], 10, db.asset(a.org, "video", "video/mp4", duration=8.9))  # 89%: the worker's 10 is not believed
+    assert short["accepted"] is False and (short["status"], short["charged_credits"], short["error_code"]) == \
+        ("superseded", 0, "output_too_short") and short["retry_take_id"]
+    enough = db.succeed(clips[1], None, db.asset(a.org, "video", "video/mp4", duration=9))
+    assert enough["accepted"] is True and (enough["charged_credits"], enough["charge_basis"], enough["output_seconds"]) == \
+        (20, "full_line", 9)
+    # The retry is a planned take at the same line, charged once, on success.
+    retry = short["retry_take_id"]
+    assert db.su("select attempt, status, confirmed_credits from public.film_takes where id = %s", [retry])[0] == (2, "planned", 20)
+    db.begin(retry)
+    assert db.succeed(retry, None, db.asset(a.org, "video", "video/mp4", duration=14))["charged_credits"] == 20
     with pytest.raises(psycopg.Error) as e:
-        db.su("update public.film_takes set charged_credits = 21 where id = %s", [clips[1]])
+        db.su("update public.film_takes set charged_credits = 21 where id = %s", [retry])
     assert e.value.sqlstate == "23514"
-    # A clip result without its measured seconds is refused: a default is never a measurement.
-    other = [t[0] for t in takes if t[1] == "keyframe"][0]
-    db.begin(other)
-    db.succeed(other, None, db.asset(a.org))
-    assert db.takes(seg["id"])[0][6] == 3
     out = db.cancel(seg["id"])
-    assert out["captured_credits"] == Decimal(38) and db.ledger(a.org, "capture") == [Decimal(-38)]
-    assert db.holds(a.org)[0][1:] == (TOTAL, "captured", Decimal(38))
+    assert out["captured_credits"] == Decimal(40) and db.ledger(a.org, "capture") == [Decimal(-40)]
 
 
-def test_a_clip_result_without_measured_seconds_or_of_the_wrong_kind_is_refused(db, a):
+def test_a_clip_result_that_cannot_be_measured_or_believed_is_never_charged(db, a):
+    """Item 7 and Breach (3): no measured length is a failure; a worker's hostile number, a missing provider task id, a file of the
+    wrong kind or of another organization are refused by name (never a raw 23514)."""
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
     db.claim()
     clip = [t[0] for t in db.takes(seg["id"]) if t[1] == "clip"][0]
     db.begin(clip)
     video = db.asset(a.org, "video", "video/mp4")
-    code, word, detail = err(lambda: db.succeed(clip, None, video))
-    assert (code, word) == ("NS400", "invalid_params") and "output_seconds" in detail
+    for s in (0.004, 0, -1, 601, "NaN", "Infinity"):
+        assert err(lambda: db.succeed(clip, s, video))[:2] == ("NS400", "invalid_params"), s
+    assert err(lambda: db.succeed(clip, 10, video, task=None))[:2] == ("NS400", "invalid_params")
     assert err(lambda: db.succeed(clip, 10, a.image))[:2] == ("NS400", "invalid_params")
-    other = db.new_org().org
-    assert err(lambda: db.succeed(clip, 10, db.asset(other, "video", "video/mp4")))[:2] == ("NS400", "invalid_params")
+    assert err(lambda: db.succeed(clip, 10, db.asset(db.new_org().org, "video", "video/mp4")))[:2] == ("NS400", "invalid_params")
+    out = db.succeed(clip, 10, db.asset(a.org, "video", "video/mp4", duration=None))
+    assert out["accepted"] is False and (out["error_code"], out["charged_credits"]) == ("output_length_unknown", 0)
+    tiny = db.asset(a.org, "video", "video/mp4", duration=0.004)
+    retry = out["retry_take_id"]
+    db.begin(retry)
+    out = db.succeed(retry, None, tiny)
+    assert out["accepted"] is False and (out["status"], out["error_code"], out["charged_credits"]) == ("failed", "output_too_short", 0)
 
 
-def test_a_failure_is_charged_nothing_and_its_share_is_released(db, a):
+def test_a_failure_is_retried_once_within_its_line_and_charged_nothing(db, a):
+    """Item 6: one automatic retry, charged once only on success; the failed try costs the customer 0. A second failure is final."""
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
     db.claim()
     takes = db.takes(seg["id"])
     kf, clip = takes[0][0], takes[1][0]
-    db.begin(kf)
-    db.succeed(kf, None, db.asset(a.org))
+    db.make(a, kf, "keyframe")
     db.begin(clip)
-    failed = db.fail(clip, "provider_error")
-    assert (failed["status"], failed["charged_credits"], failed["charge_basis"]) == ("failed", 0, "failed_not_charged")
-    assert db.fail(clip, "provider_error")["charged_credits"] == 0  # a retried call answers as it is
+    first = db.fail(clip, "provider_error")
+    assert (first["status"], first["charged_credits"], first["charge_basis"]) == ("superseded", 0, "retried_not_charged")
+    retry = first["retry_take_id"]
+    assert db.fail(clip, "provider_error")["status"] == "superseded"  # a retried call answers as it is
+    db.begin(retry)
+    final = db.fail(retry, "provider_error")
+    assert (final["status"], final["charged_credits"], final["charge_basis"]) == ("failed", 0, "failed_not_charged")
+    assert "retry_take_id" not in final and db.events(fid).count("take_retried") == 1
     out = db.settle(seg["id"], "take_failed")
     assert out["status"] == "settled" and out["captured_credits"] == 3
     assert db.ledger(a.org, "capture") == [Decimal(-3)] and db.ledger(a.org, "release")[-1] == TOTAL - 3
     assert db.account(a.org) == (Decimal(97), 0)
     assert db.film_row(fid) == ("paused", "take_failed")
-    assert {t[4] for t in db.takes(seg["id"])[2:]} == {"skipped"}
 
 
 @pytest.mark.parametrize("model,charged,basis", [
@@ -727,26 +875,48 @@ def test_moderation_is_charged_only_where_the_vendor_bills_it(db, a, model, char
     db.claim()
     clip = [t[0] for t in db.takes(seg["id"]) if t[1] == "clip"][0]
     planned = [t[0] for t in db.takes(seg["id"]) if t[1] == "keyframe"][0]
-    # A take that never reached the vendor cannot have been moderated.
     assert err(lambda: db.fail(planned, "moderated"))[:2] == ("NS409", "take_not_running")
+    db.make(a, planned, "keyframe")
     db.begin(clip)
-    out = db.fail(clip, "moderated", code="policy")
+    first = db.fail(clip, "moderated", code="policy")
+    assert (first["charged_credits"], first["charge_basis"]) == (0, "retried_not_charged")  # the platform carries the first try
+    db.begin(first["retry_take_id"])
+    out = db.fail(first["retry_take_id"], "moderated", code="policy")
     assert (out["charged_credits"], out["charge_basis"]) == (charged, basis)
     settled = db.settle(seg["id"], "moderated")
-    assert settled["captured_credits"] == charged and settled["status"] == ("settled" if charged else "released")
-    assert db.ledger(a.org, "capture") == ([Decimal(-charged)] if charged else [])
+    assert settled["captured_credits"] == charged + 3 and settled["status"] == "settled"
 
 
-def test_cancel_releases_every_hold_that_never_started(db, a):
+def test_a_narration_that_voiced_part_of_its_text_is_charged_pro_rata(db, a):
+    """Item 6: the chunks that succeeded, by characters, at the confirmed rate (no minimum)."""
+    fid = db.film(a, scenes=[{"narration": "n" * 2000, "visual_prompt": "x", "planned_seconds": 10}])
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    narr = [t for t in db.takes(seg["id"]) if t[1] == "narration"][0]
+    assert narr[5] == 20  # 2,000 characters x 0.01
+    db.begin(narr[0])
+    retry = db.fail(narr[0], "provider_error", units=1000)["retry_take_id"]  # the first try: never charged
+    db.begin(retry)
+    out = db.fail(retry, "provider_error", units=1500)
+    assert (out["status"], out["charged_credits"], out["charge_basis"]) == ("failed", 15, "per_character_partial")
+    assert err(lambda: db.fail(db.takes(seg["id"])[0][0], "provider_error", units=5))[:2] == ("NS400", "invalid_params")
+
+
+def test_cancel_before_anything_ran_releases_every_hold_and_the_film_goes_back_to_draft(db, a):
+    """Item 3: nothing was charged and nothing made, so the film is a draft again, editable and startable, its takes kept at 0."""
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
     out = db.cancel(seg["id"])
     assert (out["status"], out["captured_credits"], out["settled"]) == ("released", 0, True)
     assert db.holds(a.org)[0][2] == "released" and db.account(a.org) == (Decimal(100), 0)
-    assert db.ledger(a.org, "capture") == [] and db.film_row(fid) == ("cancelled", None)
+    assert db.ledger(a.org, "capture") == [] and db.film_row(fid) == ("draft", None)
     assert {(t[4], t[6], t[7]) for t in db.takes(seg["id"])} == {("skipped", 0, "cancelled_before_start")}
-    assert db.claim() is None  # nothing left to claim
-    assert db.cancel(seg["id"])["status"] == "released"  # idempotent
+    assert db.claim() is None
+    assert db.cancel(seg["id"])["status"] == "released"
+    db.save(a.editor, fid, db.version(fid), {"title": "The lighthouse, again"})
+    second = db.quoted_start(a, fid)
+    assert second["n"] == 2 and db.holds(a.org)[-1][2] == "open"
+    assert {t[4] for t in db.takes(second["id"])} == {"planned"}
 
 
 def test_cancel_waits_for_a_take_in_flight_then_releases_the_rest(db, a):
@@ -757,12 +927,11 @@ def test_cancel_waits_for_a_take_in_flight_then_releases_the_rest(db, a):
     db.begin(clip)
     out = db.cancel(seg["id"])
     assert (out["status"], out["settled"]) == ("draining", False) and db.film_row(fid)[0] == "draining"
-    # Nothing new begins once the segment drains.
     kf = [t[0] for t in db.takes(seg["id"]) if t[1] == "keyframe"][0]
     assert db.takes(seg["id"])[0][4] == "skipped"
     assert err(lambda: db.begin(kf))[:2] == ("NS409", "not_running")
     assert db.holds(a.org)[0][2] == "open"
-    db.succeed(clip, 10, db.asset(a.org, "video", "video/mp4"))
+    db.succeed(clip, None, db.asset(a.org, "video", "video/mp4"))
     out = db.settle(seg["id"], "cancelled")
     assert (out["status"], out["captured_credits"]) == ("settled", 20)
     assert db.account(a.org) == (Decimal(80), 0) and db.film_row(fid) == ("cancelled", None)
@@ -777,50 +946,129 @@ def test_a_worker_without_the_lease_is_refused(db, a):
     assert err(lambda: db.settle(seg["id"], "cancelled", "w-2"))[:2] == ("NS409", "lease_lost")
     assert db.svc("select public.film_heartbeat_segment(%s, 'w-2')", [seg["id"]]) is False
     assert db.svc("select public.film_heartbeat_segment(%s, 'w-1')", [seg["id"]]) is True
-    # A lease that stopped beating is taken over, and the old worker is then refused.
     db.su("update public.film_segments set heartbeat_at = now() - interval '11 minutes' where id = %s", [seg["id"]])
     assert db.claim("w-2")["worker_id"] == "w-2"
     assert err(lambda: db.begin(take, "w-1"))[:2] == ("NS409", "lease_lost")
 
 
-def test_a_hold_that_expired_before_the_claim_settles_the_segment_and_pauses_the_film(db, a):
+def test_eleven_stale_reclaims_never_block_another_organizations_claim(db, a, b):
+    """HIGH 1: a segment whose worker keeps dying uses its leases, then its take in flight ends as worker_lost and it settles; the
+    attempts never pass the cap (the check that made the eleventh claim raise for everyone), and b's film is still claimed."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    assert db.claim()["id"] == seg["id"]
+    kf = db.takes(seg["id"])[0][0]
+    db.make(a, kf, "keyframe")
+    clip = db.takes(seg["id"])[1][0]
+    db.begin(clip)
+    for _ in range(11):
+        db.su("update public.film_segments set heartbeat_at = now() - interval '11 minutes' where id = %s and status <> 'settled' "
+              "and status <> 'released'", [seg["id"]])
+        db.claim()
+        assert db.segment(seg["id"])[5] <= 3
+    assert db.segment(seg["id"])[:3] == ("settled", 3, "worker_lost")
+    lost = db.su("select status, charged_credits, charge_basis from public.film_takes where id = %s", [clip])[0]
+    assert lost == ("failed", 0, "worker_lost_not_charged")
+    assert db.film_row(fid) == ("paused", "worker_lost")
+    other = db.quoted_start(b, db.film(b))
+    assert db.claim()["id"] == other["id"]
+
+
+def test_a_segment_that_raises_is_skipped_and_the_claim_goes_on(db, a, b):
+    """HIGH 1, the isolation: one bad row (here a trigger the operator put on it) never takes the claim down for another film."""
+    bad = db.quoted_start(a, db.film(a))
+    good = db.quoted_start(b, db.film(b))
+    db.su(f"""create or replace function pg_temp_lab_boom() returns trigger language plpgsql as $$
+              begin if new.id = '{bad["id"]}' then raise exception 'lab: this row is broken'; end if; return new; end $$""")
+    db.su("create trigger lab_boom before update on public.film_segments for each row execute function pg_temp_lab_boom()")
+    try:
+        assert db.claim()["id"] == good["id"]
+        assert db.segment(bad["id"])[0] == "queued"
+    finally:
+        db.su("drop trigger lab_boom on public.film_segments")
+        db.su("drop function pg_temp_lab_boom()")
+
+
+def test_a_hold_that_expired_before_the_claim_settles_the_segment_and_the_film_is_a_draft_again(db, a):
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
     db.su("select public.release_credits(%s)", [seg["credit_ref"]])  # 0020's 3-hour expiry, as it would run
     assert db.claim() is None
     assert db.segment(seg["id"])[:3] == ("released", 0, "hold_expired")
-    assert db.film_row(fid) == ("paused", "hold_expired") and db.ledger(a.org, "capture") == []
+    assert db.film_row(fid) == ("draft", "hold_expired") and db.ledger(a.org, "capture") == []
 
 
-def test_a_film_nobody_claimed_or_past_its_deadline_is_settled_by_the_sweep(db, a, b):
-    late = db.film(b)
-    s_late = db.quoted_start(b, late)
-    assert db.claim()["id"] == s_late["id"]
-    db.su("update public.film_segments set deadline_at = now() - interval '1 minute' where id = %s", [s_late["id"]])
-    lone = db.film(a)
-    s_lone = db.quoted_start(a, lone)
-    db.su("update public.film_segments set created_at = now() - interval '4 hours' where id = %s", [s_lone["id"]])
-    assert db.svc("select public.film_expire_segments()") == 2
-    assert db.segment(s_lone["id"])[:3] == ("released", 0, "worker_unavailable")
-    assert db.segment(s_late["id"])[:3] == ("released", 0, "deadline")
-    assert db.film_row(lone) == ("paused", "worker_unavailable") and db.film_row(late) == ("paused", "deadline")
-    assert db.account(a.org)[1] == 0 and db.account(b.org)[1] == 0
-    assert db.svc("select public.film_expire_segments()") == 0
+def test_no_take_begins_once_the_hold_is_gone_and_the_segment_settles_with_what_it_has(db, a):
+    """Item 5: the hold is no longer open (0020 released it) under a running film."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    kf, clip = db.takes(seg["id"])[0][0], db.takes(seg["id"])[1][0]
+    db.make(a, kf, "keyframe")
+    db.su("select public.release_credits(%s)", [seg["credit_ref"]])
+    out = db.begin(clip)
+    assert (out["began"], out["reason"], out["status"]) == (False, "hold_lost", "skipped")
+    assert db.segment(seg["id"])[:3] == ("released", 0, "hold_lost")
+    assert db.film_row(fid) == ("paused", "hold_lost")
 
 
-def test_settled_money_is_what_the_ledger_moved_even_when_the_hold_expired_mid_film(db, a):
-    """If 0020 expired a hold under a half-made film, the record says what was captured (0), never what was owed."""
+def test_no_take_begins_while_a_refund_waits_to_collect_from_the_hold(db, a):
+    """Item 5: an open credit_refund_recoveries row (0167) that lists the segment's hold stops new spending."""
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
     db.claim()
     kf = db.takes(seg["id"])[0][0]
-    db.begin(kf)
-    db.succeed(kf, None, db.asset(a.org))
+    rid = f"rf_{uuid.uuid4().hex[:12]}"
+    db.su("insert into public.credit_refunds (refund_id, purchase_external_id, org_id, requested, taken, shortfall) "
+          "values (%s, 'pay_lab', %s, 10, 0, 10)", [rid, a.org])
+    db.su("insert into public.credit_refund_recoveries (refund_id, purchase_external_id, org_id, holds, owed) "
+          "values (%s, 'pay_lab', %s, %s, 10)", [rid, a.org, [seg["credit_ref"]]])
+    out = db.begin(kf)
+    assert (out["began"], out["reason"]) == (False, "refund_pending")
+    assert db.segment(seg["id"])[:3] == ("released", 0, "refund_pending")
+    assert db.film_row(fid) == ("draft", "refund_pending")
+
+
+def test_the_sweep_ends_a_take_in_flight_past_the_deadline_and_grace_and_settles_while_the_hold_is_open(db, a):
+    """MEDIUM 2: past the deadline nothing new begins; past the deadline plus the grace (2 h, before 0020's 24 h expiry) the take in
+    flight fails as worker_lost and the segment settles at what was made, with its hold still open until the capture."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    kf, clip = db.takes(seg["id"])[0][0], db.takes(seg["id"])[1][0]
+    db.make(a, kf, "keyframe")
+    db.begin(clip)
+    db.su("update public.film_segments set deadline_at = now() - interval '1 hour' where id = %s", [seg["id"]])
+    assert db.svc("select public.film_expire_segments()") == 1
+    assert db.segment(seg["id"])[0] == "draining" and db.holds(a.org)[0][2] == "open"
+    assert db.svc("select public.film_expire_segments()") == 0  # draining with a take in flight: wait, and write nothing
+    db.su("update public.film_segments set deadline_at = now() - interval '2 hours 1 minute' where id = %s", [seg["id"]])
+    assert db.svc("select public.film_expire_segments()") == 1
+    assert db.segment(seg["id"])[:3] == ("settled", 3, "deadline")
+    assert db.su("select status, charge_basis from public.film_takes where id = %s", [clip])[0] == ("failed", "worker_lost_not_charged")
+    assert db.holds(a.org)[0][1:] == (TOTAL, "captured", Decimal(3)) and db.film_row(fid) == ("paused", "deadline")
+
+
+def test_a_film_nobody_claimed_is_settled_by_the_sweep_and_is_a_draft_again(db, a):
+    lone = db.film(a)
+    s_lone = db.quoted_start(a, lone)
+    db.su("update public.film_segments set created_at = now() - interval '4 hours' where id = %s", [s_lone["id"]])
+    assert db.svc("select public.film_expire_segments()") == 1
+    assert db.segment(s_lone["id"])[:3] == ("released", 0, "worker_unavailable")
+    assert db.film_row(lone) == ("draft", "worker_unavailable") and db.account(a.org)[1] == 0
+    assert db.svc("select public.film_expire_segments()") == 0
+
+
+def test_settled_money_is_what_the_ledger_moved_even_when_the_hold_expired_mid_film(db, a):
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    db.make(a, db.takes(seg["id"])[0][0], "keyframe")
     db.su("select public.release_credits(%s)", [seg["credit_ref"]])
     out = db.settle(seg["id"], "hold_expired")
     assert (out["status"], out["captured_credits"], out["charged_credits"]) == ("released", 0, 3)
     detail = db.su("select detail from public.film_events where film_id = %s and event = 'segment_settled'", [fid])[0][0]
-    assert detail["not_captured"] == 3
+    assert detail["not_captured"] == 3 and db.film_row(fid) == ("paused", "hold_expired")
 
 
 # ── the migration ───────────────────────────────────────────────────────────
@@ -829,7 +1077,7 @@ SNAPSHOT = """
 select jsonb_build_object(
   'constraints', (select jsonb_agg(conname || ' ' || pg_get_constraintdef(oid) order by conname) from pg_constraint
                    where conrelid = any(array['public.film_segments','public.org_film_settings','public.film_takes','public.films',
-                                              'public.creative_jobs']::regclass[])),
+                                              'public.creative_jobs','public.film_quotes','public.film_studio_settings']::regclass[])),
   'indexes', (select jsonb_agg(indexdef order by indexname) from pg_indexes where schemaname = 'public'
                and (tablename like 'film%' or tablename in ('org_film_settings', 'creative_jobs'))),
   'policies', (select jsonb_agg(policyname || ' ' || qual order by policyname) from pg_policies
@@ -837,15 +1085,18 @@ select jsonb_build_object(
   'functions', (select jsonb_agg(p.oid::regprocedure::text || ' ' || md5(p.prosrc) || ' ' || coalesce(array_to_string(p.proacl, ','), '')
                                  order by p.oid::regprocedure::text)
                   from pg_proc p where p.pronamespace = 'public'::regnamespace
-                   and (p.proname like 'film\\_%' or p.proname in ('quote_film', 'start_film'))),
+                   and (p.proname like 'film\\_%' or p.proname in ('quote_film', 'start_film', 'set_film_studio_enabled'))),
   'columns', (select jsonb_agg(table_name || '.' || column_name || ' ' || data_type order by table_name, column_name)
                 from information_schema.columns where table_schema = 'public'
-                 and table_name in ('film_segments', 'org_film_settings', 'film_takes', 'creative_jobs')),
+                 and table_name in ('film_segments', 'org_film_settings', 'film_takes', 'creative_jobs', 'film_quotes',
+                                    'film_studio_settings')),
   'column_grants', (select jsonb_agg(grantee || ' ' || table_name || '.' || column_name || ' ' || privilege_type
                                      order by grantee, table_name, column_name, privilege_type)
                       from information_schema.column_privileges where table_schema = 'public'
                        and table_name in ('film_segments', 'org_film_settings', 'film_takes')),
   'rows', (select jsonb_build_array((select count(*) from public.film_segments), (select count(*) from public.film_takes),
+                                    (select count(*) from public.film_quotes),
+                                    (select film_studio_enabled from public.film_studio_settings),
                                     (select md5(string_agg(to_jsonb(s)::text, ',' order by id)) from public.film_segments s))))
 """
 
@@ -874,6 +1125,24 @@ def test_the_drift_guard_refuses_a_body_or_a_constraint_that_is_not_its_own(db):
             c.execute(text)
         assert "creative_jobs_payer_check that is not 0036's or this file's" in str(e.value)
         c.rollback()
+        # Item 10: a superset that still names every earlier word is refused too (the exact set of quoted words is compared).
+        c.execute("alter table public.creative_jobs drop constraint creative_jobs_payer_check")
+        c.execute("alter table public.creative_jobs add constraint creative_jobs_payer_check "
+                  "check (payer in ('credits', 'api_balance', 'film', 'free'))")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(text)
+        assert "creative_jobs_payer_check that is not 0036's or this file's" in str(e.value)
+        c.rollback()
+        c.execute("alter table public.films drop constraint films_status_check")
+        c.execute("alter table public.films add constraint films_status_check check (status in ('draft', 'planning', 'planned', "
+                  "'queued', 'running', 'draining', 'paused', 'assembling', 'ready', 'failed', 'cancelled', 'archived', 'bogus') "
+                  "and (pause_reason is null or pause_reason ~ '^[a-z][a-z0-9_]{0,63}$') "
+                  "and (pause_detail is null or public.film_text_ok(pause_detail, 1, 500, false)) "
+                  "and ((status = 'archived') = (archived_at is not null)))")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(text)
+        assert "films_status_check that is not 0166's or this file's" in str(e.value)
+        c.rollback()
         c.execute("alter table public.film_segments rename column assembly_confirmed_credits to asm_credits")
         with pytest.raises(psycopg.Error) as e:
             c.execute(text)
@@ -882,33 +1151,41 @@ def test_the_drift_guard_refuses_a_body_or_a_constraint_that_is_not_its_own(db):
     assert db.su("select public.film_moderation_billing('vid-hh')")[0][0] == "not_billed"
 
 
-def _rollback(override: bool) -> str:
-    return sec_db.rollback_0171_body(override=override)
-
-
 def test_the_rollback_refuses_while_a_segment_lives_then_takes_everything_out_and_0171_applies_again(db, a):
     fid = db.film(a)
     seg = db.quoted_start(a, fid)
     with psycopg.connect(db.dsn, autocommit=False) as c:
         with pytest.raises(psycopg.Error) as e:
-            c.execute(_rollback(override=True))
+            c.execute(sec_db.rollback_0171_body(override=True))
         assert "film segments are live" in str(e.value)
         c.rollback()
     db.cancel(seg["id"])
     with psycopg.connect(db.dsn, autocommit=False) as c:
         with pytest.raises(psycopg.Error) as e:
-            c.execute(_rollback(override=False))
+            c.execute(sec_db.rollback_0171_body(override=False))
         assert "film segments exist and their record would be deleted" in str(e.value)
         c.rollback()
-        c.execute(_rollback(override=True))
-        assert c.execute("select to_regclass('public.film_segments'), to_regprocedure('public.start_film(uuid, text, text)')").fetchone() \
-            == (None, None)
+        c.execute(sec_db.rollback_0171_body(override=True))
+        assert c.execute("select to_regclass('public.film_segments'), to_regclass('public.film_quotes'), "
+                         "to_regclass('public.film_studio_settings'), to_regprocedure('public.start_film(uuid, text, text)')").fetchone() \
+            == (None, None, None, None)
         assert "'queued'" not in c.execute("select pg_get_constraintdef(oid) from pg_constraint where conname = 'films_status_check'").fetchone()[0]
         assert c.execute("select count(*) from information_schema.columns where table_name = 'creative_jobs' "
                          "and column_name = 'film_take_id'").fetchone()[0] == 0
-        # The credit ledger keeps every movement of the film's hold.
         assert c.execute("select count(*) from public.credit_transactions where job_id = %s", [seg["credit_ref"]]).fetchone()[0] == 2
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         assert c.execute("select has_function_privilege('authenticated', 'public.start_film(uuid, text, text)', 'execute')").fetchone()[0]
+        assert c.execute("select public.film_studio_on()").fetchone()[0] is False  # the switch comes back OFF
         c.rollback()  # the lab keeps its segments: the whole round trip is undone
     assert db.segment(seg["id"])[0] == "released"
+
+
+def test_the_rollback_refuses_a_body_that_is_not_its_own(db):
+    """Item 14: every function body is pinned, not only the browser's."""
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("create or replace function public.film_stand_in(p_org uuid) returns uuid "
+                  "language sql stable security definer set search_path = public, pg_temp as $$ select null::uuid $$")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(sec_db.rollback_0171_body(override=True))
+        assert "film_stand_in(uuid) is missing or is not 0171's body" in str(e.value)
+        c.rollback()
