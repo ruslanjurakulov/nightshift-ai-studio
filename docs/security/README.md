@@ -31,6 +31,7 @@ machine, one Markdown file per finding (or per small group):
 | `BR-S-NNN` | Sentinel's own static review (written straight to the ledger, not the inbox) |
 | `BR-U-NNN` | The author's own review of the Usage page and the extra-credits switch (0094), written straight to the ledger |
 | `BR-V-NNN` | The author's own review of the Custom Voice gates (0121), written straight to the ledger |
+| `BR-NNNN-NN` | Breach, a finding named after the migration whose code it attacks (for example `BR-0034-01`, `refund_purchased_credits`) |
 
 A finding file should contain:
 
