@@ -168,6 +168,19 @@ sertifikati bilan ishlaydi; Cloudflare Origin CA sertifikati bilan noto'g'ri
 "qizil" berardi; `DOMAIN` o'zgargandan keyin yangi sertifikat 30 soniyadan
 uzoq olinishi mumkin (qayta deploy xavfsiz).
 
+**Deploy paytida 502 emas, bir necha soniya kutish.** Har deploy `web`
+konteynerini qayta yaratadi (6-qadam) va shu soniyalarda `web:3000`da hech kim
+javob bermaydi; avval Caddy darhol 502 qaytarardi (2026-11-14 o'lchov: har
+deploy'da ~5 s 502). Endi `reverse_proxy` blokida `lb_try_duration 30s` va
+`lb_try_interval 250ms` bor: Caddy so'rovni ushlab turadi va har 250 ms'da qayta
+ulanadi, yangi `web` javob berishi bilan so'rov o'tadi — tashrif buyuruvchi bir
+necha soniya kutadi, 502 ko'rmaydi. Ulanib bo'lmagan so'rov ilovaga yetmagan,
+shuning uchun POST ham ikki marta yuborilmaydi. `web` 30 s ichida qaytmasa,
+javob baribir 502. (`tests/test_deploy_self_host.py` kamida 10 s oynani
+qulflaydi.) Bu sozlama Caddy'ga 7-qadamda yuklanadi, ya'ni uni olib kelgan
+birinchi deploy'da `web` hali eski konfig ostida qayta yaratiladi; kutish
+keyingi deploy'dan boshlab ishlaydi.
+
 **Qayta yaratish va reboot ham faqat tasdiqlangan faylni ko'radi.** Avval
 Caddy checkout'dagi `./Caddyfile`ni ulardi: 6-qadam (`compose up`) qulfdan
 **oldin** ishlagani uchun `caddy` servisi o'zgargan commit Caddy'ni
