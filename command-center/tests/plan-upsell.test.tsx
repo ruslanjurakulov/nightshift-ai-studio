@@ -351,7 +351,7 @@ describe("the dialog's links go to pages that exist", () => {
 });
 
 describe("the voice tools in the customer sidebar", () => {
-  it("lists Change voice and Dub / translate in the Create group, each opening its tool", () => {
+  it("keeps Change voice and Dub / translate in the tool list, each opening its tool", () => {
     const tools = CUSTOMER_SIDEBAR.tools.map((t) => t.tool);
     // The voice tools follow the picture tools; Describe (0055) comes last.
     expect(tools.slice(-4)).toEqual(["voice_change", "dub", "describe", "video_upscale"]);
@@ -359,7 +359,8 @@ describe("the voice tools in the customer sidebar", () => {
     expect(CUSTOMER_SIDEBAR.tools.find((t) => t.tool === "dub")?.href).toBe("/create?tool=dub");
     expect(en.gen.kinds.voice_change).toBe("Change voice");
     expect(en.gen.kinds.dub).toBe("Dub / translate");
-    expect(sidebarCurrent("/create", "dub")).toBe("tool:dub");
+    // The tools are no longer sidebar rows (they open from Studio home): the Studio entry is lit.
+    expect(sidebarCurrent("/create")).toBe("studio");
   });
 
   it("every sidebar href is a screen a customer may open", () => {

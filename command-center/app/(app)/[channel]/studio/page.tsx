@@ -1,121 +1,82 @@
-import { createClient } from "@/lib/supabase/server";
-import { ErrorState } from "@/components/ReadError";
-import { readFailed } from "@/lib/readState";
-import { isSupabaseConfigured } from "@/lib/config";
-import { NotConfigured } from "@/components/NotConfigured";
-import { Section, Note } from "@/components/g3/Section";
-import { getDictionary } from "@/lib/i18n/server";
+import Link from "next/link";
+import { Palette } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
-import { getChannelContext } from "@/lib/channels-server";
-import { channelPath, isScoped, scopeQuery } from "@/lib/channels";
-import { getOrgContext } from "@/lib/orgs-server";
-import { loadStyleContext } from "@/lib/server/style-kits";
-import { StyleSections } from "@/components/studio/StyleSections";
-import { deriveAdvisory } from "@/lib/advisory";
-import { PresetGallery } from "@/components/studio/PresetGallery";
-import type { SystemEventRow } from "@/lib/types";
+import { StudioTiles } from "@/components/studio-hub/StudioTiles";
+import { VideosShelf } from "@/components/studio-hub/VideosShelf";
+import { ProjectsShelf } from "@/components/studio-hub/ProjectsShelf";
+import { getDictionary } from "@/lib/i18n/server";
+import { getChannelPath } from "@/lib/channels-path-server";
+import { STUDIO_SHELVES, shelfFromQuery, type StudioShelf } from "@/lib/studioRoutes";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * Brand look (formerly "Studio Canvas": "Studio" also named the hub and Character Studio) — the channel's visual identity in one place: a gallery of
- * style presets (the same catalog the bot expands, modules/style_presets.py)
- * and the autopilot's latest auto-picked topic. Applying a preset writes it to
- * the scoped channel; the pipeline reads that as the channel's base visual style
- * (main.py, effective_visual_style channel default), so the whole look follows.
+ * Nightshift Studio's home (docs/studio/STUDIO_IA.md §4–5, build step 1: "IA shell, no new
+ * behaviour"). The owner's complaint was that the creative tools were eight sections that felt
+ * unrelated; this is the one place they now live.
  *
- * Below them, the organization's style kits and characters (migration 0047):
- * looks and recurring subjects built from its own media library. Generations
- * made on the Create page use them (a kit picked as the Style, @names in the
- * words — migration 0048); the autonomous video pipeline does not read them yet.
+ * - The header's Channel look chip opens Brand look (/studio/look): /studio used to BE Brand look,
+ *   so an old bookmark lands here, one click away (§9.1, adopted).
+ * - The tiles open every tool's page as it is today (lib/studioRoutes.ts maps the old URLs).
+ * - The shelf: Projects (the editor's projects, which /editor now redirects to) and Videos (what
+ *   /videos listed, which now redirects to `?shelf=videos`).
+ *
+ * The page reads; it never writes, prices or starts anything. Each shelf keeps the reads, the RLS and
+ * the loading, empty and error states its old page had. The canvas (`/studio/{kind}/{id}`) is the
+ * next build step and is not here.
  */
-export default async function StudioPage() {
-  if (!isSupabaseConfigured) return <NotConfigured />;
+export default async function StudioHomePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const shelf = shelfFromQuery(sp.shelf);
   const { t } = await getDictionary();
-  const { selection, channels, scope, slug } = await getChannelContext();
-  const org = await getOrgContext();
-
-  const supabase = await createClient();
-  let events: SystemEventRow[] = [];
-  let failed = false;
-  if (supabase) {
-    const res = await scopeQuery(
-      supabase.from("system_events").select("*"),
-      scope,
-      { nullIsGlobal: true },
-    )
-      .order("ts", { ascending: false })
-      .limit(500);
-    failed = readFailed(res);
-    events = (res.data as SystemEventRow[]) ?? [];
-  }
-  const agent = deriveAdvisory(events).agent;
-  // Read as the member (RLS): before 0047 is applied this is "not enabled",
-  // and a failed read says so — never an empty grid that reads as "none yet".
-  const style = org.current ? await loadStyleContext(org.current.id, { urls: true }) : null;
-
-  // Applying a preset needs exactly one channel to write to. When a single
-  // channel is in view, find its row; "All channels" leaves this null and the
-  // gallery disables its buttons rather than writing to a channel it can't name.
-  const scopedChannel = isScoped(selection)
-    ? channels.find((c) => c.channel_id === selection)
-    : undefined;
-  const agentConfig = (scopedChannel?.agent_config ?? {}) as Record<string, unknown>;
-  const currentStyle =
-    typeof agentConfig.visual_style_prompt === "string" ? agentConfig.visual_style_prompt : "";
-  const channelKitId =
-    typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null;
-  const styleNote = !org.current
-    ? t.styleKits.noOrg
-    : !style?.available
-      ? t.styleKits.notEnabled
-      : style.error
-        ? t.styleKits.readFailed
-        : null;
+  const path = await getChannelPath();
+  const shelfName: Record<StudioShelf, string> = { projects: t.studioHub.shelfProjects, videos: t.studioHub.shelfVideos };
 
   return (
-    <div className="rhythm ns-open stagger-enter">
-      <PageHeader icon="studio" title={t.studio.title} subtitle={t.studio.subtitle} />
-
-      {/* Style presets: the desk. Applied to the scoped channel */}
-      <PresetGallery
-        channelId={scopedChannel?.channel_id ?? null}
-        currentStyle={currentStyle}
-        agentConfig={agentConfig}
+    <div className="rhythm ns-open stagger-enter" data-studio-home="">
+      <PageHeader
+        icon="studio"
+        title={t.studioHub.title}
+        subtitle={t.studioHub.subtitle}
+        actions={
+          <Link href={path("/studio/look")} className="studio-look-chip" data-testid="channel-look-chip">
+            <Palette aria-hidden className="size-4" strokeWidth={1.9} />
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="font-semibold">{t.studioHub.channelLook}</span>
+              <span className="studio-look-chip-sub">{t.studioHub.channelLookHint}</span>
+            </span>
+          </Link>
+        }
       />
 
-      {/* Autopilot: the day's auto-picked topic */}
-      <Section title={t.studio.autopilotTitle}>
-        {failed ? (
-          <ErrorState compact />
-        ) : agent && agent.topic ? (
-          <div className="flex max-w-[62ch] flex-col gap-1.5">
-            <p className="m-0 text-sm text-[var(--color-muted)]">{t.studio.autopilotOnTopic}</p>
-            <p className="m-0 text-xl font-semibold text-[var(--color-fg)]">{agent.topic}</p>
-            {agent.rationale && <p className="m-0 text-base text-[var(--color-muted)]">{agent.rationale}</p>}
-            <p className="tnum m-0 text-sm text-[var(--color-muted)]">
-              {(agent.videoProvider || t.common.dash) + " · " + (agent.voiceProvider || t.common.dash)}
-            </p>
-          </div>
-        ) : (
-          <p className="m-0 max-w-[62ch] text-base text-[var(--color-muted)]">{t.studio.autopilotNone}</p>
-        )}
-      </Section>
+      <StudioTiles />
 
-      {/* Style kits and characters: built from the organization's library (0047) */}
-      {styleNote || !org.current || !style ? (
-        <Note>{styleNote}</Note>
-      ) : (
-        <StyleSections
-          orgId={org.current.id}
-          initialKits={style.kits}
-          initialCharacters={style.characters}
-          channelId={scopedChannel?.channel_id ?? null}
-          channelKitId={channelKitId}
-          libraryHref={channelPath(slug, "/library")}
-        />
-      )}
+      <section aria-label={t.studioHub.shelfLabel} className="flex flex-col gap-4">
+        {/* Two links, not a client tab widget: each shelf is its own URL (shareable, and a reload keeps it). */}
+        <nav aria-label={t.studioHub.shelfLabel} className="ns-tabs overflow-x-auto">
+          <ul className="ns-tabs-track flex w-max gap-1">
+            {STUDIO_SHELVES.map((s) => (
+              <li key={s}>
+                <Link
+                  href={path(s === "projects" ? "/studio" : `/studio?shelf=${s}`)}
+                  aria-current={shelf === s ? "page" : undefined}
+                  className="ns-tabs-link"
+                  data-testid={`studio-shelf-${s}`}
+                  scroll={false}
+                >
+                  {shelfName[s]}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        {shelf === "videos" ? <VideosShelf /> : <ProjectsShelf />}
+      </section>
     </div>
   );
 }

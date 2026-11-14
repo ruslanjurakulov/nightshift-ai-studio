@@ -7,6 +7,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { ALL_SECTIONS, HOME } from "@/lib/navigation";
 import { PageNav } from "@/components/navigation/PageNav";
 import { SectionTabs } from "@/components/navigation/SectionTabs";
+import { StudioMovedNotice } from "@/components/studio-hub/StudioMovedNotice";
 import { useShell } from "@/components/shell/ShellContext";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { navigate } from "@/lib/editor-nav";
@@ -76,6 +77,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
         <SectionTabs />
+        <StudioMovedNotice />
         {children}
       </PageTransition>
     );
@@ -119,6 +121,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
           <SectionTabs />
+          <StudioMovedNotice />
           {children}
         </div>
       </PageTransition>

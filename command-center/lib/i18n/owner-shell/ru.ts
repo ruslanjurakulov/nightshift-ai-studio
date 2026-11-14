@@ -5,6 +5,7 @@ export const ownerShellRu: OwnerShellDictionary = {
   tabsLabel: "Навигация владельца",
   tabHome: "Главная",
   tabVideos: "Видео",
+  tabStudio: "Studio",
   tabBilling: "Оплата",
   tabAlerts: "Сигналы",
   tabMore: "Ещё",

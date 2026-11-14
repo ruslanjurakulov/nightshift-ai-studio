@@ -100,24 +100,30 @@ describe("customer sidebar model", () => {
     }
   });
 
-  it("marks the row you are on: a tool on /create, Studio for its tabs, Library and Settings for theirs", () => {
-    expect(sidebarCurrent("/create", "t2v")).toBe("tool:t2v");
-    expect(sidebarCurrent("/create", null)).toBe("hub");
-    expect(sidebarCurrent("/create", "not-a-tool")).toBe("hub");
-    expect(sidebarCurrent("/studio", null)).toBe("hub");
-    expect(sidebarCurrent("/series", null)).toBe("hub");
-    expect(sidebarCurrent("/library", null)).toBe("library");
-    expect(sidebarCurrent("/styles", null)).toBe("styles");
-    expect(sidebarCurrent("/editor", null)).toBe("editor");
-    expect(sidebarCurrent("/editor/3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e", null)).toBe("editor");
-    expect(sidebarCurrent("/videos/abc", null)).toBe("videos");
-    expect(sidebarCurrent("/credits", null)).toBe("credits");
+  it("marks the row you are on: Home for Home, Studio for every creative screen, Settings and Credits for theirs", () => {
+    expect(sidebarCurrent("/home")).toBe("home");
+    // Every tool lives under the one Studio entry now: no per-tool, per-desk or per-screen rows to light.
+    expect(sidebarCurrent("/create")).toBe("studio");
+    expect(sidebarCurrent("/create")).toBe("studio");
+    expect(sidebarCurrent("/studio")).toBe("studio");
+    expect(sidebarCurrent("/studio/look")).toBe("studio");
+    expect(sidebarCurrent("/series")).toBe("studio");
+    expect(sidebarCurrent("/library")).toBe("studio");
+    expect(sidebarCurrent("/styles")).toBe("studio");
+    expect(sidebarCurrent("/presets")).toBe("studio");
+    expect(sidebarCurrent("/editor/3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e")).toBe("studio");
+    expect(sidebarCurrent("/videos/abc")).toBe("studio");
+    expect(sidebarCurrent("/workflows")).toBe("studio");
+    // The Inbox stays outside the Studio (STUDIO_IA.md §9.4), with its own row.
+    expect(sidebarCurrent("/inbox")).toBe("inbox");
+    expect(sidebarCurrent("/channels")).toBe("channels");
+    expect(sidebarCurrent("/credits")).toBe("credits");
     // Usage (plan allowance, the extra-credits switch) is part of the credits story: Credits is its row.
-    expect(sidebarCurrent("/usage", null)).toBe("credits");
+    expect(sidebarCurrent("/usage")).toBe("credits");
     expect(sectionAllowed("usage", false)).toBe(true);
-    expect(sidebarCurrent("/developers", null)).toBe("developers");
-    expect(sidebarCurrent("/organization", null)).toBe("settings");
-    expect(sidebarCurrent("/pipeline", null)).toBeNull();
+    expect(sidebarCurrent("/developers")).toBe("developers");
+    expect(sidebarCurrent("/organization")).toBe("settings");
+    expect(sidebarCurrent("/billing")).toBeNull();
   });
 
   it("leaves the operator's console exactly as it was", () => {
@@ -145,23 +151,15 @@ describe("prefillFromQuery from a sidebar link", () => {
 });
 
 describe("customer sidebar (rendered)", () => {
-  it("shows Studio, the Create group of desks, Your work, and the account foot", () => {
+  it("shows Home, Nightshift Studio, the Inbox and Channels, and the account foot: no wall of tools", () => {
     render(withI18n(<SideNav email="me@example.com" plan={PLAN} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((a) => a.textContent)).toEqual([
-      en.nav.hub,
-      ...DESKS.map((d) => en.desk.names[d]),
-      en.nav.styles,
-      en.nav.library,
-      en.nav.editor,
-      en.nav.videos,
-      en.nav.channels,
-    ]);
-    expect(within(nav).getByRole("heading", { name: en.shell.gCreate })).toBeTruthy();
-    expect(within(nav).getByRole("heading", { name: en.shell.gWork })).toBeTruthy();
-    expect(within(nav).getByRole("link", { name: en.desk.names.video }).getAttribute("href")).toBe("/chronos/create?desk=video");
-    expect(within(nav).getByRole("link", { name: en.desk.names.overview }).getAttribute("href")).toBe("/chronos/create");
+    expect(links.map((a) => a.textContent)).toEqual([en.nav.home, en.nav.studio, en.nav.inbox, en.nav.channels]);
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/chronos/home", "/chronos/studio", "/chronos/inbox", "/chronos/channels"]);
+    // The desks and the per-screen rows are tiles on Studio home now (components/studio-hub/StudioTiles).
+    expect(within(nav).queryByRole("heading", { name: en.shell.gCreate })).toBeNull();
+    for (const d of DESKS) expect(within(nav).queryByRole("link", { name: en.desk.names[d] })).toBeNull();
 
     const aside = nav.closest("aside") as HTMLElement;
     expect(within(aside).getByRole("link", { name: en.shell.plansCredits }).getAttribute("href")).toBe("/chronos/credits");
@@ -171,13 +169,12 @@ describe("customer sidebar (rendered)", () => {
     expect(card.textContent).toContain("Creator");
   });
 
-  it("marks the desk the URL opens as the current page: a tool's desk, or the desk named", () => {
+  it("lights Studio on a creative screen, whatever the query names", () => {
     search = "tool=upscale";
     render(withI18n(<SideNav email={null} plan={null} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
-    expect(within(nav).getByRole("link", { name: en.desk.names.enhance }).getAttribute("aria-current")).toBe("page");
-    expect(within(nav).getByRole("link", { name: en.desk.names.video }).getAttribute("aria-current")).toBeNull();
-    expect(within(nav).getByRole("link", { name: en.nav.hub }).getAttribute("aria-current")).toBeNull();
+    expect(within(nav).getByRole("link", { name: en.nav.studio }).getAttribute("aria-current")).toBe("page");
+    expect(within(nav).getByRole("link", { name: en.nav.home }).getAttribute("aria-current")).toBeNull();
   });
 
   it("leaves an unknown plan off the user card rather than calling it Free", () => {
@@ -191,7 +188,9 @@ describe("customer sidebar (rendered)", () => {
     expect(screen.queryByRole("navigation", { name: en.shell.primary })).toBeNull();
     expect(screen.queryByRole("link", { name: en.gen.kinds.t2i })).toBeNull();
     expect(screen.queryByRole("button", { name: en.account.open })).toBeNull();
-    expect(screen.getByRole("link", { name: en.nav.pipeline })).toBeTruthy();
+    // The console rail: Nightshift Studio is one entry; Pipeline is reached from Studio home, not the rail.
+    expect(screen.getByRole("link", { name: en.nav.studio })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: en.nav.pipeline })).toBeNull();
   });
 });
 
