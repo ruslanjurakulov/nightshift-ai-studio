@@ -802,7 +802,10 @@ AUTH_COLUMNS = {
     "film_takes": {"id", "film_id", "org_id", "scene_id", "version", "shot_index", "kind", "parent_take_id", "attempt", "status",
                    "model", "prompt_final", "params", "duration_s", "first_frame_asset_id", "last_frame_asset_id",
                    "reference_asset_ids", "reshoot", "creative_job_id", "result_asset_id", "result_last_frame_asset_id",
-                   "error_code", "error", "created_at", "updated_at", "finished_at"},
+                   "error_code", "error", "created_at", "updated_at", "finished_at",
+                   # 0171 grants the take's money on purpose: the line the person confirmed and what it was charged.
+                   "segment_id", "credit_unit", "unit_credits", "quantity", "minimum_credits", "confirmed_credits", "charged_credits",
+                   "charge_basis", "output_seconds"},
     "film_events": {"id", "film_id", "org_id", "scene_id", "actor", "actor_role", "event", "detail", "created_at"},
 }
 
@@ -937,10 +940,14 @@ select jsonb_build_object(
 def test_reapplying_the_migration_changes_nothing(db, a):
     fid = db.create(a.editor, a.org)["film"]["id"]
     db.save(a.editor, fid, 1, {"refs": [{"kind": "style", "asset_id": a.image}], "scenes": scenes(3)})
-    before = db.su(SNAPSHOT)[0][0]
-    db.su(MIGRATION.read_text(encoding="utf-8"))
-    db.su(MIGRATION.read_text(encoding="utf-8"))
-    assert db.su(SNAPSHOT)[0][0] == before
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        # 0171 replaces films_status_check (a replay of 0166 puts 0166's back): compared on 0166 alone, inside one transaction.
+        sec_db.take_off_0171(c)
+        before = c.execute(SNAPSHOT).fetchone()[0]
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert c.execute(SNAPSHOT).fetchone()[0] == before
+        c.rollback()
 
 
 def test_the_migration_refuses_a_body_or_a_table_that_is_not_its_own(db):
@@ -974,10 +981,13 @@ def _rollback_text(override: bool) -> str:
 def test_the_rollback_refuses_while_films_exist_then_takes_everything_out_and_0166_applies_again(db, a):
     db.create(a.editor, a.org)
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        # With 0171 on, this rollback refuses first of all (a later Film Studio migration): taken off inside the transaction.
+        sec_db.take_off_0171(c)
         with pytest.raises(psycopg.Error) as e:
             c.execute(_rollback_text(override=False))
         assert "films exist and would be deleted" in str(e.value)
         c.rollback()
+        sec_db.take_off_0171(c)
         c.execute(_rollback_text(override=True))
         gone = c.execute("select count(*) from pg_class where relnamespace = 'public'::regnamespace and relname like 'film%'").fetchone()[0]
         assert gone == 0
