@@ -181,7 +181,7 @@ export function fillPrompt(effect: Pick<Effect, "prompt" | "slotHint">, subject:
 /**
  * Whether `prompt` is this effect's own words: the template exactly, or for a words effect the template with one cleaned,
  * non-empty subject in its slot. A sample is shown as an effect's preview only when its job was given exactly these words
- * (components/effects/EffectFrame.tsx effectSample), so a preview is the effect's output, never some other clip.
+ * (components/effects/effect-sample.ts effectSample), so a preview is the effect's output, never some other clip.
  */
 export function isEffectPrompt(effect: Pick<Effect, "prompt">, prompt: string): boolean {
   if (!effect.prompt.includes(SUBJECT_SLOT)) return prompt === effect.prompt;
