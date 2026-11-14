@@ -142,7 +142,7 @@ TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
 | POST | `/videos/{id}/downloads` | order a 720p / 1080p download |
 | GET | `/downloads/{id}` | download status |
 | GET | `/downloads/{id}/file` | the MP4 |
-| GET | `/jobs/{id}` | job status + charge; a failed job carries `error_code` (credits, voice, provider_quota, media, render, timeout, held, switched_off, channel_reconnect_required, credentials_missing, unknown) and one plain `error` sentence, never the worker log; `channel_reconnect_required` means Google refused the channel's YouTube connection before anything was spent: reconnect YouTube for this channel on the Channels page |
+| GET | `/jobs/{id}` | job status + charge; a failed job carries `error_code` (credits, voice, provider_quota, media, render, timeout, held, switched_off, channel_reconnect_required, credentials_missing, spend_ceiling, unknown) and one plain `error` sentence, never the worker log; `channel_reconnect_required` means Google refused the channel's YouTube connection before anything was spent: reconnect YouTube for this channel on the Channels page; `held` means the fact-check held the script for a person's review (the held run is on the Videos page). A failed job keeps `status: failed` whatever its code |
 | POST | `/creative/quote` | the price of one generation, in credits |
 | POST | `/creative/jobs` | start a generation (hold the quote) |
 | GET | `/creative/jobs/{id}` | a generation this key started |

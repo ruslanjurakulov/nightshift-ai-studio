@@ -222,7 +222,8 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
               description:
                 "Why a job failed, as a stable code. channel_reconnect_required: YouTube refused the channel's connection before " +
                 "anything was spent; reconnect YouTube for this channel on the Channels page. credentials_missing: a service key the " +
-                "run needs is not set up. Neither is charged.",
+                "run needs is not set up. spend_ceiling: the channel's monthly spending ceiling stopped the run. None of these is " +
+                "charged. A failed job always has status failed; the code says why.",
             },
             charge: {
               type: ["object", "null"],

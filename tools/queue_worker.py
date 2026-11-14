@@ -1407,7 +1407,7 @@ class Worker:
                     # A paid run that exited 0 with no rendered video behind it
                     # (nothing to deliver): failed, hold released.
                     logger.warning("job %s: the run exited 0 but its render stage left no video", job_id)
-                    return end("failed", "The run finished without producing a video; nothing was charged.")
+                    return end("failed", f"{render_error.NO_VIDEO_HEADER}; nothing was charged.")
                 return end("succeeded", None, charge=True)
             if rc == STORYBOARD_PAUSED_EXIT:
                 # The job did what it was asked: the run is planned and waits

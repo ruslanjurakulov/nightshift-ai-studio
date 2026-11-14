@@ -259,3 +259,37 @@ class TheCustomersSentenceNamesTheFix(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoWorkerEndingFallsThroughToUnknown(unittest.TestCase):
+    """render_jobs id 8 (2026-11-14): a deliberate fact-check hold (exit 79) reached the MCP as `unknown`. Every way the
+    worker ends a failed run with a main.py exit code, or with its own no-video header, must name a code."""
+
+    def failing_exits(self):
+        from tools import queue_worker as qw  # noqa: PLC0415
+
+        src = (ROOT / "tools" / "queue_worker.py").read_text()
+        names = re.findall(r"if rc == ([A-Z_]+_EXIT):", src)
+        self.assertGreaterEqual(len(names), 8, names)
+        # 75 is not a failure: the job succeeds and waits at "Storyboard ready", with no error to explain.
+        return {n: getattr(qw, n) for n in names if n != "STORYBOARD_PAUSED_EXIT"}
+
+    def test_every_failing_exit_branch_classifies_to_a_named_code(self):
+        for name, rc in self.failing_exits().items():
+            with self.subTest(exit=name):
+                code = render_error.classify(f"main.py exited with code {rc}: x", [])
+                self.assertNotEqual(code, render_error.UNKNOWN, f"{name} ({rc}) reads unknown")
+                self.assertIn(code, render_error.CODES)
+
+    def test_the_spend_ceiling_and_the_empty_render_are_named(self):
+        self.assertEqual(render_error.classify("main.py exited with code 78: the channel's spend ceiling", []),
+                         render_error.SPEND_CEILING)
+        self.assertEqual(render_error.classify(f"{render_error.NO_VIDEO_HEADER}; nothing was charged.", []),
+                         render_error.RENDER)
+        self.assertIn("render_error.NO_VIDEO_HEADER", (ROOT / "tools" / "queue_worker.py").read_text())
+
+    def test_the_held_sentence_says_where_the_held_run_is(self):
+        s = TheCustomersSentenceNamesTheFix().sentences("en")[render_error.HELD]
+        self.assertIn("held for a person's review", s)
+        self.assertIn("Videos page", s)
+        self.assertIn("nothing was charged", s)

@@ -165,3 +165,20 @@ describe("youtube_connected says what is known, never presence as acceptance", (
     expect(honestAccounts(err)).toBe(err);
   });
 });
+
+describe("no code the worker writes falls through to unknown (render_jobs id 8: a held run read `unknown`)", () => {
+  const job = (error: string) => ({ ok: true, status: 200, data: { id: 8, status: "failed", error, charge: null } });
+
+  it.each(JOB_ERROR_CODES.filter((c) => c !== "unknown"))("[code:%s] reaches the API as itself, with its own sentence", async (code) => {
+    const r = await getJob(caller(job(`[code:${code}] main.py exited with code 79: operator text`)).c, "8");
+    expect(r).toMatchObject({ ok: true, data: { status: "failed", error_code: code, error: en.create.jobError[code] } });
+    expect(en.create.jobError[code]).not.toBe(en.create.jobError.unknown);
+    expect(JSON.stringify(r)).not.toContain("operator text");
+  });
+
+  it("a held job keeps status failed (a new status would leave pollers waiting forever) and says where the run is", async () => {
+    const r = await getJob(caller(job("[code:held] main.py exited with code 79: the fact-check held the script")).c, "8");
+    expect(r).toMatchObject({ data: { status: "failed", error_code: "held" } });
+    expect(JSON.stringify(r)).toContain("Videos page");
+  });
+});

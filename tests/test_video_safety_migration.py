@@ -20,16 +20,17 @@ REPLACED = {"render_jobs_payment_guard": "0076_scene_regenerate.sql", "api_get_j
             "oauth_get_job": "0093_mcp_oauth.sql"}
 NEW = {"render_job_public_error"}
 CODES = ["credits", "voice", "provider_quota", "media", "render", "timeout", "held", "switched_off",
-         "channel_reconnect_required", "credentials_missing", "unknown"]
+         "channel_reconnect_required", "credentials_missing", "spend_ceiling", "unknown"]
 #: Codes the worker and the web app know that migration 0111's SQL helper does not yet list. `held` (the accuracy check
 #: held the script before any video was made) arrived with a PR that may add no migration, so the public API and MCP
 #: callers (api_get_job, oauth_get_job) read a `[code:held]` job as `unknown` until a follow-up migration adds it to
 #: render_job_public_error. The web app's own mapping (parseJobError, create.jobError) already has it. Remove the code
 #: from this tuple when that migration lands and the parity below must hold again. `switched_off` (the owner switched the
 #: run's provider off, migration 0124 / modules/model_switch.py) is in the same position, for the same reason, and so are
-#: `channel_reconnect_required` and `credentials_missing` (the credential preflight's exits 85 and 84): the follow-up SQL is
+#: `channel_reconnect_required` and `credentials_missing` (the credential preflight's exits 85 and 84) and `spend_ceiling`
+#: (exit 78, which read `unknown` before): the follow-up SQL is
 #: in that PR's description, because the migration numbers it could take were already claimed.
-SQL_PENDING = ("held", "switched_off", "channel_reconnect_required", "credentials_missing")
+SQL_PENDING = ("held", "switched_off", "channel_reconnect_required", "credentials_missing", "spend_ceiling")
 
 
 def code(text):

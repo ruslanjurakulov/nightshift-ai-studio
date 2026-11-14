@@ -36,6 +36,7 @@ from __future__ import annotations
 import re
 from typing import Iterable, Optional
 
+from modules.budget import BUDGET_STOP_EXIT
 from modules.credential_health import CREDENTIALS_MISSING_EXIT, RECONNECT_REQUIRED_EXIT
 from modules.gemini_stages import GEMINI_QUOTA_EXIT
 from modules.publish_gate import HELD_BEFORE_RENDER_EXIT
@@ -58,10 +59,17 @@ SWITCHED_OFF = "switched_off"
 CHANNEL_RECONNECT_REQUIRED = "channel_reconnect_required"
 #: The same stop for any other required key (``credential_health.CREDENTIALS_MISSING_EXIT``): the operator's to fix.
 CREDENTIALS_MISSING = "credentials_missing"
+#: The channel's own spend ceiling stopped the run before anything was spent (main.py exit ``budget.BUDGET_STOP_EXIT``).
+#: It used to read "unknown": the worker wrote its own header, and nothing here read it.
+SPEND_CEILING = "spend_ceiling"
 UNKNOWN = "unknown"
 
 CODES = (CREDITS, VOICE, PROVIDER_QUOTA, MEDIA, RENDER, TIMEOUT, HELD, SWITCHED_OFF,
-         CHANNEL_RECONNECT_REQUIRED, CREDENTIALS_MISSING, UNKNOWN)
+         CHANNEL_RECONNECT_REQUIRED, CREDENTIALS_MISSING, SPEND_CEILING, UNKNOWN)
+
+#: The worker's header for a paid run that exited 0 with no rendered video (tools/queue_worker.py). The render stage
+#: is what left nothing; it was also "unknown" before.
+NO_VIDEO_HEADER = "The run finished without producing a video"
 
 #: The marker ``lib/runBackend.ts`` parses. Keep the two in step.
 PREFIX_RE = re.compile(r"^\[code:([a-z_]+)\][ \t]?")
@@ -111,6 +119,10 @@ def classify(header: str = "", tail: Iterable[str] = ()) -> str:
         return CREDITS
     if first.startswith(f"main.py exited with code {HELD_BEFORE_RENDER_EXIT}:"):
         return HELD
+    if first.startswith(f"main.py exited with code {BUDGET_STOP_EXIT}:"):
+        return SPEND_CEILING
+    if first.startswith(NO_VIDEO_HEADER):
+        return RENDER
     if first.startswith(f"main.py exited with code {RECONNECT_REQUIRED_EXIT}:"):
         # A clean exit after the preflight's one log line: the worker's header is the evidence, as for 79 and 80.
         return CHANNEL_RECONNECT_REQUIRED
