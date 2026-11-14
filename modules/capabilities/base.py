@@ -31,6 +31,7 @@ import base64
 import json
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -137,6 +138,11 @@ FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: A soundtrack for a video (video_music) is scored to the picture; words only steer it.
 PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE, CAPTIONS,
                              EXPAND, RELIGHT, VIDEO_REFRAME, VIDEO_REMOVE_BG, VIDEO_MUSIC, VOICE_EXPLAINER})
+
+#: Set once by the process's runner when it is told to stop (tools/creative_worker.py, on SIGTERM). Work an adapter does IN
+#: this process (the voice video's render on this machine) stops on it and fails its job at once, hold released, instead of
+#: running on until Docker kills the container mid-render and the job sits in 'submitting' for the stale sweep.
+SHUTDOWN = threading.Event()
 
 # ── task states ──────────────────────────────────────────────────────────────
 PENDING = "pending"
@@ -326,6 +332,10 @@ class CapabilityRequest:
     #: For a ``voice_explainer`` (0171) the look the video is drawn in: one of
     #: EXPLAINER_LOOKS, which the entry's ``explainer_looks`` must list (required).
     look: Optional[str] = None
+    #: The recording's length as the DATABASE measured it (the library's ``duration_s``), for a ``voice_explainer``
+    #: (0171): the job was priced on it, so a file that decodes to another length is refused rather than rendered.
+    #: None outside a job (a probe has no library row).
+    source_seconds: Optional[float] = None
 
 
 @dataclass

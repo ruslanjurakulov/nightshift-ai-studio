@@ -506,14 +506,17 @@ def audio_seconds(path: Path) -> float:
 
 def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir: Path = ENGINE_DIR,
            browser: Optional[str] = None, timeout_s: float = 1800, concurrency: int = 1,
-           tmp_dir: Optional[Path] = None) -> Path:
+           tmp_dir: Optional[Path] = None, on_spawn: Optional[Callable[[subprocess.Popen], None]] = None) -> Path:
     """Render the props with Remotion. ``files`` maps each public path the props name
     (narration, music, effects) to the file on disk; they are copied into a private
     public dir for this render only. Raises RenderFailed (RenderTimeout) with Remotion's last lines.
 
     ``tmp_dir``: where this render's scratch goes (the public dir, the props, and Remotion's own TMPDIR) instead of the
     system's. The creative worker's /tmp is a tmpfs, so a ten-minute render's audio and bundle there would count against the
-    container's memory limit; it passes the job's own folder on the media volume."""
+    container's memory limit; it passes the job's own folder on the media volume.
+
+    ``on_spawn``: called with each Remotion process as it starts (its own process group), so a caller that must stop early
+    (the creative worker on SIGTERM) can kill the whole tree instead of waiting for it."""
     if not (engine_dir / "node_modules").exists():
         raise ExplainerError(f"the Remotion engine is not installed: run `npm ci` in {engine_dir}")
     if shutil.which("npx") is None:
@@ -546,6 +549,8 @@ def render(props: dict, out_path: Path, *, files: Mapping[str, Path], engine_dir
         # nothing keeps writing out_path after the caller was told the render failed.
         proc = subprocess.Popen(cmd, cwd=engine_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                 env=env, start_new_session=True)
+        if on_spawn is not None:
+            on_spawn(proc)
         try:
             stdout, stderr = proc.communicate(timeout=timeout_s)
         except subprocess.TimeoutExpired:

@@ -17,8 +17,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import signal
+import sys
 import shutil
+import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -49,7 +54,7 @@ from tests.test_creative_media_inputs import FakeStore, SourceQueue, put_asset
 from tests.test_creative_worker import JOB, ORG, FakeCredits, job
 
 MODEL = "nightshift-voice-explainer"
-SRC = "ab0c1d1e-0000-4000-8000-000000000170"
+SRC = "ab0c1d1e-0000-4000-8000-000000000171"
 MP3 = b"ID3\x04\x00\x00\x00\x00\x00\x00" + b"\x00" * 512
 MP4 = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2" + b"\x00" * 1024
 WORDS = [{"word": "Salom.", "start": 0.1, "end": 0.6}, {"word": "Bu", "start": 0.9, "end": 1.1},
@@ -63,6 +68,7 @@ class Engine:
     def __init__(self, root: Path):
         self.engine = root / "video-engine"
         (self.engine / "node_modules" / "remotion").mkdir(parents=True)
+        (self.engine / "node_modules" / ".remotion").mkdir()
         self.whisper = root / "whisper"
         self.whisper.mkdir()
         (self.whisper / vv.WHISPER_FILE).write_bytes(b"model")
@@ -74,14 +80,20 @@ class Engine:
         self.transcribed = []
         self.words = WORDS
         self.render_error = None
+        self.decoded = []
+
+    def decode(self, src, dst):
+        # Stands in for ffmpeg (the real one is TheDecoder, below): the "WAV" is the recording's bytes.
+        self.decoded.append((Path(src), Path(dst)))
+        shutil.copyfile(src, dst)
 
     def transcribe(self, audio, work_dir, root):
         self.transcribed.append((Path(audio), Path(work_dir), Path(root)))
         return list(self.words)
 
-    def render(self, props, out, *, files, engine_dir, browser, timeout_s, tmp_dir):
+    def render(self, props, out, *, files, engine_dir, browser, timeout_s, tmp_dir, on_spawn=None):
         self.rendered.append({"props": props, "out": Path(out), "files": dict(files), "engine_dir": engine_dir,
-                              "browser": browser, "timeout_s": timeout_s, "tmp_dir": Path(tmp_dir)})
+                              "browser": browser, "timeout_s": timeout_s, "tmp_dir": Path(tmp_dir), "on_spawn": on_spawn})
         if self.render_error:
             raise self.render_error
         Path(out).write_bytes(MP4)
@@ -89,7 +101,9 @@ class Engine:
 
     def adapter(self, env=None, **over):
         kw = dict(env=env or {}, engine_dir=self.engine, sfx_dir=self.sfx, whisper_dirs=(self.whisper,),
-                  transcribe=self.transcribe, render=self.render, has_npx=lambda: True, whisper_installed=lambda: True)
+                  transcribe=self.transcribe, render=self.render, has_npx=lambda: True, whisper_installed=lambda: True,
+                  which=lambda name: f"/usr/bin/{name}", font_family=lambda: "Inter", decode=self.decode,
+                  stop=threading.Event())
         kw.update(over)
         return vv.VoiceVideoAdapter(**kw)
 
@@ -129,6 +143,10 @@ class Configured(Tmp):
             "pip install": dict(whisper_installed=lambda: False),
             "bakes it in": dict(whisper_dirs=(self.root / "empty",)),
             "generate_assets.py": dict(sfx_dir=self.root / "nosfx"),
+            "ffmpeg is not on PATH": dict(which=lambda n: None if n == "ffmpeg" else f"/usr/bin/{n}"),
+            "ffprobe is not on PATH": dict(which=lambda n: None if n == "ffprobe" else f"/usr/bin/{n}"),
+            "install fonts-inter": dict(font_family=lambda: "DejaVu Sans"),
+            "install fontconfig": dict(font_family=lambda: None),
         }
         for fix, over in cases.items():
             a = self.e.adapter(**over)
@@ -136,6 +154,23 @@ class Configured(Tmp):
             self.assertTrue(any(fix in m for m in a.missing()), (fix, a.missing()))
         a = self.e.adapter(env={vv.BROWSER_ENV: str(self.root / "no-chrome")})
         self.assertIn(f"{vv.BROWSER_ENV} does not point at a file", " ".join(a.missing()))
+        # Remotion's own browser: without it Remotion would download one in the middle of a paid job.
+        shutil.rmtree(self.e.engine / "node_modules" / ".remotion")
+        self.assertIn("npx remotion browser ensure", " ".join(self.e.adapter().missing()))
+        chrome = self.root / "chrome"
+        chrome.write_bytes(b"#!")
+        self.assertEqual(self.e.adapter(env={vv.BROWSER_ENV: str(chrome)}).missing(), [], "a Chrome of the operator's stands in")
+
+    def test_inter_is_what_fontconfig_answers_never_a_family_that_merely_starts_with_it(self):
+        self.assertEqual(self.e.adapter(font_family=lambda: "Inter,Inter Display").missing(), [])
+        self.assertTrue(self.e.adapter(font_family=lambda: "Interstate").missing())
+
+    def test_whisper_present_as_a_module_without_a_spec_does_not_break_the_check(self):
+        # find_spec raises ValueError for a sys.modules entry with no __spec__ (what a test double leaves behind).
+        stub = type(sys)("whisper")
+        stub.__spec__ = None
+        with mock.patch.dict(sys.modules, {"whisper": stub}):
+            self.assertTrue(vv.whisper_importable())
 
     def test_not_ready_fails_before_anything_runs(self):
         a = self.e.adapter(has_npx=lambda: False)
@@ -160,8 +195,11 @@ class Submit(Tmp):
         (r,) = self.e.rendered
         props = r["props"]
         self.assertEqual((props["look"], props["width"], props["height"], props["fps"]), ("neon", 1080, 1920, 30))
-        self.assertEqual((props["narration"], props["music"], props["captions"]), ("narration.mp3", "", True))
-        self.assertEqual(r["files"]["narration.mp3"], self.rec)
+        # The decoded copy is what is rendered (a browser recording has no length and no seek index of its own).
+        work = self.input / "voice-video"
+        self.assertEqual((props["narration"], props["music"], props["captions"]), ("narration.wav", "", True))
+        self.assertEqual(r["files"]["narration.wav"], work / "narration.wav")
+        self.assertEqual(self.e.decoded, [(self.rec, work / "narration.wav")])
         self.assertEqual(sorted(k for k in r["files"] if k.startswith("sfx/")), ["sfx/deep_boom.wav", "sfx/whoosh.wav"])
         # The spoken number became a counter exactly as said; every scene comes from the words, not a model.
         # (The short greeting joins the next sentence: no scene flashes past.)
@@ -172,7 +210,8 @@ class Submit(Tmp):
         self.assertEqual(r["timeout_s"], vv.RENDER_TIMEOUT_FLOOR_S + vv.RENDER_TIMEOUT_PER_SECOND * 3.0)
         self.assertIsNone(r["browser"])
         (transcribed,) = self.e.transcribed
-        self.assertEqual((transcribed[0], transcribed[2]), (self.rec, self.e.whisper))
+        self.assertEqual((transcribed[0], transcribed[2]), (work / "narration.wav", self.e.whisper))
+        self.seconds.assert_called_once_with(work / "narration.wav")
         # The file is handed over by its path, never read into memory.
         self.assertIsNone(task.task_id)
         (out,) = task.outputs
@@ -227,12 +266,34 @@ class Submit(Tmp):
         self.assertEqual(self.e.transcribed, [])
         self.assertFalse((self.input / "voice-video").exists())
 
-    def test_an_unreadable_recording_names_the_fix(self):
+    def test_a_recording_that_does_not_decode_names_the_persons_fix(self):
+        def broken(src, dst):
+            raise AdapterError(E_BAD_REQUEST, "the recording could not be decoded as sound", not_accepted=True)
+
+        with self.assertRaises(AdapterError) as cm:
+            self.e.adapter(decode=broken).submit(self.req(), vv.RULES_ENGINE)
+        self.assertEqual(cm.exception.code, E_BAD_REQUEST)
+        self.assertEqual((self.e.transcribed, self.e.rendered), ([], []))
+        self.assertFalse((self.input / "voice-video").exists())
+
+    def test_a_decoded_copy_that_cannot_be_measured_is_the_machines_failure_not_the_persons(self):
         self.seconds.side_effect = ve.ExplainerError("cannot read")
         with self.assertRaises(AdapterError) as cm:
             self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
-        self.assertEqual(cm.exception.code, E_BAD_REQUEST)
-        self.assertIn("upload it again", cm.exception.message)
+        self.assertEqual(cm.exception.code, E_BAD_RESPONSE)
+        self.assertNotIn("upload", cm.exception.message)
+
+    def test_a_length_other_than_the_one_priced_is_refused_before_the_transcription(self):
+        # The library measured (and the job was priced on) 3.0 s; within a second either way is the same recording.
+        for priced in (2.0, 4.0, 3.0 + 0.999):
+            self.e.adapter().submit(self.req(source_seconds=priced), vv.RULES_ENGINE)
+        for priced in (1.9, 4.1, 30.0):
+            n = len(self.e.transcribed)
+            with self.assertRaises(AdapterError) as cm:
+                self.e.adapter().submit(self.req(source_seconds=priced), vv.RULES_ENGINE)
+            self.assertEqual(cm.exception.code, E_BAD_REQUEST, priced)
+            self.assertIn("the length it was priced on", cm.exception.message)
+            self.assertEqual(len(self.e.transcribed), n, "refused before Whisper runs")
 
     def test_no_words_heard_is_a_refusal_never_a_silent_or_empty_video(self):
         self.e.words = []
@@ -274,7 +335,7 @@ class Submit(Tmp):
         self.assertEqual(cm.exception.code, E_UNAVAILABLE)
         self.assertIn("try again later", cm.exception.message)
 
-    def test_one_render_at_a_time_in_this_process(self):
+    def test_one_render_at_a_time_in_this_process_and_a_second_is_refused_never_waited_for(self):
         seen = []
 
         def render(*a, **kw):
@@ -284,6 +345,137 @@ class Submit(Tmp):
         self.e.adapter(render=render).submit(self.req(), vv.RULES_ENGINE)
         self.assertEqual(seen, [True])
         self.assertFalse(vv._RENDER_LOCK.locked())
+        # Waiting would keep the job in 'submitting', where it can no longer be cancelled: refused at once instead.
+        with vv._RENDER_LOCK:
+            started = time.monotonic()
+            with self.assertRaises(AdapterError) as cm:
+                self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
+            self.assertLess(time.monotonic() - started, 1.0)
+        self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_UNAVAILABLE, True))
+        self.assertIn("nothing was charged", cm.exception.message)
+        self.assertEqual(len(self.e.rendered), 1)
+
+
+class Stop(Tmp):
+    """The worker told to stop (SIGTERM) while a voice video renders: the render's whole process tree is killed and the job
+    fails now, its hold released, instead of rendering on until Docker's SIGKILL leaves it in 'submitting'."""
+
+    def test_a_stop_kills_the_render_tree_and_fails_the_job_at_once(self):
+        stop = threading.Event()
+        started = threading.Event()
+        procs = []
+
+        def render(props, out, *, on_spawn, **kw):
+            # A real process tree in its own group, as ve.render starts Remotion: a shell with a child that sleeps.
+            p = subprocess.Popen(["sh", "-c", "sleep 60 & wait"], start_new_session=True,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            procs.append(p)
+            on_spawn(p)
+            started.set()
+            p.communicate()
+            raise ve.RenderFailed(f"Remotion failed (exit {p.returncode})")
+
+        threading.Thread(target=lambda: (started.wait(10), stop.set()), daemon=True).start()
+        t0 = time.monotonic()
+        with self.assertRaises(AdapterError) as cm:
+            self.e.adapter(render=render, stop=stop).submit(self.req(), vv.RULES_ENGINE)
+        self.assertLess(time.monotonic() - t0, 15)
+        self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_UNAVAILABLE, True))
+        self.assertIn("nothing was charged", cm.exception.message)
+        (p,) = procs
+        # SIGKILL reached the shell through its process group (nothing signals it directly), so its child got it too.
+        self.assertEqual(p.returncode, -signal.SIGKILL)
+        self.assertFalse((self.input / "voice-video").exists(), "the render's scratch is gone")
+        self.assertFalse(vv._RENDER_LOCK.locked())
+
+    def test_a_stop_before_the_render_starts_renders_nothing(self):
+        stop = threading.Event()
+        stop.set()
+        with self.assertRaises(AdapterError) as cm:
+            self.e.adapter(stop=stop).submit(self.req(), vv.RULES_ENGINE)
+        self.assertEqual(cm.exception.code, E_UNAVAILABLE)
+        self.assertEqual((self.e.decoded, self.e.rendered), ([], []))
+
+    def test_a_render_process_that_starts_after_the_stop_is_killed_as_it_starts(self):
+        stop = threading.Event()
+        a = self.e.adapter(stop=stop)
+        killed = []
+
+        def render(props, out, *, on_spawn, **kw):
+            stop.set()  # the stop lands while the render is still copying its files
+            p = subprocess.Popen(["sleep", "60"], start_new_session=True)
+            on_spawn(p)
+            killed.append(p.wait(timeout=10))
+            raise ve.RenderFailed("killed")
+
+        a._render = render
+        with self.assertRaises(AdapterError) as cm:
+            a.submit(self.req(), vv.RULES_ENGINE)
+        self.assertEqual(cm.exception.code, E_UNAVAILABLE)
+        self.assertEqual(killed, [-signal.SIGKILL])
+
+    def test_the_default_stop_is_the_process_wide_one_the_runner_sets(self):
+        from modules.capabilities import base
+
+        self.assertIs(vv.VoiceVideoAdapter()._stop, base.SHUTDOWN)
+        self.assertIn("SHUTDOWN.set()", (Path(__file__).resolve().parent.parent / "tools" / "creative_worker.py").read_text())
+
+
+@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs the real ffmpeg and ffprobe (the worker image has them)")
+class TheDecoder(unittest.TestCase):
+    """The real ffmpeg on real files: a browser's streamed WebM (no duration in its header), a damaged file, and the whole
+    adapter on that WebM with only Whisper and Remotion stood in."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        # What MediaRecorder writes: Opus in WebM, piped (so no duration and no cues are written into the header).
+        self.webm = self.root / "job" / "input" / "source.webm"
+        self.webm.parent.mkdir(parents=True)
+        with self.webm.open("wb") as fh:
+            subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=5", "-c:a", "libopus",
+                            "-f", "webm", "pipe:1"], stdout=fh, check=True, timeout=60)
+
+    def test_a_streamed_webm_has_no_length_of_its_own_and_the_decoded_copy_has_the_real_one(self):
+        with self.assertRaises(ve.ExplainerError):
+            ve.audio_seconds(self.webm)   # the failure this decode exists for
+        wav = self.root / "n.wav"
+        vv.decode_to_wav(self.webm, wav)
+        self.assertAlmostEqual(ve.audio_seconds(wav), 5.0, delta=0.1)
+
+    def test_a_damaged_file_is_the_persons_fix_and_keeps_paths_out_of_the_message(self):
+        bad = self.root / "job" / "input" / "source.mp3"
+        bad.write_bytes(b"ID3" + os.urandom(2048))
+        with self.assertLogs(vv.logger, level=logging.WARNING):
+            with self.assertRaises(AdapterError) as cm:
+                vv.decode_to_wav(bad, self.root / "n.wav")
+        self.assertEqual((cm.exception.code, cm.exception.not_accepted), (E_BAD_REQUEST, True))
+        self.assertNotIn(str(self.root), cm.exception.message)
+        self.assertNotIn("upload it again", cm.exception.message.replace("upload that", ""))
+
+    def test_no_ffmpeg_is_the_operators_fix_never_upload_it_again(self):
+        with mock.patch.object(vv.subprocess, "run", side_effect=FileNotFoundError("ffmpeg")):
+            with self.assertRaises(AdapterError) as cm:
+                vv.decode_to_wav(self.webm, self.root / "n.wav")
+        self.assertEqual(cm.exception.code, E_NOT_CONFIGURED)
+        self.assertNotIn("upload", cm.exception.message)
+
+    def test_the_adapter_renders_a_streamed_webm_and_checks_it_against_the_priced_length(self):
+        e = Engine(self.root / "machine")
+        a = e.adapter(decode=vv.decode_to_wav)   # the real ffmpeg and ffprobe; Whisper and Remotion stood in
+        e.words = [{"word": "Salom.", "start": 0.2, "end": 1.0}, {"word": "Dunyo.", "start": 1.4, "end": 2.4}]
+        task = a.submit(CapabilityRequest(capability=VOICE_EXPLAINER, look="dusk", input_media=(str(self.webm),),
+                                          source_seconds=5.0), vv.RULES_ENGINE)
+        (r,) = e.rendered
+        self.assertAlmostEqual(r["props"]["duration_s"], 5.0, delta=0.1)
+        self.assertEqual(r["props"]["narration"], "narration.wav")
+        self.assertEqual(task.outputs[0].path.read_bytes(), MP4)
+        with self.assertRaises(AdapterError) as cm:
+            e.adapter(decode=vv.decode_to_wav).submit(
+                CapabilityRequest(capability=VOICE_EXPLAINER, look="dusk", input_media=(str(self.webm),), source_seconds=9.0),
+                vv.RULES_ENGINE)
+        self.assertEqual(cm.exception.code, E_BAD_REQUEST)
 
 
 class TheEngineModule(unittest.TestCase):
@@ -413,6 +605,8 @@ class Worker(Tmp):
         self.media = self.root / "media"
         self.media.mkdir()
         self.out = self.root / "jobs"
+        # The decoded copy measures what the library measured (audio_source's duration_s): the same recording.
+        self.seconds.return_value = 41.3
 
     def run_job(self, j, source, store=None, adapter=None):
         put_asset(self.media, SRC, MP3)
