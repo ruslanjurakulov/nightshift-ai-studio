@@ -75,7 +75,8 @@ export async function peekInvite(client: RpcClient, token: string): Promise<bool
  * once the e-mail is confirmed (the auth callback, or sign-up when the project
  * confirms nothing). Never throws and never changes the sign-in: a failure
  * here costs the link's owner one count, not the new person their account.
- * The cookie is always cleared — it is a one-shot.
+ * The cookie is cleared once the database answered (it is a one-shot); a join
+ * that failed is retried, and kept for a later attempt if it still fails.
  */
 export async function joinFromCookie(client: RpcClient): Promise<void> {
   let jar: Awaited<ReturnType<typeof cookies>>;
@@ -86,24 +87,45 @@ export async function joinFromCookie(client: RpcClient): Promise<void> {
   }
   const raw = jar.get(INVITE_COOKIE)?.value;
   if (!raw) return;
+  // The cookie goes once the database has answered (whatever it said), or when there is nothing a retry could change. A join
+  // that FAILED (since 0165 it waits at most 5 s for a settle holding the link, then errors) is tried again here, and if it
+  // still fails the cookie stays for the next attempt within its 24 hours instead of the friend silently not counting.
+  let done = true;
   try {
     const token = normalizeInviteToken(raw);
     if (!token) return;
     // A person's own allowance first (take_web_rate, 0042), so the route
     // cannot be driven in a loop from one session.
     const rate = await client.rpc("take_web_rate", { p_bucket: "invite.join", p_max: 10, p_window_seconds: 3600 });
-    if (rate.error || rate.data !== true) return;
-    await client.rpc("join_friend_invite", { p_token: token });
+    if (rate.error) {
+      done = false;
+      return;
+    }
+    if (rate.data !== true) return;
+    done = false;
+    for (let attempt = 0; attempt < JOIN_ATTEMPTS && !done; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, JOIN_RETRY_MS * attempt));
+      const res = await client.rpc("join_friend_invite", { p_token: token });
+      done = !res.error;
+    }
+    if (!done) console.warn("invite join did not complete; the cookie is kept for the next attempt");
   } catch {
+    done = false;
     /* the sign-in goes on */
   } finally {
-    try {
-      jar.set(INVITE_COOKIE, "", { path: "/", maxAge: 0 });
-    } catch {
-      /* a read-only cookie store: the cookie expires on its own */
+    if (done) {
+      try {
+        jar.set(INVITE_COOKIE, "", { path: "/", maxAge: 0 });
+      } catch {
+        /* a read-only cookie store: the cookie expires on its own */
+      }
     }
   }
 }
+
+/** A join is tried this many times, this far apart (×1, ×2), before the cookie is kept for later. */
+export const JOIN_ATTEMPTS = 2;
+export const JOIN_RETRY_MS = 250;
 
 /** ok / unsupported (migration 0092 not applied: the card is simply not shown) /
  *  failed (unknown: never a zero or an empty list in its place). */

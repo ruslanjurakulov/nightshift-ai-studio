@@ -125,8 +125,10 @@ class Numbering(unittest.TestCase):
         # 0127's pins moves. The second loop holds it to exactly that.
         # 0164 (the site's live public counters: site_settings and three new functions; its run count reads only 'daily' and
         # 'repair' jobs) was reviewed the same way: it names none of the three words below.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164")
-        reads_plans = ("0163",)
+        # 0165 (the referral programme: two tables, eight functions, four earlier bodies with one hunk each) was reviewed the
+        # same way: it names none of the three words below.
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165")
+        reads_plans = ("0169",)
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed + reads_plans], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

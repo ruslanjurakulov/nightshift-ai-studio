@@ -22,6 +22,9 @@ import { MotionToggle } from "@/components/site/MotionToggle";
 import { PriceCheck } from "@/components/landing/PriceCheck";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { WELCOME_CREDITS } from "@/lib/pricing";
+import { fmt } from "@/lib/i18n";
+import { REFERRAL_PATH } from "@/lib/public-paths";
+import type { ReferralTerms } from "@/lib/referrals";
 import { CONCEPT_THUMBNAIL_MAX_IMAGES } from "@/lib/credits";
 import { finderPlans, type PlanFinderData } from "@/lib/plan-finder";
 import { PlanOutputs } from "@/components/pricing/PlanOutputs";
@@ -64,6 +67,7 @@ export function PricingView({
   plansFailed = false,
   expiry,
   anchor,
+  referral = null,
   finder = null,
 }: {
   t: Dictionary;
@@ -86,6 +90,8 @@ export function PricingView({
   /** What money a visitor can know before signing up (lib/landing.ts moneyAnchor);
    *  without it, only what `pricing` holds (no API price list). */
   anchor?: Anchor;
+  /** The referral programme's numbers (0165, referral_terms()); mentioned only while it is open and its numbers were read. */
+  referral?: ReferralTerms | null;
   /** "What does my plan make?" (lib/plan-finder.ts): the rates read for it. Absent, the cards keep their older
    *  equivalents line and neither the finder nor the per-item table is drawn. */
   finder?: PlanFinderData | null;
@@ -410,6 +416,20 @@ export function PricingView({
               </li>
             ))}
           </ul>
+
+          {/* A programme that is closed, or whose numbers could not be read, is not offered here (its terms page says why). */}
+          {referral?.enabled && (
+            <p className="st-body mt-8" data-referral-note>
+              {fmt(t.referral.pricingNote, {
+                credits: formatCredits(referral.credits, locale),
+                min: formatCredits(referral.minCredits, locale),
+                hold: referral.holdDays,
+              })}{" "}
+              <Link href={REFERRAL_PATH} className="st-link">
+                {t.referral.pricingLink}
+              </Link>
+            </p>
+          )}
 
           <div aria-labelledby="payments-title" role="group" className="nx-pay">
             <h2 id="payments-title" className="st-h3">
