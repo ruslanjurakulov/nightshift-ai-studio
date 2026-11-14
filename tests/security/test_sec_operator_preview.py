@@ -287,6 +287,7 @@ def test_every_other_quote_is_byte_for_byte_what_0125_answered(conn, sc):
         _become(conn, None)
         # 0149 sits on 0139's creative_price, and 0139's rollback refuses any other body: it comes off first (0153, on 0149's, before it,
         # and 0155, on 0153's, before that).
+        conn.execute(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
         conn.execute(sec_db.rollback_0156_body())  # 0156 sits on 0155's creative_price: off first
         conn.execute(sec_db.rollback_0155_body())
         conn.execute(sec_db.rollback_0153_body())

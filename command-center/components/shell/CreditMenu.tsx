@@ -28,7 +28,16 @@ import { Timecode } from "@/components/ui/Timecode";
  * session). With none to show — the exempt organization, migration 0020 not
  * applied, a failed read — the pill renders nothing rather than a 0.
  */
-export function CreditMenu({ account, plan = null }: { account: CreditAccount | null; plan?: AccountPlan | null }) {
+export function CreditMenu({
+  account,
+  plan = null,
+  stale = false,
+}: {
+  account: CreditAccount | null;
+  plan?: AccountPlan | null;
+  /** A re-read after a change of credits failed (lib/credits-live): the number may not include that change, and the pill says so. */
+  stale?: boolean;
+}) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
   const pathname = usePathname();
@@ -74,7 +83,9 @@ export function CreditMenu({ account, plan = null }: { account: CreditAccount | 
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        aria-label={fmt(t.shell.creditsOpen, { n: shown, unit })}
+        aria-label={`${fmt(t.shell.creditsOpen, { n: shown, unit })}${stale ? `. ${t.shell.creditsStale}` : ""}`}
+        title={stale ? t.shell.creditsStale : undefined}
+        data-stale={stale ? "true" : undefined}
         className="shell-pill"
       >
         {/* The balance as a meter (IDENTITY.md): lit = free to spend, hatched =
@@ -86,6 +97,11 @@ export function CreditMenu({ account, plan = null }: { account: CreditAccount | 
           {shown}
         </span>
         <span className="hidden text-xs text-[var(--color-muted)] sm:inline">{unit}</span>
+        {stale && (
+          <span aria-hidden className="text-xs text-[var(--color-warn)]" data-testid="credits-stale">
+            ?
+          </span>
+        )}
       </button>
 
       <Presence>

@@ -16,13 +16,13 @@ import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { StickyCta } from "@/components/site/StickyCta";
-import { LANDING_SLOTS, slotJobs, slotMedia } from "@/components/site/samples";
-import { AiCredit, PlaceFill, placeBox } from "@/components/site/PlaceFill";
-import { placeTry } from "@/components/site/place-try";
+import { landingExcludedJobs, landingPlacedJobs, slotMedia } from "@/components/site/samples";
+import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { PromptBar, type PromptIdea } from "@/components/landing/PromptBar";
-import { ArtSlotImg, slotArt } from "@/components/site/art";
 import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
+import { STEP_PHONE_JOB, studioToolsOpen } from "@/lib/site/tool-samples";
+import { TypedText } from "@/components/site/TypedText";
 import { PROMPT_TOOLS, type PromptTool } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
@@ -30,6 +30,10 @@ import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
+import { ModelMarquee } from "@/components/site/motion/ModelMarquee";
+import { AutopilotDemo } from "@/components/site/AutopilotDemo";
+import { SampleCarousel, SampleCompare, SampleTicker } from "@/components/site/landing-samples";
+import "@/components/site/explore-hover.css";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
@@ -47,7 +51,7 @@ const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
  * page itself holds, and whatever the pricing source holds. No competitor is
  * named, a model only inside its own sample's box, and there are no
  * testimonials, logos or usage numbers, because there are none to show. Every
- * picture says what it is: one of our samples (AI-generated, its model) or a
+ * picture says what it is: one of our samples (AI-generated; its model on its gallery card) or a
  * stock example (its contributor), from components/site/samples.tsx slotMedia.
  *
  * A Server Component. The client code on the page is the header's menu and its
@@ -74,9 +78,11 @@ export function Landing({
   /** Dodo Payments sells here (PAYMENTS_PROVIDER=dodo): the FAQ names it as the seller. */
   dodo?: boolean;
 }) {
-  // The samples the landing's own slots show are left out of its gallery, so no clip is on the page twice.
-  const inSlots = slotJobs(LANDING_SLOTS);
-  const gallery = showcaseItems().filter(({ e }) => !inSlots.includes(e.jobId));
+  // The samples the landing's own places show (slots, tool wall, steps, approval screen) are left out of its gallery, so no clip
+  // is on the page twice, and so are the repeated sea and sky samples: one list (components/site/slots.ts landingExcludedJobs).
+  const inSlots = landingPlacedJobs();
+  const leftOut = landingExcludedJobs();
+  const gallery = showcaseItems().filter(({ e }) => !leftOut.includes(e.jobId));
   // Everything on the page that is one of our samples: the gallery's, then the slots' (each with its files). The facts count
   // these and the model tiles are built from these, so a tile's count and the facts can never disagree.
   const onPage = [...gallery, ...showcaseItems().filter(({ e }) => inSlots.includes(e.jobId))];
@@ -84,14 +90,19 @@ export function Landing({
   return (
     <div className="lp-root">
       <Hero t={t} formats={formats} />
+      <SampleTicker t={t} locale={locale} exclude={leftOut} />
       <Facts t={t} locale={locale} anchor={anchor} entries={onPage.map(({ e }) => e)} />
+      <SampleCarousel t={t} locale={locale} exclude={leftOut} />
       {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
-      <ShowcaseGallery t={t} locale={locale} exclude={inSlots} formats={formats} />
+      <ShowcaseGallery t={t} locale={locale} exclude={leftOut} formats={formats} />
       {/* Named one-press shots that open the Studio's video form (lib/effects/catalog.ts); it names no model. */}
       <EffectsGallery t={t} />
+      <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} />
       <ModelTiles t={t} items={onPage} />
+      <SampleCompare t={t} locale={locale} exclude={leftOut} />
       <Showcases t={t} />
-      <How t={t} />
+      <How t={t} locale={locale} anchor={anchor} />
+      <AutopilotDemo copy={t.site.autopilot.demo} />
       {showcase.length > 0 && (
         <div className="st-section">
           <div className="st-wrap">
@@ -119,7 +130,7 @@ function formatsFor(t: Dictionary): LandingFormat[] {
 
 /**
  * The first screen, lean as an AI studio's is: the hero slot's picture edge to edge (one of our generations once its job is
- * merged, labelled with its model; until then the stock fallback, labelled stock), under a veil that keeps the words at 4.5:1;
+ * merged, labelled AI-generated; until then the stock fallback, labelled stock), under a veil that keeps the words at 4.5:1;
  * the headline, one sentence, the prompt bar (it only opens the Studio form) with real prompts to start from, one primary and
  * one secondary action. The welcome grant, the price and the three promises are just under it (Facts). The picture is the
  * page's LCP: eager, high priority, its clip started only after load and idle.
@@ -140,9 +151,10 @@ function Hero({ t, formats }: { t: Dictionary; formats: LandingFormat[] }) {
         <h1 id="hero-title" className="nx-h1 nx-sh-h1">
           {h.titleA} <span className="nx-h1-b">{h.titleB}</span>
         </h1>
-        <p className="nx-sh-lead">{h.leadShort}</p>
+        {/* While no Studio model is on sale (lib/site/tool-samples.ts), the sentence offers no picture or clip a visitor can make. */}
+        <p className="nx-sh-lead">{studioToolsOpen() ? h.leadShort : h.leadShortClosed}</p>
         {/* Four starting points, one row: the first screen stays lean (the rest of the formats are in the gallery). */}
-        <PromptBar copy={t.site.prompt} ideas={ideas.slice(0, 4)} />
+        <PromptBar copy={t.site.prompt} ideas={ideas.slice(0, 4)} studioOpen={studioToolsOpen()} />
         <div className="nx-sh-actions">
           <Link href="/signup" className="nx-btn">
             {h.cta}
@@ -156,10 +168,10 @@ function Hero({ t, formats }: { t: Dictionary; formats: LandingFormat[] }) {
         </div>
       </div>
       <div className="nx-wrap nx-sh-foot">
-        {/* What the picture behind the words is, on it: our sample's model and credit, or the stock contributor's. */}
+        {/* What the picture behind the words is, on it: our sample's AI-generated badge, or the stock contributor's credit. */}
         {m.kind === "ai" ? (
           <p className="nx-sh-credit" {...placeBox({ ...m, moving: false })}>
-            <AiCredit entry={m.entry} g={t.site.gallery} href={placeTry(m)} scope="hero" />
+            <AiBadge g={t.site.gallery} />
           </p>
         ) : (
           <p className="nx-sh-credit" data-media="stock">
@@ -204,7 +216,10 @@ function Facts({ t, locale, anchor, entries }: { t: Dictionary; locale: Locale; 
         <ul className="nx-facts-list">
           {items.map((i) => (
             <li key={i.id} data-fact={i.id}>
-              <span className="nx-facts-n">{formatCredits(i.n, locale)}</span>
+              {/* data-count: the count-up's target (components/site/motion/attach.ts); the text stays the server's number. */}
+              <span className="nx-facts-n" data-count={i.n}>
+                {formatCredits(i.n, locale)}
+              </span>
               <span className="nx-facts-l">{i.label}</span>
             </li>
           ))}
@@ -232,7 +247,7 @@ function Facts({ t, locale, anchor, entries }: { t: Dictionary; locale: Locale; 
 
 /**
  * The models behind the samples: one tile per model, each inside the box of that model's first sample on the page (the only kind
- * of element that may name a model), with its maker's credit, how many of the page's samples it made, whether the Studio offers
+ * of element that may name a model), with its AI-generated label, how many of the page's samples it made, whether the Studio offers
  * it (an operator preview says it does not yet), and a link down to its sample. No price: the site has no public per-model price
  * to read, and a typed one would be a promise (CLAUDE.md #5).
  */
@@ -268,11 +283,6 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
                 <div className="nx-model-body">
                   <span className="nx-ai-badge">{g.badge}</span>
                   <h3 className="nx-model-name">{e.modelName}</h3>
-                  {e.attribution && (
-                    <a href={e.attribution.url} target="_blank" rel="noopener noreferrer" className="nx-ai-attr">
-                      {e.attribution.text}
-                    </a>
-                  )}
                   <p className="nx-model-count">{fmt(c.count, { n: String(n) })}</p>
                   {leftOut && <p className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</p>}
                   <a href={`#sample-${e.jobId}`} className="nx-model-see">
@@ -290,7 +300,56 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
 }
 
 /** Three steps in a strip: a numeral, a title, a sentence (the last one is the person's own press), and under them what Nightshift can make, as a wall of eight icon tiles, one per tool. */
-function How({ t }: { t: Dictionary }) {
+/**
+ * The live piece above a step of "How it works", made of the product's own parts and words, never a drawing of a result:
+ * 1. the ask, typed as you watch (the chat card's own example ask; reduced motion or the pause switch show it whole);
+ * 2. the Generate key as the Studio draws it, with the price beside it only when the live price list holds one, else where it
+ *    will appear (never a default or a zero);
+ * 3. a phone with one of our vertical samples playing as a channel's video, under "Private on YouTube": an example,
+ *    labelled AI-generated (the badge only: the phone illustrates the step, the clip is not its subject), in the sample's own box.
+ * The first two are pictures of a control, not controls: hidden from assistive tech (the step's words say it).
+ */
+function StepLive({ id, t, locale, anchor }: { id: string; t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
+  if (id === "topic") {
+    return (
+      <div className="nx-step-live" data-step="topic" aria-hidden>
+        <span className="nx-step-input">
+          <TypedText text={t.site.caps.items[0].bubble} />
+        </span>
+      </div>
+    );
+  }
+  if (id === "price") {
+    const a = t.site.anchor;
+    const price = anchor.site ? fmt(a.siteValue, { n: formatCredits(anchor.site.perMinute, locale), unit: creditUnit(anchor.site.perMinute, locale, t.shell.creditUnit) }) : null;
+    return (
+      <div className="nx-step-live" data-step="price" aria-hidden>
+        <span className="nx-step-key">{t.gen.generate}</span>
+        <span className="nx-step-price" data-known={price ? "true" : "false"}>
+          {price ?? t.site.how.priceLater}
+        </span>
+      </div>
+    );
+  }
+  const e = SHOWCASE_ENTRIES.find((x) => x.jobId === STEP_PHONE_JOB);
+  const f = e ? SHOWCASE_FILES[e.jobId] : undefined;
+  const approve = t.site.stage.steps.find((x) => x.id === "approve" && "lamp" in x) as { lamp: string } | undefined;
+  if (!e || !f) return null;
+  const clip = e.kind === "video" && f.clip !== null;
+  return (
+    <div className="nx-step-live" data-step="approve" data-showcase-entry={e.jobId} data-model={e.modelId}>
+      <span className="nx-step-phone" data-clip={clip ? "sample" : undefined}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={f.posterSm} width={e.width} height={e.height} alt={clip ? t.site.gallery.bgClip : t.site.gallery.bgImage} className="nx-step-shot nx-drift-pic" loading="lazy" decoding="async" />
+        {clip && <ShowcaseClip jobId={e.jobId} />}
+        {approve && <span className="nx-step-private">{approve.lamp}</span>}
+      </span>
+      <AiBadge g={t.site.gallery} className="nx-ai-credit nx-step-credit" />
+    </div>
+  );
+}
+
+function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
   const h = t.site.how.simple;
   return (
     <section id="how" aria-labelledby="how-title" className="nx-section" data-tone="raised">
@@ -300,11 +359,10 @@ function How({ t }: { t: Dictionary }) {
         </h2>
         <ol className="nx-strip" aria-label={t.site.how.slug}>
           {h.steps.map((s, i) => {
-            // An optional picture above the numeral (components/site/art.tsx SLOT_ART): none is configured today, so the step is text.
-            const art = slotArt("step", s.id);
+            // A live piece of the product above each step (round 10): the ask being typed, the Generate key with its price, a channel's video waiting private.
             return (
               <li key={s.id} className="nx-strip-step">
-                {art && <ArtSlotImg slot={art} alt={t.site.art.alts[art.altKey]} className="nx-strip-pic" />}
+                <StepLive id={s.id} t={t} locale={locale} anchor={anchor} />
                 <span className="nx-strip-no" aria-hidden>
                   {i + 1}
                 </span>
@@ -401,7 +459,7 @@ function FinalCta({ t }: { t: Dictionary }) {
           {/* The slot's picture (or its loop) behind the closing words: decorative, so no description; what it is is printed on it. */}
           <PlaceFill media={m} s={t.site} alt="" className="nx-final-pic" labels={false} sizes="(min-width: 1240px) 1160px, 100vw" />
           {m.kind === "ai" ? (
-            <AiCredit entry={m.entry} g={t.site.gallery} href={placeTry(m)} scope="final" className="nx-ai-credit nx-final-credit" />
+            <AiBadge g={t.site.gallery} className="nx-ai-credit nx-final-credit" />
           ) : (
             <span className="nx-final-credit">{creditLine(m.id, t.site.samples.credit)}</span>
           )}

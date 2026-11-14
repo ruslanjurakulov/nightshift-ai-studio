@@ -29,7 +29,7 @@ export type PublicDictionary = {
     stage: Pick<Dictionary["site"]["stage"], "tag" | "figure" | "steps">;
     samples: Pick<Dictionary["site"]["samples"], "credit" | "captions" | "tag" | "frameTag" | "clipTag" | "alts">;
     /** A sign-in or sign-up stage that shows one of our samples labels it as one (components/site/PlaceFill.tsx). */
-    gallery: Pick<Dictionary["site"]["gallery"], "badge" | "try" | "tryAria" | "use" | "useNote" | "noPrompt" | "altClip" | "altImage">;
+    gallery: Pick<Dictionary["site"]["gallery"], "badge" | "bgClip" | "bgImage">;
     fx: Pick<Dictionary["site"]["fx"], "pause">;
   };
   signup: Dictionary["signup"];
@@ -62,7 +62,7 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
     plans: omit(t.plans, "managePortalMissing"),
     credits: { buy: { pack: t.credits.buy.pack } },
     creditsPage: { eq: t.creditsPage.eq },
-    site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth, stage: { tag: t.site.stage.tag, figure: t.site.stage.figure, steps: t.site.stage.steps }, samples: { credit: t.site.samples.credit, captions: t.site.samples.captions, tag: t.site.samples.tag, frameTag: t.site.samples.frameTag, clipTag: t.site.samples.clipTag, alts: t.site.samples.alts }, gallery: { badge: t.site.gallery.badge, try: t.site.gallery.try, tryAria: t.site.gallery.tryAria, use: t.site.gallery.use, useNote: t.site.gallery.useNote, noPrompt: t.site.gallery.noPrompt, altClip: t.site.gallery.altClip, altImage: t.site.gallery.altImage }, fx: { pause: t.site.fx.pause } },
+    site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth, stage: { tag: t.site.stage.tag, figure: t.site.stage.figure, steps: t.site.stage.steps }, samples: { credit: t.site.samples.credit, captions: t.site.samples.captions, tag: t.site.samples.tag, frameTag: t.site.samples.frameTag, clipTag: t.site.samples.clipTag, alts: t.site.samples.alts }, gallery: { badge: t.site.gallery.badge, bgClip: t.site.gallery.bgClip, bgImage: t.site.gallery.bgImage }, fx: { pause: t.site.fx.pause } },
     signup: t.signup,
     recovery: t.recovery,
     auth: { email: t.auth.email, password: t.auth.password, signIn: t.auth.signIn, signingIn: t.auth.signingIn },

@@ -169,8 +169,9 @@ body .app-shell.atmos {
 .btn-sky:hover { border-color: var(--ns-act); }
 .btn-sky.ghost::before,
 .btn-sky.is-quiet::before { background: var(--ns-act-soft); }
-.btn-sky.ghost:hover,
-.btn-sky.is-quiet:hover { color: var(--color-fg); border-color: var(--ns-act); }
+/* A refused key does not answer the pointer (:where keeps the specificity the glass keys are written against). */
+.btn-sky.ghost:hover:where(:not(:disabled, [aria-disabled="true"])),
+.btn-sky.is-quiet:hover:where(:not(:disabled, [aria-disabled="true"])) { color: var(--color-fg); border-color: var(--ns-act); }
 .btn-quiet:hover { border-color: var(--ns-act); background: var(--ns-act-soft); }
 
 /* A selected key in a segmented switch is a tab, not a second primary: raised, with the amber line under it. */

@@ -1290,6 +1290,115 @@ until the Command Center sells through Dodo (`PAYMENTS_PROVIDER=dodo`).
   chargeback; malformed ids refused; replay, rollback, drift and the 0146 prerequisite), `command-center/tests/add-credits-ui.test.tsx`
   (the page's reading of the rows) and `command-center/tests/dodo-checkout.test.ts` (the invoice route).
 
+## Concept-thumbnail settings are an administrator's (0158)
+
+0158 (`0158_thumbnail_concept_admin_lock.sql`) is **live on apply**. It rewrites no row and widens no grant. It replaces one small
+function and adds one trigger.
+
+- **Why.** `agent_config.thumbnail_mode = "concept"` (modules/thumbnail_concept.py, PR #731) makes every run of the channel pay for a
+  planner call and one generated image per A/B arm on the worker's provider keys. `agent_config.thumbnail_concept` picks the image
+  provider and model, whether invented faces (`allow_faces`) or words from the fact-checked texts (`allow_baked_text`) may appear,
+  and the headline style. Before 0158 any editor of the organization could change both keys, like any other agent_config key.
+- **What changes.** `channel_admin_controls()` (0086) lists the two keys after its four, so `create_channel()` holds them to an
+  administrator, or to a trusted server caller. A second BEFORE INSERT OR UPDATE trigger, `channels_thumbnail_concept_guard`
+  (security invoker, browser roles only, execute revoked from everyone), refuses a write that sets, changes or removes either key
+  unless the caller administers the channel's organization: 42501, message prefix and hint `thumbnail_concept_lock`. A whole blob
+  carried back unchanged, an unrelated edit, the service role and the definer functions pass. `patch_channel_agent_config` (0119)
+  already refuses both keys. The 0119 guard body (md5-pinned) is not touched.
+- **Drift guard.** The file refuses to run when `channel_admin_controls()` is neither 0086's four keys nor 0158's six. It takes a
+  short lock on `public.channels` to create the trigger (`lock_timeout` 5s).
+- **Without it.** An editor can switch a channel to paid concept thumbnails. The worker and the credit hold still work: the
+  Command Center adds one image per arm (ceiling 4) at the `image_generations` price to a concept channel's run hold, or refuses the
+  run with the gap `unpriced_concept_thumbnail` when that price is unset (lib/credits.ts `withConceptThumbnail`).
+- **Number.** 0158: 0157 is the highest on main. Needs 0018, 0020 and 0086 (and 0114's `create_channel`). Names nothing of
+  0127's, 0131's or 0133's; their numbering tests list it as reviewed.
+- **Undo.** `docs/sql/rollback_0158_thumbnail_concept_admin_lock.sql` (owner-applied): drops the trigger and its function and puts
+  0086's four-key `channel_admin_controls()` back. A row keeps whatever keys it has.
+- **Tests.** `tests/test_thumbnail_concept_lock_migration.py` (the text, the keys equal the worker's, the rollback),
+  `tests/security/test_sec_thumbnail_concept_lock.py` (a real PostgreSQL: an editor and a viewer refused on set, change, removal,
+  `jsonb_set` and whole-blob replacement; `create_channel` holds both keys; an administrator, the owner and the service role pass;
+  an unchanged blob passes; replay, rollback and drift), `tests/security/test_sec_breach_channel_config.py` (the live control
+  list) and `command-center/tests/reserveRunCredits.test.ts` (the hold).
+
+## A quote refuses a clip length the model does not list (0159)
+
+0159 (`0159_duration_offered_by_model.sql`) is **live on apply** and writes no row. It replaces ONE function, `creative_price`, on
+0156's body plus one hunk (0155's shape check and 0156's named-resolution rule are kept as they are).
+
+- **Evidence.** Read from the code (2026-11-13): `creative_params_problem` (0126, unchanged by 0156) checks only that `duration_s` is a
+  whole number from 1 to 60, and `creative_price` checks the model's own list for a shape, a resolution, a quality, a factor, a language,
+  a target and a light, but never for a length. The first reader of `spec.durations_s` is the worker's `ModelEntry.problems`
+  (`duration <n>s is not offered by <model>`), after the quote, the job and its hold. The Studio offered 5 and 10 seconds to every video
+  model (`VIDEO_DURATIONS`): Veo 3.1 makes 4, 6 or 8; LTX 2.5 Pro 6, 8 or 10.
+- **The rule.** When the params name a `duration_s`, the model must list it in `spec.durations_s` (exactly the worker's list; `--sync`
+  copies it and `sellable_models()` already returns it). An empty list (image and voice models) and a spec with no list refuse every
+  length. Refused `invalid_params` with `<model> does not offer a <n>-second clip for <capability>`. No length named: unchanged. The
+  router treats the refusal as "not a candidate", so Auto skips a model that cannot make the length.
+- **What ships with it.** The Studio builds its shape, length and resolution keys from the picked model's own lists (Auto: the union
+  over the models this organization can buy, with a note), so it no longer offers a length the model refuses.
+- **Before it helps.** `model_registry.spec` must carry `durations_s` (every sync since 0035 copies it; the schema requires it). The
+  file REFUSES to apply while an offered timed model (beta / ga, or an operator preview) states no list, and names the models: run
+  Actions -> Probe models with `--sync`, then apply. The last Verify column checks every timed row.
+- **Drift guard and end state.** Live `creative_price` must be 0156's (`a70dba23b303c72f2b9f5dc5acb3b3ec`) or 0159's
+  (`dafc5edae0000e741ac1b19bd0075790`); 0155's body is refused (0156 first). The last block asserts the body, no API role grant, the
+  pinned search_path, the volatility and every guard (0124, 0125, 0139, 0155, 0156, and the new length check). Apply as ONE transaction.
+- **Order.** 0156's replay and rollback refuse 0159's body: run `docs/sql/rollback_0159_duration_offered_by_model.sql` first (it puts
+  0156's body back byte for byte). The lab takes 0159 off before 0156 (`sec_db.take_off_0156` calls `take_off_0159`; `sec_db.ON_0156`,
+  listed in `ON_0155` and so in `ON_0153`, `ON_0149`, `ON_0139` and `ON_0125`). Numbering: 0159; 0157 and 0158 are merged (neither replaces a creative
+  function). The numbering tests of 0127, 0131 and 0133 list it as reviewed. An open branch that replaces `creative_price` and merges first
+  makes this file's guard refuse: rebase the hunk on that body.
+- **Tests.** `tests/test_duration_offered_by_model_migration.py` (the hunk, the list is the worker's, the hashes, the rollback, the lab
+  chain, every synced row states its lengths) and `tests/security/test_sec_duration_offered_by_model.py` (a listed length is quoted and
+  created, an unlisted one is refused before anything is held for the customer and for the operator's preview, an empty or missing list
+  refuses, Auto skips a model that cannot make the length, every other answer is 0156's on a corpus, order, drift guard, replay and
+  rollback on a scratch database).
+
+## ChatGPT keeps the client it registered (0161)
+
+0161 (`0161_mcp_chatgpt_client.sql`) is **live on apply** and changes only what the MCP OAuth collector deletes: `oauth_gc` is
+0147's body plus one hunk; ONE new internal helper, `oauth_chatgpt_callbacks_only(text[])`; and, so the collector stays cheap,
+the stored generated column `oauth_clients.chatgpt` (from that helper, like 0147's `vendor`) with the partial index
+`oauth_clients_chatgpt_idx`. No table, row, policy, trigger or grant on anything else.
+
+- **Why.** OpenAI's authentication guide for MCP servers (https://developers.openai.com/plugins/build/auth): ChatGPT runs dynamic
+  client registration once per MCP server connection and reuses that client id; "If your authorization server expires, deletes,
+  or replaces either credential, users and reviewers may receive an invalid_client error when they connect." 0147's collector
+  deleted a client a day after its every connection ended (its own note: "ChatGPT and others are re-added"), so a ChatGPT
+  connection that was disconnected, or reached its 90-day cap, and signed in again more than a day later was refused as an
+  unknown app until the person re-created the plugin. Claude registers a new client on every connection and is not affected.
+- **The rule.** A client whose every redirect URI is one of ChatGPT's own callbacks (`https://chatgpt.com/connector_platform_oauth_redirect`,
+  `https://chatgpt.com/connector/oauth/<id>`) is not taken by 0147's branch for 30 days after a person's last (redeemed) connection
+  with it ended, for at most 3 such clients per person, the ones that ended most recently. After that 0093's rules take it as
+  before (an ended grant goes at 30 days, then a client with none). A Claude client, a mixed registration and a ChatGPT client
+  nobody approved still go a day later. A kept client gives nobody a connection: its tokens stay dead and every sign-in shows
+  the consent screen.
+- **Rows.** The vendor class holds 60 000; registrations at their hourly ceiling hold 48 000 of them for a day, leaving about
+  12 000 that must be filled with rows that outlive a day. Live connections dominate: an account holds 20 live plus those ended in
+  the last day (about 40 rows, 0147's bound of roughly 300 accounts); 0161 adds at most 3 kept a person (about 43, roughly 280
+  accounts). Kept clients alone would need about 4 000 accounts.
+- **Cost.** The collector runs on every registration and code exchange. Measured (Breach on #744, then here) with 7 000 people
+  holding 6 ended ChatGPT clients each, 42 000 rows: the first form (the helper called per grant, then an array test per
+  candidate) took 0.5 to 1 s a collection; this form (the stored flag, a left anti-join) about 130 ms median, against 0147's about
+  47 ms on the same data. What is left is the ranking window over the flood's own ChatGPT grants; with few ChatGPT grants it is
+  near zero.
+- **md5.** `oauth_gc` before `b5d0423a7df82812106021e05488d9ad` (0147), after `d9262c411e083e9f8d970224a6cad17c`;
+  `oauth_chatgpt_callbacks_only` `2a5c8c75b77b0a59556852a93c6b9cb4` (drift guard, end state, rollback).
+- **Without it.** Everything works as under 0147; only ChatGPT's reconnect after more than a day fails, and the consent page then
+  tells the person to remove the app there and add it again.
+- **Replay.** `create or replace` plus revoke: a replay changes nothing. Re-running 0147 after 0161 is refused by 0147's own drift
+  guard (it knows only 0093's and its own collector): apply the 0161 rollback first, re-run 0147, then 0161. Re-running 0093 puts
+  0093's collector back: re-apply 0147, then 0161.
+- **Number.** 0161, assigned to this branch: 0158 (#731) and 0159 (#745) are merged before it, 0160 belongs to another branch.
+  Needs 0093 and 0147; names nothing of 0149's to 0159's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+- **Undo.** `docs/sql/rollback_0161_mcp_chatgpt_client.sql` (owner-applied): refuses a collector that is not 0161's, puts 0147's
+  body back verbatim, drops the index, the column and then the helper.
+- **Tests.** `tests/test_mcp_chatgpt_client_migration.py` (0147's body plus the two hunks, byte for byte; the hashes; the
+  rollback; the numbering), `tests/security/test_sec_mcp_chatgpt_client.py` (a real PostgreSQL: the same client id signs in again
+  after a disconnect and after the 90-day cap, its old token stays dead, it goes at 30 days; Claude, mixed, ordinary and unapproved
+  clients still go after a day; 50 approve-redeem-revoke cycles keep 3; a shared workspace client stays while anyone ranks it; no
+  API role calls either function; replay, rollback and drift guard). `tests/security/test_sec_mcp_free_tier.py` undoes 0161 before
+  it replays and rolls back 0147.
+
 ## The MCP Studio tools' model list and result files (0162)
 
 0162 (`0162_api_creative_models.sql`) adds two read-only API functions and changes nothing else (no table, column, row, policy, or
@@ -1318,7 +1427,7 @@ the API key's hash, never a session or the service key — and two things the St
   (drift guard, rollback).
 - **Without it.** The MCP tools `list_models` and `get_generation` answer 503 `api_unavailable` naming 0162; `quote_generation` and
   `create_generation` call 0062's functions and work either way.
-- **Number.** 0162. Needs 0031, 0035, 0038, 0062, 0075 (`creative_route_quote`) and 0124 (`model_is_available`); names nothing of 0147's to 0157's. The numbering tests of 0127, 0131 and 0133
+- **Number.** 0162. Needs 0031, 0035, 0038, 0062, 0075 (`creative_route_quote`) and 0124 (`model_is_available`); names nothing of 0147's to 0161's. The numbering tests of 0127, 0131 and 0133
   list it as reviewed.
 - **Undo.** `docs/sql/rollback_0162_api_creative_models.sql` (owner-applied): refuses a body that is not 0162's, drops both.
 - **Tests.** `tests/test_api_creative_models_migration.py` (the text, the hashes, the rollback, the numbering),

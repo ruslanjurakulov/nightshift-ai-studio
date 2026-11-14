@@ -102,7 +102,9 @@ API-key steps is decided by the environment flag `MCP_OAUTH_LIVE` (literal `1` =
 `deploy/.env.web.example`, `lib/mcp-oauth.ts`). Leave it off until the server's OAuth is merged, deployed and tested
 with a real connector: while it is off the four sign-in-only tabs (ChatGPT, Claude, Gemini, Grok) say "Coming soon",
 Cursor and VS Code show their API-key steps, and no "Add to …" button is drawn on /mcp or in Developers → Connected
-apps.
+apps. With it on, the ChatGPT and Claude tabs carry a "Ready to connect" line (`lib/dev/mcp-availability.ts`, below) until the
+owner records a real connection there. The flag decides only what the page says: the server's sign-in answers whether it is on
+or off, so a person (the owner first) can add the connector in ChatGPT or Claude by hand before the page offers it.
 
 Under the connect card `/mcp` is one long page, the same on every tab except the assistant's name: how it works,
 ready-to-copy asks, six capability rows (video, channels, language and voice, approval, credits and limits, a list of topics in one ask),
@@ -141,6 +143,46 @@ No link carries a key: they only work with the sign-in. ChatGPT, Gemini and
 Grok document no install link: their tabs link the vendor's own guide and give
 the steps by hand.
 
+### What ChatGPT and Claude require, and where this server stands (checked 2026-11-13)
+
+What each tab of `/mcp` may say is decided in ONE place, `command-center/lib/dev/mcp-availability.ts`:
+`mcpClientAvailability(id, mcpOauthLive())` answers `available`, `ready`, `unverified` or `soon`, and
+`mcpConnectOffered(id, oauthLive)` says whether a link may send a person into that assistant to connect ("Try in ChatGPT",
+"Add to Claude"). ChatGPT and Claude are **`ready`**: the server meets each vendor's published requirements, and a sign-in
+shaped exactly like each vendor's (its callback, its registration, `resource`, the `iss` check, form-encoded token and
+refresh) passes against the real Command Center (`command-center/scripts/oauth-e2e-vendors.mjs`). Nobody has connected the
+products themselves yet, so the tabs say "Ready to connect", never "works". When the owner has connected one for real,
+change its word in `MCP_SIGN_IN` to `confirmed`. With `MCP_OAUTH_LIVE` off every sign-in-only tab is still "Coming soon".
+
+Sources: OpenAI, https://developers.openai.com/api/docs/guides/custom-mcp-server and
+https://developers.openai.com/plugins/build/auth (where https://developers.openai.com/apps-sdk/build/auth now leads);
+Anthropic, https://claude.com/docs/connectors/building/authentication,
+https://claude.com/docs/connectors/custom/add-unlisted and
+https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp; the MCP authorization
+specification 2026-07-28, https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization.
+
+| Requirement | Who | Here |
+| :-- | :-- | :-- |
+| Remote MCP over streamable HTTP (ChatGPT: "SSE and streaming HTTP") | both | `/api/mcp`, stateless streamable HTTP, JSON responses; GET/DELETE 405 (allowed for a server with no stream) |
+| `401` with `WWW-Authenticate: Bearer resource_metadata=…` (Claude ignores it on a `200`) | both | yes, plus `scope` |
+| Protected resource metadata whose `resource` equals the URL as entered, path included; first `authorization_servers` entry is the issuer | both | `https://nightshift-ai.studio/api/mcp`; one issuer |
+| Authorization server metadata at `/.well-known/oauth-authorization-server` or `openid-configuration` | both | both names, with and without `/api/mcp` |
+| PKCE `S256`, advertised in `code_challenge_methods_supported` | both | S256 only, checked by the database |
+| Client registration: CIMD, DCR or a pre-registered client | both | DCR (RFC 7591, public clients). CIMD is not offered (`client_id_metadata_document_supported: false`), so ChatGPT and Claude use DCR. In Claude choose "Register automatically" |
+| `token_endpoint_auth_methods_supported` lists what the token endpoint accepts | both | `["none"]`; a request for `client_secret_post` is registered as the public client it will be |
+| `resource` (RFC 8707) on authorization and token requests, token bound to it, MCP server checks the audience | both | yes; any other resource is `invalid_target`, a token of another resource is a `401` |
+| `iss` (RFC 9207) on EVERY authorization response, errors included, equal to the metadata issuer; then ChatGPT uses its stable callback | ChatGPT | yes (`authorization_response_iss_parameter_supported: true`) |
+| Redirect URIs: `https://chatgpt.com/connector_platform_oauth_redirect` (or `…/connector/oauth/<id>`); `https://claude.ai/api/mcp/auth_callback`; Claude Code: loopback on any port | both | allowed and matched exactly as registered; the vendor registration class has its own budget (0147) |
+| Keep a DCR client valid while the connection is in use (ChatGPT reuses one client id) | ChatGPT | **was missing**: 0147 deleted it a day after the connection ended. **0161** keeps it 30 days, 3 per person |
+| A new client on every fresh connection; prefer CIMD for very high traffic | Claude | vendor class: 300 an address and 2 000 an hour, 60 000 rows (0147) |
+| Token endpoint takes `application/x-www-form-urlencoded`; answers within 10 s (refresh 30 s) | Claude | yes; one database call |
+| A dead refresh token is `invalid_grant`; refresh tokens rotate for public clients | both | yes; reusing a spent one ends the connection |
+| `readOnlyHint` on read tools (ChatGPT treats any tool without it as a write and asks to confirm) | ChatGPT | every read tool has it; `create_video` and `publish_video` do not |
+| No `search` / `fetch` tool needed for a custom server | ChatGPT | none offered |
+| Consent screen shows the redirect host | both (MCP spec) | app name together with the host it returns to |
+| Reachable from Anthropic's egress `160.79.104.0/21`, no WAF in the way | Claude | nothing in the app blocks by address; the server's firewall is the owner's to check |
+| Optional: a profile tool for multi-account, `securitySchemes` per tool, OIDC `id_token_hint` | ChatGPT | not built (not required) |
+
 ### ChatGPT (custom MCP server)
 
 OpenAI's guide: https://developers.openai.com/api/docs/guides/custom-mcp-server
@@ -150,12 +192,24 @@ OpenAI's guide: https://developers.openai.com/api/docs/guides/custom-mcp-server
    server**.
 2. Name: `Nightshift`, a short description, URL:
    `https://nightshift-ai.studio/api/mcp` (with the path). Authentication:
-   **OAuth**.
+   **OAuth**. If the form offers a client ID and secret, leave them empty and keep
+   dynamic registration: Nightshift registers ChatGPT itself and publishes no
+   Client ID Metadata Document.
 3. Confirm **I understand and want to continue**, sign in and approve on the
-   Nightshift page when it opens (sign in if asked, check the app name and the
-   address it names, choose the monthly credit limit: default 500, up to 20 000,
-   0 means read-only; **Allow**), then press **Create as a plugin** and install it.
-4. In a chat, use the plugin. Check each action before you approve it.
+   Nightshift page when it opens (sign in if asked; it should name ChatGPT and
+   `chatgpt.com`, which confirms the kind of app and where it returns, not whose
+   ChatGPT account asked: the name is whatever the registrant chose, so approve only
+   a sign-in you started yourself a moment ago; choose the monthly credit limit:
+   default 500, up to 20 000, 0 means read-only; **Allow**), then press
+   **Create as a plugin** and install it.
+4. In a chat type **@** and pick the Nightshift plugin. Read tools run at once;
+   `create_video` and `publish_video` ask for confirmation (they carry no
+   `readOnlyHint`). Check each action before you approve it.
+
+If ChatGPT later shows "This connection request cannot be used" on the
+Nightshift page, its registration is gone (it was never approved within a day,
+or its last connection ended more than 30 days ago): remove the plugin in
+ChatGPT and add it again.
 
 ### Claude (custom connector, web, desktop and mobile)
 
@@ -282,7 +336,10 @@ Nightshift is its own authorization server for its MCP resource.
   lookalike are still refused, and the database's check is unchanged. An app nobody ever approves is deleted after a day, and
   (0147) so is one whose every connection ended (revoked, or past its 90 days) more than a day ago, with those connections: a
   revoked connection no longer keeps its registration alive for a month. An app whose connection ended that long ago is added
-  again in the assistant (Claude registers anew on every connection anyway).
+  again in the assistant (Claude registers anew on every connection anyway). **Except ChatGPT (0161):** ChatGPT registers once
+  per server connection and signs in again with the same client id after a Disconnect or the 90-day cap (OpenAI: deleting it
+  answers `invalid_client`). A registration whose every redirect URI is ChatGPT's own callback is kept 30 days after a person's
+  last connection with it ended, at most 3 per person; its old tokens stay dead and the next sign-in shows the consent screen.
   Two classes, each with its own budgets (0147): a registration whose **every** redirect URI is an AI vendor's own callback
   (`https://claude.ai/api/mcp/auth_callback`, `https://chatgpt.com/connector_platform_oauth_redirect`,
   `https://chatgpt.com/connector/oauth/<id>`, Grok's `https://grok.com/connectors-oauth-exchange-code/`, Gemini's
@@ -379,6 +436,9 @@ the database directly: `api_begin` hands a hash that is not an API key to
   URIs, code double-spend, refresh race, registration floods, the spend limit
   under concurrency, cross-tenant, replay-twice), `tests/security/test_sec_mcp_free_tier.py`
   (Free approves and spends, the rate credit, vendor registrations, rollback), and the
+  0161's `tests/test_mcp_chatgpt_client_migration.py` and `tests/security/test_sec_mcp_chatgpt_client.py`, `command-center/tests/mcp-availability.test.tsx`,
+  `command-center/scripts/oauth-e2e-vendors.mjs` (on the same rig, `tests/oauth_e2e/run.sh vendors`: the official SDK client with ChatGPT's and
+  Claude's own callbacks and registrations, every refusal, rotation, and ChatGPT's reconnect a day after a Disconnect), and the
   end-to-end rig `tests/oauth_e2e/run.sh`: the **official MCP SDK client** does
   discovery, registration, PKCE, consent, token, tools, refresh and revoke
   against the real Command Center and a Postgres built from the migrations.

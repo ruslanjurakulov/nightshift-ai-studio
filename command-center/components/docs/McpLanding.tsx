@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { CAPABILITY_ROWS, EXAMPLE_SCENES } from "@/lib/dev/mcp-landing";
+import { mcpClientAvailability } from "@/lib/dev/mcp-availability";
+import { MCP_CLIENTS } from "@/lib/dev/mcp-clients";
+import { fmt } from "@/lib/i18n/core";
 import type { DevDictionary } from "@/lib/i18n/dev";
 import { CopyButton } from "@/components/docs/CopyButton";
 import { ResultsCarousel } from "@/components/docs/ResultsCarousel";
 import { sceneMedia } from "@/components/docs/SampleFrame";
 import { LoopClip } from "@/components/site/LoopClip";
 import { SAMPLES, SampleImg } from "@/components/site/samples";
-import { AiCredit, PlaceFill, placeBox } from "@/components/site/PlaceFill";
+import { PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { creditLine } from "@/lib/site/media";
 import type { Dictionary } from "@/lib/i18n";
 
@@ -77,7 +80,6 @@ export function McpLanding({ dev, site, oauthLive }: { dev: DevDictionary; site?
                       <span className="ml-ex-badge" data-kind="ai">
                         {site!.gallery.badge}
                       </span>
-                      <AiCredit entry={pic.entry} g={site!.gallery} badge={false} scope={`mcp-${scene}`} className="nx-ai-credit ml-ex-credit" />
                     </>
                   ) : (
                     <>
@@ -116,7 +118,12 @@ export function McpAfter({ dev, showCli, oauthLive }: { dev: DevDictionary; show
   const c = dev.mcp;
   const l = c.land;
   // Until the sign-in is switched on (MCP_OAUTH_LIVE) the page must not promise an app connection: four answers speak of the key.
-  const keyAnswers: Record<number, string> = oauthLive ? {} : { 2: l.keyMode.faq.assistants, 3: l.keyMode.faq.connect, 4: l.keyMode.faq.cost, 6: l.keyMode.faq.disconnect, 7: l.keyMode.faq.credits };
+  // With it on, "which assistants work" names only those whose availability is "available" (lib/dev/mcp-availability.ts):
+  // a "ready" or "unverified" one has its own tab and steps, but nobody has seen it connect (rule 5).
+  const available = MCP_CLIENTS.filter((x) => mcpClientAvailability(x.id, oauthLive) === "available").map((x) => x.label);
+  const keyAnswers: Record<number, string> = oauthLive
+    ? { 2: fmt(l.faq.items[2].a, { available: available.join(", ") }) }
+    : { 2: l.keyMode.faq.assistants, 3: l.keyMode.faq.connect, 4: l.keyMode.faq.cost, 6: l.keyMode.faq.disconnect, 7: l.keyMode.faq.credits };
   return (
     <>
       <section aria-labelledby="faq-title" className="ml-land ml-faq" data-tone="soft">

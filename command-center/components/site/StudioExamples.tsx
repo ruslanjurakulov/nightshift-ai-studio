@@ -59,14 +59,15 @@ export function StoryboardExample({ p }: { p: Copy }) {
 /** The editor: three tracks (the cross-fade drawn as a dashed edge), the three frame shapes, Save and Export. */
 export function EditorExample({ p, t }: { p: Copy; t: Dictionary }) {
   const e = p.editor;
-  const widths = ["30%", "38%", "32%"];
+  // Shares of the lane, not widths: a clip is at least as wide as its name ("Boshlanish" was cut to "Boshlan…" in a 30% clip at 390px).
+  const grow = [30, 38, 32];
   return (
     <Frame label={e.figure} title={e.figureTitle} tag={p.example}>
       <div className="sp-track">
         <b>{e.tracks.video}</b>
         <div className="sp-lane">
           {e.clips.map((name, i) => (
-            <span key={name} className="sp-clip" data-xf={i > 0 ? "true" : undefined} style={{ width: widths[i] }}>
+            <span key={name} className="sp-clip" data-auto="true" data-xf={i > 0 ? "true" : undefined} style={{ flexGrow: grow[i] }}>
               {name}
             </span>
           ))}

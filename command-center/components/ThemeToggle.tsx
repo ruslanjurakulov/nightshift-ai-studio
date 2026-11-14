@@ -13,8 +13,19 @@ export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {})
   const { t } = usePublicI18n();
   const [theme, setTheme] = useState<Theme | null>(null);
 
+  // Kept in step with <html>, not read once: the public header draws two of these (the bar and the phone sheet), and a
+  // press on one left the other showing the old theme; another tab's choice (ViewFrame) and the system's change it too.
   useEffect(() => {
-    setTheme(resolvedTheme());
+    const sync = () => setTheme(resolvedTheme());
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    const system = window.matchMedia?.("(prefers-color-scheme: dark)");
+    system?.addEventListener?.("change", sync);
+    return () => {
+      observer.disconnect();
+      system?.removeEventListener?.("change", sync);
+    };
   }, []);
 
   function toggle() {

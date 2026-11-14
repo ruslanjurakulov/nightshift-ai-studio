@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUp, AtSign, ChevronDown, Clock, Languages, Maximize2, Plus, RectangleHorizontal, Settings2, X, type LucideIcon } from "lucide-react";
+import { ArrowUp, AtSign, ChevronDown, Clock, Languages, Lock, Maximize2, MonitorPlay, Plus, RectangleHorizontal, Settings2, X, type LucideIcon } from "lucide-react";
 import { DESK_TOOLS, pictureToolFor, type MediaDesk } from "@/lib/creative/desks";
 import { Timecode } from "@/components/ui/Timecode";
 import { useI18n } from "@/lib/i18n/context";
@@ -22,30 +22,33 @@ import { PriceButton } from "@/components/ui/PriceButton";
 import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import { creditUnit } from "@/lib/credits";
 import type { StudioDna } from "@/lib/channel-dna";
-import { isUpsellCode, refusalFrom, type Refusal, type UpsellCatalog } from "@/lib/upsell";
+import { isUpsellCode, refusalFrom, UPSELL_LINKS, type Refusal, type UpsellCatalog } from "@/lib/upsell";
+import { refreshCredits, useLiveCredits } from "@/lib/credits-live";
 import { RELIGHT_LOOKS, UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
-  ASPECT_RATIOS,
   DESCRIBE_LANGUAGES,
   IMAGE_QUALITIES,
   PANEL_CAPABILITIES,
   DUB_LANGUAGES,
   PROMPT_MAX,
   STUDIO_VOICES,
-  VIDEO_DURATIONS,
   apiErrorMessage,
   asCreativeError,
   blockedReason,
   buildParams,
   canQuote,
   defaultDescribeLanguage,
+  durationsFor,
   effectiveQuality,
+  entitlementReason,
   effectiveSound,
   errorAction,
   expandShapesFor,
   generateLabel,
   isAiEdit,
   isPictureOp,
+  modelSettings,
+  modelShapes,
   modelsFor,
   needsRecording,
   needsSource,
@@ -54,7 +57,12 @@ import {
   promptRule,
   reframeShapesFor,
   relightLooksFor,
+  resolutionLabel,
+  resolutionsFor,
+  shapesFor,
   sheetQuoteParams,
+  snapSeconds,
+  snapShape,
   soundQuoteParams,
   takesQuality,
   takesShape,
@@ -62,11 +70,11 @@ import {
   takesStyle,
   tierQuoteParams,
   wordsMax,
-  type AspectRatio,
   type DescribeLanguage,
   type DubLanguage,
   type ExpandAspect,
   type ImageQuality,
+  type ModelLock,
   type QuoteState,
   routedLine,
   routedPick,
@@ -77,10 +85,19 @@ import {
   type StudioPrefill,
   type UpscaleFactor,
   type UpscaleTarget,
-  type VideoDuration,
 } from "@/lib/creative/studio";
 
 const QUOTE_DELAY_MS = 500;
+
+/** desk.css draws the five common shapes; any other shape a model lists (3:2, 21:9, 4:5 ...) is drawn from its own ratio. */
+const DRAWN_SHAPES = ["16:9", "9:16", "1:1", "4:3", "3:4"];
+function shapeGlyph(a: string): CSSProperties | undefined {
+  if (DRAWN_SHAPES.includes(a)) return undefined;
+  const [w, h] = a.split(":").map(Number);
+  if (!w || !h) return undefined;
+  const r = w / h;
+  return r >= 1 ? { width: 16, height: Math.max(4, 16 / r) } : { width: Math.max(4, 14 * r), height: 14 };
+}
 
 /** What a tool starts from in the library: switching to a tool that starts from another kind starts the pick again. */
 const startsFrom = (c: StudioCapability) =>
@@ -193,8 +210,11 @@ export function GeneratePanel({
   useEffect(() => {
     draftRef.current?.(prompt);
   }, [prompt]);
-  const [aspect, setAspect] = useState<AspectRatio>(initial?.aspect ?? dna?.aspect ?? "16:9");
-  const [duration, setDuration] = useState<VideoDuration>(initial?.duration ?? 5);
+  // The shape and length asked for; what is SENT is snapped to the picked model's own lists (effectiveAspect / effectiveSeconds).
+  const [aspect, setAspect] = useState<string>(initial?.aspect ?? dna?.aspect ?? "16:9");
+  const [duration, setDuration] = useState<number>(initial?.duration ?? 5);
+  // 0070: a clip's resolution; null = the model's pinned default (sent as nothing, priced as the default).
+  const [resolution, setResolution] = useState<string | null>(initial?.resolution ?? null);
   const [model, setModel] = useState(initial?.model ?? "");
   // 0075: "Auto" lets the database pick the model (mode auto). The quote names
   // the pick and its price; the press sends both back. Off = the picked model, exactly.
@@ -229,22 +249,30 @@ export function GeneratePanel({
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [notice, setNotice] = useState<{ kind: "ok" } | { kind: "error"; code: CreativeError } | null>(null);
+  const [notice, setNotice] = useState<{ kind: "ok" } | { kind: "error"; code: CreativeError; detail?: string } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const changeRef = useRef<HTMLButtonElement>(null);
   const generateRef = useRef<HTMLButtonElement>(null);
   const [upsell, setUpsell] = useState<{ refusal: Refusal; open: boolean } | null>(null);
   const tabRefs = useRef<Partial<Record<StudioCapability, HTMLButtonElement | null>>>({});
 
-  const available = modelsFor(models, capability);
-  // Auto is offered where there is a choice to make.
-  const autoOffered = available.length > 1;
+  // The models of this kind, the ones this organization can buy first (modelLock: the database refuses the others for it).
+  const available = useMemo(() => {
+    const all = modelsFor(models, capability);
+    return [...all.filter((m) => !m.lock), ...all.filter((m) => m.lock)];
+  }, [models, capability]);
+  const usable = available.filter((m) => !m.lock);
+  // Auto is offered where there is a choice to make (the router never picks a model the database refuses this organization).
+  const autoOffered = usable.length > 1;
   const routed = auto && autoOffered;
   // A model the form came with that the owner switched off: nothing is picked for the person (0124).
   const pickedOff = model !== "" && unavailable.includes(model) && !available.some((m) => m.id === model);
-  // The picked model if it can make this kind, else the first that can.
-  const effectiveModel = pickedOff ? "" : available.some((m) => m.id === model) ? model : (available[0]?.id ?? "");
+  // The picked model if it can make this kind, else the first this organization can buy (never a locked one just because its
+  // name sorts first), else the first at all (then its lock is named).
+  const effectiveModel = pickedOff ? "" : available.some((m) => m.id === model) ? model : ((usable[0] ?? available[0])?.id ?? "");
   const current = available.find((m) => m.id === effectiveModel) ?? null;
+  // Why the picked model cannot be bought here: no price is asked (the database would refuse it), the reason is named instead.
+  const locked: ModelLock | null = !routed && current?.lock ? current.lock : null;
   // Model ids -> the names the picker shows, for Auto's pick.
   const modelNames = useMemo(() => new Map(models.map((m) => [m.id, m.displayName])), [models]);
   // Only a kit the organization has (as loaded) is ever sent: a stale default
@@ -270,13 +298,47 @@ export function GeneratePanel({
   const effectiveQ = !routed && takesQuality(capability) ? effectiveQuality(current, quality) : null;
   // A soundtrack choice only for a video tool on a model that sells it; another model never gets one.
   const effectiveSnd = !routed && takesSound(capability) ? effectiveSound(current, sound) : null;
+  // The shapes, lengths and resolutions come from the picked model's own spec (Auto: every model's that this organization can
+  // buy). 0155 refuses a shape the model does not list and 0159 a length, so offering a fixed list sold refusals.
+  const textShape = capability === "t2i" || capability === "t2v";
+  const clip = capability === "t2v" || capability === "i2v";
+  const pool = usable.length ? usable : available;
+  const shapeList = textShape ? shapesFor(pool, current, routed, capability) : [];
+  const ownShapes = !routed && textShape ? modelShapes(current, capability) : null;
   // A model whose spec lists no aspect ratio makes its own shape: no shape is offered or sent for it (Auto: not known, as above).
-  const shapeless = !routed && (capability === "t2i" || capability === "t2v") && current?.fixedShape === true;
+  const shapeless = !routed && textShape && (ownShapes ? ownShapes.length === 0 : current?.fixedShape === true);
+  const effectiveAspect = snapShape(aspect, shapeList);
+  const lengths = clip ? durationsFor(pool, current, routed) : [];
+  const effectiveSeconds = snapSeconds(duration, lengths);
+  // A resolution only on a hand-picked model whose price follows it; the default stands for "send none".
+  const resolutions = clip ? resolutionsFor(current, routed) : [];
+  const defaultRes = current?.defaultResolution ?? null;
+  const shownRes = resolution && resolutions.includes(resolution) ? resolution : defaultRes;
+  const effectiveRes = resolutions.length > 0 && shownRes && shownRes !== defaultRes ? shownRes : null;
+  // A model whose spec lists no clip length at all cannot be sold a clip (0159 refuses every length): no price is asked for a
+  // stand-in length, the reason is named instead.
+  const noLength = clip && !routed && !!current && Array.isArray(current.durations) && current.durations.length === 0;
+  // What was asked for (a retried job, a link, a setting kept from another model) and is NOT what will be sent: said in one line,
+  // never changed silently (CLAUDE.md #4).
+  const snapped: Array<[string, string]> = [];
+  if (textShape && !shapeless && shapeList.length > 0 && aspect !== effectiveAspect) snapped.push([aspect, effectiveAspect]);
+  if (clip && lengths.length > 0 && duration !== effectiveSeconds)
+    snapped.push([fmt(t.gen.seconds, { n: duration }), fmt(t.gen.seconds, { n: effectiveSeconds })]);
+  if (clip && !routed && current && resolution && resolution !== shownRes)
+    snapped.push([resolutionLabel(resolution), shownRes ? resolutionLabel(shownRes) : t.gen.snapModelDefault]);
+  const snapText = snapped.length
+    ? fmt(routed ? t.gen.snapAuto : t.gen.snapNote, {
+        model: current?.displayName ?? "",
+        from: snapped.map((s) => s[0]).join(", "),
+        to: snapped.map((s) => s[1]).join(", "),
+      })
+    : null;
   const form = {
     capability,
     prompt,
-    aspect,
-    duration,
+    aspect: effectiveAspect,
+    duration: effectiveSeconds,
+    resolution: effectiveRes,
     sourceId,
     factor,
     styleKitId: effectiveStyle,
@@ -296,8 +358,9 @@ export function GeneratePanel({
       buildParams({
         capability,
         prompt,
-        aspect,
-        duration,
+        aspect: effectiveAspect,
+        duration: effectiveSeconds,
+        resolution: effectiveRes,
         sourceId,
         factor,
         styleKitId: effectiveStyle,
@@ -312,7 +375,7 @@ export function GeneratePanel({
         audio: effectiveSnd,
         noAspect: shapeless,
       }),
-    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, describeLanguage, effectiveQ, effectiveSnd, shapeless],
+    [capability, prompt, effectiveAspect, effectiveSeconds, effectiveRes, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, describeLanguage, effectiveQ, effectiveSnd, shapeless],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -332,7 +395,7 @@ export function GeneratePanel({
   }, []);
 
   useEffect(() => {
-    if (!ready || (!routed && !effectiveModel)) {
+    if (!ready || (!routed && !effectiveModel) || locked || noLength) {
       setQuote({ status: "idle" });
       return;
     }
@@ -350,12 +413,17 @@ export function GeneratePanel({
           ),
           signal: ctrl.signal,
         });
-        const body = (await res.json().catch(() => ({}))) as { quote?: Record<string, unknown>; error?: unknown };
+        const body = (await res.json().catch(() => ({}))) as { quote?: Record<string, unknown>; error?: unknown; detail?: unknown };
         const credits = body.quote?.credits;
         const pick = routed ? routedPick(body.quote, modelNames) : null;
         if (res.ok && typeof credits === "number" && Number.isFinite(credits) && (!routed || pick))
           setQuote(pick ? { status: "ready", credits, routed: pick } : { status: "ready", credits });
-        else setQuote({ status: "error", code: res.ok ? "failed" : asCreativeError(body.error) });
+        else
+          setQuote({
+            status: "error",
+            code: res.ok ? "failed" : asCreativeError(body.error),
+            ...(typeof body.detail === "string" ? { detail: body.detail } : {}),
+          });
       } catch {
         if (!ctrl.signal.aborted) setQuote({ status: "error", code: "failed" });
       }
@@ -364,7 +432,7 @@ export function GeneratePanel({
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [orgId, capability, effectiveModel, paramsKey, ready, requote, routed, modelNames]);
+  }, [orgId, capability, effectiveModel, paramsKey, ready, requote, routed, modelNames, locked, noLength]);
 
   // "Use as picture": applied once per request, never on the mount that a
   // template or Try again caused (that request was already used or cleared).
@@ -379,22 +447,46 @@ export function GeneratePanel({
     setNotice(null);
   }, [sourceRequest, tools]);
 
+  // Each model's own shape, length and resolution for the sheet's prices, and, where they are not the form's, those settings in
+  // words beside its price ("at 8 s · 16:9"): a number asked at other settings is never shown as if it were this form's.
+  const sheetSettings =
+    textShape || clip
+      ? Object.fromEntries(
+          available.map((m) => [m.id, modelSettings(m, capability, effectiveAspect, effectiveSeconds, m.id === effectiveModel ? effectiveRes : null)]),
+        )
+      : undefined;
+  const sentAspect = shapeless ? null : effectiveAspect;
+  const pricedAt = sheetSettings
+    ? Object.fromEntries(
+        Object.entries(sheetSettings).flatMap(([id, s]) => {
+          const parts: string[] = [];
+          if (typeof s.duration_s === "number" && s.duration_s !== effectiveSeconds) parts.push(fmt(t.gen.seconds, { n: s.duration_s }));
+          if ("aspect_ratio" in s && s.aspect_ratio !== sentAspect && typeof s.aspect_ratio === "string") parts.push(s.aspect_ratio);
+          if (typeof s.resolution === "string" && s.resolution !== effectiveRes) parts.push(resolutionLabel(s.resolution));
+          return parts.length ? [[id, parts.join(" · ")]] : [];
+        }),
+      )
+    : undefined;
   // The sheet's prices: the same settings, each model, only while it is open.
   const sheetParams = sheetOpen ? sheetQuoteParams(form) : null;
   const prices = useModelPrices({
     open: sheetOpen,
     orgId,
     capability,
-    modelIds: available.map((m) => m.id),
+    // A model this organization cannot buy is not priced: the sheet names its lock instead.
+    modelIds: available.filter((m) => !m.lock).map((m) => m.id),
     selectedId: effectiveModel,
     params: sheetParams,
+    // Each model at ITS shape, length and resolution (the ones it would be sent if picked).
+    settingsFor: sheetSettings,
     // Each model is priced at ITS tier: a model without tiers is asked without one.
     // Likewise its soundtrack: a model that offers no choice is asked without one.
     soundFor: takesSound(capability) ? Object.fromEntries(available.map((m) => [m.id, effectiveSound(m, sound)])) : undefined,
     tierFor: takesQuality(capability) ? Object.fromEntries(available.map((m) => [m.id, effectiveQuality(m, quality)])) : undefined,
   });
   // The picked model's tiers, each priced by the database for these settings (never a tier's own number from here).
-  const tiers: readonly ImageQuality[] = takesQuality(capability) ? (current?.qualities ?? []) : [];
+  // A locked model is not priced at all (its tiers and soundtracks neither): the database would refuse each one.
+  const tiers: readonly ImageQuality[] = takesQuality(capability) && !locked ? (current?.qualities ?? []) : [];
   const tierPrices = useTierPrices({
     orgId,
     capability,
@@ -404,7 +496,7 @@ export function GeneratePanel({
     params: tiers.length ? tierQuoteParams(form) : null,
   });
   // The picked model's two soundtrack settings, each priced by the database for these settings.
-  const soundChoice = takesSound(capability) && current?.soundChoice === true && effectiveSnd !== null;
+  const soundChoice = takesSound(capability) && !locked && current?.soundChoice === true && effectiveSnd !== null;
   const soundPrices = useSoundPrices({
     orgId,
     capability,
@@ -462,16 +554,25 @@ export function GeneratePanel({
           max_credits: quote.credits,
         }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: unknown };
+      const body = (await res.json().catch(() => ({}))) as { error?: unknown; detail?: unknown };
       if (res.ok) {
         setNotice({ kind: "ok" });
         if (composer) setSpent(pressed);
         onCreated?.();
+        // The hold was just placed: the header's credits (and the short-of-credits check below) read it now, not on the next page.
+        void refreshCredits(orgId);
       } else {
         const code = asCreativeError(body.error);
-        setNotice({ kind: "error", code });
+        const detail = typeof body.detail === "string" ? body.detail : undefined;
+        setNotice({ kind: "error", code, ...(detail ? { detail } : {}) });
         if (code === "price_changed" || code === "route_changed") setRequote((n) => n + 1);
-        if (plans && isUpsellCode(code)) setUpsell({ refusal: refusalFrom(code, body), open: true });
+        // The balance this page knew was not the database's: read it again.
+        if (code === "insufficient_credits") void refreshCredits(orgId);
+        // A model no plan opens gets no plan dialog (it would offer plans that do not open it): the sentence says so.
+        // Under Auto the hand-picked model is not the one refused: only the database's sentence tells.
+        const noOffer =
+          code === "entitlement_required" && entitlementReason(routed ? undefined : current?.entitlement, detail) === "not_on_sale";
+        if (plans && isUpsellCode(code) && !noOffer) setUpsell({ refusal: refusalFrom(code, body), open: true });
       }
     } catch {
       setNotice({ kind: "error", code: "failed" });
@@ -482,8 +583,17 @@ export function GeneratePanel({
   }
 
   const disabled =
-    submitting || quote.status !== "ready" || !ready || quoteSpent || (routed ? !quote.routed : !effectiveModel);
+    submitting || quote.status !== "ready" || !ready || quoteSpent || !!locked || noLength || (routed ? !quote.routed : !effectiveModel);
   const errorCode = notice?.kind === "error" ? notice.code : quote.status === "error" ? quote.code : null;
+  const errorDetail = notice?.kind === "error" ? notice.detail : quote.status === "error" ? quote.detail : undefined;
+  // An entitlement refusal in its own words: a first purchase opens it, or nothing does yet (entitlementReason).
+  const entReason =
+    errorCode === "entitlement_required" ? entitlementReason(routed ? undefined : current?.entitlement, errorDetail) : null;
+  // The price is more than the credits this organization has available (lib/credits-live, the header's reading): the key says
+  // how many are missing and opens the top-ups instead of pressing into a refusal. The database's 402 stays the backstop.
+  const live = useLiveCredits(orgId);
+  const shortBy =
+    quote.status === "ready" && !submitting && live && quote.credits > live.available ? quote.credits - live.available : null;
   const isVoice = capability === "tts";
   const sourced = needsSource(capability);
   const recorded = needsRecording(capability);
@@ -493,7 +603,9 @@ export function GeneratePanel({
   // An AI edit tool nobody sells yet (no proven, priced model): the plain truth, not a generic "no model".
   const blockedText = pickedOff
     ? t.modelSwitch.studio.offBody
-    : blocked === "no_model" && isAiEdit(capability)
+    : noLength && current
+      ? fmt(t.gen.noLength, { model: current.displayName })
+      : blocked === "no_model" && isAiEdit(capability)
       ? t.gen.notAvailableYet
       : blocked
         ? t.gen.blocked[blocked]
@@ -561,6 +673,43 @@ export function GeneratePanel({
     );
   };
 
+  // A long list (a model with 16 lengths or 9 shapes) is one select rather than a row of keys that would wrap off a phone.
+  function choice<T extends string | number>(
+    groupLabel: string,
+    Icon: LucideIcon | null,
+    values: readonly T[],
+    value: T,
+    set: (v: T) => void,
+    text: (v: T) => ReactNode,
+    label: (v: T) => string,
+    mono = false,
+  ) {
+    if (values.length <= 6) return seg(groupLabel, Icon, values, value, set, text, mono);
+    return (
+      <label className="studio-seg studio-seg-select">
+        {Icon && <Icon aria-hidden className="mx-1.5 size-3.5 text-[var(--color-muted)]" />}
+        <span className="sr-only">{groupLabel}</span>
+        <select
+          value={String(value)}
+          onChange={(e) => {
+            const next = values.find((v) => String(v) === e.target.value);
+            if (next !== undefined) {
+              set(next);
+              edited();
+            }
+          }}
+          className={mono ? "tnum" : undefined}
+        >
+          {values.map((v) => (
+            <option key={String(v)} value={String(v)}>
+              {label(v)}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
   function seg<T extends string | number>(
     groupLabel: string,
     Icon: LucideIcon | null,
@@ -592,7 +741,7 @@ export function GeneratePanel({
   }
 
   const hasSettings =
-    (capability === "t2i" && !shapeless) ||
+    (capability === "t2i" && !shapeless && shapeList.length > 0) ||
     capability === "t2v" ||
     capability === "i2v" ||
     capability === "upscale" ||
@@ -600,24 +749,49 @@ export function GeneratePanel({
     (takesShape(capability) && shapes.length > 0);
   // On a desk the keys say more than the bare value: the shape drawn, the
   // length as a counter. Same values, same buttons, same group names.
-  const aspectText = (a: AspectRatio | ExpandAspect): ReactNode =>
+  const aspectText = (a: string): ReactNode =>
     arrange ? (
       <span className="inline-flex items-center gap-1.5">
-        <span aria-hidden className="desk-shape" data-shape={a} />
+        <span aria-hidden className="desk-shape" data-shape={a} style={shapeGlyph(a)} />
         {a}
       </span>
     ) : (
       a
     );
-  const durationText = (d: VideoDuration): ReactNode =>
+  const durationText = (d: number): ReactNode =>
     arrange ? <Timecode value={d} format="duration" label={fmt(t.gen.seconds, { n: d })} /> : fmt(t.gen.seconds, { n: d });
   const settings = hasSettings ? (
     <div className="flex flex-wrap items-center gap-2">
-      {(capability === "t2i" || capability === "t2v") &&
+      {textShape &&
         !shapeless &&
-        seg(t.gen.aspectLabel, arrange ? null : RectangleHorizontal, ASPECT_RATIOS, aspect, setAspect, aspectText, true)}
-      {(capability === "t2v" || capability === "i2v") &&
-        seg(t.gen.durationLabel, Clock, VIDEO_DURATIONS, duration, setDuration, durationText)}
+        shapeList.length > 0 &&
+        choice(t.gen.aspectLabel, arrange ? null : RectangleHorizontal, shapeList, effectiveAspect, setAspect, aspectText, (a) => a, true)}
+      {clip &&
+        lengths.length > 0 &&
+        choice(t.gen.durationLabel, Clock, lengths, effectiveSeconds, setDuration, durationText, (d) => fmt(t.gen.seconds, { n: d }))}
+      {clip &&
+        resolutions.length > 1 &&
+        shownRes &&
+        choice(
+          t.gen.resolutionLabel,
+          MonitorPlay,
+          resolutions,
+          shownRes,
+          setResolution,
+          (r) => resolutionLabel(r),
+          (r) => (r === defaultRes ? fmt(t.gen.resolutionDefault, { r: resolutionLabel(r) }) : resolutionLabel(r)),
+          true,
+        )}
+      {routed && (textShape || clip) && (
+        <span className="basis-full text-xs text-[var(--color-muted)]" data-testid="gen-auto-settings">
+          {t.gen.autoSettingsNote}
+        </span>
+      )}
+      {snapText && !composer && (
+        <span className="basis-full text-xs text-[var(--color-muted)]" data-testid="gen-snap-note" aria-live="polite">
+          {snapText}
+        </span>
+      )}
       {capability === "upscale" &&
         seg(t.gen.factorLabel, Maximize2, UPSCALE_FACTORS, factor, setFactor, (f) => fmt(t.gen.factor, { n: f }))}
       {filmed &&
@@ -700,7 +874,7 @@ export function GeneratePanel({
         ref={changeRef}
         disabled={available.length === 0}
         onClick={() => setSheetOpen(true)}
-        className="tap press shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)] disabled:opacity-60"
+        className="tap press min-h-10 shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)] disabled:opacity-60"
       >
         {t.modelSwitch.studio.offChoose}
       </button>
@@ -728,6 +902,12 @@ export function GeneratePanel({
             <span className="truncate text-sm font-semibold text-[var(--color-fg)]" data-testid="gen-model-name">
               {current.displayName}
             </span>
+            {current.lock && (
+              <span className="studio-lock shrink-0" data-testid="gen-model-lock">
+                <Lock aria-hidden className="size-3" />
+                {t.gen.lock[current.lock]}
+              </span>
+            )}
             {current.beta && (
               <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-xs font-medium text-[var(--color-muted)]">
                 {t.gen.beta}
@@ -769,7 +949,7 @@ export function GeneratePanel({
         aria-label={t.gen.modelChangeLabel}
         ref={changeRef}
         onClick={() => setSheetOpen(true)}
-        className="tap press shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
+        className="tap press min-h-10 shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
       >
         {t.gen.modelChange}
       </button>
@@ -1258,6 +1438,23 @@ export function GeneratePanel({
     <p id="gen-status" className={`min-h-[18px] text-xs${arrange || composer ? "" : " text-center"}`} aria-live="polite">
       {notice?.kind === "ok" ? (
         <span className="text-[var(--color-ok)]">{t.gen.started}</span>
+      ) : locked || entReason ? (
+        // A model this organization cannot buy: why, in words that match what the database does — not a red failure.
+        <span className="text-[var(--color-muted)]" data-testid="gen-locked" data-lock={locked ?? entReason ?? undefined}>
+          {t.gen.lockWhy[(locked ?? entReason) as ModelLock]}
+          {(locked ?? entReason) === "first_purchase" && (
+            <>
+              {" "}
+              <Link href={path(UPSELL_LINKS.topups)} className="tap-link text-[var(--color-primary)] underline">
+                {t.gen.lockBuy}
+              </Link>
+            </>
+          )}
+        </span>
+      ) : shortBy !== null ? (
+        <span className="text-[var(--color-muted)]" data-testid="gen-short-note">
+          {t.gen.needMoreNote}
+        </span>
       ) : errorCode ? (
         <span className="text-[var(--color-fail)]">
           {apiErrorMessage(t, errorCode)}
@@ -1293,10 +1490,42 @@ export function GeneratePanel({
     </p>
   );
 
+  // Short of credits: the price key's look, as a link to the top-ups. It names how many credits are missing and still shows the
+  // database's price; nothing is pressed into a refusal (the 402 dialog stays the backstop for a balance read before a change).
+  const shortKey = (size: "lg" | "md") => (
+    <Link
+      href={path(UPSELL_LINKS.topups)}
+      className={`ns-price-button${size === "md" ? " sc-send" : ""}`}
+      data-size={size}
+      data-testid="gen-need-credits"
+      aria-describedby="gen-status"
+      aria-label={
+        live && quote.status === "ready"
+          ? fmt(t.gen.needMoreLabel, { cost: formatCredits(quote.credits, locale), available: formatCredits(live.available, locale) })
+          : undefined
+      }
+    >
+      <span className="ns-price-label">
+        <Plus aria-hidden className="size-4 shrink-0" strokeWidth={2.25} />
+        {/* Wraps rather than cuts: the number missing is the point of this key. */}
+        <span className="min-w-0 whitespace-normal text-left leading-tight">{fmt(t.gen.needMore, { n: formatCredits(shortBy ?? 0, locale) })}</span>
+      </span>
+      {quote.status === "ready" && (
+        <span className="ns-price-tag" data-testid="price-tag">
+          <Timecode value={quote.credits} locale={locale} unit={creditUnit(quote.credits, locale, t.shell.creditUnit)} />
+        </span>
+      )}
+    </Link>
+  );
+
   const dockBlock = (
     <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock" data-at-top={dockAtTop ? "true" : undefined}>
       {/* The price key (components/ui/PriceButton): the action and the
-          database's quote as two legends; its name is the same sentence. */}
+          database's quote as two legends; its name is the same sentence.
+          Short of credits, the same key opens the top-ups and says how many are missing. */}
+      {shortBy !== null && quote.status === "ready" ? (
+        shortKey("lg")
+      ) : (
       <PriceButton
         ref={generateRef}
         disabled={disabled}
@@ -1318,6 +1547,7 @@ export function GeneratePanel({
         locale={locale}
         icon={<span aria-hidden className={`ns-rec${quote.status === "quoting" || submitting ? " pulse" : ""}`} />}
       />
+      )}
       {status}
       <ModelAttribution attribution={makerLine} className="self-center" />
     </div>
@@ -1332,6 +1562,8 @@ export function GeneratePanel({
           selectedId={effectiveModel}
           prices={prices}
           priceHint={sheetParams ? null : blockedText}
+          buyHref={path(UPSELL_LINKS.topups)}
+          pricedAt={pricedAt}
           onSelect={(id) => {
             setModel(id);
             // A model picked by hand is the model: Auto is off.
@@ -1387,8 +1619,9 @@ export function GeneratePanel({
     };
     // The settings key's own words: what is set now (the shape, the length, the size), never a price.
     const summary = [
-      (capability === "t2i" || capability === "t2v") && !shapeless ? aspect : null,
-      capability === "t2v" || capability === "i2v" ? fmt(t.gen.seconds, { n: duration }) : null,
+      textShape && !shapeless && shapeList.length > 0 ? effectiveAspect : null,
+      clip ? fmt(t.gen.seconds, { n: effectiveSeconds }) : null,
+      effectiveRes ? resolutionLabel(effectiveRes) : null,
       capability === "upscale" ? fmt(t.gen.factor, { n: factor }) : null,
       effectiveTarget ? effectiveTarget.replace(/k$/, "K") : null,
       effectiveShape,
@@ -1498,7 +1731,7 @@ export function GeneratePanel({
                     e.preventDefault();
                     // A held Enter repeats: only the first keydown may press.
                     if (e.repeat) return;
-                    if (!disabled) void generate();
+                    if (!disabled && shortBy === null) void generate();
                   }}
                   rows={3}
                   maxLength={wordsMax(capability)}
@@ -1570,6 +1803,9 @@ export function GeneratePanel({
             )}
             {composerExtra}
           </div>
+          {shortBy !== null && quote.status === "ready" ? (
+            shortKey("md")
+          ) : (
           <PriceButton
             ref={generateRef}
             disabled={disabled}
@@ -1585,6 +1821,7 @@ export function GeneratePanel({
             className="sc-send"
             icon={<ArrowUp aria-hidden className="size-4 shrink-0" strokeWidth={2.25} />}
           />
+          )}
         </div>
         <div className="sc-foot">
           {status}
@@ -1592,6 +1829,14 @@ export function GeneratePanel({
             {th.enterHint}
           </span>
         </div>
+        {snapText && (
+          // The composer folds its settings away: the change is said under the box, where it is seen.
+          <div className="sc-foot">
+            <span className="text-xs text-[var(--color-muted)]" data-testid="gen-snap-note" aria-live="polite">
+              {snapText}
+            </span>
+          </div>
+        )}
         {makerLine && (
           <div className="sc-foot">
             <ModelAttribution attribution={makerLine} />

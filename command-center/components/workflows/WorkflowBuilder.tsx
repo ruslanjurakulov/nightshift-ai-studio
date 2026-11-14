@@ -1,10 +1,10 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { ASPECT_RATIOS, VIDEO_DURATIONS, modelsFor, type StudioModel } from "@/lib/creative/studio";
+import { durationsFor, modelsFor, shapesFor, snapSeconds, snapShape, type StudioModel } from "@/lib/creative/studio";
 import {
   LABEL_MAX,
   MAX_STEPS,
@@ -172,6 +172,21 @@ function StepEditor({
   const picture = takesPicture(step.capability);
   const clip = step.capability === "t2v" || step.capability === "i2v";
   const shaped = step.capability === "t2i" || step.capability === "t2v";
+  // The lengths and shapes are the step's model's own (its spec, as the Studio offers them): a step quoted at a length or shape
+  // the model does not list is refused at the price (0155, 0159). A value the model does not list moves to one it does, in sight.
+  const picked = available.find((m) => m.id === step.model) ?? null;
+  const lengths = clip ? durationsFor(available, picked, false) : [];
+  const shapes = shaped ? shapesFor(available, picked, false, step.capability) : [];
+  const lengthsKey = lengths.join(",");
+  const shapesKey = shapes.join(",");
+  useEffect(() => {
+    const patch: Partial<DraftStep> = {};
+    if (lengths.length && !lengths.includes(step.seconds)) patch.seconds = snapSeconds(step.seconds, lengths);
+    if (shapes.length && !shapes.includes(step.aspect)) patch.aspect = snapShape(step.aspect, shapes);
+    if (Object.keys(patch).length) onPatch(patch);
+    // The lists by value: a new array each render must not re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lengthsKey, shapesKey, step.seconds, step.aspect]);
 
   return (
     <li className="g3-step">
@@ -302,8 +317,8 @@ function StepEditor({
         {clip ? (
           <label className="flex flex-col gap-1.5 text-sm text-[var(--color-muted)]">
             {b.length}
-            <select value={step.seconds} onChange={(e) => onPatch({ seconds: Number(e.target.value) as DraftStep["seconds"] })} className={field}>
-              {VIDEO_DURATIONS.map((s) => (
+            <select value={step.seconds} onChange={(e) => onPatch({ seconds: Number(e.target.value) })} className={field}>
+              {lengths.map((s) => (
                 <option key={s} value={s}>
                   {fmt(b.seconds, { n: s })}
                 </option>
@@ -314,8 +329,8 @@ function StepEditor({
         {shaped ? (
           <label className="flex flex-col gap-1.5 text-sm text-[var(--color-muted)]">
             {b.shape}
-            <select value={step.aspect} onChange={(e) => onPatch({ aspect: e.target.value as DraftStep["aspect"] })} className={field}>
-              {ASPECT_RATIOS.map((a) => (
+            <select value={step.aspect} onChange={(e) => onPatch({ aspect: e.target.value })} className={field}>
+              {shapes.map((a) => (
                 <option key={a} value={a}>
                   {a}
                 </option>

@@ -66,9 +66,9 @@ const RASTER: Record<string, string> = {
   "gemini-any": "gemini-cli/icon.png",
 };
 
-const page = (locale: Locale = "en") =>
+const page = (locale: Locale = "en", oauthLive = false) =>
   renderToStaticMarkup(
-    <McpPage dev={devDictionaries[locale]} origin="https://example.test" labels={{ table: "Table", code: "Code" }} showCli={false} oauthLive={false} />,
+    <McpPage dev={devDictionaries[locale]} origin="https://example.test" labels={{ table: "Table", code: "Code" }} showCli={false} oauthLive={oauthLive} />,
   );
 
 describe("the register (lib/dev/brand-logos.ts)", () => {
@@ -267,8 +267,17 @@ describe("the page asks no other origin for anything", () => {
 });
 
 describe("where the logos show", () => {
-  it.each(LOCALES)("(%s) on every tab pill and every hero tile, never as the only name; the footnote is on the page", (locale) => {
-    const doc = new DOMParser().parseFromString(page(locale), "text/html");
+  it.each(LOCALES)("(%s) on every tab pill and beside every name in the sign-in-coming note, never as the only name; the footnote is on the page", (locale) => {
+    // Sign-in off: the four sign-in assistants are names in one note, each with its mark beside the name.
+    const off = new DOMParser().parseFromString(page(locale), "text/html");
+    const noted = [...off.querySelectorAll(".st-cc-soon-list li")];
+    expect(noted.map((li) => li.getAttribute("data-id"))).toEqual(["chatgpt", "claude", "gemini", "grok"]);
+    for (const li of noted) {
+      expect(li.querySelector(".st-pill-glyph")?.getAttribute("aria-hidden")).toBe("true");
+      expect(li.textContent?.trim().length ?? 0).toBeGreaterThan(0);
+    }
+    expect(off.querySelectorAll('[role="tab"].st-pill')).toHaveLength(2);
+    const doc = new DOMParser().parseFromString(page(locale, true), "text/html");
     const pills = [...doc.querySelectorAll('[role="tab"].st-pill')];
     expect(pills).toHaveLength(MCP_CLIENTS.length);
     for (const p of pills) {
@@ -290,14 +299,14 @@ describe("where the logos show", () => {
 
   it("the marks sit on the theme's own tile, except the Claude Spark, which is a loose glyph", () => {
     const doc = new DOMParser().parseFromString(page(), "text/html");
-    const tile = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph`)?.getAttribute("data-tile");
+    const tile = (id: string) => doc.querySelector(`[data-id="${id}"] .st-pill-glyph`)?.getAttribute("data-tile");
     for (const id of ["chatgpt", "gemini", "grok", "cursor", "vscode"]) expect(tile(id), id).toBe("theme");
     expect(tile("claude")).toBe("plain");
   });
 
   it("every tab shows its vendor's own mark; only Gemini and Grok carry a plain icon from the icon set the site already uses", () => {
     const doc = new DOMParser().parseFromString(page(), "text/html");
-    const glyph = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph`)!;
+    const glyph = (id: string) => doc.querySelector(`[data-id="${id}"] .st-pill-glyph`)!;
     const plain = ["gemini", "grok"];
     for (const c of MCP_CLIENTS.filter((x) => !plain.includes(x.id))) {
       expect(glyph(c.id).querySelector("svg use"), c.id).toBeTruthy();
@@ -319,7 +328,7 @@ describe("where the logos show", () => {
     // The clay spark belonged to the Claude Code tab, which the page no longer has.
     expect(html).not.toContain('id="nl-claude-spark-any"');
     const doc = new DOMParser().parseFromString(html, "text/html");
-    const ref = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph use`)?.getAttribute("href");
+    const ref = (id: string) => doc.querySelector(`[data-id="${id}"] .st-pill-glyph use`)?.getAttribute("href");
     expect(ref("claude")).toBe("#nl-claude-spark-mono");
     // (The hero no longer carries a row of client tiles: a chat card stands there, so the app icon is only in the sprite.)
     expect(doc.querySelector(".st-tiles")).toBeNull();
@@ -341,7 +350,7 @@ describe("where the logos show", () => {
   it("ChatGPT carries the OpenAI mark under OpenAI's terms; the dropped clients' drawings never reach the page", () => {
     const html = page();
     const doc = new DOMParser().parseFromString(html, "text/html");
-    const uses = (id: string) => [...doc.querySelectorAll(`.st-pill[data-id="${id}"] .st-pill-glyph use`)].map((u) => u.getAttribute("href"));
+    const uses = (id: string) => [...doc.querySelectorAll(`[data-id="${id}"] .st-pill-glyph use`)].map((u) => u.getAttribute("href"));
     expect(uses("chatgpt")).toEqual(["#nl-openai-light", "#nl-openai-dark"]);
     for (const gone of ["gemini-any", "hermes-any", "windsurf-light", "zed-light", "warp-light", "cline-light", "openclaw-any", "roo-any"]) expect(html, gone).not.toContain(`nl-${gone}`);
   });

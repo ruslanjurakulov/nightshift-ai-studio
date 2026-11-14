@@ -146,7 +146,7 @@ export const studioPageUz: StudioPageDictionary = {
     ],
     links: { pay: "Narxlarni koʻrish", fails: "Shartlar: kreditlar va qaytarish", data: "Maxfiylik siyosatini oʻqish" },
   },
-  caveat: "Baʼzi vositalarni avval shu oʻrnatmada sozlash kerak. Masalan, avto-subtitrlar faqat nutqni matnga aylantirish sozlangan va narxlangan joyda taklif qilinadi; u boʻlmasa, ilova buni aytadi.",
+  caveat: "Vosita qachon mavjudligini ilova koʻrsatadi. Masalan, avto-subtitrlar ishga tushirish mumkin boʻlishi bilan narxi bilan birga paydo boʻladi, hozircha mumkin boʻlmasa, ilova buni aytadi.",
   final: {
     title: "Mavzudan boshlang.",
     lead: "Bepul boshlang. Har bir ishga tushirishdan oldin narxni koʻrasiz, har bir video siz ommaviy qilmaguningizcha shaxsiy qoladi.",

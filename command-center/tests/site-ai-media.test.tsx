@@ -66,19 +66,20 @@ import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
 import { PromptBar } from "@/components/landing/PromptBar";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { LoopClip } from "@/components/site/LoopClip";
+import { motionTap } from "@/lib/site/motion";
 import { SLOTS, placeMedia, slotJobs, slotMedia, LANDING_SLOTS } from "@/components/site/samples";
 import { stockInUse } from "@/components/site/stock-in-use";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { FORMATS } from "@/lib/site/formats";
-import { PROMPT_MAX, PROMPT_TOOLS, linkWords, promptHref } from "@/lib/site/prompt-link";
-import { IMPROVE_PROMPT_MAX, LINK_PROMPT_TOOLS } from "@/lib/creative/improve";
+import { ATTACH_TOOL, PROMPT_MAX, PROMPT_TOOLS, attachHref, linkWords, promptHref } from "@/lib/site/prompt-link";
+import { IMPROVE_PROMPT_MAX, LINK_PROMPT_TOOLS, isLinkPromptTool } from "@/lib/creative/improve";
 import { SIGNUP_PATH } from "@/lib/public-paths";
 import { DEFAULT_AFTER_AUTH, afterSignupPath, studioNext } from "@/lib/safe-redirect";
 import { MEDIA_IDS } from "@/lib/site/media";
 import type { MoneyAnchor } from "@/lib/landing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import { PROVIDER_BRANDS } from "./helpers/brands";
-import { GALLERY, SAMPLE_CARD, placeLabelProblems, without } from "./helpers/showcase-scope";
+import { GALLERY, SAMPLE_CARD, makerCreditProblems, placeLabelProblems, without } from "./helpers/showcase-scope";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
 
 const ROOT = join(__dirname, "..");
@@ -135,7 +136,7 @@ describe("a slot is one line: a sample when it is merged, the stock picture unti
 });
 
 describe("the landing with a sample in its hero slot", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the first screen plays our sample edge to edge, labelled AI-generated with its model, its maker's credit and Try this prompt, and no stock word", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the first screen plays our sample edge to edge, labelled AI-generated only: no model name, no prompt button, no footnote, no maker's credit, no stock word", (code) => {
     const t = dictionaries[code];
     const { container } = landing(code);
     const m = slotMedia("hero");
@@ -144,19 +145,16 @@ describe("the landing with a sample in its hero slot", () => {
     expect(media.dataset.showcaseEntry).toBe(FIXTURE_JOB);
     expect(media.dataset.model).toBe(FIXTURE_ENTRY.modelId);
     const img = media.querySelector("img")!;
-    expect(img.getAttribute("alt")).toBe(fmt(t.site.gallery.altClip, { model: FIXTURE_ENTRY.modelName }));
+    // A backdrop: described as what it is, without the model (the owner, 2026-11-13: the model and the prompt belong on the
+    // sample's own card, not under copy about something else).
+    expect(img.getAttribute("alt")).toBe(t.site.gallery.bgClip);
     expect(img.getAttribute("loading")).toBe("eager");
     expect(img.hasAttribute("data-sample")).toBe(false);
     const credit = container.querySelector(".nx-sh-credit") as HTMLElement;
     expect(placeLabelProblems(credit, m, t.site)).toEqual([]);
-    // The fixture's model is an operator preview: the link does not open it, so the button says "Use this prompt" (never "try"
-    // a model it will not run), and a visible note says the words run on a model the Studio offers.
-    const tryIt = within(credit).getByRole("link", { name: t.site.gallery.use });
-    expect(tryIt.getAttribute("href")!.startsWith("/signup?next=")).toBe(true);
-    expect(within(credit).queryByRole("link", { name: t.site.gallery.try })).toBeNull();
-    const [promptId, noteId] = tryIt.getAttribute("aria-describedby")!.split(" ");
-    expect(document.getElementById(promptId)?.textContent).toBe(FIXTURE_ENTRY.prompt);
-    expect(document.getElementById(noteId)?.textContent).toBe(t.site.gallery.useNote);
+    expect(credit.textContent).toBe(t.site.gallery.badge);
+    expect(within(credit).queryAllByRole("link")).toHaveLength(0);
+    expect(media.textContent).not.toContain(FIXTURE_ENTRY.modelName);
     // The hero's sample is not shown again in the gallery; the other sample is.
     expect(slotJobs(LANDING_SLOTS)).toEqual([FIXTURE_JOB]);
     expect(container.querySelector(`${GALLERY} [data-showcase-entry="${FIXTURE_JOB}"]`)).toBeNull();
@@ -172,7 +170,7 @@ describe("the landing with a sample in its hero slot", () => {
     expect(facts).toEqual({ samples: "2", models: "2", credits: String(WELCOME_CREDITS) });
   });
 
-  it("gives each model of a sample anywhere on the page one tile (as many as the facts count), inside its sample's box, with the maker's credit where there is one, the truth about the Studio and no price", () => {
+  it("gives each model of a sample anywhere on the page one tile (as many as the facts count), inside its sample's box, with no maker's credit, the truth about the Studio and no price", () => {
     const t = dictionaries.en;
     const { container } = landing();
     const tiles = [...container.querySelectorAll<HTMLElement>("#models .nx-model")];
@@ -188,11 +186,12 @@ describe("the landing with a sample in its hero slot", () => {
     expect(container.querySelector(`#sample-${FIXTURE_JOB}`)?.matches(".nx-sh-media")).toBe(true);
     const runway = tiles[1];
     expect(runway.querySelector(".nx-model-count")?.textContent).toBe(fmt(t.site.models.count, { n: "1" }));
-    expect(runway.querySelector(".nx-ai-attr")?.getAttribute("href")).toBe("https://runway.com");
+    // Runway asks for "Powered by Runway"; the public site does not show it (it is shown in the Studio, where the model is used).
+    expect(FIXTURE_ENTRY.attribution).not.toBeNull();
+    expect(makerCreditProblems(runway)).toEqual([]);
     const tile = tiles[0];
     expect(tile.dataset.showcaseEntry).toBe(OTHER);
     expect(tile.querySelector(".nx-model-name")?.textContent).toBe("MiniMax H3");
-    expect(tile.querySelector(".nx-ai-attr")).toBeNull();
     expect(tile.querySelector(".nx-gallery-unavailable")?.textContent).toBe(t.site.gallery.notInStudio);
     expect(tile.querySelector(`a[href="#sample-${OTHER}"]`)?.textContent).toBe(t.site.models.see);
     expect(tile.textContent).not.toMatch(/\$|€|credit|new\b/i);
@@ -224,7 +223,7 @@ describe("the landing with a sample in its hero slot", () => {
 });
 
 describe("another page's slot with a sample: the /pricing chat card", () => {
-  it("labels the frame as our sample, says so under the card, and says nothing about stock", () => {
+  it("labels the frame as our sample with its badge only (no footnote under the card), and says nothing about stock", () => {
     const t = dictionaries.en;
     // Only the hero is exported for a slot in the fixture; pricing.card still shows its stock picture, labelled stock.
     const stock = render(<ChatCard copy={chatCopy(t, "pricing.card")} compactClip />).container;
@@ -234,7 +233,8 @@ describe("another page's slot with a sample: the /pricing chat card", () => {
     const ai = render(<ChatCard copy={chatCopy(t, "hero")} />).container;
     const art = ai.querySelector(".nx-result-art")!;
     expect(placeLabelProblems(art, slotMedia("hero"), t.site)).toEqual([]);
-    expect(ai.querySelector("figcaption")?.textContent).toBe(t.site.gallery.slotNote);
+    expect(ai.querySelector("figcaption")).toBeNull();
+    expect(ai.textContent).not.toContain(FIXTURE_ENTRY.modelName);
     expect(ai.textContent).not.toMatch(/Pexels|stock/i);
   });
 });
@@ -300,17 +300,114 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(box.getAttribute("aria-invalid")).toBe("true");
     fireEvent.click(within(container).getByRole("button", { name: "Fruit soap opera" }));
     expect(box.value).toBe("A lemon whispers to an avocado");
-    fireEvent.click(within(container).getByRole("button", { name: t.prompt.image }));
-    expect(within(container).getByRole("button", { name: t.prompt.image }).getAttribute("aria-pressed")).toBe("true");
+    // One small output key, not two chips: a video by default, a picture on a press.
+    fireEvent.click(within(container).getByRole("button", { name: `${t.prompt.mode}: ${t.prompt.video}` }));
+    expect(within(container).getByRole("button", { name: `${t.prompt.mode}: ${t.prompt.image}` })).toBeTruthy();
     fireEvent.keyDown(box, { key: "Enter" });
     expect(assign).toHaveBeenCalledWith(promptHref("t2i", "A lemon whispers to an avocado", false));
-    // The note says nothing starts here.
-    expect(container.textContent).toContain(t.prompt.noteOut);
+    // The note says nothing starts here, and, while no Studio model is on sale (the bar's default), that nothing can be made there
+    // today: never "press Generate" for a form with nothing to pick.
+    expect(container.textContent).toContain(t.prompt.noteOutClosed);
+    expect(container.textContent).not.toContain(t.prompt.noteOut);
+    cleanup();
+    const open = render(<PromptBar copy={t.prompt} ideas={[]} studioOpen />).container;
+    expect(open.textContent).toContain(t.prompt.noteOut);
+  });
+
+  // What would break: "+" saying "attach" and then opening a text-only form with nothing to attach to (the review of #734 found it).
+  it("\"+\" opens the Studio's picture-to-video form, the one that asks for your own picture: signed out through sign-up first (and says so), the words kept, nothing read from the device", () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    const t = dictionaries.en.site;
+    const { container } = render(<PromptBar copy={t.prompt} ideas={[]} />);
+    expect(container.querySelector("input[type='file']")).toBeNull();
+    const box = container.querySelector("textarea")!;
+    fireEvent.change(box, { target: { value: "lanterns over a lake" } });
+    // The bar is closed by default (no Studio model on sale): the label promises no video, and says sign-up comes first.
+    expect(within(container).queryByRole("button", { name: t.prompt.attachOut })).toBeNull();
+    fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOutClosed }));
+    expect(assign).toHaveBeenCalledWith(attachHref("lanterns over a lake", false));
+    const href = assign.mock.calls[0][0] as string;
+    expect(href).toMatch(/^\/signup\?next=/);
+    const next = new URL(href, "https://x.test").searchParams.get("next")!;
+    expect(studioNext(next)).toBe(next);
+    const form = new URL(next, "https://x.test").searchParams;
+    expect(form.get("tool")).toBe(ATTACH_TOOL);
+    expect(form.get("prompt")).toBe("lanterns over a lake");
+    // The form it opens takes a picture first and its words from a link (the Studio's own lists).
+    expect(ATTACH_TOOL).toBe("i2v");
+    expect(isLinkPromptTool(ATTACH_TOOL)).toBe(true);
+    // With no words it still opens that form, through sign-up.
+    assign.mockClear();
+    fireEvent.change(box, { target: { value: "" } });
+    fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOutClosed }));
+    expect(new URL(new URL(assign.mock.calls[0][0], "https://x.test").searchParams.get("next")!, "https://x.test").searchParams.get("tool")).toBe("i2v");
+    // Signed in it is the form itself, and the label does not ask for a sign-up.
+    cleanup();
+    assign.mockClear();
+    const signedIn = render(<PromptBar copy={t.prompt} ideas={[]} signedIn />).container;
+    fireEvent.click(within(signedIn).getByRole("button", { name: t.prompt.attachInClosed }));
+    expect(assign).toHaveBeenCalledWith(attachHref("", true));
+    expect(attachHref("", true).startsWith("/signup")).toBe(false);
+    // Once a model is on sale the label says what the form does.
+    cleanup();
+    expect(within(render(<PromptBar copy={t.prompt} ideas={[]} studioOpen />).container).getByRole("button", { name: t.prompt.attachOut })).toBeTruthy();
+    cleanup();
+    expect(within(render(<PromptBar copy={t.prompt} ideas={[]} studioOpen signedIn />).container).getByRole("button", { name: t.prompt.attachIn })).toBeTruthy();
+    // The words say what happens, in every language: a picture, a video from it once open, and (signed out) sign-up first; closed,
+    // a picture and that picture-to-video is not on sale yet, never the open promise.
+    for (const code of LOCALES.map((l) => l.code)) {
+      const c = dictionaries[code].site.prompt;
+      expect(c.attachOut.startsWith(c.attachIn)).toBe(true);
+      expect(c.attachOut.length).toBeGreaterThan(c.attachIn.length);
+      expect(c.attachOutClosed.length).toBeGreaterThan(c.attachInClosed.length);
+      for (const closed of [c.attachOutClosed, c.attachInClosed]) {
+        expect(closed).not.toContain(c.attachIn);
+        expect(closed).toMatch(/not on sale yet|пока не продаётся|hali sotuvda emas/);
+      }
+    }
+  });
+
+  it("docks to the bottom once its place has scrolled above the window, keeps that place's height, tells the page (the start bar steps aside), and undocks on the way back; Escape leaves the box", () => {
+    let cb: IntersectionObserverCallback = () => undefined;
+    let ro: ResizeObserverCallback | null = null;
+    vi.stubGlobal("IntersectionObserver", class { constructor(c: IntersectionObserverCallback) { cb = c; } observe() {} disconnect() {} unobserve() {} });
+    vi.stubGlobal("ResizeObserver", class { constructor(c: ResizeObserverCallback) { ro = c; } observe() {} disconnect() { ro = null; } unobserve() {} });
+    const t = dictionaries.en.site;
+    const { container } = render(<PromptBar copy={t.prompt} ideas={[]} />);
+    const form = container.querySelector("form.nx-pbar") as HTMLFormElement;
+    Object.defineProperty(form, "offsetHeight", { configurable: true, value: 64 });
+    expect(form.dataset.docked).toBe("false");
+    act(() => cb([{ isIntersecting: false, boundingClientRect: { bottom: -10 } } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(form.dataset.docked).toBe("true");
+    expect(document.documentElement.getAttribute("data-composer")).toBe("docked");
+    expect((container.querySelector(".nx-pbar-slot") as HTMLElement).style.minHeight).toBe("64px");
+    // While docked the box grows (more lines, the empty-box message): its place follows, so undocking shifts nothing.
+    act(() => ro?.([] as unknown as ResizeObserverEntry[], {} as ResizeObserver));
+    Object.defineProperty(form, "offsetHeight", { configurable: true, value: 112 });
+    act(() => ro?.([] as unknown as ResizeObserverEntry[], {} as ResizeObserver));
+    expect((container.querySelector(".nx-pbar-slot") as HTMLElement).style.minHeight).toBe("112px");
+    // The empty-box message is inside the form, so it is on the docked box, not left behind in the first screen.
+    fireEvent.submit(form);
+    expect(form.querySelector(".nx-pbar-err[role='alert']")?.textContent).toBe(t.prompt.empty);
+    act(() => cb([{ isIntersecting: true, boundingClientRect: { bottom: 300 } } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(form.dataset.docked).toBe("false");
+    expect(document.documentElement.hasAttribute("data-composer")).toBe(false);
+    const box = container.querySelector("textarea")!;
+    box.focus();
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(document.activeElement).not.toBe(box);
+    expect(css).toMatch(/\.nx-pbar\[data-docked="true"\] \{ position: fixed;[^}]*env\(safe-area-inset-bottom\)/);
+    expect(css).toContain('html[data-composer="docked"] .nx-bar { display: none; }');
+    // Scrolled-to fields and anchors stop above the docked box; the lifted first screen stays under the sticky header (40).
+    expect(css).toMatch(/html\[data-composer="docked"\]:has\(\.nx-pbar\) \{ scroll-padding-bottom: calc\(/);
+    expect(css).toContain('.nx-hero.nx-sh:has(.nx-pbar[data-docked="true"]) { z-index: 39; }');
+    expect(css).toMatch(/@supports not \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\)/);
   });
 
   it("before its script runs, Create is off (the server's markup), so no form is ever sent that would drop the words", () => {
     const html = renderToStaticMarkup(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />);
-    expect(html).toMatch(/<button type="submit" class="nx-pbar-go" disabled="">/);
+    expect(html).toMatch(/<button type="submit" class="nx-pbar-go"[^>]*disabled="">/);
     // Once it runs, Create is on (checked above by pressing it).
     expect(render(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />).container.querySelector(".nx-pbar-go")?.hasAttribute("disabled")).toBe(false);
   });
@@ -363,14 +460,122 @@ describe("the gallery's clips on a wide screen", () => {
     stub(true);
     expect(render(<LoopClip sources={sources} poster="/p.webp" together />).container.querySelector("video")).toBeNull();
   });
+
+  // The owner wants no visible pause button (2026-11-13): a pointer pauses by tapping what moves, a keyboard by the focus-revealed
+  // switch (ClipPause, MotionToggle). What would break (WCAG 2.2.2): a pointer with no way to stop motion, which the review of #734
+  // found under Save-Data, where no clip plays but the posters drift; a tap on a link or button that also flips the switch.
+  // What would break (the final review of #734): double-clicking a word of the headline to select it flipped the page's pause.
+  it("a double-click that selects a word in a tap area leaves the switch as it was; a triple-click changes nothing more", () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    const { container } = render(
+      <div>
+        <LoopClip sources={FIXTURE_FILES[FIXTURE_JOB].clip!} poster="/p.webp" />
+        <section className="nx-sh">
+          <h1>Words over the clip</h1>
+        </section>
+      </div>,
+    );
+    const h1 = container.querySelector("h1")!;
+    const paused = () => document.documentElement.getAttribute("data-motion") === "paused";
+    expect(paused()).toBe(false);
+    // A browser sends a double-click as click (detail 1), click (detail 2), then dblclick.
+    act(() => fireEvent.click(h1, { detail: 1 }));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(h1, { detail: 2 }));
+    expect(paused()).toBe(false);
+    act(() => fireEvent.click(h1, { detail: 3 }));
+    expect(paused()).toBe(false);
+    // The same from a paused page: the double-click leaves it paused.
+    act(() => fireEvent.click(h1, { detail: 1 }));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(h1, { detail: 1 }));
+    act(() => fireEvent.click(h1, { detail: 2 }));
+    expect(paused()).toBe(true);
+    // A lone detail-2 click with no flip just before it (a slow second click) does nothing.
+    act(() => fireEvent.click(h1, { detail: 2 }));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(h1, { detail: 1 }));
+    expect(paused()).toBe(false);
+  });
+
+  it("a tap on a clip's box, a drifting poster or the first screen pauses the page's motion and a second resumes it, clip playing or not; a tap on a control does nothing", () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: !q.includes("reduce") && q.includes("min-width"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    vi.stubGlobal("IntersectionObserver", undefined);
+    const sources = FIXTURE_FILES[FIXTURE_JOB].clip!;
+    const { container } = render(
+      <div>
+        <div data-clip="sample" data-testid="box">
+          <LoopClip sources={sources} poster="/p.webp" />
+          <a href="/signup">Start</a>
+          <button type="button">Other</button>
+        </div>
+        <img className="nx-drift-pic" alt="" data-testid="drift" />
+        <section className="nx-sh" data-testid="hero">
+          <h1>Words over the clip</h1>
+          <form>
+            <textarea aria-label="box" />
+          </form>
+        </section>
+        <p data-testid="plain">Not moving</p>
+      </div>,
+    );
+    const paused = () => document.documentElement.getAttribute("data-motion") === "paused";
+    const box = container.querySelector("[data-testid='box']") as HTMLElement;
+    act(() => fireEvent.click(box.querySelector("a")!));
+    act(() => fireEvent.click(box.querySelector("button")!));
+    act(() => fireEvent.click(container.querySelector("[data-testid='plain']")!));
+    act(() => fireEvent.click(container.querySelector("textarea")!));
+    expect(paused()).toBe(false);
+    // jsdom never plays a video, so this is also the "no clip is playing" case: the tap still stops the page's motion.
+    act(() => fireEvent.click(box.querySelector("video")!));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(box));
+    expect(paused()).toBe(false);
+    act(() => fireEvent.click(container.querySelector("[data-testid='drift']")!));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(container.querySelector("h1")!));
+    expect(paused()).toBe(false);
+    cleanup();
+    // Under Save-Data no clip is rendered at all, and a drifting poster still stops on a tap (the listener is the page's, not the clip's).
+    Object.defineProperty(navigator, "connection", { configurable: true, value: { saveData: true } });
+    const saving = render(
+      <div>
+        <LoopClip sources={sources} poster="/p.webp" />
+        <img className="nx-drift-pic" alt="" data-testid="drift" />
+      </div>,
+    ).container;
+    expect(saving.querySelector("video")).toBeNull();
+    act(() => fireEvent.click(saving.querySelector("[data-testid='drift']")!));
+    expect(paused()).toBe(true);
+    act(() => fireEvent.click(saving.querySelector("[data-testid='drift']")!));
+    expect(paused()).toBe(false);
+    Object.defineProperty(navigator, "connection", { configurable: true, value: undefined });
+    cleanup();
+    // Under reduced motion nothing moves: a tap changes nothing.
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    const still = render(<LoopClip sources={sources} poster="/p.webp" />).container;
+    expect(still.querySelector("video")).toBeNull();
+    // (Called directly too: the decision itself refuses under reduced motion, whoever calls it.)
+    const tap = new MouseEvent("click", { bubbles: true });
+    Object.defineProperty(tap, "target", { value: Object.assign(document.createElement("img"), { className: "nx-drift-pic" }) });
+    motionTap(tap);
+    const drift = document.createElement("img");
+    drift.className = "nx-drift-pic";
+    document.body.append(drift);
+    act(() => fireEvent.click(drift));
+    drift.remove();
+    expect(paused()).toBe(false);
+  });
 });
 
 describe("copy and config", () => {
   it.each(LOCALES.map((l) => l.code))("%s: the new words exist, name no model or maker, and say the bar starts nothing", (code) => {
     const s = dictionaries[code].site;
-    for (const block of [s.prompt, s.facts, s.formats, s.models]) expect(JSON.stringify(block)).not.toMatch(PROVIDER_BRANDS);
+    for (const block of [s.prompt, s.facts, s.formats, s.models, s.approvalCard]) expect(JSON.stringify(block)).not.toMatch(PROVIDER_BRANDS);
     expect(s.formats.items.map((i) => i.id)).toEqual(FORMATS.map((f) => f.id));
-    for (const v of [s.gallery.slotNote, s.gallery.useNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut, s.hero.leadShort]) expect(v.trim().length).toBeGreaterThan(20);
+    for (const v of [s.approvalCard.figure, s.gallery.useNote, s.credits.leadNoStock, s.stage.bareNote, s.prompt.noteIn, s.prompt.noteOut, s.prompt.noteInClosed, s.prompt.noteOutClosed, s.hero.leadShort, s.hero.leadShortClosed]) expect(v.trim().length).toBeGreaterThan(20);
+    // The closed words claim nothing a visitor can make today: no "press Generate", and they say the models are not on sale.
+    for (const v of [s.prompt.noteInClosed, s.prompt.noteOutClosed]) expect(v).not.toContain(dictionaries[code].gen.generate);
     // The formats are only their cards' words: the cards are drawn inside the gallery, under its own heading.
     expect(Object.keys(s.formats)).toEqual(["items"]);
     // The bar's note names the Studio's own button (ru «Создать», not «Сгенерировать»).

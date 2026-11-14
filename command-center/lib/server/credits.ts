@@ -14,6 +14,7 @@ import {
   parseRunLimit,
   resolveCreditsEnforce,
   runDurationS,
+  withConceptThumbnail,
   type CreditAccount,
   type CreditEstimate,
   type PriceMap,
@@ -135,6 +136,14 @@ export async function estimateForChannel(
     .gte("recorded_at", since)
     .limit(5000);
   if (error) return { ok: false };
+  // The channel's own settings decide one add-on (concept thumbnails, withConceptThumbnail). A read that errors is
+  // not "frame mode": without it the hold could leave the images out.
+  const { data: ch, error: chErr } = await supabase
+    .from("channels")
+    .select("agent_config")
+    .eq("channel_id", channelId)
+    .maybeSingle();
+  if (chErr) return { ok: false };
   const rows = (data ?? []) as LedgerRow[];
   let ue = unitEconomics(rows);
   if (ue.sampleSize > 0 && durationS) {
@@ -150,7 +159,8 @@ export async function estimateForChannel(
       if (d?.length) ue = unitEconomics(rows, { durations: d as unknown as DurationRow[] });
     }
   }
-  return { ok: true, estimate: estimateRunCredits({ prices, durationS, videos: ue.videos }) };
+  const base = estimateRunCredits({ prices, durationS, videos: ue.videos });
+  return { ok: true, estimate: withConceptThumbnail(base, ch?.agent_config ?? null, prices) };
 }
 
 export type RunCreditResult =

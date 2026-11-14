@@ -4,14 +4,17 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PublicFooter } from "@/components/legal/PublicFooter";
+import { PublicMenu } from "@/components/legal/PublicMenu";
 import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import { SiteEffects } from "@/components/site/SiteEffects";
 import { PageViewBeacon } from "@/components/site/PageViewBeacon";
+import { SiteMotion } from "@/components/site/motion/SiteMotion";
 import { DEFAULT_LOCALE, LOCALES, dictionaries } from "@/lib/i18n";
 import { devFor } from "@/lib/i18n/dev";
 import "@/components/site/site.css";
 import "@/components/site/site-next.css";
+import "@/components/site/site-motion.css";
 
 /** Which top-level page the visitor is on, for the nav's lit item. */
 export type PublicSection = "home" | "studio" | "solutions" | "pricing" | "docs" | "legal" | null;
@@ -39,9 +42,11 @@ export function publicNavLinks(t: Dictionary): { href: string; label: string; se
  * would have nothing to show.
  *
  * The header is a solid rack face (no glass, IDENTITY.md §Elevation). From
- * 1024px it is one sticky row; below it the wordmark and Start free are the
- * first row and the links, language, theme and Sign in a second one, all
- * visible, with no menu: nothing the pages offer is behind a tap.
+ * 1024px it is one sticky row; from 768 to 1023px the wordmark and Start free
+ * are the first row and the links, language, theme and Sign in a second one,
+ * all visible. Below 768px those rows took about 209px of a 390px phone, so
+ * there the bar is one 64px row (wordmark, Start free, a menu button) and the
+ * rest opens in a sheet (components/legal/PublicMenu.tsx).
  */
 export function PublicShell({
   t,
@@ -70,7 +75,7 @@ export function PublicShell({
           </Link>
 
           {/* The links, language, theme and Sign in: on the bar's row from 1024px, a row of their own under the wordmark and
-              Start free below it. There is no menu to open: everything is visible at every width. */}
+              Start free from 768px, and in the menu's sheet below that. */}
           <div className="st-header-sub">
             <nav aria-label={t.landing.nav.label} className="st-nav">
               {links.map((l) => (
@@ -98,7 +103,22 @@ export function PublicShell({
             <Link href="/signup" className="st-key" data-size="sm">
               {t.site.nav.start}
             </Link>
+            <PublicMenu
+              links={links.map((l) => ({ href: l.href, label: l.label, current: Boolean(l.section && l.section === current) }))}
+              label={t.site.nav.menu}
+              closeLabel={t.site.nav.menuClose}
+              signIn={t.site.nav.signIn}
+            >
+              <LanguageSelector />
+              <ThemeToggle />
+            </PublicMenu>
           </div>
+          {/* Without JavaScript the menu button cannot open its sheet: the wrapped rows come back instead. The row must wrap
+              again too: the phone bar is nowrap, and a .st-header-sub of flex 1 0 100% on the same line squeezed the
+              wordmark to 0 and pushed the row past a 390px screen. */}
+          <noscript>
+            <style>{`@media (max-width:767px){.st-header-row{flex-wrap:wrap!important}.st-header-sub{display:flex!important}.st-menu-btn{display:none!important}}`}</style>
+          </noscript>
         </div>
       </header>
       {/* The one main landmark of every public page; the pages render sections inside it. */}
@@ -107,6 +127,7 @@ export function PublicShell({
       </main>
       <PublicFooter t={t} />
       <SiteEffects />
+      <SiteMotion />
       <PageViewBeacon />
     </div>
   );

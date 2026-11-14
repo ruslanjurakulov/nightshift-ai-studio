@@ -2,11 +2,20 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Search, X } from "lucide-react";
+import Link from "next/link";
+import { Check, Lock, Search, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { nextFocusIndex } from "@/lib/feedback";
 import { formatCredits } from "@/lib/credits";
-import { apiErrorMessage, kindLabel, type StudioCapability, type StudioModel } from "@/lib/creative/studio";
+import {
+  apiErrorMessage,
+  capabilityLine,
+  entitlementReason,
+  kindLabel,
+  type ModelLock,
+  type StudioCapability,
+  type StudioModel,
+} from "@/lib/creative/studio";
 import type { ModelPrice } from "@/components/studio/useModelPrices";
 import { TierMarks } from "@/components/studio/TierMarks";
 
@@ -16,8 +25,11 @@ const FOCUSABLE =
 /**
  * Pick the model for the current tool: a bottom sheet on a phone, a centred
  * dialog from `sm` up. Each row shows the registry's name, its speed and
- * quality marks when the registry has them, and the price the database gives
- * for the current settings (priced by the caller only while this is open).
+ * quality marks when the registry has them, one line of what it makes taken
+ * from its own lists (capabilityLine: shapes, lengths, the largest
+ * resolution), and the price the database gives for the current settings
+ * (priced by the caller only while this is open). A model this organization
+ * cannot buy shows a lock and why (StudioModel.lock), never a red refusal.
  * Choosing a model only changes the form; nothing is spent here.
  *
  * Search narrows the list; ↑/↓ move between models, Enter picks one, Escape
@@ -32,6 +44,8 @@ export function ModelSheet({
   onSelect,
   onClose,
   returnTo,
+  buyHref,
+  pricedAt,
 }: {
   capability: StudioCapability;
   models: StudioModel[];
@@ -43,6 +57,10 @@ export function ModelSheet({
   onClose: () => void;
   /** Where focus goes back on close (the Change button); a click does not focus a button in every browser. */
   returnTo?: React.RefObject<HTMLElement | null>;
+  /** The top-ups (Credits page): a model that opens after a first purchase links there. */
+  buyHref?: string;
+  /** Per model: the settings its price was asked at, when they are not the form's (its own shape or length), already worded. */
+  pricedAt?: Record<string, string>;
 }) {
   const { t, fmt, locale } = useI18n();
   const g = t.gen;
@@ -122,12 +140,28 @@ export function ModelSheet({
     }
   }
 
+  // The lock a row shows: the one the page read (modelLock), or the one its quote answered (entitlement_required), told apart by
+  // the model's entitlement or the database's own sentence. Neither known: no guess, the row shows the generic sentence instead.
+  const lockOf = (m: StudioModel): ModelLock | null => {
+    if (m.lock) return m.lock;
+    const p = prices[m.id];
+    return p?.status === "error" && p.code === "entitlement_required" ? entitlementReason(m.entitlement, p.detail) : null;
+  };
+  // "Last proven working" from the registry's verified_at, in the reader's language; nothing when it is not known.
+  const verified = (iso: string | null | undefined): string | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return fmt(g.verifiedOn, { date: d.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }) });
+  };
+
   const priceText = (id: string): { text: string; tone: "fg" | "muted" | "fail" } => {
     const p = prices[id];
     if (!p) return { text: priceHint ?? g.sheetPriceLater, tone: "muted" };
     if (p.status === "quoting") return { text: g.sheetPricing, tone: "muted" };
     if (p.status === "ready") return { text: fmt(g.sheetCredits, { n: formatCredits(p.credits, locale) }), tone: "fg" };
-    return { text: apiErrorMessage(t, p.code), tone: "fail" };
+    // A refusal of the sale is not a failure of the model: muted, like a lock.
+    return { text: apiErrorMessage(t, p.code), tone: p.code === "entitlement_required" ? "muted" : "fail" };
   };
 
   if (typeof document === "undefined") return null;
@@ -194,6 +228,9 @@ export function ModelSheet({
             {shown.map((m, i) => {
               const on = m.id === selectedId;
               const price = priceText(m.id);
+              const lock = lockOf(m);
+              const facts = capabilityLine(t, m, capability);
+              const proven = verified(m.verifiedAt);
               return (
                 <li
                   key={m.id}
@@ -241,13 +278,48 @@ export function ModelSheet({
                       )}
                     </span>
                     <TierMarks speed={m.speedTier ?? null} quality={m.qualityTier ?? null} />
+                    {facts && (
+                      <span className="tnum text-xs text-[var(--color-muted)]" data-facts={m.id}>
+                        {facts}
+                      </span>
+                    )}
+                    {proven && (
+                      <span className="text-xs text-[var(--color-muted)]" data-verified={m.id}>
+                        {proven}
+                      </span>
+                    )}
                   </span>
-                  <span
-                    className={`max-w-[44%] shrink-0 text-right text-xs ${price.tone === "fg" ? "ns-tc text-sm font-semibold text-[var(--color-fg)]" : price.tone === "fail" ? "text-[var(--color-fail)]" : "text-[var(--color-muted)]"}`}
-                    data-price={m.id}
-                  >
-                    {price.text}
-                  </span>
+                  {lock ? (
+                    <span className="flex max-w-[44%] shrink-0 flex-col items-end gap-1 text-right text-xs" data-lock={m.id}>
+                      <span className="studio-lock" title={g.lockWhy[lock]}>
+                        <Lock aria-hidden className="size-3" />
+                        {g.lock[lock]}
+                      </span>
+                      {lock === "first_purchase" && buyHref && (
+                        <Link
+                          href={buyHref}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          className="tap-link text-[var(--color-primary)] underline"
+                        >
+                          {g.lockBuy}
+                        </Link>
+                      )}
+                    </span>
+                  ) : (
+                    <span
+                      className={`max-w-[44%] shrink-0 text-right text-xs ${price.tone === "fg" ? "ns-tc text-sm font-semibold text-[var(--color-fg)]" : price.tone === "fail" ? "text-[var(--color-fail)]" : "text-[var(--color-muted)]"}`}
+                      data-price={m.id}
+                    >
+                      {price.text}
+                      {price.tone === "fg" && pricedAt?.[m.id] && (
+                        // Asked at this model's own settings, not the form's: say which, beside the number.
+                        <span className="block text-xs font-normal text-[var(--color-muted)]" data-priced-at={m.id}>
+                          {fmt(g.sheetAt, { settings: pricedAt[m.id] })}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </li>
               );
             })}

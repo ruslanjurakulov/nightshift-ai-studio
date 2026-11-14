@@ -171,12 +171,26 @@ describe("the MCP page", () => {
     }
   });
 
-  it.each(LOCALES)("(%s) one h1 and the six tabs in the owner's order, with no \"More clients\" group", (locale) => {
-    const d = doc(mcp({ locale }));
+  it.each(LOCALES)("(%s) one h1; sign-in live: the six tabs in the owner's order, with no \"More clients\" group", (locale) => {
+    const d = doc(mcp({ locale, oauthLive: true }));
     expect(d.querySelectorAll("h1")).toHaveLength(1);
     const tabs = [...d.querySelectorAll('[role="tab"].st-pill')].map((t) => t.getAttribute("data-id"));
     expect(tabs).toEqual(["chatgpt", "claude", "gemini", "grok", "cursor", "vscode"]);
     expect(d.querySelector(".st-pill-more")).toBeNull();
+    expect(d.querySelector(".st-cc-soon")).toBeNull();
+  });
+
+  // The four sign-in assistants used to lead the row as tabs that looked available and opened "Coming soon" (CLAUDE.md:
+  // nothing is shown as available that is not). With the sign-in off only what connects today is a tab.
+  it.each(LOCALES)("(%s) sign-in off: only Cursor and VS Code are tabs, and the other four are named in one Coming soon note, not as controls", (locale) => {
+    const d = doc(mcp({ locale }));
+    expect(d.querySelectorAll("h1")).toHaveLength(1);
+    expect([...d.querySelectorAll('[role="tab"].st-pill')].map((t) => t.getAttribute("data-id"))).toEqual(["cursor", "vscode"]);
+    const note = d.querySelector(".st-cc-soon")!;
+    expect(note.textContent).toContain(devDictionaries[locale].mcp.soon.badge);
+    expect(note.textContent).toContain(devDictionaries[locale].mcp.soon.noteTitle);
+    expect([...note.querySelectorAll("li")].map((li) => li.textContent?.trim())).toEqual(["ChatGPT", "Claude", "Gemini", "Grok"]);
+    expect(note.querySelectorAll("a, button, [role='tab'], [tabindex]")).toHaveLength(0);
   });
 
   it.each(LOCALES)("(%s) no internal wording, code names or status numbers, flag off and on", (locale) => {
@@ -202,7 +216,21 @@ describe("the MCP page", () => {
       expect(text, needle).toContain(needle);
     }
     expect(html).toContain("<noscript>");
-    expect(doc(mcp()).querySelectorAll(".st-tabpanel")).toHaveLength(MCP_CLIENTS.length);
+    expect(doc(mcp()).querySelectorAll(".st-tabpanel")).toHaveLength(MCP_CLIENTS.filter((c) => !c.oauthOnly).length);
+    expect(doc(mcp({ oauthLive: true })).querySelectorAll(".st-tabpanel")).toHaveLength(MCP_CLIENTS.length);
+  });
+
+  it("puts a config block under the three steps, the card's full width, saying which step it belongs to", () => {
+    const d = doc(mcp({ initialTab: "cursor" }));
+    for (const panel of d.querySelectorAll(".st-tabpanel")) {
+      // Never inside a step's column, where it was cut to a third of the card.
+      expect(panel.querySelector(".st-step2 pre"), panel.id).toBeNull();
+      const block = panel.querySelector(":scope > .st-steps2-code");
+      expect(block, panel.id).toBeTruthy();
+      expect(block!.previousElementSibling?.classList.contains("st-steps2")).toBe(true);
+      expect(block!.querySelector(".st-steps2-code-label")?.textContent).toBe("2Paste the snippet");
+      expect(block!.querySelector("pre")?.textContent).toMatch(/"(mcpServers|servers)"/);
+    }
   });
 
   it("tabs are wired for assistive tech: each tab controls a labelled panel; only the open one is a Tab stop", () => {
@@ -216,16 +244,15 @@ describe("the MCP page", () => {
     expect(d.querySelector('[role="tablist"]')?.getAttribute("aria-label")).toBeTruthy();
   });
 
-  it("flag off: the four sign-in tabs say Coming soon, point at what works today, and show no connector link", () => {
+  it("flag off: the four sign-in assistants are no tab, are named in the Coming soon note with what works today, and show no connector link", () => {
     const html = renderToStaticMarkup(mcp());
     for (const host of ["claude.ai/customize", "developers.openai.com", "support.google.com", "docs.x.ai"]) expect(html).not.toContain(host);
     const d = doc(mcp());
-    for (const id of ["chatgpt", "claude", "gemini", "grok"]) {
-      const panel = d.getElementById(d.querySelector(`[role="tab"][data-id="${id}"]`)!.getAttribute("aria-controls")!)!;
-      expect(panel.textContent).toContain("Coming soon");
-      expect(panel.querySelector("a")).toBeNull();
-      expect(panel.querySelectorAll("button").length).toBeGreaterThan(0);
-    }
+    for (const id of ["chatgpt", "claude", "gemini", "grok"]) expect(d.querySelector(`[role="tab"][data-id="${id}"]`), id).toBeNull();
+    const note = d.querySelector(".st-cc-soon")!;
+    expect(note.textContent).toContain("Coming soon");
+    expect(note.textContent).toMatch(/Cursor and VS Code work now with an API key/);
+    expect(note.querySelector("a")).toBeNull();
     // Cursor and VS Code lead with the API-key steps.
     for (const id of ["cursor", "vscode"]) {
       const p = d.getElementById(d.querySelector(`[role="tab"][data-id="${id}"]`)!.getAttribute("aria-controls")!)!;
@@ -290,7 +317,10 @@ describe("the MCP page", () => {
     }
     // With the sign-in off the four chat apps cannot connect yet, so the line names only what does.
     expect(d.querySelector(".sr-only")?.textContent).toBe("Works with: Cursor, VS Code (GitHub Copilot)");
-    expect(doc(mcp({ oauthLive: true })).querySelector(".sr-only")?.textContent).toBe("Works with: ChatGPT, Claude, Gemini, Grok, Cursor, VS Code (GitHub Copilot)");
+    // With it on, ChatGPT and Claude meet their vendors' published rules but nobody has connected the products yet (rule 5,
+    // lib/dev/mcp-availability.ts): they get their own "Ready to connect" line, and Gemini and Grok are named on neither.
+    const live = [...doc(mcp({ oauthLive: true })).querySelectorAll(".st-mcphero .sr-only")].map((p) => p.textContent);
+    expect(live.slice(0, 2)).toEqual(["Works with: Cursor, VS Code (GitHub Copilot)", "Ready to connect: ChatGPT, Claude"]);
   });
 
   describe("interaction", () => {
@@ -369,11 +399,10 @@ describe("the MCP page", () => {
       expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
     });
 
-    it("the Coming soon tabs offer buttons that open a tab that works today", () => {
+    it("an old ?tab= link to a sign-in assistant opens a tab that works today while the sign-in is off", () => {
       render(mcp({ initialTab: "claude" }));
-      const open = document.querySelector('[role="tabpanel"][data-active="true"]') as HTMLElement;
-      fireEvent.click(within(open).getByRole("button", { name: "VS Code (GitHub Copilot)" }));
-      expect(screen.getByRole("tab", { name: /VS Code/ }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.getByRole("tab", { name: /Cursor/ }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.queryByRole("tab", { name: /Claude/ })).toBeNull();
     });
   });
 

@@ -45,12 +45,27 @@ describe("public header fit", () => {
     expect(body('.st-key[data-size="sm"]')).toMatch(/min-height:\s*44px/);
   });
 
-  it("has no menu: no component, no menu rules, no language-named header layout", () => {
+  it("has a menu only below 768px: the old per-language menu is gone, and no header layout names a language", () => {
     expect(existsSync(path.join(root, "components/legal/PublicMobileMenu.tsx"))).toBe(false);
-    expect(css).not.toMatch(/\.st-menu/);
-    expect(css).not.toContain("st-menu-root");
+    expect(existsSync(path.join(root, "components/legal/PublicMenu.tsx"))).toBe(true);
     expect(css).not.toMatch(/html:not\(\[lang/);
-    expect(css).not.toMatch(/html\[lang="[a-z]+"\] \.st-(nav|header-desk|header-row|header-sub)/);
+    expect(css).not.toMatch(/html\[lang="[a-z]+"\] \.st-(nav|header-desk|header-row|header-sub|menu)/);
+  });
+
+  // At 390px the rows under the wordmark were about 209px tall (the links wrapped to three lines): a quarter of the screen.
+  it("below 768px the bar is one 64px row (wordmark, Start free, menu button) and the rows go into the sheet; from 768px the button is not drawn", () => {
+    expect(body(".st-menu-btn")).toMatch(/display:\s*none/);
+    const phone = /@media \(max-width: 767px\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
+    expect(phone).toMatch(/\.st-header-sub \{ display: none; \}/);
+    expect(phone).toMatch(/\.st-header-row \{ flex-wrap: nowrap; \}/);
+    expect(phone).toMatch(/\.st-header-row, \.st-header-row > \.st-brand, \.st-header-tools \{ min-height: 63px; \}/);
+    expect(phone).toMatch(/\.st-menu-btn \{ display: inline-grid; \}/);
+    // The wordmark takes what Start free and the button leave: a container, its height that width over the lockup's aspect.
+    expect(phone).toMatch(/container-type: inline-size; --wm-h: clamp\(14px, calc\(100cqw \/ 5\.91\), 36px\)/);
+    expect(css).toMatch(/@media \(min-width: 768px\) \{ \.st-menu-root \{ display: none; \} \}/);
+    // The sheet's targets are 44px or more, like the bar's.
+    expect(body(".st-menu-nav a")).toMatch(/min-height:\s*52px/);
+    expect(body(".st-menu-btn, .st-menu-close")).toMatch(/height:\s*44px/);
   });
 
   it("wraps the rows under the wordmark and Start free below 1024px and joins them above, with the links as the one shrinkable part", () => {

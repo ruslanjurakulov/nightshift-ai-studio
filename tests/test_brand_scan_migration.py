@@ -116,9 +116,15 @@ class Numbering(unittest.TestCase):
         # these pins: nothing of 0131's or 0133's.
         # 0157 (the Credits page's Dodo purchase history: one read-only function over payment_events and dodo_checkout_nonces) was
         # reviewed against these pins: nothing of 0131's or 0133's.
+        # 0158 (the concept-thumbnail settings are an administrator's: channel_admin_controls and one trigger on channels) was
+        # reviewed against these pins: nothing of 0131's or 0133's.
+        # 0159 (a quote refuses a clip length the model does not list: creative_price on 0156's body only) was reviewed against
+        # these pins: nothing of 0131's or 0133's.
+        # 0161 (ChatGPT keeps the client it registered: oauth_gc on 0147's body, one internal helper, one generated column and its index on oauth_clients) was reviewed against these
+        # pins: nothing of 0131's or 0133's.
         # 0162 (two read-only API functions for the MCP Studio tools: api_creative_models, api_creative_job_files) was reviewed
         # against these pins: nothing of 0131's or 0133's.
-        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0162")], [], "a later number needs its own review of this file's pins")
+        self.assertEqual([n for n in numbers if n > "0133" and n not in ("0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162")], [], "a later number needs its own review of this file's pins")
         later = (MIG / "0134_brand_scan_followup.sql").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", later), ["brand_scan_fail_locked"])
         self.assertIn(GUARD["brand_scan_fail_locked"], later)

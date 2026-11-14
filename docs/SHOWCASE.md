@@ -1,8 +1,7 @@
 # Model samples on the public site
 
 The landing page's "Made with Nightshift" gallery shows real generations made in the operator's own Studio. Each card says
-"AI-generated", names the model, links the maker's required credit (Runway: "Powered by Runway"), shows the prompt and the day
-it was made, and has a **Try this prompt** button (ru "Попробовать этот запрос", uz "Shu soʻrovni sinab koʻrish") that opens the
+"AI-generated", names the model, shows the prompt and the day it was made, and has a **Try this prompt** button (ru "Попробовать этот запрос", uz "Shu soʻrovni sinab koʻrish") that opens the
 Studio with that tool and prompt in the form, and with the model too when customers can use it. A model only the operator can
 try yet (registry `operator_preview`, today both Runway models) is left out of the link, and its card says "This model is not
 in the Studio yet"; once a model is past its announced shutdown date, the same happens with "This model is no longer in the
@@ -10,6 +9,12 @@ Studio". A signed-out visitor goes through sign-up first; the form opens after /
 nothing is priced or started until the person presses Generate and sees the price.
 
 The gallery is empty, and renders nothing, until the first sample is merged.
+
+The public site shows the AI-generated label and the model name only: no "Powered by" line and no link to a model's maker, on
+any public surface (owner decision 2026-11-13). The maker's required credit (Runway API Terms §1: "Powered by Runway" linking
+runway.com; Ideogram Developer API Agreement 2.3.1) is shown in the Studio, where the models are used
+(`components/studio/ModelAttribution.tsx`, in the generate panel and the job feed). The entry's `attribution` stays in
+`showcase.json` and the exporter, as data; `tests/site-showcase.test.tsx` pins that no public surface renders it.
 
 ## Putting a sample in a picture slot
 
@@ -23,9 +28,15 @@ hero: { ai: "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8", id: "cloud", clip: "cloud" }
 - The slot shows that sample only once its entry and files are merged (the showcase PR); until then it keeps the stock picture
   (`id`, `clip`), so setting `ai` before the PR lands is safe. Exporting with the workflow's **slot** input does the same for a
   slot whose `ai` is null.
-- A sample in a slot is labelled as one: "AI-generated", the model, the maker's credit and **Try this prompt**, never a stock
-  label. `aiPosition` frames it in the slot's box (CSS `object-position`) when the centre is wrong.
-- The landing leaves a sample shown in its own slots (hero, show.studio, show.approvals, landing.final) out of its gallery.
+- A sample in a slot is labelled with the "AI-generated" badge only, never a stock label: no model name, no **Try this
+  prompt** and no footnote (owner, 2026-11-13). A slot's picture is the backdrop for copy about something else, and naming the
+  model and offering its prompt there read as if the section were about that clip; the model and the prompt are on the sample's
+  own gallery card and on the tool wall. `aiPosition` frames it in the slot's box (CSS `object-position`) when the centre is wrong.
+- Pick a slot's sample for the copy it sits under. Where no sample illustrates the words, draw the product instead: the landing's
+  Approvals band is a drawn approval screen (`components/landing/ApprovalCard.tsx`), not a wave.
+- The landing leaves a sample shown in its own slots (hero, show.studio, landing.final), on the tool wall, in the steps or on the
+  approval screen out of its gallery, and also the repeated sea and sky samples in `LANDING_LEFT_OUT` (`slots.ts`), so the page
+  does not read as all sea.
 - The footer credits only the stock pictures some page still shows, so a stock picture drops out of the credits by itself
   once every place that used it holds a sample. When none is left, the credits say so and list no Pexels item. The stock files
   stay in the repository even then: every line still names its stock fallback (`id`, a `lib/site/media.ts` item), which the

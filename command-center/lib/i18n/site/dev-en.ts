@@ -193,13 +193,15 @@ export const devEn = {
     paid: { title: "Every plan", body: "Connecting with a sign-in works on every plan, Free included. It spends your workspace’s credits (welcome credits, top-up packs and plan credits all count), and when there are not enough the assistant is told so before anything starts. API keys and the REST API are separate: they are paid from a prepaid API balance.", link: "Plans and credits" },
     apiKeyInstead: "Use an API key instead",
     apiKeyInsteadBody: "For a client that cannot sign in, or for a script. Create the key in Developers → API keys.",
+    ready: {
+      badge: "Ready to connect",
+      body: "Nightshift’s server follows {app}’s published requirements for custom servers. Follow the steps above.",
+    },
     soon: {
       badge: "Coming soon",
       use: "Works today with an API key:",
-      claude: { title: "Claude will connect with a sign-in", body: "Adding Nightshift to Claude by its server address and a sign-in is not switched on yet, so there is nothing to add in Claude today. Nightshift’s server takes API keys for now." },
-      gemini: { title: "Gemini will connect with a sign-in", body: "Adding Nightshift to Gemini by its server address and a sign-in is not switched on yet, so there is nothing to add in Gemini today. Nightshift’s server takes API keys for now." },
-      grok: { title: "Grok will connect with a sign-in", body: "Adding Nightshift to Grok by its server address and a sign-in is not switched on yet, so there is nothing to add in Grok today. Nightshift’s server takes API keys for now." },
-      chatgpt: { title: "ChatGPT will connect with a sign-in", body: "Adding Nightshift to ChatGPT by its server address and a sign-in is not switched on yet, so there is nothing to add in ChatGPT today. Nightshift’s server takes API keys for now." },
+      noteTitle: "Sign-in is coming for these assistants",
+      noteBody: "ChatGPT, Claude, Gemini and Grok connect with a sign-in rather than a key. It is not switched on yet, so there is nothing to add in them today. Cursor and VS Code work now with an API key.",
     },
     steps: [
       { id: "key", title: "Create a key", body: "In the Command Center open Developers → API keys. Copy the key; it is shown once." },
@@ -417,7 +419,7 @@ export const devEn = {
         title: "What you can ask for",
         lead: "Six sample asks, each with an example frame. The frames are stock photos and footage from Pexels contributors, credited on each card; one of them moves (the contributor’s footage, looped). They show the idea, not real output.",
         /** The lead once any card shows one of our samples (components/docs/SampleFrame.tsx `ai`): it covers both kinds of picture. */
-        leadSamples: "Six sample asks, each over a picture. A picture labelled AI-generated is a real job from our own Studio, made by the model named on it; one labelled a stock example is a Pexels contributor’s, credited on its card. They show the idea, not the result of these asks.",
+        leadSamples: "Six sample asks, each over a picture. A picture labelled AI-generated is a real job from our own Studio; one labelled a stock example is a Pexels contributor’s, credited on its card. They show the idea, not the result of these asks.",
         region: "Examples of what to ask for",
         track: "Example cards, scroll sideways",
         prev: "Previous example",
@@ -451,7 +453,7 @@ export const devEn = {
         items: [
           { q: "What is Nightshift MCP?", a: "A server your AI assistant connects to. Through it the assistant can list your channels, make videos, follow each job and publish, with the same publish check and approvals as the app." },
           { q: "What can my assistant do?", a: "It can list your channels and videos, start a video, follow its job, check your balance, publish a finished video to your connected accounts and, with an API key, order an HD download. The full list of tools is further down this page." },
-          { q: "Which assistants work with it?", a: "ChatGPT, Claude, Gemini, Grok, Cursor and VS Code with GitHub Copilot. Pick yours in the connect card at the top; each one has its own steps." },
+          { q: "Which assistants work with it?", a: "{available} connect today. For another assistant, pick it in the connect card at the top: its tab has the steps for it." },
           { q: "How do I connect one?", a: "Pick your assistant in the connect card at the top. Where a sign-in is available it takes the server address and a sign-in; every other assistant takes an API key you create in Developers." },
           { q: "What does it cost?", a: "Connecting with a sign-in works on every plan, Free included, and spends the same credits as a video made in the app. An API key spends your prepaid API balance. When a video is queued its price is set aside; it is charged only when the video succeeds, and a failed run costs nothing." },
           { q: "Can it publish without asking me?", a: "No. Publishing passes the same publish check and approvals as the app, and YouTube uploads stay private until you decide." },

@@ -247,7 +247,7 @@
 }
 .sc-foot > p { margin: 0; min-width: 0; }
 .sc-hint { flex-shrink: 0; font-size: 12px; color: var(--color-muted); }
-@media (hover: none) {
+@media (hover: none), (pointer: coarse) {
   /* A phone has no Enter key in sight: the hint would only take room. */
   .sc-hint { display: none; }
 }

@@ -17,11 +17,15 @@ on:
     paths:
       - "command-center/**"
       - ".github/workflows/frontend.yml"
+      # command-center/lib/creative/model-names.ts is a twin of the registry's names; its test reads this file.
+      - "schemas/model_registry.json"
   pull_request:
     branches: [main]
     paths:
       - "command-center/**"
       - ".github/workflows/frontend.yml"
+      # command-center/lib/creative/model-names.ts is a twin of the registry's names; its test reads this file.
+      - "schemas/model_registry.json"
   workflow_dispatch:
 
 # A second push supersedes the first: only the newest commit on a branch is

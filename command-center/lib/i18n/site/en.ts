@@ -1,5 +1,6 @@
 import { studioPageEn } from "../studio-page/en";
 import { roadmapEn } from "../roadmap/en";
+import { siteAutopilotEn } from "../site-autopilot/en";
 
 /**
  * The public site's copy (landing, Solutions, the sign-in shell, 404), kept
@@ -20,6 +21,8 @@ export const siteEn = {
     api: "API",
     signIn: "Sign in",
     start: "Start free",
+    menu: "Menu",
+    menuClose: "Close menu",
   },
   hero: {
     kicker: "For YouTube channels, faceless or not",
@@ -28,6 +31,8 @@ export const siteEn = {
     lead: "Give Nightshift a topic. It writes, voices and edits a YouTube video, then waits for your OK. You see the price before anything starts.",
     /** The landing's first screen says one sentence (the lead above is for pages that have room). */
     leadShort: "Make clips and pictures from a sentence, or let Nightshift make your channel’s next video and wait for your OK.",
+    /** leadShort while no Studio model is on sale (lib/site/tool-samples.ts studioToolsOpen): it claims no picture or clip a visitor can make. */
+    leadShortClosed: "Let Nightshift make your channel’s next video and wait for your OK; the clips and pictures below were made by our team in the Studio.",
     cta: "Start free",
     secondary: "See pricing",
     demo: "Try an example",
@@ -138,9 +143,12 @@ export const siteEn = {
       { id: "publish", step: "Press publish" },
     ],
   },
+  /** The landing's Approvals band: a drawn approval screen (components/landing/ApprovalCard.tsx), its rows from `stage`. */
+  approvalCard: {
+    figure: "Illustration of a finished video waiting for you: private on YouTube, the publish check passed, and the Approve button not pressed yet. Its thumbnail is an AI-generated picture made in our Studio. Everything shown is an example.",
+  },
   fx: {
     pause: "Pause motion",
-    play: "Play motion",
   },
   bar: {
     label: "Quick start",
@@ -177,12 +185,12 @@ export const siteEn = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Image credits",
-    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. Some pictures are different: the pictures for the three steps and the eight tools, and the sample thumbnail, are AI-generated images made for Nightshift. They are decoration, not screenshots of the product.",
+    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. One picture is different: the sample thumbnail in the hands-on example is an AI-generated image made for Nightshift. It is decoration, not a screenshot of the product.",
     licence: "Pexels License",
     /** The lead once no page shows a stock picture any more (components/site/stock-in-use.ts is empty). */
-    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by the model named on it, with the words it was given. The pictures for the three steps and the eight tools, and the sample thumbnail, are AI-generated images made for Nightshift as decoration, not screenshots of the product.",
+    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by one of its models. The sample thumbnail in the hands-on example is an AI-generated image made for Nightshift as decoration, not a screenshot of the product.",
     /** Shown beside the stock credits while any sample (lib/site/showcase.json) is on the site, wherever it is shown. It names no model: each sample names its own. */
-    generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by the model named on it, with the words it was given.",
+    generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by one of its models.",
   },
   /**
    * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
@@ -192,7 +200,7 @@ export const siteEn = {
   gallery: {
     label: "Made in the Studio",
     title: "Made with Nightshift",
-    lead: "Real generations from our own Studio. Each one names the model that made it and the words it was given.",
+    lead: "Real generations, made by our team in the Studio. Each one names the model that made it and the words it was given.",
     badge: "AI-generated",
     model: "Model",
     prompt: "Prompt",
@@ -215,8 +223,9 @@ export const siteEn = {
      */
     use: "Use this prompt",
     useNote: "Opens the Studio with these words on a model it offers; the Studio shows which one, and the price, before anything starts.",
-    /** Beside a page's picture when it is one of our samples (components/site/samples.tsx slotMedia), in place of the stock sentence. */
-    slotNote: "AI-generated: a real job from our own Studio, made by the model named on it from the words it was given.",
+    /** A page's backdrop when it is one of our samples (components/site/PlaceFill.tsx placeAlt): what it is, without the model. */
+    bgClip: "AI-generated clip",
+    bgImage: "AI-generated picture",
     /** On a clip animated from one of the samples' own pictures: that picture, small, with the model that made it. */
     source: "Made from this picture:",
     altSource: "The AI-generated picture this clip was made from, made by {model}",
@@ -228,13 +237,22 @@ export const siteEn = {
   prompt: {
     label: "Describe the video or picture you want",
     placeholder: "Describe a scene: what we see, how the camera moves, the light…",
-    tools: "What to make",
+    mode: "What to make",
+    /** "+" opens the Studio's picture-to-video form (lib/site/prompt-link.ts attachHref), through free sign-up when signed out. */
+    attachOut: "Attach a picture to make a video from it (free sign-up first)",
+    attachIn: "Attach a picture to make a video from it",
+    /** attachOut / attachIn while no Studio model is on sale (lib/site/tool-samples.ts studioToolsOpen): no promise of a video. */
+    attachOutClosed: "Attach a picture (sign up first; picture-to-video is not on sale yet)",
+    attachInClosed: "Attach a picture (picture-to-video is not on sale yet)",
     video: "Video",
     image: "Image",
     submit: "Create",
     empty: "Write a few words first.",
     noteIn: "Opens the Studio with your words. Nothing starts until you press Generate there.",
     noteOut: "Free sign-up first, then the Studio opens with your words. Nothing starts until you press Generate.",
+    /** noteIn / noteOut while no Studio model is on sale: the link still opens the form, and the note says nothing can be made there today. */
+    noteInClosed: "Opens the Studio with your words. Its picture and clip models are not on sale yet, so nothing can be made there today.",
+    noteOutClosed: "Free sign-up first, then the Studio opens with your words. Its picture and clip models are not on sale yet, so nothing can be made there today.",
     ideas: "Start from a real prompt",
   },
   /** Three facts the page can back (components/landing/Landing.tsx Facts): counted from the data files and the welcome grant, never typed in. */
@@ -266,7 +284,7 @@ export const siteEn = {
   models: {
     label: "Models",
     title: "The models behind these samples",
-    lead: "Each tile is a model that made a sample on this page, shown with the credit its maker asks for. A model you cannot choose in the Studio yet says so.",
+    lead: "Each tile is a model that made a sample on this page. A model you cannot choose in the Studio yet says so.",
     count: "Samples on this page: {n}",
     see: "Watch its sample",
   },
@@ -318,6 +336,8 @@ export const siteEn = {
         pill: "Studio",
         title: "Need just one piece? The Studio makes it.",
         body: "Make one picture, clip or voice-over at a time, then cut them together in the editor. Each tool shows its price on its button.",
+        /** body while no Studio model is on sale (components/landing/Showcases.tsx). */
+        bodyClosed: "One picture, clip or voice-over at a time, cut together in the editor. Its models are not on sale yet: this sample was made by our team. Sign up to be ready when they open.",
         cta: "Open the Studio",
         bubble: "A misty mountain valley at sunrise, soft light, wide shot.",
         reply: "made an image",
@@ -384,6 +404,7 @@ export const siteEn = {
     ],
   },
   how: {
+    priceLater: "Price shown here before you start",
     slug: "How a video moves",
     title: "One rundown, from your channel to YouTube.",
     lead: "Each step is visible while it runs. The last one is always yours.",
@@ -426,8 +447,8 @@ export const siteEn = {
   toolStrip: { title: "What Nightshift can make" },
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
-    label: "AI-generated pictures of each tool",
-    note: "The pictures stand for the tools. They are AI-generated decoration, not what the tools make. Each tool shows its price on its button, except the ones that cost no credits.",
+    label: "Real outputs, made by our team in the Studio",
+    note: "Where a tool shows a picture or a clip, it is a real job made by our team in the Studio, labelled with the model that made it. A tool marked “Not available yet” has nothing on sale today. Once a tool is open, its price is on its button; the ones that cost no credits say so.",
     more: "Show four more tools",
     less: "Show fewer tools",
   },
@@ -553,6 +574,8 @@ export const siteEn = {
   studioPage: studioPageEn,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapEn,
+  /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
+  autopilot: siteAutopilotEn,
   final: {
     title: "Put your next video on the night shift.",
     lead: "Start free. See the price before every run, and every video stays private until you make it public.",

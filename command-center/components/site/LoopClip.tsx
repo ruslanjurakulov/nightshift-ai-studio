@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useMotionPaused } from "@/lib/site/motion";
+import { useMotionPaused, useMotionTap } from "@/lib/site/motion";
+import { useClipsHeld } from "@/lib/site/clip-hold";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
+import { clipRendition } from "@/lib/site/renditions";
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string };
 
-/** The four renditions of one loop: 1280 and 640 wide, each in WebM and MP4. */
-export type ClipSources = { mp4: string; webm: string; smMp4: string; smWebm: string };
+/** The four renditions of one loop: 1280 and 640 wide, each in WebM and MP4; and a larger one only where the source was larger (never an upscale). */
+export type ClipSources = { mp4: string; webm: string; smMp4: string; smWebm: string; lg?: { mp4: string; webm: string } };
 
 /** Whether a clip may be fetched and played at all: never under reduced motion, never on Save-Data or a slow link. */
-function clipsAllowed(): boolean {
+export function clipsAllowed(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
   const c = (navigator as Navigator & { connection?: NetworkInformation }).connection;
@@ -60,7 +62,8 @@ const subscribe = (l: () => void) => {
  * - muted, looping, inline, no controls, hidden from assistive technology (the still's description covers it); `poster` is the
  *   still itself at its phone width (the file a phone's picture already shows, so it is usually already in the cache), and the WebM is listed first, the MP4 after it
  *   (a browser takes the first it can play; Safari on a phone takes the MP4);
- * - paused while off screen and while the page's pause switch is pressed (lib/site/motion.ts), and in a hidden tab;
+ * - paused while off screen and while the page's pause switch is pressed (lib/site/motion.ts), and in a hidden tab; a tap on
+ *   the picture presses that switch, and a second one releases it (lib/site/motion.ts motionTap);
  * - the container's `data-live` says it is playing, which swaps the badge from "Example frame (stock footage)" to "Example clip
  *   (stock footage)" and fades the clip in over the still.
  */
@@ -92,9 +95,15 @@ export function LoopClip({
   const sources: ClipSources = own ?? CLIPS[clip as ClipId];
   const ref = useRef<HTMLVideoElement>(null);
   const paused = useMotionPaused();
+  // The Shorts feed is open over the page (lib/site/clip-hold.ts): the clips under it hold their frame.
+  const held = useClipsHeld();
   const [allowed, setAllowed] = useState(false);
-  // A phone gets the 640 x 360 rendition (about a quarter of the bytes); a screen of 860 px or more the 1280 x 720 one.
-  const [small, setSmall] = useState(false);
+  // A phone gets the 640 x 360 rendition (about a quarter of the bytes); a screen of 860 px or more the 1280 x 720 one, and a
+  // sample with a larger file (`sources.lg`) that one on a screen with the pixels for it (lib/site/renditions.ts).
+  const [size, setSize] = useState<"sm" | "md" | "lg">("md");
+  // Whether the file is chosen. Only a clip with a larger file waits: that choice needs its frame's real width, which exists
+  // once the video is in the page, and nothing may play (and fetch the 1280 file) before it is made.
+  const [sized, setSized] = useState(false);
   const [wanted, setWanted] = useState(false);
   // In a grid on a wide screen (`together`): whether this clip shows enough of itself to play, whichever clip leads.
   const [grid, setGrid] = useState(false);
@@ -107,11 +116,28 @@ export function LoopClip({
   useEffect(() => {
     if (!clipsAllowed()) return;
     const wide = window.matchMedia("(min-width: 860px)").matches;
-    setSmall(compact || together || !wide);
+    const small = compact || together || !wide;
+    setSize(small ? "sm" : "md");
+    setSized(small || !sources.lg);
     // A grid plays all its clips in view from a tablet up (each is the small file); a phone keeps one at a time.
     setGrid(together && window.matchMedia("(min-width: 768px)").matches);
     setAllowed(true);
-  }, [compact, together]);
+  }, [compact, together, sources.lg]);
+
+  // A clip with a larger file: measured on its own frame (CSS width x device pixel ratio), not on the window, because a clip in
+  // a card on a wide screen is still a small picture. Switching the file before anything played costs one load() and no bytes.
+  useEffect(() => {
+    const v = ref.current;
+    if (!allowed || sized || !v) return;
+    const c = (navigator as Navigator & { connection?: NetworkInformation }).connection;
+    const frame = (v.parentElement ?? v).getBoundingClientRect().width;
+    const next = clipRendition({ small: false, hasLarge: true, devicePixels: frame * (window.devicePixelRatio || 1), fast: !c?.effectiveType || c.effectiveType === "4g" });
+    setSize(next);
+    setSized(true);
+  }, [allowed, sized]);
+  useEffect(() => {
+    if (size === "lg") ref.current?.load();
+  }, [size]);
 
   // When the clip may start: the first screen's after load and idle, the rest when they come near the screen.
   useEffect(() => {
@@ -166,19 +192,23 @@ export function LoopClip({
     const v = ref.current;
     if (!allowed || !v) return;
     const sync = () => {
-      if (wanted && (grid ? inView : lead) && !paused && document.visibilityState === "visible") void Promise.resolve(v.play()).catch(() => undefined);
+      if (sized && wanted && (grid ? inView : lead) && !paused && !held && document.visibilityState === "visible") void Promise.resolve(v.play()).catch(() => undefined);
       else v.pause();
     };
     sync();
     document.addEventListener("visibilitychange", sync);
     return () => document.removeEventListener("visibilitychange", sync);
-  }, [allowed, wanted, lead, paused, grid, inView]);
+  }, [allowed, sized, wanted, lead, paused, held, grid, inView]);
+
+  // A tap on the picture is the pointer's pause: one delegated listener for the whole page (lib/site/motion.ts motionTap), which
+  // also covers a still poster that drifts when no clip may play.
+  useMotionTap();
 
   if (!allowed) return null;
   return (
     <video ref={ref} className="nx-clip" muted loop playsInline preload="none" poster={poster} disablePictureInPicture aria-hidden tabIndex={-1} style={position ? { objectPosition: position } : undefined}>
-      <source src={small ? sources.smWebm : sources.webm} type="video/webm" />
-      <source src={small ? sources.smMp4 : sources.mp4} type="video/mp4" />
+      <source src={size === "sm" ? sources.smWebm : size === "lg" && sources.lg ? sources.lg.webm : sources.webm} type="video/webm" />
+      <source src={size === "sm" ? sources.smMp4 : size === "lg" && sources.lg ? sources.lg.mp4 : sources.mp4} type="video/mp4" />
     </video>
   );
 }
