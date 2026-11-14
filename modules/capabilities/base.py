@@ -285,6 +285,10 @@ class CapabilityRequest:
     #: ask aggregators to send so abuse is traced to one user, not our account.
     end_user: Optional[str] = None
     voice_id: Optional[str] = None          # TTS
+    #: The language the text is written in (``tts`` only): a name or a tag
+    #: ("Uzbek", "uz"). None = not said, and nothing is refused for it. A model
+    #: whose docs do not list that language is refused (modules/tts_languages.py).
+    text_language: Optional[str] = None
     #: Ask a video model for a soundtrack; None = do not send the vendor flag
     #: at all (a model without audio may reject the field).
     audio: Optional[bool] = None

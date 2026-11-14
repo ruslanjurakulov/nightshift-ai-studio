@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import time
 from pathlib import Path
 
 import edge_tts
@@ -25,12 +26,14 @@ from config import (
     MUSIC_DIR,
     NARRATOR_VOLUME,
     OUTPUT_DIR,
+    SCRIPT_LANGUAGE,
     SFX_DIR,
     SFX_VOLUME,
     TTS_PROVIDER,
     TTS_PROVIDER_EXPLICIT,
     VIDEO_DURATION_TARGET,
 )
+from modules import tts_languages
 from modules.script_engine import Script
 
 logger = logging.getLogger(__name__)
@@ -70,6 +73,14 @@ class VoiceUnavailable(RuntimeError):
     """This channel's narrator cannot speak, and no substitute will be used."""
 
 
+class _Busy(Exception):
+    """ElevenLabs answered 429 (rate, concurrency or system busy): ask again, same voice."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
 #: The explicit "read the [VOICE:secondary] lines in the narrator's voice"
 #: choice — distinct from "not chosen", which stops the run.
 NARRATOR = "narrator"
@@ -106,6 +117,10 @@ def verify_voice(channel=None) -> None:
     if provider != "elevenlabs":
         _refuse_default_edge(explicit=getattr(agent, "tts_provider_explicit", False) is True)
         return
+
+    # First, before any request: it needs no key and no network, and a key fix
+    # would not help an Uzbek channel whose model does not speak Uzbek.
+    _verify_model_speaks(agent, ELEVENLABS_MODEL_ID)
 
     voice_id = narrator_voice(agent)
     if not ELEVENLABS_API_KEY:
@@ -146,6 +161,23 @@ def verify_voice(channel=None) -> None:
     if secondary != NARRATOR and secondary != voice_id:
         _verify_voice_exists(secondary)
     _verify_characters_left(agent)
+
+
+def script_language(agent) -> str:
+    """The language this run's script is written in, which the narrator must speak: the
+    channel's (a per-run --language already overrides it in main.py), else the deployment's."""
+    language = getattr(agent, "language", None) if agent is not None else None
+    return language if isinstance(language, str) and language.strip() else SCRIPT_LANGUAGE
+
+
+def _verify_model_speaks(agent, model: str) -> None:
+    """Refuse a model that the vendor's own docs say does not speak the script's language.
+
+    No other model is picked for the person. eleven_v3 costs differently and sounds
+    different, so switching would be a change they did not choose (rule 4)."""
+    reason = tts_languages.refusal(model, script_language(agent))
+    if reason:
+        raise VoiceUnavailable(reason)
 
 
 def _refuse_default_edge(*, explicit: bool = False) -> None:
@@ -246,51 +278,107 @@ def _verify_voice_exists(voice_id: str) -> None:
     if resp.status_code == 200:
         return
 
-    # Quote ElevenLabs' own reason rather than guessing at it: "invalid_api_key"
-    # and "quota_exceeded" are the same HTTP status and need opposite fixes.
-    detail = ""
-    try:
-        body = resp.json().get("detail") or {}
-        detail = body.get("status") or body.get("message") or ""
-    except Exception:
-        pass
-
-    if resp.status_code == 404:
+    code, message = elevenlabs_error(_json_or_none(resp))
+    if resp.status_code == 429 or resp.status_code >= 500:
+        # Busy or down right now: this request synthesizes nothing, and the
+        # narration stage makes the same call for real and retries a 429 there.
+        logger.warning("ElevenLabs could not answer the voice check (HTTP %s%s) — continuing; "
+                       "the narration stage retries and stops if it persists",
+                       resp.status_code, f", {code}" if code else "")
+        return
+    if resp.status_code == 404 and code in ("", "voice_not_found"):
         raise VoiceUnavailable(
             f"ElevenLabs has no voice with id {voice_id!r} for this account. "
-            "Copy the id from the Voices page — they look like "
-            "'pNInz6obpgDQGcFmaJgB', not a plain number."
+            "Pick a voice from the account's list in the Command Center (Agents → Voice); ids look "
+            "like 'pNInz6obpgDQGcFmaJgB', not a plain number."
         )
-    raise VoiceUnavailable(
-        f"ElevenLabs refused the credentials (HTTP {resp.status_code}"
-        + (f", {detail}" if detail else "")
-        + "). 'invalid_api_key' means the key is wrong or missing; "
-        "'quota_exceeded' means the account is out of characters."
-    )
+    head = f"ElevenLabs refused the voice check for {voice_id!r} (HTTP {resp.status_code}"
+    head += f", {code})" if code else ")"
+    if message:
+        head += f": {message}"
+    raise VoiceUnavailable(f"{head}. {elevenlabs_remedy(resp.status_code, code)}")
+
+
+def _json_or_none(resp):
+    try:
+        return resp.json()
+    except Exception:
+        return None
+
+
+#: What each ElevenLabs error code means for this run, and what fixes it. The code is
+#: ``detail.code``. ``detail.status`` is the legacy field, still read when ``code`` is
+#: absent. Source: https://elevenlabs.io/docs/eleven-api/resources/errors, read
+#: 2026-11-14. The status alone is not enough: 401 used to carry both
+#: ``invalid_api_key`` and ``quota_exceeded``, which need opposite fixes, and a 401
+#: reader must not be told they may be out of characters.
+_KEY = ("The ElevenLabs key is wrong or missing; nothing was spent. Replace ELEVENLABS_API_KEY in "
+        "the repository secrets with a key from the account's API keys page.")
+_CREDIT = ("The ElevenLabs account is out of credit; top up the plan or wait for the monthly reset. "
+           "No other voice is used.")
+_PLAN = ("This ElevenLabs plan cannot use this voice or feature. Pick a voice the plan can use from "
+         "the account's voice list in the Command Center (Agents → Voice), or change the plan.")
+_PICK = "Pick a voice from the account's list in the Command Center (Agents → Voice)."
+_BUSY = "ElevenLabs is busy; the narration stage will retry."
+ELEVENLABS_ERROR_REMEDIES = {
+    "invalid_api_key": _KEY,
+    "missing_api_key": _KEY,
+    "insufficient_credits": _CREDIT,
+    "quota_exceeded": _CREDIT,          # legacy detail.status for the same thing
+    "subscription_required": _PLAN,
+    "feature_not_available": _PLAN,
+    "voice_access_denied": _PLAN,
+    "paid_plan_required": _PLAN,        # what runs #147 and #159 met: a library voice on a free plan
+    "voice_not_found": _PICK,
+    "rate_limit_exceeded": _BUSY,
+    "concurrent_limit_exceeded": _BUSY,
+    "system_busy": _BUSY,
+}
+#: When no code came back, the status says which family it was (the same table, by status).
+_STATUS_REMEDIES = {401: _KEY, 402: _CREDIT, 403: _PLAN, 404: _PICK, 429: _BUSY}
+#: Codes the narration stage waits on and asks again. Each is a refusal before any
+#: character was synthesized, so asking again spends nothing extra.
+RETRYABLE_CODES = ("rate_limit_exceeded", "concurrent_limit_exceeded", "system_busy")
+
+
+def elevenlabs_error(body) -> tuple[str, str]:
+    """``(code, message)`` from an ElevenLabs error body: ``detail.code``, else the legacy
+    ``detail.status``. The message is trimmed to one line. Never the key, never the request."""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if not isinstance(detail, dict):
+        return "", ""
+    code = detail.get("code") or detail.get("status") or ""
+    code = code if isinstance(code, str) and re.fullmatch(r"[a-z0-9_]{1,64}", code) else ""
+    message = " ".join(str(detail.get("message") or "").split())[:200]
+    return code, message
+
+
+def elevenlabs_remedy(status, code: str) -> str:
+    """The fix for one refusal: by its code first, then by its status, else a plain "fix the cause"."""
+    return (ELEVENLABS_ERROR_REMEDIES.get(code or "") or _STATUS_REMEDIES.get(status)
+            or "No other voice is substituted; fix the cause and re-run.")
 
 
 def _tts_refusal(voice_id: str, status, body) -> str:
     """ElevenLabs' own reason for refusing a synthesis, and what to do about it.
     Only the voice id, the status and ElevenLabs' code/message are quoted —
     never the key or the request."""
-    detail = body.get("detail") if isinstance(body, dict) else None
-    detail = detail if isinstance(detail, dict) else {}
-    code = str(detail.get("code") or detail.get("status") or "")
-    message = " ".join(str(detail.get("message") or "").split())[:200]
+    code, message = elevenlabs_error(body)
     head = f"ElevenLabs refused to read with voice {voice_id!r} (HTTP {status}"
     head += f", {code})" if code else ")"
     if message:
         head += f": {message}"
-    if code == "paid_plan_required" or status == 402:
-        fix = ("Pick a voice this plan can use from the account's own voice list in the Command "
-               "Center (Agents → Voice), or upgrade the ElevenLabs plan.")
-    elif status == 404:
-        fix = "The account has no such voice; pick one from its voice list in the Command Center."
-    elif status == 401:
-        fix = "'invalid_api_key' means the key is wrong; 'quota_exceeded' means the account is out of characters."
-    else:
-        fix = "No other voice is substituted; fix the cause and re-run."
-    return f"{head}. {fix}"
+    return f"{head}. {elevenlabs_remedy(status, code)}"
+
+
+def _is_busy(status, body) -> bool:
+    code, _ = elevenlabs_error(body)
+    return code in RETRYABLE_CODES or (status == 429 and not code)
+
+
+#: How long the narration stage waits before asking a busy ElevenLabs again (seconds).
+#: Three tries in all; then the run stops and says so, rather than reading in another voice.
+BUSY_WAITS = (5, 20)
 
 
 def narrator_voice(agent) -> str:
@@ -343,19 +431,41 @@ class AudioMixer:
             part.unlink(missing_ok=True)
 
     def _tts_elevenlabs(self, text: str, voice_id: str, out_path: Path):
+        # verify_voice refuses this at preflight. Repeated here because scene
+        # repair and other entry points build a mixer without that preflight.
+        channel = getattr(self, "channel", None)
+        _verify_model_speaks(channel.agent if channel is not None else None, self.elevenlabs_model)
+        for wait in (*BUSY_WAITS, None):
+            try:
+                return self._tts_elevenlabs_once(text, voice_id, out_path)
+            except _Busy as busy:
+                if wait is None:
+                    raise VoiceUnavailable(
+                        f"{busy.reason} It was still busy after {len(BUSY_WAITS) + 1} tries; no other "
+                        "voice is substituted. Re-run later.") from None
+                logger.warning("%s Waiting %ss before asking again.", busy.reason, wait)
+                time.sleep(wait)
+
+    def _tts_elevenlabs_once(self, text: str, voice_id: str, out_path: Path):
         from elevenlabs import ElevenLabs, VoiceSettings  # lazy import
 
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
         part = out_path.with_name(f"{out_path.name}.{os.getpid()}.part")
         # eleven_v3 accepts only the stability presets 0.0 / 0.5 / 1.0
-        # (creative / natural / robust); the others take any value.
-        stability = 0.5 if self.elevenlabs_model == "eleven_v3" else 0.45
+        # (creative / natural / robust); the others take any value. eleven_v4's
+        # accepted values were not found in its docs, so it gets none and reads
+        # with the model's own defaults rather than a guess that may be refused
+        # after the script was paid for.
+        settings = {}
+        if self.elevenlabs_model != "eleven_v4":
+            stability = 0.5 if self.elevenlabs_model == "eleven_v3" else 0.45
+            settings["voice_settings"] = VoiceSettings(stability=stability, similarity_boost=0.82)
         try:
             audio = client.text_to_speech.convert(
                 voice_id=voice_id,
                 text=text,
                 model_id=self.elevenlabs_model,
-                voice_settings=VoiceSettings(stability=stability, similarity_boost=0.82),
+                **settings,
             )
             # Written beside the cache name and moved into place only once it is
             # complete: a kill mid-write leaves a .part file, never a short
@@ -375,7 +485,10 @@ class AudioMixer:
             if status is None:
                 raise
             out_path.unlink(missing_ok=True)   # never leave half a segment in the cache
-            raise VoiceUnavailable(_tts_refusal(voice_id, status, getattr(e, "body", None))) from None
+            body = getattr(e, "body", None)
+            if _is_busy(status, body):
+                raise _Busy(_tts_refusal(voice_id, status, body)) from None
+            raise VoiceUnavailable(_tts_refusal(voice_id, status, body)) from None
 
     def _elevenlabs_voice_for(self, voice_role: str) -> str:
         """The voice id a segment of ``voice_role`` is read in. Never a

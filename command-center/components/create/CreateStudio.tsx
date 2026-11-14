@@ -14,7 +14,8 @@ import { clearDraft, draftStore, readDraft, writeDraft, type DraftScope } from "
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
-import { TTS_MODELS, TTS_MODEL_LABELS, VOICES, isVoiceId } from "@/lib/ttsModels";
+import { DEPRECATED_TTS_MODELS, TTS_LANGUAGE_NAMES, TTS_MODEL_LABELS, TTS_PICKER_MODELS, VOICES, isVoiceId, ttsModelBlock, type TtsPickerModel } from "@/lib/ttsModels";
+import { TTS_LANGUAGE_READ_ON } from "@/lib/ttsLanguages";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 import type { RunPrefill } from "@/lib/home";
 import { MadeForKidsSwitch } from "@/components/review/MadeForKidsSwitch";
@@ -110,6 +111,13 @@ export function CreateStudio({
   const [videoProvider, setVideoProvider] = useState("");
   const [imageProvider, setImageProvider] = useState("");
   const [ttsModel, setTtsModel] = useState("");
+  // The language the narrator must speak: this run's choice, else the channel's. A model whose
+  // own docs say it does not speak it is switched off, and a choice it invalidates is dropped
+  // rather than sent (rule 4: the run would refuse it anyway, after the person waited).
+  const videoLanguage = language || dna?.language || "";
+  useEffect(() => {
+    if (ttsModel && ttsModelBlock(ttsModel as TtsPickerModel, videoLanguage)) setTtsModel("");
+  }, [ttsModel, videoLanguage]);
   // "" = the channel's voice, a voice id, or CUSTOM_VOICE to type one in.
   const [voice, setVoice] = useState(dna?.voice ?? "");
   const [customVoice, setCustomVoice] = useState("");
@@ -671,14 +679,26 @@ export function CreateStudio({
                 </label>
                 <label className="fl-field">
                   <span>{t.create.voiceModel}</span>
-                  <select value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} className={selectClass}>
+                  <select value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} className={selectClass} aria-describedby="create-voice-model-hint">
                     <option value="">{t.create.optDefault}</option>
-                    {TTS_MODELS.map((m) => (
-                      <option key={m} value={m}>
-                        {TTS_MODEL_LABELS[m]}
-                      </option>
-                    ))}
+                    {TTS_PICKER_MODELS.map((m) => {
+                      const block = ttsModelBlock(m, videoLanguage);
+                      const notes = [
+                        ...(DEPRECATED_TTS_MODELS.includes(m) ? [t.create.voiceModelDeprecated] : []),
+                        ...(block?.reason === "language" ? [fmt(t.create.voiceModelNoLanguage, { language: TTS_LANGUAGE_NAMES[block.language] })] : []),
+                        ...(block?.reason === "not_on_queue" ? [t.create.voiceModelNotOnQueue] : []),
+                      ];
+                      return (
+                        <option key={m} value={m} disabled={block !== null}>
+                          {TTS_MODEL_LABELS[m]}
+                          {notes.length > 0 ? ` (${notes.join("; ")})` : ""}
+                        </option>
+                      );
+                    })}
                   </select>
+                  <span id="create-voice-model-hint" className="text-xs text-[var(--color-muted)]">
+                    {fmt(t.create.voiceModelHint, { date: TTS_LANGUAGE_READ_ON })}
+                  </span>
                 </label>
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="text-[var(--color-muted)]">{t.create.models}:</span>

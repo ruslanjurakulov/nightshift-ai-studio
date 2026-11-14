@@ -67,8 +67,12 @@ class RunRequestTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(run_request.InvalidRunRequest):
                 run_request.validate("news", "daily", {"voice_id": bad})
 
-    def test_lists_agree(self):
-        self.assertEqual(run_request.TTS_MODELS, config.ELEVENLABS_MODELS)
+    def test_lists_agree_except_eleven_v4_which_waits_for_the_queue_migration(self):
+        """config accepts eleven_v4 (the repository variable) so an Uzbek channel has a model
+        that speaks Uzbek; the queue's check (render_job_params_valid) does not list it yet.
+        If this fails because the queue gained it, drop the exception: that was the plan."""
+        self.assertEqual(tuple(m for m in config.ELEVENLABS_MODELS if m != "eleven_v4"), run_request.TTS_MODELS)
+        self.assertIn("eleven_v4", config.ELEVENLABS_MODELS)
 
 
 class MixerTests(unittest.TestCase):

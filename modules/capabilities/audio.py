@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from modules import captions as caption_words
+from modules import tts_languages
 from modules.capabilities.base import (
     CAPTIONS,
     DUB,
@@ -80,12 +81,20 @@ class ElevenLabsTTSAdapter(_ElevenLabs):
         out = super().problems(request, entry)
         if not VOICE_ID.fullmatch(request.voice_id or ""):
             out.append("a voice_id from the account's voice list is required")
+        # Uzbek text on a model that does not speak Uzbek: refused before any hold or call,
+        # never answered with another model (rule 4). Text with no language named is not judged.
+        reason = tts_languages.refusal(entry.vendor_model_for(TTS), request.text_language)
+        if reason:
+            out.append(reason)
         return out
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
         if not VOICE_ID.fullmatch(request.voice_id or ""):
             raise AdapterError(E_BAD_REQUEST, "a voice_id from the account's voice list is required")
+        reason = tts_languages.refusal(vendor_model, request.text_language)
+        if reason:
+            raise AdapterError(E_BAD_REQUEST, reason)
         out = self._audio(f"{self.base_url}/v1/text-to-speech/{request.voice_id}",
                           {"text": request.prompt, "model_id": vendor_model})
         return ProviderTask(self.key, vendor_model, None, outputs=[out])
