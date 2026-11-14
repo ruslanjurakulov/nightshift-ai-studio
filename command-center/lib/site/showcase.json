@@ -1579,6 +1579,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T22:50:43Z"
+    },
+    {
+      "jobId": "99579363-b080-45b5-b1ed-06c712694042",
+      "assetId": "bede2582-546f-568a-8416-72737d76ec2d",
+      "sha256": "ed48bfd5fe79de4c0be94269bfb49ae4071985fb98a28ed5909500efa7781a4d",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Vertical cinematic shot for a viral YouTube video about football in the year 2050. A night final in a futuristic floating stadium high above a neon city: a player in a glowing kit leaps into a spectacular bicycle kick, the ball leaves a bright trail of light as it flies, the camera follows it in dramatic slow motion into the net, the net ripples with light, a holographic crowd erupts and camera drones swirl around. High energy, epic, photoreal, crisp detail, rich neon and stadium light. No text, no captions, no logos, no real people.",
+      "createdAt": "2026-11-14T03:24:25Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2240,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-14T03:34:17Z"
     }
   ]
 }
