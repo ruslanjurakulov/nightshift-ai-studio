@@ -13,12 +13,16 @@ What would break without these:
 * a counter showing "10" for "10 000 so'm" (a figure the narration never said);
 * a word track longer than the recording reaching Remotion, which then stops after everything was paid for;
 * the cheap checks (effects, plan file) running after the transcription and the paid planner call;
-* a render that keeps running after its timeout, or a public file name that escapes the render's folder.
+* a render that keeps running after its timeout, or a public file name that escapes the render's folder;
+* a long render held in one process, or chunks that split a scene, overlap, leave a gap, or multiply Remotion's
+  licensed render count with short pieces; a joined video one frame short or long delivered anyway;
+* a pose drawn by the renderer (walk) that the validator refuses, or the reverse.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
 import sys
 import unittest
@@ -337,6 +341,163 @@ class CliOrder(unittest.TestCase):
     def test_impossible_frame_settings_are_refused_not_replaced(self):
         self.assertEqual(self.run_cli("--sfx-dir", "none", "--fps", "0")[0], 2)
         self.assertEqual(self.run_cli("--sfx-dir", "none", "--width", "1081")[0], 2)
+
+
+def sc(*starts):
+    return [{"start_s": x} for x in starts]
+
+
+class Chunks(unittest.TestCase):
+    def assert_cover(self, chunks, total):
+        self.assertEqual(chunks[0][0], 0)
+        self.assertEqual(chunks[-1][1], total - 1)
+        for (a, b), (c, _) in zip(chunks, chunks[1:]):
+            self.assertLessEqual(a, b)
+            self.assertEqual(c, b + 1, "no gap, no overlap")
+
+    def test_a_short_video_is_one_render_as_before(self):
+        self.assertEqual(ve.plan_chunks(sc(0, 4.3, 8.8, 12, 15.4, 18.6, 23.2, 26.8), 30.384, 30), [(0, 911)])
+        self.assertEqual(ve.plan_chunks(sc(0, 20, 40), 59.0, 30), [(0, 1769)], "under two chunks long: one render")
+
+    def test_a_long_video_cuts_only_on_scene_starts_and_every_chunk_is_at_least_the_target(self):
+        starts = [0] + [round(3.7 * i, 3) for i in range(1, 33)]
+        chunks = ve.plan_chunks(sc(*starts), 121.536, 30)
+        self.assert_cover(chunks, ve.total_frames(121.536, 30))
+        scene_frames = {math.floor(x * 30 + 0.5) for x in starts}
+        for a, b in chunks:
+            self.assertIn(a, scene_frames)
+            self.assertGreaterEqual(b - a + 1, 30 * 30)
+        self.assertEqual(len(chunks), 3, "33 + 33 + 55 s: a fourth cut would leave a 22 s piece")
+
+    def test_chunk_edges_round_like_the_composition_half_up(self):
+        # 1.25 s at 2 fps is frame 2.5: JavaScript's Math.round says 3 (Python's round() would say 2), and the composition
+        # starts the scene on 3, so a chunk must start there too or a scene's first frame lands in the previous chunk.
+        chunks = ve.plan_chunks(sc(0, 1.25), 2.5, 2, target_s=1.0)
+        self.assertEqual(chunks, [(0, 2), (3, 4)])
+
+    def test_ffprobes_count_is_read_with_its_trailing_separator_and_nothing_else_is_guessed(self):
+        self.assertEqual(ve.parse_count("912,\n"), 912)
+        self.assertEqual(ve.parse_count("3647"), 3647)
+        for bad in ("", "N/A", "912,13", "-1", None):
+            self.assertIsNone(ve.parse_count(bad))
+
+    def test_the_frame_count_matches_the_composition(self):
+        self.assertEqual(ve.total_frames(30.384, 30), 912)
+        self.assertEqual(ve.total_frames(10, 30), 300)
+
+
+class ChunkedRender(unittest.TestCase):
+    """The render's command sequence, with every process mocked: bundle once, picture in muted chunks, sound once,
+    joined without re-encoding, and refused when the join's frame count is not the composition's."""
+
+    PROPS = {"fps": 30, "duration_s": 121.536, "scenes": sc(0, *[round(3.7 * i, 3) for i in range(1, 33)]), "sound_only": False}
+
+    def run_render(self, frames, on_spawn=None):
+        from unittest import mock
+        calls = []
+        props_seen = self.props_seen = []
+
+        class Done:
+            pid = 1
+            returncode = 0
+
+            def __init__(self, cmd, **kw):
+                calls.append(cmd)
+                for a in cmd:  # the step's output, so the existence check passes
+                    if a.endswith((".mp4", ".wav")) and cmd[0] == "npx":
+                        Path(a).write_bytes(b"x")
+                    if a.startswith("--props="):
+                        props_seen.append(json.loads(Path(a.split("=", 1)[1]).read_text()))
+                if cmd[0] == "ffmpeg":
+                    Path(cmd[-1]).write_bytes(b"x")
+
+            def communicate(self, timeout=None):
+                return "", ""
+
+        d = TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        engine = Path(d.name) / "engine"
+        (engine / "node_modules").mkdir(parents=True)
+        out = Path(d.name) / "o.mp4"
+        with mock.patch("shutil.which", return_value="/usr/bin/x"), mock.patch("subprocess.Popen", Done), \
+                mock.patch.object(ve, "_frame_count", return_value=frames):
+            try:
+                ve.render(self.PROPS, out, files={}, engine_dir=engine, on_spawn=on_spawn)
+                err = None
+            except ve.ExplainerError as e:
+                err = e
+        return calls, out, err
+
+    def test_bundle_once_then_muted_chunks_then_one_sound_pass_then_a_join(self):
+        calls, out, err = self.run_render(ve.total_frames(121.536, 30))
+        self.assertIsNone(err)
+        self.assertTrue(out.exists())
+        kinds = [c[2] if c[0] == "npx" else c[0] for c in calls]
+        # Three 33-55 s picture chunks and one sound pass: four licensed renders for two minutes.
+        self.assertEqual(kinds, ["bundle", "render", "render", "render", "render", "ffmpeg"])
+        renders = [c for c in calls if c[:3] == ["npx", "remotion", "render"]]
+        bundle_dir = next(a.split("=", 1)[1] for a in calls[0] if a.startswith("--out-dir="))
+        self.assertTrue(all(c[3] == bundle_dir for c in renders), "every render reuses the one bundle")
+        for c in renders[:-1]:
+            self.assertTrue(any(a.startswith("--frames=") for a in c))
+            self.assertIn("--muted", c)
+        # The sound: the whole timeline, lossless, from the same composition told to draw nothing.
+        self.assertIn("--codec=wav", renders[-1])
+        self.assertIn(f"--concurrency={ve.SOUND_TABS}", renders[-1])
+        self.assertTrue(1 <= ve.SOUND_TABS <= 4)
+        self.assertTrue(all("--concurrency=1" in c for c in renders[:-1]), "picture chunks keep one tab: memory")
+        self.assertFalse(any(a.startswith("--frames=") for a in renders[-1]))
+        self.assertEqual([p["sound_only"] for p in self.props_seen], [False, False, False, True])
+        self.assertEqual({k: v for k, v in self.props_seen[-1].items() if k != "sound_only"},
+                         {k: v for k, v in self.props_seen[0].items() if k != "sound_only"})
+        join = calls[-1]
+        self.assertEqual(join[join.index("-c:v") + 1], "copy", "the pictures are joined without re-encoding")
+        self.assertEqual((join[join.index("-c:a") + 1], join[join.index("-b:a") + 1]), ("aac", "320k"))
+
+    def test_a_joined_video_of_the_wrong_length_is_refused_and_removed(self):
+        calls, out, err = self.run_render(ve.total_frames(121.536, 30) - 1)
+        self.assertIsInstance(err, ve.ExplainerError)
+        self.assertIn("frames", str(err))
+        self.assertFalse(out.exists())
+
+    def test_on_spawn_sees_every_child_process_once_right_after_it_starts(self):
+        seen = []
+        calls, out, err = self.run_render(ve.total_frames(121.536, 30), on_spawn=lambda p: seen.append(p))
+        self.assertIsNone(err)
+        # bundle, 3 picture chunks, the sound pass, the ffmpeg join: six processes, each handed over once, in order.
+        self.assertEqual(len(seen), len(calls))
+        self.assertEqual(len(seen), 6)
+        self.assertEqual(len({id(p) for p in seen}), 6)
+
+    def test_without_on_spawn_nothing_changes(self):
+        calls, out, err = self.run_render(ve.total_frames(121.536, 30))
+        self.assertIsNone(err)
+        self.assertTrue(out.exists())
+
+    def test_a_short_video_is_bundled_and_rendered_once_with_its_sound(self):
+        self.PROPS = {"fps": 30, "duration_s": 20.0, "scenes": sc(0, 5, 10), "sound_only": False}
+        calls, out, err = self.run_render(None)
+        self.assertIsNone(err)
+        self.assertEqual([c[2] for c in calls], ["bundle", "render"])
+        self.assertNotIn("--muted", calls[1])
+        self.assertFalse(self.props_seen[0]["sound_only"])
+
+
+class WalkPose(unittest.TestCase):
+    def test_walk_is_in_the_closed_catalogue_on_both_sides_and_offered_to_the_planner(self):
+        self.assertIn("walk", ve.POSES)
+        self.assertIn('"walk"', TS_TYPES.split("export type Pose =", 1)[1].split(";", 1)[0])
+        self.assertEqual(ve.validate_visual({"kind": "characters", "setting": "street", "prop": "phone",
+                                             "cast": [{"pose": "walk", "color": 1}, {"pose": "sit", "color": 0}]})["cast"][0]["pose"], "walk")
+        self.assertIn("walk", ve.planner_prompt(ve.split_sentences(words("Bir ikki uch to'rt."))))
+
+    def test_the_media_card_is_on_by_default_and_can_be_turned_off(self):
+        ss = ve.split_sentences(words("Bir ikki uch to'rt."))
+        scenes = ve.build_scenes(ss, ve.plan_rules(ss), 2.0)
+        props = ve.build_props(look="dusk", duration_s=2.0, words=[], scenes=scenes, narration="")
+        self.assertTrue(props["media_card"])
+        self.assertFalse(props["sound_only"], "only render() turns the picture off, for its sound pass")
+        self.assertFalse(ve.build_props(look="dusk", duration_s=2.0, words=[], scenes=scenes, narration="", media_card=False)["media_card"])
 
 
 if __name__ == "__main__":

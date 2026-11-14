@@ -20,7 +20,8 @@ export interface Word {
   end_s: number;
 }
 
-export type Pose = "stand" | "wave" | "point" | "think" | "cheer" | "sad" | "sit";
+/** `walk`: the person walks in from the nearer edge of the frame to their place, then stands. */
+export type Pose = "stand" | "wave" | "point" | "think" | "cheer" | "sad" | "sit" | "walk";
 export type Setting = "street" | "room" | "office" | "stage";
 export type Prop = "none" | "laptop" | "phone" | "coin" | "chart" | "book";
 export type Mood = "worried" | "happy" | "shocked" | "thinking" | "angry" | "calm";
@@ -82,4 +83,12 @@ export type ExplainerProps = {
   words: Word[];
   scenes: ExplainerScene[];
   captions: boolean;
+  /** Frame each character scene as a video card (a title row and a line that grows through the scene). */
+  media_card: boolean;
+  /**
+   * Draw nothing, play everything: the sound pass of a chunked render (modules/voice_explainer.render). The same
+   * <Audio> elements at the same frames and volumes as a full render, so the mix is Remotion's own, without paying
+   * for a picture nobody sees. False in every other render.
+   */
+  sound_only: boolean;
 };

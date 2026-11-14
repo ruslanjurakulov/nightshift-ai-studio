@@ -29,6 +29,10 @@ export interface Look {
   far: string;
   near: string;
   light: string;
+  /** How strongly lights glow (0..1.2): a daylit paper street must not shine like a neon one. */
+  glow: number;
+  /** Film grain strength (0..1); light looks show grain more, so they get less. */
+  grain: number;
 }
 
 export const SANS = "Inter, 'Inter Display', 'DejaVu Sans', Arial, sans-serif";
@@ -53,6 +57,8 @@ export const LOOKS: Record<LookId, Look> = {
     far: "#3a2a33",
     near: "#5a3b3b",
     light: "#ffcf86",
+    glow: 1,
+    grain: 0.9,
   },
   midnight: {
     id: "midnight",
@@ -72,6 +78,8 @@ export const LOOKS: Record<LookId, Look> = {
     far: "#16234a",
     near: "#22356b",
     light: "#9ec9ff",
+    glow: 1,
+    grain: 0.9,
   },
   golden: {
     id: "golden",
@@ -91,6 +99,8 @@ export const LOOKS: Record<LookId, Look> = {
     far: "#c0703a",
     near: "#8c4a26",
     light: "#fff1c1",
+    glow: 0.7,
+    grain: 0.7,
   },
   neon: {
     id: "neon",
@@ -110,6 +120,8 @@ export const LOOKS: Record<LookId, Look> = {
     far: "#2a1250",
     near: "#3d1670",
     light: "#29f0c4",
+    glow: 1.2,
+    grain: 1,
   },
   paper: {
     id: "paper",
@@ -129,7 +141,29 @@ export const LOOKS: Record<LookId, Look> = {
     far: "#b9c8c2",
     near: "#8fa69c",
     light: "#ffe6a8",
+    glow: 0.35,
+    grain: 0.45,
   },
+};
+
+const hex = (c: string): [number, number, number] => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(c.trim());
+  if (!m) throw new Error(`not a #rrggbb colour: ${c}`);
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+
+/** a -> b by t (0..1), as #rrggbb. Scenery derives its in-between tones from the look instead of a second palette. */
+export const mix = (a: string, b: string, t: number): string => {
+  const [x, y] = [hex(a), hex(b)];
+  const k = Math.max(0, Math.min(1, t));
+  return `#${x.map((v, i) => Math.round(v + (y[i] - v) * k).toString(16).padStart(2, "0")).join("")}`;
+};
+
+/** A colour with an alpha, as rgba(): for glows and shadows. */
+export const alpha = (c: string, a: number): string => {
+  const [r, g, b] = hex(c);
+  return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a))})`;
 };
 
 export const LOOK_IDS = Object.keys(LOOKS) as LookId[];

@@ -85,6 +85,8 @@ const explainerDefaults: ExplainerProps = {
     { id: "e000", start_s: 0, end_s: 4, kicker: "Studio preview", headline: "Voice to *video*", accent: "every sentence drawn.", visual: { kind: "emoji", mood: "happy" } },
   ],
   captions: true,
+  media_card: true,
+  sound_only: false,
 };
 
 export const RemotionRoot: React.FC = () => (
