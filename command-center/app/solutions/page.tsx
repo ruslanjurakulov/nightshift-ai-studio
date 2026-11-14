@@ -50,7 +50,7 @@ export default async function SolutionsPage() {
   const tabs = s.pages.flatMap((page) => {
     if (!isSolutionId(page.id)) return [];
     const Picture = WAY_PICTURE[page.id];
-    // The channels tab's picture carries its own frame (SignOffPicture: the Silk Road example's picture, no slot), so only the
+    // The channels tab's picture carries its own frame (SignOffPicture: the example topic's own clip, no slot), so only the
     // other two have a slot, and a photograph or clip above theirs.
     const media = page.id !== "youtube-channels" ? slotMedia(`solutions.${page.id}` as SlotId) : null;
     return [

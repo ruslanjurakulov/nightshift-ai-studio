@@ -42,7 +42,6 @@ Only derivatives are committed (`command-center/scripts/make-site-art.py`: `ART=
 | :-- | :-- | :-- |
 | hero-night | Landing, hero backdrop from 1024 px up (decorative); a left-hand scrim | 1672 x 941, budget 220 KB |
 | hero-night-sm | Landing, the phone panel's backdrop below 1024 px (decorative): a portrait cut of the same picture (x 520 to 1150) under a veil heaviest under the words | 630 x 941, budget 90 KB |
-| thumb-silkroad | Landing, "Try an example": behind the words of the Silk Road sample thumbnail (the first sample topic only), a scrim from the left | 960 x 540, budget 150 KB |
 | step-1, step-2, step-3 | Landing, "Three steps": above each step's numeral (prompt bar, play button with a price tag, play frame with a check) | 800 x 800 WebP with alpha, budget 90 KB each |
 | tool-image, -video, -voice, -edit, -animate, -upscale, -cutout, -styles | Landing, the capability wall: one per tool, in place of its icon | 800 x 600 WebP with alpha, budget 90 KB each |
 

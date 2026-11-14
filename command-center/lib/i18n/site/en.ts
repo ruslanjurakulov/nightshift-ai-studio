@@ -47,7 +47,7 @@ export const siteEn = {
     log: "Log",
     rows: [
       { id: "channel", name: "Channel", detail: "Connected through Google’s consent screen" },
-      { id: "topic", name: "Topic", detail: "Why the Silk Road ran through Samarkand" },
+      { id: "topic", name: "Topic", detail: "What football will look like in 2050" },
       { id: "script", name: "Script", detail: "Researched, written in the channel’s language, checked" },
       { id: "video", name: "Video", detail: "Narration, visuals, captions and the edit, in the channel’s voice" },
       { id: "approval", name: "Your approval", detail: "Uploaded to YouTube as private" },
@@ -67,7 +67,7 @@ export const siteEn = {
     bareNote: "An example of the flow: you ask, Nightshift plans and makes the video, uploads it to YouTube as private and waits for you.",
     label: "How a video moves",
     steps: [
-      { id: "brief", tab: "Topic", title: "Tell it the topic", body: "One line is enough. Or let the channel pick from its niche.", field: "Why the Silk Road ran through Samarkand", chips: ["Your channel", "Calm narrator"], key: "Make a plan" },
+      { id: "brief", tab: "Topic", title: "Tell it the topic", body: "One line is enough. Or let the channel pick from its niche.", field: "What football will look like in 2050", chips: ["Your channel", "Calm narrator"], key: "Make a plan" },
       { id: "plan", tab: "Plan", title: "Check what it will make", body: "Script, voice, visuals and captions, in your channel’s language.", items: [{ name: "Script", detail: "Researched and checked" }, { name: "Voice", detail: "The channel’s own" }, { name: "Visuals", detail: "In the channel’s look" }, { name: "Captions", detail: "In the channel’s language" }], priceNote: "The price is on the button before you start", key: "Start" },
       { id: "approve", tab: "Approve", title: "Watch it, then decide", body: "It waits on YouTube as private. Nothing is public yet.", lamp: "Private on YouTube", check: "Publish check passed", key: "Approve the video", waiting: "Waiting for you" },
       { id: "live", tab: "Live", title: "Public when you say so", body: "You made it public, so now it airs.", lamp: "Public on YouTube", sub: "Published by you" },
@@ -82,13 +82,13 @@ export const siteEn = {
     fieldLabel: "Your topic",
     placeholder: "A topic for your channel",
     pickLabel: "Or start from one of these",
-    topics: ["Why the Silk Road ran through Samarkand", "How a lighthouse lens works", "Why the Moon always shows the same face", "How bread rises"] as string[],
+    topics: ["What football will look like in 2050", "How a lighthouse lens works", "Why the Moon always shows the same face", "How bread rises"] as string[],
     run: "Show the plan",
     again: "Try another topic",
     drafting: "Drafting the example…",
     sampleNote: "Example plan for “{topic}”. Type your own topic and it changes.",
     thumbNote: "A drawn stand-in: your words, as the thumbnail would carry them.",
-    thumbArtNote: "The background of this example is an AI-generated image.",
+    thumbArtNote: "The background of this example is the first frame of an AI-generated clip made in our Studio.",
     ready: "Example plan ready. Nothing here was generated.",
     noTopic: "Type a topic first, or pick one below.",
     sections: [
@@ -145,7 +145,7 @@ export const siteEn = {
   },
   /** The landing's Approvals band: a drawn approval screen (components/landing/ApprovalCard.tsx), its rows from `stage`. */
   approvalCard: {
-    figure: "Illustration of a finished video waiting for you: private on YouTube, the publish check passed, and the Approve button not pressed yet. Its thumbnail, for the example topic, is an AI-generated image of the Registan in Samarkand at sunset. Everything shown is an example.",
+    figure: "Illustration of a finished video waiting for you: private on YouTube, the publish check passed, and the Approve button not pressed yet. Its thumbnail, for the example topic, is an AI-generated clip made in our Studio: a stadium floating over a neon city at night. Everything shown is an example.",
   },
   fx: {
     pause: "Pause motion",
@@ -185,12 +185,12 @@ export const siteEn = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Image credits",
-    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. One picture is different: the Registan in Samarkand, shown wherever the Silk Road example appears, is an AI-generated image made for Nightshift. It is decoration, not a screenshot of the product.",
+    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. A clip or picture labelled AI-generated is not a screenshot of the product either.",
     licence: "Pexels License",
     /** The lead once no page shows a stock picture any more (components/site/stock-in-use.ts is empty). */
-    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by one of its models, with one exception: the Registan in Samarkand, shown wherever the Silk Road example appears, is an AI-generated image made for Nightshift as decoration, not a screenshot of the product.",
+    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by one of its models.",
     /** Shown beside the stock credits while any sample (lib/site/showcase.json) is on the site, wherever it is shown. It names no model: each sample names its own. */
-    generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by one of its models, except the Silk Road example’s picture of the Registan, said above.",
+    generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by one of its models.",
   },
   /**
    * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
@@ -316,7 +316,6 @@ export const siteEn = {
       "tool-upscale": "AI-generated image: a pixelated butterfly next to the same butterfly, sharp",
       "tool-cutout": "AI-generated image: a plant lifted out of a paper card, leaving its outline",
       "tool-styles": "AI-generated image: three cards of the same vase in different styles",
-      "thumb-silkroad": "AI-generated image: the Registan in Samarkand at golden hour",
     },
   },
   caps: {
@@ -331,7 +330,7 @@ export const siteEn = {
         title: "A whole video from one line.",
         body: "Type a topic. Nightshift writes the script, voices it, adds the visuals and captions, and edits the video in your channel’s look. You see the price before it starts.",
         cta: "Make a video",
-        bubble: "Make a video about why the Silk Road ran through Samarkand.",
+        bubble: "Make a video about what football will look like in 2050.",
         reply: "made a video",
         chips: ["Your channel’s language", "Calm narrator", "Private on YouTube"] as string[],
       },
@@ -419,8 +418,10 @@ export const siteEn = {
   },
   how: {
     priceLater: "Price shown here before you start",
-    /** The third step's phone: the finished video of the step-1 ask, cut to 9:16 from the Silk Road example's picture. */
-    phoneAlt: "Example frame of the finished video: an AI-generated image of a tiled madrasa portal and minaret on the Registan in Samarkand at sunset",
+    /** The third step's phone: the finished video of the step-1 ask, the example's own 9:16 clip (components/site/slots.ts EXAMPLE_PHONE_JOB). */
+    phoneAlt: "Example of the finished video, an AI-generated clip made in our Studio: a footballer in a glowing kit does a bicycle kick in a stadium floating over a neon city",
+    /** The example video's thumbnail (the chat card on /pricing, the plan demo): the example's own 16:9 clip (EXAMPLE_THUMB_JOB). */
+    thumbAlt: "AI-generated clip made in our Studio: a football stadium floating over a neon city at night",
     slug: "How a video moves",
     title: "One rundown, from your channel to YouTube.",
     lead: "Each step is visible while it runs. The last one is always yours.",
@@ -496,8 +497,8 @@ export const siteEn = {
       title: "Editor",
       tag: "Illustration",
       tracks: { video: "Video", text: "Text", music: "Music" },
-      clips: ["Opening", "Market", "Caravan"],
-      caption: "Samarkand, 1404",
+      clips: ["Kick-off", "Stadium", "Replay"],
+      caption: "Final, 2050",
       fade: "Fade",
     },
   },
@@ -650,7 +651,7 @@ export const siteEn = {
         title: "Publish desk",
         channel: "Your channel",
         tag: "Illustration",
-        video: "Why the Silk Road ran through Samarkand",
+        video: "What football will look like in 2050",
         private: "Private on YouTube",
         check: "Publish check",
         checkState: "Passed",
@@ -663,7 +664,7 @@ export const siteEn = {
         title: "Studio",
         tag: "Illustration",
         describe: "Describe it",
-        prompt: "A caravan at the Registan at dusk, long shadows, warm dust",
+        prompt: "A stadium floating over a neon city at night, the ball trailing light",
         shape: "Shape",
         style: "Style",
         styleName: "Night market",
