@@ -145,6 +145,7 @@ from modules import credits as credit_rules  # noqa: E402
 from modules import log_redaction  # noqa: E402
 from modules import model_switch  # noqa: E402
 from modules.budget import BUDGET_STOP_EXIT  # noqa: E402
+from modules.credential_health import CREDENTIALS_MISSING_EXIT, RECONNECT_REQUIRED_EXIT  # noqa: E402
 from modules.gemini_stages import GEMINI_QUOTA_EXIT  # noqa: E402
 from modules.publish_gate import HELD_BEFORE_RENDER_EXIT  # noqa: E402
 from modules import run_request  # noqa: E402
@@ -1439,6 +1440,19 @@ class Worker:
                 return end("failed", format_error(
                     f"main.py exited with code {rc}: the custom-voice ownership check could not be completed (strict mode); "
                     "nothing was spent and nothing was charged", tail, self._secrets))
+            if rc == RECONNECT_REQUIRED_EXIT:
+                # Google refused this channel's YouTube token at the free pre-run check (expired or revoked): the run
+                # stopped before anything was spent. Exit 1 used to reach the customer as "Something went wrong"; the
+                # fix is theirs and has a name. No video, so the job fails and the hold is released.
+                return end("failed", format_error(
+                    f"main.py exited with code {rc}: the channel's YouTube connection must be reconnected; nothing was "
+                    "spent and nothing was charged", tail, self._secrets))
+            if rc == CREDENTIALS_MISSING_EXIT:
+                # A required key (Gemini, Pexels, ElevenLabs for this channel) is not configured: stopped before anything
+                # was spent. The log tail names which and the fix. No video, so the job fails and the hold is released.
+                return end("failed", format_error(
+                    f"main.py exited with code {rc}: a required credential is not configured; nothing was spent and "
+                    "nothing was charged", tail, self._secrets))
             if rc == HELD_BEFORE_RENDER_EXIT:
                 # The fact-check would block the publish gate: the run stopped before
                 # the voice and the render were bought. No video, so the job fails

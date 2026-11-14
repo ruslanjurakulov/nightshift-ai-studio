@@ -36,6 +36,7 @@ from __future__ import annotations
 import re
 from typing import Iterable, Optional
 
+from modules.credential_health import CREDENTIALS_MISSING_EXIT, RECONNECT_REQUIRED_EXIT
 from modules.gemini_stages import GEMINI_QUOTA_EXIT
 from modules.publish_gate import HELD_BEFORE_RENDER_EXIT
 from modules.voice_gate import VOICE_GATE_EXIT, VOICE_GATE_UNAVAILABLE_EXIT
@@ -52,9 +53,15 @@ TIMEOUT = "timeout"
 HELD = "held"
 #: The owner switched the provider the run would use OFF (migration 0124, modules/model_switch.py): stopped before anything was spent.
 SWITCHED_OFF = "switched_off"
+#: The credential preflight stopped the run before anything was spent (main.py exit
+#: ``credential_health.RECONNECT_REQUIRED_EXIT``): Google refused the channel's YouTube token. The customer can fix it.
+CHANNEL_RECONNECT_REQUIRED = "channel_reconnect_required"
+#: The same stop for any other required key (``credential_health.CREDENTIALS_MISSING_EXIT``): the operator's to fix.
+CREDENTIALS_MISSING = "credentials_missing"
 UNKNOWN = "unknown"
 
-CODES = (CREDITS, VOICE, PROVIDER_QUOTA, MEDIA, RENDER, TIMEOUT, HELD, SWITCHED_OFF, UNKNOWN)
+CODES = (CREDITS, VOICE, PROVIDER_QUOTA, MEDIA, RENDER, TIMEOUT, HELD, SWITCHED_OFF,
+         CHANNEL_RECONNECT_REQUIRED, CREDENTIALS_MISSING, UNKNOWN)
 
 #: The marker ``lib/runBackend.ts`` parses. Keep the two in step.
 PREFIX_RE = re.compile(r"^\[code:([a-z_]+)\][ \t]?")
@@ -74,13 +81,16 @@ _BY_CLASS = {
     "RenderTimeout": TIMEOUT,
     "TimeoutExpired": TIMEOUT,
     "CreditRefused": CREDITS,
+    # The preflight's stop seen as a traceback (a run started without __main__'s handler): a key is not configured.
+    # Which one is not read from the message, so it is never called a YouTube reconnect on a guess.
+    "CredentialsMissing": CREDENTIALS_MISSING,
     # The run refused to start on a full output volume (main._preflight_disk): nothing was made.
     "InsufficientDisk": RENDER,
 }
 
 #: A traceback's last line: `pkg.mod.ClassName: message`, or a bare `ClassName` (no message). A log line that merely
 #: mentions a class (`INFO falling back after VoiceUnavailable: nope`) does not start like this.
-_EXC_LINE = re.compile(r"^(?:[A-Za-z_]\w*\.)*([A-Z][A-Za-z0-9_]*(?:Error|Exception|Unavailable|Refused|Expired|Timeout|Disk))\b(?::[ \t]?(.*))?$")
+_EXC_LINE = re.compile(r"^(?:[A-Za-z_]\w*\.)*([A-Z][A-Za-z0-9_]*(?:Error|Exception|Unavailable|Refused|Expired|Timeout|Disk|Missing))\b(?::[ \t]?(.*))?$")
 # A vendor's own "out of quota" answer. The 429 is anchored to an HTTP-looking phrase, never a bare number.
 _QUOTA_TEXT = re.compile(
     r"RESOURCE_EXHAUSTED|insufficient[_ ]quota|quota[_ ]exceeded|\bquota\b|too many requests"
@@ -101,6 +111,11 @@ def classify(header: str = "", tail: Iterable[str] = ()) -> str:
         return CREDITS
     if first.startswith(f"main.py exited with code {HELD_BEFORE_RENDER_EXIT}:"):
         return HELD
+    if first.startswith(f"main.py exited with code {RECONNECT_REQUIRED_EXIT}:"):
+        # A clean exit after the preflight's one log line: the worker's header is the evidence, as for 79 and 80.
+        return CHANNEL_RECONNECT_REQUIRED
+    if first.startswith(f"main.py exited with code {CREDENTIALS_MISSING_EXIT}:"):
+        return CREDENTIALS_MISSING
     if first.startswith(f"main.py exited with code {GEMINI_QUOTA_EXIT}:"):
         # Clean exit, no traceback to read the class from: the worker's header is the evidence.
         return PROVIDER_QUOTA

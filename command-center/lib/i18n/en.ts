@@ -1012,6 +1012,8 @@ export const en = {
       timeout: "The video took too long to make and was stopped.",
       held: "The accuracy check held the script, so no video was made and nothing was charged. Try a different topic or different wording.",
       switched_off: "A service that helps make the video is temporarily unavailable, so the video was not started. Nothing was charged. Try again later.",
+      channel_reconnect_required: "YouTube no longer accepts this channel's connection, so the video was not started. Nothing was charged. Reconnect YouTube for this channel on the Channels page, then try again.",
+      credentials_missing: "A service this video needs is not set up on our side yet, so the video was not started. Nothing was charged. Try again later.",
       unknown: "Something went wrong and the video was not made.",
     },
     creditsReturned: "Your credits were returned.",

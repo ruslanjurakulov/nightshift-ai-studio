@@ -996,6 +996,8 @@ export const uz: Dictionary = {
       timeout: "Video juda uzoq yaratildi va toʻxtatildi.",
       held: "Aniqlik tekshiruvi ssenariyni toʻxtatdi, shuning uchun video yaratilmadi va hech narsa yechilmadi. Boshqa mavzu yoki boshqa soʻzlar bilan urinib koʻring.",
       switched_off: "Video yaratishda qatnashadigan xizmatlardan biri vaqtincha mavjud emas, shuning uchun video yaratish boshlanmadi. Hech narsa yechilmadi. Keyinroq urinib koʻring.",
+      channel_reconnect_required: "YouTube bu kanalning ulanishini endi qabul qilmayapti, shuning uchun video yaratish boshlanmadi. Hech narsa yechilmadi. Kanallar sahifasida bu kanal uchun YouTubeni qayta ulang va yana urinib koʻring.",
+      credentials_missing: "Bu video uchun kerakli xizmatlardan biri bizda hali sozlanmagan, shuning uchun video yaratish boshlanmadi. Hech narsa yechilmadi. Keyinroq urinib koʻring.",
       unknown: "Nimadir xato ketdi va video yaratilmadi.",
     },
     creditsReturned: "Kreditlaringiz qaytarildi.",
