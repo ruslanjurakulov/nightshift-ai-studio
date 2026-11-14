@@ -5,7 +5,7 @@ touches a network or spends anything. What must hold:
 
 * "configured" means the engine is installed on THIS machine (npx, video-engine/node_modules, Whisper and its model, the sound
   effects), never a key; anything missing fails the job before anything runs, naming the fix, and the hold is released;
-* the person's recording and look are what is rendered: no planner model, no default look, no music, nothing else;
+* the person's recording and look are what is rendered: no planner model, no look filled in here, no music, nothing else;
 * every refusal is a named failure (no words, too long, unreadable, the render failing or timing out) and never a video of
   something else; the operator's log gets Remotion's tail, the job row never does (it names this machine's paths);
 * the finished file is moved, not read into memory, into the job folder, and from there into the library as a video;

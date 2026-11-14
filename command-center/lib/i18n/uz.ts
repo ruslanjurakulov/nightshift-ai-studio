@@ -4922,7 +4922,7 @@ export const uz: Dictionary = {
       video: "Kadrni yozing, shakli va uzunligini tanlang va narx tugmasini bosing. Tayyor klip shu yerda oʻynaydi, muvaffaqiyatsiz boʻlsa kreditlar qaytadi.",
       image: "Rasmni tavsiflang yoki tahrirlash yoki tavsiflash uchun kutubxonadan tanlang. Natijalar shu yerda, eng yangisi katta.",
       enhance: "Rasm yoki video tanlang, oʻlchamni belgilang va narx tugmasini bosing. Natija asl nusxa yonida koʻrsatiladi.",
-      voice: "Ssenariy yozib ovoz tanlang yoki ovozini almashtirish yoki dublyaj uchun yozuv tanlang. Har bir dublning shu yerda oʻz pleyeri bor.",
+      voice: "Ssenariy yozib ovoz tanlang yoki ovozini almashtirish, dublyaj qilish yoki uning ustiga video chizish uchun yozuv tanlang. Har bir dublning shu yerda oʻz pleyeri bor.",
     },
     workingNow: "ishlanmoqda: {n}",
     startTitle: "Ish turlari",

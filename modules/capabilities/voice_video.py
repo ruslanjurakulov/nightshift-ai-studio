@@ -35,7 +35,8 @@ A browser recording (MediaRecorder's ``audio/webm;codecs=opus``) is written as a
 header: read directly, ffprobe has no length for it and Remotion cannot seek in it. The decoded copy has both.
 
 Every one of those is a failure the worker turns into a released hold. Nothing here ever renders "something else":
-there is no second planner, no default look, no video without its narration.
+there is no second planner, no look chosen here (the job's look is the one the database checked; the Studio sends the
+chip the person sees pressed), no video without its narration.
 
 ONE render at a time per process. The creative worker takes its slot for this capability BEFORE the job is marked
 'submitting' (modules/creative_worker.py SERIAL_CAPABILITIES), so a second voice video waits claimed but unsent, and

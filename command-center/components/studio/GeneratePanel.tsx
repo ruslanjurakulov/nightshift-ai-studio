@@ -350,7 +350,8 @@ export function GeneratePanel({
   const looks = relightLooksFor(available, current, routed);
   const effectiveLook = capability !== "relight" ? null : look && looks.includes(look) ? look : null;
   // A voice video's look: the one picked if this model draws it, else the model's first. Every look is priced the same (the
-  // recording's seconds), and the chip shows which one the press asks for, so starting on one is a choice the person sees.
+  // recording's seconds), and that chip is shown pressed, so what the press sends is always the look the person sees chosen.
+  // Nothing behind the Studio fills one in: 0171 refuses a job without a look and the worker draws only the one sent.
   const drawLooks = explainerLooksFor(available, current, routed);
   const effectiveDrawLook =
     capability !== "voice_explainer" ? null : explainerLook && drawLooks.includes(explainerLook) ? explainerLook : (drawLooks[0] ?? null);
