@@ -279,6 +279,7 @@ def test_with_0153_rolled_back_only_the_by_quality_preview_changes(conn, sc):
         ours = [(sc.operator, DEFAULT_ORG, FLARE, p) for p in (_params(), *(_params(quality=t) for t in TIERS))]
         # This measures 0153's own body: 0155 (which sits on it) comes off first.
         _become(conn, None)
+        conn.execute(sec_db.rollback_0170_body())  # 0170 sits on 0159's creative_price: off first
         conn.execute(sec_db.rollback_0159_body())  # 0159 sits on 0156's creative_price: off first
         conn.execute(sec_db.rollback_0156_body())  # 0156 sits on 0155's creative_price: off first
         conn.execute(sec_db.rollback_0155_body())

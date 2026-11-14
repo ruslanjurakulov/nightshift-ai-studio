@@ -126,7 +126,9 @@ class Numbering(unittest.TestCase):
         # words below.
         # 0167 (a refund that met a hold collects when the hold is released: refund_purchased_credits on 0034's body, one table, one
         # trigger on credit_transactions) was reviewed the same way: it names none of the three words below.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167")
+        # 0170 (voice to video in the Studio: seven creative functions on their latest bodies and 0100's two capability CHECKs) was
+        # reviewed the same way: it names none of the three words below.
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0170")
         self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")

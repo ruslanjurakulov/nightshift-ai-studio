@@ -1660,3 +1660,39 @@ lab: a 1000-credit pack refunded in full left 1100 credits where 100 should have
   undo, created_by, the open query, the lot a collection spends, plan checks that no query scans `credit_lot_moves` and that a
   release with no recovery reads nothing, replay, concurrency with `reserve_credits`; a real PostgreSQL);
   `command-center/tests/paddle-webhook.test.ts` and `dodo-webhook.test.ts` (the wording).
+
+## Voice to video in the Studio (0170)
+
+0170 (`0170_voice_video.sql`) is **live on apply** and writes no row: no model, no price, no availability. It teaches the database the
+capability `voice_explainer` (a 9:16 video drawn by our own engine over one of the organization's recordings, docs/VOICE_EXPLAINER.md)
+by replacing seven functions on their latest bodies, each by the hunks its header lists and nothing else, and widening 0100's two
+capability CHECKs.
+
+- **The rules.** params: `source_asset_id` (an audio file of the library) and `look` (one of dusk, midnight, golden, neon, paper, and one
+  the model lists in `spec.explainer_looks`), both required, everything else refused. source: audio of THIS organization, live, a type
+  the engine reads, at most 600 s, at most 200 MB; another organization's file reads exactly like a missing one. price: the recording's
+  seconds as the database measured them (`creative_source_seconds`) at the model's credit unit, floored at `job_minimum`; a model with no
+  `limits.max_source_seconds` is not sold, a longer recording is refused before any hold. A change of `spec.explainer_looks` clears the
+  model's proof. `sellable_models` hands the Studio the looks; `api_creative_models` (0162) lists the model to an API key (the MCP
+  Studio tools). Money: 0036's hold / capture / release, unchanged.
+- **The hunks** (tests/test_voice_video_migration.py undoes each and compares the rest byte for byte): `model_registry_guard`,
+  `creative_capability_supported`, `creative_source_problem` on 0100's bodies; `sellable_models` on 0125's; `creative_params_problem`
+  on 0156's; `creative_price` on 0159's; `api_creative_models` on 0162's; the CHECKs `model_registry_capabilities_check` (at most 20
+  per model) and `model_probe_runs_capability_check` on 0100's lists.
+- **Drift guards and end state.** Each function must be its earlier body or 0170's (md5 of prosrc, white space folded), and each CHECK
+  its 0100 definition or 0170's (md5 of `pg_get_constraintdef`); the "What to verify before you apply" query in the header reads them
+  all. The last block asserts every body, both CHECKs, the grants, the definer rights and the pinned search_path. Apply as ONE
+  transaction.
+- **Rollback.** `docs/sql/rollback_0170_voice_video.sql` refuses while a model row or a probe run lists `voice_explainer` (take the
+  entry out of the registry first), and refuses a body or CHECK that is neither 0170's nor the earlier one; it puts every earlier body
+  and both CHECKs back byte for byte with their grants.
+- **Order.** 0159's, 0156's, 0125's and 0162's replays and rollbacks refuse 0170's bodies: run the 0170 rollback first. The lab does:
+  `sec_db.take_off_0159` takes 0170 off first and `put_back_0159` puts it back; 0170 is in `sec_db.ON_0156` (so in every `ON_01xx`
+  tuple), and a sequence that puts `ON_0125` and `ON_0124` back applies them in filename order (0170 also needs 0162). Numbering: 0170
+  (claimed for this branch; 0168 and 0169 are held by other open branches). The numbering pins of 0127, 0131 and 0133 list it as
+  reviewed. An open branch that replaces one of these functions and merges first makes this file's guard refuse: rebase the hunks.
+- **Before it sells anything.** Sync the registry (`tools/probe_models.py --sync`), probe `nightshift-voice-explainer` ON THE WORKER
+  (the engine lives there), set its availability and its credit price (docs/VOICE_EXPLAINER.md, "Opening it").
+- **Tests.** `tests/test_voice_video_migration.py`, `tests/security/test_sec_voice_video.py` (prices, refusals before any hold,
+  another organization's recording, the worker's side, every earlier capability answered as before on a corpus, the API list, grants,
+  drift guards, replay, rollback, the lab chain), `tests/test_voice_video_adapter.py`, `command-center/tests/studio-voice-video.test.tsx`.

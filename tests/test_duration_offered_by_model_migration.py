@@ -165,10 +165,10 @@ class DurationOfferedByModelMigration(unittest.TestCase):
         on = LAB[LAB.index("def put_back_0156("):LAB.index("CREATIVE_PRICE_0159 =")]
         self.assertIn("put_back_0159(session)", on)
         # The chain is still found from 0159's body (each has_* compares its own hash only).
-        for fn, needle in (("take_off_0155", "if has_0156(session) or has_0159(session):"),
-                           ("take_off_0153", "or has_0156(session) or has_0159(session):"),
-                           ("take_off_0149", "or has_0156(session) or has_0159(session):"),
-                           ("take_off_0139", "or has_0156(session) or has_0159(session):")):
+        for fn, needle in (("take_off_0155", "if has_0156(session) or has_0159(session)"),
+                           ("take_off_0153", "or has_0156(session) or has_0159(session)"),
+                           ("take_off_0149", "or has_0156(session) or has_0159(session)"),
+                           ("take_off_0139", "or has_0156(session) or has_0159(session)")):
             nxt = {"take_off_0155": "def put_back_0155(", "take_off_0153": "def put_back_0153(", "take_off_0149": "def put_back_0149(",
                    "take_off_0139": "def put_back_0139("}[fn]
             self.assertIn(needle, LAB[LAB.index(f"def {fn}("):LAB.index(nxt)], fn)

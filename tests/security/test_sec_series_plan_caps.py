@@ -742,7 +742,8 @@ def _build_in_order(order):
         by_num = {f.name[:4]: f for f in sec_db.migration_files()}
         for n in order:
             sec_db.apply_files(dsn, [by_num[n]])
-        sec_db.apply_files(dsn, [sec_db.MIGRATIONS / f for f in (*sec_db.ON_0125, *sec_db.ON_0124)])
+        # In filename order, as a fresh project applies them: 0170 (in ON_0125's tail) also needs 0162 (in ON_0124).
+        sec_db.apply_files(dsn, [sec_db.MIGRATIONS / f for f in sorted({*sec_db.ON_0125, *sec_db.ON_0124})])
         with psycopg.connect(dsn, autocommit=True) as c:
             fns = {r[0]: (r[1], r[2]) for r in c.execute(
                 "select p.oid::regprocedure::text, md5(p.prosrc), coalesce(p.proacl::text, '') from pg_proc p where pronamespace = 'public'::regnamespace")}

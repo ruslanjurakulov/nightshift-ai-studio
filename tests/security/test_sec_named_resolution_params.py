@@ -234,6 +234,7 @@ def test_with_0156_rolled_back_only_the_newly_accepted_names_change(conn, sc):
     with conn.transaction(force_rollback=True):
         _become(conn, None)
         # This measures 0156's own body: 0159 (which sits on it, and refuses a length a model does not list) comes off first.
+        conn.execute(sec_db.rollback_0170_body())  # 0170 sits on 0159's creative_price: off first
         conn.execute(sec_db.rollback_0159_body())
         assert sec_db.has_0156(conn)
         _h3(conn, resolutions=("480p", "768p", "2k"),
@@ -274,6 +275,7 @@ def test_with_0156_rolled_back_only_the_newly_accepted_names_change(conn, sc):
         conn.execute(sec_db.MIGRATION_0156.read_text(encoding="utf-8"))
         assert sec_db.has_0156(conn)
         conn.execute(sec_db.MIGRATION_0159.read_text(encoding="utf-8"))
+        conn.execute(sec_db.MIGRATION_0170.read_text(encoding="utf-8"))  # and 0170 back on 0159's
         assert sec_db.has_0159(conn)
 
 
