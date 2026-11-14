@@ -300,7 +300,9 @@ class ReviewFindings(unittest.TestCase):
             with mock.patch("shutil.which", return_value="/usr/bin/npx"), \
                     mock.patch("subprocess.Popen", return_value=Hung()) as popen, \
                     mock.patch("os.killpg") as killpg, \
-                    self.assertRaisesRegex(ve.ExplainerError, "longer than"):
+                    self.assertRaisesRegex(ve.RenderTimeout, "longer than"):
+                # RenderTimeout, not merely ExplainerError: the voice video reads it as "try again later" (unavailable),
+                # every other engine failure as the engine's fault (bad_response).
                 ve.render({}, out, files={}, engine_dir=engine, timeout_s=1)
             self.assertTrue(popen.call_args.kwargs["start_new_session"])
             self.assertNotIn("GEMINI_API_KEY", popen.call_args.kwargs["env"])
@@ -473,6 +475,63 @@ class ChunkedRender(unittest.TestCase):
         calls, out, err = self.run_render(ve.total_frames(121.536, 30))
         self.assertIsNone(err)
         self.assertTrue(out.exists())
+
+    def test_a_deadline_already_past_before_a_later_chunk_is_a_timeout_and_that_chunk_never_starts(self):
+        from unittest import mock
+
+        clock = [0.0]
+        started = []
+
+        class Slow:
+            pid = 1
+            returncode = 0
+
+            def __init__(self, cmd, **kw):
+                started.append(cmd)
+                for a in cmd:
+                    if a.endswith((".mp4", ".wav")) and cmd[0] == "npx":
+                        Path(a).write_bytes(b"x")
+
+            def communicate(self, timeout=None):
+                clock[0] += 6.0   # each step takes 6 s of a 10 s budget
+                return "", ""
+
+        d = TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        engine = Path(d.name) / "engine"
+        (engine / "node_modules").mkdir(parents=True)
+        out = Path(d.name) / "o.mp4"
+        with mock.patch("shutil.which", return_value="/usr/bin/x"), mock.patch("subprocess.Popen", Slow), \
+                mock.patch.object(ve, "_now", side_effect=lambda: clock[0]), \
+                self.assertRaisesRegex(ve.RenderTimeout, r"longer than 10 s and was stopped \(before chunk 2/3"):
+            ve.render(self.PROPS, out, files={}, engine_dir=engine, timeout_s=10)
+        # The bundle and the first chunk ran; the second was never started once no time was left.
+        self.assertEqual([c[2] for c in started], ["bundle", "render"])
+        self.assertFalse(out.exists())
+
+    def test_a_step_that_fails_is_a_render_failure_never_a_timeout(self):
+        from unittest import mock
+
+        class Fails:
+            pid = 1
+            returncode = 1
+
+            def __init__(self, cmd, **kw):
+                pass
+
+            def communicate(self, timeout=None):
+                return "", "Error: something broke\nat /srv/x.tsx"
+
+        d = TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        engine = Path(d.name) / "engine"
+        (engine / "node_modules").mkdir(parents=True)
+        with mock.patch("shutil.which", return_value="/usr/bin/x"), mock.patch("subprocess.Popen", Fails):
+            with self.assertRaises(ve.RenderFailed) as cm:
+                ve.render(self.PROPS, Path(d.name) / "o.mp4", files={}, engine_dir=engine)
+        self.assertNotIsInstance(cm.exception, ve.RenderTimeout)
+        self.assertIn("failed bundling (exit 1)", str(cm.exception))
+        self.assertIn("something broke", str(cm.exception), "the tail goes to the caller (the operator's log)")
 
     def test_a_short_video_is_bundled_and_rendered_once_with_its_sound(self):
         self.PROPS = {"fps": 30, "duration_s": 20.0, "scenes": sc(0, 5, 10), "sound_only": False}
