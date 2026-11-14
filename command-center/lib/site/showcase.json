@@ -1579,6 +1579,43 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-13T22:50:43Z"
+    },
+    {
+      "jobId": "950e0667-4445-47c3-bbf4-3c681a22bb3c",
+      "assetId": "776efc38-929e-5819-934f-cbbc0f21f819",
+      "sha256": "29c8e10b2f4d0945eb7f2df9fc224f530e2c83356ff1522f14f81b307f0bd9bf",
+      "modelId": "minimax-h3",
+      "modelName": "MiniMax H3",
+      "provider": "minimax",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": null,
+      "capability": "t2v",
+      "kind": "video",
+      "prompt": "Cinematic wide shot for a viral YouTube video about football in the year 2050. A night final in a futuristic floating stadium hovering above a glowing neon city: players in luminous kits sprint, one strikes a powerful volley and the ball streaks across the frame leaving a trail of light, camera drones fly alongside, a giant holographic replay forms in the sky and the crowd erupts. Dynamic sweeping camera, epic scale, photoreal, crisp detail, rich neon and stadium light. No text, no captions, no logos, no real people.",
+      "createdAt": "2026-11-14T03:24:25Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "minimax",
+            "vendorModel": "MiniMax-H3",
+            "unit": "second",
+            "quantity": 10.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 732,
+      "slot": null,
+      "caption": null,
+      "exportedAt": "2026-11-14T03:36:26Z"
     }
   ]
 }
