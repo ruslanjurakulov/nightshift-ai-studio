@@ -135,12 +135,20 @@ export function Inspector({
   const accepts = spec.accepts.map((k) => c.ports[k]).join(" / ");
   const candidates = wireCandidates(state, node);
   const effect = node.kind === "effects" && node.effectId ? EFFECTS.find((e) => e.id === node.effectId) ?? null : null;
+  // The composer's Generate key sticks to the bottom of whatever scrolls it (globals.css .studio-dock): here that is the
+  // inspector itself, which already sits above the phone's tab bar, so its offset is 0.
   const dock = { "--studio-dock-offset": "0px" } as CSSProperties;
+  // Each node opens at the top of its inspector: its inputs and its last result (a failure's reason) come first.
+  const box = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const id = window.setTimeout(() => box.current?.scrollTo?.(0, 0), 60);
+    return () => window.clearTimeout(id);
+  }, [node.id]);
   const href = job ? resultHref(job) : null;
   const preview = job?.result_asset_ids[0] ? previews.get(job.result_asset_ids[0]) : undefined;
 
   return (
-    <aside className={sheet ? "cv-inspector is-sheet" : "cv-inspector"} aria-label={c.inspector.label} data-testid="canvas-inspector" style={dock}>
+    <aside ref={box} className={sheet ? "cv-inspector is-sheet" : "cv-inspector"} aria-label={c.inspector.label} data-testid="canvas-inspector" style={dock}>
       <header className="cv-inspector-head">
         <div className="min-w-0">
           <p className="cv-eyebrow">{c.inspector.label}</p>
