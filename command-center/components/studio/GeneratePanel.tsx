@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, typ
 import Link from "next/link";
 import { ArrowUp, AtSign, ChevronDown, Clock, Languages, Lock, Maximize2, MonitorPlay, Plus, RectangleHorizontal, Settings2, X, type LucideIcon } from "lucide-react";
 import { DESK_TOOLS, pictureToolFor, type MediaDesk } from "@/lib/creative/desks";
+import { ATTACH_ACCEPT } from "@/lib/site/pending-attachment";
 import { Timecode } from "@/components/ui/Timecode";
 import { useI18n } from "@/lib/i18n/context";
 import { formatCredits } from "@/lib/credits";
@@ -142,7 +143,32 @@ export function GeneratePanel({
   onDraftChange,
   composerExtra = null,
   autoFocusPrompt,
+  onAttachFile,
+  attachBusy = false,
+  attachNote = null,
+  onSubmittingChange,
+  onEdit,
 }: {
+  /**
+   * Told on each change the person makes to the form after it mounted (the words, the tool, the model, any setting): the page never
+   * swaps a box the person has touched (StudioHome's attachment). Unlike onDraftChange, never on the mount itself.
+   */
+  onEdit?: () => void;
+  /** Told when a press of Generate starts and ends: the page never swaps this box under a create in flight (StudioHome). */
+  onSubmittingChange?: (submitting: boolean) => void;
+  /**
+   * Composer only: [+] takes a picture or a video from the device (the system picker, ATTACH_ACCEPT) and hands it to the page, which
+   * uploads it to the library and opens the tool for its kind (components/studio/StudioHome.tsx). Absent: [+] switches to this mode's
+   * first tool that starts from a library file, as before (the Voice mode, whose files are recordings).
+   */
+  onAttachFile?: (file: File) => void;
+  /** A file handed over is still on its way into the library: [+] waits. */
+  attachBusy?: boolean;
+  /**
+   * Composer only: the page's line about that file (uploading, the tool it switched to, or why it did not attach), drawn inside the
+   * box under the send row, so it is part of the box and never lies over the page under a pinned box.
+   */
+  attachNote?: ReactNode;
   /** Whether the words box takes focus when it mounts (default: when the form came filled). A mode picked by keyboard keeps focus on its chip. */
   autoFocusPrompt?: boolean;
   /**
@@ -245,16 +271,38 @@ export function GeneratePanel({
   const [quality, setQuality] = useState<ImageQuality | null>(initial?.quality ?? null);
   // 0070: a clip's soundtrack; null = not picked, so the model's default (silent) applies.
   const [sound, setSound] = useState<boolean | null>(initial?.audio ?? null);
+  // What the person has set, as asked (not the effective values, which also move when the models or the style kits load): a change
+  // from the mounted form is theirs. Compared to the last key seen, so React's second effect run on mount is not a change.
+  const editKey = JSON.stringify([
+    capability, prompt, aspect, duration, resolution, model, auto, sourceId, factor, styleKitId, voiceId, targetLanguage, endFrameId,
+    target, shape, look, describeLanguage, quality, sound,
+  ]);
+  const seenEdit = useRef(editKey);
+  const editRef = useRef(onEdit);
+  editRef.current = onEdit;
+  useEffect(() => {
+    if (editKey === seenEdit.current) return;
+    seenEdit.current = editKey;
+    editRef.current?.();
+  }, [editKey]);
   const styles = useStyleKits(orgId);
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(onSubmittingChange);
+  submittingRef.current = onSubmittingChange;
+  useEffect(() => {
+    submittingRef.current?.(submitting);
+  }, [submitting]);
+  // A box that unmounts mid-press (never by the page's own swap: it waits) is not pressing any more.
+  useEffect(() => () => submittingRef.current?.(false), []);
   const [notice, setNotice] = useState<{ kind: "ok" } | { kind: "error"; code: CreativeError; detail?: string } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const changeRef = useRef<HTMLButtonElement>(null);
   const generateRef = useRef<HTMLButtonElement>(null);
   const [upsell, setUpsell] = useState<{ refusal: Refusal; open: boolean } | null>(null);
   const tabRefs = useRef<Partial<Record<StudioCapability, HTMLButtonElement | null>>>({});
+  const filePicker = useRef<HTMLInputElement>(null);
 
   // The models of this kind, the ones this organization can buy first (modelLock: the database refuses the others for it).
   const available = useMemo(() => {
@@ -1758,17 +1806,54 @@ export function GeneratePanel({
         )}
         <div className="sc-bar">
           <div className="sc-bar-start">
-            {attachTool && (
-              <button
-                type="button"
-                className="sc-key tap-icon press"
-                aria-label={th.attach[desk ?? "image"]}
-                title={th.attach[desk ?? "image"]}
-                data-testid="composer-attach"
-                onClick={() => pick(attachTool)}
-              >
-                <Plus aria-hidden className="size-[18px]" />
-              </button>
+            {onAttachFile ? (
+              <>
+                <button
+                  type="button"
+                  className="sc-key tap-icon press"
+                  aria-label={th.attachFlow.pick}
+                  title={th.attachFlow.pick}
+                  data-testid="composer-attach"
+                  disabled={attachBusy}
+                  aria-busy={attachBusy || undefined}
+                  onClick={(e) => {
+                    // Focus leaves the words here on every browser (Safari does not focus a clicked button): the page reads a focused
+                    // words box at the upload's end as "still typing" and then does not swap the box (StudioHome attachFile).
+                    e.currentTarget.focus();
+                    filePicker.current?.click();
+                  }}
+                >
+                  <Plus aria-hidden className="size-[18px]" />
+                </button>
+                {/* The system picker, a picture or a video. No `capture`: nothing asks for the camera or the microphone. */}
+                <input
+                  ref={filePicker}
+                  type="file"
+                  accept={ATTACH_ACCEPT}
+                  className="sr-only"
+                  tabIndex={-1}
+                  aria-hidden
+                  data-testid="composer-file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) onAttachFile(file);
+                  }}
+                />
+              </>
+            ) : (
+              attachTool && (
+                <button
+                  type="button"
+                  className="sc-key tap-icon press"
+                  aria-label={th.attach[desk ?? "image"]}
+                  title={th.attach[desk ?? "image"]}
+                  data-testid="composer-attach"
+                  onClick={() => pick(attachTool)}
+                >
+                  <Plus aria-hidden className="size-[18px]" />
+                </button>
+              )
             )}
             <button
               type="button"
@@ -1823,6 +1908,7 @@ export function GeneratePanel({
           />
           )}
         </div>
+        {attachNote && <div className="sc-foot sc-attach-note">{attachNote}</div>}
         <div className="sc-foot">
           {status}
           <span id="sc-enter-hint" className="sc-hint">

@@ -21,6 +21,7 @@ import {
 } from "@/lib/account";
 import { clearAllDrafts } from "@/lib/create-draft";
 import { signOutThisBrowser } from "@/lib/sign-out";
+import { discardPendingAtSignOut } from "@/lib/site/pending-attachment";
 import { useToast } from "@/components/feedback/ToastProvider";
 
 /**
@@ -89,6 +90,8 @@ export function useSignOut(): () => Promise<void> {
     clearAllDrafts();
     clearAllCreateAttempts();
     clearAllEditorDrafts();
+    // So is a file kept from the home page for the Studio (lib/site/pending-attachment.ts): never left for whoever signs in next.
+    await discardPendingAtSignOut();
     // Signed out in this browser, but the server could not be reached to end the session there: say so before leaving.
     if (outcome === "cleared") {
       toast.error(message);

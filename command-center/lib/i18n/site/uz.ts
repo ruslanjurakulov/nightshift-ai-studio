@@ -1,7 +1,9 @@
 import type { SiteDictionary } from "./en";
 import { studioPageUz } from "../studio-page/uz";
 import { roadmapUz } from "../roadmap/uz";
+import { trustUz } from "../trust/uz";
 import { siteAutopilotUz } from "../site-autopilot/uz";
+import { publicStatsUz } from "../public-stats/uz";
 
 /** Ommaviy sayt: bosh sahifa, «Yechimlar», kirish, 404. Manba — ./en.ts. */
 export const siteUz: SiteDictionary = {
@@ -19,7 +21,7 @@ export const siteUz: SiteDictionary = {
   hero: {
     kicker: "Yuzli va yuzsiz YouTube kanallari uchun",
     titleA: "Videoni biz tayyorlaymiz.",
-    titleB: "Nashr qilishni siz bosasiz.",
+    titleB: "Nashr tugmasini siz bosasiz.",
     lead: "Nightshift’ga mavzu bering. U YouTube uchun video yozadi, ovozlaydi va montaj qiladi, soʻng roziligingizni kutadi. Narxni boshlashdan oldin koʻrasiz.",
     leadShort: "Bir jumladan klip va rasmlar yarating yoki Nightshift kanalingiz uchun keyingi videoni tayyorlab, qaroringizni kutsin.",
     leadShortClosed: "Nightshift kanalingiz uchun keyingi videoni tayyorlab, qaroringizni kutsin; quyidagi klip va rasmlarni jamoamiz Studiyada yaratgan.",
@@ -37,7 +39,7 @@ export const siteUz: SiteDictionary = {
     log: "Jurnal",
     rows: [
       { id: "channel", name: "Kanal", detail: "Google rozilik oynasi orqali ulangan" },
-      { id: "topic", name: "Mavzu", detail: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan" },
+      { id: "topic", name: "Mavzu", detail: "2050-yilda futbol qanday boʻladi" },
       { id: "script", name: "Ssenariy", detail: "Oʻrganilgan, kanal tilida yozilgan, tekshirilgan" },
       { id: "video", name: "Video", detail: "Ovoz, vizual, subtitrlar va montaj — kanal ovozida" },
       { id: "approval", name: "Sizning tasdigʻingiz", detail: "YouTube’ga shaxsiy holda yuklandi" },
@@ -56,7 +58,7 @@ export const siteUz: SiteDictionary = {
     bareNote: "Jarayon namunasi: siz soʻraysiz, Nightshift rejalashtiradi, videoni tayyorlaydi, uni YouTube’ga yopiq holda yuklaydi va sizni kutadi.",
     label: "Video yoʻli",
     steps: [
-      { id: "brief", tab: "Mavzu", title: "Mavzuni ayting", body: "Bir qator yetarli. Yoki kanal oʻz yoʻnalishidan mavzu tanlasin.", field: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan", chips: ["Kanalingiz", "Sokin diktor"], key: "Reja tuzish" },
+      { id: "brief", tab: "Mavzu", title: "Mavzuni ayting", body: "Bir qator yetarli. Yoki kanal oʻz yoʻnalishidan mavzu tanlasin.", field: "2050-yilda futbol qanday boʻladi", chips: ["Kanalingiz", "Sokin diktor"], key: "Reja tuzish" },
       { id: "plan", tab: "Reja", title: "Nima tayyorlanishini koʻring", body: "Ssenariy, ovoz, tasvir va subtitrlar — kanalingiz tilida.", items: [{ name: "Ssenariy", detail: "Oʻrganiladi va tekshiriladi" }, { name: "Ovoz", detail: "Kanalning oʻz ovozi" }, { name: "Tasvir", detail: "Kanal uslubida" }, { name: "Subtitrlar", detail: "Kanal tilida" }], priceNote: "Narx boshlashdan oldin tugmada koʻrinadi", key: "Boshlash" },
       { id: "approve", tab: "Tasdiq", title: "Koʻring, keyin qaror qiling", body: "Video YouTube’da shaxsiy holda kutadi. Hozircha hech narsa ommaviy emas.", lamp: "YouTube’da shaxsiy", check: "Nashr tekshiruvidan oʻtdi", key: "Videoni tasdiqlash", waiting: "Sizni kutmoqda" },
       { id: "live", tab: "Efirda", title: "Siz aytganda ommaviy", body: "Siz videoni ommaviy qildingiz, endi u efirda.", lamp: "YouTube’da ommaviy", sub: "Siz nashr qildingiz" },
@@ -71,18 +73,18 @@ export const siteUz: SiteDictionary = {
     fieldLabel: "Mavzuingiz",
     placeholder: "Kanalingiz uchun mavzu",
     pickLabel: "Yoki shulardan birini tanlang",
-    topics: ["Buyuk Ipak yoʻli nega Samarqanddan oʻtgan", "Mayoq linzasi qanday ishlaydi", "Oy Yerga nega doim bir tomoni bilan qaraydi", "Xamir nega kabaradi"] as string[],
+    topics: ["2050-yilda futbol qanday boʻladi", "Mayoq linzasi qanday ishlaydi", "Oy Yerga nega doim bir tomoni bilan qaraydi", "Xamir nega kabaradi"] as string[],
     run: "Rejani koʻrsatish",
     again: "Boshqa mavzu",
     drafting: "Namuna tayyorlanmoqda…",
     sampleNote: "“{topic}” mavzusi uchun namuna reja. Oʻz mavzuingizni yozing, u oʻzgaradi.",
     thumbNote: "Chizilgan oʻrinbosar: sizning soʻzlaringiz muqovada qanday turishi.",
-    thumbArtNote: "Bu namunaning foni sunʼiy intellekt yaratgan tasvir.",
+    thumbArtNote: "Bu namunaning foni — Studiyamizda sunʼiy intellekt yaratgan klipning birinchi kadri.",
     ready: "Namuna reja tayyor. Bu yerda hech narsa yaratilmagan.",
     noTopic: "Avval mavzuni yozing yoki quyidan tanlang.",
     sections: [
       { id: "titles", name: "Ishchi sarlavhalar", items: [{ k: "Toʻgʻridan-toʻgʻri", v: "{topic}: odatda tushuntirilmaydigan qismi" }, { k: "Qiziqtiruvchi", v: "“{topic}” ortida aslida nima bor" }, { k: "Oddiy", v: "{topic}: oddiy soʻzlar bilan" }] },
-      { id: "script", name: "Ssenariy tuzilmasi", items: [{ k: "Ilgak", v: "“{topic}” ortidagi asosiy savoldan boshlash." }, { k: "Kontekst", v: "Burilishdan oldin odamlar nimani bilishi kerak." }, { k: "Burilish", v: "Manzarani oʻzgartiradigan fakt." }, { k: "Dalil", v: "Ssenariy nimaga solishtirib tekshirilgan." }, { k: "Yakun", v: "Bitta xulosa va keyingi videoni koʻrish uchun sabab." }] },
+      { id: "script", name: "Ssenariy tuzilmasi", items: [{ k: "Boshlanish", v: "“{topic}” ortidagi asosiy savoldan boshlash." }, { k: "Kontekst", v: "Burilishdan oldin odamlar nimani bilishi kerak." }, { k: "Burilish", v: "Manzarani oʻzgartiradigan fakt." }, { k: "Dalil", v: "Ssenariy nimaga solishtirib tekshirilgan." }, { k: "Yakun", v: "Bitta xulosa va keyingi videoni koʻrish uchun sabab." }] },
       { id: "voice", name: "Ovoz va koʻrinish", items: [{ k: "Diktor", v: "Kanalingiz ovozi, uning tilida." }, { k: "Tasvir", v: "Kanalingiz uslubida." }, { k: "Subtitrlar", v: "Yoqilgan, kanal tilida." }] },
       { id: "shots", name: "Kadrlar roʻyxati", items: [{ k: "Boshlanish", v: "“{topic}” mavzusiga kirish uchun umumiy reja." }, { k: "Oʻrtasi", v: "Har bir fikrni qoʻllab turadigan yaqin tafsilotlar." }, { k: "Oxiri", v: "Yakuniy gap ostida sokin uzoqlashish." }] },
       { id: "thumb", name: "Muqova topshirigʻi", items: [{ k: "Obyekt", v: "“{topic}” mavzusidan bitta aniq obyekt." }, { k: "Soʻzlar", v: "Rasmda uch soʻzdan oshmasin." }, { k: "Rang", v: "Yuqori kontrast va bitta iliq urgʻu." }] },
@@ -129,11 +131,11 @@ export const siteUz: SiteDictionary = {
       { id: "voice", step: "Ovozni yozib olish" },
       { id: "edit", step: "Tasvir, subtitr va montaj" },
       { id: "upload", step: "Yuklab, yopiq qoldirish" },
-      { id: "publish", step: "Nashr qilishni bosish" },
+      { id: "publish", step: "Nashr tugmasini bosish" },
     ],
   },
   approvalCard: {
-    figure: "Rasm: tayyor video sizni kutmoqda. U YouTube’da shaxsiy holda, nashr tekshiruvidan oʻtgan, «Tasdiqlash» tugmasi hali bosilmagan. Muqovasi Studiyamizda sunʼiy intellekt yaratgan tasvir. Undagi hamma narsa namuna.",
+    figure: "Rasm: tayyor video sizni kutmoqda. U YouTube’da shaxsiy holda, nashr tekshiruvidan oʻtgan, «Tasdiqlash» tugmasi hali bosilmagan. Namuna mavzuning muqovasi — Studiyamizda sunʼiy intellekt yaratgan klip: tunda neon shahar uzra suzib yurgan stadion. Undagi hamma narsa namuna.",
   },
   fx: {
     pause: "Harakatni toʻxtatish",
@@ -173,15 +175,15 @@ export const siteUz: SiteDictionary = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Rasm mualliflari",
-    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. Bitta rasm boshqacha: amaliy misoldagi namuna muqova Nightshift uchun sunʼiy intellekt yaratgan tasvir. Bu bezak, mahsulotning skrinshoti emas.",
+    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm ham mahsulotning skrinshoti emas.",
     licence: "Pexels litsenziyasi",
-    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan. Amaliy misoldagi namuna muqova Nightshift uchun bezak sifatida sunʼiy intellekt yaratgan tasvir, mahsulotning skrinshoti emas.",
+    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
     generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
   },
   gallery: {
     label: "Studiyada yaratilgan",
     title: "Nightshift’da yaratilgan",
-    lead: "Haqiqiy generatsiyalar: ularni jamoamiz Studiyada yaratgan. Har birida uni yaratgan model va unga berilgan soʻzlar koʻrsatilgan.",
+    lead: "Haqiqiy generatsiyalar: ularni jamoamiz Studiyada yaratgan. Istalganini oching: uni yaratgan model va unga berilgan soʻzlar koʻrinadi.",
     badge: "Sunʼiy intellekt yaratgan",
     model: "Model",
     prompt: "Soʻrov",
@@ -201,23 +203,32 @@ export const siteUz: SiteDictionary = {
     bgImage: "Sunʼiy intellekt yaratgan tasvir",
     source: "Shu rasmdan yaratilgan:",
     altSource: "Bu klip yaratilgan, sunʼiy intellekt yaratgan tasvir: {model} modeli",
+    open: "Namunani ochish",
+    detail: "Namuna haqida",
+    close: "Yopish",
   },
   prompt: {
-    label: "Qanday video yoki rasm kerakligini tasvirlang",
-    placeholder: "Sahnani tasvirlang: kadrda nima bor, kamera qanday harakatlanadi, yorugʻlik qanday…",
-    mode: "Nima yaratamiz",
-    attachOut: "Rasm biriktirib, undan video yaratish (avval bepul roʻyxatdan oʻting)",
-    attachIn: "Rasm biriktirib, undan video yaratish",
-    attachOutClosed: "Rasm biriktirish (avval roʻyxatdan oʻting; rasmdan video hali sotuvda emas)",
-    attachInClosed: "Rasm biriktirish (rasmdan video hali sotuvda emas)",
-    video: "Video",
-    image: "Rasm",
+    label: "Qanday video kerakligini tasvirlang",
+    placeholder: "Kerakli sahnani tasvirlang…",
+    attach: "Rasm yoki video biriktirish",
+    attached: "Biriktirildi: {name}",
+    remove: "{name} ni olib tashlash",
+    picture: "Rasm · videoga aylanadi",
+    video: "Video · video vositalari ochiladi",
+    pictureClosed: "Rasm · Studiya uchun (rasmdan video hali sotuvda emas)",
+    videoClosed: "Video · Studiya uchun (video vositalari hali sotuvda emas)",
     submit: "Yaratish",
-    empty: "Avval bir-ikki soʻz yozing.",
+    empty: "Avval bir-ikki soʻz yozing yoki rasm yoxud video biriktiring.",
+    badType: "Bu fayl Studiya qabul qiladigan rasm yoki video emas (JPEG, PNG, WebP, GIF, HEIC, MP4, MOV, WebM, MKV).",
+    tooBig: "Fayl {max} dan katta — bitta yuklash uchun eng koʻpi shu.",
+    emptyFile: "Fayl boʻsh.",
+    keepFailed: "Brauzer faylni keyingi sahifa uchun saqlay olmadi (maxfiy rejimda shunday boʻladi). Studiyani oching va faylni u yerda + orqali biriktiring.",
     noteIn: "Studiyani soʻzlaringiz bilan ochadi. U yerda “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi.",
     noteOut: "Avval bepul roʻyxatdan oʻtasiz, soʻng Studiya soʻzlaringiz bilan ochiladi. “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi.",
     noteInClosed: "Studiyani soʻzlaringiz bilan ochadi. Rasm va klip modellari hali sotuvda emas, shuning uchun bugun u yerda hech narsa yaratib boʻlmaydi.",
     noteOutClosed: "Avval bepul roʻyxatdan oʻtasiz, soʻng Studiya soʻzlaringiz bilan ochiladi. Rasm va klip modellari hali sotuvda emas, shuning uchun bugun u yerda hech narsa yaratib boʻlmaydi.",
+    keptOut: "Fayl roʻyxatdan oʻtguningizcha faqat shu brauzerda, koʻpi bilan bir soat turadi; soʻng Studiya uni kutubxonangizga joylaydi.",
+    keptIn: "Studiya faylni kutubxonangizga joylaydi va unga mos vositani ochadi.",
     ideas: "Haqiqiy soʻrovdan boshlang",
   },
   facts: {
@@ -229,7 +240,7 @@ export const siteUz: SiteDictionary = {
   formats: {
     items: [
       { id: "product-ad", title: "Koʻcha boʻyi reklama", body: "Ulkan mahsulot haqiqiy koʻchaga tushadi, tashqi reklama kampaniyasidek suratga olingan." },
-      { id: "satisfying", title: "Zavqli makro", body: "Pichoq yaqin plandan kesilmaydigan narsani kesadi. Buni qayta-qayta koʻrishadi." },
+      { id: "satisfying", title: "Yoqimli makro", body: "Pichoq yaqin plandan kesilmaydigan narsani kesadi. Buni qayta-qayta koʻrishadi." },
       { id: "cctv", title: "Kameraga tushib qoldi", body: "Kuzatuv kamerasining tungi yozuvi: hayvonlar nimadir qilyapti." },
       { id: "miniature", title: "Kichkina dunyo", body: "Barmoqdek odamchalar haqiqiy oshxonada ishlayapti, tilt-shift." },
       { id: "pov", title: "Vaqt boʻylab sayohat, birinchi shaxsdan", body: "Boshqa asrga kirib borish, sayohat vlogidek suratga olingan." },
@@ -257,7 +268,6 @@ export const siteUz: SiteDictionary = {
       "tool-upscale": "Sunʼiy intellekt yaratgan tasvir: piksellashgan kapalak va uning oʻzi, ammo aniq",
       "tool-cutout": "Sunʼiy intellekt yaratgan tasvir: qogʻoz kartochkadan olingan oʻsimlik, konturi qolgan",
       "tool-styles": "Sunʼiy intellekt yaratgan tasvir: bir xil guldonning turli uslubdagi uchta kartochkasi",
-      "thumb-silkroad": "Sunʼiy intellekt yaratgan tasvir: Samarqanddagi Registon oltin soatda",
     },
   },
   caps: {
@@ -272,7 +282,7 @@ export const siteUz: SiteDictionary = {
         title: "Bir qatordan butun video.",
         body: "Mavzuni yozing. Nightshift ssenariy yozadi, ovozlaydi, tasvir va subtitrlar qoʻshadi hamda videoni kanalingiz uslubida montaj qiladi. Narxni boshlashdan oldin koʻrasiz.",
         cta: "Video yaratish",
-        bubble: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgani haqida video qil.",
+        bubble: "2050-yilda futbol qanday boʻlishi haqida video qil.",
         reply: "video yaratdi",
         chips: ["Kanalingiz tili", "Sokin diktor", "YouTube’da shaxsiy"] as string[],
       },
@@ -359,6 +369,8 @@ export const siteUz: SiteDictionary = {
   },
   how: {
     priceLater: "Narx shu yerda, boshlashdan oldin koʻrinadi",
+    phoneAlt: "Tayyor video namunasi, Studiyamizda sunʼiy intellekt yaratgan klip: yorugʻ formadagi futbolchi neon shahar uzra suzib yurgan stadionda qaychi usulida zarba beradi",
+    thumbAlt: "Studiyamizda sunʼiy intellekt yaratgan klip: tunda neon shahar uzra suzib yurgan futbol stadioni",
     slug: "Video yoʻli",
     title: "Bitta efir rejasi — kanaldan YouTube’gacha.",
     lead: "Har bir qadam ishlayotganda koʻrinib turadi. Oxirgisi doim sizniki.",
@@ -368,7 +380,7 @@ export const siteUz: SiteDictionary = {
       steps: [
         { id: "topic", title: "Mavzu bering", body: "Bir qator yozing yoki kanal oʻz yoʻnalishidan keyingi mavzuni tanlasin. Nightshift ssenariy, ovoz, tasvir va subtitrlarni tayyorlaydi." },
         { id: "price", title: "Narxini koʻrib boshlang", body: "Narx boshlashdan oldin tugmada turadi. Ish xato bilan tugasa, kreditlar oʻzi qaytadi." },
-        { id: "approve", title: "Koʻring, keyin nashr qiling", body: "Video YouTube’da shaxsiy holda kutadi. Siz koʻrasiz va qaroringizni ilovada yozib qoʻyasiz. Ommaviy qilinmaguncha u shaxsiy qoladi: uni YouTube’da oʻzingiz ommaviy qilasiz yoki, agar ish maydonini boshqaradigan kishi kanal uchun “Tasdiqdan keyin nashr qilish”ni yoqqan boʻlsa, aynan shu versiyani tasdiqlash YouTube’dan buni soʻraydi." },
+        { id: "approve", title: "Koʻring, keyin nashr qiling", body: "Siz koʻrayotganingizda video YouTube’da shaxsiy holda kutadi. Uni YouTube’da oʻzingiz ommaviy qilasiz yoki, kanalda “Tasdiqdan keyin nashr qilish” yoqilgan boʻlsa (odatda u oʻchiq), tasdiqlashingiz YouTube’dan buni soʻraydi." },
       ],
     },
     shotTag: "Skrinshot",
@@ -401,7 +413,10 @@ export const siteUz: SiteDictionary = {
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
     label: "Jamoamiz Studiyada yaratgan haqiqiy natijalar",
-    note: "Vositada rasm yoki klip boʻlsa, u jamoamiz Studiyada bajargan haqiqiy topshiriq boʻlib, uni yaratgan model koʻrsatilgan. “Hozircha mavjud emas” belgisi bor vosita uchun bugun hech narsa sotilmaydi. Vosita ochilgach, narxi tugmasida boʻladi; kredit sarflamaydiganlari shunday deb yozilgan.",
+    note: "Vositadagi rasm yoki klip — jamoamiz Studiyada bajargan haqiqiy topshiriq. “Hozircha mavjud emas” — bu vosita bugun sotuvda yoʻq degani. Vosita ochilgach, narxi tugmasida boʻladi. Bepullari shunday deb yozilgan.",
+    byTeam: "jamoamiz tayyorlagan",
+    from: "Chapda — bu klip yaratilgan rasm",
+    altFrom: "Bu klip yaratilgan, sunʼiy intellekt yaratgan tasvir",
     more: "Yana toʻrtta vositani koʻrsatish",
     less: "Kamroq koʻrsatish",
   },
@@ -427,8 +442,8 @@ export const siteUz: SiteDictionary = {
       title: "Muharrir",
       tag: "Rasm",
       tracks: { video: "Video", text: "Matn", music: "Musiqa" },
-      clips: ["Boshlanish", "Bozor", "Karvon"],
-      caption: "Samarqand, 1404",
+      clips: ["Boshlanish", "Stadion", "Takror"],
+      caption: "Final, 2050",
       fade: "Pasayish",
     },
   },
@@ -525,8 +540,11 @@ export const siteUz: SiteDictionary = {
   studioPage: studioPageUz,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapUz,
+  /** The public /trust page (lib/i18n/trust; English is the source). */
+  trust: trustUz,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotUz,
+  liveStats: publicStatsUz,
   final: {
     title: "Navbatdagi videongizni tungi smenaga qoʻying.",
     lead: "Bepul boshlang. Narxni har bir ishdan oldin koʻrasiz, har bir video siz ommaviy qilmaguningizcha shaxsiy qoladi.",
@@ -579,7 +597,7 @@ export const siteUz: SiteDictionary = {
         title: "Nashr pulti",
         channel: "Kanalingiz",
         tag: "Tasvir",
-        video: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan",
+        video: "2050-yilda futbol qanday boʻladi",
         private: "YouTube’da shaxsiy",
         check: "Nashr tekshiruvi",
         checkState: "Oʻtdi",
@@ -592,7 +610,7 @@ export const siteUz: SiteDictionary = {
         title: "Studiya",
         tag: "Rasm",
         describe: "Tasvirlab bering",
-        prompt: "Shom chogʻi Registon yonida karvon, uzun soyalar, iliq chang",
+        prompt: "Tunda neon shahar uzra suzib yurgan stadion, toʻp ortida yorugʻ iz",
         shape: "Shakl",
         style: "Uslub",
         styleName: "Tungi bozor",

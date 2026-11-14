@@ -1,6 +1,8 @@
 import { studioPageEn } from "../studio-page/en";
 import { roadmapEn } from "../roadmap/en";
+import { trustEn } from "../trust/en";
 import { siteAutopilotEn } from "../site-autopilot/en";
+import { publicStatsEn } from "../public-stats/en";
 
 /**
  * The public site's copy (landing, Solutions, the sign-in shell, 404), kept
@@ -47,7 +49,7 @@ export const siteEn = {
     log: "Log",
     rows: [
       { id: "channel", name: "Channel", detail: "Connected through Google’s consent screen" },
-      { id: "topic", name: "Topic", detail: "Why the Silk Road ran through Samarkand" },
+      { id: "topic", name: "Topic", detail: "What football will look like in 2050" },
       { id: "script", name: "Script", detail: "Researched, written in the channel’s language, checked" },
       { id: "video", name: "Video", detail: "Narration, visuals, captions and the edit, in the channel’s voice" },
       { id: "approval", name: "Your approval", detail: "Uploaded to YouTube as private" },
@@ -67,7 +69,7 @@ export const siteEn = {
     bareNote: "An example of the flow: you ask, Nightshift plans and makes the video, uploads it to YouTube as private and waits for you.",
     label: "How a video moves",
     steps: [
-      { id: "brief", tab: "Topic", title: "Tell it the topic", body: "One line is enough. Or let the channel pick from its niche.", field: "Why the Silk Road ran through Samarkand", chips: ["Your channel", "Calm narrator"], key: "Make a plan" },
+      { id: "brief", tab: "Topic", title: "Tell it the topic", body: "One line is enough. Or let the channel pick from its niche.", field: "What football will look like in 2050", chips: ["Your channel", "Calm narrator"], key: "Make a plan" },
       { id: "plan", tab: "Plan", title: "Check what it will make", body: "Script, voice, visuals and captions, in your channel’s language.", items: [{ name: "Script", detail: "Researched and checked" }, { name: "Voice", detail: "The channel’s own" }, { name: "Visuals", detail: "In the channel’s look" }, { name: "Captions", detail: "In the channel’s language" }], priceNote: "The price is on the button before you start", key: "Start" },
       { id: "approve", tab: "Approve", title: "Watch it, then decide", body: "It waits on YouTube as private. Nothing is public yet.", lamp: "Private on YouTube", check: "Publish check passed", key: "Approve the video", waiting: "Waiting for you" },
       { id: "live", tab: "Live", title: "Public when you say so", body: "You made it public, so now it airs.", lamp: "Public on YouTube", sub: "Published by you" },
@@ -82,13 +84,13 @@ export const siteEn = {
     fieldLabel: "Your topic",
     placeholder: "A topic for your channel",
     pickLabel: "Or start from one of these",
-    topics: ["Why the Silk Road ran through Samarkand", "How a lighthouse lens works", "Why the Moon always shows the same face", "How bread rises"] as string[],
+    topics: ["What football will look like in 2050", "How a lighthouse lens works", "Why the Moon always shows the same face", "How bread rises"] as string[],
     run: "Show the plan",
     again: "Try another topic",
     drafting: "Drafting the example…",
     sampleNote: "Example plan for “{topic}”. Type your own topic and it changes.",
     thumbNote: "A drawn stand-in: your words, as the thumbnail would carry them.",
-    thumbArtNote: "The background of this example is an AI-generated image.",
+    thumbArtNote: "The background of this example is the first frame of an AI-generated clip made in our Studio.",
     ready: "Example plan ready. Nothing here was generated.",
     noTopic: "Type a topic first, or pick one below.",
     sections: [
@@ -145,7 +147,7 @@ export const siteEn = {
   },
   /** The landing's Approvals band: a drawn approval screen (components/landing/ApprovalCard.tsx), its rows from `stage`. */
   approvalCard: {
-    figure: "Illustration of a finished video waiting for you: private on YouTube, the publish check passed, and the Approve button not pressed yet. Its thumbnail is an AI-generated picture made in our Studio. Everything shown is an example.",
+    figure: "Illustration of a finished video waiting for you: private on YouTube, the publish check passed, and the Approve button not pressed yet. Its thumbnail, for the example topic, is an AI-generated clip made in our Studio: a stadium floating over a neon city at night. Everything shown is an example.",
   },
   fx: {
     pause: "Pause motion",
@@ -185,10 +187,10 @@ export const siteEn = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Image credits",
-    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. One picture is different: the sample thumbnail in the hands-on example is an AI-generated image made for Nightshift. It is decoration, not a screenshot of the product.",
+    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. A clip or picture labelled AI-generated is not a screenshot of the product either.",
     licence: "Pexels License",
     /** The lead once no page shows a stock picture any more (components/site/stock-in-use.ts is empty). */
-    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by one of its models. The sample thumbnail in the hands-on example is an AI-generated image made for Nightshift as decoration, not a screenshot of the product.",
+    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by one of its models.",
     /** Shown beside the stock credits while any sample (lib/site/showcase.json) is on the site, wherever it is shown. It names no model: each sample names its own. */
     generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by one of its models.",
   },
@@ -200,7 +202,7 @@ export const siteEn = {
   gallery: {
     label: "Made in the Studio",
     title: "Made with Nightshift",
-    lead: "Real generations, made by our team in the Studio. Each one names the model that made it and the words it was given.",
+    lead: "Real generations, made by our team in the Studio. Open one to see the model that made it and the words it was given.",
     badge: "AI-generated",
     model: "Model",
     prompt: "Prompt",
@@ -229,30 +231,44 @@ export const siteEn = {
     /** On a clip animated from one of the samples' own pictures: that picture, small, with the model that made it. */
     source: "Made from this picture:",
     altSource: "The AI-generated picture this clip was made from, made by {model}",
+    /** The explore grid's card is the picture alone: pressing it opens the sample in a dialog with its prompt, model and day. */
+    open: "Open this sample",
+    /** The dialog's name. */
+    detail: "About this sample",
+    close: "Close",
   },
   /**
-   * The landing's prompt bar (components/landing/PromptBar.tsx): it only opens the Studio form with the words and the tool.
+   * The landing's prompt bar (components/landing/PromptBar.tsx): it only opens the Studio form with the words (and, once a file is
+   * attached, the Studio picks the file up from this browser and opens the tool for its kind).
    * Nothing is priced, held or started from here; the notes say so, because the button reads "Create".
    */
   prompt: {
-    label: "Describe the video or picture you want",
-    placeholder: "Describe a scene: what we see, how the camera moves, the light…",
-    mode: "What to make",
-    /** "+" opens the Studio's picture-to-video form (lib/site/prompt-link.ts attachHref), through free sign-up when signed out. */
-    attachOut: "Attach a picture to make a video from it (free sign-up first)",
-    attachIn: "Attach a picture to make a video from it",
-    /** attachOut / attachIn while no Studio model is on sale (lib/site/tool-samples.ts studioToolsOpen): no promise of a video. */
-    attachOutClosed: "Attach a picture (sign up first; picture-to-video is not on sale yet)",
-    attachInClosed: "Attach a picture (picture-to-video is not on sale yet)",
-    video: "Video",
-    image: "Image",
+    label: "Describe the video you want",
+    /** One short line: the box is one line high until it grows, and a placeholder that wraps showed clipped (the live audit). */
+    placeholder: "Describe the scene you want…",
+    /** "+": the system's file picker, a picture or a video. What is attached decides what the Studio makes (lib/site/prompt-link.ts). */
+    attach: "Attach a picture or a video",
+    attached: "Attached: {name}",
+    remove: "Remove {name}",
+    picture: "Picture · becomes a video",
+    video: "Video · opens the video tools",
+    /** picture / video while no Studio model is on sale (studioToolsOpen): the chip promises nothing the Studio cannot make today. */
+    pictureClosed: "Picture · for the Studio (picture-to-video is not on sale yet)",
+    videoClosed: "Video · for the Studio (its video tools are not on sale yet)",
     submit: "Create",
-    empty: "Write a few words first.",
+    empty: "Write a few words first, or attach a picture or a video.",
+    badType: "That file is not a picture or a video the Studio takes (JPEG, PNG, WebP, GIF, HEIC, MP4, MOV, WebM, MKV).",
+    tooBig: "That file is larger than {max}, the most one upload can be.",
+    emptyFile: "That file is empty.",
+    keepFailed: "This browser would not hold the file for the next page (private browsing can do this). Open the Studio and attach it there with +.",
     noteIn: "Opens the Studio with your words. Nothing starts until you press Generate there.",
     noteOut: "Free sign-up first, then the Studio opens with your words. Nothing starts until you press Generate.",
     /** noteIn / noteOut while no Studio model is on sale: the link still opens the form, and the note says nothing can be made there today. */
     noteInClosed: "Opens the Studio with your words. Its picture and clip models are not on sale yet, so nothing can be made there today.",
     noteOutClosed: "Free sign-up first, then the Studio opens with your words. Its picture and clip models are not on sale yet, so nothing can be made there today.",
+    /** Added to the note while a file is attached (lib/site/pending-attachment.ts): where the file is until the Studio has it. */
+    keptOut: "Your file stays in this browser only, for up to an hour, until you have signed up; then the Studio puts it in your library.",
+    keptIn: "The Studio puts your file in your library and opens the tool for it.",
     ideas: "Start from a real prompt",
   },
   /** Three facts the page can back (components/landing/Landing.tsx Facts): counted from the data files and the welcome grant, never typed in. */
@@ -302,7 +318,6 @@ export const siteEn = {
       "tool-upscale": "AI-generated image: a pixelated butterfly next to the same butterfly, sharp",
       "tool-cutout": "AI-generated image: a plant lifted out of a paper card, leaving its outline",
       "tool-styles": "AI-generated image: three cards of the same vase in different styles",
-      "thumb-silkroad": "AI-generated image: the Registan in Samarkand at golden hour",
     },
   },
   caps: {
@@ -317,7 +332,7 @@ export const siteEn = {
         title: "A whole video from one line.",
         body: "Type a topic. Nightshift writes the script, voices it, adds the visuals and captions, and edits the video in your channel’s look. You see the price before it starts.",
         cta: "Make a video",
-        bubble: "Make a video about why the Silk Road ran through Samarkand.",
+        bubble: "Make a video about what football will look like in 2050.",
         reply: "made a video",
         chips: ["Your channel’s language", "Calm narrator", "Private on YouTube"] as string[],
       },
@@ -405,6 +420,10 @@ export const siteEn = {
   },
   how: {
     priceLater: "Price shown here before you start",
+    /** The third step's phone: the finished video of the step-1 ask, the example's own 9:16 clip (components/site/slots.ts EXAMPLE_PHONE_JOB). */
+    phoneAlt: "Example of the finished video, an AI-generated clip made in our Studio: a footballer in a glowing kit does a bicycle kick in a stadium floating over a neon city",
+    /** The example video's thumbnail (the chat card on /pricing, the plan demo): the example's own 16:9 clip (EXAMPLE_THUMB_JOB). */
+    thumbAlt: "AI-generated clip made in our Studio: a football stadium floating over a neon city at night",
     slug: "How a video moves",
     title: "One rundown, from your channel to YouTube.",
     lead: "Each step is visible while it runs. The last one is always yours.",
@@ -414,7 +433,7 @@ export const siteEn = {
       steps: [
         { id: "topic", title: "Give it a topic", body: "Type a line, or let your channel pick its next topic from its niche. Nightshift writes the script, the voice, the visuals and the captions." },
         { id: "price", title: "Start it at a price you have seen", body: "The price is on the button before anything starts. If a run fails, the credits come back on their own." },
-        { id: "approve", title: "Watch it, then publish", body: "The video waits on YouTube as private. You watch it and record your decision in the app. Until it is made public it stays private: you make it public on YouTube or, where someone who manages the workspace has switched on “Publish when approved” for the channel, approving that exact version asks YouTube to do it." },
+        { id: "approve", title: "Watch it, then publish", body: "The video waits on YouTube as private while you watch it. You make it public yourself on YouTube, or, on a channel whose “Publish when approved” switch is on (it is off by default), your approval asks YouTube to do it." },
       ],
     },
     shotTag: "Screenshot",
@@ -448,7 +467,13 @@ export const siteEn = {
   /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
   wall: {
     label: "Real outputs, made by our team in the Studio",
-    note: "Where a tool shows a picture or a clip, it is a real job made by our team in the Studio, labelled with the model that made it. A tool marked “Not available yet” has nothing on sale today. Once a tool is open, its price is on its button; the ones that cost no credits say so.",
+    note: "A tool’s picture or clip is a real job our team ran in the Studio. “Not available yet” means the tool is not on sale today. Once a tool opens, its price is on its button. The free ones say so.",
+    /** Under a tile's sample, after the "AI-generated" badge word: who made it. No model name on the wall (the owner has not decided whether the public site names models). */
+    byTeam: "made by our team",
+    /** Under Animate's before and after: which half is the picture the clip started from. */
+    from: "Left: the picture this clip was made from",
+    /** The alt text of that picture, without its model. */
+    altFrom: "The AI-generated picture this clip was made from",
     more: "Show four more tools",
     less: "Show fewer tools",
   },
@@ -474,8 +499,8 @@ export const siteEn = {
       title: "Editor",
       tag: "Illustration",
       tracks: { video: "Video", text: "Text", music: "Music" },
-      clips: ["Opening", "Market", "Caravan"],
-      caption: "Samarkand, 1404",
+      clips: ["Kick-off", "Stadium", "Replay"],
+      caption: "Final, 2050",
       fade: "Fade",
     },
   },
@@ -574,8 +599,12 @@ export const siteEn = {
   studioPage: studioPageEn,
   /** The public /roadmap page (lib/i18n/roadmap; Uzbek is the master copy). */
   roadmap: roadmapEn,
+  /** The public /trust page (lib/i18n/trust; English is the source). */
+  trust: trustEn,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotEn,
+  /** The live counters strip (components/site/LiveStats.tsx; lib/i18n/public-stats), hidden until the owner turns it on. */
+  liveStats: publicStatsEn,
   final: {
     title: "Put your next video on the night shift.",
     lead: "Start free. See the price before every run, and every video stays private until you make it public.",
@@ -628,7 +657,7 @@ export const siteEn = {
         title: "Publish desk",
         channel: "Your channel",
         tag: "Illustration",
-        video: "Why the Silk Road ran through Samarkand",
+        video: "What football will look like in 2050",
         private: "Private on YouTube",
         check: "Publish check",
         checkState: "Passed",
@@ -641,7 +670,7 @@ export const siteEn = {
         title: "Studio",
         tag: "Illustration",
         describe: "Describe it",
-        prompt: "A caravan at the Registan at dusk, long shadows, warm dust",
+        prompt: "A stadium floating over a neon city at night, the ball trailing light",
         shape: "Shape",
         style: "Style",
         styleName: "Night market",

@@ -19,6 +19,7 @@ import { dictionaries, LOCALES } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { buildPlan, cleanTopic, pickStill, STILL_IDS, TOPIC_MAX } from "@/lib/site/demo-plan";
+import { EXAMPLE_THUMB_JOB } from "@/components/site/samples";
 import { MEDIA_IDS } from "@/lib/site/media";
 import { freeMinutes, priceRatesFrom, quoteCents, quoteCredits } from "@/lib/site/price-check";
 import { setMotionPaused } from "@/lib/site/motion";
@@ -215,8 +216,11 @@ describe("the landing page's reasons to stay", () => {
     const section = container.querySelector("#try") as HTMLElement;
     // Drawn, not a still: the topic's own words, set on the stage (BrandArt ThumbArt), and the same topic always the same drawing.
     const thumb = () => [...section.querySelectorAll(".nx-try-thumb svg[data-art='thumb'] text")].map((x) => x.textContent);
-    // The sample topic (the first) also has an AI-generated picture behind its words, with its own alt and a caption that says so; any other topic is the drawing alone.
-    expect(section.querySelector(".nx-try-thumb img")?.getAttribute("alt")).toBe(dictionaries.en.site.art.alts["thumb-silkroad"]);
+    // The sample topic (the first) also has a picture behind its words, the first frame of the example's own clip, with its own
+    // alt and a caption that says so; any other topic is the drawing alone.
+    const bg = section.querySelector(".nx-try-thumb img")!;
+    expect(bg.getAttribute("alt")).toBe(dictionaries.en.site.how.thumbAlt);
+    expect(bg.getAttribute("data-sample-job")).toBe(EXAMPLE_THUMB_JOB);
     expect(section.querySelector(".nx-try-thumb figcaption")?.textContent).toBe(`${t.thumbNote} ${t.thumbArtNote}`);
     const first = thumb();
     expect(first.length).toBeGreaterThan(0);
@@ -248,8 +252,8 @@ describe("the landing page's reasons to stay", () => {
 
     // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of two
     // outside the gallery (the hero's switch under the card and the Studio showcase's clip picture carry the same switch; the
-    // Approvals showcase is a drawing and has nothing that moves by itself). Each merged model sample that plays a clip carries it
-    // too, on its picture inside the gallery, and every one of them agrees. Each is visually hidden until a keyboard focuses it
+    // Approvals showcase is a drawing and has nothing that moves by itself). The gallery carries it once, and every one of them
+    // agrees. Each is visually hidden until a keyboard focuses it
     // (the owner wants no visible pause word or icon), so it is still in the tab order and named for a screen reader.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
     // The models strip (components/site/motion/ModelMarquee.tsx) moves by itself, so it carries the same switch, once (also
@@ -257,9 +261,11 @@ describe("the landing page's reasons to stay", () => {
     const inStrip = all().filter((b) => b.closest(".nx-marquee"));
     expect(inStrip).toHaveLength(container.querySelector(".nx-marquee") ? 1 : 0);
     expect(outsideGallery(all()).filter((b) => !b.closest(".nx-marquee"))).toHaveLength(2);
+    // The gallery carries it once for the whole grid when any of its samples plays a clip (one Tab stop, not one per card), outside
+    // the cards, which are the buttons that open each sample.
     const inGallery = all().filter((b) => b.closest(GALLERY));
-    expect(inGallery).toHaveLength(landingSamples().clips);
-    for (const b of inGallery) expect(b.closest(SAMPLE_CARD)).toBeTruthy();
+    expect(inGallery).toHaveLength(landingSamples().clips > 0 ? 1 : 0);
+    for (const b of inGallery) expect(b.closest(SAMPLE_CARD)).toBeNull();
     const toggle = container.querySelector(".nx-motion-btn") as HTMLElement;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);
@@ -348,7 +354,7 @@ describe("the stock-picture disclosure is printed, not only labelled", () => {
     for (const c of container.querySelectorAll("[aria-roledescription='carousel']")) expect(c.closest("section#watch[data-sample-section]"), "carousel").toBeTruthy();
     // The first screen, the Studio showcase, the approval screen's thumbnail and the closing panel: four different pictures (a
     // stock still or a sample each).
-    const used = [...container.querySelectorAll(".nx-sh-media img, section.nx-show img, .nx-final img")].map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-sample-job"));
+    const used = [...container.querySelectorAll(".nx-sh-media img, section.nx-show img, .nx-final img")].map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-sample-job") ?? i.getAttribute("data-art-id"));
     expect(used).toHaveLength(4);
     expect(new Set(used).size).toBe(4);
     // A sample in one of those places is not shown again in the gallery.
@@ -383,7 +389,7 @@ describe("the stock-picture disclosure is printed, not only labelled", () => {
 describe("the demo's stand-in frame", () => {
   it.each(LOCALES.map((l) => l.code))("%s: each sample topic maps to its own frame, the same one every time", (code) => {
     const topics = dictionaries[code].site.try.topics;
-    expect(topics.map((t) => pickStill(t))).toEqual(["silkroad", "lighthouse", "moon", "nightmarket"]);
+    expect(topics.map((t) => pickStill(t))).toEqual(["football", "lighthouse", "moon", "nightmarket"]);
     expect(topics.map((t) => pickStill(t))).toEqual(topics.map((t) => pickStill(t)));
   });
 

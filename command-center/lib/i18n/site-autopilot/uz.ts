@@ -1,4 +1,5 @@
 import type { SiteAutopilotDictionary } from "./en";
+import { pillarUz } from "../autopilot-pillar/uz";
 
 /** Bosh sahifadagi avtopilot va telefondagi Shorts lentasi. Manba — ./en.ts. */
 export const siteAutopilotUz: SiteAutopilotDictionary = {
@@ -32,7 +33,7 @@ export const siteAutopilotUz: SiteAutopilotDictionary = {
       {
         id: "script",
         name: "Ssenariy",
-        title: "Boʻlimlarga ajratilgan ssenariy, avval ilmoq",
+        title: "Boʻlimlarga ajratilgan ssenariy, avval eʼtiborni tortadigan boshlanish",
         body: "Solishtirish uchun ikkita sarlavha va har biri soʻragan davomiylikdagi boʻlimlar. Davomiyliklar ssenariy rejasi, oʻlchov emas.",
       },
       {
@@ -72,7 +73,7 @@ export const siteAutopilotUz: SiteAutopilotDictionary = {
         body: "Sukut boʻyicha videoni YouTube’da oʻzingiz ommaviy qilasiz. Buni kanalning ikki sozlamasi oʻzgartiradi va ikkalasi ham yoqilmaguncha oʻchiq turadi: avtomatik nashr va “Tasdiqdan keyin nashr qilish”.",
       },
     ],
-    topic: { topic: "Mavzu", hook: "Ilmoq" },
+    topic: { topic: "Mavzu", hook: "Boshlanish" },
     research: {
       claim: "Daʼvo",
       status: "Faktlarni tekshirish",
@@ -81,7 +82,7 @@ export const siteAutopilotUz: SiteAutopilotDictionary = {
     },
     script: { titleA: "Sarlavha A", titleB: "Sarlavha B", sections: "Boʻlimlar", seconds: "Reja boʻyicha {n} s" },
     voice: {
-      narration: "Diktor nimani oʻqiydi (ilmoq)",
+      narration: "Diktor nimani oʻqiydi (boshlanish)",
       cue: "Belgi",
       words: "Subtitrlar uchun vaqt boʻyicha belgilangan soʻzlar",
       span: "{from}–{to} s",
@@ -126,6 +127,8 @@ export const siteAutopilotUz: SiteAutopilotDictionary = {
       secondary: "Nashr qanday ishlaydi",
     },
   },
+  /** The YouTube Autopilot pillar, /solutions/youtube-channels (lib/i18n/autopilot-pillar). */
+  pillar: pillarUz,
   shorts: {
     open: "Shorts sifatida koʻrish",
     openNote: "{n} ta vertikal namuna, toʻliq ekranda",

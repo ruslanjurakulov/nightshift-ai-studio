@@ -15,6 +15,7 @@ import { applyPendingHandle, type HandleClient } from "@/lib/handles";
 import { FORGOT_PASSWORD_PATH } from "@/lib/public-paths";
 import { mfaVerifyUrl } from "@/lib/security/admin-mfa";
 import { signInNextStep, type MfaClient } from "@/lib/security/challenge";
+import { carriesPending, discardPending } from "@/lib/site/pending-attachment";
 import { classifySignInError, isCallbackError, type CallbackError, type SignInOutcome } from "@/lib/signup";
 
 export default function LoginPage() {
@@ -69,6 +70,9 @@ export default function LoginPage() {
     // A connection request from an AI app sent this person here: back to it
     // (only that exact page is honoured), otherwise the app as always.
     const destination = safeLoginReturn(new URLSearchParams(window.location.search).get("next"), "/command-center");
+    // A file kept from the home page (lib/site/pending-attachment.ts) is for the sign-in that carries its link; any other sign-in in
+    // this browser removes it, so it is never offered to an account that did not attach it.
+    if (!carriesPending(destination)) await discardPending();
     // An account with an authenticator is not signed in yet: the password made a
     // password-only session, and the code makes it complete. Nothing is pushed
     // to the app before that; /login/verify asks the server again and moves on

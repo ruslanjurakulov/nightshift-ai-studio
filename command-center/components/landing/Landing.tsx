@@ -8,22 +8,22 @@ import { packExpiry, type PackExpiry } from "@/lib/plans";
 import { creditUnit, formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
-import { Showcases } from "@/components/landing/Showcases";
+import { APPROVALS_HREF, Showcases } from "@/components/landing/Showcases";
 import { ShowcaseGallery, showcaseItems, type LandingFormat } from "@/components/site/ShowcaseGallery";
 import { EffectsGallery } from "@/components/site/EffectsGallery";
-import { TryDemo } from "@/components/landing/TryDemo";
+import { TryDemo, type TryThumb } from "@/components/landing/TryDemo";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { StickyCta } from "@/components/site/StickyCta";
-import { landingExcludedJobs, landingPlacedJobs, slotMedia } from "@/components/site/samples";
+import { EXAMPLE_PHONE_JOB, EXAMPLE_THUMB_JOB, exampleMedia, landingExcludedJobs, landingPlacedJobs, slotMedia } from "@/components/site/samples";
 import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { PromptBar, type PromptIdea } from "@/components/landing/PromptBar";
 import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
-import { STEP_PHONE_JOB, studioToolsOpen } from "@/lib/site/tool-samples";
+import { studioToolsOpen } from "@/lib/site/tool-samples";
 import { TypedText } from "@/components/site/TypedText";
-import { PROMPT_TOOLS, type PromptTool } from "@/lib/site/prompt-link";
+import { TEXT_TOOL } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
@@ -32,7 +32,9 @@ import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
 import { ModelMarquee } from "@/components/site/motion/ModelMarquee";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
-import { SampleCarousel, SampleCompare, SampleTicker } from "@/components/site/landing-samples";
+import { LiveStats } from "@/components/site/LiveStats";
+import type { PublicStats } from "@/lib/public-stats";
+import { SampleCarousel, SampleCompare, SampleTicker, landingGalleryExclude, landingTileJobs } from "@/components/site/landing-samples";
 import "@/components/site/explore-hover.css";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
@@ -50,7 +52,8 @@ const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
  * grant (WELCOME_CREDITS, pinned to the database by a test), counts of what the
  * page itself holds, and whatever the pricing source holds. No competitor is
  * named, a model only inside its own sample's box, and there are no
- * testimonials, logos or usage numbers, because there are none to show. Every
+ * testimonials or logos, because there are none to show. The only usage numbers are the live counters under the facts
+ * (components/site/LiveStats.tsx), counted by the database, and only once the owner turns them on. Every
  * picture says what it is: one of our samples (AI-generated; its model on its gallery card) or a
  * stock example (its contributor), from components/site/samples.tsx slotMedia.
  *
@@ -66,6 +69,7 @@ export function Landing({
   showcase,
   expiry = packExpiry(null, CREDIT_EXPIRY_MONTHS),
   dodo = false,
+  liveStats = null,
 }: {
   t: Dictionary;
   locale: Locale;
@@ -77,6 +81,8 @@ export function Landing({
   expiry?: PackExpiry;
   /** Dodo Payments sells here (PAYMENTS_PROVIDER=dodo): the FAQ names it as the seller. */
   dodo?: boolean;
+  /** The live counters (lib/server/public-stats.ts): null while the owner's switch is off, and then nothing is drawn. */
+  liveStats?: PublicStats | null;
 }) {
   // The samples the landing's own places show (slots, tool wall, steps, approval screen) are left out of its gallery, so no clip
   // is on the page twice, and so are the repeated sea and sky samples: one list (components/site/slots.ts landingExcludedJobs).
@@ -92,13 +98,14 @@ export function Landing({
       <Hero t={t} formats={formats} />
       <SampleTicker t={t} locale={locale} exclude={leftOut} />
       <Facts t={t} locale={locale} anchor={anchor} entries={onPage.map(({ e }) => e)} />
+      <LiveStats t={t} locale={locale} stats={liveStats} />
       <SampleCarousel t={t} locale={locale} exclude={leftOut} />
       {/* Real generations from the operator's Studio (lib/site/showcase.json): nothing at all until the first one is merged. The landing is signed out. */}
-      <ShowcaseGallery t={t} locale={locale} exclude={leftOut} formats={formats} />
+      <ShowcaseGallery t={t} locale={locale} exclude={landingGalleryExclude(leftOut)} formats={formats} />
       {/* Named one-press shots that open the Studio's video form (lib/effects/catalog.ts); it names no model. */}
       <EffectsGallery t={t} />
       <ModelMarquee entries={onPage.map(({ e }) => e)} pause={t.site.fx.pause} />
-      <ModelTiles t={t} items={onPage} />
+      <ModelTiles t={t} items={onPage} tiles={landingTileJobs(leftOut)} />
       <SampleCompare t={t} locale={locale} exclude={leftOut} />
       <Showcases t={t} />
       <How t={t} locale={locale} anchor={anchor} />
@@ -139,8 +146,10 @@ function Hero({ t, formats }: { t: Dictionary; formats: LandingFormat[] }) {
   const h = t.site.hero;
   const m = slotMedia("hero");
   const moving = m.kind === "ai" ? m.moving : m.clip !== null;
+  // The bar makes a clip from words when nothing is attached, so its starting points are the clips' own prompts: a picture's words
+  // sent as a clip's would open a form for something the sample never was.
   const ideas: PromptIdea[] = formats.flatMap(({ id, title, entry }) =>
-    (PROMPT_TOOLS as readonly string[]).includes(entry.capability) && entry.prompt.trim() ? [{ id, label: title, tool: entry.capability as PromptTool, prompt: entry.prompt }] : [],
+    entry.capability === TEXT_TOOL && entry.prompt.trim() ? [{ id, label: title, tool: TEXT_TOOL, prompt: entry.prompt }] : [],
   );
   return (
     <section aria-labelledby="hero-title" className="nx-hero nx-sh">
@@ -246,21 +255,39 @@ function Facts({ t, locale, anchor, entries }: { t: Dictionary; locale: Locale; 
 }
 
 /**
+ * How many tiles a row holds from 1024 px, so the last row is never one tile alone under a full row (nine models left the
+ * ninth by itself at four across): three or four, whichever fills the last row more, a full one best. Fewer than four: one row.
+ * A last row that is still short is centred by the stylesheet.
+ */
+export function modelTileColumns(n: number): number {
+  if (n <= 3) return Math.max(n, 1);
+  const fill = (c: number) => (n % c === 0 ? 1 : (n % c) / c);
+  return fill(4) > fill(3) ? 4 : 3;
+}
+
+/**
  * The models behind the samples: one tile per model, each inside the box of that model's first sample on the page (the only kind
  * of element that may name a model), with its AI-generated label, how many of the page's samples it made, whether the Studio offers
  * it (an operator preview says it does not yet), and a link down to its sample. No price: the site has no public per-model price
  * to read, and a typed one would be a promise (CLAUDE.md #5).
  */
-function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f: ShowcaseFiles }[] }) {
+function ModelTiles({ t, items, tiles }: { t: Dictionary; items: { e: ShowcaseEntry; f: ShowcaseFiles }[]; tiles: readonly string[] }) {
   const c = t.site.models;
   const g = t.site.gallery;
   const byModel = new Map<string, { e: ShowcaseEntry; f: ShowcaseFiles; n: number }>();
   for (const it of items) {
     const had = byModel.get(it.e.modelId);
-    if (had) had.n += 1;
-    else byModel.set(it.e.modelId, { ...it, n: 1 });
+    if (!had) byModel.set(it.e.modelId, { ...it, n: 1 });
+    else {
+      had.n += 1;
+      // The tile shows and links to the sample the grid holds for it (landing-samples.tsx landingTileJobs), not an effect's preview.
+      if (tiles.includes(it.e.jobId) && !tiles.includes(had.e.jobId)) Object.assign(had, { e: it.e, f: it.f });
+    }
   }
   if (byModel.size === 0) return null;
+  const cols = modelTileColumns(byModel.size);
+  // From 640 to 1023 px four columns would be too narrow for a name: two instead (still no tile alone when four fit evenly).
+  const grid = { "--nx-mcols": cols, "--nx-mcols-md": cols === 4 ? 2 : cols } as React.CSSProperties;
   return (
     <section id="models" aria-labelledby="models-title" className="nx-section nx-models" data-tone="raised">
       <div className="nx-wrap">
@@ -269,7 +296,7 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
           {c.title}
         </h2>
         <p className="nx-sub">{c.lead}</p>
-        <ul className="nx-models-grid">
+        <ul className="nx-models-grid" style={grid}>
           {[...byModel.values()].map(({ e, f, n }) => {
             const leftOut = modelLeftOut(e);
             return (
@@ -281,10 +308,14 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
                   {e.kind === "video" && f.clip && <ShowcaseClip jobId={e.jobId} together />}
                 </div>
                 <div className="nx-model-body">
+                  {/* Drawn over the top corner of the picture (site-next.css), still read before the name. */}
                   <span className="nx-ai-badge">{g.badge}</span>
                   <h3 className="nx-model-name">{e.modelName}</h3>
-                  <p className="nx-model-count">{fmt(c.count, { n: String(n) })}</p>
-                  {leftOut && <p className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</p>}
+                  {/* Under the name: how many samples, then whether the Studio offers it. */}
+                  <p className="nx-model-meta">
+                    <span className="nx-model-count">{fmt(c.count, { n: String(n) })}</span>
+                    {leftOut && <span className="nx-gallery-unavailable">{leftOut === "shut_down" ? g.gone : g.notInStudio}</span>}
+                  </p>
                   <a href={`#sample-${e.jobId}`} className="nx-model-see">
                     {c.see}
                     <ArrowRight aria-hidden />
@@ -305,9 +336,14 @@ function ModelTiles({ t, items }: { t: Dictionary; items: { e: ShowcaseEntry; f:
  * 1. the ask, typed as you watch (the chat card's own example ask; reduced motion or the pause switch show it whole);
  * 2. the Generate key as the Studio draws it, with the price beside it only when the live price list holds one, else where it
  *    will appear (never a default or a zero);
- * 3. a phone with one of our vertical samples playing as a channel's video, under "Private on YouTube": an example,
- *    labelled AI-generated (the badge only: the phone illustrates the step, the clip is not its subject), in the sample's own box.
+ * 3. a phone playing the finished video of the ask typed in step 1 (football in 2050), under "Private on YouTube": the example's
+ *    own 9:16 clip made in our Studio from a prompt about that topic (components/site/slots.ts EXAMPLE_PHONE_JOB), labelled
+ *    AI-generated. A still there read as "you asked for a video and got a picture" (owner, 2026-11-14), and a clip made from another
+ *    prompt said the result need not match the ask. It plays by every LoopClip rule (on screen, its turn, the page's pause switch;
+ *    reduced motion, Save-Data and a slow link keep its first frame, which drifts slowly where motion is allowed).
  * The first two are pictures of a control, not controls: hidden from assistive tech (the step's words say it).
+ * All three sit on stages of one height (site-next.css .nx-step-live), so the numerals under them start on one line: the phone
+ * fills its stage's height instead of standing taller than the other two and pushing its step's top up (owner, 2026-11-14).
  */
 function StepLive({ id, t, locale, anchor }: { id: string; t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
   if (id === "topic") {
@@ -331,29 +367,29 @@ function StepLive({ id, t, locale, anchor }: { id: string; t: Dictionary; locale
       </div>
     );
   }
-  const e = SHOWCASE_ENTRIES.find((x) => x.jobId === STEP_PHONE_JOB);
-  const f = e ? SHOWCASE_FILES[e.jobId] : undefined;
   const approve = t.site.stage.steps.find((x) => x.id === "approve" && "lamp" in x) as { lamp: string } | undefined;
-  if (!e || !f) return null;
-  const clip = e.kind === "video" && f.clip !== null;
+  // Without the clip's entry or files the phone is empty, never a stand-in picture (slots.ts exampleMedia).
+  const m = exampleMedia(EXAMPLE_PHONE_JOB);
   return (
-    <div className="nx-step-live" data-step="approve" data-showcase-entry={e.jobId} data-model={e.modelId}>
-      <span className="nx-step-phone" data-clip={clip ? "sample" : undefined}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={f.posterSm} width={e.width} height={e.height} alt={clip ? t.site.gallery.bgClip : t.site.gallery.bgImage} className="nx-step-shot nx-drift-pic" loading="lazy" decoding="async" />
-        {clip && <ShowcaseClip jobId={e.jobId} />}
+    <div className="nx-step-live" data-step="approve">
+      <span className="nx-step-phone" {...(m ? placeBox(m) : {})}>
+        {/* The clip over its first frame; the frame drifts slowly where motion is allowed and no clip may play (.nx-drift-pic). */}
+        {m && <PlaceFill media={m} s={t.site} alt={t.site.how.phoneAlt} className="nx-step-shot nx-drift-pic" compact sizes="160px" labels={false} />}
+        {/* On the picture, as the gallery's cards carry it: beside the phone it was squeezed into a two-line capsule. */}
+        <AiBadge g={t.site.gallery} className="nx-ai-credit nx-step-credit" />
         {approve && <span className="nx-step-private">{approve.lamp}</span>}
       </span>
-      <AiBadge g={t.site.gallery} className="nx-ai-credit nx-step-credit" />
     </div>
   );
 }
 
 function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
   const h = t.site.how.simple;
+  const approvals = t.site.caps.items.find((i) => i.id === "approvals");
   return (
     <section id="how" aria-labelledby="how-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
+        <p className="nx-label">{t.site.how.slug}</p>
         <h2 id="how-title" className="nx-h2">
           {h.title}
         </h2>
@@ -368,6 +404,13 @@ function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mon
                 </span>
                 <h3 className="nx-h3">{s.title}</h3>
                 <p className="nx-body">{s.body}</p>
+                {/* The step says the two ways a video goes public in two sentences; who may turn the switch on, which version, and
+                    for how long is behind the Approvals band's own link, not in the step (owner, 2026-11-14). */}
+                {s.id === "approve" && approvals && (
+                  <Link href={APPROVALS_HREF} className="nx-link nx-strip-more">
+                    {approvals.cta}
+                  </Link>
+                )}
               </li>
             );
           })}
@@ -382,6 +425,15 @@ function How({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mon
   );
 }
 
+/**
+ * The plan demo's sample thumbnail under the example topic: the first frame of the example's own 16:9 clip (a thumbnail is a still),
+ * or none while its files are not here (slots.ts exampleMedia). Read on the server: the demo is a Client Component.
+ */
+function tryThumb(t: Dictionary): TryThumb | null {
+  const m = exampleMedia(EXAMPLE_THUMB_JOB);
+  return m ? { src: m.files.posterSm, width: m.entry.width, height: m.entry.height, job: m.entry.jobId, alt: t.site.how.thumbAlt } : null;
+}
+
 /** The hands-on example, under the showcases: type a topic, watch a plan take shape. */
 function Try({ t, locale }: { t: Dictionary; locale: Locale }) {
   const c = t.site.try;
@@ -393,7 +445,7 @@ function Try({ t, locale }: { t: Dictionary; locale: Locale }) {
           {c.title}
         </h2>
         <p className="nx-sub">{c.lead}</p>
-        <TryDemo copy={c} art={t.site.art.alts} note={fmt(c.ctaNote, { n: formatCredits(WELCOME_CREDITS, locale) })} />
+        <TryDemo copy={c} thumb={tryThumb(t)} note={fmt(c.ctaNote, { n: formatCredits(WELCOME_CREDITS, locale) })} />
       </div>
     </section>
   );

@@ -1460,7 +1460,8 @@ two holds below are made without them.
 - **Without it.** Before the worker change: series and MCP videos of a concept channel run, and their images are paid by the platform.
   After it: they are refused at the worker ("…below the X a N-second run requires, which includes up to 4 generated concept-thumbnail
   images…").
-- **Number.** 0163: 0162 is the highest on main. Needs 0094, 0120 and 0158. 0127's, 0131's and 0133's numbering tests list it as
+- **Number.** 0163: 0162 was the highest on main when it was written; 0164 (the public counters) merged first and names nothing
+  of 0163's. Needs 0094, 0120 and 0158. 0127's, 0131's and 0133's numbering tests list it as
   reviewed (0127's holds it to reading `series_plans` only).
 - **A replay of 0093 or 0094 undoes part of it.** Neither has a drift guard: replaying 0094 puts its `oauth_create_video` back over
   0163's (replaying 0093 puts 0093's back over both). MCP videos of a concept channel are then held without the images and refused by
@@ -1472,3 +1473,56 @@ two holds below are made without them.
   the hashes, the grants), `tests/security/test_sec_concept_thumbnail_holds.py` (a real PostgreSQL: the reading and the price equal the
   worker's to the cent, privileges, replay, rollback, drift), the `0163` tests of `tests/security/test_sec_series_tables.py` and
   `tests/security/test_sec_mcp_oauth.py` (the quote, the hold, the refusal).
+
+## The site's live public counters (0164)
+
+0164 (`0164_public_site_stats.sql`) is **live on apply and still invisible**: it adds one table, four functions and (where pg_cron
+is installed) one cron job; it replaces nothing and alters no existing table. The switch starts OFF, and while it is off the
+public read answers `{"visible": false}` and nothing else. The one command, the k rule and what each number counts:
+`docs/PUBLIC_STATS.md`.
+
+- **`site_settings`.** One row (`id` is the constant true): `public_stats_visible boolean not null default false`, the stored
+  measurement (`stats`, `stats_at`) and who last changed the switch. RLS on, no policy, every grant revoked (the service key
+  included); the end state asserts no SELECT, INSERT, UPDATE or DELETE for anon, authenticated or service_role. A missing row reads as
+  hidden.
+- **`public_site_stats()`.** anon and authenticated. `{"visible": false}` while the switch is off, while nothing is stored yet, or
+  while fewer than 5 customer workspaces are counted (**the k rule**: otherwise a customer could subtract its own numbers from the
+  totals and read another tenant's). Otherwise the stored `videos_rendered` (a lower bound), `videos_uploaded_private`,
+  `videos_approved`, `studio_generations` (counts), `last_run_at` (the UTC hour, null when nothing finished), `visible`, `as_of`.
+  Nothing else: no organization, user, channel, video, title, and not `counted_orgs`. Anon never measures when nothing is stored;
+  once the stored one is older than 15 minutes, one caller (advisory lock) measures again, and a read-only transaction answers
+  without storing (`read_only_sql_transaction` is caught). The SQL editor and a signed-in platform owner/admin get a fresh
+  measurement with `counted_orgs` and `min_counted_orgs`, and `visible` says whether the site would show it.
+- **`set_public_stats_visible(boolean)`.** A signed-in platform owner/admin through `owner_guard` (0107: 42501 before anything is
+  read, the second factor, 10 calls per 10 minutes) or the SQL editor. The editor is an allow-list: no API claims, and the role the
+  call runs as (the SET ROLE, else the login) is not an API role and is a member of `postgres`; a role that merely inherits
+  `authenticated` is not it. Not anon, not the service key. A change writes one `security_events` row (`site.public_stats`,
+  `{from, to, via}`) in the same transaction; a call that changes nothing writes no event. Turning it on stores the first
+  measurement. Not `app_audit_log`: its browser-side allow list (`audit_action_allowed`, 0145's body) would have to be replaced,
+  and the owner's Security page already lists `security_events`.
+- **`public_site_stats_refresh()`.** Internal (no API role): while the switch is on, measure and store. pg_cron runs it every 10
+  minutes (`nightshift-public-site-stats`, scheduled as 0111 schedules its sweep: only when `cron.schedule`, `cron.unschedule` and
+  `cron.job` exist, unschedule-then-schedule, a notice otherwise).
+- **`public_site_stats_measure()`.** Internal (no API role). Also returns `counted_orgs`: distinct customer organizations with at
+  least one row in any count.
+- **Left out.** `default_org_id()` and every organization one of whose members is a bound `app_members` account (by user id, never by
+  e-mail). Rows with no organization are not counted.
+- **Freshness.** The site keeps an answer 5 minutes; a number on the page was measured at most about 15 minutes earlier with pg_cron
+  and about 20 without.
+- **md5.** `public_site_stats_measure` `e1fa900daf83fb55af871d3e118f8a31`, `public_site_stats_refresh`
+  `022ce0de3feaebde13aadd1432fcc626`, `public_site_stats` `fe0dfed7b1abb856b161b35d8cfd6abb`, `set_public_stats_visible`
+  `0b1793721bf2bb7aaad4c0eb248704e6` (drift guard, end state, rollback). The end state also asserts each is owned by `postgres`.
+- **Without it.** The site's reader (`command-center/lib/server/public-stats.ts`) treats the missing function as hidden: no strip.
+- **Number.** 0164, assigned to this branch; 0163 is held by an unmerged branch (#736) and is not reused. Needs 0007, 0016, 0017,
+  0018, 0036, 0107, 0112 and 0116; names nothing of 0147's to 0162's. The numbering tests of 0127, 0131 and 0133 list it as reviewed.
+  `sec_db.ON_0124` lists it so that a lab sequence which leaves 0124 out and puts it back still ends on the newest file; the two lab
+  tests that roll 0112 and 0116 back leave it out of their base (`sec_db.NEEDS_0112_0116`) and take it off and put it back around
+  the rollbacks (`take_off_0164`, `put_back_0164`).
+- **Undo.** `docs/sql/rollback_0164_public_site_stats.sql` (owner-applied): refuses a body that is not 0164's, unschedules the cron
+  job, drops the four functions and the table.
+- **Tests.** `tests/test_public_site_stats_migration.py` (the text, the hashes, the rollback, the numbering),
+  `tests/security/test_sec_public_stats.py` (a real PostgreSQL: the switch refused for customers, anon, the service key and a role
+  that inherits `authenticated`, with no audit row; one audit row per change by the admin and by the SQL editor; hidden answers
+  `{"visible": false}`; hidden below 5 counted workspaces and shown at 5; the preview's `counted_orgs`; only the named keys; the
+  operator's and staff workspaces left out; the last run to the hour; a null stays null; nothing stored means hidden; the 15-minute
+  refresh; a read-only GET; replay, drift and rollback), `command-center/tests/public-stats.test.tsx` (the reader and the strip).

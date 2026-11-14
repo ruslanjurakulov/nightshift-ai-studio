@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMotionPaused, useMotionTap } from "@/lib/site/motion";
 import { useClipsHeld } from "@/lib/site/clip-hold";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 import { clipRendition } from "@/lib/site/renditions";
+import { useClipNear, useClipTurn, usePageVisible } from "@/components/site/clip-turns";
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string };
 
@@ -22,30 +23,6 @@ export function clipsAllowed(): boolean {
 }
 
 /**
- * Which clip plays. Two clips playing at once cost a 4x-throttled phone half its frames (a showcase with the next one's edge
- * in view measured 30 fps against 60 with one playing), so only the clip that shows most of itself plays; the others hold
- * their still. Each LoopClip reports how much of itself is on screen; the one with the most (above a sliver) is the leader.
- */
-const shown = new Map<symbol, number>();
-const listeners = new Set<() => void>();
-let leaderId: symbol | null = null;
-function setShown(id: symbol, ratio: number) {
-  if (ratio > 0.05) shown.set(id, ratio);
-  else shown.delete(id);
-  let best: symbol | null = null;
-  let top = 0;
-  for (const [k, r] of shown) if (r > top) [best, top] = [k, r];
-  if (best !== leaderId) {
-    leaderId = best;
-    listeners.forEach((l) => l());
-  }
-}
-const subscribe = (l: () => void) => {
-  listeners.add(l);
-  return () => void listeners.delete(l);
-};
-
-/**
  * A silent loop of stock footage over its own first frame (components/site/samples.tsx CLIPS; the footage is a Pexels
  * contributor's, credited on the picture). The still under it is the clip's frame 0 and is the poster, and stays in the
  * page exactly as it was, so with this component absent, not yet loaded, blocked or switched off the picture is the
@@ -53,19 +30,25 @@ const subscribe = (l: () => void) => {
  *
  * It follows these rules, each one tested:
  * - never rendered, so never fetched, under prefers-reduced-motion or on Save-Data or a slow connection;
- * - nothing is downloaded until it is wanted: the first screen's clip starts after the page has loaded and gone idle
- *   (so the still, not the clip, is what the page's LCP measures), every other clip when it is the one most on screen;
- *   `preload="none"` until then; only one clip plays at a time (see `shown` above);
+ * - nothing is downloaded until it is wanted: the first screen's clip after the page has loaded and gone idle (so the still,
+ *   not the clip, is what the page's LCP measures), every other clip when it comes within half a screen of the viewport
+ *   (`preload="none"` until then, `auto` from then, so it is already buffered when it is seen);
+ * - every clip that shows at least 35% of itself plays, as many at once as the screen shows (components/site/clip-turns.ts,
+ *   which holds the measurement and the safety cap); one that is waiting for its turn or has stalled shows its poster, never a
+ *   stopped frame, and one that played and had to stop resumes where it was the moment it may play again;
  * - one rendition, chosen when it mounts: 640 x 360 below 860 px of screen or for a frame that is never wider than about 560 px
  *   (`compact`: a small frame on a wide screen does not need the 1280 file and its first-load cost), 1280 x 720 otherwise (a `media` attribute on a video's
  *   `source` is not honoured by browsers, so the choice is made here);
  * - muted, looping, inline, no controls, hidden from assistive technology (the still's description covers it); `poster` is the
  *   still itself at its phone width (the file a phone's picture already shows, so it is usually already in the cache), and the WebM is listed first, the MP4 after it
  *   (a browser takes the first it can play; Safari on a phone takes the MP4);
- * - paused while off screen and while the page's pause switch is pressed (lib/site/motion.ts), and in a hidden tab; a tap on
- *   the picture presses that switch, and a second one releases it (lib/site/motion.ts motionTap);
+ * - paused while off screen, while the page's pause switch is pressed (lib/site/motion.ts) or the Shorts feed is open over the
+ *   page (lib/site/clip-hold.ts), and in a hidden tab; a tap on the picture presses that switch, and a second one releases it
+ *   (lib/site/motion.ts motionTap);
  * - the container's `data-live` says it is playing, which swaps the badge from "Example frame (stock footage)" to "Example clip
- *   (stock footage)" and fades the clip in over the still.
+ *   (stock footage)" and fades the clip in over the still. It is taken away again whenever the clip stops for any reason but one
+ *   of the page's holds (off screen, no turn, buffering), so the still, not a frozen frame, is what shows; under a hold the frame
+ *   the visitor stopped on stays.
  */
 export function LoopClip({
   clip,
@@ -81,10 +64,8 @@ export function LoopClip({
   position?: string;
   compact?: boolean;
   /**
-   * A grid of small loops (the gallery, the model tiles): on a screen of 768 px or more, each one plays while at least a quarter
-   * of it is in view, as an explore grid does, instead of only the one clip most on screen. Each is the 640 px file. On a phone it
-   * is one clip at a time as everywhere else, because two at once cost a throttled phone half its frames; the others' posters
-   * drift slowly instead (.nx-drift-pic in site-next.css), so no card looks dead.
+   * A grid of small loops (the gallery, the model tiles): each is the 640 px file on every screen, because a grid's tile is never a
+   * large picture. It plays by the same rule as every clip (on screen, a turn), all of a grid's tiles in view at once.
    */
   together?: boolean;
 } & (
@@ -105,13 +86,12 @@ export function LoopClip({
   // once the video is in the page, and nothing may play (and fetch the 1280 file) before it is made.
   const [sized, setSized] = useState(false);
   const [wanted, setWanted] = useState(false);
-  // In a grid on a wide screen (`together`): whether this clip shows enough of itself to play, whichever clip leads.
-  const [grid, setGrid] = useState(false);
-  const [inView, setInView] = useState(false);
-  const id = useRef<symbol>(null as unknown as symbol);
-  if (!id.current) id.current = Symbol("clip");
-  // Whether this clip is the one that shows most of itself right now.
-  const lead = useSyncExternalStore(subscribe, () => leaderId === id.current, () => false);
+  const visible = usePageVisible();
+  // The page's holds: the visitor's switch, the Shorts feed, a hidden tab. Under one of them the clip keeps the frame it stopped on.
+  const hold = paused || held || !visible;
+  const near = useClipNear(ref, allowed);
+  // A turn is asked for only while nothing holds the clip, so a held clip never keeps another from playing.
+  const turn = useClipTurn(ref, sized && wanted && !hold, allowed);
 
   useEffect(() => {
     if (!clipsAllowed()) return;
@@ -119,8 +99,6 @@ export function LoopClip({
     const small = compact || together || !wide;
     setSize(small ? "sm" : "md");
     setSized(small || !sources.lg);
-    // A grid plays all its clips in view from a tablet up (each is the small file); a phone keeps one at a time.
-    setGrid(together && window.matchMedia("(min-width: 768px)").matches);
     setAllowed(true);
   }, [compact, together, sources.lg]);
 
@@ -139,32 +117,11 @@ export function LoopClip({
     if (size === "lg") ref.current?.load();
   }, [size]);
 
-  // When the clip may start: the first screen's after load and idle, the rest when they come near the screen.
+  // When the clip may start: the first screen's after load and idle, the rest at once (each then waits to be near and on screen).
   useEffect(() => {
     const v = ref.current;
     if (!allowed || !v) return;
     const stops: Array<() => void> = [];
-    if (typeof IntersectionObserver !== "undefined") {
-      const io = new IntersectionObserver(
-        ([e]) => {
-          const ratio = e.intersectionRatio ?? (e.isIntersecting ? 1 : 0);
-          // A grid clip never takes the lead from the page's one big clip: it only plays while it is itself in view.
-          if (grid) setInView(ratio >= 0.25);
-          else setShown(id.current, ratio);
-        },
-        { threshold: [0, 0.05, 0.1, 0.25, 0.5, 0.75, 1] },
-      );
-      io.observe(v);
-      stops.push(() => {
-        io.disconnect();
-        if (grid) setInView(false);
-        else setShown(id.current, 0);
-      });
-    } else if (grid) {
-      setInView(true);
-    } else {
-      setShown(id.current, 1);
-    }
     if (early) {
       let timer = 0;
       const go = () => {
@@ -181,24 +138,38 @@ export function LoopClip({
     } else {
       setWanted(true);
     }
-    const mark = () => v.parentElement?.setAttribute("data-live", "true");
+    const box = v.parentElement;
+    const mark = () => box?.setAttribute("data-live", "true");
+    // A stall mid-loop (a slow link) goes back to the still rather than holding a half-loaded frame; a blip shorter than this
+    // (the loop's own seek back to 0) does not flash the still.
+    let stall = 0;
+    const waiting = () => {
+      window.clearTimeout(stall);
+      stall = window.setTimeout(() => {
+        if (!v.paused && v.readyState < 3) box?.removeAttribute("data-live");
+      }, 400);
+    };
     v.addEventListener("playing", mark);
-    stops.push(() => v.removeEventListener("playing", mark));
+    v.addEventListener("waiting", waiting);
+    stops.push(() => {
+      v.removeEventListener("playing", mark);
+      v.removeEventListener("waiting", waiting);
+      window.clearTimeout(stall);
+    });
     return () => stops.forEach((s) => s());
-  }, [allowed, early, grid]);
+  }, [allowed, early]);
 
-  // Play only while wanted, on screen, not paused by the visitor and with the tab showing.
+  // Play while it has a turn and nothing holds it. play() carries on from where it stopped, so a clip that scrolled away and back
+  // resumes rather than starting over; its poster shows only until its next frame ("playing" puts data-live back).
   useEffect(() => {
     const v = ref.current;
     if (!allowed || !v) return;
-    const sync = () => {
-      if (sized && wanted && (grid ? inView : lead) && !paused && !held && document.visibilityState === "visible") void Promise.resolve(v.play()).catch(() => undefined);
-      else v.pause();
-    };
-    sync();
-    document.addEventListener("visibilitychange", sync);
-    return () => document.removeEventListener("visibilitychange", sync);
-  }, [allowed, sized, wanted, lead, paused, held, grid, inView]);
+    if (sized && wanted && turn && !hold) void Promise.resolve(v.play()).catch(() => undefined);
+    else {
+      v.pause();
+      if (!hold) v.parentElement?.removeAttribute("data-live");
+    }
+  }, [allowed, sized, wanted, turn, hold]);
 
   // A tap on the picture is the pointer's pause: one delegated listener for the whole page (lib/site/motion.ts motionTap), which
   // also covers a still poster that drifts when no clip may play.
@@ -206,7 +177,7 @@ export function LoopClip({
 
   if (!allowed) return null;
   return (
-    <video ref={ref} className="nx-clip" muted loop playsInline preload="none" poster={poster} disablePictureInPicture aria-hidden tabIndex={-1} style={position ? { objectPosition: position } : undefined}>
+    <video ref={ref} className="nx-clip" muted loop playsInline preload={wanted && near ? "auto" : "none"} poster={poster} disablePictureInPicture aria-hidden tabIndex={-1} style={position ? { objectPosition: position } : undefined}>
       <source src={size === "sm" ? sources.smWebm : size === "lg" && sources.lg ? sources.lg.webm : sources.webm} type="video/webm" />
       <source src={size === "sm" ? sources.smMp4 : size === "lg" && sources.lg ? sources.lg.mp4 : sources.mp4} type="video/mp4" />
     </video>

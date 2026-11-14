@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 import { LoopClip } from "@/components/site/LoopClip";
+import { holdClips } from "@/lib/site/clip-hold";
+import { setMotionPaused } from "@/lib/site/motion";
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { devDictionaries } from "@/lib/i18n/dev";
 import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
 import { SAMPLES, SLOTS, slotMedia } from "@/components/site/samples";
 import { stockInUse } from "@/components/site/stock-in-use";
-import { placeLabelProblems } from "./helpers/showcase-scope";
+import { EXAMPLE_THUMB_JOB } from "@/components/site/samples";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { SignOffPicture } from "@/components/site/SolutionPictures";
 
@@ -93,24 +95,21 @@ describe("no stock picture is left on the public site (round 10)", () => {
 });
 
 describe("the publish desk's frame says what it is, on the frame and, for a phone, under it", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: stock footage is labelled an example and credited (with a caption for a phone); one of our samples is labelled AI-generated with its model's credit under the drawing", (code) => {
+  // The desk's video is titled with the example topic; its frame was a sample of a giant dog in a street, then a still (owner, 2026-11-14).
+  it.each(LOCALES.map((l) => l.code))("%s: the frame plays the example topic's own clip, labelled AI-generated on it and again under the drawing, with no stock credit", (code) => {
     const t = dictionaries[code];
     const { container } = render(<SignOffPicture t={t} />);
     const frame = container.querySelector(".st-signoff-frame")!;
-    const m = slotMedia("solutions.youtube-channels");
-    if (m.kind === "stock") {
-      expect(frame.getAttribute("data-clip")).toBe(m.clip);
-      expect(frame.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(m.footage ? t.site.samples.frameTag : t.site.samples.tag);
-      const credit = creditLine(m.id, t.site.samples.credit);
-      expect(frame.querySelector(".nx-result-credit")?.textContent).toBe(credit);
-      expect(container.querySelector(".st-signoff-caption")?.textContent).toContain(credit);
-    } else {
-      expect(frame.getAttribute("data-showcase-entry")).toBe(m.entry.jobId);
-      expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
-      expect(container.querySelector(".st-signoff-caption")).toBeNull();
-      expect(placeLabelProblems(container.querySelector(".nx-place-credit")!, m, t.site)).toEqual([]);
-      expect(container.innerHTML).not.toMatch(/pexels/i);
-    }
+    expect(container.querySelector(".st-signoff-title")?.textContent).toBe(t.site.solutions.pictures.signoff.video);
+    expect(frame.querySelector("img")?.getAttribute("data-sample-job")).toBe(EXAMPLE_THUMB_JOB);
+    expect(frame.getAttribute("data-showcase-entry")).toBe(EXAMPLE_THUMB_JOB);
+    expect(frame.getAttribute("data-clip")).toBe("sample");
+    expect(frame.querySelector("[data-sample]")).toBeNull();
+    expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
+    expect(frame.querySelector(".nx-result-credit")).toBeNull();
+    expect(container.querySelector(".st-signoff-caption")).toBeNull();
+    expect(container.querySelector(".nx-place-credit")?.textContent).toBe(t.site.gallery.badge);
+    expect(container.innerHTML).not.toMatch(/pexels/i);
     // The flat drawn placeholder is gone.
     expect(container.querySelector(".st-clip-pic")).toBeNull();
   });
@@ -188,30 +187,34 @@ describe("the repository holds derivatives only", () => {
   });
 });
 
-describe("only one clip plays at a time", () => {
+describe("every clip on screen plays", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    setMotionPaused(false);
   });
 
-  it("plays the clip that shows most of itself and holds the other on its still (two playing at once halved a throttled phone's frames)", () => {
-    const entries: { cb: IntersectionObserverCallback; el?: Element }[] = [];
-    vi.stubGlobal("matchMedia", (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }));
+  /** Two clips in their boxes, with the two observers each one has: the turn's (no margin) and the preload's (`rootMargin`). */
+  function twoClips() {
+    const entries: { cb: IntersectionObserverCallback; el?: Element; near: boolean }[] = [];
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("max-width: 767px"), media: q, addEventListener() {}, removeEventListener() {} }));
     vi.stubGlobal(
       "IntersectionObserver",
       class {
         i: number;
-        constructor(cb: IntersectionObserverCallback) {
-          this.i = entries.push({ cb }) - 1;
+        constructor(cb: IntersectionObserverCallback, o?: IntersectionObserverInit) {
+          this.i = entries.push({ cb, near: !!o?.rootMargin }) - 1;
         }
         observe(el: Element) {
           entries[this.i].el = el;
         }
         disconnect() {}
+        unobserve() {}
       },
     );
     const played = new Map<Element, number>();
     const paused = new Map<Element, number>();
+    const loads = vi.fn();
     HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
       played.set(this, (played.get(this) ?? 0) + 1);
       return Promise.resolve();
@@ -219,27 +222,103 @@ describe("only one clip plays at a time", () => {
     HTMLMediaElement.prototype.pause = function (this: HTMLMediaElement) {
       paused.set(this, (paused.get(this) ?? 0) + 1);
     };
+    HTMLMediaElement.prototype.load = loads;
     const { container } = render(
       <div>
-        <LoopClip clip="pottery" poster="/a.webp" />
-        <LoopClip clip="coast" poster="/b.webp" />
+        <div data-clip="pottery">
+          <LoopClip clip="pottery" poster="/a.webp" />
+        </div>
+        <div data-clip="coast">
+          <LoopClip clip="coast" poster="/b.webp" />
+        </div>
       </div>,
     );
     const [a, b] = [...container.querySelectorAll("video")];
-    const see = (el: Element, ratio: number) => act(() => entries.filter((e) => e.el === el).forEach((e) => e.cb([{ target: el, isIntersecting: ratio > 0, intersectionRatio: ratio } as IntersectionObserverEntry], {} as IntersectionObserver)));
-    see(a, 0.3);
+    const fire = (el: Element, near: boolean, ratio: number) =>
+      act(() => entries.filter((e) => e.el === el && e.near === near).forEach((e) => e.cb([{ target: el, isIntersecting: ratio > 0, intersectionRatio: ratio } as IntersectionObserverEntry], {} as IntersectionObserver)));
+    const see = (el: Element, ratio: number) => {
+      fire(el, true, ratio > 0 ? 1 : 0);
+      fire(el, false, ratio);
+    };
+    const live = (el: Element) => el.parentElement!.getAttribute("data-live") === "true";
+    const playing = (el: Element) => act(() => void el.dispatchEvent(new Event("playing")));
+    return { a, b, see, fire, live, playing, played, paused, loads };
+  }
+
+  // What would break (the owner's report of 2026-11-14): one clip played and every other clip on a phone's screen held a still or a
+  // stopped frame, so the page read as frozen. The model grid alone shows three at once on a 390 px phone.
+  it("plays every clip that shows at least 35% of itself, together, on a phone too; a sliver below that does not start", () => {
+    const { a, b, see, played } = twoClips();
+    see(a, 0.6);
+    see(b, 0.9);
     expect(played.get(a)).toBe(1);
-    // A second clip that shows more of itself takes over: the first is paused, the second plays.
-    see(b, 0.8);
     expect(played.get(b)).toBe(1);
-    expect(paused.get(a) ?? 0).toBeGreaterThan(0);
-    // One that shows less does not: the leader keeps playing and the other is not started.
-    see(a, 0.5);
-    expect(played.get(a)).toBe(1);
-    expect(played.get(b)).toBe(1);
-    // The first takes the lead back when it shows more.
-    see(a, 0.95);
+    cleanup();
+    const two = twoClips();
+    two.see(two.a, 0.2);
+    expect(two.played.get(two.a) ?? 0).toBe(0);
+    two.see(two.a, 0.35);
+    expect(two.played.get(two.a)).toBe(1);
+  });
+
+  // What would break: a clip that scrolled away and back showed the frame it stopped on (readyState 4, paused) while it waited, the
+  // "frozen" half of the report; or it started over from frame 0 instead of carrying on.
+  it("a clip that leaves pauses and shows its poster again, and resumes from where it was (no reload) the moment it is back", () => {
+    const { a, b, see, live, playing, played, paused, loads } = twoClips();
+    see(a, 1);
+    see(b, 1);
+    playing(a);
+    playing(b);
+    expect(live(a) && live(b)).toBe(true);
+    const [pa, pb] = [paused.get(a) ?? 0, paused.get(b) ?? 0];
+    see(a, 0);
+    expect(paused.get(a) ?? 0).toBeGreaterThan(pa);
+    expect(live(a)).toBe(false);
+    // The other is untouched: it was never asked to stop.
+    expect(live(b)).toBe(true);
+    expect(paused.get(b) ?? 0).toBe(pb);
+    see(a, 0.8);
     expect(played.get(a)).toBe(2);
-    expect(paused.get(b) ?? 0).toBeGreaterThan(0);
+    expect(loads).not.toHaveBeenCalled();
+  });
+
+  // What would break: a clip that had not been fetched yet (preload="none", readyState 0) came into view as a still and took a
+  // second or more to move; or every clip on the page was fetched at load.
+  it("starts loading a clip when it comes near the screen, before it may play, and not before", () => {
+    const { a, b, fire } = twoClips();
+    expect(a.getAttribute("preload")).toBe("none");
+    fire(a, true, 1);
+    expect(a.getAttribute("preload")).toBe("auto");
+    expect(b.getAttribute("preload")).toBe("none");
+  });
+
+  // What would break: the page's holds stopped working once more than one clip may play: the visitor's pause switch (WCAG 2.2.2)
+  // or the Shorts feed, under which only the feed's clip may decode.
+  it("stops every clip under the visitor's pause switch and under the Shorts feed, keeps the frame they stopped on, and carries on after", () => {
+    const { a, b, see, live, playing, played, paused } = twoClips();
+    see(a, 1);
+    see(b, 1);
+    playing(a);
+    playing(b);
+    const before = () => [paused.get(a) ?? 0, paused.get(b) ?? 0];
+    const [pa, pb] = before();
+    act(() => setMotionPaused(true));
+    expect(paused.get(a) ?? 0).toBeGreaterThan(pa);
+    expect(paused.get(b) ?? 0).toBeGreaterThan(pb);
+    // The visitor stopped them: the frame they stopped on stays, it does not jump back to the poster.
+    expect(live(a) && live(b)).toBe(true);
+    act(() => setMotionPaused(false));
+    expect(played.get(a)).toBe(2);
+    expect(played.get(b)).toBe(2);
+    const [qa, qb] = before();
+    let release = () => {};
+    act(() => {
+      release = holdClips();
+    });
+    expect(paused.get(a) ?? 0).toBeGreaterThan(qa);
+    expect(paused.get(b) ?? 0).toBeGreaterThan(qb);
+    act(() => release());
+    expect(played.get(a)).toBe(3);
+    expect(played.get(b)).toBe(3);
   });
 });

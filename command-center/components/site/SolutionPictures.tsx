@@ -2,9 +2,8 @@ import { Lock } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ASPECT_RATIOS } from "@/lib/creative/studio";
-import { slotMedia } from "@/components/site/samples";
 import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
-import { creditLine } from "@/lib/site/media";
+import { EXAMPLE_THUMB_JOB, exampleMedia } from "@/components/site/samples";
 
 /**
  * The Studio composer, drawn: a description, the shape keys, a style chip and
@@ -100,7 +99,7 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
     { id: "check", name: s.check, state: s.checkState, tone: "ok" as const },
     { id: "first", name: s.first, state: s.firstState, tone: "run" as const },
   ];
-  const m = slotMedia("solutions.youtube-channels");
+  const m = exampleMedia(EXAMPLE_THUMB_JOB);
   return (
     <>
     <figure role="img" aria-label={s.figure} className="st-monitor">
@@ -112,36 +111,18 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
         <span className="st-tag">{s.tag}</span>
       </div>
       <div className="flex flex-col gap-4 p-4">
-        {/* The desk's own frame is what the slot shows (one of our samples, or stock footage, each labelled as what it is); the desk around it is the drawing. */}
-        <div className="st-signoff-frame" {...placeBox(m)}>
-          <PlaceFill media={m} s={t.site} alt="" compact labels={false} sizes="(min-width: 860px) 480px, calc(100vw - 96px)" />
+        {/* The desk's own frame is the video named under it (the example topic, football in 2050), so it plays that example's own
+            clip made in our Studio (components/site/slots.ts EXAMPLE_THUMB_JOB); the desk around it is the drawing. Without the
+            clip's files the frame is empty, never a stand-in picture. */}
+        <div className="st-signoff-frame" {...(m ? placeBox(m) : {})}>
+          {m && <PlaceFill media={m} s={t.site} alt="" compact sizes="(min-width: 1024px) 520px, 90vw" labels={false} />}
           <span className="st-signoff-private">{s.private}</span>
-          {m.kind === "ai" ? (
+          {m && (
             <span className="nx-result-badge st-signoff-badge" data-kind="ai">
               {t.site.gallery.badge}
             </span>
-          ) : (
-            <>
-              <span className="nx-result-badge st-signoff-badge" data-kind="still">
-                {m.footage ? t.site.samples.frameTag : t.site.samples.tag}
-              </span>
-              {m.clip && (
-                <span className="nx-result-badge st-signoff-badge" data-kind="clip">
-                  {t.site.samples.clipTag}
-                </span>
-              )}
-              <span className="nx-result-credit">{creditLine(m.id, t.site.samples.credit)}</span>
-            </>
           )}
         </div>
-        {/* On a phone the frame is too small for three labels: its label and credit are a caption under it instead. A sample's badge is printed again under the drawing, where assistive tech reads it. */}
-        {m.kind === "stock" && (
-          <p className="st-signoff-caption">
-            <span data-kind="still">{m.footage ? t.site.samples.frameTag : t.site.samples.tag}</span>
-            {m.clip && <span data-kind="clip">{t.site.samples.clipTag}</span>}
-            {` · ${creditLine(m.id, t.site.samples.credit)}`}
-          </p>
-        )}
         <p className="st-signoff-title">{s.video}</p>
         <ol className="st-signoff-gates">
           {gates.map((g) => (
@@ -157,9 +138,9 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
         </p>
       </div>
     </figure>
-    {/* A role="img" figure hides its words from assistive tech, so the sample's AI-generated badge is said again under it, in the sample's own box. */}
-    {m.kind === "ai" && (
-      <p className="nx-place-credit" {...placeBox({ ...m, moving: false })}>
+    {/* A role="img" figure hides its words from assistive tech, so the frame's AI-generated badge is said again under it. */}
+    {m && (
+      <p className="nx-place-credit" data-media="ai">
         <AiBadge g={t.site.gallery} />
       </p>
     )}

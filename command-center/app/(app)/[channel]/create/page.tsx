@@ -15,7 +15,9 @@ import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } fr
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery, withPreviews } from "@/lib/creative/studio";
-import { parseIdParam, prefillFromImprove } from "@/lib/creative/improve";
+import { cleanLinkWords, parseIdParam, prefillFromImprove } from "@/lib/creative/improve";
+import { PENDING_PARAM } from "@/lib/site/prompt-link";
+import { NONCE_RE } from "@/lib/site/pending-attachment";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { presetPrefill } from "@/lib/presets";
 import { StudioHome, type AssistantData } from "@/components/studio/StudioHome";
@@ -31,6 +33,8 @@ import { loadEditorProjects } from "@/lib/server/editor";
 import { effectFromQuery, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
 import { EffectBanner } from "@/components/effects/EffectBanner";
 import { EffectsDesk } from "@/components/effects/EffectsDesk";
+
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -144,6 +148,9 @@ export default async function CreatePage({
   // desk, else the YouTube run when Home handed over a topic, else the overview.
   // A desk only arranges the page: every price, hold and create call is the same.
   const desk = deskFromQuery({ desk: q.desk, tool: q.tool, hasRunPrefill: !!runInitial });
+  // The home page's attached file: only a well-formed nonce is passed on (the browser takes the file only when it matches).
+  const askedNonce = one(q[PENDING_PARAM]);
+  const pendingNonce = typeof askedNonce === "string" && NONCE_RE.test(askedNonce) ? askedNonce : null;
 
   // The overview's side panels, read as the member (RLS) and only on the overview.
   // Unreadable is unknown, never a zero; the operator's own organization is not charged.
@@ -183,6 +190,9 @@ export default async function CreatePage({
           credits={credits}
           projects={projects}
           assistant={assistant}
+          // The public home page's composer kept a file in this browser for this link (lib/site/pending-attachment.ts): the box asks
+          // whether to use it. Its words are cleaned and bounded as any link's; the tool's own limit applies once the tool is known.
+          pending={pendingNonce ? { nonce: pendingNonce, words: cleanLinkWords(one(q.prompt)) } : null}
         />
       )}
       {desk === "effects" &&

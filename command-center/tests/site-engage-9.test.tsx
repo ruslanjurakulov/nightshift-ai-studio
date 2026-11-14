@@ -216,8 +216,10 @@ describe("clips on /signup, /mcp and the examples (round 9)", () => {
     const wide = render(<LoopClip clip="caravan" poster="p.webp" />);
     act(() => undefined);
     expect(wide.container.querySelector("source[type='video/webm']")?.getAttribute("src")).toBe(CLIPS.caravan.webm);
+    // The /pricing card and the publish desk sit beside the example topic and play its own clip (tests/site-art.test.tsx pins
+    // which); both frames are never wider than about 560 px, so both take the 640 px file on any screen.
     const pricing = readFileSync(join(ROOT, "components/pricing/PricingView.tsx"), "utf8");
-    expect(pricing).toMatch(/chatCopy\(t, "pricing\.card"\)\} compactClip/);
+    expect(pricing).toMatch(/<ChatCard copy=\{chatCopy\(t\)\} compactClip \/>/);
     expect(readFileSync(join(ROOT, "components/site/SolutionPictures.tsx"), "utf8")).toMatch(/<PlaceFill media=\{m\} s=\{t\.site\} alt="" compact /);
   });
 

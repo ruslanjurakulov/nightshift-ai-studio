@@ -11,12 +11,18 @@ vi.mock("next/link", () => ({ default: ({ href, children, ...rest }: { href: str
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import { HeroBackdrop, SLOT_ART } from "@/components/site/art";
-import { ART_IDS, ART_SIZE, HERO_ART, HERO_ART_SM, SLOT_DEFS, THUMB_ART } from "@/lib/site/art";
-import { STEP_PHONE_JOB } from "@/lib/site/tool-samples";
+import { ART_IDS, ART_SIZE, HERO_ART, HERO_ART_SM, SLOT_DEFS } from "@/lib/site/art";
+import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
+import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import { EXAMPLE_JOBS, EXAMPLE_PHONE_JOB, EXAMPLE_THUMB_JOB, landingExcludedJobs } from "@/components/site/slots";
+import { effectPreviewJobs, landingGalleryJobs, sampleSectionJobs } from "@/components/site/landing-samples";
+import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
+import { SignOffPicture } from "@/components/site/SolutionPictures";
+import { FlowCard } from "@/components/auth/FlowCard";
 
 /**
- * The AI-generated pictures (lib/site/art.ts): the hero's backdrop (wide, and a portrait cut for phones) and the Silk Road sample
- * thumbnail's background. What would break: the thumbnail without a description in one language, a picture that says it is a photo
+ * The AI-generated pictures (lib/site/art.ts): the hero's backdrop (wide, and a portrait cut for phones) and the eleven slots, and
+ * the example topic's clips beside its ask. What would break: a picture without a description in one language, a picture that says it is a photo
  * or a screenshot, the 94 KB wide hero fetched on a phone (or the phone's cut on a desktop), a file that grew past its budget, a
  * box that moves when a picture arrives, a tool tile that is a picture again, and a page that still says "every picture is stock".
  */
@@ -30,10 +36,11 @@ const landing = (locale: "en" | "ru" | "uz" = "en") =>
 afterEach(cleanup);
 
 describe("the files", () => {
-  const fixed = [HERO_ART, HERO_ART_SM, THUMB_ART];
+  // The Silk Road thumbnail (thumb-silkroad) is gone with its example: the example topic's result is its own clips now.
+  const fixed = [HERO_ART, HERO_ART_SM];
   const slots = SLOT_DEFS.map((d) => d.slug);
-  const budgets: Record<string, number> = { [HERO_ART]: 220 * KB, [HERO_ART_SM]: 90 * KB, [THUMB_ART]: 150 * KB, ...Object.fromEntries(slots.map((n) => [n, 90 * KB])) };
-  it("holds one WebP for the hero, its phone cut, the thumbnail and each of the eleven slots, within their byte budgets, and nothing else (derivatives only: the PNG originals are not in the repository)", () => {
+  const budgets: Record<string, number> = { [HERO_ART]: 220 * KB, [HERO_ART_SM]: 90 * KB, ...Object.fromEntries(slots.map((n) => [n, 90 * KB])) };
+  it("holds one WebP for the hero, its phone cut and each of the eleven slots, within their byte budgets, and nothing else (derivatives only: the PNG originals are not in the repository)", () => {
     const names = [...fixed, ...slots];
     expect(readdirSync(join(ROOT, "components/site/art")).sort()).toEqual(names.map((n) => `${n}.webp`).sort());
     for (const n of names) {
@@ -113,8 +120,10 @@ describe("the page says what the pictures are", () => {
     expect(s.wall.label).toMatch(code === "en" ? /Real outputs/ : code === "ru" ? /Настоящие результаты/ : /haqiqiy natijalar/);
     expect(s.wall.label + s.wall.note).not.toMatch(STOCK);
     expect(s.wall.note).not.toMatch(/decoration|оформлени|bezak/i);
-    // Said as decoration, not as the product: the footer says so of the one picture that is, in every language.
+    // An AI-generated clip or picture is not the product either, in every language. No decoration picture is left to name: the
+    // Registan was the last one, and the footer no longer mentions it.
     expect(s.credits.lead).toMatch(code === "en" ? /not a screenshot of the product/ : code === "ru" ? /не скриншот продукта/ : /mahsulotning skrinshoti emas/);
+    for (const v of [s.credits.lead, s.credits.leadNoStock, s.credits.generated]) expect(v).not.toMatch(/Registan|Регистан|Registon|Silk Road|Шёлков|Ipak yoʻli/);
   });
 
   it.each(LOCALES.map((l) => l.code))("%s: the footer and the wall's wording agree with which slots hold a picture (the steps and the tools are named exactly when one does; an icon wall says icons)", (code) => {
@@ -179,7 +188,14 @@ describe("the steps and the tool wall", () => {
     const steps = [...container.querySelectorAll(".nx-strip-step")];
     expect(steps).toHaveLength(3);
     expect(steps.map((li) => li.firstElementChild?.getAttribute("data-step"))).toEqual(["topic", "price", "approve"]);
-    for (const li of steps) expect([...li.children].slice(1).map((c) => c.tagName)).toEqual(["SPAN", "H3", "P"]);
+    // The third step's words stop at two sentences; the whole approval story is behind the Approvals band's own link.
+    expect(steps.map((li) => [...li.children].slice(1).map((c) => c.tagName))).toEqual([["SPAN", "H3", "P"], ["SPAN", "H3", "P"], ["SPAN", "H3", "P", "A"]]);
+    const more = steps[2].lastElementChild as HTMLAnchorElement;
+    expect(more.getAttribute("href")).toBe("/solutions/youtube-channels");
+    expect(more.textContent).toBe(t.site.caps.items.find((i) => i.id === "approvals")!.cta);
+    expect(container.querySelector("#approvals .nx-show-cta")?.getAttribute("href")).toBe(more.getAttribute("href"));
+    const approveBody = steps[2].querySelector("p")!.textContent!;
+    expect(approveBody.split(/(?<=[.!?])\s+/).filter(Boolean)).toHaveLength(2);
     // 1: the chat card's own example ask, typed; a picture of a box, hidden from assistive tech.
     const topic = steps[0].firstElementChild!;
     expect(topic.getAttribute("aria-hidden")).toBe("true");
@@ -189,13 +205,46 @@ describe("the steps and the tool wall", () => {
     expect(price.querySelector(".nx-step-key")?.textContent).toBe(t.gen.generate);
     expect(price.querySelector(".nx-step-price")?.textContent).toBe(t.site.how.priceLater);
     expect(price.textContent).not.toMatch(/\d/);
-    // 3: one of our vertical samples in a phone, under "Private on YouTube", in the sample's own box with its model's credit.
+    // 3: the finished video of step 1's ask playing in a phone, under "Private on YouTube": the example's own vertical clip,
+    // labelled AI-generated and described for what it shows. It was a sneaker falling on a street, then a still of the Registan
+    // ("you asked for a video and put a picture as the result", owner, 2026-11-14).
     const phone = steps[2].firstElementChild as HTMLElement;
-    expect(phone.dataset.showcaseEntry).toBe(STEP_PHONE_JOB);
+    const box = phone.querySelector(".nx-step-phone")!;
+    expect(box.getAttribute("data-showcase-entry")).toBe(EXAMPLE_PHONE_JOB);
+    expect(box.getAttribute("data-clip")).toBe("sample");
+    const shot = box.querySelector("img")!;
+    expect(shot.getAttribute("data-sample-job")).toBe(EXAMPLE_PHONE_JOB);
+    expect(shot.getAttribute("alt")).toBe(t.site.how.phoneAlt);
+    expect(shot.classList.contains("nx-step-shot") && shot.classList.contains("nx-drift-pic")).toBe(true);
+    // The stock labels are not on it (labels={false}): only the AI badge and the private chip.
+    expect(box.querySelector(".nx-result-badge, .nx-result-credit, [data-sample]")).toBeNull();
     expect(phone.querySelector(".nx-step-private")?.textContent).toBe((t.site.stage.steps.find((s) => s.id === "approve") as { lamp: string }).lamp);
     expect(phone.querySelector(".nx-step-credit")?.textContent).toContain(t.site.gallery.badge);
-    expect(phone.querySelector("img")?.getAttribute("loading")).toBe("lazy");
+    expect(shot.getAttribute("loading")).toBe("lazy");
     expect(container.querySelector("img.nx-strip-pic, img.nx-wall-pic, [data-art-id^='step-'], [data-art-id^='tool-']")).toBeNull();
+  });
+
+  // The owner saw the phone small and standing above steps 1 and 2, its still opening on a cut-off shoe (2026-11-14).
+  it("puts the three live pieces on stages of one fixed height from 860 px, the phone filling its stage, its vertical clip centred in it", () => {
+    expect(css).toMatch(/@media \(min-width: 860px\) \{ \.nx-step-live \{ height: 264px;/);
+    expect(css).toMatch(/\.nx-step-live \{[^}]*border-radius: 20px; border: 1px solid var\(--ns-rule\); background: var\(--ns-ground\); \}/);
+    expect(css).toMatch(/@media \(min-width: 860px\) \{ \.nx-step-phone \{ height: 100%; \} \}/);
+    expect(css).toMatch(/\.nx-step-phone \{[^}]*aspect-ratio: 9 \/ 16;/);
+    // The clip is already about 9:16 (1280 x 2240): centred, almost no crop. The clip itself covers its frame the same way (.nx-clip).
+    expect(css).toMatch(/\.nx-step-shot \{[^}]*object-fit: cover; object-position: 50% 50%; \}/);
+    expect(SHOWCASE_ENTRIES.find((e) => e.jobId === EXAMPLE_PHONE_JOB)!.height / SHOWCASE_ENTRIES.find((e) => e.jobId === EXAMPLE_PHONE_JOB)!.width).toBeCloseTo(16 / 9, 1);
+    // Its first frame's slow push-in is the shared drift: absent under reduced motion, held by the page's pause switch, off while the clip plays.
+    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\s*\.nx-drift-pic \{ animation: nx-poster-drift/);
+    expect(css).toMatch(/html\[data-motion="paused"\] \.nx-drift-pic \{ animation-play-state: paused !important; \}/);
+    expect(css).toMatch(/\[data-live="true"\] > \.nx-drift-pic \{ animation: none; \}/);
+    // Only a min-height was shared before, which let the pieces end at different heights.
+    expect(css).not.toMatch(/\.nx-step-live \{ min-height: 196px; \}/);
+  });
+
+  // Scrolled to "How it works", the Approvals card's empty lower strip was all that showed under the header (owner, 2026-11-14).
+  it("sizes the drawn Approvals card to its words and its screen, not to a photograph band's 560 px floor", () => {
+    expect(css).toMatch(/\.nx-show-card\[data-art="drawn"\] \{ display: grid; grid-template-columns: 46% minmax\(0, 1fr\); align-items: center; min-height: 0;/);
+    expect(css).toMatch(/\.nx-show-card\[data-art="drawn"\] \.nx-show-pic \{ position: relative; inset: auto;/);
   });
 
   it("prints the price on the Generate key's step only when the live price list holds it", () => {
@@ -251,13 +300,133 @@ describe("the steps and the tool wall", () => {
 });
 
 describe("the sample thumbnail", () => {
-  it("shows the Silk Road picture only behind the Silk Road example, with the words kept over a scrim", () => {
+  it("shows the example clip's first frame only behind the example topic, with the words kept over a scrim", () => {
     const { container } = landing();
     const pic = container.querySelector(".nx-try-thumb-pic")!;
     expect(pic.getAttribute("data-picture")).toBe("true");
-    expect(pic.querySelector("img")?.getAttribute("data-art-id")).toBe(THUMB_ART);
+    expect(pic.querySelector("img")?.getAttribute("data-sample-job")).toBe(EXAMPLE_THUMB_JOB);
     expect(pic.querySelector(".nx-try-thumb-scrim")).not.toBeNull();
     expect(pic.querySelector("svg[data-art='thumb'] rect[fill]:not([fill='none'])")).toBeNull();
     expect(css).toMatch(/\.nx-try-thumb-scrim \{[^}]*rgba\(6, 6, 12, 0\.86\)/);
+  });
+});
+
+/**
+ * The example topic is one story: the ask (step 1, the chat card, the plan demo, the sign-in stage), the video it makes and that
+ * video waiting for approval (step 3, the Approvals card, the /pricing card, the publish desk). Its pictures showed other prompts'
+ * samples (a falling sneaker, a jungle explorer, a chocolate pour, a giant dog) and the owner read them as "the result need not
+ * match the prompt"; then a still of the Registan beside "make a video" read as "you asked for a video and got a picture" (both
+ * 2026-11-14). The topic became football in 2050, told with two real clips made in our Studio from prompts about it. What would
+ * break: anything beside the topic that is not one of those two clips (another sample, a stock picture, a drawing's still), or a
+ * still where a clip should play.
+ */
+describe("the example topic: beside it there are only its own two football clips", () => {
+  const ABOUT_IT = /football in the year 2050/i;
+  /** The pieces of a page that tell this example: the topic and anything drawn as its result sit inside one of these. */
+  const STORY = ".nx-strip, .nx-approve-art, figure, .st-monitor, .nx-try, .nx-fcard";
+  const topics = (code: "en" | "ru" | "uz") => {
+    const s = dictionaries[code].site;
+    const brief = s.stage.steps.find((x) => x.id === "brief") as { field: string };
+    return [brief.field, s.caps.items[0].bubble, s.try.topics[0], s.solutions.pictures.signoff.video];
+  };
+  /** The smallest story piece around each place the topic is printed. */
+  const besideTopic = (root: HTMLElement, code: "en" | "ru" | "uz") => {
+    const hits = new Set<Element>();
+    for (const topic of topics(code)) {
+      for (const el of root.querySelectorAll("*")) {
+        if (!el.textContent?.includes(topic) || [...el.children].some((c) => c.textContent?.includes(topic))) continue;
+        const piece = el.closest(STORY);
+        if (piece) hits.add(piece);
+      }
+    }
+    return [...hits];
+  };
+  /** Every sample and picture in a piece is one of the example's two clips (its first frame, or the clip over it); nothing else. */
+  const problems = (piece: Element): string[] => {
+    const out: string[] = [];
+    for (const node of piece.querySelectorAll("[data-showcase-entry], [data-sample-job]")) {
+      const job = node.getAttribute("data-showcase-entry") ?? node.getAttribute("data-sample-job")!;
+      if (!EXAMPLE_JOBS.includes(job)) out.push(`sample ${job}`);
+    }
+    for (const img of piece.querySelectorAll("img")) {
+      if (!EXAMPLE_JOBS.includes(img.getAttribute("data-sample-job") ?? "")) out.push(`picture ${img.getAttribute("src")}`);
+    }
+    if (piece.querySelector("[data-sample], [data-art-id]")) out.push("a stock picture or a drawing's still");
+    return out;
+  };
+
+  it("has two clips, made in our Studio from prompts about football in 2050, both merged with their files and clips", () => {
+    for (const job of EXAMPLE_JOBS) {
+      const e = SHOWCASE_ENTRIES.find((x) => x.jobId === job)!;
+      expect(e, job).toBeTruthy();
+      expect(e.kind).toBe("video");
+      expect(e.prompt).toMatch(ABOUT_IT);
+      expect(SHOWCASE_FILES[job]?.clip, job).toBeTruthy();
+    }
+    const phone = SHOWCASE_ENTRIES.find((x) => x.jobId === EXAMPLE_PHONE_JOB)!;
+    const thumb = SHOWCASE_ENTRIES.find((x) => x.jobId === EXAMPLE_THUMB_JOB)!;
+    expect(phone.height).toBeGreaterThan(phone.width);
+    expect(thumb.width / thumb.height).toBeCloseTo(16 / 9, 1);
+  });
+
+  it("names the topic in every language, in title form beside the result and as an ask in the chat card and step 1", () => {
+    const want = { en: "What football will look like in 2050", ru: "Каким будет футбол в 2050 году", uz: "2050-yilda futbol qanday boʻladi" } as const;
+    const ask = { en: "Make a video about what football will look like in 2050.", ru: "Сделай видео о том, каким будет футбол в 2050 году.", uz: "2050-yilda futbol qanday boʻlishi haqida video qil." } as const;
+    for (const l of LOCALES) {
+      const [field, bubble, tryTopic, desk] = topics(l.code);
+      expect([field, tryTopic, desk]).toEqual([want[l.code], want[l.code], want[l.code]]);
+      expect(bubble).toBe(ask[l.code]);
+    }
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: on the landing (the steps, the Approvals card, the chat card, the plan demo)", (code) => {
+    const t = dictionaries[code];
+    const { container } = landing(code);
+    const pieces = besideTopic(container, code);
+    // The steps, the Approvals card, the chat card and the plan demo at least: the check cannot pass by finding nothing.
+    for (const sel of [".nx-strip", ".nx-approve-art", "figure.nx-chat", ".nx-try"]) expect(pieces.some((p) => p.matches(sel)), sel).toBe(true);
+    for (const p of pieces) expect(problems(p), p.className).toEqual([]);
+    // The Approvals card's thumbnail plays the wide clip, labelled AI-generated and private; the step-3 phone plays the vertical one.
+    const thumb = container.querySelector(".nx-approve-thumb")!;
+    expect(thumb.getAttribute("data-showcase-entry")).toBe(EXAMPLE_THUMB_JOB);
+    expect(thumb.getAttribute("data-clip")).toBe("sample");
+    expect(thumb.querySelector("img")?.getAttribute("data-sample-job")).toBe(EXAMPLE_THUMB_JOB);
+    expect(container.querySelector(".nx-approve-art")?.hasAttribute("id")).toBe(false);
+    expect(thumb.querySelector(".nx-ai-badge")?.textContent).toBe(t.site.gallery.badge);
+    expect(thumb.querySelector(".nx-approve-private")?.textContent).toBe((t.site.stage.steps.find((s) => s.id === "approve") as { lamp: string }).lamp);
+    expect(container.querySelector(".nx-step-phone img")?.getAttribute("data-sample-job")).toBe(EXAMPLE_PHONE_JOB);
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: on the /pricing chat card, the publish desk of /solutions and the sign-in stage", (code) => {
+    const t = dictionaries[code];
+    for (const [name, node, sel] of [
+      ["chat card", <ChatCard key="c" copy={chatCopy(t)} />, "figure.nx-chat"],
+      ["publish desk", <SignOffPicture key="d" t={t} />, ".st-monitor"],
+      ["sign-in stage", <FlowCard key="f" stage={t.site.stage} />, ".nx-fcard"],
+    ] as const) {
+      const { container } = render(node);
+      const pieces = besideTopic(container, code);
+      expect(pieces.some((p) => p.matches(sel)), name).toBe(true);
+      for (const p of pieces) expect(problems(p), name).toEqual([]);
+      cleanup();
+    }
+  });
+
+  it("keeps both clips out of every sample surface of the landing (gallery, carousel, ticker, picture → video, Effects)", () => {
+    const out = landingExcludedJobs();
+    for (const job of EXAMPLE_JOBS) {
+      expect(out, job).toContain(job);
+      expect(landingGalleryJobs(out)).not.toContain(job);
+      expect(sampleSectionJobs(out)).not.toContain(job);
+      expect(effectPreviewJobs()).not.toContain(job);
+    }
+  });
+
+  it("leaves no Silk Road picture anywhere: the art file, its id and its descriptions are gone", () => {
+    expect(readdirSync(join(ROOT, "components/site/art"))).not.toContain("thumb-silkroad.webp");
+    expect(read("lib/site/art.ts")).not.toMatch(/THUMB_ART|thumb-silkroad/);
+    expect(read("components/site/art.tsx")).not.toMatch(/ArtImg|thumb-silkroad/);
+    for (const l of LOCALES) expect(Object.keys(dictionaries[l.code].site.art.alts)).not.toContain("thumb-silkroad");
+    for (const l of LOCALES) expect(dictionaries[l.code].site.how.phoneAlt).toMatch(/football|футбол|futbol/i);
   });
 });

@@ -1,30 +1,12 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { isEffectPrompt, type Effect } from "@/lib/effects/catalog";
-import { SHOWCASE_ENTRIES, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
-import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import type { Effect } from "@/lib/effects/catalog";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { EffectArt } from "@/components/effects/EffectArt";
+import { effectSample, sampleKeepsShape } from "@/components/effects/effect-sample";
 
-/**
- * An effect's real sample: the showcase entry its `previewJobId` names, only when that entry is in lib/site/showcase.json (the
- * export checked it was the operator's own completed job, byte for byte), its files are in the repository, and it IS this
- * effect's output: a clip from the effect's tool, by one of the effect's models, given exactly the effect's words (with a subject
- * in the slot). Anything less is no sample, and the card draws its placeholder: a preview is never borrowed from another job.
- */
-export function effectSample(
-  effect: Pick<Effect, "previewJobId" | "capability" | "models" | "prompt">,
-  entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES,
-  files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES,
-): { entry: ShowcaseEntry; files: ShowcaseFiles } | null {
-  if (!effect.previewJobId) return null;
-  const entry = entries.find((e) => e.jobId === effect.previewJobId);
-  const f = files[effect.previewJobId];
-  if (!entry || !f || entry.kind !== "video" || !f.clip) return null;
-  if (entry.capability !== effect.capability || !effect.models.includes(entry.modelId) || !isEffectPrompt(effect, entry.prompt)) return null;
-  return { entry, files: f };
-}
+export { effectSample };
 
 const RATIO: Record<Effect["aspect"], string> = { "16:9": "16 / 9", "9:16": "9 / 16", "1:1": "1 / 1" };
 
@@ -44,7 +26,9 @@ export function EffectFrame({
   className?: string;
   sample?: ReturnType<typeof effectSample>;
 }) {
-  const style: CSSProperties = { aspectRatio: sample ? `${sample.entry.width} / ${sample.entry.height}` : RATIO[effect.aspect] };
+  // A sample of another shape than its effect's is cut to the effect's shape from the centre (effect-sample.ts sampleKeepsShape).
+  const own = sample && sampleKeepsShape(effect, sample.entry);
+  const style: CSSProperties = { aspectRatio: own ? `${sample.entry.width} / ${sample.entry.height}` : RATIO[effect.aspect] };
   return (
     <div className={className} style={style} data-sample={sample ? sample.entry.jobId : undefined}>
       {sample ? (

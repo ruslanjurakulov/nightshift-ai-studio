@@ -11,9 +11,12 @@ import { studioToolsOpen } from "@/lib/site/tool-samples";
  * thing the Studio made; the Approvals one is a drawn approval screen (ApprovalCard), because its words are about a decision, and
  * no generated scene illustrates "nothing airs until you say so".
  */
+/** Where "See how approval works" goes: the page that spells out who may publish what. The third step of "How it works" links here too. */
+export const APPROVALS_HREF = "/solutions/youtube-channels";
+
 const SHOWS: { id: "studio" | "approvals"; slot: SlotId | null; href: string }[] = [
   { id: "studio", slot: "show.studio", href: "/signup" },
-  { id: "approvals", slot: null, href: "/solutions/youtube-channels" },
+  { id: "approvals", slot: null, href: APPROVALS_HREF },
 ];
 
 /**

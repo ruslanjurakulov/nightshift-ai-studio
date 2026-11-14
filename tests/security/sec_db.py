@@ -162,6 +162,25 @@ def put_back_0145(session) -> None:
         session.conn.execute(MIGRATION_0145.read_text(encoding="utf-8"))
 
 
+ROLLBACK_0164 = REPO / "docs" / "sql" / "rollback_0164_public_site_stats.sql"
+#: 0164 (the site's live counters) refuses to apply without 0112's videos.cut_sha256 and 0116's video_visibility_requests: a base
+#: built without either leaves it out too (name prefix), and take_off_0164 takes it off the full chain before comparing to it.
+NEEDS_0112_0116 = ("0164_",)
+
+
+def take_off_0164(session) -> None:
+    """0164's own rollback, when it is there: its three functions and site_settings go; it replaced nothing, so nothing comes back."""
+    if session.conn.execute("select to_regprocedure('public.public_site_stats()') is not null").fetchone()[0]:
+        text = ROLLBACK_0164.read_text(encoding="utf-8")
+        session.conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0164(session) -> None:
+    """0164 again, once 0112 and 0116 are back (it refuses to apply without them), and only when it is not on already."""
+    if session.conn.execute("select to_regprocedure('public.public_site_stats()') is null").fetchone()[0]:
+        session.conn.execute((MIGRATIONS / "0164_public_site_stats.sql").read_text(encoding="utf-8"))
+
+
 MIGRATION_0127 = MIGRATIONS / "0127_series_plan_caps.sql"
 ROLLBACK_0127 = REPO / "docs" / "sql" / "rollback_0127_series_plan_caps.sql"
 
@@ -334,8 +353,9 @@ ON_0139 = (MIGRATION_0149.name, *ON_0149)
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
 #: Migrations that call 0124's model_is_available() and refuse to apply without it (0151, the Studio's probe seed; 0162, the MCP
 #: Studio tools' API functions, whose guard names it): a sequence that leaves 0124 out leaves these out too, and puts them back
-#: after it, in this order.
-ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql")
+#: after it, in this order. 0164 (the site's live counters) does not need 0124; it is listed so that a sequence which leaves 0124
+#: out and puts it back still ends on the newest file, as build_sequence() does.
+ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164_public_site_stats.sql")
 
 
 def has_0139(conn_or_session) -> bool:
