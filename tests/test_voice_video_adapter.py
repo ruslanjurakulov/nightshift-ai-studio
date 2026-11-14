@@ -533,6 +533,31 @@ class Scribe(Tmp):
         self.assertIn("without their times", e.message)
         self.assertNotIn("no words were heard", e.message)
 
+    def test_words_that_all_start_before_zero_are_the_vendors_fault_never_no_speech(self):
+        # Every word has numbers for times, so none is "without its times"; clean_words still drops every one (a start
+        # before 0 cannot be placed). Words came back: that is the vendor's answer failing, not a silent recording.
+        self.e.words = [{"word": "Salom", "start": -0.5, "end": 0.2}, {"word": "dunyo", "start": -0.1, "end": 0.4}]
+        e = self.fail()
+        self.assertEqual((e.code, e.not_accepted), (E_BAD_RESPONSE, False))
+        self.assertIn("2 words came back and none could be placed in time", e.message)
+        self.assertNotIn("no words were heard", e.message)
+        self.assertNotIn("Salom", e.message, "the person's words are not in the job row")
+        # Only some before 0: those are dropped, the rest is the video.
+        self.e.words = [{"word": "early", "start": -0.5, "end": 0.2}, *WORDS]
+        self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
+        self.assertEqual([w["text"] for w in self.e.rendered[-1]["props"]["words"]], [w["word"] for w in WORDS])
+
+    def test_a_time_is_read_as_the_captions_track_reads_it(self):
+        # One rule for "has a time" in both places, or a word counted as timed here would be dropped there.
+        from modules import captions
+
+        for v in (0.5, 1, "0.5", " 2 ", None, True, "x", float("nan"), float("inf"), "inf", [1]):
+            with self.subTest(v=v):
+                self.assertEqual(vv._seconds(v), captions._seconds(v))
+        self.e.words = [{"word": "Salom.", "start": "0.1", "end": "0.6"}, {"word": "dunyo.", "start": 0.9, "end": 1.4}]
+        self.e.adapter().submit(self.req(), vv.RULES_ENGINE)
+        self.assertEqual([w["text"] for w in self.e.rendered[-1]["props"]["words"]], ["Salom.", "dunyo."])
+
     def test_an_empty_transcript_is_the_adapters_own_no_speech_refusal(self):
         for body in ({"language_code": "uzb", "text": "", "words": []},
                      {"language_code": "uzb", "text": "", "words": [{"text": " ", "start": 0, "end": 1, "type": "spacing"},

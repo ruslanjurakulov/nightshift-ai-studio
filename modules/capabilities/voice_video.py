@@ -72,7 +72,6 @@ in the ``xi-api-key`` header, scrubbed from every message, and no message here e
 from __future__ import annotations
 
 import logging
-import math
 import os
 import shutil
 import signal
@@ -226,10 +225,10 @@ def _kill_group(proc) -> None:
 
 
 def _seconds(v: Any) -> Optional[float]:
-    if isinstance(v, bool) or not isinstance(v, (int, float)):
-        return None
-    f = float(v)
-    return f if math.isfinite(f) else None
+    """A time as modules/captions reads one (a number or a numeric string; never a bool, NaN or infinity). The same rule
+    on purpose: a word counted as timed here and dropped by ``clean_words`` (or the reverse) would turn "some words lack
+    their times" into "no words were heard"."""
+    return caption_words._seconds(v)
 
 
 #: What each of our codes asks a person to do about a failed transcription (CLAUDE.md rule 6).
@@ -561,10 +560,15 @@ class VoiceVideoAdapter(_ElevenLabs):
     def _words(self, raw) -> List[ve.Word]:
         """The words the scenes are made of, cleaned as the captions track is (control and bidi characters out, times
         forward, at most 20000 words). The track's end is NOT clamped here: fit_words decides whether it belongs to this
-        recording. An empty track is this adapter's own refusal, never the vendor's."""
+        recording. An empty track is this adapter's own refusal, never the vendor's; a track of words none of which
+        survives the cleaning (every start negative, say) is the vendor's answer failing, never "no words were heard"."""
+        returned = [w for w in (raw if isinstance(raw, list) else []) if isinstance(w, Mapping)]
         try:
-            cleaned = caption_words.clean_words(raw if isinstance(raw, list) else [])
+            cleaned = caption_words.clean_words(returned)
         except caption_words.NoSpeech:
+            if returned:
+                raise AdapterError(E_BAD_RESPONSE, _scribe_failure(
+                    E_BAD_RESPONSE, f"{len(returned)} words came back and none could be placed in time")) from None
             raise AdapterError(E_BAD_REQUEST, "no words were heard in the recording: a voice video needs speech "
                                               "(is it a narration, and loud enough?); nothing was charged") from None
         except caption_words.CaptionsError as e:
