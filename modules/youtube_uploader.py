@@ -286,6 +286,11 @@ def compose_description(description: str, chapters: list[str]) -> str:
 _OPENNESS = {"private": 0, "unlisted": 1, "public": 2}
 
 
+class InvalidPrivacy(ValueError):
+    """A privacy that is not exactly private, unlisted or public. Raised before
+    the upload: YouTube now reads a missing privacyStatus as public."""
+
+
 @dataclass(frozen=True)
 class PrivacyOutcome:
     """What to record about an upload whose privacy YouTube reported.
@@ -303,9 +308,11 @@ class PrivacyOutcome:
 def reconcile_privacy(requested, observed) -> PrivacyOutcome:
     """Compare the privacy asked for with the one YouTube applied.
 
-    An API project that has not passed YouTube's audit has its uploads locked
-    private whatever ``privacyStatus`` says; recording such a video as the
-    privacy that was REQUESTED would read as published when it is not. An
+    An API project that had not passed YouTube's audit used to have its uploads
+    locked private whatever ``privacyStatus`` said (YouTube lifted that lock on
+    2026-11-02); recording such a video as the privacy that was REQUESTED would
+    read as published when it is not, and any other gap between the two is the
+    same lie. An
     observation that is missing or not one of the three words proves nothing, so
     the request stands (what every upload did before this check). A video more
     open than requested is recorded as it IS, but nothing downstream is widened
@@ -642,11 +649,23 @@ class YouTubeUploader:
         "not for kids" with nobody's confirmation raises ``MadeForKidsUnconfirmed``
         BEFORE anything is sent (modules/made_for_kids.py).
 
-        Quota: videos.insert is ~1600 units of the 10,000/day; a caption track
-        adds ~400. Chapters are description text and cost nothing. A marker
-        lookup is ~3 units.
+        Quota: per YouTube's revision history, videos.insert has its own bucket
+        since 2026-06-01 (~100 units a call before that, ~1600 before
+        2025-12-04); a caption track adds ~400. Confirm in Cloud Console ->
+        Quotas before designing on a number. Chapters are description text and
+        cost nothing. A marker lookup is ~3 units.
         """
         privacy = privacy or YOUTUBE_PRIVACY
+        # Since YouTube's 2026-11-02 revision an upload whose privacyStatus is
+        # missing defaults to PUBLIC, and unverified projects are no longer
+        # locked private. The field in the body is now the only guard, so a
+        # value that is not exactly one of the three words (an empty
+        # YOUTUBE_PRIVACY, which argparse never validates as a default, or a
+        # typo) stops here before a byte or a quota unit is spent.
+        if privacy not in _OPENNESS:
+            raise InvalidPrivacy(
+                f"privacy {privacy!r} is not one of private, unlisted, public; nothing was uploaded. "
+                "Fix YOUTUBE_PRIVACY or --privacy (the default is private).")
         from modules import made_for_kids as mfk
 
         # First, before a byte or a quota unit is spent: a declaration that may not be sent stops the upload here.

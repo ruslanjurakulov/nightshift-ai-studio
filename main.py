@@ -1947,8 +1947,8 @@ def run(
                 made_for_kids=kids_decision,
             )
             video_id, video_url = uploaded["id"], uploaded["url"]
-            # What YouTube APPLIED, not what was asked for: an API project that has not passed the
-            # audit has every upload locked private whatever privacyStatus says, and a video
+            # What YouTube APPLIED, not what was asked for: an unaudited API project used to have every
+            # upload locked private whatever privacyStatus said (lifted 2026-11-02), and a video
             # recorded as the REQUESTED privacy would read as published when it is not. The row and
             # the events say what the video has; the Short never goes wider than what was asked.
             # No `privacy` assignment here: the clamp above is its only one (a test pins that).
