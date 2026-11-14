@@ -5,7 +5,7 @@ each shot starts from the previous shot's last frame. The shots are assembled in
 subtitles. The video then goes to a channel as a **private** upload, behind the existing publish gate and approval
 (`modules/publish_gate.py`, migration 0112). Film Studio never adds a publish path. CLAUDE.md rules 2 and 3 apply unchanged.
 
-The work ships in phases, one draft PR each. **P1** (the data) and **P5/P6 for drafts** (the routes and the screens, below) exist so far: drafts, with no spend and no worker.
+The work ships in phases, one draft PR each. **P1** (the data) and **P5/P6 for drafts** (the routes and the screens, below) exist so far: drafts, with no spend and no worker. So does **P4a**: `modules/film_timeline.py`, the pure function that turns a film's chosen takes into the editor's timeline document. Nothing calls it yet. The assembly was measured first (P0, docs/FILM_ASSEMBLY_MEASUREMENT.md), on a development container and not yet on the media-worker.
 
 ## The data model (migration 0166)
 
@@ -140,15 +140,33 @@ What is not available yet, and says so on the screen: writing the storyboard wit
 drawn disabled with "Pricing for projects is not live yet"; no number, price or quote is shown. Sound, shooting, assembly and the
 handoff are dim stations on the track. Nothing on these screens spends, starts or publishes.
 
+## Assembly (P4a: `modules/film_timeline.py`)
+
+`build_cut(film, scenes, takes, assets, narration, captions)` returns the editor's timeline document, its sha256 (the same
+input always gives the same hash), a plan of what it decided, and the `.srt` sidecar. It is pure: P4b reads the rows and
+renders the document through `timeline_render`, exactly as an editor export does.
+
+- A scene lasts its `planned_seconds`, and the film their sum, which is what P2 quotes. A cross-fade takes its overlap out of
+  the incoming scene's footage. Shots within a scene, and a scene that continues the previous one, are cut, and the
+  continuity is checked against `result_last_frame_asset_id`.
+- A missing, failed, unfinished or deleted take refuses the whole film with a named reason and the scene. No scene is
+  dropped, and no still or other take is put in its place.
+- Measured limits it holds a film to (docs/FILM_ASSEMBLY_MEASUREMENT.md): at most 10 minutes, no per-clip `loudnorm`, and at
+  most 32 sound clips, because the editor's final pass cannot render more at 1080p under the export's 2 GiB limit.
+- What P3 has to deliver for it: the narration take **on the film's clock** (each scene's words start `NARRATION_LEAD_S` into
+  the scene, so a 60-scene film is one sound clip rather than 60), its per-scene `segments` in the file's time, its measured
+  `loudness_lufs` and `true_peak_db` (one gain brings it to -16 LUFS; without them the plan says "not measured"), and the
+  captions timed against the narration file.
+
 ## The phases
 
 | PR | Content | Migration | State |
 | :-- | :-- | :-- | :-- |
-| P0 | Scout and measurement: vendor facts, and a 10-15 minute assembly measured on the media-worker (rule 8) | - | Scout done; measurement owed |
-| **P1** | Core tables, RLS, `film_events`, `create_film_draft` / `save_film` / `archive_film` / `film_json`. Drafts only, no spend | **0166** | this PR |
+| P0 | Scout and measurement: vendor facts, and a 10-15 minute assembly measured on the media-worker (rule 8) | - | Scout done; assembly measured on a dev container (docs/FILM_ASSEMBLY_MEASUREMENT.md); one timed run on the media-worker owed |
+| **P1** | Core tables, RLS, `film_events`, `create_film_draft` / `save_film` / `archive_film` / `film_json`. Drafts only, no spend | **0166** | merged |
 | P2 | Money. `quote_film`, `start_film` and `film_segments` (one hold per run, settle and release). Also: the money columns on `film_takes`, `creative_jobs.film_take_id` with `payer='film'`, the `film_assembly_minute` price row, `org_film_settings`, and the service functions of the state machine | 0167 | |
 | P3 | The orchestrator. `tools/film_worker.py` and `modules/film_orchestrator.py` handle the lease, trickle enqueue and retry policy. Last-frame extraction goes through `ffmpeg_limits`. The plan step uses Gemini. | (0167) | |
-| P4 | Assembly on the media-worker: `modules/film_timeline.py`, `film_cuts`, `films.current_cut_id` | 0168 | |
+| P4 | Assembly on the media-worker. **P4a**: `modules/film_timeline.py` (pure, no wiring). P4b: `film_cuts`, `films.current_cut_id`, the media-worker claim and the free-disk check | 0168 | P4a done |
 | P5 | `/api/films/**` routes, `lib/films.ts`, rate buckets, geo checks, audit | - | drafts done (no geo check yet: drafts pick no model) |
 | P6 | The canvas UI with every state, at mobile width, in en/ru/uz | - | drafts done; Start stays off until P2 |
 | P7 | Re-shoot: angle, light and motion; choosing a take version; re-assembly | 0169 | |
