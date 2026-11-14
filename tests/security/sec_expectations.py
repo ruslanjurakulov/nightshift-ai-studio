@@ -150,6 +150,8 @@ TABLES: Dict[str, Kind] = {
     "api_holds": Org(),
     "api_idempotency": Service(),
     "api_rate_counters": Service(),
+    # 0168 (BR-0031-01): the held part of an API top-up refund's shortfall, collected when the hold is released; the service key reads it.
+    "api_refund_recoveries": Service(),
     "api_prices": Public(anon=True),
     # web/API hardening (0042): written only by their security-definer functions
     "welcome_credit_claims": Service(),

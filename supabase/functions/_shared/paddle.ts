@@ -909,7 +909,27 @@ export interface PaddleStore {
     cents: number | null,
     note: string,
     reason: "refund" | "chargeback",
-  ): Promise<{ duplicate: boolean; requested: number; taken: number; shortfall: number }>;
+  ): Promise<{
+    duplicate: boolean;
+    requested: number;
+    taken: number;
+    shortfall: number;
+    /** Migration 0168: the part of the shortfall that sat on holds, taken back if they are released. null = the database did not
+     *  say (0168 not applied), which is not the same as 0. */
+    onHold?: number | null;
+  }>;
+}
+
+/** What a refund of an API top-up could not take back, in words that keep "on hold" apart from "spent" (CLAUDE.md rule 5): held
+ *  cents are collected when the hold is released (0168, BR-0031-01); only the rest is spent. Without 0168's answer nobody knows
+ *  which part is which, and this says so rather than calling it spent. */
+export function apiShortfallWords(shortfall: number, onHold: number | null | undefined): string {
+  if (onHold === null || onHold === undefined || !Number.isFinite(onHold)) {
+    return `${shortfall} API cents not taken back (spent or on hold: the database did not say which)`;
+  }
+  const held = Math.min(Math.max(onHold, 0), shortfall);
+  if (held === 0) return `${shortfall} API cents were already spent`;
+  return `${shortfall} API cents not taken back yet: ${held} on hold (taken back if the hold is released), ${shortfall - held} already spent`;
 }
 
 export interface Logger {
@@ -1269,7 +1289,7 @@ async function execute(
         }
         const res = await store.refundApiTopup(decision.transactionId, decision.adjustmentId, cents, `Paddle ${decision.adjustmentId}`, decision.reason);
         if (res.shortfall > 0)
-          log.warn(`paddle-webhook: ${decision.reason} ${decision.adjustmentId}: ${res.shortfall} API cents were already spent`);
+          log.warn(`paddle-webhook: ${decision.reason} ${decision.adjustmentId}: ${apiShortfallWords(res.shortfall, res.onHold)}`);
         return {
           httpStatus: 200,
           row: {
@@ -1277,7 +1297,7 @@ async function execute(
             detail: res.duplicate
               ? `${decision.reason} of API top-up already recorded`
               : `${decision.reason} of API top-up: took back ${res.taken} of ${res.requested} cents` +
-                (res.shortfall > 0 ? `; shortfall ${res.shortfall}` : ""),
+                (res.shortfall > 0 ? `; ${apiShortfallWords(res.shortfall, res.onHold)}` : ""),
             orgId: topup.orgId,
             currency: decision.currency,
             amountMinor: decision.amountMinor,
@@ -1518,6 +1538,7 @@ export function createRestStore(opts: { url: string; serviceKey: string; fetch?:
         requested: n(res.requested_cents),
         taken: n(res.taken_cents),
         shortfall: n(res.shortfall_cents),
+        onHold: res.on_hold_cents === undefined || res.on_hold_cents === null ? null : n(res.on_hold_cents),
       };
     },
     async refundPurchasedCredits(externalId, refundId, amount, note, reason) {

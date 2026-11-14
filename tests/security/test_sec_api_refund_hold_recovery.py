@@ -162,7 +162,8 @@ def test_one_refund_over_two_holds_takes_from_each_release_only_what_that_releas
         job2, ref2, _ = run(s, c, 1500)
         rid, out = refund(s, ext)
         assert (out["taken_cents"], out["on_hold_cents"]) == (0, 5000)
-        assert _recovery(s, rid) == (5000, 0, [ref1, ref2])
+        owed, collected, holds = _recovery(s, rid)
+        assert (owed, collected, sorted(holds)) == (5000, 0, sorted([ref1, ref2]))  # one transaction: both holds share now()
         topup(s, c, 4000)
         end_job(s, job1, "failed")
         assert _recovery(s, rid)[1] == 2000, "a 2000 release pays 2000"
