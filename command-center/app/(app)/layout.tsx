@@ -21,6 +21,7 @@ import {
 import { NavigationProvider } from "@/components/navigation/NavigationProvider";
 import { ScrollToTop } from "@/components/navigation/ScrollToTop";
 import { InstallHint } from "@/components/shell/InstallHint";
+import { PendingSweep } from "@/components/shell/PendingSweep";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { currentMfaAction, operatorLookup } from "@/lib/auth/org-roles";
 import { AccessError } from "@/components/shell/AccessError";
@@ -247,6 +248,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <CommandPalette scope={scope} operator={operator} />
             <ScrollToTop dock />
             <InstallHint />
+            <PendingSweep />
           </div>
         </SidebarProvider>
         </ShellProvider>

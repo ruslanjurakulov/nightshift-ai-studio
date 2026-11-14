@@ -47,6 +47,73 @@ export const ALLOWED_MIME: Readonly<Record<string, MediaKind>> = {
 export const UPLOAD_ACCEPT =
   ".jpg,.jpeg,.png,.webp,.gif,.heic,.heif,image/heic,image/heif,.mp4,.m4v,.mov,.webm,.mkv,.mp3,.m4a,.wav,.ogg,.oga,.flac,.aac,.vtt,.srt";
 
+/** 0044's media_ext_mime, verbatim (tests/landing-composer.test.tsx pins it to the SQL): the type a file name's extension stands for. */
+export const EXT_MIME: Readonly<Record<string, string>> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  heic: "image/heic",
+  heif: "image/heif",
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+  mkv: "video/x-matroska",
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  flac: "audio/flac",
+  aac: "audio/aac",
+  vtt: "text/vtt",
+  srt: "application/x-subrip",
+};
+
+/** 0044's media_normalize_mime aliases, verbatim: what browsers send for a type the library knows by another name. */
+export const MIME_ALIASES: Readonly<Record<string, string>> = {
+  "image/jpg": "image/jpeg",
+  "image/pjpeg": "image/jpeg",
+  "image/x-heic": "image/heic",
+  "image/x-heif": "image/heif",
+  "video/x-m4v": "video/mp4",
+  "audio/x-wav": "audio/wav",
+  "audio/wave": "audio/wav",
+  "audio/vnd.wave": "audio/wav",
+  "audio/mp3": "audio/mpeg",
+  "audio/x-mp3": "audio/mpeg",
+  "audio/mpeg3": "audio/mpeg",
+  "audio/x-m4a": "audio/mp4",
+  "audio/m4a": "audio/mp4",
+  "audio/x-flac": "audio/flac",
+  "audio/x-aac": "audio/aac",
+  "text/srt": "application/x-subrip",
+  "application/srt": "application/x-subrip",
+};
+
+/**
+ * 0044's media_normalize_mime on the client: the browser's type, lower-cased and without parameters, its alias folded, and an
+ * empty or generic type taken from the extension (Windows browsers send '' for a .heic). The upload declares this type, so a file
+ * the library takes is never refused here first; the database normalizes again and the worker sniffs the content either way.
+ */
+export function normalizeUploadMime(type: string | null | undefined, name: string | null | undefined): string {
+  const m = (type ?? "").split(";")[0].trim().toLowerCase();
+  if (m === "" || m === "application/octet-stream") {
+    const ext = /\.([A-Za-z0-9]{1,5})$/.exec(name ?? "")?.[1]?.toLowerCase() ?? "";
+    return Object.prototype.hasOwnProperty.call(EXT_MIME, ext) ? EXT_MIME[ext] : m;
+  }
+  return Object.prototype.hasOwnProperty.call(MIME_ALIASES, m) ? MIME_ALIASES[m] : m;
+}
+
+/**
+ * 0038's media_storage_settings.max_upload_bytes default (95 MiB: one upload is one request, and Cloudflare refuses a body over
+ * 100 MB), verbatim. Only for a check before anything is sent, where no organization's settings have been read yet (the landing's
+ * "+", the Studio composer's "+"): the database's own cap still decides, and its answer is what the person is shown.
+ */
+export const UPLOAD_MAX_BYTES_DEFAULT = 99_614_720;
+
 /** iPhone photos: kept untouched; the worker makes JPEG `thumb` and `display` copies
  *  because most browsers cannot show the original. */
 export function isHeifMime(mime: unknown): boolean {
