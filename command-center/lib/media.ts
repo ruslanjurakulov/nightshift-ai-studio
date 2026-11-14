@@ -47,6 +47,13 @@ export const ALLOWED_MIME: Readonly<Record<string, MediaKind>> = {
 export const UPLOAD_ACCEPT =
   ".jpg,.jpeg,.png,.webp,.gif,.heic,.heif,image/heic,image/heif,.mp4,.m4v,.mov,.webm,.mkv,.mp3,.m4a,.wav,.ogg,.oga,.flac,.aac,.vtt,.srt";
 
+/**
+ * 0038's media_storage_settings.max_upload_bytes default (95 MiB: one upload is one request, and Cloudflare refuses a body over
+ * 100 MB), verbatim. Only for a check before anything is sent, where no organization's settings have been read yet (the landing's
+ * "+", the Studio composer's "+"): the database's own cap still decides, and its answer is what the person is shown.
+ */
+export const UPLOAD_MAX_BYTES_DEFAULT = 99_614_720;
+
 /** iPhone photos: kept untouched; the worker makes JPEG `thumb` and `display` copies
  *  because most browsers cannot show the original. */
 export function isHeifMime(mime: unknown): boolean {

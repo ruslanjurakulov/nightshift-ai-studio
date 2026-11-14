@@ -15,7 +15,8 @@ import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } fr
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery, withPreviews } from "@/lib/creative/studio";
-import { parseIdParam, prefillFromImprove } from "@/lib/creative/improve";
+import { cleanLinkPrompt, parseIdParam, prefillFromImprove } from "@/lib/creative/improve";
+import { PENDING_PARAM, PENDING_VALUE } from "@/lib/site/prompt-link";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { presetPrefill } from "@/lib/presets";
 import { StudioHome, type AssistantData } from "@/components/studio/StudioHome";
@@ -31,6 +32,8 @@ import { loadEditorProjects } from "@/lib/server/editor";
 import { effectFromQuery, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
 import { EffectBanner } from "@/components/effects/EffectBanner";
 import { EffectsDesk } from "@/components/effects/EffectsDesk";
+
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -183,6 +186,9 @@ export default async function CreatePage({
           credits={credits}
           projects={projects}
           assistant={assistant}
+          // The public home page's composer kept a file in this browser (lib/site/pending-attachment.ts): the box picks it up once.
+          // Its words are cleaned and bounded as any link's (a clip's limit; the tool's own limit applies once the tool is known).
+          pending={one(q[PENDING_PARAM]) === PENDING_VALUE ? { words: cleanLinkPrompt("t2v", one(q.prompt)) } : null}
         />
       )}
       {desk === "effects" &&

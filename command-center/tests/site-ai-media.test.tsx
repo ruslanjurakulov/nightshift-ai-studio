@@ -63,7 +63,7 @@ vi.mock("next/link", () => ({
 import { dictionaries, fmt, LOCALES } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
-import { PromptBar } from "@/components/landing/PromptBar";
+import { DOCK_AT, PromptBar, UNDOCK_AT } from "@/components/landing/PromptBar";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { LoopClip } from "@/components/site/LoopClip";
 import { motionTap } from "@/lib/site/motion";
@@ -71,8 +71,8 @@ import { SLOTS, placeMedia, slotJobs, slotMedia, LANDING_SLOTS } from "@/compone
 import { stockInUse } from "@/components/site/stock-in-use";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { FORMATS } from "@/lib/site/formats";
-import { ATTACH_TOOL, PROMPT_MAX, PROMPT_TOOLS, attachHref, linkWords, promptHref } from "@/lib/site/prompt-link";
-import { IMPROVE_PROMPT_MAX, LINK_PROMPT_TOOLS, isLinkPromptTool } from "@/lib/creative/improve";
+import { PROMPT_MAX, PROMPT_TOOLS, TEXT_TOOL, linkWords, promptHref } from "@/lib/site/prompt-link";
+import { IMPROVE_PROMPT_MAX, LINK_PROMPT_TOOLS } from "@/lib/creative/improve";
 import { SIGNUP_PATH } from "@/lib/public-paths";
 import { DEFAULT_AFTER_AUTH, afterSignupPath, studioNext } from "@/lib/safe-redirect";
 import { MEDIA_IDS } from "@/lib/site/media";
@@ -287,7 +287,7 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(SIGNUP_PATH).toBe("/signup");
   });
 
-  it("goes on Enter or Create, asks for words when there are none, and a chip fills in a real sample's prompt", () => {
+  it("goes on Enter or Create to the text-to-video form, asks for words when there are none, and a chip fills in a real sample's prompt", () => {
     const assign = vi.fn();
     vi.stubGlobal("location", { ...window.location, assign });
     const t = dictionaries.en.site;
@@ -300,11 +300,10 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(box.getAttribute("aria-invalid")).toBe("true");
     fireEvent.click(within(container).getByRole("button", { name: "Fruit soap opera" }));
     expect(box.value).toBe("A lemon whispers to an avocado");
-    // One small output key, not two chips: a video by default, a picture on a press.
-    fireEvent.click(within(container).getByRole("button", { name: `${t.prompt.mode}: ${t.prompt.video}` }));
-    expect(within(container).getByRole("button", { name: `${t.prompt.mode}: ${t.prompt.image}` })).toBeTruthy();
     fireEvent.keyDown(box, { key: "Enter" });
-    expect(assign).toHaveBeenCalledWith(promptHref("t2i", "A lemon whispers to an avocado", false));
+    // Nothing attached is a clip from the words: the one thing the bar makes without a file.
+    expect(TEXT_TOOL).toBe("t2v");
+    expect(assign).toHaveBeenCalledWith(promptHref("t2v", "A lemon whispers to an avocado", false));
     // The note says nothing starts here, and, while no Studio model is on sale (the bar's default), that nothing can be made there
     // today: never "press Generate" for a form with nothing to pick.
     expect(container.textContent).toContain(t.prompt.noteOutClosed);
@@ -314,90 +313,73 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(open.textContent).toContain(t.prompt.noteOut);
   });
 
-  // What would break: "+" saying "attach" and then opening a text-only form with nothing to attach to (the review of #734 found it).
-  it("\"+\" opens the Studio's picture-to-video form, the one that asks for your own picture: signed out through sign-up first (and says so), the words kept, nothing read from the device", () => {
-    const assign = vi.fn();
-    vi.stubGlobal("location", { ...window.location, assign });
+  // What would break: the owner asked for no "Video" key (2026-11-14): what is attached decides what is made, not a toggle.
+  it("has no output key: only \"+\", the words and the send key, and \"+\" says it takes a picture or a video in every language", () => {
     const t = dictionaries.en.site;
     const { container } = render(<PromptBar copy={t.prompt} ideas={[]} />);
-    expect(container.querySelector("input[type='file']")).toBeNull();
-    const box = container.querySelector("textarea")!;
-    fireEvent.change(box, { target: { value: "lanterns over a lake" } });
-    // The bar is closed by default (no Studio model on sale): the label promises no video, and says sign-up comes first.
-    expect(within(container).queryByRole("button", { name: t.prompt.attachOut })).toBeNull();
-    fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOutClosed }));
-    expect(assign).toHaveBeenCalledWith(attachHref("lanterns over a lake", false));
-    const href = assign.mock.calls[0][0] as string;
-    expect(href).toMatch(/^\/signup\?next=/);
-    const next = new URL(href, "https://x.test").searchParams.get("next")!;
-    expect(studioNext(next)).toBe(next);
-    const form = new URL(next, "https://x.test").searchParams;
-    expect(form.get("tool")).toBe(ATTACH_TOOL);
-    expect(form.get("prompt")).toBe("lanterns over a lake");
-    // The form it opens takes a picture first and its words from a link (the Studio's own lists).
-    expect(ATTACH_TOOL).toBe("i2v");
-    expect(isLinkPromptTool(ATTACH_TOOL)).toBe(true);
-    // With no words it still opens that form, through sign-up.
-    assign.mockClear();
-    fireEvent.change(box, { target: { value: "" } });
-    fireEvent.click(within(container).getByRole("button", { name: t.prompt.attachOutClosed }));
-    expect(new URL(new URL(assign.mock.calls[0][0], "https://x.test").searchParams.get("next")!, "https://x.test").searchParams.get("tool")).toBe("i2v");
-    // Signed in it is the form itself, and the label does not ask for a sign-up.
-    cleanup();
-    assign.mockClear();
-    const signedIn = render(<PromptBar copy={t.prompt} ideas={[]} signedIn />).container;
-    fireEvent.click(within(signedIn).getByRole("button", { name: t.prompt.attachInClosed }));
-    expect(assign).toHaveBeenCalledWith(attachHref("", true));
-    expect(attachHref("", true).startsWith("/signup")).toBe(false);
-    // Once a model is on sale the label says what the form does.
-    cleanup();
-    expect(within(render(<PromptBar copy={t.prompt} ideas={[]} studioOpen />).container).getByRole("button", { name: t.prompt.attachOut })).toBeTruthy();
-    cleanup();
-    expect(within(render(<PromptBar copy={t.prompt} ideas={[]} studioOpen signedIn />).container).getByRole("button", { name: t.prompt.attachIn })).toBeTruthy();
-    // The words say what happens, in every language: a picture, a video from it once open, and (signed out) sign-up first; closed,
-    // a picture and that picture-to-video is not on sale yet, never the open promise.
+    const keys = [...container.querySelectorAll("form.nx-pbar button")].map((b) => b.getAttribute("aria-label"));
+    expect(keys).toEqual([t.prompt.attach, t.prompt.submit]);
+    expect(container.querySelector(".nx-pbar-mode")).toBeNull();
+    expect(css).not.toContain(".nx-pbar-mode");
     for (const code of LOCALES.map((l) => l.code)) {
-      const c = dictionaries[code].site.prompt;
-      expect(c.attachOut.startsWith(c.attachIn)).toBe(true);
-      expect(c.attachOut.length).toBeGreaterThan(c.attachIn.length);
-      expect(c.attachOutClosed.length).toBeGreaterThan(c.attachInClosed.length);
-      for (const closed of [c.attachOutClosed, c.attachInClosed]) {
-        expect(closed).not.toContain(c.attachIn);
-        expect(closed).toMatch(/not on sale yet|пока не продаётся|hali sotuvda emas/);
-      }
+      const c = dictionaries[code].site.prompt as Record<string, unknown>;
+      expect(c).not.toHaveProperty("mode");
+      expect(c).not.toHaveProperty("image");
+      expect(String(c.attach).length).toBeGreaterThan(0);
     }
   });
 
-  it("docks to the bottom once its place has scrolled above the window, keeps that place's height, tells the page (the start bar steps aside), and undocks on the way back; Escape leaves the box", () => {
-    let cb: IntersectionObserverCallback = () => undefined;
+  it("docks as soon as the page scrolls (not once its place has left a tall window), keeps that place's height, tells the page (the start bar steps aside), and undocks back at the top; Escape leaves the box", () => {
     let ro: ResizeObserverCallback | null = null;
-    vi.stubGlobal("IntersectionObserver", class { constructor(c: IntersectionObserverCallback) { cb = c; } observe() {} disconnect() {} unobserve() {} });
     vi.stubGlobal("ResizeObserver", class { constructor(c: ResizeObserverCallback) { ro = c; } observe() {} disconnect() { ro = null; } unobserve() {} });
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      cb(0);
+      // A frame that already ran: no handle left to wait on.
+      return 0;
+    });
+    const scrollTo = (y: number) => {
+      Object.defineProperty(window, "scrollY", { configurable: true, value: y });
+      act(() => {
+        window.dispatchEvent(new Event("scroll"));
+      });
+    };
+    scrollTo(0);
     const t = dictionaries.en.site;
     const { container } = render(<PromptBar copy={t.prompt} ideas={[]} />);
     const form = container.querySelector("form.nx-pbar") as HTMLFormElement;
     Object.defineProperty(form, "offsetHeight", { configurable: true, value: 64 });
     expect(form.dataset.docked).toBe("false");
-    act(() => cb([{ isIntersecting: false, boundingClientRect: { bottom: -10 } } as IntersectionObserverEntry], {} as IntersectionObserver));
+    // A little scroll is not enough to leave the first screen...
+    scrollTo(DOCK_AT);
+    expect(form.dataset.docked).toBe("false");
+    // ...one more pixel is: the box comes down with the screen, wherever its place in the first screen still is.
+    scrollTo(DOCK_AT + 1);
     expect(form.dataset.docked).toBe("true");
     expect(document.documentElement.getAttribute("data-composer")).toBe("docked");
     expect((container.querySelector(".nx-pbar-slot") as HTMLElement).style.minHeight).toBe("64px");
+    // Deep in the page it stays docked.
+    scrollTo(20000);
+    expect(form.dataset.docked).toBe("true");
     // While docked the box grows (more lines, the empty-box message): its place follows, so undocking shifts nothing.
-    act(() => ro?.([] as unknown as ResizeObserverEntry[], {} as ResizeObserver));
     Object.defineProperty(form, "offsetHeight", { configurable: true, value: 112 });
     act(() => ro?.([] as unknown as ResizeObserverEntry[], {} as ResizeObserver));
     expect((container.querySelector(".nx-pbar-slot") as HTMLElement).style.minHeight).toBe("112px");
     // The empty-box message is inside the form, so it is on the docked box, not left behind in the first screen.
     fireEvent.submit(form);
     expect(form.querySelector(".nx-pbar-err[role='alert']")?.textContent).toBe(t.prompt.empty);
-    act(() => cb([{ isIntersecting: true, boundingClientRect: { bottom: 300 } } as IntersectionObserverEntry], {} as IntersectionObserver));
+    // Between the two lines it keeps what it was (no flicker at the edge), and at the top it is back in the first screen.
+    scrollTo(UNDOCK_AT + 1);
+    expect(form.dataset.docked).toBe("true");
+    scrollTo(UNDOCK_AT);
     expect(form.dataset.docked).toBe("false");
     expect(document.documentElement.hasAttribute("data-composer")).toBe(false);
+    expect(DOCK_AT).toBeGreaterThan(UNDOCK_AT);
     const box = container.querySelector("textarea")!;
     box.focus();
     fireEvent.keyDown(box, { key: "Escape" });
     expect(document.activeElement).not.toBe(box);
-    expect(css).toMatch(/\.nx-pbar\[data-docked="true"\] \{ position: fixed;[^}]*env\(safe-area-inset-bottom\)/);
+    // Fixed at the bottom centre over the safe area, above the sections and under the sticky header (40) and the Shorts feed (80).
+    expect(css).toMatch(/\.nx-pbar\[data-docked="true"\] \{ position: fixed; z-index: 60; left: 50%; bottom: calc\(14px \+ env\(safe-area-inset-bottom\)\);[^}]*transform: translateX\(-50%\);/);
     expect(css).toContain('html[data-composer="docked"] .nx-bar { display: none; }');
     // Scrolled-to fields and anchors stop above the docked box; the lifted first screen stays under the sticky header (40).
     expect(css).toMatch(/html\[data-composer="docked"\]:has\(\.nx-pbar\) \{ scroll-padding-bottom: calc\(/);
@@ -405,6 +387,12 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(css).toMatch(/@supports not \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\)/);
   });
 
+  it("a page opened already scrolled down starts docked", () => {
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 1500 });
+    const { container } = render(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />);
+    expect((container.querySelector("form.nx-pbar") as HTMLFormElement).dataset.docked).toBe("true");
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
+  });
   it("before its script runs, Create is off (the server's markup), so no form is ever sent that would drop the words", () => {
     const html = renderToStaticMarkup(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />);
     expect(html).toMatch(/<button type="submit" class="nx-pbar-go"[^>]*disabled="">/);
@@ -412,10 +400,10 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
     expect(render(<PromptBar copy={dictionaries.en.site.prompt} ideas={[]} />).container.querySelector(".nx-pbar-go")?.hasAttribute("disabled")).toBe(false);
   });
 
-  it("is fed only real prompts on the landing: each chip is a format whose sample is merged, with that sample's words", () => {
+  it("is fed only real prompts on the landing: each chip is a format whose clip sample is merged, with that sample's words (nothing attached makes a clip)", () => {
     const { container } = landing();
     const chips = [...container.querySelectorAll(".nx-pbar-idea")].map((b) => b.textContent);
-    const merged = FORMATS.filter((f) => SHOWCASE_ENTRIES.some((e) => e.jobId === f.job));
+    const merged = FORMATS.filter((f) => SHOWCASE_ENTRIES.some((e) => e.jobId === f.job && e.capability === TEXT_TOOL && e.prompt.trim()));
     expect(chips).toEqual(merged.slice(0, 4).map((f) => dictionaries.en.site.formats.items.find((i) => i.id === f.id)!.title));
   });
 });

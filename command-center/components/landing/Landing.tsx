@@ -23,7 +23,7 @@ import { creditLine } from "@/lib/site/media";
 import { FORMATS } from "@/lib/site/formats";
 import { STEP_PHONE_JOB, studioToolsOpen } from "@/lib/site/tool-samples";
 import { TypedText } from "@/components/site/TypedText";
-import { PROMPT_TOOLS, type PromptTool } from "@/lib/site/prompt-link";
+import { TEXT_TOOL } from "@/lib/site/prompt-link";
 import { SHOWCASE_ENTRIES, modelLeftOut, showcaseModels, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
@@ -139,8 +139,10 @@ function Hero({ t, formats }: { t: Dictionary; formats: LandingFormat[] }) {
   const h = t.site.hero;
   const m = slotMedia("hero");
   const moving = m.kind === "ai" ? m.moving : m.clip !== null;
+  // The bar makes a clip from words when nothing is attached, so its starting points are the clips' own prompts: a picture's words
+  // sent as a clip's would open a form for something the sample never was.
   const ideas: PromptIdea[] = formats.flatMap(({ id, title, entry }) =>
-    (PROMPT_TOOLS as readonly string[]).includes(entry.capability) && entry.prompt.trim() ? [{ id, label: title, tool: entry.capability as PromptTool, prompt: entry.prompt }] : [],
+    entry.capability === TEXT_TOOL && entry.prompt.trim() ? [{ id, label: title, tool: TEXT_TOOL, prompt: entry.prompt }] : [],
   );
   return (
     <section aria-labelledby="hero-title" className="nx-hero nx-sh">

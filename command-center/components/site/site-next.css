@@ -1489,8 +1489,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 /* From 1024 px the credit sits at the top right, over the picture and clear of the words (they start under it, on the left). */
 @media (min-width: 1024px) { .nx-sh-foot { position: absolute; top: 14px; left: 0; right: 0; justify-content: flex-end; padding-top: 0; } }
 
-/* The composer (components/landing/PromptBar.tsx): one glass box, "+" on the left, the box that grows to six lines, the output key
-   and the send key on the right. Liquid glass on app/glass.css's names (#738): it takes the shared --glass-saturate as it is, and
+/* The composer (components/landing/PromptBar.tsx): one glass box, "+" on the left, the box that grows to six lines, the send key on
+   the right (no output key: what is attached decides what is made). Liquid glass on app/glass.css's names (#738): it takes the shared --glass-saturate as it is, and
    uses --glass-sheen for the highlight under the pointer at --glass-x/--glass-y (the same two variables .ns-glass reads, written
    by PromptBar). The box is always dark over a clip whatever the theme, so it sets its own --glass-blur, --glass-tint and
    --glass-sheen on itself (the shared light-theme tint would wash the words out), and keeps the parts #738 has no name for
@@ -1524,28 +1524,53 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .nx-pbar { --glass-bg: #15151c; --glass-tint: rgba(6, 6, 12, 0.3); } }
 .nx-pbar:focus-within { border-color: rgba(179, 172, 255, 0.85); }
 .nx-pbar-box { flex: 1 1 auto; min-width: 0; height: 40px; min-height: 40px; max-height: 160px; padding: 8px 4px; resize: none; overflow-y: auto; border: 0; background: transparent; color: #fff; font: inherit; font-size: 16px; line-height: 24px; }
-.nx-pbar-box::placeholder { color: rgba(255, 255, 255, 0.7); }
+/* The placeholder is one line, ended with an ellipsis where it does not fit: a second line of it showed clipped under the first in
+   the one-line box (the live audit, 390 and 768, and uz at 1440). */
+.nx-pbar-box::placeholder { color: rgba(255, 255, 255, 0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The ring is on the whole box, not the bare text field inside it: visible wherever the words are being typed. */
 .nx-pbar-box:focus { outline: none; }
+.nx-pbar:has(.nx-pbar-box:focus-visible) { outline: 3px solid #ffa940; outline-offset: 3px; }
 .nx-pbar-box[aria-invalid="true"] { box-shadow: inset 0 -2px 0 #ffb3a6; }
 /* The small keys are glass pills on the glass. */
-.nx-pbar-plus, .nx-pbar-mode, .nx-pbar-go { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 44px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.2); background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05)); box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.3), inset -1px -1px 0 rgba(0, 0, 0, 0.25); color: #fff; cursor: pointer; }
-.nx-pbar-plus svg, .nx-pbar-mode svg, .nx-pbar-go svg { width: 18px; height: 18px; }
-.nx-pbar-mode { padding: 0 12px; font-size: 14px; font-weight: 500; }
+.nx-pbar-plus, .nx-pbar-go { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 44px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.2); background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05)); box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.3), inset -1px -1px 0 rgba(0, 0, 0, 0.25); color: #fff; cursor: pointer; }
+.nx-pbar-plus svg, .nx-pbar-go svg { width: 18px; height: 18px; }
 .nx-pbar-go { border-color: transparent; background: linear-gradient(135deg, #a79cff 0%, #d08cff 52%, #ffb066 100%); color: #0b0b10; }
 .nx-pbar-go:disabled, .nx-pbar-plus:disabled { opacity: 0.6; cursor: default; }
-@media (max-width: 479px) { .nx-pbar-mode span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } .nx-pbar-mode { padding: 0; } }
-.nx-pbar-plus:focus-visible, .nx-pbar-mode:focus-visible, .nx-pbar-go:focus-visible, .nx-pbar-idea:focus-visible, .nx-ai-try:focus-visible, .nx-model-see:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
+.nx-pbar-plus:focus-visible, .nx-pbar-unpick:focus-visible, .nx-pbar-go:focus-visible, .nx-pbar-idea:focus-visible, .nx-ai-try:focus-visible, .nx-model-see:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
+/* The attached file (PromptBar's "+"): a chip on its own row at the top of the box, the visitor's own thumbnail (a local object URL,
+   never sent), its name, what it is, and a 44 px × to remove it. */
+.nx-pbar-file { order: -1; flex: 1 0 100%; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 4px 4px 4px; border-radius: 16px; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
+.nx-pbar-thumb { position: relative; flex: none; width: 48px; height: 48px; overflow: hidden; border-radius: 12px; background: #0b0b10; }
+.nx-pbar-thumb img, .nx-pbar-thumb video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.nx-pbar-thumb-mark { position: absolute; right: 3px; bottom: 3px; width: 14px; height: 14px; color: #fff; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)); }
+.nx-pbar-file-text { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; line-height: 1.3; }
+.nx-pbar-file-name { overflow: hidden; color: #fff; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.nx-pbar-file-kind { color: rgba(255, 255, 255, 0.78); font-size: 13px; }
+.nx-pbar-unpick { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; border-radius: 999px; background: transparent; color: #fff; cursor: pointer; }
+.nx-pbar-unpick:hover { background: rgba(255, 255, 255, 0.12); }
+.nx-pbar-unpick svg { width: 18px; height: 18px; }
+.nx-pbar[aria-busy="true"] { cursor: progress; }
 /* Docked: the same box, fixed at the bottom centre over the safe area; its place in the first screen keeps its height. */
 /* The first screen is its own stacking context (isolation, for the picture under the words): while the composer is docked it is
    lifted above the sections after it, so the fixed box paints over them; one below the sticky header (.st-header is 40), so the
    header's menus still open over the docked box. */
 .nx-hero.nx-sh:has(.nx-pbar[data-docked="true"]) { z-index: 39; }
 .nx-pbar[data-docked="true"] { position: fixed; z-index: 60; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); width: min(768px, calc(100% - 24px)); transform: translateX(-50%); }
-/* While it is docked the page's own start bar steps aside, and the page ends with room for it, so it never hides the last words. */
+/* Docked over a page that may be light: a deeper shadow under it and a soft violet ring, so it reads as the place to type. */
+.nx-pbar[data-docked="true"] { box-shadow: inset 1px 1px 0 var(--glass-rim), inset -1px -1px 0 var(--glass-shade), 0 0 0 1px rgba(167, 156, 255, 0.28), 0 22px 60px -18px rgba(0, 0, 0, 0.75), 0 0 36px -12px rgba(167, 156, 255, 0.55); }
+/* At the end of the page (the footer in view, PromptBar data-away) an empty, unused dock steps down out of the way; it comes back as
+   soon as the footer leaves. Hidden, not just transparent, so nothing under glass can be tabbed to. */
+.nx-pbar[data-docked="true"][data-away="true"] { translate: 0 calc(100% + 24px + env(safe-area-inset-bottom)); opacity: 0; visibility: hidden; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .nx-pbar[data-docked="true"] { transition: translate 260ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 200ms ease, visibility 0s; }
+  .nx-pbar[data-docked="true"][data-away="true"] { transition: translate 260ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 200ms ease, visibility 0s linear 260ms; }
+}
+/* While it is docked the page's own start bar steps aside, and the page ends with room for it (the box's own height, PromptBar's
+   --nx-dock-h, plus its gap and the safe area), so it never hides the last words. */
 html[data-composer="docked"] .nx-bar { display: none; }
-html[data-composer="docked"] .nx { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+html[data-composer="docked"] .nx { padding-bottom: calc(var(--nx-dock-h, 62px) + 34px + env(safe-area-inset-bottom)); }
 /* And a field or anchor scrolled into view (a tab to a link, #samples) stops above the docked box, not under it. */
-html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(var(--nx-dock-h, 62px) + 48px + env(safe-area-inset-bottom)); }
 /* The empty-box message is inside the form, so it travels with the box when it docks: a full-width line under the keys. */
 .nx-pbar { flex-wrap: wrap; }
 /* With wrapping on, the box starts from no width and takes what the keys leave, so it never pushes a key to a second line. */
@@ -1595,7 +1620,7 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(110px +
 .nx-how-chat { max-width: 560px; margin: 48px auto 0; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .nx-pbar-plus, .nx-pbar-mode, .nx-pbar-go, .nx-pbar-idea { transition: background-color var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease); }
+  .nx-pbar-plus, .nx-pbar-go, .nx-pbar-idea, .nx-pbar-unpick { transition: background-color var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease); }
   .nx-pbar-go:hover { transform: translateY(-1px); }
   .nx-gallery-card, .nx-model { transition: transform var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease); }
   .nx-gallery-card:hover, .nx-model:hover { transform: translateY(-3px); border-color: var(--ns-rule-strong); }

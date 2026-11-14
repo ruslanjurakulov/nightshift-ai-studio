@@ -231,28 +231,34 @@ export const siteEn = {
     altSource: "The AI-generated picture this clip was made from, made by {model}",
   },
   /**
-   * The landing's prompt bar (components/landing/PromptBar.tsx): it only opens the Studio form with the words and the tool.
+   * The landing's prompt bar (components/landing/PromptBar.tsx): it only opens the Studio form with the words (and, once a file is
+   * attached, the Studio picks the file up from this browser and opens the tool for its kind).
    * Nothing is priced, held or started from here; the notes say so, because the button reads "Create".
    */
   prompt: {
-    label: "Describe the video or picture you want",
-    placeholder: "Describe a scene: what we see, how the camera moves, the light…",
-    mode: "What to make",
-    /** "+" opens the Studio's picture-to-video form (lib/site/prompt-link.ts attachHref), through free sign-up when signed out. */
-    attachOut: "Attach a picture to make a video from it (free sign-up first)",
-    attachIn: "Attach a picture to make a video from it",
-    /** attachOut / attachIn while no Studio model is on sale (lib/site/tool-samples.ts studioToolsOpen): no promise of a video. */
-    attachOutClosed: "Attach a picture (sign up first; picture-to-video is not on sale yet)",
-    attachInClosed: "Attach a picture (picture-to-video is not on sale yet)",
-    video: "Video",
-    image: "Image",
+    label: "Describe the video you want",
+    /** One short line: the box is one line high until it grows, and a placeholder that wraps showed clipped (the live audit). */
+    placeholder: "Describe the scene you want…",
+    /** "+": the system's file picker, a picture or a video. What is attached decides what the Studio makes (lib/site/prompt-link.ts). */
+    attach: "Attach a picture or a video",
+    attached: "Attached: {name}",
+    remove: "Remove {name}",
+    picture: "Picture · becomes a video",
+    video: "Video · opens the video tools",
     submit: "Create",
-    empty: "Write a few words first.",
+    empty: "Write a few words first, or attach a picture or a video.",
+    badType: "That file is not a picture or a video the Studio takes (JPEG, PNG, WebP, GIF, HEIC, MP4, MOV, WebM, MKV).",
+    tooBig: "That file is larger than {max}, the most one upload can be.",
+    emptyFile: "That file is empty.",
+    keepFailed: "This browser would not hold the file for the next page (private browsing can do this). Open the Studio and attach it there with +.",
     noteIn: "Opens the Studio with your words. Nothing starts until you press Generate there.",
     noteOut: "Free sign-up first, then the Studio opens with your words. Nothing starts until you press Generate.",
     /** noteIn / noteOut while no Studio model is on sale: the link still opens the form, and the note says nothing can be made there today. */
     noteInClosed: "Opens the Studio with your words. Its picture and clip models are not on sale yet, so nothing can be made there today.",
     noteOutClosed: "Free sign-up first, then the Studio opens with your words. Its picture and clip models are not on sale yet, so nothing can be made there today.",
+    /** Added to the note while a file is attached (lib/site/pending-attachment.ts): where the file is until the Studio has it. */
+    keptOut: "Your file stays in this browser only, for up to an hour, until you have signed up; then the Studio puts it in your library.",
+    keptIn: "The Studio puts your file in your library and opens the tool for it.",
     ideas: "Start from a real prompt",
   },
   /** Three facts the page can back (components/landing/Landing.tsx Facts): counted from the data files and the welcome grant, never typed in. */

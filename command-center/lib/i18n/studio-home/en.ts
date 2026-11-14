@@ -18,6 +18,28 @@ export const studioHomeEn = {
     enhance: "Choose a file",
   },
   attachRemove: "Remove the attachment",
+  /**
+   * The [+] that takes a picture or a video from the device (lib/creative/attach.ts), and the file attached on the public home page,
+   * picked up here (lib/site/pending-attachment.ts). The file goes into the library first; the tool is then chosen by its kind and
+   * that change is said in one line. Nothing is priced or started by attaching.
+   */
+  attachFlow: {
+    pick: "Attach a picture or a video",
+    uploading: "Putting “{name}” in your library…",
+    switchedImage: "Picture attached, so the tool is now {tool}. You can pick another tool above.",
+    switchedVideo: "Video attached, so the tool is now {tool}. You can pick another tool above.",
+    gone: "The file you attached on the home page is not in this browser any more (it is kept only in the browser it was chosen in). Attach it again with +.",
+    expired: "The file you attached on the home page was kept for an hour and has been removed. Attach it again with +.",
+    unreadable: "This browser does not let the page read the file you attached on the home page. Attach it again with +.",
+    noOrg: "There is no workspace to put the file in yet. Your file is still in this browser for up to an hour.",
+    badType: "That file is not a picture or a video the library takes (JPEG, PNG, WebP, GIF, HEIC, MP4, MOV, WebM, MKV).",
+    tooBig: "That file is larger than {max}, the most one upload can be.",
+    emptyFile: "That file is empty.",
+    rejected: "The library refused this file after checking it. Try another picture or video.",
+    expiredTicket: "The upload window closed before the file was checked. Try again.",
+    stillChecking: "The file is uploaded and still being checked. It will be in your library shortly; choose it there.",
+    wrongKind: "The library did not store this file as a picture or a video, so it was not attached.",
+  },
   settings: "Settings",
   settingsFor: "Settings: {summary}",
   settingsClose: "Hide settings",

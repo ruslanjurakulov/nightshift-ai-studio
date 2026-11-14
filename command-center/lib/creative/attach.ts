@@ -1,0 +1,122 @@
+/**
+ * A file attached with the composer's "+" (the Studio's own, and the landing's kept one picked up by the Studio): which tool it
+ * opens, and its trip into the library. Client-safe; unit-tested in tests/studio-attach.test.ts.
+ *
+ * The upload is the library's EXISTING path, nothing new (lib/imageEditor/save uploadEdited): POST /api/media/uploads asks the
+ * database for a ticket (membership, type allowlist, size cap, quota), PUT streams the file, the media worker sniffs and registers
+ * it. Only once the worker has registered it does the form get it as its source. Nothing here asks a price or creates a job: the
+ * form is filled and the person presses Generate (CLAUDE.md #3).
+ */
+import { uploadEdited, type SaveError } from "@/lib/imageEditor/save";
+import { knownUploadReason, parseMediaId, type UploadReason } from "@/lib/media";
+import { modelsFor, promptRule, wordsMax, type StudioCapability, type StudioModel } from "@/lib/creative/studio";
+import type { AttachKind } from "@/lib/site/pending-attachment";
+
+/**
+ * The tools that start from a video in the library, in the order an attached video tries them: change it by the words first (the
+ * words typed with it say what to change), then make it sharper, change its shape, take its background out.
+ */
+export const VIDEO_IN_TOOLS = ["video_edit", "video_upscale", "video_reframe", "video_remove_bg"] as const satisfies readonly StudioCapability[];
+
+/**
+ * The tool an attachment opens. A picture: animate it (picture to video). A video: the first video-in tool a model is sold for;
+ * when none is sold yet, the first of them anyway, where the form says plainly that nothing is on sale for it (never another tool
+ * that quietly does something else, CLAUDE.md #4). The person can switch the tool afterwards; the switch is announced.
+ */
+export function toolForAttachment(kind: AttachKind, models: readonly StudioModel[]): StudioCapability {
+  if (kind === "image") return "i2v";
+  return VIDEO_IN_TOOLS.find((c) => modelsFor([...models], c).length > 0) ?? VIDEO_IN_TOOLS[0];
+}
+
+/** How often the upload is asked about while the worker checks it, and for how long the page waits (lib/editor-voiceover's). */
+export const ATTACH_POLL_MS = 1500;
+export const ATTACH_WAIT_MS = 3 * 60 * 1000;
+
+export type AttachError =
+  | SaveError
+  /** The worker refused the file; `reason` says why when it is a word we know. */
+  | "rejected"
+  /** The ticket lapsed before the worker took it. */
+  | "expired"
+  /** Uploaded, but still being checked when the page stopped waiting: it will be in the library. */
+  | "still_checking"
+  /** The worker registered it as neither a picture nor a video (a file whose name or type said otherwise). */
+  | "wrong_kind";
+
+export type AttachResult =
+  | { ok: true; assetId: string; kind: AttachKind }
+  | { ok: false; error: AttachError; reason?: UploadReason | null; maxBytes?: number | null };
+
+export interface AttachUpload {
+  orgId: string;
+  file: File;
+  kind: AttachKind;
+  fetchImpl?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+  signal?: AbortSignal;
+}
+
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Upload one file and wait for the library to hold it. Never throws: every outcome is a result. */
+export async function uploadAttachment(input: AttachUpload): Promise<AttachResult> {
+  const doFetch = input.fetchImpl ?? fetch;
+  const sleep = input.sleep ?? wait;
+  const now = input.now ?? Date.now;
+  const sent = await uploadEdited({ orgId: input.orgId, blob: input.file, filename: input.file.name, mime: input.file.type, fetchImpl: doFetch });
+  if (!sent.ok) return { ok: false, error: sent.error, maxBytes: sent.maxBytes ?? null };
+
+  const deadline = now() + ATTACH_WAIT_MS;
+  let assetId: string | null = null;
+  while (!assetId) {
+    if (input.signal?.aborted || now() > deadline) return { ok: false, error: "still_checking" };
+    await sleep(ATTACH_POLL_MS);
+    if (input.signal?.aborted) return { ok: false, error: "still_checking" };
+    let body: { status?: unknown; reason?: unknown; asset_id?: unknown };
+    try {
+      const res = await doFetch(`/api/media/uploads/${sent.ticket}`, { cache: "no-store", signal: input.signal });
+      if (res.status === 401) return { ok: false, error: "unauthorized" };
+      // A failed read is not a failed upload: ask again until the deadline.
+      if (!res.ok) continue;
+      body = (await res.json().catch(() => ({}))) as typeof body;
+    } catch {
+      if (input.signal?.aborted) return { ok: false, error: "still_checking" };
+      continue;
+    }
+    if (body.status === "rejected") return { ok: false, error: "rejected", reason: knownUploadReason(typeof body.reason === "string" ? body.reason : null) };
+    if (body.status === "expired") return { ok: false, error: "expired" };
+    if (body.status === "ingested") assetId = parseMediaId(body.asset_id);
+  }
+
+  // What the worker registered it as decides the tool, not the name or the type the browser gave it.
+  try {
+    const res = await doFetch(`/api/media/${assetId}`, { cache: "no-store", signal: input.signal });
+    if (!res.ok) return { ok: false, error: res.status === 401 ? "unauthorized" : "failed" };
+    const b = (await res.json().catch(() => ({}))) as { asset?: { id?: unknown; kind?: unknown } };
+    if (parseMediaId(b.asset?.id) !== assetId) return { ok: false, error: "failed" };
+    const kind = b.asset?.kind;
+    if (kind !== "image" && kind !== "video") return { ok: false, error: "wrong_kind" };
+    return { ok: true, assetId, kind };
+  } catch {
+    return { ok: false, error: input.signal?.aborted ? "still_checking" : "network" };
+  }
+}
+
+/** The words the attached tool's form starts with: none for a tool that takes none, else cut to that tool's own limit (whole characters). */
+export function attachWords(c: StudioCapability, words: string): string {
+  if (promptRule(c) === "none") return "";
+  return Array.from(words.trim()).slice(0, wordsMax(c)).join("").trim();
+}
+
+/**
+ * Where the words for an attachment that did not make it come from: the attach flow's own, or the library's upload refusals
+ * (t.media.errors, whose `too_large` names the cap the database answered with).
+ */
+export function attachErrorKey(error: AttachError): { flow: "rejected" | "expiredTicket" | "stillChecking" | "wrongKind" } | { media: SaveError } {
+  if (error === "rejected") return { flow: "rejected" };
+  if (error === "expired") return { flow: "expiredTicket" };
+  if (error === "still_checking") return { flow: "stillChecking" };
+  if (error === "wrong_kind") return { flow: "wrongKind" };
+  return { media: error };
+}
