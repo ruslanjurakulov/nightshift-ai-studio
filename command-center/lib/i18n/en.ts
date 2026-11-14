@@ -3814,7 +3814,7 @@ export const en = {
     narrationLabel: "Your recording",
     narrationPick: "Pick a recording of your voice from your library",
     narrationEmpty: "No audio recordings in your library yet.",
-    voiceVideoNote: "Up to 10 minutes of your own narration (an audio file). It is drawn as a 9:16 explainer: a scene for every sentence, captions timed to your words and a sound on every cut. The words are read by speech recognition on our server; no picture or frame is made by an AI image or video model. The price counts the recording's own length; the video is saved to your Library.",
+    voiceVideoNote: "Up to 10 minutes of your own narration (an audio file). It is drawn as a 9:16 explainer: a scene for every sentence, captions timed to your words and a sound on every cut. The words are read by an external speech recognition service, which receives the recording for this; no picture or frame is made by an AI image or video model. The price counts the recording's own length; the video is saved to your Library.",
     explainerLookLabel: "Look",
     explainerLooks: { dusk: "Dusk", midnight: "Midnight", golden: "Golden", neon: "Neon", paper: "Paper" },
     videoLabel: "Video",

@@ -371,6 +371,9 @@ describe("copy", () => {
       // The note says how it is priced and that no AI image or video model draws it (the AI label decision, docs/AI_DISCLOSURE.md).
       expect(g.voiceVideoNote).toMatch(loc === "en" ? /recording's own length/ : /./);
       expect(g.voiceVideoNote).toMatch(/9:16/);
+      // The recording leaves our server to be transcribed (an outside speech recognition service): the note says so.
+      expect(g.voiceVideoNote).toMatch({ en: /external speech recognition service/, ru: /внешний сервис распознавания речи/, uz: /tashqi nutqni aniqlash xizmati/ }[loc as "en" | "ru" | "uz"]);
+      expect(g.voiceVideoNote).not.toMatch(/on our server|на нашем сервере|serverimizda/);
     }
   });
 });

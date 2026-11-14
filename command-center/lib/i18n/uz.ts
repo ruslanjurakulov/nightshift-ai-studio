@@ -3797,7 +3797,7 @@ export const uz: Dictionary = {
     narrationLabel: "Yozuvingiz",
     narrationPick: "Kutubxonangizdan ovozingiz yozuvini tanlang",
     narrationEmpty: "Kutubxonangizda hali audio yozuvlar yoʻq.",
-    voiceVideoNote: "Oʻz ovozingizdagi 10 daqiqagacha boʻlgan yozuv (audio fayl). Undan 9:16 vertikal video chiziladi: har bir gapga bitta sahna, soʻzlaringizga mos subtitrlar va har bir sahna almashuvida tovush. Soʻzlar serverimizda nutqni aniqlash orqali oʻqiladi; hech bir rasm yoki kadr AI rasm yoki video modeli tomonidan yaratilmaydi. Narx yozuvning oʻz uzunligi boʻyicha hisoblanadi; video Kutubxonangizga saqlanadi.",
+    voiceVideoNote: "Oʻz ovozingizdagi 10 daqiqagacha boʻlgan yozuv (audio fayl). Undan 9:16 vertikal video chiziladi: har bir gapga bitta sahna, soʻzlaringizga mos subtitrlar va har bir sahna almashuvida tovush. Soʻzlarni tashqi nutqni aniqlash xizmati oʻqiydi, buning uchun yozuv unga yuboriladi; hech bir rasm yoki kadr AI rasm yoki video modeli tomonidan yaratilmaydi. Narx yozuvning oʻz uzunligi boʻyicha hisoblanadi; video Kutubxonangizga saqlanadi.",
     explainerLookLabel: "Uslub",
     explainerLooks: { dusk: "Shom", midnight: "Yarim tun", golden: "Oltin", neon: "Neon", paper: "Qogʻoz" },
     videoLabel: "Video",
